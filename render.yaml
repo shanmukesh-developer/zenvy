@@ -53,7 +53,7 @@ services:
     plan: free
     rootDir: admin-dashboard
     buildCommand: npm install && npm run build
-    startCommand: npm start
+    startCommand: npx -y serve@latest out
     envVars:
       - key: NEXT_PUBLIC_API_URL
         fromService:
