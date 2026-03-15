@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Admin Dashboard</string>
+    <string name="title_activity_main">Admin Dashboard</string>
+    <string name="package_name">com.srm.hostelbitesadmin</string>
+    <string name="custom_url_scheme">com.srm.hostelbitesadmin</string>
+</resources>
