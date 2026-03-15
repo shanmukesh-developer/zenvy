@@ -4,7 +4,16 @@ import { useState } from 'react';
 import Link from 'next/link';
 
 export default function CheckoutPage() {
+  const { cart, totalPrice, clearCart } = useCart();
+  const [deliveryMethod, setDeliveryMethod] = useState<'room' | 'gate'>('room');
+  const [useBatch, setUseBatch] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  const deliveryFee = deliveryMethod === 'gate' ? 20 : 30;
+  const batchDiscount = useBatch ? 20 : 0;
+  const gateDiscount = deliveryMethod === 'gate' ? Math.round(0.3 * deliveryFee) : 0;
+  
+  const finalTotal = totalPrice + deliveryFee - batchDiscount - gateDiscount;
 
   const handlePlaceOrder = async () => {
     setIsProcessing(true);
