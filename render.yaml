@@ -23,7 +23,7 @@ services:
     plan: free
     rootDir: frontend
     buildCommand: npm install && npm run build
-    startCommand: npm start
+    startCommand: npx -y serve@latest out
     envVars:
       - key: NEXT_PUBLIC_API_URL
         fromService:
@@ -38,7 +38,7 @@ services:
     plan: free
     rootDir: delivery-app
     buildCommand: npm install && npm run build
-    startCommand: npm start
+    startCommand: npx -y serve@latest out
     envVars:
       - key: NEXT_PUBLIC_API_URL
         fromService:
