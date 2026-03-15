@@ -1,0 +1,67 @@
+{
+  "project_info": {
+    "project_number": "785490473159",
+    "project_id": "hostelbites-c77a8",
+    "storage_bucket": "hostelbites-c77a8.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:785490473159:android:7180c2aca61f77e8000ee2",
+        "android_client_info": {
+          "package_name": "com.srm.hostelbites"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCL_P8iuolehpXDQThKS-KfLrbETJJLGCA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:785490473159:android:92fc8d109b8a7c1e000ee2",
+        "android_client_info": {
+          "package_name": "com.srm.hostelbitesadmin"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCL_P8iuolehpXDQThKS-KfLrbETJJLGCA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:785490473159:android:b3850edcf4bf6424000ee2",
+        "android_client_info": {
+          "package_name": "com.srm.hostelbitesdelivery"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCL_P8iuolehpXDQThKS-KfLrbETJJLGCA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

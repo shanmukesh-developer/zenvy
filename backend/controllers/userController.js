@@ -55,4 +55,32 @@ const authUser = async (req, res) => {
   }
 };
 
-module.exports = { registerUser, authUser };
+// @desc    Save Firebase Cloud Messaging Device Token
+// @route   POST /api/users/fcm-token
+const saveFcmToken = async (req, res) => {
+  const { userId, fcmToken, appVersion } = req.body;
+
+  try {
+    const user = await User.findById(userId);
+    if (user) {
+      if (!user.fcmTokens) user.fcmTokens = [];
+      
+      // Update or add the new token ensuring duplicates aren't saved
+      const existingTokenIndex = user.fcmTokens.findIndex(t => t.appVersion === appVersion);
+      if (existingTokenIndex > -1) {
+        user.fcmTokens[existingTokenIndex].token = fcmToken;
+      } else {
+        user.fcmTokens.push({ token: fcmToken, appVersion });
+      }
+
+      await user.save();
+      res.json({ message: 'FCM Token saved successfully' });
+    } else {
+      res.status(404).json({ message: 'User not found' });
+    }
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to save token' });
+  }
+};
+
+module.exports = { registerUser, authUser, saveFcmToken };

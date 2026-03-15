@@ -1,5 +1,7 @@
 const DeliveryPartner = require('../models/DeliveryPartner');
 const Order = require('../models/Order');
+const User = require('../models/User');
+const { sendPushToTokens } = require('../utils/push');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 
@@ -75,6 +77,21 @@ const acceptOrder = async (req, res) => {
     });
 
     res.json(order);
+
+    // Send Push Notification to the Customer
+    try {
+      const customer = await User.findById(order.userId);
+      if (customer && customer.fcmTokens && customer.fcmTokens.length > 0) {
+        await sendPushToTokens(
+          customer.fcmTokens,
+          'Order Accepted!',
+          `Your order has been assigned to a delivery partner and is being prepared.`,
+          { orderId: order._id.toString(), type: 'ORDER_UPDATE' }
+        );
+      }
+    } catch (pushErr) {
+      console.error('Failed to send push notification to user', pushErr);
+    }
   } catch (error) {
     res.status(500).json({ message: 'Server Error' });
   }

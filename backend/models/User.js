@@ -11,7 +11,11 @@ const userSchema = new mongoose.Schema({
   streakCount: { type: Number, default: 0 },
   lastOrderDate: { type: Date },
   totalOrders: { type: Number, default: 0 },
-  role: { type: String, enum: ['student', 'admin'], default: 'student' }
+  role: { type: String, enum: ['student', 'admin'], default: 'student' },
+  fcmTokens: [{
+    token: { type: String },
+    appVersion: { type: String }
+  }]
 }, { timestamps: true });
 
 userSchema.pre('save', async function(next) {

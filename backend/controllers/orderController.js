@@ -1,5 +1,6 @@
 const Order = require('../models/Order');
 const User = require('../models/User');
+const { sendPushToTokens } = require('../utils/push');
 
 // @desc    Create a new order
 // @route   POST /api/orders
@@ -69,6 +70,27 @@ const createOrder = async (req, res) => {
     });
 
     res.status(201).json(createdOrder);
+
+    // Alert Admin via Push Notification
+    try {
+      const admins = await User.find({ role: 'admin' });
+      let adminTokens = [];
+      admins.forEach(admin => {
+        if (admin.fcmTokens) adminTokens.push(...admin.fcmTokens);
+      });
+
+      if (adminTokens.length > 0) {
+        await sendPushToTokens(
+          adminTokens,
+          'New Order Placed!',
+          `Order ${createdOrder._id.toString().slice(-4)} has been placed for ${createdOrder.hostelGateDelivery ? 'Hostel Gate' : 'Room Delivery'}.`,
+          { orderId: createdOrder._id.toString(), type: 'NEW_ORDER' }
+        );
+      }
+    } catch (pushErr) {
+      console.error('Failed to send push notification to admin', pushErr);
+    }
+
   } catch (error) {
     res.status(400).json({ message: 'Invalid order data' });
   }

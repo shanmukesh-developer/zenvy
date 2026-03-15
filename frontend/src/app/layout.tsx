@@ -19,6 +19,7 @@ export const metadata: Metadata = {
 };
 
 import { CartProvider } from '@/context/CartContext';
+import PushNotificationManager from '@/components/PushNotificationManager';
 
 export default function RootLayout({
   children,
@@ -30,6 +31,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        <PushNotificationManager />
         <CartProvider>
           {children}
         </CartProvider>
