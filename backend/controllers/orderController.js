@@ -42,6 +42,15 @@ const createOrder = async (req, res) => {
 
     const createdOrder = await order.save();
 
+    // Notify delivery riders via Socket.io
+    const io = req.app.get('io');
+    io.emit('newOrder', {
+      id: createdOrder._id,
+      restaurant: 'SRM Kitchen', // Simplified for now
+      drop: createdOrder.hostelGateDelivery ? 'Hostel Gate' : 'Room Delivery',
+      earnings: `₹${Math.round(createdOrder.finalPrice * 0.1)}` // Simulated commission
+    });
+
     // Update streak and user stats
     const { updateStreak } = require('../middleware/rewardEngine');
     await updateStreak(req.user.id);

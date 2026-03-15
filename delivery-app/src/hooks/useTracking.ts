@@ -38,5 +38,5 @@ export const useTracking = (orderId: string, riderName: string) => {
     };
   }, [orderId, riderName]);
 
-  return socketRef.current;
+  return { socket: socketRef.current };
 };

@@ -1,5 +1,5 @@
 "use client";
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTracking } from '@/hooks/useTracking';
 
 interface Order {
@@ -14,13 +14,27 @@ export default function DeliveryHome() {
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
   const [orderStatus, setOrderStatus] = useState<'idle' | 'accepted' | 'picked_up' | 'delivered'>('idle');
 
-  // Link tracking to the active order
-  useTracking(activeOrder?.id || '', 'Rahul Mishra');
+  // Link tracking to the active order and get socket instance
+  const { socket } = useTracking(activeOrder?.id || '', 'Rahul Mishra');
 
-  const availableOrders: Order[] = [
+  const [availableOrders, setAvailableOrders] = useState<Order[]>([
     { id: '1025', restaurant: 'Dominos Pizza', drop: 'Hostel A, Room 204', earnings: '₹45' },
     { id: '1026', restaurant: 'Biryani Hub', drop: 'Hostel B, Room 112', earnings: '₹35' },
-  ];
+  ]);
+
+  // Handle Real-time Order Sync
+  useEffect(() => {
+    if (socket) {
+      socket.on('newOrder', (newOrder: Order) => {
+        setAvailableOrders(prev => [newOrder, ...prev]);
+        // Simple notification sound/alert hint
+        console.log("New Order Received:", newOrder);
+      });
+    }
+    return () => {
+      if (socket) socket.off('newOrder');
+    };
+  }, [socket]);
 
   const acceptOrder = (order: Order) => {
     setActiveOrder(order);
