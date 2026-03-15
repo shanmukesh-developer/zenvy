@@ -60,7 +60,9 @@ export default function PushNotificationManager() {
       if (userStr) {
         try {
           userId = JSON.parse(userStr).id || JSON.parse(userStr)._id || 'unknown';
-        } catch(e) {}
+        } catch {
+          // Ignore parse errors
+        }
       }
 
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-exs6.onrender.com';
