@@ -9,6 +9,7 @@ export default function TrackingPage() {
   const orderId = searchParams.get('id');
   const [status, setStatus] = useState(1); 
   const [location, setLocation] = useState({ lat: 0, lng: 0 });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [orderInfo, setOrderInfo] = useState<any>(null);
 
   useEffect(() => {

@@ -13,7 +13,8 @@ export default function DetailPage() {
       name: 'Special Chicken Dum Biryani',
       price: 249,
       quantity,
-      image: 'https://images.unsplash.com/photo-1589302168068-1c498202f722?q=80&w=600&auto=format&fit=crop'
+      image: 'https://images.unsplash.com/photo-1589302168068-1c498202f722?q=80&w=600&auto=format&fit=crop',
+      restaurantId: 'saffron-hub'
     });
     alert('Added to Basket! 🚀');
   };

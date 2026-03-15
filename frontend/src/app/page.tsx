@@ -101,7 +101,7 @@ export default function Home() {
                   {filteredItems.slice(0, 10).map(item => (
                     <Link href={`/products/${item.id}`} key={item.id} className="block bg-white/5 border border-white/5 p-4 rounded-[24px] hover:bg-white/10 transition-all">
                        <div className="flex items-center gap-4">
-                          <img src={item.image} className="w-12 h-12 rounded-xl object-cover" />
+                          <img src={item.image} alt={item.name} className="w-12 h-12 rounded-xl object-cover" />
                           <div className="flex-1">
                              <div className="flex justify-between items-start">
                                 <h4 className="text-sm font-black">{item.name}</h4>
