@@ -1,19 +1,17 @@
-# HostelBites (zenvy) - Deployment Guide
+# 🚨 STOP! READ THIS BEFORE DEPLOYING 🚨
 
-Bro, this is a **multi-service ecosystem**. You cannot deploy it as a single "Web Service" from the root.
+Bro, this is a **Monorepo** (multiple apps in one). If you just click "New Web Service" and select this repo, it will **FAIL** with a "package.json not found" error.
 
-## 🚀 Correct Deployment (Render Blueprints)
-To deploy everything correctly (Backend + 3 Apps), follow these steps:
+## ✅ THE ONLY WAY TO DEPLOY (Click "Blueprint")
+Follow these **exact** steps on Render:
 
-1. Go to your [Render Dashboard](https://dashboard.render.com).
-2. Click **New +** at the top right.
-3. Select **Blueprint**.
-4. Connect the `zenvy` repository.
-5. Render will automatically read the `render.yaml` file and create all 4 services for you!
+1.  **Go to Dashboard**: [https://dashboard.render.com](https://dashboard.render.com)
+2.  **Click "New +"**: Select **Blueprint** (the one with the map icon 🗺️).
+3.  **Select Repo**: Connect your `zenvy` repository.
+4.  **Confirm**: Render will read `render.yaml` and show you 4 services (Backend, Customer, Delivery, Admin).
+5.  **Click "Apply"**: That's it! It will deploy everything in the correct order.
 
-## 🛠️ Manual Deployment (If you only want one service)
-If you must deploy a single service (e.g., just the Backend):
-1. Create a **New Web Service**.
-2. Connect the repo.
-3. In the settings, set **Root Directory** to `backend` (or `frontend`, etc.).
-4. Use `npm install` for build and `npm start` for runtime.
+---
+
+## 🛠️ IF YOU MUST DEPLOY MANUALLY (Not Recommended)
+If you decide to create a "Web Service" anyway, you **MUST** change the **Root Directory** in the Render settings to `backend`, `frontend`, etc. Otherwise, it will keep failing.

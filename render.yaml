@@ -9,6 +9,7 @@ services:
     startCommand: npm start
     envVars:
       - key: MONGO_URI
+        description: "Your MongoDB Atlas Connection String"
         sync: false
       - key: JWT_SECRET
         generateValue: true
