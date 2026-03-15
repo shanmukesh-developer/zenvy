@@ -27,7 +27,9 @@ export default function Home() {
   });
 
   const displayRestaurants = restaurants.filter(res => 
-    searchQuery === '' || res.name.toLowerCase().includes(searchQuery.toLowerCase()) || res.menu.some(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    searchQuery === '' || 
+    res.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    res.menu.some(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   return (
@@ -76,7 +78,7 @@ export default function Home() {
              onClick={() => setFilter('budget')}
              className={`px-6 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${filter === 'budget' ? 'bg-primary-yellow text-black shadow-lg shadow-primary-yellow/20' : 'bg-white/5 border border-white/10'}`}
            >
-             Budget (&lt;₹150)
+             Budget ({"<"}₹150)
            </button>
            <button 
              onClick={() => setFilter('veg')}
