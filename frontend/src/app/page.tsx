@@ -19,18 +19,22 @@ export default function Home() {
     res.menu.map(item => ({ ...item, restaurantName: res.name, restaurantId: res.id }))
   );
 
-  const filteredItems = allProducts.filter(item => {
+  const filteredItems = allProducts.filter((item) => {
     const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesBudget = filter === 'budget' ? item.price < 150 : true;
     const matchesVeg = filter === 'veg' ? !item.name.toLowerCase().includes('chicken') && !item.name.toLowerCase().includes('mutton') : true;
-    return matchesSearch && (filter === 'all' ? true : filter === 'budget' ? matchesBudget : matchesVeg);
+    
+    if (filter === 'all') return matchesSearch;
+    if (filter === 'budget') return matchesSearch && matchesBudget;
+    if (filter === 'veg') return matchesSearch && matchesVeg;
+    return matchesSearch;
   });
 
-  const displayRestaurants = restaurants.filter(res => 
-    searchQuery === '' || 
-    res.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    res.menu.some(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const displayRestaurants = restaurants.filter((res) => {
+    const nameMatch = res.name.toLowerCase().includes(searchQuery.toLowerCase());
+    const menuMatch = res.menu.some((p) => p.name.toLowerCase().includes(searchQuery.toLowerCase()));
+    return searchQuery === '' || nameMatch || menuMatch;
+  });
 
   return (
     <main className="min-h-screen bg-background text-white p-8 pt-16 pb-32 relative">
