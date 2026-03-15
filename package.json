@@ -1,0 +1,8 @@
+{
+  "name": "zenvy-root",
+  "version": "1.0.0",
+  "description": "Root of the HostelBites (zenvy) Ecosystem. USE RENDER BLUEPRINTS TO DEPLOY.",
+  "scripts": {
+    "start": "echo 'ERR: Do not deploy root. Use the Blueprints feature on Render with render.yaml.' && exit 1"
+  }
+}
