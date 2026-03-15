@@ -6,6 +6,28 @@ import { restaurants } from '@/data/restaurants';
 
 export default function Home() {
   const { totalItems } = useCart();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filter, setFilter] = useState<'all' | 'budget' | 'veg'>('all');
+
+  // Curfew Check
+  const now = new Date();
+  const isCurfew = (now.getHours() * 100 + now.getMinutes()) > 2130;
+
+  // Flatten all menu items for search
+  const allProducts = restaurants.flatMap(res => 
+    res.menu.map(item => ({ ...item, restaurantName: res.name, restaurantId: res.id }))
+  );
+
+  const filteredItems = allProducts.filter(item => {
+    const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesBudget = filter === 'budget' ? item.price < 150 : true;
+    const matchesVeg = filter === 'veg' ? !item.name.toLowerCase().includes('chicken') && !item.name.toLowerCase().includes('mutton') : true;
+    return matchesSearch && (filter === 'all' ? true : filter === 'budget' ? matchesBudget : matchesVeg);
+  });
+
+  const displayRestaurants = restaurants.filter(res => 
+    searchQuery === '' || res.name.toLowerCase().includes(searchQuery.toLowerCase()) || res.menu.some(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
 
   return (
     <main className="min-h-screen bg-background text-white p-8 pt-16 pb-32 relative">
@@ -14,6 +36,12 @@ export default function Home() {
           <h1 className="discover-header">
             SRM Campus <br /> Bites Delivered
           </h1>
+          {isCurfew && (
+            <div className="mt-4 bg-red-500/20 border border-red-500/30 p-3 rounded-2xl flex items-center gap-2">
+               <span className="animate-pulse text-red-500">🔴</span>
+               <span className="text-[10px] font-black uppercase text-red-500">Curfew: No orders until tomorrow</span>
+            </div>
+          )}
           <p className="recipe-count mt-2">
             Trending <span className="underline decoration-white/20 underline-offset-8 font-serif">near your hostel</span>
           </p>
@@ -28,24 +56,70 @@ export default function Home() {
           </div>
           <input 
             type="text" 
-            placeholder="Search restaurants or dishes..."
+            placeholder="Search for Biryani, Burgers..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full bg-[#1C1C1E] border-none rounded-full py-4 pl-14 pr-4 text-sm focus:ring-0 placeholder:text-secondary-text font-medium"
           />
         </div>
 
+        {/* Smart Filters */}
+        <div className="flex gap-3 mb-10 overflow-x-auto pb-2 scrollbar-hide">
+           <button 
+             onClick={() => setFilter('all')}
+             className={`px-6 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${filter === 'all' ? 'bg-primary-yellow text-black shadow-lg shadow-primary-yellow/20' : 'bg-white/5 border border-white/10'}`}
+           >
+             All
+           </button>
+           <button 
+             onClick={() => setFilter('budget')}
+             className={`px-6 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${filter === 'budget' ? 'bg-primary-yellow text-black shadow-lg shadow-primary-yellow/20' : 'bg-white/5 border border-white/10'}`}
+           >
+             Budget (<₹150)
+           </button>
+           <button 
+             onClick={() => setFilter('veg')}
+             className={`px-6 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${filter === 'veg' ? 'bg-primary-yellow text-black shadow-lg shadow-primary-yellow/20' : 'bg-white/5 border border-white/10'}`}
+           >
+             Veg Only
+           </button>
+        </div>
+
         {/* Alternating Zigzag Recipe List */}
         <div className="space-y-4">
-          {restaurants.map((res, index) => (
-            <Link href={`/restaurants/${res.id}`} key={res.id}>
-              <RestaurantCard 
-                name={res.name}
-                rating={res.rating}
-                time={res.time}
-                imageUrl={res.imageUrl}
-                imagePosition={index % 2 === 0 ? 'left' : 'right'}
-              />
-            </Link>
-          ))}
+          {searchQuery !== '' && filteredItems.length > 0 ? (
+            <div className="mb-4">
+               <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-secondary-text mb-6">Search Results</h2>
+               <div className="space-y-3">
+                  {filteredItems.slice(0, 10).map(item => (
+                    <Link href={`/products/${item.id}`} key={item.id} className="block bg-white/5 border border-white/5 p-4 rounded-[24px] hover:bg-white/10 transition-all">
+                       <div className="flex items-center gap-4">
+                          <img src={item.image} className="w-12 h-12 rounded-xl object-cover" />
+                          <div className="flex-1">
+                             <div className="flex justify-between items-start">
+                                <h4 className="text-sm font-black">{item.name}</h4>
+                                <span className="text-xs font-black text-primary-yellow">₹{item.price}</span>
+                             </div>
+                             <p className="text-[10px] text-secondary-text font-bold uppercase tracking-tighter">{item.restaurantName}</p>
+                          </div>
+                       </div>
+                    </Link>
+                  ))}
+               </div>
+            </div>
+          ) : (
+            displayRestaurants.map((res, index) => (
+              <Link href={`/restaurants/${res.id}`} key={res.id}>
+                <RestaurantCard 
+                  name={res.name}
+                  rating={res.rating}
+                  time={res.time}
+                  imageUrl={res.imageUrl}
+                  imagePosition={index % 2 === 0 ? 'left' : 'right'}
+                />
+              </Link>
+            ))
+          )}
         </div>
 
         {/* Floating Plus Buttons from Image */}

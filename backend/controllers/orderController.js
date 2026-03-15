@@ -11,6 +11,16 @@ const createOrder = async (req, res) => {
   }
 
   try {
+    // 🛑 SRM Curfew Enforcement: No orders after 9:30 PM (21:30)
+    const now = new Date();
+    const hours = now.getHours();
+    const minutes = now.getMinutes();
+    const currentTime = hours * 100 + minutes;
+    
+    if (currentTime > 2130) {
+      return res.status(403).json({ message: 'Curfew Active: SRM Campus food delivery is allowed only upto 9:30 PM.' });
+    }
+
     let gateDiscount = 0;
     let batchDiscount = 0;
 
