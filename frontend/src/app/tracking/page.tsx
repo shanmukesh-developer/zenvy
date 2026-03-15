@@ -4,18 +4,20 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import io from 'socket.io-client';
 
+import { APIProvider, Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
+
 function TrackingContent() {
   const searchParams = useSearchParams();
   const orderId = searchParams.get('id');
   const [status, setStatus] = useState(1); 
-  const [location, setLocation] = useState({ lat: 0, lng: 0 });
+  const [location, setLocation] = useState({ lat: 16.506, lng: 80.648 }); // Default to SRM AP
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [orderInfo, setOrderInfo] = useState<any>(null);
 
   useEffect(() => {
     if (!orderId) return;
 
-    const socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5000');
+    const socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'https://hostelbites-backend-exs6.onrender.com');
     
     socket.emit('joinOrder', orderId);
 
@@ -33,7 +35,7 @@ function TrackingContent() {
     const fetchOrder = async () => {
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/orders/${orderId}`, {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-exs6.onrender.com'}/api/orders/${orderId}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         const data = await res.json();
@@ -59,6 +61,8 @@ function TrackingContent() {
     { label: 'Arrived', time: 'Estimated 5m', desc: 'Pick up your food at the designated spot.' }
   ];
 
+  const mapId = "4f8f4a1f5a5a5a5a"; // Placeholder Map ID for styling
+
   return (
     <main className="min-h-screen bg-background text-white p-8">
       {/* Header */}
@@ -72,24 +76,37 @@ function TrackingContent() {
         <div className="w-10" />
       </div>
 
-      {/* Map Visualizer */}
-      <div className="bg-card-bg w-full aspect-video rounded-[40px] border border-white/5 mb-12 overflow-hidden relative">
-         <div className="absolute inset-0 bg-[#0d0d0d]" />
-         <div className="absolute inset-0 flex items-center justify-center">
-            <div className="relative">
-               <div className="w-24 h-24 bg-primary-yellow/10 rounded-full animate-pulse absolute -inset-2" />
-               <div className="w-20 h-20 bg-primary-yellow rounded-full flex flex-col items-center justify-center text-black z-10 relative">
-                  <span className="text-2xl">🛵</span>
-                  <span className="text-[8px] font-black uppercase tracking-tighter">On The Way</span>
-               </div>
-            </div>
-         </div>
+      {/* Real Google Map */}
+      <div className="bg-card-bg w-full aspect-video rounded-[40px] border border-white/5 mb-12 overflow-hidden relative shadow-2xl">
+         <APIProvider apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''}>
+            <Map
+              defaultCenter={location}
+              center={location}
+              defaultZoom={16}
+              gestureHandling={'greedy'}
+              disableDefaultUI={true}
+              mapId={mapId}
+              style={{ width: '100%', height: '100%' }}
+            >
+              <AdvancedMarker position={location}>
+                <div className="relative">
+                   <div className="w-12 h-12 bg-primary-yellow rounded-full flex items-center justify-center text-xl shadow-[0_0_20px_rgba(247,211,49,0.5)] border-2 border-black">
+                      🛵
+                   </div>
+                   <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 bg-black/80 px-2 py-1 rounded text-[8px] font-black uppercase whitespace-nowrap border border-white/10">
+                      Rider is Here
+                   </div>
+                </div>
+              </AdvancedMarker>
+            </Map>
+         </APIProvider>
+         
          {/* Simple coordinate display for "Live" feel */}
-         <div className="absolute bottom-6 left-6 font-mono text-[8px] opacity-30">
-           LAT: {location.lat.toFixed(4) || '16.5062'} <br />
-           LNG: {location.lng.toFixed(4) || '80.6480'}
+         <div className="absolute top-6 right-6 font-mono text-[8px] opacity-30 bg-black/50 p-2 rounded-xl backdrop-blur-md">
+           LAT: {location.lat.toFixed(4)} <br />
+           LNG: {location.lng.toFixed(4)}
          </div>
-      </div>
+      </div>iv>
 
       {/* Status Timeline */}
       <div className="space-y-12 pl-4">
