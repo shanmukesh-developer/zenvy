@@ -4,15 +4,57 @@ import { useState } from 'react';
 import Link from 'next/link';
 
 export default function CheckoutPage() {
-  const { totalPrice } = useCart();
-  const [deliveryMethod, setDeliveryMethod] = useState<'room' | 'gate'>('room');
-  const [useBatch, setUseBatch] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  const deliveryFee = deliveryMethod === 'gate' ? 20 : 30;
-  const batchDiscount = useBatch ? 20 : 0;
-  const gateDiscount = deliveryMethod === 'gate' ? 0.3 * deliveryFee : 0;
-  
-  const finalTotal = totalPrice + deliveryFee - batchDiscount - gateDiscount;
+  const handlePlaceOrder = async () => {
+    setIsProcessing(true);
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        alert('Please login first!');
+        window.location.href = '/login';
+        return;
+      }
+
+      const orderData = {
+        restaurantId: 'biryani-hub', // Dynamically fetch this in V23
+        items: cart.map(item => ({
+          productId: item.id,
+          name: item.name,
+          quantity: item.quantity,
+          price: item.price
+        })),
+        totalPrice: totalPrice,
+        deliveryFee: deliveryFee,
+        deliverySlot: useBatch ? '7:30 PM' : 'IMMEDIATE',
+        hostelGateDelivery: deliveryMethod === 'gate'
+      };
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/orders`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(orderData)
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        alert('Order Placed Successfully! 🚀');
+        clearCart();
+        window.location.href = `/tracking?id=${data._id}`;
+      } else {
+        const err = await response.json();
+        alert(`Failed to place order: ${err.message}`);
+      }
+    } catch (error) {
+      console.error('Checkout error:', error);
+      alert('Network Error. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   return (
     <main className="min-h-screen bg-background text-white p-8">
@@ -93,13 +135,11 @@ export default function CheckoutPage() {
         </div>
 
         <button 
-          onClick={() => {
-            alert('Order Placed Successfully! 🚀');
-            window.location.href = '/tracking';
-          }}
-          className="w-full btn-yellow py-6 h-auto text-lg uppercase tracking-widest shadow-[0_20px_40px_rgba(247,211,49,0.3)]"
+          onClick={handlePlaceOrder}
+          disabled={isProcessing}
+          className="w-full btn-yellow py-6 h-auto text-lg uppercase tracking-widest shadow-[0_20px_40px_rgba(247,211,49,0.3)] disabled:opacity-50"
         >
-          Pay & Confirm
+          {isProcessing ? 'Processing...' : 'Pay & Confirm'}
         </button>
       </div>
     </main>
