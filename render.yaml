@@ -1,0 +1,61 @@
+services:
+  # 1. Backend API
+  - type: web
+    name: hostelbites-backend
+    env: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: NODE_ENV
+        value: production
+
+  # 2. Customer Frontend
+  - type: web
+    name: hostelbites-customer
+    env: node
+    plan: free
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          name: hostelbites-backend
+          type: web
+          property: host
+
+  # 3. Delivery App
+  - type: web
+    name: hostelbites-delivery
+    env: node
+    plan: free
+    rootDir: delivery-app
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          name: hostelbites-backend
+          type: web
+          property: host
+
+  # 4. Admin Dashboard
+  - type: web
+    name: hostelbites-admin
+    env: node
+    plan: free
+    rootDir: admin-dashboard
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          name: hostelbites-backend
+          type: web
+          property: host
