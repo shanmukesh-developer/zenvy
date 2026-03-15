@@ -1,0 +1,103 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&display=swap');
+
+:root {
+  --background: #111111; 
+  --card-bg: #1C1C1E;
+  --primary-yellow: #F7D331;
+  --secondary-text: #929292;
+  --white: #FFFFFF;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--white);
+  font-family: 'Outfit', sans-serif;
+}
+
+/* Header Typography from Image */
+.discover-header {
+  font-family: 'Playfair Display', serif;
+  font-weight: 700;
+  font-size: 34px;
+  line-height: 1.1;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.recipe-count {
+  font-family: 'Playfair Display', serif;
+  font-style: italic;
+  font-weight: 400;
+  font-size: 26px;
+  color: var(--white);
+  opacity: 0.9;
+}
+
+/* Horizontal Capsule Card */
+.capsule-card {
+  background-color: var(--card-bg);
+  border-radius: 60px; /* Extremely rounded ends */
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  position: relative;
+  height: 110px;
+  transition: all 0.3s ease;
+}
+
+.capsule-card:hover {
+  background-color: #252527;
+}
+
+/* The Yellow-Bordered Circle for Images */
+.food-circle {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  border: 2.5px solid var(--primary-yellow);
+  overflow: hidden;
+  flex-shrink: 0;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+}
+
+.food-circle img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Floating Plus Button Pattern */
+.floating-plus {
+  width: 48px;
+  height: 48px;
+  background-color: var(--primary-yellow);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #000;
+  font-weight: 900;
+  font-size: 24px;
+  box-shadow: 0 8px 20px rgba(247, 211, 49, 0.3);
+  position: absolute;
+}
+
+/* Bottom Nav Style */
+.nav-icon-active {
+  color: var(--primary-yellow);
+}
+
+.tab-pill {
+    background: var(--primary-yellow);
+    color: #111;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}

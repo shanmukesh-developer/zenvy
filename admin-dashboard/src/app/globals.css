@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #020617;
+  --foreground: #f1f5f9;
+  --primary: #2563eb;
+  --glass: rgba(255, 255, 255, 0.02);
+  --glass-border: rgba(255, 255, 255, 0.05);
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: 'Inter', sans-serif;
+}
+
+.glass {
+  background: var(--glass);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+}
+
+.sidebar-active {
+  background: linear-gradient(90deg, #2563eb33 0%, #2563eb00 100%);
+  border-left: 3px solid #2563eb;
+}
