@@ -2,19 +2,26 @@
 import { useState } from 'react';
 import { useTracking } from '@/hooks/useTracking';
 
+interface Order {
+  id: string;
+  restaurant: string;
+  drop: string;
+  earnings: string;
+}
+
 export default function DeliveryHome() {
   const [isOnline, setIsOnline] = useState(false);
-  const [activeOrder, setActiveOrder] = useState<any>(null);
+  const [activeOrder, setActiveOrder] = useState<Order | null>(null);
 
   // Link tracking to the active order
-  useTracking(activeOrder?.id, 'Rahul Mishra');
+  useTracking(activeOrder?.id || '', 'Rahul Mishra');
 
-  const availableOrders = [
+  const availableOrders: Order[] = [
     { id: '1025', restaurant: 'Dominos Pizza', drop: 'Hostel A, Room 204', earnings: '₹45' },
     { id: '1026', restaurant: 'Biryani Hub', drop: 'Hostel B, Room 112', earnings: '₹35' },
   ];
 
-  const acceptOrder = (order: any) => {
+  const acceptOrder = (order: Order) => {
     setActiveOrder(order);
   };
 
@@ -39,7 +46,7 @@ export default function DeliveryHome() {
           <div className="w-24 h-24 bg-slate-800 rounded-full flex items-center justify-center text-4xl mb-6 grayscale text-gray-400">
             🛵
           </div>
-          <h2 className="text-2xl font-bold mb-2">You're Offline</h2>
+          <h2 className="text-2xl font-bold mb-2">You&apos;re Offline</h2>
           <p className="text-gray-400">Go online to start receiving orders.</p>
         </div>
       ) : activeOrder ? (
