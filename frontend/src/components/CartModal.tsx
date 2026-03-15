@@ -1,4 +1,9 @@
-const CartModal = ({ items, isOpen, onClose }: any) => {
+interface CartModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+const CartModal = ({ isOpen, onClose }: CartModalProps) => {
   if (!isOpen) return null;
 
   return (
@@ -72,6 +77,3 @@ const CartModal = ({ items, isOpen, onClose }: any) => {
 };
 
 export default CartModal;
-function onClose() {
-    throw new Error('Function not implemented.');
-}

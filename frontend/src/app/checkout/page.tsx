@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 
 export default function CheckoutPage() {
-  const { totalPrice, cart } = useCart();
+  const { totalPrice } = useCart();
   const [deliveryMethod, setDeliveryMethod] = useState<'room' | 'gate'>('room');
   const [useBatch, setUseBatch] = useState(false);
 

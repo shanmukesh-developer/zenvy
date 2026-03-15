@@ -34,7 +34,7 @@ export default function RewardsPage() {
               </div>
               
               <p className="text-gray-500 text-sm italic leading-relaxed">
-                Maintain your distinction for 3 more cycles to unlock the **Chef's Complimentary Menu** for the entire semester.
+                Maintain your distinction for 3 more cycles to unlock the **Chef&apos;s Complimentary Menu** for the entire semester.
               </p>
             </div>
 

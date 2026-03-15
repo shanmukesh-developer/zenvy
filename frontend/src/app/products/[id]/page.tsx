@@ -2,7 +2,7 @@
 import { useParams } from 'next/navigation';
 import { restaurants } from '@/data/restaurants';
 import Link from 'next/link';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useCart } from '@/context/CartContext';
 
 export default function ProductDetailPage() {

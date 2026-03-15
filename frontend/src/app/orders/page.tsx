@@ -4,7 +4,7 @@ import { useLiveOrder } from '@/hooks/useLiveOrder';
 
 export default function OrdersPage() {
   const activeOrderId = '1025'; // Simulated active order
-  const { location, riderName } = useLiveOrder(activeOrderId);
+  useLiveOrder(activeOrderId);
 
   return (
     <main className="min-h-screen bg-white">

@@ -2,7 +2,6 @@
 import { useParams } from 'next/navigation';
 import { restaurants } from '@/data/restaurants';
 import Link from 'next/link';
-import RestaurantCard from '@/components/RestaurantCard';
 import { useCart } from '@/context/CartContext';
 
 export default function RestaurantMenuPage() {
