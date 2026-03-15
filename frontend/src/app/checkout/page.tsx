@@ -26,7 +26,7 @@ export default function CheckoutPage() {
       }
 
       const orderData = {
-        restaurantId: 'biryani-hub', // Dynamically fetch this in V23
+        restaurantId: cart[0]?.restaurantId || 'biryani-hub',
         items: cart.map(item => ({
           productId: item.id,
           name: item.name,

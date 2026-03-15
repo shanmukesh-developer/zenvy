@@ -1,21 +1,58 @@
-"use client";
-import Link from 'next/link';
-import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
+import io from 'socket.io-client';
 
 export default function TrackingPage() {
-  const [status, setStatus] = useState(1); // 1: Preparing, 2: Out for delivery, 3: Arrived
+  const searchParams = useSearchParams();
+  const orderId = searchParams.get('id');
+  const [status, setStatus] = useState(1); 
+  const [location, setLocation] = useState({ lat: 0, lng: 0 });
+  const [orderInfo, setOrderInfo] = useState<any>(null);
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setStatus((prev) => (prev < 3 ? prev + 1 : 1));
-    }, 5000);
-    return () => clearInterval(timer);
-  }, []);
+    if (!orderId) return;
+
+    const socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5000');
+    
+    socket.emit('joinOrder', orderId);
+
+    socket.on('statusUpdated', (newStatus: string) => {
+      if (newStatus === 'Accepted') setStatus(1);
+      if (newStatus === 'Picked Up') setStatus(2);
+      if (newStatus === 'Delivered') setStatus(3);
+    });
+
+    socket.on('locationUpdated', (coords: { lat: number, lng: number }) => {
+      setLocation(coords);
+    });
+
+    // Fetch initial order info
+    const fetchOrder = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/orders/${orderId}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        setOrderInfo(data);
+        if (data.status === 'Accepted') setStatus(1);
+        if (data.status === 'Picked Up') setStatus(2);
+        if (data.status === 'Delivered') setStatus(3);
+      } catch (err) {
+        console.error('Error fetching order:', err);
+      }
+    };
+
+    fetchOrder();
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [orderId]);
 
   const steps = [
-    { label: 'Order Received', time: '12:40 PM', desc: 'Saffron Hub is preparing your meal.' },
-    { label: 'Out for Delivery', time: '1:05 PM', desc: 'Rider is on the way to your Hostel Gate.' },
-    { label: 'Arrived', time: '1:15 PM', desc: 'Pick up your food at the main gate.' }
+    { label: 'Order Accepted', time: 'Just now', desc: 'The restaurant is preparing your meal.' },
+    { label: 'Out for Delivery', time: 'Soon', desc: 'Rider is on the way to your Hostel Block.' },
+    { label: 'Arrived', time: 'Estimated 5m', desc: 'Pick up your food at the designated spot.' }
   ];
 
   return (
@@ -31,16 +68,22 @@ export default function TrackingPage() {
         <div className="w-10" />
       </div>
 
-      {/* Map Placeholder / Visual */}
+      {/* Map Visualizer */}
       <div className="bg-card-bg w-full aspect-video rounded-[40px] border border-white/5 mb-12 overflow-hidden relative">
-         <div className="absolute inset-0 bg-[#111] opacity-50" />
+         <div className="absolute inset-0 bg-[#0d0d0d]" />
          <div className="absolute inset-0 flex items-center justify-center">
             <div className="relative">
-               <div className="w-20 h-20 bg-primary-yellow/20 rounded-full animate-ping absolute -inset-0" />
-               <div className="w-20 h-20 bg-primary-yellow rounded-full flex items-center justify-center text-black font-black z-10 relative">
-                  🛵
+               <div className="w-24 h-24 bg-primary-yellow/10 rounded-full animate-pulse absolute -inset-2" />
+               <div className="w-20 h-20 bg-primary-yellow rounded-full flex flex-col items-center justify-center text-black z-10 relative">
+                  <span className="text-2xl">🛵</span>
+                  <span className="text-[8px] font-black uppercase tracking-tighter">On The Way</span>
                </div>
             </div>
+         </div>
+         {/* Simple coordinate display for "Live" feel */}
+         <div className="absolute bottom-6 left-6 font-mono text-[8px] opacity-30">
+           LAT: {location.lat.toFixed(4) || '16.5062'} <br />
+           LNG: {location.lng.toFixed(4) || '80.6480'}
          </div>
       </div>
 
@@ -48,18 +91,16 @@ export default function TrackingPage() {
       <div className="space-y-12 pl-4">
         {steps.map((step, idx) => {
           const isActive = status >= idx + 1;
-          const isPending = status < idx + 1;
+          const isCurrent = status === idx + 1;
           
           return (
-            <div key={idx} className={`relative flex gap-8 ${isPending ? 'opacity-30' : 'opacity-100'}`}>
-               {/* Vertical Line */}
+            <div key={idx} className={`relative flex gap-8 ${!isActive ? 'opacity-30' : 'opacity-100'}`}>
                {idx !== steps.length - 1 && (
-                 <div className={`absolute top-10 left-3 w-[2px] h-12 bg-white/10 ${isActive ? 'bg-primary-yellow/50' : ''}`} />
+                 <div className={`absolute top-10 left-3 w-[2px] h-12 bg-white/10 ${isActive && status > idx + 1 ? 'bg-primary-yellow/50' : ''}`} />
                )}
                
-               {/* Circle */}
                <div className={`w-6 h-6 rounded-full shrink-0 mt-2 z-10 flex items-center justify-center border-4 ${isActive ? 'bg-primary-yellow border-black shadow-[0_0_15px_rgba(247,211,49,0.5)]' : 'bg-black border-white/10'}`}>
-                  {isActive && <div className="w-1.5 h-1.5 bg-black rounded-full" />}
+                  {isCurrent && <div className="w-1.5 h-1.5 bg-black rounded-full animate-ping" />}
                </div>
 
                <div>
@@ -76,19 +117,23 @@ export default function TrackingPage() {
         })}
       </div>
 
-      {/* Static Order Summary at bottom */}
-      <div className="mt-20 p-8 bg-card-bg rounded-[40px] border border-white/5 flex items-center justify-between">
-         <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-white/5 rounded-full flex items-center justify-center border border-white/10">
-               📦
-            </div>
-            <div>
-               <h4 className="text-sm font-black">ORDER #HB912</h4>
-               <p className="text-[10px] font-bold text-secondary-text">1 Item • ₹249.00</p>
-            </div>
-         </div>
-         <Link href="/help" className="text-[10px] font-black uppercase tracking-widest text-primary-yellow">Support</Link>
-      </div>
+      {/* Dynamic Order Summary */}
+      {orderInfo && (
+        <div className="mt-20 p-8 bg-card-bg rounded-[40px] border border-white/5 flex items-center justify-between">
+           <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-white/5 rounded-full flex items-center justify-center border border-white/10">
+                 🍱
+              </div>
+              <div>
+                 <h4 className="text-sm font-black uppercase">ORDER #{orderId?.slice(-5)}</h4>
+                 <p className="text-[10px] font-bold text-secondary-text">
+                   {orderInfo.items.length} Item{orderInfo.items.length > 1 ? 's' : ''} • ₹{orderInfo.totalPrice}
+                 </p>
+              </div>
+           </div>
+           <Link href="/help" className="text-[10px] font-black uppercase tracking-widest text-primary-yellow">Support</Link>
+        </div>
+      )}
     </main>
   );
 }

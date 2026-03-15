@@ -19,12 +19,16 @@ export default function ProductDetailPage() {
   if (!product) return <div className="p-8 text-white">Product not found, bro.</div>;
 
   const handleAdd = () => {
+    // Find restaurant for this product
+    const restaurant = restaurants.find(r => r.menu.some(p => p.id === productId));
+    
     addToCart({
       id: product.id,
       name: product.name,
       price: product.price,
       quantity,
-      image: product.image
+      image: product.image,
+      restaurantId: restaurant?.id || 'unknown'
     });
     alert('Added to Basket! 🚀');
   };
