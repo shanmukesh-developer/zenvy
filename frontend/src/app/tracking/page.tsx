@@ -1,10 +1,10 @@
 "use client";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import io from 'socket.io-client';
 
-export default function TrackingPage() {
+function TrackingContent() {
   const searchParams = useSearchParams();
   const orderId = searchParams.get('id');
   const [status, setStatus] = useState(1); 
@@ -139,5 +139,13 @@ export default function TrackingPage() {
         </div>
       )}
     </main>
+  );
+}
+
+export default function TrackingPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-background text-white p-8 flex items-center justify-center font-black animate-pulse">Loading Tracker...</div>}>
+      <TrackingContent />
+    </Suspense>
   );
 }
