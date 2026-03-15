@@ -1,7 +1,8 @@
+"use client";
 import { useEffect, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 
-const SOCKET_URL = 'http://localhost:5000';
+const SOCKET_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
 export const useTracking = (orderId: string, riderName: string) => {
   const socketRef = useRef<Socket | null>(null);
