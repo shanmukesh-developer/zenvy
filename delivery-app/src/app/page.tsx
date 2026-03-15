@@ -12,6 +12,7 @@ interface Order {
 export default function DeliveryHome() {
   const [isOnline, setIsOnline] = useState(false);
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
+  const [orderStatus, setOrderStatus] = useState<'idle' | 'accepted' | 'picked_up' | 'delivered'>('idle');
 
   // Link tracking to the active order
   useTracking(activeOrder?.id || '', 'Rahul Mishra');
@@ -23,6 +24,26 @@ export default function DeliveryHome() {
 
   const acceptOrder = (order: Order) => {
     setActiveOrder(order);
+    setOrderStatus('accepted');
+  };
+
+  const pickUpOrder = () => {
+    setOrderStatus('picked_up');
+  };
+
+  const deliverOrder = () => {
+    alert('Order Delivered! Earnings added to your wallet. 💰');
+    setActiveOrder(null);
+    setOrderStatus('idle');
+  };
+
+  const declineOrder = () => {
+    setActiveOrder(null);
+    setOrderStatus('idle');
+  };
+
+  const contactCustomer = () => {
+    alert('Initiating call to customer...');
   };
 
   return (
@@ -70,8 +91,11 @@ export default function DeliveryHome() {
                   </div>
                </div>
             </div>
-            <button className="w-full py-4 bg-emerald-600 rounded-2xl font-bold neon-border-green">
-               Pick Up Order
+            <button 
+              onClick={orderStatus === 'accepted' ? pickUpOrder : deliverOrder}
+              className={`w-full py-4 rounded-2xl font-bold transition-all ${orderStatus === 'accepted' ? 'bg-emerald-600 neon-border-green' : 'bg-blue-600 neon-border-blue'}`}
+            >
+               {orderStatus === 'accepted' ? 'Confirm Pick Up' : 'Confirm Delivery'}
             </button>
           </div>
 
@@ -80,7 +104,12 @@ export default function DeliveryHome() {
                 <p className="text-xs text-gray-400">Customer OTP</p>
                 <p className="text-2xl font-black">4921</p>
              </div>
-             <button className="px-5 py-3 glass rounded-2xl text-sm font-bold">Contact</button>
+             <button 
+               onClick={contactCustomer}
+               className="px-5 py-3 glass rounded-2xl text-sm font-bold"
+             >
+                Contact
+             </button>
           </div>
         </div>
       ) : (
@@ -107,7 +136,12 @@ export default function DeliveryHome() {
                   >
                     Accept
                   </button>
-                  <button className="px-5 py-3 glass rounded-xl text-sm font-bold">Decline</button>
+                  <button 
+                    onClick={declineOrder}
+                    className="px-5 py-3 glass rounded-xl text-sm font-bold"
+                  >
+                    Decline
+                  </button>
                 </div>
               </div>
             ))}
