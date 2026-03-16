@@ -26,12 +26,7 @@ app.set('io', io);
 
 // Middleware
 app.use(cors({
-  origin: [
-    'https://hostelbites-customer.onrender.com',
-    'https://hostelbites-admin.onrender.com',
-    'https://hostelbites-delivery.onrender.com',
-    'http://localhost:3000'
-  ],
+  origin: "*",
   credentials: true
 }));
 app.use(express.json());
