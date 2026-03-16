@@ -98,7 +98,7 @@ export default function SearchOverlay({ isOpen, onClose }: { isOpen: boolean; on
       <div className="flex-1 overflow-y-auto p-6 space-y-8 pb-32">
         {results.restaurants.length === 0 && results.items.length === 0 && query.length > 1 && !loading && (
           <div className="text-center py-20">
-            <p className="text-secondary-text text-xl">No results found for "{query}" 😕</p>
+            <p className="text-secondary-text text-xl">No results found for &quot;{query}&quot; 😕</p>
           </div>
         )}
 
