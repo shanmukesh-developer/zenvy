@@ -26,7 +26,10 @@ app.set('io', io);
 
 // Middleware
 app.use(cors({
-  origin: "*",
+  origin: function(origin, callback){
+    // Allow all origins for debugging, but reflect them so credentials: true works
+    callback(null, origin || "*");
+  },
   credentials: true
 }));
 app.use(express.json());
