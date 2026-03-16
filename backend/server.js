@@ -43,7 +43,24 @@ app.use('/api/search', require('./routes/searchRoutes'));
 
 // Basic Route
 app.get('/', (req, res) => {
-  res.send('HostelBites API is running...');
+  res.status(200).json({
+    status: 'success',
+    message: 'HostelBites API is running...',
+    version: '1.0.0',
+    endpoints: {
+      search: '/api/search',
+      restaurants: '/api/restaurants',
+      orders: '/api/orders'
+    }
+  });
+});
+
+// Catch-all for 404s
+app.use((req, res) => {
+  res.status(404).json({
+    status: 'error',
+    message: `Route ${req.originalUrl} not found on this server.`
+  });
 });
 
 // Socket.io Real-time connection

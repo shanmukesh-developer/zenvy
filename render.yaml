@@ -26,7 +26,7 @@ services:
     startCommand: npx -y serve@latest out
     envVars:
       - key: NEXT_PUBLIC_API_URL
-        value: https://hostelbites-backend-exs6.onrender.com
+        value: https://hostelbites-backend-zqba.onrender.com
 
   # 3. Delivery App
   - type: web
@@ -38,7 +38,7 @@ services:
     startCommand: npx -y serve@latest out
     envVars:
       - key: NEXT_PUBLIC_API_URL
-        value: https://hostelbites-backend-exs6.onrender.com
+        value: https://hostelbites-backend-zqba.onrender.com
 
   # 4. Admin Dashboard
   - type: web
@@ -50,4 +50,4 @@ services:
     startCommand: npx -y serve@latest out
     envVars:
       - key: NEXT_PUBLIC_API_URL
-        value: https://hostelbites-backend-exs6.onrender.com
+        value: https://hostelbites-backend-zqba.onrender.com
