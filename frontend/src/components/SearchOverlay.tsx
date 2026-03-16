@@ -1,4 +1,5 @@
 "use client";
+// Force redeploy to verify lint fixes on Render
 import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
