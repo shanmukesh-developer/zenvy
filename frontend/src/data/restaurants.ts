@@ -27,9 +27,9 @@ export const restaurants: Restaurant[] = [
     "rating": "4.5",
     "time": "16m",
     "description": "Authentic Biryani Hub serving the SRM University AP community with premium quality.",
-    "imageUrl": "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=400&auto=format&fit=crop",
+    "imageUrl": "https://images.unsplash.com/photo-1563379091339-03b21bc4a4f8?q=80&w=400&auto=format&fit=crop",
     "categories": [
-      "Pizza",
+      "Biryani",
       "Sides",
       "Drinks"
     ],
@@ -287,8 +287,8 @@ export const restaurants: Restaurant[] = [
         "name": "Royal Farmhouse Plus",
         "price": 577,
         "description": "Delicious Royal Farmhouse from BIR, made fresh for SRM students.",
-        "image": "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=400&auto=format&fit=crop",
-        "category": "Pizza"
+        "image": "https://images.unsplash.com/photo-1563379091339-03b21bc4a4f8?q=80&w=400&auto=format&fit=crop",
+        "category": "Biryani"
       }
     ]
   },
@@ -569,9 +569,9 @@ export const restaurants: Restaurant[] = [
     "rating": "4.7",
     "time": "18m",
     "description": "Authentic Pizza Paradise serving the SRM University AP community with premium quality.",
-    "imageUrl": "https://images.unsplash.com/photo-1563379091339-03b21bc4a4f8?q=80&w=400&auto=format&fit=crop",
+    "imageUrl": "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=400&auto=format&fit=crop",
     "categories": [
-      "Biryani",
+      "Pizza",
       "Sides",
       "Drinks"
     ],
@@ -829,8 +829,8 @@ export const restaurants: Restaurant[] = [
         "name": "Royal Egg Biryani Plus",
         "price": 577,
         "description": "Delicious Royal Egg Biryani from PIZ, made fresh for SRM students.",
-        "image": "https://images.unsplash.com/photo-1563379091339-03b21bc4a4f8?q=80&w=400&auto=format&fit=crop",
-        "category": "Biryani"
+        "image": "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=400&auto=format&fit=crop",
+        "category": "Pizza"
       }
     ]
   },
@@ -2184,8 +2184,8 @@ export const restaurants: Restaurant[] = [
         "name": "Royal Farmhouse Plus",
         "price": 577,
         "description": "Delicious Royal Farmhouse from KFC, made fresh for SRM students.",
-        "image": "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=400&auto=format&fit=crop",
-        "category": "Pizza"
+        "image": "https://images.unsplash.com/photo-1563379091339-03b21bc4a4f8?q=80&w=400&auto=format&fit=crop",
+        "category": "Biryani"
       }
     ]
   },
@@ -2726,8 +2726,8 @@ export const restaurants: Restaurant[] = [
         "name": "Royal Egg Biryani Plus",
         "price": 577,
         "description": "Delicious Royal Egg Biryani from DES, made fresh for SRM students.",
-        "image": "https://images.unsplash.com/photo-1563379091339-03b21bc4a4f8?q=80&w=400&auto=format&fit=crop",
-        "category": "Biryani"
+        "image": "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=400&auto=format&fit=crop",
+        "category": "Pizza"
       }
     ]
   },
@@ -4081,8 +4081,8 @@ export const restaurants: Restaurant[] = [
         "name": "Royal Farmhouse Plus",
         "price": 577,
         "description": "Delicious Royal Farmhouse from HYD, made fresh for SRM students.",
-        "image": "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=400&auto=format&fit=crop",
-        "category": "Pizza"
+        "image": "https://images.unsplash.com/photo-1563379091339-03b21bc4a4f8?q=80&w=400&auto=format&fit=crop",
+        "category": "Biryani"
       }
     ]
   },
@@ -4623,8 +4623,8 @@ export const restaurants: Restaurant[] = [
         "name": "Royal Egg Biryani Plus",
         "price": 577,
         "description": "Delicious Royal Egg Biryani from MOM, made fresh for SRM students.",
-        "image": "https://images.unsplash.com/photo-1563379091339-03b21bc4a4f8?q=80&w=400&auto=format&fit=crop",
-        "category": "Biryani"
+        "image": "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=400&auto=format&fit=crop",
+        "category": "Pizza"
       }
     ]
   },
