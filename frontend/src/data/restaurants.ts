@@ -148,148 +148,148 @@ export const restaurants: Restaurant[] = [
       },
       {
         "id": "bir-15",
-        "name": "Premium Cheese Burst Plus",
+        "name": "Premium Egg Biryani Plus",
         "price": 324,
-        "description": "Delicious Premium Cheese Burst from BIR, made fresh for SRM students.",
-        "image": "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=400&auto=format&fit=crop",
-        "category": "Pizza"
+        "description": "Delicious Premium Egg Biryani from BIR, made fresh for SRM students.",
+        "image": "https://images.unsplash.com/photo-1563379091339-03b21bc4a4f8?q=80&w=400&auto=format&fit=crop",
+        "category": "Biryani"
       },
       {
         "id": "bir-16",
-        "name": "Loaded Paneer Tikka Plus",
+        "name": "Loaded Veg Pulao Plus",
         "price": 338,
-        "description": "Delicious Loaded Paneer Tikka from BIR, made fresh for SRM students.",
-        "image": "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=400&auto=format&fit=crop",
-        "category": "Pizza"
+        "description": "Delicious Loaded Veg Pulao from BIR, made fresh for SRM students.",
+        "image": "https://images.unsplash.com/photo-1563379091339-03b21bc4a4f8?q=80&w=400&auto=format&fit=crop",
+        "category": "Biryani"
       },
       {
         "id": "bir-17",
-        "name": "Gourmet Chicken Festive Plus",
+        "name": "Gourmet Hyderabadi Special Plus",
         "price": 352,
-        "description": "Delicious Gourmet Chicken Festive from BIR, made fresh for SRM students.",
-        "image": "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=400&auto=format&fit=crop",
-        "category": "Pizza"
+        "description": "Delicious Gourmet Hyderabadi Special from BIR, made fresh for SRM students.",
+        "image": "https://images.unsplash.com/photo-1563379091339-03b21bc4a4f8?q=80&w=400&auto=format&fit=crop",
+        "category": "Biryani"
       },
       {
         "id": "bir-18",
-        "name": "Rustic Margherita Plus",
+        "name": "Rustic Zafarani Biryani Plus",
         "price": 366,
-        "description": "Delicious Rustic Margherita from BIR, made fresh for SRM students.",
-        "image": "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=400&auto=format&fit=crop",
-        "category": "Pizza"
+        "description": "Delicious Rustic Zafarani Biryani from BIR, made fresh for SRM students.",
+        "image": "https://images.unsplash.com/photo-1563379091339-03b21bc4a4f8?q=80&w=400&auto=format&fit=crop",
+        "category": "Biryani"
       },
       {
         "id": "bir-19",
-        "name": "Signature Pepperoni Plus",
+        "name": "Signature Chicken Dum Plus",
         "price": 380,
-        "description": "Delicious Signature Pepperoni from BIR, made fresh for SRM students.",
-        "image": "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=400&auto=format&fit=crop",
-        "category": "Pizza"
+        "description": "Delicious Signature Chicken Dum from BIR, made fresh for SRM students.",
+        "image": "https://images.unsplash.com/photo-1563379091339-03b21bc4a4f8?q=80&w=400&auto=format&fit=crop",
+        "category": "Biryani"
       },
       {
         "id": "bir-20",
-        "name": "Classic Farmhouse Plus",
+        "name": "Classic Mutton Fry Plus",
         "price": 399,
-        "description": "Delicious Classic Farmhouse from BIR, made fresh for SRM students.",
-        "image": "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=400&auto=format&fit=crop",
-        "category": "Pizza"
+        "description": "Delicious Classic Mutton Fry from BIR, made fresh for SRM students.",
+        "image": "https://images.unsplash.com/photo-1563379091339-03b21bc4a4f8?q=80&w=400&auto=format&fit=crop",
+        "category": "Biryani"
       },
       {
         "id": "bir-21",
-        "name": "Special Cheese Burst Plus",
+        "name": "Special Egg Biryani Plus",
         "price": 413,
-        "description": "Delicious Special Cheese Burst from BIR, made fresh for SRM students.",
-        "image": "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=400&auto=format&fit=crop",
-        "category": "Pizza"
+        "description": "Delicious Special Egg Biryani from BIR, made fresh for SRM students.",
+        "image": "https://images.unsplash.com/photo-1563379091339-03b21bc4a4f8?q=80&w=400&auto=format&fit=crop",
+        "category": "Biryani"
       },
       {
         "id": "bir-22",
-        "name": "Royal Paneer Tikka Plus",
+        "name": "Royal Veg Pulao Plus",
         "price": 427,
-        "description": "Delicious Royal Paneer Tikka from BIR, made fresh for SRM students.",
-        "image": "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=400&auto=format&fit=crop",
-        "category": "Pizza"
+        "description": "Delicious Royal Veg Pulao from BIR, made fresh for SRM students.",
+        "image": "https://images.unsplash.com/photo-1563379091339-03b21bc4a4f8?q=80&w=400&auto=format&fit=crop",
+        "category": "Biryani"
       },
       {
         "id": "bir-23",
-        "name": "Spicy Chicken Festive Plus",
+        "name": "Spicy Zafarani Biryani Plus",
         "price": 441,
-        "description": "Delicious Spicy Chicken Festive from BIR, made fresh for SRM students.",
-        "image": "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=400&auto=format&fit=crop",
-        "category": "Pizza"
+        "description": "Delicious Spicy Zafarani Biryani from BIR, made fresh for SRM students.",
+        "image": "https://images.unsplash.com/photo-1563379091339-03b21bc4a4f8?q=80&w=400&auto=format&fit=crop",
+        "category": "Biryani"
       },
       {
         "id": "bir-24",
-        "name": "Crispy Margherita Plus",
+        "name": "Crispy Chicken Dum Plus",
         "price": 455,
-        "description": "Delicious Crispy Margherita from BIR, made fresh for SRM students.",
-        "image": "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=400&auto=format&fit=crop",
-        "category": "Pizza"
+        "description": "Delicious Crispy Chicken Dum from BIR, made fresh for SRM students.",
+        "image": "https://images.unsplash.com/photo-1563379091339-03b21bc4a4f8?q=80&w=400&auto=format&fit=crop",
+        "category": "Biryani"
       },
       {
         "id": "bir-25",
-        "name": "Premium Pepperoni Plus",
+        "name": "Premium Mutton Fry Plus",
         "price": 474,
-        "description": "Delicious Premium Pepperoni from BIR, made fresh for SRM students.",
-        "image": "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=400&auto=format&fit=crop",
-        "category": "Pizza"
+        "description": "Delicious Premium Mutton Fry from BIR, made fresh for SRM students.",
+        "image": "https://images.unsplash.com/photo-1563379091339-03b21bc4a4f8?q=80&w=400&auto=format&fit=crop",
+        "category": "Biryani"
       },
       {
         "id": "bir-26",
-        "name": "Loaded Farmhouse Plus",
+        "name": "Loaded Egg Biryani Plus",
         "price": 488,
-        "description": "Delicious Loaded Farmhouse from BIR, made fresh for SRM students.",
-        "image": "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=400&auto=format&fit=crop",
-        "category": "Pizza"
+        "description": "Delicious Loaded Egg Biryani from BIR, made fresh for SRM students.",
+        "image": "https://images.unsplash.com/photo-1563379091339-03b21bc4a4f8?q=80&w=400&auto=format&fit=crop",
+        "category": "Biryani"
       },
       {
         "id": "bir-27",
-        "name": "Gourmet Cheese Burst Plus",
+        "name": "Gourmet Veg Pulao Plus",
         "price": 502,
-        "description": "Delicious Gourmet Cheese Burst from BIR, made fresh for SRM students.",
-        "image": "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=400&auto=format&fit=crop",
-        "category": "Pizza"
+        "description": "Delicious Gourmet Veg Pulao from BIR, made fresh for SRM students.",
+        "image": "https://images.unsplash.com/photo-1563379091339-03b21bc4a4f8?q=80&w=400&auto=format&fit=crop",
+        "category": "Biryani"
       },
       {
         "id": "bir-28",
-        "name": "Rustic Paneer Tikka Plus",
+        "name": "Rustic Hyderabadi Special Plus",
         "price": 516,
-        "description": "Delicious Rustic Paneer Tikka from BIR, made fresh for SRM students.",
-        "image": "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=400&auto=format&fit=crop",
-        "category": "Pizza"
+        "description": "Delicious Rustic Hyderabadi Special from BIR, made fresh for SRM students.",
+        "image": "https://images.unsplash.com/photo-1563379091339-03b21bc4a4f8?q=80&w=400&auto=format&fit=crop",
+        "category": "Biryani"
       },
       {
         "id": "bir-29",
-        "name": "Signature Chicken Festive Plus",
+        "name": "Signature Zafarani Biryani Plus",
         "price": 530,
-        "description": "Delicious Signature Chicken Festive from BIR, made fresh for SRM students.",
-        "image": "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=400&auto=format&fit=crop",
-        "category": "Pizza"
+        "description": "Delicious Signature Zafarani Biryani from BIR, made fresh for SRM students.",
+        "image": "https://images.unsplash.com/photo-1563379091339-03b21bc4a4f8?q=80&w=400&auto=format&fit=crop",
+        "category": "Biryani"
       },
       {
         "id": "bir-30",
-        "name": "Classic Margherita Plus",
+        "name": "Classic Chicken Dum Plus",
         "price": 549,
-        "description": "Delicious Classic Margherita from BIR, made fresh for SRM students.",
-        "image": "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=400&auto=format&fit=crop",
-        "category": "Pizza"
+        "description": "Delicious Classic Chicken Dum from BIR, made fresh for SRM students.",
+        "image": "https://images.unsplash.com/photo-1563379091339-03b21bc4a4f8?q=80&w=400&auto=format&fit=crop",
+        "category": "Biryani"
       },
       {
         "id": "bir-31",
-        "name": "Special Pepperoni Plus",
+        "name": "Special Mutton Fry Plus",
         "price": 563,
-        "description": "Delicious Special Pepperoni from BIR, made fresh for SRM students.",
-        "image": "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=400&auto=format&fit=crop",
-        "category": "Pizza"
+        "description": "Delicious Special Mutton Fry from BIR, made fresh for SRM students.",
+        "image": "https://images.unsplash.com/photo-1563379091339-03b21bc4a4f8?q=80&w=400&auto=format&fit=crop",
+        "category": "Biryani"
       },
       {
         "id": "bir-32",
-        "name": "Royal Farmhouse Plus",
+        "name": "Royal Egg Biryani Plus",
         "price": 577,
-        "description": "Delicious Royal Farmhouse from BIR, made fresh for SRM students.",
+        "description": "Delicious Royal Egg Biryani from BIR, made fresh for SRM students.",
         "image": "https://images.unsplash.com/photo-1563379091339-03b21bc4a4f8?q=80&w=400&auto=format&fit=crop",
         "category": "Biryani"
-      }
+      },
     ]
   },
   {
@@ -778,60 +778,60 @@ export const restaurants: Restaurant[] = [
       },
       {
         "id": "piz-26",
-        "name": "Loaded Egg Biryani Plus",
+        "name": "Loaded Margherita Plus",
         "price": 488,
-        "description": "Delicious Loaded Egg Biryani from PIZ, made fresh for SRM students.",
-        "image": "https://images.unsplash.com/photo-1563379091339-03b21bc4a4f8?q=80&w=400&auto=format&fit=crop",
-        "category": "Biryani"
+        "description": "Delicious Loaded Margherita from PIZ, made fresh for SRM students.",
+        "image": "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=400&auto=format&fit=crop",
+        "category": "Pizza"
       },
       {
         "id": "piz-27",
-        "name": "Gourmet Veg Pulao Plus",
+        "name": "Gourmet Pepperoni Plus",
         "price": 502,
-        "description": "Delicious Gourmet Veg Pulao from PIZ, made fresh for SRM students.",
-        "image": "https://images.unsplash.com/photo-1563379091339-03b21bc4a4f8?q=80&w=400&auto=format&fit=crop",
-        "category": "Biryani"
+        "description": "Delicious Gourmet Pepperoni from PIZ, made fresh for SRM students.",
+        "image": "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=400&auto=format&fit=crop",
+        "category": "Pizza"
       },
       {
         "id": "piz-28",
-        "name": "Rustic Hyderabadi Special Plus",
+        "name": "Rustic Farmhouse Plus",
         "price": 516,
-        "description": "Delicious Rustic Hyderabadi Special from PIZ, made fresh for SRM students.",
-        "image": "https://images.unsplash.com/photo-1563379091339-03b21bc4a4f8?q=80&w=400&auto=format&fit=crop",
-        "category": "Biryani"
+        "description": "Delicious Rustic Farmhouse from PIZ, made fresh for SRM students.",
+        "image": "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=400&auto=format&fit=crop",
+        "category": "Pizza"
       },
       {
         "id": "piz-29",
-        "name": "Signature Zafarani Biryani Plus",
+        "name": "Signature Cheese Burst Plus",
         "price": 530,
-        "description": "Delicious Signature Zafarani Biryani from PIZ, made fresh for SRM students.",
-        "image": "https://images.unsplash.com/photo-1563379091339-03b21bc4a4f8?q=80&w=400&auto=format&fit=crop",
-        "category": "Biryani"
+        "description": "Delicious Signature Cheese Burst from PIZ, made fresh for SRM students.",
+        "image": "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=400&auto=format&fit=crop",
+        "category": "Pizza"
       },
       {
         "id": "piz-30",
-        "name": "Classic Chicken Dum Plus",
+        "name": "Classic Paneer Tikka Plus",
         "price": 549,
-        "description": "Delicious Classic Chicken Dum from PIZ, made fresh for SRM students.",
-        "image": "https://images.unsplash.com/photo-1563379091339-03b21bc4a4f8?q=80&w=400&auto=format&fit=crop",
-        "category": "Biryani"
+        "description": "Delicious Classic Paneer Tikka from PIZ, made fresh for SRM students.",
+        "image": "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=400&auto=format&fit=crop",
+        "category": "Pizza"
       },
       {
         "id": "piz-31",
-        "name": "Special Mutton Fry Plus",
+        "name": "Special Chicken Festive Plus",
         "price": 563,
-        "description": "Delicious Special Mutton Fry from PIZ, made fresh for SRM students.",
-        "image": "https://images.unsplash.com/photo-1563379091339-03b21bc4a4f8?q=80&w=400&auto=format&fit=crop",
-        "category": "Biryani"
+        "description": "Delicious Special Chicken Festive from PIZ, made fresh for SRM students.",
+        "image": "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=400&auto=format&fit=crop",
+        "category": "Pizza"
       },
       {
         "id": "piz-32",
-        "name": "Royal Egg Biryani Plus",
+        "name": "Royal Margherita Plus",
         "price": 577,
-        "description": "Delicious Royal Egg Biryani from PIZ, made fresh for SRM students.",
+        "description": "Delicious Royal Margherita from PIZ, made fresh for SRM students.",
         "image": "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=400&auto=format&fit=crop",
         "category": "Pizza"
-      }
+      },
     ]
   },
   {

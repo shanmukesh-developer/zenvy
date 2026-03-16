@@ -65,8 +65,7 @@ export default function PushNotificationManager() {
         }
       }
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-exs6.onrender.com';
-      await fetch(`${apiUrl}/api/users/fcm-token`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-zqba.onrender.com'}/api/users/save-subscription`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

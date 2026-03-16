@@ -50,7 +50,7 @@ export default function SearchOverlay({ isOpen, onClose }: { isOpen: boolean; on
       if (query.trim().length > 1) {
         setLoading(true);
         try {
-          const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-exs6.onrender.com';
+          const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-zqba.onrender.com';
           const res = await fetch(`${apiUrl}/api/search?q=${query}`);
           const data = await res.json();
           setResults(data);

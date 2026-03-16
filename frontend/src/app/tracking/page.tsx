@@ -17,7 +17,7 @@ function TrackingContent() {
   useEffect(() => {
     if (!orderId) return;
 
-    const socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'https://hostelbites-backend-exs6.onrender.com');
+    const socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'https://hostelbites-backend-zqba.onrender.com');
     
     socket.emit('joinOrder', orderId);
 
@@ -35,7 +35,7 @@ function TrackingContent() {
     const fetchOrder = async () => {
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-exs6.onrender.com'}/api/orders/${orderId}`, {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-zqba.onrender.com'}/api/orders/${orderId}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         const data = await res.json();
