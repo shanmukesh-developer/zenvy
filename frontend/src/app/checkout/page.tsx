@@ -26,12 +26,12 @@ export default function CheckoutPage() {
       }
 
       const orderData = {
-        restaurantId: cart[0]?.restaurantId || 'biryani-hub',
+        restaurantId: cart[0]?.restaurantId || '65f1a2b3c4d5e6f7a8b9c0d1', // Fallback to a valid-looking ObjectId for testing or handle better
         items: cart.map(item => ({
-          productId: item.id,
+          menuItemId: item.id,
           name: item.name,
           quantity: item.quantity,
-          price: item.price
+          priceAtOrder: item.price
         })),
         totalPrice: totalPrice,
         deliveryFee: deliveryFee,
@@ -39,7 +39,7 @@ export default function CheckoutPage() {
         hostelGateDelivery: deliveryMethod === 'gate'
       };
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/orders`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-exs6.onrender.com'}/api/orders`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
