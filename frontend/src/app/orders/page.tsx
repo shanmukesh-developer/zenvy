@@ -1,6 +1,7 @@
 "use client";
 import Navbar from '@/components/Navbar';
 import { useLiveOrder } from '@/hooks/useLiveOrder';
+import Image from 'next/image';
 
 export default function OrdersPage() {
   const activeOrderId = '1025'; // Simulated active order
@@ -42,8 +43,14 @@ export default function OrdersPage() {
 
           <div className="flex items-center justify-between">
              <div className="flex items-center space-x-6">
-                <div className="w-16 h-16 rounded-[20px] overflow-hidden bg-gray-200">
-                    <img src="https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?q=80&w=1887&auto=format&fit=crop" alt="Rider" className="w-full h-full object-cover" />
+                <div className="w-16 h-16 rounded-[20px] overflow-hidden bg-gray-200 relative">
+                    <Image 
+                      src="https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?q=80&w=1887&auto=format&fit=crop" 
+                      alt="Rider" 
+                      width={64}
+                      height={64}
+                      className="w-full h-full object-cover" 
+                    />
                 </div>
                 <div>
                     <p className="text-xl font-bold serif text-secondary">Rahul Mishra</p>

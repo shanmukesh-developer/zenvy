@@ -1,15 +1,19 @@
 "use client";
 import Link from 'next/link';
+import Image from 'next/image';
 
 export default function SplashPage() {
   return (
     <main className="min-h-screen bg-black text-white relative flex flex-col items-center justify-between p-10 overflow-hidden">
       {/* Background Image with Gradient Overlay */}
       <div className="absolute inset-0 z-0">
-         <img 
+         <Image 
            src="/images/splash_bg.png" 
-           className="w-full h-full object-cover opacity-60" 
+           fill
+           style={{ objectFit: 'cover' }}
+           className="opacity-60" 
            alt="Premium Food" 
+           priority
          />
          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/80 to-transparent" />
       </div>

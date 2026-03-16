@@ -1,6 +1,7 @@
 "use client";
 import { useCart } from '@/context/CartContext';
 import Link from 'next/link';
+import Image from 'next/image';
 
 export default function BasketPage() {
   const { cart, updateQuantity, removeFromCart, totalPrice } = useCart();
@@ -29,7 +30,15 @@ export default function BasketPage() {
         <div className="space-y-6">
           {cart.map((item) => (
             <div key={item.id} className="flex gap-4 items-center bg-card-bg p-4 rounded-[30px] border border-white/5">
-              <img src={item.image} className="w-20 h-20 rounded-full object-cover border-2 border-primary-yellow" alt={item.name} />
+              <div className="w-20 h-20 relative flex-shrink-0">
+                <Image 
+                  src={item.image} 
+                  alt={item.name} 
+                  fill
+                  style={{ objectFit: 'cover' }}
+                  className="rounded-full border-2 border-primary-yellow" 
+                />
+              </div>
               <div className="flex-1">
                 <h3 className="font-bold text-sm mb-1">{item.name}</h3>
                 <p className="text-primary-yellow font-black">₹{item.price}</p>

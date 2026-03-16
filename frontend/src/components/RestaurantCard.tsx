@@ -1,5 +1,7 @@
 "use client";
 
+import Image from 'next/image';
+
 interface RestaurantCardProps {
   name: string;
   rating: string;
@@ -12,8 +14,13 @@ const RestaurantCard = ({ name, rating, time, imageUrl, imagePosition }: Restaur
   return (
     <div className={`capsule-card mb-12 ${imagePosition === 'right' ? 'flex-row-reverse text-right pl-6' : 'pr-6'}`}>
       {/* Image Circle */}
-      <div className={`food-circle transition-transform duration-500 group-hover:scale-105 ${imagePosition === 'left' ? '-ml-6' : '-mr-6'}`}>
-        <img src={imageUrl} alt={name} />
+      <div className={`food-circle transition-transform duration-500 group-hover:scale-105 ${imagePosition === 'left' ? '-ml-6' : '-mr-6'} relative`}>
+        <Image 
+          src={imageUrl} 
+          alt={name} 
+          fill
+          style={{ objectFit: 'cover' }}
+        />
       </div>
       
       {/* Content Area */}

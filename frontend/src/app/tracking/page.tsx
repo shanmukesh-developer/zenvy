@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import io from 'socket.io-client';
 
-import { APIProvider, Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
+import { APIProvider, Map, AdvancedMarker } from '@vis.gl/react-google-maps';
 
 function TrackingContent() {
   const searchParams = useSearchParams();
@@ -106,7 +106,7 @@ function TrackingContent() {
            LAT: {location.lat.toFixed(4)} <br />
            LNG: {location.lng.toFixed(4)}
          </div>
-      </div>iv>
+      </div>
 
       {/* Status Timeline */}
       <div className="space-y-12 pl-4">

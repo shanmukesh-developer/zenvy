@@ -3,6 +3,7 @@ import { restaurants } from '@/data/restaurants';
 import Link from 'next/link';
 import { useState } from 'react';
 import { useCart } from '@/context/CartContext';
+import Image from 'next/image';
 
 export default function ProductDetailClient({ productId }: { productId: string }) {
   const [quantity, setQuantity] = useState(1);
@@ -45,10 +46,12 @@ export default function ProductDetailClient({ productId }: { productId: string }
       <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-10">
         <div className="relative w-full max-w-[320px] aspect-square mb-12 animate-float">
           <div className="absolute inset-0 bg-primary-yellow/20 blur-[100px] rounded-full" />
-          <img 
+          <Image 
             src={product.image} 
             alt={product.name}
-            className="w-full h-full object-contain relative z-10 drop-shadow-[0_20px_50px_rgba(0,0,0,0.8)]"
+            fill
+            style={{ objectFit: 'contain' }}
+            className="relative z-10 drop-shadow-[0_20px_50px_rgba(0,0,0,0.8)]"
           />
         </div>
 

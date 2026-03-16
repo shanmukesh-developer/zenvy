@@ -4,6 +4,7 @@ import Link from 'next/link';
 import RestaurantCard from '@/components/RestaurantCard';
 import { useCart } from '@/context/CartContext';
 import { restaurants } from '@/data/restaurants';
+import Image from 'next/image';
 
 export default function Home() {
   const { totalItems } = useCart();
@@ -101,7 +102,15 @@ export default function Home() {
                   {filteredItems.slice(0, 10).map(item => (
                     <Link href={`/products/${item.id}`} key={item.id} className="block bg-white/5 border border-white/5 p-4 rounded-[24px] hover:bg-white/10 transition-all">
                        <div className="flex items-center gap-4">
-                          <img src={item.image} alt={item.name} className="w-12 h-12 rounded-xl object-cover" />
+                          <div className="w-12 h-12 relative flex-shrink-0">
+                            <Image 
+                              src={item.image} 
+                              alt={item.name} 
+                              fill
+                              style={{ objectFit: 'cover' }}
+                              className="rounded-xl" 
+                            />
+                          </div>
                           <div className="flex-1">
                              <div className="flex justify-between items-start">
                                 <h4 className="text-sm font-black">{item.name}</h4>

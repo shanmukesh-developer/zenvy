@@ -2,6 +2,7 @@
 import { restaurants } from '@/data/restaurants';
 import Link from 'next/link';
 import { useCart } from '@/context/CartContext';
+import Image from 'next/image';
 
 export default function RestaurantMenuClient({ restaurantId }: { restaurantId: string }) {
   const restaurant = restaurants.find(r => r.id === restaurantId);
@@ -34,7 +35,15 @@ export default function RestaurantMenuClient({ restaurantId }: { restaurantId: s
              <div className="text-[10px] font-black uppercase tracking-widest text-secondary-text">Min Order: ₹99</div>
           </div>
         </div>
-        <img src={restaurant.imageUrl} alt="" className="absolute -right-10 -bottom-10 w-48 h-48 opacity-20 grayscale brightness-150 rotate-12" />
+        <div className="absolute -right-10 -bottom-10 w-48 h-48 opacity-20 grayscale brightness-150 rotate-12">
+          <Image 
+            src={restaurant.imageUrl} 
+            alt="" 
+            width={192}
+            height={192}
+            style={{ objectFit: 'contain' }}
+          />
+        </div>
       </div>
 
       {/* Category Scroll */}
@@ -50,8 +59,13 @@ export default function RestaurantMenuClient({ restaurantId }: { restaurantId: s
       <div className="space-y-6">
         {restaurant.menu.map((item) => (
           <Link href={`/products/${item.id}`} key={item.id} className="flex gap-4 items-center bg-card-bg p-4 rounded-[30px] border border-white/5">
-            <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-white/10 bg-black flex-shrink-0">
-               <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+            <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-white/10 bg-black flex-shrink-0 relative">
+               <Image 
+                 src={item.image} 
+                 alt={item.name} 
+                 fill
+                 style={{ objectFit: 'cover' }}
+               />
             </div>
             <div className="flex-1">
                <h3 className="font-bold text-sm mb-1">{item.name}</h3>
