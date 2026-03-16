@@ -3,9 +3,30 @@ import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 
+interface SearchRestaurant {
+  _id: string;
+  name: string;
+  location: string;
+  imageUrl?: string;
+  rating: number;
+}
+
+interface SearchMenuItem {
+  _id: string;
+  name: string;
+  price: number;
+  description?: string;
+  imageUrl?: string;
+  restaurantId?: {
+    _id: string;
+    name: string;
+    imageUrl?: string;
+  };
+}
+
 interface SearchResult {
-  restaurants: any[];
-  items: any[];
+  restaurants: SearchRestaurant[];
+  items: SearchMenuItem[];
 }
 
 export default function SearchOverlay({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {

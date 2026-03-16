@@ -9,9 +9,9 @@ import SearchOverlay from '@/components/SearchOverlay';
 
 export default function Home() {
   const { totalItems } = useCart();
-  const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'budget' | 'veg'>('all');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const searchQuery = ''; // Handled by overlay now
 
   // Curfew Check
   const now = new Date();
