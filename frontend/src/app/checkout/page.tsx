@@ -66,26 +66,8 @@ export default function CheckoutPage() {
     }
   };
 
-  // Curfew Check
-  const isCurfewActive = () => {
-    const now = new Date();
-    const hours = now.getHours();
-    const minutes = now.getMinutes();
-    return (hours * 100 + minutes) > 2130;
-  };
-
-  const curfewActive = isCurfewActive();
-
   return (
     <main className="min-h-screen bg-background text-white p-8">
-      {curfewActive && (
-        <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-2xl mb-8 flex items-center gap-3 animate-pulse">
-           <span className="text-xl">⚠️</span>
-           <div className="text-[10px] font-black uppercase tracking-widest text-red-500">
-             SRM Curfew Active: Delivery closed until tomorrow.
-           </div>
-        </div>
-      )}
       <div className="flex items-center gap-4 mb-10">
         <Link href="/basket" className="w-10 h-10 bg-white/5 rounded-full flex items-center justify-center border border-white/10">
           <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -164,10 +146,10 @@ export default function CheckoutPage() {
 
         <button 
           onClick={handlePlaceOrder}
-          disabled={isProcessing || curfewActive}
+          disabled={isProcessing}
           className="w-full btn-yellow py-6 h-auto text-lg uppercase tracking-widest shadow-[0_20px_40px_rgba(247,211,49,0.3)] disabled:opacity-30"
         >
-          {isProcessing ? 'Processing...' : curfewActive ? 'Curfew Active' : 'Pay & Confirm'}
+          {isProcessing ? 'Processing...' : 'Pay & Confirm'}
         </button>
       </div>
     </main>
