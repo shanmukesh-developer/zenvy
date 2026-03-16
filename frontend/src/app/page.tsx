@@ -5,11 +5,13 @@ import RestaurantCard from '@/components/RestaurantCard';
 import { useCart } from '@/context/CartContext';
 import { restaurants } from '@/data/restaurants';
 import Image from 'next/image';
+import SearchOverlay from '@/components/SearchOverlay';
 
 export default function Home() {
   const { totalItems } = useCart();
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState<'all' | 'budget' | 'veg'>('all');
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   // Curfew Check
   const now = new Date();
@@ -55,21 +57,19 @@ export default function Home() {
           </p>
         </header>
 
-        {/* Search Bar - Matching Image */}
-        <div className="relative mb-12">
+        {/* Search Bar - Triggering Overlay */}
+        <div className="relative mb-12" onClick={() => setIsSearchOpen(true)}>
           <div className="absolute inset-y-0 left-5 flex items-center pointer-events-none">
             <svg className="w-5 h-5 text-secondary-text" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
           </div>
-          <input 
-            type="text" 
-            placeholder="Search for Biryani, Burgers..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-[#1C1C1E] border-none rounded-full py-4 pl-14 pr-4 text-sm focus:ring-0 placeholder:text-secondary-text font-medium"
-          />
+          <div className="w-full bg-[#1C1C1E] border-none rounded-full py-4 pl-14 pr-4 text-sm text-secondary-text font-medium cursor-pointer">
+            Search for Biryani, Burgers...
+          </div>
         </div>
+
+        <SearchOverlay isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
 
         {/* Smart Filters */}
         <div className="flex gap-3 mb-10 overflow-x-auto pb-2 scrollbar-hide">
