@@ -25,7 +25,15 @@ const io = new Server(server, {
 app.set('io', io);
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: [
+    'https://hostelbites-customer.onrender.com',
+    'https://hostelbites-admin.onrender.com',
+    'https://hostelbites-delivery.onrender.com',
+    'http://localhost:3000'
+  ],
+  credentials: true
+}));
 app.use(express.json());
 
 // Routes
