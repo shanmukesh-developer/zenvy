@@ -39,7 +39,7 @@ export default function CheckoutPage() {
         hostelGateDelivery: deliveryMethod === 'gate'
       };
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-zqba.onrender.com'}/api/orders`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend.onrender.com'}/api/orders`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -59,7 +59,7 @@ export default function CheckoutPage() {
       }
     } catch (error) {
       console.error('Checkout error:', error);
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-zqba.onrender.com';
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend.onrender.com';
       alert(`Network Error when connecting to ${apiUrl}. Please check your connection.`);
     } finally {
       setIsProcessing(false);
