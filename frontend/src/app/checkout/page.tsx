@@ -59,7 +59,8 @@ export default function CheckoutPage() {
       }
     } catch (error) {
       console.error('Checkout error:', error);
-      alert('Network Error. Please try again.');
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-exs6.onrender.com';
+      alert(`Network Error when connecting to ${apiUrl}. Please check your connection.`);
     } finally {
       setIsProcessing(false);
     }
