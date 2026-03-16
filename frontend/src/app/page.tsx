@@ -13,9 +13,7 @@ export default function Home() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const searchQuery = ''; // Handled by overlay now
 
-  // Curfew Check
-  const now = new Date();
-  const isCurfew = (now.getHours() * 100 + now.getMinutes()) > 2130;
+
 
   // Flatten all menu items for search
   const allProducts = restaurants.flatMap(res => 
@@ -46,12 +44,7 @@ export default function Home() {
           <h1 className="discover-header">
             SRM Campus <br /> Bites Delivered
           </h1>
-          {isCurfew && (
-            <div className="mt-4 bg-red-500/20 border border-red-500/30 p-3 rounded-2xl flex items-center gap-2">
-               <span className="animate-pulse text-red-500">🔴</span>
-               <span className="text-[10px] font-black uppercase text-red-500">Curfew: No orders until tomorrow</span>
-            </div>
-          )}
+
           <p className="recipe-count mt-2">
             Trending <span className="underline decoration-white/20 underline-offset-8 font-serif">near your hostel</span>
           </p>
