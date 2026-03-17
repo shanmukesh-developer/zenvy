@@ -106,7 +106,8 @@ const createOrder = async (req, res) => {
     }
 
   } catch (error) {
-    res.status(400).json({ message: 'Invalid order data' });
+    console.error('Order Creation Error:', error);
+    res.status(400).json({ message: 'Invalid order data', error: error.message });
   }
 };
 
