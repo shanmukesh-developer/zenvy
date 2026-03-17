@@ -2,66 +2,99 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&display=swap');
 
 :root {
-  --background: #111111; 
-  --card-bg: #1C1C1E;
-  --primary-yellow: #F7D331;
-  --secondary-text: #929292;
-  --white: #FFFFFF;
+  --background: #0A0A0B;
+  --card-bg: #141416;
+  --card-bg-hover: #1A1A1D;
+  --primary-gold: #C9A84C;
+  --primary-gold-light: #E8D48B;
+  --primary-gold-dark: #8B7332;
+  --accent-warm: #D4A853;
+  --secondary-text: #6B6B6B;
+  --border-subtle: rgba(201, 168, 76, 0.08);
+  --border-hover: rgba(201, 168, 76, 0.2);
+  --glow-gold: rgba(201, 168, 76, 0.15);
+  --white: #F5F5F5;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
   background-color: var(--background);
   color: var(--white);
   font-family: 'Outfit', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Header Typography from Image */
+/* ─── Premium Typography ─── */
 .discover-header {
   font-family: 'Playfair Display', serif;
-  font-weight: 700;
-  font-size: 34px;
+  font-weight: 900;
+  font-size: 32px;
   line-height: 1.1;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
+  letter-spacing: -0.5px;
+  background: linear-gradient(135deg, #F5F5F5 0%, #C9A84C 50%, #F5F5F5 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: shimmer 4s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0%, 100% { background-position: 0% center; }
+  50% { background-position: 200% center; }
 }
 
 .recipe-count {
   font-family: 'Playfair Display', serif;
   font-style: italic;
   font-weight: 400;
-  font-size: 26px;
-  color: var(--white);
-  opacity: 0.9;
+  font-size: 22px;
+  color: var(--secondary-text);
 }
 
-/* Horizontal Capsule Card */
+/* ─── Premium Capsule Card ─── */
 .capsule-card {
-  background-color: var(--card-bg);
-  border-radius: 60px; /* Extremely rounded ends */
+  background: linear-gradient(135deg, var(--card-bg) 0%, #1A1A1D 100%);
+  border-radius: 60px;
   padding: 12px;
   display: flex;
   align-items: center;
   position: relative;
   height: 110px;
-  transition: all 0.3s ease;
+  transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
 }
 
 .capsule-card:hover {
-  background-color: #252527;
+  background: linear-gradient(135deg, var(--card-bg-hover) 0%, #222225 100%);
+  border-color: var(--border-hover);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4), 0 0 30px var(--glow-gold);
+  transform: translateY(-2px);
 }
 
-/* The Yellow-Bordered Circle for Images */
+/* ─── Gold-Bordered Circle ─── */
 .food-circle {
   width: 100px;
   height: 100px;
   border-radius: 50%;
-  border: 2.5px solid var(--primary-yellow);
+  border: 2px solid var(--primary-gold);
   overflow: hidden;
   flex-shrink: 0;
-  box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+  box-shadow: 0 4px 20px rgba(201, 168, 76, 0.2), inset 0 0 20px rgba(0, 0, 0, 0.3);
+  transition: all 0.4s ease;
+}
+
+.capsule-card:hover .food-circle {
+  border-color: var(--primary-gold-light);
+  box-shadow: 0 4px 30px rgba(201, 168, 76, 0.35);
 }
 
 .food-circle img {
@@ -70,34 +103,120 @@ body {
   object-fit: cover;
 }
 
-/* Floating Plus Button Pattern */
-.floating-plus {
-  width: 48px;
-  height: 48px;
-  background-color: var(--primary-yellow);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #000;
-  font-weight: 900;
-  font-size: 24px;
-  box-shadow: 0 8px 20px rgba(247, 211, 49, 0.3);
-  position: absolute;
-}
-
-/* Bottom Nav Style */
+/* ─── Bottom Nav ─── */
 .nav-icon-active {
-  color: var(--primary-yellow);
+  color: var(--primary-gold);
 }
 
 .tab-pill {
-    background: var(--primary-yellow);
-    color: #111;
-    border-radius: 50%;
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+  background: linear-gradient(135deg, var(--primary-gold) 0%, var(--accent-warm) 100%);
+  color: #0A0A0B;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(201, 168, 76, 0.4);
 }
+
+/* ─── Premium Buttons ─── */
+.btn-yellow {
+  background: linear-gradient(135deg, var(--primary-gold) 0%, var(--accent-warm) 100%);
+  color: #0A0A0B;
+  font-weight: 800;
+  border-radius: 999px;
+  padding: 16px 32px;
+  font-size: 12px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  box-shadow: 0 8px 32px rgba(201, 168, 76, 0.3);
+  text-align: center;
+  display: inline-block;
+}
+
+.btn-yellow:hover {
+  box-shadow: 0 12px 40px rgba(201, 168, 76, 0.45);
+  transform: translateY(-1px);
+}
+
+.btn-yellow:active {
+  transform: translateY(0);
+}
+
+/* ─── Glassmorphism Cards ─── */
+.glass-card {
+  background: rgba(20, 20, 22, 0.8);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border-subtle);
+  border-radius: 28px;
+}
+
+/* ─── Animations ─── */
+.animate-slide-up {
+  animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 0;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.8s ease forwards;
+  opacity: 0;
+}
+
+@keyframes slideUp {
+  from { transform: translateY(30px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* ─── Premium Scrollbar ─── */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--primary-gold-dark);
+  border-radius: 4px;
+}
+
+/* ─── Gold Text Utility ─── */
+.text-gold-gradient {
+  background: linear-gradient(135deg, var(--primary-gold-light) 0%, var(--primary-gold) 50%, var(--accent-warm) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ─── Premium Divider ─── */
+.gold-line {
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, var(--primary-gold) 50%, transparent 100%);
+  opacity: 0.3;
+}
+
+/* Override Tailwind primary-yellow to gold */
+.text-primary-yellow { color: var(--primary-gold) !important; }
+.bg-primary-yellow { background: linear-gradient(135deg, var(--primary-gold) 0%, var(--accent-warm) 100%) !important; }
+.border-primary-yellow { border-color: var(--primary-gold) !important; }
+.bg-card-bg { background-color: var(--card-bg) !important; }
+.bg-background { background-color: var(--background) !important; }
+.text-secondary-text { color: var(--secondary-text) !important; }

@@ -41,46 +41,55 @@ export default function Home() {
     <main className="min-h-screen bg-background text-white p-8 pt-16 pb-32 relative">
       <div className="max-w-[400px] mx-auto">
         <header className="mb-10">
+          {/* Logo */}
+          <div className="flex items-center gap-3 mb-8">
+            <div className="w-10 h-10 relative animate-float">
+              <Image src="/images/zenvy_logo.png" fill style={{ objectFit: 'contain' }} alt="Zenvy" />
+            </div>
+            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-gold-gradient">Zenvy</span>
+          </div>
+
           <h1 className="discover-header">
-            Zenvy <br /> Food Delivery
+            Premium <br /> Food Delivery
           </h1>
 
-          <p className="recipe-count mt-2">
-            Trending <span className="underline decoration-white/20 underline-offset-8 font-serif">near you</span>
+          <p className="recipe-count mt-3">
+            Curated <span className="underline decoration-white/10 underline-offset-8 font-serif">for you</span>
           </p>
+          <div className="gold-line mt-6" />
         </header>
 
-        {/* Search Bar - Triggering Overlay */}
-        <div className="relative mb-12" onClick={() => setIsSearchOpen(true)}>
+        {/* Search Bar */}
+        <div className="relative mb-10" onClick={() => setIsSearchOpen(true)}>
           <div className="absolute inset-y-0 left-5 flex items-center pointer-events-none">
-            <svg className="w-5 h-5 text-secondary-text" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 text-primary-yellow opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
           </div>
-          <div className="w-full bg-[#1C1C1E] border-none rounded-full py-4 pl-14 pr-4 text-sm text-secondary-text font-medium cursor-pointer">
-            Search for Biryani, Burgers...
+          <div className="w-full glass-card py-4 pl-14 pr-4 text-sm text-secondary-text font-medium cursor-pointer hover:border-primary-yellow/20 transition-all duration-300">
+            Search for dishes, restaurants...
           </div>
         </div>
 
         <SearchOverlay isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
 
-        {/* Smart Filters */}
+        {/* Filters */}
         <div className="flex gap-3 mb-10 overflow-x-auto pb-2 scrollbar-hide">
            <button 
              onClick={() => setFilter('all')}
-             className={`px-6 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${filter === 'all' ? 'bg-primary-yellow text-black shadow-lg shadow-primary-yellow/20' : 'bg-white/5 border border-white/10'}`}
+             className={`px-6 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${filter === 'all' ? 'bg-primary-yellow text-black shadow-lg shadow-primary-yellow/20' : 'glass-card text-secondary-text hover:text-white'}`}
            >
              All
            </button>
            <button 
              onClick={() => setFilter('budget')}
-             className={`px-6 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${filter === 'budget' ? 'bg-primary-yellow text-black shadow-lg shadow-primary-yellow/20' : 'bg-white/5 border border-white/10'}`}
+             className={`px-6 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all duration-300 whitespace-nowrap ${filter === 'budget' ? 'bg-primary-yellow text-black shadow-lg shadow-primary-yellow/20' : 'glass-card text-secondary-text hover:text-white'}`}
            >
-             Budget ({"<"}₹150)
+             Under ₹150
            </button>
            <button 
              onClick={() => setFilter('veg')}
-             className={`px-6 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${filter === 'veg' ? 'bg-primary-yellow text-black shadow-lg shadow-primary-yellow/20' : 'bg-white/5 border border-white/10'}`}
+             className={`px-6 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${filter === 'veg' ? 'bg-primary-yellow text-black shadow-lg shadow-primary-yellow/20' : 'glass-card text-secondary-text hover:text-white'}`}
            >
              Veg Only
            </button>
@@ -132,30 +141,30 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Modern Bottom Navigation */}
-      <footer className="fixed bottom-0 left-0 right-0 h-24 bg-[#111111]/95 backdrop-blur-xl border-t border-white/5 flex items-center justify-around px-6 z-[60]">
-        <Link href="/" className="flex flex-col items-center gap-1 nav-icon-active">
+      {/* Premium Bottom Navigation */}
+      <footer className="fixed bottom-0 left-0 right-0 h-24 bg-[#0A0A0B]/90 backdrop-blur-2xl border-t border-white/[0.03] flex items-center justify-around px-6 z-[60]">
+        <Link href="/" className="flex flex-col items-center gap-1.5 nav-icon-active">
            <div className="tab-pill">
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
            </div>
-           <span className="text-[10px] font-bold uppercase tracking-wider">Home</span>
+           <span className="text-[9px] font-black uppercase tracking-widest">Home</span>
         </Link>
-        <Link href="/orders" className="flex flex-col items-center gap-1 opacity-50 hover:opacity-100 transition-opacity">
-           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
-           <span className="text-[10px] font-bold">Orders</span>
+        <Link href="/orders" className="flex flex-col items-center gap-1.5 opacity-40 hover:opacity-80 transition-all duration-300">
+           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+           <span className="text-[9px] font-bold">Orders</span>
         </Link>
-        <Link href="/basket" className="flex flex-col items-center gap-1 relative opacity-50 hover:opacity-100 transition-opacity">
-           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
-           <span className="text-[10px] font-bold">Basket</span>
+        <Link href="/basket" className="flex flex-col items-center gap-1.5 relative opacity-40 hover:opacity-80 transition-all duration-300">
+           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+           <span className="text-[9px] font-bold">Basket</span>
            {totalItems > 0 && (
-             <span className="absolute -top-1 -right-1 bg-primary-yellow text-black text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center">
+             <span className="absolute -top-1 -right-2 bg-primary-yellow text-black text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center shadow-lg shadow-primary-yellow/30">
                {totalItems}
              </span>
            )}
         </Link>
-        <Link href="/profile" className="flex flex-col items-center gap-1 opacity-50 hover:opacity-100 transition-opacity">
-           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
-           <span className="text-[10px] font-bold">Profile</span>
+        <Link href="/profile" className="flex flex-col items-center gap-1.5 opacity-40 hover:opacity-80 transition-all duration-300">
+           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+           <span className="text-[9px] font-bold">Profile</span>
         </Link>
       </footer>
     </main>
