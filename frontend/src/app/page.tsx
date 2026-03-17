@@ -38,25 +38,35 @@ export default function Home() {
   });
 
   return (
-    <main className="min-h-screen bg-background text-white p-8 pt-16 pb-32 relative">
-      <div className="max-w-[400px] mx-auto">
+    <main className="min-h-screen bg-background text-white p-8 pt-14 pb-32 relative overflow-hidden">
+      {/* Ambient Background Orbs */}
+      <div className="fixed inset-0 pointer-events-none z-0">
+        <div className="absolute -top-40 -right-40 w-96 h-96 bg-[#C9A84C]/[0.04] rounded-full blur-[120px]" />
+        <div className="absolute top-1/3 -left-32 w-80 h-80 bg-[#C9A84C]/[0.03] rounded-full blur-[100px]" />
+        <div className="absolute bottom-20 right-0 w-64 h-64 bg-[#8B7332]/[0.04] rounded-full blur-[100px]" />
+      </div>
+
+      <div className="max-w-[400px] mx-auto relative z-10">
         <header className="mb-10">
-          {/* Logo */}
-          <div className="flex items-center gap-3 mb-8">
-            <div className="w-10 h-10 relative animate-float">
-              <Image src="/images/zenvy_logo.png" fill style={{ objectFit: 'contain' }} alt="Zenvy" />
+          {/* Brand Mark */}
+          <div className="flex items-center gap-2.5 mb-10">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#C9A84C] to-[#8B7332] flex items-center justify-center shadow-lg shadow-[#C9A84C]/20">
+              <span className="text-[13px] font-black text-black">Z</span>
             </div>
-            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-gold-gradient">Zenvy</span>
+            <div>
+              <span className="text-[11px] font-black uppercase tracking-[0.35em] text-gold-gradient block leading-none">Zenvy</span>
+              <span className="text-[7px] font-bold uppercase tracking-[0.4em] text-secondary-text block mt-0.5">Food Delivery</span>
+            </div>
           </div>
 
           <h1 className="discover-header">
-            Premium <br /> Food Delivery
+            Discover <br /> What You <br /> <span className="text-gold-gradient" style={{WebkitTextFillColor: 'transparent'}}>Crave</span>
           </h1>
 
-          <p className="recipe-count mt-3">
-            Curated <span className="underline decoration-white/10 underline-offset-8 font-serif">for you</span>
+          <p className="recipe-count mt-4">
+            Curated <span className="underline decoration-[#C9A84C]/20 underline-offset-8 font-serif">for you</span>
           </p>
-          <div className="gold-line mt-6" />
+          <div className="gold-line mt-8" />
         </header>
 
         {/* Search Bar */}
