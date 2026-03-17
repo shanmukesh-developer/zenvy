@@ -14,9 +14,9 @@ export default function SplashPage() {
     const timers = [
       setTimeout(() => setStage(1), 800),   // Widescreen & Countdown Start
       setTimeout(() => setStage(2), 3500),  // Light Ray & Logo Materialize
-      setTimeout(() => setStage(3), 5000);  // Full Logo & Glints
-      setTimeout(() => setStage(4), 6500);  // Brand Reveal
-      setTimeout(() => setStage(5), 8500);  // Liquid Expand Start
+      setTimeout(() => setStage(3), 5000),  // Full Logo & Glints
+      setTimeout(() => setStage(4), 6500),  // Brand Reveal
+      setTimeout(() => setStage(5), 8500),  // Liquid Expand Start
       setTimeout(() => {
         router.push('/login');
       }, 9700) 
