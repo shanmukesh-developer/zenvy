@@ -15,7 +15,7 @@ export default function SplashPage() {
       setTimeout(() => setStage(2), 1500),  // Logo Reveal
       setTimeout(() => setStage(3), 2500),  // Text Reveal
       setTimeout(() => {
-        window.location.href = '/login';
+        router.push('/login');
       }, 5500)
     ];
 
