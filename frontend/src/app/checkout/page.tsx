@@ -2,12 +2,18 @@
 import { useCart } from '@/context/CartContext';
 import { useState } from 'react';
 import Link from 'next/link';
+import SuccessOverlay from '@/components/SuccessOverlay';
 
 export default function CheckoutPage() {
   const { cart, totalPrice, clearCart } = useCart();
   const [deliveryMethod, setDeliveryMethod] = useState<'room' | 'gate'>('room');
   const [useBatch, setUseBatch] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [overlay, setOverlay] = useState<{ isOpen: boolean; title: string; message: string; type?: 'success' | 'error' }>({
+    isOpen: false,
+    title: '',
+    message: '',
+  });
 
   const deliveryFee = deliveryMethod === 'gate' ? 20 : 30;
   const batchDiscount = useBatch ? 20 : 0;
@@ -20,13 +26,18 @@ export default function CheckoutPage() {
     try {
       const token = localStorage.getItem('token');
       if (!token) {
-        alert('Please login first!');
-        window.location.href = '/login';
+        setOverlay({
+          isOpen: true,
+          title: 'Authentication Required',
+          message: 'Please login to complete your order.',
+          type: 'error'
+        });
+        setTimeout(() => window.location.href = '/login', 2000);
         return;
       }
 
       const orderData = {
-        restaurantId: cart[0]?.restaurantId || '65f1a2b3c4d5e6f7a8b9c0d1', // Fallback to a valid-looking ObjectId for testing or handle better
+        restaurantId: cart[0]?.restaurantId || '65f1a2b3c4d5e6f7a8b9c0d1',
         items: cart.map(item => ({
           menuItemId: item.id,
           name: item.name,
@@ -50,17 +61,31 @@ export default function CheckoutPage() {
 
       if (response.ok) {
         const data = await response.json();
-        alert('Order Placed Successfully! 🚀');
+        setOverlay({
+          isOpen: true,
+          title: 'Order Placed!',
+          message: 'Your gourmet meal is being prepared with care.',
+          type: 'success'
+        });
         clearCart();
-        window.location.href = `/tracking?id=${data._id}`;
+        setTimeout(() => window.location.href = `/tracking?id=${data._id}`, 2500);
       } else {
         const err = await response.json();
-        alert(`Failed to place order: ${err.message}`);
+        setOverlay({
+          isOpen: true,
+          title: 'Order Failed',
+          message: err.message || 'Something went wrong. Please try again.',
+          type: 'error'
+        });
       }
     } catch (error) {
       console.error('Checkout error:', error);
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend.onrender.com';
-      alert(`Network Error when connecting to ${apiUrl}. Please check your connection.`);
+      setOverlay({
+        isOpen: true,
+        title: 'Connection Issue',
+        message: 'Could not connect to Zenvy servers. Please check your network.',
+        type: 'error'
+      });
     } finally {
       setIsProcessing(false);
     }
@@ -152,6 +177,14 @@ export default function CheckoutPage() {
           {isProcessing ? 'Processing...' : 'Pay & Confirm'}
         </button>
       </div>
+      
+      <SuccessOverlay 
+        isOpen={overlay.isOpen}
+        onClose={() => setOverlay(prev => ({ ...prev, isOpen: false }))}
+        title={overlay.title}
+        message={overlay.message}
+        type={overlay.type}
+      />
     </main>
   );
 }

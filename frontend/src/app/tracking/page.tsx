@@ -159,29 +159,37 @@ function TrackingContent() {
       </div>
 
       {/* Status Timeline */}
-      <div className="space-y-12 pl-4">
+      <div className="space-y-10 pl-6 relative">
         {steps.map((step, idx) => {
           const isActive = status >= idx + 1;
           const isCurrent = status === idx + 1;
           
           return (
-            <div key={idx} className={`relative flex gap-8 ${!isActive ? 'opacity-30' : 'opacity-100'}`}>
+            <div key={idx} className={`relative flex gap-10 transition-all duration-700 ${!isActive ? 'opacity-20 translate-x-4' : 'opacity-100 translate-x-0'}`}>
                {idx !== steps.length - 1 && (
-                 <div className={`absolute top-10 left-3 w-[2px] h-12 bg-white/10 ${isActive && status > idx + 1 ? 'bg-primary-yellow/50' : ''}`} />
+                 <div className={`timeline-line ${isActive && status > idx + 1 ? 'active' : ''}`} />
                )}
                
-               <div className={`w-6 h-6 rounded-full shrink-0 mt-2 z-10 flex items-center justify-center border-4 ${isActive ? 'bg-primary-yellow border-black shadow-[0_0_15px_rgba(247,211,49,0.5)]' : 'bg-black border-white/10'}`}>
-                  {isCurrent && <div className="w-1.5 h-1.5 bg-black rounded-full animate-ping" />}
+               <div className={`timeline-dot shrink-0 mt-1.5 ${isActive ? 'active' : ''}`}>
+                  {isCurrent && <div className="absolute inset-[-4px] rounded-full border border-primary-gold/30 animate-ping" />}
                </div>
-
-               <div>
-                  <div className="flex justify-between items-center mb-1">
+ 
+               <div className="pb-4">
+                  <div className="flex flex-col mb-1">
+                     <span className={`text-[9px] font-black uppercase tracking-[0.3em] mb-1 ${isCurrent ? 'text-primary-gold' : 'text-secondary-text'}`}>
+                        {isCurrent ? 'Current Status' : isActive ? 'Completed' : 'Upcoming'}
+                     </span>
                      <h3 className="font-black text-sm uppercase tracking-widest">{step.label}</h3>
-                     <span className="text-[10px] font-bold text-secondary-text">{step.time}</span>
                   </div>
-                  <p className="text-xs text-secondary-text leading-relaxed">
+                  <p className="text-[11px] text-secondary-text leading-relaxed font-medium">
                      {step.desc}
                   </p>
+                  {isCurrent && (
+                     <div className="mt-4 px-3 py-1.5 bg-primary-gold/10 border border-primary-gold/20 rounded-full inline-flex items-center gap-2">
+                        <span className="w-1 h-1 rounded-full bg-primary-gold animate-pulse" />
+                        <span className="text-[8px] font-black uppercase tracking-widest text-primary-gold">{step.time}</span>
+                     </div>
+                  )}
                </div>
             </div>
           );

@@ -1,15 +1,40 @@
 "use client";
 import Link from 'next/link';
 import { useState } from 'react';
+import SuccessOverlay from '@/components/SuccessOverlay';
 
 export default function LoginPage() {
   const [phone, setPhone] = useState('');
+  const [overlay, setOverlay] = useState<{ isOpen: boolean; title: string; message: string; type?: 'success' | 'error' }>({
+    isOpen: false,
+    title: '',
+    message: '',
+  });
 
   const handleLogin = () => {
+    if (!phone || phone.length < 10) {
+      setOverlay({
+        isOpen: true,
+        title: 'Invalid Number',
+        message: 'Please enter a valid 10-digit phone number.',
+        type: 'error'
+      });
+      return;
+    }
+
+    setOverlay({
+      isOpen: true,
+      title: 'Sending OTP',
+      message: 'Verifying your secure connection to Zenvy...',
+      type: 'success'
+    });
+
     // Simulate real auth by storing a dummy JWT and user ID
-    localStorage.setItem('token', 'mock_jwt_token_for_srm_student');
-    localStorage.setItem('user', JSON.stringify({ id: '65f1a2b3c4d5e6f7a8b9c0d1', name: 'Shanmukh' }));
-    window.location.href = '/';
+    setTimeout(() => {
+      localStorage.setItem('token', 'mock_jwt_token_for_srm_student');
+      localStorage.setItem('user', JSON.stringify({ id: '65f1a2b3c4d5e6f7a8b9c0d1', name: 'Shanmukh' }));
+      window.location.href = '/';
+    }, 2000);
   };
 
   return (
@@ -57,6 +82,14 @@ export default function LoginPage() {
             Trouble logging in? <span className="text-primary-yellow">Contact Support</span>
          </p>
       </div>
+
+      <SuccessOverlay 
+        isOpen={overlay.isOpen}
+        onClose={() => setOverlay(prev => ({ ...prev, isOpen: false }))}
+        title={overlay.title}
+        message={overlay.message}
+        type={overlay.type}
+      />
     </main>
   );
 }

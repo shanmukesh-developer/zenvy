@@ -4,11 +4,17 @@ import { restaurants } from '@/data/restaurants';
 import Link from 'next/link';
 import { useCart } from '@/context/CartContext';
 import Image from 'next/image';
+import SuccessOverlay from '@/components/SuccessOverlay';
 
 export default function RestaurantMenuClient({ restaurantId }: { restaurantId: string }) {
   const restaurant = restaurants.find(r => r.id === restaurantId);
   const { totalItems, addToCart } = useCart();
   const [scrollY, setScrollY] = useState(0);
+  const [overlay, setOverlay] = useState<{ isOpen: boolean; title: string; message: string; type?: 'success' | 'error' }>({
+    isOpen: false,
+    title: '',
+    message: '',
+  });
   const [addedId, setAddedId] = useState<string | null>(null);
   const mainRef = useRef<HTMLDivElement>(null);
 
@@ -32,6 +38,12 @@ export default function RestaurantMenuClient({ restaurantId }: { restaurantId: s
       restaurantName: restaurant.name,
     });
     setAddedId(item.id);
+    setOverlay({
+      isOpen: true,
+      title: 'Added to Basket',
+      message: `${item.name} is waiting for you!`,
+      type: 'success'
+    });
     setTimeout(() => setAddedId(null), 800);
   };
 
@@ -137,6 +149,14 @@ export default function RestaurantMenuClient({ restaurantId }: { restaurantId: s
            <span className="font-black text-sm">Proceed →</span>
         </Link>
       )}
+
+      <SuccessOverlay 
+        isOpen={overlay.isOpen}
+        onClose={() => setOverlay(prev => ({ ...prev, isOpen: false }))}
+        title={overlay.title}
+        message={overlay.message}
+        type={overlay.type}
+      />
     </main>
   );
 }

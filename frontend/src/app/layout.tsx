@@ -33,7 +33,9 @@ export default function RootLayout({
       >
         <PushNotificationManager />
         <CartProvider>
-          {children}
+          <div className="animate-page">
+            {children}
+          </div>
         </CartProvider>
       </body>
     </html>

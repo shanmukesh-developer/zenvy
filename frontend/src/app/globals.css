@@ -276,6 +276,101 @@ body {
   box-shadow: 0 20px 60px rgba(0,0,0,0.4), 0 0 40px var(--glow-gold);
 }
 
-/* ─── Scrollbar Hide ─── */
+/* ─── Scrollbar Hide ─── *//* ─── Holographic Elite Card ─── */
+.elite-card {
+  background: linear-gradient(135deg, #1a1a1c 0%, #0a0a0b 100%);
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(201, 168, 76, 0.2);
+  transition: all 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.elite-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    115deg,
+    transparent 0%,
+    rgba(201, 168, 76, 0.05) 30%,
+    rgba(201, 168, 76, 0.2) 45%,
+    rgba(201, 168, 76, 0.05) 60%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: elite-shine 4s linear infinite;
+  pointer-events: none;
+}
+
+.elite-hologram {
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(
+    circle at center,
+    rgba(201, 168, 76, 0.1) 0%,
+    transparent 50%
+  );
+  opacity: 0.5;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+}
+
+@keyframes elite-shine {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.elite-tag {
+  background: linear-gradient(135deg, #C9A84C 0%, #8B7332 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 900;
+  letter-spacing: 0.2em;
+}
 .scrollbar-hide::-webkit-scrollbar { display: none; }
 .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ─── Page Transitions ─── */
+@keyframes page-fade-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-page {
+  animation: page-fade-in 0.6s cubic-bezier(0.23, 1, 0.32, 1) forwards;
+}
+
+/* ─── Tracking Timeline ─── */
+.timeline-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--border-subtle);
+  background: var(--background);
+  position: relative;
+  z-index: 10;
+}
+
+.timeline-dot.active {
+  border-color: var(--primary-gold);
+  background: var(--primary-gold);
+  box-shadow: 0 0 15px var(--glow-gold);
+}
+
+.timeline-line {
+  position: absolute;
+  left: 5px;
+  top: 12px;
+  bottom: -24px;
+  width: 2px;
+  background: var(--border-subtle);
+  z-index: 5;
+}
+
+.timeline-line.active {
+  background: linear-gradient(to bottom, var(--primary-gold), var(--border-subtle));
+}
