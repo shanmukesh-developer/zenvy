@@ -374,3 +374,61 @@ body {
 .timeline-line.active {
   background: linear-gradient(to bottom, var(--primary-gold), var(--border-subtle));
 }
+
+/* ─── VFX & Cinematic Animations ─── */
+.vfx-bokeh {
+  position: absolute;
+  width: 150%;
+  height: 150%;
+  background: radial-gradient(circle at 50% 50%, rgba(201, 168, 76, 0.08) 0%, transparent 60%);
+  filter: blur(80px);
+  animation: bokeh-drift 20s infinite linear;
+  pointer-events: none;
+}
+
+@keyframes bokeh-drift {
+  0% { transform: translate(-10%, -10%) rotate(0deg); }
+  50% { transform: translate(10%, 10%) rotate(180deg); }
+  100% { transform: translate(-10%, -10%) rotate(360deg); }
+}
+
+.vfx-flare {
+  position: absolute;
+  top: 50%;
+  left: -50%;
+  width: 200%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(201, 168, 76, 0.3), transparent);
+  filter: blur(2px);
+  transform: rotate(-45deg);
+  animation: flare-sweep 8s infinite;
+  pointer-events: none;
+}
+
+@keyframes flare-sweep {
+  0% { transform: rotate(-45deg) translateY(-100vh); opacity: 0; }
+  10% { opacity: 0.5; }
+  30% { transform: rotate(-45deg) translateY(100vh); opacity: 0; }
+  100% { opacity: 0; }
+}
+
+.gold-dust {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle at 1px 1px, rgba(201, 168, 76, 0.15) 1px, transparent 0);
+  background-size: 40px 40px;
+  mask-image: linear-gradient(to bottom, transparent, black, transparent);
+}
+
+.text-reveal-cinematic {
+  background: linear-gradient(to right, #C9A84C, #F7D331, #C9A84C);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  background-size: 200% auto;
+  animation: text-shine-lux 4s linear infinite;
+}
+
+@keyframes text-shine-lux {
+  to { background-position: 200% center; }
+}
