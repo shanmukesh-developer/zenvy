@@ -432,3 +432,7 @@ body {
 @keyframes text-shine-lux {
   to { background-position: 200% center; }
 }
+
+.ease-out-expo {
+  transition-timing-function: cubic-bezier(0.19, 1, 0.22, 1);
+}
