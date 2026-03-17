@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import RestaurantCard from '@/components/RestaurantCard';
 import { useCart } from '@/context/CartContext';
 import { restaurants } from '@/data/restaurants';
@@ -15,6 +16,7 @@ function getGreeting(): string {
 }
 
 export default function Home() {
+  const router = useRouter(); // Need to import this
   const { totalItems } = useCart();
   const [filter, setFilter] = useState<'all' | 'budget' | 'veg'>('all');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -22,6 +24,13 @@ export default function Home() {
   const [greeting, setGreeting] = useState('');
 
   useEffect(() => {
+    // Check if user has seen the cinematic intro this session
+    const hasSeenIntro = sessionStorage.getItem('zenvy_intro_seen');
+    if (!hasSeenIntro) {
+      sessionStorage.setItem('zenvy_intro_seen', 'true');
+      router.push('/splash');
+    }
+
     setGreeting(getGreeting());
     try {
       const stored = localStorage.getItem('user');
@@ -30,7 +39,7 @@ export default function Home() {
         if (parsed.name) setUserName(parsed.name);
       }
     } catch { /* ignore */ }
-  }, []);
+  }, [router]);
 
   // Chef's Picks: top rated items across restaurants
   const chefPicks = restaurants.flatMap(res =>
