@@ -1,64 +1,68 @@
 "use client";
-import Navbar from '@/components/Navbar';
-import SpinWheel from '@/components/SpinWheel';
+import Link from 'next/link';
 
 export default function RewardsPage() {
   return (
-    <main className="min-h-screen bg-white">
-      <Navbar />
-      
-      <div className="pt-40 pb-32 px-10 max-w-7xl mx-auto">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-24 items-center">
-          
-          {/* Left: Streak Stats - Refined */}
-          <div className="space-y-12 animate-reveal">
-            <div>
-              <span className="text-primary font-bold tracking-[0.3em] text-xs uppercase mb-6 block">Loyalty Redefined</span>
-              <h1 className="text-6xl font-black serif text-secondary leading-[1.1]">Elite <br />Status <span className="italic font-normal text-primary">Gallery</span></h1>
-            </div>
-            
-            <div className="p-10 border border-black/[0.05] rounded-[40px] space-y-8 bg-[#fafafa]">
-              <div className="flex justify-between items-end">
-                <div>
-                    <span className="text-gray-400 font-bold uppercase tracking-widest text-[10px] mb-2 block">Active Distinction</span>
-                    <span className="text-5xl font-black serif text-secondary">7 Day <span className="text-primary">🔥</span></span>
-                </div>
-                <div className="text-right">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Status</p>
-                    <p className="text-xs font-black text-primary uppercase">GOLD TIER</p>
-                </div>
-              </div>
-              
-              <div className="h-1.5 w-full bg-black/[0.05] rounded-full overflow-hidden">
-                <div className="h-full bg-primary rounded-full w-[70%] transition-all duration-1000" />
-              </div>
-              
-              <p className="text-gray-500 text-sm italic leading-relaxed">
-                Maintain your distinction for 3 more cycles to unlock the **Chef&apos;s Complimentary Menu** for the entire semester.
-              </p>
-            </div>
+    <main className="min-h-screen bg-background text-white p-8">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-12">
+        <Link href="/profile" className="w-10 h-10 bg-white/5 rounded-full flex items-center justify-center border border-white/10">
+          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" />
+          </svg>
+        </Link>
+        <h1 className="text-xl font-black uppercase tracking-widest">Rewards</h1>
+        <div className="w-10" />
+      </div>
 
-            <div className="grid grid-cols-2 gap-8">
-              <div className="p-8 border border-black/[0.05] rounded-3xl group hover:border-primary transition-all duration-500">
-                <span className="block text-3xl font-bold serif text-secondary mb-1">24</span>
-                <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest leading-tight">Exceptional <br />Dining Experiences</span>
-              </div>
-              <div className="p-8 border border-black/[0.05] rounded-3xl group hover:border-primary transition-all duration-500">
-                <span className="block text-3xl font-bold serif text-secondary mb-1">₹1,240</span>
-                <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest leading-tight">Cumulative <br />Privilege Savings</span>
-              </div>
-            </div>
+      {/* Streak Card */}
+      <div className="bg-card-bg p-8 rounded-[40px] border border-white/5 mb-8">
+        <div className="flex justify-between items-end mb-6">
+          <div>
+            <p className="text-[10px] font-black text-secondary-text uppercase tracking-widest mb-2">Current Streak</p>
+            <h2 className="text-5xl font-black">
+              <span className="text-primary-yellow">🔥</span> 0 Days
+            </h2>
           </div>
-
-          {/* Right: Spin Wheel - Subtly adapted */}
-          <div className="flex justify-center animate-reveal" style={{ animationDelay: '0.2s' }}>
-            <div className="relative">
-                {/* Decorative Frame for the wheel */}
-                <div className="absolute inset-x-[-40px] inset-y-[-40px] border border-black/[0.03] rounded-full -z-10" />
-                <SpinWheel />
-            </div>
+          <div className="text-right">
+            <p className="text-[10px] font-bold text-secondary-text uppercase tracking-widest mb-1">Tier</p>
+            <p className="text-xs font-black text-primary-yellow uppercase">STARTER</p>
           </div>
+        </div>
+        <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+          <div className="h-full bg-primary-yellow rounded-full w-[0%] transition-all duration-1000" />
+        </div>
+        <p className="text-secondary-text text-xs mt-4">
+          Order daily to build your streak and unlock exclusive rewards!
+        </p>
+      </div>
 
+      {/* Reward Tiers */}
+      <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-secondary-text mb-6">Unlock Rewards</h3>
+      <div className="space-y-4">
+        <div className="bg-card-bg p-6 rounded-[30px] border border-white/5 flex items-center gap-4">
+          <div className="w-12 h-12 bg-white/5 rounded-full flex items-center justify-center text-xl border border-white/10">🥉</div>
+          <div className="flex-1">
+            <h4 className="text-sm font-black">3 Day Streak</h4>
+            <p className="text-[10px] text-secondary-text">Free delivery on next order</p>
+          </div>
+          <span className="text-[10px] font-black text-secondary-text uppercase">Locked</span>
+        </div>
+        <div className="bg-card-bg p-6 rounded-[30px] border border-white/5 flex items-center gap-4">
+          <div className="w-12 h-12 bg-white/5 rounded-full flex items-center justify-center text-xl border border-white/10">🥈</div>
+          <div className="flex-1">
+            <h4 className="text-sm font-black">7 Day Streak</h4>
+            <p className="text-[10px] text-secondary-text">₹50 off your next order</p>
+          </div>
+          <span className="text-[10px] font-black text-secondary-text uppercase">Locked</span>
+        </div>
+        <div className="bg-card-bg p-6 rounded-[30px] border border-white/5 flex items-center gap-4">
+          <div className="w-12 h-12 bg-white/5 rounded-full flex items-center justify-center text-xl border border-white/10">🥇</div>
+          <div className="flex-1">
+            <h4 className="text-sm font-black">14 Day Streak</h4>
+            <p className="text-[10px] text-secondary-text">Free meal from any restaurant</p>
+          </div>
+          <span className="text-[10px] font-black text-secondary-text uppercase">Locked</span>
         </div>
       </div>
     </main>

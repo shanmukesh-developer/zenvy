@@ -1,85 +1,95 @@
 "use client";
-import Navbar from '@/components/Navbar';
-import { useLiveOrder } from '@/hooks/useLiveOrder';
-import Image from 'next/image';
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
+
+interface OrderRecord {
+  _id: string;
+  totalPrice: number;
+  status: string;
+  createdAt: string;
+  items: { name?: string; quantity: number; priceAtOrder: number }[];
+}
 
 export default function OrdersPage() {
-  const activeOrderId = '1025'; // Simulated active order
-  useLiveOrder(activeOrderId);
+  const [orders, setOrders] = useState<OrderRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchOrders = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-exs6.onrender.com'}/api/orders/myorders`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setOrders(data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch orders:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchOrders();
+  }, []);
+
+  const statusColor = (s: string) => {
+    if (s === 'Delivered') return 'text-emerald-400';
+    if (s === 'Cancelled') return 'text-red-400';
+    return 'text-primary-yellow';
+  };
 
   return (
-    <main className="min-h-screen bg-white">
-      <Navbar />
-      
-      <div className="pt-40 pb-32 px-10 max-w-5xl mx-auto">
-        <h1 className="text-5xl font-bold serif text-secondary mb-12">Active Logistics</h1>
-        
-        {/* Live Tracking Card - Refined */}
-        <div className="p-12 border border-black/[0.05] rounded-[50px] relative overflow-hidden mb-16 bg-[#fafafa]">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-12">
-            <div>
-              <p className="text-primary font-bold mb-3 uppercase text-[10px] tracking-[0.3em]">Transit Status</p>
-              <h2 className="text-4xl font-bold serif text-secondary leading-tight">Arrival Expected <br />in 12 Minutes</h2>
-            </div>
-            <div className="mt-6 md:mt-0 px-6 py-3 border border-primary/20 bg-primary/5 rounded-full text-[10px] font-black text-primary uppercase tracking-[0.2em]">
-              AUTHENTICATION OTP: 4921
-            </div>
-          </div>
-
-          {/* Map Placeholder - Minimalist & Styled */}
-          <div className="w-full h-[450px] bg-[#f0ede6] rounded-[40px] relative overflow-hidden mb-12 border border-black/[0.05]">
-             <div className="absolute inset-0 opacity-40 grayscale-[0.8] bg-[url('https://images.unsplash.com/photo-1524661135-423995f22d0b?q=80&w=2074&auto=format&fit=crop')] bg-cover" />
-             
-             {/* Delivery Icon Overlay - Classy */}
-             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
-                <div className="w-16 h-16 bg-white rounded-[24px] flex items-center justify-center text-3xl shadow-2xl border border-black/[0.05] animate-bounce">
-                  🛵
-                </div>
-                <div className="mt-4 px-4 py-2 bg-secondary text-white text-[9px] font-black rounded-lg uppercase tracking-widest">
-                  PATRON RAHUL
-                </div>
-             </div>
-          </div>
-
-          <div className="flex items-center justify-between">
-             <div className="flex items-center space-x-6">
-                <div className="w-16 h-16 rounded-[20px] overflow-hidden bg-gray-200 relative">
-                    <Image 
-                      src="https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?q=80&w=1887&auto=format&fit=crop" 
-                      alt="Rider" 
-                      width={64}
-                      height={64}
-                      className="w-full h-full object-cover" 
-                    />
-                </div>
-                <div>
-                    <p className="text-xl font-bold serif text-secondary">Rahul Mishra</p>
-                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Certified Campus Logistics Partner</p>
-                </div>
-             </div>
-             <button className="px-10 py-4 border border-secondary text-secondary rounded-full font-bold text-[10px] uppercase tracking-widest hover:bg-secondary hover:text-white transition-all duration-300">
-                INITIATE CONTACT
-             </button>
-          </div>
-        </div>
-
-        {/* Recent History - Minimalist */}
-        <h3 className="text-2xl font-bold serif text-secondary mb-8">Culinary History</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-           {[1, 2].map((i) => (
-             <div key={i} className="p-8 border border-black/[0.03] rounded-3xl flex items-center justify-between hover:border-primary/20 transition-all duration-500">
-                <div className="flex items-center space-x-6">
-                   <div className="w-16 h-16 bg-[#fafafa] rounded-2xl flex items-center justify-center text-2xl">🍔</div>
-                   <div>
-                      <p className="font-bold text-secondary serif text-xl">The Bake Shop</p>
-                      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">12 March • Concluded</p>
-                   </div>
-                </div>
-                <span className="text-primary font-black serif">₹430</span>
-             </div>
-           ))}
-        </div>
+    <main className="min-h-screen bg-background text-white p-8">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-12">
+        <Link href="/profile" className="w-10 h-10 bg-white/5 rounded-full flex items-center justify-center border border-white/10">
+          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" />
+          </svg>
+        </Link>
+        <h1 className="text-xl font-black uppercase tracking-widest">My Orders</h1>
+        <div className="w-10" />
       </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <div className="text-secondary-text font-black animate-pulse">Loading Orders...</div>
+        </div>
+      ) : orders.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <div className="text-6xl mb-6">🍽️</div>
+          <h2 className="text-xl font-black mb-2">No Orders Yet</h2>
+          <p className="text-secondary-text text-sm mb-8">Your order history will appear here.</p>
+          <Link href="/" className="btn-yellow px-8 py-4 text-xs uppercase tracking-widest">
+            Browse Restaurants
+          </Link>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {orders.map((order) => (
+            <Link 
+              href={`/tracking?id=${order._id}`} 
+              key={order._id} 
+              className="block bg-card-bg p-6 rounded-[30px] border border-white/5 hover:border-white/10 transition-all"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-black uppercase">Order #{order._id.slice(-5)}</h3>
+                <span className={`text-[10px] font-black uppercase tracking-widest ${statusColor(order.status)}`}>
+                  {order.status}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] text-secondary-text font-bold">
+                  {order.items?.length || 0} item{(order.items?.length || 0) > 1 ? 's' : ''} • {new Date(order.createdAt).toLocaleDateString()}
+                </p>
+                <span className="text-sm font-black text-primary-yellow">₹{order.totalPrice}</span>
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
     </main>
   );
 }

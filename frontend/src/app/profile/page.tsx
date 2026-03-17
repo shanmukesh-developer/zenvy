@@ -1,12 +1,25 @@
 "use client";
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 
 export default function ProfilePage() {
-  const stats = [
-    { label: 'Orders', value: '12' },
-    { label: 'Points', value: '450' },
-    { label: 'Streak', value: '5 🔥' }
-  ];
+  const [userName, setUserName] = useState('Student');
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('user');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed.name) setUserName(parsed.name);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    window.location.href = '/splash';
+  };
 
   return (
     <main className="min-h-screen bg-background text-white p-8">
@@ -26,49 +39,42 @@ export default function ProfilePage() {
         <div className="w-24 h-24 rounded-full border-2 border-primary-yellow p-1 mb-4">
            <div className="w-full h-full bg-card-bg rounded-full flex items-center justify-center text-4xl">🧑‍🎓</div>
         </div>
-        <h2 className="text-2xl font-black">SRM Stud</h2>
-        <p className="text-secondary-text text-sm font-bold uppercase tracking-widest mt-1">Hostel Block C, Room 402</p>
+        <h2 className="text-2xl font-black">{userName}</h2>
+        <p className="text-secondary-text text-sm font-bold uppercase tracking-widest mt-1">SRM University AP</p>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-3 gap-4 mb-12">
-         {stats.map((stat) => (
-           <div key={stat.label} className="bg-card-bg rounded-[30px] p-4 border border-white/5 text-center">
-              <div className="text-primary-yellow font-black text-lg">{stat.value}</div>
-              <div className="text-[10px] font-bold text-secondary-text uppercase tracking-widest">{stat.label}</div>
-           </div>
-         ))}
-      </div>
-
-      {/* Actions */}
+      {/* Quick Actions */}
       <div className="space-y-4">
-         <div className="bg-card-bg p-6 rounded-[30px] border border-white/5 flex items-center justify-between cursor-pointer">
+         <Link href="/orders" className="bg-card-bg p-6 rounded-[30px] border border-white/5 flex items-center justify-between">
             <div className="flex items-center gap-4">
-               <span className="text-xl">💳</span>
-               <span className="font-bold text-sm">Payment Methods</span>
+               <span className="text-xl">📦</span>
+               <span className="font-bold text-sm">My Orders</span>
             </div>
             <span className="text-white/20">→</span>
-         </div>
-         <div className="bg-card-bg p-6 rounded-[30px] border border-white/5 flex items-center justify-between cursor-pointer">
+         </Link>
+         <Link href="/rewards" className="bg-card-bg p-6 rounded-[30px] border border-white/5 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+               <span className="text-xl">🏆</span>
+               <span className="font-bold text-sm">Rewards & Streak</span>
+            </div>
+            <span className="text-white/20">→</span>
+         </Link>
+         <Link href="/tracking" className="bg-card-bg p-6 rounded-[30px] border border-white/5 flex items-center justify-between">
             <div className="flex items-center gap-4">
                <span className="text-xl">📍</span>
-               <span className="font-bold text-sm">Manage Addresses</span>
+               <span className="font-bold text-sm">Track Order</span>
             </div>
             <span className="text-white/20">→</span>
-         </div>
-         <div className="bg-card-bg p-6 rounded-[30px] border border-white/5 flex items-center justify-between cursor-pointer opacity-50">
-            <div className="flex items-center gap-4">
-               <span className="text-xl">⚙️</span>
-               <span className="font-bold text-sm">Settings</span>
-            </div>
-            <span className="text-white/20">→</span>
-         </div>
+         </Link>
       </div>
 
       {/* Logout */}
-      <Link href="/splash" className="mt-12 block text-center text-xs font-black uppercase tracking-[0.3em] text-red-500/50 hover:text-red-500 transition-colors">
+      <button 
+        onClick={handleLogout}
+        className="mt-12 block w-full text-center text-xs font-black uppercase tracking-[0.3em] text-red-500/50 hover:text-red-500 transition-colors"
+      >
          Logout Account
-      </Link>
+      </button>
     </main>
   );
 }

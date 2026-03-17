@@ -130,27 +130,19 @@ export default function Home() {
             ))
           )}
         </div>
-
-        {/* Floating Plus Buttons from Image */}
-        <div className="fixed bottom-36 right-10 floating-plus">
-           +
-        </div>
-        <div className="fixed bottom-28 left-1/2 -translate-x-1/2 floating-plus z-50">
-           +
-        </div>
       </div>
 
       {/* Modern Bottom Navigation */}
       <footer className="fixed bottom-0 left-0 right-0 h-24 bg-[#111111]/95 backdrop-blur-xl border-t border-white/5 flex items-center justify-around px-6 z-[60]">
-        <Link href="/" className="flex flex-col items-center gap-1 opacity-50">
-           <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
-           <span className="text-[10px] font-bold">Home</span>
-        </Link>
         <Link href="/" className="flex flex-col items-center gap-1 nav-icon-active">
            <div className="tab-pill">
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z" /></svg>
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
            </div>
-           <span className="text-[10px] font-bold uppercase tracking-wider">Discover</span>
+           <span className="text-[10px] font-bold uppercase tracking-wider">Home</span>
+        </Link>
+        <Link href="/orders" className="flex flex-col items-center gap-1 opacity-50 hover:opacity-100 transition-opacity">
+           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+           <span className="text-[10px] font-bold">Orders</span>
         </Link>
         <Link href="/basket" className="flex flex-col items-center gap-1 relative opacity-50 hover:opacity-100 transition-opacity">
            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
@@ -161,7 +153,7 @@ export default function Home() {
              </span>
            )}
         </Link>
-        <Link href="/profile" className="flex flex-col items-center gap-1 opacity-50">
+        <Link href="/profile" className="flex flex-col items-center gap-1 opacity-50 hover:opacity-100 transition-opacity">
            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
            <span className="text-[10px] font-bold">Profile</span>
         </Link>
