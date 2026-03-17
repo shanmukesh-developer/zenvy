@@ -94,9 +94,21 @@ app.use((err, req, res, next) => {
   });
 });
 
-// MongoDB Connection (Placeholder for now)
+// MongoDB Connection and Server Start
 const PORT = process.env.PORT || 5000;
 
-server.listen(PORT, () => {
-  console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
-});
+const startServer = async () => {
+  try {
+    // Wait for DB to connect before listening
+    await connectDB();
+    
+    server.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+    });
+  } catch (err) {
+    console.error('Server failed to start:', err);
+    process.exit(1);
+  }
+};
+
+startServer();
