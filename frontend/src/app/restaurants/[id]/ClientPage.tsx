@@ -1,4 +1,5 @@
 "use client";
+import { useState, useEffect, useRef } from 'react';
 import { restaurants } from '@/data/restaurants';
 import Link from 'next/link';
 import { useCart } from '@/context/CartContext';
@@ -6,87 +7,134 @@ import Image from 'next/image';
 
 export default function RestaurantMenuClient({ restaurantId }: { restaurantId: string }) {
   const restaurant = restaurants.find(r => r.id === restaurantId);
-  const { totalItems } = useCart();
+  const { totalItems, addToCart } = useCart();
+  const [scrollY, setScrollY] = useState(0);
+  const [addedId, setAddedId] = useState<string | null>(null);
+  const mainRef = useRef<HTMLDivElement>(null);
 
-  if (!restaurant) return <div className="p-8 text-white">Restaurant not found, bro.</div>;
+  useEffect(() => {
+    const el = mainRef.current;
+    if (!el) return;
+    const handleScroll = () => setScrollY(el.scrollTop);
+    el.addEventListener('scroll', handleScroll, { passive: true });
+    return () => el.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  if (!restaurant) return <div className="p-8 text-white">Restaurant not found.</div>;
+
+  const handleAddToCart = (item: typeof restaurant.menu[0]) => {
+    addToCart({
+      id: item.id,
+      name: item.name,
+      price: item.price,
+      image: item.image,
+      restaurantId: restaurant.id,
+      restaurantName: restaurant.name,
+    });
+    setAddedId(item.id);
+    setTimeout(() => setAddedId(null), 800);
+  };
 
   return (
-    <main className="min-h-screen bg-background text-white p-6 pb-32">
-      {/* Header */}
-      <div className="flex items-center gap-4 mb-8">
-        <Link href="/" className="w-10 h-10 bg-white/5 rounded-full flex items-center justify-center border border-white/10">
+    <main ref={mainRef} className="min-h-screen bg-background text-white overflow-y-auto relative">
+      {/* ── Parallax Hero Image ── */}
+      <div className="relative h-[320px] overflow-hidden">
+        <div
+          className="absolute inset-0 scale-110"
+          style={{ transform: `translateY(${scrollY * 0.4}px) scale(1.1)` }}
+        >
+          <Image
+            src={restaurant.imageUrl}
+            alt={restaurant.name}
+            fill
+            style={{ objectFit: 'cover' }}
+            priority
+          />
+        </div>
+        {/* Gradient overlays */}
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0B] via-[#0A0A0B]/40 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-b from-[#0A0A0B]/60 to-transparent h-24" />
+
+        {/* Back button */}
+        <Link href="/" className="absolute top-12 left-6 w-10 h-10 glass-card rounded-full flex items-center justify-center z-20">
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" />
           </svg>
         </Link>
-        <h1 className="text-xl font-black">{restaurant.name}</h1>
-      </div>
 
-      {/* Restaurant Info Card */}
-      <div className="bg-card-bg rounded-[40px] p-8 border border-white/5 mb-10 overflow-hidden relative">
-        <div className="relative z-10">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="bg-primary-yellow text-black text-[10px] font-black px-2 py-0.5 rounded-full">TOP RATED</span>
-            <span className="text-xs font-bold text-secondary-text">⭐ {restaurant.rating}</span>
+        {/* Restaurant Info Overlay */}
+        <div className="absolute bottom-8 left-6 right-6 z-10">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="bg-primary-yellow text-black text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-wider">Top Rated</span>
+            <span className="text-xs font-bold text-white/80">⭐ {restaurant.rating}</span>
           </div>
-          <p className="text-secondary-text text-sm mb-6 leading-relaxed">{restaurant.description}</p>
-          <div className="flex gap-4">
-             <div className="text-[10px] font-black uppercase tracking-widest text-secondary-text">Delivery: {restaurant.time}</div>
-             <div className="text-[10px] font-black uppercase tracking-widest text-secondary-text">Min Order: ₹99</div>
+          <h1 className="text-3xl font-black mb-1">{restaurant.name}</h1>
+          <p className="text-secondary-text text-[11px] font-medium">{restaurant.description}</p>
+          <div className="flex gap-4 mt-3">
+            <div className="text-[9px] font-black uppercase tracking-widest text-secondary-text flex items-center gap-1">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              {restaurant.time}
+            </div>
+            <div className="text-[9px] font-black uppercase tracking-widest text-secondary-text">Min ₹99</div>
           </div>
-        </div>
-        <div className="absolute -right-10 -bottom-10 w-48 h-48 opacity-20 grayscale brightness-150 rotate-12">
-          <Image 
-            src={restaurant.imageUrl} 
-            alt="" 
-            width={192}
-            height={192}
-            style={{ objectFit: 'contain' }}
-          />
         </div>
       </div>
 
-      {/* Category Scroll */}
-      <div className="flex gap-4 overflow-x-auto no-scrollbar mb-10">
-        {restaurant.categories.map((cat, idx) => (
-          <button key={cat} className={`px-6 py-3 rounded-full text-xs font-black uppercase tracking-widest whitespace-nowrap border transition-all ${idx === 0 ? 'bg-primary-yellow text-black border-primary-yellow' : 'bg-transparent text-secondary-text border-white/10'}`}>
-            {cat}
-          </button>
-        ))}
+      {/* ── Content ── */}
+      <div className="px-6 pb-32 -mt-2 relative z-10">
+        <div className="gold-line mb-8" />
+
+        {/* Category Pills */}
+        <div className="flex gap-3 overflow-x-auto scrollbar-hide mb-10">
+          {restaurant.categories.map((cat, idx) => (
+            <button key={cat} className={`px-5 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all duration-300 ${idx === 0 ? 'bg-primary-yellow text-black shadow-lg shadow-primary-yellow/20' : 'glass-card text-secondary-text hover:text-white'}`}>
+              {cat}
+            </button>
+          ))}
+        </div>
+
+        {/* Menu Items */}
+        <div className="space-y-4">
+          {restaurant.menu.map((item) => (
+            <div key={item.id} className="flex gap-4 items-center glass-card p-4 rounded-[28px] hover:border-[#C9A84C]/15 transition-all duration-300">
+              <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-[#C9A84C]/20 bg-black flex-shrink-0 relative">
+                 <Image 
+                   src={item.image} 
+                   alt={item.name} 
+                   fill
+                   style={{ objectFit: 'cover' }}
+                 />
+              </div>
+              <div className="flex-1">
+                 <h3 className="font-bold text-sm mb-1 text-white/95">{item.name}</h3>
+                 <p className="text-[10px] text-secondary-text line-clamp-1 mb-2">{item.description || `Fresh from ${restaurant.name}`}</p>
+                 <div className="flex justify-between items-center">
+                    <span className="font-black text-gold-gradient text-sm">₹{item.price}</span>
+                    <button
+                      onClick={(e) => { e.preventDefault(); handleAddToCart(item); }}
+                      className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300 ${
+                        addedId === item.id
+                          ? 'bg-primary-yellow text-black animate-gold-pulse scale-110'
+                          : 'bg-white/5 border border-white/10 text-white hover:border-[#C9A84C]/30 hover:bg-[#C9A84C]/10'
+                      }`}
+                    >
+                      {addedId === item.id ? '✓' : '+'}
+                    </button>
+                 </div>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* Menu Items */}
-      <div className="space-y-6">
-        {restaurant.menu.map((item) => (
-          <Link href={`/products/${item.id}`} key={item.id} className="flex gap-4 items-center bg-card-bg p-4 rounded-[30px] border border-white/5">
-            <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-white/10 bg-black flex-shrink-0 relative">
-               <Image 
-                 src={item.image} 
-                 alt={item.name} 
-                 fill
-                 style={{ objectFit: 'cover' }}
-               />
-            </div>
-            <div className="flex-1">
-               <h3 className="font-bold text-sm mb-1">{item.name}</h3>
-               <p className="text-[10px] text-secondary-text line-clamp-1 mb-2">Authentic {restaurant.name} specialty.</p>
-               <div className="flex justify-between items-center">
-                  <span className="font-black text-primary-yellow text-sm">₹{item.price}</span>
-                  <div className="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-xs">+</div>
-               </div>
-            </div>
-          </Link>
-        ))}
-      </div>
-
-      {/* Floating Cart Button */}
+      {/* Floating Cart */}
       {totalItems > 0 && (
-        <Link href="/basket" className="fixed bottom-28 right-8 left-8 h-20 bg-primary-yellow text-black rounded-full flex items-center justify-between px-8 z-50 shadow-2xl animate-bounce-subtle">
-           <div className="flex items-center gap-4">
-              <span className="w-8 h-8 rounded-full bg-black text-white text-[12px] font-black flex items-center justify-center">{totalItems}</span>
-              <span className="font-black uppercase tracking-widest text-sm">View Basket</span>
+        <Link href="/basket" className="fixed bottom-8 right-6 left-6 h-16 bg-primary-yellow text-black rounded-full flex items-center justify-between px-8 z-50 shadow-2xl shadow-[#C9A84C]/30">
+           <div className="flex items-center gap-3">
+              <span className="w-7 h-7 rounded-full bg-black text-white text-[11px] font-black flex items-center justify-center">{totalItems}</span>
+              <span className="font-black uppercase tracking-widest text-[11px]">View Basket</span>
            </div>
-           <span className="font-black">Proceed →</span>
+           <span className="font-black text-sm">Proceed →</span>
         </Link>
       )}
     </main>

@@ -1,53 +1,75 @@
 "use client";
-import Link from 'next/link';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 
 export default function SplashPage() {
+  const router = useRouter();
+  const [phase, setPhase] = useState<'logo' | 'text' | 'exit'>('logo');
+
+  useEffect(() => {
+    const t1 = setTimeout(() => setPhase('text'), 800);
+    const t2 = setTimeout(() => setPhase('exit'), 2200);
+    const t3 = setTimeout(() => router.push('/login'), 2800);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+  }, [router]);
+
   return (
-    <main className="min-h-screen bg-black text-white relative flex flex-col items-center justify-between p-10 overflow-hidden">
-      {/* Background Image with Gradient Overlay */}
-      <div className="absolute inset-0 z-0">
-         <Image 
-           src="/images/splash_bg.png" 
-           fill
-           style={{ objectFit: 'cover' }}
-           className="opacity-60" 
-           alt="Premium Food" 
-           priority
-         />
-         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/80 to-transparent" />
+    <main className="min-h-screen bg-[#0A0A0B] flex items-center justify-center relative overflow-hidden">
+      {/* Ambient Gold Particles */}
+      <div className="absolute inset-0 pointer-events-none">
+        {[...Array(6)].map((_, i) => (
+          <div
+            key={i}
+            className="absolute rounded-full"
+            style={{
+              width: `${4 + Math.random() * 6}px`,
+              height: `${4 + Math.random() * 6}px`,
+              left: `${15 + Math.random() * 70}%`,
+              top: `${20 + Math.random() * 60}%`,
+              background: `radial-gradient(circle, rgba(201,168,76,${0.3 + Math.random() * 0.4}) 0%, transparent 70%)`,
+              animation: `particle-float ${3 + Math.random() * 4}s ease-in-out infinite`,
+              animationDelay: `${Math.random() * 2}s`,
+            }}
+          />
+        ))}
       </div>
 
-      {/* Logo & Hero */}
-      <div className="relative z-10 w-full mt-20 flex flex-col items-center">
-        <div className="w-32 h-32 relative mb-6">
-          <Image src="/images/zenvy_logo.png" fill style={{ objectFit: 'contain' }} alt="Zenvy Logo" />
+      {/* Gold Radial Glow Behind Logo */}
+      <div className={`absolute w-80 h-80 rounded-full transition-all duration-1000 ${phase === 'logo' || phase === 'text' ? 'opacity-100 scale-100' : 'opacity-0 scale-150'}`}
+        style={{ background: 'radial-gradient(circle, rgba(201,168,76,0.08) 0%, transparent 70%)' }}
+      />
+
+      {/* Logo + Text Container */}
+      <div className={`flex flex-col items-center relative z-10 transition-all duration-700 ${phase === 'exit' ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`}>
+        {/* Animated Logo Icon */}
+        <div className={`transition-all duration-700 ease-out ${phase === 'logo' ? 'scale-0 opacity-0' : 'scale-100 opacity-100'}`}>
+          <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-[#C9A84C] to-[#8B7332] flex items-center justify-center shadow-2xl shadow-[#C9A84C]/30 mb-8"
+            style={{ animation: phase === 'text' ? 'logo-breathe 2s ease-in-out infinite' : 'none' }}>
+            <span className="text-4xl font-black text-black">Z</span>
+          </div>
         </div>
-        <h1 className="text-[56px] font-black leading-[0.9] tracking-tighter mb-4 animate-slide-up text-center">
-           ZENVY
-        </h1>
-        <p className="text-secondary-text text-lg font-medium max-w-[280px] leading-snug animate-fade-in delay-200 text-center">
-           Premium food delivery for <br />
-           <span className="text-primary-yellow">your campus.</span>
-        </p>
+
+        {/* Brand Name */}
+        <div className={`text-center transition-all duration-700 delay-300 ${phase === 'text' || phase === 'exit' ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+          <h1 className="text-3xl font-black uppercase tracking-[0.4em] text-gold-gradient mb-2">Zenvy</h1>
+          <p className="text-[9px] font-bold uppercase tracking-[0.5em] text-secondary-text">Premium Food Delivery</p>
+        </div>
+
+        {/* Gold Line */}
+        <div className={`gold-line w-16 mt-8 transition-all duration-700 delay-500 ${phase === 'text' ? 'opacity-100' : 'opacity-0'}`} />
       </div>
 
-      {/* CTA */}
-      <div className="relative z-10 w-full flex flex-col gap-6 mb-12 animate-slide-up delay-500">
-         <div className="flex items-center gap-4">
-            <div className="h-[2px] w-12 bg-primary-yellow" />
-            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-primary-yellow">FOOD DELIVERY</span>
-         </div>
-         
-         <div className="space-y-4">
-            <Link href="/login" className="w-full bg-white text-black h-[72px] rounded-full flex items-center justify-center font-black text-[15px] uppercase tracking-widest hover:bg-primary-yellow transition-all duration-500">
-               Get Started
-            </Link>
-            <p className="text-center text-[10px] text-secondary-text uppercase tracking-widest font-bold">
-               Delivered with care.
-            </p>
-         </div>
-      </div>
+      <style jsx>{`
+        @keyframes particle-float {
+          0%, 100% { transform: translateY(0) scale(1); opacity: 0.3; }
+          50% { transform: translateY(-20px) scale(1.5); opacity: 0.8; }
+        }
+        @keyframes logo-breathe {
+          0%, 100% { box-shadow: 0 25px 50px rgba(201,168,76,0.3); }
+          50% { box-shadow: 0 25px 60px rgba(201,168,76,0.5); }
+        }
+      `}</style>
     </main>
   );
 }
