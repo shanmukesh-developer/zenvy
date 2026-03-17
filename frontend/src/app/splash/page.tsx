@@ -5,91 +5,145 @@ import { useRouter } from 'next/navigation';
 export default function SplashPage() {
   const router = useRouter();
   const [stage, setStage] = useState(0);
+  const [countdown, setCountdown] = useState(3);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Stage sequencing
+    // Cinematic Stage Sequencing
     const timers = [
-      setTimeout(() => setStage(1), 500),   // Flare & Bokeh
-      setTimeout(() => setStage(2), 1500),  // Logo Reveal
-      setTimeout(() => setStage(3), 2500),  // Text Reveal
+      setTimeout(() => setStage(1), 800),   // Widescreen & Countdown Start
+      setTimeout(() => setStage(2), 3500),  // Light Ray & Logo Materialize
+      setTimeout(() => setStage(3), 5000),  // Full Logo & Glints
+      setTimeout(() => setStage(4), 6500),  // Brand Reveal
       setTimeout(() => {
         router.push('/login');
-      }, 5500)
+      }, 10000) 
     ];
+
+    // Countdown logic
+    const countdownInterval = setInterval(() => {
+      setCountdown(prev => (prev > 1 ? prev - 1 : 1));
+    }, 900);
 
     const handleMouseMove = (e: MouseEvent) => {
       if (!containerRef.current) return;
       const { clientX, clientY } = e;
       const { innerWidth, innerHeight } = window;
-      const x = (clientX / innerWidth - 0.5) * 40;
-      const y = (clientY / innerHeight - 0.5) * 40;
+      const x = (clientX / innerWidth - 0.5) * 30;
+      const y = (clientY / innerHeight - 0.5) * 30;
       setMousePos({ x, y });
     };
 
     window.addEventListener('mousemove', handleMouseMove);
     return () => {
       timers.forEach(clearTimeout);
+      clearInterval(countdownInterval);
       window.removeEventListener('mousemove', handleMouseMove);
     };
-  }, []);
+  }, [router]);
 
   return (
     <main 
       ref={containerRef}
-      className="relative min-h-screen bg-black overflow-hidden flex flex-col items-center justify-center"
+      className={`relative min-h-screen bg-black overflow-hidden flex flex-col items-center justify-center transition-all duration-1000 ${stage >= 1 ? 'cinematic-active' : ''}`}
     >
-      {/* Cinematic Background Layer */}
-      <div className="vfx-bokeh opacity-40" />
-      <div className="vfx-flare opacity-20" />
-      <div className="gold-dust opacity-30" />
+      {/* 🎬 Cinematic Widescreen Bars */}
+      <div className="cinematic-bars cinematic-bar-top" />
+      <div className="cinematic-bars cinematic-bar-bottom" />
 
-      {/* Interactive Logo Layer */}
+      {/* 🎞️ Film VFX Layers */}
+      <div className={`film-grain transition-opacity duration-2000 ${stage >= 1 ? 'opacity-100' : 'opacity-0'}`} />
+      <div className={`film-scratches transition-opacity duration-1000 ${stage >= 1 ? 'opacity-100' : 'opacity-0'}`} />
+      <div className={`film-burn transition-opacity duration-[3000ms] ${stage === 2 ? 'opacity-100' : 'opacity-0'}`} />
+      <div className="lens-dirt opacity-20" />
+      <div className={`vfx-shimmer-ray transition-opacity duration-2000 ${stage >= 2 ? 'opacity-100' : 'opacity-0'}`} />
+
+      {/* 🎥 Technical HUD Elements (Top) */}
+      <div className={`absolute top-12 left-12 font-mono text-[8px] tracking-[0.5em] text-white/20 transition-all duration-1000 ${stage >= 1 ? 'opacity-100' : 'opacity-0'}`}>
+        ZENVY_ULTIMATE // VFX_CORE_v12.4
+      </div>
+      <div className={`absolute top-12 right-12 font-mono text-[8px] tracking-[0.5em] text-white/20 transition-all duration-1000 ${stage >= 1 ? 'opacity-100' : 'opacity-0'}`}>
+        FPS: 60 // 8K_HDR_MASTER
+      </div>
+
+      {/* 🔢 Cinematic Countdown */}
+      {stage === 1 && (
+        <div className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none">
+          <div className="text-center">
+            <div className="text-[120px] font-black text-white/5 tracking-tighter animate-pulse">
+              {countdown}
+            </div>
+            <div className="mt-4 text-[10px] uppercase tracking-[2em] font-light text-white/20">
+              Initializing Experience
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 💎 The Main Visual: Interactive Brand Mark */}
       <div 
-        className={`relative z-20 transition-all duration-1000 ease-out-expo ${stage >= 2 ? 'scale-100 opacity-100' : 'scale-150 opacity-0'}`}
+        className={`relative z-20 transition-all duration-[3000ms] ease-out-expo ${stage >= 2 ? 'scale-100 opacity-100' : 'scale-150 opacity-0 blur-3xl'}`}
         style={{ transform: `translate3d(${mousePos.x}px, ${mousePos.y}px, 0)` }}
       >
-        {/* The Zenvy Jewelry Brand Mark */}
-        <div className="relative">
-          {/* Ambient Outer Glow */}
-          <div className="absolute inset-0 bg-[#C9A84C] blur-[60px] opacity-20 animate-pulse" />
+        <div className="relative group">
+          {/* Ambient Glows */}
+          <div className={`absolute inset-0 bg-[#C9A84C] blur-[100px] transition-opacity duration-[3000ms] ${stage >= 3 ? 'opacity-20' : 'opacity-0'}`} />
           
-          <div className="w-32 h-32 relative">
-             <div className="absolute inset-0 border-[3px] border-[#C9A84C]/40 rotate-45 scale-110" />
-             <div className="absolute inset-0 border-[1px] border-[#C9A84C]/20 -rotate-12 scale-125" />
+          <div className="w-48 h-48 relative">
+             {/* Complex Geometric Borders */}
+             <div className={`absolute inset-0 border-[4px] border-[#C9A84C]/20 rotate-45 scale-110 transition-transform duration-[5000ms] ${stage >= 2 ? 'rotate-[360deg]' : 'rotate-45'}`} />
+             <div className={`absolute inset-0 border-[1px] border-[#C9A84C]/10 -rotate-12 scale-150 transition-transform duration-[6000ms] ${stage >= 2 ? 'rotate-[180deg]' : '-rotate-12'}`} />
              
-             <div className="w-full h-full bg-gradient-to-br from-[#C9A84C] via-[#F7D331] to-[#8B7332] flex items-center justify-center relative shadow-[0_0_50px_rgba(201,168,76,0.4)]">
-                <span className="text-6xl font-black text-black select-none tracking-tighter">Z</span>
+             {/* The Core Mark */}
+             <div className="w-full h-full bg-gradient-to-br from-[#C9A84C] via-[#F7D331] to-[#8B7332] flex items-center justify-center relative shadow-[0_0_100px_rgba(201,168,76,0.2)] overflow-hidden">
+                <span className="text-8xl font-black text-black select-none tracking-tighter drop-shadow-2xl">Z</span>
                 
-                {/* Internal Reflections */}
-                <div className="absolute inset-0 bg-gradient-to-tr from-white/20 to-transparent" />
+                {/* Moving Reflections */}
+                <div className="absolute inset-0 bg-gradient-to-tr from-white/40 to-transparent opacity-30 animate-pulse" />
+                <div className="absolute -inset-full bg-gradient-to-r from-transparent via-white/20 to-transparent -rotate-45 translate-x-[-100%] animate-[ray-sweep_4s_infinite]" />
              </div>
+
+             {/* Corner Glints */}
+             {stage >= 3 && (
+               <>
+                 <div className="gold-glint top-2 left-2" style={{ animationDelay: '0s' }} />
+                 <div className="gold-glint top-2 right-2" style={{ animationDelay: '1.2s' }} />
+                 <div className="gold-glint bottom-2 left-2" style={{ animationDelay: '0.6s' }} />
+                 <div className="gold-glint bottom-2 right-2" style={{ animationDelay: '2s' }} />
+               </>
+             )}
           </div>
         </div>
       </div>
 
-      {/* Cinematic Text Reveal */}
-      <div className="mt-16 text-center z-10">
+      {/* 🏷️ Cinematic Title & Tagline */}
+      <div className="mt-28 text-center z-10">
         <h1 
-          className={`text-4xl md:text-6xl font-black transition-all duration-1000 ${stage >= 3 ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}
+          className={`text-6xl md:text-8xl font-black transition-all duration-[2500ms] ${stage >= 4 ? 'translate-y-0 opacity-100 tracking-[0.4em]' : 'translate-y-32 opacity-0 tracking-[1.5em]'}`}
         >
-          <span className="text-reveal-cinematic tracking-[0.2em] uppercase">Zenvy</span>
+          <span className="text-reveal-cinematic uppercase">Zenvy</span>
         </h1>
         <p 
-          className={`mt-4 text-[10px] md:text-sm font-bold uppercase tracking-[0.6em] text-white/40 transition-all duration-1000 delay-300 ${stage >= 3 ? 'translate-y-0 opacity-100' : 'translate-y-5 opacity-0'}`}
+          className={`mt-8 text-[12px] md:text-sm font-bold uppercase tracking-[1em] text-white/40 transition-all duration-[2500ms] delay-1000 ${stage >= 4 ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'}`}
         >
-          Beyond Fine Dining
+          An Odyssey of Taste
         </p>
       </div>
 
-      {/* Bottom Cinematic Gradient */}
-      <div className="absolute bottom-0 left-0 right-0 h-64 bg-gradient-to-t from-[#C9A84C]/5 to-transparent pointer-events-none" />
-      
-      {/* Decorative build info */}
-      <div className={`absolute bottom-8 left-8 text-[8px] font-mono text-white/10 transition-opacity duration-1000 ${stage >= 1 ? 'opacity-100' : 'opacity-0'}`}>
-        ZENVY_ULTIMATE_CORE // VFX_V4.9
+      {/* 📊 Technical HUD Elements (Bottom) */}
+      <div className={`absolute bottom-12 left-12 font-mono text-[8px] tracking-[0.8em] text-white/20 transition-opacity duration-1000 ${stage >= 1 ? 'opacity-100' : 'opacity-0'}`}>
+        TIMECODE: 00:00:{stage + 12}:{(stage * 4).toString().padStart(2, '0')} <br />
+        STATUS: MASTER_PLAYBACK_ACTIVE
       </div>
+
+      <div className={`absolute bottom-12 right-12 font-mono text-[8px] tracking-[0.8em] text-white/20 transition-opacity duration-1000 ${stage >= 1 ? 'opacity-100' : 'opacity-0'}`}>
+        COLOR_SPACE: DCI_P3_GOLDING <br />
+        ASPECT: 2.39:1_CINEMASCOPE
+      </div>
+
+      {/* Liquid Transition Overlay */}
+      <div className={`fixed inset-0 bg-[#C9A84C] z-[200] transition-opacity duration-[2000ms] pointer-events-none ${stage >= 5 ? 'opacity-10' : 'opacity-0'}`} />
     </main>
   );
 }
