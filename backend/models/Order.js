@@ -1,11 +1,12 @@
 const mongoose = require('mongoose');
 
 const orderSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  restaurantId: { type: mongoose.Schema.Types.ObjectId, ref: 'Restaurant', required: true },
-  deliveryPartnerId: { type: mongoose.Schema.Types.ObjectId, ref: 'DeliveryPartner' },
+  userId: { type: String, required: true },
+  restaurantId: { type: String, required: true },
+  deliveryPartnerId: { type: String },
   items: [{
-    menuItemId: { type: mongoose.Schema.Types.ObjectId, ref: 'MenuItem' },
+    menuItemId: { type: String },
+    name: { type: String },
     quantity: { type: Number, required: true },
     priceAtOrder: { type: Number, required: true }
   }],
