@@ -17,8 +17,8 @@ export default function DeliveryHome() {
   const [orderStatus, setOrderStatus] = useState<'idle' | 'accepted' | 'picked_up' | 'delivered'>('idle');
   const [globalSocket, setGlobalSocket] = useState<Socket | null>(null);
 
-  // Link tracking to the active order and get socket instance
-  const { socket } = useTracking(activeOrder?.id || '', 'Rahul Mishra');
+  // Link tracking to the active order
+  useTracking(activeOrder?.id || '', 'Rahul Mishra');
 
   const [availableOrders, setAvailableOrders] = useState<Order[]>([
     { id: '1025', restaurant: 'Dominos Pizza', drop: 'Hostel A, Room 204', earnings: '₹45' },

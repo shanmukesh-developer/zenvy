@@ -38,9 +38,9 @@ function MapDirections({ origin, destination }: { origin: {lat: number, lng: num
       origin,
       destination,
       travelMode: 'DRIVING',
-    }).then((response: any) => {
+    }).then((response: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
       directionsRenderer.setDirections(response);
-    }).catch((err: any) => console.error("Directions route failed: ", err));
+    }).catch((err: any) => console.error("Directions route failed: ", err)); // eslint-disable-line @typescript-eslint/no-explicit-any
   }, [directionsService, directionsRenderer, origin, destination]);
 
   return null;
