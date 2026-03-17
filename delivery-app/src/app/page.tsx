@@ -2,6 +2,8 @@
 import { useState, useEffect } from 'react';
 import { useTracking } from '@/hooks/useTracking';
 
+import { io, Socket } from 'socket.io-client';
+
 interface Order {
   id: string;
   restaurant: string;
@@ -13,6 +15,7 @@ export default function DeliveryHome() {
   const [isOnline, setIsOnline] = useState(false);
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
   const [orderStatus, setOrderStatus] = useState<'idle' | 'accepted' | 'picked_up' | 'delivered'>('idle');
+  const [globalSocket, setGlobalSocket] = useState<Socket | null>(null);
 
   // Link tracking to the active order and get socket instance
   const { socket } = useTracking(activeOrder?.id || '', 'Rahul Mishra');
@@ -24,17 +27,22 @@ export default function DeliveryHome() {
 
   // Handle Real-time Order Sync
   useEffect(() => {
-    if (socket) {
-      socket.on('newOrder', (newOrder: Order) => {
+    const s = io('http://10.249.116.93:5000');
+    setGlobalSocket(s);
+    return () => { s.disconnect(); };
+  }, []);
+
+  useEffect(() => {
+    if (globalSocket) {
+      globalSocket.on('newOrder', (newOrder: Order) => {
         setAvailableOrders(prev => [newOrder, ...prev]);
-        // Simple notification sound/alert hint
         console.log("New Order Received:", newOrder);
       });
     }
     return () => {
-      if (socket) socket.off('newOrder');
+      if (globalSocket) globalSocket.off('newOrder');
     };
-  }, [socket]);
+  }, [globalSocket]);
 
   const acceptOrder = (order: Order) => {
     setActiveOrder(order);

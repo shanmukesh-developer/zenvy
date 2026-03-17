@@ -51,7 +51,28 @@ const createOrder = async (req, res) => {
       hostelGateDelivery
     });
 
-    const createdOrder = await order.save();
+    let createdOrder;
+    
+    // Fallback for local testing without MongoDB
+    if (!process.env.MONGO_URI && !process.env.MONGODB_URI) {
+      createdOrder = {
+        _id: 'TEST_ORDER_ID_' + Math.floor(Math.random() * 10000),
+        hostelGateDelivery,
+        finalPrice,
+        items: items || [],
+        totalPrice: totalPrice || 0,
+        status: 'Accepted'
+      };
+    } else {
+      createdOrder = await order.save();
+
+      // Update streak and user stats
+      const { updateStreak } = require('../middleware/rewardEngine');
+      await updateStreak(req.user.id);
+      await User.findByIdAndUpdate(req.user.id, {
+        $inc: { totalOrders: 1 }
+      });
+    }
 
     // Notify delivery riders via Socket.io
     const io = req.app.get('io');
@@ -60,13 +81,6 @@ const createOrder = async (req, res) => {
       restaurant: 'SRM Kitchen', // Simplified for now
       drop: createdOrder.hostelGateDelivery ? 'Hostel Gate' : 'Room Delivery',
       earnings: `₹${Math.round(createdOrder.finalPrice * 0.1)}` // Simulated commission
-    });
-
-    // Update streak and user stats
-    const { updateStreak } = require('../middleware/rewardEngine');
-    await updateStreak(req.user.id);
-    await User.findByIdAndUpdate(req.user.id, {
-      $inc: { totalOrders: 1 }
     });
 
     res.status(201).json(createdOrder);
@@ -100,6 +114,16 @@ const createOrder = async (req, res) => {
 // @route   GET /api/orders/:id
 const getOrderById = async (req, res) => {
   try {
+    if (!process.env.MONGO_URI && !process.env.MONGODB_URI) {
+      return res.json({
+        _id: req.params.id,
+        items: [{ name: 'Test Item Local', quantity: 1, price: 100 }],
+        totalPrice: 100,
+        status: 'Accepted',
+        restaurantId: { name: 'SRM Local Test Kitchen' }
+      });
+    }
+
     const order = await Order.findById(req.params.id).populate('restaurantId', 'name');
     if (order) {
       res.json(order);

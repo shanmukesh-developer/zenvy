@@ -5,7 +5,7 @@ const config: CapacitorConfig = {
   appName: 'Zenvy',
   webDir: 'out',
   server: {
-    url: 'https://hostelbites-customer.onrender.com',
+    url: 'http://10.249.116.93:3000',
     cleartext: true
   }
 };

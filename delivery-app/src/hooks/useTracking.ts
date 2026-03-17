@@ -4,7 +4,7 @@ import { io, Socket } from 'socket.io-client';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
 
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://hostelbites-backend.onrender.com';
+const SOCKET_URL = 'http://10.249.116.93:5000';
 
 export const useTracking = (orderId: string, riderName: string) => {
   const socketRef = useRef<Socket | null>(null);

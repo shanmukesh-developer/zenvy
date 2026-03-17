@@ -4,13 +4,53 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import io from 'socket.io-client';
 
-import { APIProvider, Map, AdvancedMarker } from '@vis.gl/react-google-maps';
+import { APIProvider, Map, AdvancedMarker, useMap, useMapsLibrary } from '@vis.gl/react-google-maps';
+
+const RESTAURANT_COORD = { lat: 16.5120, lng: 80.6400 };
+const HOME_COORD = { lat: 16.5060, lng: 80.6480 };
+
+function MapDirections({ origin, destination }: { origin: {lat: number, lng: number}, destination: {lat: number, lng: number} }) {
+  const map = useMap();
+  const routesLibrary = useMapsLibrary('routes');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [directionsService, setDirectionsService] = useState<any>();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [directionsRenderer, setDirectionsRenderer] = useState<any>();
+
+  useEffect(() => {
+    if (!routesLibrary || !map) return;
+    setDirectionsService(new routesLibrary.DirectionsService());
+    setDirectionsRenderer(new routesLibrary.DirectionsRenderer({ 
+      map,
+      suppressMarkers: true,
+      polylineOptions: {
+        strokeColor: '#3b82f6',
+        strokeWeight: 5,
+        strokeOpacity: 0.8
+      }
+    }));
+  }, [routesLibrary, map]);
+
+  useEffect(() => {
+    if (!directionsService || !directionsRenderer) return;
+
+    directionsService.route({
+      origin,
+      destination,
+      travelMode: 'DRIVING',
+    }).then((response: any) => {
+      directionsRenderer.setDirections(response);
+    }).catch((err: any) => console.error("Directions route failed: ", err));
+  }, [directionsService, directionsRenderer, origin, destination]);
+
+  return null;
+}
 
 function TrackingContent() {
   const searchParams = useSearchParams();
   const orderId = searchParams.get('id');
   const [status, setStatus] = useState(1); 
-  const [location, setLocation] = useState({ lat: 16.506, lng: 80.648 }); // Default to SRM AP
+  const [location, setLocation] = useState(RESTAURANT_COORD); // Default start
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [orderInfo, setOrderInfo] = useState<any>(null);
 
@@ -80,15 +120,25 @@ function TrackingContent() {
       <div className="bg-card-bg w-full aspect-video rounded-[40px] border border-white/5 mb-12 overflow-hidden relative shadow-2xl">
          <APIProvider apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''}>
             <Map
-              defaultCenter={location}
+              defaultCenter={HOME_COORD}
               center={location}
-              defaultZoom={16}
+              defaultZoom={15}
               gestureHandling={'greedy'}
               disableDefaultUI={true}
               mapId={mapId}
               style={{ width: '100%', height: '100%' }}
             >
-              <AdvancedMarker position={location}>
+              <MapDirections origin={RESTAURANT_COORD} destination={HOME_COORD} />
+
+              <AdvancedMarker position={RESTAURANT_COORD}>
+                 <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-sm shadow-[0_0_15px_rgba(59,130,246,0.5)] border-2 border-black">🏪</div>
+              </AdvancedMarker>
+
+              <AdvancedMarker position={HOME_COORD}>
+                 <div className="w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center text-sm shadow-[0_0_15px_rgba(16,185,129,0.5)] border-2 border-black">🏠</div>
+              </AdvancedMarker>
+
+              <AdvancedMarker position={location} zIndex={50}>
                 <div className="relative">
                    <div className="w-12 h-12 bg-primary-yellow rounded-full flex items-center justify-center text-xl shadow-[0_0_20px_rgba(247,211,49,0.5)] border-2 border-black">
                       🛵
@@ -148,7 +198,7 @@ function TrackingContent() {
               <div>
                  <h4 className="text-sm font-black uppercase">ORDER #{orderId?.slice(-5)}</h4>
                  <p className="text-[10px] font-bold text-secondary-text">
-                   {orderInfo.items.length} Item{orderInfo.items.length > 1 ? 's' : ''} • ₹{orderInfo.totalPrice}
+                   {orderInfo?.items?.length || 1} Item{(orderInfo?.items?.length || 1) > 1 ? 's' : ''} • ₹{orderInfo.totalPrice}
                  </p>
               </div>
            </div>
