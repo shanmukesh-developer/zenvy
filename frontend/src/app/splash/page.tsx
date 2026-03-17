@@ -14,11 +14,12 @@ export default function SplashPage() {
     const timers = [
       setTimeout(() => setStage(1), 800),   // Widescreen & Countdown Start
       setTimeout(() => setStage(2), 3500),  // Light Ray & Logo Materialize
-      setTimeout(() => setStage(3), 5000),  // Full Logo & Glints
-      setTimeout(() => setStage(4), 6500),  // Brand Reveal
+      setTimeout(() => setStage(3), 5000);  // Full Logo & Glints
+      setTimeout(() => setStage(4), 6500);  // Brand Reveal
+      setTimeout(() => setStage(5), 8500);  // Liquid Expand Start
       setTimeout(() => {
         router.push('/login');
-      }, 10000) 
+      }, 9700) 
     ];
 
     // Countdown logic
@@ -58,6 +59,9 @@ export default function SplashPage() {
       <div className={`film-burn transition-opacity duration-[3000ms] ${stage === 2 ? 'opacity-100' : 'opacity-0'}`} />
       <div className="lens-dirt opacity-20" />
       <div className={`vfx-shimmer-ray transition-opacity duration-2000 ${stage >= 2 ? 'opacity-100' : 'opacity-0'}`} />
+      
+      {/* 🌊 Liquid Transition Overlay */}
+      <div className={`liquid-expand ${stage >= 5 ? 'active' : ''}`} />
 
       {/* 🎥 Technical HUD Elements (Top) */}
       <div className={`absolute top-12 left-12 font-mono text-[8px] tracking-[0.5em] text-white/20 transition-all duration-1000 ${stage >= 1 ? 'opacity-100' : 'opacity-0'}`}>
@@ -96,12 +100,22 @@ export default function SplashPage() {
              <div className={`absolute inset-0 border-[1px] border-[#C9A84C]/10 -rotate-12 scale-150 transition-transform duration-[6000ms] ${stage >= 2 ? 'rotate-[180deg]' : '-rotate-12'}`} />
              
              {/* The Core Mark */}
-             <div className="w-full h-full bg-gradient-to-br from-[#C9A84C] via-[#F7D331] to-[#8B7332] flex items-center justify-center relative shadow-[0_0_100px_rgba(201,168,76,0.2)] overflow-hidden">
-                <span className="text-8xl font-black text-black select-none tracking-tighter drop-shadow-2xl">Z</span>
+             <div className="w-full h-full bg-gradient-to-br from-[#1A1A1C] to-black flex items-center justify-center relative shadow-[0_0_100px_rgba(201,168,76,0.2)] overflow-hidden border border-[#C9A84C]/20">
+                {/* Animated "Z" with SVG stroke shimmer */}
+                <svg className="w-24 h-24 text-gold-gradient" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                   <path 
+                     d="M20 20 H80 L20 80 H80" 
+                     stroke="currentColor" 
+                     strokeWidth="12" 
+                     strokeLinecap="round" 
+                     strokeLinejoin="round"
+                     className="logo-shimmer-stroke"
+                   />
+                </svg>
                 
                 {/* Moving Reflections */}
-                <div className="absolute inset-0 bg-gradient-to-tr from-white/40 to-transparent opacity-30 animate-pulse" />
-                <div className="absolute -inset-full bg-gradient-to-r from-transparent via-white/20 to-transparent -rotate-45 translate-x-[-100%] animate-[ray-sweep_4s_infinite]" />
+                <div className="absolute inset-0 bg-gradient-to-tr from-white/10 to-transparent opacity-30 animate-pulse" />
+                <div className="absolute -inset-full bg-gradient-to-r from-transparent via-white/10 to-transparent -rotate-45 translate-x-[-100%] animate-[ray-sweep_4s_infinite]" />
              </div>
 
              {/* Corner Glints */}

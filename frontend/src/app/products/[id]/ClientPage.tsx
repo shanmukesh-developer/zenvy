@@ -4,17 +4,23 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { useCart } from '@/context/CartContext';
 import Image from 'next/image';
+import SuccessOverlay from '@/components/SuccessOverlay';
 
 export default function ProductDetailClient({ productId }: { productId: string }) {
   const [quantity, setQuantity] = useState(1);
   const { addToCart } = useCart();
+  const [overlay, setOverlay] = useState<{ isOpen: boolean; title: string; message: string; type?: 'success' | 'error' }>({
+    isOpen: false,
+    title: '',
+    message: '',
+  });
 
   // Find product across all restaurants
   const product = restaurants
     .flatMap(r => r.menu)
     .find(p => p.id === productId);
 
-  if (!product) return <div className="p-8 text-white">Product not found, bro.</div>;
+  if (!product) return <div className="p-8 text-white">Product not found.</div>;
 
   const handleAdd = () => {
     // Find restaurant for this product
@@ -28,7 +34,13 @@ export default function ProductDetailClient({ productId }: { productId: string }
       image: product.image,
       restaurantId: restaurant?.id || 'unknown'
     });
-    alert('Added to Basket! 🚀');
+    
+    setOverlay({
+      isOpen: true,
+      title: 'Added to Basket',
+      message: `${product.name} has been added.`,
+      type: 'success'
+    });
   };
 
   return (
@@ -99,6 +111,14 @@ export default function ProductDetailClient({ productId }: { productId: string }
            </svg>
         </Link>
       </div>
+
+      <SuccessOverlay 
+        isOpen={overlay.isOpen}
+        title={overlay.title}
+        message={overlay.message}
+        type={overlay.type}
+        onClose={() => setOverlay(prev => ({ ...prev, isOpen: false }))}
+      />
     </main>
   );
 }

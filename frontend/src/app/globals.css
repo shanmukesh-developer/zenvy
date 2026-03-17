@@ -558,3 +558,41 @@ body {
   0% { transform: translateX(0); }
   100% { transform: translateX(5px); }
 }
+
+/* ─── Advanced Logo & Transition VFX ─── */
+.logo-shimmer-stroke {
+  stroke-dasharray: 1000;
+  stroke-dashoffset: 1000;
+  animation: draw-stroke 4s cubic-bezier(0.19, 1, 0.22, 1) forwards;
+}
+
+@keyframes draw-stroke {
+  to { stroke-dashoffset: 0; }
+}
+
+.liquid-expand {
+  position: fixed;
+  inset: 0;
+  background: var(--background);
+  z-index: 300;
+  transform: scaleY(0);
+  transform-origin: bottom;
+  transition: transform 1.2s cubic-bezier(0.19, 1, 0.22, 1);
+  pointer-events: none;
+}
+
+.liquid-expand.active {
+  transform: scaleY(1);
+}
+
+.vfx-glow-radial {
+  position: absolute;
+  inset: -50%;
+  background: radial-gradient(circle at center, rgba(201, 168, 76, 0.15) 0%, transparent 60%);
+  animation: pulse-glow 4s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.1); }
+}
