@@ -58,7 +58,7 @@ export default function SearchOverlay({ isOpen, onClose }: { isOpen: boolean; on
       ).map(res => ({
         _id: res.id,
         name: res.name,
-        location: 'SRM University AP',
+        location: 'Zenvy Partner',
         imageUrl: res.imageUrl,
         rating: parseFloat(res.rating)
       }));

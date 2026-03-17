@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.srm.hostelbites',
+  appId: 'com.zenvy.app',
   appName: 'Zenvy',
   webDir: 'out',
   server: {

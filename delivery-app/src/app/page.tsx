@@ -73,7 +73,7 @@ export default function DeliveryHome() {
       {/* Header */}
       <div className="flex justify-between items-center mb-10 bg-slate-800/50 p-6 rounded-3xl border border-white/5">
         <div>
-          <h1 className="text-xl font-bold">HostelBites Rider</h1>
+          <h1 className="text-xl font-bold">Zenvy Rider</h1>
           <p className="text-sm text-gray-400">SRM University AP</p>
         </div>
         <div 

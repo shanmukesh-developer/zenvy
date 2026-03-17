@@ -78,7 +78,7 @@ export default function CheckoutPage() {
       </div>
 
       <div className="space-y-10">
-        {/* Delivery Options [SRM Specific] */}
+        {/* Delivery Options */}
         <div>
           <h2 className="text-secondary-text font-black text-xs uppercase tracking-widest mb-4">Delivery Method</h2>
           <div className="grid grid-cols-2 gap-4">

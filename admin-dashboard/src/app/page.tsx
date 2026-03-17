@@ -3,7 +3,7 @@ export default function AdminHome() {
     <main className="min-h-screen flex">
       {/* Sidebar */}
       <aside className="w-64 border-r border-white/5 p-6 space-y-8 bg-slate-950/50">
-        <h1 className="text-xl font-black text-blue-500 uppercase tracking-tighter">HostelBites</h1>
+        <h1 className="text-xl font-black text-blue-500 uppercase tracking-tighter">Zenvy</h1>
         
         <nav className="space-y-2">
           <div className="sidebar-active p-3 rounded-lg text-sm font-bold cursor-pointer transition-all">Dashboard</div>

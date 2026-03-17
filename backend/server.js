@@ -45,7 +45,7 @@ app.use('/api/search', require('./routes/searchRoutes'));
 app.get('/', (req, res) => {
   res.status(200).json({
     status: 'success',
-    message: 'HostelBites API is running...',
+    message: 'Zenvy API is running...',
     version: '1.0.0',
     endpoints: {
       search: '/api/search',

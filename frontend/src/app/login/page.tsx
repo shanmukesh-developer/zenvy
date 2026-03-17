@@ -26,7 +26,7 @@ export default function LoginPage() {
            <span className="text-primary-yellow italic font-serif">Back!</span>
         </h1>
         <p className="text-secondary-text text-sm font-medium mb-12">
-           Login with your SRM phone number.
+           Login with your phone number.
         </p>
 
         <div className="space-y-8">
@@ -54,7 +54,7 @@ export default function LoginPage() {
 
       <div className="text-center pb-10">
          <p className="text-[10px] text-secondary-text uppercase tracking-widest font-bold">
-            Trouble logging in? <span className="text-primary-yellow">Contact IT</span>
+            Trouble logging in? <span className="text-primary-yellow">Contact Support</span>
          </p>
       </div>
     </main>

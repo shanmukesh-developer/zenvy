@@ -18,27 +18,25 @@ export default function SplashPage() {
          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/80 to-transparent" />
       </div>
 
-      {/* Decorative Floating Elements (from reference style) */}
-      <div className="absolute top-[20%] left-[10%] floating-plus opacity-20 text-4xl">+</div>
-      <div className="absolute top-[40%] right-[15%] floating-plus opacity-10 text-6xl text-primary-yellow">+</div>
-
-      {/* Hero Text Section */}
-      <div className="relative z-10 w-full mt-20">
-        <h1 className="text-[64px] font-black leading-[0.9] tracking-tighter mb-4 animate-slide-up">
-           CAMPUS <br />
-           <span className="italic font-serif text-primary-yellow">Bites.</span>
+      {/* Logo & Hero */}
+      <div className="relative z-10 w-full mt-20 flex flex-col items-center">
+        <div className="w-32 h-32 relative mb-6">
+          <Image src="/images/zenvy_logo.png" fill style={{ objectFit: 'contain' }} alt="Zenvy Logo" />
+        </div>
+        <h1 className="text-[56px] font-black leading-[0.9] tracking-tighter mb-4 animate-slide-up text-center">
+           ZENVY
         </h1>
-        <p className="text-secondary-text text-lg font-medium max-w-[280px] leading-snug animate-fade-in delay-200">
-           The most elite food delivery for <br />
-           <span className="text-white">SRM University AP.</span>
+        <p className="text-secondary-text text-lg font-medium max-w-[280px] leading-snug animate-fade-in delay-200 text-center">
+           Premium food delivery for <br />
+           <span className="text-primary-yellow">your campus.</span>
         </p>
       </div>
 
-      {/* Branding / Tagline */}
+      {/* CTA */}
       <div className="relative z-10 w-full flex flex-col gap-6 mb-12 animate-slide-up delay-500">
          <div className="flex items-center gap-4">
             <div className="h-[2px] w-12 bg-primary-yellow" />
-            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-primary-yellow">EST. 2026</span>
+            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-primary-yellow">FOOD DELIVERY</span>
          </div>
          
          <div className="space-y-4">
@@ -46,7 +44,7 @@ export default function SplashPage() {
                Get Started
             </Link>
             <p className="text-center text-[10px] text-secondary-text uppercase tracking-widest font-bold">
-               By SRMites, For SRMites.
+               Delivered with care.
             </p>
          </div>
       </div>

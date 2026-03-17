@@ -42,11 +42,11 @@ export default function Home() {
       <div className="max-w-[400px] mx-auto">
         <header className="mb-10">
           <h1 className="discover-header">
-            SRM Campus <br /> Bites Delivered
+            Zenvy <br /> Food Delivery
           </h1>
 
           <p className="recipe-count mt-2">
-            Trending <span className="underline decoration-white/20 underline-offset-8 font-serif">near your hostel</span>
+            Trending <span className="underline decoration-white/20 underline-offset-8 font-serif">near you</span>
           </p>
         </header>
 

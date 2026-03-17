@@ -40,7 +40,7 @@ export default function ProfilePage() {
            <div className="w-full h-full bg-card-bg rounded-full flex items-center justify-center text-4xl">🧑‍🎓</div>
         </div>
         <h2 className="text-2xl font-black">{userName}</h2>
-        <p className="text-secondary-text text-sm font-bold uppercase tracking-widest mt-1">SRM University AP</p>
+        <p className="text-secondary-text text-sm font-bold uppercase tracking-widest mt-1">Zenvy Member</p>
       </div>
 
       {/* Quick Actions */}

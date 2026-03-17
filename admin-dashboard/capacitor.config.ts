@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.srm.hostelbitesadmin',
+  appId: 'com.zenvy.admin',
   appName: 'Admin Dashboard',
   webDir: 'out'
 };

@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.srm.hostelbitesdelivery',
-  appName: 'HostelBites Delivery',
+  appId: 'com.zenvy.delivery',
+  appName: 'Zenvy Delivery',
   webDir: 'out',
   server: {
     url: 'http://10.249.116.93:3001',
