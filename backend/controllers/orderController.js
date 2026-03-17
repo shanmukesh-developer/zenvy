@@ -66,12 +66,16 @@ const createOrder = async (req, res) => {
     } else {
       createdOrder = await order.save();
 
-      // Update streak and user stats
-      const { updateStreak } = require('../middleware/rewardEngine');
-      await updateStreak(req.user.id);
-      await User.findByIdAndUpdate(req.user.id, {
-        $inc: { totalOrders: 1 }
-      });
+      // Update streak and user stats (non-critical, don't crash order)
+      try {
+        const { updateStreak } = require('../middleware/rewardEngine');
+        await updateStreak(req.user.id);
+        await User.findByIdAndUpdate(req.user.id, {
+          $inc: { totalOrders: 1 }
+        });
+      } catch (statsErr) {
+        console.warn('User stats update skipped:', statsErr.message);
+      }
     }
 
     // Notify delivery riders via Socket.io

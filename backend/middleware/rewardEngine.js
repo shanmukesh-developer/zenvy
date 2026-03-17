@@ -3,6 +3,10 @@ const User = require('../models/User');
 // Middleware to update streak on every order
 const updateStreak = async (userId) => {
   const user = await User.findById(userId);
+  if (!user) {
+    console.warn('updateStreak: User not found for ID:', userId);
+    return 0;
+  }
   const now = new Date();
   const lastOrderDate = user.lastOrderDate ? new Date(user.lastOrderDate) : null;
 
