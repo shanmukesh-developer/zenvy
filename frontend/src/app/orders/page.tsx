@@ -56,7 +56,7 @@ export default function OrdersPage() {
     fetchOrders();
   }, []);
 
-  const handleTouchStart = (e: React.TouchEvent, _id: string) => {
+  const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX;
     setSwipedId(null);
   };
@@ -122,7 +122,7 @@ export default function OrdersPage() {
                 {/* Card */}
                 <div
                   className={`glass-card p-6 rounded-[28px] relative z-10 transition-transform duration-300 ${swipedId === order._id ? '-translate-x-24' : 'translate-x-0'}`}
-                  onTouchStart={(e) => handleTouchStart(e, order._id)}
+                  onTouchStart={(e) => handleTouchStart(e)}
                   onTouchEnd={(e) => handleTouchEnd(e, order._id)}
                 >
                   <div className="flex items-center justify-between mb-3">
