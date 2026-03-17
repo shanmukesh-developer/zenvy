@@ -56,7 +56,7 @@ export default function OrdersPage() {
     fetchOrders();
   }, []);
 
-  const handleTouchStart = (e: React.TouchEvent, id: string) => {
+  const handleTouchStart = (e: React.TouchEvent, _id: string) => {
     touchStartX.current = e.touches[0].clientX;
     setSwipedId(null);
   };
