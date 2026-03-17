@@ -8,7 +8,7 @@ export default function LoginPage() {
   const handleLogin = () => {
     // Simulate real auth by storing a dummy JWT and user ID
     localStorage.setItem('token', 'mock_jwt_token_for_srm_student');
-    localStorage.setItem('user', JSON.stringify({ id: 'srm_student_01', name: 'Shanmukh' }));
+    localStorage.setItem('user', JSON.stringify({ id: '65f1a2b3c4d5e6f7a8b9c0d1', name: 'Shanmukh' }));
     window.location.href = '/';
   };
 

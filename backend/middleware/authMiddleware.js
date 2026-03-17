@@ -9,7 +9,7 @@ const protect = async (req, res, next) => {
       
       // Development bypass for frontend test login
       if (token === 'mock_jwt_token_for_srm_student') {
-        req.user = { id: 'srm_student_01', name: 'Shanmukh' };
+        req.user = { id: '65f1a2b3c4d5e6f7a8b9c0d1', name: 'Shanmukh' };
         return next();
       }
 
