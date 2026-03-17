@@ -8,6 +8,7 @@ interface CartItem {
   quantity: number;
   image: string;
   restaurantId: string;
+  restaurantName?: string;
 }
 
 interface CartContextType {
@@ -25,13 +26,14 @@ const CartContext = createContext<CartContextType | undefined>(undefined);
 export const CartProvider = ({ children }: { children: React.ReactNode }) => {
   const [cart, setCart] = useState<CartItem[]>([]);
 
-  const addToCart = (item: CartItem) => {
+  const addToCart = (item: Omit<CartItem, 'quantity'> & { quantity?: number }) => {
+    const itemWithQty = { ...item, quantity: item.quantity || 1 };
     setCart((prev) => {
-      const existing = prev.find((i) => i.id === item.id);
+      const existing = prev.find((i) => i.id === itemWithQty.id);
       if (existing) {
-        return prev.map((i) => i.id === item.id ? { ...i, quantity: i.quantity + item.quantity } : i);
+        return prev.map((i) => i.id === itemWithQty.id ? { ...i, quantity: i.quantity + itemWithQty.quantity } : i);
       }
-      return [...prev, item];
+      return [...prev, itemWithQty as CartItem];
     });
   };
 
