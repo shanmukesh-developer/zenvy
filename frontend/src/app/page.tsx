@@ -61,6 +61,7 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-background text-white pb-32 relative overflow-hidden">
+      {showIntro && <IntroOverlay onComplete={handleIntroComplete} />}
       {/* Ambient Background Orbs */}
       <div className="fixed inset-0 pointer-events-none z-0">
         <div className="absolute -top-40 -right-40 w-96 h-96 bg-[#C9A84C]/[0.04] rounded-full blur-[120px]" />
