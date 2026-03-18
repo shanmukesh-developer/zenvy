@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import RestaurantCard from '@/components/RestaurantCard';
 import { useCart } from '@/context/CartContext';
 import { restaurants } from '@/data/restaurants';
@@ -17,7 +17,6 @@ function getGreeting(): string {
 }
 
 export default function Home() {
-  const router = useRouter(); // Need to import this
   const { totalItems } = useCart();
   const [filter, setFilter] = useState<'all' | 'budget' | 'veg'>('all');
   const [isSearchOpen, setIsSearchOpen] = useState(false);

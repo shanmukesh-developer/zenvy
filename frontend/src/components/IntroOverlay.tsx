@@ -103,7 +103,7 @@ export default function IntroOverlay({ onComplete }: { onComplete: () => void })
 
       {/* 📊 HUD */}
       <div className={`absolute bottom-8 left-8 font-mono text-[6px] tracking-[0.5em] text-white/10 transition-opacity duration-1000 ${stage >= 1 ? 'opacity-100' : 'opacity-0'}`}>
-        00:00:{stage + 12}:{(stage * 4).toString().padStart(2, '0')} // LUX_SYS
+        00:00:{stage + 12}:{(stage * 4).toString().padStart(2, '0')} {'// LUX_SYS'}
       </div>
     </div>
   );
