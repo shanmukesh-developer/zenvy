@@ -1,3 +1,10 @@
+"use client";
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import RestaurantCard from '@/components/RestaurantCard';
+import { useCart } from '@/context/CartContext';
+import { restaurants } from '@/data/restaurants';
 import Image from 'next/image';
 import SearchOverlay from '@/components/SearchOverlay';
 import IntroOverlay from '@/components/IntroOverlay';
