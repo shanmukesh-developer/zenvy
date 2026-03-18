@@ -1,12 +1,6 @@
-"use client";
-import { useState, useEffect } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import RestaurantCard from '@/components/RestaurantCard';
-import { useCart } from '@/context/CartContext';
-import { restaurants } from '@/data/restaurants';
 import Image from 'next/image';
 import SearchOverlay from '@/components/SearchOverlay';
+import IntroOverlay from '@/components/IntroOverlay';
 
 function getGreeting(): string {
   const h = new Date().getHours();
@@ -22,13 +16,13 @@ export default function Home() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [userName, setUserName] = useState('');
   const [greeting, setGreeting] = useState('');
+  const [showIntro, setShowIntro] = useState(false);
 
   useEffect(() => {
     // Check if user has seen the cinematic intro this session
     const hasSeenIntro = sessionStorage.getItem('zenvy_intro_seen');
     if (!hasSeenIntro) {
-      sessionStorage.setItem('zenvy_intro_seen', 'true');
-      router.push('/splash');
+      setShowIntro(true);
     }
 
     setGreeting(getGreeting());
@@ -39,7 +33,12 @@ export default function Home() {
         if (parsed.name) setUserName(parsed.name);
       }
     } catch { /* ignore */ }
-  }, [router]);
+  }, []);
+
+  const handleIntroComplete = () => {
+    sessionStorage.setItem('zenvy_intro_seen', 'true');
+    setShowIntro(false);
+  };
 
   // Chef's Picks: top rated items across restaurants
   const chefPicks = restaurants.flatMap(res =>
