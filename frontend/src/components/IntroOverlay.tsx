@@ -5,17 +5,20 @@ export default function IntroOverlay({ onComplete }: { onComplete: () => void })
   const [stage, setStage] = useState(0);
 
   useEffect(() => {
-    // 🎞️ "Hyper-Drive / Spatial Warp" Cinematic Pacing (Continuous forward flight)
+    // 🎞️ "Vanga / Animal Style" Cinematic Pacing (Staggered Impact Drops)
     const timers = [
-      setTimeout(() => setStage(1), 300),   // Stage 1: Darkness -> Central Star spark
-      setTimeout(() => setStage(2), 1200),  // Stage 2: 💥 BACKDROP SPATIAL WARP (Expanding lens ripple)
-      setTimeout(() => setStage(3), 2600),  // Stage 3: Noble 3D Chrome Crest materialises in center
-      setTimeout(() => setStage(4), 4200),  // Stage 4: 🚀 HYPER-DRIVE DRIVE THROUGH (Fly into camera)
-      setTimeout(() => onComplete(), 5400) 
+      setTimeout(() => setStage(1), 300),   // Stage 1: Intense darkness, center particle charging
+      setTimeout(() => setStage(2), 1000),  // Stage 2: 💥 IMPACT DROP (Gunshots/Slam trigger)
+      setTimeout(() => setStage(3), 2500),  // Stage 3: All letters lock in place with shockwave
+      setTimeout(() => setStage(4), 4000),  // Stage 4: Searing heat sweep on text frame
+      setTimeout(() => setStage(5), 5200),  // Stage 5: Rapid spatial drive forward
+      setTimeout(() => onComplete(), 6200) 
     ];
 
     return () => timers.forEach(clearTimeout);
   }, [onComplete]);
+
+  const letters = ["Z", "E", "N", "V", "Y"];
 
   return (
     <div
@@ -26,38 +29,45 @@ export default function IntroOverlay({ onComplete }: { onComplete: () => void })
         width: '100%',
         height: '100dvh',
         zIndex: 999999,
-        backgroundColor: '#010101', // Pure Back Matrix Slate
+        backgroundColor: '#010101', // Absolute Void Black
         overflow: 'hidden',
         perspective: '1500px'
       }}
-      className={`transition-all ${stage >= 4 ? 'animate-[hyper-drive_1.4s_cubic-bezier(0.1,1,0.1,1)_forwards]' : 'opacity-100'}`}
+      className={`transition-all ${stage >= 5 ? 'animate-[hyper-drive_1.2s_cubic-bezier(0.1,1,0.1,1)_forwards]' : 'opacity-100'}`}
     >
-      {/* 🔮 Deep Cinematic Backdrop (Warp Horizon Glows) */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        
-        {/* Core Intense Amber Sun (Glows behind center reticle) */}
-        <div 
-          className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[150%] h-[150%] bg-[radial-gradient(circle_at_center,rgba(201,168,76,0.2)_0%,transparent_50%)] blur-[120px] transition-all duration-[2000ms] ${stage >= 2 ? 'opacity-100 scale-100' : 'opacity-0 scale-90'}`} 
-        />
+      {/* 💥 Cinematic Flash / Heat Impact Burst (Triggers on Stage 2) */}
+      <div 
+        className={`absolute inset-0 bg-red-600/30 mix-blend-screen pointer-events-none transition-opacity duration-300 ${stage === 2 ? 'opacity-100 animate-[flash-impact_0.5s_ease-out_forwards]' : 'opacity-0'}`} 
+      />
+      <div 
+        className={`absolute inset-0 bg-[#C9A84C]/40 mix-blend-screen pointer-events-none transition-opacity duration-300 ${stage === 2 ? 'opacity-100 animate-[flash-impact_0.3s_ease-out_0.2s_forwards]' : 'opacity-0'}`} 
+      />
 
-        {/* 🌀 The "Spatial Warp" expanding shockwave with blur dilation */}
+      {/* 🔮 Deep Atmospheric Shimmer (Simulates drift smoke) */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        {/* Core Corona Backglow */}
         <div 
-          className={`absolute top-1/2 left-1/2 rounded-full border border-white/30 backdrop-blur-[6px] mix-blend-screen transition-all ${stage >= 2 ? 'animate-[warp-ripple_3s_cubic-bezier(0.1,1,0.1,1)_forwards]' : 'w-0 h-0 opacity-0'}`} 
+          className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[160%] h-[160%] bg-[radial-gradient(circle_at_center,rgba(239,68,68,0.04)_0%,rgba(196,155,59,0.04)_40%,transparent_60%)] blur-[140px] transition-all duration-[2000ms] ${stage >= 2 ? 'opacity-100 scale-100' : 'opacity-0 scale-90'}`} 
+        />
+        
+        {/* Shockwave Spatial distortion wrapper */}
+        <div 
+          className={`absolute top-1/2 left-1/2 rounded-full border-2 border-red-600/60 backdrop-blur-[4px] mix-blend-screen transition-all ${stage >= 2 ? 'animate-[warp-ripple_3s_cubic-bezier(0.1,1,0.1,1)_forwards]' : 'w-0 h-0 opacity-0'}`} 
         />
         <div 
-          className={`absolute top-1/2 left-1/2 rounded-full border border-[#D4AF37]/50 backdrop-blur-[4px] mix-blend-screen transition-all ${stage >= 2 ? 'animate-[warp-ripple_3s_cubic-bezier(0.15,1,0.1,1)_0.2s_forwards]' : 'w-0 h-0 opacity-0'}`} 
+          className={`absolute top-1/2 left-1/2 rounded-full border border-[#D4AF37]/50 backdrop-blur-[2px] mix-blend-screen transition-all ${stage >= 2 ? 'animate-[warp-ripple_3s_cubic-bezier(0.15,1,0.1,1)_0.15s_forwards]' : 'w-0 h-0 opacity-0'}`} 
         />
       </div>
 
-      {/* 🎬 Letterbox Cinematic Trim Bars */}
-      <div className={`absolute top-0 left-0 w-full bg-black z-50 transition-all duration-[1200ms] cubic-bezier(0.19, 1, 0.22, 1) ${stage >= 1 ? 'h-[6vh]' : 'h-[50dvh]'}`} />
-      <div className={`absolute bottom-0 left-0 w-full bg-black z-50 transition-all duration-[1200ms] cubic-bezier(0.19, 1, 0.22, 1) ${stage >= 1 ? 'h-[6vh]' : 'h-[50dvh]'}`} />
+      {/* 🎬 Premium Movie Bar trim letterboxes */}
+      <div className={`absolute top-0 left-0 w-full bg-black z-50 transition-all duration-[1500ms] cubic-bezier(0.19, 1, 0.22, 1) ${stage >= 1 ? 'h-[7vh]' : 'h-[50dvh]'}`} />
+      <div className={`absolute bottom-0 left-0 w-full bg-black z-50 transition-all duration-[1500ms] cubic-bezier(0.19, 1, 0.22, 1) ${stage >= 1 ? 'h-[7vh]' : 'h-[50dvh]'}`} />
 
-      {/* 💎 SIGNATURE CINEMATIC EMBLEM */}
+      {/* 👑 NOBLE "ANIMAL STYLE" BOLD TYPOGRAPHY REVEAL */}
       <div
         style={{
           position: 'absolute',
-          top: '46%',
+          top: '44%',
           left: '50%',
           transform: `translate(-50%, -50%)`,
           display: 'flex',
@@ -66,89 +76,74 @@ export default function IntroOverlay({ onComplete }: { onComplete: () => void })
           width: '100%',
           zIndex: 40
         }}
-        className={`transition-all duration-[2000ms] ease-out-expo ${stage >= 2 ? 'scale-100 opacity-100' : 'scale-[1.2] opacity-0 blur-md'}`}
       >
-        <div className="relative flex items-center justify-center p-8">
-          {/* Intense center solar core behind crest */}
-          <div className={`absolute inset-0 bg-[#C9A84C]/25 blur-[40px] rounded-full transition-opacity duration-1500 ${stage >= 3 ? 'opacity-100' : 'opacity-0'}`} />
-
-          {/* Precision Noble 3D Chrome Core Crest wrapper */}
-          <div className="w-28 h-28 md:w-32 md:h-32 relative flex items-center justify-center">
-            
-            {/* Elegant outer slow decelerating halo frames */}
-            <div className={`absolute inset-[-15px] border border-[#C9A84C]/20 rounded-full animate-[spin_40s_linear_infinite] transition-opacity ${stage >= 3 ? 'opacity-100' : 'opacity-0'}`} />
-            <div className={`absolute inset-[-5px] border border-white/10 rounded-full -rotate-45 animate-[spin_50s_linear_infinite_reverse] transition-opacity ${stage >= 3 ? 'opacity-100' : 'opacity-0'}`} />
-
-            {/* Main Center Bounding Box (Sleek Chrome reflection feel) */}
-            <div className="w-[85%] h-[85%] bg-[#020202]/85 flex items-center justify-center relative border border-[#C9A84C]/45 shadow-[0_0_80px_rgba(201,168,76,0.15)] overflow-hidden rounded-[8px]">
-              
-              {/* Searing light sweep laser inside the box reticle */}
-              <div className="absolute inset-0 overflow-hidden">
-                <div className={`absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent skew-x-[-35deg] animate-[sweep-flare_3.5s_infinite_linear] transition-opacity ${stage >= 3 ? 'opacity-100' : 'opacity-0'}`} />
-              </div>
-
-              {/* Precise Vector Signature draws IN on stage 3 */}
-              <svg className="w-10 h-10 md:w-11 md:h-11 text-[#D4AF37]" viewBox="0 0 100 100" fill="none">
-                <path
-                  className={`transition-all duration-[2000ms] delay-400 ${stage >= 3 ? 'stroke-dashoffset-0' : 'stroke-dashoffset-[300]'}`}
-                  style={{ strokeDasharray: 300, strokeDashoffset: stage >= 3 ? 0 : 300 }}
-                  d="M25 25 L75 25 L25 75 L75 75"
-                  stroke="currentColor"
-                  strokeWidth="4.5" // Slightly thicker for "Mass" appeal
-                  strokeLinecap="round" strokeLinejoin="round"
-                />
-              </svg>
-
-              {/* Swiss Craft precise framing corners */}
-              <div className="absolute top-[3px] left-[3px] w-1.5 h-1.5 border-t border-l border-[#C9A84C]/90" />
-              <div className="absolute top-[3px] right-[3px] w-1.5 h-1.5 border-t border-r border-[#C9A84C]/90" />
-              <div className="absolute bottom-[3px] left-[3px] w-1.5 h-1.5 border-b border-l border-[#C9A84C]/90" />
-              <div className="absolute bottom-[3px] right-[3px] w-1.5 h-1.5 border-b border-r border-[#C9A84C]/90" />
-            </div>
-          </div>
-        </div>
-
-        {/* 👑 NOBLE MOVIE-TITLE GRADIENT SHADOW TYPOGRAPHY */}
-        <div className="mt-14 text-center">
-          <div className="overflow-hidden">
-            <h1 
-               style={{ fontFamily: "'Playfair Display', serif" }}
-               className={`text-6xl md:text-8xl font-black italic transition-all duration-[2200ms] cubic-bezier(0.1, 1, 0.1, 1) ${stage >= 3 ? 'translate-y-0 opacity-100 tracking-[0.2em] scale-100' : 'translate-y-full opacity-0 tracking-[0.05em] scale-110'}`}
+        <div className="flex gap-4 md:gap-7 items-center justify-center">
+          {letters.map((char, index) => (
+            <span 
+              key={index}
+              style={{ 
+                fontFamily: "'Playfair Display', serif",
+                animationDelay: `${0.8 + index * 0.16}s`, // Highly Staggered intervals
+                filter: 'drop-shadow(0px 6px 12px rgba(0,0,0,0.9)) drop-shadow(0px 0px 40px rgba(212,175,55,0.25))'
+              }}
+              className={`text-6xl md:text-8xl font-black italic tracking-widest bg-gradient-to-b from-[#FFFDF9] via-[#D4AF37] to-[#825B10] bg-clip-text text-transparent opacity-0 ${stage >= 2 ? 'animate-[drop-in_0.8s_cubic-bezier(0.1,1,0.1,1)_forwards]' : 'opacity-0'}`}
             >
-              {/* Chrome Gradient with bold shadow extrusions forming depth volume */}
-              <span 
-                style={{ filter: 'drop-shadow(0px 3px 6px rgba(0,0,0,0.85)) drop-shadow(0px 0px 40px rgba(212,175,55,0.3))' }}
-                className="bg-gradient-to-b from-[#FFFDF9] via-[#D4AF37] to-[#8A641A] bg-clip-text text-transparent"
-              >
-                  Zenvy
-              </span>
-            </h1>
-          </div>
-          
-          <p className={`mt-5 text-[11px] md:text-[12px] font-black uppercase tracking-[0.6em] opacity-0 transition-opacity duration-[1500ms] delay-600 ${stage >= 3 ? 'opacity-60' : 'opacity-0'}`} style={{ color: '#EBE3CE' }}>
-             The Apex of Convenience
-          </p>
+              {char}
+            </span>
+          ))}
         </div>
+
+        <p 
+          style={{ 
+              letterSpacing: stage >= 3 ? '0.7em' : '0.4em', 
+              transition: 'letter-spacing 3.5s cubic-bezier(0.19, 1, 0.22, 1), opacity 3s',
+              marginRight: stage >= 3 ? '-0.7em' : '-0.4em'
+          }}
+          className={`mt-8 text-[11px] md:text-[12px] font-black uppercase tracking-[0.4em] transition-all duration-[2000ms] delay-[1800ms] ${stage >= 3 ? 'translate-y-0 opacity-60 scale-100' : 'translate-y-4 opacity-0 scale-95'}`} 
+          style={{ color: '#EBE3CE' }}
+        >
+           THE APEX OF CONVENIENCE
+        </p>
+      </div>
+
+      {/* 🕯️ Searing Laser Sweep behind text (Triggers on letters settlement) */}
+      <div className="absolute inset-x-0 top-1/2 pointer-events-none">
+        <div 
+          style={{ transform: 'translateY(-50%) rotate(-12deg)' }}
+          className={`absolute top-0 left-0 w-[400%] h-[2px] bg-gradient-to-r from-transparent via-[#D4AF37] to-transparent blur-[4px] opacity-0 transition-opacity duration-[1500ms] ${stage >= 3 ? 'opacity-100 animate-[sweep-flare_4.5s_cubic-bezier(0.19,1,0.22,1)_0.5s_forwards]' : 'opacity-0'}`} 
+        />
+         <div 
+          style={{ transform: 'translateY(-50%) rotate(-12deg)' }}
+          className={`absolute top-0 left-0 w-[400%] h-[1px] bg-gradient-to-r from-transparent via-white to-transparent mix-blend-screen opacity-0 transition-opacity duration-[1500ms] ${stage >= 3 ? 'opacity-100 animate-[sweep-flare_4.5s_cubic-bezier(0.19,1,0.22,1)_0.5s_forwards]' : 'opacity-0'}`} 
+        />
       </div>
 
       <style jsx>{`
-        .ease-out-expo {
-          transition-timing-function: cubic-bezier(0.19, 1, 0.22, 1);
+        @keyframes flash-impact {
+          0% { opacity: 0; }
+          20% { opacity: 1; }
+          100% { opacity: 0; }
         }
         @keyframes warp-ripple {
           0% { transform: translate(-50%, -50%) scale(0) rotate(0deg); opacity: 0; }
-          15% { opacity: 1; border-width: 4px; }
-          100% { transform: translate(-50%, -50%) scale(25) rotate(5deg); opacity: 0; border-width: 0.5px; }
+          15% { opacity: 1; border-width: 4px; filter: blur(0px); }
+          100% { transform: translate(-50%, -50%) scale(22) rotate(3deg); opacity: 0; border-width: 0.5px; filter: blur(30px); }
+        }
+        @keyframes drop-in {
+          0% { transform: translateY(-120px) scale(1.3); filter: blur(15px); opacity: 0; }
+          40% { opacity: 1; }
+          100% { transform: translateY(0) scale(1); filter: blur(0px); opacity: 1; }
         }
         @keyframes sweep-flare {
-          0% { transform: translateX(-100%) skewX(-35deg); }
-          40% { transform: translateX(200%) skewX(-35deg); }
-          100% { transform: translateX(200%) skewX(-35deg); }
+          0% { transform: translateY(-50%) rotate(-12deg) translateX(-100%); opacity: 0; }
+          30% { opacity: 0.8; }
+          70% { opacity: 0.8; }
+          100% { transform: translateY(-50%) rotate(-12deg) translateX(100%); opacity: 0; }
         }
         @keyframes hyper-drive {
           0% { transform: scale(1); filter: blur(0px); opacity: 1; }
-          40% { filter: blur(4px); }
-          100% { transform: scale(10); filter: blur(60px); opacity: 0; }
+          40% { filter: blur(8px); }
+          100% { transform: scale(12); filter: blur(40px); opacity: 0; }
         }
       `}</style>
     </div>
