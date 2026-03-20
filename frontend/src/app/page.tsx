@@ -33,6 +33,9 @@ interface RentalItem {
   tags?: string[];
   restaurantName?: string;
   category?: string;
+  specs?: { engine?: string; topSpeed?: string; power?: string; fuel?: string };
+  ownerName?: string;
+  ownerPhone?: string;
 }
 
 interface Order {
