@@ -372,7 +372,7 @@ export default function Home() {
           </div>
         )}
 
-        <div className="max-w-[430px] mx-auto relative z-10 px-6 pt-14">
+        <div className="w-full relative z-10 px-6 pt-14 md:px-10 lg:px-14">
           <header className="mb-8">
             <div className="flex items-center justify-between mb-8">
               <div className="flex items-center gap-2.5">

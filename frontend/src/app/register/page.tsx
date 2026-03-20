@@ -90,7 +90,7 @@ export default function RegisterPage() {
 
   return (
     <main className="min-h-screen bg-background text-white p-8 pb-20">
-      <div className="max-w-[430px] mx-auto">
+      <div className="w-full sm:max-w-[430px] mx-auto">
         <Link href="/login" className="w-10 h-10 bg-white/5 rounded-full flex items-center justify-center border border-white/10 mb-8 mt-4">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" />

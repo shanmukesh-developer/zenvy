@@ -219,7 +219,7 @@ export default function ProfilePage() {
       {/* Edit Modal (Portal Logic) */}
       {isEditing && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 bg-black/90 backdrop-blur-xl animate-in fade-in duration-300">
-          <div className="w-full max-w-[380px] space-y-8 animate-in slide-in-from-bottom-10 duration-500">
+          <div className="w-full sm:max-w-[380px] space-y-8 animate-in slide-in-from-bottom-10 duration-500">
             <h3 className="text-3xl font-black uppercase tracking-widest text-center">Refine Profile</h3>
             <div className="space-y-6">
               <div className="space-y-2">
