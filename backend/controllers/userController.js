@@ -1,8 +1,8 @@
-const User = require('../models/User');
+const { getUserModel } = require('../models/User');
 const jwt = require('jsonwebtoken');
 
 const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '30d' });
+  return jwt.sign({ id }, process.env.JWT_SECRET || 'secret', { expiresIn: '30d' });
 };
 
 // @desc    Register a new user
@@ -10,29 +10,22 @@ const generateToken = (id) => {
 const registerUser = async (req, res) => {
   const { name, phone, password, hostelBlock, roomNumber } = req.body;
 
-  const userExists = await User.findOne({ phone });
+  try {
+    const User = getUserModel();
+    const userExists = await User.findOne({ where: { phone } });
+    if (userExists) return res.status(400).json({ message: 'User already exists' });
 
-  if (userExists) {
-    return res.status(400).json({ message: 'User already exists' });
-  }
-
-  const user = await User.create({
-    name,
-    phone,
-    password,
-    hostelBlock,
-    roomNumber
-  });
-
-  if (user) {
+    const user = await User.create({ name, phone, password, hostelBlock, roomNumber });
     res.status(201).json({
-      _id: user._id,
+      _id: user.id,
       name: user.name,
       phone: user.phone,
-      token: generateToken(user._id)
+      isElite: false,
+      token: generateToken(user.id)
     });
-  } else {
-    res.status(400).json({ message: 'Invalid user data' });
+  } catch (error) {
+    console.error('[USER_REGISTER_ERROR]', error);
+    res.status(500).json({ message: 'Internal Server Error' });
   }
 };
 
@@ -41,46 +34,111 @@ const registerUser = async (req, res) => {
 const authUser = async (req, res) => {
   const { phone, password } = req.body;
 
-  const user = await User.findOne({ phone });
-
-  if (user && (await user.comparePassword(password))) {
-    res.json({
-      _id: user._id,
-      name: user.name,
-      phone: user.phone,
-      token: generateToken(user._id)
-    });
-  } else {
-    res.status(401).json({ message: 'Invalid phone or password' });
+  try {
+    const User = getUserModel();
+    const user = await User.findOne({ where: { phone } });
+    if (user && (await user.comparePassword(password))) {
+      res.json({
+        _id: user.id,
+        name: user.name,
+        phone: user.phone,
+        isElite: user.isElite || false,
+        hostelBlock: user.hostelBlock,
+        roomNumber: user.roomNumber,
+        zenPoints: user.zenPoints || 0,
+        token: generateToken(user.id)
+      });
+    } else {
+      res.status(401).json({ message: 'Invalid phone or password' });
+    }
+  } catch (error) {
+    console.error('[AUTH_ERROR]', error);
+    res.status(500).json({ message: 'Internal Server Error' });
   }
 };
 
-// @desc    Save Firebase Cloud Messaging Device Token
+// @desc    Save FCM Token
 // @route   POST /api/users/fcm-token
 const saveFcmToken = async (req, res) => {
   const { userId, fcmToken, appVersion } = req.body;
 
   try {
-    const user = await User.findById(userId);
+    const User = getUserModel();
+    const user = await User.findByPk(userId);
     if (user) {
-      if (!user.fcmTokens) user.fcmTokens = [];
-      
-      // Update or add the new token ensuring duplicates aren't saved
-      const existingTokenIndex = user.fcmTokens.findIndex(t => t.appVersion === appVersion);
-      if (existingTokenIndex > -1) {
-        user.fcmTokens[existingTokenIndex].token = fcmToken;
-      } else {
-        user.fcmTokens.push({ token: fcmToken, appVersion });
-      }
-
+      const tokens = user.fcmTokens || [];
+      const idx = tokens.findIndex(t => t.appVersion === appVersion);
+      if (idx > -1) { tokens[idx].token = fcmToken; } else { tokens.push({ token: fcmToken, appVersion }); }
+      user.fcmTokens = tokens;
       await user.save();
-      res.json({ message: 'FCM Token saved successfully' });
+      res.json({ message: 'FCM Token saved' });
     } else {
       res.status(404).json({ message: 'User not found' });
     }
   } catch (error) {
+    console.error('[FCM_ERROR]', error);
     res.status(500).json({ message: 'Failed to save token' });
   }
 };
 
-module.exports = { registerUser, authUser, saveFcmToken };
+// @desc    Get user profile
+// @route   GET /api/users/profile
+const getUserProfile = async (req, res) => {
+  try {
+    const User = getUserModel();
+    const user = await User.findByPk(req.user.id);
+    if (user) {
+      res.json({
+        _id: user.id,
+        name: user.name,
+        phone: user.phone,
+        hostelBlock: user.hostelBlock,
+        roomNumber: user.roomNumber,
+        walletBalance: user.walletBalance,
+        streakCount: user.streakCount,
+        totalOrders: user.totalOrders,
+        role: user.role,
+        zenPoints: user.zenPoints || 0,
+        isElite: user.isElite || false
+      });
+    } else {
+      res.status(404).json({ message: 'User not found' });
+    }
+  } catch (error) {
+    console.error('[PROFILE_ERROR]', error);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+// @desc    Update user profile
+// @route   PUT /api/users/profile
+const updateUserProfile = async (req, res) => {
+  try {
+    const User = getUserModel();
+    const user = await User.findByPk(req.user.id);
+    if (user) {
+      if (req.body.name) user.name = req.body.name;
+      if (req.body.hostelBlock) user.hostelBlock = req.body.hostelBlock;
+      if (req.body.roomNumber) user.roomNumber = req.body.roomNumber;
+      if (req.body.isElite !== undefined) user.isElite = req.body.isElite;
+      await user.save();
+      res.json({
+        _id: user.id,
+        name: user.name,
+        phone: user.phone,
+        hostelBlock: user.hostelBlock,
+        roomNumber: user.roomNumber,
+        isElite: user.isElite,
+        zenPoints: user.zenPoints,
+        token: generateToken(user.id)
+      });
+    } else {
+      res.status(404).json({ message: 'User not found' });
+    }
+  } catch (error) {
+    console.error('[UPDATE_PROFILE_ERROR]', error);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
+module.exports = { registerUser, authUser, saveFcmToken, getUserProfile, updateUserProfile };

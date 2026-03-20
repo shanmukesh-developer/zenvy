@@ -65,7 +65,7 @@ export default function PushNotificationManager() {
         }
       }
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend.onrender.com';
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
       await fetch(`${apiUrl}/api/users/fcm-token`, {
         method: 'POST',
         headers: {

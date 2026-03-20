@@ -1,76 +1,68 @@
 "use client";
 import { useEffect, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { Geolocation } from '@capacitor/geolocation';
-import { Capacitor } from '@capacitor/core';
 
-const SOCKET_URL = 'http://10.249.116.93:5000';
-
-export const useTracking = (orderId: string, riderName: string) => {
-  const socketRef = useRef<Socket | null>(null);
-  const watchIdRef = useRef<string | null>(null);
-
+export const useTracking = (orderId: string, riderName: string, riderId?: string, socket?: Socket | null) => {
   useEffect(() => {
-    if (!orderId) return;
-
-    // Initialize socket
-    socketRef.current = io(SOCKET_URL);
+    if (!orderId || !socket) return;
 
     // Join order room
-    socketRef.current.emit('joinOrder', orderId);
+    socket.emit('joinOrder', orderId);
 
-    const startTracking = async () => {
-      if (Capacitor.isNativePlatform()) {
-        try {
-          const permissions = await Geolocation.checkPermissions();
-          if (permissions.location !== 'granted') {
-            await Geolocation.requestPermissions();
-          }
+    let watchId: number | null = null;
+    let fallbackInterval: NodeJS.Timeout | null = null;
 
-          watchIdRef.current = await Geolocation.watchPosition(
-            { enableHighAccuracy: true, timeout: 10000 },
-            (position) => {
-              if (position && socketRef.current) {
-                socketRef.current.emit('updateLocation', {
-                  orderId,
-                  lat: position.coords.latitude,
-                  lng: position.coords.longitude,
-                  riderName
-                });
-              }
+    const startTracking = () => {
+      if ("geolocation" in navigator) {
+        watchId = navigator.geolocation.watchPosition(
+          (position) => {
+            if (socket.connected) {
+              const { latitude, longitude } = position.coords;
+              socket.emit('updateLocation', {
+                orderId,
+                lat: latitude,
+                lng: longitude,
+                riderName,
+                riderId
+              });
+              console.log(`[GPS] Real position update: ${latitude}, ${longitude}`);
             }
-          );
-        } catch (err) {
-          console.error('GPS tracking error:', err);
-        }
+          },
+          (error) => {
+            console.warn("[GPS] Real tracking failed, switching to simulation:", error.message);
+            startSimulation();
+          },
+          { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+        );
       } else {
-        // Fallback simulate movement for web/dev
-        const interval = setInterval(() => {
-          if (socketRef.current) {
-            const lat = 16.506 + (Math.random() - 0.5) * 0.005;
-            const lng = 80.648 + (Math.random() - 0.5) * 0.005;
-            socketRef.current.emit('updateLocation', {
-              orderId,
-              lat,
-              lng,
-              riderName
-            });
-          }
-        }, 5000);
-        return interval;
+        startSimulation();
       }
     };
 
-    const simInterval = startTracking();
+    const startSimulation = () => {
+      if (fallbackInterval) return;
+      fallbackInterval = setInterval(() => {
+        if (socket.connected) {
+          const lat = 16.4632 + (Math.random() - 0.5) * 0.003;
+          const lng = 80.5064 + (Math.random() - 0.5) * 0.003;
+          socket.emit('updateLocation', {
+            orderId,
+            lat,
+            lng,
+            riderName,
+            riderId
+          });
+        }
+      }, 5000);
+    };
+
+    startTracking();
 
     return () => {
-      if (watchIdRef.current) {
-        Geolocation.clearWatch({ id: watchIdRef.current });
-      }
-      simInterval.then(iv => iv && clearInterval(iv));
-      socketRef.current?.disconnect();
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      if (fallbackInterval) clearInterval(fallbackInterval);
     };
-  }, [orderId, riderName]);
+  }, [orderId, riderName, riderId, socket]);
 
-  return { socket: socketRef.current };
+  return { socket };
 };

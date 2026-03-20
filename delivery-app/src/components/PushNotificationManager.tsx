@@ -65,14 +65,14 @@ export default function PushNotificationManager() {
         }
       }
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend.onrender.com';
-      await fetch(`${apiUrl}/api/users/fcm-token`, {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      await fetch(`${apiUrl}/api/delivery/fcm-token`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ userId, fcmToken, appVersion: 'delivery' })
+        body: JSON.stringify({ fcmToken, appVersion: 'delivery' })
       });
       console.log('Registered FCM Token with Backend');
     } catch (e) {

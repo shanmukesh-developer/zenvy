@@ -1,17 +1,40 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const { getSequelize } = require('../config/db');
+const bcrypt = require('bcryptjs');
 
-const deliveryPartnerSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  phone: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
-  vehicleType: { type: String },
-  liveLocation: {
-    lat: { type: Number },
-    lng: { type: Number }
-  },
-  isOnline: { type: Boolean, default: false },
-  currentOrderId: { type: mongoose.Schema.Types.ObjectId, ref: 'Order' },
-  totalEarnings: { type: Number, default: 0 }
-}, { timestamps: true });
+let DeliveryPartner;
 
-module.exports = mongoose.model('DeliveryPartner', deliveryPartnerSchema);
+const getDeliveryPartnerModel = () => {
+  if (DeliveryPartner) return DeliveryPartner;
+  const sequelize = getSequelize();
+  if (!sequelize) return null;
+
+  DeliveryPartner = sequelize.define('DeliveryPartner', {
+    id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    name: { type: DataTypes.STRING, allowNull: false },
+    phone: { type: DataTypes.STRING, allowNull: false, unique: true },
+    password: { type: DataTypes.STRING, allowNull: false },
+    vehicleType: { type: DataTypes.STRING },
+    liveLocation: { type: DataTypes.JSONB, defaultValue: { lat: null, lng: null } },
+    isOnline: { type: DataTypes.BOOLEAN, defaultValue: false },
+    currentOrderId: { type: DataTypes.STRING },
+    totalEarnings: { type: DataTypes.FLOAT, defaultValue: 0 },
+    zenPoints: { type: DataTypes.INTEGER, defaultValue: 0 },
+    averageRating: { type: DataTypes.FLOAT, defaultValue: 5 },
+    totalRatings: { type: DataTypes.INTEGER, defaultValue: 0 },
+    fcmTokens: { type: DataTypes.JSONB, defaultValue: [] },
+    isApproved: { type: DataTypes.BOOLEAN, defaultValue: false }
+  }, { timestamps: true });
+
+  DeliveryPartner.beforeCreate(async (partner) => {
+    partner.password = await bcrypt.hash(partner.password, 10);
+  });
+
+  DeliveryPartner.prototype.comparePassword = async function(candidatePassword) {
+    return await bcrypt.compare(candidatePassword, this.password);
+  };
+
+  return DeliveryPartner;
+};
+
+module.exports = { getDeliveryPartnerModel };

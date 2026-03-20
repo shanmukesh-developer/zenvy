@@ -1,13 +1,24 @@
 "use client";
 import { useState, useEffect, useRef } from 'react';
-import { restaurants } from '@/data/restaurants';
 import Link from 'next/link';
 import { useCart } from '@/context/CartContext';
 import Image from 'next/image';
 import SuccessOverlay from '@/components/SuccessOverlay';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+
 export default function RestaurantMenuClient({ restaurantId }: { restaurantId: string }) {
-  const restaurant = restaurants.find(r => r.id === restaurantId);
+  // Legacy Redirect Map
+  const legacyIdMap: Record<string, string> = {
+    'sweet-shop': 'boutique-sweets-elite',
+    'zenvy-bakery': 'boutique-bakery-elite',
+    'summer-specials': 'boutique-summer-elite',
+    'fruit-shop': 'boutique-fruits-elite'
+  };
+
+  const effectiveId = (legacyIdMap[restaurantId] || restaurantId).replace(/\/$/, "");
+  const [restaurant, setRestaurant] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
   const { totalItems, addToCart } = useCart();
   const [scrollY, setScrollY] = useState(0);
   const [overlay, setOverlay] = useState<{ isOpen: boolean; title: string; message: string; type?: 'success' | 'error' }>({
@@ -16,7 +27,21 @@ export default function RestaurantMenuClient({ restaurantId }: { restaurantId: s
     message: '',
   });
   const [addedId, setAddedId] = useState<string | null>(null);
+  const [activeCategory, setActiveCategory] = useState<string>('All');
   const mainRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/users/restaurants/${effectiveId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.name) setRestaurant(data);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error('[FETCH_ERROR]', err);
+        setLoading(false);
+      });
+  }, [effectiveId]);
 
   useEffect(() => {
     const el = mainRef.current;
@@ -26,9 +51,14 @@ export default function RestaurantMenuClient({ restaurantId }: { restaurantId: s
     return () => el.removeEventListener('scroll', handleScroll);
   }, []);
 
-  if (!restaurant) return <div className="p-8 text-white">Restaurant not found.</div>;
+  if (loading) return <div className="p-8 text-white min-h-screen text-center animate-pulse pt-20">Loading Menu...</div>;
+  if (!restaurant) return <div className="p-8 text-white min-h-screen pt-20 text-center font-bold">Restaurant not found.</div>;
 
-  const handleAddToCart = (item: typeof restaurant.menu[0]) => {
+  const filteredMenu = activeCategory === 'All' 
+    ? (restaurant.menu || [])
+    : (restaurant.menu || []).filter((item: any) => item.category === activeCategory);
+
+  const handleAddToCart = (item: any) => {
     addToCart({
       id: item.id,
       name: item.name,
@@ -97,9 +127,12 @@ export default function RestaurantMenuClient({ restaurantId }: { restaurantId: s
         <div className="gold-line mb-8" />
 
         {/* Category Pills */}
-        <div className="flex gap-3 overflow-x-auto scrollbar-hide mb-10">
-          {restaurant.categories.map((cat, idx) => (
-            <button key={cat} className={`px-5 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all duration-300 ${idx === 0 ? 'bg-primary-yellow text-black shadow-lg shadow-primary-yellow/20' : 'glass-card text-secondary-text hover:text-white'}`}>
+        <div className="flex gap-3 overflow-x-auto scrollbar-hide mb-10 pb-2 -mx-6 px-6">
+          {['All', ...(restaurant.categories || [])].map((cat: string) => (
+            <button 
+              key={cat} 
+              onClick={() => setActiveCategory(cat)}
+              className={`px-5 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all duration-300 shadow-xl ${activeCategory === cat ? 'bg-primary-yellow text-black shadow-primary-yellow/20 scale-105' : 'glass-card text-secondary-text hover:text-white'}`}>
               {cat}
             </button>
           ))}
@@ -107,9 +140,9 @@ export default function RestaurantMenuClient({ restaurantId }: { restaurantId: s
 
         {/* Menu Items */}
         <div className="space-y-4">
-          {restaurant.menu.map((item) => (
-            <div key={item.id} className="flex gap-4 items-center glass-card p-4 rounded-[28px] hover:border-[#C9A84C]/15 transition-all duration-300">
-              <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-[#C9A84C]/20 bg-black flex-shrink-0 relative">
+          {filteredMenu.map((item: any) => (
+            <Link href={`/products/${item.id}`} key={item.id} className="flex gap-4 items-center glass-card p-4 rounded-[28px] hover:border-[#C9A84C]/15 transition-all duration-300 group cursor-pointer active:scale-[0.98]">
+              <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-[#C9A84C]/20 bg-black flex-shrink-0 relative group-hover:scale-105 transition-transform duration-300">
                  <Image 
                    src={item.image} 
                    alt={item.name} 
@@ -118,13 +151,13 @@ export default function RestaurantMenuClient({ restaurantId }: { restaurantId: s
                  />
               </div>
               <div className="flex-1">
-                 <h3 className="font-bold text-sm mb-1 text-white/95">{item.name}</h3>
+                 <h3 className="font-bold text-sm mb-1 text-white/95 group-hover:text-primary-yellow transition-colors">{item.name}</h3>
                  <p className="text-[10px] text-secondary-text line-clamp-1 mb-2">{item.description || `Fresh from ${restaurant.name}`}</p>
                  <div className="flex justify-between items-center">
-                    <span className="font-black text-gold-gradient text-sm">₹{item.price}</span>
+                    <span className="font-black text-gold-gradient text-sm shadow-sm opacity-90 group-hover:opacity-100">₹{item.price}</span>
                     <button
-                      onClick={(e) => { e.preventDefault(); handleAddToCart(item); }}
-                      className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300 ${
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleAddToCart(item); }}
+                      className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300 z-10 ${
                         addedId === item.id
                           ? 'bg-primary-yellow text-black animate-gold-pulse scale-110'
                           : 'bg-white/5 border border-white/10 text-white hover:border-[#C9A84C]/30 hover:bg-[#C9A84C]/10'
@@ -134,7 +167,7 @@ export default function RestaurantMenuClient({ restaurantId }: { restaurantId: s
                     </button>
                  </div>
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       </div>

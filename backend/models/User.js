@@ -1,31 +1,40 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const { getSequelize } = require('../config/db');
 const bcrypt = require('bcryptjs');
 
-const userSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  phone: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
-  hostelBlock: { type: String, required: true },
-  roomNumber: { type: String, required: true },
-  walletBalance: { type: Number, default: 0 },
-  streakCount: { type: Number, default: 0 },
-  lastOrderDate: { type: Date },
-  totalOrders: { type: Number, default: 0 },
-  role: { type: String, enum: ['student', 'admin'], default: 'student' },
-  fcmTokens: [{
-    token: { type: String },
-    appVersion: { type: String }
-  }]
-}, { timestamps: true });
+let User;
 
-userSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) return next();
-  this.password = await bcrypt.hash(this.password, 10);
-  next();
-});
+const getUserModel = () => {
+  if (User) return User;
+  const sequelize = getSequelize();
+  if (!sequelize) return null;
 
-userSchema.methods.comparePassword = async function(candidatePassword) {
-  return await bcrypt.compare(candidatePassword, this.password);
+  User = sequelize.define('User', {
+    id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    name: { type: DataTypes.STRING, allowNull: false },
+    phone: { type: DataTypes.STRING, allowNull: false, unique: true },
+    password: { type: DataTypes.STRING, allowNull: false },
+    hostelBlock: { type: DataTypes.STRING, allowNull: false },
+    roomNumber: { type: DataTypes.STRING, allowNull: false },
+    walletBalance: { type: DataTypes.FLOAT, defaultValue: 0 },
+    streakCount: { type: DataTypes.INTEGER, defaultValue: 0 },
+    lastOrderDate: { type: DataTypes.DATE },
+    totalOrders: { type: DataTypes.INTEGER, defaultValue: 0 },
+    role: { type: DataTypes.ENUM('student', 'admin'), defaultValue: 'student' },
+    zenPoints: { type: DataTypes.INTEGER, defaultValue: 0 },
+    isElite: { type: DataTypes.BOOLEAN, defaultValue: false },
+    fcmTokens: { type: DataTypes.JSONB, defaultValue: [] }
+  }, { timestamps: true });
+
+  User.beforeCreate(async (user) => {
+    user.password = await bcrypt.hash(user.password, 10);
+  });
+
+  User.prototype.comparePassword = async function(candidatePassword) {
+    return await bcrypt.compare(candidatePassword, this.password);
+  };
+
+  return User;
 };
 
-module.exports = mongoose.model('User', userSchema);
+module.exports = { getUserModel };

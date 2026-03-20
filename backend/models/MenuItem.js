@@ -1,13 +1,27 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const { getSequelize } = require('../config/db');
 
-const menuItemSchema = new mongoose.Schema({
-  restaurantId: { type: mongoose.Schema.Types.ObjectId, ref: 'Restaurant', required: true },
-  name: { type: String, required: true },
-  price: { type: Number, required: true },
-  description: { type: String },
-  imageUrl: { type: String },
-  category: { type: String },
-  isAvailable: { type: Boolean, default: true }
-}, { timestamps: true });
+let MenuItem;
 
-module.exports = mongoose.model('MenuItem', menuItemSchema);
+const getMenuItemModel = () => {
+  if (MenuItem) return MenuItem;
+  const sequelize = getSequelize();
+  if (!sequelize) return null;
+
+  MenuItem = sequelize.define('MenuItem', {
+    id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    restaurantId: { type: DataTypes.UUID, allowNull: false },
+    name: { type: DataTypes.STRING, allowNull: false },
+    price: { type: DataTypes.FLOAT, allowNull: false },
+    description: { type: DataTypes.TEXT },
+    imageUrl: { type: DataTypes.STRING },
+    category: { type: DataTypes.STRING },
+    isAvailable: { type: DataTypes.BOOLEAN, defaultValue: true },
+    isEliteOnly: { type: DataTypes.BOOLEAN, defaultValue: false },
+    customCommission: { type: DataTypes.FLOAT }
+  }, { timestamps: true });
+
+  return MenuItem;
+};
+
+module.exports = { getMenuItemModel };

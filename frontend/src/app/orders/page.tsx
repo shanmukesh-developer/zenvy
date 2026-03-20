@@ -40,7 +40,8 @@ export default function OrdersPage() {
     const fetchOrders = async () => {
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-exs6.onrender.com'}/api/orders/myorders`, {
+        const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+        const res = await fetch(`${API_URL}/api/orders/myorders`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) {

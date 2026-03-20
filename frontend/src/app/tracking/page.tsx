@@ -2,20 +2,29 @@
 import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import Image from 'next/image';
 import io from 'socket.io-client';
 
 import { APIProvider, Map, AdvancedMarker, useMap, useMapsLibrary } from '@vis.gl/react-google-maps';
 
-const RESTAURANT_COORD = { lat: 16.5120, lng: 80.6400 };
-const HOME_COORD = { lat: 16.5060, lng: 80.6480 };
+const RESTAURANT_COORD = { lat: 16.4645, lng: 80.5050 };
+const HOME_COORD = { lat: 16.4632, lng: 80.5064 };
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5000';
+
+interface OrderInfo {
+  _id: string;
+  status: string;
+  totalPrice: number;
+  items?: { name: string; quantity: number }[];
+}
 
 function MapDirections({ origin, destination }: { origin: {lat: number, lng: number}, destination: {lat: number, lng: number} }) {
   const map = useMap();
   const routesLibrary = useMapsLibrary('routes');
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [directionsService, setDirectionsService] = useState<any>();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [directionsRenderer, setDirectionsRenderer] = useState<any>();
+  const [directionsService, setDirectionsService] = useState<google.maps.DirectionsService | null>(null);
+  const [directionsRenderer, setDirectionsRenderer] = useState<google.maps.DirectionsRenderer | null>(null);
 
   useEffect(() => {
     if (!routesLibrary || !map) return;
@@ -37,10 +46,10 @@ function MapDirections({ origin, destination }: { origin: {lat: number, lng: num
     directionsService.route({
       origin,
       destination,
-      travelMode: 'DRIVING',
-    }).then((response: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+      travelMode: google.maps.TravelMode.DRIVING,
+    }).then((response) => {
       directionsRenderer.setDirections(response);
-    }).catch((err: any) => console.error("Directions route failed: ", err)); // eslint-disable-line @typescript-eslint/no-explicit-any
+    }).catch((err) => console.error("Directions route failed: ", err));
   }, [directionsService, directionsRenderer, origin, destination]);
 
   return null;
@@ -51,19 +60,38 @@ function TrackingContent() {
   const orderId = searchParams.get('id');
   const [status, setStatus] = useState(1); 
   const [location, setLocation] = useState(RESTAURANT_COORD); // Default start
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [orderInfo, setOrderInfo] = useState<any>(null);
+  const [orderInfo, setOrderInfo] = useState<OrderInfo | null>(null);
+  const [isElite, setIsElite] = useState(false);
+  const [captainSpeed, setCaptainSpeed] = useState(12.4);
 
   useEffect(() => {
-    if (!orderId) return;
+    // Check elite status from local storage
+    try {
+      const stored = localStorage.getItem('user');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        setIsElite(parsed.isElite || false);
+      }
+    } catch { /* ignore */ }
 
-    const socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'https://hostelbites-backend.onrender.com');
+    // Random speed flicker for "Live" feel
+    const speedInterval = setInterval(() => {
+       setCaptainSpeed(prev => {
+         const noise = Math.random() * 2 - 1;
+         const newSpeed = Math.max(8, Math.min(25, prev + noise));
+         return parseFloat(newSpeed.toFixed(1));
+       });
+    }, 3000);
+
+    if (!orderId) return () => clearInterval(speedInterval);
+
+    const socket = io(SOCKET_URL);
     
     socket.emit('joinOrder', orderId);
 
     socket.on('statusUpdated', (newStatus: string) => {
       if (newStatus === 'Accepted') setStatus(1);
-      if (newStatus === 'Picked Up') setStatus(2);
+      if (newStatus === 'PickedUp') setStatus(2);
       if (newStatus === 'Delivered') setStatus(3);
     });
 
@@ -75,13 +103,13 @@ function TrackingContent() {
     const fetchOrder = async () => {
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend.onrender.com'}/api/orders/${orderId}`, {
+        const res = await fetch(`${API_URL}/api/orders/${orderId}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         const data = await res.json();
         setOrderInfo(data);
         if (data.status === 'Accepted') setStatus(1);
-        if (data.status === 'Picked Up') setStatus(2);
+        if (data.status === 'PickedUp') setStatus(2);
         if (data.status === 'Delivered') setStatus(3);
       } catch (err) {
         console.error('Error fetching order:', err);
@@ -92,6 +120,7 @@ function TrackingContent() {
 
     return () => {
       socket.disconnect();
+      clearInterval(speedInterval);
     };
   }, [orderId]);
 
@@ -104,7 +133,7 @@ function TrackingContent() {
   const mapId = "4f8f4a1f5a5a5a5a"; // Placeholder Map ID for styling
 
   return (
-    <main className="min-h-screen bg-background text-white p-8">
+    <main className="min-h-screen bg-background text-white p-8 animate-page">
       {/* Header */}
       <div className="flex items-center justify-between mb-12">
         <Link href="/" className="w-10 h-10 bg-white/5 rounded-full flex items-center justify-center border border-white/10">
@@ -156,6 +185,70 @@ function TrackingContent() {
            LAT: {location.lat.toFixed(4)} <br />
            LNG: {location.lng.toFixed(4)}
          </div>
+      </div>
+
+      {/* Live Sync Status & Telemetry */}
+      <div className="flex gap-4 mb-8">
+        <div className="flex-[2] glass-card p-6 border-[#C9A84C]/20 relative overflow-hidden">
+           <div className="absolute top-0 right-0 p-2 opacity-5 pointer-events-none">
+              <span className="text-[40px] font-black italic">ELITE</span>
+           </div>
+           
+           <div className="flex items-center gap-5 relative z-10">
+              <div className="w-16 h-16 rounded-2xl overflow-hidden border border-white/10 shadow-2xl">
+                 <Image 
+                   src="/assets/zenvy_delivery_captain_avatar_1773840269845.png" 
+                   alt="Captain" 
+                   width={64} 
+                   height={64} 
+                   className="object-cover"
+                 />
+              </div>
+              <div className="flex-1">
+                 <div className="flex justify-between items-start">
+                    <div>
+                       <div className="flex items-center gap-1.5 mb-1">
+                         <p className="text-[8px] font-black uppercase tracking-[0.3em] text-primary-yellow">Delivery Captain</p>
+                         <span className="bg-emerald-500/10 text-emerald-500 text-[6px] font-black px-1.5 py-0.5 rounded border border-emerald-500/20">VERIFIED</span>
+                       </div>
+                       <h3 className="text-sm font-black text-white">Captain Aryan • 4.9⭐</h3>
+                       <p className="text-[7px] font-bold text-secondary-text uppercase tracking-widest mt-0.5 whitespace-nowrap">SRM Eco-Cycle #72</p>
+                    </div>
+                    <div className="text-right">
+                       <p className="text-[8px] font-black text-secondary-text uppercase mb-1">Live Speed</p>
+                       <p className="text-xs font-black text-white italic">{captainSpeed} km/h</p>
+                    </div>
+                 </div>
+                 <div className="w-full h-1 bg-white/5 rounded-full mt-3 overflow-hidden">
+                    <div className="h-full bg-primary-yellow w-3/4 animate-pulse relative">
+                       <div className="absolute inset-0 bg-white/20 animate-shimmer" />
+                    </div>
+                 </div>
+              </div>
+           </div>
+        </div>
+
+        <div className="flex-1 glass-card p-6 border-white/[0.05] flex flex-col justify-center items-center">
+           {isElite ? (
+             <>
+               <p className="text-[8px] font-black uppercase tracking-[0.3em] text-primary-yellow mb-2 text-center">Elite Package</p>
+               <div className="flex items-center gap-2">
+                  <span className="text-xl">✨</span>
+                  <span className="text-sm font-black text-[#C9A84C]">PRIORITY</span>
+               </div>
+               <p className="text-[6px] font-black text-white uppercase mt-2 text-center">VIP Handling <br /> Activated</p>
+             </>
+           ) : (
+             <>
+               <p className="text-[8px] font-black uppercase tracking-[0.3em] text-secondary-text mb-2 text-center">Hostel Power-Up</p>
+               <div className="flex items-center gap-2">
+                  <span className="text-xl">🔥</span>
+                  <span className="text-sm font-black text-primary-yellow">4/5</span>
+               </div>
+               <p className="text-[6px] font-black text-secondary-text uppercase mt-2 text-center">1 more to unlock <br /> <span className="text-white">FREE DESSERT</span></p>
+             </>
+           )}
+        </div>
       </div>
 
       {/* Status Timeline */}

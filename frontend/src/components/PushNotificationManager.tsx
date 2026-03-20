@@ -65,7 +65,8 @@ export default function PushNotificationManager() {
         }
       }
 
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend.onrender.com'}/api/users/save-subscription`, {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      await fetch(`${API_URL}/api/users/save-subscription`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

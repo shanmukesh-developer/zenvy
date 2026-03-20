@@ -7,16 +7,42 @@ import SuccessOverlay from '@/components/SuccessOverlay';
 export default function CheckoutPage() {
   const { cart, totalPrice, clearCart } = useCart();
   const [deliveryMethod, setDeliveryMethod] = useState<'room' | 'gate'>('room');
-  const [useBatch, setUseBatch] = useState(false);
+  const allSlots = [
+    { id: '1:00 PM', hour: 13, min: 0 },
+    { id: '5:00 PM', hour: 17, min: 0 },
+    { id: '7:30 PM', hour: 19, min: 30 },
+    { id: '8:50 PM', hour: 20, min: 50 },
+    { id: '9:30 PM', hour: 21, min: 30 }
+  ];
+
+  const [selectedSlot, setSelectedSlot] = useState<string>('');
+
+  const isSlotAvailable = (slot: typeof allSlots[0]) => {
+    const now = new Date();
+    const slotDate = new Date();
+    slotDate.setHours(slot.hour, slot.min, 0, 0);
+    const diff = (slotDate.getTime() - now.getTime()) / (1000 * 60);
+    return diff >= 60; // 1 hour = 60 mins
+  };
+
+  const availableSlots = allSlots.filter(isSlotAvailable);
+
+  // Set default slot
+  useState(() => {
+    if (availableSlots.length > 0) {
+      setSelectedSlot(availableSlots[0].id);
+    }
+  });
+
   const [isProcessing, setIsProcessing] = useState(false);
   const [overlay, setOverlay] = useState<{ isOpen: boolean; title: string; message: string; type?: 'success' | 'error' }>({
     isOpen: false,
     title: '',
     message: '',
   });
-
-  const deliveryFee = deliveryMethod === 'gate' ? 20 : 30;
-  const batchDiscount = useBatch ? 20 : 0;
+  const isElite = true; // Mock elite status
+  const deliveryFee = isElite ? 0 : (deliveryMethod === 'gate' ? 20 : 30);
+  const batchDiscount = 0;
   const gateDiscount = deliveryMethod === 'gate' ? Math.round(0.3 * deliveryFee) : 0;
   
   const finalTotal = totalPrice + deliveryFee - batchDiscount - gateDiscount;
@@ -46,11 +72,12 @@ export default function CheckoutPage() {
         })),
         totalPrice: totalPrice,
         deliveryFee: deliveryFee,
-        deliverySlot: useBatch ? '7:30 PM' : 'IMMEDIATE',
+        deliverySlot: selectedSlot,
         hostelGateDelivery: deliveryMethod === 'gate'
       };
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend.onrender.com'}/api/orders`, {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      const response = await fetch(`${API_URL}/api/orders`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -126,25 +153,43 @@ export default function CheckoutPage() {
           </div>
         </div>
 
-        {/* Batch Delivery Toggle [Cost Cutting] */}
-        <div className={`p-6 rounded-[40px] border-2 transition-all ${useBatch ? 'border-primary-yellow bg-primary-yellow/5' : 'border-white/5 bg-card-bg'}`}>
-           <div className="flex justify-between items-center">
-              <div>
-                 <h3 className="font-black text-sm">Batch Delivery Slot</h3>
-                 <p className="text-[11px] text-secondary-text mt-1">Wait for next batch (7:30 PM) to save more.</p>
-              </div>
-              <button 
-                onClick={() => setUseBatch(!useBatch)}
-                className={`w-14 h-8 rounded-full transition-colors relative ${useBatch ? 'bg-primary-yellow' : 'bg-white/10'}`}
-              >
-                 <div className={`absolute top-1 w-6 h-6 rounded-full bg-black transition-all ${useBatch ? 'left-7' : 'left-1'}`} />
-              </button>
-           </div>
-           {useBatch && (
-             <div className="mt-4 text-primary-yellow font-black text-xs">
-                ✨ ₹20 BATCH SAVINGS APPLIED
-             </div>
-           )}
+        {/* 🎓 Campus Batch Policy: Windowed Delivery Only */}
+        <div>
+          <h2 className="text-secondary-text font-black text-xs uppercase tracking-widest mb-2">Delivery Scheduling</h2>
+          <p className="text-[10px] text-primary-yellow font-bold uppercase tracking-widest mb-6 italic">⚠️ Policy: Must order 1 hour before slot</p>
+          
+          <div className="space-y-3">
+             {allSlots.map(slot => {
+               const available = isSlotAvailable(slot);
+               return (
+                 <button 
+                   key={slot.id}
+                   disabled={!available}
+                   onClick={() => setSelectedSlot(slot.id)}
+                   className={`w-full p-5 rounded-[25px] border flex justify-between items-center transition-all ${
+                     selectedSlot === slot.id 
+                       ? 'border-primary-yellow bg-primary-yellow/10' 
+                       : !available 
+                         ? 'border-white/5 bg-white/[0.02] opacity-30 grayscale cursor-not-allowed' 
+                         : 'border-white/10 bg-card-bg hover:border-white/20'
+                   }`}
+                 >
+                    <div className="flex flex-col items-start">
+                      <span className={`text-sm font-black ${selectedSlot === slot.id ? 'text-primary-yellow' : 'text-white'}`}>{slot.id} Delivery Batch</span>
+                      {!available && <span className="text-[9px] uppercase tracking-tighter text-red-500 font-bold mt-1">Order window closed</span>}
+                    </div>
+                    {available && <div className={`w-4 h-4 rounded-full border-2 ${selectedSlot === slot.id ? 'border-primary-yellow bg-primary-yellow' : 'border-white/20'}`} />}
+                 </button>
+               );
+             })}
+
+             {availableSlots.length === 0 && (
+               <div className="p-8 rounded-[30px] border border-red-500/20 bg-red-500/5 text-center">
+                  <p className="text-red-400 font-bold text-sm">All delivery windows for today are closed.</p>
+                  <p className="text-[10px] text-red-400/60 mt-1 uppercase tracking-widest font-black">Next available: Tomorrow 1:00 PM</p>
+               </div>
+             )}
+          </div>
         </div>
 
         {/* Pricing Summary */}

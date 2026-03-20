@@ -13,6 +13,12 @@ const protect = async (req, res, next) => {
         return next();
       }
 
+      // Development bypass for delivery app driver test login
+      if (token === 'mock_jwt_token_for_srm_driver') {
+        req.user = { id: '65f1a2b3c4d5e6f7a8b9c0d2', name: 'Rider Rahul (Dev Mode)' };
+        return next();
+      }
+
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       req.user = decoded;
       next();

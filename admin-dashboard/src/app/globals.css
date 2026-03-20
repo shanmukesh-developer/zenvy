@@ -3,26 +3,88 @@
 @tailwind utilities;
 
 :root {
-  --background: #020617;
-  --foreground: #f1f5f9;
-  --primary: #2563eb;
-  --glass: rgba(255, 255, 255, 0.02);
-  --glass-border: rgba(255, 255, 255, 0.05);
+  --foreground-rgb: 226, 232, 240;
+  --background-start-rgb: 10, 10, 18;
+  --background-end-rgb: 2, 2, 5;
+  --zenvy-gold: #C9A84C;
+  --nexus-blue: #2563EB;
+  --nexus-emerald: #10B981;
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: 'Inter', sans-serif;
+  color: rgb(var(--foreground-rgb));
+  background: radial-gradient(circle at top right, rgba(37, 99, 235, 0.05), transparent 400px),
+              radial-gradient(circle at bottom left, rgba(201, 168, 76, 0.03), transparent 400px),
+              rgb(var(--background-start-rgb));
+  min-height: 100vh;
+  font-family: 'Outfit', 'Inter', sans-serif;
+  overflow-x: hidden;
 }
 
-.glass {
-  background: var(--glass);
-  backdrop-filter: blur(16px);
-  border: 1px solid var(--glass-border);
+@layer components {
+  .glass {
+    @apply bg-white/[0.02] backdrop-blur-2xl border border-white/5;
+  }
+  
+  .glass-card {
+    @apply glass rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.3)] transition-all duration-700 hover:border-white/10 hover:bg-white/[0.04];
+  }
+
+  .neon-border-blue {
+    @apply border border-blue-500/20 shadow-[0_0_30px_rgba(37,99,235,0.1)];
+  }
+
+  .neon-border-gold {
+    @apply border border-[#C9A84C]/20 shadow-[0_0_30px_rgba(201,168,76,0.1)];
+  }
+
+  .sidebar-link {
+    @apply flex items-center gap-4 p-4 rounded-2xl text-gray-400 font-medium transition-all duration-300 hover:bg-white/5 hover:text-white;
+  }
+
+  .sidebar-active {
+    @apply bg-blue-600/10 text-blue-400 border border-blue-500/20 shadow-[0_0_20px_rgba(37,99,235,0.05)];
+  }
+
+  .stat-label {
+    @apply text-[10px] text-gray-500 font-black uppercase tracking-[0.2em] mb-1;
+  }
+
+  .nexus-badge {
+    @apply px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border;
+  }
 }
 
-.sidebar-active {
-  background: linear-gradient(90deg, #2563eb33 0%, #2563eb00 100%);
-  border-left: 3px solid #2563eb;
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+@keyframes pulse-soft {
+  0% { opacity: 0.4; transform: scale(0.98); }
+  50% { opacity: 0.7; transform: scale(1); }
+  100% { opacity: 0.4; transform: scale(0.98); }
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 3s ease-in-out infinite;
+}
+
+/* Background Gradients */
+.bg-mesh {
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(37, 99, 235, 0.1) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(201, 168, 76, 0.05) 0px, transparent 50%);
 }

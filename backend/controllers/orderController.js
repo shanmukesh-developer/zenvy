@@ -1,154 +1,216 @@
-const Order = require('../models/Order');
-const User = require('../models/User');
+const { getOrderModel } = require('../models/Order');
+const { getUserModel } = require('../models/User');
+const { getRestaurantModel } = require('../models/Restaurant');
+const { getDeliveryPartnerModel } = require('../models/DeliveryPartner');
 const { sendPushToTokens } = require('../utils/push');
+const { updateStreak } = require('../middleware/rewardEngine');
 
 // @desc    Create a new order
 // @route   POST /api/orders
 const createOrder = async (req, res) => {
   const { restaurantId, items, totalPrice, deliveryFee, deliverySlot, hostelGateDelivery } = req.body;
 
-  if (items && items.length === 0) {
+  if (!items || items.length === 0) {
     return res.status(400).json({ message: 'No order items' });
   }
 
   try {
-    // 🛑 SRM Curfew Enforcement: No orders after 9:30 PM (21:30)
     const now = new Date();
-    const hours = now.getHours();
-    const minutes = now.getMinutes();
-    const currentTime = hours * 100 + minutes;
-    
-    if (currentTime > 2130) {
-      return res.status(403).json({ message: 'Curfew Active: SRM Campus food delivery is allowed only upto 9:30 PM.' });
+    const campusSlots = [
+      { id: '1:00 PM', time: 1300 },
+      { id: '5:00 PM', time: 1700 },
+      { id: '7:30 PM', time: 1930 },
+      { id: '8:50 PM', time: 2050 },
+      { id: '9:30 PM', time: 2130 }
+    ];
+
+    if (!deliverySlot || deliverySlot === 'IMMEDIATE') {
+      return res.status(403).json({ message: 'Immediate delivery is disabled. Please select a scheduled campus delivery slot.' });
     }
 
-    let gateDiscount = 0;
-    let batchDiscount = 0;
-
-    // Logic: 30% discount if picked up at gate
-    if (hostelGateDelivery) {
-      gateDiscount = Math.round(deliveryFee * 0.3);
+    const matchedSlot = campusSlots.find(s => s.id === deliverySlot);
+    if (!matchedSlot) {
+      return res.status(400).json({ message: 'Invalid delivery slot.' });
     }
 
-    // Logic: Batch discount (Simplification: ₹20 off for pre-defined slots)
-    const validBatchSlots = ['7:30 PM', '9:00 PM', '11:30 PM'];
-    if (validBatchSlots.includes(deliverySlot)) {
-      batchDiscount = 20;
+    const slotTimeHours = Math.floor(matchedSlot.time / 100);
+    const slotTimeMins = matchedSlot.time % 100;
+    const slotDate = new Date(now);
+    slotDate.setHours(slotTimeHours, slotTimeMins, 0, 0);
+    const leadTimeMins = (slotDate.getTime() - now.getTime()) / (1000 * 60);
+    if (leadTimeMins < 60) {
+      return res.status(403).json({ message: `Orders for ${deliverySlot} must be placed at least 1 hour in advance.` });
     }
 
-    const finalPrice = totalPrice + deliveryFee - gateDiscount - batchDiscount;
-
-    const order = new Order({
+    const finalPrice = totalPrice + deliveryFee;
+    const Order = getOrderModel();
+    const createdOrder = await Order.create({
       userId: req.user.id,
       restaurantId,
       items,
       totalPrice,
       deliveryFee,
-      batchDiscount,
-      gateDiscount,
+      batchDiscount: 0,
+      gateDiscount: 0,
       finalPrice,
       deliverySlot,
       hostelGateDelivery
     });
 
-    let createdOrder;
-    
-    // Fallback for local testing without MongoDB
-    if (!process.env.MONGO_URI && !process.env.MONGODB_URI) {
-      createdOrder = {
-        _id: 'TEST_ORDER_ID_' + Math.floor(Math.random() * 10000),
-        hostelGateDelivery,
-        finalPrice,
-        items: items || [],
-        totalPrice: totalPrice || 0,
-        status: 'Accepted'
-      };
-    } else {
-      createdOrder = await order.save();
-
-      // Update streak and user stats (non-critical, don't crash order)
-      try {
-        const { updateStreak } = require('../middleware/rewardEngine');
-        await updateStreak(req.user.id);
-        await User.findByIdAndUpdate(req.user.id, {
-          $inc: { totalOrders: 1 }
-        });
-      } catch (statsErr) {
-        console.warn('User stats update skipped:', statsErr.message);
+    try {
+      await updateStreak(req.user.id);
+      const User = getUserModel();
+      const user = await User.findByPk(req.user.id);
+      if (user) {
+        user.totalOrders = (user.totalOrders || 0) + 1;
+        await user.save();
       }
+    } catch (statsErr) {
+      console.warn('[ORDER_STATS] stats update skipped:', statsErr.message);
     }
 
-    // Notify delivery riders via Socket.io
     const io = req.app.get('io');
+    let restaurantName = 'Restaurant';
+    try {
+      const Restaurant = getRestaurantModel();
+      const restaurant = await Restaurant.findByPk(restaurantId);
+      if (restaurant) restaurantName = restaurant.name;
+    } catch (e) { restaurantName = restaurantId || 'Restaurant'; }
+
     io.emit('newOrder', {
-      id: createdOrder._id,
-      restaurant: 'SRM Kitchen', // Simplified for now
+      id: createdOrder.id,
+      restaurant: restaurantName,
       drop: createdOrder.hostelGateDelivery ? 'Hostel Gate' : 'Room Delivery',
-      earnings: `₹${Math.round(createdOrder.finalPrice * 0.1)}` // Simulated commission
+      items: createdOrder.items,
+      totalPrice: createdOrder.totalPrice,
+      finalPrice: createdOrder.finalPrice,
+      earnings: `₹${Math.round((createdOrder.finalPrice) * 0.1)}`
     });
 
-    res.status(201).json(createdOrder);
-
-    // Alert Admin via Push Notification
     try {
-      const admins = await User.find({ role: 'admin' });
-      let adminTokens = [];
-      admins.forEach(admin => {
-        if (admin.fcmTokens) adminTokens.push(...admin.fcmTokens);
-      });
+      const User = getUserModel();
+      const user = await User.findByPk(req.user.id);
+      if (user && user.hostelBlock) {
+        io.emit('blockOrderPulse', { blockName: user.hostelBlock });
+      }
+    } catch (e) {}
 
-      if (adminTokens.length > 0) {
-        await sendPushToTokens(
-          adminTokens,
-          'New Order Placed!',
-          `Order ${createdOrder._id.toString().slice(-4)} has been placed for ${createdOrder.hostelGateDelivery ? 'Hostel Gate' : 'Room Delivery'}.`,
-          { orderId: createdOrder._id.toString(), type: 'NEW_ORDER' }
-        );
+    res.status(201).json({ ...createdOrder.toJSON(), _id: createdOrder.id });
+
+    try {
+      const DeliveryPartner = getDeliveryPartnerModel();
+      const onlineRiders = await DeliveryPartner.findAll({ where: { isOnline: true } });
+      let riderTokens = [];
+      onlineRiders.forEach(rider => {
+        if (rider.fcmTokens) riderTokens.push(...rider.fcmTokens.map(t => t.token));
+      });
+      if (riderTokens.length > 0) {
+        await sendPushToTokens(riderTokens, '🛵 New Order!', `${restaurantName} → ${createdOrder.hostelGateDelivery ? 'Hostel Gate' : 'Room'} (₹${Math.round(createdOrder.finalPrice * 0.1)})`, { orderId: createdOrder.id, type: 'NEW_ORDER' });
       }
     } catch (pushErr) {
-      console.error('Failed to send push notification to admin', pushErr);
+      console.error('[PUSH_ERROR]', pushErr.message);
     }
 
   } catch (error) {
-    console.error('Order Creation Error:', error);
+    console.error('[ORDER_CREATE_ERROR]', error.message);
     res.status(400).json({ message: 'Invalid order data', error: error.message });
   }
 };
 
 // @desc    Get order by ID
-// @route   GET /api/orders/:id
 const getOrderById = async (req, res) => {
   try {
-    if (!process.env.MONGO_URI && !process.env.MONGODB_URI) {
-      return res.json({
-        _id: req.params.id,
-        items: [{ name: 'Test Item Local', quantity: 1, price: 100 }],
-        totalPrice: 100,
-        status: 'Accepted',
-        restaurantId: { name: 'SRM Local Test Kitchen' }
-      });
-    }
-
-    const order = await Order.findById(req.params.id).populate('restaurantId', 'name');
+    const Order = getOrderModel();
+    const order = await Order.findByPk(req.params.id);
     if (order) {
-      res.json(order);
+      res.json({ ...order.toJSON(), _id: order.id });
     } else {
       res.status(404).json({ message: 'Order not found' });
     }
   } catch (error) {
-    res.status(500).json({ message: 'Server Error' });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
-// @desc    Get loggd in user orders
-// @route   GET /api/orders/myorders
+// @desc    Get logged in user orders
 const getMyOrders = async (req, res) => {
   try {
-    const orders = await Order.find({ userId: req.user.id }).sort('-createdAt');
-    res.json(orders);
+    const Order = getOrderModel();
+    const orders = await Order.findAll({
+      where: { userId: req.user.id },
+      order: [['createdAt', 'DESC']]
+    });
+    res.json(orders.map(o => ({ ...o.toJSON(), _id: o.id })));
   } catch (error) {
-    res.status(500).json({ message: 'Server Error' });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
-module.exports = { createOrder, getOrderById, getMyOrders };
+// @desc    Rate an order
+const rateOrder = async (req, res) => {
+  const { rating, review } = req.body;
+  try {
+    const Order = getOrderModel();
+    const order = await Order.findByPk(req.params.id);
+    if (!order) return res.status(404).json({ message: 'Order not found' });
+    if (order.userId !== req.user.id) return res.status(403).json({ message: 'Not authorized' });
+
+    order.rating = rating;
+    order.review = review;
+    await order.save();
+
+    if (order.deliveryPartnerId) {
+      const DeliveryPartner = getDeliveryPartnerModel();
+      const partner = await DeliveryPartner.findByPk(order.deliveryPartnerId);
+      if (partner) {
+        const total = (partner.averageRating || 5) * (partner.totalRatings || 0) + rating;
+        const count = (partner.totalRatings || 0) + 1;
+        partner.averageRating = parseFloat((total / count).toFixed(1));
+        partner.totalRatings = count;
+        await partner.save();
+      }
+    }
+    res.json({ message: 'Rating submitted', rating });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// @desc    Get all orders (Admin)
+const getAllOrders = async (req, res) => {
+  try {
+    const Order = getOrderModel();
+    const orders = await Order.findAll({ order: [['createdAt', 'DESC']], limit: 50 });
+    res.json(orders.map(o => ({ ...o.toJSON(), _id: o.id })));
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// @desc    Cancel an order
+const cancelOrder = async (req, res) => {
+  try {
+    const Order = getOrderModel();
+    const order = await Order.findByPk(req.params.id);
+    if (!order) return res.status(404).json({ message: 'Order not found' });
+    if (order.userId !== req.user.id) return res.status(403).json({ message: 'Not authorized' });
+
+    const elapsed = (Date.now() - new Date(order.createdAt).getTime()) / 1000;
+    if (elapsed > 120 && order.status !== 'Pending') {
+      return res.status(400).json({ message: 'Cancellation window closed' });
+    }
+
+    order.status = 'Cancelled';
+    await order.save();
+
+    const io = req.app.get('io');
+    io.emit('orderCancelled', { orderId: order.id });
+    io.to(order.id.toString()).emit('statusUpdated', 'Cancelled');
+
+    res.json({ message: 'Order cancelled', orderId: order.id });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+module.exports = { createOrder, getOrderById, getMyOrders, rateOrder, getAllOrders, cancelOrder };

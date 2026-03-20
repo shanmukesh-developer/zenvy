@@ -1,9 +1,9 @@
 "use client";
-// Force redeploy to verify lint fixes on Render
 import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { restaurants } from '@/data/restaurants';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
 interface SearchRestaurant {
   _id: string;
@@ -46,48 +46,26 @@ export default function SearchOverlay({ isOpen, onClose }: { isOpen: boolean; on
   }, [isOpen]);
 
   useEffect(() => {
-    if (query.trim().length > 1) {
-      setLoading(true);
-      
-      const searchTerm = query.toLowerCase();
-      
-      // Local Search Logic
-      const matchedRestaurants = restaurants.filter(res => 
-        res.name.toLowerCase().includes(searchTerm) || 
-        res.categories.some(cat => cat.toLowerCase().includes(searchTerm))
-      ).map(res => ({
-        _id: res.id,
-        name: res.name,
-        location: 'Zenvy Partner',
-        imageUrl: res.imageUrl,
-        rating: parseFloat(res.rating)
-      }));
-
-      const matchedItems = restaurants.flatMap(res => 
-        res.menu.filter(item => 
-          item.name.toLowerCase().includes(searchTerm) || 
-          item.category.toLowerCase().includes(searchTerm)
-        ).map(item => ({
-          _id: item.id,
-          name: item.name,
-          price: item.price,
-          description: item.description,
-          imageUrl: item.image,
-          restaurantId: {
-            _id: res.id,
-            name: res.name
+    const delayDebounceFn = setTimeout(async () => {
+      if (query.trim().length > 1) {
+        setLoading(true);
+        try {
+          const res = await fetch(`${API_URL}/api/users/search?q=${encodeURIComponent(query)}`);
+          if (res.ok) {
+            const data = await res.json();
+            setResults(data);
           }
-        }))
-      );
+        } catch (err) {
+          console.error('[SEARCH_ERROR]', err);
+        } finally {
+          setLoading(false);
+        }
+      } else {
+        setResults({ restaurants: [], items: [] });
+      }
+    }, 300);
 
-      setResults({
-        restaurants: matchedRestaurants,
-        items: matchedItems
-      });
-      setLoading(false);
-    } else {
-      setResults({ restaurants: [], items: [] });
-    }
+    return () => clearTimeout(delayDebounceFn);
   }, [query]);
 
   if (!isOpen) return null;

@@ -23,7 +23,12 @@ yarn-debug.log*
 yarn-error.log*
 
 # local env files
+.env
 .env*.local
+backend/.env
+backend/firebase-key.json
+backend/local_dev.sqlite
+frontend/public/assets/*.png
 
 # vercel
 .vercel

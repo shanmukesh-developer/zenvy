@@ -4,7 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 
 export default function BasketPage() {
-  const { cart, updateQuantity, removeFromCart, totalPrice } = useCart();
+  const { cart, updateQuantity, removeFromCart, updateCustomName, totalPrice } = useCart();
 
   return (
     <main className="min-h-screen bg-background text-white p-8">
@@ -29,28 +29,52 @@ export default function BasketPage() {
       ) : (
         <div className="space-y-6">
           {cart.map((item) => (
-            <div key={item.id} className="flex gap-4 items-center bg-card-bg p-4 rounded-[30px] border border-white/5">
-              <div className="w-20 h-20 relative flex-shrink-0">
-                <Image 
-                  src={item.image} 
-                  alt={item.name} 
-                  fill
-                  style={{ objectFit: 'cover' }}
-                  className="rounded-full border-2 border-primary-yellow" 
-                />
-              </div>
-              <div className="flex-1">
-                <h3 className="font-bold text-sm mb-1">{item.name}</h3>
-                <p className="text-primary-yellow font-black">₹{item.price}</p>
-                <div className="flex items-center gap-4 mt-2">
-                  <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="w-8 h-8 rounded-full border border-white/10 flex items-center justify-center font-bold">-</button>
-                  <span className="font-black text-sm">{item.quantity}</span>
-                  <button onClick={() => updateQuantity(item.id, item.quantity + 1)} className="w-8 h-8 rounded-full border border-white/10 flex items-center justify-center font-bold">+</button>
+            <div key={item.id} className="flex flex-col bg-card-bg p-6 rounded-[35px] border border-white/5 transition-all hover:border-white/10 group">
+              <div className="flex gap-6 items-center">
+                <div className="w-24 h-24 relative flex-shrink-0">
+                  <Image 
+                    src={item.image || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400"} 
+                    alt={item.name} 
+                    fill
+                    style={{ objectFit: 'cover' }}
+                    className="rounded-full border-2 border-primary-yellow shadow-2xl" 
+                  />
+                  {item.isCake && (
+                    <div className="absolute -top-2 -right-2 bg-primary-yellow text-black text-[8px] font-black px-2 py-1 rounded-full uppercase tracking-tighter">Personalizable</div>
+                  )}
                 </div>
+                <div className="flex-1">
+                  <h3 className="font-black text-base text-white group-hover:text-primary-yellow transition-colors">{item.name}</h3>
+                  <p className="text-secondary-text text-xs mt-1 mb-3">from {item.restaurantName || "Zenvy Elite"}</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-primary-yellow font-black text-lg">₹{item.price}</p>
+                    <div className="flex items-center gap-4 bg-white/5 px-4 py-2 rounded-full border border-white/5">
+                      <button onClick={() => updateQuantity(item.id, item.quantity - 1)} className="w-6 h-6 flex items-center justify-center font-bold text-secondary-text hover:text-white">-</button>
+                      <span className="font-black text-sm w-4 text-center">{item.quantity}</span>
+                      <button onClick={() => updateQuantity(item.id, item.quantity + 1)} className="w-6 h-6 flex items-center justify-center font-bold text-secondary-text hover:text-white">+</button>
+                    </div>
+                  </div>
+                </div>
+                <button onClick={() => removeFromCart(item.id)} className="p-2 opacity-20 hover:opacity-100 hover:text-red-500 transition-all">
+                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                </button>
               </div>
-              <button onClick={() => removeFromCart(item.id)} className="p-2 opacity-30 hover:opacity-100">
-                <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
-              </button>
+
+              {item.isCake && (
+                <div className="mt-6 pt-6 border-t border-white/5">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-primary-yellow/60 block mb-3">Name/Message on Cake</label>
+                  <div className="relative">
+                    <input 
+                      type="text"
+                      placeholder="e.g. Happy Birthday Shanmukh"
+                      value={item.customName || ''}
+                      onChange={(e) => updateCustomName(item.id, e.target.value)}
+                      className="w-full bg-white/[0.03] border border-white/10 rounded-2xl px-5 py-4 text-sm font-bold text-white placeholder:text-white/20 focus:outline-none focus:border-primary-yellow/30 transition-all"
+                    />
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 text-primary-yellow opacity-40">✍️</div>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
 

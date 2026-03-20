@@ -1,17 +1,27 @@
 const Restaurant = require('../models/Restaurant');
 const MenuItem = require('../models/MenuItem');
 
+// Mode check
+const isMock = () => process.env.MOCK_DATABASE === 'true';
+
 // @desc    Global search across restaurants and menu items
 // @route   GET /api/search
-// @access  Public
 const globalSearch = async (req, res) => {
+  const { q } = req.query;
+  if (!q) return res.status(400).json({ message: 'Search query is required' });
+
+  if (isMock()) {
+    return res.json({
+      restaurants: [
+        { id: '1', name: 'Elite Bistro', rating: '4.8', imageUrl: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b', isActive: true }
+      ],
+      items: [
+        { id: 'm1', name: 'Signature Pasta', price: 250, rating: '4.9', isAvailable: true, restaurantId: { name: 'Elite Bistro' } }
+      ]
+    });
+  }
+
   try {
-    const { q } = req.query;
-
-    if (!q) {
-      return res.status(400).json({ message: 'Search query is required' });
-    }
-
     const searchRegex = new RegExp(q, 'i');
 
     // Search Restaurants by name
@@ -37,11 +47,9 @@ const globalSearch = async (req, res) => {
       items: menuItems
     });
   } catch (error) {
-    console.error('Search error:', error);
+    console.error('[SEARCH_ERROR]', error);
     res.status(500).json({ message: 'Error performing search' });
   }
 };
 
-module.exports = {
-  globalSearch
-};
+module.exports = { globalSearch };

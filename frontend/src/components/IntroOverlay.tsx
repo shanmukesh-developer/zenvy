@@ -3,108 +3,186 @@ import { useEffect, useState, useRef } from 'react';
 
 export default function IntroOverlay({ onComplete }: { onComplete: () => void }) {
   const [stage, setStage] = useState(0);
-  const [countdown, setCountdown] = useState(3);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Cinematic Stage Sequencing (Optimized for speed/smoothness)
+    // 🎞️ Cinematic Stage Sequencing (High-End Pacing)
     const timers = [
-      setTimeout(() => setStage(1), 300),   // Widescreen & Countdown
-      setTimeout(() => setStage(2), 2200),  // Light Ray & Logo
-      setTimeout(() => setStage(3), 3500),  // Full Logo
-      setTimeout(() => setStage(4), 4800),  // Brand Reveal
-      setTimeout(() => setStage(5), 6200),  // Liquid Expand
+      setTimeout(() => setStage(1), 400),   // Letterbox & HUD Init
+      setTimeout(() => setStage(2), 2000),  // Logo Pre-glow & Ray
+      setTimeout(() => setStage(3), 3200),  // Logo Crystallize
+      setTimeout(() => setStage(4), 4500),  // Brand Reveal (ZENVY)
+      setTimeout(() => setStage(5), 5800),  // Cinematic Fade-out
       setTimeout(() => {
         onComplete();
-      }, 7000) 
+      }, 6500) 
     ];
-
-    const countdownInterval = setInterval(() => {
-      setCountdown(prev => (prev > 1 ? prev - 1 : 1));
-    }, 600);
 
     const handleMouseMove = (e: MouseEvent) => {
       if (!containerRef.current) return;
       const { clientX, clientY } = e;
       const { innerWidth, innerHeight } = window;
-      const x = (clientX / innerWidth - 0.5) * 20;
-      const y = (clientY / innerHeight - 0.5) * 20;
+      const x = (clientX / innerWidth - 0.5) * 15;
+      const y = (clientY / innerHeight - 0.5) * 15;
       setMousePos({ x, y });
     };
 
     window.addEventListener('mousemove', handleMouseMove);
     return () => {
       timers.forEach(clearTimeout);
-      clearInterval(countdownInterval);
       window.removeEventListener('mousemove', handleMouseMove);
     };
   }, [onComplete]);
 
   return (
-    <div 
+    <div
       ref={containerRef}
-      className={`fixed inset-0 z-[1000] bg-black overflow-hidden flex flex-col items-center justify-center transition-opacity duration-1000 ${stage >= 5 ? 'opacity-0' : 'opacity-100'}`}
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100vw',
+        height: '100dvh',
+        zIndex: 999999,
+        backgroundColor: '#050507',
+        overflow: 'hidden',
+        perspective: '1000px'
+      }}
+      className={`transition-opacity duration-[1500ms] ${stage >= 5 ? 'opacity-0' : 'opacity-100'}`}
     >
-      {/* 🎬 Cinematic Widescreen Bars */}
-      <div className={`cinematic-bars cinematic-bar-top ${stage >= 1 ? 'translate-y-0' : '-translate-y-full'}`} style={{ transform: stage >= 1 ? 'translateY(0)' : 'translateY(-100%)' }} />
-      <div className={`cinematic-bars cinematic-bar-bottom ${stage >= 1 ? 'translate-y-0' : 'translate-y-full'}`} style={{ transform: stage >= 1 ? 'translateY(0)' : 'translateY(100%)' }} />
+      {/* 🌑 Deep Space Backdrop */}
+      <div className="absolute inset-0 bg-[#050507] overflow-hidden">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[150%] h-[150%] opacity-[0.03] bg-[radial-gradient(circle_at_center,#C9A84C_0%,transparent_70%)] blur-[100px]" />
+      </div>
 
-      {/* 🎞️ Film VFX Layers (Lightweight) */}
-      <div className={`film-grain opacity-[0.03] transition-opacity duration-1000 ${stage >= 1 ? 'opacity-[0.03]' : 'opacity-0'}`} />
-      <div className={`film-scratches opacity-[0.01] transition-opacity duration-1000 ${stage >= 1 ? 'opacity-[0.01]' : 'opacity-0'}`} />
-      <div className="lens-dirt opacity-[0.01]" />
+      {/* 🎬 Cinematic Letterbox */}
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: stage >= 1 ? '10vh' : '50dvh',
+          backgroundColor: 'black',
+          transition: 'height 1.8s cubic-bezier(0.19, 1, 0.22, 1)',
+          zIndex: 50
+        }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          width: '100%',
+          height: stage >= 1 ? '10vh' : '50dvh',
+          backgroundColor: 'black',
+          transition: 'height 1.8s cubic-bezier(0.19, 1, 0.22, 1)',
+          zIndex: 50
+        }}
+      />
 
-      {/* 🌊 Liquid Transition Overlay */}
-      <div className={`liquid-expand ${stage >= 5 ? 'active' : ''}`} />
+      {/* 💎 SIGNATURE LOGO UNIT */}
+      <div
+        style={{
+          position: 'absolute',
+          top: '48%',
+          left: '50%',
+          transform: `translate(-50%, -50%) translate3d(${mousePos.x}px, ${mousePos.y}px, 0)`,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          width: '100%',
+          transition: 'transform 0.4s ease-out'
+        }}
+        className="z-20"
+      >
+        <div
+          className={`relative transition-all duration-[2500ms] cubic-bezier(0.19, 1, 0.22, 1) ${stage >= 2 ? 'scale-100 opacity-100' : 'scale-[1.1] opacity-0 blur-2xl'}`}
+        >
+          {/* Logo Glow */}
+          <div className={`absolute inset-0 bg-[#C9A84C]/20 blur-[60px] rounded-full transition-opacity duration-1000 ${stage >= 3 ? 'opacity-100' : 'opacity-0'}`} />
 
-      {/* 🔢 Countdown */}
-      {stage === 1 && (
-        <div className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none">
-          <div className="text-[100px] font-black text-white/[0.03] tracking-tighter animate-pulse">
-            {countdown}
+          <div className="w-28 h-28 md:w-36 md:h-36 relative flex items-center justify-center">
+            {/* Rotating Outer Frame */}
+            <div className="absolute inset-0 border border-[#C9A84C]/10 rotate-45 animate-[spin_20s_linear_infinite]" />
+            <div className="absolute inset-0 border border-[#C9A84C]/20 rotate-12" />
+
+            {/* Main Shield */}
+            <div className="w-full h-full bg-[#141416]/80 backdrop-blur-xl flex items-center justify-center relative border border-[#C9A84C]/30 shadow-[0_0_50px_rgba(201,168,76,0.1)] group">
+              {/* Gold Shimmer Sweep */}
+              <div className="absolute inset-0 overflow-hidden">
+                <div className="absolute inset-0 w-[200%] h-full translate-x-[-100%] bg-gradient-to-r from-transparent via-[#C9A84C]/20 to-transparent skew-x-[-20deg] animate-[shimmer_3s_infinite]" />
+              </div>
+
+              <svg className="w-12 h-12 md:w-16 md:h-16 text-[#C9A84C]" viewBox="0 0 100 100" fill="none">
+                <path
+                  className={`transition-all duration-[2000ms] delay-500 ${stage >= 3 ? 'stroke-dashoffset-0' : 'stroke-dashoffset-[300]'}`}
+                  style={{ strokeDasharray: 300, strokeDashoffset: stage >= 3 ? 0 : 300 }}
+                  d="M25 25 L75 25 L25 75 L75 75"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+
+              {/* Corners */}
+              <div className="absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 border-[#C9A84C]/50" />
+              <div className="absolute top-0 right-0 w-2 h-2 border-t-2 border-r-2 border-[#C9A84C]/50" />
+              <div className="absolute bottom-0 left-0 w-2 h-2 border-b-2 border-l-2 border-[#C9A84C]/50" />
+              <div className="absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 border-[#C9A84C]/50" />
+            </div>
           </div>
         </div>
-      )}
 
-      {/* 💎 Interactive Brand Mark */}
-      <div 
-        className={`relative z-20 transition-all duration-[2000ms] ease-out-expo ${stage >= 2 ? 'scale-100 opacity-100' : 'scale-110 opacity-0 blur-xl'}`}
-        style={{ transform: `translate3d(${mousePos.x}px, ${mousePos.y}px, 0)` }}
-      >
-        <div className="w-40 h-40 relative">
-           <div className={`absolute inset-0 border border-[#C9A84C]/10 rotate-45 scale-110 transition-transform duration-[4000ms] ${stage >= 2 ? 'rotate-[360deg]' : 'rotate-45'}`} />
-           
-           <div className="w-full h-full bg-gradient-to-br from-[#1A1A1C] to-black flex items-center justify-center relative border border-[#C9A84C]/20 shadow-[0_0_60px_rgba(201,168,76,0.1)]">
-              <svg className="w-16 h-16 text-[#C9A84C]" viewBox="0 0 100 100" fill="none">
-                 <path d="M25 25 H75 L25 75 H75" stroke="currentColor" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" className="logo-shimmer-stroke" />
-              </svg>
-              <div className="absolute inset-0 bg-gradient-to-tr from-white/[0.05] to-transparent animate-pulse" />
-           </div>
-
-           {stage >= 3 && (
-             <div className="absolute inset-0">
-               <div className="gold-glint top-0 left-0" />
-               <div className="gold-glint bottom-0 right-0" />
-             </div>
-           )}
+        <div className="mt-12 text-center">
+          <div className="overflow-hidden">
+            <h1 className={`text-5xl md:text-7xl font-black transition-all duration-[2000ms] cubic-bezier(0.19, 1, 0.22, 1) ${stage >= 4 ? 'translate-y-0 opacity-100 tracking-[0.4em]' : 'translate-y-full opacity-0 tracking-[0.8em]'}`}>
+              <span className="bg-gradient-to-b from-white via-white to-white/40 bg-clip-text text-transparent uppercase">Zenvy</span>
+            </h1>
+          </div>
+          <p className={`mt-5 text-[9px] md:text-[11px] uppercase tracking-[0.8em] font-medium transition-all duration-[2000ms] delay-700 ${stage >= 4 ? 'translate-y-0 opacity-40' : 'translate-y-5 opacity-0'}`}>
+            THE LUXURY OF CONVENIENCE
+          </p>
         </div>
       </div>
 
-      {/* 🏷️ Title & Tagline */}
-      <div className="mt-20 text-center z-10">
-        <h1 className={`text-5xl font-black transition-all duration-[1500ms] ${stage >= 4 ? 'translate-y-0 opacity-100 tracking-[0.3em]' : 'translate-y-10 opacity-0 tracking-[0.8em]'}`}>
-          <span className="text-reveal-cinematic uppercase">Zenvy</span>
-        </h1>
-        <p className={`mt-4 text-[10px] uppercase tracking-[0.6em] text-white/30 transition-all duration-[1500ms] delay-500 ${stage >= 4 ? 'translate-y-0 opacity-100' : 'translate-y-5 opacity-0'}`}>
-          An Odyssey of Taste
-        </p>
+      {/* 🎞️ HUD & TECHNICAL OVERLAYS */}
+      <div className={`absolute top-12 left-10 font-mono text-[8px] uppercase tracking-[0.3em] text-white/20 transition-opacity duration-1000 ${stage >= 1 ? 'opacity-100' : 'opacity-0'}`}>
+        <div className="flex items-center gap-2 mb-1">
+          <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+          <span>REC : 4K RAW</span>
+        </div>
+        <div>ISO 800 | 24 FPS</div>
       </div>
 
-      {/* 📊 HUD */}
-      <div className={`absolute bottom-8 left-8 font-mono text-[6px] tracking-[0.5em] text-white/10 transition-opacity duration-1000 ${stage >= 1 ? 'opacity-100' : 'opacity-0'}`}>
-        00:00:{stage + 12}:{(stage * 4).toString().padStart(2, '0')} {'// LUX_SYS'}
+      <div className={`absolute bottom-12 right-10 font-mono text-[8px] tracking-[0.4em] text-white/20 transition-opacity duration-1000 ${stage >= 1 ? 'opacity-100' : 'opacity-0'}`}>
+        ZEN_SYS: v4.0.2 / LUX_CORE
       </div>
+
+      <div className={`absolute top-1/2 left-6 -translate-y-1/2 space-y-4 opacity-[0.05] transition-opacity duration-1000 ${stage >= 1 ? 'opacity-5' : 'opacity-0'}`}>
+        <div className="w-[1px] h-20 bg-white" />
+        <div className="text-[10px] [writing-mode:vertical-lr] tracking-[0.5em] uppercase font-light">Odyssey</div>
+        <div className="w-[1px] h-20 bg-white" />
+      </div>
+
+      {/* 🎬 Film Grain Overlay */}
+      <div className="fixed inset-0 pointer-events-none opacity-[0.05] grain-anim" />
+
+      <style jsx>{`
+        @keyframes shimmer {
+          0% { transform: translateX(-100%) skewX(-20deg); }
+          50%, 100% { transform: translateX(200%) skewX(-20deg); }
+        }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        .cubic-bezier(0.19, 1, 0.22, 1) {
+          transition-timing-function: cubic-bezier(0.19, 1, 0.22, 1);
+        }
+      `}</style>
     </div>
   );
 }

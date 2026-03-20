@@ -9,6 +9,8 @@ interface CartItem {
   image: string;
   restaurantId: string;
   restaurantName?: string;
+  isCake?: boolean;
+  customName?: string;
 }
 
 interface CartContextType {
@@ -16,6 +18,7 @@ interface CartContextType {
   addToCart: (item: Omit<CartItem, 'quantity'> & { quantity?: number }) => void;
   removeFromCart: (id: string) => void;
   updateQuantity: (id: string, qty: number) => void;
+  updateCustomName: (id: string, name: string) => void;
   clearCart: () => void;
   totalItems: number;
   totalPrice: number;
@@ -45,13 +48,17 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
     setCart((prev) => prev.map((i) => i.id === id ? { ...i, quantity: Math.max(1, qty) } : i));
   };
 
+  const updateCustomName = (id: string, name: string) => {
+    setCart((prev) => prev.map((i) => i.id === id ? { ...i, customName: name } : i));
+  };
+
   const clearCart = () => setCart([]);
 
   const totalItems = cart.reduce((acc, item) => acc + item.quantity, 0);
   const totalPrice = cart.reduce((acc, item) => acc + item.price * item.quantity, 0);
 
   return (
-    <CartContext.Provider value={{ cart, addToCart, removeFromCart, updateQuantity, clearCart, totalItems, totalPrice }}>
+    <CartContext.Provider value={{ cart, addToCart, removeFromCart, updateQuantity, updateCustomName, clearCart, totalItems, totalPrice }}>
       {children}
     </CartContext.Provider>
   );

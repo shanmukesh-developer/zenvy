@@ -1,0 +1,126 @@
+"use client";
+import { useState, useEffect, useRef } from 'react';
+import { Socket } from 'socket.io-client';
+
+interface Message {
+  sender: string;
+  senderRole: 'rider' | 'customer';
+  message: string;
+  timestamp: Date;
+}
+
+interface Props {
+  orderId: string;
+  userName: string;
+  userRole: 'rider' | 'customer';
+  socket: Socket | null;
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export default function ChatDrawer({ orderId, userName, userRole, socket, isOpen, onClose }: Props) {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [inputValue, setInputValue] = useState('');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!socket || !orderId) return;
+
+    const handleMessage = (msg: Message) => {
+      setMessages(prev => [...prev, msg]);
+    };
+
+    socket.on('receiveMessage', handleMessage);
+    return () => {
+      socket.off('receiveMessage', handleMessage);
+    };
+  }, [socket, orderId]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const handleSendMessage = () => {
+    if (!inputValue.trim() || !socket || !orderId) return;
+
+    const messageData = {
+      orderId,
+      sender: userName,
+      senderRole: userRole,
+      message: inputValue.trim()
+    };
+
+    socket.emit('sendMessage', messageData);
+    setInputValue('');
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
+      <div className="w-full max-w-lg bg-[#11111A] border-t border-white/10 rounded-t-[32px] h-[80vh] flex flex-col shadow-2xl animate-slide-up">
+        {/* Header */}
+        <div className="p-6 border-b border-white/5 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center text-xl">
+              {userRole === 'rider' ? '🛵' : '👤'}
+            </div>
+            <div>
+              <p className="text-[10px] text-emerald-500 uppercase font-black tracking-widest">Live Chat</p>
+              <h3 className="text-white font-bold">{userRole === 'rider' ? 'Customer' : 'Zenvy Captain'}</h3>
+            </div>
+          </div>
+          <button onClick={onClose} className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-gray-400 hover:text-white transition-colors text-xl font-bold">✕</button>
+        </div>
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-4 scrollbar-hide">
+          {messages.length === 0 && (
+            <div className="text-center py-10">
+              <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center text-2xl mx-auto mb-4 grayscale opacity-30">💬</div>
+              <p className="text-gray-500 text-sm italic">Direct messages are masked for your privacy.</p>
+            </div>
+          )}
+          {messages.map((msg, idx) => {
+            const isMe = msg.sender === userName;
+            return (
+              <div key={idx} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[80%] p-4 rounded-2xl ${
+                  isMe ? 'bg-emerald-600 text-white rounded-tr-none' : 'bg-white/10 text-gray-200 rounded-tl-none border border-white/5'
+                }`}>
+                  <p className="text-sm font-medium leading-relaxed">{msg.message}</p>
+                  <p className="text-[8px] mt-1.5 opacity-50 font-bold uppercase tracking-widest">
+                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Input */}
+        <div className="p-6 border-t border-white/5 bg-[#11111A]">
+          <div className="flex gap-3">
+            <input
+              type="text"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+              placeholder="Type a message..."
+              className="flex-1 px-5 py-4 bg-white/5 border border-white/10 rounded-2xl text-white outline-none focus:border-emerald-500/50 transition-all text-sm"
+            />
+            <button
+              onClick={handleSendMessage}
+              disabled={!inputValue.trim()}
+              className="w-14 h-14 bg-emerald-600 hover:bg-emerald-500 disabled:bg-gray-700 rounded-2xl flex items-center justify-center text-xl transition-all shadow-lg shadow-emerald-900/20"
+            >
+              🚀
+            </button>
+          </div>
+          <p className="text-center text-[8px] text-gray-600 font-bold uppercase tracking-widest mt-4">Powered by Zenvy Real-Time Engines</p>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -1,32 +1,39 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const { getSequelize } = require('../config/db');
 
-const orderSchema = new mongoose.Schema({
-  userId: { type: String, required: true },
-  restaurantId: { type: String, required: true },
-  deliveryPartnerId: { type: String },
-  items: [{
-    menuItemId: { type: String },
-    name: { type: String },
-    quantity: { type: Number, required: true },
-    priceAtOrder: { type: Number, required: true }
-  }],
-  totalPrice: { type: Number, required: true },
-  deliveryFee: { type: Number, required: true },
-  batchDiscount: { type: Number, default: 0 },
-  gateDiscount: { type: Number, default: 0 },
-  finalPrice: { type: Number, required: true },
-  status: { 
-    type: String, 
-    enum: ['Pending', 'Accepted', 'Preparing', 'PickedUp', 'Delivered', 'Cancelled'], 
-    default: 'Pending' 
-  },
-  paymentStatus: { 
-    type: String, 
-    enum: ['Pending', 'Completed', 'Failed'], 
-    default: 'Pending' 
-  },
-  deliverySlot: { type: String },
-  hostelGateDelivery: { type: Boolean, default: false }
-}, { timestamps: true });
+let Order;
 
-module.exports = mongoose.model('Order', orderSchema);
+const getOrderModel = () => {
+  if (Order) return Order;
+  const sequelize = getSequelize();
+  if (!sequelize) return null;
+
+  Order = sequelize.define('Order', {
+    id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+    userId: { type: DataTypes.STRING, allowNull: false },
+    restaurantId: { type: DataTypes.STRING, allowNull: false },
+    deliveryPartnerId: { type: DataTypes.STRING },
+    items: { type: DataTypes.JSONB, defaultValue: [] },
+    totalPrice: { type: DataTypes.FLOAT, allowNull: false },
+    deliveryFee: { type: DataTypes.FLOAT, allowNull: false },
+    batchDiscount: { type: DataTypes.FLOAT, defaultValue: 0 },
+    gateDiscount: { type: DataTypes.FLOAT, defaultValue: 0 },
+    finalPrice: { type: DataTypes.FLOAT, allowNull: false },
+    status: {
+      type: DataTypes.ENUM('Pending', 'Accepted', 'Preparing', 'PickedUp', 'Delivered', 'Cancelled'),
+      defaultValue: 'Pending'
+    },
+    paymentStatus: {
+      type: DataTypes.ENUM('Pending', 'Completed', 'Failed'),
+      defaultValue: 'Pending'
+    },
+    deliverySlot: { type: DataTypes.STRING },
+    hostelGateDelivery: { type: DataTypes.BOOLEAN, defaultValue: false },
+    rating: { type: DataTypes.FLOAT },
+    review: { type: DataTypes.TEXT }
+  }, { timestamps: true });
+
+  return Order;
+};
+
+module.exports = { getOrderModel };
