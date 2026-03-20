@@ -15,14 +15,14 @@ const getDeliveryPartnerModel = () => {
     phone: { type: DataTypes.STRING, allowNull: false, unique: true },
     password: { type: DataTypes.STRING, allowNull: false },
     vehicleType: { type: DataTypes.STRING },
-    liveLocation: { type: DataTypes.JSONB, defaultValue: { lat: null, lng: null } },
+    liveLocation: { type: DataTypes.JSON, defaultValue: { lat: null, lng: null } },
     isOnline: { type: DataTypes.BOOLEAN, defaultValue: false },
     currentOrderId: { type: DataTypes.STRING },
     totalEarnings: { type: DataTypes.FLOAT, defaultValue: 0 },
     zenPoints: { type: DataTypes.INTEGER, defaultValue: 0 },
     averageRating: { type: DataTypes.FLOAT, defaultValue: 5 },
     totalRatings: { type: DataTypes.INTEGER, defaultValue: 0 },
-    fcmTokens: { type: DataTypes.JSONB, defaultValue: [] },
+    fcmTokens: { type: DataTypes.JSON, defaultValue: [] },
     isApproved: { type: DataTypes.BOOLEAN, defaultValue: false }
   }, { timestamps: true });
 

@@ -13,7 +13,7 @@ const getOrderModel = () => {
     userId: { type: DataTypes.STRING, allowNull: false },
     restaurantId: { type: DataTypes.STRING, allowNull: false },
     deliveryPartnerId: { type: DataTypes.STRING },
-    items: { type: DataTypes.JSONB, defaultValue: [] },
+    items: { type: DataTypes.JSON, defaultValue: [] },
     totalPrice: { type: DataTypes.FLOAT, allowNull: false },
     deliveryFee: { type: DataTypes.FLOAT, allowNull: false },
     batchDiscount: { type: DataTypes.FLOAT, defaultValue: 0 },

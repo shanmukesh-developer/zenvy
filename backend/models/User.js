@@ -23,7 +23,7 @@ const getUserModel = () => {
     role: { type: DataTypes.ENUM('student', 'admin'), defaultValue: 'student' },
     zenPoints: { type: DataTypes.INTEGER, defaultValue: 0 },
     isElite: { type: DataTypes.BOOLEAN, defaultValue: false },
-    fcmTokens: { type: DataTypes.JSONB, defaultValue: [] }
+    fcmTokens: { type: DataTypes.JSON, defaultValue: [] }
   }, { timestamps: true });
 
   User.beforeCreate(async (user) => {

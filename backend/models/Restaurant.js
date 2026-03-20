@@ -17,8 +17,8 @@ const getRestaurantModel = () => {
     deliveryTime: { type: DataTypes.INTEGER },
     commissionRate: { type: DataTypes.FLOAT, defaultValue: 10 },
     commissionType: { type: DataTypes.ENUM('percentage', 'flat'), defaultValue: 'percentage' },
-    tags: { type: DataTypes.JSONB, defaultValue: [] },
-    operatingHours: { type: DataTypes.JSONB, defaultValue: { start: '09:00', end: '22:00' } },
+    tags: { type: DataTypes.JSON, defaultValue: [] },
+    operatingHours: { type: DataTypes.JSON, defaultValue: { start: '09:00', end: '22:00' } },
     isActive: { type: DataTypes.BOOLEAN, defaultValue: true }
   }, { timestamps: true });
 
