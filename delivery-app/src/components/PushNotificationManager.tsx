@@ -55,16 +55,6 @@ export default function PushNotificationManager() {
       const token = localStorage.getItem('token');
       if (!token) return; // User not logged in
 
-      const userStr = localStorage.getItem('user');
-      let userId = 'unknown';
-      if (userStr) {
-        try {
-          userId = JSON.parse(userStr).id || JSON.parse(userStr)._id || 'unknown';
-        } catch {
-          // Ignore parse errors
-        }
-      }
-
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
       await fetch(`${apiUrl}/api/delivery/fcm-token`, {
         method: 'POST',

@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import RestaurantCard from '@/components/RestaurantCard';
@@ -12,19 +12,11 @@ import TemporalSlider from '@/components/TemporalSlider';
 import ZenvyVault from '@/components/ZenvyVault';
 import LiveOrderStatusBar from '@/components/LiveOrderStatusBar';
 import RatingModal from '@/components/RatingModal';
-import { io } from 'socket.io-client';
+import { Socket } from 'socket.io-client';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5000';
 
-interface User {
-  _id?: string;
-  name?: string;
-  phone?: string;
-  isElite?: boolean;
-  zenPoints?: number;
-  hostelBlock?: string;
-}
+import { Restaurant, MenuItem, User } from '@/types';
 
 function getGreeting(): string {
   const h = new Date().getHours();
@@ -59,7 +51,7 @@ interface Order {
 
 export default function Home() {
   const [filter, setFilter] = useState<'all' | 'budget' | 'veg'>('all');
-  const [liveRestaurants, setLiveRestaurants] = useState<any[]>([]);
+  const [liveRestaurants, setLiveRestaurants] = useState<Restaurant[]>([]);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [userName, setUserName] = useState('');
   const [greeting, setGreeting] = useState('');
@@ -84,14 +76,14 @@ export default function Home() {
     { id: '9:30 PM', hour: 21, min: 30 }
   ];
 
-  const getNextAvailableSlot = () => {
+  const getNextAvailableSlot = useCallback(() => {
     const now = new Date();
     return campusSlots.find(slot => {
       const slotDate = new Date();
       slotDate.setHours(slot.hour, slot.min, 0, 0);
       return (slotDate.getTime() - now.getTime()) / (1000 * 60) >= 150;
     });
-  };
+  }, [campusSlots]);
 
   const nextSlot = getNextAvailableSlot();
 
@@ -142,8 +134,8 @@ export default function Home() {
         await fetch(`${API_URL}/api/users/profile`, {
           headers: { Authorization: `Bearer ${token}` }
         });
-      } catch (err) {
-        console.warn('[AUTH_CHECK] Background status check failed:', err);
+      } catch (_err) {
+        console.warn('[AUTH_CHECK] Background status check failed:', _err);
       }
     };
 
@@ -155,8 +147,8 @@ export default function Home() {
         const res = await fetch(`${API_URL}/api/users/restaurants`);
         const data = await res.json();
         if (Array.isArray(data)) setLiveRestaurants(data);
-      } catch (err) {
-        console.error('[ASSET_SYNC_ERROR]', err);
+      } catch (_err) {
+        console.error('[ASSET_SYNC_ERROR]', _err);
       }
     };
     fetchLiveAssets();
@@ -183,7 +175,7 @@ export default function Home() {
       clearInterval(interval);
       clearTimeout(loader);
     };
-  }, []);
+  }, [getNextAvailableSlot]);
 
   // Tick down cancellation countdown
   useEffect(() => {
@@ -204,8 +196,8 @@ export default function Home() {
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
         });
       }
-    } catch (err) {
-      console.warn('[CANCEL_ORDER] Backend cancellation failed:', err);
+    } catch (_err) {
+      console.warn('[CANCEL_ORDER] Backend cancellation failed:', _err);
     }
     setActiveOrder(null);
     setCancelSecondsLeft(0);
@@ -233,8 +225,8 @@ export default function Home() {
         setUser(updatedUser);
         localStorage.setItem('user', JSON.stringify(updatedUser));
       }
-    } catch (err) {
-      console.error('[RATING_ERROR] Rating failed:', err);
+    } catch (_err) {
+      console.error('[RATING_ERROR] Rating failed:', _err);
     }
   };
 
@@ -261,8 +253,8 @@ export default function Home() {
         localStorage.setItem('user', JSON.stringify(data));
         alert('Welcome to Zenvy Elite! 💎');
       }
-    } catch (err) {
-      console.error('[ELITE_ERROR] Failed to join elite:', err);
+    } catch (_err) {
+      console.error('[ELITE_ERROR] Failed to join elite:', _err);
     }
   };
 
@@ -285,7 +277,7 @@ export default function Home() {
 
   // --- Live Data Orchestration (OMNI-SYNC) ---
   const chefPicks = liveRestaurants.flatMap(res =>
-    (res.menu || []).slice(0, 1).map((item: any) => ({ 
+    (res.menu || []).slice(0, 1).map((item) => ({ 
       ...item, 
       restaurantName: res.name, 
       restaurantId: res._id 
@@ -294,8 +286,8 @@ export default function Home() {
 
   const displayRestaurants = liveRestaurants.filter((res) => {
     const hasMenu = Array.isArray(res.menu) && res.menu.length > 0;
-    if (filter === 'budget') return hasMenu && res.menu.some((item: any) => item.price < 150);
-    if (filter === 'veg') return hasMenu && res.menu.some((item: any) => !item.name.toLowerCase().includes('chicken'));
+    if (filter === 'budget') return hasMenu && res.menu.some((item) => item.price < 150);
+    if (filter === 'veg') return hasMenu && res.menu.some((item) => !item.name.toLowerCase().includes('chicken'));
     return true;
   });
 
@@ -524,7 +516,7 @@ export default function Home() {
                   <Link href={`/products/${item.id}`} key={item.id}>
                     <div className="chef-card bg-[#141416]" style={{ animationDelay: `${i * 0.1}s` }}>
                       <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-primary-yellow/30 transition-colors">
-                        <Image src={item.image} alt={item.name} fill style={{ objectFit: 'cover' }} />
+                        <Image src={item.image || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
                       </div>
                       <div className="mt-3">
                         <h3 className="font-bold text-[15px] text-white mb-1">{item.name}</h3>
@@ -606,7 +598,7 @@ export default function Home() {
               {eliteSummer && (
                 <Link href={`/restaurants/${eliteSummer._id}`} className="relative shrink-0 w-[240px] group active:scale-95 transition-transform">
                    <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-cyan-500/30 transition-colors">
-                      <Image src={eliteSummer.imageUrl} alt={eliteSummer.name} fill style={{ objectFit: 'cover' }} />
+                       <Image src={eliteSummer.imageUrl || "/assets/placeholder.png"} alt={eliteSummer.name} fill style={{ objectFit: 'cover' }} />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4">
                          <span className="text-[10px] font-black text-white">Chilled Coolants</span>
                       </div>
@@ -636,7 +628,7 @@ export default function Home() {
               {eliteBakery && (
                 <Link href={`/restaurants/${eliteBakery._id}`} className="relative shrink-0 w-[240px] group active:scale-95 transition-transform">
                    <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-rose-500/30 transition-colors">
-                      <Image src={eliteBakery.imageUrl} alt={eliteBakery.name} fill style={{ objectFit: 'cover' }} />
+                       <Image src={eliteBakery.imageUrl || "/assets/placeholder.png"} alt={eliteBakery.name} fill style={{ objectFit: 'cover' }} />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4">
                          <span className="text-[10px] font-black text-white">Artisanal Bakes</span>
                       </div>
@@ -666,7 +658,7 @@ export default function Home() {
               {eliteSweets && (
                 <Link href={`/restaurants/${eliteSweets._id}`} className="relative shrink-0 w-[240px] group active:scale-95 transition-transform">
                    <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-purple-500/30 transition-colors">
-                      <Image src={eliteSweets.imageUrl} alt={eliteSweets.name} fill style={{ objectFit: 'cover' }} />
+                       <Image src={eliteSweets.imageUrl || "/assets/placeholder.png"} alt={eliteSweets.name} fill style={{ objectFit: 'cover' }} />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4">
                          <span className="text-[10px] font-black text-white">Gourmet Treats</span>
                       </div>
@@ -693,7 +685,7 @@ export default function Home() {
               {eliteFruits && (
                 <Link href={`/restaurants/${eliteFruits._id}`} className="relative shrink-0 w-[240px] group active:scale-95 transition-transform">
                    <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-emerald-500/30 transition-colors">
-                      <Image src={eliteFruits.imageUrl} alt={eliteFruits.name} fill style={{ objectFit: 'cover' }} />
+                       <Image src={eliteFruits.imageUrl || "/assets/placeholder.png"} alt={eliteFruits.name} fill style={{ objectFit: 'cover' }} />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4">
                          <span className="text-[10px] font-black text-white">Organic Harvest</span>
                       </div>
@@ -734,7 +726,7 @@ export default function Home() {
             <div className="space-y-4">
               {displayRestaurants.map((res, index) => (
                 <Link href={`/restaurants/${res._id}`} key={res._id}>
-                  <RestaurantCard name={res.name} rating={res.rating} time={res.time} imageUrl={res.imageUrl} imagePosition={index % 2 === 0 ? 'left' : 'right'} />
+                   <RestaurantCard name={res.name} rating={res.rating || "4.5"} time={res.time || "25-30 min"} imageUrl={res.imageUrl || "/assets/placeholder.png"} imagePosition={index % 2 === 0 ? 'left' : 'right'} />
                 </Link>
               ))}
             </div>

@@ -181,7 +181,7 @@ function Dashboard({ driver, onLogout }: { driver: Driver; onLogout: () => void 
       });
     }, 1000);
     return () => clearInterval(tick);
-  }, [availableOrders.length]);
+  }, [availableOrders]);
 
   // Mock Intel Radar for Phase 4
   useEffect(() => {
@@ -203,17 +203,17 @@ function Dashboard({ driver, onLogout }: { driver: Driver; onLogout: () => void 
   useEffect(() => {
     const savedStats = localStorage.getItem('todayStats');
     if (savedStats) {
-      try { setTodayStats(JSON.parse(savedStats)); } catch (e) {}
+      try { setTodayStats(JSON.parse(savedStats)); } catch (_e) {}
     }
     const savedActiveOrder = localStorage.getItem('activeOrder');
     if (savedActiveOrder) {
-      try { setActiveOrder(JSON.parse(savedActiveOrder)); } catch (e) {}
+      try { setActiveOrder(JSON.parse(savedActiveOrder)); } catch (_e) {}
     }
     const savedStatus = localStorage.getItem('orderStatus');
     if (savedStatus) { setOrderStatus(savedStatus as 'idle' | 'accepted' | 'picked_up' | 'delivered'); }
     const savedWeekly = localStorage.getItem('weeklyEarnings');
     if (savedWeekly) {
-      try { setWeeklyEarnings(JSON.parse(savedWeekly)); } catch (e) {}
+      try { setWeeklyEarnings(JSON.parse(savedWeekly)); } catch (_e) {}
     }
   }, []);
 
@@ -931,7 +931,7 @@ function Dashboard({ driver, onLogout }: { driver: Driver; onLogout: () => void 
               }}
               className="w-full mt-3 py-3 rounded-2xl text-xs text-gray-600 hover:text-red-400 transition-colors font-bold uppercase tracking-widest"
             >
-              Reset Today's Stats
+              Reset Today&apos;s Stats
             </button>
           </div>
         </div>

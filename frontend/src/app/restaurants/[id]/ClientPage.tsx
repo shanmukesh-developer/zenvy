@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useCart } from '@/context/CartContext';
 import Image from 'next/image';
 import SuccessOverlay from '@/components/SuccessOverlay';
+import { Restaurant, MenuItem } from '@/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
@@ -17,7 +18,7 @@ export default function RestaurantMenuClient({ restaurantId }: { restaurantId: s
   };
 
   const effectiveId = (legacyIdMap[restaurantId] || restaurantId).replace(/\/$/, "");
-  const [restaurant, setRestaurant] = useState<any>(null);
+  const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [loading, setLoading] = useState(true);
   const { totalItems, addToCart } = useCart();
   const [scrollY, setScrollY] = useState(0);
@@ -37,8 +38,8 @@ export default function RestaurantMenuClient({ restaurantId }: { restaurantId: s
         if (data && data.name) setRestaurant(data);
         setLoading(false);
       })
-      .catch(err => {
-        console.error('[FETCH_ERROR]', err);
+      .catch(_err => {
+        console.error('[FETCH_ERROR]', _err);
         setLoading(false);
       });
   }, [effectiveId]);
@@ -56,18 +57,18 @@ export default function RestaurantMenuClient({ restaurantId }: { restaurantId: s
 
   const filteredMenu = activeCategory === 'All' 
     ? (restaurant.menu || [])
-    : (restaurant.menu || []).filter((item: any) => item.category === activeCategory);
+    : (restaurant.menu || []).filter((item) => item.category === activeCategory);
 
-  const handleAddToCart = (item: any) => {
+  const handleAddToCart = (item: MenuItem) => {
     addToCart({
-      id: item.id,
+      id: item.id || item._id || "",
       name: item.name,
       price: item.price,
-      image: item.image,
-      restaurantId: restaurant.id,
+      image: item.image || item.imageUrl || "",
+      restaurantId: restaurant._id,
       restaurantName: restaurant.name,
     });
-    setAddedId(item.id);
+    setAddedId(item.id || item._id || null);
     setOverlay({
       isOpen: true,
       title: 'Added to Basket',
@@ -86,7 +87,7 @@ export default function RestaurantMenuClient({ restaurantId }: { restaurantId: s
           style={{ transform: `translateY(${scrollY * 0.4}px) scale(1.1)` }}
         >
           <Image
-            src={restaurant.imageUrl}
+            src={restaurant.imageUrl || "/assets/placeholder.png"} 
             alt={restaurant.name}
             fill
             style={{ objectFit: 'cover' }}
@@ -140,11 +141,11 @@ export default function RestaurantMenuClient({ restaurantId }: { restaurantId: s
 
         {/* Menu Items */}
         <div className="space-y-4">
-          {filteredMenu.map((item: any) => (
+          {filteredMenu.map((item) => (
             <Link href={`/products/${item.id}`} key={item.id} className="flex gap-4 items-center glass-card p-4 rounded-[28px] hover:border-[#C9A84C]/15 transition-all duration-300 group cursor-pointer active:scale-[0.98]">
               <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-[#C9A84C]/20 bg-black flex-shrink-0 relative group-hover:scale-105 transition-transform duration-300">
                  <Image 
-                   src={item.image} 
+                   src={item.image || item.imageUrl || "/assets/placeholder.png"} 
                    alt={item.name} 
                    fill
                    style={{ objectFit: 'cover' }}

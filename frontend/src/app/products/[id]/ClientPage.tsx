@@ -4,13 +4,14 @@ import { useState, useEffect } from 'react';
 import { useCart } from '@/context/CartContext';
 import Image from 'next/image';
 import SuccessOverlay from '@/components/SuccessOverlay';
+import { MenuItem } from '@/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
 export default function ProductDetailClient({ productId }: { productId: string }) {
   const [quantity, setQuantity] = useState(1);
   const { addToCart } = useCart();
-  const [product, setProduct] = useState<any>(null);
+  const [product, setProduct] = useState<MenuItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [overlay, setOverlay] = useState<{ isOpen: boolean; title: string; message: string; type?: 'success' | 'error' }>({
     isOpen: false,
@@ -47,11 +48,11 @@ export default function ProductDetailClient({ productId }: { productId: string }
 
   const handleAdd = () => {
     addToCart({
-      id: product.id,
+      id: product.id || product._id || "",
       name: product.name,
       price: product.price,
       quantity,
-      image: product.image || product.imageUrl,
+      image: product.image || product.imageUrl || "",
       restaurantId: product.restaurantId || 'unknown',
       restaurantName: product.restaurantName || 'Zenvy Kitchen'
     });
@@ -73,7 +74,7 @@ export default function ProductDetailClient({ productId }: { productId: string }
            style={{ transform: `translateY(${scrollY * 0.4}px) scale(1.05)` }}
          >
            <Image 
-             src={product.image} 
+             src={product.image || product.imageUrl || "/assets/placeholder.png"} 
              alt={product.name}
              fill
              style={{ objectFit: 'cover' }}

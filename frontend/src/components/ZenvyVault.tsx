@@ -100,7 +100,7 @@ export default function ZenvyVault() {
       <div className={`transition-all duration-700 overflow-hidden ${isOpen ? 'max-h-[800px] opacity-100' : 'max-h-0 opacity-0'}`}>
          <div className="p-6 border-x border-b border-[#C9A84C]/20 rounded-b-3xl bg-black/40 backdrop-blur-md relative">
             <p className="text-[10px] font-medium text-secondary-text tracking-wider leading-relaxed mb-6 italic text-center px-4">
-              "Ultra-premium campus selects. Limited quantities. Once they're gone, they're gone."
+              &quot;Ultra-premium campus selects. Limited quantities. Once they&apos;re gone, they&apos;re gone.&quot;
             </p>
 
             <div className="space-y-4">
