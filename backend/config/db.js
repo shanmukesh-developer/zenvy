@@ -25,14 +25,17 @@ const connectDB = async () => {
   try {
     await sequelize.authenticate();
     console.log('✅ PostgreSQL Connected via Sequelize.');
-    await sequelize.sync({ alter: true });
+    await sequelize.sync(); // Removed { alter: true } for production stability
     console.log('✅ All tables synced.');
   } catch (error) {
-    console.warn(`⚠️ PostgreSQL connection failed (${error.code || error.message}). Falling back to Local SQLite.`);
+    console.warn('⚠️ PostgreSQL connection failed. Error details:', error.message);
+    if (error.stack) console.warn(error.stack);
+    
+    console.log('🔄 Attempting fallback to Local SQLite...');
     
     sequelize = new Sequelize({
       dialect: 'sqlite',
-      storage: './local_dev.sqlite',
+      storage: '/tmp/local_dev.sqlite', // Use /tmp for writable filesystem on Render
       logging: false
     });
 
