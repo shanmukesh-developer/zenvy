@@ -179,10 +179,10 @@ export default function IntroOverlay({ onComplete }: { onComplete: () => void })
             style={{ 
                 letterSpacing: stage >= 4 ? '0.65em' : '0.4em', 
                 transition: 'letter-spacing 3.5s cubic-bezier(0.19, 1, 0.22, 1), opacity 2.5s',
-                marginRight: stage >= 4 ? '-0.65em' : '-0.4em'
+                marginRight: stage >= 4 ? '-0.65em' : '-0.4em',
+                color: '#EBE3CE'
             }}
             className={`mt-7 text-[9px] md:text-[10px] font-medium uppercase tracking-[0.4em] transition-all duration-[2000ms] delay-600 ${stage >= 4 ? 'translate-y-0 opacity-50' : 'translate-y-3 opacity-0'}`} 
-            style={{ color: '#EBE3CE' }}
           >
              THE APEX OF CONVENIENCE
           </p>
