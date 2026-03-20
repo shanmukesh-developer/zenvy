@@ -1,6 +1,6 @@
 "use client";
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Image from 'next/image';
 import SuccessOverlay from '@/components/SuccessOverlay';
 
@@ -27,7 +27,7 @@ export default function ProfilePage() {
     message: '',
   });
 
-  const fetchProfile = async () => {
+  const fetchProfile = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
       if (!token) {
@@ -48,16 +48,16 @@ export default function ProfilePage() {
         localStorage.removeItem('token');
         window.location.href = '/login';
       }
-    } catch (err) {
-      console.error('Failed to fetch profile', err);
+    } catch (_err) {
+      console.error('Failed to fetch profile', _err);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchProfile();
-  }, []);
+  }, [fetchProfile]);
 
   const handleUpdateProfile = async () => {
     try {
@@ -92,7 +92,7 @@ export default function ProfilePage() {
           type: 'error'
         });
       }
-    } catch (err) {
+    } catch (_err) {
       setOverlay({
         isOpen: true,
         title: 'Network Error',

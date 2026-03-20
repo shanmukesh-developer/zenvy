@@ -18,9 +18,9 @@ export default function ZenvyPulse({ userBlock }: { userBlock: string | null }) 
         // OR just fetch all public-safe configs.
         // For now, I'll fetch from the general public-safe config endpoint if I create one.
         // Let's assume a simple public getter for this specific key.
-      } catch (err) {
-        console.warn('[PULSE_CONFIG_CHECK] Failed, defaulting to ENABLED');
-      }
+    } catch (_err) {
+      console.warn('[PULSE_CONFIG_CHECK] Failed, defaulting to ENABLED');
+    }
     };
     
     // Instead of complex fetching, we'll listen for the 'systemUpdate' socket event if it's broadcasted.
@@ -30,7 +30,7 @@ export default function ZenvyPulse({ userBlock }: { userBlock: string | null }) 
   useEffect(() => {
     const socket = io(SOCKET_URL);
 
-    socket.on('systemUpdate', ({ type, data }: { type: string, data: any }) => {
+    socket.on('systemUpdate', ({ type, data }: { type: string, data: { key: string, value: boolean } }) => {
       if (type === 'CONFIG_UPDATED' && data.key === 'pulse_enabled') {
         setIsEnabled(data.value);
       }

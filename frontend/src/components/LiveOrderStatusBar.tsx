@@ -45,7 +45,7 @@ export default function LiveOrderStatusBar({ orderId, initialStatus = 'Pending',
       if (data.riderName) setRiderName(data.riderName);
     });
     return () => { s.disconnect(); };
-  }, [orderId]);
+  }, [orderId, onDelivered]);
 
   if (status === 'Delivered') return (
     <div className="fixed bottom-20 left-4 right-4 z-50 animate-slide-up">

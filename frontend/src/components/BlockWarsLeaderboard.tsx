@@ -33,8 +33,8 @@ export default function BlockWarsLeaderboard({ userBlock }: { userBlock: string 
         } else {
           setBlocks(MOCK_BLOCKS);
         }
-      } catch (err) {
-        console.error('Failed to fetch block activity:', err);
+      } catch (_err) {
+        console.error('Failed to fetch block activity:', _err);
         setBlocks(MOCK_BLOCKS);
       } finally {
         setLoading(false);
@@ -44,7 +44,7 @@ export default function BlockWarsLeaderboard({ userBlock }: { userBlock: string 
     fetchActivity();
     const interval = setInterval(fetchActivity, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, []); // MOCK_BLOCKS is stable as a const inside the component if needed, or outside
 
   if (loading) return <div className="h-40 w-full glass-card animate-pulse" />;
 

@@ -78,7 +78,7 @@ export default function RegisterPage() {
           type: 'error'
         });
       }
-    } catch (err) {
+    } catch (_err) {
       setOverlay({
         isOpen: true,
         title: 'Network Interrupted',
