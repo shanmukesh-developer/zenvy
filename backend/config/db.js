@@ -8,6 +8,9 @@ const { initRestaurantModel } = require('../models/Restaurant');
 const { initMenuItemModel } = require('../models/MenuItem');
 const { initOrderModel } = require('../models/Order');
 const { initDeliveryPartnerModel } = require('../models/DeliveryPartner');
+const { initVaultItemModel } = require('../models/VaultItem');
+const { initGlobalConfigModel } = require('../models/GlobalConfig');
+const { initVerificationLogModel } = require('../models/VerificationLog');
 
 const initializeAllModels = (instance) => {
   initUserModel(instance);
@@ -15,6 +18,9 @@ const initializeAllModels = (instance) => {
   initMenuItemModel(instance);
   initOrderModel(instance);
   initDeliveryPartnerModel(instance);
+  initVaultItemModel(instance);
+  initGlobalConfigModel(instance);
+  initVerificationLogModel(instance);
 };
 
 const connectDB = async () => {

@@ -1,5 +1,6 @@
-const Order = require('../models/Order');
-const User = require('../models/User');
+const { getOrderModel } = require('../models/Order');
+const { getUserModel } = require('../models/User');
+const { Op } = require('sequelize');
 
 // SRM Hostels List
 const SRM_HOSTELS = [
@@ -10,22 +11,22 @@ const SRM_HOSTELS = [
 // @route   GET /api/blocks/activity
 const getBlockActivity = async (req, res) => {
   try {
-    // 1. Fetch all completed orders to calculate volume
-    const orders = await Order.find({ status: 'Delivered' });
+    const Order = getOrderModel();
+    const User = getUserModel();
 
-    // 2. Map orders to their user's hostel blocks
-    // Note: In a large scale app, we'd use MongoDB $lookup aggregation, 
-    // but for the SRM campus scale, we can map locally or do a quick join.
-    
+    // 1. Fetch all completed orders to calculate volume
+    const orders = await Order.findAll({ where: { status: 'Delivered' } });
+
     // Create an initial map with 0 counts
     const activityMap = {};
     SRM_HOSTELS.forEach(h => activityMap[h] = 0);
 
     // Fetch user blocks for the orders
     const userIds = [...new Set(orders.map(o => o.userId))];
-    const users = await User.find({ _id: { $in: userIds } });
+    const users = await User.findAll({ where: { id: { [Op.in]: userIds } } });
+    
     const userBlockMap = {};
-    users.forEach(u => userBlockMap[u._id] = u.hostelBlock);
+    users.forEach(u => userBlockMap[u.id] = u.hostelBlock);
 
     orders.forEach(order => {
       const block = userBlockMap[order.userId];

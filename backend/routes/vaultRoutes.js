@@ -1,12 +1,19 @@
 const express = require('express');
 const router = express.Router();
-const VaultItem = require('../models/VaultItem');
+const { getVaultItemModel } = require('../models/VaultItem');
+const { Op } = require('sequelize');
 
 // @desc    Get all active vault items
 // @route   GET /api/vault
 router.get('/', async (req, res) => {
   try {
-    const items = await VaultItem.find({ isActive: true, remainingCount: { $gt: 0 } });
+    const VaultItem = getVaultItemModel();
+    const items = await VaultItem.findAll({ 
+      where: { 
+        isActive: true, 
+        remainingCount: { [Op.gt]: 0 } 
+      } 
+    });
     res.json(items);
   } catch (error) {
     res.status(500).json({ message: error.message });

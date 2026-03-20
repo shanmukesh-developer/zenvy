@@ -1,11 +1,40 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
 
-const verificationLogSchema = new mongoose.Schema({
-  adminId: { type: String, required: true },
-  targetId: { type: String, required: true },
-  action: { type: String, required: true }, // e.g., 'ELITE_TOGGLE', 'RIDER_APPROVE'
-  details: { type: String },
-  timestamp: { type: Date, default: Date.now }
-});
+let VerificationLog;
 
-module.exports = mongoose.model('VerificationLog', verificationLogSchema);
+const initVerificationLogModel = (sequelize) => {
+  if (!sequelize) return null;
+
+  VerificationLog = sequelize.define('VerificationLog', {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true
+    },
+    adminId: {
+      type: DataTypes.STRING,
+      allowNull: false
+    },
+    targetId: {
+      type: DataTypes.STRING,
+      allowNull: false
+    },
+    action: {
+      type: DataTypes.STRING,
+      allowNull: false
+    },
+    details: {
+      type: DataTypes.STRING
+    },
+    timestamp: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW
+    }
+  }, { timestamps: false });
+
+  return VerificationLog;
+};
+
+const getVerificationLogModel = () => VerificationLog;
+
+module.exports = { initVerificationLogModel, getVerificationLogModel };

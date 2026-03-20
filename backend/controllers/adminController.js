@@ -3,6 +3,10 @@ const { getMenuItemModel } = require('../models/MenuItem');
 const { getUserModel } = require('../models/User');
 const { getDeliveryPartnerModel } = require('../models/DeliveryPartner');
 const { getOrderModel } = require('../models/Order');
+const { getVaultItemModel } = require('../models/VaultItem');
+const { getGlobalConfigModel } = require('../models/GlobalConfig');
+const { getVerificationLogModel } = require('../models/VerificationLog');
+const { Op } = require('sequelize');
 
 const broadcastSystemUpdate = (req, type, data) => {
   const io = req.app.get('io');
@@ -227,15 +231,34 @@ exports.setEliteStatus = async (req, res) => {
 };
 
 exports.getAuditLogs = async (req, res) => {
-  res.json([]); // Simplified - no separate audit log table in PostgreSQL migration
+  try {
+    const VerificationLog = getVerificationLogModel();
+    const logs = await VerificationLog.findAll({ order: [['timestamp', 'DESC']], limit: 100 });
+    res.json(logs.map(l => ({ ...l.toJSON(), _id: l.id })));
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 };
 
 exports.updateGlobalConfig = async (req, res) => {
-  res.json({ key: req.body.key, value: req.body.value });
+  try {
+    const GlobalConfig = getGlobalConfigModel();
+    const { key, value, description } = req.body;
+    const [config, created] = await GlobalConfig.upsert({ key, value, description });
+    res.json({ key, value, description, created });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
 };
 
 exports.getGlobalConfig = async (req, res) => {
-  res.json([]);
+  try {
+    const GlobalConfig = getGlobalConfigModel();
+    const configs = await GlobalConfig.findAll();
+    res.json(configs.map(c => ({ ...c.toJSON(), _id: c.id })));
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 };
 
 // ─── Dashboard Stats ──────────────────────────────────────────
@@ -348,13 +371,41 @@ exports.seedDatabase = async (req, res) => {
 
 // ─── Zenvy Vault Control (Stubs for PostgreSQL) ─────────────────
 exports.getVaultItems = async (req, res) => {
-  res.json([]);
+  try {
+    const VaultItem = getVaultItemModel();
+    const items = await VaultItem.findAll();
+    res.json(items.map(i => ({ ...i.toJSON(), _id: i.id })));
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 };
 
 exports.upsertVaultItem = async (req, res) => {
-  res.json({ id: req.params.id, ...req.body });
+  try {
+    const VaultItem = getVaultItemModel();
+    const { id } = req.params;
+    let item;
+    if (id && id !== 'new') {
+      item = await VaultItem.findByPk(id);
+      if (item) await item.update(req.body);
+      else item = await VaultItem.create(req.body);
+    } else {
+      item = await VaultItem.create(req.body);
+    }
+    broadcastSystemUpdate(req, 'VAULT_UPDATED', item);
+    res.json({ ...item.toJSON(), _id: item.id });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
 };
 
 exports.deleteVaultItem = async (req, res) => {
-  res.json({ message: 'Deleted' });
+  try {
+    const VaultItem = getVaultItemModel();
+    await VaultItem.destroy({ where: { id: req.params.id } });
+    broadcastSystemUpdate(req, 'VAULT_DELETED', { id: req.params.id });
+    res.json({ message: 'Deleted' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 };

@@ -1,13 +1,47 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
 
-const vaultItemSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  price: { type: Number, required: true },
-  originalPrice: { type: Number, required: true },
-  remainingCount: { type: Number, default: 0 },
-  imageUrl: { type: String },
-  isActive: { type: Boolean, default: true },
-  resetAt: { type: Date } // When this item should disappear or reset
-}, { timestamps: true });
+let VaultItem;
 
-module.exports = mongoose.model('VaultItem', vaultItemSchema);
+const initVaultItemModel = (sequelize) => {
+  if (!sequelize) return null;
+
+  VaultItem = sequelize.define('VaultItem', {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true
+    },
+    name: {
+      type: DataTypes.STRING,
+      allowNull: false
+    },
+    price: {
+      type: DataTypes.FLOAT,
+      allowNull: false
+    },
+    originalPrice: {
+      type: DataTypes.FLOAT,
+      allowNull: false
+    },
+    remainingCount: {
+      type: DataTypes.INTEGER,
+      defaultValue: 0
+    },
+    imageUrl: {
+      type: DataTypes.STRING
+    },
+    isActive: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true
+    },
+    resetAt: {
+      type: DataTypes.DATE
+    }
+  });
+
+  return VaultItem;
+};
+
+const getVaultItemModel = () => VaultItem;
+
+module.exports = { initVaultItemModel, getVaultItemModel };
