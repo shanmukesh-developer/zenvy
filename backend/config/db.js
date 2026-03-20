@@ -6,21 +6,24 @@ const connectDB = async () => {
   const dbUrl = process.env.DATABASE_URL;
 
   if (!dbUrl) {
-    console.warn('⚠️  DATABASE_URL missing! Running in MOCK MODE.');
-    process.env.MOCK_DATABASE = 'true';
-    return;
+    console.warn('⚠️  DATABASE_URL missing! Defaulting to Local SQLite...');
+    sequelize = new Sequelize({
+      dialect: 'sqlite',
+      storage: process.env.NODE_ENV === 'production' ? '/tmp/local_dev.sqlite' : './local_dev.sqlite',
+      logging: false
+    });
+  } else {
+    sequelize = new Sequelize(dbUrl, {
+      dialect: 'postgres',
+      dialectOptions: {
+        ssl: {
+          require: true,
+          rejectUnauthorized: false
+        }
+      },
+      logging: false
+    });
   }
-
-  sequelize = new Sequelize(dbUrl, {
-    dialect: 'postgres',
-    dialectOptions: {
-      ssl: {
-        require: true,
-        rejectUnauthorized: false // Required for Render
-      }
-    },
-    logging: false
-  });
 
   try {
     await sequelize.authenticate();
