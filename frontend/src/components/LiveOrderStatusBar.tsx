@@ -1,10 +1,9 @@
 "use client";
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { io, Socket } from 'socket.io-client';
-import ChatDrawer from './ChatDrawer';
 
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5000';
+import { socket } from '@/utils/socket';
+import ChatDrawer from './ChatDrawer';
 
 interface Props {
   orderId: string;
@@ -26,25 +25,26 @@ export default function LiveOrderStatusBar({ orderId, initialStatus = 'Pending',
   const [riderName, setRiderName] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(true);
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const [socket, setSocket] = useState<Socket | null>(null);
 
   const currentStepIdx = STEPS.findIndex(s => s.key === status);
 
   useEffect(() => {
     if (!orderId) return;
-    const s = io(SOCKET_URL);
-    setSocket(s);
-    s.emit('joinOrder', orderId);
-    s.on('statusUpdated', (newStatus: string) => {
+    socket.emit('joinOrder', orderId);
+    socket.on('statusUpdated', (newStatus: string) => {
       setStatus(newStatus);
       if (newStatus === 'Delivered' && onDelivered) {
         onDelivered();
       }
     });
-    s.on('locationUpdated', (data: { riderName?: string }) => {
+    socket.on('locationUpdated', (data: { riderName?: string }) => {
       if (data.riderName) setRiderName(data.riderName);
     });
-    return () => { s.disconnect(); };
+
+    return () => { 
+      socket.off('statusUpdated');
+      socket.off('locationUpdated');
+    };
   }, [orderId, onDelivered]);
 
   if (status === 'Delivered') return (

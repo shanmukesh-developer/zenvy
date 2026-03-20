@@ -1,8 +1,6 @@
 "use client";
 import { useState, useEffect } from 'react';
-import io from 'socket.io-client';
-
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5000';
+import { socket } from '@/utils/socket';
 
 export default function ZenvyPulse({ userBlock }: { userBlock: string | null }) {
   const [pulses, setPulses] = useState<{ id: number, block: string }[]>([]);
@@ -14,7 +12,8 @@ export default function ZenvyPulse({ userBlock }: { userBlock: string | null }) 
   }, []);
 
   useEffect(() => {
-    const socket = io(SOCKET_URL);
+    // The socket is now imported directly from '@/utils/socket'
+    // const socket = io(SOCKET_URL); // This line is removed
 
     socket.on('systemUpdate', ({ type, data }: { type: string, data: { key: string, value: boolean } }) => {
       if (type === 'CONFIG_UPDATED' && data.key === 'pulse_enabled') {
@@ -36,7 +35,8 @@ export default function ZenvyPulse({ userBlock }: { userBlock: string | null }) 
     });
 
     return () => {
-      socket.disconnect();
+      socket.off('systemUpdate');
+      socket.off('blockOrderPulse');
     };
   }, [userBlock, isEnabled]);
 

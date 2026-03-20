@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useState, useRef } from 'react';
-import { io, Socket } from 'socket.io-client';
+import { Socket } from 'socket.io-client';
 
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5000';
+import { socket } from '@/utils/socket';
 
 export const useLiveOrder = (orderId: string) => {
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
@@ -12,7 +12,7 @@ export const useLiveOrder = (orderId: string) => {
   useEffect(() => {
     if (!orderId) return;
 
-    socketRef.current = io(SOCKET_URL);
+    socketRef.current = socket;
     socketRef.current.emit('joinOrder', orderId);
 
     socketRef.current.on('locationUpdated', (data) => {
@@ -21,7 +21,7 @@ export const useLiveOrder = (orderId: string) => {
     });
 
     return () => {
-      socketRef.current?.disconnect();
+      socket.off('locationUpdated');
     };
   }, [orderId]);
 

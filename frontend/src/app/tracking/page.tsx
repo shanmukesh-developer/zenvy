@@ -3,7 +3,7 @@ import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import Image from 'next/image';
-import io from 'socket.io-client';
+
 
 import { APIProvider, Map, AdvancedMarker, useMap, useMapsLibrary } from '@vis.gl/react-google-maps';
 
@@ -11,7 +11,7 @@ const RESTAURANT_COORD = { lat: 16.4645, lng: 80.5050 };
 const HOME_COORD = { lat: 16.4632, lng: 80.5064 };
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5000';
+import { socket } from '@/utils/socket';
 
 interface OrderInfo {
   _id: string;
@@ -85,10 +85,8 @@ function TrackingContent() {
 
     if (!orderId) return () => clearInterval(speedInterval);
 
-    const socket = io(SOCKET_URL);
+    if (orderId) socket.emit('joinOrder', orderId);
     
-    socket.emit('joinOrder', orderId);
-
     socket.on('statusUpdated', (newStatus: string) => {
       if (newStatus === 'Accepted') setStatus(1);
       if (newStatus === 'PickedUp') setStatus(2);
@@ -119,7 +117,8 @@ function TrackingContent() {
     fetchOrder();
 
     return () => {
-      socket.disconnect();
+      socket.off('statusUpdated');
+      socket.off('locationUpdated');
       clearInterval(speedInterval);
     };
   }, [orderId]);
