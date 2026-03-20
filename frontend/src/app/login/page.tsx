@@ -61,7 +61,7 @@ export default function LoginPage() {
           type: 'error'
         });
       }
-    } catch (err) {
+    } catch (_err) {
       setOverlay({
         isOpen: true,
         title: 'Connection Lost',

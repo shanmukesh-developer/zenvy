@@ -1,5 +1,5 @@
-"use client";
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
@@ -29,8 +29,8 @@ export default function VaultTerminal() {
       });
       const data = await res.json();
       if (res.ok) setItems(data);
-    } catch (err) {
-      console.error('[VAULT_FETCH_ERROR]', err);
+    } catch (_err) {
+      console.error('[VAULT_FETCH_ERROR]', _err);
     } finally {
       setLoading(false);
     }
@@ -49,8 +49,8 @@ export default function VaultTerminal() {
         body: JSON.stringify(item)
       });
       if (res.ok) fetchVault();
-    } catch (err) {
-      console.error('[VAULT_UPSERT_ERROR]', err);
+    } catch (_err) {
+      console.error('[VAULT_UPSERT_ERROR]', _err);
     }
   };
 
@@ -62,8 +62,8 @@ export default function VaultTerminal() {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) fetchVault();
-    } catch (err) {
-      console.error('[VAULT_DELETE_ERROR]', err);
+    } catch (_err) {
+      console.error('[VAULT_DELETE_ERROR]', _err);
     }
   };
 
@@ -88,9 +88,9 @@ export default function VaultTerminal() {
         ) : items.map((item) => (
           <div key={item._id} className="glass-card p-8 group relative overflow-hidden">
              <div className="flex gap-8 relative z-10">
-                <div className="w-32 h-32 rounded-3xl overflow-hidden border border-white/10 shrink-0">
-                   <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
-                </div>
+                 <div className="w-32 h-32 rounded-3xl overflow-hidden border border-white/10 shrink-0 relative">
+                    <Image src={item.imageUrl || "/assets/placeholder.png"} fill style={{ objectFit: 'cover' }} alt={item.name} className="group-hover:scale-110 transition-transform duration-700" />
+                 </div>
                 <div className="flex-1 space-y-4">
                    <div className="flex justify-between items-start">
                       <h4 className="text-xl font-black text-white uppercase tracking-tight">{item.name}</h4>

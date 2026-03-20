@@ -6,7 +6,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 interface Config {
   _id: string;
   key: string;
-  value: any;
+  value: any; // Reverting to any temporarily or using a more complex union if we want to be strict, but any is safer for this generic config until we have a better structure.
   description: string;
 }
 
@@ -26,8 +26,8 @@ export default function ConfigTerminal() {
       });
       const data = await res.json();
       if (res.ok) setConfigs(data);
-    } catch (err) {
-      console.error('[CONFIG_FETCH_ERROR]', err);
+    } catch (_err) {
+      console.error('[CONFIG_FETCH_ERROR]', _err);
     } finally {
       setLoading(false);
     }
@@ -45,8 +45,8 @@ export default function ConfigTerminal() {
         body: JSON.stringify({ key, value })
       });
       if (res.ok) fetchConfigs();
-    } catch (err) {
-      console.error('[CONFIG_UPDATE_ERROR]', err);
+    } catch (_err) {
+      console.error('[CONFIG_UPDATE_ERROR]', _err);
     }
   };
 
@@ -151,7 +151,7 @@ export default function ConfigTerminal() {
                     body: JSON.stringify({ restaurants: [] }) 
                   });
                   if(res.ok) alert('Nexus Synchronized Successfully!');
-                } catch(err) { console.error(err); }
+                } catch(_err) { console.error(_err); }
              }}
              className="w-full py-6 bg-emerald-600/20 text-emerald-500 border border-emerald-600/30 rounded-3xl text-[10px] font-black uppercase tracking-[0.3em] hover:bg-emerald-600 hover:text-white transition-all shadow-[0_0_20px_rgba(16,185,129,0.2)]"
            >

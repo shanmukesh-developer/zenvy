@@ -203,17 +203,17 @@ function Dashboard({ driver, onLogout }: { driver: Driver; onLogout: () => void 
   useEffect(() => {
     const savedStats = localStorage.getItem('todayStats');
     if (savedStats) {
-      try { setTodayStats(JSON.parse(savedStats)); } catch (_e) {}
+      try { setTodayStats(JSON.parse(savedStats)); } catch { /* ignore */ }
     }
     const savedActiveOrder = localStorage.getItem('activeOrder');
     if (savedActiveOrder) {
-      try { setActiveOrder(JSON.parse(savedActiveOrder)); } catch (_e) {}
+      try { setActiveOrder(JSON.parse(savedActiveOrder)); } catch { /* ignore */ }
     }
     const savedStatus = localStorage.getItem('orderStatus');
     if (savedStatus) { setOrderStatus(savedStatus as 'idle' | 'accepted' | 'picked_up' | 'delivered'); }
     const savedWeekly = localStorage.getItem('weeklyEarnings');
     if (savedWeekly) {
-      try { setWeeklyEarnings(JSON.parse(savedWeekly)); } catch (_e) {}
+      try { setWeeklyEarnings(JSON.parse(savedWeekly)); } catch { /* ignore */ }
     }
   }, []);
 

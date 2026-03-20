@@ -1,5 +1,5 @@
-"use client";
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
@@ -108,8 +108,8 @@ export default function GourmetManagement() {
       });
       const data = await res.json();
       if (res.ok) setRestaurants(data);
-    } catch (err) {
-      console.error('[RESTAURANT_FETCH_ERROR]', err);
+    } catch (_err) {
+      console.error('[RESTAURANT_FETCH_ERROR]', _err);
     } finally {
       setLoading(false);
     }
@@ -126,7 +126,7 @@ export default function GourmetManagement() {
         body: JSON.stringify({ restaurants: LEGACY_DATA })
       });
       if (res.ok) fetchRestaurants();
-    } catch (err) { console.error('[SYNC_ERROR]', err); } finally { setIsSyncing(false); }
+    } catch (_err) { console.error('[SYNC_ERROR]', _err); } finally { setIsSyncing(false); }
   };
 
   const handleCreateRestaurant = async () => {
@@ -138,7 +138,7 @@ export default function GourmetManagement() {
         body: JSON.stringify(newRest)
       });
       if (res.ok) { setIsAdding(false); fetchRestaurants(); }
-    } catch (err) { console.error('[CREATE_ERROR]', err); }
+    } catch (_err) { console.error('[CREATE_ERROR]', _err); }
   };
 
   const handleCreateMenuItem = async () => {
@@ -151,7 +151,7 @@ export default function GourmetManagement() {
         body: JSON.stringify({ ...newItem, restaurantId: selectedRestaurant._id })
       });
       if (res.ok) { setIsAddingItem(false); fetchMenu(selectedRestaurant._id); }
-    } catch (err) { console.error('[ITEM_CREATE_ERROR]', err); }
+    } catch (_err) { console.error('[ITEM_CREATE_ERROR]', _err); }
   };
 
   const fetchMenu = async (restaurantId: string) => {
@@ -162,7 +162,7 @@ export default function GourmetManagement() {
       });
       const data = await res.json();
       if (res.ok) setMenuItems(data);
-    } catch (err) { console.error('[MENU_FETCH_ERROR]', err); }
+    } catch (_err) { console.error('[MENU_FETCH_ERROR]', _err); }
   };
 
   const toggleEliteItem = async (menuItem: MenuItem) => {
@@ -174,7 +174,7 @@ export default function GourmetManagement() {
         body: JSON.stringify({ ...menuItem, isEliteOnly: !menuItem.isEliteOnly })
       });
       if (res.ok && selectedRestaurant) fetchMenu(selectedRestaurant._id);
-    } catch (err) { console.error('[ELITE_TOGGLE_ERROR]', err); }
+    } catch (_err) { console.error('[ELITE_TOGGLE_ERROR]', _err); }
   };
 
   return (
@@ -248,8 +248,8 @@ export default function GourmetManagement() {
           ) : restaurants.map((rest) => (
             <div key={rest._id} className="glass-card p-8 group hover:border-emerald-500/50 transition-all">
               <div className="flex justify-between items-start mb-6">
-                <div className="w-16 h-16 bg-emerald-500/20 rounded-2xl overflow-hidden border border-white/10">
-                    <img src={rest.imageUrl} className="w-full h-full object-cover" alt="" />
+                <div className="w-16 h-16 bg-emerald-500/20 rounded-2xl overflow-hidden border border-white/10 relative">
+                    <Image src={rest.imageUrl || "/assets/placeholder.png"} fill style={{ objectFit: 'cover' }} alt={rest.name} />
                 </div>
                 <div className="text-right">
                   <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Commission</span>
@@ -265,7 +265,7 @@ export default function GourmetManagement() {
       ) : view === 'menu' && !isAddingItem ? (
         <div className="glass-card p-8 bg-white/[0.01]">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {menuItems.map((item) => (
+              {menuItems.map((item: MenuItem) => (
                 <div key={item._id} className="p-6 rounded-3xl bg-white/[0.02] border border-white/5 group hover:border-emerald-500/30 transition-all flex justify-between">
                    <div>
                       <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest mb-1">{item.category}</p>

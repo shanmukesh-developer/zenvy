@@ -12,11 +12,10 @@ import TemporalSlider from '@/components/TemporalSlider';
 import ZenvyVault from '@/components/ZenvyVault';
 import LiveOrderStatusBar from '@/components/LiveOrderStatusBar';
 import RatingModal from '@/components/RatingModal';
-import { Socket } from 'socket.io-client';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
-import { Restaurant, MenuItem, User } from '@/types';
+import { Restaurant, User } from '@/types';
 
 function getGreeting(): string {
   const h = new Date().getHours();
@@ -68,22 +67,21 @@ export default function Home() {
   const [cancelSecondsLeft, setCancelSecondsLeft] = useState(0);
   const [isRatingModalOpen, setIsRatingModalOpen] = useState(false);
   
-  const campusSlots = [
-    { id: '1:00 PM', hour: 13, min: 0 },
-    { id: '5:00 PM', hour: 17, min: 0 },
-    { id: '7:30 PM', hour: 19, min: 30 },
-    { id: '8:50 PM', hour: 20, min: 50 },
-    { id: '9:30 PM', hour: 21, min: 30 }
-  ];
-
   const getNextAvailableSlot = useCallback(() => {
+    const campusSlots = [
+      { id: '1:00 PM', hour: 13, min: 0 },
+      { id: '5:00 PM', hour: 17, min: 0 },
+      { id: '7:30 PM', hour: 19, min: 30 },
+      { id: '8:50 PM', hour: 20, min: 50 },
+      { id: '9:30 PM', hour: 21, min: 30 }
+    ];
     const now = new Date();
     return campusSlots.find(slot => {
       const slotDate = new Date();
       slotDate.setHours(slot.hour, slot.min, 0, 0);
       return (slotDate.getTime() - now.getTime()) / (1000 * 60) >= 150;
     });
-  }, [campusSlots]);
+  }, []);
 
   const nextSlot = getNextAvailableSlot();
 

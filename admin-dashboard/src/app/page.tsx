@@ -124,7 +124,7 @@ export default function AdminHome() {
         });
         const data = await res.json();
         if (res.ok) {
-          const formatted = data.map((o: any) => ({
+          const formatted = data.map((o: { _id: { toString: () => string }, userId?: { name: string }, hostelGateDelivery: boolean, status: string, finalPrice?: number, totalPrice: number, items?: { restaurantName: string }[], createdAt: string }) => ({
             id: o._id.toString(),
             customer: o.userId?.name || 'Student',
             location: o.hostelGateDelivery ? 'Hostel Gate' : 'Room Delivery',
@@ -135,8 +135,8 @@ export default function AdminHome() {
           }));
           setLiveOrders(formatted);
         }
-      } catch (err) {
-        console.error('[ADMIN_FETCH_ERROR]', err);
+      } catch (_err) {
+        console.error('[ADMIN_FETCH_ERROR]', _err);
       } finally {
         setLoading(false);
       }
@@ -147,7 +147,7 @@ export default function AdminHome() {
 
     const socket = io(SOCKET_URL);
     
-    socket.on('newOrder', (order: any) => {
+    socket.on('newOrder', (order: { id: string, drop: string, finalPrice?: number, totalPrice: number }) => {
       fetchStats(); // Refresh stats on new order
       setLiveOrders(prev => [{
         id: order.id,

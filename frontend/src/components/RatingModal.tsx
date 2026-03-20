@@ -8,7 +8,7 @@ interface Props {
   onSubmit: (rating: number, review: string) => void;
 }
 
-export default function RatingModal({ orderId, isOpen, onClose, onSubmit }: Props) {
+export default function RatingModal({ orderId: _orderId, isOpen, onClose, onSubmit }: Props) {
   const [rating, setRating] = useState(0);
   const [hover, setHover] = useState(0);
   const [review, setReview] = useState('');
