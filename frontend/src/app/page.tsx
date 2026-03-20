@@ -764,7 +764,6 @@ export default function Home() {
         )}
 
         <RatingModal
-          orderId={activeOrder?._id || activeOrder?.id || ''}
           isOpen={isRatingModalOpen}
           onClose={() => setIsRatingModalOpen(false)}
           onSubmit={handleRatingSubmit}
