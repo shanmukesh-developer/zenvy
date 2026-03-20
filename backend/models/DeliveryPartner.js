@@ -1,3 +1,8 @@
+const { DataTypes } = require('sequelize');
+const bcrypt = require('bcryptjs');
+
+let DeliveryPartner;
+
 const initDeliveryPartnerModel = (sequelize) => {
   if (!sequelize) return null;
 

@@ -1,5 +1,4 @@
 const { DataTypes } = require('sequelize');
-const { getSequelize } = require('../config/db');
 
 let MenuItem;
 
