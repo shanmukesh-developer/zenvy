@@ -3,7 +3,6 @@ import { useState, useEffect } from 'react';
 import io from 'socket.io-client';
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5000';
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
 export default function ZenvyPulse({ userBlock }: { userBlock: string | null }) {
   const [pulses, setPulses] = useState<{ id: number, block: string }[]>([]);

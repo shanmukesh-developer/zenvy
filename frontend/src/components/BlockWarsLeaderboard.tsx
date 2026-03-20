@@ -12,14 +12,15 @@ export default function BlockWarsLeaderboard({ userBlock }: { userBlock: string 
   const [blocks, setBlocks] = useState<BlockActivity[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const MOCK_BLOCKS: BlockActivity[] = [
-    { name: 'Vedavathi', count: 142 },
-    { name: 'Krishna', count: 118 },
-    { name: 'Ganga-A', count: 97 },
-    { name: 'Yamuna', count: 74 },
-  ];
 
   useEffect(() => {
+    const MOCK_BLOCKS: BlockActivity[] = [
+      { name: 'Vedavathi', count: 142 },
+      { name: 'Krishna', count: 118 },
+      { name: 'Ganga-A', count: 97 },
+      { name: 'Yamuna', count: 74 },
+    ];
+    
     const fetchActivity = async () => {
       try {
         const token = localStorage.getItem('token');
@@ -44,7 +45,7 @@ export default function BlockWarsLeaderboard({ userBlock }: { userBlock: string 
     fetchActivity();
     const interval = setInterval(fetchActivity, 30000);
     return () => clearInterval(interval);
-  }, [MOCK_BLOCKS]); // MOCK_BLOCKS is stable as a const inside the component if needed, or outside
+  }, []); // MOCK_BLOCKS is now locally defined
 
   if (loading) return <div className="h-40 w-full glass-card animate-pulse" />;
 
