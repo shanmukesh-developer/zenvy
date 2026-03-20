@@ -10,6 +10,7 @@ const initRestaurantModel = (sequelize) => {
     name: { type: DataTypes.STRING, allowNull: false },
     location: { type: DataTypes.STRING, allowNull: false },
     imageUrl: { type: DataTypes.STRING },
+    vendorType: { type: DataTypes.STRING, defaultValue: 'RESTAURANT' },
     rating: { type: DataTypes.FLOAT, defaultValue: 0 },
     deliveryTime: { type: DataTypes.INTEGER },
     commissionRate: { type: DataTypes.FLOAT, defaultValue: 10 },

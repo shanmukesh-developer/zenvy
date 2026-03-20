@@ -9,6 +9,8 @@ export interface MenuItem {
   category?: string;
   restaurantId?: string;
   restaurantName?: string;
+  tags?: string[];
+  isVegetarian?: boolean;
 }
 
 export interface Restaurant {
@@ -22,6 +24,7 @@ export interface Restaurant {
   description?: string;
   time?: string;
   tags?: string[];
+  vendorType?: string;
   categories?: string[];
 }
 

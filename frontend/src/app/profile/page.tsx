@@ -1,7 +1,6 @@
 "use client";
 import Link from 'next/link';
 import { useEffect, useState, useCallback } from 'react';
-import Image from 'next/image';
 import SuccessOverlay from '@/components/SuccessOverlay';
 
 interface ProfileUser {
@@ -131,14 +130,9 @@ export default function ProfilePage() {
       {/* Profile Info / Elite Card */}
       <div className="elite-card rounded-[40px] p-8 mb-12 shadow-2xl relative overflow-hidden group border border-[#C9A84C]/20">
         <div className="elite-hologram" />
-        <div className="absolute inset-0 opacity-40 group-hover:opacity-60 transition-opacity">
-          <Image 
-            src="/assets/zenvy_elite_pass_card_1773840133324.png" 
-            alt="Elite Pass" 
-            fill 
-            style={{ objectFit: 'cover' }} 
-          />
-        </div>
+        <div className="absolute inset-0 bg-gradient-to-br from-[#1a1a1c] via-[#2c2c2e] to-[#1a1a1c] z-0" />
+        <div className="absolute inset-0 opacity-20 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] mix-blend-overlay z-10" />
+        <div className="absolute -top-24 -right-24 w-64 h-64 bg-[#C9A84C]/10 rounded-full blur-[80px] z-10" />
         
         <div className="relative z-10">
           <div className="flex justify-between items-start mb-12">

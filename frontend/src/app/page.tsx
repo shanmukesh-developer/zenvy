@@ -12,6 +12,7 @@ import TemporalSlider from '@/components/TemporalSlider';
 import ZenvyVault from '@/components/ZenvyVault';
 import LiveOrderStatusBar from '@/components/LiveOrderStatusBar';
 import RatingModal from '@/components/RatingModal';
+import ZenvyModal from '@/components/ZenvyModal';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
@@ -61,11 +62,37 @@ export default function Home() {
   const [timeLeft, setTimeLeft] = useState<string>('');
   const [isElite, setIsElite] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedRental, setSelectedRental] = useState<Rental | null>(null);
+  const [selectedRental, setSelectedRental] = useState<any | null>(null);
   const [showSpecs, setShowSpecs] = useState(false);
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
   const [cancelSecondsLeft, setCancelSecondsLeft] = useState(0);
   const [isRatingModalOpen, setIsRatingModalOpen] = useState(false);
+  const [gymMode, setGymMode] = useState(false);
+  
+  const [modalConfig, setModalConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type?: 'info' | 'success' | 'warning' | 'error';
+    onConfirm?: () => void;
+    confirmLabel?: string;
+    cancelLabel?: string;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+  });
+
+  const showModal = (
+    title: string, 
+    message: string, 
+    type: 'info' | 'success' | 'warning' | 'error' = 'info',
+    onConfirm?: () => void,
+    confirmLabel?: string,
+    cancelLabel?: string
+  ) => {
+    setModalConfig({ isOpen: true, title, message, type, onConfirm, confirmLabel, cancelLabel });
+  };
   
   const getNextAvailableSlot = useCallback(() => {
     const campusSlots = [
@@ -184,22 +211,30 @@ export default function Home() {
 
   const cancelActiveOrder = async () => {
     if (cancelSecondsLeft <= 0) return;
-    if (!confirm('Cancel this order?')) return;
-    try {
-      const token = localStorage.getItem('token');
-      const orderId = activeOrder?._id || activeOrder?.id;
-      if (orderId) {
-        await fetch(`${API_URL}/api/orders/${orderId}/cancel`, {
-          method: 'PUT',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
-        });
-      }
-    } catch (_err) {
-      console.warn('[CANCEL_ORDER] Backend cancellation failed:', _err);
-    }
-    setActiveOrder(null);
-    setCancelSecondsLeft(0);
-    localStorage.removeItem('last_order');
+    showModal(
+      'Cancel Order?', 
+      'Are you sure you want to cancel your current order? This action cannot be undone.',
+      'warning',
+      async () => {
+        try {
+          const token = localStorage.getItem('token');
+          const orderId = activeOrder?._id || activeOrder?.id;
+          if (orderId) {
+            await fetch(`${API_URL}/api/orders/${orderId}/cancel`, {
+              method: 'PUT',
+              headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
+            });
+          }
+        } catch (_err) {
+          console.warn('[CANCEL_ORDER] Backend cancellation failed:', _err);
+        }
+        setActiveOrder(null);
+        setCancelSecondsLeft(0);
+        localStorage.removeItem('last_order');
+      },
+      'Yes, Cancel',
+      'Keep Order'
+    );
   };
 
   const handleRatingSubmit = async (rating: number, review: string) => {
@@ -249,7 +284,7 @@ export default function Home() {
         setIsElite(true);
         setUser(data);
         localStorage.setItem('user', JSON.stringify(data));
-        alert('Welcome to Zenvy Elite! 💎');
+        showModal('Welcome to Elite! 💎', 'You have successfully joined Zenvy Elite. Enjoy unlimited free delivery on all orders.', 'success');
       }
     } catch (_err) {
       console.error('[ELITE_ERROR] Failed to join elite:', _err);
@@ -273,66 +308,39 @@ export default function Home() {
     setShowIntro(false);
   };
 
-  // --- Live Data Orchestration (OMNI-SYNC) ---
-  const chefPicks = liveRestaurants.flatMap(res =>
-    (res.menu || []).slice(0, 1).map((item) => ({ 
+  // --- Smart Market Engine: Unified Tag-Based Catalog ---
+  const allProducts = liveRestaurants.flatMap(res => 
+    (res.menu || []).map(item => ({ 
       ...item, 
       restaurantName: res.name, 
-      restaurantId: res._id 
+      restaurantId: res._id || res.id,
+      isVegetarian: item.isVegetarian || item.tags?.includes('veg') || item.tags?.includes('fruits')
     }))
-  ).slice(0, 5);
+  );
+
+  // Grouped Collections Driven by Tags
+  const groupedCollections = {
+    fruits: allProducts.filter(p => !gymMode || p.tags?.includes('healthy')).filter(p => p.tags?.includes('fruits')),
+    rentals: allProducts.filter(p => p.tags?.includes('rental')),
+    sweets: allProducts.filter(p => !gymMode).filter(p => p.tags?.includes('sweets')),
+    seasonal: allProducts.filter(p => p.tags?.includes('seasonal')),
+    drinks: allProducts.filter(p => p.tags?.includes('drinks')),
+    gym: allProducts.filter(p => p.tags?.includes('gym') || p.tags?.includes('high-protein')),
+    all: allProducts.filter(p => !gymMode || p.tags?.includes('healthy') || p.tags?.includes('high-protein'))
+  };
+
+  const chefPicks = groupedCollections.all.slice(0, 8);
 
   const displayRestaurants = liveRestaurants.filter((res) => {
+    if (gymMode && !res.tags?.includes('healthy') && !res.tags?.includes('gym')) {
+       // Only show restaurants that have at least one healthy item if gym mode is on
+       return (res.menu || []).some(item => item.tags?.includes('healthy') || item.tags?.includes('high-protein'));
+    }
     const hasMenu = Array.isArray(res.menu) && res.menu.length > 0;
     if (filter === 'budget') return hasMenu && res.menu.some((item) => item.price < 150);
-    if (filter === 'veg') return hasMenu && res.menu.some((item) => !item.name.toLowerCase().includes('chicken'));
+    if (filter === 'veg') return hasMenu && res.menu.some((item) => item.isVegetarian);
     return true;
   });
-
-  const eliteSweets = liveRestaurants.find(r => r.name?.toLowerCase().includes('sweets'));
-  const eliteBakery = liveRestaurants.find(r => r.name?.toLowerCase().includes('bakery'));
-  const eliteSummer = liveRestaurants.find(r => r.name?.toLowerCase().includes('summer'));
-  const eliteFruits = liveRestaurants.find(r => r.name?.toLowerCase().includes('harvest'));
-
-  const gymRatsData = [
-    { 
-      id: 'gym-1', 
-      name: 'Iron Kitchen: Pro Meals', 
-      rating: '4.9', 
-      time: '1h Prep', 
-      imageUrl: '/assets/zenvy_gym_rats_nutrition_1773839650320.png',
-      menu: [
-        { id: 'gp-1', name: 'Whey Protein Bowl', price: 250, rating: '5.0', image: 'https://images.unsplash.com/photo-1610725664285-f54023b046e9?auto=format&fit=crop&q=80&w=800' },
-        { id: 'gp-2', name: 'Lean Muscle Salad', price: 220, rating: '4.8', image: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?auto=format&fit=crop&q=80&w=800' }
-      ]
-    },
-    { 
-      id: 'gym-2', 
-      name: 'Zenvy Fuel: Protein Shakes', 
-      rating: '5.0', 
-      time: 'Instant', 
-      imageUrl: '/assets/zenvy_protein_shake_bottles_1773839980833.png',
-      menu: [
-        { id: 'gs-1', name: 'Dark Gold Whey (30g)', price: 180, rating: '5.0', image: 'https://images.unsplash.com/photo-1579722820308-d74e5719bc94?auto=format&fit=crop&q=80&w=800' },
-        { id: 'gs-2', name: 'Bulk Master Gainer', price: 210, rating: '4.9', image: 'https://images.unsplash.com/photo-1593095183571-2d5ff124d355?auto=format&fit=crop&q=80&w=800' }
-      ]
-    }
-  ];
-
-  const rentalsData = [
-    { 
-      id: 'rent-bike-1', 
-      name: 'Ninja 300 Superbike', 
-      rating: '5.0', 
-      time: 'Daily Rental', 
-      imageUrl: '/assets/zenvy_rental_bike_1773839611430.png',
-      price: '₹1200 / day',
-      type: 'Motorcycle',
-      ownerName: 'Rahul V.',
-      ownerPhone: '+91 9876543210',
-      specs: { engine: '296cc Parallel Twin', topSpeed: '182 km/h', power: '39 HP', fuel: 'Petrol' }
-    }
-  ];
 
   if (showIntro === null) return <div className="min-h-screen bg-black" />;
 
@@ -441,14 +449,14 @@ export default function Home() {
             className={`mb-10 group cursor-pointer overflow-hidden rounded-[34px] relative border shadow-2xl transition-all duration-500 ${isElite ? 'border-[#C9A84C]/40' : 'border-[#C9A84C]/20'}`}
             onClick={!isElite ? handleJoinElite : undefined}
           >
-             <div className="absolute inset-0 bg-gradient-to-r from-black to-transparent z-10" />
-             <Image 
-               src="/assets/zenvy_elite_pass_card_1773840133324.png" 
-               alt="Elite Promo" 
-               width={400}
-               height={150}
-               className="object-cover w-full h-[140px] group-hover:scale-110 transition-transform duration-700 opacity-60"
-             />
+              <div className="absolute inset-0 bg-gradient-to-br from-[#C9A84C]/40 to-[#8B7332]/40 z-0" />
+              <Image 
+                src="https://images.unsplash.com/photo-1550745165-9bc0b252726f?q=80&w=800&auto=format&fit=crop" 
+                alt="Elite Promo" 
+                width={400}
+                height={150}
+                className="relative z-10 object-cover w-full h-[140px] group-hover:scale-110 transition-transform duration-700 opacity-60 mix-blend-overlay"
+              />
              <div className="absolute inset-0 z-20 p-6 flex flex-col justify-center">
                 <span className="text-[8px] font-black text-primary-yellow uppercase tracking-[0.3em] mb-2">{isElite ? 'Elite Member' : 'Exclusive Offer'}</span>
                 <h3 className="text-lg font-black text-white leading-tight mb-2">
@@ -514,7 +522,7 @@ export default function Home() {
                   <Link href={`/products/${item.id}`} key={item.id}>
                     <div className="chef-card bg-[#141416]" style={{ animationDelay: `${i * 0.1}s` }}>
                       <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-primary-yellow/30 transition-colors">
-                        <Image src={item.image || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
+                        <Image src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
                       </div>
                       <div className="mt-3">
                         <h3 className="font-bold text-[15px] text-white mb-1">{item.name}</h3>
@@ -535,23 +543,47 @@ export default function Home() {
              <BlockWarsLeaderboard userBlock={user?.hostelBlock || null} />
           </section>
 
-          {/* 🚗 New Dedicated Column: Rentals */}
+                   {/* 🍎 Fresh Harvest: Fruits */}
+          <section className="mb-10">
+            <div className="flex items-center justify-between mb-5">
+               <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-[#34D399]">Fresh Harvest (Fruits)</h2>
+               <span className="text-[9px] font-bold text-secondary-text uppercase tracking-wider">Swipe →</span>
+            </div>
+            <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-2 -mx-6 px-6">
+              {groupedCollections.fruits.map((item) => (
+                <Link href={`/products/${item.id}`} key={item.id} className="relative shrink-0 w-[240px] group active:scale-95 transition-transform">
+                   <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-[#34D399]/30 transition-colors">
+                      <Image src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
+                   </div>
+                   <div className="mt-3">
+                      <h3 className="text-xs font-black text-white">{item.name}</h3>
+                      <div className="flex justify-between items-center mt-1">
+                         <span className="text-[8px] font-bold text-secondary-text uppercase tracking-widest">{item.restaurantName}</span>
+                         <span className="text-[10px] font-black text-[#34D399]">₹{item.price}</span>
+                      </div>
+                   </div>
+                </Link>
+              ))}
+            </div>
+          </section>
+
+          {/* 🚗 Campus Fleet: Rentals */}
           <section className="mb-10">
             <div className="flex items-center justify-between mb-5">
                <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-primary-yellow">Campus Fleet (Rentals)</h2>
                <span className="text-[9px] font-bold text-secondary-text uppercase tracking-wider">Swipe →</span>
             </div>
             <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-2 -mx-6 px-6">
-              {rentalsData.map((res) => (
-                <button type="button" key={res.id} onClick={() => { setSelectedRental(res); setShowSpecs(false); }} className="relative shrink-0 w-[240px] cursor-pointer group active:scale-95 transition-transform text-left">
+              {groupedCollections.rentals.map((item) => (
+                <button type="button" key={item.id} onClick={() => { setSelectedRental(item as any); setShowSpecs(false); }} className="relative shrink-0 w-[240px] cursor-pointer group active:scale-95 transition-transform text-left">
                    <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-primary-yellow/30 transition-colors">
-                      <Image src={res.imageUrl} alt={res.name} fill style={{ objectFit: 'cover' }} />
+                      <Image src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
                    </div>
                    <div className="mt-3">
-                      <h3 className="text-xs font-black text-white">{res.name}</h3>
+                      <h3 className="text-xs font-black text-white">{item.name}</h3>
                       <div className="flex justify-between items-center mt-1">
-                         <span className="text-[8px] font-bold text-secondary-text uppercase tracking-widest">{res.time}</span>
-                         <span className="text-[10px] font-black text-primary-yellow">{res.price}</span>
+                         <span className="text-[8px] font-bold text-secondary-text uppercase tracking-widest">{item.restaurantName}</span>
+                         <span className="text-[10px] font-black text-primary-yellow">₹{item.price}</span>
                       </div>
                    </div>
                 </button>
@@ -559,23 +591,25 @@ export default function Home() {
             </div>
           </section>
 
-          {/* 🏋️ New Dedicated Column: Gym Rats */}
+          {/* ❄️ Season Specials */}
           <section className="mb-10">
-            <div className="flex items-center justify-between mb-5">
-               <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-primary-yellow">Elite Performance (Gym Rats)</h2>
-               <span className="text-[9px] font-bold text-secondary-text uppercase tracking-wider">Swipe →</span>
+            <div className="flex justify-between items-end mb-6">
+              <div>
+                <h2 className="text-[9px] font-black text-cyan-400 uppercase tracking-[0.4em] mb-2">Omni-Category</h2>
+                <p className="text-xl font-black text-white">SEASON SPECIALS</p>
+              </div>
             </div>
             <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-2 -mx-6 px-6">
-              {gymRatsData.map((res) => (
-                <Link href={`/restaurants/${res.id}`} key={res.id} className="relative shrink-0 w-[240px] group active:scale-95 transition-transform">
-                   <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-primary-yellow/30 transition-colors">
-                      <Image src={res.imageUrl} alt={res.name} fill style={{ objectFit: 'cover' }} />
+              {groupedCollections.seasonal.map((item) => (
+                <Link href={`/products/${item.id}`} key={item.id} className="relative shrink-0 w-[240px] group active:scale-95 transition-transform">
+                   <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-cyan-500/30 transition-colors">
+                       <Image src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
                    </div>
                    <div className="mt-3">
-                      <h3 className="text-xs font-black text-white">{res.name}</h3>
+                      <h3 className="text-xs font-black text-white">{item.name}</h3>
                       <div className="flex justify-between items-center mt-1">
-                         <span className="text-[8px] font-bold text-secondary-text uppercase tracking-widest">{res.time}</span>
-                         <span className="text-[10px] font-black text-primary-yellow">Protein Focus</span>
+                         <span className="text-[8px] font-bold text-secondary-text uppercase tracking-widest">{item.restaurantName}</span>
+                         <span className="text-[10px] font-black text-cyan-400">₹{item.price}</span>
                       </div>
                    </div>
                 </Link>
@@ -583,120 +617,77 @@ export default function Home() {
             </div>
           </section>
 
-          {/* 🧊 Summer Oasis: Season Specials */}
+          {/* 🥐 Sweets & Bakery */}
           <section className="mb-14">
             <div className="flex justify-between items-end mb-6">
               <div>
-                <h2 className="text-[9px] font-black text-cyan-400 uppercase tracking-[0.4em] mb-2">Summer Oasis</h2>
-                <p className="text-xl font-black text-white">SEASON SPECIALS</p>
+                <h2 className="text-[9px] font-black text-rose-400 uppercase tracking-[0.4em] mb-2">Gourmet Sweets</h2>
+                <p className="text-xl font-black text-white">ARTISANAL TREATS</p>
               </div>
-              <span className="text-[10px] font-bold text-secondary-text uppercase tracking-widest pb-1 opacity-40">CHILL →</span>
             </div>
             <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-2 -mx-6 px-6">
-              {eliteSummer && (
-                <Link href={`/restaurants/${eliteSummer._id}`} className="relative shrink-0 w-[240px] group active:scale-95 transition-transform">
-                   <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-cyan-500/30 transition-colors">
-                       <Image src={eliteSummer.imageUrl || "/assets/placeholder.png"} alt={eliteSummer.name} fill style={{ objectFit: 'cover' }} />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4">
-                         <span className="text-[10px] font-black text-white">Chilled Coolants</span>
-                      </div>
-                   </div>
-                   <div className="mt-3">
-                      <h3 className="text-xs font-black text-white">{eliteSummer.name}</h3>
-                      <div className="flex justify-between items-center mt-1">
-                         <span className="text-[8px] font-bold text-secondary-text uppercase tracking-widest">{eliteSummer.time}</span>
-                         <span className="text-[10px] font-black text-cyan-400">From ₹50</span>
-                      </div>
-                   </div>
-                </Link>
-              )}
-            </div>
-          </section>
-
-          {/* 🥐 Boutique Bakery */}
-          <section className="mb-14">
-            <div className="flex justify-between items-end mb-6">
-              <div>
-                <h2 className="text-[9px] font-black text-rose-400 uppercase tracking-[0.4em] mb-2">Boutique Bakery</h2>
-                <p className="text-xl font-black text-white">ARTISANAL BAKES</p>
-              </div>
-              <span className="text-[10px] font-bold text-secondary-text uppercase tracking-widest pb-1 opacity-40">FRESH →</span>
-            </div>
-            <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-2 -mx-6 px-6">
-              {eliteBakery && (
-                <Link href={`/restaurants/${eliteBakery._id}`} className="relative shrink-0 w-[240px] group active:scale-95 transition-transform">
+              {groupedCollections.sweets.map((item) => (
+                <Link href={`/products/${item.id}`} key={item.id} className="relative shrink-0 w-[240px] group active:scale-95 transition-transform">
                    <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-rose-500/30 transition-colors">
-                       <Image src={eliteBakery.imageUrl || "/assets/placeholder.png"} alt={eliteBakery.name} fill style={{ objectFit: 'cover' }} />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4">
-                         <span className="text-[10px] font-black text-white">Artisanal Bakes</span>
-                      </div>
+                       <Image src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
                    </div>
                    <div className="mt-3">
-                      <h3 className="text-xs font-black text-white">{eliteBakery.name}</h3>
+                      <h3 className="text-xs font-black text-white">{item.name}</h3>
                       <div className="flex justify-between items-center mt-1">
-                         <span className="text-[8px] font-bold text-secondary-text uppercase tracking-widest">{eliteBakery.time}</span>
-                         <span className="text-[10px] font-black text-rose-400">From ₹80</span>
+                         <span className="text-[8px] font-bold text-secondary-text uppercase tracking-widest">{item.restaurantName}</span>
+                         <span className="text-[10px] font-black text-rose-400">₹{item.price}</span>
                       </div>
                    </div>
                 </Link>
-              )}
+              ))}
             </div>
           </section>
 
-          {/* 🍬 Sweet Boutique */}
-          <section className="mb-14">
-            <div className="flex justify-between items-end mb-6">
-              <div>
-                <h2 className="text-[9px] font-black text-purple-400 uppercase tracking-[0.4em] mb-2">Sweet Boutique</h2>
-                <p className="text-xl font-black text-white">GOURMET TREATS</p>
-              </div>
-              <span className="text-[10px] font-bold text-secondary-text uppercase tracking-widest pb-1 opacity-40">INDULGE →</span>
-            </div>
-            <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-2 -mx-6 px-6">
-              {eliteSweets && (
-                <Link href={`/restaurants/${eliteSweets._id}`} className="relative shrink-0 w-[240px] group active:scale-95 transition-transform">
-                   <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-purple-500/30 transition-colors">
-                       <Image src={eliteSweets.imageUrl || "/assets/placeholder.png"} alt={eliteSweets.name} fill style={{ objectFit: 'cover' }} />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4">
-                         <span className="text-[10px] font-black text-white">Gourmet Treats</span>
-                      </div>
-                   </div>
-                   <div className="mt-3">
-                      <h3 className="text-xs font-black text-white">{eliteSweets.name}</h3>
-                      <div className="flex justify-between items-center mt-1">
-                         <span className="text-[8px] font-bold text-secondary-text uppercase tracking-widest">{eliteSweets.time}</span>
-                         <span className="text-[10px] font-black text-purple-400">From ₹110</span>
-                      </div>
-                   </div>
-                </Link>
-              )}
-            </div>
-          </section>
-
-          {/* 🍎 New Dedicated Column: Fresh Harvest (Fruits) */}
+          {/* 🍹 Refreshing Drinks */}
           <section className="mb-10">
             <div className="flex items-center justify-between mb-5">
-               <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">Fresh Harvest (Fruits)</h2>
+               <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-[#A5B4FC]">Refreshing Drinks</h2>
                <span className="text-[9px] font-bold text-secondary-text uppercase tracking-wider">Swipe →</span>
             </div>
             <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-2 -mx-6 px-6">
-              {eliteFruits && (
-                <Link href={`/restaurants/${eliteFruits._id}`} className="relative shrink-0 w-[240px] group active:scale-95 transition-transform">
-                   <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-emerald-500/30 transition-colors">
-                       <Image src={eliteFruits.imageUrl || "/assets/placeholder.png"} alt={eliteFruits.name} fill style={{ objectFit: 'cover' }} />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4">
-                         <span className="text-[10px] font-black text-white">Organic Harvest</span>
-                      </div>
+              {groupedCollections.drinks.map((item) => (
+                <Link href={`/products/${item.id}`} key={item.id} className="relative shrink-0 w-[240px] group active:scale-95 transition-transform">
+                   <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-[#A5B4FC]/30 transition-colors">
+                      <Image src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
                    </div>
                    <div className="mt-3">
-                      <h3 className="text-xs font-black text-white">{eliteFruits.name}</h3>
+                      <h3 className="text-xs font-black text-white">{item.name}</h3>
                       <div className="flex justify-between items-center mt-1">
-                         <span className="text-[8px] font-bold text-secondary-text uppercase tracking-widest">{eliteFruits.time}</span>
-                         <span className="text-[10px] font-black text-emerald-500">From ₹140</span>
+                         <span className="text-[8px] font-bold text-secondary-text uppercase tracking-widest">{item.restaurantName}</span>
+                         <span className="text-[10px] font-black text-[#A5B4FC]">₹{item.price}</span>
                       </div>
                    </div>
                 </Link>
-              )}
+              ))}
+            </div>
+          </section>
+
+          {/* 🏋️ Elite Performance: Gym Rats */}
+          <section className="mb-10">
+            <div className="flex items-center justify-between mb-5">
+               <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-[#C9A84C]">Elite Performance (Gym Essentials)</h2>
+               <span className="text-[9px] font-bold text-secondary-text uppercase tracking-wider">Swipe →</span>
+            </div>
+            <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-2 -mx-6 px-6">
+              {groupedCollections.gym.map((item) => (
+                <Link href={`/products/${item.id}`} key={item.id} className="relative shrink-0 w-[240px] group active:scale-95 transition-transform">
+                   <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-[#C9A84C]/30 transition-colors">
+                      <Image src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
+                   </div>
+                   <div className="mt-3">
+                      <h3 className="text-xs font-black text-white">{item.name}</h3>
+                      <div className="flex justify-between items-center mt-1">
+                         <span className="text-[8px] font-bold text-secondary-text uppercase tracking-widest">{item.restaurantName}</span>
+                         <span className="text-[10px] font-black text-[#C9A84C]">₹{item.price}</span>
+                      </div>
+                   </div>
+                </Link>
+              ))}
             </div>
           </section>
 
@@ -769,6 +760,11 @@ export default function Home() {
           onSubmit={handleRatingSubmit}
         />
 
+        <ZenvyModal 
+          {...modalConfig} 
+          onClose={() => setModalConfig(prev => ({ ...prev, isOpen: false }))} 
+        />
+
         {/* 🌀 Magical Social Pulse */}
         <ZenvyPulse userBlock={user?.hostelBlock || null} />
       </div>
@@ -788,8 +784,8 @@ export default function Home() {
             {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
               <div>
-                <span style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.2em', color: '#C9A84C', display: 'block', marginBottom: '4px' }}>{selectedRental.type} Rental</span>
-                <h3 style={{ fontSize: '18px', fontWeight: 900, color: 'white', margin: 0 }}>{selectedRental.name}</h3>
+                <span style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.2em', color: '#C9A84C', display: 'block', marginBottom: '4px' }}>{selectedRental?.tags?.includes('car') ? 'Car' : selectedRental?.tags?.includes('bike') ? 'Bike' : 'Rental'} Rental</span>
+                <h3 style={{ fontSize: '18px', fontWeight: 900, color: 'white', margin: 0 }}>{selectedRental?.name}</h3>
               </div>
               <button
                 onClick={() => setSelectedRental(null)}
@@ -799,52 +795,40 @@ export default function Home() {
 
             {/* Image */}
             <div style={{ width: '100%', aspectRatio: '16/9', position: 'relative', borderRadius: '16px', overflow: 'hidden', marginBottom: '16px' }}>
-              <Image src={selectedRental.imageUrl} alt={selectedRental.name} fill style={{ objectFit: 'cover' }} />
+              <Image src={selectedRental?.imageUrl || "/assets/placeholder.png"} alt={selectedRental?.name || "Rental"} fill style={{ objectFit: 'cover' }} />
             </div>
 
             {/* Stats */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '16px' }}>
               <div style={{ padding: '12px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                <span style={{ fontSize: '9px', textTransform: 'uppercase', fontWeight: 700, color: '#6B6B6B', display: 'block', marginBottom: '4px' }}>Rating</span>
-                <span style={{ fontSize: '14px', fontWeight: 900, color: 'white' }}>{selectedRental.rating} ★</span>
+                <span style={{ fontSize: '9px', textTransform: 'uppercase', fontWeight: 700, color: '#6B6B6B', display: 'block', marginBottom: '4px' }}>Type</span>
+                <span style={{ fontSize: '14px', fontWeight: 900, color: 'white' }}>{selectedRental?.category || 'Special'}</span>
               </div>
               <div style={{ padding: '12px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.05)' }}>
                 <span style={{ fontSize: '9px', textTransform: 'uppercase', fontWeight: 700, color: '#6B6B6B', display: 'block', marginBottom: '4px' }}>Rate</span>
-                <span style={{ fontSize: '14px', fontWeight: 900, color: '#C9A84C' }}>{selectedRental.price}</span>
+                <span style={{ fontSize: '14px', fontWeight: 900, color: '#C9A84C' }}>₹{selectedRental?.price}</span>
               </div>
             </div>
 
             {/* Owner */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '12px', marginBottom: '16px' }}>
               <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'linear-gradient(135deg, #C9A84C, #8B5E1A)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'black', fontWeight: 900, fontSize: '14px', flexShrink: 0 }}>
-                {selectedRental.ownerName?.charAt(0) || 'O'}
+                {selectedRental?.restaurantName?.charAt(0) || 'O'}
               </div>
               <div>
-                <span style={{ fontSize: '9px', textTransform: 'uppercase', fontWeight: 700, color: '#6B6B6B', display: 'block' }}>Owner</span>
-                <p style={{ fontSize: '14px', fontWeight: 900, color: 'white', margin: '2px 0 0' }}>{selectedRental.ownerName || 'Verified Owner'}</p>
-                <p style={{ fontSize: '10px', color: '#9CA3AF', margin: '2px 0 0' }}>{selectedRental.ownerPhone}</p>
+                <span style={{ fontSize: '9px', textTransform: 'uppercase', fontWeight: 700, color: '#6B6B6B', display: 'block' }}>Vendor</span>
+                <p style={{ fontSize: '14px', fontWeight: 900, color: 'white', margin: '2px 0 0' }}>{selectedRental?.restaurantName || 'Zenvy Partner'}</p>
               </div>
             </div>
 
-            {/* Actions */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                <a
-                  href={`tel:${selectedRental.ownerPhone}`}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
+                <Link
+                  href={`/products/${selectedRental?.id}`}
                   style={{ width: '100%', background: '#C9A84C', color: 'black', fontWeight: 900, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '14px 4px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', textDecoration: 'none' }}
                 >
-                  <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
-                  Call
-                </a>
-                <a
-                  href={`https://wa.me/${selectedRental.ownerPhone.replace(/[^\d]/g, '')}?text=${encodeURIComponent(`Hi, I'm interested in renting your ${selectedRental.name}. Is it available?`)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ width: '100%', background: '#25D366', color: 'white', fontWeight: 900, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '14px 4px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', textDecoration: 'none' }}
-                >
-                  <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.445 0 .062 5.388.058 11.991a11.815 11.815 0 001.615 6.124L0 24l6.136-1.61a11.815 11.815 0 005.908 1.589h.005c6.607 0 11.989-5.388 11.993-11.99a11.815 11.815 0 00-3.642-8.471"/></svg>
-                  WhatsApp
-                </a>
+                  View Details & Book
+                </Link>
               </div>
 
               {showSpecs && selectedRental?.specs && (

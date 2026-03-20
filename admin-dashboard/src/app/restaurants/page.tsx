@@ -72,6 +72,7 @@ interface Restaurant {
   isActive: boolean;
   tags?: string[];
   imageUrl?: string;
+  vendorType?: string;
 }
 
 interface MenuItem {
@@ -83,6 +84,8 @@ interface MenuItem {
   isEliteOnly: boolean;
   description?: string;
   image?: string;
+  tags?: string[];
+  isVegetarian?: boolean;
 }
 
 export default function GourmetManagement() {
@@ -94,8 +97,8 @@ export default function GourmetManagement() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [isAddingItem, setIsAddingItem] = useState(false);
-  const [newRest, setNewRest] = useState({ name: '', location: 'Main Campus', imageUrl: '', commissionRate: 10 });
-  const [newItem, setNewItem] = useState({ name: '', price: 0, category: '', description: '', image: '', isEliteOnly: false });
+  const [newRest, setNewRest] = useState({ name: '', location: 'Main Campus', imageUrl: '', commissionRate: 10, vendorType: 'RESTAURANT' });
+  const [newItem, setNewItem] = useState({ name: '', price: 0, category: '', description: '', image: '', isEliteOnly: false, tags: '', isVegetarian: false });
 
   useEffect(() => {
     fetchRestaurants();
@@ -149,7 +152,12 @@ export default function GourmetManagement() {
       const res = await fetch(`${API_URL}/api/admin/menu-items/new`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ ...newItem, restaurantId: selectedRestaurant._id })
+        body: JSON.stringify({ 
+        ...newItem, 
+        restaurantId: selectedRestaurant._id,
+        tags: newItem.tags.split(',').map(t => t.trim()).filter(t => t),
+        isVegetarian: newItem.isVegetarian
+      })
       });
       if (res.ok) { setIsAddingItem(false); fetchMenu(selectedRestaurant._id); }
     } catch (_err) { console.error('[ITEM_CREATE_ERROR]', _err); }
@@ -217,6 +225,11 @@ export default function GourmetManagement() {
               <input placeholder="Image URL (Unsplash)" className="admin-input" value={newRest.imageUrl} onChange={(e) => setNewRest({...newRest, imageUrl: e.target.value})} />
               <input placeholder="Location" className="admin-input" value={newRest.location} onChange={(e) => setNewRest({...newRest, location: e.target.value})} />
               <input placeholder="Commission (%)" type="number" className="admin-input" value={newRest.commissionRate} onChange={(e) => setNewRest({...newRest, commissionRate: parseInt(e.target.value)})} />
+              <select className="admin-input" value={newRest.vendorType} onChange={(e) => setNewRest({...newRest, vendorType: e.target.value})}>
+                  <option value="RESTAURANT">Restaurant (Food)</option>
+                  <option value="GROCERY">Grocery/Fresh (Fruits/Sweets)</option>
+                  <option value="RENTAL">Rental (Cars/Bikes)</option>
+               </select>
            </div>
            <div className="flex gap-4 mt-8">
               <button onClick={handleCreateRestaurant} className="flex-1 py-5 bg-emerald-600 text-white font-black uppercase tracking-widest rounded-3xl">Execute Deployment</button>
@@ -233,6 +246,11 @@ export default function GourmetManagement() {
               <input placeholder="Price (₹)" type="number" className="admin-input" value={newItem.price} onChange={(e) => setNewItem({...newItem, price: parseInt(e.target.value)})} />
               <input placeholder="Category (e.g. Mains, Sides)" className="admin-input" value={newItem.category} onChange={(e) => setNewItem({...newItem, category: e.target.value})} />
               <input placeholder="Image URL" className="admin-input" value={newItem.image} onChange={(e) => setNewItem({...newItem, image: e.target.value})} />
+              <input placeholder="Tags (comma separated: fruit, gym, seasonal)" className="admin-input" value={newItem.tags} onChange={(e) => setNewItem({...newItem, tags: e.target.value})} />
+               <div className="flex items-center gap-4 admin-input">
+                  <span className="text-[10px] uppercase font-black text-gray-400">Vegetarian?</span>
+                  <input type="checkbox" className="w-6 h-6 rounded-lg accent-emerald-500" checked={newItem.isVegetarian} onChange={(e) => setNewItem({...newItem, isVegetarian: e.target.checked})} />
+               </div>
               <textarea placeholder="Description" className="admin-input col-span-full h-24" value={newItem.description} onChange={(e) => setNewItem({...newItem, description: e.target.value})} />
            </div>
            <div className="flex gap-4 mt-8">

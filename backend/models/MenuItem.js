@@ -13,6 +13,8 @@ const initMenuItemModel = (sequelize) => {
     description: { type: DataTypes.TEXT },
     imageUrl: { type: DataTypes.STRING },
     category: { type: DataTypes.STRING },
+    tags: { type: DataTypes.JSON, defaultValue: [] },
+    isVegetarian: { type: DataTypes.BOOLEAN, defaultValue: true },
     isAvailable: { type: DataTypes.BOOLEAN, defaultValue: true },
     isEliteOnly: { type: DataTypes.BOOLEAN, defaultValue: false },
     customCommission: { type: DataTypes.FLOAT }
