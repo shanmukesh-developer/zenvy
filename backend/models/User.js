@@ -4,8 +4,7 @@ const bcrypt = require('bcryptjs');
 
 let User;
 
-const getUserModel = () => {
-  const sequelize = getSequelize();
+const initUserModel = (sequelize) => {
   if (!sequelize) return null;
 
   User = sequelize.define('User', {
@@ -36,4 +35,4 @@ const getUserModel = () => {
   return User;
 };
 
-module.exports = { getUserModel };
+module.exports = { initUserModel, getUserModel: () => User };

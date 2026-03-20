@@ -3,8 +3,7 @@ const { getSequelize } = require('../config/db');
 
 let Restaurant;
 
-const getRestaurantModel = () => {
-  const sequelize = getSequelize();
+const initRestaurantModel = (sequelize) => {
   if (!sequelize) return null;
 
   Restaurant = sequelize.define('Restaurant', {
@@ -24,4 +23,4 @@ const getRestaurantModel = () => {
   return Restaurant;
 };
 
-module.exports = { getRestaurantModel };
+module.exports = { initRestaurantModel, getRestaurantModel: () => Restaurant };

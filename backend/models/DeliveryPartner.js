@@ -1,11 +1,4 @@
-const { DataTypes } = require('sequelize');
-const { getSequelize } = require('../config/db');
-const bcrypt = require('bcryptjs');
-
-let DeliveryPartner;
-
-const getDeliveryPartnerModel = () => {
-  const sequelize = getSequelize();
+const initDeliveryPartnerModel = (sequelize) => {
   if (!sequelize) return null;
 
   DeliveryPartner = sequelize.define('DeliveryPartner', {
@@ -36,4 +29,4 @@ const getDeliveryPartnerModel = () => {
   return DeliveryPartner;
 };
 
-module.exports = { getDeliveryPartnerModel };
+module.exports = { initDeliveryPartnerModel, getDeliveryPartnerModel: () => DeliveryPartner };

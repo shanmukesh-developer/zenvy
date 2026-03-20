@@ -3,8 +3,7 @@ const { getSequelize } = require('../config/db');
 
 let Order;
 
-const getOrderModel = () => {
-  const sequelize = getSequelize();
+const initOrderModel = (sequelize) => {
   if (!sequelize) return null;
 
   Order = sequelize.define('Order', {
@@ -35,4 +34,4 @@ const getOrderModel = () => {
   return Order;
 };
 
-module.exports = { getOrderModel };
+module.exports = { initOrderModel, getOrderModel: () => Order };

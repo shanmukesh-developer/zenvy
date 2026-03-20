@@ -3,8 +3,7 @@ const { getSequelize } = require('../config/db');
 
 let MenuItem;
 
-const getMenuItemModel = () => {
-  const sequelize = getSequelize();
+const initMenuItemModel = (sequelize) => {
   if (!sequelize) return null;
 
   MenuItem = sequelize.define('MenuItem', {
@@ -23,4 +22,4 @@ const getMenuItemModel = () => {
   return MenuItem;
 };
 
-module.exports = { getMenuItemModel };
+module.exports = { initMenuItemModel, getMenuItemModel: () => MenuItem };
