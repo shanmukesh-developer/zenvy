@@ -6,7 +6,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 interface Config {
   _id: string;
   key: string;
-  value: any; // Reverting to any temporarily or using a more complex union if we want to be strict, but any is safer for this generic config until we have a better structure.
+  value: string | number | boolean | string[];
   description: string;
 }
 
@@ -26,14 +26,14 @@ export default function ConfigTerminal() {
       });
       const data = await res.json();
       if (res.ok) setConfigs(data);
-    } catch (_err) {
-      console.error('[CONFIG_FETCH_ERROR]', _err);
+    } catch {
+      console.error('[CONFIG_FETCH_ERROR]');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleUpdateConfig = async (key: string, value: any) => {
+  const handleUpdateConfig = async (key: string, value: string | number | boolean | string[]) => {
     try {
       const token = localStorage.getItem('token');
       const res = await fetch(`${API_URL}/api/admin/config`, {
@@ -45,12 +45,13 @@ export default function ConfigTerminal() {
         body: JSON.stringify({ key, value })
       });
       if (res.ok) fetchConfigs();
-    } catch (_err) {
-      console.error('[CONFIG_UPDATE_ERROR]', _err);
+    } catch {
+      console.error('[CONFIG_UPDATE_ERROR]');
     }
   };
 
-  const shifts = configs.find(c => c.key === 'delivery_shifts')?.value || ['13:00', '19:30'];
+  const rawShifts = configs.find(c => c.key === 'delivery_shifts')?.value;
+  const shifts = Array.isArray(rawShifts) ? rawShifts : ['13:00', '19:30'];
 
   if (loading) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Synchronizing Config...</div>;
 
