@@ -97,7 +97,7 @@ export default function GourmetManagement() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [isAddingItem, setIsAddingItem] = useState(false);
-  const [newRest, setNewRest] = useState({ name: '', location: 'Main Campus', imageUrl: '', commissionRate: 10, vendorType: 'RESTAURANT' });
+  const [newRest, setNewRest] = useState({ name: '', location: 'Main Campus', imageUrl: '', commissionRate: 10, commissionType: 'percentage', vendorType: 'RESTAURANT', rating: 0, deliveryTime: 30, tags: '', operatingHoursStart: '09:00', operatingHoursEnd: '22:00', isActive: true });
   const [newItem, setNewItem] = useState({ name: '', price: 0, category: '', description: '', image: '', isEliteOnly: false, tags: '', isVegetarian: false });
 
   useEffect(() => {
@@ -136,12 +136,17 @@ export default function GourmetManagement() {
   const handleCreateRestaurant = async () => {
     try {
       const token = localStorage.getItem('token');
+      const payload = {
+        ...newRest,
+        tags: newRest.tags.split(',').map(t => t.trim()).filter(t => t),
+        operatingHours: { start: newRest.operatingHoursStart, end: newRest.operatingHoursEnd }
+      };
       const res = await fetch(`${API_URL}/api/admin/restaurants`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify(newRest)
+        body: JSON.stringify(payload)
       });
-      if (res.ok) { setIsAdding(false); fetchRestaurants(); }
+      if (res.ok) { setIsAdding(false); fetchRestaurants(); setNewRest({ name: '', location: 'Main Campus', imageUrl: '', commissionRate: 10, commissionType: 'percentage', vendorType: 'RESTAURANT', rating: 0, deliveryTime: 30, tags: '', operatingHoursStart: '09:00', operatingHoursEnd: '22:00', isActive: true }); }
     } catch (_err) { console.error('[CREATE_ERROR]', _err); }
   };
 
@@ -220,16 +225,40 @@ export default function GourmetManagement() {
       {isAdding && (
         <div className="glass-card p-10 border-emerald-500/30">
            <h3 className="text-xl font-black text-white uppercase tracking-tight mb-8">Deploy New Restaurant Node</h3>
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               <input placeholder="Restaurant Name" className="admin-input" value={newRest.name} onChange={(e) => setNewRest({...newRest, name: e.target.value})} />
               <input placeholder="Image URL (Unsplash)" className="admin-input" value={newRest.imageUrl} onChange={(e) => setNewRest({...newRest, imageUrl: e.target.value})} />
               <input placeholder="Location" className="admin-input" value={newRest.location} onChange={(e) => setNewRest({...newRest, location: e.target.value})} />
-              <input placeholder="Commission (%)" type="number" className="admin-input" value={newRest.commissionRate} onChange={(e) => setNewRest({...newRest, commissionRate: parseInt(e.target.value)})} />
+              
+              <div className="flex gap-4">
+                <input placeholder="Commission" type="number" className="admin-input w-full" value={newRest.commissionRate} onChange={(e) => setNewRest({...newRest, commissionRate: parseFloat(e.target.value)})} />
+                <select className="admin-input w-24 p-0 px-2 text-center" value={newRest.commissionType} onChange={(e) => setNewRest({...newRest, commissionType: e.target.value})}>
+                    <option value="percentage">%</option>
+                    <option value="flat">₹</option>
+                </select>
+              </div>
+              
               <select className="admin-input" value={newRest.vendorType} onChange={(e) => setNewRest({...newRest, vendorType: e.target.value})}>
                   <option value="RESTAURANT">Restaurant (Food)</option>
                   <option value="GROCERY">Grocery/Fresh (Fruits/Sweets)</option>
                   <option value="RENTAL">Rental (Cars/Bikes)</option>
-               </select>
+              </select>
+
+              <input placeholder="Rating (0.0)" type="number" step="0.1" className="admin-input" value={newRest.rating || ''} onChange={(e) => setNewRest({...newRest, rating: parseFloat(e.target.value)})} />
+              <input placeholder="Delivery Time (mins)" type="number" className="admin-input" value={newRest.deliveryTime || ''} onChange={(e) => setNewRest({...newRest, deliveryTime: parseInt(e.target.value)})} />
+              <input placeholder="Tags (comma separated)" className="admin-input" value={newRest.tags} onChange={(e) => setNewRest({...newRest, tags: e.target.value})} />
+              
+              <div className="flex gap-4 admin-input items-center">
+                <span className="text-[10px] text-gray-500 uppercase font-black">Hours</span>
+                <input type="time" className="bg-transparent text-white outline-none w-full" value={newRest.operatingHoursStart} onChange={(e) => setNewRest({...newRest, operatingHoursStart: e.target.value})} />
+                <span className="text-gray-500">-</span>
+                <input type="time" className="bg-transparent text-white outline-none w-full" value={newRest.operatingHoursEnd} onChange={(e) => setNewRest({...newRest, operatingHoursEnd: e.target.value})} />
+              </div>
+
+              <label className="flex items-center gap-4 admin-input cursor-pointer">
+                <span className="text-[10px] uppercase font-black text-gray-400">Is Active Node?</span>
+                <input type="checkbox" className="w-6 h-6 rounded-lg accent-emerald-500" checked={newRest.isActive} onChange={(e) => setNewRest({...newRest, isActive: e.target.checked})} />
+              </label>
            </div>
            <div className="flex gap-4 mt-8">
               <button onClick={handleCreateRestaurant} className="flex-1 py-5 bg-emerald-600 text-white font-black uppercase tracking-widest rounded-3xl">Execute Deployment</button>

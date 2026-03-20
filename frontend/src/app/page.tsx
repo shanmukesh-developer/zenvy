@@ -25,16 +25,13 @@ function getGreeting(): string {
   return 'Good Evening';
 }
 
-interface Rental {
-  id: string;
-  name: string;
-  price: string;
-  type: string;
-  rating?: string;
-  imageUrl: string;
-  specs: { engine: string; topSpeed: string; power: string; fuel: string };
-  ownerName: string;
-  ownerPhone: string;
+interface RentalItem {
+  id?: string;
+  name?: string;
+  price?: number;
+  imageUrl?: string;
+  tags?: string[];
+  restaurantName?: string;
 }
 
 interface Order {
@@ -62,12 +59,12 @@ export default function Home() {
   const [timeLeft, setTimeLeft] = useState<string>('');
   const [isElite, setIsElite] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedRental, setSelectedRental] = useState<any | null>(null);
+  const [selectedRental, setSelectedRental] = useState<RentalItem | null>(null);
   const [showSpecs, setShowSpecs] = useState(false);
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
   const [cancelSecondsLeft, setCancelSecondsLeft] = useState(0);
   const [isRatingModalOpen, setIsRatingModalOpen] = useState(false);
-  const [gymMode, setGymMode] = useState(false);
+  const gymMode = false;
   
   const [modalConfig, setModalConfig] = useState<{
     isOpen: boolean;
@@ -322,7 +319,7 @@ export default function Home() {
   const groupedCollections = {
     fruits: allProducts.filter(p => !gymMode || p.tags?.includes('healthy')).filter(p => p.tags?.includes('fruits')),
     rentals: allProducts.filter(p => p.tags?.includes('rental')),
-    sweets: allProducts.filter(p => !gymMode).filter(p => p.tags?.includes('sweets')),
+    sweets: allProducts.filter(() => !gymMode).filter(p => p.tags?.includes('sweets')),
     seasonal: allProducts.filter(p => p.tags?.includes('seasonal')),
     drinks: allProducts.filter(p => p.tags?.includes('drinks')),
     gym: allProducts.filter(p => p.tags?.includes('gym') || p.tags?.includes('high-protein')),
@@ -575,7 +572,7 @@ export default function Home() {
             </div>
             <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-2 -mx-6 px-6">
               {groupedCollections.rentals.map((item) => (
-                <button type="button" key={item.id} onClick={() => { setSelectedRental(item as any); setShowSpecs(false); }} className="relative shrink-0 w-[240px] cursor-pointer group active:scale-95 transition-transform text-left">
+                <button type="button" key={item.id} onClick={() => { setSelectedRental(item as RentalItem); setShowSpecs(false); }} className="relative shrink-0 w-[240px] cursor-pointer group active:scale-95 transition-transform text-left">
                    <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-primary-yellow/30 transition-colors">
                       <Image src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
                    </div>
