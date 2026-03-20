@@ -10,20 +10,7 @@ export default function ZenvyPulse({ userBlock }: { userBlock: string | null }) 
   const [isEnabled, setIsEnabled] = useState(true);
 
   useEffect(() => {
-    // Check global config for Pulse status
-    const checkPulseConfig = async () => {
-      try {
-        const res = await fetch(`${API_URL}/api/admin/config/pulse_enabled`);
-        // Note: I'll need to add a public endpoint for specific config keys 
-        // OR just fetch all public-safe configs.
-        // For now, I'll fetch from the general public-safe config endpoint if I create one.
-        // Let's assume a simple public getter for this specific key.
-    } catch (_err) {
-      console.warn('[PULSE_CONFIG_CHECK] Failed, defaulting to ENABLED');
-    }
-    };
-    
-    // Instead of complex fetching, we'll listen for the 'systemUpdate' socket event if it's broadcasted.
+    // Listen for the 'systemUpdate' socket event if it's broadcasted.
     // But initially, we can just fetch.
   }, []);
 

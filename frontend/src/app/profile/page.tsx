@@ -48,8 +48,8 @@ export default function ProfilePage() {
         localStorage.removeItem('token');
         window.location.href = '/login';
       }
-    } catch (_err) {
-      console.error('Failed to fetch profile', _err);
+    } catch {
+      console.error('Failed to fetch profile');
     } finally {
       setLoading(false);
     }
@@ -92,7 +92,7 @@ export default function ProfilePage() {
           type: 'error'
         });
       }
-    } catch (_err) {
+    } catch {
       setOverlay({
         isOpen: true,
         title: 'Network Error',
