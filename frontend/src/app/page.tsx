@@ -32,6 +32,7 @@ interface RentalItem {
   imageUrl?: string;
   tags?: string[];
   restaurantName?: string;
+  category?: string;
 }
 
 interface Order {
