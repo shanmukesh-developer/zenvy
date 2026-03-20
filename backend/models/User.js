@@ -5,7 +5,6 @@ const bcrypt = require('bcryptjs');
 let User;
 
 const getUserModel = () => {
-  if (User) return User;
   const sequelize = getSequelize();
   if (!sequelize) return null;
 

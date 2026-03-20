@@ -4,7 +4,6 @@ const { getSequelize } = require('../config/db');
 let MenuItem;
 
 const getMenuItemModel = () => {
-  if (MenuItem) return MenuItem;
   const sequelize = getSequelize();
   if (!sequelize) return null;
 

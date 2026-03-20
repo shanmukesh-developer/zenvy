@@ -5,7 +5,6 @@ const bcrypt = require('bcryptjs');
 let DeliveryPartner;
 
 const getDeliveryPartnerModel = () => {
-  if (DeliveryPartner) return DeliveryPartner;
   const sequelize = getSequelize();
   if (!sequelize) return null;
 

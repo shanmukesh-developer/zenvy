@@ -4,7 +4,6 @@ const { getSequelize } = require('../config/db');
 let Order;
 
 const getOrderModel = () => {
-  if (Order) return Order;
   const sequelize = getSequelize();
   if (!sequelize) return null;
 

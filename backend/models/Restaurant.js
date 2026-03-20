@@ -4,7 +4,6 @@ const { getSequelize } = require('../config/db');
 let Restaurant;
 
 const getRestaurantModel = () => {
-  if (Restaurant) return Restaurant;
   const sequelize = getSequelize();
   if (!sequelize) return null;
 
