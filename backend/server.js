@@ -54,6 +54,11 @@ const startServer = async () => {
       socket.on('partnerLocationUpdate', (data) => {
         io.to(String(data.orderId).trim()).emit('partnerLocation', { lat: data.lat, lng: data.lng });
       });
+      socket.on('updateLocation', (data) => {
+        // Broadcast location to order room for customer app comparison
+        io.to(String(data.orderId).trim()).emit('locationUpdated', { lat: data.lat, lng: data.lng });
+        console.log(`[SOCKET LOCATION] ${socket.id} updated coords for ${data.orderId}`);
+      });
       socket.on('disconnect', () => {
         console.log(`[SOCKET DISCONNECT] ${socket.id}`);
       });

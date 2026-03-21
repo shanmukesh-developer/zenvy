@@ -1,6 +1,9 @@
 "use client";
 
+import { useState, useEffect } from 'react';
 import Image from 'next/image';
+
+const FALLBACK_IMAGE = "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=400&auto=format&fit=crop";
 
 interface RestaurantCardProps {
   name: string;
@@ -11,15 +14,22 @@ interface RestaurantCardProps {
 }
 
 const RestaurantCard = ({ name, rating, time, imageUrl, imagePosition }: RestaurantCardProps) => {
+  const [imgSrc, setImgSrc] = useState(imageUrl);
+
+  useEffect(() => {
+    setImgSrc(imageUrl || FALLBACK_IMAGE);
+  }, [imageUrl]);
+
   return (
     <div className={`capsule-card mb-10 ${imagePosition === 'right' ? 'flex-row-reverse text-right pl-6' : 'pr-6'}`}>
       {/* Image Circle */}
       <div className={`food-circle shadow-xl transition-all duration-500 ${imagePosition === 'left' ? '-ml-6' : '-mr-6'} relative z-20`}>
         <Image 
-          src={imageUrl} 
-          alt="" // Use empty alt to prevent "double text" look on broken images
+          src={imgSrc || FALLBACK_IMAGE} 
+          alt="" 
           fill
           style={{ objectFit: 'cover' }}
+          onError={() => setImgSrc(FALLBACK_IMAGE)}
         />
       </div>
       

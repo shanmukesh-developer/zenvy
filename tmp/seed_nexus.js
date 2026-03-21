@@ -1,12 +1,11 @@
-const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const path = require('path');
 
-// Models
-const Restaurant = require('../backend/models/Restaurant');
-const MenuItem = require('../backend/models/MenuItem');
-
 dotenv.config({ path: path.join(__dirname, '../backend/.env') });
+
+const { connectDB, getSequelize } = require('../backend/config/db');
+const { getRestaurantModel } = require('../backend/models/Restaurant');
+const { getMenuItemModel } = require('../backend/models/MenuItem');
 
 const restaurants = [
   {
@@ -42,11 +41,15 @@ const restaurants = [
 
 const seed = async () => {
   try {
-    await mongoose.connect(process.env.MONGO_URI || process.env.MONGODB_URI);
+    await connectDB();
     console.log('Connected to Database');
 
-    await Restaurant.deleteMany({});
-    await MenuItem.deleteMany({});
+    const sequelize = getSequelize();
+    const Restaurant = getRestaurantModel();
+    const MenuItem = getMenuItemModel();
+
+    await Restaurant.destroy({ where: {} });
+    await MenuItem.destroy({ where: {} });
     console.log('Cleared existing collections');
 
     for (const restData of restaurants) {
@@ -63,16 +66,16 @@ const seed = async () => {
       console.log(`Seeded Restaurant: ${restaurant.name}`);
 
       const menuItems = restData.menu.map(item => ({
-        restaurantId: restaurant._id,
+        restaurantId: restaurant.id,
         name: item.name,
         price: item.price,
         description: item.description,
-        image: item.image,
+        imageUrl: item.image, // FIXED image to imageUrl as per Schema
         category: item.category,
         isAvailable: true,
         isEliteOnly: false
       }));
-      await MenuItem.insertMany(menuItems);
+      await MenuItem.bulkCreate(menuItems);
       console.log(`Seeded ${menuItems.length} items for ${restaurant.name}`);
     }
 

@@ -2,8 +2,8 @@
 import { useState, useEffect } from 'react';
 import { io } from 'socket.io-client';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5001';
 
 // ─── Types ───────────────────────────────────────────────────
 interface AdminStat {
@@ -37,12 +37,44 @@ function CampusRadar({ activeOrders }: { activeOrders: LiveOrder[] }) {
 
       {/* Styled SRM Campus Map (Simplified Tactical SVG) */}
       <div className="absolute inset-0 flex items-center justify-center p-10">
-        <svg viewBox="0 0 800 500" className="w-full h-full text-slate-800 fill-slate-900 opacity-40">
-           {/* Placeholder for Campus Layout */}
-           <path d="M100 100 L700 100 L750 400 L50 400 Z" stroke="currentColor" strokeWidth="2" strokeDasharray="4 4" />
-           <rect x="150" y="150" width="100" height="80" stroke="currentColor" strokeWidth="1" />
-           <rect x="550" y="150" width="100" height="80" stroke="currentColor" strokeWidth="1" />
-           <circle cx="400" cy="250" r="50" stroke="currentColor" strokeWidth="1" />
+        <svg viewBox="0 0 800 500" className="w-full h-full text-blue-500/20 fill-none opacity-60">
+           {/* Perimeter Scanner Ring */}
+           <rect x="50" y="50" width="700" height="400" rx="24" stroke="currentColor" strokeWidth="1" strokeDasharray="8 8" />
+           <rect x="40" y="40" width="720" height="420" rx="32" stroke="currentColor" strokeWidth="0.5" opacity="0.3" />
+
+           {/* Tactical Interlink Matrix (Roads/Paths) */}
+           <path d="M100 250 H700" stroke="currentColor" strokeWidth="1" strokeDasharray="6 6" />
+           <path d="M400 70 V430" stroke="currentColor" strokeWidth="1" strokeDasharray="6 6" />
+           <path d="M220 160 L580 340" stroke="currentColor" strokeWidth="0.5" strokeDasharray="4 4" opacity="0.4" />
+           <path d="M220 340 L580 160" stroke="currentColor" strokeWidth="0.5" strokeDasharray="4 4" opacity="0.4" />
+
+           {/* Concentric Scanner Rings from Center Node */}
+           <circle cx="400" cy="250" r="60" stroke="currentColor" strokeWidth="1.5" className="animate-pulse-soft" />
+           <circle cx="400" cy="250" r="100" stroke="currentColor" strokeWidth="0.5" opacity="0.2" />
+           <circle cx="400" cy="250" r="150" stroke="currentColor" strokeWidth="0.3" opacity="0.1" />
+           <circle cx="400" cy="250" r="4" fill="currentColor" />
+
+           {/* Nodes with Indicators */}
+           {[
+             { x: 180, y: 140, label: "HOSTEL_A" },
+             { x: 540, y: 140, label: "HOSTEL_B" },
+             { x: 180, y: 300, label: "KITCHEN_MAIN" },
+             { x: 540, y: 300, label: "GATE_SECURE" }
+           ].map((node, i) => (
+             <g key={i} transform={`translate(${node.x}, ${node.y})`}>
+               <rect width="80" height="60" rx="12" stroke="currentColor" strokeWidth="1.2" fill="rgba(30, 41, 59, 0.4)" />
+               <rect x="4" y="4" width="72" height="52" rx="8" stroke="currentColor" strokeWidth="0.5" opacity="0.2" />
+               <text x="40" y="35" textAnchor="middle" fontSize="9" fontWeight="bold" fill="currentColor" opacity="0.6" className="tracking-widest">{node.label}</text>
+               {/* Tiny indicator light */}
+               <circle cx="12" cy="12" r="3" fill="currentColor" className="opacity-80" />
+             </g>
+           ))}
+
+           {/* Corner accent details */}
+           <path d="M60 60 H90 M60 60 V90" stroke="currentColor" strokeWidth="2" opacity="0.5" />
+           <path d="M740 60 H710 M740 60 V90" stroke="currentColor" strokeWidth="2" opacity="0.5" />
+           <path d="M60 440 H90 M60 440 V410" stroke="currentColor" strokeWidth="2" opacity="0.5" />
+           <path d="M740 440 H710 M740 440 V410" stroke="currentColor" strokeWidth="2" opacity="0.5" />
         </svg>
       </div>
 
@@ -106,12 +138,12 @@ export default function AdminHome() {
         });
         const data = await res.json();
         if (res.ok) {
-           setStats([
-             { label: 'Platform Revenue', value: data.revenue, growth: 'Live', trend: 'up' },
-             { label: 'Order Activity', value: data.orderActivity, growth: `${data.activeOrders} Active`, trend: 'up' },
-             { label: 'Active Fleet', value: data.activeFleet, growth: 'Verified', trend: 'neutral' },
-             { label: 'Zenvy Commission', value: data.commission, growth: 'Projected', trend: 'up' },
-           ]);
+            setStats([
+              { label: 'Platform Revenue', value: data.revenue, growth: 'Delivered', trend: 'up' },
+              { label: 'Active Pipeline', value: data.activeRevenue, growth: `${data.activeOrders} Active`, trend: 'up' },
+              { label: 'Active Fleet', value: data.activeFleet, growth: 'Verified', trend: 'neutral' },
+              { label: 'Zenvy Commission', value: data.commission, growth: 'Projected', trend: 'up' },
+            ]);
         }
       } catch (err) { console.error('[STATS_FETCH_ERROR]', err); }
     };
@@ -263,3 +295,4 @@ export default function AdminHome() {
     </div>
   );
 }
+

@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
 
 interface VaultItem {
   _id: string;
@@ -87,10 +87,10 @@ export default function VaultTerminal() {
         {loading ? (
             <div className="col-span-full py-20 text-center font-black text-gray-500 animate-pulse tracking-widest uppercase">Syncing with Secure Vault...</div>
         ) : items.map((item) => (
-          <div key={item._id} className="glass-card p-8 group relative overflow-hidden">
+          <div key={item._id} className="glass-card p-8 group relative overflow-hidden will-change-transform touch-pan-y">
              <div className="flex gap-8 relative z-10">
-                 <div className="w-32 h-32 rounded-3xl overflow-hidden border border-white/10 shrink-0 relative">
-                    <Image src={item.imageUrl || "/assets/placeholder.png"} fill style={{ objectFit: 'cover' }} alt={item.name} className="group-hover:scale-110 transition-transform duration-700" />
+                 <div className="w-32 h-32 rounded-3xl overflow-hidden border border-white/10 shrink-0 relative pointer-events-none">
+                    <Image src={item.imageUrl || "/assets/placeholder.png"} fill style={{ objectFit: 'cover' }} alt={item.name} className="group-hover:scale-110 transition-transform duration-700 ease-out will-change-transform" />
                  </div>
                 <div className="flex-1 space-y-4">
                    <div className="flex justify-between items-start">
@@ -152,3 +152,4 @@ export default function VaultTerminal() {
     </div>
   );
 }
+

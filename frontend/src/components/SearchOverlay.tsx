@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
 
 interface SearchRestaurant {
   _id: string;
@@ -179,3 +179,4 @@ export default function SearchOverlay({ isOpen, onClose }: { isOpen: boolean; on
     </div>
   );
 }
+

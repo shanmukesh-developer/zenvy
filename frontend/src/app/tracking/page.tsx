@@ -10,7 +10,7 @@ import { APIProvider, Map, AdvancedMarker, useMap, useMapsLibrary } from '@vis.g
 const RESTAURANT_COORD = { lat: 16.4645, lng: 80.5050 };
 const HOME_COORD = { lat: 16.4632, lng: 80.5064 };
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
 import { socket } from '@/utils/socket';
 
 interface OrderInfo {
@@ -88,9 +88,10 @@ function TrackingContent() {
     if (orderId) socket.emit('joinOrder', orderId);
     
     socket.on('statusUpdated', (newStatus: string) => {
-      if (newStatus === 'Accepted') setStatus(1);
-      if (newStatus === 'PickedUp') setStatus(2);
-      if (newStatus === 'Delivered') setStatus(3);
+      if (newStatus === 'Pending') setStatus(1);
+      if (newStatus === 'Accepted') setStatus(2);
+      if (newStatus === 'PickedUp') setStatus(3);
+      if (newStatus === 'Delivered') setStatus(4);
     });
 
     socket.on('locationUpdated', (coords: { lat: number, lng: number }) => {
@@ -106,9 +107,10 @@ function TrackingContent() {
         });
         const data = await res.json();
         setOrderInfo(data);
-        if (data.status === 'Accepted') setStatus(1);
-        if (data.status === 'PickedUp') setStatus(2);
-        if (data.status === 'Delivered') setStatus(3);
+        if (data.status === 'Pending') setStatus(1);
+        if (data.status === 'Accepted') setStatus(2);
+        if (data.status === 'PickedUp') setStatus(3);
+        if (data.status === 'Delivered') setStatus(4);
       } catch (err) {
         console.error('Error fetching order:', err);
       }
@@ -124,7 +126,8 @@ function TrackingContent() {
   }, [orderId]);
 
   const steps = [
-    { label: 'Order Accepted', time: 'Just now', desc: 'The restaurant is preparing your meal.' },
+    { label: 'Order Placed', time: 'Just now', desc: 'Your order has been received and is pending acceptance.' },
+    { label: 'Order Accepted', time: 'Soon', desc: 'Driver has accepted and is preparing to fetch your meal.' },
     { label: 'Out for Delivery', time: 'Soon', desc: 'Rider is on the way to your Hostel Block.' },
     { label: 'Arrived', time: 'Estimated 5m', desc: 'Pick up your food at the designated spot.' }
   ];
@@ -302,7 +305,7 @@ function TrackingContent() {
                  </p>
               </div>
            </div>
-           <Link href="/help" className="text-[10px] font-black uppercase tracking-widest text-primary-yellow">Support</Link>
+           <Link href="/" className="text-[10px] font-black uppercase tracking-widest text-primary-yellow">Support</Link>
         </div>
       )}
     </main>
@@ -316,3 +319,4 @@ export default function TrackingPage() {
     </Suspense>
   );
 }
+

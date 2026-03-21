@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from 'react';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
 
 interface BlockStats {
   name: string;
@@ -13,23 +13,41 @@ export default function BlockWarsHUD() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let mounted = true;
+    let fallbackTimer: NodeJS.Timeout;
+
+    const fetchStats = async () => {
+      try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+        console.log('[BLOCKS_FETCH_TOKEN]', token);
+        if (!token || token === 'null' || token === 'undefined') {
+           // If layout haven't set token yet, retry sets 
+           if (mounted) fallbackTimer = setTimeout(fetchStats, 1000);
+           return;
+        }
+        const res = await fetch(`${API_URL}/api/blocks/activity`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        const data = await res.json();
+        if (res.ok && mounted) setStats(data);
+      } catch (err) {
+        console.error('[BLOCKS_FETCH_ERROR]', err);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
     fetchStats();
     // Refresh every 30s
     const timer = setInterval(fetchStats, 30000);
-    return () => clearInterval(timer);
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+      clearTimeout(fallbackTimer);
+    };
   }, []);
-
-  const fetchStats = async () => {
-    try {
-      const res = await fetch(`${API_URL}/api/blocks/activity`);
-      const data = await res.json();
-      if (res.ok) setStats(data);
-    } catch (err) {
-      console.error('[BLOCKS_FETCH_ERROR]', err);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const maxCount = Math.max(...stats.map(s => s.count), 1);
 
@@ -100,3 +118,4 @@ export default function BlockWarsHUD() {
     </div>
   );
 }
+

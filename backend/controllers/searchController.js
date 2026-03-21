@@ -15,7 +15,7 @@ const globalSearch = async (req, res) => {
     // Search Restaurants by name
     const restaurants = await Restaurant.findAll({
       where: {
-        name: { [Op.like]: `%${q}%` },
+        name: { [Op.iLike]: `%${q}%` },
         isActive: true
       },
       limit: 5
@@ -28,9 +28,9 @@ const globalSearch = async (req, res) => {
           { isAvailable: true },
           {
             [Op.or]: [
-              { name: { [Op.like]: `%${q}%` } },
-              { description: { [Op.like]: `%${q}%` } },
-              { category: { [Op.like]: `%${q}%` } }
+              { name: { [Op.iLike]: `%${q}%` } },
+              { description: { [Op.iLike]: `%${q}%` } },
+              { category: { [Op.iLike]: `%${q}%` } }
             ]
           }
         ]

@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useCart } from '@/context/CartContext';
-import Image from 'next/image';
+import SafeImage from '@/components/SafeImage';
 import SuccessOverlay from '@/components/SuccessOverlay';
 import { Restaurant, MenuItem } from '@/types';
 
@@ -86,8 +86,8 @@ export default function RestaurantMenuClient({ restaurantId }: { restaurantId: s
           className="absolute inset-0 scale-110"
           style={{ transform: `translateY(${scrollY * 0.4}px) scale(1.1)` }}
         >
-          <Image
-            src={restaurant.imageUrl || "/assets/placeholder.png"} 
+          <SafeImage
+            src={restaurant.imageUrl || ""} 
             alt={restaurant.name}
             fill
             style={{ objectFit: 'cover' }}
@@ -144,8 +144,8 @@ export default function RestaurantMenuClient({ restaurantId }: { restaurantId: s
           {filteredMenu.map((item) => (
             <Link href={`/products/${item.id}`} key={item.id} className="flex gap-4 items-center glass-card p-4 rounded-[28px] hover:border-[#C9A84C]/15 transition-all duration-300 group cursor-pointer active:scale-[0.98]">
               <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-[#C9A84C]/20 bg-black flex-shrink-0 relative group-hover:scale-105 transition-transform duration-300">
-                 <Image 
-                   src={item.image || item.imageUrl || "/assets/placeholder.png"} 
+                 <SafeImage 
+                   src={item.image || item.imageUrl || ""} 
                    alt={item.name} 
                    fill
                    style={{ objectFit: 'cover' }}

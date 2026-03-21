@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import RestaurantCard from '@/components/RestaurantCard';
+import SafeImage from '@/components/SafeImage';
 import Image from 'next/image';
 import SearchOverlay from '@/components/SearchOverlay';
 import IntroOverlay from '@/components/IntroOverlay';
@@ -13,8 +14,9 @@ import ZenvyVault from '@/components/ZenvyVault';
 import LiveOrderStatusBar from '@/components/LiveOrderStatusBar';
 import RatingModal from '@/components/RatingModal';
 import ZenvyModal from '@/components/ZenvyModal';
+import socket from '@/utils/socket';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
 
 import { Restaurant, User } from '@/types';
 
@@ -202,6 +204,24 @@ export default function Home() {
       clearTimeout(loader);
     };
   }, [getNextAvailableSlot]);
+
+  useEffect(() => {
+    if (!user) return;
+    const handleEliteUpdate = (data: any) => {
+      const userId = user?._id || user?.id;
+      if (data.type === 'USER_ELITE_STATUS' && data.data.userId === userId) {
+         setIsElite(data.data.isElite);
+         const stored = localStorage.getItem('user');
+         if (stored) {
+           const parsed = JSON.parse(stored);
+           parsed.isElite = data.data.isElite;
+           localStorage.setItem('user', JSON.stringify(parsed));
+         }
+      }
+    };
+    socket.on('systemUpdate', handleEliteUpdate);
+    return () => { socket.off('systemUpdate', handleEliteUpdate); };
+  }, [user]);
 
   // Tick down cancellation countdown
   useEffect(() => {
@@ -523,7 +543,7 @@ export default function Home() {
                   <Link href={`/products/${item.id}`} key={item.id}>
                     <div className="chef-card bg-[#141416]" style={{ animationDelay: `${i * 0.1}s` }}>
                       <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-primary-yellow/30 transition-colors">
-                        <Image src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
+                        <SafeImage src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
                       </div>
                       <div className="mt-3">
                         <h3 className="font-bold text-[15px] text-white mb-1">{item.name}</h3>
@@ -554,7 +574,7 @@ export default function Home() {
               {groupedCollections.fruits.map((item) => (
                 <Link href={`/products/${item.id}`} key={item.id} className="relative shrink-0 w-[240px] group active:scale-95 transition-transform">
                    <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-[#34D399]/30 transition-colors">
-                      <Image src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
+                      <SafeImage src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
                    </div>
                    <div className="mt-3">
                       <h3 className="text-xs font-black text-white">{item.name}</h3>
@@ -578,7 +598,7 @@ export default function Home() {
               {groupedCollections.rentals.map((item) => (
                 <button type="button" key={item.id} onClick={() => { setSelectedRental(item as RentalItem); setShowSpecs(false); }} className="relative shrink-0 w-[240px] cursor-pointer group active:scale-95 transition-transform text-left">
                    <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-primary-yellow/30 transition-colors">
-                      <Image src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
+                      <SafeImage src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
                    </div>
                    <div className="mt-3">
                       <h3 className="text-xs font-black text-white">{item.name}</h3>
@@ -604,7 +624,7 @@ export default function Home() {
               {groupedCollections.seasonal.map((item) => (
                 <Link href={`/products/${item.id}`} key={item.id} className="relative shrink-0 w-[240px] group active:scale-95 transition-transform">
                    <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-cyan-500/30 transition-colors">
-                       <Image src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
+                       <SafeImage src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
                    </div>
                    <div className="mt-3">
                       <h3 className="text-xs font-black text-white">{item.name}</h3>
@@ -630,7 +650,7 @@ export default function Home() {
               {groupedCollections.sweets.map((item) => (
                 <Link href={`/products/${item.id}`} key={item.id} className="relative shrink-0 w-[240px] group active:scale-95 transition-transform">
                    <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-rose-500/30 transition-colors">
-                       <Image src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
+                       <SafeImage src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
                    </div>
                    <div className="mt-3">
                       <h3 className="text-xs font-black text-white">{item.name}</h3>
@@ -654,7 +674,7 @@ export default function Home() {
               {groupedCollections.drinks.map((item) => (
                 <Link href={`/products/${item.id}`} key={item.id} className="relative shrink-0 w-[240px] group active:scale-95 transition-transform">
                    <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-[#A5B4FC]/30 transition-colors">
-                      <Image src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
+                      <SafeImage src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
                    </div>
                    <div className="mt-3">
                       <h3 className="text-xs font-black text-white">{item.name}</h3>
@@ -678,7 +698,7 @@ export default function Home() {
               {groupedCollections.gym.map((item) => (
                 <Link href={`/products/${item.id}`} key={item.id} className="relative shrink-0 w-[240px] group active:scale-95 transition-transform">
                    <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-[#C9A84C]/30 transition-colors">
-                      <Image src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
+                      <SafeImage src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
                    </div>
                    <div className="mt-3">
                       <h3 className="text-xs font-black text-white">{item.name}</h3>
@@ -856,3 +876,4 @@ export default function Home() {
     </>
   );
 }
+

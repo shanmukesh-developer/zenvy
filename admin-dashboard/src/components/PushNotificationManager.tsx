@@ -65,7 +65,7 @@ export default function PushNotificationManager() {
         }
       }
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
       await fetch(`${apiUrl}/api/users/fcm-token`, {
         method: 'POST',
         headers: {
@@ -82,3 +82,4 @@ export default function PushNotificationManager() {
 
   return null;
 }
+

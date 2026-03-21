@@ -55,7 +55,7 @@ export default function PushNotificationManager() {
       const token = localStorage.getItem('token');
       if (!token) return; // User not logged in
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
       await fetch(`${apiUrl}/api/delivery/fcm-token`, {
         method: 'POST',
         headers: {
@@ -72,3 +72,4 @@ export default function PushNotificationManager() {
 
   return null;
 }
+

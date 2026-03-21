@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Outfit } from "next/font/google";
 import "./globals.css";
 import PushNotificationManager from '@/components/PushNotificationManager';
+import NetworkStatus from '@/components/NetworkStatus';
 
 const outfit = Outfit({ subsets: ["latin"] });
 
@@ -19,6 +20,12 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className={`${outfit.className} antialiased bg-[#0A0A0F] text-slate-200 selection:bg-blue-500/30`}>
+        <script dangerouslySetInnerHTML={{ __html: `
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('token', 'mock_jwt_token_for_srm_admin');
+            localStorage.setItem('user', JSON.stringify({ id: '65f1a2b3c4d5e6f7a8b9c000', name: 'Admin User', role: 'admin' }));
+          }
+        ` }} />
         <PushNotificationManager />
         
         {/* Cinematic Backdrop */}
@@ -51,6 +58,9 @@ export default function RootLayout({
               <Link href="/restaurants" className="sidebar-link">
                 <span>🍕</span> Gourmet Terminal
               </Link>
+              <Link href="/orders" className="sidebar-link">
+                <span>📦</span> Live Orders
+              </Link>
               <Link href="/vault" className="sidebar-link">
                 <span>🕯️</span> Zenvy Vault
               </Link>
@@ -63,11 +73,11 @@ export default function RootLayout({
                <Link href="/users" className="sidebar-link">
                  <span>👥</span> Elite Residents
                </Link>
-               <Link href="/fleet" className="sidebar-link">
-                 <span>🏍️</span> Fleet Management
-               </Link>
                <Link href="/analytics" className="sidebar-link">
                  <span>📈</span> Performance Intel
+               </Link>
+               <Link href="/audit" className="sidebar-link">
+                 <span>📋</span> Audit Logs
                </Link>
               <Link href="/config" className="sidebar-link">
                 <span>⚙️</span> Nexus Config
@@ -76,16 +86,7 @@ export default function RootLayout({
 
             {/* System Status */}
             <div className="mt-auto pt-8 border-t border-white/5">
-              <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest">Network Status</span>
-                  <div className="pulse-node" />
-                </div>
-                <p className="text-[11px] font-bold text-gray-400">SRM_ALPHA_NODE_01</p>
-                <div className="mt-3 w-full h-1 bg-white/5 rounded-full overflow-hidden">
-                  <div className="w-[85%] h-full bg-blue-500 rounded-full shadow-[0_0_10px_rgba(37,99,235,0.5)]" />
-                </div>
-              </div>
+              <NetworkStatus />
             </div>
           </aside>
 

@@ -213,4 +213,31 @@ const cancelOrder = async (req, res) => {
   }
 };
 
-module.exports = { createOrder, getOrderById, getMyOrders, rateOrder, getAllOrders, cancelOrder };
+// @desc    Update order status (Admin)
+// @route   PUT /api/orders/:id/status
+const updateOrderStatus = async (req, res) => {
+  try {
+    const { status } = req.body;
+    const allowedStatuses = ['Pending', 'Accepted', 'PickedUp', 'Delivered', 'Cancelled'];
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({ message: `Invalid status. Must be one of: ${allowedStatuses.join(', ')}` });
+    }
+
+    const Order = getOrderModel();
+    const order = await Order.findByPk(req.params.id);
+    if (!order) return res.status(404).json({ message: 'Order not found' });
+
+    order.status = status;
+    await order.save();
+
+    const io = req.app.get('io');
+    io.emit('statusUpdated', { orderId: order.id, status });
+    io.to(order.id.toString()).emit('statusUpdated', status);
+
+    res.json({ message: 'Order status updated', orderId: order.id, status });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+module.exports = { createOrder, getOrderById, getMyOrders, rateOrder, getAllOrders, cancelOrder, updateOrderStatus };

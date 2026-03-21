@@ -3,22 +3,13 @@ const jwt = require('jsonwebtoken');
 const protect = async (req, res, next) => {
   let token;
 
+  console.log('[AUTH_MIDDLEWARE] Method:', req.method, 'URL:', req.url, 'Header:', req.headers.authorization);
+
   if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
     try {
       token = req.headers.authorization.split(' ')[1];
+      console.log('[AUTH_MIDDLEWARE] Extracted Token:', `"${token}"`);
       
-      // Development bypass for frontend test login
-      if (token === 'mock_jwt_token_for_srm_student') {
-        req.user = { id: '65f1a2b3c4d5e6f7a8b9c0d1', name: 'Shanmukh' };
-        return next();
-      }
-
-      // Development bypass for delivery app driver test login
-      if (token === 'mock_jwt_token_for_srm_driver') {
-        req.user = { id: '65f1a2b3c4d5e6f7a8b9c0d2', name: 'Rider Rahul (Dev Mode)' };
-        return next();
-      }
-
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       req.user = decoded;
       next();
@@ -32,4 +23,12 @@ const protect = async (req, res, next) => {
   }
 };
 
-module.exports = { protect };
+const admin = (req, res, next) => {
+  if (req.user && req.user.role === 'admin') {
+    next();
+  } else {
+    res.status(401).json({ message: 'Not authorized as an admin' });
+  }
+};
+
+module.exports = { protect, admin };

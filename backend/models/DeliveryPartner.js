@@ -21,7 +21,13 @@ const initDeliveryPartnerModel = (sequelize) => {
     totalRatings: { type: DataTypes.INTEGER, defaultValue: 0 },
     fcmTokens: { type: DataTypes.JSON, defaultValue: [] },
     isApproved: { type: DataTypes.BOOLEAN, defaultValue: false }
-  }, { timestamps: true });
+  }, { 
+    timestamps: true,
+    indexes: [
+      { fields: ['phone'] },
+      { fields: ['isOnline'] }
+    ]
+  });
 
   DeliveryPartner.beforeCreate(async (partner) => {
     partner.password = await bcrypt.hash(partner.password, 10);

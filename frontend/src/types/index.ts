@@ -30,6 +30,7 @@ export interface Restaurant {
 
 export interface User {
   _id?: string;
+  id?: string;
   name?: string;
   phone?: string;
   isElite?: boolean;

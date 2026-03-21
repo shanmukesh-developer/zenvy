@@ -65,7 +65,7 @@ export default function PushNotificationManager() {
         }
       }
 
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
       await fetch(`${API_URL}/api/users/save-subscription`, {
         method: 'POST',
         headers: {
@@ -82,3 +82,4 @@ export default function PushNotificationManager() {
 
   return null;
 }
+

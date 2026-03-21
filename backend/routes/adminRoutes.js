@@ -4,8 +4,9 @@ const {
   getAllRestaurants, 
   createRestaurant, 
   updateRestaurant, 
-  getAllMenuItems, 
+  getAllMenuItems,
   upsertMenuItem,
+  deleteMenuItem,
   getAllRiders,
   approveRider,
   getAllUsers,
@@ -20,6 +21,7 @@ const {
   getFinanceReport,
   getAuditLogs
 } = require('../controllers/adminController');
+const { getAllOrders } = require('../controllers/orderController');
 const { protect } = require('../middleware/authMiddleware');
 
 // Middleware to ensure the user is an admin
@@ -35,12 +37,16 @@ const adminOnly = (req, res, next) => {
 router.use(protect);
 router.use(adminOnly);
 
+// Live Orders Intelligence
+router.get('/orders', getAllOrders);
+
 // Restaurant & Menu Control
 router.get('/restaurants', getAllRestaurants);
 router.post('/restaurants', createRestaurant);
 router.post('/restaurants/:id', updateRestaurant);
 router.get('/menu-items', getAllMenuItems);
 router.post('/menu-items/:id', upsertMenuItem); // id can be 'new'
+router.delete('/menu-items/:id/delete', deleteMenuItem);
 
 // Fleet Management
 router.get('/riders', getAllRiders);

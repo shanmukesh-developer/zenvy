@@ -104,9 +104,20 @@ const getPendingOrders = async (req, res) => {
     const Restaurant = getRestaurantModel();
     const orders = await Order.findAll({ where: { status: 'Pending' }, order: [['createdAt', 'DESC']] });
 
-    const enrichedOrders = await Promise.all(orders.map(async (order) => {
-      const restaurant = await Restaurant.findByPk(order.restaurantId).catch(() => null);
-      const customer = await User.findByPk(order.userId).catch(() => null);
+    const userIds = [...new Set(orders.map(o => o.userId))];
+    const restIds = [...new Set(orders.map(o => o.restaurantId))];
+    
+    const [users, restaurants] = await Promise.all([
+      User.findAll({ where: { id: userIds } }),
+      Restaurant.findAll({ where: { id: restIds } })
+    ]);
+
+    const userMap = Object.fromEntries(users.map(u => [u.id, u]));
+    const restMap = Object.fromEntries(restaurants.map(r => [r.id, r]));
+
+    const enrichedOrders = orders.map(order => {
+      const restaurant = restMap[order.restaurantId];
+      const customer = userMap[order.userId];
       return {
         id: order.id,
         restaurant: restaurant?.name || 'Restaurant',
@@ -120,7 +131,7 @@ const getPendingOrders = async (req, res) => {
         earnings: `₹${Math.round((order.finalPrice || order.totalPrice) * 0.1)}`,
         createdAt: order.createdAt
       };
-    }));
+    });
 
     res.json(enrichedOrders);
   } catch (error) {
@@ -141,8 +152,12 @@ const getOrderHistory = async (req, res) => {
       order: [['updatedAt', 'DESC']]
     });
 
-    const enrichedOrders = await Promise.all(orders.map(async (order) => {
-      const restaurant = await Restaurant.findByPk(order.restaurantId).catch(() => null);
+    const restIds = [...new Set(orders.map(o => o.restaurantId))];
+    const restaurants = await Restaurant.findAll({ where: { id: restIds } });
+    const restMap = Object.fromEntries(restaurants.map(r => [r.id, r]));
+
+    const enrichedOrders = orders.map(order => {
+      const restaurant = restMap[order.restaurantId];
       return {
         id: order.id,
         restaurant: restaurant?.name || 'Restaurant',
@@ -153,7 +168,7 @@ const getOrderHistory = async (req, res) => {
         earnings: `₹${Math.round((order.finalPrice || order.totalPrice) * 0.1)}`,
         deliveredAt: order.updatedAt
       };
-    }));
+    });
 
     res.json(enrichedOrders);
   } catch (error) {
@@ -238,6 +253,7 @@ const saveFcmToken = async (req, res) => {
       const idx = tokens.findIndex(t => t.appVersion === appVersion);
       if (idx > -1) tokens[idx].token = fcmToken; else tokens.push({ token: fcmToken, appVersion });
       partner.fcmTokens = tokens;
+      partner.changed('fcmTokens', true);
       await partner.save();
       res.json({ message: 'FCM Token saved' });
     } else {

@@ -1,8 +1,8 @@
 const { getUserModel } = require('../models/User');
 const jwt = require('jsonwebtoken');
 
-const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET || 'secret', { expiresIn: '30d' });
+const generateToken = (id, role) => {
+  return jwt.sign({ id, role }, process.env.JWT_SECRET || 'secret', { expiresIn: '30d' });
 };
 
 // @desc    Register a new user
@@ -21,7 +21,7 @@ const registerUser = async (req, res) => {
       name: user.name,
       phone: user.phone,
       isElite: false,
-      token: generateToken(user.id)
+      token: generateToken(user.id, user.role)
     });
   } catch (error) {
     console.error('[USER_REGISTER_ERROR]', error);
@@ -46,7 +46,7 @@ const authUser = async (req, res) => {
         hostelBlock: user.hostelBlock,
         roomNumber: user.roomNumber,
         zenPoints: user.zenPoints || 0,
-        token: generateToken(user.id)
+        token: generateToken(user.id, user.role)
       });
     } else {
       res.status(401).json({ message: 'Invalid phone or password' });
@@ -120,7 +120,10 @@ const updateUserProfile = async (req, res) => {
       if (req.body.name) user.name = req.body.name;
       if (req.body.hostelBlock) user.hostelBlock = req.body.hostelBlock;
       if (req.body.roomNumber) user.roomNumber = req.body.roomNumber;
-      if (req.body.isElite !== undefined) user.isElite = req.body.isElite;
+      
+      // CRITICAL FIX: Removed insecure req.body.isElite assignment
+      // Elite status must only be updated by a verified payment webhook or admin route.
+      
       await user.save();
       res.json({
         _id: user.id,
@@ -130,7 +133,7 @@ const updateUserProfile = async (req, res) => {
         roomNumber: user.roomNumber,
         isElite: user.isElite,
         zenPoints: user.zenPoints,
-        token: generateToken(user.id)
+        token: generateToken(user.id, user.role)
       });
     } else {
       res.status(404).json({ message: 'User not found' });

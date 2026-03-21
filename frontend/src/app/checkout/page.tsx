@@ -1,6 +1,6 @@
 "use client";
 import { useCart } from '@/context/CartContext';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import SuccessOverlay from '@/components/SuccessOverlay';
 
@@ -27,20 +27,31 @@ export default function CheckoutPage() {
 
   const availableSlots = allSlots.filter(isSlotAvailable);
 
-  // Set default slot
-  useState(() => {
-    if (availableSlots.length > 0) {
+  // Read isElite from localStorage (not hardcoded)
+  const [isElite, setIsElite] = useState(false);
+
+  // Set default slot and read user elite status on mount
+  useEffect(() => {
+    if (availableSlots.length > 0 && !selectedSlot) {
       setSelectedSlot(availableSlots[0].id);
     }
-  });
-
+    try {
+      const stored = localStorage.getItem('user');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        setIsElite(parsed.isElite || false);
+      }
+    } catch { /* ignore */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  
   const [isProcessing, setIsProcessing] = useState(false);
   const [overlay, setOverlay] = useState<{ isOpen: boolean; title: string; message: string; type?: 'success' | 'error' }>({
     isOpen: false,
     title: '',
     message: '',
   });
-  const isElite = true; // Mock elite status
+
   const deliveryFee = isElite ? 0 : (deliveryMethod === 'gate' ? 20 : 30);
   const batchDiscount = 0;
   const gateDiscount = deliveryMethod === 'gate' ? Math.round(0.3 * deliveryFee) : 0;
@@ -76,7 +87,7 @@ export default function CheckoutPage() {
         hostelGateDelivery: deliveryMethod === 'gate'
       };
 
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
       const response = await fetch(`${API_URL}/api/orders`, {
         method: 'POST',
         headers: {
@@ -233,3 +244,4 @@ export default function CheckoutPage() {
     </main>
   );
 }
+

@@ -18,7 +18,13 @@ const initMenuItemModel = (sequelize) => {
     isAvailable: { type: DataTypes.BOOLEAN, defaultValue: true },
     isEliteOnly: { type: DataTypes.BOOLEAN, defaultValue: false },
     customCommission: { type: DataTypes.FLOAT }
-  }, { timestamps: true });
+  }, { 
+    timestamps: true,
+    indexes: [
+      { fields: ['restaurantId'] },
+      { fields: ['category'] }
+    ]
+  });
 
   return MenuItem;
 };

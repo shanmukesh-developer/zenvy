@@ -40,7 +40,7 @@ export default function OrdersPage() {
     const fetchOrders = async () => {
       try {
         const token = localStorage.getItem('token');
-        const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+        const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
         const res = await fetch(`${API_URL}/api/orders/myorders`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -141,6 +141,14 @@ export default function OrdersPage() {
                     </p>
                     <span className="text-sm font-black text-gold-gradient">₹{order.totalPrice}</span>
                   </div>
+                  
+                  {order.status !== 'Delivered' && order.status !== 'Cancelled' && (
+                    <div className="flex justify-end mt-3 pt-3 border-t border-white/5">
+                      <Link href={`/tracking?id=${order._id}`} className="text-[9px] font-black uppercase tracking-widest text-primary-yellow hover:text-white transition-colors flex items-center gap-1">
+                        Track Live order <span>→</span>
+                      </Link>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -150,3 +158,4 @@ export default function OrdersPage() {
     </main>
   );
 }
+

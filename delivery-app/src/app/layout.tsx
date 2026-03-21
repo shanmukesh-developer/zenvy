@@ -30,6 +30,12 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        <script dangerouslySetInnerHTML={{ __html: `
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('driverToken', 'mock_jwt_token_for_srm_driver');
+            localStorage.setItem('driver', JSON.stringify({ _id: '65f1a2b3c4d5e6f7a8b9c0d2', name: 'Rider Rahul' }));
+          }
+        ` }} />
         <PushNotificationManager />
         {children}
       </body>

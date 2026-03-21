@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
 
 const LEGACY_DATA = [
   {
@@ -191,6 +191,19 @@ export default function GourmetManagement() {
     } catch (_err) { console.error('[ELITE_TOGGLE_ERROR]', _err); }
   };
 
+  const deleteMenuItem = async (menuItemId: string) => {
+    if (!confirm('Remove this menu item from the Nexus?')) return;
+    try {
+      const token = localStorage.getItem('token');
+      await fetch(`${API_URL}/api/admin/menu-items/${menuItemId}/delete`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      // Optimistically remove from state
+      setMenuItems(prev => prev.filter(i => i._id !== menuItemId));
+    } catch (_err) { console.error('[ITEM_DELETE_ERROR]', _err); }
+  };
+
   return (
     <div className="space-y-10 animate-fade-in relative pb-20">
       <header className="flex justify-between items-center bg-white/5 p-8 rounded-[40px] border border-white/5 glass">
@@ -322,7 +335,7 @@ export default function GourmetManagement() {
                    </div>
                    <div className="flex flex-col items-end justify-between">
                      <button onClick={() => toggleEliteItem(item)} className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest ${item.isEliteOnly ? 'bg-[#C9A84C]/20 text-[#C9A84C]' : 'bg-white/5 text-gray-500'}`}>{item.isEliteOnly ? 'Elite' : 'Std'}</button>
-                     <button className="text-[9px] text-red-500/50 hover:text-red-500 font-black uppercase">Remove</button>
+                     <button className="text-[9px] text-red-500/50 hover:text-red-500 font-black uppercase" onClick={() => deleteMenuItem(item._id)}>Remove</button>
                    </div>
                 </div>
               ))}
@@ -348,3 +361,4 @@ export default function GourmetManagement() {
     </div>
   );
 }
+

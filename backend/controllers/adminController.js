@@ -13,6 +13,20 @@ const broadcastSystemUpdate = (req, type, data) => {
   if (io) io.emit('systemUpdate', { type, data });
 };
 
+const logAuditAction = async (req, targetId, action, details) => {
+  try {
+    const VerificationLog = getVerificationLogModel();
+    await VerificationLog.create({
+      adminId: req.user?.id ? req.user.id.toString() : 'admin_default',
+      targetId: targetId ? targetId.toString() : 'global',
+      action,
+      details: typeof details === 'string' ? details : JSON.stringify(details),
+    });
+  } catch (error) {
+    console.error('[AUDIT_LOG_ERROR]', error);
+  }
+};
+
 // ─── Public Endpoints ─────────────────────────────────────────
 exports.getRestaurants = async (req, res) => {
   try {
@@ -93,7 +107,7 @@ exports.searchAll = async (req, res) => {
 
     const matchedRestaurants = await Restaurant.findAll({
       where: {
-        name: { [Op.like]: `%${q}%` },
+        name: { [Op.iLike]: `%${q}%` },
         isActive: true
       }
     });
@@ -101,8 +115,8 @@ exports.searchAll = async (req, res) => {
     const matchedItems = await MenuItem.findAll({
       where: {
         [Op.or]: [
-          { name: { [Op.like]: `%${q}%` } },
-          { category: { [Op.like]: `%${q}%` } }
+          { name: { [Op.iLike]: `%${q}%` } },
+          { category: { [Op.iLike]: `%${q}%` } }
         ],
         isAvailable: true
       }
@@ -144,6 +158,7 @@ exports.createRestaurant = async (req, res) => {
     const Restaurant = getRestaurantModel();
     const restaurant = await Restaurant.create(req.body);
     broadcastSystemUpdate(req, 'RESTAURANT_CREATED', restaurant);
+    await logAuditAction(req, restaurant.id, 'CREATE_RESTAURANT', { name: restaurant.name });
     res.status(201).json({ ...restaurant.toJSON(), _id: restaurant.id });
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -157,6 +172,7 @@ exports.updateRestaurant = async (req, res) => {
     if (!restaurant) return res.status(404).json({ message: 'Not found' });
     await restaurant.update(req.body);
     broadcastSystemUpdate(req, 'RESTAURANT_UPDATED', restaurant);
+    await logAuditAction(req, restaurant.id, 'UPDATE_RESTAURANT', { name: restaurant.name });
     res.json({ ...restaurant.toJSON(), _id: restaurant.id });
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -176,9 +192,24 @@ exports.upsertMenuItem = async (req, res) => {
       menuItem = await MenuItem.create(req.body);
     }
     broadcastSystemUpdate(req, 'MENU_UPDATED', menuItem);
+    await logAuditAction(req, menuItem.id, 'UPSERT_MENU_ITEM', { name: menuItem.name });
     res.json({ ...menuItem.toJSON(), _id: menuItem.id });
   } catch (error) {
     res.status(400).json({ message: error.message });
+  }
+};
+
+exports.deleteMenuItem = async (req, res) => {
+  try {
+    const MenuItem = getMenuItemModel();
+    const item = await MenuItem.findByPk(req.params.id);
+    if (!item) return res.status(404).json({ message: 'Item not found' });
+    await item.destroy();
+    broadcastSystemUpdate(req, 'MENU_ITEM_DELETED', { id: req.params.id });
+    await logAuditAction(req, req.params.id, 'DELETE_MENU_ITEM', { id: req.params.id });
+    res.json({ message: 'Menu item deleted' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 };
 
@@ -224,6 +255,7 @@ exports.setEliteStatus = async (req, res) => {
     if (!user) return res.status(404).json({ message: 'User not found' });
     await user.update({ isElite: req.body.isElite });
     broadcastSystemUpdate(req, 'USER_ELITE_STATUS', { userId: req.params.userId, isElite: req.body.isElite });
+    await logAuditAction(req, user.id, 'ELITE_STATUS_CHANGE', { email: user.email, isElite: req.body.isElite });
     res.json({ ...user.toJSON(), _id: user.id });
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -269,17 +301,20 @@ exports.getDashboardStats = async (req, res) => {
     const { Op } = require('sequelize');
 
     const totalOrders = await Order.count();
-    const activeOrders = await Order.count({ where: { status: { [Op.notIn]: ['Delivered', 'Cancelled'] } } });
+    const activeOrdersList = await Order.findAll({ where: { status: { [Op.notIn]: ['Delivered', 'Cancelled'] } } });
+    const activeOrdersCount = activeOrdersList.length;
+    const activeRevenue = activeOrdersList.reduce((sum, o) => sum + (o.totalPrice || 0), 0);
     const deliveredOrders = await Order.findAll({ where: { status: 'Delivered' } });
     const totalRevenue = deliveredOrders.reduce((sum, o) => sum + (o.totalPrice || 0), 0);
     const activeFleet = await DeliveryPartner.count({ where: { isApproved: true } });
 
     res.json({
       revenue: `₹${totalRevenue.toLocaleString()}`,
+      activeRevenue: `₹${activeRevenue.toLocaleString()}`,
       orderActivity: totalOrders.toString(),
       activeFleet: activeFleet.toString(),
       commission: `₹${Math.round(totalRevenue * 0.1).toLocaleString()}`,
-      activeOrders: activeOrders.toString()
+      activeOrders: activeOrdersCount.toString()
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
