@@ -93,6 +93,16 @@ const startServer = async () => {
         log(`[CRITICAL SOS] Triggered by ${data.riderName} (ID: ${data.riderId}) at ${data.timestamp}`);
         io.emit('sos_received', data);
       });
+
+      socket.on('admin_announcement', (data) => {
+        log(`[MEGAPHONE] Admin broadcast: "${data.message}" (type: ${data.type})`);
+        io.emit('global_announcement', data);
+      });
+
+      socket.on('inventory_update', (data) => {
+        log(`[INVENTORY] Item ${data.itemId} is now ${data.isAvailable ? 'available' : 'SOLD OUT'}`);
+        io.emit('inventory_updated', data);
+      });
       
       socket.on('disconnect', () => {
         console.log(`[SOCKET DISCONNECT] ${socket.id}`);

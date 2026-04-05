@@ -20,6 +20,7 @@ export const metadata: Metadata = {
 
 import PushNotificationManager from '@/components/PushNotificationManager';
 import AndroidBackButton from '@/components/AndroidBackButton';
+import GlobalAnnouncement from '@/components/GlobalAnnouncement';
 
 export default function RootLayout({
   children,
@@ -39,6 +40,7 @@ export default function RootLayout({
         ` }} />
         <AndroidBackButton />
         <PushNotificationManager />
+        <GlobalAnnouncement />
         {children}
       </body>
     </html>

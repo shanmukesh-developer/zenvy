@@ -129,6 +129,12 @@ export default function AdminHome() {
   const [liveOrders, setLiveOrders] = useState<LiveOrder[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Megaphone
+  const [megaMsg, setMegaMsg] = useState('');
+  const [megaType, setMegaType] = useState<'info' | 'warning' | 'promo' | 'emergency'>('info');
+  const [broadcasting, setBroadcasting] = useState(false);
+  const socketRef = { current: null as ReturnType<typeof io> | null };
+
   useEffect(() => {
     const fetchStats = async () => {
       try {
@@ -178,9 +184,10 @@ export default function AdminHome() {
     fetchOrders();
 
     const socket = io(SOCKET_URL);
+    socketRef.current = socket;
     
     socket.on('newOrder', (order: { id: string, drop: string, finalPrice?: number, totalPrice: number }) => {
-      fetchStats(); // Refresh stats on new order
+      fetchStats();
       setLiveOrders(prev => [{
         id: order.id,
         customer: 'Nexus Intel',
@@ -193,7 +200,7 @@ export default function AdminHome() {
     });
 
     socket.on('statusUpdated', (data: { id: string, status: string }) => {
-      fetchStats(); // Refresh stats on status change
+      fetchStats();
       setLiveOrders(prev => prev.map(o => o.id === data.id ? { ...o, status: data.status } : o));
     });
 
@@ -291,6 +298,56 @@ export default function AdminHome() {
                Override Global Batch
             </button>
          </div>
+      </div>
+
+      {/* ─── Tactical Megaphone Broadcast ─── */}
+      <div className="glass-card p-8 border border-white/10">
+        <div className="flex items-center gap-3 mb-6">
+          <span className="text-2xl">📢</span>
+          <div>
+            <h3 className="text-xl font-black text-white uppercase tracking-widest">Tactical Broadcast</h3>
+            <p className="text-[11px] text-gray-500">Push live alerts to all 3 portals instantly via WebSockets</p>
+          </div>
+        </div>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap gap-2">
+            {(['info', 'warning', 'promo', 'emergency'] as const).map(t => (
+              <button
+                key={t}
+                onClick={() => setMegaType(t)}
+                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider border transition-all ${
+                  megaType === t
+                    ? t === 'emergency' ? 'bg-red-600 border-red-400 text-white' :
+                      t === 'warning'   ? 'bg-amber-500 border-amber-400 text-black' :
+                      t === 'promo'     ? 'bg-emerald-600 border-emerald-400 text-white' :
+                                          'bg-blue-600 border-blue-400 text-white'
+                    : 'bg-white/5 border-white/10 text-gray-400 hover:bg-white/10'
+                }`}
+              >
+                { t === 'emergency' ? '🚨' : t === 'warning' ? '⚠️' : t === 'promo' ? '🎉' : '📢' } {t}
+              </button>
+            ))}
+          </div>
+          <textarea
+            rows={2}
+            value={megaMsg}
+            onChange={e => setMegaMsg(e.target.value)}
+            placeholder="Type your message (e.g. '🌧️ Rain alert! Deliveries delayed by 15 mins due to weather.')"
+            className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-2xl text-sm text-white placeholder-gray-600 outline-none focus:border-blue-500/40 resize-none transition-all"
+          />
+          <button
+            disabled={!megaMsg.trim() || broadcasting}
+            onClick={() => {
+              if (!socketRef.current || !megaMsg.trim()) return;
+              setBroadcasting(true);
+              socketRef.current.emit('admin_announcement', { message: megaMsg.trim(), type: megaType });
+              setTimeout(() => { setMegaMsg(''); setBroadcasting(false); }, 1500);
+            }}
+            className="self-end px-8 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest bg-[#C9A84C] text-black hover:bg-yellow-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+          >
+            {broadcasting ? '✓ Dispatched!' : 'Broadcast Now'}
+          </button>
+        </div>
       </div>
     </div>
   );

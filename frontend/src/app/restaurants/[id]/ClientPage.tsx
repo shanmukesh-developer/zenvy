@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from 'react';
+import { io } from 'socket.io-client';
 import Link from 'next/link';
 import { useCart } from '@/context/CartContext';
 import SafeImage from '@/components/SafeImage';
@@ -7,6 +8,7 @@ import SuccessOverlay from '@/components/SuccessOverlay';
 import { Restaurant, MenuItem } from '@/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5001';
 
 export default function RestaurantMenuClient({ restaurantId }: { restaurantId: string }) {
   // Legacy Redirect Map
@@ -20,6 +22,7 @@ export default function RestaurantMenuClient({ restaurantId }: { restaurantId: s
   const effectiveId = (legacyIdMap[restaurantId] || restaurantId).replace(/\/$/, "");
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [loading, setLoading] = useState(true);
+  const [soldOutItems, setSoldOutItems] = useState<Set<string>>(new Set());
   const { totalItems, addToCart } = useCart();
   const [scrollY, setScrollY] = useState(0);
   const [overlay, setOverlay] = useState<{ isOpen: boolean; title: string; message: string; type?: 'success' | 'error' }>({
@@ -43,6 +46,19 @@ export default function RestaurantMenuClient({ restaurantId }: { restaurantId: s
         setLoading(false);
       });
   }, [effectiveId]);
+
+  useEffect(() => {
+    const socket = io(SOCKET_URL);
+    socket.on('inventory_updated', (data: { itemId: string; isAvailable: boolean }) => {
+      setSoldOutItems(prev => {
+        const next = new Set(prev);
+        if (!data.isAvailable) next.add(data.itemId);
+        else next.delete(data.itemId);
+        return next;
+      });
+    });
+    return () => { socket.disconnect(); };
+  }, []);
 
   useEffect(() => {
     const el = mainRef.current;
@@ -141,8 +157,11 @@ export default function RestaurantMenuClient({ restaurantId }: { restaurantId: s
 
         {/* Menu Items */}
         <div className="space-y-4">
-          {filteredMenu.map((item) => (
-            <Link href={`/products/${item.id}`} key={item.id} className="flex gap-4 items-center glass-card p-4 rounded-[28px] hover:border-[#C9A84C]/15 transition-all duration-300 group cursor-pointer active:scale-[0.98]">
+          {filteredMenu.map((item) => {
+            const itemId = item.id || item._id || '';
+            const isSoldOut = soldOutItems.has(itemId);
+            return (
+            <Link href={`/products/${item.id}`} key={item.id} className={`flex gap-4 items-center glass-card p-4 rounded-[28px] hover:border-[#C9A84C]/15 transition-all duration-300 group cursor-pointer active:scale-[0.98] ${isSoldOut ? 'opacity-50 grayscale pointer-events-none' : ''}`}>
               <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-[#C9A84C]/20 bg-black flex-shrink-0 relative group-hover:scale-105 transition-transform duration-300">
                  <SafeImage 
                    src={item.image || item.imageUrl || ""} 
@@ -153,23 +172,27 @@ export default function RestaurantMenuClient({ restaurantId }: { restaurantId: s
               </div>
               <div className="flex-1">
                  <h3 className="font-bold text-sm mb-1 text-white/95 group-hover:text-primary-yellow transition-colors">{item.name}</h3>
+                 {isSoldOut && <span className="text-[9px] font-black text-red-400 uppercase tracking-widest">Sold Out</span>}
                  <p className="text-[10px] text-secondary-text line-clamp-1 mb-2">{item.description || `Fresh from ${restaurant.name}`}</p>
                  <div className="flex justify-between items-center">
                     <span className="font-black text-gold-gradient text-sm shadow-sm opacity-90 group-hover:opacity-100">₹{item.price}</span>
                     <button
-                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleAddToCart(item); }}
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); if(!isSoldOut) handleAddToCart(item); }}
+                      disabled={isSoldOut}
                       className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300 z-10 ${
+                        isSoldOut ? 'bg-red-500/10 text-red-500 cursor-not-allowed' :
                         addedId === item.id
                           ? 'bg-primary-yellow text-black animate-gold-pulse scale-110'
                           : 'bg-white/5 border border-white/10 text-white hover:border-[#C9A84C]/30 hover:bg-[#C9A84C]/10'
                       }`}
                     >
-                      {addedId === item.id ? '✓' : '+'}
+                      {isSoldOut ? '✕' : addedId === item.id ? '✓' : '+'}
                     </button>
                  </div>
               </div>
             </Link>
-          ))}
+            );
+          })}
         </div>
       </div>
 

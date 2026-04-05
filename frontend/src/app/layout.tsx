@@ -24,6 +24,7 @@ import AndroidBackButton from '@/components/AndroidBackButton';
 import VFXParticles from '@/components/VFXParticles';
 import CursorSpotlight from '@/components/CursorSpotlight';
 import Meteors from '@/components/Meteors';
+import GlobalAnnouncement from '@/components/GlobalAnnouncement';
 
 export default function RootLayout({
   children,
@@ -37,6 +38,7 @@ export default function RootLayout({
       >
         <AndroidBackButton />
         <PushNotificationManager />
+        <GlobalAnnouncement />
         <CartProvider>
           <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
              <div className="film-grain" />
