@@ -28,6 +28,21 @@ const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export const CartProvider = ({ children }: { children: React.ReactNode }) => {
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  React.useEffect(() => {
+    const saved = localStorage.getItem('zenvy_cart');
+    if (saved) {
+      try { setCart(JSON.parse(saved)); } catch {}
+    }
+    setIsLoaded(true);
+  }, []);
+
+  React.useEffect(() => {
+    if (isLoaded) {
+      localStorage.setItem('zenvy_cart', JSON.stringify(cart));
+    }
+  }, [cart, isLoaded]);
 
   const addToCart = (item: Omit<CartItem, 'quantity'> & { quantity?: number }) => {
     const itemWithQty = { ...item, quantity: item.quantity || 1 };

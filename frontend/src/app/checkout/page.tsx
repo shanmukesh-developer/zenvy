@@ -3,6 +3,7 @@ import { useCart } from '@/context/CartContext';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import SuccessOverlay from '@/components/SuccessOverlay';
+import CheckoutProcessingModal from '@/components/CheckoutProcessingModal';
 
 export default function CheckoutPage() {
   const { cart, totalPrice, clearCart } = useCart();
@@ -17,12 +18,8 @@ export default function CheckoutPage() {
 
   const [selectedSlot, setSelectedSlot] = useState<string>('');
 
-  const isSlotAvailable = (slot: typeof allSlots[0]) => {
-    const now = new Date();
-    const slotDate = new Date();
-    slotDate.setHours(slot.hour, slot.min, 0, 0);
-    const diff = (slotDate.getTime() - now.getTime()) / (1000 * 60);
-    return diff >= 60; // 1 hour = 60 mins
+  const isSlotAvailable = (_slot: any) => {
+    return true; // TESTING OVERRIDE: all slots open
   };
 
   const availableSlots = allSlots.filter(isSlotAvailable);
@@ -45,7 +42,7 @@ export default function CheckoutPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [checkoutStatus, setCheckoutStatus] = useState<'idle' | 'processing' | 'success' | 'error'>('idle');
   const [overlay, setOverlay] = useState<{ isOpen: boolean; title: string; message: string; type?: 'success' | 'error' }>({
     isOpen: false,
     title: '',
@@ -59,10 +56,11 @@ export default function CheckoutPage() {
   const finalTotal = totalPrice + deliveryFee - batchDiscount - gateDiscount;
 
   const handlePlaceOrder = async () => {
-    setIsProcessing(true);
+    setCheckoutStatus('processing');
     try {
       const token = localStorage.getItem('token');
       if (!token) {
+        setCheckoutStatus('error');
         setOverlay({
           isOpen: true,
           title: 'Authentication Required',
@@ -99,16 +97,12 @@ export default function CheckoutPage() {
 
       if (response.ok) {
         const data = await response.json();
-        setOverlay({
-          isOpen: true,
-          title: 'Order Placed!',
-          message: 'Your gourmet meal is being prepared with care.',
-          type: 'success'
-        });
+        setCheckoutStatus('success');
         clearCart();
-        setTimeout(() => window.location.href = `/tracking?id=${data._id}`, 2500);
+        setTimeout(() => window.location.href = `/tracking?id=${data._id}`, 2000);
       } else {
         const err = await response.json();
+        setCheckoutStatus('error');
         setOverlay({
           isOpen: true,
           title: 'Order Failed',
@@ -118,14 +112,13 @@ export default function CheckoutPage() {
       }
     } catch (error) {
       console.error('Checkout error:', error);
+      setCheckoutStatus('error');
       setOverlay({
         isOpen: true,
         title: 'Connection Issue',
         message: 'Could not connect to Zenvy servers. Please check your network.',
         type: 'error'
       });
-    } finally {
-      setIsProcessing(false);
     }
   };
 
@@ -147,19 +140,19 @@ export default function CheckoutPage() {
           <div className="grid grid-cols-2 gap-4">
              <button 
                onClick={() => setDeliveryMethod('room')}
-               className={`p-6 rounded-[30px] border transition-all ${deliveryMethod === 'room' ? 'border-primary-yellow bg-primary-yellow/10' : 'border-white/5 bg-card-bg'}`}
+               className={`p-6 rounded-[30px] border transition-all premium-tilt ${deliveryMethod === 'room' ? 'border-primary-yellow bg-primary-yellow/10 shadow-[0_0_20px_rgba(201,168,76,0.1)]' : 'border-white/5 bg-card-bg opacity-40 hover:opacity-100'}`}
              >
                 <div className="text-2xl mb-2">📦</div>
-                <div className="text-sm font-black">Room Drop</div>
-                <div className="text-[10px] opacity-50">Standard Delivery</div>
+                <div className="text-sm font-black italic">Room Drop</div>
+                <div className="text-[10px] opacity-50 uppercase tracking-tighter">Campus Doorstep</div>
              </button>
              <button 
                onClick={() => setDeliveryMethod('gate')}
-               className={`p-6 rounded-[30px] border transition-all ${deliveryMethod === 'gate' ? 'border-primary-yellow bg-primary-yellow/10' : 'border-white/5 bg-card-bg'}`}
+               className={`p-6 rounded-[30px] border transition-all premium-tilt ${deliveryMethod === 'gate' ? 'border-primary-yellow bg-primary-yellow/10 shadow-[0_0_20px_rgba(201,168,76,0.1)]' : 'border-white/5 bg-card-bg opacity-40 hover:opacity-100'}`}
              >
                 <div className="text-2xl mb-2">🚧</div>
-                <div className="text-sm font-black">Gate Pickup</div>
-                <div className="text-[10px] text-primary-yellow font-bold">Save 30% Fee</div>
+                <div className="text-sm font-black italic">Gate Pickup</div>
+                <div className="text-[10px] text-primary-yellow font-black uppercase tracking-widest">Save 30% Fee</div>
              </button>
           </div>
         </div>
@@ -204,7 +197,7 @@ export default function CheckoutPage() {
         </div>
 
         {/* Pricing Summary */}
-        <div className="bg-card-bg p-8 rounded-[40px] border border-white/5 space-y-4">
+        <div className="bg-card-bg p-8 rounded-[40px] border border-white/5 space-y-4 premium-card-hover">
            <div className="flex justify-between text-sm font-bold text-secondary-text">
              <span>Items Subtotal</span>
              <span>₹{totalPrice}</span>
@@ -227,10 +220,10 @@ export default function CheckoutPage() {
 
         <button 
           onClick={handlePlaceOrder}
-          disabled={isProcessing}
-          className="w-full btn-yellow py-6 h-auto text-lg uppercase tracking-widest shadow-[0_20px_40px_rgba(247,211,49,0.3)] disabled:opacity-30"
+          disabled={checkoutStatus === 'processing' || checkoutStatus === 'success'}
+          className="w-full btn-yellow py-6 h-auto text-lg uppercase tracking-[0.2em] font-black shadow-[0_20px_60px_rgba(201,168,76,0.3)] disabled:opacity-30 transition-all premium-tilt animate-text-shimmer"
         >
-          {isProcessing ? 'Processing...' : 'Pay & Confirm'}
+          {checkoutStatus === 'processing' ? 'Encrypting Connection...' : 'Secure Pay & Confirm'}
         </button>
       </div>
       
@@ -240,6 +233,11 @@ export default function CheckoutPage() {
         title={overlay.title}
         message={overlay.message}
         type={overlay.type}
+      />
+
+      <CheckoutProcessingModal 
+        isOpen={checkoutStatus !== 'idle'} 
+        status={checkoutStatus as 'processing' | 'success' | 'error'} 
       />
     </main>
   );

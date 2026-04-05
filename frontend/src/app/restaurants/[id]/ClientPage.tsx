@@ -6,7 +6,7 @@ import SafeImage from '@/components/SafeImage';
 import SuccessOverlay from '@/components/SuccessOverlay';
 import { Restaurant, MenuItem } from '@/types';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
 
 export default function RestaurantMenuClient({ restaurantId }: { restaurantId: string }) {
   // Legacy Redirect Map

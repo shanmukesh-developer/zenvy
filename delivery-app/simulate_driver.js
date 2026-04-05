@@ -1,13 +1,13 @@
 const { io } = require('socket.io-client');
-const socket = io('http://localhost:5000');
-const orderId = '4e357865-a55b-4428-8db1-b3b28e4ed26a';
+const socket = io('http://localhost:5001');
+const orderId = 'e9f39852-7f96-464f-a239-d45a01e93b22';
 
 socket.on('connect', () => {
   console.log('Simulated Driver Connected to Socket');
   let i = 0;
   const interval = setInterval(() => {
-    const lat = 16.4632 + (i * 0.0001);
-    const lng = 80.5064 + (i * 0.0001);
+    const lat = 16.4674 - (i * 0.0002);
+    const lng = 80.5042 + (i * 0.0001);
     socket.emit('updateLocation', {
       orderId,
       lat,

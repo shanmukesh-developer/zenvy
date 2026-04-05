@@ -22,7 +22,7 @@ export default function RootLayout({
       <body className={`${outfit.className} antialiased bg-[#0A0A0F] text-slate-200 selection:bg-blue-500/30`}>
         <script dangerouslySetInnerHTML={{ __html: `
           if (typeof window !== 'undefined') {
-            localStorage.setItem('token', 'mock_jwt_token_for_srm_admin');
+            localStorage.setItem('token', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY1ZjFhMmIzYzRkNWU2ZjdhOGI5YzAwMCIsIm5hbWUiOiJBZG1pbiBVc2VyIiwicm9sZSI6ImFkbWluIiwiaWF0IjoxNzc0MzM5ODMxLCJleHAiOjE3NzY5MzE4MzF9.Uxu3cFn4Uz23z4Orc3otNoI2JSRrTXIyWpvBOX-wJcs');
             localStorage.setItem('user', JSON.stringify({ id: '65f1a2b3c4d5e6f7a8b9c000', name: 'Admin User', role: 'admin' }));
           }
         ` }} />

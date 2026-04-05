@@ -6,7 +6,7 @@ import Image from 'next/image';
 import SuccessOverlay from '@/components/SuccessOverlay';
 import { MenuItem } from '@/types';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
 
 export default function ProductDetailClient({ productId }: { productId: string }) {
   const [quantity, setQuantity] = useState(1);

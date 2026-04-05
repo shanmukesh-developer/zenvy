@@ -1,8 +1,6 @@
 "use client";
 import { useState, useEffect } from 'react';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
-
 interface Metric {
   label: string;
   value: string;
@@ -12,7 +10,7 @@ interface Metric {
 
 export default function AnalyticsIntel() {
   const [loading, setLoading] = useState(true);
-  const [metrics, setMetrics] = useState<Metric[]>([
+  const [metrics] = useState<Metric[]>([
     { label: 'System Bandwidth', value: '89.4 Mbps', subtext: 'Peak Usage', percent: 89 },
     { label: 'API Response Speed', value: '42.1 ms', subtext: 'Avg Latency', percent: 95 },
     { label: 'Cluster Elasticity', value: '94.2%', subtext: 'Load Tolerance', percent: 94 },

@@ -4,6 +4,28 @@ const dotenv = require('dotenv');
 const http = require('http');
 const { Server } = require('socket.io');
 const { connectDB, getSequelize } = require('./config/db');
+const fs = require('fs');
+const path = require('path');
+
+const logFile = path.join(__dirname, 'socket_debug.txt');
+const log = (msg) => {
+  const line = `[${new Date().toISOString()}] ${msg}\n`;
+  fs.appendFileSync(logFile, line);
+};
+
+// SRM Gate-2 Delivery Point
+const GATE2_COORD = { lat: 16.4645, lng: 80.5055 };
+
+function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+const notifiedGateOrders = new Set();
 
 // Load environment variables
 dotenv.config();
@@ -48,16 +70,23 @@ const startServer = async () => {
     io.on('connection', (socket) => {
       console.log(`[SOCKET CONNECT] ${socket.id}`);
       socket.on('joinOrder', async (orderId) => {
-        await socket.join(String(orderId).trim());
-        console.log(`[SOCKET JOIN] ${socket.id} → room ${orderId}`);
-      });
-      socket.on('partnerLocationUpdate', (data) => {
-        io.to(String(data.orderId).trim()).emit('partnerLocation', { lat: data.lat, lng: data.lng });
+        const room = String(orderId).trim();
+        await socket.join(room);
+        log(`[JOIN] ${socket.id} -> ${room}`);
       });
       socket.on('updateLocation', (data) => {
-        // Broadcast location to order room for customer app comparison
-        io.to(String(data.orderId).trim()).emit('locationUpdated', { lat: data.lat, lng: data.lng });
-        console.log(`[SOCKET LOCATION] ${socket.id} updated coords for ${data.orderId}`);
+        const room = String(data.orderId).trim();
+        io.to(room).emit('locationUpdated', { lat: data.lat, lng: data.lng });
+        
+        // Proximity Check for Gate-2 (50 meters)
+        const distance = getDistanceFromLatLonInKm(data.lat, data.lng, GATE2_COORD.lat, GATE2_COORD.lng);
+        if (distance < 0.05 && !notifiedGateOrders.has(room)) {
+          io.to(room).emit('driverAtGate', { message: "Driver has reached GATE-2 Delivery Point" });
+          notifiedGateOrders.add(room);
+          log(`[GATE] ${data.orderId} reached Gate-2`);
+        }
+        
+        log(`[LOC] ${data.orderId} moved to ${data.lat}, ${data.lng}`);
       });
       socket.on('disconnect', () => {
         console.log(`[SOCKET DISCONNECT] ${socket.id}`);

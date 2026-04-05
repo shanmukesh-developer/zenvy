@@ -1,7 +1,7 @@
 "use client";
-
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
+import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 
 const FALLBACK_IMAGE = "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=400&auto=format&fit=crop";
 
@@ -20,10 +20,45 @@ const RestaurantCard = ({ name, rating, time, imageUrl, imagePosition }: Restaur
     setImgSrc(imageUrl || FALLBACK_IMAGE);
   }, [imageUrl]);
 
+  // 3D Tilt Logic
+  const x = useMotionValue(0);
+  const y = useMotionValue(0);
+  const mouseXSpring = useSpring(x);
+  const mouseYSpring = useSpring(y);
+  const rotateX = useTransform(mouseYSpring, [-0.5, 0.5], ["10deg", "-10deg"]);
+  const rotateY = useTransform(mouseXSpring, [-0.5, 0.5], ["-10deg", "10deg"]);
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const width = rect.width;
+    const height = rect.height;
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    const xPct = mouseX / width - 0.5;
+    const yPct = mouseY / height - 0.5;
+    x.set(xPct);
+    y.set(yPct);
+  };
+
+  const handleMouseLeave = () => {
+    x.set(0);
+    y.set(0);
+  };
+
   return (
-    <div className={`capsule-card mb-10 ${imagePosition === 'right' ? 'flex-row-reverse text-right pl-6' : 'pr-6'}`}>
+    <motion.div 
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+      style={{ rotateX, rotateY, transformStyle: "preserve-3d" }}
+      whileHover={{ scale: 1.02 }}
+      transition={{ type: "spring", stiffness: 300, damping: 20 }}
+      className={`capsule-card mb-10 ${imagePosition === 'right' ? 'flex-row-reverse text-right pl-6' : 'pr-6'}`}
+    >
       {/* Image Circle */}
-      <div className={`food-circle shadow-xl transition-all duration-500 ${imagePosition === 'left' ? '-ml-6' : '-mr-6'} relative z-20`}>
+      <motion.div 
+        style={{ translateZ: 50 }}
+        className={`food-circle shadow-xl transition-all duration-500 ${imagePosition === 'left' ? '-ml-6' : '-mr-6'} relative z-20`}
+      >
         <Image 
           src={imgSrc || FALLBACK_IMAGE} 
           alt="" 
@@ -31,11 +66,14 @@ const RestaurantCard = ({ name, rating, time, imageUrl, imagePosition }: Restaur
           style={{ objectFit: 'cover' }}
           onError={() => setImgSrc(FALLBACK_IMAGE)}
         />
-      </div>
+      </motion.div>
       
       {/* Content Area */}
-      <div className={`flex-1 flex flex-col justify-center px-6 ${imagePosition === 'right' ? 'mr-2' : 'ml-2'} relative z-10 overflow-hidden`}>
-        <h3 className="font-black text-[15px] leading-tight mb-2 text-white truncate">{name}</h3>
+      <div 
+        className={`flex-1 flex flex-col justify-center px-6 ${imagePosition === 'right' ? 'mr-2' : 'ml-2'} relative z-10 overflow-hidden`}
+        style={{ transform: "translateZ(30px)" }}
+      >
+        <h3 className="font-black text-[15px] leading-tight mb-2 text-white line-clamp-2">{name}</h3>
         
         <div className={`flex items-center gap-3 ${imagePosition === 'right' ? 'justify-end' : 'justify-start'}`}>
            <div className="flex text-[9px] gap-0.5">
@@ -52,7 +90,7 @@ const RestaurantCard = ({ name, rating, time, imageUrl, imagePosition }: Restaur
            </div>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 };
 

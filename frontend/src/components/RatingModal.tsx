@@ -26,8 +26,8 @@ export default function RatingModal({ isOpen, onClose, onSubmit }: Omit<Props, '
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md animate-fade-in">
-      <div className="w-full max-w-sm bg-[#1A1A1C] border border-white/10 rounded-[32px] p-8 shadow-2xl relative overflow-hidden">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md" style={{ pointerEvents: 'auto' }}>
+      <div className="w-full max-w-sm bg-[#1A1A1C] border border-white/10 rounded-[32px] p-8 shadow-2xl relative overflow-hidden pointer-events-auto">
         {/* Decorative Background */}
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 via-primary-yellow to-emerald-500" />
         
@@ -41,14 +41,15 @@ export default function RatingModal({ isOpen, onClose, onSubmit }: Omit<Props, '
               <p className="text-gray-400 text-sm mt-1">How was your Zenvy Captain?</p>
             </div>
 
-            <div className="flex justify-center gap-2 mb-8">
+            <div className="flex justify-center gap-2 mb-8 relative z-10">
               {[1, 2, 3, 4, 5].map((star) => (
                 <button
                   key={star}
+                  type="button"
                   onClick={() => setRating(star)}
                   onMouseEnter={() => setHover(star)}
                   onMouseLeave={() => setHover(0)}
-                  className={`text-4xl transition-all transform hover:scale-125 ${
+                  className={`text-4xl transition-all transform hover:scale-125 cursor-pointer select-none ${
                     (hover || rating) >= star ? 'text-primary-yellow drop-shadow-[0_0_10px_rgba(255,215,0,0.4)]' : 'text-gray-700'
                   }`}
                 >
@@ -61,7 +62,7 @@ export default function RatingModal({ isOpen, onClose, onSubmit }: Omit<Props, '
               value={review}
               onChange={(e) => setReview(e.target.value)}
               placeholder="Any feedback for the rider? (Optional)"
-              className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white text-sm outline-none focus:border-emerald-500/50 transition-all h-24 mb-6 resize-none"
+              className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white text-sm outline-none focus:border-emerald-500/50 transition-all h-24 mb-6 resize-none relative z-10"
             />
 
             <div className="flex gap-4">

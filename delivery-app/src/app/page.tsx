@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTracking } from '@/hooks/useTracking';
 import { io, Socket } from 'socket.io-client';
 import ChatDrawer from '@/components/ChatDrawer';
@@ -19,6 +19,8 @@ interface Order {
   items?: { name: string; quantity: number; priceAtOrder: number }[];
   totalPrice?: number;
   finalPrice?: number;
+  status?: string;
+  _id?: string;
 }
 
 interface Driver {
@@ -154,14 +156,20 @@ function Dashboard({ driver, onLogout }: { driver: Driver; onLogout: () => void 
   const [weeklyEarnings, setWeeklyEarnings] = useState<number[]>([0, 0, 0, 0, 0, 0, 0]);
   const [orderTimers, setOrderTimers] = useState<Record<string, number>>({}); // orderId -> seconds remaining
 
-  // 30-second countdown timer for each pending order
+  // Refs to avoid stale closures in socket listeners
+  const isOnlineRef = useRef(isOnline);
+  const activeOrderRef = useRef(activeOrder);
+  useEffect(() => { isOnlineRef.current = isOnline; }, [isOnline]);
+  useEffect(() => { activeOrderRef.current = activeOrder; }, [activeOrder]);
+
+  // 120-second countdown timer for each pending order (was 30s — too aggressive)
   useEffect(() => {
     if (availableOrders.length === 0) return;
     // Initialize timers for new orders
     setOrderTimers(prev => {
       const next = { ...prev };
       availableOrders.forEach(o => {
-        if (next[o.id] === undefined) next[o.id] = 30;
+        if (next[o.id] === undefined) next[o.id] = 120;
       });
       return next;
     });
@@ -234,12 +242,25 @@ function Dashboard({ driver, onLogout }: { driver: Driver; onLogout: () => void 
     localStorage.setItem('orderStatus', orderStatus);
   }, [orderStatus]);
 
+  // Sync orderStatus with activeOrder.status from backend
+  useEffect(() => {
+    if (activeOrder) {
+      const backendStatus = activeOrder.status || '';
+      if (backendStatus === 'Accepted') setOrderStatus('accepted');
+      if (backendStatus === 'PickedUp') setOrderStatus('picked_up');
+      if (backendStatus === 'Delivered') {
+        setActiveOrder(null);
+        setOrderStatus('idle');
+      }
+    }
+  }, [activeOrder]);
+
   // Link tracking to the active order using the real driver name
-  useTracking(activeOrder?.id || '', driver.name, driver._id, globalSocket);
+  useTracking(activeOrder?.id || activeOrder?._id || '', driver.name, driver._id, globalSocket);
 
   // Authenticated fetch helper
   const authFetch = useCallback(async (url: string, options: RequestInit = {}) => {
-    return fetch(url, {
+    const res = await fetch(url, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
@@ -247,18 +268,25 @@ function Dashboard({ driver, onLogout }: { driver: Driver; onLogout: () => void 
         ...(options.headers || {})
       }
     });
-  }, [driver.token]);
+    if (res.status === 401) {
+      console.warn("Session expired (401). Logging out...");
+      onLogout();
+    }
+    return res;
+  }, [driver.token, onLogout]);
 
   useEffect(() => {
-    const s = io(SOCKET_URL);
+    const s = io(SOCKET_URL, { transports: ['websocket'], upgrade: false });
     setGlobalSocket(s);
     return () => { s.disconnect(); };
   }, []);
 
   useEffect(() => {
     if (globalSocket) {
-      globalSocket.on('newOrder', (newOrder: Order) => {
-        if (isOnline && !activeOrder) {
+      globalSocket.on('newOrder', (newOrderRaw: Order) => {
+        const newOrder = { ...newOrderRaw, id: (newOrderRaw.id || newOrderRaw._id) as string };
+        // Use refs to avoid stale closure — always get latest values
+        if (isOnlineRef.current && !activeOrderRef.current) {
           setAvailableOrders(prev => {
             if (prev.some(o => o.id === newOrder.id)) return prev;
             return [newOrder, ...prev];
@@ -282,7 +310,8 @@ function Dashboard({ driver, onLogout }: { driver: Driver; onLogout: () => void 
         setAvailableOrders(prev => prev.filter(o => o.id !== orderId));
         
         // 2. If it was our active order, notify and clear
-        if (activeOrder?.id === orderId) {
+        const current = activeOrderRef.current;
+        if (current?.id === orderId || current?._id === orderId) {
           setActiveOrder(null);
           setOrderStatus('idle');
           alert('🚨 The customer has cancelled this order.');
@@ -295,7 +324,7 @@ function Dashboard({ driver, onLogout }: { driver: Driver; onLogout: () => void 
         globalSocket.off('orderCancelled');
       }
     };
-  }, [globalSocket, isOnline, activeOrder]);
+  }, [globalSocket]);
 
   // Request browser notification permission on mount
   useEffect(() => {
@@ -314,7 +343,7 @@ function Dashboard({ driver, onLogout }: { driver: Driver; onLogout: () => void 
       const res = await authFetch(`${API_URL}/api/delivery/orders/pending`);
       const data = await res.json();
       if (res.ok) {
-        setAvailableOrders(data);
+        setAvailableOrders(data.map((o: Order) => ({ ...o, id: o.id || o._id as string })));
       } else {
         console.error('Failed to fetch pending orders:', data.message);
       }
@@ -332,7 +361,7 @@ function Dashboard({ driver, onLogout }: { driver: Driver; onLogout: () => void 
       const res = await authFetch(`${API_URL}/api/delivery/orders/history`);
       const data = await res.json();
       if (res.ok) {
-        setOrderHistory(data);
+        setOrderHistory(data.map((o: HistoryOrder & { _id?: string }) => ({ ...o, id: o.id || o._id as string })));
       } else {
         console.error('Failed to fetch history:', data.message);
       }
@@ -348,6 +377,15 @@ function Dashboard({ driver, onLogout }: { driver: Driver; onLogout: () => void 
     if (isOnline && activeTab === 'pending') fetchPendingOrders();
     if (activeTab === 'history') fetchOrderHistory();
   }, [activeTab, isOnline, fetchPendingOrders, fetchOrderHistory]);
+
+  // Polling fallback: re-fetch pending orders every 10s while online (in case WebSocket misses)
+  useEffect(() => {
+    if (!isOnline || activeOrder) return;
+    const poll = setInterval(() => {
+      fetchPendingOrders();
+    }, 10000);
+    return () => clearInterval(poll);
+  }, [isOnline, activeOrder, fetchPendingOrders]);
 
   // ─── Toggle online/offline ─────────────────────────────────
   const toggleOnline = async () => {
@@ -376,7 +414,8 @@ function Dashboard({ driver, onLogout }: { driver: Driver; onLogout: () => void 
   const acceptOrder = async (order: Order) => {
     setActionLoading(true);
     try {
-      const res = await authFetch(`${API_URL}/api/delivery/accept/${order.id}`, {
+      const orderIdObj = order.id || order._id;
+      const res = await authFetch(`${API_URL}/api/delivery/accept/${orderIdObj}`, {
         method: 'PUT'
       });
 
@@ -401,9 +440,14 @@ function Dashboard({ driver, onLogout }: { driver: Driver; onLogout: () => void 
   // ─── Pick Up Order via API ─────────────────────────────────
   const pickUpOrder = async () => {
     if (!activeOrder) return;
+    const orderId = activeOrder.id || activeOrder._id;
+    if (!orderId) {
+      alert('⚠️ Missing order ID. Cannot confirm pick up.');
+      return;
+    }
     setActionLoading(true);
     try {
-      const res = await authFetch(`${API_URL}/api/delivery/status/${activeOrder.id}`, {
+      const res = await authFetch(`${API_URL}/api/delivery/status/${orderId}`, {
         method: 'PUT',
         body: JSON.stringify({ status: 'PickedUp' })
       });
@@ -411,11 +455,20 @@ function Dashboard({ driver, onLogout }: { driver: Driver; onLogout: () => void 
       if (res.ok) {
         setOrderStatus('picked_up');
       } else {
-        const data = await res.json();
-        alert(data.message || 'Failed to update status');
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 404) {
+          alert('⚠️ This order no longer exists. Clearing stale data.');
+          setActiveOrder(null);
+          setOrderStatus('idle');
+          localStorage.removeItem('activeOrder');
+          localStorage.setItem('orderStatus', 'idle');
+        } else {
+          alert(`❌ Pick Up Failed: ${data.message || 'Unknown error (status ' + res.status + ')'}`);
+        }
       }
     } catch (err) {
       console.error('Error updating status:', err);
+      alert('⚠️ Network error — check your connection.');
     } finally {
       setActionLoading(false);
     }
@@ -424,9 +477,14 @@ function Dashboard({ driver, onLogout }: { driver: Driver; onLogout: () => void 
   // ─── Deliver Order via API ─────────────────────────────────
   const deliverOrder = async () => {
     if (!activeOrder) return;
+    const orderId = activeOrder.id || activeOrder._id;
+    if (!orderId) {
+      alert('⚠️ Missing order ID. Cannot confirm delivery.');
+      return;
+    }
     setActionLoading(true);
     try {
-      const res = await authFetch(`${API_URL}/api/delivery/status/${activeOrder.id}`, {
+      const res = await authFetch(`${API_URL}/api/delivery/status/${orderId}`, {
         method: 'PUT',
         body: JSON.stringify({ status: 'Delivered' })
       });
@@ -450,11 +508,22 @@ function Dashboard({ driver, onLogout }: { driver: Driver; onLogout: () => void 
         setPhotoUploaded(false);
         fetchPendingOrders();
       } else {
-        const data = await res.json();
-        alert(data.message || 'Failed to deliver order');
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 404) {
+          alert('⚠️ This order no longer exists. Clearing stale data.');
+          setActiveOrder(null);
+          setOrderStatus('idle');
+          localStorage.removeItem('activeOrder');
+          localStorage.setItem('orderStatus', 'idle');
+        } else if (res.status === 400) {
+          alert(`❌ Cannot deliver: ${data.message || 'Order must be Picked Up first.'}`);
+        } else {
+          alert(`❌ Delivery Failed: ${data.message || 'Unknown error (status ' + res.status + ')'}`);
+        }
       }
     } catch (err) {
       console.error('Error delivering order:', err);
+      alert('⚠️ Network error — check your connection.');
     } finally {
       setActionLoading(false);
     }
@@ -557,60 +626,74 @@ function Dashboard({ driver, onLogout }: { driver: Driver; onLogout: () => void 
 
             {/* Quick Actions for Delivery */}
              <div className="flex gap-3 mb-6 animate-fade-in">
-                <a href={`tel:${activeOrder.customerPhone}`} className="flex-1 glass py-3 rounded-2xl flex items-center justify-center gap-2 hover:bg-white/5 transition-all text-[10px] font-black uppercase tracking-widest border border-emerald-500/30 text-emerald-400">
-                   📞 Call
-                </a>
+                {activeOrder.customerPhone ? (
+                  <a href={`tel:${activeOrder.customerPhone}`} className="flex-1 glass py-3 rounded-2xl flex items-center justify-center gap-2 hover:bg-white/5 transition-all text-[10px] font-black uppercase tracking-widest border border-emerald-500/30 text-emerald-400">
+                     📞 Call
+                  </a>
+                ) : (
+                  <div className="flex-1 glass py-3 rounded-2xl flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest border border-white/10 text-gray-500 cursor-not-allowed">
+                     📞 No Number
+                  </div>
+                )}
                 <button 
                    onClick={() => setIsChatOpen(true)}
                    className="flex-1 glass py-3 rounded-2xl flex items-center justify-center gap-2 hover:bg-white/5 transition-all text-[10px] font-black uppercase tracking-widest border border-emerald-500/30 text-emerald-400"
                 >
                    💬 Chat
                 </button>
-                <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(activeOrder.drop || '')}+SRM+University`} target="_blank" rel="noreferrer" className="flex-1 glass py-3 rounded-2xl flex items-center justify-center gap-2 hover:bg-white/5 transition-all text-[10px] font-black uppercase tracking-widest border border-blue-500/30 text-blue-400">
+                <a href={`https://www.google.com/maps/dir/?api=1&destination=16.4632,80.5064`} target="_blank" rel="noreferrer" className="flex-1 glass py-3 rounded-2xl flex items-center justify-center gap-2 hover:bg-white/5 transition-all text-[10px] font-black uppercase tracking-widest border border-blue-500/30 text-blue-400">
                    🗺️ Nav
                 </a>
              </div>
 
-            {orderStatus === 'picked_up' && !photoUploaded ? (
-               <div className="relative animate-slide-up">
-                  <input type="file" accept="image/*" capture="environment" className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10" onChange={(e) => { if(e.target.files?.length) setPhotoUploaded(true); }} />
-                  <button className="w-full py-4 rounded-2xl font-bold transition-all bg-slate-800 hover:bg-slate-700 border-2 border-slate-500 border-dashed flex items-center justify-center gap-2">
-                     📸 Snap Delivery Photo
-                  </button>
-                  <p className="text-[10px] text-center mt-2 text-gray-400 tracking-widest uppercase font-bold">Required for Contactless Drop</p>
-               </div>
-            ) : (
+            {orderStatus === 'accepted' ? (
+               <button
+                 onClick={pickUpOrder}
+                 disabled={actionLoading}
+                 className={`w-full py-4 rounded-2xl font-bold transition-all ${
+                   actionLoading
+                     ? 'bg-gray-600 cursor-not-allowed'
+                     : 'bg-emerald-600 neon-border-green hover:bg-emerald-500'
+                 }`}
+               >
+                  {actionLoading ? 'Updating...' : 'Confirm Pick Up'}
+               </button>
+            ) : orderStatus === 'picked_up' ? (
                <div className="space-y-3">
-                  {orderStatus === 'picked_up' && photoUploaded && (
+                  {/* Optional Photo Upload */}
+                  {!photoUploaded ? (
+                     <div className="relative">
+                        <input type="file" accept="image/*" capture="environment" className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10" onChange={(e) => { if(e.target.files?.length) setPhotoUploaded(true); }} />
+                        <button className="w-full py-3 rounded-2xl font-bold transition-all bg-slate-800 hover:bg-slate-700 border border-slate-600 border-dashed flex items-center justify-center gap-2 text-sm text-gray-300">
+                           📸 Snap Photo (Optional)
+                        </button>
+                     </div>
+                  ) : (
                      <p className="text-xs text-emerald-400 text-center font-bold flex items-center justify-center gap-1 animate-fade-in">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
                         Photo Verified
                      </p>
                   )}
+                  
+                  {/* Main Delivery Button - Always Visible */}
                   <button
-                    onClick={orderStatus === 'accepted' ? pickUpOrder : deliverOrder}
+                    onClick={deliverOrder}
                     disabled={actionLoading}
-                    className={`w-full py-4 rounded-2xl font-bold transition-all ${
+                    className={`w-full py-5 rounded-2xl font-black text-lg uppercase tracking-widest transition-all ${
                       actionLoading
-                        ? 'bg-gray-600 cursor-not-allowed'
-                        : orderStatus === 'accepted'
-                          ? 'bg-emerald-600 neon-border-green'
-                          : 'bg-blue-600 neon-border-blue'
+                        ? 'bg-gray-600 cursor-not-allowed text-gray-400'
+                        : 'bg-gradient-to-r from-blue-600 to-emerald-500 hover:from-blue-500 hover:to-emerald-400 shadow-[0_0_30px_rgba(59,130,246,0.3)] text-white'
                     }`}
                   >
-                     {actionLoading
-                       ? 'Updating...'
-                       : orderStatus === 'accepted'
-                         ? 'Confirm Pick Up'
-                         : 'Confirm Delivery'}
+                     {actionLoading ? 'Confirming...' : '✅ Order Delivered Successfully'}
                   </button>
                </div>
-            )}
+            ) : null}
             
           </div>
 
           <ChatDrawer
-            orderId={activeOrder.id}
+            orderId={activeOrder.id || activeOrder._id || ''}
             userName={driver.name}
             userRole="rider"
             socket={globalSocket}
@@ -625,7 +708,7 @@ function Dashboard({ driver, onLogout }: { driver: Driver; onLogout: () => void 
             </div>
             <div className="text-right">
               <p className="text-xs text-gray-400">Order ID</p>
-              <p className="text-sm font-mono text-gray-300">#{activeOrder.id.slice(-6)}</p>
+              <p className="text-sm font-mono text-gray-300">#{(activeOrder.id || activeOrder._id || '').slice(-6)}</p>
             </div>
           </div>
         </div>
@@ -710,12 +793,13 @@ function Dashboard({ driver, onLogout }: { driver: Driver; onLogout: () => void 
                         {/* Countdown Timer */}
                         {orderTimers[order.id] !== undefined && (
                           <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-black ${
-                            orderTimers[order.id] <= 10 ? 'bg-red-500/20 text-red-400 animate-pulse' : 'bg-white/5 text-gray-400'
+                            orderTimers[order.id] > 0 && orderTimers[order.id] <= 10 ? 'bg-red-500/20 text-red-400 animate-pulse' : 
+                            orderTimers[order.id] === 0 ? 'bg-red-500 text-white opacity-50' : 'bg-white/5 text-gray-400'
                           }`}>
                             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                             </svg>
-                            {orderTimers[order.id]}s
+                            {orderTimers[order.id] === 0 ? 'Expired' : `${orderTimers[order.id]}s`}
                           </div>
                         )}
                       </div>
@@ -966,6 +1050,8 @@ export default function DeliveryHome() {
   const handleLogout = () => {
     localStorage.removeItem('driverToken');
     localStorage.removeItem('driver');
+    localStorage.removeItem('activeOrder');
+    localStorage.removeItem('orderStatus');
     setDriver(null);
   };
 

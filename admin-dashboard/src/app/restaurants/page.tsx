@@ -10,6 +10,7 @@ const LEGACY_DATA = [
     "name": "Biryani Hub",
     "imageUrl": "https://images.unsplash.com/photo-1589302168068-964664d93dc0?q=80&w=400&auto=format&fit=crop",
     "categories": ["Biryani", "Kebabs", "Main Course"],
+    "vendorType": "RESTAURANT",
     "menu": [
       { "id": "bir-01", "name": "Special Mutton Fry", "price": 280, "description": "Tender goat cooked in traditional spices.", "image": "https://images.unsplash.com/photo-1514327605112-b887c0e61c0a?w=400", "category": "Biryani" },
       { "id": "bir-02", "name": "Royal Egg Biryani", "price": 220, "description": "Fragrant rice with double eggs.", "image": "https://images.unsplash.com/photo-1543339308-43e59d6b73a6?w=400", "category": "Biryani" }
@@ -20,6 +21,7 @@ const LEGACY_DATA = [
     "name": "The Burger Club",
     "imageUrl": "https://images.unsplash.com/photo-1571091718767-18b5b1457add?q=80&w=400",
     "categories": ["Burgers", "Sides", "Shakes"],
+    "vendorType": "RESTAURANT",
     "menu": [
       { "id": "brg-01", "name": "Classic Cheeseburger", "price": 150, "description": "Juicy patty with melted cheddar.", "image": "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400", "category": "Burgers" }
     ]
@@ -29,35 +31,116 @@ const LEGACY_DATA = [
     "name": "Pizza Paradise",
     "imageUrl": "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=400",
     "categories": ["Pizza", "Pasta", "Sides"],
+    "vendorType": "RESTAURANT",
     "menu": [
-      { "id": "piz-01", "name": "Margherita Classica", "price": 280, "description": "San Marzano tomatoes & fresh mozzarella.", "image": "/assets/margherita_classica.png", "category": "Pizza" }
+      { "id": "piz-01", "name": "Margherita Classica", "price": 280, "description": "San Marzano tomatoes & fresh mozzarella.", "image": "https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=400", "category": "Pizza" }
     ]
   },
   {
-    "id": "la-pinoz",
-    "name": "La Pino'z",
-    "imageUrl": "https://images.unsplash.com/photo-1513104890138-7c749659a591?w=400",
-    "categories": ["Pizza", "Sides", "Beverages"],
+    "id": "campus-pharmacy",
+    "name": "Campus MedPoint",
+    "imageUrl": "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400",
+    "categories": ["First Aid", "Vitamins", "Hygiene"],
+    "vendorType": "PHARMACY",
     "menu": [
-      { "id": "lap-01", "name": "7 Layer Pizza", "price": 380, "description": "Loaded with unique layers of toppings.", "image": "https://images.unsplash.com/photo-1571407970349-bc81e7e96d47?w=400", "category": "Pizza" }
+      { "id": "ph-01", "name": "First Aid Compact Kit", "price": 199, "description": "Essential campus first aid essentials.", "image": "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400", "category": "First Aid" },
+      { "id": "ph-02", "name": "Vitamin C Booster", "price": 150, "description": "Immune support tablets.", "image": "https://images.unsplash.com/photo-1547489432-cf93fa6c71ee?w=400", "category": "Vitamins" },
+      { "id": "ph-03", "name": "Hand Sanitizer Pack", "price": 80, "description": "Alcohol-based sanitizer 3-pack.", "image": "https://images.unsplash.com/photo-1584744982491-665216d95f8b?w=400", "category": "Hygiene" }
     ]
   },
   {
-    "id": "gym-1",
+    "id": "campus-stationary",
+    "name": "Nexus BookHouse",
+    "imageUrl": "https://images.unsplash.com/photo-1531346878377-a5be20888e57?w=400",
+    "categories": ["Notebooks", "Pens", "Drafting"],
+    "vendorType": "STATIONARY",
+    "menu": [
+      { "id": "st-01", "name": "Executive Leather Journal", "price": 599, "description": "Premium leather-bound A5 journal.", "image": "https://images.unsplash.com/photo-1531346878377-a5be20888e57?w=400", "category": "Notebooks" },
+      { "id": "st-02", "name": "Precision Pen Set", "price": 850, "description": "Professional drafting pen collection.", "image": "https://images.unsplash.com/photo-1583485088034-697b5bc54ccd?w=400", "category": "Pens" },
+      { "id": "st-03", "name": "Graph Pad A4 (Pack of 5)", "price": 120, "description": "Engineering graph paper pads.", "image": "https://images.unsplash.com/photo-1456735190827-d1262f71b8a3?w=400", "category": "Drafting" }
+    ]
+  },
+  {
+    "id": "campus-laundry",
+    "name": "FreshPress Laundry",
+    "imageUrl": "https://images.unsplash.com/photo-1545173168-9f1947eebb7f?w=400",
+    "categories": ["Dry Wash", "Ironing", "Sneaker Care"],
+    "vendorType": "LAUNDRY",
+    "menu": [
+      { "id": "lnd-01", "name": "Express Dry Cleaning (Suit)", "price": 499, "description": "Premium dry wash for formal wear.", "image": "https://images.unsplash.com/photo-1545173168-9f1947eebb7f?w=400", "category": "Dry Wash" },
+      { "id": "lnd-02", "name": "Sneaker Deep Restore", "price": 250, "description": "Full sneaker cleaning & whitening.", "image": "https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?w=400", "category": "Sneaker Care" },
+      { "id": "lnd-03", "name": "Weekly Ironing Pack (10 pcs)", "price": 150, "description": "Iron & fold service for 10 items.", "image": "https://images.unsplash.com/photo-1567113463300-102a7eb3cb26?w=400", "category": "Ironing" }
+    ]
+  },
+  {
+    "id": "gym-nutrition-hq",
     "name": "Iron Kitchen: Pro Meals",
-    "imageUrl": "/assets/zenvy_gym_rats_nutrition_1773839650320.png",
-    "categories": ["Protein Bowls", "Lean Salads", "Keto"],
+    "imageUrl": "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400",
+    "categories": ["Protein Bowls", "Shakes", "Supplements"],
+    "vendorType": "GYM",
     "menu": [
-      { "id": "gp-1", "name": "Whey Protein Bowl", "price": 250, "description": "30g protein, quinoa, avocado and chicken.", "image": "/assets/whey_protein_bowl.png", "category": "Protein Bowls" }
+      { "id": "gm-01", "name": "High-Protein Salmon Bowl", "price": 350, "description": "30g protein with quinoa & avocado.", "image": "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400", "category": "Protein Bowls" },
+      { "id": "gm-02", "name": "Whey Isolate Shake", "price": 199, "description": "Vanilla whey isolate, 25g protein.", "image": "https://images.unsplash.com/photo-1593095948071-474c5cc2989d?w=400", "category": "Shakes" },
+      { "id": "gm-03", "name": "Vegan Protein Crisp Bar", "price": 120, "description": "Plant-based protein bar.", "image": "https://images.unsplash.com/photo-1590301157890-4810ed352733?w=400", "category": "Supplements" }
     ]
   },
   {
-    "id": "boutique-summer-elite",
-    "name": "Summer Oasis: Elite",
-    "imageUrl": "https://images.unsplash.com/photo-1549488344-1f9b8d2bd1f3?auto=format&fit=crop&q=80&w=800&ts=elite_final",
-    "categories": ["Coolants", "Traditional", "Ice Creams"],
+    "id": "campus-cafe",
+    "name": "Zenvy Brew Bar",
+    "imageUrl": "https://images.unsplash.com/photo-1485808191679-5f86510681a2?w=400",
+    "categories": ["Coffee", "Tea", "Mocktails"],
+    "vendorType": "DRINKS",
     "menu": [
-      { "id": "ss-01", "name": "Chilled Tender Coconut", "price": 60, "description": "Freshly cut natural coconut water with pulp.", "image": "https://images.unsplash.com/photo-1526318896980-cf78c088247c?w=400", "category": "Coolants" }
+      { "id": "dr-01", "name": "Iced Caramel Macchiato", "price": 160, "description": "Double-shot espresso with caramel drizzle.", "image": "https://images.unsplash.com/photo-1485808191679-5f86510681a2?w=400", "category": "Coffee" },
+      { "id": "dr-02", "name": "Matcha Green Tea Latte", "price": 140, "description": "Premium matcha with steamed milk.", "image": "https://images.unsplash.com/photo-1515823064-d6e0c04616a7?w=400", "category": "Tea" },
+      { "id": "dr-03", "name": "Nitro Cold Brew", "price": 220, "description": "Nitrogen-infused cold brew coffee.", "image": "https://images.unsplash.com/photo-1517701550927-30cf4bb1dba5?w=400", "category": "Coffee" }
+    ]
+  },
+  {
+    "id": "seasonal-gifting",
+    "name": "Nexus Gift Lounge",
+    "imageUrl": "https://images.unsplash.com/photo-1549465220-1a8b9238cd48?w=400",
+    "categories": ["Hampers", "Merch", "Limited Edition"],
+    "vendorType": "SEASONAL",
+    "menu": [
+      { "id": "se-01", "name": "Nexus Holiday Hamper", "price": 999, "description": "Curated premium gift box.", "image": "https://images.unsplash.com/photo-1549465220-1a8b9238cd48?w=400", "category": "Hampers" },
+      { "id": "se-02", "name": "Limited Edition Campus Mug", "price": 299, "description": "Collector's edition SRMAP mug.", "image": "https://images.unsplash.com/photo-1514228742587-6b1558fcca3d?w=400", "category": "Merch" }
+    ]
+  },
+  {
+    "id": "campus-rentals",
+    "name": "Nexus Campus Fleet",
+    "imageUrl": "https://images.unsplash.com/photo-1571068316344-75bc76f77891?w=400",
+    "categories": ["E-Bikes", "Scooters", "Boards"],
+    "vendorType": "RENTAL",
+    "menu": [
+      { "id": "rn-01", "name": "Nexus E-Bike Pro (Hourly)", "price": 50, "description": "Electric bike rental per hour.", "image": "https://images.unsplash.com/photo-1571068316344-75bc76f77891?w=400", "category": "E-Bikes" },
+      { "id": "rn-02", "name": "Electric Longboard X", "price": 75, "description": "Premium electric longboard rental.", "image": "https://images.unsplash.com/photo-1531565637446-32307b194362?w=400", "category": "Boards" },
+      { "id": "rn-03", "name": "Classic Campus Cruiser", "price": 30, "description": "Standard bicycle rental per hour.", "image": "https://images.unsplash.com/photo-1485965120184-e220f721d03e?w=400", "category": "E-Bikes" }
+    ]
+  },
+  {
+    "id": "fruit-market",
+    "name": "Fresh Harvest Hub",
+    "imageUrl": "https://images.unsplash.com/photo-1464965211904-c72145311ad7?w=400",
+    "categories": ["Exotic", "Seasonal", "Bundles"],
+    "vendorType": "GROCERY",
+    "menu": [
+      { "id": "fr-01", "name": "Organic Dragon Fruit", "price": 120, "description": "Premium imported dragon fruit.", "image": "https://images.unsplash.com/photo-1527325541517-4506b7d44c8c?w=400", "category": "Exotic" },
+      { "id": "fr-02", "name": "Exotic Berries Symphony", "price": 599, "description": "Mixed premium berry box.", "image": "https://images.unsplash.com/photo-1464965211904-c72145311ad7?w=400", "category": "Exotic" },
+      { "id": "fr-03", "name": "Avocado Toast Kit", "price": 350, "description": "Everything for the perfect avocado toast.", "image": "https://images.unsplash.com/photo-1525351484163-7529414344d8?w=400", "category": "Bundles" }
+    ]
+  },
+  {
+    "id": "sweets-boutique",
+    "name": "Le Macaron Boutique",
+    "imageUrl": "https://images.unsplash.com/photo-1569864352342-fd43c330df47?w=400",
+    "categories": ["Chocolates", "Pastries", "Pralines"],
+    "vendorType": "SWEETS",
+    "menu": [
+      { "id": "sw-01", "name": "Gold Leaf Belgian Pralines", "price": 699, "description": "Handcrafted gold leaf chocolates.", "image": "https://images.unsplash.com/photo-1581798459219-3385269f0653?w=400", "category": "Pralines" },
+      { "id": "sw-02", "name": "Macaron Collection (12 pcs)", "price": 450, "description": "Assorted French macarons.", "image": "https://images.unsplash.com/photo-1569864352342-fd43c330df47?w=400", "category": "Pastries" },
+      { "id": "sw-03", "name": "Artisan Dark Chocolate Box", "price": 299, "description": "Single-origin 72% dark chocolate.", "image": "https://images.unsplash.com/photo-1549007994-cb92caebd54b?w=400", "category": "Chocolates" }
     ]
   }
 ];
@@ -135,37 +218,65 @@ export default function GourmetManagement() {
 
   const handleCreateRestaurant = async () => {
     try {
+      if (!newRest.name.trim()) return alert('Restaurant Name is required!');
+      if (!newRest.location.trim()) return alert('Location is required!');
+
       const token = localStorage.getItem('token');
       const payload = {
         ...newRest,
         tags: newRest.tags.split(',').map(t => t.trim()).filter(t => t),
         operatingHours: { start: newRest.operatingHoursStart, end: newRest.operatingHoursEnd }
       };
+      
       const res = await fetch(`${API_URL}/api/admin/restaurants`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify(payload)
       });
-      if (res.ok) { setIsAdding(false); fetchRestaurants(); setNewRest({ name: '', location: 'Main Campus', imageUrl: '', commissionRate: 10, commissionType: 'percentage', vendorType: 'RESTAURANT', rating: 0, deliveryTime: 30, tags: '', operatingHoursStart: '09:00', operatingHoursEnd: '22:00', isActive: true }); }
-    } catch (_err) { console.error('[CREATE_ERROR]', _err); }
+      
+      const data = await res.json();
+      if (res.ok) { 
+        setIsAdding(false); 
+        fetchRestaurants(); 
+        setNewRest({ name: '', location: 'Main Campus', imageUrl: '', commissionRate: 10, commissionType: 'percentage', vendorType: 'RESTAURANT', rating: 0, deliveryTime: 30, tags: '', operatingHoursStart: '09:00', operatingHoursEnd: '22:00', isActive: true }); 
+      } else {
+        alert(`Failed to create restaurant: ${data.message || 'Unknown error'}`);
+      }
+    } catch (_err) { 
+      console.error('[CREATE_ERROR]', _err); 
+      alert('Network or server error creating restaurant');
+    }
   };
 
   const handleCreateMenuItem = async () => {
     if(!selectedRestaurant) return;
     try {
+      if (!newItem.name.trim()) return alert('Item Name is required!');
+      if (isNaN(newItem.price) || newItem.price <= 0) return alert('Price must be a positive number!');
+
       const token = localStorage.getItem('token');
       const res = await fetch(`${API_URL}/api/admin/menu-items/new`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ 
-        ...newItem, 
-        restaurantId: selectedRestaurant._id,
-        tags: newItem.tags.split(',').map(t => t.trim()).filter(t => t),
-        isVegetarian: newItem.isVegetarian
-      })
+          ...newItem, 
+          restaurantId: selectedRestaurant._id,
+          tags: newItem.tags.split(',').map(t => t.trim()).filter(t => t),
+          isVegetarian: newItem.isVegetarian
+        })
       });
-      if (res.ok) { setIsAddingItem(false); fetchMenu(selectedRestaurant._id); }
-    } catch (_err) { console.error('[ITEM_CREATE_ERROR]', _err); }
+      
+      const data = await res.json();
+      if (res.ok) { 
+        setIsAddingItem(false); 
+        fetchMenu(selectedRestaurant._id); 
+      } else {
+        alert(`Failed to create item: ${data.message || 'Unknown error'}`);
+      }
+    } catch (_err) { 
+      console.error('[ITEM_CREATE_ERROR]', _err); 
+      alert('Network or server error creating menu item');
+    }
   };
 
   const fetchMenu = async (restaurantId: string) => {
@@ -252,9 +363,17 @@ export default function GourmetManagement() {
               </div>
               
               <select className="admin-input" value={newRest.vendorType} onChange={(e) => setNewRest({...newRest, vendorType: e.target.value})}>
-                  <option value="RESTAURANT">Restaurant (Food)</option>
-                  <option value="GROCERY">Grocery/Fresh (Fruits/Sweets)</option>
-                  <option value="RENTAL">Rental (Cars/Bikes)</option>
+                  <option value="RESTAURANT">🍽️ Restaurant (Food)</option>
+                  <option value="GROCERY">🍎 Grocery / Fresh Fruits</option>
+                  <option value="SWEETS">🍩 Sweets & Bakery</option>
+                  <option value="DRINKS">🥤 Drinks & Beverages</option>
+                  <option value="RENTAL">🚗 Rental (Bikes/Scooters)</option>
+                  <option value="GYM">💪 Gym & Nutrition</option>
+                  <option value="LAUNDRY">👔 Laundry & Dry Wash</option>
+                  <option value="PHARMACY">💊 Pharmacy & Wellness</option>
+                  <option value="STATIONARY">📚 Stationary & Books</option>
+                  <option value="SEASONAL">🎁 Seasonal & Gifts</option>
+                  <option value="GLOBAL_MARKET">🌐 Global Marketplace</option>
               </select>
 
               <input placeholder="Rating (0.0)" type="number" step="0.1" className="admin-input" value={newRest.rating || ''} onChange={(e) => setNewRest({...newRest, rating: parseFloat(e.target.value)})} />
@@ -288,7 +407,7 @@ export default function GourmetManagement() {
               <input placeholder="Price (₹)" type="number" className="admin-input" value={newItem.price} onChange={(e) => setNewItem({...newItem, price: parseInt(e.target.value)})} />
               <input placeholder="Category (e.g. Mains, Sides)" className="admin-input" value={newItem.category} onChange={(e) => setNewItem({...newItem, category: e.target.value})} />
               <input placeholder="Image URL" className="admin-input" value={newItem.image} onChange={(e) => setNewItem({...newItem, image: e.target.value})} />
-              <input placeholder="Tags (comma separated: fruit, gym, seasonal)" className="admin-input" value={newItem.tags} onChange={(e) => setNewItem({...newItem, tags: e.target.value})} />
+              <input placeholder="Tags (comma separated: fruit, laundry, medicine, stationary)" className="admin-input" value={newItem.tags} onChange={(e) => setNewItem({...newItem, tags: e.target.value})} />
                <div className="flex items-center gap-4 admin-input">
                   <span className="text-[10px] uppercase font-black text-gray-400">Vegetarian?</span>
                   <input type="checkbox" className="w-6 h-6 rounded-lg accent-emerald-500" checked={newItem.isVegetarian} onChange={(e) => setNewItem({...newItem, isVegetarian: e.target.checked})} />
@@ -318,6 +437,21 @@ export default function GourmetManagement() {
                 </div>
               </div>
               <h4 className="text-xl font-black text-white uppercase tracking-tight mb-1">{rest.name}</h4>
+              <div className="flex items-center gap-2 mb-2">
+                <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${
+                  rest.vendorType === 'PHARMACY' ? 'bg-pink-500/20 text-pink-400' :
+                  rest.vendorType === 'STATIONARY' ? 'bg-indigo-500/20 text-indigo-400' :
+                  rest.vendorType === 'LAUNDRY' ? 'bg-cyan-500/20 text-cyan-400' :
+                  rest.vendorType === 'GYM' ? 'bg-orange-500/20 text-orange-400' :
+                  rest.vendorType === 'DRINKS' ? 'bg-purple-500/20 text-purple-400' :
+                  rest.vendorType === 'SEASONAL' ? 'bg-rose-500/20 text-rose-400' :
+                  rest.vendorType === 'RENTAL' ? 'bg-sky-500/20 text-sky-400' :
+                  rest.vendorType === 'GROCERY' ? 'bg-lime-500/20 text-lime-400' :
+                  rest.vendorType === 'SWEETS' ? 'bg-amber-500/20 text-amber-400' :
+                  rest.vendorType === 'GLOBAL_MARKET' ? 'bg-emerald-500/20 text-emerald-400' :
+                  'bg-white/10 text-gray-400'
+                }`}>{rest.vendorType || 'RESTAURANT'}</span>
+              </div>
               <p className="text-xs text-gray-500 font-bold uppercase tracking-widest mb-6">{rest.location}</p>
               <button onClick={() => { setSelectedRestaurant(rest); fetchMenu(rest._id); setView('menu'); }} className="w-full py-4 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-emerald-500 hover:text-white transition-all">Manage Active Assets</button>
             </div>
@@ -357,6 +491,17 @@ export default function GourmetManagement() {
           outline: none;
         }
         .admin-input:focus { border-color: rgba(16, 185, 129, 0.5); }
+        select.admin-input option {
+          background: #1a1a2e;
+          color: #ffffff;
+          padding: 12px 16px;
+          font-weight: 700;
+          font-size: 14px;
+        }
+        select.admin-input option:checked {
+          background: #10b981;
+          color: #000;
+        }
       `}</style>
     </div>
   );

@@ -13,6 +13,6 @@ router.put('/profile', protect, updateUserProfile);
 router.get('/restaurants', require('../controllers/adminController').getRestaurants);
 router.get('/restaurants/:id', require('../controllers/adminController').getRestaurantById);
 router.get('/products/:id', require('../controllers/adminController').getMenuItemById);
-router.get('/search', require('../controllers/adminController').searchAll);
+router.get('/search', require('../controllers/searchController').globalSearch);
 
 module.exports = router;

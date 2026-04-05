@@ -29,7 +29,7 @@ export default function BasketPage() {
       ) : (
         <div className="space-y-6">
           {cart.map((item) => (
-            <div key={item.id} className="flex flex-col bg-card-bg p-6 rounded-[35px] border border-white/5 transition-all hover:border-white/10 group">
+            <div key={item.id} className="flex flex-col bg-card-bg p-6 rounded-[35px] border border-white/5 transition-all hover:border-white/10 group premium-tilt">
               <div className="flex gap-6 items-center">
                 <div className="w-24 h-24 relative flex-shrink-0">
                   <Image 
@@ -69,7 +69,7 @@ export default function BasketPage() {
                       placeholder="e.g. Happy Birthday Shanmukh"
                       value={item.customName || ''}
                       onChange={(e) => updateCustomName(item.id, e.target.value)}
-                      className="w-full bg-white/[0.03] border border-white/10 rounded-2xl px-5 py-4 text-sm font-bold text-white placeholder:text-white/20 focus:outline-none focus:border-primary-yellow/30 transition-all"
+                      className="w-full stardust-search rounded-2xl px-5 py-4 text-sm font-black text-white placeholder:text-white/20 focus:outline-none transition-all"
                     />
                     <div className="absolute right-4 top-1/2 -translate-y-1/2 text-primary-yellow opacity-40">✍️</div>
                   </div>
@@ -89,7 +89,7 @@ export default function BasketPage() {
              </div>
           </div>
 
-          <Link href="/checkout" className="w-full btn-yellow mt-10 flex justify-center py-6 text-lg uppercase tracking-widest">
+          <Link href="/checkout" className="w-full btn-yellow mt-10 flex justify-center py-6 text-lg uppercase tracking-widest animate-text-shimmer shadow-[0_20px_40px_rgba(201,168,76,0.2)]">
             Proceed to Checkout
           </Link>
         </div>

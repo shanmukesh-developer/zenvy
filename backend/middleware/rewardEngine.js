@@ -1,8 +1,9 @@
-const User = require('../models/User');
+const { getUserModel } = require('../models/User');
 
 // Middleware to update streak on every order
 const updateStreak = async (userId) => {
-  const user = await User.findById(userId);
+  const User = getUserModel();
+  const user = await User.findByPk(userId);
   if (!user) {
     console.warn('updateStreak: User not found for ID:', userId);
     return 0;

@@ -32,7 +32,7 @@ const authPartner = async (req, res) => {
 
     // Hardcoded master credentials for dev
     if (phone === 'driver-1' && password === 'srk') {
-      return res.json({ _id: 'mock-driver-1', name: 'Hostel Hub Rider', token: 'mock_jwt_token_for_srm_driver' });
+      return res.json({ _id: 'mock-driver-1', name: 'Hostel Hub Rider', token: generateToken('mock-driver-1') });
     }
 
     const DeliveryPartner = getDeliveryPartnerModel();

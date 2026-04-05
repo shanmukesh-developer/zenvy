@@ -36,8 +36,12 @@ const initVaultItemModel = (sequelize) => {
     },
     resetAt: {
       type: DataTypes.DATE
+    },
+    streakRequirement: {
+      type: DataTypes.INTEGER,
+      defaultValue: 0
     }
-  });
+  }, { timestamps: true });
 
   return VaultItem;
 };

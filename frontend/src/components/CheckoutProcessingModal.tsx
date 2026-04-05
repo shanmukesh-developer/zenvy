@@ -1,0 +1,68 @@
+"use client";
+import { useEffect, useState } from 'react';
+
+interface Props {
+  isOpen: boolean;
+  status: 'processing' | 'success' | 'error';
+}
+
+export default function CheckoutProcessingModal({ isOpen, status }: Props) {
+  const [step, setStep] = useState(0);
+
+  useEffect(() => {
+    if (!isOpen || status !== 'processing') return;
+    setStep(0);
+    const t1 = setTimeout(() => setStep(1), 800);
+    const t2 = setTimeout(() => setStep(2), 1600);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [isOpen, status]);
+
+  if (!isOpen) return null;
+
+  const messages = [
+    "Encrypting Payment...",
+    "Notifying Elite Captain...",
+    "Confirming Details..."
+  ];
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/90 backdrop-blur-xl animate-in fade-in duration-300">
+      <div className="flex flex-col items-center justify-center text-center">
+        {status === 'processing' && (
+          <>
+            <div className="relative w-24 h-24 mb-8">
+              <div className="absolute inset-0 border-4 border-white/10 rounded-full" />
+              <div className="absolute inset-0 border-4 border-[#C9A84C] rounded-full border-t-transparent animate-spin" />
+              <div className="absolute inset-0 flex items-center justify-center text-2xl animate-pulse">
+                🔒
+              </div>
+            </div>
+            <h2 className="text-xl font-black text-white uppercase tracking-widest mb-2 animate-in fade-in">Processing</h2>
+            <p className="text-[#C9A84C] text-sm font-bold uppercase tracking-widest transition-all duration-300 animate-in slide-in-from-bottom-2">
+              {messages[step]}
+            </p>
+          </>
+        )}
+        
+        {status === 'success' && (
+          <div className="animate-in zoom-in duration-500">
+            <div className="w-24 h-24 bg-emerald-500 rounded-full flex items-center justify-center text-5xl mx-auto mb-6 text-black shadow-[0_0_50px_rgba(16,185,129,0.5)]">
+              ✓
+            </div>
+            <h2 className="text-2xl font-black text-white uppercase tracking-widest">Order Confirmed</h2>
+            <p className="text-emerald-500 text-sm font-bold uppercase tracking-widest mt-2">Routing to Tracker...</p>
+          </div>
+        )}
+
+        {status === 'error' && (
+          <div className="animate-in zoom-in duration-500">
+             <div className="w-24 h-24 bg-red-500 rounded-full flex items-center justify-center text-5xl mx-auto mb-6 text-black shadow-[0_0_50px_rgba(239,68,68,0.5)]">
+              ✕
+            </div>
+            <h2 className="text-2xl font-black text-white uppercase tracking-widest">Payment Failed</h2>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

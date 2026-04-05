@@ -14,6 +14,7 @@ export default function SafeImage(props: ImageProps) {
   return (
     <Image
       {...props}
+      alt={props.alt || 'Image'}
       src={imgSrc || FALLBACK_IMAGE}
       onError={() => setImgSrc(FALLBACK_IMAGE)}
     />

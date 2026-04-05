@@ -80,9 +80,28 @@ exports.getMenuItemById = async (req, res) => {
   try {
     const MenuItem = getMenuItemModel();
     const Restaurant = getRestaurantModel();
-    const item = await MenuItem.findByPk(req.params.id);
-    if (!item) return res.status(404).json({ message: 'Product not found' });
-    const restaurant = await Restaurant.findByPk(item.restaurantId);
+    const VaultItem = getVaultItemModel();
+    
+    let item = await MenuItem.findByPk(req.params.id);
+    let restaurant;
+
+    if (!item) {
+      // Fallback: Check VaultItem if MenuItem not found
+      item = await VaultItem.findByPk(req.params.id);
+      if (!item) return res.status(404).json({ message: 'Product not found (Nexus Error: 404)' });
+      
+      const itemObj = item.toJSON();
+      return res.json({ 
+        ...itemObj, 
+        _id: item.id, 
+        id: item.id, 
+        image: itemObj.imageUrl || itemObj.image,
+        restaurantName: 'Zenvy Exclusive Vault', 
+        restaurantId: 'vault_prime' 
+      });
+    }
+
+    restaurant = await Restaurant.findByPk(item.restaurantId);
     const itemObj = item.toJSON();
     res.json({ 
       ...itemObj, 
@@ -371,17 +390,39 @@ exports.seedDatabase = async (req, res) => {
     for (const restData of restaurants) {
       const restaurant = await Restaurant.create({
         name: restData.name,
-        location: 'Main Campus',
+        location: restData.location || 'Main Campus',
         imageUrl: restData.imageUrl || restData.image,
-        commissionRate: 10,
-        commissionType: 'percentage',
-        operatingHours: { start: '09:00', end: '22:00' },
-        isActive: true,
-        tags: restData.categories || []
+        vendorType: restData.vendorType || 'RESTAURANT',
+        commissionRate: restData.commissionRate || 10,
+        commissionType: restData.commissionType || 'percentage',
+        operatingHours: restData.operatingHours || { start: '09:00', end: '22:00' },
+        isActive: restData.isActive !== undefined ? restData.isActive : true,
+        tags: restData.categories || restData.tags || []
       });
 
       if (restData.menu && Array.isArray(restData.menu)) {
+        // Auto-generate tags from vendorType for frontend filtering
+        const vendorTagMap = {
+          'PHARMACY': ['pharmacy', 'medicine'],
+          'STATIONARY': ['stationary', 'books'],
+          'LAUNDRY': ['laundry', 'dry-wash'],
+          'GYM': ['gym', 'high-protein', 'healthy'],
+          'DRINKS': ['drinks'],
+          'SEASONAL': ['seasonal'],
+          'RENTAL': ['rental'],
+          'GROCERY': ['fruits', 'healthy'],
+          'SWEETS': ['sweets'],
+          'RESTAURANT': [],
+          'GLOBAL_MARKET': []
+        };
+        const vendorTags = vendorTagMap[restData.vendorType] || [];
+
         for (const item of restData.menu) {
+          const itemTags = [...new Set([
+            ...vendorTags,
+            ...(item.tags || []),
+            ...(item.category ? [item.category.toLowerCase()] : [])
+          ])];
           await MenuItem.create({
             restaurantId: restaurant.id,
             name: item.name,
@@ -389,6 +430,7 @@ exports.seedDatabase = async (req, res) => {
             description: item.description,
             imageUrl: item.image || item.imageUrl,
             category: item.category,
+            tags: itemTags,
             isAvailable: true,
             isEliteOnly: false
           });

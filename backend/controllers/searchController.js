@@ -12,14 +12,21 @@ const globalSearch = async (req, res) => {
     const Restaurant = getRestaurantModel();
     const MenuItem = getMenuItemModel();
 
+    // Use Op.like (case-insensitive on SQLite by default, works on both Postgres & SQLite)
+    const likeOp = Op.like;
+
     // Search Restaurants by name
     const restaurants = await Restaurant.findAll({
       where: {
-        name: { [Op.iLike]: `%${q}%` },
+        name: { [likeOp]: `%${q}%` },
         isActive: true
       },
       limit: 5
     });
+
+    // Build restaurant ID-to-name map for manual join
+    const allRestaurants = await Restaurant.findAll({ attributes: ['id', 'name', 'imageUrl'] });
+    const restMap = Object.fromEntries(allRestaurants.map(r => [r.id, { name: r.name, imageUrl: r.imageUrl }]));
 
     // Search Menu Items by name, description, or category
     const menuItems = await MenuItem.findAll({
@@ -28,37 +35,39 @@ const globalSearch = async (req, res) => {
           { isAvailable: true },
           {
             [Op.or]: [
-              { name: { [Op.iLike]: `%${q}%` } },
-              { description: { [Op.iLike]: `%${q}%` } },
-              { category: { [Op.iLike]: `%${q}%` } }
+              { name: { [likeOp]: `%${q}%` } },
+              { description: { [likeOp]: `%${q}%` } },
+              { category: { [likeOp]: `%${q}%` } }
             ]
           }
         ]
       },
-      include: [{
-        model: Restaurant,
-        as: 'restaurant',
-        attributes: ['name', 'imageUrl']
-      }],
       limit: 10
     });
 
-    // Transform menuItems to match the expected format (restaurantId.name)
+    // Transform menuItems to match the expected format
     const items = menuItems.map(item => {
       const itemJSON = item.toJSON();
+      const rest = restMap[itemJSON.restaurantId];
       return {
         ...itemJSON,
-        restaurantId: item.restaurant ? { name: item.restaurant.name, imageUrl: item.restaurant.imageUrl } : item.restaurantId
+        restaurantId: rest ? { _id: itemJSON.restaurantId, name: rest.name, imageUrl: rest.imageUrl } : { _id: itemJSON.restaurantId, name: 'Unknown' }
       };
     });
 
     res.json({
-      restaurants,
+      restaurants: restaurants.map(r => ({
+        _id: r.id,
+        name: r.name,
+        location: r.location,
+        imageUrl: r.imageUrl,
+        rating: r.rating || 4.5
+      })),
       items
     });
   } catch (error) {
     console.error('[SEARCH_ERROR]', error);
-    res.status(500).json({ message: 'Error performing search' });
+    res.status(500).json({ message: 'Error performing search', error: error.message });
   }
 };
 

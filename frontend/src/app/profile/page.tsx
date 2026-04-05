@@ -109,7 +109,7 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (!user) return;
-    const handleEliteUpdate = (data: any) => {
+    const handleEliteUpdate = (data: { type: string; data: { userId: string; isElite: boolean } }) => {
       const userId = user?._id || user?.id;
       if (data.type === 'USER_ELITE_STATUS' && data.data.userId === userId) {
          setUser((prev) => prev ? { ...prev, isElite: data.data.isElite } : prev);

@@ -24,9 +24,9 @@ const createOrder = async (req, res) => {
       { id: '9:30 PM', time: 2130 }
     ];
 
-    if (!deliverySlot || deliverySlot === 'IMMEDIATE') {
-      return res.status(403).json({ message: 'Immediate delivery is disabled. Please select a scheduled campus delivery slot.' });
-    }
+    // if (!deliverySlot || deliverySlot === 'IMMEDIATE') {
+    //   return res.status(403).json({ message: 'Immediate delivery is disabled. Please select a scheduled campus delivery slot.' });
+    // }
 
     const matchedSlot = campusSlots.find(s => s.id === deliverySlot);
     if (!matchedSlot) {

@@ -19,6 +19,7 @@ export const metadata: Metadata = {
 };
 
 import PushNotificationManager from '@/components/PushNotificationManager';
+import AndroidBackButton from '@/components/AndroidBackButton';
 
 export default function RootLayout({
   children,
@@ -36,6 +37,7 @@ export default function RootLayout({
             localStorage.setItem('driver', JSON.stringify({ _id: '65f1a2b3c4d5e6f7a8b9c0d2', name: 'Rider Rahul' }));
           }
         ` }} />
+        <AndroidBackButton />
         <PushNotificationManager />
         {children}
       </body>

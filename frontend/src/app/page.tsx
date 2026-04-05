@@ -15,6 +15,9 @@ import LiveOrderStatusBar from '@/components/LiveOrderStatusBar';
 import RatingModal from '@/components/RatingModal';
 import ZenvyModal from '@/components/ZenvyModal';
 import socket from '@/utils/socket';
+import ScrollProgressIndicator from '@/components/ScrollProgressIndicator';
+import Magnetic from '@/components/Magnetic';
+import { motion } from 'framer-motion';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
 
@@ -103,7 +106,8 @@ export default function Home() {
       { id: '5:00 PM', hour: 17, min: 0 },
       { id: '7:30 PM', hour: 19, min: 30 },
       { id: '8:50 PM', hour: 20, min: 50 },
-      { id: '9:30 PM', hour: 21, min: 30 }
+      { id: '9:30 PM', hour: 21, min: 30 },
+      { id: 'TESTING SLOT', hour: 23, min: 59 }
     ];
     const now = new Date();
     return campusSlots.find(slot => {
@@ -118,10 +122,8 @@ export default function Home() {
   useEffect(() => {
     const checkTime = () => {
       const now = new Date();
-      const hrs = now.getHours();
-      const mins = now.getMinutes();
-      setIsAfter9(hrs >= 21 || hrs < 5); // After 9 PM or early morning
-      setIsAfter930(hrs >= 21 && mins >= 30 || hrs > 21 || hrs < 5);
+      setIsAfter9(false); // Override for testing
+      setIsAfter930(false); // Override for testing
 
       // Countdown Timer Logic
       const next = getNextAvailableSlot();
@@ -207,7 +209,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!user) return;
-    const handleEliteUpdate = (data: any) => {
+    const handleEliteUpdate = (data: { type: string; data: { userId: string; isElite: boolean } }) => {
       const userId = user?._id || user?.id;
       if (data.type === 'USER_ELITE_STATUS' && data.data.userId === userId) {
          setIsElite(data.data.isElite);
@@ -347,6 +349,9 @@ export default function Home() {
     seasonal: allProducts.filter(p => p.tags?.includes('seasonal')),
     drinks: allProducts.filter(p => p.tags?.includes('drinks')),
     gym: allProducts.filter(p => p.tags?.includes('gym') || p.tags?.includes('high-protein')),
+    laundry: allProducts.filter(p => p.tags?.includes('laundry') || p.tags?.includes('dry-wash')),
+    pharmacy: allProducts.filter(p => p.tags?.includes('medicine') || p.tags?.includes('pharmacy')),
+    stationary: allProducts.filter(p => p.tags?.includes('stationary') || p.tags?.includes('books') || p.tags?.includes('print')),
     all: allProducts.filter(p => !gymMode || p.tags?.includes('healthy') || p.tags?.includes('high-protein'))
   };
 
@@ -367,6 +372,7 @@ export default function Home() {
 
   return (
     <>
+    <ScrollProgressIndicator />
     <main className={`min-h-screen text-white pb-32 relative overflow-hidden transition-colors duration-1000 ${isAfter9 ? 'bg-[#050507]' : 'bg-background'}`}>
       {showIntro && <IntroOverlay onComplete={handleIntroComplete} />}
       
@@ -393,7 +399,12 @@ export default function Home() {
         )}
 
         <div className="w-full relative z-10 px-6 pt-14 md:px-10 lg:px-14">
-          <header className="mb-8">
+          <motion.header 
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, ease: "easeOut" }}
+            className="mb-8"
+          >
             <div className="flex items-center justify-between mb-8">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#C9A84C] to-[#8B7332] flex items-center justify-center shadow-lg shadow-[#C9A84C]/20">
@@ -407,13 +418,15 @@ export default function Home() {
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-1.5 glass-card px-3 py-1.5 rounded-full border-emerald-500/20">
                   <span className="text-[10px] text-emerald-500 font-black">💎</span>
-                  <span className="text-[10px] font-black text-white">{user?.zenPoints || 0}</span>
+                  <span className="text-[10px] font-black shrink-0 text-white">{user?.zenPoints || 0}</span>
                 </div>
-                <button className="w-10 h-10 glass-card rounded-full flex items-center justify-center">
-                  <svg className="w-4 h-4 text-secondary-text" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                  </svg>
-                </button>
+                <Magnetic>
+                  <button className="w-10 h-10 glass-card rounded-full flex items-center justify-center">
+                    <svg className="w-4 h-4 text-secondary-text" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                    </svg>
+                  </button>
+                </Magnetic>
               </div>
             </div>
             <div className="flex justify-between items-end mb-2">
@@ -427,7 +440,7 @@ export default function Home() {
                 {nextSlot && (
                   <div className="flex items-center gap-2 mb-1">
                     <div className="live-dot" />
-                    <span className="text-[10px] font-black text-white/50">{timeLeft} until batch closes</span>
+                    <span className="text-[10px] font-black shrink-0 text-white/50">{timeLeft} until batch closes</span>
                   </div>
                 )}
               </div>
@@ -438,23 +451,29 @@ export default function Home() {
               )}
             </div>
             <h1 className="discover-header">
-              Discover <br /> What You <br /> <span className="text-gold-gradient" style={{WebkitTextFillColor: 'transparent'}}>Crave</span>
+              Discover <br /> What You <br /> <span className="bg-gradient-to-r from-[#C9A84C] via-[#E8D18C] to-[#8B7332] text-transparent bg-clip-text animate-text-shimmer" style={{WebkitTextFillColor: 'transparent'}}>Crave</span>
             </h1>
-            
-            {/* Mock Mode Indicator */}
+
+            {/* Campus Status Beacon */}
             <div className="mt-4 flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-[8px] font-black text-secondary-text uppercase tracking-widest opacity-60">System Online (Dev Mode)</span>
+              <div className="w-2 h-2 rounded-full bg-emerald-500 status-pulse shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
+              <span className="text-[8px] font-black text-secondary-text uppercase tracking-widest opacity-60">Nexus Network Online</span>
             </div>
-          </header>
+          </motion.header>
 
           <SearchOverlay isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
 
-           <div className="relative mb-8" onClick={() => setIsSearchOpen(true)}>
-            <div className="w-full glass-card py-4 pl-14 pr-4 text-sm text-secondary-text font-medium cursor-pointer">
-              Search bikes, meals, tracks...
-            </div>
-          </div>
+           <motion.div 
+            whileTap={{ scale: 0.98 }}
+            className="relative mb-8" 
+            onClick={() => setIsSearchOpen(true)}
+           >
+            <Magnetic>
+              <div className="w-full stardust-search py-4 pl-14 pr-4 text-xs text-white font-black uppercase tracking-widest cursor-pointer rounded-2xl group">
+                 <span className="opacity-40 group-hover:opacity-100 transition-opacity">Search Campus Nexus...</span>
+              </div>
+            </Magnetic>
+          </motion.div>
 
           {/* 🌀 Magical Temporal Navigator */}
           <section className="mb-10 animate-slide-up">
@@ -462,21 +481,32 @@ export default function Home() {
           </section>
 
           {/* 🔒 The Zenvy Vault (Daily FOMO Scarcity) */}
-          <section className="mb-10 animate-slide-up" style={{ animationDelay: '0.1s' }}>
+          <motion.section 
+            initial={{ opacity: 0, scale: 0.95 }}
+            whileInView={{ opacity: 1, scale: 1 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+            className="mb-10"
+          >
              <ZenvyVault />
-          </section>
+          </motion.section>
 
-          <section 
-            className={`mb-10 group cursor-pointer overflow-hidden rounded-[34px] relative border shadow-2xl transition-all duration-500 ${isElite ? 'border-[#C9A84C]/40' : 'border-[#C9A84C]/20'}`}
+          <motion.section 
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            whileHover={{ scale: 1.01 }}
+            className={`mb-10 group cursor-pointer overflow-hidden rounded-[34px] relative border shadow-2xl transition-all duration-500 elite-card ${isElite ? 'border-[#C9A84C]/40' : 'border-[#C9A84C]/20'}`}
             onClick={!isElite ? handleJoinElite : undefined}
           >
-              <div className="absolute inset-0 bg-gradient-to-br from-[#C9A84C]/40 to-[#8B7332]/40 z-0" />
+              <div className="elite-hologram" />
+              <div className="absolute inset-0 bg-gradient-to-br from-[#C9A84C]/20 to-[#8B7332]/20 z-0" />
               <Image 
                 src="https://images.unsplash.com/photo-1550745165-9bc0b252726f?q=80&w=800&auto=format&fit=crop" 
                 alt="Elite Promo" 
                 width={400}
                 height={150}
-                className="relative z-10 object-cover w-full h-[140px] group-hover:scale-110 transition-transform duration-700 opacity-60 mix-blend-overlay"
+                className="relative z-10 object-cover w-full h-[140px] group-hover:scale-110 transition-transform duration-700 opacity-40 mix-blend-overlay"
               />
              <div className="absolute inset-0 z-20 p-6 flex flex-col justify-center">
                 <span className="text-[8px] font-black text-primary-yellow uppercase tracking-[0.3em] mb-2">{isElite ? 'Elite Member' : 'Exclusive Offer'}</span>
@@ -486,13 +516,23 @@ export default function Home() {
                 {isElite ? (
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest">Premium Active</span>
+                    <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest" style={{ textShadow: '0 0 10px rgba(16,185,129,0.5)' }}>Premium Active</span>
                   </div>
                 ) : (
-                  <button className="w-fit bg-primary-yellow text-black text-[9px] font-black px-6 py-2.5 rounded-full uppercase tracking-tighter shadow-lg shadow-primary-yellow/20">Join Elite for ₹199 →</button>
+                  <Magnetic>
+                    <button className="w-fit bg-primary-yellow text-black text-[9px] font-black px-6 py-2.5 rounded-full uppercase tracking-tighter shadow-lg shadow-primary-yellow/20">Join Elite for ₹199 →</button>
+                  </Magnetic>
                 )}
              </div>
-          </section>
+          </motion.section>
+
+          <motion.div 
+            initial={{ scaleX: 0 }}
+            whileInView={{ scaleX: 1 }}
+            viewport={{ once: true }}
+            transition={{ duration: 1, ease: "easeInOut" }}
+            className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent mb-12 origin-left"
+          />
 
           {/* 🔄 Quick Re-order: Last Favorites */}
           {activeOrder && !isLoading && (
@@ -529,7 +569,19 @@ export default function Home() {
               <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-secondary-text">Chef&apos;s Picks</h2>
               <span className="text-[9px] font-bold text-secondary-text uppercase tracking-wider">Swipe →</span>
             </div>
-            <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-2 -mx-6 px-6">
+            <motion.div 
+              initial="hidden"
+              whileInView="show"
+              viewport={{ once: true, margin: "-100px" }}
+              variants={{
+                hidden: { opacity: 0 },
+                show: {
+                  opacity: 1,
+                  transition: { staggerChildren: 0.1 }
+                }
+              }}
+              className="flex gap-4 overflow-x-auto scrollbar-hide pb-2 -mx-6 px-6"
+            >
               {isLoading ? (
                 [1,2,3].map(i => (
                   <div key={i} className="chef-card bg-[#141416] p-4">
@@ -539,25 +591,41 @@ export default function Home() {
                   </div>
                 ))
               ) : (
-                chefPicks.map((item, i) => (
-                  <Link href={`/products/${item.id}`} key={item.id}>
-                    <div className="chef-card bg-[#141416]" style={{ animationDelay: `${i * 0.1}s` }}>
-                      <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-primary-yellow/30 transition-colors">
-                        <SafeImage src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
-                      </div>
-                      <div className="mt-3">
-                        <h3 className="font-bold text-[15px] text-white mb-1">{item.name}</h3>
-                        <div className="flex items-center justify-between">
-                          <p className="text-[8px] font-bold text-secondary-text uppercase tracking-widest">{item.restaurantName}</p>
-                          <span className="text-[10px] font-black text-primary-yellow">₹{item.price}</span>
+                chefPicks.map((item) => (
+                  <motion.div
+                    key={item.id}
+                    variants={{
+                      hidden: { opacity: 0, x: 20 },
+                      show: { opacity: 1, x: 0 }
+                    }}
+                  >
+                    <Link href={`/products/${item.id}`}>
+                      <div className="chef-card bg-[#141416] premium-tilt">
+                        <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-primary-yellow/30 transition-colors">
+                          <SafeImage src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
+                        </div>
+                        <div className="mt-3">
+                          <h3 className="font-bold text-[15px] text-white mb-1">{item.name}</h3>
+                          <div className="flex items-start justify-between gap-2 min-w-0 overflow-hidden mt-1">
+                            <p className="text-[8px] font-bold text-secondary-text uppercase tracking-widest truncate min-w-0 flex-1" title={item.restaurantName}>{item.restaurantName}</p>
+                            <span className="text-[10px] font-black shrink-0 text-primary-yellow">₹{item.price}</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </Link>
+                    </Link>
+                  </motion.div>
                 ))
               )}
-            </div>
+            </motion.div>
           </section>
+
+          <motion.div 
+            initial={{ scaleX: 0 }}
+            whileInView={{ scaleX: 1 }}
+            viewport={{ once: true }}
+            transition={{ duration: 1, ease: "easeInOut" }}
+            className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent my-14 origin-left"
+          />
 
           {/* ⚔️ Zenvy Block Wars: Leaderboard */}
           <section className="mb-10 animate-slide-up" style={{ animationDelay: '0.3s' }}>
@@ -570,22 +638,42 @@ export default function Home() {
                <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-[#34D399]">Fresh Harvest (Fruits)</h2>
                <span className="text-[9px] font-bold text-secondary-text uppercase tracking-wider">Swipe →</span>
             </div>
-            <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-2 -mx-6 px-6">
+            <motion.div 
+              initial="hidden"
+              whileInView="show"
+              viewport={{ once: true, margin: "-50px" }}
+              variants={{
+                hidden: { opacity: 0 },
+                show: {
+                  opacity: 1,
+                  transition: { staggerChildren: 0.08 }
+                }
+              }}
+              className="flex gap-4 overflow-x-auto scrollbar-hide pb-2 -mx-6 px-6"
+            >
               {groupedCollections.fruits.map((item) => (
-                <Link href={`/products/${item.id}`} key={item.id} className="relative shrink-0 w-[240px] group active:scale-95 transition-transform">
-                   <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-[#34D399]/30 transition-colors">
-                      <SafeImage src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
-                   </div>
-                   <div className="mt-3">
-                      <h3 className="text-xs font-black text-white">{item.name}</h3>
-                      <div className="flex justify-between items-center mt-1">
-                         <span className="text-[8px] font-bold text-secondary-text uppercase tracking-widest">{item.restaurantName}</span>
-                         <span className="text-[10px] font-black text-[#34D399]">₹{item.price}</span>
-                      </div>
-                   </div>
-                </Link>
+                <motion.div
+                  key={item.id}
+                  variants={{
+                    hidden: { opacity: 0, scale: 0.9 },
+                    show: { opacity: 1, scale: 1 }
+                  }}
+                >
+                  <Link href={`/products/${item.id}`} className="relative shrink-0 w-[240px] block group active:scale-95 transition-transform">
+                     <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-[#34D399]/30 transition-colors">
+                        <SafeImage src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
+                     </div>
+                     <div className="mt-3">
+                        <h3 className="text-xs font-black text-white">{item.name}</h3>
+                        <div className="flex justify-between items-start mt-1 gap-2 min-w-0 overflow-hidden">
+                            <span className="text-[8px] font-bold text-secondary-text uppercase tracking-widest truncate min-w-0 flex-1" title={item.restaurantName}>{item.restaurantName}</span>
+                           <span className="text-[10px] font-black shrink-0 text-[#34D399]">₹{item.price}</span>
+                        </div>
+                     </div>
+                  </Link>
+                </motion.div>
               ))}
-            </div>
+            </motion.div>
           </section>
 
           {/* 🚗 Campus Fleet: Rentals */}
@@ -594,21 +682,140 @@ export default function Home() {
                <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-primary-yellow">Campus Fleet (Rentals)</h2>
                <span className="text-[9px] font-bold text-secondary-text uppercase tracking-wider">Swipe →</span>
             </div>
-            <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-2 -mx-6 px-6">
+            <motion.div 
+              initial="hidden"
+              whileInView="show"
+              viewport={{ once: true, margin: "-50px" }}
+              variants={{
+                hidden: { opacity: 0 },
+                show: {
+                  opacity: 1,
+                  transition: { staggerChildren: 0.1 }
+                }
+              }}
+              className="flex gap-4 overflow-x-auto scrollbar-hide pb-2 -mx-6 px-6"
+            >
               {groupedCollections.rentals.map((item) => (
-                <button type="button" key={item.id} onClick={() => { setSelectedRental(item as RentalItem); setShowSpecs(false); }} className="relative shrink-0 w-[240px] cursor-pointer group active:scale-95 transition-transform text-left">
-                   <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-primary-yellow/30 transition-colors">
-                      <SafeImage src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
-                   </div>
-                   <div className="mt-3">
-                      <h3 className="text-xs font-black text-white">{item.name}</h3>
-                      <div className="flex justify-between items-center mt-1">
-                         <span className="text-[8px] font-bold text-secondary-text uppercase tracking-widest">{item.restaurantName}</span>
-                         <span className="text-[10px] font-black text-primary-yellow">₹{item.price}</span>
-                      </div>
-                   </div>
-                </button>
+                <motion.div
+                  key={item.id}
+                  variants={{
+                    hidden: { opacity: 0, y: 20 },
+                    show: { opacity: 1, y: 0 }
+                  }}
+                >
+                  <button type="button" onClick={() => { setSelectedRental(item as RentalItem); setShowSpecs(false); }} className="relative shrink-0 w-[240px] cursor-pointer group active:scale-95 transition-transform text-left">
+                     <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-primary-yellow/30 transition-colors">
+                        <SafeImage src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
+                     </div>
+                     <div className="mt-3">
+                        <h3 className="text-xs font-black text-white">{item.name}</h3>
+                        <div className="flex justify-between items-start mt-1 gap-2 min-w-0 overflow-hidden">
+                            <span className="text-[8px] font-bold text-secondary-text uppercase tracking-widest truncate min-w-0 flex-1" title={item.restaurantName}>{item.restaurantName}</span>
+                           <span className="text-[10px] font-black shrink-0 text-primary-yellow">₹{item.price}</span>
+                        </div>
+                     </div>
+                  </button>
+                </motion.div>
               ))}
+            </motion.div>
+          </section>
+
+          {/* 👔 Premium Care: Dry Wash & Laundry */}
+          <section className="mb-14">
+            <div className="flex justify-between items-end mb-6">
+              <div>
+                <h2 className="text-[9px] font-black text-[#38BDF8] uppercase tracking-[0.4em] mb-2">Campus Services</h2>
+                <p className="text-xl font-black text-white">PREMIUM DRY WASH</p>
+              </div>
+            </div>
+            <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-2 -mx-6 px-6">
+              {groupedCollections.laundry.length > 0 ? (
+                groupedCollections.laundry.map((item) => (
+                  <Link href={`/products/${item.id}`} key={item.id} className="relative shrink-0 w-[240px] group active:scale-95 transition-transform premium-tilt premium-card-hover rounded-[30px] animate-float">
+                     <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-[#38BDF8]/30 transition-colors">
+                         <SafeImage src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
+                     </div>
+                     <div className="mt-3">
+                        <h3 className="text-xs font-black text-white">{item.name}</h3>
+                        <div className="flex justify-between items-start mt-1 gap-2 min-w-0 overflow-hidden">
+                          <span className="text-[8px] font-bold text-secondary-text uppercase tracking-widest truncate min-w-0 flex-1" title={item.restaurantName}>{item.restaurantName}</span>
+                           <span className="text-[10px] font-black shrink-0 text-[#38BDF8]">₹{item.price}</span>
+                        </div>
+                     </div>
+                  </Link>
+                ))
+              ) : (
+                <div className="w-full flex flex-col items-center justify-center py-10 px-6 border border-white/5 rounded-[30px] bg-white/[0.02]">
+                   <span className="text-4xl mb-4 opacity-50">🧺</span>
+                   <p className="text-xs font-black text-secondary-text uppercase tracking-widest">No Active Laundry Services Today</p>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* 💊 Essential Pharmacy */}
+          <section className="mb-14">
+            <div className="flex justify-between items-end mb-6">
+              <div>
+                <h2 className="text-[9px] font-black text-red-400 uppercase tracking-[0.4em] mb-2">Health & Wellness</h2>
+                <p className="text-xl font-black text-white">CAMPUS PHARMACY</p>
+              </div>
+            </div>
+            <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-2 -mx-6 px-6">
+              {groupedCollections.pharmacy.length > 0 ? (
+                groupedCollections.pharmacy.map((item) => (
+                  <Link href={`/products/${item.id}`} key={item.id} className="relative shrink-0 w-[240px] group active:scale-95 transition-transform premium-card-hover rounded-[30px] animate-float">
+                     <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-red-500/30 transition-colors">
+                         <SafeImage src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
+                     </div>
+                     <div className="mt-3">
+                        <h3 className="text-xs font-black text-white">{item.name}</h3>
+                        <div className="flex justify-between items-start mt-1 gap-2 min-w-0 overflow-hidden">
+                          <span className="text-[8px] font-bold text-secondary-text uppercase tracking-widest truncate min-w-0 flex-1" title={item.restaurantName}>{item.restaurantName}</span>
+                           <span className="text-[10px] font-black shrink-0 text-red-400">₹{item.price}</span>
+                        </div>
+                     </div>
+                  </Link>
+                ))
+              ) : (
+                <div className="w-full flex flex-col items-center justify-center py-10 px-6 border border-white/5 rounded-[30px] bg-white/[0.02]">
+                   <span className="text-4xl mb-4 opacity-50">💊</span>
+                   <p className="text-xs font-black text-secondary-text uppercase tracking-widest">No Active Pharmacy Carts</p>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* 📚 Stationary & Printing */}
+          <section className="mb-14">
+            <div className="flex justify-between items-end mb-6">
+              <div>
+                <h2 className="text-[9px] font-black text-violet-400 uppercase tracking-[0.4em] mb-2">Academic Essentials</h2>
+                <p className="text-xl font-black text-white">STATIONARY HUB</p>
+              </div>
+            </div>
+            <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-2 -mx-6 px-6">
+              {groupedCollections.stationary.length > 0 ? (
+                groupedCollections.stationary.map((item) => (
+                  <Link href={`/products/${item.id}`} key={item.id} className="relative shrink-0 w-[240px] group active:scale-95 transition-transform premium-card-hover rounded-[30px] animate-float">
+                     <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-violet-500/30 transition-colors">
+                         <SafeImage src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
+                     </div>
+                     <div className="mt-3">
+                        <h3 className="text-xs font-black text-white">{item.name}</h3>
+                        <div className="flex justify-between items-start mt-1 gap-2 min-w-0 overflow-hidden">
+                          <span className="text-[8px] font-bold text-secondary-text uppercase tracking-widest truncate min-w-0 flex-1" title={item.restaurantName}>{item.restaurantName}</span>
+                           <span className="text-[10px] font-black shrink-0 text-violet-400">₹{item.price}</span>
+                        </div>
+                     </div>
+                  </Link>
+                ))
+              ) : (
+                <div className="w-full flex flex-col items-center justify-center py-10 px-6 border border-white/5 rounded-[30px] bg-white/[0.02]">
+                   <span className="text-4xl mb-4 opacity-50">📚</span>
+                   <p className="text-xs font-black text-secondary-text uppercase tracking-widest">No Active Stationary Shops</p>
+                </div>
+              )}
             </div>
           </section>
 
@@ -628,9 +835,9 @@ export default function Home() {
                    </div>
                    <div className="mt-3">
                       <h3 className="text-xs font-black text-white">{item.name}</h3>
-                      <div className="flex justify-between items-center mt-1">
-                         <span className="text-[8px] font-bold text-secondary-text uppercase tracking-widest">{item.restaurantName}</span>
-                         <span className="text-[10px] font-black text-cyan-400">₹{item.price}</span>
+                      <div className="flex justify-between items-start mt-1 gap-2 min-w-0 overflow-hidden">
+                          <span className="text-[8px] font-bold text-secondary-text uppercase tracking-widest truncate min-w-0 flex-1" title={item.restaurantName}>{item.restaurantName}</span>
+                         <span className="text-[10px] font-black shrink-0 text-cyan-400">₹{item.price}</span>
                       </div>
                    </div>
                 </Link>
@@ -654,9 +861,9 @@ export default function Home() {
                    </div>
                    <div className="mt-3">
                       <h3 className="text-xs font-black text-white">{item.name}</h3>
-                      <div className="flex justify-between items-center mt-1">
-                         <span className="text-[8px] font-bold text-secondary-text uppercase tracking-widest">{item.restaurantName}</span>
-                         <span className="text-[10px] font-black text-rose-400">₹{item.price}</span>
+                      <div className="flex justify-between items-start mt-1 gap-2 min-w-0 overflow-hidden">
+                          <span className="text-[8px] font-bold text-secondary-text uppercase tracking-widest truncate min-w-0 flex-1" title={item.restaurantName}>{item.restaurantName}</span>
+                         <span className="text-[10px] font-black shrink-0 text-rose-400">₹{item.price}</span>
                       </div>
                    </div>
                 </Link>
@@ -678,9 +885,9 @@ export default function Home() {
                    </div>
                    <div className="mt-3">
                       <h3 className="text-xs font-black text-white">{item.name}</h3>
-                      <div className="flex justify-between items-center mt-1">
-                         <span className="text-[8px] font-bold text-secondary-text uppercase tracking-widest">{item.restaurantName}</span>
-                         <span className="text-[10px] font-black text-[#A5B4FC]">₹{item.price}</span>
+                      <div className="flex justify-between items-start mt-1 gap-2 min-w-0 overflow-hidden">
+                          <span className="text-[8px] font-bold text-secondary-text uppercase tracking-widest truncate min-w-0 flex-1" title={item.restaurantName}>{item.restaurantName}</span>
+                         <span className="text-[10px] font-black shrink-0 text-[#A5B4FC]">₹{item.price}</span>
                       </div>
                    </div>
                 </Link>
@@ -702,9 +909,9 @@ export default function Home() {
                    </div>
                    <div className="mt-3">
                       <h3 className="text-xs font-black text-white">{item.name}</h3>
-                      <div className="flex justify-between items-center mt-1">
-                         <span className="text-[8px] font-bold text-secondary-text uppercase tracking-widest">{item.restaurantName}</span>
-                         <span className="text-[10px] font-black text-[#C9A84C]">₹{item.price}</span>
+                      <div className="flex justify-between items-start mt-1 gap-2 min-w-0 overflow-hidden">
+                          <span className="text-[8px] font-bold text-secondary-text uppercase tracking-widest truncate min-w-0 flex-1" title={item.restaurantName}>{item.restaurantName}</span>
+                         <span className="text-[10px] font-black shrink-0 text-[#C9A84C]">₹{item.price}</span>
                       </div>
                    </div>
                 </Link>
@@ -712,7 +919,13 @@ export default function Home() {
             </div>
           </section>
 
-          <div className="gold-line mb-8" />
+          <motion.div 
+            initial={{ scaleX: 0 }}
+            whileInView={{ scaleX: 1 }}
+            viewport={{ once: true }}
+            transition={{ duration: 1, ease: "easeInOut" }}
+            className="h-px bg-gradient-to-r from-transparent via-[#C9A84C]/30 to-transparent my-14 origin-left"
+          />
 
           {/* All Restaurants List */}
           <div className="flex gap-3 mb-8 overflow-x-auto scrollbar-hide py-2">
@@ -733,13 +946,33 @@ export default function Home() {
 
           <section className="pb-20">
             <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-secondary-text mb-6">Discover Nearby</h2>
-            <div className="space-y-4">
+            <motion.div 
+              initial="hidden"
+              whileInView="show"
+              viewport={{ once: true }}
+              variants={{
+                hidden: { opacity: 0 },
+                show: {
+                  opacity: 1,
+                  transition: { staggerChildren: 0.1 }
+                }
+              }}
+              className="space-y-4"
+            >
               {displayRestaurants.map((res, index) => (
-                <Link href={`/restaurants/${res._id}`} key={res._id}>
-                   <RestaurantCard name={res.name} rating={res.rating || "4.5"} time={res.time || "25-30 min"} imageUrl={res.imageUrl || "/assets/placeholder.png"} imagePosition={index % 2 === 0 ? 'left' : 'right'} />
-                </Link>
+                <motion.div
+                  key={res._id || res.id}
+                  variants={{
+                    hidden: { opacity: 0, y: 30 },
+                    show: { opacity: 1, y: 0 }
+                  }}
+                >
+                  <Link href={`/restaurants/${res._id || res.id}`}>
+                    <RestaurantCard name={res.name} rating={res.rating || "4.5"} time={res.time || "25-30 min"} imageUrl={res.imageUrl || "/assets/placeholder.png"} imagePosition={index % 2 === 0 ? 'left' : 'right'} />
+                  </Link>
+                </motion.div>
               ))}
-            </div>
+            </motion.div>
           </section>
         </div>
 

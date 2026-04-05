@@ -267,13 +267,16 @@ body {
 
 /* ─── Chef's Picks Carousel ─── */
 .chef-card {
-  min-width: 260px;
+  min-width: 240px;
+  max-width: 260px;
   border-radius: 28px;
-  overflow: hidden;
+  overflow: visible;
   position: relative;
   flex-shrink: 0;
   transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
   border: 1px solid var(--border-subtle);
+  padding: 12px;
+  padding-bottom: 8px;
 }
 
 .chef-card:hover {
@@ -340,14 +343,14 @@ body {
 .scrollbar-hide::-webkit-scrollbar { display: none; }
 .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
 
-/* ─── Page Transitions ─── */
+/* ─── Luxury Page Transitions ─── */
 @keyframes page-fade-in {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(30px) scale(0.98); filter: blur(12px); }
+  to { opacity: 1; transform: translateY(0) scale(1); filter: blur(0px); }
 }
 
 .animate-page {
-  animation: page-fade-in 0.6s cubic-bezier(0.23, 1, 0.32, 1) forwards;
+  animation: page-fade-in 1.2s cubic-bezier(0.19, 1, 0.22, 1) forwards;
 }
 
 /* ─── Tracking Timeline ─── */
@@ -608,4 +611,155 @@ body {
 @keyframes pulse-glow {
   0%, 100% { opacity: 0.3; transform: scale(1); }
   50% { opacity: 0.5; transform: scale(1.05); }
+}
+
+/* ─── Tracking Telemetry VFX ─── */
+@keyframes radar-ping {
+  0% { transform: scale(1); opacity: 0.8; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
+.animate-radar-ping {
+  animation: radar-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes edge-glow-pulse {
+  0%, 100% { box-shadow: inset 0 0 0px rgba(201,168,76,0); pointer-events: none; }
+  50% { box-shadow: inset 0 0 80px rgba(201,168,76,0.4); pointer-events: none; }
+}
+.animate-edge-glow {
+  animation: edge-glow-pulse 2s ease-in-out infinite;
+}
+
+/* ─── Ultra-Premium Particle System & Shimmer ─── */
+@keyframes float-up {
+  0% { transform: translateY(100vh) translateX(0) scale(0); opacity: 0; }
+  10% { opacity: 1; transform: translateY(80vh) translateX(-10px) scale(1.2); }
+  90% { opacity: 0.8; transform: translateY(10vh) translateX(10px) scale(0.8); }
+  100% { transform: translateY(-10vh) translateX(-20px) scale(0); opacity: 0; }
+}
+
+.premium-card-hover {
+  position: relative;
+  overflow: hidden;
+}
+.premium-card-hover::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  background: linear-gradient(115deg, transparent 40%, rgba(201,168,76,0.3) 50%, transparent 60%);
+  background-size: 200% 100%;
+  z-index: 10;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.premium-card-hover:hover::before {
+  opacity: 1;
+  animation: shimmer 1.5s infinite linear;
+}
+
+/* ─── Continuous Motion Typography & Zero-G Floats ─── */
+@keyframes float {
+  0%, 100% { transform: translateY(0px) scale(1); }
+  50% { transform: translateY(-6px) scale(1.01); }
+}
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+.animate-float-delayed {
+  animation: float 7s ease-in-out infinite 1.5s;
+}
+.animate-float-slow {
+  animation: float 8s ease-in-out infinite 3s;
+}
+
+@keyframes text-shimmer-continuous {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+.animate-text-shimmer {
+  background-size: 200% auto;
+  animation: text-shimmer-continuous 4s linear infinite;
+}
+
+/* ─── Meteor Shower VFX ─── */
+@keyframes meteor {
+  0% { transform: rotate(215deg) translateX(0); opacity: 1; }
+  70% { opacity: 1; }
+  100% { transform: rotate(215deg) translateX(-800px); opacity: 0; }
+}
+.animate-meteor {
+  animation: meteor 5s linear infinite;
+}
+/* ─── Premium 3D Tilt Effects ─── */
+.premium-tilt {
+  transition: transform 0.3s ease-out;
+  transform-style: preserve-3d;
+  perspective: 1000px;
+}
+
+.premium-tilt:hover {
+  transform: translateY(-8px) rotateX(4deg) rotateY(2deg);
+}
+
+.premium-tilt:active {
+  transform: scale(0.98);
+}
+
+/* ─── Stardust Search Bar ─── */
+.stardust-search {
+  position: relative;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.stardust-search:focus-within {
+  border-color: rgba(201, 168, 76, 0.5);
+  box-shadow: 0 0 30px rgba(201, 168, 76, 0.2);
+  transform: scale(1.02);
+}
+
+.stardust-search::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(201, 168, 76, 0.1),
+    transparent
+  );
+  animation: stardust-sweep 4s infinite;
+}
+
+@keyframes stardust-sweep {
+  0% { left: -100%; }
+  100% { left: 200%; }
+}
+
+/* ─── Dynamic Pulse ─── */
+.status-pulse {
+  animation: soft-pulse 2s infinite ease-in-out;
+}
+
+@keyframes soft-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.05); }
+}
+
+/* ─── Google Maps Dev Overlay Suppression ─── */
+.gm-err-container,
+.gm-err-content,
+.gm-err-title,
+.dismissButton {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
