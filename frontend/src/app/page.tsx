@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import RestaurantCard from '@/components/RestaurantCard';
@@ -61,11 +61,9 @@ export default function Home() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [userName, setUserName] = useState('');
   const [greeting, setGreeting] = useState('');
-  const [isAfter9, setIsAfter9] = useState(false);
-  const [isAfter930, setIsAfter930] = useState(false);
+  const [isAfter9] = useState(false);
   const [showIntro, setShowIntro] = useState<boolean | null>(null);
   const [user, setUser] = useState<User | null>(null);
-  const [timeLeft, setTimeLeft] = useState<string>('');
   const [isElite, setIsElite] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedRental, setSelectedRental] = useState<RentalItem | null>(null);
@@ -100,46 +98,19 @@ export default function Home() {
     setModalConfig({ isOpen: true, title, message, type, onConfirm, confirmLabel, cancelLabel });
   };
   
-  const getNextAvailableSlot = useCallback(() => {
-    const campusSlots = [
-      { id: '1:00 PM', hour: 13, min: 0 },
-      { id: '5:00 PM', hour: 17, min: 0 },
-      { id: '7:30 PM', hour: 19, min: 30 },
-      { id: '8:50 PM', hour: 20, min: 50 },
-      { id: '9:30 PM', hour: 21, min: 30 },
-      { id: 'TESTING SLOT', hour: 23, min: 59 }
-    ];
-    const now = new Date();
-    return campusSlots.find(slot => {
-      const slotDate = new Date();
-      slotDate.setHours(slot.hour, slot.min, 0, 0);
-      return (slotDate.getTime() - now.getTime()) / (1000 * 60) >= 150;
-    });
-  }, []);
-
-  const nextSlot = getNextAvailableSlot();
+  const CITY_CATEGORIES = [
+    { emoji: '🍛', label: 'Biryani' },
+    { emoji: '🍕', label: 'Pizza' },
+    { emoji: '🥗', label: 'South Indian' },
+    { emoji: '🍔', label: 'Burgers' },
+    { emoji: '🧁', label: 'Sweets' },
+    { emoji: '🥤', label: 'Drinks' },
+    { emoji: '🍜', label: 'Chinese' },
+    { emoji: '🥙', label: 'Rolls' },
+  ];
+  const [activeCategory, setActiveCategory] = useState<string>('');
 
   useEffect(() => {
-    const checkTime = () => {
-      const now = new Date();
-      setIsAfter9(false); // Override for testing
-      setIsAfter930(false); // Override for testing
-
-      // Countdown Timer Logic
-      const next = getNextAvailableSlot();
-      if (next) {
-        const target = new Date();
-        target.setHours(next.hour, next.min, 0, 0);
-        const diff = target.getTime() - now.getTime();
-        const m = Math.floor(diff / (1000 * 60));
-        const s = Math.floor((diff / 1000) % 60);
-        setTimeLeft(`${Math.floor(m / 60)}h ${m % 60}m ${s < 10 ? '0' : ''}${s}s`);
-      }
-    };
-
-    checkTime();
-    const interval = setInterval(checkTime, 60000); // Check every minute
-
     // Check if user has seen the cinematic intro this session
     const hasSeenIntro = sessionStorage.getItem('zenvy_intro_seen');
     setShowIntro(!hasSeenIntro);
@@ -202,10 +173,9 @@ export default function Home() {
     const loader = setTimeout(() => setIsLoading(false), 2000);
 
     return () => {
-      clearInterval(interval);
       clearTimeout(loader);
     };
-  }, [getNextAvailableSlot]);
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -384,35 +354,23 @@ export default function Home() {
           <div className={`absolute top-1/3 -left-32 w-80 h-80 rounded-full blur-[100px] transition-colors duration-1000 ${isAfter9 ? 'bg-[#C9A84C]/[0.05]' : 'bg-[#C9A84C]/[0.03]'}`} />
         </div>
 
-        {/* 🚨 Last Call Banner (9:00 PM - 9:30 PM) */}
-        {isAfter9 && !isAfter930 && (
-          <div className="bg-gradient-to-r from-red-600 to-orange-600 text-white text-[10px] font-black uppercase tracking-[0.2em] py-3 px-6 text-center animate-pulse sticky top-0 z-[100] shadow-2xl">
-            ⚠️ Last Call for Doorstep Delivery! Gates close at 21:30.
-          </div>
-        )}
-
-        {/* 🚦 Gate-Drop Mode Indicator (After 9:30 PM) */}
-        {isAfter930 && (
-          <div className="bg-[#1A1A1C] border-b border-white/[0.05] text-[#C9A84C] text-[9px] font-black uppercase tracking-[0.3em] py-3 px-6 text-center sticky top-0 z-[100]">
-            🌑 Night Mode: Hostel Gate-Drop Only
-          </div>
-        )}
 
         <div className="w-full relative z-10 px-6 pt-14 md:px-10 lg:px-14">
+          {/* City Brand Header */}
           <motion.header 
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, ease: "easeOut" }}
-            className="mb-8"
+            className="mb-6"
           >
-            <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#C9A84C] to-[#8B7332] flex items-center justify-center shadow-lg shadow-[#C9A84C]/20">
                   <span className="text-[13px] font-black text-black">Z</span>
                 </div>
                 <div>
                   <span className="text-[11px] font-black uppercase tracking-[0.3em] text-gold-gradient block leading-none">Zenvy</span>
-                  <span className="text-[7px] font-bold uppercase tracking-[0.4em] text-secondary-text block mt-0.5">Campus Super-App</span>
+                  <span className="text-[7px] font-bold uppercase tracking-[0.4em] text-secondary-text block mt-0.5">Amaravathi, AP 📍</span>
                 </div>
               </div>
               <div className="flex items-center gap-3">
@@ -437,27 +395,15 @@ export default function Home() {
                     <span className="bg-[#C9A84C]/10 text-[#C9A84C] text-[8px] font-black px-2 py-0.5 rounded-full border border-[#C9A84C]/20 tracking-tighter shadow-[0_0_10px_rgba(201,168,76,0.1)]">ELITE</span>
                   )}
                 </div>
-                {nextSlot && (
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className="live-dot" />
-                    <span className="text-[10px] font-black shrink-0 text-white/50">{timeLeft} until batch closes</span>
-                  </div>
-                )}
               </div>
-              {nextSlot ? (
-                <p className="text-[9px] font-black text-primary-yellow uppercase tracking-widest bg-primary-yellow/10 px-3 py-1.5 rounded-full">Next Batch: {nextSlot.id}</p>
-              ) : (
-                <p className="text-[8px] font-black text-red-500 uppercase tracking-widest bg-red-500/10 px-3 py-1.5 rounded-full italic">Windows Closed Today</p>
-              )}
+              <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest bg-emerald-500/10 px-3 py-1.5 rounded-full">Live Delivery ✓</p>
             </div>
             <h1 className="discover-header">
               Discover <br /> What You <br /> <span className="bg-gradient-to-r from-[#C9A84C] via-[#E8D18C] to-[#8B7332] text-transparent bg-clip-text animate-text-shimmer" style={{WebkitTextFillColor: 'transparent'}}>Crave</span>
             </h1>
-
-            {/* Campus Status Beacon */}
             <div className="mt-4 flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-emerald-500 status-pulse shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
-              <span className="text-[8px] font-black text-secondary-text uppercase tracking-widest opacity-60">Nexus Network Online</span>
+              <span className="text-[8px] font-black text-secondary-text uppercase tracking-widest opacity-60">Delivering across Amaravathi</span>
             </div>
           </motion.header>
 
@@ -465,15 +411,33 @@ export default function Home() {
 
            <motion.div 
             whileTap={{ scale: 0.98 }}
-            className="relative mb-8" 
+            className="relative mb-6" 
             onClick={() => setIsSearchOpen(true)}
            >
             <Magnetic>
               <div className="w-full stardust-search py-4 pl-14 pr-4 text-xs text-white font-black uppercase tracking-widest cursor-pointer rounded-2xl group">
-                 <span className="opacity-40 group-hover:opacity-100 transition-opacity">Search Campus Nexus...</span>
+                 <span className="opacity-40 group-hover:opacity-100 transition-opacity">Search restaurants &amp; dishes in Amaravathi...</span>
               </div>
             </Magnetic>
           </motion.div>
+
+          {/* City Category Chips */}
+          <div className="flex gap-3 overflow-x-auto scrollbar-hide mb-8 pb-1 -mx-6 px-6">
+            {CITY_CATEGORIES.map(cat => (
+              <button
+                key={cat.label}
+                onClick={() => setActiveCategory(prev => prev === cat.label ? '' : cat.label)}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-[11px] font-black whitespace-nowrap border transition-all ${
+                  activeCategory === cat.label
+                    ? 'bg-primary-yellow text-black border-primary-yellow shadow-lg shadow-primary-yellow/20'
+                    : 'bg-white/5 border-white/10 text-secondary-text hover:border-white/20 hover:text-white'
+                }`}
+              >
+                <span>{cat.emoji}</span>
+                <span>{cat.label}</span>
+              </button>
+            ))}
+          </div>
 
           {/* 🌀 Magical Temporal Navigator */}
           <section className="mb-10 animate-slide-up">

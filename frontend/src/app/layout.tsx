@@ -14,8 +14,8 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Zenvy — Food Delivery",
-  description: "Premium food delivery for your campus.",
+  title: "Zenvy — Food Delivery in Amaravathi",
+  description: "Order food from the best restaurants in Amaravathi. Fast delivery, easy tracking, premium experience.",
 };
 
 import { CartProvider } from '@/context/CartContext';
