@@ -76,18 +76,16 @@ const RestaurantCard = ({ name, rating, time, imageUrl, imagePosition }: Restaur
         <h3 className="font-black text-[15px] leading-tight mb-2 text-white line-clamp-2">{name}</h3>
         
         <div className={`flex items-center gap-3 ${imagePosition === 'right' ? 'justify-end' : 'justify-start'}`}>
-           <div className="flex text-[9px] gap-0.5">
-             {[...Array(5)].map((_, i) => (
-                <span key={i} className={i < Math.floor(parseFloat(rating)) ? 'text-primary-yellow' : 'text-white/10'}>★</span>
-             ))}
-           </div>
-           <span className="text-[10px] text-white/20 font-black">•</span>
-           <div className="flex items-center gap-1.5 text-secondary-text text-[9px] font-black uppercase tracking-widest">
-             <svg className="w-3.5 h-3.5 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-             </svg>
-              {time} Batch
-           </div>
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20">
+              <span className="text-[9px] font-black text-emerald-500">{rating} ★</span>
+            </div>
+            <span className="text-[10px] text-white/20 font-black">•</span>
+            <div className="flex items-center gap-1.5 text-secondary-text text-[9px] font-black uppercase tracking-widest">
+              <svg className="w-3.5 h-3.5 opacity-40 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+               {time}
+            </div>
         </div>
       </div>
     </motion.div>
