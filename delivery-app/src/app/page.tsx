@@ -25,6 +25,7 @@ interface Order {
 
 interface Driver {
   _id: string;
+  id?: string;
   name: string;
   token: string;
   zenPoints?: number;
