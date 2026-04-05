@@ -70,6 +70,13 @@ const createOrder = async (req, res) => {
     }
 
     const io = req.app.get('io');
+    // ── Surge Pricing: record new order and check window ──────
+    const { orderTimestamps: surgeTs, checkSurgeState } = require('../server');
+    if (surgeTs && checkSurgeState) {
+      surgeTs.push(Date.now());
+      checkSurgeState(io);
+    }
+
     let restaurantName = 'Restaurant';
     try {
       const Restaurant = getRestaurantModel();

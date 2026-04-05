@@ -21,7 +21,9 @@ interface Props {
 export default function ChatDrawer({ orderId, userName, userRole, socket, isOpen, onClose }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
+  const [remoteTyping, setRemoteTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!socket || !orderId) return;
@@ -31,10 +33,20 @@ export default function ChatDrawer({ orderId, userName, userRole, socket, isOpen
     };
 
     socket.on('receiveMessage', handleMessage);
+
+    socket.on('typing_start', (data: { sender: string }) => {
+      if (data.sender !== userName) setRemoteTyping(true);
+    });
+    socket.on('typing_end', (data: { sender: string }) => {
+      if (data.sender !== userName) setRemoteTyping(false);
+    });
+
     return () => {
       socket.off('receiveMessage', handleMessage);
+      socket.off('typing_start');
+      socket.off('typing_end');
     };
-  }, [socket, orderId]);
+  }, [socket, orderId, userName]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -42,16 +54,25 @@ export default function ChatDrawer({ orderId, userName, userRole, socket, isOpen
 
   const handleSendMessage = () => {
     if (!inputValue.trim() || !socket || !orderId) return;
-
     const messageData = {
       orderId,
       sender: userName,
       senderRole: userRole,
       message: inputValue.trim()
     };
-
     socket.emit('sendMessage', messageData);
+    socket.emit('typing_end', { orderId, sender: userName });
     setInputValue('');
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInputValue(e.target.value);
+    if (!socket || !orderId) return;
+    socket.emit('typing_start', { orderId, sender: userName });
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      socket.emit('typing_end', { orderId, sender: userName });
+    }, 1500);
   };
 
   if (!isOpen) return null;
@@ -96,6 +117,16 @@ export default function ChatDrawer({ orderId, userName, userRole, socket, isOpen
               </div>
             );
           })}
+          {/* Typing Indicator */}
+          {remoteTyping && (
+            <div className="flex justify-start">
+              <div className="bg-white/10 border border-white/5 px-5 py-3 rounded-2xl rounded-tl-none flex items-center gap-1.5">
+                <span className="w-2 h-2 bg-emerald-400 rounded-full animate-bounce [animation-delay:0ms]"/>
+                <span className="w-2 h-2 bg-emerald-400 rounded-full animate-bounce [animation-delay:150ms]"/>
+                <span className="w-2 h-2 bg-emerald-400 rounded-full animate-bounce [animation-delay:300ms]"/>
+              </div>
+            </div>
+          )}
           <div ref={messagesEndRef} />
         </div>
 
@@ -105,7 +136,7 @@ export default function ChatDrawer({ orderId, userName, userRole, socket, isOpen
             <input
               type="text"
               value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
+              onChange={handleInputChange}
               onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
               placeholder="Type a message..."
               className="flex-1 px-5 py-4 bg-white/5 border border-white/10 rounded-2xl text-white outline-none focus:border-emerald-500/50 transition-all text-sm"

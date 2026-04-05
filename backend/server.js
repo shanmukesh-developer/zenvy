@@ -27,6 +27,28 @@ function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
 
 const notifiedGateOrders = new Set();
 
+// ─── Surge Pricing Engine ──────────────────────────────────────
+const SURGE_WINDOW_MS = 2 * 60 * 1000;   // 2 minute window
+const SURGE_THRESHOLD = 4;               // >4 orders triggers surge
+const SURGE_MULTIPLIER = 1.25;           // 25% surge fee
+let orderTimestamps = [];                // rolling window of timestamps
+let surgeActive = false;
+
+function checkSurgeState(io) {
+  const now = Date.now();
+  orderTimestamps = orderTimestamps.filter(t => now - t < SURGE_WINDOW_MS);
+  const count = orderTimestamps.length;
+  if (!surgeActive && count >= SURGE_THRESHOLD) {
+    surgeActive = true;
+    io.emit('surge_active', { multiplier: SURGE_MULTIPLIER, orderCount: count });
+    log(`[SURGE] Activated — ${count} orders in last 2 mins`);
+  } else if (surgeActive && count < SURGE_THRESHOLD) {
+    surgeActive = false;
+    io.emit('surge_ended');
+    log('[SURGE] Deactivated');
+  }
+}
+
 // Load environment variables
 dotenv.config();
 
@@ -103,7 +125,15 @@ const startServer = async () => {
         log(`[INVENTORY] Item ${data.itemId} is now ${data.isAvailable ? 'available' : 'SOLD OUT'}`);
         io.emit('inventory_updated', data);
       });
-      
+
+      socket.on('typing_start', (data) => {
+        socket.to(String(data.orderId)).emit('typing_start', { sender: data.sender });
+      });
+
+      socket.on('typing_end', (data) => {
+        socket.to(String(data.orderId)).emit('typing_end', { sender: data.sender });
+      });
+
       socket.on('disconnect', () => {
         console.log(`[SOCKET DISCONNECT] ${socket.id}`);
       });
@@ -122,3 +152,5 @@ const startServer = async () => {
 };
 
 startServer();
+
+module.exports = { orderTimestamps, checkSurgeState };
