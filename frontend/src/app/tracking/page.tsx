@@ -7,8 +7,8 @@ import { APIProvider, Map, AdvancedMarker, useMap, useMapsLibrary } from '@vis.g
 import DeliverySuccessOverlay from '@/components/DeliverySuccessOverlay';
 import RatingModal from '@/components/RatingModal';
 
-const RESTAURANT_COORD = { lat: 16.4674, lng: 80.5042 }; // Neerukonda Village / Campus Boundary
-const HOME_COORD = { lat: 16.4632, lng: 80.5064 }; // SRMAP University Central
+const RESTAURANT_COORD = { lat: 16.5731, lng: 80.3576 }; // Amaravathi area default
+const HOME_COORD = { lat: 16.5152, lng: 80.5159 };       // Vijayawada / central AP
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
 import { socket } from '@/utils/socket';
@@ -290,7 +290,7 @@ function TrackingContent() {
                          <span className="bg-emerald-500/10 text-emerald-500 text-[6px] font-black px-1.5 py-0.5 rounded border border-emerald-500/20">VERIFIED</span>
                        </div>
                        <h3 className="text-sm font-black text-white">Captain Aryan • 4.9⭐</h3>
-                       <p className="text-[7px] font-bold text-secondary-text uppercase tracking-widest mt-0.5 whitespace-nowrap">SRM Eco-Cycle #72</p>
+                       <p className="text-[7px] font-bold text-secondary-text uppercase tracking-widest mt-0.5 whitespace-nowrap">Zenvy Rider #72</p>
                     </div>
                     <div className="text-right">
                        <p className="text-[8px] font-black text-secondary-text uppercase mb-1">Live Speed</p>

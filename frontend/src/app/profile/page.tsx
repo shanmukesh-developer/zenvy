@@ -9,8 +9,8 @@ interface ProfileUser {
   _id?: string;
   name: string;
   phone: string;
-  hostelBlock: string;
-  roomNumber: string;
+  address?: string;
+  city?: string;
   isElite?: boolean;
   totalOrders?: number;
   walletBalance?: number;
@@ -20,7 +20,7 @@ export default function ProfilePage() {
   const [user, setUser] = useState<ProfileUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
-  const [editData, setEditData] = useState({ name: '', hostelBlock: '', roomNumber: '' });
+  const [editData, setEditData] = useState({ name: '', address: '', city: 'Amaravathi' });
   const [overlay, setOverlay] = useState<{ isOpen: boolean; title: string; message: string; type?: 'success' | 'error' }>({
     isOpen: false,
     title: '',
@@ -43,7 +43,7 @@ export default function ProfilePage() {
       if (response.ok) {
         const data = await response.json();
         setUser(data);
-        setEditData({ name: data.name, hostelBlock: data.hostelBlock || '', roomNumber: data.roomNumber || '' });
+        setEditData({ name: data.name, address: data.address || '', city: data.city || 'Amaravathi' });
       } else {
         // Fallback: use localStorage user data instead of hard-redirecting to login
         // This handles dev mock tokens and cases where the user session is partially valid
@@ -54,16 +54,16 @@ export default function ProfilePage() {
             const fallbackUser: ProfileUser = {
               id: parsed._id || parsed.id || '',
               _id: parsed._id || parsed.id,
-              name: parsed.name || 'Student',
+              name: parsed.name || 'Customer',
               phone: parsed.phone || '0000000000',
-              hostelBlock: parsed.hostelBlock || 'Not Set',
-              roomNumber: parsed.roomNumber || 'N/A',
+              address: parsed.address || '',
+              city: parsed.city || 'Amaravathi',
               isElite: parsed.isElite || false,
               totalOrders: parsed.totalOrders || 0,
               walletBalance: parsed.walletBalance || 0,
             };
             setUser(fallbackUser);
-            setEditData({ name: fallbackUser.name, hostelBlock: fallbackUser.hostelBlock, roomNumber: fallbackUser.roomNumber });
+            setEditData({ name: fallbackUser.name, address: fallbackUser.address || '', city: fallbackUser.city || 'Amaravathi' });
           } catch {
             localStorage.removeItem('token');
             window.location.href = '/login';
@@ -82,16 +82,16 @@ export default function ProfilePage() {
           const fallbackUser: ProfileUser = {
             id: parsed._id || parsed.id || '',
             _id: parsed._id || parsed.id,
-            name: parsed.name || 'Student',
+            name: parsed.name || 'Customer',
             phone: parsed.phone || '0000000000',
-            hostelBlock: parsed.hostelBlock || 'Not Set',
-            roomNumber: parsed.roomNumber || 'N/A',
+            address: parsed.address || '',
+            city: parsed.city || 'Amaravathi',
             isElite: parsed.isElite || false,
             totalOrders: parsed.totalOrders || 0,
             walletBalance: parsed.walletBalance || 0,
           };
           setUser(fallbackUser);
-          setEditData({ name: fallbackUser.name, hostelBlock: fallbackUser.hostelBlock, roomNumber: fallbackUser.roomNumber });
+          setEditData({ name: fallbackUser.name, address: fallbackUser.address || '', city: fallbackUser.city || 'Amaravathi' });
         } catch {
           console.error('Failed to fetch profile');
         }
@@ -226,7 +226,7 @@ export default function ProfilePage() {
           
           <div className="mb-8">
             <h2 className="text-3xl font-black mb-1">{user?.name}</h2>
-            <p className="text-[10px] text-primary-yellow font-bold uppercase tracking-[0.4em]">SRM AP • {user?.hostelBlock} {user?.roomNumber}</p>
+            <p className="text-[10px] text-primary-yellow font-bold uppercase tracking-[0.4em]">Zenvy • {user?.city || 'Amaravathi'}</p>
           </div>
 
           <div className="flex justify-between items-center bg-black/40 backdrop-blur-md p-4 rounded-2xl border border-white/5">
@@ -263,10 +263,10 @@ export default function ProfilePage() {
             <div className="h-[1px] bg-white/5 w-full" />
             <div className="flex items-center justify-between">
                <div>
-                  <p className="text-[8px] text-secondary-text font-bold uppercase tracking-widest mb-1">Hostel Delivery Point</p>
-                  <p className="text-sm font-black text-white">{user?.hostelBlock || 'Not Set'} • Room {user?.roomNumber || 'N/A'}</p>
+                  <p className="text-[8px] text-secondary-text font-bold uppercase tracking-widest mb-1">Delivery Address</p>
+                  <p className="text-sm font-black text-white">{user?.address || 'Not set — add your address'}</p>
                </div>
-               <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center opacity-40 text-xs">🏠</div>
+               <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center opacity-40 text-xs">📍</div>
             </div>
          </div>
 
@@ -310,25 +310,25 @@ export default function ProfilePage() {
                   className="w-full bg-white/5 border border-white/10 rounded-2xl h-14 px-6 font-bold outline-none"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-[9px] font-bold text-secondary-text uppercase tracking-widest ml-4">Block</label>
-                  <input 
-                    type="text"
-                    value={editData.hostelBlock}
-                    onChange={(e) => setEditData({ ...editData, hostelBlock: e.target.value })}
-                    className="w-full bg-white/5 border border-white/10 rounded-2xl h-14 px-6 font-bold outline-none"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[9px] font-bold text-secondary-text uppercase tracking-widest ml-4">Room</label>
-                  <input 
-                    type="text"
-                    value={editData.roomNumber}
-                    onChange={(e) => setEditData({ ...editData, roomNumber: e.target.value })}
-                    className="w-full bg-white/5 border border-white/10 rounded-2xl h-14 px-6 font-bold outline-none"
-                  />
-                </div>
+              <div className="space-y-2">
+                <label className="text-[9px] font-bold text-secondary-text uppercase tracking-widest ml-4">Delivery Address</label>
+                <input 
+                  type="text"
+                  value={editData.address}
+                  onChange={(e) => setEditData({ ...editData, address: e.target.value })}
+                  placeholder="Street, area, city..."
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl h-14 px-6 font-bold outline-none"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[9px] font-bold text-secondary-text uppercase tracking-widest ml-4">City</label>
+                <input 
+                  type="text"
+                  value={editData.city}
+                  onChange={(e) => setEditData({ ...editData, city: e.target.value })}
+                  placeholder="Amaravathi"
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl h-14 px-6 font-bold outline-none"
+                />
               </div>
             </div>
             <div className="flex gap-4 pt-4">

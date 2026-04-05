@@ -8,40 +8,14 @@ const { updateStreak } = require('../middleware/rewardEngine');
 // @desc    Create a new order
 // @route   POST /api/orders
 const createOrder = async (req, res) => {
-  const { restaurantId, items, totalPrice, deliveryFee, deliverySlot, hostelGateDelivery } = req.body;
+  const { restaurantId, items, totalPrice, deliveryFee, deliverySlot, deliveryAddress } = req.body;
 
   if (!items || items.length === 0) {
     return res.status(400).json({ message: 'No order items' });
   }
 
   try {
-    const now = new Date();
-    const campusSlots = [
-      { id: '1:00 PM', time: 1300 },
-      { id: '5:00 PM', time: 1700 },
-      { id: '7:30 PM', time: 1930 },
-      { id: '8:50 PM', time: 2050 },
-      { id: '9:30 PM', time: 2130 }
-    ];
-
-    // if (!deliverySlot || deliverySlot === 'IMMEDIATE') {
-    //   return res.status(403).json({ message: 'Immediate delivery is disabled. Please select a scheduled campus delivery slot.' });
-    // }
-
-    const matchedSlot = campusSlots.find(s => s.id === deliverySlot);
-    if (!matchedSlot) {
-      return res.status(400).json({ message: 'Invalid delivery slot.' });
-    }
-
-    const slotTimeHours = Math.floor(matchedSlot.time / 100);
-    const slotTimeMins = matchedSlot.time % 100;
-    const slotDate = new Date(now);
-    slotDate.setHours(slotTimeHours, slotTimeMins, 0, 0);
-    const leadTimeMins = (slotDate.getTime() - now.getTime()) / (1000 * 60);
-    if (leadTimeMins < 60) {
-      return res.status(403).json({ message: `Orders for ${deliverySlot} must be placed at least 1 hour in advance.` });
-    }
-
+    // ── On-Demand & Scheduled Delivery (city-wide) ──────────
     const finalPrice = totalPrice + deliveryFee;
     const Order = getOrderModel();
     const createdOrder = await Order.create({
@@ -53,8 +27,9 @@ const createOrder = async (req, res) => {
       batchDiscount: 0,
       gateDiscount: 0,
       finalPrice,
-      deliverySlot,
-      hostelGateDelivery
+      deliverySlot: deliverySlot || 'ASAP',
+      deliveryAddress: deliveryAddress || '',
+      hostelGateDelivery: false
     });
 
     try {
