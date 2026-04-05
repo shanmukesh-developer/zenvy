@@ -4,6 +4,7 @@ import { Outfit } from "next/font/google";
 import "./globals.css";
 import PushNotificationManager from '@/components/PushNotificationManager';
 import NetworkStatus from '@/components/NetworkStatus';
+import SOSAlertModal from '@/components/SOSAlertModal';
 
 const outfit = Outfit({ subsets: ["latin"] });
 
@@ -27,6 +28,7 @@ export default function RootLayout({
           }
         ` }} />
         <PushNotificationManager />
+        <SOSAlertModal />
         
         {/* Cinematic Backdrop */}
         <div className="fixed inset-0 pointer-events-none z-0">

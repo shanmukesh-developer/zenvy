@@ -893,7 +893,16 @@ function Dashboard({ driver, onLogout }: { driver: Driver; onLogout: () => void 
       {/* Floating SOS Button */}
       {isOnline && (
          <button 
-           onClick={() => alert("🚨 SOS TRIGGERED\nAdmin and Campus Security have been immediately notified of your location. Stay safe.")}
+           onClick={() => {
+             if(globalSocket) {
+               globalSocket.emit('sos_alert', { 
+                 riderId: driver._id || driver.id, 
+                 riderName: driver.name, 
+                 timestamp: new Date().toISOString() 
+               });
+               alert("🚨 SOS SIGNAL DISPATCHED!\nAdmin and Security have received your exact trace signature.");
+             }
+           }}
            className="fixed bottom-36 right-6 w-14 h-14 bg-red-600 rounded-full flex items-center justify-center text-2xl shadow-[0_0_30px_rgba(220,38,38,0.4)] border-2 border-red-400/50 hover:bg-red-500 hover:scale-105 transition-all z-50 animate-bounce"
          >
            🆘

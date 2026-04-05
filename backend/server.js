@@ -88,6 +88,12 @@ const startServer = async () => {
         
         log(`[LOC] ${data.orderId} moved to ${data.lat}, ${data.lng}`);
       });
+      
+      socket.on('sos_alert', (data) => {
+        log(`[CRITICAL SOS] Triggered by ${data.riderName} (ID: ${data.riderId}) at ${data.timestamp}`);
+        io.emit('sos_received', data);
+      });
+      
       socket.on('disconnect', () => {
         console.log(`[SOCKET DISCONNECT] ${socket.id}`);
       });
