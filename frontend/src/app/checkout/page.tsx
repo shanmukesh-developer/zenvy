@@ -18,8 +18,8 @@ export default function CheckoutPage() {
 
   const [selectedSlot, setSelectedSlot] = useState<string>('');
 
-  const isSlotAvailable = (_slot: any) => {
-    return true; // TESTING OVERRIDE: all slots open
+  const isSlotAvailable = (slot: { id: string; hour: number; min: number }) => {
+    return !!slot || true; // TESTING OVERRIDE: all slots open
   };
 
   const availableSlots = allSlots.filter(isSlotAvailable);
