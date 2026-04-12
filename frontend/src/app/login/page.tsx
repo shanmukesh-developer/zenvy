@@ -1,9 +1,11 @@
 "use client";
 import Link from 'next/link';
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import SuccessOverlay from '@/components/SuccessOverlay';
 
 export default function LoginPage() {
+  const router = useRouter();
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [overlay, setOverlay] = useState<{ isOpen: boolean; title: string; message: string; type?: 'success' | 'error' }>({
@@ -31,7 +33,7 @@ export default function LoginPage() {
     });
 
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
       const response = await fetch(`${API_URL}/api/users/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -51,7 +53,7 @@ export default function LoginPage() {
         }));
         
         setTimeout(() => {
-          window.location.href = '/';
+          router.push('/');
         }, 2000);
       } else {
         setOverlay({

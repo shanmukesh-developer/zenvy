@@ -1,4 +1,5 @@
 const { DataTypes } = require('sequelize');
+const bcrypt = require('bcryptjs');
 
 let Restaurant;
 
@@ -9,16 +10,32 @@ const initRestaurantModel = (sequelize) => {
     id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
     name: { type: DataTypes.STRING, allowNull: false },
     location: { type: DataTypes.STRING, allowNull: false },
+    lat: { type: DataTypes.FLOAT },
+    lon: { type: DataTypes.FLOAT },
+    zone: { type: DataTypes.STRING, defaultValue: 'Amaravathi_Central' },
     imageUrl: { type: DataTypes.STRING },
     vendorType: { type: DataTypes.STRING, defaultValue: 'RESTAURANT' },
     rating: { type: DataTypes.FLOAT, defaultValue: 0 },
     deliveryTime: { type: DataTypes.INTEGER },
     commissionRate: { type: DataTypes.FLOAT, defaultValue: 10 },
-    commissionType: { type: DataTypes.ENUM('percentage', 'flat'), defaultValue: 'percentage' },
+    commissionType: { type: DataTypes.STRING, defaultValue: 'percentage' },
     tags: { type: DataTypes.JSON, defaultValue: [] },
     operatingHours: { type: DataTypes.JSON, defaultValue: { start: '09:00', end: '22:00' } },
-    isActive: { type: DataTypes.BOOLEAN, defaultValue: true }
+    isActive: { type: DataTypes.BOOLEAN, defaultValue: true },
+    isOffline: { type: DataTypes.BOOLEAN, defaultValue: false }, // For shops without a smartphone
+    password: { type: DataTypes.STRING, allowNull: true } // For restaurant portal login
   }, { timestamps: true });
+
+  Restaurant.beforeCreate(async (restaurant) => {
+    if (restaurant.password) {
+      restaurant.password = await bcrypt.hash(restaurant.password, 10);
+    }
+  });
+
+  Restaurant.prototype.comparePassword = async function(candidatePassword) {
+    if (!this.password) return false;
+    return await bcrypt.compare(candidatePassword, this.password);
+  };
 
   return Restaurant;
 };

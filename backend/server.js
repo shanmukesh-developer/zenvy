@@ -1,16 +1,19 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const dotenv = require('dotenv');
 const http = require('http');
 const { Server } = require('socket.io');
 const { connectDB, getSequelize } = require('./config/db');
 const fs = require('fs');
 const path = require('path');
+const multer = require('multer');
 
 const logFile = path.join(__dirname, 'socket_debug.txt');
 const log = (msg) => {
-  const line = `[${new Date().toISOString()}] ${msg}\n`;
-  fs.appendFileSync(logFile, line);
+  try {
+    const line = `[${new Date().toISOString()}] ${msg}\n`;
+    fs.appendFileSync(logFile, line);
+  } catch (_) { /* file may not exist — ignore */ }
 };
 
 // SRM Gate-2 Delivery Point
@@ -27,30 +30,53 @@ function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
 
 const notifiedGateOrders = new Set();
 
-// ─── Surge Pricing Engine ──────────────────────────────────────
-const SURGE_WINDOW_MS = 2 * 60 * 1000;   // 2 minute window
-const SURGE_THRESHOLD = 4;               // >4 orders triggers surge
-const SURGE_MULTIPLIER = 1.25;           // 25% surge fee
-let orderTimestamps = [];                // rolling window of timestamps
-let surgeActive = false;
+// ─── Surge Pricing Engine (Zone-Aware) ────────────────────────
+const SURGE_WINDOW_MS = 2 * 60 * 1000;
+const SURGE_THRESHOLD = 4;
+const SURGE_MULTIPLIER = 1.25;
 
-function checkSurgeState(io) {
+let zoneOrders = {}; // { zoneName: [timestamps] }
+let activeSurgeZones = new Set();
+
+function checkSurgeState(io, zone = 'Amaravathi_Central') {
+  if (!zoneOrders[zone]) zoneOrders[zone] = [];
+  
   const now = Date.now();
-  orderTimestamps = orderTimestamps.filter(t => now - t < SURGE_WINDOW_MS);
-  const count = orderTimestamps.length;
-  if (!surgeActive && count >= SURGE_THRESHOLD) {
-    surgeActive = true;
-    io.emit('surge_active', { multiplier: SURGE_MULTIPLIER, orderCount: count });
-    log(`[SURGE] Activated — ${count} orders in last 2 mins`);
-  } else if (surgeActive && count < SURGE_THRESHOLD) {
-    surgeActive = false;
-    io.emit('surge_ended');
-    log('[SURGE] Deactivated');
+  zoneOrders[zone].push(now); // Track incoming order for this zone
+  
+  // Clean up old timestamps for this zone
+  zoneOrders[zone] = zoneOrders[zone].filter(t => now - t < SURGE_WINDOW_MS);
+  
+  const count = zoneOrders[zone].length;
+  const isNowSurge = count >= SURGE_THRESHOLD;
+  const wasSurge = activeSurgeZones.has(zone);
+
+  if (!wasSurge && isNowSurge) {
+    activeSurgeZones.add(zone);
+    io.emit('surge_active', { zone, multiplier: SURGE_MULTIPLIER, orderCount: count });
+    log(`[SURGE] Zone ${zone} ACTIVE — ${count} orders`);
+  } else if (wasSurge && !isNowSurge) {
+    activeSurgeZones.delete(zone);
+    io.emit('surge_ended', { zone });
+    log(`[SURGE] Zone ${zone} ENDED`);
   }
 }
 
-// Load environment variables
-dotenv.config();
+// Periodic cleanup and check for all zones
+setInterval(() => {
+  const now = Date.now();
+  Object.keys(zoneOrders).forEach(zone => {
+    const oldCount = zoneOrders[zone].length;
+    zoneOrders[zone] = zoneOrders[zone].filter(t => now - t < SURGE_WINDOW_MS);
+    if (oldCount >= SURGE_THRESHOLD && zoneOrders[zone].length < SURGE_THRESHOLD) {
+      activeSurgeZones.delete(zone);
+      if (typeof io !== 'undefined') io.emit('surge_ended', { zone });
+      log(`[SURGE] Zone ${zone} ENDED (Timeout)`);
+    }
+  });
+}, 30000);
+
+// Periodic cleanup and check for all zones
 
 const app = express();
 const server = http.createServer(app);
@@ -67,6 +93,7 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json());
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Connect to PostgreSQL, then initialize routes
 const startServer = async () => {
@@ -82,10 +109,25 @@ const startServer = async () => {
     app.use('/api/blocks', require('./routes/blockRoutes'));
     app.use('/api/vault', require('./routes/vaultRoutes'));
     app.use('/api/admin', require('./routes/adminRoutes'));
+    app.use('/api/rewards', require('./routes/rewardRoutes'));
+    
+    // Global Error Handler
+    const { errorHandler } = require('./middleware/errorMiddleware');
+    app.use(errorHandler);
+
+    // Local Image Storage Engine
+    const upload = multer({ dest: 'uploads/' });
+    app.post('/api/upload', upload.single('image'), (req, res) => {
+      if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
+      // Use relative path for maximum portability (or BASE_URL if defined)
+      const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5005}`;
+      const imageUrl = `${baseUrl}/uploads/${req.file.filename}`;
+      res.json({ imageUrl });
+    });
 
     // Basic Health Check
     app.get('/', (req, res) => {
-      res.status(200).json({ status: 'success', message: 'Zenvy API (PostgreSQL) is running...', version: '2.0.0' });
+      res.status(200).json({ status: 'success', message: 'Zenvy API (PostgreSQL) is running...', version: '2.0.1' });
     });
 
     // Socket.io
@@ -96,24 +138,19 @@ const startServer = async () => {
         await socket.join(room);
         log(`[JOIN] ${socket.id} -> ${room}`);
       });
+      socket.on('joinAdmin', async () => {
+        await socket.join('admin-room');
+        log(`[JOIN_ADMIN] ${socket.id}`);
+      });
       socket.on('updateLocation', (data) => {
         const room = String(data.orderId).trim();
-        io.to(room).emit('locationUpdated', { lat: data.lat, lng: data.lng });
-        
-        // Proximity Check for Gate-2 (50 meters)
-        const distance = getDistanceFromLatLonInKm(data.lat, data.lng, GATE2_COORD.lat, GATE2_COORD.lng);
-        if (distance < 0.05 && !notifiedGateOrders.has(room)) {
-          io.to(room).emit('driverAtGate', { message: "Driver has reached GATE-2 Delivery Point" });
-          notifiedGateOrders.add(room);
-          log(`[GATE] ${data.orderId} reached Gate-2`);
-        }
-        
-        log(`[LOC] ${data.orderId} moved to ${data.lat}, ${data.lng}`);
+        io.to(room).emit('checkpointUpdated', { currentCheckpoint: data.currentCheckpoint });
+        log(`[CHECKPOINT] ${data.orderId} → ${data.currentCheckpoint}`);
       });
       
       socket.on('sos_alert', (data) => {
         log(`[CRITICAL SOS] Triggered by ${data.riderName} (ID: ${data.riderId}) at ${data.timestamp}`);
-        io.emit('sos_received', data);
+        io.to('admin-room').emit('sos_received', data);
       });
 
       socket.on('admin_announcement', (data) => {
@@ -134,12 +171,103 @@ const startServer = async () => {
         socket.to(String(data.orderId)).emit('typing_end', { sender: data.sender });
       });
 
+      socket.on('sendMessage', (data) => {
+        const room = String(data.orderId).trim();
+        log(`[CHAT] ${data.senderRole} (${data.sender}) in room ${room}: ${data.message}`);
+        io.to(room).emit('receiveMessage', {
+          sender: data.sender,
+          senderRole: data.senderRole,
+          message: data.message,
+          timestamp: new Date()
+        });
+      });
+
+      socket.on('report_issue', (data) => {
+        const room = String(data.orderId).trim();
+        log(`[ISSUE] ${data.senderRole} reported: ${data.issueType} for order ${room}`);
+        // Notify both parties in the room and the admin
+        io.to(room).emit('issue_alert', {
+          orderId: data.orderId,
+          senderRole: data.senderRole,
+          issueType: data.issueType,
+          details: data.details,
+          timestamp: new Date()
+        });
+        io.to('admin-room').emit('admin_issue_reported', data);
+      });
+
+      // ── Cross-Portal: Rider ↔ Admin ↔ Customer ────────────────
+
+      // Rider came online: broadcast to admin dashboard
+      socket.on('rider_connected', (data) => {
+        log(`[RIDER ONLINE] ${data.name} (${data.driverId})`);
+        io.to('admin-room').emit('admin_rider_online', { riderId: data.driverId, name: data.name, timestamp: new Date().toISOString() });
+      });
+
+      // Rider went offline
+      socket.on('rider_disconnected', (data) => {
+        log(`[RIDER OFFLINE] ${data.driverId}`);
+        io.to('admin-room').emit('admin_rider_offline', { riderId: data.driverId, timestamp: new Date().toISOString() });
+      });
+
+      // Rider toggled online/offline status
+      socket.on('rider_status_change', (data) => {
+        log(`[RIDER STATUS] ${data.name} → ${data.isOnline ? 'ONLINE' : 'OFFLINE'}`);
+        io.to('admin-room').emit('admin_rider_status', { riderId: data.riderId, name: data.name, isOnline: data.isOnline });
+      });
+
+      // Rider accepted → notify admin + join the broadcast room
+      socket.on('rider_accepted', async (data) => {
+        const room = String(data.orderId).trim();
+        await socket.join(room);
+        log(`[RIDER ACCEPTED] ${data.riderName} accepted order ${data.orderId}`);
+        io.to('admin-room').emit('admin_order_accepted', { orderId: data.orderId, riderId: data.riderId, riderName: data.riderName });
+      });
+
+      // Rider live GPS → admin map + customer tracking (already via updateLocation, this is admin stream)
+      socket.on('rider_location_update', (data) => {
+        // Broadcast checkpoint to admin dashboard room ONLY
+        io.to('admin-room').emit('admin_rider_location', {
+          riderId: data.riderId,
+          riderName: data.riderName,
+          currentCheckpoint: data.currentCheckpoint,
+          activeOrderCount: data.activeOrderCount,
+          isOnline: data.isOnline,
+          timestamp: Date.now()
+        });
+        // Also emit to specific order room for customer tracking
+        if (data.activeOrderId) {
+            io.to(String(data.activeOrderId)).emit('checkpointUpdated', { currentCheckpoint: data.currentCheckpoint });
+        }
+        log(`[GPS] Rider ${data.riderName} at ${data.currentCheckpoint}`);
+      });
+
+      // Rider completed a delivery
+      socket.on('rider_delivered', (data) => {
+        log(`[DELIVERED] ${data.riderName} completed order ${data.orderId} (+₹${data.earnings})`);
+        io.to('admin-room').emit('admin_delivery_complete', {
+          orderId: data.orderId,
+          riderId: data.riderId,
+          riderName: data.riderName,
+          earnings: data.earnings,
+          timestamp: new Date().toISOString()
+        });
+      });
+
       socket.on('disconnect', () => {
         console.log(`[SOCKET DISCONNECT] ${socket.id}`);
       });
     });
 
-    const PORT = process.env.PORT || 5000;
+    const PORT = process.env.PORT || 5005;
+    
+    server.on('error', (e) => {
+      if (e.code === 'EADDRINUSE') {
+        console.error(`❌ Port ${PORT} is in use. Process probably hasn't exited yet. Shutting down...`);
+        process.exit(1); 
+      }
+    });
+
     server.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Server running on port ${PORT}`);
     });
@@ -153,4 +281,8 @@ const startServer = async () => {
 
 startServer();
 
-module.exports = { orderTimestamps, checkSurgeState };
+module.exports = { 
+  checkSurgeState, 
+  isSurgeActive: (zone) => activeSurgeZones.has(zone), 
+  SURGE_MULTIPLIER 
+};

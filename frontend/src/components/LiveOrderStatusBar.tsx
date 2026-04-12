@@ -20,8 +20,9 @@ const STEPS = [
   { key: 'Delivered', label: 'Delivered!',       icon: '✅' },
 ];
 
-export default function LiveOrderStatusBar({ orderId, initialStatus = 'Pending', cancelSecondsLeft = 0, onCancel, onDelivered }: Props) {
+export default function LiveOrderStatusBar({ orderId, initialStatus = 'Pending', cancelSecondsLeft: initialSeconds = 0, onCancel, onDelivered }: Props) {
   const [status, setStatus] = useState(initialStatus);
+  const [cancelSecondsLeft, setCancelSecondsLeft] = useState(initialSeconds);
   const [riderName, setRiderName] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(true);
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -46,6 +47,13 @@ export default function LiveOrderStatusBar({ orderId, initialStatus = 'Pending',
       socket.off('locationUpdated');
     };
   }, [orderId, onDelivered]);
+
+  // Tick down cancellation countdown isolated here
+  useEffect(() => {
+    if (cancelSecondsLeft <= 0 || status !== 'Pending') return;
+    const tick = setInterval(() => setCancelSecondsLeft(p => Math.max(0, p - 1)), 1000);
+    return () => clearInterval(tick);
+  }, [cancelSecondsLeft, status]);
 
   if (status === 'Delivered') return (
     <div className="fixed bottom-20 left-4 right-4 z-50 animate-slide-up">
@@ -93,6 +101,15 @@ export default function LiveOrderStatusBar({ orderId, initialStatus = 'Pending',
             >
               Chat
             </button>
+            <a
+               href={`https://wa.me/91XXXXXXXXXX?text=Help%20with%20Order%20${orderId}`}
+               target="_blank"
+               rel="noopener noreferrer"
+               className="text-[9px] text-[#25D366] font-black uppercase tracking-widest bg-[#25D366]/10 px-2 py-1 rounded-lg flex items-center gap-1"
+               onClick={e => e.stopPropagation()}
+            >
+              WhatsApp
+            </a>
             <span className="text-gray-500">{isExpanded ? '▼' : '▲'}</span>
           </div>
         </button>

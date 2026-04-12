@@ -1,9 +1,6 @@
 "use client";
-import { useState, useEffect } from 'react';
-import Image from 'next/image';
 import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
-
-const FALLBACK_IMAGE = "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=400&auto=format&fit=crop";
+import SafeImage from './SafeImage';
 
 interface RestaurantCardProps {
   name: string;
@@ -14,12 +11,6 @@ interface RestaurantCardProps {
 }
 
 const RestaurantCard = ({ name, rating, time, imageUrl, imagePosition }: RestaurantCardProps) => {
-  const [imgSrc, setImgSrc] = useState(imageUrl);
-
-  useEffect(() => {
-    setImgSrc(imageUrl || FALLBACK_IMAGE);
-  }, [imageUrl]);
-
   // 3D Tilt Logic
   const x = useMotionValue(0);
   const y = useMotionValue(0);
@@ -57,14 +48,12 @@ const RestaurantCard = ({ name, rating, time, imageUrl, imagePosition }: Restaur
       {/* Image Circle */}
       <motion.div 
         style={{ translateZ: 50 }}
-        className={`food-circle shadow-xl transition-all duration-500 ${imagePosition === 'left' ? '-ml-6' : '-mr-6'} relative z-20`}
+        className={`food-circle shadow-xl transition-all duration-500 ${imagePosition === 'left' ? '-ml-6' : '-mr-6'} relative z-20 overflow-hidden`}
       >
-        <Image 
-          src={imgSrc || FALLBACK_IMAGE} 
-          alt="" 
+        <SafeImage 
+          src={imageUrl} 
+          alt={name}
           fill
-          style={{ objectFit: 'cover' }}
-          onError={() => setImgSrc(FALLBACK_IMAGE)}
         />
       </motion.div>
       

@@ -76,15 +76,19 @@ export default function TemporalSlider() {
          </div>
       </div>
 
-      <style jsx>{`
-        .glass-card::before {
-          content: '';
-          position: absolute;
-          inset: 0;
-          background: linear-gradient(135deg, rgba(201, 168, 76, 0.05) 0%, transparent 100%);
-          pointer-events: none;
+      <style dangerouslySetInnerHTML={{ __html: `
+        .slider-thumb::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          appearance: none;
+          width: 24px;
+          height: 24px;
+          background: #C9A84C;
+          border-radius: 50%;
+          cursor: pointer;
+          box-shadow: 0 0 20px rgba(201, 168, 76, 0.5);
+          border: 2px solid white;
         }
-      `}</style>
+      `}} />
     </div>
   );
 }

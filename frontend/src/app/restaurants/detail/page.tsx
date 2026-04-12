@@ -17,7 +17,16 @@ export default function DetailPage() {
       image: 'https://images.unsplash.com/photo-1589302168068-1c498202f722?q=80&w=600&auto=format&fit=crop',
       restaurantId: 'saffron-hub'
     });
-    alert('Added to Basket! 🚀');
+    const btn = document.getElementById('basket-btn');
+    if (btn) {
+       const orig = btn.innerText;
+       btn.innerText = 'Added! 🚀';
+       btn.classList.add('bg-emerald-500', 'text-white');
+       setTimeout(() => {
+          btn.innerText = orig;
+          btn.classList.remove('bg-emerald-500', 'text-white');
+       }, 2000);
+    }
   };
 
   return (

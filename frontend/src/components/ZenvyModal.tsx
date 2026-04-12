@@ -1,5 +1,5 @@
 "use client";
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 
 interface ZenvyModalProps {
@@ -23,7 +23,13 @@ export default function ZenvyModal({
   onConfirm,
   type = 'info'
 }: ZenvyModalProps) {
-  if (!isOpen) return null;
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted || !isOpen || typeof document === 'undefined') return null;
 
   const handleConfirm = () => {
     if (onConfirm) onConfirm();

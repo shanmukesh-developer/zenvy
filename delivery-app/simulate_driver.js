@@ -1,5 +1,5 @@
 const { io } = require('socket.io-client');
-const socket = io('http://localhost:5001');
+const socket = io('http://localhost:5005');
 const orderId = 'e9f39852-7f96-464f-a239-d45a01e93b22';
 
 socket.on('connect', () => {

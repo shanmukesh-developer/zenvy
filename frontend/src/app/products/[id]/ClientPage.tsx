@@ -1,18 +1,20 @@
 "use client";
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useCart } from '@/context/CartContext';
-import Image from 'next/image';
+import SafeImage from '@/components/SafeImage';
 import SuccessOverlay from '@/components/SuccessOverlay';
 import { MenuItem } from '@/types';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
 
 export default function ProductDetailClient({ productId }: { productId: string }) {
-  const [quantity, setQuantity] = useState(1);
-  const { addToCart } = useCart();
+  const router = useRouter();
+  const { cart, addToCart, updateQuantity, removeFromCart } = useCart();
   const [product, setProduct] = useState<MenuItem | null>(null);
   const [loading, setLoading] = useState(true);
+  const [netError, setNetError] = useState(false);
   const [overlay, setOverlay] = useState<{ isOpen: boolean; title: string; message: string; type?: 'success' | 'error' }>({
     isOpen: false,
     title: '',
@@ -30,37 +32,61 @@ export default function ProductDetailClient({ productId }: { productId: string }
   useEffect(() => {
     const cleanId = productId.replace(/\/$/, "");
     fetch(`${API_URL}/api/users/products/${cleanId}`)
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error('NOT_FOUND');
+        return res.json();
+      })
       .then(data => {
-        if (data && data.name) {
+        if (data && (data.name || data.id)) {
           setProduct({ ...data, image: data.imageUrl || data.image });
+        } else {
+          setNetError(true);
         }
         setLoading(false);
       })
       .catch(err => {
         console.error('[FETCH_PRODUCT_ERROR]', err);
+        setNetError(true); // Treat connection refuse as netError
         setLoading(false);
       });
   }, [productId]);
 
   if (loading) return <div className="p-20 text-white min-h-screen text-center animate-pulse">Loading Product...</div>;
+  
+  if (netError) {
+    return (
+      <div className="p-20 text-white min-h-screen flex flex-col items-center justify-center text-center gap-6 bg-[#0A0A0B]">
+        <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center animate-pulse">
+           <svg className="w-10 h-10 text-primary-yellow/50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+        </div>
+        <div>
+          <h2 className="text-2xl font-black mb-2">Zenvy Servers are sleeping</h2>
+          <p className="text-zinc-500 max-w-xs mx-auto">We're performing a quick system sweep. Please try refreshing in a few seconds.</p>
+        </div>
+        <button onClick={() => window.location.reload()} className="px-8 py-3 bg-white/5 border border-white/10 rounded-full hover:bg-white/10 transition-all font-bold">Wake them up</button>
+      </div>
+    );
+  }
+
   if (!product) return <div className="p-20 text-white min-h-screen text-center font-bold">Product not found.</div>;
 
-  const handleAdd = () => {
+  const cartItem = cart.find(i => i.id === (product.id || product._id));
+  const currentQty = cartItem ? cartItem.quantity : 0;
+
+  const handleInstantAdd = () => {
     addToCart({
       id: product.id || product._id || "",
       name: product.name,
       price: product.price,
-      quantity,
+      quantity: 1,
       image: product.image || product.imageUrl || "",
       restaurantId: product.restaurantId || 'unknown',
       restaurantName: product.restaurantName || 'Zenvy Kitchen'
     });
-    
     setOverlay({
       isOpen: true,
       title: 'Added to Basket',
-      message: `${quantity}x ${product.name} ready for checkout.`,
+      message: `${product.name} seamlessly added to cart.`,
       type: 'success'
     });
   };
@@ -73,7 +99,7 @@ export default function ProductDetailClient({ productId }: { productId: string }
            className="absolute inset-0 w-full h-full"
            style={{ transform: `translateY(${scrollY * 0.4}px) scale(1.05)` }}
          >
-           <Image 
+           <SafeImage 
              src={product.image || product.imageUrl || "/assets/placeholder.png"} 
              alt={product.name}
              fill
@@ -87,7 +113,7 @@ export default function ProductDetailClient({ productId }: { productId: string }
 
          {/* Hero Top Nav */}
          <div className="absolute top-0 left-0 right-0 p-8 pt-12 flex justify-between items-center z-20 bg-gradient-to-b from-black/80 to-transparent">
-           <Link href="/" onClick={(e) => { e.preventDefault(); window.history.back(); }} className="w-12 h-12 bg-white/5 backdrop-blur-xl rounded-full flex items-center justify-center border border-white/10 hover:bg-white/10 hover:scale-105 transition-all shadow-2xl">
+           <Link href="/" onClick={(e) => { e.preventDefault(); router.back(); }} className="w-12 h-12 bg-white/5 backdrop-blur-xl rounded-full flex items-center justify-center border border-white/10 hover:bg-white/10 hover:scale-105 transition-all shadow-2xl">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" />
               </svg>
@@ -140,21 +166,27 @@ export default function ProductDetailClient({ productId }: { productId: string }
             <div>
                <p className="text-[10px] uppercase tracking-[0.3em] text-secondary-text mb-1.5 font-bold">Total Price</p>
                <div className="text-[34px] font-black text-primary-yellow tracking-tighter drop-shadow-[0_0_15px_rgba(201,168,76,0.2)]">
-                 ₹{product.price * quantity}
+                 ₹{product.price * (currentQty || 1)}
                </div>
             </div>
 
             {/* Premium Quantity Selector */}
             <div className="flex items-center gap-5 bg-[#141416] border border-white/5 rounded-full px-2 py-2 shadow-inner">
                <button 
-                 onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                 onClick={() => {
+                   if (currentQty > 1) updateQuantity(product.id || product._id || "", currentQty - 1);
+                   else if (currentQty === 1) removeFromCart(product.id || product._id || "");
+                 }}
                  className="w-12 h-12 rounded-full bg-black text-white border border-white/5 flex items-center justify-center text-xl hover:bg-white/10 active:scale-95 transition-all shadow-md"
                >−</button>
                <span className="text-xl font-black w-5 text-center font-mono">
-                 {quantity}
+                 {currentQty}
                </span>
                <button 
-                 onClick={() => setQuantity(quantity + 1)}
+                 onClick={() => {
+                   if (currentQty === 0) handleInstantAdd();
+                   else updateQuantity(product.id || product._id || "", currentQty + 1);
+                 }}
                  className="w-12 h-12 rounded-full bg-gradient-to-br from-[#C9A84C] to-[#8B7332] text-black border border-transparent shadow-[0_0_15px_rgba(201,168,76,0.3)] flex items-center justify-center text-xl hover:brightness-110 active:scale-95 transition-all"
                >+</button>
             </div>
@@ -164,17 +196,27 @@ export default function ProductDetailClient({ productId }: { productId: string }
       {/* ── Bottom Action Bar ── */}
       <div className="fixed bottom-0 left-0 right-0 p-6 pt-12 pb-8 bg-gradient-to-t from-[#050507] via-[#050507]/95 to-transparent z-40 animate-in fade-in slide-in-from-bottom-12 duration-1000 delay-500" style={{ animationFillMode: 'both' }}>
         <div className="flex gap-4">
-           <button 
-             onClick={handleAdd}
-             className="flex-1 bg-gradient-to-r from-[#C9A84C] via-[#E8D18C] to-[#C9A84C] text-black h-[70px] rounded-[24px] flex items-center justify-center gap-3 shadow-[0_15px_30px_-10px_rgba(201,168,76,0.4)] transition-all active:scale-95 hover:brightness-110 group overflow-hidden relative"
-           >
-              {/* Shimmer effect inside button */}
-              <div className="absolute inset-0 -translate-x-full group-hover:animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/40 to-transparent skew-x-12" />
-              
-              <span className="font-black text-[13px] uppercase tracking-[0.1em] relative z-10">Add {quantity} To Cart</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-black/40 relative z-10" />
-              <span className="font-black text-[15px] relative z-10">₹{product.price * quantity}</span>
-           </button>
+           {currentQty === 0 ? (
+             <button 
+               onClick={handleInstantAdd}
+               className="flex-1 bg-gradient-to-r from-[#C9A84C] via-[#E8D18C] to-[#C9A84C] text-black h-[70px] rounded-[24px] flex items-center justify-center gap-3 shadow-[0_15px_30px_-10px_rgba(201,168,76,0.4)] transition-all active:scale-95 hover:brightness-110 group overflow-hidden relative"
+             >
+                <div className="absolute inset-0 -translate-x-full group-hover:animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/40 to-transparent skew-x-12" />
+                <span className="font-black text-[13px] uppercase tracking-[0.1em] relative z-10">Add To Cart</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-black/40 relative z-10" />
+                <span className="font-black text-[15px] relative z-10">₹{product.price}</span>
+             </button>
+           ) : (
+             <Link 
+               href="/basket"
+               className="flex-1 bg-white text-black h-[70px] rounded-[24px] flex items-center justify-center gap-2 shadow-lg hover:bg-gray-100 transition-all active:scale-95 group relative overflow-hidden"
+             >
+                <div className="absolute inset-0 -translate-x-full group-hover:animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-black/10 to-transparent skew-x-12" />
+                <span className="font-black text-[13px] uppercase tracking-[0.1em] relative z-10">Proceed to Basket</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-black/20 relative z-10" />
+                <span className="font-black text-[14px] relative z-10">{currentQty} Items (₹{product.price * currentQty})</span>
+             </Link>
+           )}
            
            <Link href="/basket" className="w-[70px] h-[70px] shrink-0 bg-[#1A1A1C] border border-white/10 flex items-center justify-center rounded-[24px] hover:bg-white/10 hover:border-[#C9A84C]/50 transition-all active:scale-95 shadow-xl group">
               <svg className="w-6 h-6 text-white group-hover:text-[#C9A84C] transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">

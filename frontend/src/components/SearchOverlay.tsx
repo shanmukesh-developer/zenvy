@@ -1,9 +1,9 @@
 "use client";
 import { useState, useEffect, useRef } from 'react';
-import Image from 'next/image';
+import SafeImage from './SafeImage';
 import Link from 'next/link';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
 
 interface SearchRestaurant {
   _id: string;
@@ -28,6 +28,7 @@ interface SearchMenuItem {
 interface SearchResult {
   restaurants: SearchRestaurant[];
   items: SearchMenuItem[];
+  isTrending?: boolean;
 }
 
 export default function SearchOverlay({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
@@ -47,21 +48,18 @@ export default function SearchOverlay({ isOpen, onClose }: { isOpen: boolean; on
 
   useEffect(() => {
     const delayDebounceFn = setTimeout(async () => {
-      if (query.trim().length > 1) {
-        setLoading(true);
-        try {
-          const res = await fetch(`${API_URL}/api/users/search?q=${encodeURIComponent(query)}`);
-          if (res.ok) {
-            const data = await res.json();
-            setResults(data);
-          }
-        } catch (err) {
-          console.error('[SEARCH_ERROR]', err);
-        } finally {
-          setLoading(false);
+      // Fetch even if empty to get Trending results
+      setLoading(true);
+      try {
+        const res = await fetch(`${API_URL}/api/users/search?q=${encodeURIComponent(query)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setResults(data);
         }
-      } else {
-        setResults({ restaurants: [], items: [] });
+      } catch (err) {
+        console.error('[SEARCH_ERROR]', err);
+      } finally {
+        setLoading(false);
       }
     }, 300);
 
@@ -98,6 +96,13 @@ export default function SearchOverlay({ isOpen, onClose }: { isOpen: boolean; on
 
       {/* Results Scroll Area */}
       <div className="flex-1 overflow-y-auto p-6 space-y-8 pb-32">
+        {results.isTrending && (
+          <div className="bg-gradient-to-r from-primary-yellow/10 to-transparent p-4 rounded-2xl border-l-4 border-primary-yellow mb-4 animate-slide-up">
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-primary-yellow mb-1">City Pulse</p>
+            <h3 className="text-sm font-black text-white">Trending in Amaravathi Central 🔥</h3>
+          </div>
+        )}
+
         {results.restaurants.length === 0 && results.items.length === 0 && query.length > 1 && !loading && (
           <div className="text-center py-20">
             <p className="text-secondary-text text-xl">No results found for &quot;{query}&quot; 😕</p>
@@ -111,12 +116,11 @@ export default function SearchOverlay({ isOpen, onClose }: { isOpen: boolean; on
             <div className="grid grid-cols-1 gap-4">
               {results.restaurants.map((res) => (
                 <Link key={res._id} href={`/restaurants/${res._id}`} onClick={onClose} className="bg-white/5 border border-white/5 p-4 rounded-3xl flex items-center gap-4 hover:bg-white/10 transition-all">
-                  <div className="w-16 h-16 relative flex-shrink-0">
-                    <Image
+                  <div className="w-16 h-16 relative flex-shrink-0 rounded-2xl overflow-hidden">
+                    <SafeImage
                       src={res.imageUrl || 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=200'}
                       alt={res.name}
                       fill
-                      className="rounded-2xl object-cover"
                     />
                   </div>
                   <div>
@@ -136,12 +140,11 @@ export default function SearchOverlay({ isOpen, onClose }: { isOpen: boolean; on
             <div className="grid grid-cols-1 gap-4">
               {results.items.map((item) => (
                 <Link key={item._id} href={`/products/${item._id}`} onClick={onClose} className="bg-white/5 border border-white/5 p-4 rounded-3xl flex items-center gap-4 hover:bg-white/10 transition-all">
-                  <div className="w-16 h-16 relative flex-shrink-0">
-                    <Image
+                  <div className="w-16 h-16 relative flex-shrink-0 rounded-2xl overflow-hidden">
+                    <SafeImage
                       src={item.imageUrl || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200'}
                       alt={item.name}
                       fill
-                      className="rounded-2xl object-cover"
                     />
                   </div>
                   <div className="flex-1">

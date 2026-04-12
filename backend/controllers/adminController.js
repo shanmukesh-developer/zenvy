@@ -36,14 +36,25 @@ exports.getRestaurants = async (req, res) => {
     const result = await Promise.all(restaurants.map(async (r) => {
       const menu = await MenuItem.findAll({ where: { restaurantId: r.id } });
       const rObj = r.toJSON();
+      
+      let tags = rObj.tags || [];
+      if (typeof tags === 'string') {
+        try { tags = JSON.parse(tags); } catch { tags = []; }
+      }
+
       return { 
         ...rObj, 
         _id: r.id, 
         id: r.id,
-        categories: rObj.tags || [],
+        tags,
+        categories: tags,
         menu: menu.map(m => {
           const mObj = m.toJSON();
-          return { ...mObj, _id: m.id, id: m.id, image: mObj.imageUrl || mObj.image };
+          let mTags = mObj.tags || [];
+          if (typeof mTags === 'string') {
+            try { mTags = JSON.parse(mTags); } catch { mTags = []; }
+          }
+          return { ...mObj, tags: mTags, _id: m.id, id: m.id, image: mObj.imageUrl || mObj.image };
         })
       };
     }));
@@ -61,14 +72,24 @@ exports.getRestaurantById = async (req, res) => {
     if (!restaurant) return res.status(404).json({ message: 'Restaurant not found' });
     const menu = await MenuItem.findAll({ where: { restaurantId: restaurant.id } });
     const resObj = restaurant.toJSON();
+    let tags = resObj.tags || [];
+    if (typeof tags === 'string') {
+      try { tags = JSON.parse(tags); } catch { tags = []; }
+    }
+
     res.json({ 
       ...resObj, 
       _id: restaurant.id, 
       id: restaurant.id,
-      categories: resObj.tags || [],
+      tags,
+      categories: tags,
       menu: menu.map(m => {
         const mObj = m.toJSON();
-        return { ...mObj, _id: m.id, id: m.id, image: mObj.imageUrl || mObj.image };
+        let mTags = mObj.tags || [];
+        if (typeof mTags === 'string') {
+          try { mTags = JSON.parse(mTags); } catch { mTags = []; }
+        }
+        return { ...mObj, tags: mTags, _id: m.id, id: m.id, image: mObj.imageUrl || mObj.image };
       })
     });
   } catch (error) {
@@ -103,10 +124,15 @@ exports.getMenuItemById = async (req, res) => {
 
     restaurant = await Restaurant.findByPk(item.restaurantId);
     const itemObj = item.toJSON();
+    let tags = itemObj.tags || [];
+    if (typeof tags === 'string') {
+      try { tags = JSON.parse(tags); } catch { tags = []; }
+    }
     res.json({ 
       ...itemObj, 
       _id: item.id, 
       id: item.id, 
+      tags,
       image: itemObj.imageUrl || itemObj.image,
       restaurantName: restaurant?.name || 'Zenvy Kitchen', 
       restaurantId: restaurant?.id 
@@ -482,6 +508,73 @@ exports.deleteVaultItem = async (req, res) => {
     await VaultItem.destroy({ where: { id: req.params.id } });
     broadcastSystemUpdate(req, 'VAULT_DELETED', { id: req.params.id });
     res.json({ message: 'Deleted' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// ─── Gamification & Rewards Analytics ──────────────────────────
+const { BADGE_CRITERIA } = require('../services/BadgeService');
+
+exports.getRewardsAnalytics = async (req, res) => {
+  try {
+    const User = getUserModel();
+    const users = await User.findAll({ 
+      where: { role: 'student' },
+      attributes: ['completedOrders', 'spinsUsed', 'badges', 'name', 'zenPoints']
+    });
+
+    let totalSpinsEarned = 0;
+    let totalSpinsUsed = 0;
+    let totalZenPoints = 0;
+    const badgeCounts = {};
+    const tiers = { Elite: 0, Diamond: 0, Platinum: 0, Gold: 0, Silver: 0, Bronze: 0, None: 0 };
+    
+    const topPerformers = users
+      .map(u => {
+        const uJson = u.toJSON();
+        const earned = Math.floor((uJson.completedOrders || 0) / 5);
+        totalSpinsEarned += earned;
+        totalSpinsUsed += (uJson.spinsUsed || 0);
+        totalZenPoints += (uJson.zenPoints || 0);
+        
+        const badges = Array.isArray(uJson.badges) ? uJson.badges : (typeof uJson.badges === 'string' ? JSON.parse(uJson.badges) : []);
+        badges.forEach(b => {
+          badgeCounts[b] = (badgeCounts[b] || 0) + 1;
+        });
+
+        // Tier classification based on highest badge held
+        let userTier = 'None';
+        if (badges.some(b => b.includes('Elite'))) userTier = 'Elite';
+        else if (badges.some(b => b.includes('Diamond'))) userTier = 'Diamond';
+        else if (badges.some(b => b.includes('Platinum'))) userTier = 'Platinum';
+        else if (badges.some(b => b.includes('Gold'))) userTier = 'Gold';
+        else if (badges.some(b => b.includes('Silver'))) userTier = 'Silver';
+        else if (badges.some(b => b.includes('Bronze'))) userTier = 'Bronze';
+        
+        tiers[userTier]++;
+
+        return {
+          name: uJson.name,
+          completedOrders: uJson.completedOrders,
+          badgesCount: badges.length,
+          zenPoints: uJson.zenPoints || 0,
+          tier: userTier
+        };
+      })
+      .sort((a, b) => b.completedOrders - a.completedOrders)
+      .slice(0, 5);
+
+    res.json({
+      totalSpinsEarned,
+      totalSpinsUsed,
+      totalZenPoints,
+      activeRewardUsers: users.filter(u => u.completedOrders > 0).length,
+      badgeDistribution: badgeCounts,
+      tierDistribution: tiers,
+      topPerformers,
+      redemptionRate: totalSpinsEarned > 0 ? (totalSpinsUsed / totalSpinsEarned * 100).toFixed(1) : 0
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

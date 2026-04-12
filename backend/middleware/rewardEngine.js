@@ -32,4 +32,46 @@ const updateStreak = async (userId) => {
   return user.streakCount;
 };
 
-module.exports = { updateStreak };
+// Calculate perks based on user badges
+const calculateBadgePerks = (user) => {
+  if (!user) return { deliveryDiscount: 0, orderDiscount: 0, status: 'Guest Citizen' };
+  const badges = Array.isArray(user.badges) ? user.badges : JSON.parse(user.badges || '[]');
+  let deliveryDiscount = 0;
+  let orderDiscount = 0;
+  let status = 'Standard Citizen';
+
+  if (badges.some(b => b.includes('Elite'))) {
+    deliveryDiscount = 1;
+    orderDiscount = 100;
+    status = 'Elite Sovereign';
+  } else if (badges.some(b => b.includes('Diamond'))) {
+    deliveryDiscount = 1;
+    orderDiscount = 50;
+    status = 'Diamond Dignitary';
+  } else if (badges.some(b => b.includes('Platinum'))) {
+    deliveryDiscount = 1; 
+    orderDiscount = 25;
+    status = 'Platinum Pro';
+  } else if (badges.some(b => b.includes('Gold'))) {
+    deliveryDiscount = 0.5;
+    orderDiscount = 15;
+    status = 'Gold Grafter';
+  } else if (badges.some(b => b.includes('Silver'))) {
+    deliveryDiscount = 0.2;
+    orderDiscount = 10;
+    status = 'Silver Scaler';
+  } else if (badges.some(b => b.includes('Bronze'))) {
+    orderDiscount = 5;
+    status = 'Bronze Beginner';
+  }
+
+  // ── Zen Point Threshold (200 Points = Free Delivery) ──
+  if (user.zenPoints >= 200 && deliveryDiscount < 1) {
+    deliveryDiscount = 1;
+    status = 'Zen Champion';
+  }
+
+  return { deliveryDiscount, orderDiscount, status };
+};
+
+module.exports = { updateStreak, calculateBadgePerks };

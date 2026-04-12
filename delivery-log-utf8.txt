@@ -1,0 +1,52 @@
+﻿
+> delivery-app@0.1.0 dev
+> next dev -H 0.0.0.0 -p 3001
+
+  Γû▓ Next.js 14.2.35
+  - Local:        http://localhost:3001
+  - Network:      http://0.0.0.0:3001
+  - Environments: .env
+
+ Γ£ô Starting...
+ Γ£ô Ready in 6.2s
+ Γùï Compiling /_not-found ...
+ Γ£ô Compiled /_not-found in 4.4s (471 modules)
+ GET /login 404 in 4857ms
+ Γ£ô Compiled in 279ms (245 modules)
+ Γ£ô Compiled /favicon.ico in 175ms (258 modules)
+ GET /favicon.ico 200 in 251ms
+ GET /login 404 in 1183ms
+ Γùï Compiling / ...
+ Γ£ô Compiled / in 927ms (611 modules)
+ GET / 200 in 1315ms
+ Γ£ô Compiled in 463ms (283 modules)
+ Γ£ô Compiled in 454ms (611 modules)
+ Γùï Compiling /_not-found ...
+ Γ£ô Compiled /_not-found in 719ms (600 modules)
+ GET /workload 404 in 1245ms
+ GET /dashboard 404 in 114ms
+ GET / 200 in 529ms
+ GET / 200 in 357ms
+ GET / 200 in 223ms
+ GET / 200 in 93ms
+ GET / 200 in 63ms
+ GET / 200 in 50ms
+ GET / 200 in 55ms
+ GET / 200 in 34ms
+   Reload env: .env.local
+node.exe :  ΓÜá Fast Refresh had to perform a full reload. Read more: 
+https://nextjs.org/docs/messages/fast-refresh-reload
+At line:1 char:1
++ & "D:\/node.exe" "D:\/node_modules/npm/bin/npm-cli.js" run dev
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ( ΓÜá Fast Refre...-refresh-reload:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+ ΓÜá Fast Refresh had to perform a full reload. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+ Γ£ô Compiled in 3.1s (611 modules)
+ GET / 200 in 988ms
+ GET / 200 in 69ms
+ Γ£ô Compiled /favicon.ico in 348ms (360 modules)
+ GET /favicon.ico 200 in 405ms
+ GET /favicon.ico 200 in 8ms
+

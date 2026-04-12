@@ -11,16 +11,24 @@ const initUserModel = (sequelize) => {
     name: { type: DataTypes.STRING, allowNull: false },
     phone: { type: DataTypes.STRING, allowNull: false, unique: true },
     password: { type: DataTypes.STRING, allowNull: false },
-    hostelBlock: { type: DataTypes.STRING, allowNull: false },
-    roomNumber: { type: DataTypes.STRING, allowNull: false },
+    hostelBlock: { type: DataTypes.STRING, allowNull: true },
+    roomNumber: { type: DataTypes.STRING, allowNull: true },
     walletBalance: { type: DataTypes.FLOAT, defaultValue: 0 },
     streakCount: { type: DataTypes.INTEGER, defaultValue: 0 },
     lastOrderDate: { type: DataTypes.DATE },
     totalOrders: { type: DataTypes.INTEGER, defaultValue: 0 },
-    role: { type: DataTypes.ENUM('student', 'admin'), defaultValue: 'student' },
+    completedOrders: { type: DataTypes.INTEGER, defaultValue: 0 },
+    spinsUsed: { type: DataTypes.INTEGER, defaultValue: 0 },
+    role: { type: DataTypes.STRING, defaultValue: 'student' },
     zenPoints: { type: DataTypes.INTEGER, defaultValue: 0 },
     isElite: { type: DataTypes.BOOLEAN, defaultValue: false },
-    fcmTokens: { type: DataTypes.JSON, defaultValue: [] }
+    address: { type: DataTypes.STRING, allowNull: true },
+    city: { type: DataTypes.STRING, defaultValue: 'Amaravathi' },
+    profileImage: { type: DataTypes.STRING, allowNull: true },
+    fcmTokens: { type: DataTypes.JSON, defaultValue: [] },
+    badges: { type: DataTypes.JSON, defaultValue: [] },
+    dietaryPreference: { type: DataTypes.STRING, defaultValue: 'None' }, // Veg, Jain, Eggless, etc.
+    lateNightOrders: { type: DataTypes.INTEGER, defaultValue: 0 }
   }, { timestamps: true });
 
   User.beforeCreate(async (user) => {

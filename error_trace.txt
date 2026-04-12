@@ -1,0 +1,11 @@
+[2026-04-10T21:51:05.599Z] [ORDER_CREATE_ERROR] Full Error: Error
+    at Database.<anonymous> (C:\hostel-bite\backend\node_modules\sequelize\lib\dialects\sqlite\query.js:185:27)
+    at C:\hostel-bite\backend\node_modules\sequelize\lib\dialects\sqlite\query.js:183:50
+    at new Promise (<anonymous>)
+    at Query.run (C:\hostel-bite\backend\node_modules\sequelize\lib\dialects\sqlite\query.js:183:12)
+    at C:\hostel-bite\backend\node_modules\sequelize\lib\sequelize.js:315:28
+    at async SQLiteQueryInterface.select (C:\hostel-bite\backend\node_modules\sequelize\lib\dialects\abstract\query-interface.js:407:12)
+    at async User.findAll (C:\hostel-bite\backend\node_modules\sequelize\lib\model.js:1140:21)
+    at async User.findOne (C:\hostel-bite\backend\node_modules\sequelize\lib\model.js:1240:12)
+    at async User.findByPk (C:\hostel-bite\backend\node_modules\sequelize\lib\model.js:1221:12)
+    at async createOrder (C:\hostel-bite\backend\controllers\orderController.js:46:25)

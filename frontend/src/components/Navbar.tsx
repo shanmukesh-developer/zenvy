@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 const Navbar = () => {
   const [userName, setUserName] = useState('');
   const [location, setLocation] = useState('Amaravathi, AP');
+  const [badgeCount, setBadgeCount] = useState(0);
 
   useEffect(() => {
     try {
@@ -11,6 +12,7 @@ const Navbar = () => {
       if (stored) {
         const parsed = JSON.parse(stored);
         setUserName(parsed.name || '');
+        if (parsed.badges) setBadgeCount(parsed.badges.length || 0);
         if (parsed.address) setLocation(parsed.address.split(',')[0] || 'Amaravathi, AP');
       }
     } catch { /* ignore */ }
@@ -37,6 +39,11 @@ const Navbar = () => {
         <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-primary-yellow to-amber-400 flex items-center justify-center text-black font-black text-sm shadow-[0_0_20px_rgba(201,168,76,0.3)]">
           {userName ? userName[0].toUpperCase() : '👤'}
         </div>
+        {badgeCount > 0 && (
+          <div className="absolute -top-1 -right-1 w-5 h-5 bg-black border border-[#C9A84C]/50 rounded-full flex items-center justify-center text-[8px] font-black text-[#C9A84C] shadow-lg animate-in zoom-in">
+            {badgeCount}
+          </div>
+        )}
         <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-400 border-2 border-background rounded-full" />
       </div>
     </nav>

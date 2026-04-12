@@ -6,14 +6,40 @@ const { Op } = require('sequelize');
 // @route   GET /api/search
 const globalSearch = async (req, res) => {
   const { q } = req.query;
-  if (!q) return res.status(400).json({ message: 'Search query is required' });
-
+  
   try {
     const Restaurant = getRestaurantModel();
     const MenuItem = getMenuItemModel();
-
-    // Use Op.like (case-insensitive on SQLite by default, works on both Postgres & SQLite)
     const likeOp = Op.like;
+
+    if (!q || q.trim().length < 2) {
+      // Return Trending/Featured if no query
+      const trendingRestaurants = await Restaurant.findAll({
+        where: { isActive: true },
+        order: [['rating', 'DESC']],
+        limit: 4
+      });
+      const trendingItems = await MenuItem.findAll({
+        where: { isAvailable: true },
+        limit: 6,
+        include: [{ model: Restaurant, as: 'restaurant', attributes: ['id', 'name', 'imageUrl'] }]
+      });
+
+      return res.json({
+        restaurants: trendingRestaurants.map(r => ({
+          _id: r.id, id: r.id, name: r.name, location: r.location, imageUrl: r.imageUrl, rating: r.rating || 4.5
+        })),
+        items: trendingItems.map(item => {
+          const itemJSON = item.toJSON();
+          return {
+            ...itemJSON,
+            _id: itemJSON.id,
+            restaurantId: itemJSON.restaurant ? { _id: itemJSON.restaurant.id, name: itemJSON.restaurant.name } : { _id: itemJSON.restaurantId, name: 'Unknown' }
+          };
+        }),
+        isTrending: true
+      });
+    }
 
     // Search Restaurants by name
     const restaurants = await Restaurant.findAll({
@@ -23,10 +49,6 @@ const globalSearch = async (req, res) => {
       },
       limit: 5
     });
-
-    // Build restaurant ID-to-name map for manual join
-    const allRestaurants = await Restaurant.findAll({ attributes: ['id', 'name', 'imageUrl'] });
-    const restMap = Object.fromEntries(allRestaurants.map(r => [r.id, { name: r.name, imageUrl: r.imageUrl }]));
 
     // Search Menu Items by name, description, or category
     const menuItems = await MenuItem.findAll({
@@ -42,16 +64,20 @@ const globalSearch = async (req, res) => {
           }
         ]
       },
-      limit: 10
+      include: [{ model: Restaurant, as: 'restaurant', attributes: ['id', 'name', 'imageUrl'] }],
+      limit: 15
     });
 
     // Transform menuItems to match the expected format
     const items = menuItems.map(item => {
       const itemJSON = item.toJSON();
-      const rest = restMap[itemJSON.restaurantId];
       return {
         ...itemJSON,
-        restaurantId: rest ? { _id: itemJSON.restaurantId, name: rest.name, imageUrl: rest.imageUrl } : { _id: itemJSON.restaurantId, name: 'Unknown' }
+        _id: itemJSON.id,
+        restaurantId: itemJSON.restaurant ? { 
+          _id: itemJSON.restaurant.id, 
+          name: itemJSON.restaurant.name 
+        } : { _id: itemJSON.restaurantId, name: 'Unknown' }
       };
     });
 

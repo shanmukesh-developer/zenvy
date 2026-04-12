@@ -1,0 +1,204 @@
+﻿
+> frontend@0.1.0 dev
+> next dev -H 0.0.0.0
+
+  Γû▓ Next.js 14.2.35
+  - Local:        http://localhost:3000
+  - Network:      http://0.0.0.0:3000
+  - Environments: .env
+
+ Γ£ô Starting...
+ Γ£ô Ready in 4.7s
+ Γùï Compiling / ...
+node.exe : 
+At line:1 char:1
++ & "D:\/node.exe" "D:\/node_modules/npm/bin/npm-cli.js" run dev
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[1m[33mwarn[39m[22m - The class `duration-[1300ms]` is ambiguous and matches multiple utilities.
+[1m[33mwarn[39m[22m - If this is content and not a class, replace it with `duration-&lsqb;1300ms&rsqb;` to 
+silence this warning.
+
+[1m[33mwarn[39m[22m - The class `duration-[1500ms]` is ambiguous and matches multiple utilities.
+[1m[33mwarn[39m[22m - If this is content and not a class, replace it with `duration-&lsqb;1500ms&rsqb;` to 
+silence this warning.
+
+[1m[33mwarn[39m[22m - The class `duration-[1800ms]` is ambiguous and matches multiple utilities.
+[1m[33mwarn[39m[22m - If this is content and not a class, replace it with `duration-&lsqb;1800ms&rsqb;` to 
+silence this warning.
+
+[1m[33mwarn[39m[22m - The class `duration-[2000ms]` is ambiguous and matches multiple utilities.
+[1m[33mwarn[39m[22m - If this is content and not a class, replace it with `duration-&lsqb;2000ms&rsqb;` to 
+silence this warning.
+
+[1m[33mwarn[39m[22m - The class `duration-[2200ms]` is ambiguous and matches multiple utilities.
+[1m[33mwarn[39m[22m - If this is content and not a class, replace it with `duration-&lsqb;2200ms&rsqb;` to 
+silence this warning.
+
+[1m[33mwarn[39m[22m - The class `duration-[4s]` is ambiguous and matches multiple utilities.
+[1m[33mwarn[39m[22m - If this is content and not a class, replace it with `duration-&lsqb;4s&rsqb;` to 
+silence this warning.
+ Γ£ô Compiled / in 12.4s (731 modules)
+ GET / 200 in 13576ms
+ Γ£ô Compiled in 1163ms (333 modules)
+ Γùï Compiling /login ...
+ Γ£ô Compiled /login in 3.5s (707 modules)
+ GET /login/ 200 in 4753ms
+ GET / 200 in 474ms
+ Γ£ô Compiled /_not-found in 364ms (710 modules)
+ GET /logout/ 404 in 490ms
+ GET / 200 in 76ms
+ GET / 200 in 69ms
+ GET / 200 in 44ms
+ GET /login/ 200 in 436ms
+ GET / 200 in 122ms
+ GET /admin/ 404 in 67ms
+ GET / 200 in 56ms
+ GET / 200 in 63ms
+ GET /assets/placeholder.png 404 in 56ms
+ GET /assets/placeholder.png 404 in 30ms
+ Γùï Compiling /restaurants/[id] ...
+ Γ£ô Compiled /restaurants/[id] in 1461ms (731 modules)
+ Γ£ô Compiled in 428ms (340 modules)
+ GET /assets/placeholder.png 404 in 137ms
+ Γùï Compiling /basket ...
+ Γ£ô Compiled /basket in 516ms (737 modules)
+ Γùï Compiling /checkout ...
+ Γ£ô Compiled /checkout in 523ms (740 modules)
+ Γùï Compiling /tracking ...
+ Γ£ô Compiled /tracking in 1321ms (752 modules)
+ GET /tracking/?id=4e357865-a55b-4428-8db1-b3b28e4ed26a 200 in 1546ms
+ Γùï Compiling /orders ...
+ Γ£ô Compiled /orders in 1012ms (740 modules)
+ GET /orders/ 200 in 1339ms
+ Γùï Compiling /profile ...
+ Γ£ô Compiled /profile in 2s (742 modules)
+ Γùï Compiling / ...
+ Γ£ô Compiled / in 610ms (404 modules)
+ Γùï Compiling /_not-found ...
+ Γ£ô Compiled /_not-found in 3.3s (744 modules)
+ GET /assets/placeholder.png 404 in 3762ms
+ Γùï Compiling /restaurants/[id] ...
+ Γ£ô Compiled /restaurants/[id] in 547ms (406 modules)
+ GET /assets/placeholder.png 404 in 279ms
+ GET /assets/placeholder.png 404 in 70ms
+ GET /assets/placeholder.png 404 in 241ms
+ GET /orders/ 200 in 169ms
+ GET /assets/placeholder.png 404 in 100ms
+ GET /assets/placeholder.png 404 in 55ms
+ GET /assets/placeholder.png 404 in 52ms
+ GET /assets/placeholder.png 404 in 43ms
+ GET /orders/ 200 in 69ms
+ GET / 200 in 147ms
+ GET /assets/placeholder.png 404 in 56ms
+ GET /assets/placeholder.png 404 in 43ms
+ GET /tracking/4e357865-a55b-4428-8db1-b3b28e4ed26a/ 404 in 47ms
+ GET /tracking/ 200 in 293ms
+ GET /tracking/?id=4e357865-a55b-4428-8db1-b3b28e4ed26a 200 in 50ms
+ GET /tracking/?id=4e357865-a55b-4428-8db1-b3b28e4ed26a 200 in 44ms
+ GET /assets/placeholder.png 404 in 68ms
+ GET /assets/placeholder.png 404 in 56ms
+ GET / 200 in 66ms
+ GET /assets/placeholder.png 404 in 67ms
+ GET /assets/placeholder.png 404 in 32ms
+ Γùï Compiling /products/[id] ...
+ Γ£ô Compiled /products/[id] in 1437ms (759 modules)
+ Γ£ô Compiled in 325ms (353 modules)
+ Γ£ô Compiled /_not-found in 384ms (748 modules)
+ GET /assets/placeholder.png 404 in 623ms
+ Γ£ô Compiled /basket in 296ms (404 modules)
+ Γ£ô Compiled /checkout in 207ms (408 modules)
+ Γùï Compiling /tracking ...
+ Γ£ô Compiled /tracking in 728ms (415 modules)
+ GET /tracking/?id=e3d776c3-9577-4025-a79b-e720768de9d0 200 in 1150ms
+ Γ£ô Compiled in 4.1s (755 modules)
+ GET / 200 in 200ms
+ Γùï Compiling /_not-found ...
+ Γ£ô Compiled /_not-found in 1218ms (758 modules)
+ GET /assets/placeholder.png 404 in 1462ms
+ GET /assets/placeholder.png 404 in 40ms
+ GET /assets/placeholder.png 404 in 37ms
+ Γùï Compiling /basket ...
+ Γ£ô Compiled /basket in 886ms (406 modules)
+ GET /tracking/?id=3dbb76b8-30ff-471c-9f12-01b619339399 200 in 775ms
+ Γ£ô Compiled in 849ms (353 modules)
+ Γ£ô Compiled /orders in 382ms (392 modules)
+ GET /orders/ 200 in 518ms
+ Γ£ô Compiled / in 279ms (405 modules)
+ Γ£ô Compiled /_not-found in 407ms (747 modules)
+ GET /assets/placeholder.png 404 in 598ms
+ GET /assets/placeholder.png 404 in 32ms
+ GET /assets/placeholder.png 404 in 44ms
+ GET /assets/placeholder.png 404 in 44ms
+ GET /assets/placeholder.png 404 in 58ms
+ GET /assets/placeholder.png 404 in 41ms
+ Γùï Compiling /profile ...
+ Γ£ô Compiled /profile in 598ms (405 modules)
+ GET /assets/placeholder.png 404 in 159ms
+ GET /assets/placeholder.png 404 in 30ms
+ Γ£ô Compiled in 629ms (753 modules)
+ Γ£ô Compiled /_not-found in 340ms (742 modules)
+ GET /assets/placeholder.png 404 in 423ms
+ GET / 200 in 68ms
+ GET /assets/placeholder.png 404 in 47ms
+ GET /assets/placeholder.png 404 in 29ms
+ Γ£ô Compiled in 260ms (353 modules)
+ Γ£ô Compiled in 789ms (753 modules)
+ Γ£ô Compiled in 484ms (755 modules)
+ Γ£ô Compiled /_not-found in 201ms (744 modules)
+ GET /assets/placeholder.png 404 in 326ms
+ GET / 200 in 2307ms
+ GET /assets/placeholder.png 404 in 306ms
+ GET /assets/placeholder.png 404 in 70ms
+ Γùï Compiling /restaurants/[id] ...
+ Γ£ô Compiled /restaurants/[id] in 6.6s (407 modules)
+ GET /assets/placeholder.png 404 in 1661ms
+ GET /assets/placeholder.png 404 in 50ms
+ GET /assets/placeholder.png 404 in 40ms
+ GET /assets/placeholder.png 404 in 51ms
+ GET /assets/placeholder.png 404 in 72ms
+ GET /assets/placeholder.png 404 in 91ms
+ Γ£ô Compiled in 21.5s (759 modules)
+ Γ£ô Compiled in 2.5s (356 modules)
+ GET / 200 in 7514ms
+ GET /assets/placeholder.png 404 in 1491ms
+ GET /assets/placeholder.png 404 in 53ms
+ GET /assets/placeholder.png 404 in 106ms
+ GET /assets/placeholder.png 404 in 190ms
+ GET /assets/placeholder.png 404 in 77ms
+ GET /assets/placeholder.png 404 in 72ms
+ GET /assets/placeholder.png 404 in 94ms
+ GET /assets/placeholder.png 404 in 42ms
+ GET /assets/placeholder.png 404 in 132ms
+ GET /assets/placeholder.png 404 in 57ms
+ GET /assets/placeholder.png 404 in 49ms
+ GET /assets/placeholder.png 404 in 40ms
+ GET /profile/ 200 in 547ms
+ Γùï Compiling /favicon.ico ...
+ Γ£ô Compiled /favicon.ico in 2.3s (434 modules)
+ GET /favicon.ico 200 in 2953ms
+ GET /profile/ 200 in 434ms
+ GET /favicon.ico 200 in 16ms
+ Γùï Compiling /_not-found ...
+ Γ£ô Compiled /_not-found in 3s (791 modules)
+ GET /assets/placeholder.png 404 in 3347ms
+ Γ£ô Compiled in 2.7s (756 modules)
+ Γ£ô Compiled /_not-found in 388ms (745 modules)
+ GET /assets/placeholder.png 404 in 535ms
+ GET /assets/placeholder.png 404 in 40ms
+ GET / 200 in 206ms
+ GET /assets/placeholder.png 404 in 52ms
+ GET /assets/placeholder.png 404 in 47ms
+ GET /profile/ 200 in 158ms
+ GET /profile/ 200 in 435ms
+ GET /profile/ 200 in 388ms
+ Γ£ô Compiled in 28.9s (756 modules)
+ GET /profile/ 200 in 651ms
+ GET /profile/ 200 in 1502ms
+ GET /profile/ 200 in 85ms
+ GET /profile/ 200 in 68ms
+   Reload env: .env
+ Γ£ô Compiled in 3.8s (756 modules)
+

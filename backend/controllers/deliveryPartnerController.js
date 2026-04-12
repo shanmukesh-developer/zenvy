@@ -3,8 +3,10 @@ const { getOrderModel } = require('../models/Order');
 const { getUserModel } = require('../models/User');
 const { getRestaurantModel } = require('../models/Restaurant');
 const { sendPushToTokens } = require('../utils/push');
+const { evaluateBadges } = require('../services/BadgeService');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const { Op } = require('sequelize');
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '30d' });
@@ -30,11 +32,6 @@ const authPartner = async (req, res) => {
   try {
     const { phone, password } = req.body;
 
-    // Hardcoded master credentials for dev
-    if (phone === 'driver-1' && password === 'srk') {
-      return res.json({ _id: 'mock-driver-1', name: 'Hostel Hub Rider', token: generateToken('mock-driver-1') });
-    }
-
     const DeliveryPartner = getDeliveryPartnerModel();
     const partner = await DeliveryPartner.findOne({ where: { phone } });
     if (partner && (await bcrypt.compare(password, partner.password))) {
@@ -50,46 +47,63 @@ const authPartner = async (req, res) => {
 // @desc    Accept an order
 const acceptOrder = async (req, res) => {
   try {
-    const Order = getOrderModel();
-    const order = await Order.findByPk(req.params.orderId);
-    if (!order) return res.status(404).json({ message: 'Order not found' });
-    if (order.status !== 'Pending') return res.status(400).json({ message: 'Order already accepted' });
-
-    order.deliveryPartnerId = req.user.id;
-    order.status = 'Accepted';
-    await order.save();
-
     const DeliveryPartner = getDeliveryPartnerModel();
+    const Order = getOrderModel();
     const partner = await DeliveryPartner.findByPk(req.user.id);
-    if (partner) { partner.currentOrderId = order.id; await partner.save(); }
+    
+    // 1. Busy Guard: Prevent rider from accepting if already on a task
+    if (partner && partner.currentOrderId) {
+      return res.status(400).json({ message: 'Finish your current task before accepting a new one!' });
+    }
+
+    // 2. Atomic Claim: Use a conditional update to prevent race conditions (Rider A vs Rider B)
+    const [updatedRows] = await Order.update(
+      { deliveryPartnerId: req.user.id, status: 'Accepted' },
+      { where: { id: req.params.orderId, deliveryPartnerId: null, status: { [Op.in]: ['Pending', 'Accepted'] } } }
+    );
+
+    if (updatedRows === 0) {
+      return res.status(400).json({ message: 'Order was already claimed by another rider or cancelled.' });
+    }
+
+    // Since we successfully updated, we fetch the updated order object
+    const updatedOrder = await Order.findByPk(req.params.orderId);
+    
+    if (partner) { 
+      partner.currentOrderId = updatedOrder.id; 
+      await partner.save(); 
+    }
 
     const io = req.app.get('io');
-    io.to(order.id.toString()).emit('statusUpdated', 'Accepted');
+    io.to(updatedOrder.id.toString()).emit('statusUpdated', 'Accepted');
 
     try {
       const User = getUserModel();
       const Restaurant = getRestaurantModel();
-      const customer = await User.findByPk(order.userId);
-      const restaurant = await Restaurant.findByPk(order.restaurantId);
+      const customer = await User.findByPk(updatedOrder.userId);
+      const restaurant = await Restaurant.findByPk(updatedOrder.restaurantId);
 
       res.json({
-        id: order.id,
+        id: updatedOrder.id,
         restaurant: restaurant?.name || 'Restaurant',
-        restaurantAddress: 'SRM Campus',
-        customerName: customer?.name || 'Student',
-        customerPhone: customer?.phone || 'Unknown',
-        drop: order.hostelGateDelivery ? `${customer?.hostelBlock || 'Hostel'} (Gate)` : `${customer?.hostelBlock || 'Hostel'} (Room)`,
-        items: order.items,
-        totalPrice: order.totalPrice,
-        finalPrice: order.finalPrice,
-        earnings: `₹${Math.round((order.finalPrice || order.totalPrice) * 0.1)}`
+        restaurantAddress: restaurant?.location || 'Station Alpha',
+        customerName: customer?.name || 'Customer',
+        customerPhone: customer?.phone || 'Hidden',
+        drop: updatedOrder.deliveryAddress || (updatedOrder.hostelGateDelivery ? `${customer?.hostelBlock || 'Hostel'} (Gate)` : `${customer?.hostelBlock || 'Hostel'} (Room)`),
+        items: updatedOrder.items,
+        totalPrice: updatedOrder.totalPrice,
+        finalPrice: updatedOrder.finalPrice,
+        earnings: `₹${Math.round((updatedOrder.finalPrice || updatedOrder.totalPrice) * 0.1)}`
       });
 
       if (customer?.fcmTokens?.length > 0) {
-        await sendPushToTokens(customer.fcmTokens, 'Order Accepted! 🛵', 'Your Zenvy rider is on the way.', { orderId: order.id, type: 'ORDER_UPDATE' });
+        await sendPushToTokens(customer.fcmTokens, 'Order Accepted! 🛵', 'Your Zenvy rider is on the way.', { orderId: updatedOrder.id, type: 'ORDER_UPDATE' });
       }
     } catch (e) {
-      if (!res.headersSent) res.json({ _id: order.id, status: 'Accepted' });
+      console.error('[ACCEPT_ORDER_ERROR]', e);
+      if (!res.headersSent) {
+        res.status(500).json({ message: 'Server error', error: e.message });
+      }
     }
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -102,7 +116,14 @@ const getPendingOrders = async (req, res) => {
     const Order = getOrderModel();
     const User = getUserModel();
     const Restaurant = getRestaurantModel();
-    const orders = await Order.findAll({ where: { status: 'Pending' }, order: [['createdAt', 'DESC']] });
+    const orders = await Order.findAll({ 
+      where: { 
+        status: { [Op.in]: ['Pending', 'Accepted'] },
+        deliveryPartnerId: null
+      }, 
+      order: [['createdAt', 'DESC']],
+      limit: 100
+    });
 
     const userIds = [...new Set(orders.map(o => o.userId))];
     const restIds = [...new Set(orders.map(o => o.restaurantId))];
@@ -121,10 +142,10 @@ const getPendingOrders = async (req, res) => {
       return {
         id: order.id,
         restaurant: restaurant?.name || 'Restaurant',
-        restaurantAddress: 'SRM Campus',
-        customerName: customer?.name || 'Student',
-        customerPhone: customer?.phone || 'Unknown',
-        drop: order.hostelGateDelivery ? `${customer?.hostelBlock || 'Block'} (Gate)` : `${customer?.hostelBlock || 'Block'} (Room)`,
+        restaurantAddress: restaurant?.location || 'Location',
+        customerName: customer?.name || 'Customer',
+        customerPhone: customer?.phone || 'Hidden',
+        drop: order.deliveryAddress || (order.hostelGateDelivery ? `${customer?.hostelBlock || 'Block'} (Gate)` : `${customer?.hostelBlock || 'Block'} (Room)`),
         items: order.items,
         totalPrice: order.totalPrice,
         finalPrice: order.finalPrice,
@@ -149,7 +170,8 @@ const getOrderHistory = async (req, res) => {
 
     const orders = await Order.findAll({
       where: { deliveryPartnerId: req.user.id, status: 'Delivered', updatedAt: { [Op.gte]: twentyFourHoursAgo } },
-      order: [['updatedAt', 'DESC']]
+      order: [['updatedAt', 'DESC']],
+      limit: 50
     });
 
     const restIds = [...new Set(orders.map(o => o.restaurantId))];
@@ -161,7 +183,7 @@ const getOrderHistory = async (req, res) => {
       return {
         id: order.id,
         restaurant: restaurant?.name || 'Restaurant',
-        drop: order.hostelGateDelivery ? 'Hostel Gate' : 'Room Delivery',
+        drop: order.deliveryAddress || (order.hostelGateDelivery ? 'Hostel Gate' : 'Room Delivery'),
         items: order.items,
         totalPrice: order.totalPrice,
         finalPrice: order.finalPrice,
@@ -191,6 +213,17 @@ const updateOrderStatus = async (req, res) => {
     if (status === 'PickedUp' && order.status !== 'Accepted') return res.status(400).json({ message: 'Must be Accepted first' });
     if (status === 'Delivered' && order.status !== 'PickedUp') return res.status(400).json({ message: 'Must be PickedUp first' });
 
+    // ── Delivery PIN Validation ──────────────────────
+    if (status === 'Delivered') {
+      const { pin } = req.body;
+      // Only enforce PIN check when the order actually has one set
+      if (order.deliveryPin && order.deliveryPin.length > 0) {
+        if (!pin || pin !== order.deliveryPin) {
+          return res.status(400).json({ message: 'Invalid delivery PIN' });
+        }
+      }
+    }
+
     order.status = status;
     await order.save();
 
@@ -209,12 +242,49 @@ const updateOrderStatus = async (req, res) => {
       if (customer) {
         const pts = Math.floor((order.finalPrice || order.totalPrice) / 100) * 10;
         customer.zenPoints = (customer.zenPoints || 0) + pts;
+        customer.completedOrders = (customer.completedOrders || 0) + 1;
+        
+        // --- Achievements Logic (Multi-tier) ---
+        const hour = new Date().getHours();
+        if (hour >= 22 || hour < 4) {
+          customer.lateNightOrders = (customer.lateNightOrders || 0) + 1;
+        }
+
+        const newBadges = evaluateBadges(customer);
+        if (newBadges.length > 0) {
+          const currentBadges = Array.isArray(customer.badges) ? [...customer.badges] : [];
+          customer.badges = [...currentBadges, ...newBadges];
+          
+          for (const badge of newBadges) {
+            await sendPushToTokens(
+              customer.fcmTokens,
+              'New Achievement Unlocked! 🏆',
+              `Congratulations! You've earned the "${badge}" badge.`
+            );
+          }
+        }
+
+        // Store for socket emission
+        order.newBadges = newBadges;
+
+        // --- Milestone Notifications ---
+        if (customer.completedOrders % 2 === 0) {
+          await sendPushToTokens(
+            customer.fcmTokens,
+            'Milestone Reached! 🎡',
+            `You just completed your ${customer.completedOrders}th order! A Lucky Spin is waiting for you in the Vault.`
+          );
+        }
+
         await customer.save();
       }
     }
 
     const io = req.app.get('io');
-    io.to(order.id.toString()).emit('statusUpdated', status);
+    io.to(order.id.toString()).emit('statusUpdated', { 
+      status, 
+      newBadges: status === 'Delivered' ? (order.newBadges || []) : [] 
+    });
     res.json({ ...order.toJSON(), _id: order.id });
 
     try {
@@ -264,4 +334,206 @@ const saveFcmToken = async (req, res) => {
   }
 };
 
-module.exports = { registerPartner, authPartner, acceptOrder, getPendingOrders, updateOrderStatus, toggleOnline, getOrderHistory, saveFcmToken };
+// @desc    Get all active orders for the logged in partner
+const getActiveOrders = async (req, res) => {
+  try {
+    const Order = getOrderModel();
+    const User = getUserModel();
+    const Restaurant = getRestaurantModel();
+    
+    const orders = await Order.findAll({
+      where: { 
+        deliveryPartnerId: req.user.id,
+        status: ['Accepted', 'PickedUp', 'Preparing']
+      },
+      order: [['createdAt', 'ASC']]
+    });
+
+    const userIds = [...new Set(orders.map(o => o.userId))];
+    const restIds = [...new Set(orders.map(o => o.restaurantId))];
+    
+    const [users, restaurants] = await Promise.all([
+      User.findAll({ where: { id: userIds } }),
+      Restaurant.findAll({ where: { id: restIds } })
+    ]);
+
+    const userMap = Object.fromEntries(users.map(u => [u.id, u]));
+    const restMap = Object.fromEntries(restaurants.map(r => [r.id, r]));
+
+    const enrichedOrders = orders.map(order => {
+      const restaurant = restMap[order.restaurantId];
+      const customer = userMap[order.userId];
+      return {
+        id: order.id,
+        restaurant: restaurant?.name || 'Nexus Hub',
+        restaurantAddress: restaurant?.location || 'Amaravathi Hub',
+        customerName: customer?.name || 'Verified Customer',
+        customerPhone: customer?.phone || 'Identity Protected',
+        drop: order.deliveryAddress || (order.hostelGateDelivery ? `${customer?.hostelBlock || 'Block'} (Gate)` : `${customer?.hostelBlock || 'Block'} (Room)`),
+        items: order.items,
+        totalPrice: order.totalPrice,
+        finalPrice: order.finalPrice,
+        status: order.status,
+        deliveryPin: order.deliveryPin,
+        earnings: `₹${Math.round((order.finalPrice || order.totalPrice) * 0.1)}`,
+        createdAt: order.createdAt
+      };
+    });
+
+    // ── Task Sequencing Logic ──────────────────────
+    const tasks = [];
+    // 1. Pickups first (for all orders in 'Accepted' or 'Preparing')
+    enrichedOrders.filter(o => ['Accepted', 'Preparing'].includes(o.status)).forEach(o => {
+      tasks.push({ type: 'PICKUP', orderId: o.id, location: o.restaurant, address: o.restaurantAddress });
+    });
+    // 2. Deliveries next (for all orders in 'PickedUp')
+    enrichedOrders.filter(o => o.status === 'PickedUp').forEach(o => {
+      tasks.push({ type: 'DELIVERY', orderId: o.id, location: o.customerName, address: o.drop });
+    });
+
+    res.json({ orders: enrichedOrders, taskSequence: tasks });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// @desc    Get today's leaderboard (top riders by earnings)
+const getLeaderboard = async (req, res) => {
+  try {
+    const DeliveryPartner = getDeliveryPartnerModel();
+    const Order = getOrderModel();
+    const { Op } = require('sequelize');
+    const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
+
+    const deliveries = await Order.findAll({
+      where: {
+        status: 'Delivered',
+        updatedAt: { [Op.gte]: startOfDay },
+        deliveryPartnerId: { [Op.ne]: null }
+      },
+      attributes: ['deliveryPartnerId', 'finalPrice', 'totalPrice']
+    });
+
+    const earningsMap = {};
+    const countMap = {};
+    for (const d of deliveries) {
+      const pid = d.deliveryPartnerId;
+      const e = Math.round((d.finalPrice || d.totalPrice || 0) * 0.1);
+      earningsMap[pid] = (earningsMap[pid] || 0) + e;
+      countMap[pid] = (countMap[pid] || 0) + 1;
+    }
+
+    const partnerIds = Object.keys(earningsMap);
+    if (partnerIds.length === 0) return res.json([]);
+
+    const partners = await DeliveryPartner.findAll({
+      where: { id: partnerIds },
+      attributes: ['id', 'name']
+    });
+
+    const board = partners.map(p => ({
+      id: p.id,
+      name: p.name,
+      earnings: earningsMap[p.id] || 0,
+      orders: countMap[p.id] || 0,
+      isMe: p.id === req.user.id
+    })).sort((a, b) => b.earnings - a.earnings).slice(0, 10);
+
+    res.json(board);
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// @desc    Get rider's own profile
+const getRiderProfile = async (req, res) => {
+  try {
+    const DeliveryPartner = getDeliveryPartnerModel();
+    const partner = await DeliveryPartner.findByPk(req.user.id, {
+      attributes: { exclude: ['password', 'fcmTokens'] }
+    });
+    if (!partner) return res.status(404).json({ message: 'Rider not found' });
+    res.json({ ...partner.toJSON(), _id: partner.id });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// @desc    Get today's stats for current rider
+const getTodayStats = async (req, res) => {
+  try {
+    const Order = getOrderModel();
+    const { Op } = require('sequelize');
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const orders = await Order.findAll({
+      where: {
+        deliveryPartnerId: req.user.id,
+        status: 'Delivered',
+        updatedAt: { [Op.gte]: startOfDay }
+      }
+    });
+
+    const earnings = orders.reduce((sum, o) => sum + Math.round((o.finalPrice || o.totalPrice) * 0.1), 0);
+    const count = orders.length;
+
+    res.json({ earnings, orders: count, zenPoints: count * 5, streak: 1 });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Update rider's own profile
+const updateRiderProfile = async (req, res) => {
+  try {
+    const { name, vehicleType, vehicleNumber, bio, emergencyContact, photoUrl } = req.body;
+    const DeliveryPartner = getDeliveryPartnerModel();
+    const partner = await DeliveryPartner.findByPk(req.user.id);
+    if (!partner) return res.status(404).json({ message: 'Rider not found' });
+
+    if (name) partner.name = name;
+    if (vehicleType !== undefined) partner.vehicleType = vehicleType;
+    if (vehicleNumber !== undefined) partner.vehicleNumber = vehicleNumber;
+    if (bio !== undefined) partner.bio = bio;
+    if (emergencyContact !== undefined) partner.emergencyContact = emergencyContact;
+    if (photoUrl !== undefined) partner.photoUrl = photoUrl;
+
+    await partner.save();
+
+    // Broadcast updated profile to admin room only for monitoring
+    const io = req.app.get('io');
+    io.to('admin-room').emit('rider_profile_updated', {
+      riderId: partner.id,
+      name: partner.name,
+      photoUrl: partner.photoUrl,
+      vehicleType: partner.vehicleType,
+      vehicleNumber: partner.vehicleNumber,
+      averageRating: partner.averageRating
+    });
+
+    res.json({ ...partner.toJSON(), _id: partner.id });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// @desc    Get public profile of a rider (customer tracking page, no auth)
+const getPublicRiderProfile = async (req, res) => {
+  try {
+    const DeliveryPartner = getDeliveryPartnerModel();
+    const partner = await DeliveryPartner.findByPk(req.params.id, {
+      attributes: ['id', 'name', 'photoUrl', 'vehicleType', 'vehicleNumber', 'averageRating', 'totalRatings', 'bio']
+    });
+    if (!partner) return res.status(404).json({ message: 'Rider not found' });
+    res.json({ ...partner.toJSON(), _id: partner.id });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+module.exports = { 
+  registerPartner, authPartner, acceptOrder, getPendingOrders, getActiveOrders, 
+  updateOrderStatus, toggleOnline, getOrderHistory, saveFcmToken, getLeaderboard,
+  getRiderProfile, updateRiderProfile, getPublicRiderProfile, getTodayStats
+};

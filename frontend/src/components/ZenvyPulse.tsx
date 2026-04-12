@@ -3,19 +3,11 @@ import { useState, useEffect } from 'react';
 import { socket } from '@/utils/socket';
 
 export default function ZenvyPulse({ userBlock }: { userBlock: string | null }) {
-  const [pulses, setPulses] = useState<{ id: number, block: string }[]>([]);
+  const [pulses, setPulses] = useState<{ id: number; block: string }[]>([]);
   const [isEnabled, setIsEnabled] = useState(true);
 
   useEffect(() => {
-    // Listen for the 'systemUpdate' socket event if it's broadcasted.
-    // But initially, we can just fetch.
-  }, []);
-
-  useEffect(() => {
-    // The socket is now imported directly from '@/utils/socket'
-    // const socket = io(SOCKET_URL); // This line is removed
-
-    socket.on('systemUpdate', ({ type, data }: { type: string, data: { key: string, value: boolean } }) => {
+    socket.on('systemUpdate', ({ type, data }: { type: string; data: { key: string; value: boolean } }) => {
       if (type === 'CONFIG_UPDATED' && data.key === 'pulse_enabled') {
         setIsEnabled(data.value);
       }
@@ -23,11 +15,9 @@ export default function ZenvyPulse({ userBlock }: { userBlock: string | null }) 
 
     socket.on('blockOrderPulse', ({ blockName }: { blockName: string }) => {
       if (!isEnabled) return;
-
       if (blockName === userBlock || !userBlock) {
         const id = Date.now();
         setPulses(prev => [...prev, { id, block: blockName }]);
-        
         setTimeout(() => {
           setPulses(prev => prev.filter(p => p.id !== id));
         }, 3000);
@@ -44,19 +34,15 @@ export default function ZenvyPulse({ userBlock }: { userBlock: string | null }) 
 
   return (
     <div className="fixed inset-0 pointer-events-none z-[100] overflow-hidden">
-      {pulses.map(pulse => (
-        <div 
-          key={pulse.id}
-          className="absolute inset-0 flex items-center justify-center"
-        >
+      {pulses.map((pulse) => (
+        <div key={pulse.id} className="absolute inset-0 flex items-center justify-center">
           <div className="w-[1px] h-[1px] bg-[#C9A84C]/40 rounded-full animate-ripple-magical" />
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[10px] font-black text-[#C9A84C] uppercase tracking-[0.5em] animate-pulse-text-fade">
              {pulse.block} Pulse
           </div>
         </div>
       ))}
-
-      <style jsx>{`
+      <style dangerouslySetInnerHTML={{ __html: `
         @keyframes ripple-magical {
           0% { transform: scale(0); opacity: 0.8; box-shadow: 0 0 20px 10px rgba(201, 168, 76, 0.4); }
           50% { opacity: 0.4; }
@@ -74,7 +60,7 @@ export default function ZenvyPulse({ userBlock }: { userBlock: string | null }) 
         .animate-pulse-text-fade {
           animation: pulse-text-fade 3s ease-out forwards;
         }
-      `}</style>
+      ` }} />
     </div>
   );
 }

@@ -1,6 +1,5 @@
 "use client";
 import { useState, useEffect } from 'react';
-import Link from 'next/link';
 
 interface AuditLog {
   id: string;
@@ -11,7 +10,7 @@ interface AuditLog {
   timestamp: string;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
 
 export default function AuditPage() {
   const [logs, setLogs] = useState<AuditLog[]>([]);

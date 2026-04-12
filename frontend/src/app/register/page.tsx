@@ -1,15 +1,15 @@
 "use client";
 import Link from 'next/link';
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import SuccessOverlay from '@/components/SuccessOverlay';
 
 export default function RegisterPage() {
+  const router = useRouter();
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
-    password: '',
-    hostelBlock: '',
-    roomNumber: ''
+    password: ''
   });
   const [overlay, setOverlay] = useState<{ isOpen: boolean; title: string; message: string; type?: 'success' | 'error' }>({
     isOpen: false,
@@ -18,13 +18,13 @@ export default function RegisterPage() {
   });
 
   const handleRegister = async () => {
-    const { name, phone, password, hostelBlock, roomNumber } = formData;
+    const { name, phone, password } = formData;
     
-    if (!name || !phone || !password || !hostelBlock || !roomNumber) {
+    if (!name || !phone || !password) {
       setOverlay({
         isOpen: true,
         title: 'Missing Details',
-        message: 'Please fill in all gourmet fields to proceed.',
+        message: 'Please fill in all required fields to proceed.',
         type: 'error'
       });
       return;
@@ -43,12 +43,12 @@ export default function RegisterPage() {
     setOverlay({
       isOpen: true,
       title: 'Creating Account',
-      message: 'Welcoming you to the elite Zenvy circle...',
+      message: 'Setting up your Zenvy account...',
       type: 'success'
     });
 
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
       const response = await fetch(`${API_URL}/api/users/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -62,13 +62,11 @@ export default function RegisterPage() {
         localStorage.setItem('user', JSON.stringify({ 
           id: data._id, 
           name: data.name,
-          phone: data.phone,
-          hostelBlock: data.hostelBlock,
-          roomNumber: data.roomNumber
+          phone: data.phone
         }));
         
         setTimeout(() => {
-          window.location.href = '/';
+          router.push('/');
         }, 2000);
       } else {
         setOverlay({
@@ -98,11 +96,11 @@ export default function RegisterPage() {
         </Link>
         
         <h1 className="text-4xl font-black leading-tight mb-2">
-           Join the <br />
-           <span className="text-primary-yellow italic font-serif">Elite circle</span>
+           Create <br />
+           <span className="text-primary-yellow italic font-serif">Account</span>
         </h1>
         <p className="text-secondary-text text-[11px] font-bold uppercase tracking-[0.2em] mb-10">
-           Curate your campus dining experience.
+           Experience premium dining at your doorstep.
         </p>
 
         <div className="space-y-6">
@@ -112,7 +110,8 @@ export default function RegisterPage() {
                 type="text"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="Ex. Shanmukh"
+                autoComplete="name"
+                placeholder="Enter your full name"
                 className="w-full bg-[#141416] border border-white/[0.03] rounded-[24px] h-[64px] px-6 font-bold text-sm focus:ring-1 focus:ring-primary-yellow transition-all outline-none"
               />
            </div>
@@ -125,6 +124,7 @@ export default function RegisterPage() {
                     type="tel"
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    autoComplete="tel"
                     placeholder="Enter Number"
                     className="w-full bg-[#141416] border border-white/[0.03] rounded-[24px] h-[64px] pl-16 pr-6 font-bold text-sm focus:ring-1 focus:ring-primary-yellow transition-all outline-none"
                 />
@@ -132,52 +132,31 @@ export default function RegisterPage() {
            </div>
 
            <div className="space-y-2">
-              <label className="text-[9px] font-black text-secondary-text uppercase tracking-widest ml-4">Gourmet Password</label>
+              <label className="text-[9px] font-black text-secondary-text uppercase tracking-widest ml-4">Password</label>
               <input 
                 type="password"
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                autoComplete="new-password"
                 placeholder="********"
                 className="w-full bg-[#141416] border border-white/[0.03] rounded-[24px] h-[64px] px-6 font-bold text-sm focus:ring-1 focus:ring-primary-yellow transition-all outline-none"
               />
            </div>
 
-           <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-[9px] font-black text-secondary-text uppercase tracking-widest ml-4">Hostel Block</label>
-                <input 
-                    type="text"
-                    value={formData.hostelBlock}
-                    onChange={(e) => setFormData({ ...formData, hostelBlock: e.target.value })}
-                    placeholder="Block-5"
-                    className="w-full bg-[#141416] border border-white/[0.03] rounded-[24px] h-[64px] px-6 font-bold text-sm focus:ring-1 focus:ring-primary-yellow transition-all outline-none"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[9px] font-black text-secondary-text uppercase tracking-widest ml-4">Room No</label>
-                <input 
-                    type="text"
-                    value={formData.roomNumber}
-                    onChange={(e) => setFormData({ ...formData, roomNumber: e.target.value })}
-                    placeholder="245"
-                    className="w-full bg-[#141416] border border-white/[0.03] rounded-[24px] h-[64px] px-6 font-bold text-sm focus:ring-1 focus:ring-primary-yellow transition-all outline-none"
-                />
-              </div>
-           </div>
 
            <div className="pt-4">
               <button 
                 onClick={handleRegister}
                 className="w-full btn-yellow flex justify-center py-6 text-[11px] font-black uppercase tracking-[0.3em] shadow-2xl shadow-primary-yellow/10"
               >
-                  Establish Account
+                  Create Account
               </button>
            </div>
         </div>
 
         <div className="mt-12 text-center">
            <p className="text-[10px] text-secondary-text uppercase tracking-widest font-bold">
-              Already an elite member? <Link href="/login" className="text-primary-yellow underline underline-offset-4 ml-1">Login Instead</Link>
+              Already have an account? <Link href="/login" className="text-primary-yellow underline underline-offset-4 ml-1">Login Instead</Link>
            </p>
         </div>
       </div>

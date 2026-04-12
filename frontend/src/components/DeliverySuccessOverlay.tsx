@@ -4,15 +4,18 @@ import { useEffect } from 'react';
 interface Props {
   isOpen: boolean;
   onComplete: () => void;
+  newBadges?: string[];
 }
 
-export default function DeliverySuccessOverlay({ isOpen, onComplete }: Props) {
+export default function DeliverySuccessOverlay({ isOpen, onComplete, newBadges = [] }: Props) {
   useEffect(() => {
     if (isOpen) {
-      const timer = setTimeout(() => onComplete(), 3500);
+      // Extend timer if badges are shown to allow user to see them
+      const duration = newBadges.length > 0 ? 5500 : 3500;
+      const timer = setTimeout(() => onComplete(), duration);
       return () => clearTimeout(timer);
     }
-  }, [isOpen, onComplete]);
+  }, [isOpen, onComplete, newBadges]);
 
   if (!isOpen) return null;
 
@@ -28,9 +31,37 @@ export default function DeliverySuccessOverlay({ isOpen, onComplete }: Props) {
         <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-[#C9A84C] via-[#F7D331] to-[#8B7332] uppercase tracking-[0.2em] mb-4">
           Delivered!
         </h1>
-        <p className="text-white/60 text-sm font-bold uppercase tracking-widest max-w-[250px] leading-relaxed">
+        <p className="text-white/60 text-sm font-bold uppercase tracking-widest max-w-[250px] leading-relaxed mb-10">
           Your Zenvy captain has completed the mission. Enjoy your meal!
         </p>
+
+        {newBadges.length > 0 && (
+          <div className="flex flex-col items-center gap-6 animate-in zoom-in slide-in-from-top-20 duration-1000 delay-500">
+            <div className="text-[10px] font-black text-[#C9A84C] uppercase tracking-[0.3em]">Achievement Unlocked</div>
+            <div className="flex flex-wrap justify-center gap-4">
+              {newBadges.map((badge, idx) => {
+                const isPlatinum = badge.includes('Platinum') || badge.includes('Pro') || badge.includes('Phantom');
+                const isGold = badge.includes('Gold') || badge.includes('Grafter') || badge.includes('Ghost');
+                return (
+                  <div key={idx} className={`p-6 rounded-3xl border-2 flex flex-col items-center gap-3 glass shadow-2xl transition-all hover:scale-110 ${
+                    isPlatinum ? 'border-purple-500/40 bg-purple-500/10' : 
+                    isGold ? 'border-amber-500/40 bg-amber-500/10' : 
+                    'border-gray-400/40 bg-gray-400/10'
+                  }`}>
+                    <div className="text-4xl">
+                      {isPlatinum ? '💎' : isGold ? '🥇' : '🥈'}
+                    </div>
+                    <div className={`text-xs font-black uppercase tracking-widest ${
+                      isPlatinum ? 'text-purple-300' : isGold ? 'text-amber-300' : 'text-gray-200'
+                    }`}>
+                      {badge}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

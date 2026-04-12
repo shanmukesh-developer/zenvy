@@ -1,10 +1,10 @@
 "use client";
 import { useState, useEffect, useRef } from 'react';
-import Image from 'next/image';
+import SafeImage from './SafeImage';
 import { motion, AnimatePresence } from 'framer-motion';
 import VaultClaimModal from './VaultClaimModal';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
 
 interface VaultItem {
   id: string;
@@ -235,7 +235,7 @@ export default function ZenvyVault() {
                         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/[0.05] to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-in-out" />
                         
                         <div className="w-28 h-28 rounded-2xl relative overflow-hidden shrink-0 border border-white/10">
-                           <Image 
+                           <SafeImage 
                             src={item.imageUrl} 
                             alt={item.name} 
                             fill 

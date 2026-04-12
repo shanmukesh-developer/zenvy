@@ -1,0 +1,18 @@
+﻿
+C:\hostel-bite\frontend\src\app\tra
+cking\page.tsx: line 45, col 30, 
+Error - Unexpected any. Specify a 
+different type. (@typescript-eslint
+/no-explicit-any)
+C:\hostel-bite\frontend\src\compone
+nts\BadgeDetailsModal.tsx: line 
+57, col 43, Error - Unexpected 
+any. Specify a different type. (@ty
+pescript-eslint/no-explicit-any)
+C:\hostel-bite\frontend\src\compone
+nts\MapLocationPicker.tsx: line 
+19, col 30, Error - Unexpected 
+any. Specify a different type. (@ty
+pescript-eslint/no-explicit-any)
+
+

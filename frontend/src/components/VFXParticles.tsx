@@ -67,14 +67,6 @@ export default function VFXParticles() {
           />
         );
       })}
-      <style jsx>{`
-        @keyframes float-slow {
-          0% { transform: translate(0, 0); }
-          33% { transform: translate(2vw, -5vh); }
-          66% { transform: translate(-1vw, -10vh); }
-          100% { transform: translate(0, 0); }
-        }
-      `}</style>
     </div>
   );
 }

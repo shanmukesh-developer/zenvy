@@ -3,36 +3,186 @@ const { getUserModel } = require('../models/User');
 const { getRestaurantModel } = require('../models/Restaurant');
 const { getDeliveryPartnerModel } = require('../models/DeliveryPartner');
 const { sendPushToTokens } = require('../utils/push');
-const { updateStreak } = require('../middleware/rewardEngine');
+const { updateStreak, calculateBadgePerks } = require('../middleware/rewardEngine');
+const { getMenuItemModel } = require('../models/MenuItem');
+const { getHaversineDistance, getCoordsForAddress, getMatrixDistance } = require('../utils/distance');
+const { sendWhatsAppMessage, formatOrderMessage } = require('../utils/whatsappUtil');
+const { Op } = require('sequelize');
 
 // @desc    Create a new order
 // @route   POST /api/orders
 const createOrder = async (req, res) => {
-  const { restaurantId, items, totalPrice, deliveryFee, deliverySlot, deliveryAddress } = req.body;
+  const { restaurantId, items, totalPrice, deliverySlot, deliveryAddress, paymentMethod, upiUTR, upiScreenshot } = req.body;
 
   if (!items || items.length === 0) {
     return res.status(400).json({ message: 'No order items' });
   }
 
   try {
-    // ── On-Demand & Scheduled Delivery (city-wide) ──────────
-    const finalPrice = totalPrice + deliveryFee;
+    const Restaurant = getRestaurantModel();
+    const targetRid = typeof restaurantId === 'object' ? (restaurantId._id || restaurantId.id) : restaurantId;
+    const restaurant = await Restaurant.findByPk(targetRid);
+    if (!restaurant) {
+      return res.status(404).json({ message: 'Restaurant not found' });
+    }
+
+    // ── Dynamic Delivery Fee Calculation ──────────────────────
+    const { isSurgeActive, SURGE_MULTIPLIER } = require('../server');
+    const { getMatrixDistance } = require('../utils/distance');
+    const matrix = await getMatrixDistance(restaurant.location, deliveryAddress || 'Amaravathi');
+    const distanceKm = matrix.distance;
+    const estDuration = matrix.duration;
+
+    // Base fee ₹25. If distance > 2km, add ₹10 per additional km.
+    let calculatedFee = Math.max(25, Math.round(25 + Math.max(0, distanceKm - 2) * 10));
+    
+    // Apply Surge Multiplier (Zone-Aware)
+    const isSurge = isSurgeActive(restaurant.zone);
+    if (isSurge) {
+      calculatedFee = Math.round(calculatedFee * SURGE_MULTIPLIER);
+    }
+
+    // ── Multi-Order Batching (Efficiency Engine) ──────────
+    const User = getUserModel();
+    let currentUser = null;
+    try {
+      console.log('Fetching currentUser with ID:', req.user.id, typeof req.user.id);
+      currentUser = await User.findByPk(req.user.id);
+    } catch (dbErr) {
+      console.error('dbErr on User.findByPk:', dbErr.message);
+    }
     const Order = getOrderModel();
+    
+    // Find active orders from same restaurant to same hostel block
+    const batchableOrder = await Order.findOne({
+      where: {
+        restaurantId,
+        status: ['Pending', 'Accepted', 'Preparing']
+      },
+      include: [{
+        model: User,
+        as: 'user', 
+        where: { hostelBlock: currentUser?.hostelBlock || 'Unknown' }
+      }]
+    }).catch(() => null);
+
+    let batchDiscount = 0;
+    if (batchableOrder) {
+      batchDiscount = Math.round(calculatedFee * 0.2); // 20% Batching Discount
+      console.log(`[BATCH_ENGINE] Found stackable order ${batchableOrder.id}. Applying ₹${batchDiscount} discount.`);
+    }
+
+    // ── Badge Perks Engine (Gourmet Benefits) ──────────
+    const perks = calculateBadgePerks(currentUser);
+    let perkDiscount = 0;
+    
+    // Delivery Discount (based on percentage of fee)
+    if (perks.deliveryDiscount > 0) {
+      perkDiscount += Math.round(calculatedFee * perks.deliveryDiscount);
+    }
+    
+    // Direct Order Discount (Flat)
+    if (perks.orderDiscount > 0) {
+      perkDiscount += perks.orderDiscount;
+    }
+
+    if (perkDiscount > 0) {
+      console.log(`[PERKS_ENGINE] Applying ₹${perkDiscount} discount for status: ${perks.status}`);
+    }
+
+    // ── Backend Price Validation (Security Guard) ────────────
+    const MenuItem = getMenuItemModel();
+    const itemIds = items.map(i => i.menuItemId || i.id || i._id);
+    const dbItems = await MenuItem.findAll({ where: { id: itemIds } });
+    const itemMap = Object.fromEntries(dbItems.map(i => [i.id, i]));
+    
+    let backendTotalPrice = 0;
+    const validatedItems = [];
+    
+    for (const i of items) {
+      const dbItem = itemMap[i.menuItemId || i.id || i._id];
+      if (!dbItem) {
+        return res.status(400).json({ message: `Invalid menu item: ${i.name || 'Unknown'}` });
+      }
+      
+      // Hard cap quantity to prevent overflows and absurd orders
+      const qty = Math.min(20, Math.max(1, i.quantity || 1));
+      
+      const price = dbItem.price;
+      backendTotalPrice += price * qty;
+      validatedItems.push({
+        ...i,
+        quantity: qty,
+        price,
+        name: dbItem.name
+      });
+    }
+
+    // ── Coupon Engine (One-Time Rewards) ──────────
+    const { couponCode } = req.body;
+    let couponDiscount = 0;
+    let appliedCoupon = null;
+
+    if (couponCode) {
+      const { getCouponModel } = require('../models/Coupon');
+      const Coupon = getCouponModel();
+      appliedCoupon = await Coupon.findOne({
+        where: { code: couponCode, userId: req.user.id, isUsed: false }
+      });
+
+      if (!appliedCoupon) {
+        return res.status(400).json({ message: 'Invalid or expired reward code.' });
+      }
+
+      if (appliedCoupon.type === 'FREEDEL') {
+        couponDiscount = calculatedFee; // 100% Delivery discount
+      }
+    }
+
+    const finalPrice = Math.max(0, backendTotalPrice + (calculatedFee - couponDiscount) - batchDiscount - perkDiscount);
+
+    // ── Wallet Payment Engine (Atomic Deduction) ──────────
+    if (paymentMethod === 'Wallet') {
+      if (!currentUser || (currentUser.walletBalance || 0) < finalPrice) {
+        return res.status(400).json({ 
+          message: `Insufficient Wallet Balance. Needed: ₹${finalPrice}, Current: ₹${currentUser?.walletBalance || 0}` 
+        });
+      }
+
+      // Atomically decrement balance to prevent race condition/overdraft
+      await currentUser.decrement('walletBalance', { by: finalPrice });
+      console.log(`[WALLET_ENGINE] User ${req.user.id} balance deducted by ₹${finalPrice}.`);
+    }
+
     const createdOrder = await Order.create({
       userId: req.user.id,
-      restaurantId,
-      items,
-      totalPrice,
-      deliveryFee,
-      batchDiscount: 0,
-      gateDiscount: 0,
+      restaurantId: targetRid,
+      items: validatedItems,
+      totalPrice: backendTotalPrice,
+      deliveryFee: calculatedFee,
+      distance: distanceKm,
+      estDuration,
+      batchDiscount,
+      gateDiscount: perkDiscount, // Reusing gateDiscount for Badge Perks
       finalPrice,
-      deliverySlot: deliverySlot || 'ASAP',
-      deliveryAddress: deliveryAddress || '',
-      hostelGateDelivery: false
+      deliverySlot: (deliverySlot || 'ASAP').replace(/[<>]/g, ''), // Basic XSS Sanitization
+      deliveryAddress: deliveryAddress || 'Amaravathi Center',
+      hostelGateDelivery: false,
+      isSurge: isSurge,
+      paymentMethod,
+      upiUTR: paymentMethod === 'UPI' ? upiUTR : null,
+      upiScreenshot: paymentMethod === 'UPI' ? upiScreenshot : null,
+      upiStatus: paymentMethod === 'UPI' ? 'Pending' : 'Verified', // Default to Verified for COD/Card for now
+      status: restaurant.isOffline ? 'Accepted' : 'Pending',
+      deliveryPin: Math.floor(1000 + Math.random() * 9000).toString()
     });
 
     try {
+      if (appliedCoupon) {
+        appliedCoupon.isUsed = true;
+        await appliedCoupon.save();
+        console.log(`[REWARD_ENGINE] One-time coupon ${appliedCoupon.code} consumed.`);
+      }
       await updateStreak(req.user.id);
       const User = getUserModel();
       const user = await User.findByPk(req.user.id);
@@ -45,70 +195,241 @@ const createOrder = async (req, res) => {
     }
 
     const io = req.app.get('io');
-    // ── Surge Pricing: record new order and check window ──────
-    const { orderTimestamps: surgeTs, checkSurgeState } = require('../server');
-    if (surgeTs && checkSurgeState) {
-      surgeTs.push(Date.now());
-      checkSurgeState(io);
+    const { checkSurgeState } = require('../server');
+    if (checkSurgeState) {
+      checkSurgeState(io, restaurant.zone || 'Amaravathi_Central');
     }
 
-    let restaurantName = 'Restaurant';
+    // Emit block order pulse for map UI
     try {
-      const Restaurant = getRestaurantModel();
-      const restaurant = await Restaurant.findByPk(restaurantId);
-      if (restaurant) restaurantName = restaurant.name;
-    } catch (e) { restaurantName = restaurantId || 'Restaurant'; }
-
-    io.emit('newOrder', {
-      id: createdOrder.id,
-      restaurant: restaurantName,
-      drop: createdOrder.hostelGateDelivery ? 'Hostel Gate' : 'Room Delivery',
-      items: createdOrder.items,
-      totalPrice: createdOrder.totalPrice,
-      finalPrice: createdOrder.finalPrice,
-      earnings: `₹${Math.round((createdOrder.finalPrice) * 0.1)}`
-    });
-
-    try {
-      const User = getUserModel();
-      const user = await User.findByPk(req.user.id);
-      if (user && user.hostelBlock) {
-        io.emit('blockOrderPulse', { blockName: user.hostelBlock });
+      if (currentUser && currentUser.hostelBlock) {
+        io.emit('blockOrderPulse', { blockName: currentUser.hostelBlock });
       }
     } catch (e) {}
 
     res.status(201).json({ ...createdOrder.toJSON(), _id: createdOrder.id });
 
+    // ── Universal Dispatch Logic ──────────────────────
+    console.log(`[DISPATCH] Broadcasting newOrder event for Order ID: ${createdOrder.id}`);
+    
+    // 🟢 WhatsApp Integration: Send Confirmation to Customer
     try {
+      if (currentUser && currentUser.phone) {
+        const orderForMsg = await Order.findByPk(createdOrder.id, { 
+          include: [{ model: getRestaurantModel(), as: 'restaurant', attributes: ['name'] }] 
+        });
+        const msg = formatOrderMessage(orderForMsg, 'CUSTOMER_CONFIRMATION');
+        await sendWhatsAppMessage(currentUser.phone, msg, 'CONFIRMATION');
+      }
+    } catch (waErr) {
+      console.error('[WHATSAPP_ERROR] Customer alert failed:', waErr.message);
+    }
+
+    // 1. Notify ALL online riders via socket instantly
+    io.emit('newOrder', {
+      id: createdOrder.id.toString(),
+      restaurant: restaurant.name,
+      restaurantAddress: restaurant.location,
+      customerName: currentUser?.name || 'Customer',
+      drop: createdOrder.deliveryAddress,
+      items: createdOrder.items,
+      totalPrice: createdOrder.totalPrice,
+      finalPrice: createdOrder.finalPrice,
+      earnings: `₹${createdOrder.deliveryFee}`,
+      distance: createdOrder.distance,
+      createdAt: createdOrder.createdAt
+    });
+
+    // 2. Smart Proximity Dispatch (Targeted Push to Closest Riders)
+    try {
+      const { getCoordsForAddress, getHaversineDistance } = require('../utils/distance');
       const DeliveryPartner = getDeliveryPartnerModel();
       const onlineRiders = await DeliveryPartner.findAll({ where: { isOnline: true } });
-      let riderTokens = [];
-      onlineRiders.forEach(rider => {
+      
+      const restaurantCoords = getCoordsForAddress(restaurant.location);
+      
+      // Calculate distances and sort
+      const ridersWithDistance = onlineRiders.map(rider => {
+          const riderCoords = rider.lastLocation || { lat: 16.5062, lon: 80.6480 }; // Fallback to center
+          const dist = getHaversineDistance(restaurantCoords.lat, restaurantCoords.lon, riderCoords.lat, riderCoords.lon);
+          return { rider, dist };
+      }).sort((a, b) => a.dist - b.dist);
+
+      // Targeted Push Notifications (Top 5 closest)
+      const targetRiders = ridersWithDistance.slice(0, 5);
+      const riderTokens = [];
+      targetRiders.forEach(({ rider }) => {
         if (rider.fcmTokens) riderTokens.push(...rider.fcmTokens.map(t => t.token));
       });
+
       if (riderTokens.length > 0) {
-        await sendPushToTokens(riderTokens, '🛵 New Order!', `${restaurantName} → ${createdOrder.hostelGateDelivery ? 'Hostel Gate' : 'Room'} (₹${Math.round(createdOrder.finalPrice * 0.1)})`, { orderId: createdOrder.id, type: 'NEW_ORDER' });
+        const title = restaurant.isOffline ? '🛒 Offline Shop Order!' : '🛵 New Pending Order!';
+        const body = restaurant.isOffline 
+          ? `Go buy/pickup at ${restaurant.name} (Closest to you!)`
+          : `New order from ${restaurant.name} is waiting for acceptance!`;
+
+        await sendPushToTokens(
+          riderTokens, 
+          title, 
+          body, 
+          { orderId: createdOrder.id, distance: createdOrder.distance, type: 'NEW_ORDER' }
+        );
+
+        // 🟢 WhatsApp Integration: Targeted Alert to Rider
+        try {
+          const topRider = targetRiders[0]?.rider;
+          if (topRider && topRider.phone) {
+             const riderMsg = formatOrderMessage(createdOrder, 'RIDER_ALERT');
+             await sendWhatsAppMessage(topRider.phone, riderMsg, 'RIDER_ALERT');
+          }
+        } catch (waRiderErr) {
+          console.error('[WHATSAPP_ERROR] Rider alert failed:', waRiderErr.message);
+        }
       }
-    } catch (pushErr) {
-      console.error('[PUSH_ERROR]', pushErr.message);
+    } catch (dispatchErr) {
+      console.error('[DISPATCH_ERROR]', dispatchErr.message);
+    }
+
+    // 3. Optional Restaurant/Admin Portal Updates
+    if (!restaurant.isOffline) {
+      // Online Shop: Emit to Restaurant Portal
+      io.to(`restaurant_${restaurant.id}`).emit('restaurant_newOrder', {
+        id: createdOrder.id,
+        items: createdOrder.items,
+        totalPrice: createdOrder.totalPrice,
+        address: createdOrder.deliveryAddress
+      });
+      io.emit('admin_newOrder', { id: createdOrder.id, restaurant: restaurant.name, status: createdOrder.status });
     }
 
   } catch (error) {
-    console.error('[ORDER_CREATE_ERROR]', error.message);
+    const fs = require('fs');
+    const path = require('path');
+    const logPath = path.join(__dirname, '..', 'socket_debug.txt');
+    fs.appendFileSync(logPath, `[${new Date().toISOString()}] [ORDER_CREATE_ERROR] Full Error: ${error.stack || error}\n`);
     res.status(400).json({ message: 'Invalid order data', error: error.message });
   }
 };
 
-// @desc    Get order by ID
-const getOrderById = async (req, res) => {
+// @desc    Restaurant/Admin accepts order & dispatches to Rider
+const restaurantAcceptOrder = async (req, res) => {
   try {
     const Order = getOrderModel();
     const order = await Order.findByPk(req.params.id);
-    if (order) {
-      res.json({ ...order.toJSON(), _id: order.id });
-    } else {
-      res.status(404).json({ message: 'Order not found' });
+    if (!order) return res.status(404).json({ message: 'Order not found' });
+    if (order.status !== 'Pending') return res.status(400).json({ message: 'Order is not pending' });
+
+    order.status = 'Accepted';
+    await order.save();
+
+    const io = req.app.get('io');
+    io.emit('statusUpdated', { orderId: order.id, status: 'Accepted' });
+    io.to(order.id.toString()).emit('statusUpdated', 'Accepted');
+
+    // Fetch Restaurant to broadcast details to riders
+    const Restaurant = getRestaurantModel();
+    const restaurant = await Restaurant.findByPk(order.restaurantId);
+
+    // ── Smart Proximity Dispatch ──────────────────────
+    try {
+      const { getCoordsForAddress, getHaversineDistance } = require('../utils/distance');
+      const DeliveryPartner = getDeliveryPartnerModel();
+      const onlineRiders = await DeliveryPartner.findAll({ where: { isOnline: true } });
+      
+      const restCoords = getCoordsForAddress(restaurant ? restaurant.location : '');
+      const ridersWithDist = onlineRiders.map(rider => {
+        const riderCoords = rider.lastLocation || { lat: 16.5062, lon: 80.6480 };
+        const dist = getHaversineDistance(restCoords.lat, restCoords.lon, riderCoords.lat, riderCoords.lon);
+        return { rider, dist };
+      }).sort((a, b) => a.dist - b.dist);
+
+      // Notify ALL via socket for real-time race
+      io.emit('newOrder', {
+        id: order.id,
+        restaurant: restaurant ? restaurant.name : 'Unknown',
+        restaurantAddress: restaurant ? restaurant.location : '',
+        drop: order.deliveryAddress,
+        items: order.items,
+        totalPrice: order.totalPrice,
+        finalPrice: order.finalPrice,
+        earnings: `₹${order.deliveryFee}`,
+        distance: order.distance
+      });
+
+      // Target closest 5 for Push Notifications
+      const targetRiders = ridersWithDist.slice(0, 5);
+      const riderTokens = [];
+      targetRiders.forEach(({ rider }) => {
+        if (rider.fcmTokens) riderTokens.push(...rider.fcmTokens.map(t => t.token));
+      });
+
+      if (riderTokens.length > 0) {
+        await sendPushToTokens(
+          riderTokens, 
+          '🛵 New Order Ready!', 
+          `${restaurant?.name || 'Restaurant'} is ready for pickup. Closest to you!`, 
+          { orderId: order.id, distance: order.distance, type: 'NEW_ORDER' }
+        );
+      }
+    } catch (dispatchErr) {
+      console.error('[SMART_DISPATCH_ERROR]', dispatchErr.message);
     }
+
+    res.json({ message: 'Order picked up/accepted by restaurant', orderId: order.id });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+
+// @desc    Get order by ID
+const getOrderById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    // Safe check for UUID format to prevent PostgreSQL 500 errors
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    
+
+    if (!uuidRegex.test(id)) {
+       return res.status(404).json({ message: 'Invalid Order ID format' });
+    }
+
+    const Order = getOrderModel();
+    const Restaurant = getRestaurantModel();
+    const DeliveryPartner = getDeliveryPartnerModel();
+
+    const order = await Order.findByPk(id, {
+      include: [
+        { model: Restaurant, as: 'restaurant', attributes: ['name', 'location', 'imageUrl'] },
+        { 
+          model: DeliveryPartner, 
+          as: 'deliveryPartner', 
+          attributes: ['id', 'name', 'phone', 'photoUrl', 'averageRating', 'totalRatings', 'vehicleType', 'vehicleNumber', 'bio'] 
+        }
+      ]
+    });
+    if (!order) return res.status(404).json({ message: 'Order not found' });
+
+    const orderData = order.toJSON();
+    // Map associations for legacy frontend compatibility (+ _id)
+    if (orderData.deliveryPartner) {
+        orderData.deliveryPartner._id = orderData.deliveryPartner.id;
+    }
+
+    
+    // ── Rider Batching Transparency ──────────────────────
+    if (order.deliveryPartnerId) {
+      const otherOrders = await Order.count({
+        where: {
+          deliveryPartnerId: order.deliveryPartnerId,
+          status: ['Accepted', 'PickedUp', 'Preparing'],
+          id: { [Op.ne]: order.id }
+        }
+      });
+      orderData.riderOtherOrders = otherOrders;
+    }
+
+    res.json({ ...orderData, _id: order.id });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
@@ -120,7 +441,8 @@ const getMyOrders = async (req, res) => {
     const Order = getOrderModel();
     const orders = await Order.findAll({
       where: { userId: req.user.id },
-      order: [['createdAt', 'DESC']]
+      order: [['createdAt', 'DESC']],
+      limit: 50
     });
     res.json(orders.map(o => ({ ...o.toJSON(), _id: o.id })));
   } catch (error) {
@@ -185,6 +507,19 @@ const cancelOrder = async (req, res) => {
     order.status = 'Cancelled';
     await order.save();
 
+    // ── Refund Logic ──────────────────────
+    try {
+      const User = getUserModel();
+      const user = await User.findByPk(order.userId);
+      if (user) {
+        user.walletBalance = (user.walletBalance || 0) + (order.finalPrice || order.totalPrice);
+        await user.save();
+        console.log(`[REFUND] ₹${order.finalPrice} refunded to user ${user.id}`);
+      }
+    } catch (refundErr) {
+      console.error('[REFUND_ERROR]', refundErr.message);
+    }
+
     const io = req.app.get('io');
     io.emit('orderCancelled', { orderId: order.id });
     io.to(order.id.toString()).emit('statusUpdated', 'Cancelled');
@@ -209,12 +544,62 @@ const updateOrderStatus = async (req, res) => {
     const order = await Order.findByPk(req.params.id);
     if (!order) return res.status(404).json({ message: 'Order not found' });
 
+    if (status === 'Delivered' && order.status !== 'Delivered') {
+      const { evaluateBadges } = require('../services/BadgeService');
+      const User = getUserModel();
+      const user = await User.findByPk(order.userId);
+      if (user) {
+        // Award Points (10 pts per 100 spent)
+        const pts = Math.floor((order.finalPrice || order.totalPrice) / 100) * 10;
+        user.zenPoints = (user.zenPoints || 0) + pts;
+        user.completedOrders = (user.completedOrders || 0) + 1;
+
+        // Achievements Logic
+        const hour = new Date().getHours();
+        if (hour >= 22 || hour < 4) {
+          user.lateNightOrders = (user.lateNightOrders || 0) + 1;
+        }
+
+        const newBadges = evaluateBadges(user);
+        if (newBadges.length > 0) {
+          const currentBadges = Array.isArray(user.badges) ? [...user.badges] : [];
+          user.badges = [...currentBadges, ...newBadges];
+        }
+        await user.save();
+
+        // Pass new badges to status update event
+        order.newBadges = newBadges;
+      }
+    }
+
     order.status = status;
     await order.save();
 
     const io = req.app.get('io');
-    io.emit('statusUpdated', { orderId: order.id, status });
-    io.to(order.id.toString()).emit('statusUpdated', status);
+    io.emit('statusUpdated', { 
+      orderId: order.id, 
+      status,
+      newBadges: status === 'Delivered' ? (order.newBadges || []) : []
+    });
+    io.to(order.id.toString()).emit('statusUpdated', {
+      status,
+      newBadges: status === 'Delivered' ? (order.newBadges || []) : []
+    });
+
+    // 🟢 WhatsApp Integration: Status Update to Customer
+    try {
+      const User = getUserModel();
+      const user = await User.findByPk(order.userId);
+      if (user && user.phone) {
+        const orderWithRest = await Order.findByPk(order.id, { 
+          include: [{ model: getRestaurantModel(), as: 'restaurant', attributes: ['name'] }] 
+        });
+        const msg = formatOrderMessage(orderWithRest, 'STATUS_UPDATE');
+        await sendWhatsAppMessage(user.phone, msg, 'STATUS_UPDATE');
+      }
+    } catch (waStatusErr) {
+      console.error('[WHATSAPP_ERROR] Status update alert failed:', waStatusErr.message);
+    }
 
     res.json({ message: 'Order status updated', orderId: order.id, status });
   } catch (error) {
@@ -222,4 +607,41 @@ const updateOrderStatus = async (req, res) => {
   }
 };
 
-module.exports = { createOrder, getOrderById, getMyOrders, rateOrder, getAllOrders, cancelOrder, updateOrderStatus };
+const getSurgeStatus = async (req, res) => {
+  const { isSurgeActive, SURGE_MULTIPLIER } = require('../server');
+  res.json({ isSurge: isSurgeActive(), multiplier: SURGE_MULTIPLIER });
+};
+
+const verifyUPIPayment = async (req, res) => {
+  const { isVerified } = req.body; // boolean
+  try {
+    const Order = getOrderModel();
+    const order = await Order.findByPk(req.params.id);
+    if (!order) return res.status(404).json({ message: 'Order not found' });
+    if (order.paymentMethod !== 'UPI') return res.status(400).json({ message: 'Not a UPI order' });
+
+    if (isVerified) {
+      order.upiStatus = 'Verified';
+      order.paymentStatus = 'Completed';
+      // Auto-accept if it was pending
+      if (order.status === 'Pending') {
+        order.status = 'Accepted';
+      }
+    } else {
+      order.upiStatus = 'Rejected';
+      order.status = 'Cancelled';
+    }
+    
+    await order.save();
+    
+    const io = req.app.get('io');
+    io.emit('statusUpdated', { orderId: order.id, status: order.status });
+    io.to(order.id.toString()).emit('statusUpdated', order.status);
+
+    res.json({ message: `Payment ${isVerified ? 'Verified' : 'Rejected'}`, orderId: order.id, status: order.status });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+module.exports = { createOrder, getOrderById, getMyOrders, rateOrder, getAllOrders, cancelOrder, updateOrderStatus, getSurgeStatus, restaurantAcceptOrder, verifyUPIPayment };

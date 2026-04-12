@@ -7,8 +7,8 @@ import SafeImage from '@/components/SafeImage';
 import SuccessOverlay from '@/components/SuccessOverlay';
 import { Restaurant, MenuItem } from '@/types';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5001';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
+const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5005';
 
 export default function RestaurantMenuClient({ restaurantId }: { restaurantId: string }) {
   // Legacy Redirect Map
@@ -38,7 +38,13 @@ export default function RestaurantMenuClient({ restaurantId }: { restaurantId: s
     fetch(`${API_URL}/api/users/restaurants/${effectiveId}`)
       .then(res => res.json())
       .then(data => {
-        if (data && data.name) setRestaurant(data);
+        if (data && data.name) {
+          setRestaurant(data);
+          const unavailable = (data.menu || [])
+            .filter((i: MenuItem) => i.isAvailable === false)
+            .map((i: MenuItem) => i.id || i._id);
+          setSoldOutItems(new Set(unavailable));
+        }
         setLoading(false);
       })
       .catch(_err => {
@@ -46,6 +52,8 @@ export default function RestaurantMenuClient({ restaurantId }: { restaurantId: s
         setLoading(false);
       });
   }, [effectiveId]);
+
+  const [isSurge, setIsSurge] = useState(false);
 
   useEffect(() => {
     const socket = io(SOCKET_URL);
@@ -57,6 +65,16 @@ export default function RestaurantMenuClient({ restaurantId }: { restaurantId: s
         return next;
       });
     });
+
+    socket.on('surge_active', (data: { multiplier: number }) => {
+      setIsSurge(true);
+      console.log(`[SURGE] Pricing active: ${data.multiplier}x`);
+    });
+
+    socket.on('surge_ended', () => {
+      setIsSurge(false);
+    });
+
     return () => { socket.disconnect(); };
   }, []);
 
@@ -124,7 +142,13 @@ export default function RestaurantMenuClient({ restaurantId }: { restaurantId: s
         {/* Restaurant Info Overlay */}
         <div className="absolute bottom-8 left-6 right-6 z-10">
           <div className="flex items-center gap-2 mb-3">
-            <span className="bg-primary-yellow text-black text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-wider">Top Rated</span>
+            {isSurge ? (
+              <span className="bg-red-500 text-white text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-wider animate-pulse flex items-center gap-1">
+                🔥 High Demand (Surge)
+              </span>
+            ) : (
+              <span className="bg-primary-yellow text-black text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-wider">Top Rated</span>
+            )}
             <span className="text-xs font-bold text-white/80">⭐ {restaurant.rating}</span>
           </div>
           <h1 className="text-3xl font-black mb-1">{restaurant.name}</h1>
@@ -145,7 +169,7 @@ export default function RestaurantMenuClient({ restaurantId }: { restaurantId: s
 
         {/* Category Pills */}
         <div className="flex gap-3 overflow-x-auto scrollbar-hide mb-10 pb-2 -mx-6 px-6">
-          {['All', ...(restaurant.categories || [])].map((cat: string) => (
+          {['All', ...(restaurant.categories || [])].map((cat) => (
             <button 
               key={cat} 
               onClick={() => setActiveCategory(cat)}

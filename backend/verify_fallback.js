@@ -2,7 +2,7 @@ const axios = require('axios');
 
 async function verifyFallback() {
   const vaultId = '8ed24fe9-9557-4c22-bc3f-d4b90d327727';
-  const url = `http://localhost:5001/api/admin/menu/${vaultId}`;
+  const url = `http://localhost:5005/api/admin/menu/${vaultId}`;
   
   try {
     const response = await axios.get(url);

@@ -1,0 +1,338 @@
+﻿
+> admin-dashboard@0.1.0 dev
+> next dev -p 3002
+
+  Γû▓ Next.js 14.2.35
+  - Local:        http://localhost:3002
+
+ Γ£ô Starting...
+ Γ£ô Ready in 4.8s
+ Γùï Compiling / ...
+ Γ£ô Compiled / in 2.7s (646 modules)
+ GET / 200 in 3060ms
+ Γ£ô Compiled in 322ms (299 modules)
+ Γùï Compiling /restaurants ...
+ Γ£ô Compiled /restaurants in 1347ms (675 modules)
+ Γùï Compiling /_not-found ...
+ Γ£ô Compiled /_not-found in 1487ms (678 modules)
+ GET /login 404 in 1970ms
+ GET / 200 in 188ms
+ GET /logout 404 in 85ms
+ GET / 200 in 111ms
+ Γùï Compiling /users ...
+ Γ£ô Compiled /users in 1651ms (681 modules)
+ GET / 200 in 302ms
+ Γùï Compiling /config ...
+ Γ£ô Compiled /config in 2.2s (687 modules)
+ GET /users 200 in 362ms
+ GET /restaurants 200 in 63ms
+ GET / 200 in 234ms
+ GET /restaurants 200 in 90ms
+ Γùï Compiling /_not-found ...
+ Γ£ô Compiled /_not-found in 1683ms (690 modules)
+ GET /admin/login 404 in 2528ms
+ GET /login 404 in 46ms
+ GET /users 200 in 94ms
+ GET /restaurants 200 in 42ms
+ Γùï Compiling /vault ...
+ Γ£ô Compiled /vault in 9.2s (693 modules)
+ GET /restaurants 200 in 98ms
+ Γùï Compiling /fleet ...
+ Γ£ô Compiled /fleet in 1321ms (709 modules)
+ Γ£ô Compiled in 512ms (327 modules)
+ GET /restaurants 200 in 524ms
+ Γùï Compiling /favicon.ico ...
+ Γ£ô Compiled /favicon.ico in 1172ms (410 modules)
+ GET /favicon.ico 200 in 1453ms
+ Γùï Compiling /_not-found ...
+ Γ£ô Compiled /_not-found in 2.2s (708 modules)
+ GET /login 404 in 2959ms
+ GET /restaurants 200 in 156ms
+ GET / 200 in 143ms
+ GET /login 404 in 50ms
+ GET /restaurants 200 in 39ms
+ Γ£ô Compiled in 563ms (705 modules)
+ GET /restaurants 200 in 104ms
+ Γùï Compiling /_not-found ...
+ Γ£ô Compiled /_not-found in 564ms (694 modules)
+ GET /assets/placeholder.png 404 in 804ms
+ GET /assets/placeholder.png 404 in 142ms
+ GET /orders 404 in 110ms
+ GET / 200 in 308ms
+ GET /restaurants 200 in 191ms
+ GET /assets/placeholder.png 404 in 71ms
+ Γ£ô Compiled in 902ms (705 modules)
+ Γ£ô Compiled in 203ms (327 modules)
+ Γ£ô Compiled in 174ms (327 modules)
+ Γ£ô Compiled in 288ms (705 modules)
+ Γùï Compiling /orders ...
+ Γ£ô Compiled /orders in 1678ms (711 modules)
+ GET /orders 200 in 2323ms
+ Γùï Compiling /vault ...
+ Γ£ô Compiled /vault in 3.4s (386 modules)
+ Γ£ô Compiled /fleet in 382ms (390 modules)
+ Γùï Compiling /_not-found ...
+ Γ£ô Compiled /_not-found in 1734ms (722 modules)
+ GET /assets/placeholder.png 404 in 2046ms
+ GET /restaurants 200 in 191ms
+ GET /assets/placeholder.png 404 in 124ms
+ GET /assets/placeholder.png 404 in 163ms
+ Γ£ô Compiled in 5.6s (711 modules)
+ Γ£ô Compiled in 851ms (329 modules)
+ Γ£ô Compiled in 1766ms (711 modules)
+ GET / 200 in 3206ms
+ Γùï Compiling /favicon.ico ...
+ Γ£ô Compiled /favicon.ico in 3.5s (414 modules)
+ GET /favicon.ico 200 in 5413ms
+ Γ£ô Compiled in 2.1s (711 modules)
+ GET / 200 in 218ms
+ Γùï Compiling /fleet ...
+ Γ£ô Compiled /fleet in 1139ms (386 modules)
+ Γ£ô Compiled in 669ms (697 modules)
+ Γ£ô Compiled in 715ms (711 modules)
+ GET /users 200 in 153ms
+ Γùï Compiling /audit ...
+ Γ£ô Compiled /audit in 4.5s (703 modules)
+node.exe :  ΓÜá Fast Refresh had to perform a full reload. Read more: 
+https://nextjs.org/docs/messages/fast-refresh-reload
+At line:1 char:1
++ & "D:\/node.exe" "D:\/node_modules/npm/bin/npm-cli.js" run dev
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ( ΓÜá Fast Refre...-refresh-reload:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+ GET /audit 200 in 6940ms
+ Γ£ô Compiled in 863ms (331 modules)
+ Γ¿» ./src/app/layout.tsx
+Error: 
+  [31mx[0m Expected ';', '}' or <eof>
+    ,-[[36;1;4mC:\hostel-bite\admin-dashboard\src\app\layout.tsx[0m:1:1]
+ [2m 1[0m | [31;1m,[0m[31;1m-[0m[31;1m>[0m ```
+ [2m 2[0m | [31;1m|[0m   import type { Metadata } from "next";
+ [2m 3[0m | [31;1m|[0m   import Link from "next/link";
+ [2m 4[0m | [31;1m|[0m   import { Outfit } from "next/font/google";
+ [2m 5[0m | [31;1m|[0m   import "./globals.css";
+ [2m 6[0m | [31;1m|[0m   import PushNotificationManager from '@/components/PushNotificationManager';
+ [2m 7[0m | [31;1m|[0m   import NetworkStatus from '@/components/NetworkStatus';
+ [2m 8[0m | [31;1m|[0m   
+ [2m 9[0m | [31;1m|[0m   const outfit = Outfit({ subsets: ["latin"] });
+ [2m10[0m | [31;1m|[0m   
+ [2m11[0m | [31;1m|[0m   export const metadata: Metadata = {
+ [2m12[0m | [31;1m|[0m     title: "Zenvy Nexus | Command Center",
+ [2m13[0m | [31;1m|[0m     description: "The operational heart of Zenvy campus delivery. Real-time telemetry, 
+fleet management, and deep analytics.",
+ [2m14[0m | [31;1m|[0m   };
+ [2m15[0m | [31;1m|[0m   
+ [2m16[0m | [31;1m|[0m   export default function RootLayout({
+ [2m17[0m | [31;1m|[0m     children,
+ [2m18[0m | [31;1m|[0m   }: {
+ [2m19[0m | [31;1m|[0m     children: React.ReactNode;
+ [2m20[0m | [31;1m|[0m   }) {
+ [2m21[0m | [31;1m|[0m     return (
+ [2m22[0m | [31;1m|[0m       <html lang="en" className="dark">
+ [2m23[0m | [31;1m|[0m[31;1m-[0m[31;1m>[0m       <body className={`${outfit.className} antialiased 
+bg-[#0A0A0F] text-slate-200 selection:bg-blue-500/30`}>
+    : [31;1m`[0m[31;1m---[0m[33;1m                        ^[0m
+    : [31;1m`[0m[31;1m---[0m[31;1m-[0m [31;1mThis is the expression part of an expression statement[0m
+ [2m24[0m |             <script dangerouslySetInnerHTML={{ __html: `
+ [2m25[0m |               if (typeof window !== 'undefined') {
+ [2m26[0m |                 localStorage.setItem('token', 'mock_jwt_token_for_srm_admin');
+    `----
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./src/app/layout.tsx
+ Γùï Compiling /_error ...
+ Γ¿» ./src/app/layout.tsx
+Error: 
+  [31mx[0m Expected ';', '}' or <eof>
+    ,-[[36;1;4mC:\hostel-bite\admin-dashboard\src\app\layout.tsx[0m:1:1]
+ [2m 1[0m | [31;1m,[0m[31;1m-[0m[31;1m>[0m ```
+ [2m 2[0m | [31;1m|[0m   import type { Metadata } from "next";
+ [2m 3[0m | [31;1m|[0m   import Link from "next/link";
+ [2m 4[0m | [31;1m|[0m   import { Outfit } from "next/font/google";
+ [2m 5[0m | [31;1m|[0m   import "./globals.css";
+ [2m 6[0m | [31;1m|[0m   import PushNotificationManager from '@/components/PushNotificationManager';
+ [2m 7[0m | [31;1m|[0m   import NetworkStatus from '@/components/NetworkStatus';
+ [2m 8[0m | [31;1m|[0m   
+ [2m 9[0m | [31;1m|[0m   const outfit = Outfit({ subsets: ["latin"] });
+ [2m10[0m | [31;1m|[0m   
+ [2m11[0m | [31;1m|[0m   export const metadata: Metadata = {
+ [2m12[0m | [31;1m|[0m     title: "Zenvy Nexus | Command Center",
+ [2m13[0m | [31;1m|[0m     description: "The operational heart of Zenvy campus delivery. Real-time telemetry, 
+fleet management, and deep analytics.",
+ [2m14[0m | [31;1m|[0m   };
+ [2m15[0m | [31;1m|[0m   
+ [2m16[0m | [31;1m|[0m   export default function RootLayout({
+ [2m17[0m | [31;1m|[0m     children,
+ [2m18[0m | [31;1m|[0m   }: {
+ [2m19[0m | [31;1m|[0m     children: React.ReactNode;
+ [2m20[0m | [31;1m|[0m   }) {
+ [2m21[0m | [31;1m|[0m     return (
+ [2m22[0m | [31;1m|[0m       <html lang="en" className="dark">
+ [2m23[0m | [31;1m|[0m[31;1m-[0m[31;1m>[0m       <body className={`${outfit.className} antialiased 
+bg-[#0A0A0F] text-slate-200 selection:bg-blue-500/30`}>
+    : [31;1m`[0m[31;1m---[0m[33;1m                        ^[0m
+    : [31;1m`[0m[31;1m---[0m[31;1m-[0m [31;1mThis is the expression part of an expression statement[0m
+ [2m24[0m |             <script dangerouslySetInnerHTML={{ __html: `
+ [2m25[0m |               if (typeof window !== 'undefined') {
+ [2m26[0m |                 localStorage.setItem('token', 'mock_jwt_token_for_srm_admin');
+    `----
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./src/app/layout.tsx
+ Γ¿» ./src/app/layout.tsx
+Error: 
+  [31mx[0m Expected ';', '}' or <eof>
+    ,-[[36;1;4mC:\hostel-bite\admin-dashboard\src\app\layout.tsx[0m:1:1]
+ [2m 1[0m | [31;1m,[0m[31;1m-[0m[31;1m>[0m ```
+ [2m 2[0m | [31;1m|[0m   import type { Metadata } from "next";
+ [2m 3[0m | [31;1m|[0m   import Link from "next/link";
+ [2m 4[0m | [31;1m|[0m   import { Outfit } from "next/font/google";
+ [2m 5[0m | [31;1m|[0m   import "./globals.css";
+ [2m 6[0m | [31;1m|[0m   import PushNotificationManager from '@/components/PushNotificationManager';
+ [2m 7[0m | [31;1m|[0m   import NetworkStatus from '@/components/NetworkStatus';
+ [2m 8[0m | [31;1m|[0m   
+ [2m 9[0m | [31;1m|[0m   const outfit = Outfit({ subsets: ["latin"] });
+ [2m10[0m | [31;1m|[0m   
+ [2m11[0m | [31;1m|[0m   export const metadata: Metadata = {
+ [2m12[0m | [31;1m|[0m     title: "Zenvy Nexus | Command Center",
+ [2m13[0m | [31;1m|[0m     description: "The operational heart of Zenvy campus delivery. Real-time telemetry, 
+fleet management, and deep analytics.",
+ [2m14[0m | [31;1m|[0m   };
+ [2m15[0m | [31;1m|[0m   
+ [2m16[0m | [31;1m|[0m   export default function RootLayout({
+ [2m17[0m | [31;1m|[0m     children,
+ [2m18[0m | [31;1m|[0m   }: {
+ [2m19[0m | [31;1m|[0m     children: React.ReactNode;
+ [2m20[0m | [31;1m|[0m   }) {
+ [2m21[0m | [31;1m|[0m     return (
+ [2m22[0m | [31;1m|[0m       <html lang="en" className="dark">
+ [2m23[0m | [31;1m|[0m[31;1m-[0m[31;1m>[0m       <body className={`${outfit.className} antialiased 
+bg-[#0A0A0F] text-slate-200 selection:bg-blue-500/30`}>
+    : [31;1m`[0m[31;1m---[0m[33;1m                        ^[0m
+    : [31;1m`[0m[31;1m---[0m[31;1m-[0m [31;1mThis is the expression part of an expression statement[0m
+ [2m24[0m |             <script dangerouslySetInnerHTML={{ __html: `
+ [2m25[0m |               if (typeof window !== 'undefined') {
+ [2m26[0m |                 localStorage.setItem('token', 'mock_jwt_token_for_srm_admin');
+    `----
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./src/app/layout.tsx
+ GET /users 500 in 17142ms
+ GET / 500 in 255ms
+ GET /audit 500 in 261ms
+ GET /users 500 in 263ms
+ GET /users 500 in 45ms
+ GET /users 500 in 22ms
+ GET /users 500 in 25ms
+ Γ¿» ./src/app/layout.tsx
+Error: 
+  [31mx[0m Expected ';', '}' or <eof>
+    ,-[[36;1;4mC:\hostel-bite\admin-dashboard\src\app\layout.tsx[0m:1:1]
+ [2m 1[0m | [31;1m,[0m[31;1m-[0m[31;1m>[0m ```
+ [2m 2[0m | [31;1m|[0m   import type { Metadata } from "next";
+ [2m 3[0m | [31;1m|[0m   import Link from "next/link";
+ [2m 4[0m | [31;1m|[0m   import { Outfit } from "next/font/google";
+ [2m 5[0m | [31;1m|[0m   import "./globals.css";
+ [2m 6[0m | [31;1m|[0m   import PushNotificationManager from '@/components/PushNotificationManager';
+ [2m 7[0m | [31;1m|[0m   import NetworkStatus from '@/components/NetworkStatus';
+ [2m 8[0m | [31;1m|[0m   
+ [2m 9[0m | [31;1m|[0m   const outfit = Outfit({ subsets: ["latin"] });
+ [2m10[0m | [31;1m|[0m   
+ [2m11[0m | [31;1m|[0m   export const metadata: Metadata = {
+ [2m12[0m | [31;1m|[0m     title: "Zenvy Nexus | Command Center",
+ [2m13[0m | [31;1m|[0m     description: "The operational heart of Zenvy campus delivery. Real-time telemetry, 
+fleet management, and deep analytics.",
+ [2m14[0m | [31;1m|[0m   };
+ [2m15[0m | [31;1m|[0m   
+ [2m16[0m | [31;1m|[0m   export default function RootLayout({
+ [2m17[0m | [31;1m|[0m     children,
+ [2m18[0m | [31;1m|[0m   }: {
+ [2m19[0m | [31;1m|[0m     children: React.ReactNode;
+ [2m20[0m | [31;1m|[0m   }) {
+ [2m21[0m | [31;1m|[0m     return (
+ [2m22[0m | [31;1m|[0m       <html lang="en" className="dark">
+ [2m23[0m | [31;1m|[0m[31;1m-[0m[31;1m>[0m       <body className={`${outfit.className} antialiased 
+bg-[#0A0A0F] text-slate-200 selection:bg-blue-500/30`}>
+    : [31;1m`[0m[31;1m---[0m[33;1m                        ^[0m
+    : [31;1m`[0m[31;1m---[0m[31;1m-[0m [31;1mThis is the expression part of an expression statement[0m
+ [2m24[0m |             <script dangerouslySetInnerHTML={{ __html: `
+ [2m25[0m |               if (typeof window !== 'undefined') {
+ [2m26[0m |                 localStorage.setItem('token', 'mock_jwt_token_for_srm_admin');
+    `----
+
+Caused by:
+    Syntax Error
+
+Import trace for requested module:
+./src/app/layout.tsx
+ GET /_next/static/webpack/1efb0efacb6dea62.webpack.hot-update.json 500 in 4600ms
+ ΓÜá Fast Refresh had to perform a full reload due to a runtime error.
+ GET /_next/static/webpack/1efb0efacb6dea62.webpack.hot-update.json 500 in 29ms
+ ΓÜá Fast Refresh had to perform a full reload due to a runtime error.
+ GET /users 500 in 138ms
+ GET /_next/static/webpack/1efb0efacb6dea62.webpack.hot-update.json 500 in 167ms
+ ΓÜá Fast Refresh had to perform a full reload due to a runtime error.
+ GET /audit 500 in 303ms
+ GET /_next/static/webpack/1efb0efacb6dea62.webpack.hot-update.json 500 in 85ms
+ GET /users 500 in 171ms
+ ΓÜá Fast Refresh had to perform a full reload due to a runtime error.
+ GET /_next/static/webpack/1efb0efacb6dea62.webpack.hot-update.json 500 in 92ms
+ ΓÜá Fast Refresh had to perform a full reload due to a runtime error.
+ GET / 500 in 607ms
+ GET /users 500 in 1244ms
+ Γ£ô Compiled /_not-found in 14.9s (958 modules)
+ ΓÜá Fast Refresh had to perform a full reload due to a runtime error.
+ GET /_next/static/webpack/1efb0efacb6dea62.webpack.hot-update.json 404 in 15454ms
+ ΓÜá Fast Refresh had to perform a full reload due to a runtime error.
+ ΓÜá Fast Refresh had to perform a full reload due to a runtime error.
+ ΓÜá Fast Refresh had to perform a full reload due to a runtime error.
+ ΓÜá Fast Refresh had to perform a full reload due to a runtime error.
+ GET /audit 200 in 1450ms
+ GET /_next/static/webpack/1efb0efacb6dea62.webpack.hot-update.json 404 in 1227ms
+ GET / 200 in 1528ms
+ GET /users 200 in 1531ms
+ GET /users 200 in 1785ms
+ GET /users 200 in 801ms
+ GET /audit 200 in 543ms
+ GET /users 200 in 137ms
+ GET /users 200 in 225ms
+ Γùï Compiling /restaurants ...
+ Γ£ô Compiled /restaurants in 2.8s (428 modules)
+ Γùï Compiling /_not-found ...
+ Γ£ô Compiled /_not-found in 1754ms (953 modules)
+ GET /assets/placeholder.png 404 in 2131ms
+ GET /assets/placeholder.png 404 in 56ms
+ GET /assets/placeholder.png 404 in 59ms
+ GET /assets/placeholder.png 404 in 54ms
+ GET /assets/placeholder.png 404 in 46ms
+ Γùï Compiling /vault ...
+ Γ£ô Compiled /vault in 715ms (433 modules)
+ Γùï Compiling /blocks ...
+ Γ£ô Compiled /blocks in 1207ms (945 modules)
+ Γùï Compiling /finance ...
+ Γ£ô Compiled /finance in 1327ms (951 modules)
+ GET / 200 in 194ms
+ Γùï Compiling /favicon.ico ...
+ Γ£ô Compiled /favicon.ico in 1630ms (456 modules)
+ GET /favicon.ico 200 in 2248ms
+ GET / 200 in 761ms
+ Γùï Compiling /orders ...
+ Γ£ô Compiled /orders in 807ms (428 modules)
+ GET /orders 200 in 1300ms
+   Reload env: .env
+ ΓÜá Fast Refresh had to perform a full reload. Read more: https://nextjs.org/docs/messages/fast-refresh-reload
+ Γ£ô Compiled in 11.6s (946 modules)
+ GET /orders 200 in 3529ms
+ Γ£ô Compiled /favicon.ico in 366ms (456 modules)
+ GET /favicon.ico 200 in 450ms
+

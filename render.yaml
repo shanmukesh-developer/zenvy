@@ -22,6 +22,7 @@ databases:
     databaseName: hostelbites
     user: admin
 
+services:
   # 2. Customer Frontend
   - type: web
     name: hostelbites-customer

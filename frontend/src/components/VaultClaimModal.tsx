@@ -31,8 +31,13 @@ export default function VaultClaimModal({
   const router = useRouter();
   const [isClaiming, setIsClaiming] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
-  if (!isOpen || !item) return null;
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted || !isOpen || !item || typeof document === 'undefined') return null;
 
   const isLocked = item.streakRequirement ? userStreak < item.streakRequirement : false;
 

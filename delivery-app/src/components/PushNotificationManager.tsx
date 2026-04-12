@@ -5,9 +5,10 @@ import { Capacitor } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
 
 export default function PushNotificationManager() {
+  const isNative = typeof window !== 'undefined' && Capacitor.isNativePlatform();
+
   useEffect(() => {
-    // Only register push notifications on native devices
-    if (!Capacitor.isNativePlatform()) {
+    if (!isNative) {
       return;
     }
 
@@ -55,7 +56,7 @@ export default function PushNotificationManager() {
       const token = localStorage.getItem('token');
       if (!token) return; // User not logged in
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
       await fetch(`${apiUrl}/api/delivery/fcm-token`, {
         method: 'POST',
         headers: {

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3002",
+    "dev": "next dev -p 3004",
     "build": "next build",
     "start": "npx -y serve@latest out -l $PORT",
     "lint": "next lint"
@@ -13,9 +13,13 @@
     "@capacitor/cli": "^8.2.0",
     "@capacitor/core": "^8.2.0",
     "@capacitor/push-notifications": "^8.0.2",
+    "@types/leaflet": "^1.9.21",
+    "framer-motion": "^12.38.0",
+    "leaflet": "^1.9.4",
     "next": "14.2.35",
     "react": "^18",
     "react-dom": "^18",
+    "react-leaflet": "^4.2.1",
     "socket.io-client": "^4.8.3"
   },
   "devDependencies": {

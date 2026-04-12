@@ -4,9 +4,10 @@ import { useEffect, useState } from 'react';
 interface Props {
   isOpen: boolean;
   status: 'processing' | 'success' | 'error';
+  errorMessage?: string;
 }
 
-export default function CheckoutProcessingModal({ isOpen, status }: Props) {
+export default function CheckoutProcessingModal({ isOpen, status, errorMessage }: Props) {
   const [step, setStep] = useState(0);
 
   useEffect(() => {
@@ -60,6 +61,13 @@ export default function CheckoutProcessingModal({ isOpen, status }: Props) {
               ✕
             </div>
             <h2 className="text-2xl font-black text-white uppercase tracking-widest">Payment Failed</h2>
+            <p className="text-red-400 text-xs font-bold uppercase tracking-widest mt-4 max-w-xs">{errorMessage || 'Request Rejected'}</p>
+            <button 
+              onClick={() => window.location.reload()}
+              className="mt-8 px-6 py-2 bg-white/10 border border-white/20 rounded-xl text-[10px] font-black uppercase tracking-widest text-white hover:bg-white/20 transition-all"
+            >
+              Back to Checkout
+            </button>
           </div>
         )}
       </div>

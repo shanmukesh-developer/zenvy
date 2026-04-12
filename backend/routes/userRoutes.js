@@ -12,7 +12,53 @@ router.put('/profile', protect, updateUserProfile);
 // Public Asset Discovery
 router.get('/restaurants', require('../controllers/adminController').getRestaurants);
 router.get('/restaurants/:id', require('../controllers/adminController').getRestaurantById);
-router.get('/products/:id', require('../controllers/adminController').getMenuItemById);
 router.get('/search', require('../controllers/searchController').globalSearch);
+
+// ── BUG FIX: GET /products (all items) ──
+// Returns all menu items across all restaurants for the catalog browse
+// IMPORTANT: Must be registered BEFORE /products/:id to prevent route shadowing
+router.get('/products', async (req, res) => {
+  try {
+    const { getMenuItemModel } = require('../models/MenuItem');
+    const MenuItem = getMenuItemModel();
+    const items = await MenuItem.findAll({ where: { isAvailable: true }, order: [['createdAt', 'DESC']] });
+    res.json(items);
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch products', error: err.message });
+  }
+});
+
+router.get('/products/:id', require('../controllers/adminController').getMenuItemById);
+
+// ── BUG FIX: GET /orders (customer's own orders) ──
+router.get('/orders', protect, async (req, res) => {
+  try {
+    const { getOrderModel } = require('../models/Order');
+    const Order = getOrderModel();
+    const orders = await Order.findAll({ where: { userId: req.user.id }, order: [['createdAt', 'DESC']] });
+    res.json(orders);
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch orders', error: err.message });
+  }
+});
+
+// ── BUG FIX: GET /rewards (spin + leaderboard) ──
+router.get('/rewards', protect, async (req, res) => {
+  try {
+    const { getUserModel } = require('../models/User');
+    const User = getUserModel();
+    const user = await User.findByPk(req.user.id, { attributes: ['id', 'name', 'zenPoints', 'completedOrders', 'streakCount', 'badges'] });
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    res.json({
+      zenPoints: user.zenPoints || 0,
+      completedOrders: user.completedOrders || 0,
+      streakCount: user.streakCount || 0,
+      badges: user.badges || [],
+      spinEligible: (user.completedOrders || 0) % 5 === 0 && (user.completedOrders || 0) > 0
+    });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch rewards', error: err.message });
+  }
+});
 
 module.exports = router;

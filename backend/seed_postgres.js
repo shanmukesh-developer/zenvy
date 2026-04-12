@@ -75,7 +75,7 @@ const seed = async () => {
     const Order = getOrderModel();
     const User = getUserModel();
     
-    await getSequelize().sync({ alter: true });
+    await getSequelize().sync({ force: true });
 
     await MenuItem.destroy({ where: {} });
     await Restaurant.destroy({ where: {} });
@@ -83,6 +83,7 @@ const seed = async () => {
     await User.destroy({ where: {} });
     console.log('✅ Cleared existing database.');
 
+    let firstRestaurantId;
     for (const restData of mockData) {
       const restaurant = await Restaurant.create({
         name: restData.name,
@@ -94,6 +95,7 @@ const seed = async () => {
         isActive: true,
         tags: restData.categories || []
       });
+      if (!firstRestaurantId) firstRestaurantId = restaurant.id;
 
       if (restData.menu && Array.isArray(restData.menu)) {
         const menuItems = restData.menu.map(item => ({
@@ -127,7 +129,7 @@ const seed = async () => {
       for (let i = 0; i < orderCount; i++) {
         await Order.create({
           userId: user.id,
-          restaurantId: 1, 
+          restaurantId: firstRestaurantId, 
           status: 'Delivered',
           totalPrice: 500,
           deliveryFee: 20,

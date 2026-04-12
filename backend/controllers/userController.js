@@ -21,6 +21,11 @@ const registerUser = async (req, res) => {
       name: user.name,
       phone: user.phone,
       isElite: false,
+      address: user.address || '',
+      city: user.city || 'Amaravathi',
+      profileImage: user.profileImage || null,
+      badges: user.badges || [],
+      completedOrders: user.completedOrders || 0,
       token: generateToken(user.id, user.role)
     });
   } catch (error) {
@@ -46,6 +51,11 @@ const authUser = async (req, res) => {
         hostelBlock: user.hostelBlock,
         roomNumber: user.roomNumber,
         zenPoints: user.zenPoints || 0,
+        address: user.address || '',
+        city: user.city || 'Amaravathi',
+        profileImage: user.profileImage || null,
+        badges: user.badges || [],
+        completedOrders: user.completedOrders || 0,
         token: generateToken(user.id, user.role)
       });
     } else {
@@ -99,22 +109,15 @@ const getUserProfile = async (req, res) => {
         totalOrders: user.totalOrders,
         role: user.role,
         zenPoints: user.zenPoints || 0,
-        isElite: user.isElite || false
+        isElite: user.isElite || false,
+        address: user.address || '',
+        city: user.city || 'Amaravathi',
+        profileImage: user.profileImage || null,
+        badges: user.badges || [],
+        completedOrders: user.completedOrders || 0
       });
     } else {
-      res.json({
-        _id: req.user.id,
-        name: 'Guest Tester',
-        phone: '0000000000',
-        hostelBlock: 'B',
-        roomNumber: '101',
-        walletBalance: 0,
-        streakCount: 5,
-        totalOrders: 0,
-        role: 'user',
-        zenPoints: 100,
-        isElite: false
-      });
+      res.status(404).json({ message: 'User not found' });
     }
   } catch (error) {
     console.error('[PROFILE_ERROR]', error);
@@ -132,6 +135,9 @@ const updateUserProfile = async (req, res) => {
       if (req.body.name) user.name = req.body.name;
       if (req.body.hostelBlock) user.hostelBlock = req.body.hostelBlock;
       if (req.body.roomNumber) user.roomNumber = req.body.roomNumber;
+      if (req.body.address) user.address = req.body.address;
+      if (req.body.city) user.city = req.body.city;
+      if (req.body.profileImage !== undefined) user.profileImage = req.body.profileImage;
       
       // CRITICAL FIX: Removed insecure req.body.isElite assignment
       // Elite status must only be updated by a verified payment webhook or admin route.
@@ -144,7 +150,15 @@ const updateUserProfile = async (req, res) => {
         hostelBlock: user.hostelBlock,
         roomNumber: user.roomNumber,
         isElite: user.isElite,
-        zenPoints: user.zenPoints,
+        walletBalance: user.walletBalance || 0,
+        streakCount: user.streakCount || 0,
+        totalOrders: user.totalOrders || 0,
+        zenPoints: user.zenPoints || 0,
+        address: user.address || '',
+        city: user.city || 'Amaravathi',
+        profileImage: user.profileImage || null,
+        badges: user.badges || [],
+        completedOrders: user.completedOrders || 0,
         token: generateToken(user.id, user.role)
       });
     } else {

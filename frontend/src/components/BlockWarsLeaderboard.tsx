@@ -1,7 +1,8 @@
 "use client";
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
 
 interface BlockActivity {
   name: string;
@@ -100,9 +101,9 @@ export default function BlockWarsLeaderboard({ userBlock }: { userBlock: string 
         })}
       </div>
 
-      <button className="w-full mt-6 py-3 border border-white/[0.05] rounded-2xl text-[8px] font-black uppercase tracking-[0.2em] text-secondary-text hover:bg-white/5 transition-colors">
+      <Link href="/rewards" className="block text-center w-full mt-6 py-3 border border-white/[0.05] rounded-2xl text-[8px] font-black uppercase tracking-[0.2em] text-secondary-text hover:bg-white/5 transition-colors">
         View Full Rankings →
-      </button>
+      </Link>
     </div>
   );
 }

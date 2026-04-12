@@ -19,7 +19,8 @@ const {
   seedDatabase,
   getDashboardStats,
   getFinanceReport,
-  getAuditLogs
+  getAuditLogs,
+  getRewardsAnalytics
 } = require('../controllers/adminController');
 const { getAllOrders } = require('../controllers/orderController');
 const { protect } = require('../middleware/authMiddleware');
@@ -39,6 +40,7 @@ router.use(adminOnly);
 
 // Live Orders Intelligence
 router.get('/orders', getAllOrders);
+router.get('/stats', getDashboardStats);
 
 // Restaurant & Menu Control
 router.get('/restaurants', getAllRestaurants);
@@ -69,8 +71,8 @@ router.delete('/vault/:id', deleteVaultItem);
 router.post('/seed', seedDatabase);
 
 // Nexus Intelligence
-router.get('/stats', getDashboardStats);
 router.get('/finance', getFinanceReport);
 router.get('/audit', getAuditLogs);
+router.get('/rewards-analytics', getRewardsAnalytics);
 
 module.exports = router;

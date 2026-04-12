@@ -1,22 +1,43 @@
 "use client";
-import { useState, useEffect } from 'react';
-import Image, { ImageProps } from 'next/image';
+import React, { useState, useEffect } from 'react';
 
-const FALLBACK_IMAGE = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=600&auto=format&fit=crop"; 
+const FALLBACK_IMAGE = "/assets/placeholder_premium.png"; 
 
-export default function SafeImage(props: ImageProps) {
-  const [imgSrc, setImgSrc] = useState(props.src);
+interface SafeImageProps extends Omit<React.ImgHTMLAttributes<HTMLImageElement>, 'src'> {
+  src: string | { src: string } | undefined;
+  fill?: boolean;
+  priority?: boolean;
+}
+
+export default function SafeImage({ src, alt, className, style, fill, priority, ...rest }: SafeImageProps) {
+  const [imgSrc, setImgSrc] = useState(src);
 
   useEffect(() => {
-    setImgSrc(props.src);
-  }, [props.src]);
+    setImgSrc(src);
+  }, [src]);
+
+  const containerStyle: React.CSSProperties = fill 
+    ? { position: 'absolute', height: '100%', width: '100%', left: 0, top: 0, right: 0, bottom: 0, objectFit: 'cover' }
+    : {};
+
+  const mergedStyle = { ...containerStyle, ...style };
+
+  const resolvedSrc = typeof imgSrc === 'string' 
+    ? imgSrc 
+    : (imgSrc as { src: string })?.src || FALLBACK_IMAGE;
 
   return (
-    <Image
-      {...props}
-      alt={props.alt || 'Image'}
-      src={imgSrc || FALLBACK_IMAGE}
-      onError={() => setImgSrc(FALLBACK_IMAGE)}
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={resolvedSrc}
+      alt={alt || 'Image'}
+      style={mergedStyle}
+      onError={() => {
+        if (imgSrc !== FALLBACK_IMAGE) setImgSrc(FALLBACK_IMAGE);
+      }}
+      className={className}
+      loading={priority ? "eager" : "lazy"}
+      {...rest}
     />
   );
 }

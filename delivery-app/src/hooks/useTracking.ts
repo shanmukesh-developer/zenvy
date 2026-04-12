@@ -1,13 +1,17 @@
 "use client";
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Socket } from 'socket.io-client';
 
-export const useTracking = (orderId: string, riderName: string, riderId?: string, socket?: Socket | null) => {
-  useEffect(() => {
-    if (!orderId || !socket) return;
+export const useTracking = (orderIds: string[], riderName: string, riderId?: string, socket?: Socket | null) => {
+  const [coords, setCoords] = useState<{ lat: number, lng: number } | null>(null);
 
-    // Join order room
-    socket.emit('joinOrder', orderId);
+  useEffect(() => {
+    if (!orderIds || !socket) return;
+
+    // Join all order rooms
+    orderIds.forEach(id => {
+      if (id) socket.emit('joinOrder', id);
+    });
 
     let watchId: number | null = null;
     let fallbackInterval: NodeJS.Timeout | null = null;
@@ -16,16 +20,21 @@ export const useTracking = (orderId: string, riderName: string, riderId?: string
       if ("geolocation" in navigator) {
         watchId = navigator.geolocation.watchPosition(
           (position) => {
-            if (socket.connected) {
-              const { latitude, longitude } = position.coords;
-              socket.emit('updateLocation', {
-                orderId,
-                lat: latitude,
-                lng: longitude,
-                riderName,
-                riderId
+            const { latitude, longitude } = position.coords;
+            setCoords({ lat: latitude, lng: longitude });
+            
+            if (socket.connected && orderIds.length > 0) {
+              orderIds.forEach(orderId => {
+                if (!orderId) return;
+                socket.emit('updateLocation', {
+                  orderId,
+                  lat: latitude,
+                  lng: longitude,
+                  riderName,
+                  riderId
+                });
               });
-              console.log(`[GPS] Real position update: ${latitude}, ${longitude}`);
+              console.log(`[GPS] Multi-order broadcast (${orderIds.length} streams): ${latitude}, ${longitude}`);
             }
           },
           (error) => {
@@ -42,15 +51,20 @@ export const useTracking = (orderId: string, riderName: string, riderId?: string
     const startSimulation = () => {
       if (fallbackInterval) return;
       fallbackInterval = setInterval(() => {
-        if (socket.connected) {
-          const lat = 16.4632 + (Math.random() - 0.5) * 0.003;
-          const lng = 80.5064 + (Math.random() - 0.5) * 0.003;
-          socket.emit('updateLocation', {
-            orderId,
-            lat,
-            lng,
-            riderName,
-            riderId
+        const lat = 16.4632 + (Math.random() - 0.5) * 0.003;
+        const lng = 80.5064 + (Math.random() - 0.5) * 0.003;
+        setCoords({ lat, lng });
+
+        if (socket.connected && orderIds.length > 0) {
+          orderIds.forEach(orderId => {
+            if (!orderId) return;
+            socket.emit('updateLocation', {
+              orderId,
+              lat,
+              lng,
+              riderName,
+              riderId
+            });
           });
         }
       }, 5000);
@@ -62,7 +76,7 @@ export const useTracking = (orderId: string, riderName: string, riderId?: string
       if (watchId !== null) navigator.geolocation.clearWatch(watchId);
       if (fallbackInterval) clearInterval(fallbackInterval);
     };
-  }, [orderId, riderName, riderId, socket]);
+  }, [JSON.stringify(orderIds), riderName, riderId, socket]);
 
-  return { socket };
+  return { socket, coords };
 };

@@ -1,13 +1,73 @@
 const { getRestaurantModel } = require('../models/Restaurant');
 const { getMenuItemModel } = require('../models/MenuItem');
+const { getOrderModel } = require('../models/Order');
+const jwt = require('jsonwebtoken');
+
+// @desc    Restaurant Login
+// @route   POST /api/restaurants/login
+const restaurantLogin = async (req, res) => {
+  const { id, password } = req.body;
+  try {
+    const Restaurant = getRestaurantModel();
+    const restaurant = await Restaurant.findByPk(id);
+    if (!restaurant) return res.status(404).json({ message: 'Restaurant not found' });
+    
+    // For MVP prototype if password not set, bypass or set default
+    if (restaurant.password) {
+      const isMatch = await restaurant.comparePassword(password);
+      if (!isMatch) return res.status(401).json({ message: 'Invalid credentials' });
+    }
+
+    const token = jwt.sign({ id: restaurant.id, role: 'restaurant' }, process.env.JWT_SECRET || 'secret123', { expiresIn: '30d' });
+    res.json({ restaurant, token });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Get orders for restaurant
+// @route   GET /api/restaurants/:id/orders
+const getRestaurantOrders = async (req, res) => {
+  try {
+    const Order = getOrderModel();
+    const orders = await Order.findAll({
+      where: { restaurantId: req.params.id },
+      order: [['createdAt', 'DESC']]
+    });
+    res.json(orders.map(o => ({ ...o.toJSON(), _id: o.id })));
+  } catch (error) {
+    res.status(500).json({ message: 'Server error' });
+  }
+};
 
 // @desc    Get all active restaurants
 // @route   GET /api/restaurants
 const getRestaurants = async (req, res) => {
   try {
     const Restaurant = getRestaurantModel();
+    const MenuItem = getMenuItemModel();
     const restaurants = await Restaurant.findAll({ where: { isActive: true } });
-    res.json(restaurants);
+    
+    // Stitch all valid menu items into the restaurants array for catalog rendering
+    const allMenuItems = await MenuItem.findAll({ where: { isAvailable: true } });
+    
+    const augmentedRestaurants = restaurants.map(r => {
+      const rJson = r.toJSON();
+      rJson._id = rJson.id; // Map UUIDs to expected legacy Mongo _id formats
+      rJson.menu = allMenuItems
+        .filter(m => m.restaurantId === r.id)
+        .map(m => {
+          const item = m.toJSON();
+          // Ensure tags is an array (SQLite might return it as a string)
+          if (typeof item.tags === 'string') {
+            try { item.tags = JSON.parse(item.tags); } catch { item.tags = []; }
+          }
+          return { ...item, _id: item.id };
+        });
+      return rJson;
+    });
+
+    res.json(augmentedRestaurants);
   } catch (error) {
     console.error('[RESTAURANT_ERROR]', error);
     res.status(500).json({ message: 'Server Error' });
@@ -30,10 +90,10 @@ const getRestaurantMenu = async (req, res) => {
 // @desc    Create a new restaurant (Admin only)
 // @route   POST /api/restaurants
 const createRestaurant = async (req, res) => {
-  const { name, location, imageUrl, deliveryTime, commissionRate } = req.body;
+  const { name, location, imageUrl, deliveryTime, commissionRate, isOffline, password } = req.body;
   try {
     const Restaurant = getRestaurantModel();
-    const restaurant = await Restaurant.create({ name, location, imageUrl, deliveryTime, commissionRate });
+    const restaurant = await Restaurant.create({ name, location, imageUrl, deliveryTime, commissionRate, isOffline, password });
     res.status(201).json(restaurant);
   } catch (error) {
     console.error('[CREATE_RESTAURANT_ERROR]', error);
@@ -41,4 +101,50 @@ const createRestaurant = async (req, res) => {
   }
 };
 
-module.exports = { getRestaurants, getRestaurantMenu, createRestaurant };
+// @desc    Toggle menu item availability
+// @route   PUT /api/restaurants/menu/:itemId/toggle
+const toggleMenuItemAvailability = async (req, res) => {
+  try {
+    const MenuItem = getMenuItemModel();
+    const item = await MenuItem.findByPk(req.params.itemId);
+    if (!item) return res.status(404).json({ message: 'Menu item not found' });
+
+    item.isAvailable = !item.isAvailable;
+    await item.save();
+
+    const io = req.app.get('io');
+    io.emit('inventory_updated', { itemId: item.id, isAvailable: item.isAvailable });
+
+    res.json({ message: 'Item availability updated', _id: item.id, isAvailable: item.isAvailable });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Update menu item tags (Dietary etc)
+// @route   PUT /api/restaurants/menu/:itemId/tags
+const updateMenuItemTags = async (req, res) => {
+  const { tags } = req.body;
+  try {
+    const MenuItem = getMenuItemModel();
+    const item = await MenuItem.findByPk(req.params.itemId);
+    if (!item) return res.status(404).json({ message: 'Menu item not found' });
+
+    item.tags = tags;
+    await item.save();
+
+    res.json({ message: 'Item tags updated', _id: item.id, tags: item.tags });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+module.exports = { 
+  getRestaurants, 
+  getRestaurantMenu, 
+  createRestaurant, 
+  restaurantLogin, 
+  getRestaurantOrders, 
+  toggleMenuItemAvailability,
+  updateMenuItemTags
+};

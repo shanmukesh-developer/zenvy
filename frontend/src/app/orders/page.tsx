@@ -1,13 +1,16 @@
 "use client";
 import Link from 'next/link';
 import { useEffect, useState, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 
 interface OrderRecord {
   _id: string;
   totalPrice: number;
   status: string;
   createdAt: string;
+  restaurantId?: string;
   items: { name?: string; quantity: number; priceAtOrder: number }[];
+  deliveryPin?: string;
 }
 
 // Skeleton loading component
@@ -31,22 +34,33 @@ function OrderSkeleton() {
 }
 
 export default function OrdersPage() {
+  const router = useRouter();
   const [orders, setOrders] = useState<OrderRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [swipedId, setSwipedId] = useState<string | null>(null);
   const touchStartX = useRef(0);
 
   useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) { router.push('/login'); return; }
     const fetchOrders = async () => {
       try {
         const token = localStorage.getItem('token');
-        const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+        const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
         const res = await fetch(`${API_URL}/api/orders/myorders`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) {
           const data = await res.json();
-          setOrders(data);
+          // Items may be stringified JSON in SQLite — parse them safely
+          const parsed = data.map((o: OrderRecord) => ({
+            ...o,
+            items: typeof o.items === 'string' ? (() => { try { return JSON.parse(o.items as unknown as string); } catch { return []; } })() : (o.items || [])
+          }));
+          setOrders(parsed);
+        } else if (res.status === 401) {
+          localStorage.removeItem('token');
+          router.push('/login');
         }
       } catch (err) {
         console.error('Failed to fetch orders:', err);
@@ -80,6 +94,12 @@ export default function OrdersPage() {
     return '◎';
   };
 
+  const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+
+  const toggleExpand = (id: string) => {
+    setExpandedOrderId(expandedOrderId === id ? null : id);
+  };
+
   return (
     <main className="min-h-screen bg-background text-white p-6 relative overflow-hidden">
       {/* Ambient */}
@@ -90,7 +110,7 @@ export default function OrdersPage() {
       <div className="relative z-10">
         {/* Header */}
         <div className="flex items-center justify-between mb-10 pt-6">
-          <Link href="/profile" className="w-10 h-10 glass-card rounded-full flex items-center justify-center">
+          <Link href="/" className="w-10 h-10 glass-card rounded-full flex items-center justify-center">
             <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" />
             </svg>
@@ -112,46 +132,89 @@ export default function OrdersPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            <p className="text-[9px] font-bold text-secondary-text uppercase tracking-[0.2em] mb-2">← Swipe to reorder</p>
-            {orders.map((order) => (
+            <p className="text-[9px] font-bold text-secondary-text uppercase tracking-[0.2em] mb-2">← Swipe to reorder • Tap to expand</p>
+            {orders.map((order) => {
+              const isExpanded = expandedOrderId === order._id;
+              return (
               <div key={order._id} className="relative overflow-hidden rounded-[28px]">
                 {/* Reorder Action (behind card) */}
-                <div className="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-[#C9A84C] to-[#8B7332] flex items-center justify-center rounded-r-[28px]">
+                <div 
+                  className="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-l from-[#C9A84C] to-[#8B7332] flex items-center justify-center rounded-r-[28px] cursor-pointer active:opacity-80"
+                  onClick={() => router.push(`/restaurants/${order.restaurantId || ''}`)}
+                >
                   <span className="text-[9px] font-black text-black uppercase tracking-wider">Reorder</span>
                 </div>
 
                 {/* Card */}
                 <div
-                  className={`glass-card p-6 rounded-[28px] relative z-10 transition-transform duration-300 ${swipedId === order._id ? '-translate-x-24' : 'translate-x-0'}`}
+                  className={`glass-card p-6 rounded-[28px] relative z-10 transition-all duration-300 ${swipedId === order._id ? '-translate-x-24' : 'translate-x-0'} ${isExpanded ? 'border-[#C9A84C]/30 bg-white/[0.05]' : 'border-white/10'}`}
                   onTouchStart={(e) => handleTouchStart(e)}
                   onTouchEnd={(e) => handleTouchEnd(e, order._id)}
+                  onClick={() => toggleExpand(order._id)}
                 >
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
                       <span className={`text-xs ${statusColor(order.status)}`}>{statusIcon(order.status)}</span>
-                      <h3 className="text-sm font-black">Order #{order._id.slice(-5)}</h3>
+                      <h3 className="text-sm font-black">Order #{orders.length - orders.findIndex(o => o._id === order._id)}</h3>
                     </div>
                     <span className={`text-[9px] font-black uppercase tracking-widest ${statusColor(order.status)}`}>
                       {order.status}
                     </span>
                   </div>
+                  
                   <div className="flex items-center justify-between">
                     <p className="text-[10px] text-secondary-text font-bold">
                       {order.items?.length || 0} item{(order.items?.length || 0) > 1 ? 's' : ''} • {new Date(order.createdAt).toLocaleDateString()}
                     </p>
                     <span className="text-sm font-black text-gold-gradient">₹{order.totalPrice}</span>
                   </div>
-                  
-                  {order.status !== 'Delivered' && order.status !== 'Cancelled' && (
-                    <div className="flex justify-end mt-3 pt-3 border-t border-white/5">
-                      <Link href={`/tracking?id=${order._id}`} className="text-[9px] font-black uppercase tracking-widest text-primary-yellow hover:text-white transition-colors flex items-center gap-1">
-                        Track Live order <span>→</span>
-                      </Link>
+
+                  {isExpanded && (
+                    <div className="mt-6 animate-in fade-in slide-in-from-top-2">
+                       <div className="bg-black/20 rounded-2xl p-4 border border-white/5 mb-4">
+                          <p className="text-[8px] font-black uppercase text-secondary-text tracking-[0.2em] mb-3 text-center">Security Verification Details</p>
+                          <div className="flex justify-between items-center bg-[#C9A84C]/10 p-4 rounded-xl border border-[#C9A84C]/20">
+                             <div>
+                                <p className="text-[7px] font-black uppercase text-[#C9A84C] tracking-widest">Security Number</p>
+                                <p className="text-xl font-black text-white tracking-[0.2em]">{order.deliveryPin || 'WAIT'}</p>
+                             </div>
+                             <div className="text-right">
+                                <p className="text-[7px] font-black uppercase text-secondary-text tracking-widest">Handshake Req.</p>
+                                <p className="text-[9px] font-bold text-white/50">Show to Rider</p>
+                             </div>
+                          </div>
+                       </div>
+                       
+                       <div className="space-y-2 mb-4">
+                          {order.items.map((item, idx) => (
+                             <div key={idx} className="flex justify-between text-[11px] font-bold text-secondary-text">
+                                <span><span className="text-primary-yellow mr-2">{item.quantity}x</span> {item.name || 'Nexus Item'}</span>
+                                <span>₹{(item.priceAtOrder || 0) * item.quantity}</span>
+                             </div>
+                          ))}
+                       </div>
+
+                       {order.status !== 'Delivered' && order.status !== 'Cancelled' && (
+                        <Link href={`/tracking?id=${order._id}`} className="w-full btn-yellow py-3 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2">
+                          Track Live Location <span>→</span>
+                        </Link>
+                       )}
+                    </div>
+                  )}
+
+                  {!isExpanded && order.status !== 'Delivered' && order.status !== 'Cancelled' && (
+                    <div className="flex justify-between items-center mt-4 pt-4 border-t border-white/5">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        <span className="text-[8px] font-black uppercase tracking-widest text-emerald-500">Live Active</span>
+                      </div>
+                      <span className="text-[8px] font-black uppercase tracking-widest text-primary-yellow">Expand for PIN →</span>
                     </div>
                   )}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

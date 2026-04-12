@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
 
 const CUISINE_TYPES = ['South Indian', 'North Indian', 'Biryani', 'Chinese', 'Fast Food', 'Pizza', 'Burgers', 'Sweets', 'Seafood', 'Beverages', 'Multi-Cuisine'];
 

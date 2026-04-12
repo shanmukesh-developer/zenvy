@@ -10,7 +10,9 @@ export interface MenuItem {
   restaurantId?: string;
   restaurantName?: string;
   tags?: string[];
-  isVegetarian?: boolean;
+   isVegetarian?: boolean;
+   isAvailable?: boolean;
+   isEliteOnly?: boolean;
 }
 
 export interface Restaurant {
@@ -22,7 +24,10 @@ export interface Restaurant {
   image?: string;
   imageUrl?: string;
   description?: string;
+  lat?: number;
+  lon?: number;
   time?: string;
+  calculatedTime?: string;
   tags?: string[];
   vendorType?: string;
   categories?: string[];
@@ -34,6 +39,8 @@ export interface User {
   name?: string;
   phone?: string;
   isElite?: boolean;
+  defaultAddress?: string;
   zenPoints?: number;
   hostelBlock?: string;
+  profileImage?: string | null;
 }

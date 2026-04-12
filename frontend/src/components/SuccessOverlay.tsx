@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 interface SuccessOverlayProps {
   isOpen: boolean;
@@ -10,7 +11,12 @@ interface SuccessOverlayProps {
 }
 
 export default function SuccessOverlay({ isOpen, onClose, title, message, type = 'success' }: SuccessOverlayProps) {
+  const [mounted, setMounted] = useState(false);
   const [show, setShow] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (isOpen) {
@@ -25,12 +31,13 @@ export default function SuccessOverlay({ isOpen, onClose, title, message, type =
     }
   }, [isOpen, onClose, type]);
 
+  if (!mounted || typeof document === 'undefined') return null;
   if (!isOpen && !show) return null;
 
   const isError = type === 'error';
 
-  return (
-    <div className={`fixed inset-0 z-[200] flex items-center justify-center p-6 transition-all duration-500 ${show ? 'opacity-100' : 'opacity-0'}`}>
+  return createPortal(
+    <div className={`fixed inset-0 z-[200] flex items-center justify-center p-6 pointer-events-auto transition-all duration-500 ${show ? 'opacity-100' : 'opacity-0'}`}>
       <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={onClose} />
       
       <div className={`relative w-full max-w-[320px] glass-card p-10 rounded-[40px] flex flex-col items-center text-center border-[#C9A84C]/20 shadow-2xl transition-all duration-700 ${show ? 'scale-100 translate-y-0' : 'scale-90 translate-y-10'}`}>
@@ -63,6 +70,7 @@ export default function SuccessOverlay({ isOpen, onClose, title, message, type =
         {/* Ambient Glow */}
         <div className={`absolute -z-10 w-48 h-48 ${isError ? 'bg-red-500/10' : 'bg-[#C9A84C]/10'} rounded-full blur-[60px]`} />
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

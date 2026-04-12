@@ -47,16 +47,18 @@ export default function IntroOverlay({ onComplete }: { onComplete: () => void })
         zIndex: 999999,
         backgroundColor: '#010101', // Pure Black slate to make gold pop heavier
         overflow: 'hidden',
-        perspective: '1500px'
+        perspective: '1500px',
+        transitionDuration: '1300ms'
       }}
-      className={`transition-all duration-[1300ms] ${stage >= 4 ? 'opacity-0 scale-[1.04] blur-md' : 'opacity-100 scale-100'}`}
+      className={`transition-all ${stage >= 4 ? 'opacity-0 scale-[1.04] blur-md' : 'opacity-100 scale-100'}`}
     >
       {/* 🔮 Deep Cinematic Atmospheric Drift (Slow slow nebula) */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         
         {/* Core Amber Nebula Backglow (Consolidation drift breathing) */}
         <div 
-          className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[160%] h-[160%] bg-[radial-gradient(circle_at_center,rgba(212,175,55,0.14)_0%,transparent_50%)] blur-[130px] transition-all duration-[2000ms] ${stage >= 1 ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`} 
+          style={{ transitionDuration: '2000ms' }}
+          className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[160%] h-[160%] bg-[radial-gradient(circle_at_center,rgba(212,175,55,0.14)_0%,transparent_50%)] blur-[130px] transition-all ${stage >= 1 ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`} 
         />
         
         {/* 🌀 Enhanced Ember matrix (Slowed upwards float seamless) */}
@@ -82,14 +84,21 @@ export default function IntroOverlay({ onComplete }: { onComplete: () => void })
         {/* 🕯️ Soft Ambient Continuous pulse Breathe Light back swept */}
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div 
-            className={`w-[550px] h-[1px] bg-gradient-to-r from-transparent via-[#D4AF37]/85 to-transparent blur-[3px] scale-x-0 transition-transform duration-[2000ms] ease-out-expo ${stage >= 2 ? 'scale-x-100 animate-[light-breathe_4s_infinite_ease-in-out]' : 'scale-x-0'}`} 
+            style={{ transitionDuration: '2000ms' }}
+            className={`w-[550px] h-[1px] bg-gradient-to-r from-transparent via-[#D4AF37]/85 to-transparent blur-[3px] scale-x-0 transition-transform ease-out-expo ${stage >= 2 ? 'scale-x-100 animate-[light-breathe_4s_infinite_ease-in-out]' : 'scale-x-0'}`} 
           />
         </div>
       </div>
 
       {/* 🎬 Premium Smooth Letterbox sweep (Movie Aspect Ratio) */}
-      <div className={`absolute top-0 left-0 w-full bg-black z-50 transition-all duration-[1500ms] cubic-bezier(0.19, 1, 0.22, 1) ${stage >= 1 ? 'h-[6.5vh]' : 'h-[50dvh]'}`} />
-      <div className={`absolute bottom-0 left-0 w-full bg-black z-50 transition-all duration-[1500ms] cubic-bezier(0.19, 1, 0.22, 1) ${stage >= 1 ? 'h-[6.5vh]' : 'h-[50dvh]'}`} />
+      <div 
+        style={{ transitionDuration: '1500ms', transitionTimingFunction: 'cubic-bezier(0.19, 1, 0.22, 1)' }}
+        className={`absolute top-0 left-0 w-full bg-black z-50 transition-all ${stage >= 1 ? 'h-[6.5vh]' : 'h-[50dvh]'}`} 
+      />
+      <div 
+        style={{ transitionDuration: '1500ms', transitionTimingFunction: 'cubic-bezier(0.19, 1, 0.22, 1)' }}
+        className={`absolute bottom-0 left-0 w-full bg-black z-50 transition-all ${stage >= 1 ? 'h-[6.5vh]' : 'h-[50dvh]'}`} 
+      />
 
       {/* 👑 ELITE SIGNATURE CENTER CARS (The 3D Glass Monogram) */}
       <div
@@ -102,9 +111,10 @@ export default function IntroOverlay({ onComplete }: { onComplete: () => void })
           flexDirection: 'column',
           alignItems: 'center',
           width: '100%',
-          zIndex: 40
+          zIndex: 40,
+          transitionDuration: '2000ms'
         }}
-        className={`transition-all duration-[2000ms] ease-out-expo ${stage >= 2 ? 'scale-100 opacity-100' : 'scale-[1.12] opacity-0 blur-md'}`}
+        className={`transition-all ease-out-expo ${stage >= 2 ? 'scale-100 opacity-100' : 'scale-[1.12] opacity-0 blur-md'}`}
       >
         <div className="relative flex items-center justify-center p-8">
           {/* Back Core Ambient Glow Burst */}
@@ -125,8 +135,8 @@ export default function IntroOverlay({ onComplete }: { onComplete: () => void })
               {/* Precise Vector Signature draws IN on stage 3 */}
               <svg className="w-9 h-9 md:w-10 md:h-10 text-[#D4AF37]" viewBox="0 0 100 100" fill="none">
                 <path
-                  className={`transition-all duration-[1800ms] delay-500 ${stage >= 3 ? 'stroke-dashoffset-0' : 'stroke-dashoffset-[300]'}`}
-                  style={{ strokeDasharray: 300, strokeDashoffset: stage >= 3 ? 0 : 300 }}
+                  style={{ strokeDasharray: 300, strokeDashoffset: stage >= 3 ? 0 : 300, transitionDuration: '1800ms' }}
+                  className={`transition-all delay-500 ${stage >= 3 ? 'stroke-dashoffset-0' : 'stroke-dashoffset-[300]'}`}
                   d="M25 25 L75 25 L25 75 L75 75"
                   stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"
                 />
@@ -139,8 +149,8 @@ export default function IntroOverlay({ onComplete }: { onComplete: () => void })
         <div className="mt-12 text-center">
           <div className="overflow-hidden">
             <h1 
-               style={{ fontFamily: "'Playfair Display', serif" }}
-               className={`text-6xl md:text-7xl font-light italic transition-all duration-[2200ms] cubic-bezier(0.1, 1, 0.1, 1) ${stage >= 3 ? 'translate-y-0 opacity-100 tracking-[0.25em] scale-100' : 'translate-y-full opacity-0 tracking-[0.05em] scale-110'}`}
+               style={{ fontFamily: "'Playfair Display', serif", transitionDuration: '2200ms', transitionTimingFunction: 'cubic-bezier(0.1, 1, 0.1, 1)' }}
+               className={`text-6xl md:text-7xl font-light italic transition-all ${stage >= 3 ? 'translate-y-0 opacity-100 tracking-[0.25em] scale-100' : 'translate-y-full opacity-0 tracking-[0.05em] scale-110'}`}
             >
               <span 
                 style={{ filter: 'drop-shadow(0px 3px 6px rgba(0,0,0,0.85)) drop-shadow(0px 0px 40px rgba(212,175,55,0.35))' }}
@@ -151,13 +161,16 @@ export default function IntroOverlay({ onComplete }: { onComplete: () => void })
             </h1>
           </div>
           
-          <p className={`mt-5 text-[10px] md:text-[11px] font-bold uppercase tracking-[0.6em] opacity-0 transition-opacity duration-[1500ms] delay-700 ${stage >= 3 ? 'opacity-45' : 'opacity-0'}`} style={{ color: '#EBE3CE' }}>
+          <p 
+            style={{ color: '#EBE3CE', transitionDuration: '1500ms' }}
+            className={`mt-5 text-[10px] md:text-[11px] font-bold uppercase tracking-[0.6em] opacity-0 transition-opacity delay-700 ${stage >= 3 ? 'opacity-45' : 'opacity-0'}`}
+          >
              The Luxury of Convenience
           </p>
         </div>
       </div>
 
-      <style jsx>{`
+      <style dangerouslySetInnerHTML={{ __html: `
         .ease-out-expo {
           transition-timing-function: cubic-bezier(0.19, 1, 0.22, 1);
         }
@@ -177,7 +190,7 @@ export default function IntroOverlay({ onComplete }: { onComplete: () => void })
           40% { transform: translateX(200%) skewX(-30deg); }
           100% { transform: translateX(200%) skewX(-30deg); }
         }
-      `}</style>
+      `}} />
     </div>
   );
 }

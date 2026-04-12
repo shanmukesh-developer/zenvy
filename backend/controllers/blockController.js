@@ -14,8 +14,15 @@ const getBlockActivity = async (req, res) => {
     const Order = getOrderModel();
     const User = getUserModel();
 
-    // 1. Fetch all completed orders to calculate volume
-    const orders = await Order.findAll({ where: { status: 'Delivered' } });
+    // 1. Fetch orders from the last 30 days to keep leaderboard relevant and performant
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const orders = await Order.findAll({ 
+      where: { 
+        status: 'Delivered',
+        updatedAt: { [Op.gte]: thirtyDaysAgo }
+      } 
+    });
 
     // Create an initial map with 0 counts
     const activityMap = {};

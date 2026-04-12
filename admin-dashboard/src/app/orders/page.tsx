@@ -2,8 +2,8 @@
 import { useState, useEffect } from 'react';
 import { io } from 'socket.io-client';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5001';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
+const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5005';
 
 interface OrderItem {
   name: string;
@@ -163,7 +163,26 @@ export default function OrdersPage() {
                             </td>
                             <td className="p-4">
                                <div className="flex gap-2">
-                                 {order.status !== 'Delivered' && order.status !== 'Cancelled' && (
+                                 {order.status === 'Pending' && (
+                                   <button
+                                     onClick={async () => {
+                                       try {
+                                         setActionLoading(order._id + 'Accept');
+                                         const token = localStorage.getItem('token');
+                                         const res = await fetch(`${API_URL}/api/orders/${order._id}/restaurant-accept`, {
+                                           method: 'PUT',
+                                           headers: { 'Authorization': `Bearer ${token}` }
+                                         });
+                                         if (res.ok) await fetchOrders();
+                                       } catch (err) { } finally { setActionLoading(null); }
+                                     }}
+                                     disabled={actionLoading === order._id + 'Accept'}
+                                     className="px-3 py-1.5 bg-sky-500/10 text-sky-400 border border-sky-500/20 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-sky-500/20 transition-all disabled:opacity-40"
+                                   >
+                                     {actionLoading === order._id + 'Accept' ? '...' : '▶ Dispatch'}
+                                   </button>
+                                 )}
+                                 {order.status !== 'Delivered' && order.status !== 'Cancelled' && order.status !== 'Pending' && (
                                    <button
                                      onClick={() => updateOrderStatus(order._id, 'Delivered')}
                                      disabled={actionLoading === order._id + 'Delivered'}

@@ -15,8 +15,9 @@ const seedNexusV6 = async () => {
 
   console.log('--- Nexus Omni-Catalog V6: Mass Deployment ---');
 
-  // 1. Force Sync to ensure clean state
-  await sequelize.sync({ alter: true });
+  // 1. Sync safely
+  const isSqlite = sequelize.getDialect() === 'sqlite';
+  await sequelize.sync({ alter: !isSqlite });
 
   // 2. Create Global Nexus Provider
   const [nexusRestaurant] = await Restaurant.findOrCreate({
@@ -38,7 +39,7 @@ const seedNexusV6 = async () => {
 
   const sampleProducts = [
     // 🍎 FRUITS
-    { name: 'Organic Dragon Fruit', price: 120, category: 'fruits', tags: ['fruits', 'healthy'], imageUrl: 'https://images.unsplash.com/photo-1527325541517-4506b7d44c8c?w=500' },
+    { id: '008a4294-48c0-485c-85ed-c5978b90cd87', name: 'Organic Dragon Fruit', price: 120, category: 'fruits', tags: ['fruits', 'healthy'], imageUrl: 'https://images.unsplash.com/photo-1527325541517-4506b7d44c8c?w=500' },
     { name: 'Red Fuji Apples (4pc)', price: 180, category: 'fruits', tags: ['fruits'], imageUrl: 'https://images.unsplash.com/photo-1560806887-1e4cd0b6bcd6?w=500' },
     { name: 'Golden Kiwis', price: 150, category: 'fruits', tags: ['fruits', 'seasonal'], imageUrl: 'https://images.unsplash.com/photo-1585059895312-708b21cb995d?w=500' },
     { name: 'Exotic Berries Symphony', price: 599, category: 'fruits', tags: ['fruits', 'elite'], imageUrl: 'https://images.unsplash.com/photo-1464965211904-c72145311ad7?w=500' },
