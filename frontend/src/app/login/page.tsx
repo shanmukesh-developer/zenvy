@@ -40,6 +40,20 @@ export default function LoginPage() {
     };
   }, [useOtp]);
 
+  const [verifier, setVerifier] = useState<RecaptchaVerifier | null>(null);
+
+  useEffect(() => {
+    if (!useOtp) return;
+    const v = new RecaptchaVerifier(auth, 'login-recaptcha-container', {
+      size: 'invisible',
+    });
+    setVerifier(v);
+    return () => {
+      v.clear();
+      setVerifier(null);
+    };
+  }, [useOtp]);
+
   const handleSendOtp = async () => {
     if (!phone || phone.length < 10) {
       setOverlay({ isOpen: true, title: 'Invalid Phone', message: 'Enter a valid 10-digit number.', type: 'error' });
@@ -47,19 +61,14 @@ export default function LoginPage() {
     }
     setLoading(true);
     try {
-      // Singleton pattern: only initialize once
-      if (!window.recaptchaVerifier) {
-        window.recaptchaVerifier = new RecaptchaVerifier(auth, 'login-recaptcha-container', {
-          size: 'invisible',
-        });
-      }
+      if (!verifier) throw new Error('Recaptcha not initialized. Please refresh.');
 
       // Robust formatting: take only numeric digits and keep the last 10
       const digits = phone.replace(/\D/g, '');
       const last10 = digits.slice(-10);
       const formattedPhone = `+91${last10}`;
       
-      const confirmation = await signInWithPhoneNumber(auth, formattedPhone, window.recaptchaVerifier);
+      const confirmation = await signInWithPhoneNumber(auth, formattedPhone, verifier);
 
       setConfirmationResult(confirmation);
       setStep(2);
@@ -69,14 +78,15 @@ export default function LoginPage() {
       let message = error.message || 'Failed to send OTP.';
       if (message.includes('billing-not-enabled')) {
         message = 'Firebase SMS limit reached or Billing not enabled. Use a TEST number or upgrade to Blaze plan.';
-      } else if (message.includes('already-rendered')) {
-        message = 'Security system collision. Please refresh the page and try again.';
+      } else if (message.includes('invalid-app-credential')) {
+        message = 'Security Check Failed. Check Authorized Domains or API Key restrictions.';
       }
       setOverlay({ isOpen: true, title: 'Error', message, type: 'error' });
     } finally {
       setLoading(false);
     }
   };
+
 
 
   const handleVerifyAndLogin = async () => {

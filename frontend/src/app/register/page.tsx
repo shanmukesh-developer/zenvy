@@ -27,50 +27,46 @@ export default function RegisterPage() {
     isOpen: false, title: '', message: '',
   });
 
-  const setupRecaptcha = () => {
-    try {
-      if (!window.recaptchaVerifier) {
-        window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
-          size: 'invisible',
-          callback: () => {},
-        });
+  const [verifier, setVerifier] = useState<RecaptchaVerifier | null>(null);
+
+  useEffect(() => {
+    const v = new RecaptchaVerifier(auth, 'recaptcha-container', {
+      size: 'invisible',
+      callback: () => {
+        console.log('reCAPTCHA resolved');
       }
-    } catch (e) {
-      console.error('reCAPTCHA setup error:', e);
-    }
-  };
+    });
+    setVerifier(v);
+    return () => {
+      v.clear();
+    };
+  }, []);
 
   const handleSendOtp = async () => {
-    const { name, phone, password } = formData;
-    if (!name || !phone || !password) {
+    if (!formData.name || !formData.phone || !formData.password) {
       setOverlay({ isOpen: true, title: 'Missing Details', message: 'Please fill in all required fields.', type: 'error' });
       return;
     }
     
     setIsSending(true);
     try {
-      setupRecaptcha();
-      const appVerifier = window.recaptchaVerifier!;
+      if (!verifier) throw new Error('Security check not ready. Please refresh.');
       
-      // Robust formatting: take only numeric digits and keep the last 10
-      const digits = phone.replace(/\D/g, '');
+      const digits = formData.phone.replace(/\D/g, '');
       const last10 = digits.slice(-10);
       const fullPhone = `+91${last10}`;
       
-      const result = await signInWithPhoneNumber(auth, fullPhone, appVerifier);
+      const result = await signInWithPhoneNumber(auth, fullPhone, verifier);
       window.confirmationResult = result;
       setStep('otp');
     } catch (err: any) {
       console.error('OTP Send Error:', err);
-      
       let message = err.message || 'Failed to send OTP.';
       if (message.includes('billing-not-enabled')) {
-        message = 'Firebase SMS limit reached or Billing not enabled. Use a TEST number or upgrade to Blaze plan.';
-      } else if (message.includes('already-rendered')) {
-        // If it still happens, a refresh is necessary
-        message = 'Security system collision. Please refresh the page and try again.';
+        message = 'Firebase Billing not enabled. Upgrade to Blaze plan or use a Test Number.';
+      } else if (message.includes('invalid-app-credential')) {
+        message = 'Firebase Security Check Failed. Ensure localhost is whitelisted and API Key is unrestricted.';
       }
-      
       setOverlay({ isOpen: true, title: 'OTP Failed', message, type: 'error' });
     } finally {
       setIsSending(false);
