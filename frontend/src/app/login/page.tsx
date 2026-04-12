@@ -47,16 +47,12 @@ export default function LoginPage() {
     }
     setLoading(true);
     try {
-      // Aggressive reCAPTCHA cleanup before every attempt
-      if (window.recaptchaVerifier) {
-        window.recaptchaVerifier.clear();
+      // Singleton pattern: only initialize once
+      if (!window.recaptchaVerifier) {
+        window.recaptchaVerifier = new RecaptchaVerifier(auth, 'login-recaptcha-container', {
+          size: 'invisible',
+        });
       }
-      const container = document.getElementById('login-recaptcha-container');
-      if (container) container.innerHTML = '';
-
-      window.recaptchaVerifier = new RecaptchaVerifier(auth, 'login-recaptcha-container', {
-        size: 'invisible',
-      });
 
       // Robust formatting: take only numeric digits and keep the last 10
       const digits = phone.replace(/\D/g, '');
@@ -70,11 +66,18 @@ export default function LoginPage() {
       setOverlay({ isOpen: true, title: 'OTP Sent', message: 'Verification code sent to your phone.', type: 'success' });
     } catch (error: any) {
       console.error('OTP Error:', error);
-      setOverlay({ isOpen: true, title: 'Error', message: error.message || 'Failed to send OTP.', type: 'error' });
+      let message = error.message || 'Failed to send OTP.';
+      if (message.includes('billing-not-enabled')) {
+        message = 'Firebase SMS limit reached or Billing not enabled. Use a TEST number or upgrade to Blaze plan.';
+      } else if (message.includes('already-rendered')) {
+        message = 'Security system collision. Please refresh the page and try again.';
+      }
+      setOverlay({ isOpen: true, title: 'Error', message, type: 'error' });
     } finally {
       setLoading(false);
     }
   };
+
 
   const handleVerifyAndLogin = async () => {
     if (!otp || otp.length < 6) {

@@ -27,29 +27,14 @@ export default function RegisterPage() {
     isOpen: false, title: '', message: '',
   });
 
-  useEffect(() => {
-    return () => {
-      // Cleanup recaptcha on unmount
-      if (window.recaptchaVerifier) {
-        window.recaptchaVerifier.clear();
-        window.recaptchaVerifier = undefined;
-      }
-    };
-  }, []);
-
   const setupRecaptcha = () => {
     try {
-      if (window.recaptchaVerifier) {
-        window.recaptchaVerifier.clear();
+      if (!window.recaptchaVerifier) {
+        window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+          size: 'invisible',
+          callback: () => {},
+        });
       }
-      const container = document.getElementById('recaptcha-container');
-      if (container) {
-        container.innerHTML = ''; // Aggressive DOM cleanup
-      }
-      window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
-        size: 'invisible',
-        callback: () => {},
-      });
     } catch (e) {
       console.error('reCAPTCHA setup error:', e);
     }
@@ -61,11 +46,7 @@ export default function RegisterPage() {
       setOverlay({ isOpen: true, title: 'Missing Details', message: 'Please fill in all required fields.', type: 'error' });
       return;
     }
-    if (phone.length < 10) {
-      setOverlay({ isOpen: true, title: 'Invalid Number', message: 'Please enter a valid 10-digit phone number.', type: 'error' });
-      return;
-    }
-
+    
     setIsSending(true);
     try {
       setupRecaptcha();
@@ -79,13 +60,17 @@ export default function RegisterPage() {
       const result = await signInWithPhoneNumber(auth, fullPhone, appVerifier);
       window.confirmationResult = result;
       setStep('otp');
-    } catch (err: unknown) {
+    } catch (err: any) {
       console.error('OTP Send Error:', err);
-      if (window.recaptchaVerifier) {
-        window.recaptchaVerifier.clear();
-        window.recaptchaVerifier = undefined;
+      
+      let message = err.message || 'Failed to send OTP.';
+      if (message.includes('billing-not-enabled')) {
+        message = 'Firebase SMS limit reached or Billing not enabled. Use a TEST number or upgrade to Blaze plan.';
+      } else if (message.includes('already-rendered')) {
+        // If it still happens, a refresh is necessary
+        message = 'Security system collision. Please refresh the page and try again.';
       }
-      const message = err instanceof Error ? err.message : 'Failed to send OTP.';
+      
       setOverlay({ isOpen: true, title: 'OTP Failed', message, type: 'error' });
     } finally {
       setIsSending(false);
