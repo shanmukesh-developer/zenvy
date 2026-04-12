@@ -23,11 +23,21 @@ export default function LoginPage() {
   });
 
   useEffect(() => {
-    if (useOtp && !window.recaptchaVerifier) {
-      window.recaptchaVerifier = new RecaptchaVerifier(auth, 'login-recaptcha-container', {
-        size: 'invisible',
-      });
+    if (useOtp && typeof window !== 'undefined' && !window.recaptchaVerifier) {
+      try {
+        window.recaptchaVerifier = new RecaptchaVerifier(auth, 'login-recaptcha-container', {
+          size: 'invisible',
+        });
+      } catch (e) {
+        console.error('reCAPTCHA init error:', e);
+      }
     }
+    return () => {
+      if (window.recaptchaVerifier) {
+        window.recaptchaVerifier.clear();
+        window.recaptchaVerifier = undefined;
+      }
+    };
   }, [useOtp]);
 
   const handleSendOtp = async () => {
@@ -37,7 +47,11 @@ export default function LoginPage() {
     }
     setLoading(true);
     try {
-      const formattedPhone = `+91${phone.replace(/\D/g, '')}`;
+      // Robust formatting: take only numeric digits and keep the last 10
+      const digits = phone.replace(/\D/g, '');
+      const last10 = digits.slice(-10);
+      const formattedPhone = `+91${last10}`;
+      
       const confirmation = await signInWithPhoneNumber(auth, formattedPhone, window.recaptchaVerifier);
       setConfirmationResult(confirmation);
       setStep(2);

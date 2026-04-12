@@ -61,11 +61,17 @@ export default function RegisterPage() {
     try {
       setupRecaptcha();
       const appVerifier = window.recaptchaVerifier!;
-      const fullPhone = `+91${phone.replace(/\D/g, '')}`;
+      
+      // Robust formatting: take only numeric digits and keep the last 10
+      const digits = phone.replace(/\D/g, '');
+      const last10 = digits.slice(-10);
+      const fullPhone = `+91${last10}`;
+      
       const result = await signInWithPhoneNumber(auth, fullPhone, appVerifier);
       window.confirmationResult = result;
       setStep('otp');
     } catch (err: unknown) {
+      console.error('OTP Send Error:', err);
       if (window.recaptchaVerifier) {
         window.recaptchaVerifier.clear();
         window.recaptchaVerifier = undefined;
