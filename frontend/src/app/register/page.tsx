@@ -38,11 +38,20 @@ export default function RegisterPage() {
   }, []);
 
   const setupRecaptcha = () => {
-    if (!window.recaptchaVerifier) {
+    try {
+      if (window.recaptchaVerifier) {
+        window.recaptchaVerifier.clear();
+      }
+      const container = document.getElementById('recaptcha-container');
+      if (container) {
+        container.innerHTML = ''; // Aggressive DOM cleanup
+      }
       window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
         size: 'invisible',
         callback: () => {},
       });
+    } catch (e) {
+      console.error('reCAPTCHA setup error:', e);
     }
   };
 

@@ -47,12 +47,24 @@ export default function LoginPage() {
     }
     setLoading(true);
     try {
+      // Aggressive reCAPTCHA cleanup before every attempt
+      if (window.recaptchaVerifier) {
+        window.recaptchaVerifier.clear();
+      }
+      const container = document.getElementById('login-recaptcha-container');
+      if (container) container.innerHTML = '';
+
+      window.recaptchaVerifier = new RecaptchaVerifier(auth, 'login-recaptcha-container', {
+        size: 'invisible',
+      });
+
       // Robust formatting: take only numeric digits and keep the last 10
       const digits = phone.replace(/\D/g, '');
       const last10 = digits.slice(-10);
       const formattedPhone = `+91${last10}`;
       
       const confirmation = await signInWithPhoneNumber(auth, formattedPhone, window.recaptchaVerifier);
+
       setConfirmationResult(confirmation);
       setStep(2);
       setOverlay({ isOpen: true, title: 'OTP Sent', message: 'Verification code sent to your phone.', type: 'success' });
