@@ -63,35 +63,59 @@ const registerUser = async (req, res) => {
 // @desc    Auth user & get token
 // @route   POST /api/users/login
 const authUser = async (req, res) => {
-  const { phone, password } = req.body;
+  const { phone, password, firebaseToken } = req.body;
 
   try {
     const User = getUserModel();
-    const user = await User.findOne({ where: { phone } });
-    if (user && (await user.comparePassword(password))) {
-      res.json({
-        _id: user.id,
-        name: user.name,
-        phone: user.phone,
-        isElite: user.isElite || false,
-        hostelBlock: user.hostelBlock,
-        roomNumber: user.roomNumber,
-        zenPoints: user.zenPoints || 0,
-        address: user.address || '',
-        city: user.city || 'Amaravathi',
-        profileImage: user.profileImage || null,
-        badges: user.badges || [],
-        completedOrders: user.completedOrders || 0,
-        token: generateToken(user.id, user.role)
-      });
-    } else {
-      res.status(401).json({ message: 'Invalid phone or password' });
+    let user;
+
+    // ── 1. If firebaseToken is provided, use OTP Login flow ──────────────
+    if (firebaseToken) {
+      let decodedToken;
+      try {
+        decodedToken = await admin.auth().verifyIdToken(firebaseToken);
+      } catch (tokenErr) {
+        console.error('[FIREBASE_LOGIN_TOKEN_ERROR]', tokenErr.message);
+        return res.status(401).json({ message: 'Phone verification failed. Login denied.' });
+      }
+
+      const verifiedPhoneNumeric = decodedToken.phone_number.replace(/\D/g, '').slice(-10);
+      user = await User.findOne({ where: { phone: verifiedPhoneNumeric } });
+
+      if (!user) {
+        return res.status(404).json({ message: 'Account not found. Please register first.' });
+      }
+    } 
+    // ── 2. Otherwise, use traditional Password Login flow ───────────────
+    else {
+      user = await User.findOne({ where: { phone } });
+      if (!user || !(await user.comparePassword(password))) {
+        return res.status(401).json({ message: 'Invalid phone or password' });
+      }
     }
+
+    // ── 3. Return user data and JWT token ────────────────────────────────
+    res.json({
+      _id: user.id,
+      name: user.name,
+      phone: user.phone,
+      isElite: user.isElite || false,
+      hostelBlock: user.hostelBlock,
+      roomNumber: user.roomNumber,
+      zenPoints: user.zenPoints || 0,
+      address: user.address || '',
+      city: user.city || 'Amaravathi',
+      profileImage: user.profileImage || null,
+      badges: user.badges || [],
+      completedOrders: user.completedOrders || 0,
+      token: generateToken(user.id, user.role)
+    });
   } catch (error) {
     console.error('[AUTH_ERROR]', error);
     res.status(500).json({ message: 'Internal Server Error' });
   }
 };
+
 
 // @desc    Save FCM Token
 // @route   POST /api/users/fcm-token
