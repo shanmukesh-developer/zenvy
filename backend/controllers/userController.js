@@ -1,16 +1,40 @@
 const { getUserModel } = require('../models/User');
 const jwt = require('jsonwebtoken');
+const admin = require('../config/firebase');
 
 const generateToken = (id, role) => {
   return jwt.sign({ id, role }, process.env.JWT_SECRET || 'secret', { expiresIn: '30d' });
 };
 
-// @desc    Register a new user
+// @desc    Register a new user (requires Firebase phone verification)
 // @route   POST /api/users/register
 const registerUser = async (req, res) => {
-  const { name, phone, password, hostelBlock, roomNumber } = req.body;
+  const { name, phone, password, hostelBlock, roomNumber, firebaseToken } = req.body;
+
+  // ── 1. Require Firebase ID token ──────────────────────────────────────
+  if (!firebaseToken) {
+    return res.status(401).json({ message: 'Phone verification is required to create an account.' });
+  }
 
   try {
+    // ── 2. Verify the token with Firebase Admin ───────────────────────────
+    let decodedToken;
+    try {
+      decodedToken = await admin.auth().verifyIdToken(firebaseToken);
+    } catch (tokenErr) {
+      console.error('[FIREBASE_TOKEN_ERROR]', tokenErr.message);
+      return res.status(401).json({ message: 'Phone verification failed. Please try again.' });
+    }
+
+    // ── 3. Confirm the verified phone matches the submitted phone ─────────
+    const verifiedPhone = decodedToken.phone_number; // e.g. "+919876543210"
+    const submittedPhone = `+91${phone.replace(/\D/g, '')}`;
+    if (verifiedPhone !== submittedPhone) {
+      console.warn(`[REGISTER_PHONE_MISMATCH] token: ${verifiedPhone}, submitted: ${submittedPhone}`);
+      return res.status(401).json({ message: 'Phone number mismatch. Please verify the correct number.' });
+    }
+
+    // ── 4. Create the user ────────────────────────────────────────────────
     const User = getUserModel();
     const userExists = await User.findOne({ where: { phone } });
     if (userExists) return res.status(400).json({ message: 'User already exists' });
@@ -33,6 +57,8 @@ const registerUser = async (req, res) => {
     res.status(500).json({ message: `Registration Failed: ${error.message}` });
   }
 };
+
+
 
 // @desc    Auth user & get token
 // @route   POST /api/users/login

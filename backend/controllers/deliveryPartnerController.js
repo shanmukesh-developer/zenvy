@@ -8,14 +8,40 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { Op } = require('sequelize');
 
+const admin = require('../config/firebase');
+
 const generateToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '30d' });
+  return jwt.sign({ id }, process.env.JWT_SECRET || 'secret', { expiresIn: '30d' });
 };
 
-// @desc    Register a new delivery partner
+// @desc    Register a new delivery partner (requires Firebase phone verification)
 const registerPartner = async (req, res) => {
+  const { name, phone, password, vehicleType, firebaseToken } = req.body;
+
+  // ── 1. Require Firebase ID token ──────────────────────────────────────
+  if (!firebaseToken) {
+    return res.status(401).json({ message: 'Phone verification is required to register as a partner.' });
+  }
+
   try {
-    const { name, phone, password, vehicleType } = req.body;
+    // ── 2. Verify the token with Firebase Admin ───────────────────────────
+    let decodedToken;
+    try {
+      decodedToken = await admin.auth().verifyIdToken(firebaseToken);
+    } catch (tokenErr) {
+      console.error('[FIREBASE_PARTNER_TOKEN_ERROR]', tokenErr.message);
+      return res.status(401).json({ message: 'Phone verification failed. Registration denied.' });
+    }
+
+    // ── 3. Confirm verified phone matches submitted phone ─────────────────
+    const verifiedPhone = decodedToken.phone_number;
+    const submittedPhone = `+91${phone.replace(/\D/g, '')}`;
+    if (verifiedPhone !== submittedPhone) {
+      console.warn(`[PARTNER_PHONE_MISMATCH] token: ${verifiedPhone}, submitted: ${submittedPhone}`);
+      return res.status(401).json({ message: 'Phone number mismatch. Verification failed.' });
+    }
+
+    // ── 4. Create partner ────────────────────────────────────────────────
     const DeliveryPartner = getDeliveryPartnerModel();
     const partnerExists = await DeliveryPartner.findOne({ where: { phone } });
     if (partnerExists) return res.status(400).json({ message: 'Partner already exists' });
@@ -23,9 +49,11 @@ const registerPartner = async (req, res) => {
     const partner = await DeliveryPartner.create({ name, phone, password, vehicleType });
     res.status(201).json({ _id: partner.id, name: partner.name, token: generateToken(partner.id) });
   } catch (error) {
+    console.error('[PARTNER_REGISTER_ERROR]', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+
 
 // @desc    Auth partner & get token
 const authPartner = async (req, res) => {
