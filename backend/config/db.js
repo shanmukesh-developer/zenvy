@@ -93,8 +93,12 @@ const connectDB = async () => {
     console.log('✅ PostgreSQL Connected via Sequelize.');
     initializeAllModels(sequelize);
     const isSqlite = sequelize.getDialect() === 'sqlite';
-    await sequelize.sync({ alter: !isSqlite });
-    console.log(`✅ All tables synced (${isSqlite ? 'Basic' : 'Altered'}).`);
+    if (process.env.NODE_ENV !== 'production') {
+      await sequelize.sync({ alter: !isSqlite });
+      console.log(`✅ All tables synced (${isSqlite ? 'Basic' : 'Altered'}).`);
+    } else {
+      console.log(`✅ Skipping slow sync in production (tables assumed ready).`);
+    }
   } catch (error) {
     console.warn('⚠️ PostgreSQL connection failed. Error details:', error.message);
     
