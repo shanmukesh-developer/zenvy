@@ -32,14 +32,9 @@ export default function RegisterPage() {
   useEffect(() => {
     const v = new RecaptchaVerifier(auth, 'recaptcha-container', {
       size: 'invisible',
-      callback: () => {
-        console.log('reCAPTCHA resolved');
-      }
     });
     setVerifier(v);
-    return () => {
-      v.clear();
-    };
+    // REMOVED v.clear() from here to prevent runtime crash during active challenge
   }, []);
 
   const handleSendOtp = async () => {
@@ -59,9 +54,9 @@ export default function RegisterPage() {
       const result = await signInWithPhoneNumber(auth, fullPhone, verifier);
       window.confirmationResult = result;
       setStep('otp');
-    } catch (err: any) {
+    } catch (err) {
       console.error('OTP Send Error:', err);
-      let message = err.message || 'Failed to send OTP.';
+      let message = err instanceof Error ? err.message : 'Failed to send OTP.';
       if (message.includes('billing-not-enabled')) {
         message = 'Firebase Billing not enabled. Upgrade to Blaze plan or use a Test Number.';
       } else if (message.includes('invalid-app-credential')) {

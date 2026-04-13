@@ -1,3 +1,4 @@
+/* eslint-disable */
 const { Sequelize } = require('sequelize');
 const path = require('path');
 const bcrypt = require('bcryptjs');

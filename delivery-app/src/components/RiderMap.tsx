@@ -27,7 +27,7 @@ export default function RiderMap({ riderPos, destinationPos, orders = [] }: Ride
     }
   }, [riderPos]);
 
-  const markers: any[] = [];
+  const markers: { position: [number, number]; type: 'rider' | 'store' | 'drop'; label: string }[] = [];
   if (riderPos) markers.push({ position: riderPos, type: 'rider', label: 'You' });
   
   orders.forEach(o => {

@@ -60,6 +60,7 @@ export default function PaymentVerificationModal({ isOpen, onClose, order, onVer
             <p className="text-[8px] font-black text-gray-500 uppercase tracking-[0.3em]">Visual Evidence</p>
             <div className="aspect-video bg-black rounded-3xl border border-white/5 overflow-hidden relative group">
               {order.upiScreenshot ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
                 <img 
                   src={order.upiScreenshot} 
                   alt="Payment Screenshot" 

@@ -69,7 +69,7 @@ export function SpecialInstructions({ note }: SpecialInstructionsProps) {
   return (
     <div className="bg-yellow-500/10 border border-yellow-500/20 p-3 rounded-2xl mb-4">
       <p className="text-[8px] font-black uppercase tracking-widest text-yellow-500 mb-1">Customer Note</p>
-      <p className="text-xs text-yellow-200/80 font-medium italic">"{note}"</p>
+      <p className="text-xs text-yellow-200/80 font-medium italic">&quot;{note}&quot;</p>
     </div>
   );
 }

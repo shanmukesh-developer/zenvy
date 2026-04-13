@@ -22,14 +22,14 @@ async function run() {
     log('AUTH', '── Authenticating Customer ──');
     let customerToken;
     try {
-      const lr = await axios.post(`${API}/users/login`, { phone: '9999999999', password: 'password123' });
+      const lr = await axios.post(`${API}/users/login`, { phone: '9999999999', password: 'password123', firebaseToken: 'E2E_MOCK_TOKEN' });
       customerToken = lr.data.token;
       log('AUTH', `✅ Customer Login OK → Token ${customerToken.substring(0, 12)}...`);
     } catch {
       log('AUTH', '⚠️ Customer login failed. Registering...');
       const rr = await axios.post(`${API}/users/register`, {
         name: 'E2E Tester', phone: '9999999999', password: 'password123',
-        hostelBlock: 'OM', roomNumber: '101'
+        hostelBlock: 'OM', roomNumber: '101', firebaseToken: 'E2E_MOCK_TOKEN'
       });
       customerToken = rr.data.token;
       log('AUTH', `✅ Customer Registered → Token ${customerToken.substring(0, 12)}...`);
@@ -46,7 +46,7 @@ async function run() {
       try {
         const dr = await axios.post(`${API}/delivery/register`, {
           name: 'E2E Rider', phone: 'driver1', password: 'password123',
-          vehicleType: 'bike'
+          vehicleType: 'bike', firebaseToken: 'E2E_MOCK_TOKEN'
         });
         driverToken = dr.data.token;
         log('AUTH', `✅ Driver Registered → Token ${driverToken.substring(0, 12)}...`);

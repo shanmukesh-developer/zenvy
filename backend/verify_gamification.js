@@ -1,3 +1,4 @@
+/* eslint-disable */
 const { Sequelize } = require('sequelize');
 const { initUserModel } = require('./models/User');
 const { evaluateBadges } = require('./services/BadgeService');

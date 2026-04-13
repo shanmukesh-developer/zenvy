@@ -64,7 +64,8 @@ interface Order {
 export default function Home() {
   const { cart } = useCart();
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
-  const [filter, setFilter] = useState<'all' | 'budget' | 'veg' | 'jain' | 'eggless' | 'rating' | 'fastest' | 'premium'>('all');
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [filter, _setFilter] = useState<'all' | 'budget' | 'veg' | 'jain' | 'eggless' | 'rating' | 'fastest' | 'premium'>('all');
   const [liveRestaurants, setLiveRestaurants] = useState<Restaurant[]>([]);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [showSupport, setShowSupport] = useState(false);
@@ -80,14 +81,16 @@ export default function Home() {
   const [isElite, setIsElite] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [favorites, setFavorites] = useState<string[]>([]);
-  const [activeCategory, setActiveCategory] = useState<string>('');
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [activeCategory, _setActiveCategory] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const [selectedRental, setSelectedRental] = useState<RentalItem | null>(null);
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
   const [cancelSecondsLeft, setCancelSecondsLeft] = useState(0);
   const [isRatingModalOpen, setIsRatingModalOpen] = useState(false);
   // favorites moved down for grouping
-  const [sortBy, setSortBy] = useState<'default' | 'price-asc' | 'price-desc' | 'rating' | 'fastest'>('default');
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [sortBy, _setSortBy] = useState<'default' | 'price-asc' | 'price-desc' | 'rating' | 'fastest'>('default');
   const [favSort, setFavSort] = useState<'default' | 'price-asc' | 'price-desc' | 'name'>('default');
   const [restaurantSearch, setRestaurantSearch] = useState('');
   const [showConcierge, setShowConcierge] = useState(false);
@@ -118,6 +121,7 @@ export default function Home() {
     setModalConfig({ isOpen: true, title, message, type, onConfirm, confirmLabel, cancelLabel });
   };
   
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const CITY_CATEGORIES = [
     { emoji: '🍛', label: 'Biryani' },
     { emoji: '🍕', label: 'Pizza' },
@@ -386,7 +390,7 @@ export default function Home() {
     return liveRestaurants.flatMap(res => 
       (res.menu || []).map(item => {
         const itemPrice = Number(item.price) || 0;
-        const isVeg = !!(item.isVegetarian || (item.isVegetarian as any) === 'true' || (item.isVegetarian as any) === 1 || item.tags?.includes('veg') || item.tags?.includes('fruits'));
+        const isVeg = !!(item.isVegetarian || String(item.isVegetarian) === 'true' || Number(item.isVegetarian) === 1 || item.tags?.includes('veg') || item.tags?.includes('fruits'));
         
         return { 
           ...item, 
@@ -405,7 +409,7 @@ export default function Home() {
       if (filter === 'budget' && p.price > 150) return false;
       if (filter === 'premium' && !p.isEliteOnly && p.price < 500) return false;
       if (gymMode && !p.tags?.includes('healthy') && !p.tags?.includes('high-protein')) return false;
-      if (p.isAvailable === false || (p.isAvailable as any) === 'false') return false;
+      if (p.isAvailable === false || String(p.isAvailable) === 'false') return false;
       return true;
     }).sort((a, b) => {
       if (sortBy === 'price-asc') return a.price - b.price;
@@ -416,7 +420,7 @@ export default function Home() {
 
   // Grouped Collections Driven by Tags (Optimized Single-Pass Engine)
   const groupedCollections = useMemo(() => {
-    const collections: Record<string, any[]> = {
+    const collections: Record<string, typeof allProducts> = {
       fruits: [], rentals: [], sweets: [], seasonal: [], drinks: [],
       gym: [], laundry: [], pharmacy: [], stationary: [], all: allProducts
     };
@@ -450,6 +454,7 @@ export default function Home() {
 
   const chefPicks = useMemo(() => groupedCollections.all.slice(0, 8), [groupedCollections.all]);
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const filteredByCategory = useMemo(() => {
     return allProducts
       .filter(p => {
@@ -673,10 +678,38 @@ export default function Home() {
             </Magnetic>
           </motion.div>
 
-
-
-
-
+          {/* Restored Category Chips */}
+          <section className="mb-10 px-6">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-secondary-text">Explore Categories</h2>
+              <span className="text-[9px] font-bold text-secondary-text uppercase tracking-wider">Swipe →</span>
+            </div>
+            <div className="flex gap-5 overflow-x-auto scrollbar-hide -mx-6 px-6 pb-4">
+              {CITY_CATEGORIES.map((cat, i) => (
+                <motion.button
+                  key={cat.label}
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.04, duration: 0.5 }}
+                  onClick={() => {
+                    setRestaurantSearch(cat.label);
+                    setIsSearchOpen(true);
+                  }}
+                  className="flex flex-col items-center gap-3 shrink-0 group active:scale-95 transition-transform"
+                >
+                  <div className="w-16 h-16 rounded-[22px] bg-white/[0.03] border border-white/5 flex items-center justify-center text-2xl group-hover:bg-white/[0.08] group-hover:border-[#C9A84C]/30 transition-all duration-300 shadow-xl relative overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-br from-[#C9A84C]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <span className="relative z-10 group-hover:scale-110 transition-transform duration-300 filter group-hover:drop-shadow-[0_0_8px_rgba(201,168,76,0.3)]">
+                      {cat.emoji}
+                    </span>
+                  </div>
+                  <span className="text-[9px] font-black text-secondary-text uppercase tracking-[0.15em] group-hover:text-white transition-colors">
+                    {cat.label}
+                  </span>
+                </motion.button>
+              ))}
+            </div>
+          </section>
 
           {/* 🔒 The Zenvy Vault (Daily FOMO Scarcity) */}
           <motion.section 
@@ -1225,7 +1258,7 @@ export default function Home() {
                 >
                   <Link href={`/products/${item.id}`} className="relative shrink-0 w-[240px] block group active:scale-95 transition-transform">
                     <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-[#A5B4FC]/30 transition-colors">
-                       <SafeImage src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
+                       <SafeImage src={item.imageUrl || "/assets/placeholder_premium.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
                        <button 
                               onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(item.id!); }}
                               className={`absolute top-4 right-4 w-9 h-9 rounded-full flex items-center justify-center transition-all z-20 ${favorites.includes(item.id!) ? 'bg-primary-yellow text-black scale-110 shadow-lg' : 'bg-black/40 text-white backdrop-blur-md hover:bg-black/60'}`}
@@ -1263,7 +1296,7 @@ export default function Home() {
                 >
                   <Link href={`/products/${item.id}`} className="relative shrink-0 w-[240px] block group active:scale-95 transition-transform">
                     <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-[#C9A84C]/30 transition-colors">
-                       <SafeImage src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
+                       <SafeImage src={item.imageUrl || "/assets/placeholder_premium.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
                        <button 
                               onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(item.id!); }}
                               className={`absolute top-4 right-4 w-9 h-9 rounded-full flex items-center justify-center transition-all z-20 ${favorites.includes(item.id!) ? 'bg-primary-yellow text-black scale-110 shadow-lg' : 'bg-black/40 text-white backdrop-blur-md hover:bg-black/60'}`}
@@ -1318,7 +1351,7 @@ export default function Home() {
                       name={res.name} 
                       rating={String(res.rating || "4.5")} 
                       time={res.calculatedTime || res.time || "30-50 min"}
-                      imageUrl={res.imageUrl || "/assets/placeholder.png"} 
+                      imageUrl={res.imageUrl || "/assets/placeholder_premium.png"} 
                       imagePosition={index % 2 === 0 ? 'left' : 'right'} 
                     />
                   </Link>

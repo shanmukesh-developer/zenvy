@@ -24,7 +24,7 @@ export default function LiveStatsBar({ todayEarnings, todayOrders, zenPoints, st
       {/* Stats Summary Grid */}
       <div className="grid grid-cols-2 gap-y-6 gap-x-4 mb-8">
         <div>
-            <p className="hud-title text-slate-500 mb-1">Today's Earnings</p>
+            <p className="hud-title text-slate-500 mb-1">Today&apos;s Earnings</p>
             <p className="text-2xl font-bold text-white tracking-tight">₹{todayEarnings}</p>
         </div>
         <div>

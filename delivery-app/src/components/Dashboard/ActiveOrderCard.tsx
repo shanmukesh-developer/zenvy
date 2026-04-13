@@ -28,6 +28,7 @@ interface ActiveOrderCardProps {
   onPickUp: (id: string) => void;
   onDeliver: (id: string) => void;
   onChatOpen: () => void;
+  onReportIssue: (id: string, type: string) => void;
 }
 
 export default function ActiveOrderCard({ 
@@ -39,6 +40,7 @@ export default function ActiveOrderCard({
   onPickUp, 
   onDeliver,
   onChatOpen,
+  onReportIssue
 }: ActiveOrderCardProps) {
   const earnings = Math.round(((order.finalPrice || order.totalPrice || order.totalAmount || 0) * 0.1));
   const isAtPickup = status === 'Accepted';
@@ -126,9 +128,15 @@ export default function ActiveOrderCard({
         <div className="mb-10">
            <button 
              onClick={onChatOpen}
-             className="w-full h-[60px] flex items-center justify-center gap-2 rounded-xl bg-white/[0.03] border border-white/5 hover:bg-white/10 text-[10px] font-bold uppercase tracking-widest text-slate-300 transition-all"
+             className="flex-1 h-[60px] flex items-center justify-center gap-2 rounded-xl bg-white/[0.03] border border-white/5 hover:bg-white/10 text-[10px] font-bold uppercase tracking-widest text-slate-300 transition-all"
            >
-             Contact Support / Customer
+             Contact Chat
+           </button>
+           <button 
+             onClick={() => onReportIssue(order.id, 'Delayed')}
+             className="flex-1 h-[60px] flex items-center justify-center gap-2 rounded-xl bg-red-500/5 border border-red-500/10 hover:bg-red-500/10 text-[10px] font-bold uppercase tracking-widest text-red-500/60 hover:text-red-500 transition-all"
+           >
+             ⚠️ Issue Alert
            </button>
         </div>
 

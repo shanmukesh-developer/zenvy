@@ -43,8 +43,8 @@ export default function LoginForm({ onLogin, apiUrl }: LoginFormProps) {
       localStorage.setItem('driverToken', data.token);
       localStorage.setItem('driver', JSON.stringify({ _id: data._id, name: data.name }));
       onLogin({ _id: data._id, name: data.name, token: data.token });
-    } catch (err) {
-      console.error('Login error:', err);
+    } catch (err: unknown) {
+      console.error('Login error:', err instanceof Error ? err.message : err);
       setError('System unreachable. Check network status.');
     } finally {
       setLoading(false);

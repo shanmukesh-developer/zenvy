@@ -1,7 +1,8 @@
 "use client";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { io } from 'socket.io-client';
 import dynamic from 'next/dynamic';
+import { useRouter } from 'next/navigation';
 import PaymentVerificationModal from '@/components/PaymentVerificationModal';
 
 const LiveFleetMap = dynamic(() => import('@/components/LiveFleetMap'), { ssr: false });
@@ -63,6 +64,25 @@ interface OperationalEvent {
 
 
 export default function AdminHome() {
+  const router = useRouter();
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    const userData = localStorage.getItem('user');
+    if (!token || !userData) {
+      router.push('/login');
+      return;
+    }
+    try {
+      const user = JSON.parse(userData);
+      if (user.role !== 'admin') {
+        router.push('/login');
+      }
+    } catch {
+      router.push('/login');
+    }
+  }, [router]);
+
   const [stats, setStats] = useState<AdminStat[]>([
     { label: 'Platform Revenue', value: '₹0', growth: '+0%', trend: 'neutral' },
     { label: 'Order Activity', value: '0', growth: '+0%', trend: 'neutral' },
@@ -80,9 +100,9 @@ export default function AdminHome() {
   const [megaType, setMegaType] = useState<'info' | 'warning' | 'promo' | 'emergency'>('info');
   const [broadcasting, setBroadcasting] = useState(false);
   const [selectedUPIOrder, setSelectedUPIOrder] = useState<LiveOrder | null>(null);
-  const socketRef = { current: null as ReturnType<typeof io> | null };
+  const socketRef = useRef<ReturnType<typeof io> | null>(null);
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
       const res = await fetch(`${API_URL}/api/admin/stats`, {
@@ -100,9 +120,9 @@ export default function AdminHome() {
         { label: 'Zenvy Commission', value: data.commission || '₹0', growth: 'Projected', trend: 'up' },
       ]);
     } catch (err) { console.error('[STATS_FETCH_ERROR]', err); }
-  };
+  }, []);
 
-  const fetchOrders = async () => {
+  const fetchOrders = useCallback(async () => {
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
       const res = await fetch(`${API_URL}/api/orders`, {
@@ -110,21 +130,26 @@ export default function AdminHome() {
       });
       const data = await res.json();
       if (res.ok) {
-        const formatted = data.map((o: any) => ({
-          id: o._id || o.id,
-          customer: o.userId?.name || 'Student',
-          location: o.hostelGateDelivery ? 'Hostel Gate' : 'Room Delivery',
-          status: o.status,
-          price: o.finalPrice || o.totalPrice,
-          restaurant: o.restaurant?.name || 'Zenvy Elite',
-          timestamp: new Date(o.createdAt),
-          paymentMethod: o.paymentMethod,
-          upiStatus: o.upiStatus,
-          upiUTR: o.upiUTR,
-          upiScreenshot: o.upiScreenshot,
-          deliveryPartnerName: o.deliveryPartner?.name,
-          deliveryPartnerPhoto: o.deliveryPartner?.photoUrl
-        }));
+        const formatted = data.map((o: Record<string, unknown>) => {
+          const userIdObj = o.userId as Record<string, unknown> | undefined;
+          const restaurantObj = o.restaurant as Record<string, unknown> | undefined;
+          const deliveryPartnerObj = o.deliveryPartner as Record<string, unknown> | undefined;
+          return {
+            id: String(o._id || o.id),
+            customer: userIdObj?.name || 'Student',
+            location: (o.hostelGateDelivery as boolean) ? 'Hostel Gate' : 'Room Delivery',
+            status: String(o.status),
+            price: Number(o.finalPrice || o.totalPrice),
+            restaurant: restaurantObj?.name || 'Zenvy Elite',
+            timestamp: new Date(String(o.createdAt)),
+            paymentMethod: String(o.paymentMethod),
+            upiStatus: String(o.upiStatus),
+            upiUTR: String(o.upiUTR),
+            upiScreenshot: String(o.upiScreenshot),
+            deliveryPartnerName: deliveryPartnerObj?.name,
+            deliveryPartnerPhoto: deliveryPartnerObj?.photoUrl
+          };
+        });
         setLiveOrders(formatted);
       }
     } catch (_err) {
@@ -132,7 +157,7 @@ export default function AdminHome() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   const handleVerifyUPI = async (orderId: string, isVerified: boolean) => {
     try {
@@ -215,15 +240,16 @@ export default function AdminHome() {
       });
     });
 
-    socket.on('rider_profile_updated', (data: any) => {
+    socket.on('rider_profile_updated', (data: Record<string, unknown>) => {
       setRiders(prev => {
-        if (prev[data.riderId]) {
+        const riderId = String(data.riderId);
+        if (prev[riderId]) {
           return {
             ...prev,
-            [data.riderId]: {
-              ...prev[data.riderId],
-              riderName: data.name,
-              photoUrl: data.photoUrl
+            [riderId]: {
+              ...prev[riderId],
+              riderName: String(data.name),
+              photoUrl: String(data.photoUrl)
             }
           };
         }
@@ -231,31 +257,31 @@ export default function AdminHome() {
       });
     });
 
-    socket.on('sos_received', (data: any) => {
+    socket.on('sos_received', (data: Record<string, unknown>) => {
       setOperationalEvents(prev => [{
         id: `sos-${Date.now()}`,
         type: 'SOS' as const,
         senderRole: 'Rider',
-        senderName: data.riderName,
+        senderName: String(data.riderName),
         details: 'CRITICAL EMERGENCY: SOS Triggered',
         timestamp: new Date()
       }, ...prev].slice(0, 10));
     });
 
-    socket.on('admin_issue_reported', (data: any) => {
+    socket.on('admin_issue_reported', (data: Record<string, unknown>) => {
       setOperationalEvents(prev => [{
         id: `issue-${Date.now()}`,
         type: 'ISSUE' as const,
-        senderRole: data.senderRole,
-        issueType: data.issueType,
-        details: data.details,
-        orderId: data.orderId,
+        senderRole: String(data.senderRole) as 'Customer' | 'Rider',
+        issueType: String(data.issueType),
+        details: String(data.details),
+        orderId: String(data.orderId),
         timestamp: new Date()
       }, ...prev].slice(0, 10));
     });
 
     return () => { socket.disconnect(); };
-  }, []);
+  }, [fetchStats, fetchOrders, router]);
 
   return (
     <div className="space-y-12 animate-fade-in relative pb-20">
@@ -368,9 +394,12 @@ export default function AdminHome() {
                          {order.deliveryPartnerName ? (
                            <>
                              <div className="w-5 h-5 rounded-full overflow-hidden border border-white/10 bg-slate-800 flex items-center justify-center">
-                               {order.deliveryPartnerPhoto ? (
-                                 <img src={order.deliveryPartnerPhoto} className="w-full h-full object-cover" />
-                               ) : (
+                                {order.deliveryPartnerPhoto ? (
+                                  <>
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img src={order.deliveryPartnerPhoto} alt={order.deliveryPartnerName || 'Driver'} className="w-full h-full object-cover" />
+                                  </>
+                                ) : (
                                  <span className="text-[10px]">🛵</span>
                                )}
                              </div>

@@ -111,7 +111,10 @@ export default function LiveFleetMap({ riders, checkpoints }: LiveFleetMapProps)
                     <div className="flex items-center gap-3 mb-3">
                       <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center font-black">
                         {rider.photoUrl ? (
-                          <img src={rider.photoUrl} className="w-full h-full object-cover rounded-lg" />
+                          <>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={rider.photoUrl} alt={rider.riderName || 'Rider'} className="w-full h-full object-cover rounded-lg" />
+                          </>
                         ) : rider.riderName?.[0] || 'R'}
                       </div>
                       <div>

@@ -31,8 +31,8 @@ export default function CheckoutPage() {
   const [paymentMethod, setPaymentMethod] = useState<'COD' | 'UPI' | 'Card' | null>(null);
   const [copyToast, setCopyToast] = useState(false);
   const [zenPoints, setZenPoints] = useState(0);
-  const [coupons, setCoupons] = useState<any[]>([]);
-  const [selectedCoupon, setSelectedCoupon] = useState<any | null>(null);
+  const [coupons, setCoupons] = useState<{ id: string; code: string; type: string }[]>([]);
+  const [selectedCoupon, setSelectedCoupon] = useState<{ id: string; code: string; type: string } | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -50,7 +50,7 @@ export default function CheckoutPage() {
     fetchSurge();
     const interval = setInterval(fetchSurge, 30000); // Check every 30s
     return () => clearInterval(interval);
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     const initLocation = async () => {
@@ -133,7 +133,7 @@ export default function CheckoutPage() {
       } catch (err) { console.error('Coupons fetch failed', err); }
     };
     fetchCoupons();
-  }, []);
+  }, [router]);
 
   // Dynamic fee calculation based on address
   useEffect(() => {

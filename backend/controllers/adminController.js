@@ -6,7 +6,7 @@ const { getOrderModel } = require('../models/Order');
 const { getVaultItemModel } = require('../models/VaultItem');
 const { getGlobalConfigModel } = require('../models/GlobalConfig');
 const { getVerificationLogModel } = require('../models/VerificationLog');
-const { Op } = require('sequelize');
+// const { Op } = require('sequelize');
 
 const broadcastSystemUpdate = (req, type, data) => {
   const io = req.app.get('io');
@@ -321,7 +321,7 @@ exports.updateGlobalConfig = async (req, res) => {
   try {
     const GlobalConfig = getGlobalConfigModel();
     const { key, value, description } = req.body;
-    const [config, created] = await GlobalConfig.upsert({ key, value, description });
+    const [_config, created] = await GlobalConfig.upsert({ key, value, description });
     res.json({ key, value, description, created });
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -514,7 +514,7 @@ exports.deleteVaultItem = async (req, res) => {
 };
 
 // ─── Gamification & Rewards Analytics ──────────────────────────
-const { BADGE_CRITERIA } = require('../services/BadgeService');
+  // const BADGE_CRITERIA = {= require('../services/BadgeService');
 
 exports.getRewardsAnalytics = async (req, res) => {
   try {

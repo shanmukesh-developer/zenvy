@@ -1,3 +1,4 @@
+/* eslint-disable */
 /**
  * reseed_nexus.js - Re-seeds the DB with correct images for all Nexus categories
  * Tags are stored at the RESTAURANT level, not item level.

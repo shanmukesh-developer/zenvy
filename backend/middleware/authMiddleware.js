@@ -8,13 +8,14 @@ const protect = async (req, res, next) => {
   try {
     let token = req.headers.authorization.split(' ')[1];
     if (!token) return res.status(401).json({ message: 'Not authorized, no token' });
-    token = token.replace(/['\"]+/g, '').trim();
+    token = token.replace(/['"]+/g, '').trim();
 
     const secret = process.env.JWT_SECRET || 'secret';
     const decoded = jwt.verify(token, secret);
     req.user = decoded;
     return next();
   } catch (error) {
+    console.warn('[AUTH_WARN] Token verification failed:', error.message);
     return res.status(401).json({ message: 'Not authorized, token failed' });
   }
 };

@@ -76,7 +76,8 @@ export const useTracking = (orderIds: string[], riderName: string, riderId?: str
       if (watchId !== null) navigator.geolocation.clearWatch(watchId);
       if (fallbackInterval) clearInterval(fallbackInterval);
     };
-  }, [JSON.stringify(orderIds), riderName, riderId, socket]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderIds, JSON.stringify(orderIds), riderName, riderId, socket]);
 
   return { socket, coords };
 };

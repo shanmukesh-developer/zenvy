@@ -5,14 +5,14 @@ const { getDeliveryPartnerModel } = require('../models/DeliveryPartner');
 const { sendPushToTokens } = require('../utils/push');
 const { updateStreak, calculateBadgePerks } = require('../middleware/rewardEngine');
 const { getMenuItemModel } = require('../models/MenuItem');
-const { getHaversineDistance, getCoordsForAddress, getMatrixDistance } = require('../utils/distance');
+// const { getHaversineDistance, getCoordsForAddress, getMatrixDistance } = require('../utils/distance');
 const { sendWhatsAppMessage, formatOrderMessage } = require('../utils/whatsappUtil');
 const { Op } = require('sequelize');
 
 // @desc    Create a new order
 // @route   POST /api/orders
 const createOrder = async (req, res) => {
-  const { restaurantId, items, totalPrice, deliverySlot, deliveryAddress, paymentMethod, upiUTR, upiScreenshot } = req.body;
+  const { restaurantId, items, totalPrice: _totalPrice, deliverySlot, deliveryAddress, paymentMethod, upiUTR, upiScreenshot } = req.body;
 
   if (!items || items.length === 0) {
     return res.status(400).json({ message: 'No order items' });
@@ -205,7 +205,9 @@ const createOrder = async (req, res) => {
       if (currentUser && currentUser.hostelBlock) {
         io.emit('blockOrderPulse', { blockName: currentUser.hostelBlock });
       }
-    } catch (e) {}
+    } catch (e) {
+      console.warn('[BLOCK_PULSE_WARN] Socket emit failed:', e.message);
+    }
 
     res.status(201).json({ ...createdOrder.toJSON(), _id: createdOrder.id });
 

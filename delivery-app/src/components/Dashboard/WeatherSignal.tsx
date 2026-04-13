@@ -1,6 +1,12 @@
 "use client";
 import React, { useEffect, useState } from 'react';
 
+interface NavigatorConnection {
+  effectiveType?: string;
+  addEventListener(type: string, listener: () => void): void;
+  removeEventListener(type: string, listener: () => void): void;
+}
+
 const WMO_CODES: Record<number, { label: string; icon: string }> = {
   0: { label: 'Clear', icon: '☀️' },
   1: { label: 'Mostly Clear', icon: '🌤️' },
@@ -16,7 +22,7 @@ const WMO_CODES: Record<number, { label: string; icon: string }> = {
 };
 
 function getNetworkQuality(): { label: string; color: string; bars: number } {
-  const conn = (navigator as any).connection;
+  const conn = (navigator as unknown as { connection?: NavigatorConnection }).connection;
   if (!conn) return { label: 'Unknown', color: 'text-gray-500', bars: 2 };
   const type = conn.effectiveType;
   if (type === '4g') return { label: '4G', color: 'text-emerald-400', bars: 4 };
@@ -43,7 +49,7 @@ export default function WeatherSignal() {
       } catch {}
     });
 
-    const conn = (navigator as any).connection;
+    const conn = (navigator as unknown as { connection?: NavigatorConnection }).connection;
     if (conn) {
       const update = () => setNetwork(getNetworkQuality());
       conn.addEventListener('change', update);

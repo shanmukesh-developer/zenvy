@@ -1,3 +1,4 @@
+/* eslint-disable */
 const dotenv = require('dotenv');
 const path = require('path');
 const { Sequelize } = require('sequelize');

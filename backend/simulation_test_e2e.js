@@ -1,3 +1,4 @@
+/* eslint-disable */
 const axios = require('axios');
 
 const API_URL = 'http://localhost:5005/api';

@@ -1,3 +1,4 @@
+/* eslint-disable */
 require('dotenv').config();
 const { connectDB } = require('./config/db');
 const { getDeliveryPartnerModel } = require('./models/DeliveryPartner');

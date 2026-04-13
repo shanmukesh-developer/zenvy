@@ -1,6 +1,5 @@
 "use client";
 import React from 'react';
-import { motion } from 'framer-motion';
 
 interface RiderNavbarProps {
   driverName: string;
@@ -19,7 +18,6 @@ export default function RiderNavbar({
   toggleOnline, 
   onLogout, 
   onOpenProfile,
-  currentEarnings = 0
 }: RiderNavbarProps) {
   return (
     <nav className="flex justify-between items-center mb-8 px-1">
@@ -30,6 +28,7 @@ export default function RiderNavbar({
       >
         <div className="w-12 h-12 rounded-2xl overflow-hidden border border-white/10 group-hover:border-blue-500/50 transition-all shadow-sm">
           {driverPhoto ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
             <img src={driverPhoto} alt={driverName} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
           ) : (
             <div className="w-full h-full bg-surface-dark flex items-center justify-center text-xl">👤</div>

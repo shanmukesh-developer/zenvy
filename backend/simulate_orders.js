@@ -1,3 +1,4 @@
+/* eslint-disable */
 const { connectDB, getSequelize } = require('./config/db');
 const { initUserModel } = require('./models/User');
 

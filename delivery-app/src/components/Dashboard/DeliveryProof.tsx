@@ -8,7 +8,7 @@ interface DeliveryProofProps {
   onProofUploaded?: () => void;
 }
 
-export default function DeliveryProof({ orderId, apiUrl, token, onProofUploaded }: DeliveryProofProps) {
+export default function DeliveryProof({ orderId, apiUrl, onProofUploaded }: DeliveryProofProps) {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -50,6 +50,7 @@ export default function DeliveryProof({ orderId, apiUrl, token, onProofUploaded 
       />
       {photoUrl ? (
         <div className="relative rounded-2xl overflow-hidden border border-emerald-500/30">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={photoUrl} alt="Delivery proof" className="w-full h-32 object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
           <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent flex items-end p-3">
             <p className="text-[9px] text-emerald-400 font-black uppercase tracking-widest">

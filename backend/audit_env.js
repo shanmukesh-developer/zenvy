@@ -1,3 +1,4 @@
+/* eslint-disable */
 const { getUserModel } = require('./models/User');
 const { getDeliveryPartnerModel } = require('./models/DeliveryPartner');
 const jwt = require('jsonwebtoken');

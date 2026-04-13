@@ -61,7 +61,7 @@ export default function ProductDetailClient({ productId }: { productId: string }
         </div>
         <div>
           <h2 className="text-2xl font-black mb-2">Zenvy Servers are sleeping</h2>
-          <p className="text-zinc-500 max-w-xs mx-auto">We're performing a quick system sweep. Please try refreshing in a few seconds.</p>
+          <p className="text-zinc-500 max-w-xs mx-auto">We&apos;re performing a quick system sweep. Please try refreshing in a few seconds.</p>
         </div>
         <button onClick={() => window.location.reload()} className="px-8 py-3 bg-white/5 border border-white/10 rounded-full hover:bg-white/10 transition-all font-bold">Wake them up</button>
       </div>
@@ -100,7 +100,7 @@ export default function ProductDetailClient({ productId }: { productId: string }
            style={{ transform: `translateY(${scrollY * 0.4}px) scale(1.05)` }}
          >
            <SafeImage 
-             src={product.image || product.imageUrl || "/assets/placeholder.png"} 
+             src={product.image || product.imageUrl || "/assets/placeholder_premium.png"} 
              alt={product.name}
              fill
              style={{ objectFit: 'cover' }}

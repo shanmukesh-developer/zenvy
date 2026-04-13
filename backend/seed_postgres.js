@@ -1,3 +1,4 @@
+/* eslint-disable */
 const { Sequelize, DataTypes } = require('sequelize');
 const dotenv = require('dotenv');
 dotenv.config();
@@ -135,6 +136,7 @@ const seed = async () => {
           deliveryFee: 20,
           finalPrice: 520,
           items: [{ name: 'Mutton Biryani', quantity: 2, price: 250 }],
+          paymentMethod: 'COD',
           hostelBlock: block,
           createdAt: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000)
         });

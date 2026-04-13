@@ -21,7 +21,7 @@ export default function SOSAlertModal() {
       try {
         const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/996/996-preview.mp3');
         audio.play().catch(() => {}); // catch browser autoplay blocks
-      } catch (err) {}
+      } catch {}
     });
     return () => { socket.disconnect(); };
   }, []);

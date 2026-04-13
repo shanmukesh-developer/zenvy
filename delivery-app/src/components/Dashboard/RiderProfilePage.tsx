@@ -1,5 +1,4 @@
-"use client";
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 interface RiderProfilePageProps {
   driver: { _id: string; name: string; token: string };
@@ -31,7 +30,7 @@ export default function RiderProfilePage({ driver, apiUrl, onClose, onUpdate }: 
   const [form, setForm] = useState<Partial<ProfileData>>({});
   const photoRef = useRef<HTMLInputElement>(null);
 
-  const fetchProfile = async () => {
+  const fetchProfile = useCallback(async () => {
     try {
       const res = await fetch(`${apiUrl}/api/delivery/profile`, {
         headers: { 'Authorization': `Bearer ${driver.token}` }
@@ -41,10 +40,12 @@ export default function RiderProfilePage({ driver, apiUrl, onClose, onUpdate }: 
         setProfile(data);
         setForm(data);
       }
-    } catch (err) { console.error('Profile fetch failed:', err); }
-  };
+    } catch (err: unknown) { 
+      console.error('Profile fetch failed:', err instanceof Error ? err.message : err); 
+    }
+  }, [apiUrl, driver.token]);
 
-  useEffect(() => { fetchProfile(); }, []);
+  useEffect(() => { fetchProfile(); }, [fetchProfile]);
 
   const handlePhotoCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -124,6 +125,7 @@ export default function RiderProfilePage({ driver, apiUrl, onClose, onUpdate }: 
           <div className="relative">
             <div className="w-28 h-28 rounded-[28px] overflow-hidden border-2 border-emerald-500/30 bg-slate-800 shadow-2xl shadow-emerald-500/10">
               {displayPhoto ? (
+                // eslint-disable-next-line @next/next/no-img-element
                 <img src={displayPhoto} alt="Rider" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-4xl">🛵</div>
@@ -253,6 +255,7 @@ export default function RiderProfilePage({ driver, apiUrl, onClose, onUpdate }: 
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 rounded-2xl overflow-hidden border border-emerald-500/30 bg-slate-800 shrink-0">
               {displayPhoto ? (
+                // eslint-disable-next-line @next/next/no-img-element
                 <img src={displayPhoto} alt="Rider" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-2xl">🛵</div>

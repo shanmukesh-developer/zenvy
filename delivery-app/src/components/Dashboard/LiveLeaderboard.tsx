@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 
 interface LeaderboardEntry {
   name: string;
@@ -19,26 +19,26 @@ export default function LiveLeaderboard({ apiUrl, token, driverId }: LiveLeaderb
   const [loading, setLoading] = useState(true);
   const [myRank, setMyRank] = useState<number | null>(null);
 
-  const fetchLeaderboard = async () => {
+  const fetchLeaderboard = useCallback(async () => {
     try {
       const res = await fetch(`${apiUrl}/api/delivery/leaderboard`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
         const data: LeaderboardEntry[] = await res.json();
-        const rank = data.findIndex((e: any) => e.id === driverId);
+        const rank = data.findIndex((e: LeaderboardEntry & { id?: string }) => e.id === driverId);
         setMyRank(rank >= 0 ? rank + 1 : null);
         setBoard(data.slice(0, 5));
       }
     } catch {}
     setLoading(false);
-  };
+  }, [apiUrl, token, driverId]);
 
   useEffect(() => {
     fetchLeaderboard();
     const id = setInterval(fetchLeaderboard, 30000); // refresh every 30s
     return () => clearInterval(id);
-  }, []);
+  }, [fetchLeaderboard]);
 
   if (loading) return null;
   if (board.length === 0) return null;
@@ -50,7 +50,7 @@ export default function LiveLeaderboard({ apiUrl, token, driverId }: LiveLeaderb
       <div className="flex items-center justify-between mb-4">
         <div>
           <p className="text-[9px] font-black uppercase tracking-widest text-gray-500">City Radar</p>
-          <p className="text-sm font-black text-white">Today's Top Riders</p>
+          <p className="text-sm font-black text-white">Today&apos;s Top Riders</p>
         </div>
         {myRank && (
           <span className="text-[10px] font-black bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-3 py-1.5 rounded-xl">

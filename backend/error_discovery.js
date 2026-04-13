@@ -1,3 +1,4 @@
+/* eslint-disable */
 /**
  * Zenvy Nexus — Aggressive Error Discovery Script
  * Probes ALL critical API endpoints systematically to find hidden bugs.

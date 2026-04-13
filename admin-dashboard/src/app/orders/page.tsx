@@ -174,7 +174,7 @@ export default function OrdersPage() {
                                            headers: { 'Authorization': `Bearer ${token}` }
                                          });
                                          if (res.ok) await fetchOrders();
-                                       } catch (err) { } finally { setActionLoading(null); }
+                                       } catch { } finally { setActionLoading(null); }
                                      }}
                                      disabled={actionLoading === order._id + 'Accept'}
                                      className="px-3 py-1.5 bg-sky-500/10 text-sky-400 border border-sky-500/20 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-sky-500/20 transition-all disabled:opacity-40"

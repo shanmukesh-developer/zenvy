@@ -108,7 +108,7 @@ export default function RiderProfileModal({ isOpen, onClose, partner }: RiderPro
 
               {partner.bio && (
                 <div className="text-left w-full">
-                   <p className="text-[8px] font-black text-white/30 uppercase tracking-widest mb-2">Captain's Note</p>
+                   <p className="text-[8px] font-black text-white/30 uppercase tracking-widest mb-2">Captain&apos;s Note</p>
                    <p className="text-[10px] text-white/60 italic leading-relaxed">&quot;{partner.bio}&quot;</p>
                 </div>
               )}

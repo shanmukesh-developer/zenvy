@@ -49,7 +49,7 @@ export default function PushNotificationManager() {
     return () => {
       PushNotifications.removeAllListeners();
     };
-  }, []);
+  }, [isNative]);
 
   const registerTokenWithBackend = async (fcmToken: string) => {
     try {

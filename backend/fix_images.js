@@ -1,3 +1,4 @@
+/* eslint-disable */
 /**
  * fix_images.js - Fixes mismatched product images in the database
  * Run: node fix_images.js

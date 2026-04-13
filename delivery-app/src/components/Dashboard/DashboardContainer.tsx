@@ -29,7 +29,7 @@ interface Order {
   customerName: string;
   customerPhone?: string;
   drop: string;
-  items: any[];
+  items: { name: string; quantity: number; price?: number; image?: string }[];
   totalAmount?: number;
   totalPrice?: number;
   finalPrice?: number;
@@ -60,17 +60,20 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
   const [todayStats, setTodayStats] = useState({ earnings: 0, orders: 0, zenPoints: 0, streak: 0 });
   const [showProfile, setShowProfile] = useState(false);
   const [driverPhoto, setDriverPhoto] = useState<string | undefined>();
-  const [currentCheckpoint, setCurrentCheckpoint] = useState<string>('Mangalagiri Jn');
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [currentCheckpoint, _setCurrentCheckpoint] = useState<string>('Mangalagiri Jn');
   const [showOrdersBrowse, setShowOrdersBrowse] = useState(false); // toggle to browse orders while active task
 
   const socketRef = useRef<Socket | null>(null);
+
+  const { token: driverToken } = driver;
 
   // Fetch profile picture on mount
   useEffect(() => {
     const fetchPhoto = async () => {
       try {
         const res = await fetch(`${apiUrl}/api/delivery/profile`, {
-          headers: { 'Authorization': `Bearer ${driver.token}` }
+          headers: { 'Authorization': `Bearer ${driverToken}` }
         });
         if (res.status === 401) return onLogout();
         if (res.ok) {
@@ -83,19 +86,24 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
       } catch {}
     };
     fetchPhoto();
-  }, [apiUrl, driver.token]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiUrl, driverToken, onLogout]);
 
   // Restore state — and re-sync online status to backend on page load
   useEffect(() => {
-    const syncOnlineStatus = async (online: boolean) => {
+    const syncOnlineStatus = async (status: boolean) => {
       try {
-        const res = await fetch(`${apiUrl}/api/delivery/online`, {
+        await fetch(`${apiUrl}/api/delivery/partner/online`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${driver.token}` },
-          body: JSON.stringify({ isOnline: online })
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${driverToken}`
+          },
+          body: JSON.stringify({ isOnline: status })
         });
-        if (res.status === 401) return onLogout();
-      } catch {}
+      } catch (err) {
+        console.error('[RT] Status sync failed:', err);
+      }
     };
 
     const saved = localStorage.getItem('isOnline');
@@ -109,12 +117,12 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
     }
     const savedStats = localStorage.getItem('todayStats');
     if (savedStats) { try { setTodayStats(JSON.parse(savedStats)); } catch {} }
-  }, [apiUrl, driver.token]);
+  }, [apiUrl, driverToken, onLogout]);
 
   const fetchActiveOrders = useCallback(async () => {
     try {
       const res = await fetch(`${apiUrl}/api/delivery/orders/active`, {
-        headers: { 'Authorization': `Bearer ${driver.token}` }
+        headers: { 'Authorization': `Bearer ${driverToken}` }
       });
       if (res.status === 401) return onLogout();
       if (res.ok) {
@@ -126,39 +134,39 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
         setOrderStatus(statusMap);
       }
     } catch (err) { console.error('[RT] Active orders fetch failed:', err); }
-  }, [apiUrl, driver.token]);
+  }, [apiUrl, driverToken, onLogout]);
 
   const fetchPendingOrders = useCallback(async () => {
     if (!isOnline) return;
     try {
       const res = await fetch(`${apiUrl}/api/delivery/orders/pending`, {
-        headers: { 'Authorization': `Bearer ${driver.token}` }
+        headers: { 'Authorization': `Bearer ${driverToken}` }
       });
       if (res.status === 401) return onLogout();
       if (res.ok) {
         const data = await res.json();
-        setAvailableOrders(data.map((o: any) => ({ ...o, id: String(o._id || o.id) })));
+        setAvailableOrders(data.map((o: Record<string, unknown>) => ({ ...o, id: String(o._id || o.id) })));
       }
     } catch (err) { console.error('[RT] Pending fetch failed:', err); }
-  }, [apiUrl, driver.token, isOnline]);
+  }, [apiUrl, driverToken, isOnline, onLogout]);
 
   const fetchHistory = useCallback(async () => {
     try {
       const res = await fetch(`${apiUrl}/api/delivery/orders/history`, {
-        headers: { 'Authorization': `Bearer ${driver.token}` }
+        headers: { 'Authorization': `Bearer ${driverToken}` }
       });
       if (res.status === 401) return onLogout();
       if (res.ok) {
         const data = await res.json();
-        setHistoryOrders(data.map((o: any) => ({ ...o, id: String(o._id || o.id) })));
+        setHistoryOrders(data.map((o: Record<string, unknown>) => ({ ...o, id: String(o._id || o.id) })));
       }
     } catch (err) { console.error('[RT] History fetch failed:', err); }
-  }, [apiUrl, driver.token]);
+  }, [apiUrl, driverToken, onLogout]);
 
   const fetchTodayStats = useCallback(async () => {
     try {
       const res = await fetch(`${apiUrl}/api/delivery/stats/today`, {
-        headers: { 'Authorization': `Bearer ${driver.token}` }
+        headers: { 'Authorization': `Bearer ${driverToken}` }
       });
       if (res.status === 401) return onLogout();
       if (res.ok) {
@@ -167,7 +175,8 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
         localStorage.setItem('todayStats', JSON.stringify(data));
       }
     } catch {}
-  }, [apiUrl, driver.token]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiUrl, driverToken, onLogout]);
 
   useEffect(() => {
     fetchActiveOrders();
@@ -184,7 +193,7 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
 
   useEffect(() => {
     const socket = io(apiUrl, {
-      auth: { token: driver.token, role: 'rider', driverId: currentDriver._id, name: currentDriver.name },
+      auth: { token: driverToken, role: 'rider', driverId: currentDriver._id, name: currentDriver.name },
       transports: ['websocket', 'polling'],
       reconnectionAttempts: 10,
       reconnectionDelay: 2000
@@ -201,12 +210,22 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
       });
     });
 
-    socket.on('newOrder', (order: any) => {
+    socket.on('newOrder', (order: Record<string, unknown>) => {
       if (!isOnline) return;
       const id = String(order._id || order.id);
       setAvailableOrders(prev => {
         if (prev.find(o => o.id === id)) return prev;
-        return [{ ...order, id }, ...prev];
+        return [{
+          id,
+          restaurant: String(order.restaurant || 'Zenvy'),
+          customerName: String(order.customerName || 'Customer'),
+          drop: String(order.drop || 'Delivery'),
+          items: (order.items as Order['items']) || [],
+          totalPrice: Number(order.totalPrice || 0),
+          finalPrice: Number(order.finalPrice || 0),
+          createdAt: String(order.createdAt || new Date().toISOString()),
+          status: 'Pending'
+        }, ...prev];
       });
       setOrderTimers(prev => ({ ...prev, [id]: 30 }));
     });
@@ -216,7 +235,7 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
       setActiveOrders(prev => prev.filter(o => o.id !== String(orderId)));
     });
 
-    socket.on('issue_alert', (data: any) => {
+    socket.on('issue_alert', (data: { issueType: string; details: string; senderRole: string }) => {
       setActiveIssue(data);
       setTimeout(() => setActiveIssue(null), 15000);
     });
@@ -225,7 +244,7 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
       socket.emit('rider_disconnected', { driverId: currentDriver._id });
       socket.disconnect();
     };
-  }, [apiUrl, driver.token, currentDriver._id, currentDriver.name, isOnline]);
+  }, [apiUrl, driverToken, currentDriver._id, currentDriver.name, isOnline]);
 
   useEffect(() => {
     if (!socketRef.current) return;
@@ -266,7 +285,7 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
     try {
       const res = await fetch(`${apiUrl}/api/delivery/online`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${driver.token}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${driverToken}` },
         body: JSON.stringify({ isOnline: newStatus })
       });
       if (res.ok) {
@@ -288,7 +307,7 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
     try {
       const res = await fetch(`${apiUrl}/api/delivery/accept/${orderId}`, {
         method: 'PUT',
-        headers: { 'Authorization': `Bearer ${driver.token}` }
+        headers: { 'Authorization': `Bearer ${driverToken}` }
       });
       if (res.ok) {
         socketRef.current?.emit('joinOrder', orderId);
@@ -313,7 +332,7 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
     try {
       const res = await fetch(`${apiUrl}/api/delivery/status/${orderId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${driver.token}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${driverToken}` },
         body: JSON.stringify({ status: 'PickedUp' })
       });
       if (res.ok) {
@@ -332,7 +351,7 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
     try {
       const res = await fetch(`${apiUrl}/api/delivery/status/${orderId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${driver.token}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${driverToken}` },
         body: JSON.stringify({ status: 'Delivered', pin })
       });
       if (res.ok) {
@@ -386,7 +405,7 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
         driver={driver}
         apiUrl={apiUrl}
         onClose={() => setShowProfile(false)}
-        onUpdate={(data: any) => {
+        onUpdate={(data: { name: string; photoUrl?: string }) => {
           setCurrentDriver(prev => ({ ...prev, name: data.name, photoUrl: data.photoUrl }));
           localStorage.setItem('driver', JSON.stringify({ ...driver, name: data.name, photoUrl: data.photoUrl }));
         }}
@@ -434,7 +453,7 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
                <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 }}>
                  <LiveLeaderboard
                     apiUrl={apiUrl}
-                    token={driver.token}
+                    token={driverToken}
                     driverId={driver._id}
                   />
                </motion.div>
@@ -496,6 +515,7 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
                         onPickUp={pickUpOrder}
                         onDeliver={deliverOrder}
                         onChatOpen={() => setIsChatOpen(true)}
+                        onReportIssue={reportIssue}
                       />
                     ))}
                   </motion.div>
@@ -560,7 +580,7 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
         orderId={activeOrders[0]?.id || ''}
         userName={driver.name}
         userRole="rider"
-        socket={socketRef.current as any}
+        socket={socketRef.current}
         isOpen={isChatOpen}
         onClose={() => setIsChatOpen(false)}
       />

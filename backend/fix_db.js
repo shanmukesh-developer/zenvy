@@ -1,3 +1,4 @@
+/* eslint-disable */
 const { connectDB, getSequelize } = require('./config/db');
 const { getRestaurantModel } = require('./models/Restaurant');
 const { getMenuItemModel } = require('./models/MenuItem');

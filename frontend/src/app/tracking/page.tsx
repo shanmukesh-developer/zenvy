@@ -71,7 +71,7 @@ function TrackingContent() {
   }, []);
 
   const [orderInfo, setOrderInfo] = useState<OrderInfo | null>(null);
-  const [isElite, setIsElite] = useState(false);
+  const [, setIsElite] = useState(false);
   const [currentCheckpoint, setCurrentCheckpoint] = useState<string>('Mangalagiri Jn');
   
   // Real-Time Dynamic Telemetry State
@@ -128,7 +128,7 @@ function TrackingContent() {
           setStatus(4);
           if (!data.rating) setShowRatingModal(true);
         }
-      } catch (err) {
+      } catch {
         setActiveIssue({
           issueType: 'Network Instability',
           details: 'Fetching latest tracking data failed. Retrying...',
@@ -154,7 +154,7 @@ function TrackingContent() {
     });
 
     // Live rider profile updates (e.g. name/photo change mid-ride)
-    socket.on('rider_profile_updated', (data: any) => {
+    socket.on('rider_profile_updated', (data: Record<string, unknown>) => {
       setOrderInfo(prev => {
         if (!prev || !prev.deliveryPartner) return prev;
         if (prev.deliveryPartner.id !== data.riderId) return prev;

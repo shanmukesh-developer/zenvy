@@ -21,12 +21,6 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className={`${outfit.className} antialiased bg-[#0A0A0F] text-slate-200 selection:bg-blue-500/30`}>
-        <script dangerouslySetInnerHTML={{ __html: `
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('token', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjM4ZTYxZWVmLWYxMWQtNDc4ZS1iZDE0LWY0YTU0ZGNkMTg4OSIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc3NTU0Nzc1NCwiZXhwIjoxNzc4MTM5NzU0fQ.v5VzmYDgUadCUVxhPUIL8xVQVic1mI5X7KFAQCj_834');
-            localStorage.setItem('user', JSON.stringify({ id: '65f1a2b3c4d5e6f7a8b9c000', name: 'Admin User', role: 'admin' }));
-          }
-        ` }} />
         <PushNotificationManager />
         <SOSAlertModal />
         

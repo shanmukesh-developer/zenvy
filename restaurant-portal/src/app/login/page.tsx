@@ -18,8 +18,13 @@ export default function Login() {
       localStorage.setItem('restaurantToken', res.data.token);
       localStorage.setItem('restaurantId', res.data.restaurant.id);
       router.push('/dashboard');
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Login failed');
+    } catch (err: unknown) {
+      if (err && typeof err === 'object' && 'response' in err) {
+        const anyErr = err as { response?: { data?: { message?: string } } };
+        setError(anyErr.response?.data?.message || 'Login failed');
+      } else {
+        setError('Login failed');
+      }
     }
   };
 

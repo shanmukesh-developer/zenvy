@@ -69,7 +69,7 @@ export default function ProfilePage() {
   const [isMapPickerOpen, setIsMapPickerOpen] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
   const [showSupport, setShowSupport] = useState(false);
-  const [coupons, setCoupons] = useState<any[]>([]);
+  const [coupons, setCoupons] = useState<{ id: string; code: string; type: string }[]>([]);
 
   // Portal mount guard
   useEffect(() => { setMounted(true); }, []);

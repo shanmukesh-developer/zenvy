@@ -1,3 +1,4 @@
+/* eslint-disable */
 const { connectDB, getSequelize } = require('./config/db');
 const { getDeliveryPartnerModel } = require('./models/DeliveryPartner');
 

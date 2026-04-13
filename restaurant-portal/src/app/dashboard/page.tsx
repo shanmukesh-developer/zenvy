@@ -2,16 +2,37 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { io, Socket } from 'socket.io-client';
+import { io } from 'socket.io-client';
 import api from '@/lib/api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Package, UtensilsCrossed, CheckCircle, Clock } from 'lucide-react';
 
+interface OrderItem {
+  name: string;
+  quantity: number;
+  price: number;
+}
+
+interface Order {
+  id: string;
+  totalPrice: number;
+  items: OrderItem[];
+  status: string;
+  createdAt: string;
+}
+
+interface MenuItem {
+  id: string;
+  name: string;
+  price: number;
+  category: string;
+  isAvailable: boolean;
+}
+
 export default function Dashboard() {
-  const [orders, setOrders] = useState<any[]>([]);
-  const [menu, setMenu] = useState<any[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [menu, setMenu] = useState<MenuItem[]>([]);
   const [activeTab, setActiveTab] = useState<'orders' | 'menu'>('orders');
-  const [socket, setSocket] = useState<Socket | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -41,15 +62,13 @@ export default function Dashboard() {
       s.emit('joinRoom', restaurantId.toString());
     });
 
-    s.on('restaurant_newOrder', (newOrder) => {
+    s.on('restaurant_newOrder', () => {
       api.get(`/restaurants/${restaurantId}/orders`).then(res => setOrders(res.data));
     });
 
-    s.on('statusUpdated', (data) => {
+    s.on('statusUpdated', () => {
        api.get(`/restaurants/${restaurantId}/orders`).then(res => setOrders(res.data));
     });
-
-    setSocket(s);
 
     return () => {
       s.disconnect();
@@ -154,7 +173,7 @@ export default function Dashboard() {
                     </div>
 
                     <div className="space-y-3 mb-8 bg-zinc-950/50 p-4 rounded-xl border border-zinc-800/50">
-                      {order.items.map((item: any, i: number) => (
+                      {order.items.map((item, i: number) => (
                         <div key={i} className="flex justify-between text-sm items-center">
                           <span className="text-zinc-300 font-medium">
                             <span className="text-orange-500/80 mr-3 tabular-nums">{item.quantity}x</span> 
@@ -217,7 +236,7 @@ export default function Dashboard() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {menu.map((item: any) => (
+            {menu.map((item) => (
               <div 
                 key={item.id} 
                 className={`p-6 rounded-2xl border transition-all flex items-center justify-between ${item.isAvailable ? 'bg-zinc-900 border-zinc-800' : 'bg-zinc-950 border-zinc-900 opacity-60'}`}
