@@ -98,6 +98,11 @@ const connectDB = async () => {
   } catch (error) {
     console.warn('⚠️ PostgreSQL connection failed. Error details:', error.message);
     
+    if (process.env.NODE_ENV === 'production') {
+      console.error('❌ FATAL: Database connection failed in production. SQLite fallback disabled.');
+      throw error;
+    }
+
     console.log('🔄 Attempting fallback to Local SQLite...');
     
     sequelize = new Sequelize({

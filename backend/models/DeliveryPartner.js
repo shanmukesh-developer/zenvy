@@ -18,7 +18,7 @@ const initDeliveryPartnerModel = (sequelize) => {
     emergencyContact: { type: DataTypes.STRING },
     liveLocation: { type: DataTypes.JSON, defaultValue: { lat: null, lng: null } },
     isOnline: { type: DataTypes.BOOLEAN, defaultValue: false },
-    currentOrderId: { type: DataTypes.STRING },
+    currentOrderId: { type: DataTypes.UUID },
     totalEarnings: { type: DataTypes.FLOAT, defaultValue: 0 },
     zenPoints: { type: DataTypes.INTEGER, defaultValue: 0 },
     averageRating: { type: DataTypes.FLOAT, defaultValue: 5 },

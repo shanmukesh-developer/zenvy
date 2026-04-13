@@ -7,9 +7,9 @@ const initOrderModel = (sequelize) => {
 
   Order = sequelize.define('Order', {
     id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-    userId: { type: DataTypes.STRING, allowNull: false },
+    userId: { type: DataTypes.UUID, allowNull: false },
     restaurantId: { type: DataTypes.STRING, allowNull: false },
-    deliveryPartnerId: { type: DataTypes.STRING },
+    deliveryPartnerId: { type: DataTypes.UUID },
     items: { type: DataTypes.JSON, defaultValue: [] },
     totalPrice: { type: DataTypes.FLOAT, allowNull: false },
     deliveryFee: { type: DataTypes.FLOAT, allowNull: false },
