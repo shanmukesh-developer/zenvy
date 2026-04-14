@@ -23,7 +23,10 @@ if (!admin.apps.length) {
           }, label);
           console.log(`✅ Firebase Success: ${label}`);
           return true;
-        } catch (e) { return false; }
+        } catch (e) {
+          console.warn(`[FIREBASE_TRY_FAIL] ${label}: ${e.message}`);
+          return false;
+        }
       };
 
       // --- ULTRAROBUST EXTRACTION ENGINE ---
