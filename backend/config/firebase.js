@@ -6,10 +6,10 @@ if (!admin.apps.length) {
   try {
     const serviceAccountPath = path.join(__dirname, '..', 'firebase-key.json');
     
-    // 1. Try environment variables first
+    // 1. Try environment variables with Greed/Robust cleaning
     if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_PRIVATE_KEY) {
-      let k = process.env.FIREBASE_PRIVATE_KEY;
-      console.log(`[FIREBASE_LEVEL5] Received key. length: ${k?.length}, startsWith: ${k?.substring(0, 20)}`);
+      let rawKey = process.env.FIREBASE_PRIVATE_KEY;
+      console.log(`[FIREBASE_LEVEL5] Received key. length: ${rawKey?.length}, startsWith: ${rawKey?.substring(0, 30)}`);
 
       const tryCert = (keyStr, label) => {
         if (!keyStr || keyStr.length < 100) return false;
@@ -20,62 +20,56 @@ if (!admin.apps.length) {
               clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
               privateKey: keyStr
             })
-          }, label); // Added label to distinguish apps if needed, though usually just one
+          }, label);
           console.log(`✅ Firebase Success: ${label}`);
           return true;
-        } catch (e) {
-          // console.error(`❌ Firebase Fail: ${label} - ${e.message}`);
-          return false;
-        }
+        } catch (e) { return false; }
       };
 
-      // --- Multi-Pass Cleaning Pipeline ---
-      
-      // Pass 1: JSON/Quote stripping
-      if (k.startsWith('"') || k.startsWith('{')) {
-        try { const p = JSON.parse(k); k = typeof p === 'object' ? (p.private_key || p.privateKey) : p; } catch(_) { /* ignore */ }
-      }
-      k = k.replace(/^["']|["']$/g, '').trim();
+      // --- ULTRAROBUST EXTRACTION ENGINE ---
+      let k = rawKey;
 
-      // Pass 2: Base64 multi-pass decoding
-      let base64Decoded = k;
-      for (let i = 0; i < 3; i++) {
-        if (base64Decoded.startsWith('LS0tLS1') || (base64Decoded.length > 500 && !base64Decoded.includes('---'))) {
-          try {
-            const next = Buffer.from(base64Decoded.replace(/\s+/g, ''), 'base64').toString('utf8');
-            if (next.length > 100) base64Decoded = next;
-          } catch (_) { break; }
-        } else break;
+      // A. Extract JSON if wrapped in noise (Handles 6000+ char noise)
+      if (k.includes('{') && k.includes('}')) {
+        try {
+          const start = k.indexOf('{');
+          const end = k.lastIndexOf('}') + 1;
+          const jsonSection = k.substring(start, end);
+          const parsed = JSON.parse(jsonSection);
+          const extracted = parsed.private_key || parsed.privateKey;
+          if (extracted) k = extracted;
+        } catch (_) { /* fallback to PEM extraction */ }
       }
 
-      // Pass 3: Newline/Escape Normalization
-      const normalized = base64Decoded
-        .replace(/\\n/g, '\n')
-        .replace(/\\r/g, '\r')
-        .replace(/\r/g, '')
-        .trim();
+      // B. Extract PEM if wrapped in noise
+      const headerMarker = '-----BEGIN PRIVATE KEY-----';
+      const footerMarker = '-----END PRIVATE KEY-----';
+      if (k.includes(headerMarker) && k.includes(footerMarker)) {
+        const start = k.indexOf(headerMarker);
+        const end = k.indexOf(footerMarker) + footerMarker.length;
+        k = k.substring(start, end);
+      }
 
-      // Pass 4: Reconstruction (The Forge-friendly format)
-      const header = '-----BEGIN PRIVATE KEY-----';
-      const footer = '-----END PRIVATE KEY-----';
-      const body = normalized
+      // C. Universal Normalization
+      k = k.replace(/\\n/g, '\n').replace(/\\r/g, '').replace(/^["']|["']$/g, '').trim();
+
+      // D. Reconstruction (The Final Shield)
+      const body = k
         .replace(/-----BEGIN[^-]*-----/gi, '')
         .replace(/-----END[^-]*-----/gi, '')
-        .replace(/[^a-zA-Z0-9+/=]/g, '') // Stripping ALL non-base64 noise
+        .replace(/[^a-zA-Z0-9+/=]/g, '')
         .trim();
-
+      
       const reconstructed = body.length > 100 
-        ? `${header}\n${body.match(/.{1,64}/g).join('\n')}\n${footer}`
+        ? `${headerMarker}\n${body.match(/.{1,64}/g).join('\n')}\n${footerMarker}`
         : null;
 
-      // Final Attempt Chain
-      if (tryCert(normalized, 'Pipeline (Normalized)')) return;
+      // Execution Pipeline
+      if (tryCert(k, 'Pipeline (Stripped)')) return;
       if (reconstructed && tryCert(reconstructed, 'Pipeline (Reconstructed)')) return;
-      if (tryCert(base64Decoded, 'Pipeline (B64-Decoded)')) return;
-      if (tryCert(k, 'Pipeline (Pre-Cleaned)')) return;
-      if (tryCert(process.env.FIREBASE_PRIVATE_KEY, 'Pipeline (Raw)')) return;
-
-      console.error('❌ FIREBASE_FATAL: All 5 initialization layers failed for the provided environment variable.');
+      if (tryCert(rawKey.replace(/\\n/g, '\n'), 'Pipeline (Literal-Fix)')) return;
+      
+      console.error('❌ FIREBASE_FATAL: All initialization layers failed for the provided environment variable.');
     } 
     // 2. Fallback to local JSON file
     else if (fs.existsSync(serviceAccountPath)) {
