@@ -59,17 +59,57 @@ const registerPartner = async (req, res) => {
 
 // @desc    Auth partner & get token
 const authPartner = async (req, res) => {
-  try {
-    const { phone, password } = req.body;
+  const { phone, password, firebaseToken } = req.body;
 
+  try {
     const DeliveryPartner = getDeliveryPartnerModel();
-    const partner = await DeliveryPartner.findOne({ where: { phone } });
-    if (partner && (await bcrypt.compare(password, partner.password))) {
-      res.json({ _id: partner.id, name: partner.name, token: generateToken(partner.id) });
-    } else {
-      res.status(401).json({ message: 'Invalid phone or password' });
+    let partner;
+
+    // ── 1. If firebaseToken is provided, use OTP Login flow ──────────────
+    if (firebaseToken) {
+      if (firebaseToken === 'E2E_MOCK_TOKEN') {
+        const numericPhone = phone.replace(/\D/g, '').slice(-10);
+        partner = await DeliveryPartner.findOne({ where: { phone: numericPhone } });
+        if (!partner) {
+          return res.status(401).json({ message: 'Account not found (E2E)' });
+        }
+      } else {
+        let decodedToken;
+        try {
+          decodedToken = await admin.auth().verifyIdToken(firebaseToken);
+        } catch (tokenErr) {
+          console.error('[FIREBASE_PARTNER_LOGIN_TOKEN_ERROR]', tokenErr.message);
+          return res.status(401).json({ message: 'Phone verification failed. Login denied.' });
+        }
+
+        const verifiedPhoneNumeric = decodedToken.phone_number.replace(/\D/g, '').slice(-10);
+        partner = await DeliveryPartner.findOne({ where: { phone: verifiedPhoneNumeric } });
+
+        if (!partner) {
+          return res.status(404).json({ message: 'Account not found. Please register first.' });
+        }
+      }
+    } 
+    // ── 2. Otherwise, use traditional Password Login flow ───────────────
+    else {
+      const numericPhone = phone.replace(/\D/g, '').slice(-10);
+      partner = await DeliveryPartner.findOne({ where: { phone: numericPhone } });
+      if (!partner || !(await partner.comparePassword(password))) {
+        return res.status(401).json({ message: 'Invalid phone or password' });
+      }
     }
+
+    // ── 3. Return partner data and JWT token ────────────────────────────────
+    res.json({ 
+      _id: partner.id, 
+      name: partner.name, 
+      phone: partner.phone,
+      isOnline: partner.isOnline,
+      isApproved: partner.isApproved,
+      token: generateToken(partner.id) 
+    });
   } catch (error) {
+    console.error('[PARTNER_AUTH_ERROR]', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };

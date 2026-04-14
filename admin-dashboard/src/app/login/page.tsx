@@ -45,7 +45,8 @@ export default function AdminLoginPage() {
       const formattedPhone = `+91${last10}`;
       
       // ✨ TEST MODE BYPASS
-      if (last10 === '9391955674' || last10 === '1234567890') {
+      const isTestMode = process.env.NEXT_PUBLIC_SKIP_OTP === 'true';
+      if (last10 === '9391955674' || last10 === '1234567890' || isTestMode) {
         setStep(2);
         setError('Test Mode Active. Code: 123456');
         setLoading(false);
@@ -72,7 +73,8 @@ export default function AdminLoginPage() {
     setError('');
     try {
       // ✨ TEST MODE VERIFICATION
-      if ((phone.endsWith('9391955674') || phone.endsWith('1234567890')) && otp === '123456') {
+      const isTestMode = process.env.NEXT_PUBLIC_SKIP_OTP === 'true';
+      if ((phone.endsWith('9391955674') || phone.endsWith('1234567890') || isTestMode) && otp === '123456') {
         const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
         const response = await fetch(`${API_URL}/api/users/login`, {
           method: 'POST',

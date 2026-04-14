@@ -49,7 +49,8 @@ export default function LoginPage() {
       const formattedPhone = `+91${last10}`;
       
       // ✨ TEST MODE BYPASS for localhost simulation
-      if (last10 === '1234567890') {
+      const isTestMode = process.env.NEXT_PUBLIC_SKIP_OTP === 'true';
+      if (last10 === '1234567890' || isTestMode) {
         setStep(2);
         setOverlay({ isOpen: true, title: 'Test Mode', message: 'OTP bypass active. Use code 123456.', type: 'success' });
         setLoading(false);
@@ -85,7 +86,8 @@ export default function LoginPage() {
     setLoading(true);
     try {
       // ✨ TEST MODE VERIFICATION
-      if (phone.replace(/\D/g, '').endsWith('1234567890') && otp === '123456') {
+      const isTestMode = process.env.NEXT_PUBLIC_SKIP_OTP === 'true';
+      if ((phone.replace(/\D/g, '').endsWith('1234567890') || isTestMode) && otp === '123456') {
         await finalizeLogin({ firebaseToken: 'E2E_MOCK_TOKEN' });
         return;
       }
