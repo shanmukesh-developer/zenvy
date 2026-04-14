@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import Image from 'next/image';
 
 interface RiderProfilePageProps {
   driver: { _id: string; name: string; token: string };
@@ -126,7 +127,7 @@ export default function RiderProfilePage({ driver, apiUrl, onClose, onUpdate }: 
             <div className="w-28 h-28 rounded-[28px] overflow-hidden border-2 border-emerald-500/30 bg-slate-800 shadow-2xl shadow-emerald-500/10">
               {displayPhoto ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={displayPhoto} alt="Rider" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                <Image src={displayPhoto} alt="Rider" width={112} height={112} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-4xl">🛵</div>
               )}
@@ -256,7 +257,7 @@ export default function RiderProfilePage({ driver, apiUrl, onClose, onUpdate }: 
             <div className="w-16 h-16 rounded-2xl overflow-hidden border border-emerald-500/30 bg-slate-800 shrink-0">
               {displayPhoto ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={displayPhoto} alt="Rider" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                <Image src={displayPhoto} alt="Rider" width={64} height={64} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-2xl">🛵</div>
               )}

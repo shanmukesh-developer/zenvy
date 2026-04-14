@@ -5,7 +5,6 @@ const { getDeliveryPartnerModel } = require('../models/DeliveryPartner');
 const { sendPushToTokens } = require('../utils/push');
 const { updateStreak, calculateBadgePerks } = require('../middleware/rewardEngine');
 const { getMenuItemModel } = require('../models/MenuItem');
-// const { getHaversineDistance, getCoordsForAddress, getMatrixDistance } = require('../utils/distance');
 const { sendWhatsAppMessage, formatOrderMessage } = require('../utils/whatsappUtil');
 const { Op } = require('sequelize');
 
@@ -330,7 +329,7 @@ const restaurantAcceptOrder = async (req, res) => {
 
     // Fetch Restaurant to broadcast details to riders
     const Restaurant = getRestaurantModel();
-    const restaurant = await Restaurant.findByPk(order.restaurantId);
+    let restaurant = await Restaurant.findByPk(order.restaurantId);
 
     // ── Smart Proximity Dispatch ──────────────────────
     try {

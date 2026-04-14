@@ -1,0 +1,28 @@
+﻿
+> backend@1.0.0 lint
+> eslint .
+
+
+C:\hostel-bite\backend\controllers\adminController.js
+    9:9   warning  'Op' is assigned a value but never used              no-unused-vars
+  324:12  warning  'config' is assigned a value but never used          no-unused-vars
+  517:9   warning  'BADGE_CRITERIA' is assigned a value but never used  no-unused-vars
+
+C:\hostel-bite\backend\controllers\orderController.js
+   8:9   warning  'getHaversineDistance' is assigned a value but never used  no-unused-vars
+   8:31  warning  'getCoordsForAddress' is assigned a value but never used   no-unused-vars
+   8:52  warning  'getMatrixDistance' is assigned a value but never used     no-unused-vars
+  15:32  warning  'totalPrice' is assigned a value but never used            no-unused-vars
+
+C:\hostel-bite\backend\middleware\errorMiddleware.js
+  1:38  warning  'next' is defined but never used  no-unused-vars
+
+C:\hostel-bite\backend\scripts\debug_order.js
+  1:7  warning  'axios' is assigned a value but never used    no-unused-vars
+  4:9  warning  'API_URL' is assigned a value but never used  no-unused-vars
+
+C:\hostel-bite\backend\scripts\delete_user.js
+  17:16  warning  'results' is assigned a value but never used  no-unused-vars
+
+Γ£û 11 problems (0 errors, 11 warnings)
+

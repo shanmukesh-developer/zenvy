@@ -4,6 +4,7 @@ import { io } from 'socket.io-client';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import PaymentVerificationModal from '@/components/PaymentVerificationModal';
+import Image from 'next/image';
 
 const LiveFleetMap = dynamic(() => import('@/components/LiveFleetMap'), { ssr: false });
 
@@ -397,7 +398,7 @@ export default function AdminHome() {
                                 {order.deliveryPartnerPhoto ? (
                                   <>
                                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                                    <img src={order.deliveryPartnerPhoto} alt={order.deliveryPartnerName || 'Driver'} className="w-full h-full object-cover" />
+                                  <Image src={order.deliveryPartnerPhoto} alt={order.deliveryPartnerName || 'Driver'} width={20} height={20} className="w-full h-full object-cover" />
                                   </>
                                 ) : (
                                  <span className="text-[10px]">🛵</span>

@@ -1,5 +1,6 @@
 "use client";
 import React, { useMemo, useState, useEffect } from 'react';
+import Image from 'next/image';
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -113,7 +114,7 @@ export default function LiveFleetMap({ riders, checkpoints }: LiveFleetMapProps)
                         {rider.photoUrl ? (
                           <>
                             {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={rider.photoUrl} alt={rider.riderName || 'Rider'} className="w-full h-full object-cover rounded-lg" />
+                            <Image src={rider.photoUrl} alt={rider.riderName || 'Rider'} width={40} height={40} className="w-full h-full object-cover rounded-lg" />
                           </>
                         ) : rider.riderName?.[0] || 'R'}
                       </div>

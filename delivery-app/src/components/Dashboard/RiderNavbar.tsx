@@ -1,5 +1,6 @@
 "use client";
 import React from 'react';
+import Image from 'next/image';
 
 interface RiderNavbarProps {
   driverName: string;
@@ -29,7 +30,7 @@ export default function RiderNavbar({
         <div className="w-12 h-12 rounded-2xl overflow-hidden border border-white/10 group-hover:border-blue-500/50 transition-all shadow-sm">
           {driverPhoto ? (
             /* eslint-disable-next-line @next/next/no-img-element */
-            <img src={driverPhoto} alt={driverName} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+            <Image src={driverPhoto} alt={driverName} width={48} height={48} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
           ) : (
             <div className="w-full h-full bg-surface-dark flex items-center justify-center text-xl">👤</div>
           )}

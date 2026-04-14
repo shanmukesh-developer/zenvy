@@ -33,7 +33,7 @@ if (!admin.apps.length) {
       
       // Pass 1: JSON/Quote stripping
       if (k.startsWith('"') || k.startsWith('{')) {
-        try { const p = JSON.parse(k); k = typeof p === 'object' ? (p.private_key || p.privateKey) : p; } catch(_) {}
+        try { const p = JSON.parse(k); k = typeof p === 'object' ? (p.private_key || p.privateKey) : p; } catch(_) { /* ignore */ }
       }
       k = k.replace(/^["']|["']$/g, '').trim();
 

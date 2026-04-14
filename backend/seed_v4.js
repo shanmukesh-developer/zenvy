@@ -8,9 +8,14 @@ const { getRestaurantModel } = require('./models/Restaurant');
 const { getMenuItemModel } = require('./models/MenuItem');
 const { getOrderModel } = require('./models/Order');
 const { getUserModel } = require('./models/User');
+const { getDeliveryPartnerModel } = require('./models/DeliveryPartner');
 
 const mockVendors = [
   {
+    name: "Cacao Culture",
+    imageUrl: "https://images.unsplash.com/photo-1604382354936-07c5d9983bd3?w=800",
+    vendorType: 'FOOD',
+    tags: ["desserts", "sweets"],
     menu: [
       { name: "Belgian Chocolate Truffles", price: 450, category: "Desserts", tags: ["sweets", "seasonal"], image: "https://images.unsplash.com/photo-1604382354936-07c5d9983bd3?w=400" },
       { name: "Red Velvet Jar", price: 180, category: "Desserts", tags: ["sweets", "bakery"], image: "https://images.unsplash.com/photo-1586985289688-ca3cf47d3e6e?w=400" }
@@ -45,13 +50,15 @@ const seed = async () => {
     const MenuItem = getMenuItemModel();
     const Order = getOrderModel();
     const User = getUserModel();
+    const DeliveryPartner = getDeliveryPartnerModel();
     
-    await getSequelize().sync({ alter: true });
+    await getSequelize().sync({ force: true });
 
     await MenuItem.destroy({ where: {} });
     await Restaurant.destroy({ where: {} });
     await Order.destroy({ where: {} });
     await User.destroy({ where: {} });
+    await DeliveryPartner.destroy({ where: {} });
     console.log('✅ Cleared existing database.');
 
     for (const vendorData of mockVendors) {
@@ -85,14 +92,42 @@ const seed = async () => {
       console.log(`✅ Seeded Vendor: ${vendor.name}`);
     }
 
-    // Create a demo user
+    // Create a demo user for bypass testing (Standard)
     await User.create({
       name: 'Tester',
-      phone: '9999999999',
+      phone: '1234567890',
       password: 'password123',
       hostelBlock: 'VEDAVATHI',
       roomNumber: '101',
       isElite: true
+    });
+
+    // Create a demo user for error_discovery.js
+    await User.create({
+      name: 'E2E Tester',
+      phone: '9999999999',
+      password: 'password123',
+      hostelBlock: 'BRAHMAPUTRA',
+      roomNumber: '505',
+      isElite: true
+    });
+
+    // Create a demo rider for bypass testing
+    await DeliveryPartner.create({
+      name: 'Rider Tester',
+      phone: '1234567890',
+      password: 'password123',
+      isApproved: true,
+      isOnline: true
+    });
+
+    // Create a demo rider for error_discovery.js
+    await DeliveryPartner.create({
+      name: 'E2E Rider',
+      phone: '8888888888',
+      password: 'password123',
+      isApproved: true,
+      isOnline: true
     });
 
     console.log('🎉 Seeding Complete. Zenvy Evolution is ready.');

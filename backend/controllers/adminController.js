@@ -6,7 +6,6 @@ const { getOrderModel } = require('../models/Order');
 const { getVaultItemModel } = require('../models/VaultItem');
 const { getGlobalConfigModel } = require('../models/GlobalConfig');
 const { getVerificationLogModel } = require('../models/VerificationLog');
-// const { Op } = require('sequelize');
 
 const broadcastSystemUpdate = (req, type, data) => {
   const io = req.app.get('io');
@@ -514,7 +513,6 @@ exports.deleteVaultItem = async (req, res) => {
 };
 
 // ─── Gamification & Rewards Analytics ──────────────────────────
-  // const BADGE_CRITERIA = {= require('../services/BadgeService');
 
 exports.getRewardsAnalytics = async (req, res) => {
   try {

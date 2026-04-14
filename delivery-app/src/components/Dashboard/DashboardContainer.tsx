@@ -7,8 +7,8 @@ import ActiveOrderCard from './ActiveOrderCard';
 import OrdersList from './OrdersList';
 import OfflineScreen from './OfflineScreen';
 import LiveStatsBar from './LiveStatsBar';
-// Removed SOSPanel import
 import WeatherSignal from './WeatherSignal';
+import SOSPanel from './SOSPanel';
 import LiveLeaderboard from './LiveLeaderboard';
 import RiderProfilePage from './RiderProfilePage';
 import ChatDrawer from '@/components/ChatDrawer';
@@ -552,7 +552,11 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
         )}
 
         {/* Global Support Utilities */}
-        {/* SOSPanel removed */}
+        <SOSPanel
+          riderId={currentDriver._id}
+          riderName={currentDriver.name}
+          socket={socketRef.current}
+        />
       </main>
 
       {/* Critical Status Overlay */}

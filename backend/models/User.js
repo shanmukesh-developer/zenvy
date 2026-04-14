@@ -25,8 +25,28 @@ const initUserModel = (sequelize) => {
     address: { type: DataTypes.STRING, allowNull: true },
     city: { type: DataTypes.STRING, defaultValue: 'Amaravathi' },
     profileImage: { type: DataTypes.STRING, allowNull: true },
-    fcmTokens: { type: DataTypes.JSON, defaultValue: [] },
-    badges: { type: DataTypes.JSON, defaultValue: [] },
+    fcmTokens: { 
+      type: DataTypes.TEXT, 
+      defaultValue: '[]',
+      get() {
+        const val = this.getDataValue('fcmTokens');
+        return val ? JSON.parse(val) : [];
+      },
+      set(val) {
+        this.setDataValue('fcmTokens', JSON.stringify(val));
+      }
+    },
+    badges: { 
+      type: DataTypes.TEXT, 
+      defaultValue: '[]',
+      get() {
+        const val = this.getDataValue('badges');
+        return val ? JSON.parse(val) : [];
+      },
+      set(val) {
+        this.setDataValue('badges', JSON.stringify(val));
+      }
+    },
     dietaryPreference: { type: DataTypes.STRING, defaultValue: 'None' }, // Veg, Jain, Eggless, etc.
     lateNightOrders: { type: DataTypes.INTEGER, defaultValue: 0 }
   }, { timestamps: true });

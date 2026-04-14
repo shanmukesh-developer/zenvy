@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useRef } from 'react';
+import Image from 'next/image';
 
 interface DeliveryProofProps {
   orderId: string;
@@ -51,7 +52,7 @@ export default function DeliveryProof({ orderId, apiUrl, onProofUploaded }: Deli
       {photoUrl ? (
         <div className="relative rounded-2xl overflow-hidden border border-emerald-500/30">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={photoUrl} alt="Delivery proof" className="w-full h-32 object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+          <Image src={photoUrl} alt="Delivery proof" width={400} height={128} className="w-full h-32 object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} unoptimized />
           <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent flex items-end p-3">
             <p className="text-[9px] text-emerald-400 font-black uppercase tracking-widest">
               {uploading ? '⏳ Uploading...' : '✅ Proof Captured'}

@@ -1,5 +1,6 @@
 "use client";
 import { useState } from 'react';
+import Image from 'next/image';
 
 interface PaymentVerificationModalProps {
   isOpen: boolean;
@@ -61,11 +62,14 @@ export default function PaymentVerificationModal({ isOpen, onClose, order, onVer
             <div className="aspect-video bg-black rounded-3xl border border-white/5 overflow-hidden relative group">
               {order.upiScreenshot ? (
                 /* eslint-disable-next-line @next/next/no-img-element */
-                <img 
+                <Image 
                   src={order.upiScreenshot} 
                   alt="Payment Screenshot" 
+                  width={512}
+                  height={288}
                   className="w-full h-full object-contain cursor-zoom-in group-hover:scale-105 transition-transform duration-500" 
                   onClick={() => window.open(order.upiScreenshot, '_blank')}
+                  unoptimized
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-gray-700 font-black text-[10px] uppercase tracking-widest italic">

@@ -1,0 +1,9 @@
+.next/
+node_modules/
+public/
+out/
+build/
+android/
+ios/
+fix.js
+replace_images.js

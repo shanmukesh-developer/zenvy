@@ -47,7 +47,7 @@ async function run() {
   });
 
   await test('Driver Login (valid)', async () => {
-    const r = await axios.post(`${API}/delivery/login`, { phone: 'driver1', password: 'password123' });
+    const r = await axios.post(`${API}/delivery/login`, { phone: '8888888888', password: 'password123' });
     drvToken = r.data.token;
     if (!drvToken) throw new Error('No token returned');
   });

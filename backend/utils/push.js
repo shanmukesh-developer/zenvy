@@ -2,9 +2,18 @@ const admin = require('../config/firebase');
 
 const sendPushToTokens = async (tokens, title, body, data = {}) => {
   if (!admin.apps.length) return console.log('Firebase not initialized');
-  if (!tokens || tokens.length === 0) return;
+  let tokenList = tokens;
+  if (typeof tokens === 'string') {
+    try {
+      tokenList = JSON.parse(tokens);
+    } catch (e) {
+      tokenList = [];
+    }
+  }
+  if (!tokenList || !Array.isArray(tokenList) || tokenList.length === 0) return;
 
-  const validTokens = tokens.map(t => t.token);
+  const validTokens = tokenList.map(t => typeof t === 'string' ? t : t.token).filter(Boolean);
+  if (validTokens.length === 0) return;
 
   const message = {
     notification: {

@@ -60,8 +60,8 @@ export default function LoginForm({ onLogin, apiUrl }: LoginFormProps) {
       const confirmation = await signInWithPhoneNumber(auth, formattedPhone, verifier);
       setConfirmationResult(confirmation);
       setStep(2);
-    } catch (err: any) {
-      setError(err.message || 'Failed to send OTP.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to send OTP.');
     } finally {
       setLoading(false);
     }
@@ -85,8 +85,8 @@ export default function LoginForm({ onLogin, apiUrl }: LoginFormProps) {
       const result = await confirmationResult?.confirm(otp);
       const firebaseToken = await result?.user.getIdToken();
       return finalizeLogin({ firebaseToken });
-    } catch (err: any) {
-      setError(err.message || 'Verification failed.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Verification failed.');
     } finally {
       setLoading(false);
     }
@@ -109,7 +109,7 @@ export default function LoginForm({ onLogin, apiUrl }: LoginFormProps) {
       localStorage.setItem('driverToken', data.token);
       localStorage.setItem('driver', JSON.stringify({ _id: data._id, name: data.name }));
       onLogin({ _id: data._id, name: data.name, token: data.token });
-    } catch (err: any) {
+    } catch {
       setError('System unreachable.');
     }
   };

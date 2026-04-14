@@ -5,7 +5,6 @@ const { getRestaurantModel } = require('../models/Restaurant');
 const { sendPushToTokens } = require('../utils/push');
 const { evaluateBadges } = require('../services/BadgeService');
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
 const { Op } = require('sequelize');
 
 const admin = require('../config/firebase');
@@ -345,7 +344,6 @@ const updateOrderStatus = async (req, res) => {
             `You just completed your ${customer.completedOrders}th order! A Lucky Spin is waiting for you in the Vault.`
           );
         }
-
         await customer.save();
       }
     }
@@ -369,6 +367,7 @@ const updateOrderStatus = async (req, res) => {
       console.warn('[PUSH_NOTIFY_WARN] Failed to send update:', e.message);
     }
   } catch (error) {
+    console.error('[DELIVERY_UPDATE_ERROR]', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };

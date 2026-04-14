@@ -1,4 +1,5 @@
 const { Sequelize } = require('sequelize');
+const path = require('path');
 
 let sequelize;
 
@@ -61,10 +62,11 @@ const connectDB = async () => {
   const dbUrl = process.env.DATABASE_URL;
 
   if (!dbUrl) {
-    console.warn('⚠️ DATABASE_URL missing! Defaulting to Local SQLite...');
+    const sqlitePath = 'C:\\hostel-bite\\backend\\local_dev.sqlite';
+    console.log(`📦 Using SQLite: ${sqlitePath}`);
     sequelize = new Sequelize({
       dialect: 'sqlite',
-      storage: './local_dev.sqlite',
+      storage: sqlitePath,
       logging: false,
       dialectOptions: {
         pragmas: {
@@ -109,9 +111,10 @@ const connectDB = async () => {
 
     console.log('🔄 Attempting fallback to Local SQLite...');
     
+    const sqlitePath = path.join(__dirname, '..', 'local_dev.sqlite');
     sequelize = new Sequelize({
       dialect: 'sqlite',
-      storage: './local_dev.sqlite',
+      storage: sqlitePath,
       logging: false,
       dialectOptions: {
         pragmas: {

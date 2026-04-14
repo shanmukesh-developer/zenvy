@@ -1,4 +1,3 @@
-const admin = require('firebase-admin');
 const { GoogleAuth } = require('google-auth-library');
 const axios = require('axios');
 const path = require('path');

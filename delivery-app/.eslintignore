@@ -1,0 +1,8 @@
+.next/
+node_modules/
+public/
+out/
+build/
+android/
+ios/
+simulate_driver.js
