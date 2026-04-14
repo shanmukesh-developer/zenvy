@@ -8,67 +8,74 @@ if (!admin.apps.length) {
     
     // 1. Try environment variables first
     if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_PRIVATE_KEY) {
-      let rawKey = process.env.FIREBASE_PRIVATE_KEY;
-      console.log(`[FIREBASE_DEBUG] Raw Key length: ${rawKey?.length}`);
+      let k = process.env.FIREBASE_PRIVATE_KEY;
+      console.log(`[FIREBASE_LEVEL5] Received key. length: ${k?.length}, startsWith: ${k?.substring(0, 20)}`);
 
-      const attemptInit = (key, label) => {
+      const tryCert = (keyStr, label) => {
+        if (!keyStr || keyStr.length < 100) return false;
         try {
           admin.initializeApp({
             credential: admin.credential.cert({
               projectId: process.env.FIREBASE_PROJECT_ID,
               clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-              privateKey: key
+              privateKey: keyStr
             })
-          });
-          console.log(`✅ Firebase Admin initialized via ${label}.`);
+          }, label); // Added label to distinguish apps if needed, though usually just one
+          console.log(`✅ Firebase Success: ${label}`);
           return true;
         } catch (e) {
-          console.error(`❌ Firebase Init Failed (${label}):`, e.message);
+          // console.error(`❌ Firebase Fail: ${label} - ${e.message}`);
           return false;
         }
       };
 
-      // 1. Double Unescape / JSON Parse attempt
-      let processedKey = rawKey;
-      if (processedKey.startsWith('"') || processedKey.startsWith('{')) {
-        try { 
-          const parsed = JSON.parse(processedKey);
-          processedKey = typeof parsed === 'object' ? (parsed.private_key || parsed.privateKey) : parsed;
-          console.log('[FIREBASE_DEBUG] Parsed JSON-encoded key.');
-        } catch (_) {}
+      // --- Multi-Pass Cleaning Pipeline ---
+      
+      // Pass 1: JSON/Quote stripping
+      if (k.startsWith('"') || k.startsWith('{')) {
+        try { const p = JSON.parse(k); k = typeof p === 'object' ? (p.private_key || p.privateKey) : p; } catch(_) {}
+      }
+      k = k.replace(/^["']|["']$/g, '').trim();
+
+      // Pass 2: Base64 multi-pass decoding
+      let base64Decoded = k;
+      for (let i = 0; i < 3; i++) {
+        if (base64Decoded.startsWith('LS0tLS1') || (base64Decoded.length > 500 && !base64Decoded.includes('---'))) {
+          try {
+            const next = Buffer.from(base64Decoded.replace(/\s+/g, ''), 'base64').toString('utf8');
+            if (next.length > 100) base64Decoded = next;
+          } catch (_) { break; }
+        } else break;
       }
 
-      // 2. Handle Base64 encoding
-      if (processedKey.startsWith('LS0tLS1') || (processedKey.length > 0 && !processedKey.includes('-----BEGIN PRIVATE KEY-----'))) {
-        try {
-          processedKey = Buffer.from(processedKey.replace(/\s+/g, ''), 'base64').toString('utf8');
-          console.log('[FIREBASE_DEBUG] Decoded Base64 key.');
-        } catch (_) {}
-      }
-
-      // 3. Robust Newline Normalization (The most common fix)
-      const normalizedKey = processedKey.replace(/\\n/g, '\n');
-
-      // 4. Ultimate Reconstruction Fallback (The aggressive fix)
-      const header = '-----BEGIN PRIVATE KEY-----';
-      const footer = '-----END PRIVATE KEY-----';
-      const body = processedKey
-        .replace(/-----BEGIN[^-]*-----/gi, '')
-        .replace(/-----END[^-]*-----/gi, '')
-        .replace(/\\n/g, '')
-        .replace(/\s+/g, '')
+      // Pass 3: Newline/Escape Normalization
+      const normalized = base64Decoded
+        .replace(/\\n/g, '\n')
+        .replace(/\\r/g, '\r')
+        .replace(/\r/g, '')
         .trim();
 
-      const chunkedKey = body.length > 0 
+      // Pass 4: Reconstruction (The Forge-friendly format)
+      const header = '-----BEGIN PRIVATE KEY-----';
+      const footer = '-----END PRIVATE KEY-----';
+      const body = normalized
+        .replace(/-----BEGIN[^-]*-----/gi, '')
+        .replace(/-----END[^-]*-----/gi, '')
+        .replace(/[^a-zA-Z0-9+/=]/g, '') // Stripping ALL non-base64 noise
+        .trim();
+
+      const reconstructed = body.length > 100 
         ? `${header}\n${body.match(/.{1,64}/g).join('\n')}\n${footer}`
         : null;
 
-      // Try initializations in order of likelihood
-      if (attemptInit(normalizedKey, 'ENV (Normalized)')) return;
-      if (chunkedKey && attemptInit(chunkedKey, 'ENV (Reconstructed)')) return;
-      if (attemptInit(rawKey, 'ENV (Raw)')) return;
+      // Final Attempt Chain
+      if (tryCert(normalized, 'Pipeline (Normalized)')) return;
+      if (reconstructed && tryCert(reconstructed, 'Pipeline (Reconstructed)')) return;
+      if (tryCert(base64Decoded, 'Pipeline (B64-Decoded)')) return;
+      if (tryCert(k, 'Pipeline (Pre-Cleaned)')) return;
+      if (tryCert(process.env.FIREBASE_PRIVATE_KEY, 'Pipeline (Raw)')) return;
 
-      console.error('[FIREBASE_DEBUG] All ENV initialization attempts failed.');
+      console.error('❌ FIREBASE_FATAL: All 5 initialization layers failed for the provided environment variable.');
     } 
     // 2. Fallback to local JSON file
     else if (fs.existsSync(serviceAccountPath)) {
