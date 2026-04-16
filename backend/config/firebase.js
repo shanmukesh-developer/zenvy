@@ -59,6 +59,7 @@ if (!admin.apps.length) {
       const cleanKey = (raw) => {
         if (!raw) return null;
         let s = raw.replace(/^["']|["']$/g, '').trim();
+        s = s.replace(/\\n/g, '\n').replace(/\\r/g, '');
         
         // 1. Detect and decode base64 wrapper if present
         if (!s.includes('-----') && s.length > 500) {
