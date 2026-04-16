@@ -87,13 +87,13 @@ if (!admin.apps.length) {
         
         // Split by dashes and find the large block that isn't a header/footer
         const parts = s.split('-----').map(p => p.trim()).filter(p => 
-          p.length > 100 && 
+          p.length > 500 && 
           !p.includes('BEGIN') && 
           !p.includes('END') && 
           !p.includes('PRIVATE')
         );
         
-        let body = parts.join('');
+        let body = parts[0] || '';
 
         // Common fix for + being converted to space
         if (body.includes(' ')) {
