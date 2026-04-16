@@ -92,17 +92,39 @@ if (!admin.apps.length) {
         console.log(`[FIREBASE_BODY] Cleaned body length: ${body.length}`);
         console.log(`[FIREBASE_BODY_TAIL] Tail: ...${body.substring(body.length - 20)}`);
         
-        // 4. Final Reconstruction
-        return `${header}\n${(body.match(/.{1,64}/g) || []).join('\n')}\n${footer}\n`;
+        // 4. Final Reconstruction Helper
+        const buildPemHelper = (b) => {
+          return `${header}\n${(b.match(/.{1,64}/g) || []).join('\n')}\n${footer}\n`;
+        }
+        return buildPemHelper(body);
       };
 
       const finalKey = cleanKey(rawKey);
       let initialized = false;
 
+      // Try 1: Final Pillar (Optimized)
       if (finalKey && tryCert(finalKey, 'Final Pillar')) {
         initialized = true;
-      } else {
-        // One last-ditch effort: maybe it's just raw literal
+      } 
+      
+      // Try 2 & 3: Padding Repair (Common for truncated ENV vars)
+      if (!initialized && finalKey) {
+        // Extract body by stripping headers and space
+        const header = '-----BEGIN PRIVATE KEY-----';
+        const footer = '-----END PRIVATE KEY-----';
+        const bodyOnly = finalKey
+          .replace(header, '')
+          .replace(footer, '')
+          .replace(/\s/g, '');
+
+        const buildPemHelper = (b) => `${header}\n${(b.match(/.{1,64}/g) || []).join('\n')}\n${footer}\n`;
+
+        if (tryCert(buildPemHelper(bodyOnly + '='), 'Pillar +1 Padding')) initialized = true;
+        if (!initialized && tryCert(buildPemHelper(bodyOnly + '=='), 'Pillar +2 Padding')) initialized = true;
+      }
+
+      // Try 4: Literal Fallback
+      if (!initialized) {
         const literal = rawKey.replace(/\\n/g, '\n').replace(/^["']|["']$/g, '');
         if (tryCert(literal, 'Literal Fallback')) initialized = true;
       }
