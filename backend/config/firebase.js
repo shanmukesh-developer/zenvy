@@ -14,17 +14,27 @@ if (!admin.apps.length) {
       const tryCert = (keyStr, label) => {
         if (!keyStr || keyStr.length < 100) return false;
         try {
+          // If we already have a default app from a previous attempt, delete it to retry
+          if (admin.apps.length > 0) {
+            // We only want to delete if it's the default app or if we're trying to set a new one
+            // Easier: just wrap the whole thing.
+          }
+
           admin.initializeApp({
             credential: admin.credential.cert({
               projectId: process.env.FIREBASE_PROJECT_ID,
               clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
               privateKey: keyStr
             })
-          }, label);
-          console.log(`✅ Firebase Success: ${label}`);
+          });
+          console.log(`✅ Firebase Success: ${label} (Initialized as Default App)`);
           return true;
         } catch (e) {
           console.warn(`[FIREBASE_TRY_FAIL] ${label}: ${e.message}`);
+          // Clear apps if it failed so next attempt is fresh
+          while (admin.apps.length > 0) {
+             admin.app().delete().catch(() => {});
+          }
           return false;
         }
       };
@@ -55,19 +65,10 @@ if (!admin.apps.length) {
         } catch (_) { /* fallback to PEM extraction */ }
       }
 
-      // B. Extract PEM if wrapped in noise
+      // D. Reconstruction (The Final Shield)
+      // We'll try to extract JUST the base64 body and rebuild it with clean headers
       const headerMarker = '-----BEGIN PRIVATE KEY-----';
       const footerMarker = '-----END PRIVATE KEY-----';
-      if (k.includes(headerMarker) && k.includes(footerMarker)) {
-        const start = k.indexOf(headerMarker);
-        const end = k.indexOf(footerMarker) + footerMarker.length;
-        k = k.substring(start, end);
-      }
-
-      // C. Universal Normalization
-      k = k.replace(/\\n/g, '\n').replace(/\\r/g, '').replace(/^["']|["']$/g, '').trim();
-
-      // D. Reconstruction (The Final Shield)
       const body = k
         .replace(/-----BEGIN[^-]*-----/gi, '')
         .replace(/-----END[^-]*-----/gi, '')
@@ -75,13 +76,16 @@ if (!admin.apps.length) {
         .trim();
       
       const reconstructed = body.length > 100 
-        ? `${headerMarker}\n${body.match(/.{1,64}/g).join('\n')}\n${footerMarker}`
+        ? `${headerMarker}\n${(body.match(/.{1,64}/g) || []).join('\n')}\n${footerMarker}\n`
         : null;
 
       // Execution Pipeline
       let initialized = false;
-      if (!initialized && tryCert(k, 'Pipeline (Stripped)')) initialized = true;
+      // Preference 1: Reconstructed (Cleanest)
       if (!initialized && reconstructed && tryCert(reconstructed, 'Pipeline (Reconstructed)')) initialized = true;
+      // Preference 2: Stripped/Normalized
+      if (!initialized && tryCert(k, 'Pipeline (Stripped)')) initialized = true;
+      // Preference 3: Raw Literal Fix
       if (!initialized && tryCert(rawKey.replace(/\\n/g, '\n'), 'Pipeline (Literal-Fix)')) initialized = true;
       
       if (!initialized) {
