@@ -40,56 +40,59 @@ if (!admin.apps.length) {
       };
 
       // --- ULTRAROBUST EXTRACTION ENGINE ---
-      let k = rawKey;
+      const cleanKey = (raw) => {
+        if (!raw) return null;
+        let s = raw.replace(/^["']|["']$/g, '').trim();
+        
+        // 1. Detect and decode base64 wrapper if present
+        if (!s.includes('-----') && s.length > 500) {
+          try {
+            const decoded = Buffer.from(s, 'base64').toString('utf8');
+            if (decoded.includes('-----') || decoded.includes('{')) {
+              console.log('[FIREBASE_B64] Decoding detected.');
+              s = decoded;
+            }
+          } catch (_) {}
+        }
 
-      // X. Base64 Detection & Decoding
-      if (!k.includes('-----') && k.length > 500) {
-        try {
-          const decoded = Buffer.from(k, 'base64').toString('utf8');
-          if (decoded.includes('-----') || decoded.includes('{')) {
-             console.log('[FIREBASE_BASE64] Base64 key detected and decoded.');
-             k = decoded;
-          }
-        } catch (_) { /* not base64 */ }
-      }
+        // 2. Extract from JSON noise if needed
+        if (s.includes('{') && s.includes('}')) {
+          try {
+            const start = s.indexOf('{');
+            const end = s.lastIndexOf('}') + 1;
+            const parsed = JSON.parse(s.substring(start, end));
+            s = parsed.private_key || parsed.privateKey || s;
+          } catch (_) {}
+        }
 
-      // A. Extract JSON if wrapped in noise (Handles 6000+ char noise)
-      if (k.includes('{') && k.includes('}')) {
-        try {
-          const start = k.indexOf('{');
-          const end = k.lastIndexOf('}') + 1;
-          const jsonSection = k.substring(start, end);
-          const parsed = JSON.parse(jsonSection);
-          const extracted = parsed.private_key || parsed.privateKey;
-          if (extracted) k = extracted;
-        } catch (_) { /* fallback to PEM extraction */ }
-      }
+        // 3. Extract core PEM body
+        const header = '-----BEGIN PRIVATE KEY-----';
+        const footer = '-----END PRIVATE KEY-----';
+        const body = s.replace(/-----BEGIN[^-]*-----/gi, '')
+                      .replace(/-----END[^-]*-----/gi, '')
+                      .replace(/[^a-zA-Z0-9+/=]/g, '')
+                      .trim();
 
-      // D. Reconstruction (The Final Shield)
-      // We'll try to extract JUST the base64 body and rebuild it with clean headers
-      const headerMarker = '-----BEGIN PRIVATE KEY-----';
-      const footerMarker = '-----END PRIVATE KEY-----';
-      const body = k
-        .replace(/-----BEGIN[^-]*-----/gi, '')
-        .replace(/-----END[^-]*-----/gi, '')
-        .replace(/[^a-zA-Z0-9+/=]/g, '')
-        .trim();
-      
-      const reconstructed = body.length > 100 
-        ? `${headerMarker}\n${(body.match(/.{1,64}/g) || []).join('\n')}\n${footerMarker}\n`
-        : null;
+        if (body.length < 500) return null;
+        console.log(`[FIREBASE_BODY] Cleaned body length: ${body.length}`);
+        
+        // 4. Final Reconstruction
+        return `${header}\n${body.match(/.{1,64}/g).join('\n')}\n${footer}\n`;
+      };
 
-      // Execution Pipeline
+      const finalKey = cleanKey(rawKey);
       let initialized = false;
-      // Preference 1: Reconstructed (Cleanest)
-      if (!initialized && reconstructed && tryCert(reconstructed, 'Pipeline (Reconstructed)')) initialized = true;
-      // Preference 2: Stripped/Normalized
-      if (!initialized && tryCert(k, 'Pipeline (Stripped)')) initialized = true;
-      // Preference 3: Raw Literal Fix
-      if (!initialized && tryCert(rawKey.replace(/\\n/g, '\n'), 'Pipeline (Literal-Fix)')) initialized = true;
+
+      if (finalKey && tryCert(finalKey, 'Final Pillar')) {
+        initialized = true;
+      } else {
+        // One last-ditch effort: maybe it's just raw literal
+        const literal = rawKey.replace(/\\n/g, '\n').replace(/^["']|["']$/g, '');
+        if (tryCert(literal, 'Literal Fallback')) initialized = true;
+      }
       
       if (!initialized) {
-        console.warn('⚠️ FIREBASE_ENV_FAIL: Environment variables provided but invalid. Checking JSON fallback...');
+        console.warn('⚠️ FIREBASE_ENV_FAIL: All environment attempts failed. Checking JSON...');
       } else {
         return; // Success
       }
