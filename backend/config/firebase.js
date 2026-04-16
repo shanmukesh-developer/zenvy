@@ -118,12 +118,14 @@ if (!admin.apps.length) {
           .replace(/\s/g, '');
 
         const buildPemHelper = (b) => `${header}\n${(b.match(/.{1,64}/g) || []).join('\n')}\n${footer}\n`;
+        const buildRsaPem = (b) => `-----BEGIN RSA PRIVATE KEY-----\n${(b.match(/.{1,64}/g) || []).join('\n')}\n-----END RSA PRIVATE KEY-----\n`;
 
         if (tryCert(buildPemHelper(bodyOnly + '='), 'Pillar +1 Padding')) initialized = true;
         if (!initialized && tryCert(buildPemHelper(bodyOnly + '=='), 'Pillar +2 Padding')) initialized = true;
+        if (!initialized && tryCert(buildRsaPem(bodyOnly), 'RSA Variant (PKCS1)')) initialized = true;
       }
 
-      // Try 4: Literal Fallback
+      // Try 5: Literal Fallback
       if (!initialized) {
         const literal = rawKey.replace(/\\n/g, '\n').replace(/^["']|["']$/g, '');
         if (tryCert(literal, 'Literal Fallback')) initialized = true;
