@@ -6,6 +6,22 @@ if (!admin.apps.length) {
   try {
     const serviceAccountPath = path.join(__dirname, '..', 'firebase-key.json');
     
+    // 0. Base64 Encoded Full Service Account JSON (SAFEST METHOD)
+    if (process.env.FIREBASE_SERVICE_ACCOUNT_BASE64) {
+      try {
+        const decoded = Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT_BASE64, 'base64').toString('utf8');
+        const serviceAccount = JSON.parse(decoded);
+        admin.initializeApp({
+          credential: admin.credential.cert(serviceAccount)
+        });
+        console.log('✅ Firebase Admin initialized via FIREBASE_SERVICE_ACCOUNT_BASE64');
+        module.exports = admin;
+        return;
+      } catch (err) {
+        console.error('❌ Failed to initialize via FIREBASE_SERVICE_ACCOUNT_BASE64:', err.message);
+      }
+    }
+
     // 1. Try environment variables with Greed/Robust cleaning
     if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_PRIVATE_KEY) {
       let rawKey = process.env.FIREBASE_PRIVATE_KEY;
