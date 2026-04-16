@@ -77,7 +77,16 @@ if (!admin.apps.length) {
           !p.includes('PRIVATE')
         );
         
-        const body = parts.join('').replace(/[^a-zA-Z0-9+/=]/g, '').trim();
+        let body = parts.join('');
+
+        // Common fix for + being converted to space
+        if (body.includes(' ')) {
+          const spaceCount = (body.match(/ /g) || []).length;
+          console.log(`[FIREBASE_FIX] Replacing ${spaceCount} spaces with +`);
+          body = body.replace(/ /g, '+');
+        }
+
+        body = body.replace(/[^a-zA-Z0-9+/=]/g, '').trim();
 
         if (body.length < 500) return null;
         console.log(`[FIREBASE_BODY] Cleaned body length: ${body.length}`);
