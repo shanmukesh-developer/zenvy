@@ -1,6 +1,7 @@
 const { getUserModel } = require('../models/User');
 const jwt = require('jsonwebtoken');
 const admin = require('../config/firebase');
+const { normalizePhone, formatForFirebase } = require('../utils/phoneUtils');
 
 const generateToken = (id, role) => {
   return jwt.sign({ id, role }, process.env.JWT_SECRET || 'secret', { expiresIn: '30d' });
@@ -28,20 +29,21 @@ const registerUser = async (req, res) => {
       }
 
       // ── 3. Confirm the verified phone matches the submitted phone ─────────
-      const verifiedPhone = decodedToken.phone_number; // e.g. "+919876543210"
-      const submittedPhone = `+91${phone.replace(/\D/g, '')}`;
+      const verifiedPhone = decodedToken.phone_number; 
+      const submittedPhone = formatForFirebase(phone);
       if (verifiedPhone !== submittedPhone) {
         console.warn(`[REGISTER_PHONE_MISMATCH] token: ${verifiedPhone}, submitted: ${submittedPhone}`);
         return res.status(401).json({ message: 'Phone number mismatch. Please verify the correct number.' });
       }
     }
 
+    const cleanPhone = normalizePhone(phone);
     // ── 4. Create the user ────────────────────────────────────────────────
     const User = getUserModel();
-    const userExists = await User.findOne({ where: { name } });
-    if (userExists) return res.status(400).json({ message: 'User name already taken' });
+    const userExists = await User.findOne({ where: { phone: cleanPhone } });
+    if (userExists) return res.status(400).json({ message: 'Account with this phone already exists' });
 
-    const user = await User.create({ name, phone, password, hostelBlock, roomNumber });
+    const user = await User.create({ name, phone: cleanPhone, password, hostelBlock, roomNumber });
     res.status(201).json({
       _id: user.id,
       name: user.name,
@@ -71,11 +73,12 @@ const authUser = async (req, res) => {
     const User = getUserModel();
     let user;
 
+    const cleanPhone = normalizePhone(phone);
+
     // ── 1. If firebaseToken is provided, use OTP Login flow ──────────────
     if (firebaseToken) {
-      // Allow bypass for local E2E test script
       if (firebaseToken === 'E2E_MOCK_TOKEN') {
-        user = await User.findOne({ where: { phone } });
+        user = await User.findOne({ where: { phone: cleanPhone } });
         if (!user) {
           return res.status(401).json({ message: 'Account not found (E2E)' });
         }
@@ -88,7 +91,7 @@ const authUser = async (req, res) => {
           return res.status(401).json({ message: 'Phone verification failed. Login denied.' });
         }
 
-        const verifiedPhoneNumeric = decodedToken.phone_number.replace(/\D/g, '').slice(-10);
+        const verifiedPhoneNumeric = normalizePhone(decodedToken.phone_number);
         user = await User.findOne({ where: { phone: verifiedPhoneNumeric } });
 
         if (!user) {
@@ -98,7 +101,7 @@ const authUser = async (req, res) => {
     } 
     // ── 2. Otherwise, use traditional Password Login flow ───────────────
     else {
-      user = await User.findOne({ where: { phone } });
+      user = await User.findOne({ where: { phone: cleanPhone } });
       if (!user || !(await user.comparePassword(password))) {
         return res.status(401).json({ message: 'Invalid phone or password' });
       }

@@ -15,6 +15,10 @@ async function run() {
     process.exit(1);
   };
 
+  const ts = Date.now().toString().slice(-6);
+  const testCustomerPhone = `9999${ts}`;
+  const testDriverPhone = `drv${ts}`;
+
   try {
     // ══════════════════════════════════════════════════════════
     // PHASE 0: Auth — Customer + Driver
@@ -22,13 +26,13 @@ async function run() {
     log('AUTH', '── Authenticating Customer ──');
     let customerToken;
     try {
-      const lr = await axios.post(`${API}/users/login`, { phone: '9999999999', password: 'password123', firebaseToken: 'E2E_MOCK_TOKEN' });
+      const lr = await axios.post(`${API}/users/login`, { phone: testCustomerPhone, password: 'password123', firebaseToken: 'E2E_MOCK_TOKEN' });
       customerToken = lr.data.token;
       log('AUTH', `✅ Customer Login OK → Token ${customerToken.substring(0, 12)}...`);
     } catch {
       log('AUTH', '⚠️ Customer login failed. Registering...');
       const rr = await axios.post(`${API}/users/register`, {
-        name: 'E2E Tester', phone: '9999999999', password: 'password123',
+        name: `Tester ${ts}`, phone: testCustomerPhone, password: 'password123',
         hostelBlock: 'OM', roomNumber: '101', firebaseToken: 'E2E_MOCK_TOKEN'
       });
       customerToken = rr.data.token;
@@ -38,14 +42,14 @@ async function run() {
     log('AUTH', '── Authenticating Driver ──');
     let driverToken;
     try {
-      const dl = await axios.post(`${API}/delivery/login`, { phone: 'driver1', password: 'password123' });
+      const dl = await axios.post(`${API}/delivery/login`, { phone: testDriverPhone, password: 'password123' });
       driverToken = dl.data.token;
       log('AUTH', `✅ Driver Login OK → Token ${driverToken.substring(0, 12)}...`);
     } catch {
       log('AUTH', '⚠️ Driver login failed. Registering...');
       try {
         const dr = await axios.post(`${API}/delivery/register`, {
-          name: 'E2E Rider', phone: 'driver1', password: 'password123',
+          name: `Rider ${ts}`, phone: testDriverPhone, password: 'password123',
           vehicleType: 'bike', firebaseToken: 'E2E_MOCK_TOKEN'
         });
         driverToken = dr.data.token;

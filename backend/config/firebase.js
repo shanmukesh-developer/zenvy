@@ -32,6 +32,17 @@ if (!admin.apps.length) {
       // --- ULTRAROBUST EXTRACTION ENGINE ---
       let k = rawKey;
 
+      // X. Base64 Detection & Decoding
+      if (!k.includes('-----') && k.length > 500) {
+        try {
+          const decoded = Buffer.from(k, 'base64').toString('utf8');
+          if (decoded.includes('-----') || decoded.includes('{')) {
+             console.log('[FIREBASE_BASE64] Base64 key detected and decoded.');
+             k = decoded;
+          }
+        } catch (_) { /* not base64 */ }
+      }
+
       // A. Extract JSON if wrapped in noise (Handles 6000+ char noise)
       if (k.includes('{') && k.includes('}')) {
         try {
@@ -68,14 +79,20 @@ if (!admin.apps.length) {
         : null;
 
       // Execution Pipeline
-      if (tryCert(k, 'Pipeline (Stripped)')) return;
-      if (reconstructed && tryCert(reconstructed, 'Pipeline (Reconstructed)')) return;
-      if (tryCert(rawKey.replace(/\\n/g, '\n'), 'Pipeline (Literal-Fix)')) return;
+      let initialized = false;
+      if (!initialized && tryCert(k, 'Pipeline (Stripped)')) initialized = true;
+      if (!initialized && reconstructed && tryCert(reconstructed, 'Pipeline (Reconstructed)')) initialized = true;
+      if (!initialized && tryCert(rawKey.replace(/\\n/g, '\n'), 'Pipeline (Literal-Fix)')) initialized = true;
       
-      console.error('❌ FIREBASE_FATAL: All initialization layers failed for the provided environment variable.');
+      if (!initialized) {
+        console.warn('⚠️ FIREBASE_ENV_FAIL: Environment variables provided but invalid. Checking JSON fallback...');
+      } else {
+        return; // Success
+      }
     } 
+    
     // 2. Fallback to local JSON file
-    else if (fs.existsSync(serviceAccountPath)) {
+    if (fs.existsSync(serviceAccountPath)) {
       try {
         const serviceAccount = require(serviceAccountPath);
         admin.initializeApp({

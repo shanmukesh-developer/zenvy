@@ -8,6 +8,7 @@ const jwt = require('jsonwebtoken');
 const { Op } = require('sequelize');
 
 const admin = require('../config/firebase');
+const { normalizePhone, formatForFirebase } = require('../utils/phoneUtils');
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET || 'secret', { expiresIn: '30d' });
@@ -35,19 +36,21 @@ const registerPartner = async (req, res) => {
 
       // ── 3. Confirm verified phone matches submitted phone ─────────────────
       const verifiedPhone = decodedToken.phone_number;
-      const submittedPhone = `+91${phone.replace(/\D/g, '')}`;
+      const submittedPhone = formatForFirebase(phone);
       if (verifiedPhone !== submittedPhone) {
         console.warn(`[PARTNER_PHONE_MISMATCH] token: ${verifiedPhone}, submitted: ${submittedPhone}`);
         return res.status(401).json({ message: 'Phone number mismatch. Verification failed.' });
       }
     }
 
+    const cleanPhone = normalizePhone(phone);
+
     // ── 4. Create partner ────────────────────────────────────────────────
     const DeliveryPartner = getDeliveryPartnerModel();
-    const partnerExists = await DeliveryPartner.findOne({ where: { phone } });
+    const partnerExists = await DeliveryPartner.findOne({ where: { phone: cleanPhone } });
     if (partnerExists) return res.status(400).json({ message: 'Partner already exists' });
 
-    const partner = await DeliveryPartner.create({ name, phone, password, vehicleType });
+    const partner = await DeliveryPartner.create({ name, phone: cleanPhone, password, vehicleType });
     res.status(201).json({ _id: partner.id, name: partner.name, token: generateToken(partner.id) });
   } catch (error) {
     console.error('[PARTNER_REGISTER_ERROR]', error);
@@ -64,11 +67,12 @@ const authPartner = async (req, res) => {
     const DeliveryPartner = getDeliveryPartnerModel();
     let partner;
 
+    const cleanPhone = normalizePhone(phone);
+
     // ── 1. If firebaseToken is provided, use OTP Login flow ──────────────
     if (firebaseToken) {
       if (firebaseToken === 'E2E_MOCK_TOKEN') {
-        const numericPhone = phone.replace(/\D/g, '').slice(-10);
-        partner = await DeliveryPartner.findOne({ where: { phone: numericPhone } });
+        partner = await DeliveryPartner.findOne({ where: { phone: cleanPhone } });
         if (!partner) {
           return res.status(401).json({ message: 'Account not found (E2E)' });
         }
@@ -81,7 +85,7 @@ const authPartner = async (req, res) => {
           return res.status(401).json({ message: 'Phone verification failed. Login denied.' });
         }
 
-        const verifiedPhoneNumeric = decodedToken.phone_number.replace(/\D/g, '').slice(-10);
+        const verifiedPhoneNumeric = normalizePhone(decodedToken.phone_number);
         partner = await DeliveryPartner.findOne({ where: { phone: verifiedPhoneNumeric } });
 
         if (!partner) {
@@ -91,8 +95,7 @@ const authPartner = async (req, res) => {
     } 
     // ── 2. Otherwise, use traditional Password Login flow ───────────────
     else {
-      const numericPhone = phone.replace(/\D/g, '').slice(-10);
-      partner = await DeliveryPartner.findOne({ where: { phone: numericPhone } });
+      partner = await DeliveryPartner.findOne({ where: { phone: cleanPhone } });
       if (!partner || !(await partner.comparePassword(password))) {
         return res.status(401).json({ message: 'Invalid phone or password' });
       }
