@@ -65,19 +65,26 @@ if (!admin.apps.length) {
           } catch (_) {}
         }
 
-        // 3. Extract core PEM body
+        // 3. Extract core PEM body (Hyper-precise Split)
         const header = '-----BEGIN PRIVATE KEY-----';
         const footer = '-----END PRIVATE KEY-----';
-        const body = s.replace(/-----BEGIN[^-]*-----/gi, '')
-                      .replace(/-----END[^-]*-----/gi, '')
-                      .replace(/[^a-zA-Z0-9+/=]/g, '')
-                      .trim();
+        
+        // Split by dashes and find the large block that isn't a header/footer
+        const parts = s.split('-----').map(p => p.trim()).filter(p => 
+          p.length > 100 && 
+          !p.includes('BEGIN') && 
+          !p.includes('END') && 
+          !p.includes('PRIVATE')
+        );
+        
+        const body = parts.join('').replace(/[^a-zA-Z0-9+/=]/g, '').trim();
 
         if (body.length < 500) return null;
         console.log(`[FIREBASE_BODY] Cleaned body length: ${body.length}`);
+        console.log(`[FIREBASE_BODY_TAIL] Tail: ...${body.substring(body.length - 20)}`);
         
         // 4. Final Reconstruction
-        return `${header}\n${body.match(/.{1,64}/g).join('\n')}\n${footer}\n`;
+        return `${header}\n${(body.match(/.{1,64}/g) || []).join('\n')}\n${footer}\n`;
       };
 
       const finalKey = cleanKey(rawKey);
