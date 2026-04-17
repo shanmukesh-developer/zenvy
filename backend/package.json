@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
+    "seed:rider": "node seed_mock_rider.js",
     "lint": "eslint .",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
