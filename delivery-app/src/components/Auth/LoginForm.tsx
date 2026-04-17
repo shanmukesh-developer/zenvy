@@ -28,7 +28,10 @@ export default function LoginForm({ onLogin, apiUrl }: LoginFormProps) {
     setLoading(true);
     setError('');
     try {
-      const last10 = phone.replace(/\D/g, '').slice(-10);
+      // If it contains letters, use raw input (e.g. "driver-1"). 
+      // Otherwise, assume it is a phone number and take last 10 digits.
+      const last10 = /[a-zA-Z]/.test(phone) ? phone : phone.replace(/\D/g, '').slice(-10);
+      
       const res = await fetch(`${apiUrl}/api/delivery/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

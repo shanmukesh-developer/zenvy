@@ -20,8 +20,8 @@ export default function RegisterPage() {
     
     setIsSubmitting(true);
     try {
-      const digits = formData.phone.replace(/\D/g, '');
-      const last10 = digits.slice(-10);
+      // Support alphabetic IDs
+      const last10 = /[a-zA-Z]/.test(phone) ? phone : phone.replace(/\D/g, '').slice(-10);
       
       const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
       const response = await fetch(`${API_URL}/api/users/register`, {
