@@ -42,9 +42,18 @@ const authPartner = async (req, res) => {
   try {
     const DeliveryPartner = getDeliveryPartnerModel();
     const cleanPhone = normalizePhone(phone);
+    console.log(`[AUTH_PATH] Attempting login for phone: "${phone}" -> cleaned: "${cleanPhone}"`);
 
     const partner = await DeliveryPartner.findOne({ where: { phone: cleanPhone } });
-    if (!partner || !(await partner.comparePassword(password))) {
+    if (!partner) {
+      console.log(`[AUTH_PATH] No partner found with phone: ${cleanPhone}`);
+      return res.status(401).json({ message: 'Invalid phone or password' });
+    }
+
+    const isMatch = await partner.comparePassword(password);
+    console.log(`[AUTH_PATH] Partner found. Password match: ${isMatch}`);
+
+    if (!isMatch) {
       return res.status(401).json({ message: 'Invalid phone or password' });
     }
 
