@@ -55,7 +55,7 @@ export default function Dashboard() {
       .catch(err => console.error(err));
 
     // Connect socket
-    const s = io('http://localhost:5000');
+    const s = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005');
     
     s.on('connect', () => {
       console.log('Connected to socket');

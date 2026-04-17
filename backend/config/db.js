@@ -62,7 +62,7 @@ const connectDB = async () => {
   const dbUrl = process.env.DATABASE_URL;
 
   if (!dbUrl) {
-    const sqlitePath = 'C:\\hostel-bite\\backend\\local_dev.sqlite';
+    const sqlitePath = path.join(__dirname, '..', 'local_dev.sqlite');
     console.log(`📦 Using SQLite: ${sqlitePath}`);
     sequelize = new Sequelize({
       dialect: 'sqlite',

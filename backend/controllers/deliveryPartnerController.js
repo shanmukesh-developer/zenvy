@@ -16,36 +16,12 @@ const generateToken = (id) => {
 
 // @desc    Register a new delivery partner (requires Firebase phone verification)
 const registerPartner = async (req, res) => {
-  const { name, phone, password, vehicleType, firebaseToken } = req.body;
-
-  // ── 1. Require Firebase ID token ──────────────────────────────────────
-  if (!firebaseToken) {
-    return res.status(401).json({ message: 'Phone verification is required to register as a partner.' });
-  }
+  const { name, phone, password, vehicleType } = req.body;
 
   try {
-    // ── 2. Verify the token with Firebase Admin ───────────────────────────
-    if (firebaseToken !== 'E2E_MOCK_TOKEN') {
-      let decodedToken;
-      try {
-        decodedToken = await admin.auth().verifyIdToken(firebaseToken);
-      } catch (tokenErr) {
-        console.error('[FIREBASE_PARTNER_TOKEN_ERROR]', tokenErr.message);
-        return res.status(401).json({ message: 'Phone verification failed. Registration denied.' });
-      }
-
-      // ── 3. Confirm verified phone matches submitted phone ─────────────────
-      const verifiedPhone = decodedToken.phone_number;
-      const submittedPhone = formatForFirebase(phone);
-      if (verifiedPhone !== submittedPhone) {
-        console.warn(`[PARTNER_PHONE_MISMATCH] token: ${verifiedPhone}, submitted: ${submittedPhone}`);
-        return res.status(401).json({ message: 'Phone number mismatch. Verification failed.' });
-      }
-    }
-
     const cleanPhone = normalizePhone(phone);
 
-    // ── 4. Create partner ────────────────────────────────────────────────
+    // ── 1. Create partner ────────────────────────────────────────────────
     const DeliveryPartner = getDeliveryPartnerModel();
     const partnerExists = await DeliveryPartner.findOne({ where: { phone: cleanPhone } });
     if (partnerExists) return res.status(400).json({ message: 'Partner already exists' });
@@ -61,44 +37,15 @@ const registerPartner = async (req, res) => {
 
 // @desc    Auth partner & get token
 const authPartner = async (req, res) => {
-  const { phone, password, firebaseToken } = req.body;
+  const { phone, password } = req.body;
 
   try {
     const DeliveryPartner = getDeliveryPartnerModel();
-    let partner;
-
     const cleanPhone = normalizePhone(phone);
 
-    // ── 1. If firebaseToken is provided, use OTP Login flow ──────────────
-    if (firebaseToken) {
-      if (firebaseToken === 'E2E_MOCK_TOKEN') {
-        partner = await DeliveryPartner.findOne({ where: { phone: cleanPhone } });
-        if (!partner) {
-          return res.status(401).json({ message: 'Account not found (E2E)' });
-        }
-      } else {
-        let decodedToken;
-        try {
-          decodedToken = await admin.auth().verifyIdToken(firebaseToken);
-        } catch (tokenErr) {
-          console.error('[FIREBASE_PARTNER_LOGIN_TOKEN_ERROR]', tokenErr.message);
-          return res.status(401).json({ message: 'Phone verification failed. Login denied.' });
-        }
-
-        const verifiedPhoneNumeric = normalizePhone(decodedToken.phone_number);
-        partner = await DeliveryPartner.findOne({ where: { phone: verifiedPhoneNumeric } });
-
-        if (!partner) {
-          return res.status(404).json({ message: 'Account not found. Please register first.' });
-        }
-      }
-    } 
-    // ── 2. Otherwise, use traditional Password Login flow ───────────────
-    else {
-      partner = await DeliveryPartner.findOne({ where: { phone: cleanPhone } });
-      if (!partner || !(await partner.comparePassword(password))) {
-        return res.status(401).json({ message: 'Invalid phone or password' });
-      }
+    const partner = await DeliveryPartner.findOne({ where: { phone: cleanPhone } });
+    if (!partner || !(await partner.comparePassword(password))) {
+      return res.status(401).json({ message: 'Invalid phone or password' });
     }
 
     // ── 3. Return partner data and JWT token ────────────────────────────────

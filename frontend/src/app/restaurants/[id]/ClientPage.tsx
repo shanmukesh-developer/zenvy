@@ -8,7 +8,7 @@ import SuccessOverlay from '@/components/SuccessOverlay';
 import { Restaurant, MenuItem } from '@/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5005';
+const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || API_URL;
 
 export default function RestaurantMenuClient({ restaurantId }: { restaurantId: string }) {
   // Legacy Redirect Map
