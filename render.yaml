@@ -39,7 +39,7 @@ services:
     startCommand: npm start
     envVars:
       - key: NEXT_PUBLIC_API_URL
-        value: https://hostelbites-backend.onrender.com
+        value: https://hostelbites-backend-jwmt.onrender.com
 
   # 3. Delivery App (SSR)
   - type: web
@@ -51,7 +51,7 @@ services:
     startCommand: npm start
     envVars:
       - key: NEXT_PUBLIC_API_URL
-        value: https://hostelbites-backend.onrender.com
+        value: https://hostelbites-backend-jwmt.onrender.com
 
   # 4. Restaurant Portal (SSR)
   - type: web
@@ -63,7 +63,7 @@ services:
     startCommand: npm start
     envVars:
       - key: NEXT_PUBLIC_API_URL
-        value: https://hostelbites-backend.onrender.com
+        value: https://hostelbites-backend-jwmt.onrender.com
 
   # 5. Admin Dashboard (SSR)
   - type: web
@@ -75,5 +75,5 @@ services:
     startCommand: npm start
     envVars:
       - key: NEXT_PUBLIC_API_URL
-        value: https://hostelbites-backend.onrender.com
+        value: https://hostelbites-backend-jwmt.onrender.com
 
