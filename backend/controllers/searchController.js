@@ -10,7 +10,7 @@ const globalSearch = async (req, res) => {
   try {
     const Restaurant = getRestaurantModel();
     const MenuItem = getMenuItemModel();
-    const likeOp = Op.like;
+    const likeOp = Op.iLike || Op.like; // iLike for PostgreSQL, like for SQLite
 
     if (!q || q.trim().length < 2) {
       // Return Trending/Featured if no query
