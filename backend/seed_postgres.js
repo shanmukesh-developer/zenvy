@@ -8,6 +8,8 @@ const { getRestaurantModel } = require('./models/Restaurant');
 const { getMenuItemModel } = require('./models/MenuItem');
 const { getOrderModel } = require('./models/Order');
 const { getUserModel } = require('./models/User');
+const { getDeliveryPartnerModel } = require('./models/DeliveryPartner');
+
 
 const mockData = [
   {
@@ -73,8 +75,8 @@ const seed = async () => {
     await connectDB();
     const Restaurant = getRestaurantModel();
     const MenuItem = getMenuItemModel();
-    const Order = getOrderModel();
     const User = getUserModel();
+    const DeliveryPartner = getDeliveryPartnerModel();
     
     await getSequelize().sync({ force: true });
 
@@ -82,6 +84,7 @@ const seed = async () => {
     await Restaurant.destroy({ where: {} });
     await Order.destroy({ where: {} });
     await User.destroy({ where: {} });
+    await DeliveryPartner.destroy({ where: {} });
     console.log('✅ Cleared existing database.');
 
     let firstRestaurantId;
@@ -142,6 +145,27 @@ const seed = async () => {
         });
       }
     }
+
+    // --- Seed Mock Delivery Partner ---
+    await DeliveryPartner.create({
+      name: 'Rider SRK',
+      phone: 'driver-1',
+      password: 'srk',
+      vehicleType: 'Electric Scooter',
+      vehicleNumber: 'AP31-ZEN-2024',
+      isApproved: true,
+      isOnline: true
+    });
+    console.log('✅ Seeded Delivery Partner: Rider SRK (driver-1)');
+
+    // --- Seed Admin User ---
+    await User.create({
+      name: 'Nexus Admin',
+      phone: 'admin-1',
+      password: 'zenvy_admin',
+      role: 'admin'
+    });
+    console.log('✅ Seeded Admin User: Nexus Admin (admin-1)');
 
     console.log('🎉 Seeding Complete. Zenvy is now ALIVE.');
     process.exit(0);
