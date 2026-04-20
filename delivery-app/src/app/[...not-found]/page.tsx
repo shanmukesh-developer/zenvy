@@ -1,27 +1,14 @@
-"use client";
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import ClientRedirect from './ClientRedirect';
 
 /**
  * Zenvy Rider Portal - Catch-all Redirection
- * 
- * Since the Rider Portal is a Single Page Application (SPA), direct 
- * navigation to /dashboard or other sub-routes causes 404s on the server.
- * This catch-all route redirects unmatched paths back to the SPA root.
  */
 export default function CatchAllRedirect() {
-  const router = useRouter();
+  return <ClientRedirect />;
+}
 
-  useEffect(() => {
-    // Redirect to the root SPA page immediately
-    router.replace('/');
-  }, [router]);
-
-  return (
-    <div className="min-h-screen bg-[#0A0A0B] flex flex-col items-center justify-center text-white">
-      <div className="w-16 h-16 border-4 border-primary-yellow border-t-transparent rounded-full animate-spin mb-6" />
-      <h2 className="text-xl font-black uppercase tracking-widest">Re-routing...</h2>
-      <p className="text-zinc-500 mt-2">Connecting to Logistics Command Central</p>
-    </div>
-  );
+// Required for next build "output: export" with dynamic/catch-all routes
+export function generateStaticParams() {
+  // Generate a dummy static route so Next.js can resolve this catch-all
+  return [{ "not-found": ["404"] }];
 }

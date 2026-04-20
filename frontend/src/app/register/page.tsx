@@ -21,7 +21,8 @@ export default function RegisterPage() {
     setIsSubmitting(true);
     try {
       // Support alphabetic IDs
-      const last10 = /[a-zA-Z]/.test(phone) ? phone : phone.replace(/\D/g, '').slice(-10);
+      const phoneVal = formData.phone;
+      const last10 = /[a-zA-Z]/.test(phoneVal) ? phoneVal : phoneVal.replace(/\D/g, '').slice(-10);
       
       const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
       const response = await fetch(`${API_URL}/api/users/register`, {
@@ -45,6 +46,7 @@ export default function RegisterPage() {
         setOverlay({ isOpen: true, title: 'Registration Failed', message: data.message || 'Something went wrong.', type: 'error' });
       }
     } catch (err: unknown) {
+      console.error("Registration error:", err);
       setOverlay({ 
         isOpen: true, 
         title: 'Network Error', 

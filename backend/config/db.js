@@ -92,7 +92,9 @@ const connectDB = async () => {
 
   try {
     await sequelize.authenticate();
-    console.log('✅ PostgreSQL Connected via Sequelize.');
+    const dialect = sequelize.getDialect();
+    const dialectUpper = dialect.charAt(0).toUpperCase() + dialect.slice(1);
+    console.log(`✅ ${dialectUpper} Connected via Sequelize.`);
     initializeAllModels(sequelize);
     const isSqlite = sequelize.getDialect() === 'sqlite';
     if (process.env.NODE_ENV !== 'production') {

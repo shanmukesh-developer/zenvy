@@ -27,3 +27,32 @@
 [2026-04-17T17:24:20.464Z] [JOIN] qIm1dYG6AWqm2wCRAAAT -> f02ca0cf-00ff-495a-8332-d5ea8290889e
 [2026-04-17T17:24:20.472Z] [JOIN] qIm1dYG6AWqm2wCRAAAT -> f02ca0cf-00ff-495a-8332-d5ea8290889e
 [2026-04-17T17:24:26.029Z] [ISSUE] rider reported: Delayed for order 1a53f436-25a6-40c4-941e-e789262a9e7b
+[2026-04-18T21:00:47.729Z] [RIDER ONLINE] Test Rider (test-rider-id-1776546047607)
+[2026-04-18T21:00:47.731Z] [RIDER STATUS] Test Rider → ONLINE
+[2026-04-18T21:01:24.863Z] [RIDER ONLINE] Test Rider (test-rider-id-1776546084818)
+[2026-04-18T21:01:24.864Z] [RIDER STATUS] Test Rider → ONLINE
+[2026-04-18T21:01:25.900Z] [ORDER_CREATE_ERROR] Full Error: Error
+    at Database.<anonymous> (C:\hostel-bite\backend\node_modules\sequelize\lib\dialects\sqlite\query.js:185:27)
+    at C:\hostel-bite\backend\node_modules\sequelize\lib\dialects\sqlite\query.js:183:50
+    at new Promise (<anonymous>)
+    at Query.run (C:\hostel-bite\backend\node_modules\sequelize\lib\dialects\sqlite\query.js:183:12)
+    at C:\hostel-bite\backend\node_modules\sequelize\lib\sequelize.js:315:28
+    at async SQLiteQueryInterface.insert (C:\hostel-bite\backend\node_modules\sequelize\lib\dialects\abstract\query-interface.js:308:21)
+    at async model.save (C:\hostel-bite\backend\node_modules\sequelize\lib\model.js:2490:35)
+    at async Order.create (C:\hostel-bite\backend\node_modules\sequelize\lib\model.js:1362:12)
+    at async createOrder (C:\hostel-bite\backend\controllers\orderController.js:156:26)
+[2026-04-18T21:01:34.901Z] [RIDER ONLINE] Test Rider (test-rider-id-1776546094865)
+[2026-04-18T21:01:34.901Z] [RIDER STATUS] Test Rider → ONLINE
+[2026-04-18T21:01:35.934Z] [ORDER_CREATE_ERROR] Full Error: Error
+    at Database.<anonymous> (C:\hostel-bite\backend\node_modules\sequelize\lib\dialects\sqlite\query.js:185:27)
+    at C:\hostel-bite\backend\node_modules\sequelize\lib\dialects\sqlite\query.js:183:50
+    at new Promise (<anonymous>)
+    at Query.run (C:\hostel-bite\backend\node_modules\sequelize\lib\dialects\sqlite\query.js:183:12)
+    at C:\hostel-bite\backend\node_modules\sequelize\lib\sequelize.js:315:28
+    at async SQLiteQueryInterface.insert (C:\hostel-bite\backend\node_modules\sequelize\lib\dialects\abstract\query-interface.js:308:21)
+    at async model.save (C:\hostel-bite\backend\node_modules\sequelize\lib\model.js:2490:35)
+    at async Order.create (C:\hostel-bite\backend\node_modules\sequelize\lib\model.js:1362:12)
+    at async createOrder (C:\hostel-bite\backend\controllers\orderController.js:156:26)
+[2026-04-18T21:02:19.703Z] [RIDER ONLINE] Test Rider (test-rider-id-1776546139659)
+[2026-04-18T21:02:19.704Z] [RIDER STATUS] Test Rider → ONLINE
+[2026-04-18T21:02:32.214Z] [MEGAPHONE] Admin broadcast: "🚨 Nexus Update: Real-time connections are LIVE! 2:32:31 am" (type: emergency)
