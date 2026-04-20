@@ -25,7 +25,7 @@ const initOrderModel = (sequelize) => {
       defaultValue: 'Pending'
     },
     paymentMethod: {
-      type: DataTypes.ENUM('COD', 'UPI', 'Card'),
+      type: DataTypes.ENUM('COD', 'UPI', 'Card', 'Wallet'),
       allowNull: false
     },
     deliverySlot: { type: DataTypes.STRING },

@@ -502,24 +502,35 @@ const cancelOrder = async (req, res) => {
     const Order = getOrderModel();
     const order = await Order.findByPk(req.params.id);
     if (!order) return res.status(404).json({ message: 'Order not found' });
-    if (order.userId !== req.user.id) return res.status(403).json({ message: 'Not authorized' });
 
-    const elapsed = (Date.now() - new Date(order.createdAt).getTime()) / 1000;
-    if (elapsed > 120 && order.status !== 'Pending') {
-      return res.status(400).json({ message: 'Cancellation window closed' });
+    // Allow cancellation if: (a) you are the order owner, or (b) order is still Pending (restaurant reject)
+    const isOwner = order.userId === req.user.id;
+    const isStillPending = order.status === 'Pending';
+    if (!isOwner && !isStillPending) {
+      return res.status(403).json({ message: 'Not authorized to cancel this order' });
+    }
+
+    // Customer cancellation window: 120 seconds after placement (unless still Pending)
+    if (isOwner && !isStillPending) {
+      const elapsed = (Date.now() - new Date(order.createdAt).getTime()) / 1000;
+      if (elapsed > 120) {
+        return res.status(400).json({ message: 'Cancellation window closed' });
+      }
     }
 
     order.status = 'Cancelled';
     await order.save();
 
-    // ── Refund Logic ──────────────────────
+    // ── Refund Logic (Only for Wallet payments) ──────────────────────
     try {
-      const User = getUserModel();
-      const user = await User.findByPk(order.userId);
-      if (user) {
-        user.walletBalance = (user.walletBalance || 0) + (order.finalPrice || order.totalPrice);
-        await user.save();
-        console.log(`[REFUND] ₹${order.finalPrice} refunded to user ${user.id}`);
+      if (order.paymentMethod === 'Wallet') {
+        const User = getUserModel();
+        const user = await User.findByPk(order.userId);
+        if (user) {
+          user.walletBalance = (user.walletBalance || 0) + (order.finalPrice || order.totalPrice);
+          await user.save();
+          console.log(`[REFUND] ₹${order.finalPrice} refunded to wallet for user ${user.id}`);
+        }
       }
     } catch (refundErr) {
       console.error('[REFUND_ERROR]', refundErr.message);

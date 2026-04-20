@@ -18,7 +18,7 @@ const restaurantLogin = async (req, res) => {
       if (!isMatch) return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    const token = jwt.sign({ id: restaurant.id, role: 'restaurant' }, process.env.JWT_SECRET || 'secret123', { expiresIn: '30d' });
+    const token = jwt.sign({ id: restaurant.id, role: 'restaurant' }, process.env.JWT_SECRET || 'secret', { expiresIn: '30d' });
     res.json({ restaurant, token });
   } catch (error) {
     res.status(500).json({ message: 'Server error' });
@@ -79,7 +79,7 @@ const getRestaurants = async (req, res) => {
 const getRestaurantMenu = async (req, res) => {
   try {
     const MenuItem = getMenuItemModel();
-    const menu = await MenuItem.findAll({ where: { restaurantId: req.params.id, isAvailable: true } });
+    const menu = await MenuItem.findAll({ where: { restaurantId: req.params.id } });
     res.json(menu);
   } catch (error) {
     console.error('[MENU_ERROR]', error);
