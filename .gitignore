@@ -36,3 +36,7 @@ frontend/public/assets/*.png
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# build logs
+*.log
+lint_output.txt
