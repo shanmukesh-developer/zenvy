@@ -1,3 +1,9 @@
+databases:
+  - name: hostelbites-db
+    databaseName: hostelbites
+    user: hostelbites_user
+    plan: free
+
 services:
   # 1. Backend API (PostgreSQL)
   - type: web
@@ -12,6 +18,12 @@ services:
         fromDatabase:
           name: hostelbites-db
           property: connectionString
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_CLIENT_EMAIL
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY
+        sync: false
       - key: JWT_SECRET
         generateValue: true
       - key: NODE_ENV
@@ -65,7 +77,3 @@ services:
       - key: NEXT_PUBLIC_API_URL
         value: https://hostelbites-backend.onrender.com
 
-databases:
-  - name: hostelbites-db
-    databaseName: hostelbites
-    user: admin
