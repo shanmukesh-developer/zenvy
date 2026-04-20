@@ -77,6 +77,7 @@ const seed = async () => {
     const MenuItem = getMenuItemModel();
     const User = getUserModel();
     const DeliveryPartner = getDeliveryPartnerModel();
+    const Order = getOrderModel();
     
     await getSequelize().sync({ force: true });
 

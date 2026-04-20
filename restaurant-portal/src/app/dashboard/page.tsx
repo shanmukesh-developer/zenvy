@@ -29,10 +29,16 @@ interface MenuItem {
   isAvailable: boolean;
 }
 
+interface Announcement {
+  message: string;
+  type: 'info' | 'warning' | 'promo' | 'emergency';
+}
+
 export default function Dashboard() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [menu, setMenu] = useState<MenuItem[]>([]);
   const [activeTab, setActiveTab] = useState<'orders' | 'menu'>('orders');
+  const [announcement, setAnnouncement] = useState<Announcement | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -68,6 +74,13 @@ export default function Dashboard() {
 
     s.on('statusUpdated', () => {
        api.get(`/restaurants/${restaurantId}/orders`).then(res => setOrders(res.data));
+    });
+
+    s.on('global_announcement', (data: Announcement) => {
+      setAnnouncement(data);
+      if (data.type !== 'emergency') {
+        setTimeout(() => setAnnouncement(null), 8000);
+      }
     });
 
     return () => {
@@ -106,6 +119,28 @@ export default function Dashboard() {
             <UtensilsCrossed className="text-orange-500" size={28} />
             <h1 className="text-2xl font-bold tracking-tight">Zenvy Partners</h1>
           </div>
+
+          <AnimatePresence>
+            {announcement && (
+              <motion.div 
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className={`fixed top-4 left-1/2 -translate-x-1/2 z-[100] px-6 py-3 rounded-2xl border shadow-2xl flex items-center gap-3 backdrop-blur-md min-w-[300px] ${
+                  announcement.type === 'emergency' ? 'bg-red-500 border-red-400 text-white animate-pulse' :
+                  announcement.type === 'warning' ? 'bg-amber-500 border-amber-400 text-black' :
+                  announcement.type === 'promo' ? 'bg-emerald-500 border-emerald-400 text-white' :
+                  'bg-blue-600 border-blue-400 text-white'
+                }`}
+              >
+                <span className="text-xl">
+                  {announcement.type === 'emergency' ? '🚨' : announcement.type === 'warning' ? '⚠️' : announcement.type === 'promo' ? '🎉' : '📢'}
+                </span>
+                <p className="text-xs font-black uppercase tracking-widest">{announcement.message}</p>
+                <button onClick={() => setAnnouncement(null)} className="ml-auto hover:scale-110 px-2 font-black">✕</button>
+              </motion.div>
+            )}
+          </AnimatePresence>
           
           <nav className="flex gap-1 bg-zinc-900 p-1 rounded-xl border border-zinc-800">
             <button 
