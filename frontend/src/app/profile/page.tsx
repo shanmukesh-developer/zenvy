@@ -364,7 +364,7 @@ export default function ProfilePage() {
           <div className="flex justify-between items-start mb-10">
             {/* Profile Photo with Premium Border */}
             <div className={`w-36 h-36 rounded-full overflow-hidden ${user?.isElite ? 'elite-profile-border' : 'border-2 border-white/10'} shadow-2xl bg-black/40 backdrop-blur-md`}>
-                {user?.profileImage ? (
+                {user?.profileImage && user.profileImage !== 'null' && user.profileImage !== 'undefined' ? (
                   <SafeImage 
                     src={user.profileImage} 
                     alt="Profile" 
@@ -733,7 +733,7 @@ export default function ProfilePage() {
             <div className="flex flex-col items-center gap-4">
               <div className="relative group">
                 <div className="w-32 h-32 rounded-full border-2 border-white/10 p-1 bg-white/5 overflow-hidden shadow-2xl">
-                  {editData.profileImage ? (
+                  {editData.profileImage && editData.profileImage !== 'null' && editData.profileImage !== 'undefined' ? (
                     <SafeImage 
                       src={editData.profileImage} 
                       alt="Edit Preview" 

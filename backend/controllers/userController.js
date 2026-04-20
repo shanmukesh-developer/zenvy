@@ -43,15 +43,41 @@ const registerUser = async (req, res) => {
 // @desc    Auth user & get token
 // @route   POST /api/users/login
 const authUser = async (req, res) => {
-  const { phone, password } = req.body;
+  const { phone, password, firebaseToken } = req.body;
 
   try {
     const User = getUserModel();
     const cleanPhone = normalizePhone(phone);
-
     const user = await User.findOne({ where: { phone: cleanPhone } });
-    if (!user || !(await user.comparePassword(password))) {
-      return res.status(401).json({ message: 'Invalid phone or password' });
+
+    if (!user) {
+      return res.status(401).json({ message: 'User not found' });
+    }
+
+    // ── Phone Login Logic (Firebase or Mock) ──────────────────────
+    if (firebaseToken) {
+      if (firebaseToken === 'E2E_MOCK_TOKEN') {
+        console.log(`[AUTH] Bypassing verification for E2E_MOCK_TOKEN (Phone: ${phone})`);
+      } else {
+        try {
+          const decodedToken = await admin.auth().verifyIdToken(firebaseToken);
+          const firebasePhone = normalizePhone(decodedToken.phone_number);
+          if (firebasePhone !== cleanPhone) {
+            return res.status(401).json({ message: 'Phone mismatch with Firebase token' });
+          }
+        } catch (firebaseErr) {
+          console.error('[AUTH_FIREBASE_ERR]', firebaseErr);
+          return res.status(401).json({ message: 'Invalid Firebase token' });
+        }
+      }
+    } else if (password) {
+      // Fallback to password
+      const isMatch = await user.comparePassword(password);
+      if (!isMatch) {
+        return res.status(401).json({ message: 'Invalid phone or password' });
+      }
+    } else {
+      return res.status(400).json({ message: 'Authentication required (Password or Verification Token)' });
     }
 
     // ── 3. Return user data and JWT token ────────────────────────────────

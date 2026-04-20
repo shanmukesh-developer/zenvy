@@ -65,7 +65,7 @@ export default function Dashboard() {
     
     s.on('connect', () => {
       console.log('Connected to socket');
-      s.emit('joinRoom', restaurantId.toString());
+      s.emit('joinRoom', `restaurant_${restaurantId}`);
     });
 
     s.on('restaurant_newOrder', () => {
@@ -95,6 +95,17 @@ export default function Dashboard() {
     } catch (error) {
       console.error(error);
       alert('Failed to accept order');
+    }
+  };
+
+  const handleReject = async (orderId: string) => {
+    if (!window.confirm("Are you sure you want to reject this order? This cannot be undone.")) return;
+    try {
+      await api.put(`/orders/${orderId}/cancel`);
+      setOrders(orders.map(o => o.id === orderId ? { ...o, status: 'Cancelled' } : o));
+    } catch (error) {
+      console.error('Failed to reject order', error);
+      alert('Failed to reject order. It may have already been canceled.');
     }
   };
 
@@ -220,12 +231,20 @@ export default function Dashboard() {
                     </div>
 
                     {order.status === 'Pending' && (
-                      <button 
-                        onClick={() => handleAccept(order.id)}
-                        className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-3 transition-all active:scale-[0.98] shadow-lg shadow-orange-500/20"
-                      >
-                        <CheckCircle size={20} /> Accept & Start Preparing
-                      </button>
+                      <div className="flex gap-3">
+                        <button 
+                          onClick={() => handleReject(order.id)}
+                          className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-[0.98] border border-zinc-700"
+                        >
+                          ✕ Reject
+                        </button>
+                        <button 
+                          onClick={() => handleAccept(order.id)}
+                          className="flex-[2] bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-3 transition-all active:scale-[0.98] shadow-lg shadow-orange-500/20"
+                        >
+                          <CheckCircle size={20} /> Accept & Start
+                        </button>
+                      </div>
                     )}
                     {order.status === 'Accepted' && (
                       <div className="w-full bg-zinc-800 text-zinc-400 font-bold py-4 rounded-xl flex items-center justify-center gap-3">

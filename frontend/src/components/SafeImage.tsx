@@ -22,9 +22,11 @@ export default function SafeImage({ src, alt, className, style, fill, priority, 
 
   const mergedStyle = { ...containerStyle, ...style };
 
-  const resolvedSrc = typeof imgSrc === 'string' 
-    ? imgSrc 
-    : (imgSrc as { src: string })?.src || FALLBACK_IMAGE;
+  let finalSrc = typeof imgSrc === 'string' ? imgSrc : (imgSrc as { src: string })?.src;
+  if (!finalSrc || finalSrc === 'null' || finalSrc === 'undefined') {
+    finalSrc = FALLBACK_IMAGE;
+  }
+  const resolvedSrc = finalSrc;
 
   return (
     // eslint-disable-next-line @next/next/no-img-element

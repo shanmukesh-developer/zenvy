@@ -577,7 +577,7 @@ export default function Home() {
             <div className="flex items-center justify-between mb-6">
               <Link href="/profile" className="flex items-center gap-2.5 group cursor-pointer">
                 <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#C9A84C] to-[#8B7332] flex items-center justify-center shadow-lg shadow-[#C9A84C]/20 group-hover:scale-105 transition-transform overflow-hidden relative">
-                  {user?.profileImage ? (
+                  {user?.profileImage && user.profileImage !== 'null' && user.profileImage !== 'undefined' ? (
                     <SafeImage 
                       src={user.profileImage} 
                       alt="Me" 

@@ -162,7 +162,7 @@ const seed = async () => {
     // --- Seed Admin User ---
     await User.create({
       name: 'Nexus Admin',
-      phone: 'admin-1',
+      phone: '9391955674',
       password: 'zenvy_admin',
       role: 'admin'
     });

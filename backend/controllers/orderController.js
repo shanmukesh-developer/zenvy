@@ -103,6 +103,10 @@ const createOrder = async (req, res) => {
       if (!dbItem) {
         return res.status(400).json({ message: `Invalid menu item: ${i.name || 'Unknown'}` });
       }
+
+      if (!dbItem.isAvailable) {
+        return res.status(400).json({ message: `Item just went out of stock: ${dbItem.name}` });
+      }
       
       // Hard cap quantity to prevent overflows and absurd orders
       const qty = Math.min(20, Math.max(1, i.quantity || 1));

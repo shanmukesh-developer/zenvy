@@ -101,11 +101,22 @@ const startServer = async () => {
     const { errorHandler } = require('./middleware/errorMiddleware');
     app.use(errorHandler);
 
-    // Local Image Storage Engine
-    const upload = multer({ dest: 'uploads/' });
+    // Serve uploaded files statically
+    const uploadsDir = path.join(__dirname, 'uploads');
+    if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+    app.use('/uploads', express.static(uploadsDir));
+
+    // Local Image Storage Engine with proper file naming
+    const storage = multer.diskStorage({
+      destination: (req, file, cb) => cb(null, uploadsDir),
+      filename: (req, file, cb) => {
+        const ext = path.extname(file.originalname) || '.jpg';
+        cb(null, `${Date.now()}-${Math.round(Math.random() * 1e6)}${ext}`);
+      }
+    });
+    const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
     app.post('/api/upload', upload.single('image'), (req, res) => {
       if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
-      // Use relative path for maximum portability (or BASE_URL if defined)
       const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5005}`;
       const imageUrl = `${baseUrl}/uploads/${req.file.filename}`;
       res.json({ imageUrl });
@@ -123,6 +134,11 @@ const startServer = async () => {
         const room = String(orderId).trim();
         await socket.join(room);
         log(`[JOIN] ${socket.id} -> ${room}`);
+      });
+      socket.on('joinRoom', async (roomName) => {
+        const room = String(roomName).trim();
+        await socket.join(room);
+        log(`[JOIN_ROOM] ${socket.id} -> ${room}`);
       });
       socket.on('joinAdmin', async () => {
         await socket.join('admin-room');

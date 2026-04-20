@@ -30,6 +30,7 @@ interface OrderInfo {
   _id: string;
   status: string;
   totalPrice: number;
+  finalPrice?: number;
   batchDiscount?: number;
   deliveryPin?: string;
   items?: { name: string; quantity: number }[];
@@ -88,6 +89,9 @@ function TrackingContent() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
 
+  const [cancelSecondsLeft, setCancelSecondsLeft] = useState(0);
+  const [showCancelConfirmation, setShowCancelConfirmation] = useState(false);
+
   useEffect(() => {
     try {
       const stored = localStorage.getItem('user');
@@ -128,6 +132,13 @@ function TrackingContent() {
           setStatus(4);
           if (!data.rating) setShowRatingModal(true);
         }
+
+        // Handle cancellation timer
+        if (data.status === 'Pending' && data.createdAt) {
+          const elapsed = (Date.now() - new Date(data.createdAt).getTime()) / 1000;
+          const remaining = Math.max(0, 120 - Math.round(elapsed));
+          setCancelSecondsLeft(remaining);
+        }
       } catch {
         setActiveIssue({
           issueType: 'Network Instability',
@@ -150,6 +161,9 @@ function TrackingContent() {
         setCaptainSpeed(0);
         setNewBadges(earnedBadges);
         setShowDeliveryOverlay(true);
+      }
+      if (newStatus === 'Cancelled') {
+        setStatus(-1);
       }
     });
 
@@ -192,6 +206,27 @@ function TrackingContent() {
     };
   }, [orderId]);
 
+  useEffect(() => {
+    if (cancelSecondsLeft > 0 && status === 1) {
+      const tick = setInterval(() => setCancelSecondsLeft(p => Math.max(0, p - 1)), 1000);
+      return () => clearInterval(tick);
+    }
+  }, [cancelSecondsLeft, status]);
+
+  const cancelOrderAction = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      await fetch(`${API_URL}/api/orders/${orderId}/cancel`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
+      });
+      localStorage.removeItem('last_order');
+      window.location.href = '/';
+    } catch (_err) {
+      console.warn('[CANCEL_ORDER] Backend cancellation failed:', _err);
+    }
+  };
+
   const [roadEta] = useState<number | null>(null);
 
   useEffect(() => {
@@ -212,6 +247,34 @@ function TrackingContent() {
     { label: 'Arrived', time: 'Estimated 5m', desc: 'Pick up your food at the designated spot.' }
   ];
 
+  if (status === -1) {
+    return (
+      <main className="min-h-screen bg-background flex flex-col items-center justify-center p-8 text-center animate-in fade-in zoom-in duration-500">
+         <div className="w-24 h-24 bg-red-500/10 rounded-full flex items-center justify-center mb-8 border border-red-500/20 shadow-[0_0_40px_rgba(239,68,68,0.2)]">
+            <span className="text-4xl">❌</span>
+         </div>
+         <h1 className="text-3xl font-black text-white uppercase tracking-widest mb-4">Order Cancelled</h1>
+         <p className="text-sm font-bold text-slate-400 mb-8 max-w-sm leading-relaxed">
+            We are sorry, but this order has been cancelled by the restaurant, or it was manually aborted.
+         </p>
+         
+         <div className="bg-white/[0.03] border border-white/5 p-6 rounded-3xl w-full max-w-sm mb-10 text-left">
+            <h3 className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-3 flex items-center gap-2">
+               <span className="animate-pulse w-2 h-2 bg-emerald-500 rounded-full"></span>
+               Refund Status
+            </h3>
+            <p className="text-sm text-white font-medium">
+               A full refund of <strong className="text-emerald-400">₹{orderInfo?.finalPrice || orderInfo?.totalPrice || 0}</strong> has been initiated. It will reflect in your original payment method within 3-5 business days.
+            </p>
+         </div>
+
+         <Link href="/" className="px-10 py-5 bg-white text-black text-[11px] font-black uppercase tracking-widest rounded-2xl hover:scale-105 transition-transform">
+           Return Home
+         </Link>
+      </main>
+    );
+  }
+
   return (
     <main className={`min-h-screen bg-background text-white p-8 animate-page relative ${status === 3 || status === 4 ? 'animate-edge-glow' : ''}`}>
       {/* Header */}
@@ -222,15 +285,46 @@ function TrackingContent() {
           </svg>
         </Link>
         <div className="flex items-center gap-3">
+          {status === 1 && cancelSecondsLeft > 0 && (
+            <button
+              onClick={() => setShowCancelConfirmation(true)}
+              className="px-6 py-3 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-black transition-all text-[10px] font-black uppercase tracking-widest rounded-2xl border border-red-500/20 shadow-lg shadow-red-500/10"
+            >
+              Cancel Order ({cancelSecondsLeft}s)
+            </button>
+          )}
           <button 
             onClick={() => setIsChatOpen(true)}
             className="w-12 h-12 bg-[#C9A84C] text-black rounded-full flex items-center justify-center shadow-lg shadow-[#C9A84C]/20 hover:scale-110 transition-transform relative"
           >
             <span className="text-xl">💬</span>
-            {/* Pulsing indicator for active socket/messages could go here */}
           </button>
         </div>
       </div>
+
+      {showCancelConfirmation && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
+           <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setShowCancelConfirmation(false)} />
+           <div className="relative bg-[#1A1A1C] border border-white/10 p-8 rounded-[40px] max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-300">
+              <h3 className="text-xl font-black text-white mb-2">Cancel Order?</h3>
+              <p className="text-xs text-secondary-text mb-8 leading-relaxed font-bold">This action cannot be undone. You will lose your current queue position and any batch discounts.</p>
+              <div className="flex flex-col gap-3">
+                 <button 
+                   onClick={cancelOrderAction}
+                   className="w-full py-4 bg-red-500 text-black font-black uppercase tracking-widest text-[10px] rounded-2xl shadow-xl shadow-red-500/20"
+                 >
+                   Yes, Cancel Order
+                 </button>
+                 <button 
+                   onClick={() => setShowCancelConfirmation(false)}
+                   className="w-full py-4 bg-white/5 text-white font-black uppercase tracking-widest text-[10px] rounded-2xl border border-white/5"
+                 >
+                   Keep My Order
+                 </button>
+              </div>
+           </div>
+        </div>
+      )}
 
 
           {/* ─── Mission Progress Radar (Hybrid Map) ─── */}

@@ -531,15 +531,30 @@ const updateRiderProfile = async (req, res) => {
 
     await partner.save();
 
-    // Broadcast updated profile to admin room only for monitoring
+    // Broadcast updated profile to admin room for monitoring
     const io = req.app.get('io');
-    io.to('admin-room').emit('rider_profile_updated', {
+    const updatePayload = {
       riderId: partner.id,
       name: partner.name,
       photoUrl: partner.photoUrl,
       vehicleType: partner.vehicleType,
       vehicleNumber: partner.vehicleNumber,
       averageRating: partner.averageRating
+    };
+    io.to('admin-room').emit('rider_profile_updated', updatePayload);
+
+    // Also broadcast to all active orders for this rider so customers see live updates
+    const Order = getOrderModel();
+    const activeOrders = await Order.findAll({
+      where: {
+        deliveryPartnerId: partner.id,
+        status: ['Accepted', 'PickedUp', 'Preparing']
+      },
+      attributes: ['id']
+    });
+    
+    activeOrders.forEach(order => {
+      io.to(order.id.toString()).emit('rider_profile_updated', updatePayload);
     });
 
     res.json({ ...partner.toJSON(), _id: partner.id });
