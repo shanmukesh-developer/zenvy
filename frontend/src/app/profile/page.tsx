@@ -294,6 +294,11 @@ export default function ProfilePage() {
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Instant local preview — shows image immediately without waiting for server
+    const localPreviewUrl = URL.createObjectURL(file);
+    setEditData(prev => ({ ...prev, profileImage: localPreviewUrl }));
+
     setIsUploading(true);
     try {
       const formData = new FormData();
@@ -302,10 +307,13 @@ export default function ProfilePage() {
       const res = await fetch(`${API_URL}/api/upload`, { method: 'POST', body: formData });
       const data = await res.json();
       if (data.imageUrl) {
+        // Replace local blob URL with the persistent server URL
+        URL.revokeObjectURL(localPreviewUrl);
         setEditData(prev => ({ ...prev, profileImage: data.imageUrl }));
       }
     } catch {
-      setOverlay({ isOpen: true, title: 'Upload Failed', message: 'Could not upload profile picture.', type: 'error' });
+      // Keep the local preview even if upload fails so user still sees their image
+      setOverlay({ isOpen: true, title: 'Upload Failed', message: 'Could not upload profile picture. Preview is local only.', type: 'error' });
     } finally {
       setIsUploading(false);
     }
