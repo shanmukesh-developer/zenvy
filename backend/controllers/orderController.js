@@ -53,10 +53,14 @@ const createOrder = async (req, res) => {
     const User = getUserModel();
     let currentUser = null;
     try {
-      console.log('Fetching currentUser with ID:', req.user.id, typeof req.user.id);
       currentUser = await User.findByPk(req.user.id);
     } catch (dbErr) {
       console.error('dbErr on User.findByPk:', dbErr.message);
+    }
+
+    // Guard: user must exist in DB (may have been lost after DB reset)
+    if (!currentUser) {
+      return res.status(401).json({ message: 'Account not found. Please logout and re-register.' });
     }
     const Order = getOrderModel();
     
