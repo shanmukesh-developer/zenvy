@@ -102,6 +102,14 @@ const connectDB = async () => {
       console.log(`✅ All tables synced (${isSqlite ? 'Basic' : 'Altered'}).`);
     } else {
       console.log(`✅ Skipping slow sync in production (tables assumed ready).`);
+      // Safe migration: ensure profileImage column is TEXT (not VARCHAR) for base64 storage
+      try {
+        await sequelize.query('ALTER TABLE "Users" ALTER COLUMN "profileImage" TYPE TEXT;');
+        console.log('✅ profileImage column migrated to TEXT.');
+      } catch (migErr) {
+        // Column may already be TEXT — safe to ignore
+        if (!migErr.message?.includes('already')) console.log('ℹ️ profileImage migration skipped:', migErr.message);
+      }
     }
   } catch (error) {
     console.warn('⚠️ PostgreSQL connection failed. Error details:', error.message);

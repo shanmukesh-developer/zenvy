@@ -24,7 +24,7 @@ const initUserModel = (sequelize) => {
     isElite: { type: DataTypes.BOOLEAN, defaultValue: false },
     address: { type: DataTypes.STRING, allowNull: true },
     city: { type: DataTypes.STRING, defaultValue: 'Amaravathi' },
-    profileImage: { type: DataTypes.STRING, allowNull: true },
+    profileImage: { type: DataTypes.TEXT, allowNull: true },
     fcmTokens: { 
       type: DataTypes.TEXT, 
       defaultValue: '[]',

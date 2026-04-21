@@ -295,25 +295,38 @@ export default function ProfilePage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Instant local preview — shows image immediately without waiting for server
+    // Instant local preview
     const localPreviewUrl = URL.createObjectURL(file);
     setEditData(prev => ({ ...prev, profileImage: localPreviewUrl }));
 
     setIsUploading(true);
     try {
-      const formData = new FormData();
-      formData.append('image', file);
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
-      const res = await fetch(`${API_URL}/api/upload`, { method: 'POST', body: formData });
-      const data = await res.json();
-      if (data.imageUrl) {
-        // Replace local blob URL with the persistent server URL
-        URL.revokeObjectURL(localPreviewUrl);
-        setEditData(prev => ({ ...prev, profileImage: data.imageUrl }));
-      }
+      // Convert to base64 data URL — persists in database, survives Render redeploys
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const img = new window.Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          // Resize to max 200x200 to keep data URL small
+          const maxSize = 200;
+          let w = img.width, h = img.height;
+          if (w > h) { h = Math.round(h * maxSize / w); w = maxSize; }
+          else { w = Math.round(w * maxSize / h); h = maxSize; }
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) { reject(new Error('Canvas not supported')); return; }
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', 0.7));
+        };
+        img.onerror = () => reject(new Error('Failed to load image'));
+        img.src = localPreviewUrl;
+      });
+
+      URL.revokeObjectURL(localPreviewUrl);
+      setEditData(prev => ({ ...prev, profileImage: dataUrl }));
     } catch {
-      // Keep the local preview even if upload fails so user still sees their image
-      setOverlay({ isOpen: true, title: 'Upload Failed', message: 'Could not upload profile picture. Preview is local only.', type: 'error' });
+      // Keep the local preview even if conversion fails
+      setOverlay({ isOpen: true, title: 'Upload Failed', message: 'Could not process profile picture.', type: 'error' });
     } finally {
       setIsUploading(false);
     }
