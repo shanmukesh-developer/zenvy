@@ -332,7 +332,7 @@ export default function ProfilePage() {
     }
   };
 
-  const handleLogout = () => { localStorage.removeItem('token'); localStorage.removeItem('user'); router.push('/login'); };
+  const handleLogout = () => { localStorage.removeItem('token'); localStorage.removeItem('user'); localStorage.removeItem('zenvy_cart'); router.push('/login'); };
 
   if (loading) return <div className="min-h-screen bg-black flex items-center justify-center font-black text-primary-yellow uppercase tracking-[0.5em]">Syncing...</div>;
 

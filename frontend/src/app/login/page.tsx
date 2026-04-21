@@ -41,6 +41,7 @@ export default function LoginPage() {
       const data = await response.json();
 
       if (response.ok) {
+        localStorage.removeItem('zenvy_cart'); // Clear stale cart from previous session
         localStorage.setItem('token', data.token);
         localStorage.setItem('user', JSON.stringify({ 
           id: data._id, 
