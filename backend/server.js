@@ -78,7 +78,7 @@ app.use(cors({
   origin: function(origin, callback) { callback(null, origin || '*'); },
   credentials: true
 }));
-app.use(express.json());
+app.use(express.json({ limit: '5mb' }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Connect to PostgreSQL, then initialize routes
