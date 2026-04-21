@@ -199,7 +199,7 @@ export default function CheckoutPage() {
       }
 
       const orderData = {
-        restaurantId: cart[0]?.restaurantId || '65f1a2b3c4d5e6f7a8b9c0d1',
+        restaurantId: cart[0]?.restaurantId,
         items: cart.map(item => ({
           menuItemId: item.id,
           name: item.name,

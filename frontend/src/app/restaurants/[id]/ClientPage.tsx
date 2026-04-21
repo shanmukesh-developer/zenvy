@@ -99,7 +99,7 @@ export default function RestaurantMenuClient({ restaurantId }: { restaurantId: s
       name: item.name,
       price: item.price,
       image: item.image || item.imageUrl || "",
-      restaurantId: restaurant._id,
+      restaurantId: restaurant.id || restaurant._id,
       restaurantName: restaurant.name,
     });
     setAddedId(item.id || item._id || null);
