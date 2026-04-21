@@ -26,7 +26,16 @@ const createOrder = async (req, res) => {
     }
 
     // ── Dynamic Delivery Fee Calculation ──────────────────────
-    const { isSurgeActive, SURGE_MULTIPLIER } = require('../server');
+    let isSurge = false;
+    let surgeMult = 1.25;
+    try {
+      const serverModule = require('../server');
+      if (typeof serverModule.isSurgeActive === 'function') {
+        isSurge = serverModule.isSurgeActive(restaurant.zone);
+      }
+      if (serverModule.SURGE_MULTIPLIER) surgeMult = serverModule.SURGE_MULTIPLIER;
+    } catch (_e) { /* server module not ready — skip surge */ }
+
     const { getMatrixDistance } = require('../utils/distance');
     const matrix = await getMatrixDistance(restaurant.location, deliveryAddress || 'Amaravathi');
     const distanceKm = matrix.distance;
@@ -36,9 +45,8 @@ const createOrder = async (req, res) => {
     let calculatedFee = Math.max(25, Math.round(25 + Math.max(0, distanceKm - 2) * 10));
     
     // Apply Surge Multiplier (Zone-Aware)
-    const isSurge = isSurgeActive(restaurant.zone);
     if (isSurge) {
-      calculatedFee = Math.round(calculatedFee * SURGE_MULTIPLIER);
+      calculatedFee = Math.round(calculatedFee * surgeMult);
     }
 
     // ── Multi-Order Batching (Efficiency Engine) ──────────
@@ -198,10 +206,12 @@ const createOrder = async (req, res) => {
     }
 
     const io = req.app.get('io');
-    const { checkSurgeState } = require('../server');
-    if (checkSurgeState) {
-      checkSurgeState(io, restaurant.zone || 'Amaravathi_Central');
-    }
+    try {
+      const { checkSurgeState } = require('../server');
+      if (typeof checkSurgeState === 'function') {
+        checkSurgeState(io, restaurant.zone || 'Amaravathi_Central');
+      }
+    } catch (_e) { /* surge check not critical */ }
 
     // Emit block order pulse for map UI
     try {
@@ -308,11 +318,12 @@ const createOrder = async (req, res) => {
     }
 
   } catch (error) {
+    console.error('[ORDER_CREATE_ERROR]', error.stack || error);
     const fs = require('fs');
     const path = require('path');
     const logPath = path.join(__dirname, '..', 'socket_debug.txt');
     fs.appendFileSync(logPath, `[${new Date().toISOString()}] [ORDER_CREATE_ERROR] Full Error: ${error.stack || error}\n`);
-    res.status(400).json({ message: 'Invalid order data', error: error.message });
+    res.status(400).json({ message: error.message || 'Invalid order data', error: error.message });
   }
 };
 
