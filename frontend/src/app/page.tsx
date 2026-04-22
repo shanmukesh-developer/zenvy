@@ -238,20 +238,33 @@ export default function Home() {
   }, [activeOrder, cancelSecondsLeft]);
   useEffect(() => {
     if (!user) return;
-    const handleEliteUpdate = (data: { type: string; data: { userId: string; isElite: boolean } }) => {
-      const userId = user?._id || user?.id;
-      if (data.type === 'USER_ELITE_STATUS' && data.data.userId === userId) {
-         setIsElite(data.data.isElite);
-         const stored = localStorage.getItem('user');
-         if (stored) {
-           const parsed = JSON.parse(stored);
-           parsed.isElite = data.data.isElite;
-           localStorage.setItem('user', JSON.stringify(parsed));
-         }
+    const handleSystemUpdate = (payload: { type: string; data: any }) => {
+      if (payload.type === 'USER_ELITE_STATUS') {
+        const userId = user?._id || user?.id;
+        if (payload.data.userId === userId) {
+          setIsElite(payload.data.isElite);
+          const stored = localStorage.getItem('user');
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            parsed.isElite = payload.data.isElite;
+            localStorage.setItem('user', JSON.stringify(parsed));
+          }
+        }
+      } else if (payload.type === 'RESTAURANT_CREATED') {
+        setLiveRestaurants(prev => {
+          // Prevent duplicates
+          const exists = prev.some(r => (r._id || r.id) === (payload.data._id || payload.data.id));
+          if (exists) return prev;
+          return [...prev, payload.data];
+        });
+      } else if (payload.type === 'RESTAURANT_UPDATED') {
+        setLiveRestaurants(prev => prev.map(r => 
+          (r._id || r.id) === (payload.data._id || payload.data.id) ? payload.data : r
+        ));
       }
     };
-    socket.on('systemUpdate', handleEliteUpdate);
-    return () => { socket.off('systemUpdate', handleEliteUpdate); };
+    socket.on('systemUpdate', handleSystemUpdate);
+    return () => { socket.off('systemUpdate', handleSystemUpdate); };
   }, [user]);
 
   // Tick down cancellation countdown removed from Home to avoid global re-renders
