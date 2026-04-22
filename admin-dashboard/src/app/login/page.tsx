@@ -27,7 +27,7 @@ export default function AdminLoginPage() {
         size: 'invisible',
       });
       setVerifier(v);
-    } catch (_err) {
+    } catch {
       console.warn('Firebase Recaptcha initialization failed (likely missing/invalid API Key). Developer bypass will be used.');
     }
   }, []);
