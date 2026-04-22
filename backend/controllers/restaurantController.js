@@ -113,7 +113,7 @@ const toggleMenuItemAvailability = async (req, res) => {
   try {
     const MenuItem = getMenuItemModel();
     const item = await MenuItem.findByPk(req.params.itemId);
-    if (!item) return res.status(404).json({ message: 'Menu item not found' });
+    if (!item) return res.status(401).json({ message: 'Menu data missing or session stale (Nexus Sync Required)' });
 
     item.isAvailable = !item.isAvailable;
     await item.save();
@@ -134,7 +134,7 @@ const updateMenuItemTags = async (req, res) => {
   try {
     const MenuItem = getMenuItemModel();
     const item = await MenuItem.findByPk(req.params.itemId);
-    if (!item) return res.status(404).json({ message: 'Menu item not found' });
+    if (!item) return res.status(401).json({ message: 'Menu data missing or session stale (Nexus Sync Required)' });
 
     item.tags = tags;
     await item.save();

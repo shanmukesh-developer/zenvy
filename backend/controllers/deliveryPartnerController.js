@@ -482,7 +482,7 @@ const getRiderProfile = async (req, res) => {
     const partner = await DeliveryPartner.findByPk(req.user.id, {
       attributes: { exclude: ['password', 'fcmTokens'] }
     });
-    if (!partner) return res.status(404).json({ message: 'Rider not found' });
+    if (!partner) return res.status(401).json({ message: 'Rider account not found (Nexus Session Expired)' });
     res.json({ ...partner.toJSON(), _id: partner.id });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -520,7 +520,7 @@ const updateRiderProfile = async (req, res) => {
     const { name, vehicleType, vehicleNumber, bio, emergencyContact, photoUrl } = req.body;
     const DeliveryPartner = getDeliveryPartnerModel();
     const partner = await DeliveryPartner.findByPk(req.user.id);
-    if (!partner) return res.status(404).json({ message: 'Rider not found' });
+    if (!partner) return res.status(401).json({ message: 'Rider account not found (Nexus Session Expired)' });
 
     if (name) partner.name = name;
     if (vehicleType !== undefined) partner.vehicleType = vehicleType;

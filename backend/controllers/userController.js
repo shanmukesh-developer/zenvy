@@ -120,7 +120,7 @@ const saveFcmToken = async (req, res) => {
       await user.save();
       res.json({ message: 'FCM Token saved' });
     } else {
-      res.status(404).json({ message: 'User not found' });
+      res.status(401).json({ message: 'Account not found (Nexus Session Expired)' });
     }
   } catch (error) {
     console.error('[FCM_ERROR]', error);
@@ -154,7 +154,7 @@ const getUserProfile = async (req, res) => {
         completedOrders: user.completedOrders || 0
       });
     } else {
-      res.status(404).json({ message: 'User not found' });
+      res.status(401).json({ message: 'Account not found (Nexus Session Expired)' });
     }
   } catch (error) {
     console.error('[PROFILE_ERROR]', error);
@@ -199,7 +199,7 @@ const updateUserProfile = async (req, res) => {
         token: generateToken(user.id, user.role)
       });
     } else {
-      res.status(404).json({ message: 'User not found' });
+      res.status(401).json({ message: 'Account not found (Nexus Session Expired)' });
     }
   } catch (error) {
     console.error('[UPDATE_PROFILE_ERROR]', error);

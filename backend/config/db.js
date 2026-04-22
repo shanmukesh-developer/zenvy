@@ -113,7 +113,7 @@ const connectDB = async () => {
       await sequelize.sync({ alter: false });
       
       // Auto-check for empty DB to help user identify missing data
-      const Restaurant = instance.models.Restaurant;
+      const Restaurant = sequelize.models.Restaurant;
       if (Restaurant) {
         const count = await Restaurant.count();
         if (count === 0) {
