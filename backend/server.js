@@ -117,7 +117,12 @@ const startServer = async () => {
     const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
     app.post('/api/upload', upload.single('image'), (req, res) => {
       if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
-      const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 5005}`;
+      
+      // Dynamic Host Detection: Use request protocol/host if BASE_URL is missing
+      const protocol = req.protocol === 'http' && req.get('x-forwarded-proto') ? req.get('x-forwarded-proto') : req.protocol;
+      const host = req.get('host');
+      const baseUrl = process.env.BASE_URL || `${protocol}://${host}`;
+      
       const imageUrl = `${baseUrl}/uploads/${req.file.filename}`;
       res.json({ imageUrl });
     });
