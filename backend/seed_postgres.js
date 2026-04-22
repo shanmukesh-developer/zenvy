@@ -88,7 +88,9 @@ const seed = async () => {
     const Order = getOrderModel();
     const VaultItem = initVaultItemModel(getSequelize());
     
-    await getSequelize().sync({ force: true });
+    // DANGER: Never use { force: true } in a global seed script that might be run on production.
+    // Switching to { alter: true } which is much safer.
+    await getSequelize().sync({ alter: true });
 
     await MenuItem.destroy({ where: {} });
     await Restaurant.destroy({ where: {} });

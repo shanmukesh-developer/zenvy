@@ -167,23 +167,28 @@ export default function AdminHome() {
     fetchStats();
     fetchOrders();
 
-    const socket = io(SOCKET_URL, {
-      transports: ['websocket']
+    const socket = io(SOCKET_URL.replace(/\/$/, ""), {
+      transports: ['websocket'],
+      withCredentials: true,
+      autoConnect: true,
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
     });
     socketRef.current = socket;
     socket.emit('joinAdmin');
     
-    socket.on('newOrder', (order: { id: string, drop: string, finalPrice?: number, totalPrice: number }) => {
+    socket.on('admin_newOrder', (order: { id: string, drop: string, finalPrice?: number, totalPrice: number, restaurant?: string, customer?: string, paymentMethod?: string }) => {
       fetchStats();
       setLiveOrders(prev => [{
         id: order.id,
-        customer: 'Nexus Intel',
-        location: order.drop,
+        customer: order.customer || 'Student',
+        location: order.drop || 'Unknown',
         status: 'Pending',
         price: order.finalPrice || order.totalPrice,
-        restaurant: 'Zenvy Elite',
+        restaurant: order.restaurant || 'Zenvy Elite',
         timestamp: new Date(),
-        paymentMethod: 'COD',
+        paymentMethod: order.paymentMethod || 'COD',
         upiStatus: 'Verified'
       }, ...prev].slice(0, 20));
     });

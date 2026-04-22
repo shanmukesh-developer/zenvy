@@ -6,10 +6,13 @@ const code = fs.readFileSync('frontend/src/data/restaurants.ts', 'utf8');
 const urlRegex = /(?:https:\/\/images\.unsplash\.com\/|https:\/\/picsum\.photos\/|https:\/\/images\.pexels\.com\/)[^"'\s?]+(?:\?[^"'\s]*)?/g;
 const localRegex = /"\/assets\/[^"']+"/g;
 
-const urls = [...new Set(code.match(urlRegex) || [])];
+const seedCode = fs.readFileSync('backend/scripts/unified_seed.js', 'utf8');
+const vaultUrls = [...new Set(seedCode.match(urlRegex) || [])];
+
+const urls = [...new Set([...(code.match(urlRegex) || []), ...vaultUrls])];
 const localPaths = [...new Set((code.match(localRegex) || []).map(p => p.slice(1, -1)))];
 
-console.log(`Found ${urls.length} remote URLs and ${localPaths.length} local paths to test.`);
+console.log(`Found ${urls.length} remote URLs (including Vault) and ${localPaths.length} local paths to test.`);
 
 let broken = [];
 let complete = 0;

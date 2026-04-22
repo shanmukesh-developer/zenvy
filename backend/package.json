@@ -4,8 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js",
+    "start": "node scripts/unified_seed.js && node server.js",
+    "dev": "node scripts/unified_seed.js && nodemon server.js",
     "seed:rider": "node seed_mock_rider.js",
     "seed:full": "node scripts/unified_seed.js",
     "lint": "eslint .",

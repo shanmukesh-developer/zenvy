@@ -103,7 +103,7 @@ const acceptOrder = async (req, res) => {
     }
 
     const io = req.app.get('io');
-    io.to(updatedOrder.id.toString()).emit('statusUpdated', 'Accepted');
+    io.to(updatedOrder.id.toString()).emit('statusUpdated', { id: updatedOrder.id, status: 'Accepted' });
 
     try {
       const User = getUserModel();
@@ -193,13 +193,11 @@ const getOrderHistory = async (req, res) => {
   try {
     const Order = getOrderModel();
     const Restaurant = getRestaurantModel();
-    const { Op } = require('sequelize');
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-
+    // Remove 24-hour filter to allow full history visibility across sessions
     const orders = await Order.findAll({
-      where: { deliveryPartnerId: req.user.id, status: 'Delivered', updatedAt: { [Op.gte]: twentyFourHoursAgo } },
+      where: { deliveryPartnerId: req.user.id, status: 'Delivered' },
       order: [['updatedAt', 'DESC']],
-      limit: 50
+      limit: 100 // Increased limit for better history visibility
     });
 
     const restIds = [...new Set(orders.map(o => o.restaurantId))];
@@ -309,7 +307,8 @@ const updateOrderStatus = async (req, res) => {
 
     const io = req.app.get('io');
     io.to(order.id.toString()).emit('statusUpdated', { 
-      status, 
+      id: order.id,
+      status: 'Delivered',
       newBadges: status === 'Delivered' ? (order.newBadges || []) : [] 
     });
     res.json({ ...order.toJSON(), _id: order.id });

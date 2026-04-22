@@ -9,16 +9,16 @@ async function run() {
   // 1. Fetch Restaurants
   let resData;
   try {
-    const res = await fetch(`${serverUrl}/api/restaurants`);
+    const res = await fetch(`${serverUrl}/api/users/restaurants`);
     resData = await res.json();
   } catch (err) {
     console.error("Failed to fetch restaurants:", err.message);
     process.exit(1);
   }
 
-  const restaurant = resData.find(r => r.name === 'Sweet Boutique');
+  const restaurant = resData.find(r => r.name === 'Nexus Omni-Kitchen' || r.name === 'Sweet Boutique');
   if (!restaurant) {
-    console.error("Sweet Boutique not found in active restaurants.");
+    console.error("Target restaurant not found in active restaurants.");
     process.exit(1);
   }
 
@@ -89,6 +89,11 @@ async function run() {
         process.exit(1);
     }
 
+    const menuRes = await fetch(`${serverUrl}/api/restaurants/${restaurant.id}/menu`);
+    const menuData = await menuRes.json();
+    const menuItem = menuData[0] || { id: 'fallback', name: 'Fallback Item', price: 100 };
+
+
     const orderRes = await fetch(`${serverUrl}/api/orders`, {
       method: 'POST',
       headers: {
@@ -97,12 +102,14 @@ async function run() {
       },
       body: JSON.stringify({
         restaurantId: restaurant.id,
-        items: [{ id: restaurant.menu[0].id || 'item1', quantity: 1, price: 50, name: 'Sweets' }],
+        items: [{ id: menuItem.id, quantity: 1, price: menuItem.price, name: menuItem.name }],
+        totalPrice: menuItem.price,
         paymentMethod: 'COD'
       })
     });
     
     const orderData = await orderRes.json();
+    console.log(`Order response payload:`, orderData);
     console.log(`Order created: ${orderData._id || orderData.id}`);
     
     customerSocket.emit('joinOrder', orderData._id || orderData.id);

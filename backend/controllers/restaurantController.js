@@ -10,12 +10,24 @@ const restaurantLogin = async (req, res) => {
   try {
     // UUID basic validation
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(id)) {
-      return res.status(400).json({ message: 'Invalid Restaurant ID format' });
-    }
+    const isUuid = uuidRegex.test(id);
 
     const Restaurant = getRestaurantModel();
-    const restaurant = await Restaurant.findByPk(id);
+    let restaurant;
+
+    if (isUuid) {
+      restaurant = await Restaurant.findByPk(id);
+    } else {
+      // Fallback: Try finding by name (case-insensitive for better UX)
+      const { Op } = require('sequelize');
+      const dialect = Restaurant.sequelize.getDialect();
+      const operator = dialect === 'postgres' ? Op.iLike : Op.like;
+      
+      restaurant = await Restaurant.findOne({ 
+        where: { name: { [operator]: id } } 
+      });
+    }
+
     if (!restaurant) return res.status(404).json({ message: 'Restaurant not found' });
     
     if (restaurant.password) {

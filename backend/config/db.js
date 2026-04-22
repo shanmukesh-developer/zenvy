@@ -85,7 +85,7 @@ const connectDB = async () => {
       }
     });
   } else {
-    console.log('📡 Connecting to PostgreSQL Nexus...');
+    console.log('📡 Connecting to PostgreSQL Nexus (with Resilience)...');
     sequelize = new Sequelize(dbUrl, {
       dialect: 'postgres',
       dialectOptions: {
@@ -93,6 +93,25 @@ const connectDB = async () => {
           require: true,
           rejectUnauthorized: false
         }
+      },
+      pool: {
+        max: 5,
+        min: 0,
+        acquire: 30000,
+        idle: 10000
+      },
+      retry: {
+        match: [
+          /SequelizeConnectionError/,
+          /SequelizeConnectionRefusedError/,
+          /SequelizeHostNotFoundError/,
+          /SequelizeHostNotReachableError/,
+          /SequelizeInvalidConnectionError/,
+          /SequelizeConnectionTimedOutError/,
+          /TimeoutError/,
+          /ECONNRESET/
+        ],
+        max: 3
       },
       logging: false
     });
@@ -138,7 +157,15 @@ const connectDB = async () => {
     }
     
     console.log('🔄 Fallback: Triggering Emergency SQLite (Dev Only)...');
-    // ... rest of the code is unchanged but I should verify the flow
+    const sqlitePath = path.join(__dirname, '..', 'local_dev.sqlite');
+    sequelize = new Sequelize({
+      dialect: 'sqlite',
+      storage: sqlitePath,
+      logging: false
+    });
+    initializeAllModels(sequelize);
+    await sequelize.sync({ alter: true });
+    console.log('✅ [DB_FALLBACK] Emergency SQLite is now active with models.');
   }
 };
 

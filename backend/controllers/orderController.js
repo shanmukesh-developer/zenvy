@@ -319,7 +319,16 @@ const createOrder = async (req, res) => {
         totalPrice: createdOrder.totalPrice,
         address: createdOrder.deliveryAddress
       });
-      io.emit('admin_newOrder', { id: createdOrder.id, restaurant: restaurant.name, status: createdOrder.status });
+      io.emit('admin_newOrder', { 
+        id: createdOrder.id, 
+        restaurant: restaurant.name, 
+        customer: currentUser?.name || 'Student',
+        status: createdOrder.status,
+        drop: createdOrder.deliveryAddress,
+        totalPrice: createdOrder.totalPrice,
+        finalPrice: createdOrder.finalPrice,
+        paymentMethod: createdOrder.paymentMethod
+      });
     }
 
   } catch (error) {
@@ -344,8 +353,12 @@ const restaurantAcceptOrder = async (req, res) => {
     await order.save();
 
     const io = req.app.get('io');
-    io.emit('statusUpdated', { orderId: order.id, status: 'Accepted' });
-    io.to(order.id.toString()).emit('statusUpdated', 'Accepted');
+    const statusPayload = { 
+      id: order.id, 
+      status: 'Accepted' 
+    };
+    io.emit('statusUpdated', statusPayload);
+    io.to(order.id.toString()).emit('statusUpdated', statusPayload);
 
     // Fetch Restaurant to broadcast details to riders
     const Restaurant = getRestaurantModel();
@@ -553,8 +566,9 @@ const cancelOrder = async (req, res) => {
     }
 
     const io = req.app.get('io');
+    const statusPayload = { id: order.id, status: 'Cancelled' };
     io.emit('orderCancelled', { orderId: order.id });
-    io.to(order.id.toString()).emit('statusUpdated', 'Cancelled');
+    io.to(order.id.toString()).emit('statusUpdated', statusPayload);
 
     res.json({ message: 'Order cancelled', orderId: order.id });
   } catch (error) {
@@ -608,15 +622,13 @@ const updateOrderStatus = async (req, res) => {
     await order.save();
 
     const io = req.app.get('io');
-    io.emit('statusUpdated', { 
-      orderId: order.id, 
+    const statusPayload = { 
+      id: order.id, 
       status,
       newBadges: status === 'Delivered' ? (order.newBadges || []) : []
-    });
-    io.to(order.id.toString()).emit('statusUpdated', {
-      status,
-      newBadges: status === 'Delivered' ? (order.newBadges || []) : []
-    });
+    };
+    io.emit('statusUpdated', statusPayload);
+    io.to(order.id.toString()).emit('statusUpdated', statusPayload);
 
     // 🟢 WhatsApp Integration: Status Update to Customer
     try {
@@ -667,8 +679,9 @@ const verifyUPIPayment = async (req, res) => {
     await order.save();
     
     const io = req.app.get('io');
-    io.emit('statusUpdated', { orderId: order.id, status: order.status });
-    io.to(order.id.toString()).emit('statusUpdated', order.status);
+    const statusPayload = { id: order.id, status: order.status };
+    io.emit('statusUpdated', statusPayload);
+    io.to(order.id.toString()).emit('statusUpdated', statusPayload);
 
     res.json({ message: `Payment ${isVerified ? 'Verified' : 'Rejected'}`, orderId: order.id, status: order.status });
   } catch (error) {

@@ -52,7 +52,8 @@ const seed = async () => {
     const User = getUserModel();
     const DeliveryPartner = getDeliveryPartnerModel();
     
-    await getSequelize().sync({ force: true });
+    // DANGER: Never use { force: true } in a global seed script that might be run on production.
+    await getSequelize().sync({ alter: true });
 
     await MenuItem.destroy({ where: {} });
     await Restaurant.destroy({ where: {} });

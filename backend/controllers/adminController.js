@@ -200,11 +200,14 @@ exports.getAllMenuItems = async (req, res) => {
 exports.createRestaurant = async (req, res) => {
   try {
     const Restaurant = getRestaurantModel();
-    const restaurant = await Restaurant.create(req.body);
+    const data = { ...req.body };
+    delete data._id; // Ensure we don't try to insert a custom string ID into UUID field
+    const restaurant = await Restaurant.create(data);
     broadcastSystemUpdate(req, 'RESTAURANT_CREATED', restaurant);
     await logAuditAction(req, restaurant.id, 'CREATE_RESTAURANT', { name: restaurant.name });
     res.status(201).json({ ...restaurant.toJSON(), _id: restaurant.id });
   } catch (error) {
+    console.error('[CREATE_REST_ERROR]', error);
     res.status(400).json({ message: error.message });
   }
 };
@@ -409,24 +412,40 @@ exports.seedDatabase = async (req, res) => {
     const Restaurant = getRestaurantModel();
     const MenuItem = getMenuItemModel();
 
-    await MenuItem.destroy({ where: {} });
-    await Restaurant.destroy({ where: {} });
+    console.log(`[SEED] Processing ${restaurants.length} nodes...`);
 
     for (const restData of restaurants) {
-      const restaurant = await Restaurant.create({
-        name: restData.name,
-        location: restData.location || 'Main Campus',
-        imageUrl: restData.imageUrl || restData.image,
-        vendorType: restData.vendorType || 'RESTAURANT',
-        commissionRate: restData.commissionRate || 10,
-        commissionType: restData.commissionType || 'percentage',
-        operatingHours: restData.operatingHours || { start: '09:00', end: '22:00' },
-        isActive: restData.isActive !== undefined ? restData.isActive : true,
-        tags: restData.categories || restData.tags || []
-      });
+      // Use UPSERT by name to avoid foreign key violations with Orders
+      // PostgreSQL requires a unique constraint for true upsert, 
+      // but we'll do 1: Find/Delete-Item or 2: Generic Create
+      
+      let restaurant = await Restaurant.findOne({ where: { name: restData.name } });
+      
+      if (!restaurant) {
+        restaurant = await Restaurant.create({
+          name: restData.name,
+          location: restData.location || 'Main Campus',
+          imageUrl: restData.imageUrl || restData.image,
+          vendorType: restData.vendorType || 'RESTAURANT',
+          commissionRate: restData.commissionRate || 10,
+          commissionType: restData.commissionType || 'percentage',
+          operatingHours: restData.operatingHours || { start: '09:00', end: '22:00' },
+          isActive: restData.isActive !== undefined ? restData.isActive : true,
+          tags: restData.categories || restData.tags || []
+        });
+      } else {
+        // Update existing to refresh images/tags
+        await restaurant.update({
+          imageUrl: restData.imageUrl || restData.image,
+          vendorType: restData.vendorType || 'RESTAURANT',
+          tags: restData.categories || restData.tags || []
+        });
+      }
 
       if (restData.menu && Array.isArray(restData.menu)) {
-        // Auto-generate tags from vendorType for frontend filtering
+        // Clear items only for THIS restaurant to preserve DB integrity
+        await MenuItem.destroy({ where: { restaurantId: restaurant.id } });
+
         const vendorTagMap = {
           'PHARMACY': ['pharmacy', 'medicine'],
           'STATIONARY': ['stationary', 'books'],
@@ -464,10 +483,10 @@ exports.seedDatabase = async (req, res) => {
     }
 
     broadcastSystemUpdate(req, 'DATABASE_SEEDED', { count: restaurants.length });
-    res.json({ message: `Successfully seeded ${restaurants.length} restaurants.` });
+    res.json({ message: `Successfully synchronized ${restaurants.length} restaurants.` });
   } catch (error) {
     console.error('[SEED_ERROR]', error);
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: `Database Sync failed: ${error.message}` });
   }
 };
 

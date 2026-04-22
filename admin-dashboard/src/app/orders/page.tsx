@@ -73,7 +73,7 @@ export default function OrdersPage() {
       transports: ['websocket']
     });
     
-    socket.on('newOrder', () => { fetchOrders(); });
+    socket.on('admin_newOrder', () => { fetchOrders(); });
     socket.on('statusUpdated', () => { fetchOrders(); });
     socket.on('orderCancelled', () => { fetchOrders(); });
 

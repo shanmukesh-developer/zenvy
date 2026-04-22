@@ -192,11 +192,14 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
   }, [fetchActiveOrders, fetchPendingOrders, fetchHistory, fetchTodayStats, isOnline]);
 
   useEffect(() => {
-    const socket = io(apiUrl, {
+    const socket = io(apiUrl.replace(/\/$/, ""), {
       auth: { token: driverToken, role: 'rider', driverId: currentDriver._id, name: currentDriver.name },
       transports: ['websocket'],
-      reconnectionAttempts: 10,
-      reconnectionDelay: 2000
+      withCredentials: true,
+      autoConnect: true,
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
     });
     socketRef.current = socket;
 
