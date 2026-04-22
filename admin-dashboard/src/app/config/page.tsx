@@ -55,7 +55,7 @@ export default function ConfigTerminal() {
   const rawShifts = configs.find(c => c.key === 'delivery_shifts')?.value;
   const shifts = Array.isArray(rawShifts) ? rawShifts : ['13:00', '19:30'];
 
-  if (loading) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Synchronizing Config...</div>;
+  if (!isAuthed || loading) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Synchronizing Config...</div>;
 
   return (
     <div className="space-y-10 animate-fade-in relative pb-20">

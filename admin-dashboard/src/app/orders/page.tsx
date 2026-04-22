@@ -91,6 +91,8 @@ export default function OrdersPage() {
     }
   };
 
+  if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Authenticating...</div>;
+
   return (
     <div className="space-y-8 animate-fade-in relative pb-20">
       <div className="flex items-center justify-between">

@@ -70,6 +70,8 @@ export default function VaultTerminal() {
     }
   };
 
+  if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Authenticating...</div>;
+
   return (
     <div className="space-y-10 animate-fade-in relative pb-20">
       <header className="flex justify-between items-center bg-white/5 p-8 rounded-[40px] border border-white/5 glass">
