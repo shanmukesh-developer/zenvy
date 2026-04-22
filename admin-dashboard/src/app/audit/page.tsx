@@ -18,8 +18,6 @@ export default function AuditPage() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
 
-  if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Authenticating...</div>;
-
   useEffect(() => {
     const fetchLogs = async () => {
       try {
@@ -37,6 +35,8 @@ export default function AuditPage() {
     };
     fetchLogs();
   }, []);
+
+  if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Authenticating...</div>;
 
   return (
     <div className="space-y-8 animate-fade-in relative pb-20">

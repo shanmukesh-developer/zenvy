@@ -28,8 +28,6 @@ export default function UserManagement() {
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState<'roster' | 'audit'>('roster');
 
-  if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Authenticating...</div>;
-
   useEffect(() => {
     fetchUsers();
     fetchLogs();
@@ -74,6 +72,8 @@ export default function UserManagement() {
     u.email?.toLowerCase().includes(search.toLowerCase()) ||
     u.phoneNumber?.toLowerCase().includes(search.toLowerCase())
   );
+
+  if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Authenticating...</div>;
 
   return (
     <div className="space-y-10 animate-fade-in relative pb-20">

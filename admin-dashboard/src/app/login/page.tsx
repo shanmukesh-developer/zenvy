@@ -84,6 +84,11 @@ export default function AdminLoginPage() {
         });
         const data = await response.json();
         if (response.ok) {
+          if (data.role !== 'admin') {
+            setError('Access Denied: You do not have administrative privileges.');
+            setLoading(false);
+            return;
+          }
           localStorage.setItem('token', data.token);
           localStorage.setItem('user', JSON.stringify({ id: data._id, name: data.name, role: data.role }));
           router.push('/');

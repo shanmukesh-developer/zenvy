@@ -14,8 +14,6 @@ export default function BlockWarsHUD() {
   const [stats, setStats] = useState<BlockStats[]>([]);
   const [loading, setLoading] = useState(true);
 
-  if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Authenticating...</div>;
-
   useEffect(() => {
     let mounted = true;
     let fallbackTimer: NodeJS.Timeout;
@@ -54,6 +52,8 @@ export default function BlockWarsHUD() {
   }, []);
 
   const maxCount = Math.max(...stats.map(s => s.count), 1);
+
+  if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Authenticating...</div>;
 
   return (
     <div className="space-y-10 animate-fade-in relative pb-20">

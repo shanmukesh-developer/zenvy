@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { io } from 'socket.io-client';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
+import { useAdminAuth } from '@/utils/useAdminAuth';
 import PaymentVerificationModal from '@/components/PaymentVerificationModal';
 import Image from 'next/image';
 
@@ -66,23 +67,7 @@ interface OperationalEvent {
 
 export default function AdminHome() {
   const router = useRouter();
-
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    const userData = localStorage.getItem('user');
-    if (!token || !userData) {
-      router.push('/login');
-      return;
-    }
-    try {
-      const user = JSON.parse(userData);
-      if (user.role !== 'admin') {
-        router.push('/login');
-      }
-    } catch {
-      router.push('/login');
-    }
-  }, [router]);
+  const isAuthed = useAdminAuth();
 
   const [stats, setStats] = useState<AdminStat[]>([
     { label: 'Platform Revenue', value: '₹0', growth: '+0%', trend: 'neutral' },
@@ -285,6 +270,10 @@ export default function AdminHome() {
 
     return () => { socket.disconnect(); };
   }, [fetchStats, fetchOrders, router]);
+
+  if (!isAuthed) {
+    return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Authenticating Command Terminal...</div>;
+  }
 
   return (
     <div className="space-y-12 animate-fade-in relative pb-20">

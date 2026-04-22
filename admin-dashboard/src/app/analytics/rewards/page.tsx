@@ -27,8 +27,6 @@ export default function RewardsAnalytics() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
 
-  if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Authenticating...</div>;
-
   useEffect(() => {
     fetch('http://localhost:5005/api/admin/rewards-analytics', {
       headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
@@ -46,6 +44,8 @@ export default function RewardsAnalytics() {
       <div className="w-12 h-12 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin" />
     </div>
   );
+
+  if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Authenticating...</div>;
 
   if (!data) return <div>Failed to load intelligence.</div>;
 

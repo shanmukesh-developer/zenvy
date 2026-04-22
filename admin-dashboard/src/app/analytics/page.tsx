@@ -26,8 +26,6 @@ export default function AnalyticsIntel() {
   const [rewards, setRewards] = useState<RewardStats | null>(null);
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
 
-  if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Authenticating...</div>;
-
   useEffect(() => {
      const fetchStats = async () => {
        try {
@@ -71,6 +69,8 @@ export default function AnalyticsIntel() {
       }, 10000); // Polling every 10s
       return () => clearInterval(interval);
    }, [API_URL]);
+
+  if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Authenticating...</div>;
 
   return (
     <div className="space-y-12 animate-fade-in relative pb-20">

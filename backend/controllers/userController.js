@@ -94,6 +94,7 @@ const authUser = async (req, res) => {
       profileImage: user.profileImage || null,
       badges: user.badges || [],
       completedOrders: user.completedOrders || 0,
+      role: user.role,
       token: generateToken(user.id, user.role)
     });
   } catch (error) {

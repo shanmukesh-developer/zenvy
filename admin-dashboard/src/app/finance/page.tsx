@@ -19,8 +19,6 @@ export default function FinanceConsole() {
   const [report, setReport] = useState<{ transactions: Transaction[], totalRevenue: number, totalCommission: number } | null>(null);
   const [loading, setLoading] = useState(true);
 
-  if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Authenticating...</div>;
-
   useEffect(() => {
     fetchFinanceData();
   }, []);
@@ -39,6 +37,8 @@ export default function FinanceConsole() {
       setLoading(false);
     }
   };
+
+  if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Authenticating...</div>;
 
   return (
     <div className="space-y-10 animate-fade-in relative pb-20">
