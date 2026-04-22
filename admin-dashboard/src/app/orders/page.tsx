@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from 'react';
 import { io } from 'socket.io-client';
+import { useAdminAuth } from '@/utils/useAdminAuth';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5005';
@@ -26,6 +27,7 @@ interface Order {
 }
 
 export default function OrdersPage() {
+  const isAuthed = useAdminAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);

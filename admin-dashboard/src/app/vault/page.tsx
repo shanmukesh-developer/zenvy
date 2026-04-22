@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
+import { useAdminAuth } from '@/utils/useAdminAuth';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
 
@@ -15,6 +16,7 @@ interface VaultItem {
 }
 
 export default function VaultTerminal() {
+  const isAuthed = useAdminAuth();
   const [items, setItems] = useState<VaultItem[]>([]);
   const [loading, setLoading] = useState(true);
 

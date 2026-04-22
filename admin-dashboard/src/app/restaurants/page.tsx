@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from 'react';
 import Image from 'next/image';
+import { useAdminAuth } from '@/utils/useAdminAuth';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
 
@@ -172,6 +173,7 @@ interface MenuItem {
 }
 
 export default function GourmetManagement() {
+  const isAuthed = useAdminAuth();
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
@@ -292,6 +294,7 @@ export default function GourmetManagement() {
         body: JSON.stringify({ 
           ...newItem, 
           image: finalImageUrl,
+          imageUrl: finalImageUrl,
           restaurantId: selectedRestaurant._id,
           tags: newItem.tags.split(',').map(t => t.trim()).filter(t => t),
           isVegetarian: newItem.isVegetarian
