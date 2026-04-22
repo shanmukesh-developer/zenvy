@@ -238,6 +238,7 @@ export default function Home() {
   }, [activeOrder, cancelSecondsLeft]);
   useEffect(() => {
     if (!user) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleSystemUpdate = (payload: { type: string; data: any }) => {
       if (payload.type === 'USER_ELITE_STATUS') {
         const userId = user?._id || user?.id;
@@ -251,15 +252,17 @@ export default function Home() {
           }
         }
       } else if (payload.type === 'RESTAURANT_CREATED') {
+        const newRes = payload.data as Restaurant;
         setLiveRestaurants(prev => {
           // Prevent duplicates
-          const exists = prev.some(r => (r._id || r.id) === (payload.data._id || payload.data.id));
+          const exists = prev.some(r => (r._id || r.id) === (newRes._id || newRes.id));
           if (exists) return prev;
-          return [...prev, payload.data];
+          return [...prev, newRes];
         });
       } else if (payload.type === 'RESTAURANT_UPDATED') {
+        const updatedRes = payload.data as Restaurant;
         setLiveRestaurants(prev => prev.map(r => 
-          (r._id || r.id) === (payload.data._id || payload.data.id) ? payload.data : r
+          (r._id || r.id) === (updatedRes._id || updatedRes.id) ? updatedRes : r
         ));
       }
     };
