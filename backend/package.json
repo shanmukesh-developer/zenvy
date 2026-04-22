@@ -36,9 +36,12 @@
   "overrides": {
     "protobufjs": "^7.4.0",
     "picomatch": "^4.0.2",
-    "tar": "^6.2.1",
+    "tar": "^7.4.3",
     "cacache": "^18.0.4",
-    "braces": "^3.0.3"
+    "braces": "^3.0.3",
+    "@tootallnate/once": "^3.0.1",
+    "micromatch": "^4.0.8",
+    "cross-spawn": "^7.0.6"
   },
   "devDependencies": {
     "eslint": "^9.21.0",

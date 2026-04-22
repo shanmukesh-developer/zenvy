@@ -26,6 +26,13 @@
     "socket.io-client": "^4.8.3",
     "tailwindcss-animate": "^1.0.7"
   },
+  "overrides": {
+    "tar": "^7.4.3",
+    "braces": "^3.0.3",
+    "@tootallnate/once": "^3.0.1",
+    "micromatch": "^4.0.8",
+    "cross-spawn": "^7.0.6"
+  },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
     "@types/node": "^20",
