@@ -76,11 +76,19 @@ export default function VaultTerminal() {
           <p className="text-gray-400 text-sm font-bold uppercase tracking-widest mt-1">Daily Scarcity & FOMO Management</p>
         </div>
         <button 
-          onClick={() => handleUpsert({ name: 'New Secret Drop', price: 99, originalPrice: 199, remainingCount: 5, imageUrl: 'https://images.unsplash.com/photo-1606313564200-e75d5e30476c?q=80&w=400&auto=format&fit=crop' })}
+          onClick={() => handleUpsert({ 
+            name: 'Elite Cyber Membership', 
+            price: 199, 
+            originalPrice: 999, 
+            remainingCount: 1, 
+            imageUrl: 'https://images.unsplash.com/photo-1614064641938-3bbee52942c7?q=80&w=400&auto=format&fit=crop',
+            isActive: true 
+          })}
           className="px-8 py-3 bg-[#C9A84C] text-black text-[10px] font-black uppercase tracking-widest rounded-2xl hover:scale-105 transition-all"
         >
           Initialize Item
         </button>
+
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">

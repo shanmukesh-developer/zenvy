@@ -56,7 +56,9 @@ export default function RestaurantMenuClient({ restaurantId }: { restaurantId: s
   const [isSurge, setIsSurge] = useState(false);
 
   useEffect(() => {
-    const socket = io(SOCKET_URL);
+    const socket = io(SOCKET_URL, {
+      transports: ['websocket']
+    });
     socket.on('inventory_updated', (data: { itemId: string; isAvailable: boolean }) => {
       setSoldOutItems(prev => {
         const next = new Set(prev);

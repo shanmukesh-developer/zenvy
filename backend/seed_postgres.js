@@ -9,10 +9,13 @@ const { getMenuItemModel } = require('./models/MenuItem');
 const { getOrderModel } = require('./models/Order');
 const { getUserModel } = require('./models/User');
 const { getDeliveryPartnerModel } = require('./models/DeliveryPartner');
+const { initVaultItemModel, getVaultItemModel } = require('./models/VaultItem');
+
 
 
 const mockData = [
   {
+    id: "e9eb9d54-3a51-422d-b070-e66975a6b68e",
     name: "Summer Oasis: Elite",
     imageUrl: "https://images.unsplash.com/photo-1549488344-1f9b8d2bd1f3?auto=format&fit=crop&q=80&w=800",
     categories: ["Coolants", "Traditional", "Ice Creams"],
@@ -23,6 +26,7 @@ const mockData = [
     ]
   },
   {
+    id: "bef0fa4b-1c1d-4f22-ae74-d32df31e2d37",
     name: "Boutique Bakery",
     imageUrl: "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=400",
     categories: ["Artisanal Bakes", "Croissants"],
@@ -33,6 +37,7 @@ const mockData = [
     ]
   },
   {
+    id: "ca3f99e1-8f1f-4f3e-a209-ed78ff638cf5",
     name: "Sweet Boutique",
     imageUrl: "https://images.unsplash.com/photo-1551024601-bec78aea704b?w=400",
     categories: ["Desserts", "Gourmet Treats"],
@@ -43,6 +48,7 @@ const mockData = [
     ]
   },
   {
+    id: "296ec3cf-4eee-44e7-9454-1d4e563e1687",
     name: "Fresh Harvest",
     imageUrl: "https://images.unsplash.com/photo-1610832958506-aa56368176cf?w=400",
     categories: ["Fruits", "Healthy"],
@@ -52,6 +58,7 @@ const mockData = [
     ]
   },
   {
+    id: "706822c4-2eb3-43b4-ad86-91a252ea9108",
     name: "Pizza Paradise",
     imageUrl: "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=400",
     categories: ["Pizza", "Pasta", "Sides"],
@@ -61,6 +68,7 @@ const mockData = [
     ]
   },
   {
+    id: "8467dbf0-1b1b-4ae5-88b6-0fccbfcb1cbb",
     name: "Biryani Hub",
     imageUrl: "https://images.unsplash.com/photo-1589302168068-964664d93dc0?q=80&w=400&auto=format&fit=crop",
     categories: ["Biryani", "Kebabs", "Main Course"],
@@ -78,6 +86,7 @@ const seed = async () => {
     const User = getUserModel();
     const DeliveryPartner = getDeliveryPartnerModel();
     const Order = getOrderModel();
+    const VaultItem = initVaultItemModel(getSequelize());
     
     await getSequelize().sync({ force: true });
 
@@ -86,15 +95,19 @@ const seed = async () => {
     await Order.destroy({ where: {} });
     await User.destroy({ where: {} });
     await DeliveryPartner.destroy({ where: {} });
+    await VaultItem.destroy({ where: {} });
     console.log('✅ Cleared existing database.');
+
 
     let firstRestaurantId;
     for (const restData of mockData) {
       const restaurant = await Restaurant.create({
+        id: restData.id,
         name: restData.name,
         location: 'SRM AP Main Campus',
         imageUrl: restData.imageUrl,
         commissionRate: 15,
+        password: 'password123', // Default password for portal access
         commissionType: 'percentage',
         operatingHours: { start: '09:00', end: '22:00' },
         isActive: true,
@@ -167,6 +180,32 @@ const seed = async () => {
       role: 'admin'
     });
     console.log('✅ Seeded Admin User: Nexus Admin (admin-1)');
+
+    // --- Seed Vault Items ---
+    const vaultItems = [
+      {
+        name: 'Silver Origin Coffee',
+        price: 149,
+        originalPrice: 499,
+        remainingCount: 5,
+        imageUrl: 'https://images.unsplash.com/photo-1559056199-641a0ac8b55e?q=80&w=800&auto=format&fit=crop',
+        isActive: true,
+        streakRequirement: 3
+      },
+      {
+        name: 'Elite Cyber Membership',
+        price: 199,
+        originalPrice: 999,
+        remainingCount: 2,
+        imageUrl: 'https://images.unsplash.com/photo-1614064641938-3bbee52942c7?q=80&w=800&auto=format&fit=crop',
+        isActive: true,
+        streakRequirement: 7
+      }
+    ];
+
+    await VaultItem.bulkCreate(vaultItems);
+    console.log('✅ Seeded Zenvy Vault Items');
+
 
     console.log('🎉 Seeding Complete. Zenvy is now ALIVE.');
     process.exit(0);

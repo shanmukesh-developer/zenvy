@@ -22,13 +22,14 @@ export default function AdminLoginPage() {
   const [verifier, setVerifier] = useState<RecaptchaVerifier | null>(null);
 
   useEffect(() => {
-    const v = new RecaptchaVerifier(auth, 'admin-recaptcha-container', {
-      size: 'invisible',
-    });
-    setVerifier(v);
-    return () => {
-      // Avoid clearing if possible to prevent 'style of null' crash
-    };
+    try {
+      const v = new RecaptchaVerifier(auth, 'admin-recaptcha-container', {
+        size: 'invisible',
+      });
+      setVerifier(v);
+    } catch (err) {
+      console.warn('Firebase Recaptcha initialization failed (likely missing/invalid API Key). Developer bypass will be used.');
+    }
   }, []);
 
   const handleSendOtp = async () => {

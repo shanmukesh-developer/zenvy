@@ -100,7 +100,8 @@ const getLeaderboard = async (req, res) => {
 
     res.json(leaderboard);
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('[LEADERBOARD_ERROR]', error);
+    res.status(500).json({ message: 'Server error' });
   }
 };
 

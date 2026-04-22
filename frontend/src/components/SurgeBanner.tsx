@@ -14,7 +14,7 @@ export default function SurgeBanner() {
   const [surge, setSurge] = useState<SurgeData | null>(null);
 
   useEffect(() => {
-    const socket = io(SOCKET_URL);
+    const socket = io(SOCKET_URL, { transports: ['websocket'] });
     socket.on('surge_active', (data: SurgeData) => setSurge(data));
     socket.on('surge_ended', () => setSurge(null));
     return () => { socket.disconnect(); };

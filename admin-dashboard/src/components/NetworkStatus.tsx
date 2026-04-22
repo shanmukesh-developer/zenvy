@@ -8,8 +8,13 @@ export default function NetworkStatus() {
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
-    const socket = io(SOCKET_URL);
-    socket.on('connect', () => setConnected(true));
+    const socket = io(SOCKET_URL, {
+      transports: ['websocket']
+    });
+    socket.on('connect', () => {
+      console.log('[SOCKET_CONNECTED] Admin Terminal Link Established');
+      setConnected(true);
+    });
     socket.on('disconnect', () => setConnected(false));
     return () => { socket.disconnect(); };
   }, []);

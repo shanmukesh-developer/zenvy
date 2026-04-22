@@ -486,15 +486,20 @@ exports.upsertVaultItem = async (req, res) => {
   try {
     const VaultItem = getVaultItemModel();
     const { id } = req.params;
+    const updateData = { ...req.body };
+    delete updateData._id;
+    delete updateData.id;
+
     let item;
     if (id && id !== 'new') {
       item = await VaultItem.findByPk(id);
-      if (item) await item.update(req.body);
-      else item = await VaultItem.create(req.body);
+      if (item) await item.update(updateData);
+      else item = await VaultItem.create({ ...updateData, id });
     } else {
-      item = await VaultItem.create(req.body);
+      item = await VaultItem.create(updateData);
     }
     broadcastSystemUpdate(req, 'VAULT_UPDATED', item);
+
     res.json({ ...item.toJSON(), _id: item.id });
   } catch (error) {
     res.status(400).json({ message: error.message });

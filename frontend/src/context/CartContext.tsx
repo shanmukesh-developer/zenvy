@@ -47,11 +47,16 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
   const addToCart = (item: Omit<CartItem, 'quantity'> & { quantity?: number }) => {
     const itemWithQty = { ...item, quantity: item.quantity || 1 };
     setCart((prev) => {
-      const existing = prev.find((i) => i.id === itemWithQty.id);
+      const normalizedId = String(itemWithQty.id).trim();
+      const existing = prev.find((i) => String(i.id).trim() === normalizedId);
       if (existing) {
-        return prev.map((i) => i.id === itemWithQty.id ? { ...i, quantity: i.quantity + itemWithQty.quantity } : i);
+        return prev.map((i) => 
+          String(i.id).trim() === normalizedId 
+            ? { ...i, quantity: i.quantity + itemWithQty.quantity } 
+            : i
+        );
       }
-      return [...prev, itemWithQty as CartItem];
+      return [...prev, { ...itemWithQty, id: normalizedId } as CartItem];
     });
   };
 

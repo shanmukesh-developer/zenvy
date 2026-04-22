@@ -60,6 +60,7 @@ const initializeAllModels = (instance) => {
 
 const connectDB = async () => {
   const dbUrl = process.env.DATABASE_URL;
+  console.log(`[DB_INIT] DATABASE_URL: "${dbUrl || 'MISSING'}"`);
 
   if (!dbUrl) {
     const sqlitePath = path.join(__dirname, '..', 'local_dev.sqlite');

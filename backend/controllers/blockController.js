@@ -28,9 +28,14 @@ const getBlockActivity = async (req, res) => {
     const activityMap = {};
     SRM_HOSTELS.forEach(h => activityMap[h] = 0);
 
-    // Fetch user blocks for the orders
-    const userIds = [...new Set(orders.map(o => o.userId))];
-    const users = await User.findAll({ where: { id: { [Op.in]: userIds } } });
+    // Clean up userIds: filter out non-UUIDs to prevent SQL errors
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const userIds = [...new Set(orders.map(o => o.userId))].filter(id => id && uuidRegex.test(id));
+    
+    let users = [];
+    if (userIds.length > 0) {
+      users = await User.findAll({ where: { id: { [Op.in]: userIds } } });
+    }
     
     const userBlockMap = {};
     users.forEach(u => userBlockMap[u.id] = u.hostelBlock);

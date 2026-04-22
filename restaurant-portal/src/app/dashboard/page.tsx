@@ -61,7 +61,9 @@ export default function Dashboard() {
       .catch(err => console.error(err));
 
     // Connect socket
-    const s = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005');
+    const s = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005', {
+      transports: ['websocket']
+    });
     
     s.on('connect', () => {
       console.log('Connected to socket');

@@ -194,7 +194,7 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
   useEffect(() => {
     const socket = io(apiUrl, {
       auth: { token: driverToken, role: 'rider', driverId: currentDriver._id, name: currentDriver.name },
-      transports: ['websocket', 'polling'],
+      transports: ['websocket'],
       reconnectionAttempts: 10,
       reconnectionDelay: 2000
     });

@@ -1,19 +1,19 @@
-const sqlite3 = require('sqlite3').verbose();
-const path = require('path');
+const { connectDB } = require('./config/db');
+const { initRestaurantModel } = require('./models/Restaurant');
 
-const dbPath = path.join(__dirname, 'local_dev.sqlite');
-const db = new sqlite3.Database(dbPath);
+async function dump() {
+  await connectDB();
+  const { getSequelize } = require('./config/db');
+  const sequelize = getSequelize();
+  const { getRestaurantModel } = require('./models/Restaurant');
+  const Restaurant = getRestaurantModel();
+  const restaurants = await Restaurant.findAll();
+  console.log('RESTAURANTS_DUMP:');
+  console.log(JSON.stringify(restaurants.map(r => ({id: r.id, name: r.name})), null, 2));
+  process.exit(0);
+}
 
-console.log('Dumping Restaurants data from local_dev.sqlite...');
-
-db.all("SELECT * FROM Restaurants;", [], (err, rows) => {
-  if (err) {
-    console.error('Error querying Restaurants:', err.message);
-  } else {
-    console.log('Restaurants:', JSON.stringify(rows, null, 2));
-  }
+dump().catch(err => {
+  console.error(err);
+  process.exit(1);
 });
-
-setTimeout(() => {
-  db.close();
-}, 2000);

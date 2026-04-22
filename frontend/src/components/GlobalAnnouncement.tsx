@@ -28,7 +28,7 @@ export default function GlobalAnnouncement() {
   const [announcement, setAnnouncement] = useState<Announcement | null>(null);
 
   useEffect(() => {
-    const socket = io(SOCKET_URL);
+    const socket = io(SOCKET_URL, { transports: ['websocket'] });
     socket.on('global_announcement', (data: Announcement) => {
       setAnnouncement(data);
       // Auto-dismiss after 8 seconds unless emergency

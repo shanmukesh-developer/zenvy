@@ -49,7 +49,23 @@ const initOrderModel = (sequelize) => {
       { fields: ['userId'] },
       { fields: ['status'] },
       { fields: ['createdAt'] }
-    ]
+    ],
+    hooks: {
+      beforeCreate: (order) => {
+        if (sequelize.getDialect() === 'sqlite') {
+          if (typeof order.items !== 'string') {
+            order.items = JSON.stringify(order.items);
+          }
+        }
+      },
+      beforeUpdate: (order) => {
+        if (sequelize.getDialect() === 'sqlite') {
+          if (typeof order.items !== 'string') {
+            order.items = JSON.stringify(order.items);
+          }
+        }
+      }
+    }
   });
 
   return Order;

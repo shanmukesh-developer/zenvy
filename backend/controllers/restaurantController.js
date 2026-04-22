@@ -8,11 +8,16 @@ const jwt = require('jsonwebtoken');
 const restaurantLogin = async (req, res) => {
   const { id, password } = req.body;
   try {
+    // UUID basic validation
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(id)) {
+      return res.status(400).json({ message: 'Invalid Restaurant ID format' });
+    }
+
     const Restaurant = getRestaurantModel();
     const restaurant = await Restaurant.findByPk(id);
     if (!restaurant) return res.status(404).json({ message: 'Restaurant not found' });
     
-    // For MVP prototype if password not set, bypass or set default
     if (restaurant.password) {
       const isMatch = await restaurant.comparePassword(password);
       if (!isMatch) return res.status(401).json({ message: 'Invalid credentials' });
@@ -21,6 +26,7 @@ const restaurantLogin = async (req, res) => {
     const token = jwt.sign({ id: restaurant.id, role: 'restaurant' }, process.env.JWT_SECRET || 'secret', { expiresIn: '30d' });
     res.json({ restaurant, token });
   } catch (error) {
+    console.error('[RESTAURANT_LOGIN_ERROR]', error);
     res.status(500).json({ message: 'Server error' });
   }
 };

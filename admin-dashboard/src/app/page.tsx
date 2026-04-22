@@ -182,7 +182,9 @@ export default function AdminHome() {
     fetchStats();
     fetchOrders();
 
-    const socket = io(SOCKET_URL);
+    const socket = io(SOCKET_URL, {
+      transports: ['websocket']
+    });
     socketRef.current = socket;
     socket.emit('joinAdmin');
     

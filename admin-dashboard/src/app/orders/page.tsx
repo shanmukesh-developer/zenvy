@@ -67,7 +67,9 @@ export default function OrdersPage() {
   useEffect(() => {
     fetchOrders();
 
-    const socket = io(SOCKET_URL);
+    const socket = io(SOCKET_URL, {
+      transports: ['websocket']
+    });
     
     socket.on('newOrder', () => { fetchOrders(); });
     socket.on('statusUpdated', () => { fetchOrders(); });

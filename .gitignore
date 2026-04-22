@@ -29,6 +29,9 @@ backend/.env
 backend/firebase-key.json
 backend/local_dev.sqlite
 frontend/public/assets/*.png
+!frontend/public/assets/placeholder.png
+!frontend/public/assets/placeholder_premium.png
+!admin-dashboard/public/assets/placeholder.png
 
 # vercel
 .vercel

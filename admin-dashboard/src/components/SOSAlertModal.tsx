@@ -14,7 +14,9 @@ export default function SOSAlertModal() {
   const [sosEvent, setSosEvent] = useState<SOSData | null>(null);
 
   useEffect(() => {
-    const socket = io(SOCKET_URL);
+    const socket = io(SOCKET_URL, {
+      transports: ['websocket']
+    });
     socket.on('sos_received', (data: SOSData) => {
       setSosEvent(data);
       // Attempt to play a siren
