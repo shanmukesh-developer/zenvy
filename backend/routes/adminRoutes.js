@@ -7,6 +7,7 @@ const {
   getAllMenuItems,
   upsertMenuItem,
   deleteMenuItem,
+  deleteRestaurant,
   getAllRiders,
   approveRider,
   getAllUsers,
@@ -49,6 +50,7 @@ router.post('/restaurants/:id', updateRestaurant);
 router.get('/menu-items', getAllMenuItems);
 router.post('/menu-items/:id', upsertMenuItem); // id can be 'new'
 router.delete('/menu-items/:id/delete', deleteMenuItem);
+router.delete('/restaurants/:id', deleteRestaurant);
 
 // Fleet Management
 router.get('/riders', getAllRiders);

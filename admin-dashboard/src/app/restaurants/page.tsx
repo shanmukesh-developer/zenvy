@@ -347,6 +347,23 @@ export default function GourmetManagement() {
     } catch (_err) { console.error('[ITEM_DELETE_ERROR]', _err); }
   };
 
+  const deleteRestaurant = async (restaurantId: string) => {
+    if (!confirm('DANGER: This will permanently delete this restaurant node and ALL its menu items. Continue?')) return;
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_URL}/api/admin/restaurants/${restaurantId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setRestaurants(prev => prev.filter(r => r._id !== restaurantId));
+      } else {
+        const data = await res.json();
+        alert(`Failed to delete: ${data.message || 'Unknown error'}`);
+      }
+    } catch (_err) { console.error('[REST_DELETE_ERROR]', _err); }
+  };
+
   return (
     <div className="space-y-10 animate-fade-in relative pb-20">
       <header className="flex justify-between items-center bg-white/5 p-8 rounded-[40px] border border-white/5 glass">
@@ -557,7 +574,10 @@ export default function GourmetManagement() {
                 }`}>{rest.vendorType || 'RESTAURANT'}</span>
               </div>
               <p className="text-xs text-gray-500 font-bold uppercase tracking-widest mb-6">{rest.location}</p>
-              <button onClick={() => { setSelectedRestaurant(rest); fetchMenu(rest._id); setView('menu'); }} className="w-full py-4 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-emerald-500 hover:text-white transition-all">Manage Active Assets</button>
+              <div className="flex gap-3">
+                <button onClick={() => { setSelectedRestaurant(rest); fetchMenu(rest._id); setView('menu'); }} className="flex-1 py-4 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-2xl text-[10px] font-black uppercase tracking-[0.1em] hover:bg-emerald-500 hover:text-white transition-all">Manage Assets</button>
+                <button onClick={() => deleteRestaurant(rest._id)} className="px-5 py-4 bg-red-500/10 text-red-500 border border-red-500/20 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all">Remove</button>
+              </div>
             </div>
           ))}
         </div>

@@ -582,3 +582,24 @@ exports.getRewardsAnalytics = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+exports.deleteRestaurant = async (req, res) => {
+  try {
+    const Restaurant = getRestaurantModel();
+    const MenuItem = getMenuItemModel();
+    const id = req.params.id;
+    
+    const restaurant = await Restaurant.findByPk(id);
+    if (!restaurant) return res.status(404).json({ message: 'Restaurant not found' });
+    
+    // Cleanup items
+    await MenuItem.destroy({ where: { restaurantId: id } });
+    await restaurant.destroy();
+    
+    broadcastSystemUpdate(req, 'RESTAURANT_DELETED', { id });
+    logAuditAction(req, id, 'RESTAURANT_DELETE', `Deleted restaurant "${restaurant.name}"`);
+    
+    res.json({ message: 'Restaurant successfully removed' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
