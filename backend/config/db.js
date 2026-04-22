@@ -123,10 +123,13 @@ const connectDB = async () => {
         }
       }
 
-      // Critical Migration: Ensure profileImage can hold base64
+      // Critical Migrations: Ensure image columns can hold Base64 data
       try {
         await sequelize.query('ALTER TABLE "Users" ALTER COLUMN "profileImage" TYPE TEXT;');
-      } catch (e) { /* already done */ }
+        await sequelize.query('ALTER TABLE "Restaurants" ALTER COLUMN "imageUrl" TYPE TEXT;');
+        await sequelize.query('ALTER TABLE "MenuItems" ALTER COLUMN "imageUrl" TYPE TEXT;');
+        console.log('✅ [DB_MIGRATION] Asset columns expanded to TEXT.');
+      } catch (e) { /* already done or table missing — safe to skip */ }
     }
   } catch (error) {
     console.error('❌ [DB_FATAL] Database connection failed:', error.message);

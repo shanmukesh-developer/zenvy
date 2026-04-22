@@ -106,24 +106,17 @@ const startServer = async () => {
     if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
     app.use('/uploads', express.static(uploadsDir));
 
-    // Local Image Storage Engine with proper file naming
-    const storage = multer.diskStorage({
-      destination: (req, file, cb) => cb(null, uploadsDir),
-      filename: (req, file, cb) => {
-        const ext = path.extname(file.originalname) || '.jpg';
-        cb(null, `${Date.now()}-${Math.round(Math.random() * 1e6)}${ext}`);
-      }
-    });
+    // Persistent Base64 Image Storage (survives on Render)
+    const storage = multer.memoryStorage();
     const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
+    
     app.post('/api/upload', upload.single('image'), (req, res) => {
       if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
       
-      // Dynamic Host Detection: Use request protocol/host if BASE_URL is missing
-      const protocol = req.protocol === 'http' && req.get('x-forwarded-proto') ? req.get('x-forwarded-proto') : req.protocol;
-      const host = req.get('host');
-      const baseUrl = process.env.BASE_URL || `${protocol}://${host}`;
+      const mimetype = req.file.mimetype;
+      const base64Data = req.file.buffer.toString('base64');
+      const imageUrl = `data:${mimetype};base64,${base64Data}`;
       
-      const imageUrl = `${baseUrl}/uploads/${req.file.filename}`;
       res.json({ imageUrl });
     });
 

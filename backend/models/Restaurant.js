@@ -13,7 +13,7 @@ const initRestaurantModel = (sequelize) => {
     lat: { type: DataTypes.FLOAT },
     lon: { type: DataTypes.FLOAT },
     zone: { type: DataTypes.STRING, defaultValue: 'Amaravathi_Central' },
-    imageUrl: { type: DataTypes.STRING },
+    imageUrl: { type: DataTypes.TEXT },
     vendorType: { type: DataTypes.STRING, defaultValue: 'RESTAURANT' },
     rating: { type: DataTypes.FLOAT, defaultValue: 0 },
     deliveryTime: { type: DataTypes.INTEGER },

@@ -11,7 +11,7 @@ const initMenuItemModel = (sequelize) => {
     name: { type: DataTypes.STRING, allowNull: false },
     price: { type: DataTypes.FLOAT, allowNull: false },
     description: { type: DataTypes.TEXT },
-    imageUrl: { type: DataTypes.STRING },
+    imageUrl: { type: DataTypes.TEXT },
     category: { type: DataTypes.STRING },
     tags: { type: DataTypes.JSON, defaultValue: [] },
     isVegetarian: { type: DataTypes.BOOLEAN, defaultValue: true },
