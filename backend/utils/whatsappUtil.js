@@ -13,7 +13,8 @@ const PROVIDER = process.env.WHATSAPP_PROVIDER || 'CONSOLE'; // CONSOLE, TWILIO,
  */
 const formatOrderMessage = (order, type = 'CUSTOMER_CONFIRMATION') => {
   const orderId = (order._id || order.id).toString().slice(-6).toUpperCase();
-  const items = (order.items || []).map(i => `• ${i.name} x${i.quantity}`).join('\n');
+  const parsedItems = Array.isArray(order.items) ? order.items : JSON.parse(order.items || '[]');
+  const items = parsedItems.map(i => `• ${i.name} x${i.quantity}`).join('\n');
   const restaurant = order.restaurant?.name || 'Zenvy Partner';
   const trackUrl = `${process.env.FRONTEND_URL || 'https://zenvy.nexus'}/orders/${order._id || order.id}`;
 
