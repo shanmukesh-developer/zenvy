@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from 'react';
+import { useAdminAuth } from '@/utils/useAdminAuth';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
 
@@ -14,8 +15,11 @@ interface Transaction {
 }
 
 export default function FinanceConsole() {
+  const isAuthed = useAdminAuth();
   const [report, setReport] = useState<{ transactions: Transaction[], totalRevenue: number, totalCommission: number } | null>(null);
   const [loading, setLoading] = useState(true);
+
+  if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Authenticating...</div>;
 
   useEffect(() => {
     fetchFinanceData();

@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from 'react';
+import { useAdminAuth } from '@/utils/useAdminAuth';
 
 interface Metric {
   label: string;
@@ -19,10 +20,13 @@ interface RewardStats {
 }
 
 export default function AnalyticsIntel() {
+  const isAuthed = useAdminAuth();
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState<Metric[]>([]);
   const [rewards, setRewards] = useState<RewardStats | null>(null);
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
+
+  if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Authenticating...</div>;
 
   useEffect(() => {
      const fetchStats = async () => {

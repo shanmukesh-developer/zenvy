@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useAdminAuth } from '@/utils/useAdminAuth';
 import { motion } from 'framer-motion';
 
 interface TopPerformer {
@@ -22,8 +23,11 @@ interface AnalyticsData {
 }
 
 export default function RewardsAnalytics() {
+  const isAuthed = useAdminAuth();
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
+
+  if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Authenticating...</div>;
 
   useEffect(() => {
     fetch('http://localhost:5005/api/admin/rewards-analytics', {

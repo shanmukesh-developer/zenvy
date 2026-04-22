@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from 'react';
+import { useAdminAuth } from '@/utils/useAdminAuth';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
 
@@ -9,8 +10,11 @@ interface BlockStats {
 }
 
 export default function BlockWarsHUD() {
+  const isAuthed = useAdminAuth();
   const [stats, setStats] = useState<BlockStats[]>([]);
   const [loading, setLoading] = useState(true);
+
+  if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Authenticating...</div>;
 
   useEffect(() => {
     let mounted = true;

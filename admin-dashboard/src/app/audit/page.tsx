@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from 'react';
+import { useAdminAuth } from '@/utils/useAdminAuth';
 
 interface AuditLog {
   id: string;
@@ -13,8 +14,11 @@ interface AuditLog {
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
 
 export default function AuditPage() {
+  const isAuthed = useAdminAuth();
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
+
+  if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Authenticating...</div>;
 
   useEffect(() => {
     const fetchLogs = async () => {
