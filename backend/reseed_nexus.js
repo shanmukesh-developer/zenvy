@@ -118,12 +118,13 @@ const RESTAURANTS = [
 async function reseed() {
   await connectDB();
   const sequelize = getSequelize();
-  const { getRestaurantModel } = require('./models/Restaurant');
-  const { getMenuItemModel } = require('./models/MenuItem');
   const Restaurant = getRestaurantModel();
   const MenuItem = getMenuItemModel();
+  const { getOrderModel } = require('./models/Order');
+  const Order = getOrderModel();
 
   // Clear existing data
+  await Order.destroy({ where: {} });
   await MenuItem.destroy({ where: {} });
   await Restaurant.destroy({ where: {} });
   console.log('🗑️  Cleared old data.');

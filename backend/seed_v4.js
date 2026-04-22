@@ -55,9 +55,9 @@ const seed = async () => {
     // DANGER: Never use { force: true } in a global seed script that might be run on production.
     await getSequelize().sync({ alter: true });
 
+    await Order.destroy({ where: {} });
     await MenuItem.destroy({ where: {} });
     await Restaurant.destroy({ where: {} });
-    await Order.destroy({ where: {} });
     await User.destroy({ where: {} });
     await DeliveryPartner.destroy({ where: {} });
     console.log('✅ Cleared existing database.');

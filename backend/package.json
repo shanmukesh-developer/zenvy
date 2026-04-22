@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node scripts/unified_seed.js && node server.js",
+    "start": "node server.js",
     "dev": "node scripts/unified_seed.js && nodemon server.js",
     "seed:rider": "node seed_mock_rider.js",
     "seed:full": "node scripts/unified_seed.js",

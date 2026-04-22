@@ -164,7 +164,7 @@ const connectDB = async () => {
       logging: false
     });
     initializeAllModels(sequelize);
-    await sequelize.sync({ alter: true });
+    await sequelize.sync();
     console.log('✅ [DB_FALLBACK] Emergency SQLite is now active with models.');
   }
 };

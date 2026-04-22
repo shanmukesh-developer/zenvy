@@ -92,9 +92,9 @@ const seed = async () => {
     // Switching to { alter: true } which is much safer.
     await getSequelize().sync({ alter: true });
 
+    await Order.destroy({ where: {} });
     await MenuItem.destroy({ where: {} });
     await Restaurant.destroy({ where: {} });
-    await Order.destroy({ where: {} });
     await User.destroy({ where: {} });
     await DeliveryPartner.destroy({ where: {} });
     await VaultItem.destroy({ where: {} });
