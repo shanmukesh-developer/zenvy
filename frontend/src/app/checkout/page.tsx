@@ -233,6 +233,21 @@ export default function CheckoutPage() {
         const err = await response.json();
         setCheckoutStatus('error');
         setErrorMsg(err.message || 'Payment Rejected by Node');
+
+        // Handle Stale Session / Account Missing
+        if (response.status === 401 && (err.message?.includes('Account not found') || err.message?.includes('token failed'))) {
+           localStorage.removeItem('token');
+           localStorage.removeItem('user');
+           setModalConfig({ 
+             isOpen: true, 
+             title: 'Session Expired', 
+             message: 'Your account session is no longer valid. Please re-register.', 
+             type: 'error',
+             onConfirm: () => router.push('/login')
+           });
+           return;
+        }
+
         setModalConfig({ isOpen: true, title: 'Order Failed', message: err.message || 'Please try again.', type: 'error' });
       }
     } catch (error) {

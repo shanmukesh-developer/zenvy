@@ -60,6 +60,7 @@ const createOrder = async (req, res) => {
 
     // Guard: user must exist in DB (may have been lost after DB reset)
     if (!currentUser) {
+      console.warn(`[ORDER_GUARD] Account ID ${req.user.id} not found in database. Stale token detected.`);
       return res.status(401).json({ message: 'Account not found. Please logout and re-register.' });
     }
     const Order = getOrderModel();

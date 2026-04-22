@@ -175,9 +175,19 @@ export default function Home() {
         const token = localStorage.getItem('token');
         if (!token) return;
         
-        await fetch(`${API_URL}/api/users/profile`, {
+        const res = await fetch(`${API_URL}/api/users/profile`, {
           headers: { Authorization: `Bearer ${token}` }
         });
+
+        if (res.status === 401) {
+          const data = await res.json();
+          if (data.message && (data.message.includes('Account not found') || data.message.includes('token failed'))) {
+             console.error('[AUTH] Session invalidated by backend. Clearing local storage.');
+             localStorage.removeItem('token');
+             localStorage.removeItem('user');
+             window.location.href = '/login?error=session_expired';
+          }
+        }
       } catch (_err) {
         console.warn('[AUTH_CHECK] Background status check failed:', _err);
       }
