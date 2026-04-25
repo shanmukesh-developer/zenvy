@@ -28,8 +28,13 @@ export default function LoginPage() {
       setOverlay({ isOpen: true, title: 'CIPHER REQUIRED', message: 'Encryption cipher cannot be empty.', type: 'error' });
       return;
     }
-    setLoading(true);
+    const isProd = typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
+    
+    if (isProd && API_URL.includes('localhost')) {
+      console.warn('⚠️ WARNING: Production frontend is attempting to connect to localhost API. Check NEXT_PUBLIC_API_URL.');
+    }
+
     try {
       const last10 = /[a-zA-Z]/.test(phone) ? phone : phone.replace(/\D/g, '').slice(-10);
       const response = await fetch(`${API_URL}/api/users/login`, {
