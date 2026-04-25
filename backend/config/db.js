@@ -98,9 +98,9 @@ const connectDB = async () => {
       },
       pool: {
         max: 5,
-        min: 0,
-        acquire: 30000,
-        idle: 10000
+        min: 1,
+        acquire: 60000,
+        idle: 20000
       },
       retry: {
         match: [
@@ -111,9 +111,10 @@ const connectDB = async () => {
           /SequelizeInvalidConnectionError/,
           /SequelizeConnectionTimedOutError/,
           /TimeoutError/,
-          /ECONNRESET/
+          /ECONNRESET/,
+          /TERMINATING/
         ],
-        max: 3
+        max: 10
       },
       logging: false
     });
@@ -155,6 +156,7 @@ const connectDB = async () => {
   } catch (error) {
     console.error('❌ [DB_FATAL] Database connection failed:', error.message);
     if (isProduction) {
+      console.error('⚠️ [CRITICAL] Falling back to SQLite is FORBIDDEN in production to prevent data loss.');
       throw error;
     }
     
