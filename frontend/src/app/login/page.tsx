@@ -53,13 +53,14 @@ export default function LoginPage() {
       } else {
         setOverlay({ isOpen: true, title: 'ACCESS DENIED', message: data.message || 'Authorization failed.', type: 'error' });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[LOGIN_ERROR]', err);
-      const isTimeout = err.name === 'AbortError' || err.message?.includes('timeout');
+      const error = err as Error;
+      const isTimeout = error.name === 'AbortError' || error.message?.includes('timeout');
       setOverlay({ 
         isOpen: true, 
         title: 'LINK FAILURE', 
-        message: isTimeout ? 'Connection to Nexus gateway timed out.' : `Uplink Error: ${err.message || 'Unknown network failure'}`, 
+        message: isTimeout ? 'Connection to Nexus gateway timed out.' : `Uplink Error: ${error.message || 'Unknown network failure'}`, 
         type: 'error' 
       });
     } finally {
