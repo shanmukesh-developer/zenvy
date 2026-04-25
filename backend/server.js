@@ -149,8 +149,11 @@ const startServer = async () => {
     const User = getUserModel();
     if (User) {
       const userCount = await User.count();
-      if (userCount === 0) {
-        console.log('🌱 [AUTO_SEED] Database is empty. Initializing production defaults...');
+      const Restaurant = sequelize.models.Restaurant;
+      const restCount = Restaurant ? await Restaurant.count() : 0;
+      
+      if (userCount === 0 || restCount === 0) {
+        console.log(`🌱 [AUTO_SEED] Data missing (Users: ${userCount}, Rests: ${restCount}). Initializing...`);
         await unifiedSeed();
         console.log('✅ [AUTO_SEED] Production defaults initialized.');
       }
