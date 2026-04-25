@@ -140,6 +140,32 @@ const startServer = async () => {
     app.use('/api/orders', require('./routes/orderRoutes'));
     app.use('/api/delivery', require('./routes/deliveryPartnerRoutes'));
     app.use('/api/search', require('./routes/searchRoutes'));
+    app.use('/api/notifications', require('./routes/notificationRoutes'));
+    app.use('/api/analytics', require('./routes/analyticsRoutes'));
+
+    // 🚀 Automated One-Time Production Seed
+    const { unifiedSeed } = require('./scripts/unified_seed');
+    const { getUserModel } = require('./models/User');
+    const User = getUserModel();
+    if (User) {
+      const userCount = await User.count();
+      if (userCount === 0) {
+        console.log('🌱 [AUTO_SEED] Database is empty. Initializing production defaults...');
+        await unifiedSeed();
+        console.log('✅ [AUTO_SEED] Production defaults initialized.');
+      }
+    }
+
+    // 🦾 Secure Manual Seed Trigger (Free Tier workaround)
+    app.post('/api/seed', async (req, res) => {
+      const { key } = req.body;
+      if (key === (process.env.JWT_SECRET || 'nexus_protocol_9')) {
+        console.log('📥 [MANUAL_SEED] Triggered via API');
+        await unifiedSeed();
+        return res.json({ message: 'Seeding complete' });
+      }
+      res.status(403).json({ error: 'Access Denied' });
+    });
     app.use('/api/blocks', require('./routes/blockRoutes'));
     app.use('/api/vault', require('./routes/vaultRoutes'));
     app.use('/api/admin', require('./routes/adminRoutes'));

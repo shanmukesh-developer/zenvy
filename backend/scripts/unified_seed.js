@@ -203,10 +203,13 @@ const unifiedSeed = async () => {
   }
 
   console.log('--- Seeding Complete ---');
-  process.exit();
 };
 
-unifiedSeed().catch(err => {
-  console.error('❌ Seed failed:', err);
-  process.exit(1);
-});
+module.exports = { unifiedSeed };
+
+if (require.main === module) {
+  unifiedSeed().catch(err => {
+    console.error('❌ Seed failed:', err);
+    process.exit(1);
+  });
+}
