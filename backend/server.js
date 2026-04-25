@@ -140,8 +140,6 @@ const startServer = async () => {
     app.use('/api/orders', require('./routes/orderRoutes'));
     app.use('/api/delivery', require('./routes/deliveryPartnerRoutes'));
     app.use('/api/search', require('./routes/searchRoutes'));
-    app.use('/api/notifications', require('./routes/notificationRoutes'));
-    app.use('/api/analytics', require('./routes/analyticsRoutes'));
 
     // 🚀 Automated One-Time Production Seed
     const { unifiedSeed } = require('./scripts/unified_seed');
