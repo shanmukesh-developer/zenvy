@@ -147,7 +147,9 @@ const startServer = async () => {
     const User = getUserModel();
     if (User) {
       const userCount = await User.count();
-      const Restaurant = sequelize.models.Restaurant;
+      const { getSequelize } = require('./config/db');
+      const instance = getSequelize();
+      const Restaurant = instance.models.Restaurant;
       const restCount = Restaurant ? await Restaurant.count() : 0;
       
       if (userCount === 0 || restCount === 0) {
