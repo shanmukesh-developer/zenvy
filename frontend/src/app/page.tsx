@@ -650,7 +650,7 @@ export default function Home() {
                     src="https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?q=80&w=2070&auto=format&fit=crop" 
                     alt="Hero" 
                     fill 
-                    className="object-cover scale-110 group-hover:scale-100 transition-transform duration-[3000ms]" 
+                    className="object-cover scale-110 group-hover:scale-100 transition-transform [transition-duration:3000ms]" 
                    />
                 </div>
                 

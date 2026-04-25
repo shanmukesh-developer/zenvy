@@ -38,7 +38,7 @@ const Hero = () => {
                 src="https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?q=80&w=2070&auto=format&fit=crop" 
                 alt="Delicious Food" 
                 fill
-                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-[2000ms]"
+                className="w-full h-full object-cover group-hover:scale-110 transition-transform [transition-duration:2000ms]"
               />
               <div className="absolute inset-0 bg-gradient-to-tr from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
             </div>
