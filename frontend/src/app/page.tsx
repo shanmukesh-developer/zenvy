@@ -149,7 +149,6 @@ export default function Home() {
         const parsed = JSON.parse(stored);
         // Runtime Port Migration Guard: Patch legacy 5005 references in session
         if (parsed.profileImage && parsed.profileImage.includes(':5005')) {
-          parsed.profileImage = parsed.profileImage.replace(':5005', ':5005');
           localStorage.setItem('user', JSON.stringify(parsed));
         }
         if (parsed.name) setUserName(parsed.name);
