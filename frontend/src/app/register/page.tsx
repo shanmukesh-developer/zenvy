@@ -2,10 +2,12 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { motion } from 'framer-motion';
 import SuccessOverlay from '@/components/SuccessOverlay';
 
 export default function RegisterPage() {
   const router = useRouter();
+  const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({ name: '', phone: '', password: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [overlay, setOverlay] = useState<{ isOpen: boolean; title: string; message: string; type?: 'success' | 'error' }>({
@@ -59,82 +61,99 @@ export default function RegisterPage() {
   };
 
   return (
-    <main className="min-h-screen bg-background text-white p-8 pb-20">
-      <div className="w-full sm:max-w-[430px] mx-auto">
-        <Link href="/login" className="w-10 h-10 bg-white/5 rounded-full flex items-center justify-center border border-white/10 mb-8 mt-4">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" />
+    <main className="min-h-screen bg-[#020203] text-white p-6 md:p-10 flex flex-col justify-start md:justify-center relative overflow-y-auto">
+      {/* 🌌 Optimized Cyber-Nexus Background */}
+      <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden bg-[#020203]">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(201,168,76,0.1),transparent_70%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_100%,rgba(139,92,246,0.05),transparent_70%)]" />
+      </div>
+
+      <div className="relative z-10 w-full max-w-lg mx-auto">
+        <Link href="/login" className="w-11 h-11 bg-white/5 backdrop-blur-3xl rounded-2xl flex items-center justify-center border border-white/10 hover:border-primary-yellow/40 transition-all mb-10 ml-4">
+          <svg className="w-4 h-4 text-white/20 hover:text-primary-yellow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M15 19l-7-7 7-7" />
           </svg>
         </Link>
 
-        <h1 className="text-4xl font-black leading-tight mb-2">
-          Create <br />
-          <span className="text-primary-yellow italic font-serif">Account</span>
-        </h1>
-        <p className="text-secondary-text text-[11px] font-bold uppercase tracking-[0.2em] mb-10">
-          Experience premium dining at your doorstep.
-        </p>
+        {/* 🎭 Nexus Header */}
+        <div className="text-left mb-12 ml-4">
+          <h1 className="text-[10px] font-black uppercase tracking-[1em] text-primary-yellow/60 mb-4 brightness-125">
+            IDENTITY TERMINAL
+          </h1>
+          <h2 className="text-[54px] md:text-[64px] font-black leading-[0.8] tracking-tighter text-white uppercase italic" style={{ fontFamily: "'Syne', sans-serif" }}>
+             NEW <br />
+             <span className="text-gold-gradient-glow font-black not-italic">OPERATIVE</span>
+          </h2>
+        </div>
 
-        <div className="space-y-6">
-          <div className="space-y-2">
-            <label className="text-[9px] font-black text-secondary-text uppercase tracking-widest ml-4">Full Name</label>
+        <div className="glass-card-extreme p-8 md:p-10 space-y-8 border-white/5 relative">
+          <div className="space-y-1">
+            <label className="text-[8px] font-black uppercase tracking-[0.4em] text-white/30 ml-2">Display Name</label>
             <input
               type="text"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               autoComplete="name"
-              placeholder="Enter your full name"
-              className="w-full bg-[#141416] border border-white/[0.03] rounded-[24px] h-[64px] px-6 font-bold text-sm focus:ring-1 focus:ring-primary-yellow transition-all outline-none"
+              placeholder="ENTER FULL NAME"
+              className="w-full bg-[#020203] border border-white/[0.05] hover:border-white/10 focus:border-primary-yellow/40 rounded-2xl h-[68px] px-8 font-bold text-sm tracking-[0.2em] transition-all outline-none uppercase placeholder:text-white/5"
             />
           </div>
 
-          <div className="space-y-2">
-            <label className="text-[9px] font-black text-secondary-text uppercase tracking-widest ml-4">Phone Number</label>
-            <div className="relative">
-              <span className="absolute left-6 top-1/2 -translate-y-1/2 text-white/30 font-black text-sm">+91</span>
+          <div className="space-y-1">
+            <label className="text-[8px] font-black uppercase tracking-[0.4em] text-white/30 ml-2">Uplink ID</label>
+            <div className="relative group/input">
+              <span className="absolute left-6 top-1/2 -translate-y-1/2 text-primary-yellow font-black text-xs tracking-widest opacity-20 group-focus-within/input:opacity-100 transition-opacity">+91</span>
               <input
                 type="tel"
                 value={formData.phone}
                 onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                 autoComplete="tel"
-                placeholder="Enter Number"
-                className="w-full bg-[#141416] border border-white/[0.03] rounded-[24px] h-[64px] pl-16 pr-6 font-bold text-sm focus:ring-1 focus:ring-primary-yellow transition-all outline-none"
+                placeholder="AUTHORIZE ID"
+                className="w-full bg-[#020203] border border-white/[0.05] hover:border-white/10 focus:border-primary-yellow/40 rounded-2xl h-[68px] pl-16 pr-6 font-bold text-sm tracking-[0.2em] transition-all outline-none uppercase placeholder:text-white/5"
               />
             </div>
           </div>
 
-          <div className="space-y-2">
-            <label className="text-[9px] font-black text-secondary-text uppercase tracking-widest ml-4">Password</label>
-            <input
-              type="password"
-              value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              autoComplete="new-password"
-              placeholder="********"
-              className="w-full bg-[#141416] border border-white/[0.03] rounded-[24px] h-[64px] px-6 font-bold text-sm focus:ring-1 focus:ring-primary-yellow transition-all outline-none"
-            />
+          <div className="space-y-1">
+            <label className="text-[8px] font-black uppercase tracking-[0.4em] text-white/30 ml-2">Security Cipher</label>
+            <div className="relative group/input">
+              <input
+                type={showPassword ? "text" : "password"}
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                autoComplete="new-password"
+                placeholder="NEXUS CIPHER"
+                className="w-full bg-[#020203] border border-white/[0.05] hover:border-white/10 focus:border-primary-yellow/40 rounded-2xl h-[68px] px-8 font-bold text-sm tracking-[0.2em] transition-all outline-none uppercase placeholder:text-white/5"
+              />
+              <button 
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-6 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center text-white/20 hover:text-primary-yellow transition-all text-xl"
+              >
+                 {showPassword ? '◌' : '●'}
+              </button>
+            </div>
           </div>
 
           <div className="pt-4">
             <button
               onClick={handleRegister}
               disabled={isSubmitting}
-              className="w-full btn-yellow flex items-center justify-center gap-2 py-6 text-[11px] font-black uppercase tracking-[0.3em] shadow-2xl shadow-primary-yellow/10 disabled:opacity-60"
+              className="w-full h-[68px] relative rounded-2xl bg-black border border-primary-yellow/50 text-primary-yellow text-xs uppercase font-black tracking-[0.6em] shadow-[0_0_50px_rgba(201,168,76,0.1)] hover:shadow-[0_0_80px_rgba(201,168,76,0.25)] transition-all duration-700 group/btn overflow-hidden"
             >
-              {isSubmitting ? (
-                <>
-                  <span className="w-4 h-4 border-2 border-black/40 border-t-black rounded-full animate-spin" />
-                  Creating Account...
-                </>
-              ) : 'Verify & Create Account'}
+              <div className="absolute inset-0 bg-gradient-to-br from-primary-yellow/20 to-transparent opacity-0 group-hover/btn:opacity-100 transition-opacity" />
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover/btn:animate-shimmer" />
+              <span className="relative z-10">
+                {isSubmitting ? 'INITIALIZING...' : 'ESTABLISH ACCESS'}
+              </span>
             </button>
           </div>
-        </div>
 
-        <div className="mt-12 text-center">
-          <p className="text-[10px] text-secondary-text uppercase tracking-widest font-bold">
-            Already have an account? <Link href="/login" className="text-primary-yellow underline underline-offset-4 ml-1">Login Instead</Link>
-          </p>
+          <div className="text-center pt-4">
+            <p className="text-[9px] text-white/20 uppercase tracking-[0.3em] font-black">
+              Known Operative? <Link href="/login" className="text-primary-yellow hover:text-white transition-colors underline underline-offset-8 ml-2">Login To Terminal</Link>
+            </p>
+          </div>
         </div>
       </div>
 

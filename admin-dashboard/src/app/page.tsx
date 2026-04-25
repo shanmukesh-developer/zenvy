@@ -290,7 +290,7 @@ export default function AdminHome() {
             <p className="stat-label tracking-[0.2em]">{stat.label}</p>
             <div className="flex items-end justify-between">
               <h4 className="text-3xl font-black text-white">{stat.value}</h4>
-              <span className={`text-[10px] font-black px-2 py-1 rounded-md border ${
+              <span className={`text-[12px] font-black px-2 py-1 rounded-md border ${
                 stat.trend === 'up' ? 'text-emerald-400 bg-emerald-400/5 border-emerald-400/20' :
                 stat.trend === 'down' ? 'text-blue-400 bg-blue-400/5 border-blue-400/20' :
                 'text-gray-500 bg-white/5 border-white/10'
@@ -312,16 +312,16 @@ export default function AdminHome() {
             <div className="absolute bottom-6 left-6 right-6 z-[1000] px-6 py-4 glass-card border-white/10 bg-slate-900/80 backdrop-blur-md">
                <div className="grid grid-cols-3 gap-6">
                   <div className="text-center">
-                     <p className="text-[8px] font-black text-gray-500 uppercase tracking-widest">Base Hub</p>
-                     <p className="text-[10px] text-white font-black uppercase mt-1">Mangalagiri</p>
+                     <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Base Hub</p>
+                     <p className="text-[12px] text-white font-black uppercase mt-1">Mangalagiri</p>
                   </div>
                   <div className="text-center">
-                     <p className="text-[8px] font-black text-gray-500 uppercase tracking-widest">Transit Logic</p>
-                     <p className="text-[10px] text-blue-400 font-black uppercase mt-1">Neerukonda Node</p>
+                     <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Transit Logic</p>
+                     <p className="text-[12px] text-blue-400 font-black uppercase mt-1">Neerukonda Node</p>
                   </div>
                   <div className="text-center">
-                     <p className="text-[8px] font-black text-gray-500 uppercase tracking-widest">Nexus Goal</p>
-                     <p className="text-[10px] text-emerald-400 font-black uppercase mt-1">SRM Campus</p>
+                     <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Nexus Goal</p>
+                     <p className="text-[12px] text-emerald-400 font-black uppercase mt-1">SRM Campus</p>
                   </div>
                </div>
             </div>
@@ -338,11 +338,11 @@ export default function AdminHome() {
                 <div key={event.id} className={`p-4 rounded-3xl animate-pulse flex items-center gap-4 ${event.type === 'SOS' ? 'bg-red-600/20 border border-red-600' : 'bg-amber-600/20 border border-amber-600'}`}>
                   <div className="text-2xl">{event.type === 'SOS' ? '🚨' : '⚠️'}</div>
                   <div className="flex-1">
-                    <p className="text-[10px] font-black uppercase text-white tracking-widest">{event.type} Alert: {event.senderRole}</p>
+                    <p className="text-[12px] font-black uppercase text-white tracking-widest">{event.type} Alert: {event.senderRole}</p>
                     <p className="text-xs font-black text-white">{event.issueType || event.details}</p>
-                    {event.orderId && <p className="text-[8px] text-white/50 uppercase mt-1">Order ID: #{event.orderId.slice(-6)}</p>}
+                    {event.orderId && <p className="text-[10px] text-white/50 uppercase mt-1">Order ID: #{event.orderId.slice(-6)}</p>}
                   </div>
-                  <span className="text-[8px] font-black text-white opacity-40">
+                  <span className="text-[10px] font-black text-white opacity-40">
                     {new Date(event.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
@@ -353,7 +353,7 @@ export default function AdminHome() {
               {loading ? (
                 <div className="flex flex-col items-center justify-center h-full gap-4 text-gray-500">
                    <div className="w-8 h-8 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
-                   <p className="text-[10px] uppercase font-black tracking-widest">Syncing Nodes...</p>
+                   <p className="text-[12px] uppercase font-black tracking-widest">Syncing Nodes...</p>
                 </div>
               ) : liveOrders.length === 0 ? (
                 <p className="text-center py-20 text-gray-600 text-xs italic tracking-wide">No movements detected in the last scan.</p>
@@ -370,14 +370,14 @@ export default function AdminHome() {
                   >
                     <div className="flex justify-between items-start mb-2">
                        <div>
-                          <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest mb-0.5">{order.restaurant}</p>
+                          <p className="text-[11px] font-black text-blue-500 uppercase tracking-widest mb-0.5">{order.restaurant}</p>
                           <p className="text-sm font-bold text-white group-hover:text-blue-400 transition-colors">{order.customer}</p>
                        </div>
                         <div className="flex gap-2">
                            {order.paymentMethod === 'UPI' && order.upiStatus === 'Pending' && (
                              <span className="text-[7px] font-black px-1.5 py-0.5 bg-amber-500 text-black rounded animate-pulse">UPI_PENDING</span>
                            )}
-                           <span className={`text-[8px] font-black px-2 py-1 rounded-lg uppercase tracking-wider ${
+                           <span className={`text-[10px] font-black px-2 py-1 rounded-lg uppercase tracking-wider ${
                              order.status === 'Cancelled' ? 'bg-red-500/10 text-red-500' :
                              order.status === 'Delivered' ? 'bg-emerald-500/10 text-emerald-500' :
                              'bg-blue-500/10 text-blue-500'
@@ -400,16 +400,16 @@ export default function AdminHome() {
                                  <span className="text-[10px]">🛵</span>
                                )}
                              </div>
-                             <span className="text-[9px] font-black text-gray-300 uppercase truncate max-w-[80px]">
+                             <span className="text-[11px] font-black text-gray-300 uppercase truncate max-w-[80px]">
                                {order.deliveryPartnerName}
                              </span>
                            </>
                          ) : (
-                           <span className="text-[9px] text-gray-600 font-bold uppercase">Unassigned</span>
+                           <span className="text-[12px] text-gray-600 font-bold uppercase">Unassigned</span>
                          )}
                        </div>
                        <div className="text-right">
-                         <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wide block">{order.location}</span>
+                         <span className="text-[12px] text-gray-500 font-bold uppercase tracking-wide block">{order.location}</span>
                          <span className="text-xs text-white font-black tracking-tighter">₹{order.price.toFixed(0)}</span>
                        </div>
                     </div>
@@ -479,7 +479,7 @@ export default function AdminHome() {
               socketRef.current.emit('admin_announcement', { message: megaMsg.trim(), type: megaType });
               setTimeout(() => { setMegaMsg(''); setBroadcasting(false); }, 1500);
             }}
-            className="self-end px-8 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest bg-[#C9A84C] text-black hover:bg-yellow-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            className="self-end px-8 py-3 rounded-xl text-[13px] font-black uppercase tracking-widest bg-[#C9A84C] text-black hover:bg-yellow-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           >
             {broadcasting ? '✓ Dispatched!' : 'Broadcast Now'}
           </button>

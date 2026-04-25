@@ -5,16 +5,25 @@ export default function IntroOverlay({ onComplete }: { onComplete: () => void })
   const [stage, setStage] = useState(0);
 
   useEffect(() => {
+    // Lock body scroll while intro is visible
+    document.body.style.overflow = 'hidden';
+
     // 🎞️ "Absolute Richness" Cinematic Pacing (Continuous hyper-smooth viscous drift)
     const timers = [
       setTimeout(() => setStage(1), 300),   // Stage 1: Darkness -> Ambient Liquid gradients drift in
       setTimeout(() => setStage(2), 1500),  // Stage 2: 🕯️ Slow burn lens flare glows continuous behind
       setTimeout(() => setStage(3), 3200),  // Stage 3: Noble 3D Glass Crest & Typography crystalize (Slightly slower)
       setTimeout(() => setStage(4), 5000),  // Stage 4: Continuous Aperture forward scale Drive
-      setTimeout(() => onComplete(), 6200) 
+      setTimeout(() => {
+        document.body.style.overflow = '';
+        onComplete();
+      }, 6200) 
     ];
 
-    return () => timers.forEach(clearTimeout);
+    return () => {
+      document.body.style.overflow = '';
+      timers.forEach(clearTimeout);
+    };
   }, [onComplete]);
 
   // 🎇 Enhanced 15-Particle dense drift (Slowed deceleration for expensive motion feel)
@@ -133,12 +142,12 @@ export default function IntroOverlay({ onComplete }: { onComplete: () => void })
               </div>
 
               {/* Precise Vector Signature draws IN on stage 3 */}
-              <svg className="w-9 h-9 md:w-10 md:h-10 text-[#D4AF37]" viewBox="0 0 100 100" fill="none">
+              <svg className="w-12 h-12 md:w-14 md:h-14 text-[#D4AF37]" viewBox="0 0 100 100" fill="none">
                 <path
-                  style={{ strokeDasharray: 300, strokeDashoffset: stage >= 3 ? 0 : 300, transitionDuration: '1800ms' }}
+                  style={{ strokeDasharray: 300, strokeDashoffset: stage >= 3 ? 0 : 300, transitionDuration: '2200ms' }}
                   className={`transition-all delay-500 ${stage >= 3 ? 'stroke-dashoffset-0' : 'stroke-dashoffset-[300]'}`}
                   d="M25 25 L75 25 L25 75 L75 75"
-                  stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"
+                  stroke="currentColor" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round"
                 />
               </svg>
             </div>

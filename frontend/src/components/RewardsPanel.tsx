@@ -62,13 +62,13 @@ export default function RewardsPanel({ onWin }: { onWin: (prize: { type: string;
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
         onClick={() => setShowSpin(true)}
-        className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[#C9A84C]/10 border border-[#C9A84C]/20 hover:bg-[#C9A84C]/20 transition-all group"
+        className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[#C9A84C]/25 border border-[#C9A84C]/40 hover:bg-[#C9A84C]/40 transition-all group shadow-lg shadow-black/20"
         title="Lucky Spin"
       >
-        <div className="text-[#C9A84C] group-hover:rotate-45 transition-transform duration-500">
+        <div className="text-[#C9A84C] group-hover:rotate-45 transition-transform duration-500 drop-shadow-[0_0_5px_rgba(201,168,76,0.3)]">
           <SpinIcon />
         </div>
-        <span className="text-[10px] font-black uppercase tracking-widest text-[#C9A84C]">Spin</span>
+        <span className="text-[10px] font-black uppercase tracking-widest text-white">Spin</span>
       </motion.button>
 
 

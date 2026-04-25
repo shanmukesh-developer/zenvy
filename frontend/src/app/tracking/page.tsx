@@ -12,6 +12,8 @@ import DeliverySuccessOverlay from '@/components/DeliverySuccessOverlay';
 import RatingModal from '@/components/RatingModal';
 import ChatDrawer from '@/components/ChatDrawer';
 import RiderProfileModal from '@/components/RiderProfileModal';
+import Tilt from '@/components/Tilt';
+import Magnetic from '@/components/Magnetic';
 
 const CHECKPOINTS = [
   { name: 'Mangalagiri Jn', lat: 16.4422, lng: 80.5604 },
@@ -92,10 +94,16 @@ function TrackingContent() {
   const [cancelSecondsLeft, setCancelSecondsLeft] = useState(0);
   const [showCancelConfirmation, setShowCancelConfirmation] = useState(false);
 
+  const [userName, setUserName] = useState('Customer');
+
   useEffect(() => {
     try {
       const stored = localStorage.getItem('user');
-      if (stored) setIsElite(JSON.parse(stored).isElite || false);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed.isElite) setIsElite(true);
+        if (parsed.name) setUserName(parsed.name);
+      }
     } catch { /* ignore */ }
 
     if (!orderId) return;
@@ -276,29 +284,40 @@ function TrackingContent() {
   }
 
   return (
-    <main className={`min-h-screen bg-background text-white p-8 animate-page relative ${status === 3 || status === 4 ? 'animate-edge-glow' : ''}`}>
+    <main className={`min-h-screen bg-[#0A0A0B] text-white p-8 animate-page relative overflow-x-hidden ${status === 3 || status === 4 ? 'animate-edge-glow' : ''}`}>
+      {/* Cinematic Background */}
+      <div className="fixed inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(201,168,76,0.05)_0%,transparent_50%)] pointer-events-none" />
+      <div className="fixed inset-0 bg-gradient-to-b from-black via-transparent to-black pointer-events-none opacity-40" />
+
       {/* Header */}
-      <div className="flex items-center justify-between mb-12">
-        <Link href="/" className="w-10 h-10 bg-white/5 rounded-full flex items-center justify-center border border-white/10">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" />
-          </svg>
-        </Link>
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between mb-12 relative z-10">
+        <Magnetic>
+          <Link href="/" className="w-12 h-12 bg-white/5 backdrop-blur-xl rounded-full flex items-center justify-center border border-white/10 hover:bg-white/10 transition-all">
+            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" />
+            </svg>
+          </Link>
+        </Magnetic>
+        <h1 className="text-xl font-black uppercase tracking-[0.3em] text-gold-shimmer">Mission Tracking</h1>
+        <div className="flex items-center gap-4">
           {status === 1 && cancelSecondsLeft > 0 && (
-            <button
-              onClick={() => setShowCancelConfirmation(true)}
-              className="px-6 py-3 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-black transition-all text-[10px] font-black uppercase tracking-widest rounded-2xl border border-red-500/20 shadow-lg shadow-red-500/10"
-            >
-              Cancel Order ({cancelSecondsLeft}s)
-            </button>
+            <Magnetic>
+              <button
+                onClick={() => setShowCancelConfirmation(true)}
+                className="px-6 py-3 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-black transition-all text-[9px] font-black uppercase tracking-widest rounded-full border border-red-500/20 shadow-lg shadow-red-500/10"
+              >
+                Abort ({cancelSecondsLeft}s)
+              </button>
+            </Magnetic>
           )}
-          <button 
-            onClick={() => setIsChatOpen(true)}
-            className="w-12 h-12 bg-[#C9A84C] text-black rounded-full flex items-center justify-center shadow-lg shadow-[#C9A84C]/20 hover:scale-110 transition-transform relative"
-          >
-            <span className="text-xl">💬</span>
-          </button>
+          <Magnetic>
+            <button 
+              onClick={() => setIsChatOpen(true)}
+              className="w-12 h-12 bg-white/5 backdrop-blur-xl text-white rounded-full flex items-center justify-center border border-white/10 hover:bg-white/10 transition-all relative"
+            >
+              <span className="text-xl">💬</span>
+            </button>
+          </Magnetic>
         </div>
       </div>
 
@@ -328,7 +347,7 @@ function TrackingContent() {
 
 
           {/* ─── Mission Progress Radar (Hybrid Map) ─── */}
-          <div className="relative h-[480px] rounded-[42px] overflow-hidden border border-white/5 bg-slate-900/40 shadow-2xl">
+          <Tilt scale={1.01} className="relative h-[480px] rounded-[48px] overflow-hidden border border-white/10 bg-black/40 shadow-2xl z-10 transition-all">
             <LeafletTrackingMapSub 
               currentCheckpoint={currentCheckpoint}
               checkpoints={CHECKPOINTS}
@@ -337,68 +356,77 @@ function TrackingContent() {
             
             {/* Mission HUD Overlays */}
             <div className="absolute top-8 left-8 right-8 z-[1000] flex justify-between items-start pointer-events-none">
-              <div className="glass-card px-6 py-4 border-blue-500/20 bg-blue-500/5 backdrop-blur-md">
-                <h3 className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">
+              <div className="bg-black/40 backdrop-blur-3xl px-6 py-4 rounded-[32px] border border-white/10 shadow-2xl">
+                <h3 className="text-[10px] font-black text-primary-yellow uppercase tracking-[0.2em] mb-1.5 flex items-center gap-2">
                   <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
-                  Mission Progress
+                  Nexus Uplink: Active
                 </h3>
-                <p className="text-[8px] font-black text-white/40 uppercase tracking-widest">Live from Mangalagiri Corridor</p>
+                <p className="text-[8px] font-black text-white/40 uppercase tracking-[0.1em]">LIVE TELEMETRY FEED • {currentCheckpoint?.toUpperCase()}</p>
               </div>
               
               {!isConnected && (
-                <div className="glass-card px-4 py-2 border-red-500/30 bg-red-500/10 flex items-center gap-2 backdrop-blur-md">
+                <div className="bg-red-500/10 backdrop-blur-xl px-4 py-2 border-red-500/30 rounded-2xl flex items-center gap-2">
                   <span className="text-[10px] font-black text-red-500 uppercase tracking-widest">Uplink Lost</span>
                   <span className="animate-ping w-1.5 h-1.5 bg-red-500 rounded-full" />
                 </div>
               )}
             </div>
-          </div>
+          </Tilt>
 
-          <div className="mt-12 flex justify-between items-center bg-white/[0.02] p-6 rounded-3xl border border-white/5">
-             <div className="flex items-center gap-4">
-                <div className="w-10 h-10 bg-blue-500/20 rounded-xl flex items-center justify-center text-xl">📡</div>
+          <div className="mt-8 flex justify-between items-center bg-white/[0.02] p-8 rounded-[36px] border border-white/5 relative z-10">
+             <div className="flex items-center gap-5">
+                <div className="w-14 h-14 bg-[#C9A84C]/10 rounded-2xl flex items-center justify-center text-2xl border border-[#C9A84C]/20 shadow-inner">📡</div>
                 <div>
-                   <p className="text-[8px] font-black text-gray-500 uppercase tracking-widest">Current Sector</p>
-                   <p className="text-sm font-black text-white uppercase tracking-tighter">{currentCheckpoint}</p>
+                   <p className="text-[9px] font-black text-white/20 uppercase tracking-[0.4em] mb-1">Current Sector</p>
+                   <p className="text-base font-black text-white uppercase tracking-tight">{currentCheckpoint}</p>
                 </div>
              </div>
              <div className="text-right">
-                <p className="text-[8px] font-black text-gray-500 uppercase tracking-widest">ETA Update</p>
-                <p className="text-sm font-black text-[#C9A84C] animate-pulse uppercase tracking-tighter">{eta}</p>
+                <p className="text-[9px] font-black text-white/20 uppercase tracking-[0.4em] mb-1">Tactical ETA</p>
+                <div className="px-4 py-1 bg-[#C9A84C]/10 rounded-full border border-[#C9A84C]/20">
+                   <p className="text-sm font-black text-primary-yellow animate-pulse uppercase tracking-tighter">{eta}</p>
+                </div>
              </div>
           </div>
 
       {/* Dynamic Order Summary */}
       {orderInfo && (
-        <div className="mb-4 p-8 bg-card-bg rounded-[40px] border border-white/5 flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-[#C9A84C]/10 rounded-full flex items-center justify-center border border-[#C9A84C]/20 text-xl text-center">
-                 📦
+        <Tilt scale={1.01} className="mb-6 relative z-10">
+          <div className="p-8 bg-white/[0.02] backdrop-blur-2xl rounded-[48px] border border-white/10 flex items-center justify-between group overflow-hidden">
+              <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none group-hover:opacity-10 transition-opacity">
+                 <span className="text-4xl font-black italic">VAULT</span>
               </div>
-              <div>
-                 <h4 className="text-sm font-black uppercase tracking-tighter">ORDER #{orderId?.slice(-6)}</h4>
-                 <div className="flex flex-col gap-1 mt-1">
-                    <p className="text-[10px] font-bold text-secondary-text">
-                      {orderInfo?.items ? (Array.isArray(orderInfo.items) ? orderInfo.items.length : 0) : 0} Items • ₹{orderInfo?.totalPrice || 0}
-                    </p>
-                    { (orderInfo.batchDiscount || 0) > 0 && (
-                      <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest flex items-center gap-1">
-                        ✨ Eco-Batching Saver Applied (-₹{orderInfo.batchDiscount})
+              <div className="flex items-center gap-6 relative z-10">
+                <div className="w-16 h-16 bg-[#C9A84C]/10 rounded-2xl flex items-center justify-center border border-[#C9A84C]/20 text-3xl shadow-inner">
+                   📦
+                </div>
+                <div>
+                   <h4 className="text-xs font-black uppercase tracking-[0.3em] text-white/40 mb-1">STRATEGIC ORDER #{orderId?.slice(-6)}</h4>
+                   <div className="flex flex-col gap-1">
+                      <p className="text-lg font-black text-white tracking-widest">
+                        {orderInfo?.items ? (Array.isArray(orderInfo.items) ? orderInfo.items.length : 0) : 0} Items <span className="text-[#C9A84C] mx-2">•</span> ₹{orderInfo?.totalPrice || 0}
                       </p>
-                    )}
-                 </div>
-              </div>
-           </div>
-           
-           {orderInfo.deliveryPin && (
-             <div className="text-right">
-                <p className="text-[8px] font-black uppercase text-secondary-text mb-1">Security PIN</p>
-                <div className="bg-[#C9A84C] text-black px-4 py-2 rounded-xl font-black text-xl tracking-[0.2em] shadow-lg shadow-[#C9A84C]/20">
-                  {orderInfo.deliveryPin}
+                      { (orderInfo.batchDiscount || 0) > 0 && (
+                        <div className="px-3 py-1 bg-emerald-500/10 rounded-full border border-emerald-500/20 inline-flex self-start mt-2">
+                          <p className="text-[8px] font-black text-emerald-400 uppercase tracking-[0.1em]">
+                            ✨ Eco-Batching Efficiency Active (-₹{orderInfo.batchDiscount})
+                          </p>
+                        </div>
+                      )}
+                   </div>
                 </div>
              </div>
-           )}
-        </div>
+             
+             {orderInfo.deliveryPin && (
+               <div className="text-right relative z-10">
+                  <p className="text-[9px] font-black uppercase text-white/30 tracking-[0.2em] mb-2">Gate Activation PIN</p>
+                  <div className="bg-gradient-to-br from-primary-yellow to-amber-600 text-black px-6 py-3 rounded-2xl font-black text-2xl tracking-[0.3em] shadow-[0_10px_30px_rgba(201,168,76,0.3)]">
+                    {orderInfo.deliveryPin}
+                  </div>
+               </div>
+             )}
+          </div>
+        </Tilt>
       )}
 
       {/* Live Sync Status & Telemetry */}
@@ -586,7 +614,7 @@ function TrackingContent() {
 
       <ChatDrawer
         orderId={orderId || ''}
-        userName={typeof window !== 'undefined' ? (JSON.parse(localStorage.getItem('user') || '{}').name || 'Customer') : 'Customer'}
+        userName={userName}
         userRole="customer"
         socket={socket}
         isOpen={isChatOpen}

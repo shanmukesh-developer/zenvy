@@ -2,13 +2,17 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { motion, AnimatePresence } from 'framer-motion';
 import SuccessOverlay from '@/components/SuccessOverlay';
+import Tilt from '@/components/Tilt';
+import Magnetic from '@/components/Magnetic';
 
 export default function LoginPage() {
   const router = useRouter();
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const [overlay, setOverlay] = useState<{ isOpen: boolean; title: string; message: string; type?: 'success' | 'error' }>({
     isOpen: false,
@@ -18,30 +22,25 @@ export default function LoginPage() {
 
   const handleLogin = async () => {
     if (!phone || phone.length < 10) {
-      setOverlay({ isOpen: true, title: 'Invalid Phone', message: 'Enter a valid 10-digit number.', type: 'error' });
+      setOverlay({ isOpen: true, title: 'INVALID ID', message: 'Nexus authorization requires a valid 10-digit uplink ID.', type: 'error' });
       return;
     }
     if (!password) {
-      setOverlay({ isOpen: true, title: 'Password Required', message: 'Please enter your password.', type: 'error' });
+      setOverlay({ isOpen: true, title: 'CIPHER REQUIRED', message: 'Encryption cipher cannot be empty.', type: 'error' });
       return;
     }
-
     setLoading(true);
     const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
     try {
-      // Support alphabetic IDs like 'driver-1' or 'tester'
       const last10 = /[a-zA-Z]/.test(phone) ? phone : phone.replace(/\D/g, '').slice(-10);
-
       const response = await fetch(`${API_URL}/api/users/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: last10, password })
       });
-
       const data = await response.json();
-
       if (response.ok) {
-        localStorage.removeItem('zenvy_cart'); // Clear stale cart from previous session
+        localStorage.removeItem('zenvy_cart');
         localStorage.setItem('token', data.token);
         localStorage.setItem('user', JSON.stringify({ 
           id: data._id, 
@@ -50,73 +49,224 @@ export default function LoginPage() {
           hostelBlock: data.hostelBlock,
           roomNumber: data.roomNumber
         }));
-        
-        setOverlay({ isOpen: true, title: 'Login Successful', message: `Welcome back, ${data.name}!`, type: 'success' });
+        setOverlay({ isOpen: true, title: 'UPLINK ESTABLISHED', message: `Welcome back, Operative ${data.name.toUpperCase()}.`, type: 'success' });
         setTimeout(() => router.push('/'), 1500);
       } else {
-        setOverlay({ isOpen: true, title: 'Access Denied', message: data.message || 'Login failed.', type: 'error' });
+        setOverlay({ isOpen: true, title: 'ACCESS DENIED', message: data.message || 'Authorization failed.', type: 'error' });
       }
     } catch {
-      setOverlay({ isOpen: true, title: 'Network Error', message: 'Connection to gateway failed.', type: 'error' });
+      setOverlay({ isOpen: true, title: 'LINK FAILURE', message: 'Connection to Nexus gateway timed out.', type: 'error' });
     } finally {
       setLoading(false);
     }
   };
+   
+  // 🛰️ Tactical Data Streams (Stabilized & Hydration-Safe)
+  const DataStream = ({ side }: { side: 'left' | 'right' }) => {
+    const techWords = ['SYNC', 'GATE', 'VRX', 'LINK', 'CORE', 'DATA', 'NODE', 'LOCK'];
+    const hexCodes = ['X72', '8A1', 'F3D', '9C2', 'B0E', '57F', '1A4', '6E9'];
+    
+    return (
+      <div className={`absolute top-0 bottom-0 ${side === 'left' ? 'left-8' : 'right-8'} w-12 flex flex-col justify-around py-40 pointer-events-none opacity-10 z-0`}>
+        {[...Array(8)].map((_, i) => (
+          <div
+             key={i}
+             className="text-[7px] font-mono text-primary-yellow tracking-tighter opacity-40 uppercase"
+          >
+            {techWords[i % techWords.length]}
+            <br/>
+            {hexCodes[i % hexCodes.length]}
+          </div>
+        ))}
+      </div>
+    );
+  };
 
   return (
-    <main className="min-h-screen bg-background text-white p-10 flex flex-col justify-between">
-      <div>
-        <Link href="/" className="w-12 h-12 bg-white/5 rounded-full flex items-center justify-center border border-white/10 mb-12">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" />
-            </svg>
-        </Link>
-        
-        <h1 className="text-[40px] font-black leading-tight mb-2">
-           Welcome <br />
-           <span className="text-primary-yellow italic font-serif">Back!</span>
-        </h1>
+    <main className="min-h-screen bg-[#020203] text-white p-6 md:p-10 flex flex-col justify-start md:justify-center relative overflow-y-auto">
+      {/* 🔮 Re-materialization Glitch Layer */}
+      <motion.div 
+        initial={{ opacity: 1, scale: 1.5, filter: 'blur(100px)' }}
+        animate={{ opacity: 0, scale: 1, filter: 'blur(0px)' }}
+        transition={{ duration: 1.5, ease: 'easeInOut' }}
+        className="fixed inset-0 bg-primary-yellow/10 z-[100] pointer-events-none"
+      />
 
-        <div className="space-y-6">
-          <p className="text-secondary-text text-sm font-medium mb-12">
-             Enter your credentials to authorize login.
-          </p>
-
-          <div className="relative">
-            <span className="absolute left-6 top-1/2 -translate-y-1/2 text-secondary-text font-black text-sm uppercase tracking-widest">
-                +91
-            </span>
-            <input 
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="Enter Number"
-              className="w-full bg-[#1C1C1E] border-none rounded-[30px] h-[72px] pl-20 pr-6 font-black text-lg focus:ring-2 focus:ring-primary-yellow transition-all outline-none"
-            />
-          </div>
-
-          <input 
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Gourmet Password"
-            className="w-full bg-[#1C1C1E] border-none rounded-[30px] h-[72px] px-8 font-black text-lg focus:ring-2 focus:ring-primary-yellow transition-all outline-none"
-          />
-
-          <button 
-            onClick={handleLogin}
-            disabled={loading}
-            className="w-full btn-yellow flex justify-center py-6 text-sm uppercase font-black tracking-[0.2em] shadow-[0_20px_40px_rgba(247,211,49,0.2)] disabled:opacity-50"
-          >
-             {loading ? 'Processing...' : 'Authorize Login'}
-          </button>
+      {/* 🌌 Optimized Cyber-Nexus Background */}
+      <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden bg-[#020203]">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(201,168,76,0.1),transparent_70%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_100%,rgba(139,92,246,0.05),transparent_70%)]" />
+        <div className="absolute inset-0 flex items-center justify-center opacity-20">
+           <div className="w-[1000px] h-[1000px] bg-[conic-gradient(from_0deg_at_50%_50%,rgba(201,168,76,0.02)_0%,transparent_50%,rgba(201,168,76,0.02)_100%)]" />
         </div>
       </div>
 
-      <div className="text-center pb-10 space-y-4">
-         <p className="text-[10px] text-secondary-text uppercase tracking-widest font-bold">
-            New to Zenvy? <Link href="/register" className="text-primary-yellow underline underline-offset-4">Create Account</Link>
-         </p>
+      {/* 📽️ Holographic Light Source (Bottom-Up Projection) */}
+      <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-[600px] h-32 bg-primary-yellow/10 blur-[100px] rounded-full pointer-events-none scale-y-50 z-0" />
+      <div className="fixed bottom-[-10px] left-1/2 -translate-x-1/2 w-[400px] h-1 bg-gradient-to-r from-transparent via-primary-yellow/40 to-transparent blur-[2px] z-0" />
+
+      {/* 🛰️ Data Streams */}
+      <DataStream side="left" />
+      <DataStream side="right" />
+
+      <div className="relative z-10 w-full max-w-lg mx-auto flex flex-col items-center">
+        {/* Back Link */}
+        <motion.div 
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          className="mb-10 w-full flex justify-start pl-4"
+        >
+          <Magnetic>
+            <Link href="/" className="group flex items-center gap-3">
+              <div className="w-11 h-11 bg-white/5 backdrop-blur-3xl rounded-2xl flex items-center justify-center border border-white/10 group-hover:border-primary-yellow/40 transition-all">
+                <svg className="w-4 h-4 text-white/20 group-hover:text-primary-yellow transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M15 19l-7-7 7-7" />
+                </svg>
+              </div>
+              <div className="flex flex-col">
+                <span className="text-[7px] font-black uppercase tracking-[0.4em] text-white/20">Protocol</span>
+                <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white/40 group-hover:text-white transition-colors">Abort Mission</span>
+              </div>
+            </Link>
+          </Magnetic>
+        </motion.div>
+        
+        {/* 🎭 Innovative Header Section */}
+        <div className="text-center mb-16 relative">
+          <motion.h1 
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            className="text-[10px] font-black uppercase tracking-[1em] text-primary-yellow/60 mb-4 brightness-125 flex items-center justify-center gap-4"
+          >
+            <span className="w-8 h-px bg-primary-yellow/20" />
+            NEXUS GATEWAY
+            <span className="w-8 h-px bg-primary-yellow/20" />
+          </motion.h1>
+          <motion.h2 
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ duration: 1, delay: 0.1 }}
+            className="text-[64px] md:text-[88px] font-black leading-[0.8] tracking-tighter text-white uppercase italic"
+            style={{ fontFamily: "'Syne', sans-serif" }}
+          >
+             IDENTITY <br />
+             <span className="text-gold-gradient-glow font-black not-italic">SYSTEM</span>
+          </motion.h2>
+          
+          {/* Tactical Telemetry Icons */}
+          <div className="mt-8 flex justify-center gap-12 opacity-30">
+             {['📡 UPLINK: STABLE', '⚡ POWER: MAX', '🔒 ENCR: AES-256'].map((text, i) => (
+               <div key={i} className="flex flex-col items-center gap-1">
+                 <div className="w-1 h-3 bg-white/20 rounded-full overflow-hidden">
+                    <motion.div 
+                      animate={{ height: ['0%', '100%', '0%'] }} 
+                      transition={{ duration: 2, repeat: Infinity, delay: i * 0.5 }}
+                      className="bg-primary-yellow w-full"
+                    />
+                 </div>
+                 <span className="text-[6px] font-black tracking-[0.2em]">{text}</span>
+               </div>
+             ))}
+          </div>
+        </div>
+
+        {/* 💳 Holographic Form Module */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 1, delay: 0.4 }}
+          className="w-full relative group"
+        >
+          {/* 📽️ Bottom Light Shadow (Making it feel projected) */}
+          <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 w-3/4 h-10 bg-primary-yellow/10 blur-xl opacity-0 group-hover:opacity-100 transition-opacity" />
+
+          {/* Animated Border Module */}
+          <div className="absolute -inset-[1px] bg-gradient-to-r from-primary-yellow/30 via-violet-500/20 to-primary-yellow/30 rounded-[40px] animate-gradient-x -z-1 opacity-50 group-hover:opacity-100 transition-opacity" />
+          
+          <div className="glass-card-extreme p-8 md:p-10 space-y-8 overflow-hidden border-white/5 relative">
+            {/* Corner Bracket Decals */}
+            <div className="absolute top-4 left-4 w-4 h-4 border-t-2 border-l-2 border-primary-yellow/20 rounded-tl-lg" />
+            <div className="absolute top-4 right-4 w-4 h-4 border-t-2 border-r-2 border-primary-yellow/20 rounded-tr-lg" />
+            <div className="absolute bottom-4 left-4 w-4 h-4 border-b-2 border-l-2 border-primary-yellow/20 rounded-bl-lg" />
+            <div className="absolute bottom-4 right-4 w-4 h-4 border-b-2 border-r-2 border-primary-yellow/20 rounded-br-lg" />
+
+            <div className="space-y-1">
+              <div className="flex justify-between items-center px-2">
+                <label className="text-[8px] font-black uppercase tracking-[0.4em] text-white/30">Node Identifier</label>
+              </div>
+              <div className="relative group/input">
+                <span className="absolute left-6 top-1/2 -translate-y-1/2 text-primary-yellow font-black text-xs tracking-widest opacity-20 group-focus-within/input:opacity-100 transition-opacity">
+                    +91
+                </span>
+                <input 
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="AUTHORIZE ID"
+                  className="w-full bg-[#020203] border border-white/[0.05] group-hover/input:border-white/10 group-focus-within/input:border-primary-yellow/40 rounded-2xl h-[68px] pl-16 pr-6 font-bold text-sm tracking-[0.2em] transition-all outline-none uppercase placeholder:text-white/5"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex justify-between items-center px-2">
+                <label className="text-[8px] font-black uppercase tracking-[0.4em] text-white/30">Nexus Access Key</label>
+              </div>
+              <div className="relative group/input">
+                <input 
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="NEXUS CIPHER"
+                  className="w-full bg-[#020203] border border-white/[0.05] group-hover/input:border-white/10 group-focus-within/input:border-primary-yellow/40 rounded-2xl h-[68px] px-8 font-bold text-sm tracking-[0.2em] transition-all outline-none uppercase placeholder:text-white/5"
+                />
+                <button 
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-6 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center text-white/20 hover:text-primary-yellow hover:drop-shadow-[0_0_8px_rgba(201,168,76,0.8)] transition-all text-xl"
+                >
+                   {showPassword ? '◌' : '●'}
+                </button>
+              </div>
+            </div>
+
+            <Magnetic>
+              <button 
+                onClick={handleLogin}
+                disabled={loading}
+                className="w-full h-[68px] relative rounded-2xl bg-black border border-primary-yellow/50 text-primary-yellow text-xs uppercase font-black tracking-[0.6em] shadow-[0_0_50px_rgba(201,168,76,0.1)] hover:shadow-[0_0_80px_rgba(201,168,76,0.25)] transition-all duration-700 group/btn overflow-hidden"
+              >
+                 <div className="absolute inset-0 bg-gradient-to-br from-primary-yellow/20 to-transparent opacity-0 group-hover/btn:opacity-100 transition-opacity" />
+                 <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover/btn:animate-shimmer" />
+                 <span className="relative z-10 group-hover/btn:scale-105 transition-transform block">
+                   {loading ? 'SYNCING CORE...' : 'ESTABLISH SECURE LINK'}
+                 </span>
+              </button>
+            </Magnetic>
+
+            {/* Registration Footer */}
+            <div className="pt-6 flex flex-col items-center gap-4">
+              <p className="text-[9px] text-white/20 uppercase tracking-[0.3em] font-black">
+                Unregistered Node? <Link href="/register" className="text-primary-yellow hover:text-white transition-colors underline underline-offset-8 ml-2">Begin Onboarding</Link>
+              </p>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Global Technical Footer */}
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 0.15 }}
+          transition={{ delay: 1.5 }}
+          className="mt-16 flex flex-col items-center gap-3 pointer-events-none"
+        >
+          <div className="flex items-center gap-6">
+             <span className="text-[6px] tracking-[0.5em] font-black uppercase">Lat: 16.5062° N</span>
+             <div className="w-1.5 h-1.5 bg-primary-yellow rounded-full animate-pulse" />
+             <span className="text-[6px] tracking-[0.5em] font-black uppercase">Long: 80.6480° E</span>
+          </div>
+          <span className="text-[8px] tracking-[1.5em] font-extrabold uppercase italic opacity-40">ZENVY NEXUS PROTOCOL v4.0.2</span>
+        </motion.div>
       </div>
 
       <SuccessOverlay 

@@ -35,48 +35,56 @@ const RestaurantCard = ({ name, rating, time, imageUrl, imagePosition }: Restaur
     x.set(0);
     y.set(0);
   };
-
   return (
     <motion.div 
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
       style={{ rotateX, rotateY, transformStyle: "preserve-3d" }}
-      whileHover={{ scale: 1.02 }}
+      whileHover={{ scale: 1.04 }}
       transition={{ type: "spring", stiffness: 300, damping: 20 }}
-      className={`capsule-card mb-10 ${imagePosition === 'right' ? 'flex-row-reverse text-right pl-6' : 'pr-6'}`}
+      className={`capsule-card mb-6 overflow-visible hover:z-30 group flex items-center ${imagePosition === 'right' ? 'flex-row-reverse text-right pl-6' : 'pr-6'}`}
     >
-      {/* Image Circle */}
+      {/* Premium Glow Layer */}
+      <div className="absolute inset-0 rounded-[60px] bg-gradient-to-br from-primary-yellow/10 via-transparent to-primary-yellow/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-xl -z-10" />
+      
+      {/* Image Circle with Enhanced Glow */}
       <motion.div 
         style={{ translateZ: 50 }}
-        className={`food-circle shadow-xl transition-all duration-500 ${imagePosition === 'left' ? '-ml-6' : '-mr-6'} relative z-20 overflow-hidden`}
+        className={`food-circle shadow-[0_0_30_px_rgba(201,168,76,0.15)] group-hover:shadow-[0_0_40px_rgba(201,168,76,0.3)] transition-all duration-500 ${imagePosition === 'left' ? '-ml-6' : '-mr-6'} relative z-20 overflow-hidden border-2 border-primary-yellow/40 group-hover:border-primary-yellow`}
       >
         <SafeImage 
           src={imageUrl} 
           alt={name}
           fill
+          className="group-hover:scale-110 transition-transform duration-700 object-cover"
         />
+        {/* Subtle Lens Flare on Circle */}
+        <div className="absolute inset-0 bg-gradient-to-tr from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
       </motion.div>
       
-      {/* Content Area */}
+      {/* Content Area with Premium Glassmorphism */}
       <div 
-        className={`flex-1 flex flex-col justify-center px-6 ${imagePosition === 'right' ? 'mr-2' : 'ml-2'} relative z-10 overflow-hidden`}
+        className={`flex-1 flex flex-col justify-center px-6 ${imagePosition === 'right' ? 'mr-0' : 'ml-0'} relative z-10`}
         style={{ transform: "translateZ(30px)" }}
       >
-        <h3 className="font-black text-[15px] leading-tight mb-2 text-white line-clamp-2">{name}</h3>
+        <h3 className="font-black text-[16px] leading-tight mb-2 text-white group-hover:text-primary-yellow transition-colors line-clamp-1 truncate" style={{ fontFamily: "'Syne', sans-serif" }}>{name}</h3>
         
         <div className={`flex items-center gap-3 ${imagePosition === 'right' ? 'justify-end' : 'justify-start'}`}>
-            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20">
-              <span className="text-[9px] font-black text-emerald-500">{rating} ★</span>
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.1)]">
+              <span className="text-[10px] font-black text-emerald-400">{rating} ★</span>
             </div>
             <span className="text-[10px] text-white/20 font-black">•</span>
-            <div className="flex items-center gap-1.5 text-secondary-text text-[9px] font-black uppercase tracking-widest">
-              <svg className="w-3.5 h-3.5 opacity-40 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="flex items-center gap-1.5 text-secondary-text text-[10px] font-black uppercase tracking-widest group-hover:text-white/60 transition-colors">
+              <svg className="w-3.5 h-3.5 opacity-60 text-primary-yellow animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
                {time}
             </div>
         </div>
       </div>
+      
+      {/* Hover Internal Glow Border */}
+      <div className="absolute inset-0 rounded-[60px] border border-white/5 group-hover:border-primary-yellow/30 transition-colors pointer-events-none" />
     </motion.div>
   );
 };

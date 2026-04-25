@@ -6,6 +6,8 @@ import { useCart } from '@/context/CartContext';
 import SafeImage from '@/components/SafeImage';
 import SuccessOverlay from '@/components/SuccessOverlay';
 import { MenuItem } from '@/types';
+import Tilt from '@/components/Tilt';
+import Magnetic from '@/components/Magnetic';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
 
@@ -92,7 +94,7 @@ export default function ProductDetailClient({ productId }: { productId: string }
   };
 
   return (
-    <main className="min-h-screen bg-[#0A0A0B] text-white relative flex flex-col">
+    <main className="min-h-screen bg-[#0A0A0B] text-white relative flex flex-col overflow-x-hidden">
       {/* ── Immersive Full-Bleed Parallax Hero Image ── */}
       <div className="relative h-[480px] w-full shrink-0 overflow-hidden">
          <div 
@@ -107,12 +109,14 @@ export default function ProductDetailClient({ productId }: { productId: string }
              priority
            />
          </div>
-         {/* Heavy Premium Gradient Masks */}
-         <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0B] via-[#0A0A0B]/60 to-transparent" />
-         <div className="absolute inset-0 bg-[#0A0A0B]/20" /> {/* Subtle overall darkening for contrast */}
+          {/* Heavy Premium Gradient Masks & Cinematic Mist */}
+          <div className="absolute inset-0 bg-gradient-to-t from-[#050507] via-[#050507]/60 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/80 to-transparent h-40" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_120%,rgba(201,168,76,0.1),transparent_70%)]" />
+          <div className="absolute inset-0 bg-[#0A0A0B]/30" />
 
          {/* Hero Top Nav */}
-         <div className="absolute top-0 left-0 right-0 p-8 pt-12 flex justify-between items-center z-20 bg-gradient-to-b from-black/80 to-transparent">
+         <div className="absolute top-0 left-0 right-0 p-4 md:p-8 pt-10 md:pt-12 flex justify-between items-center z-20 bg-gradient-to-b from-black/80 to-transparent">
            <Link href="/" onClick={(e) => { e.preventDefault(); router.back(); }} className="w-12 h-12 bg-white/5 backdrop-blur-xl rounded-full flex items-center justify-center border border-white/10 hover:bg-white/10 hover:scale-105 transition-all shadow-2xl">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" />
@@ -134,30 +138,30 @@ export default function ProductDetailClient({ productId }: { productId: string }
       </div>
 
       {/* ── Product Details Content ── */}
-      <div className="flex-1 -mt-32 relative z-10 px-8 pb-40">
+      <div className="flex-1 -mt-32 relative z-10 px-4 md:px-8 pb-40">
          {/* Ambient Breathing Orb */}
          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[300px] h-[300px] bg-primary-yellow/10 blur-[120px] rounded-full pointer-events-none animate-pulse mix-blend-screen" />
 
-         <div className="mb-8 relative animate-in fade-in slide-in-from-bottom-8 duration-700" style={{ animationFillMode: 'both', animationDelay: '100ms' }}>
-            <span className="text-[10px] uppercase tracking-[0.3em] text-primary-yellow font-black block mb-3 drop-shadow-md">Zenvy Signature</span>
-            <h1 className="text-4xl font-black text-white leading-[1.1] mb-4 drop-shadow-2xl">{product.name}</h1>
-            <p className="text-[14px] text-zinc-300/80 leading-relaxed font-medium max-w-[95%]">{product.description}</p>
+         <div className="mb-10 relative animate-in fade-in slide-in-from-bottom-8 duration-1000" style={{ animationFillMode: 'both', animationDelay: '100ms' }}>
+            <span className="text-[10px] uppercase tracking-[0.4em] text-primary-yellow font-black block mb-4 drop-shadow-md">Zenvy Signature Selection</span>
+            <h1 className="text-4xl md:text-5xl font-black text-white leading-[1] mb-6 drop-shadow-2xl text-gold-shimmer">{product.name}</h1>
+            <p className="text-[15px] text-zinc-300/60 leading-relaxed font-medium max-w-[95%]">{product.description || `An exquisite culinary masterpiece crafted with the finest ingredients and precision.`}</p>
          </div>
 
-         {/* ── Elite Attributes Grid ── */}
-         <div className="grid grid-cols-3 gap-3 mb-10 relative animate-in fade-in slide-in-from-bottom-8 duration-700" style={{ animationFillMode: 'both', animationDelay: '200ms' }}>
-            <div className="bg-white/5 border border-white/5 rounded-3xl p-4 py-5 flex flex-col items-center justify-center text-center gap-2.5 hover:bg-white/10 hover:border-primary-yellow/30 transition-all duration-300 group">
-               <svg className="w-6 h-6 text-primary-yellow group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" /></svg>
-               <span className="text-[9px] uppercase tracking-widest font-black text-secondary-text leading-tight">Premium<br/>Quality</span>
-            </div>
-            <div className="bg-white/5 border border-white/5 rounded-3xl p-4 py-5 flex flex-col items-center justify-center text-center gap-2.5 hover:bg-white/10 hover:border-primary-yellow/30 transition-all duration-300 group">
-               <svg className="w-6 h-6 text-primary-yellow group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-               <span className="text-[9px] uppercase tracking-widest font-black text-secondary-text leading-tight">Made<br/>Fresh</span>
-            </div>
-            <div className="bg-white/5 border border-white/5 rounded-3xl p-4 py-5 flex flex-col items-center justify-center text-center gap-2.5 hover:bg-white/10 hover:border-primary-yellow/30 transition-all duration-300 group">
-               <svg className="w-6 h-6 text-primary-yellow group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
-               <span className="text-[9px] uppercase tracking-widest font-black text-secondary-text leading-tight">Elite<br/>Standard</span>
-            </div>
+         {/* ── Elite Attributes Grid with Tilt ── */}
+         <div className="grid grid-cols-3 gap-4 mb-12 relative animate-in fade-in slide-in-from-bottom-8 duration-1000" style={{ animationFillMode: 'both', animationDelay: '250ms' }}>
+            {[
+              { icon: 'M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z', label: 'Premium\nQuality' },
+              { icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z', label: 'Made\nFresh' },
+              { icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z', label: 'Elite\nStandard' }
+            ].map((attr, i) => (
+              <Tilt key={i} scale={1.05}>
+                <div className="bg-black/40 backdrop-blur-xl border border-white/5 rounded-[24px] md:rounded-[32px] p-4 md:p-5 py-5 md:py-6 flex flex-col items-center justify-center text-center gap-2 md:gap-3 hover:bg-white/[0.08] hover:border-primary-yellow/30 transition-all duration-500 group h-full">
+                   <svg className="w-7 h-7 text-primary-yellow group-hover:scale-110 transition-transform duration-500 filter drop-shadow-[0_0_8px_rgba(201,168,76,0.2)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d={attr.icon} /></svg>
+                   <span className="text-[10px] uppercase tracking-[0.25em] font-black text-white/40 group-hover:text-white/70 transition-colors leading-tight whitespace-pre">{attr.label}</span>
+                </div>
+              </Tilt>
+            ))}
          </div>
 
          <div className="gold-line mb-8 opacity-20 relative animate-in fade-in duration-1000" style={{ animationFillMode: 'both', animationDelay: '400ms' }} />
@@ -171,24 +175,28 @@ export default function ProductDetailClient({ productId }: { productId: string }
             </div>
 
             {/* Premium Quantity Selector */}
-            <div className="flex items-center gap-5 bg-[#141416] border border-white/5 rounded-full px-2 py-2 shadow-inner">
-               <button 
-                 onClick={() => {
-                   if (currentQty > 1) updateQuantity(product.id || product._id || "", currentQty - 1);
-                   else if (currentQty === 1) removeFromCart(product.id || product._id || "");
-                 }}
-                 className="w-12 h-12 rounded-full bg-black text-white border border-white/5 flex items-center justify-center text-xl hover:bg-white/10 active:scale-95 transition-all shadow-md"
-               >−</button>
-               <span className="text-xl font-black w-5 text-center font-mono">
+            <div className="flex items-center gap-4 md:gap-6 bg-white/[0.03] backdrop-blur-2xl border border-white/5 rounded-full px-2 py-2 md:px-3 md:py-3 shadow-inner">
+               <Magnetic>
+                 <button 
+                   onClick={() => {
+                     if (currentQty > 1) updateQuantity(product.id || product._id || "", currentQty - 1);
+                     else if (currentQty === 1) removeFromCart(product.id || product._id || "");
+                   }}
+                   className="w-12 h-12 rounded-full bg-black text-white border border-white/5 flex items-center justify-center text-xl hover:bg-white/10 active:scale-90 transition-all shadow-xl"
+                 >−</button>
+               </Magnetic>
+               <span className="text-2xl font-black w-6 text-center tabular-nums">
                  {currentQty}
                </span>
-               <button 
-                 onClick={() => {
-                   if (currentQty === 0) handleInstantAdd();
-                   else updateQuantity(product.id || product._id || "", currentQty + 1);
-                 }}
-                 className="w-12 h-12 rounded-full bg-gradient-to-br from-[#C9A84C] to-[#8B7332] text-black border border-transparent shadow-[0_0_15px_rgba(201,168,76,0.3)] flex items-center justify-center text-xl hover:brightness-110 active:scale-95 transition-all"
-               >+</button>
+               <Magnetic>
+                 <button 
+                   onClick={() => {
+                     if (currentQty === 0) handleInstantAdd();
+                     else updateQuantity(product.id || product._id || "", currentQty + 1);
+                   }}
+                   className="w-12 h-12 rounded-full bg-gradient-to-br from-[#C9A84C] to-[#8B7332] text-black border border-transparent shadow-[0_0_25px_rgba(201,168,76,0.35)] flex items-center justify-center text-xl hover:brightness-110 active:scale-90 transition-all"
+                 >+</button>
+               </Magnetic>
             </div>
          </div>
       </div>
@@ -209,9 +217,9 @@ export default function ProductDetailClient({ productId }: { productId: string }
            ) : (
              <Link 
                href="/basket"
-               className="flex-1 bg-white text-black h-[70px] rounded-[24px] flex items-center justify-center gap-2 shadow-lg hover:bg-gray-100 transition-all active:scale-95 group relative overflow-hidden"
+               className="flex-1 bg-gradient-to-r from-[#C9A84C] via-[#E8D18C] to-[#C9A84C] text-black h-[70px] rounded-[24px] flex items-center justify-center gap-2 shadow-[0_15px_30px_-10px_rgba(201,168,76,0.4)] transition-all active:scale-95 group relative overflow-hidden"
              >
-                <div className="absolute inset-0 -translate-x-full group-hover:animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-black/10 to-transparent skew-x-12" />
+                <div className="absolute inset-0 -translate-x-full group-hover:animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/40 to-transparent skew-x-12" />
                 <span className="font-black text-[13px] uppercase tracking-[0.1em] relative z-10">Proceed to Basket</span>
                 <span className="w-1.5 h-1.5 rounded-full bg-black/20 relative z-10" />
                 <span className="font-black text-[14px] relative z-10">{currentQty} Items (₹{product.price * currentQty})</span>

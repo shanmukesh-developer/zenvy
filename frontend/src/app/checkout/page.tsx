@@ -7,6 +7,8 @@ import CheckoutProcessingModal from '@/components/CheckoutProcessingModal';
 import MapLocationPicker from '@/components/MapLocationPicker';
 import { calculateRoadDistance, calculateDeliveryFee, getCoordsForAddress } from '@/utils/logistics';
 import ZenvyModal from '@/components/ZenvyModal';
+import Tilt from '@/components/Tilt';
+import Magnetic from '@/components/Magnetic';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
 
@@ -265,7 +267,8 @@ export default function CheckoutPage() {
   }
 
   // Empty cart guard — redirect back if cart is empty
-  if (cart.length === 0) {
+  // Bypass guard if checkout was successful so success modal doesn't get unmounted!
+  if (cart.length === 0 && checkoutStatus !== 'success') {
     return (
       <main className="min-h-screen bg-background text-white flex flex-col items-center justify-center gap-6 p-8">
         <div className="w-24 h-24 glass-card rounded-full flex items-center justify-center text-4xl">🛒</div>
@@ -277,7 +280,10 @@ export default function CheckoutPage() {
   }
 
   return (
-    <main className="min-h-screen bg-background text-white p-6 pb-20">
+    <main className="min-h-screen bg-[#0A0A0B] text-white p-4 md:p-6 pb-20 relative overflow-x-hidden">
+      {/* Cinematic Background */}
+      <div className="fixed inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(201,168,76,0.05)_0%,transparent_50%)] pointer-events-none" />
+      <div className="fixed inset-0 bg-gradient-to-b from-black via-transparent to-black pointer-events-none opacity-40" />
       {/* Copy Toast */}
       {copyToast && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[200] animate-in fade-in zoom-in duration-200">
@@ -288,13 +294,15 @@ export default function CheckoutPage() {
       )}
 
       {/* Header */}
-      <div className="flex items-center gap-4 mb-8">
-        <button onClick={() => router.back()} className="w-10 h-10 bg-white/5 rounded-full flex items-center justify-center border border-white/10">
-          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" />
-          </svg>
-        </button>
-        <h1 className="text-xl font-black uppercase tracking-widest">Checkout</h1>
+      <div className="flex items-center gap-4 mb-10 relative z-10">
+        <Magnetic>
+          <button onClick={() => router.back()} className="w-12 h-12 bg-white/5 backdrop-blur-xl rounded-full flex items-center justify-center border border-white/10 hover:bg-white/10 transition-all">
+            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+        </Magnetic>
+        <h1 className="text-xl font-black uppercase tracking-[0.3em] text-gold-shimmer">Strategic Checkout</h1>
       </div>
 
       <div className="space-y-8">
@@ -574,34 +582,41 @@ export default function CheckoutPage() {
           </div>
         )}
 
-        {/* Pricing Summary */}
-        <div className="bg-card-bg p-7 rounded-[36px] border border-white/5 space-y-4">
-          <div className="flex justify-between text-sm font-bold text-secondary-text">
-            <span>Items Subtotal</span>
-            <span>₹{totalPrice}</span>
+        {/* Pricing Summary with Tilt */}
+        <Tilt scale={1.01}>
+          <div className="bg-white/[0.02] backdrop-blur-3xl p-5 md:p-8 rounded-[32px] md:rounded-[48px] border border-white/10 space-y-4 md:space-y-5 shadow-2xl">
+            <div className="flex justify-between text-xs font-black uppercase tracking-widest text-white/30">
+              <span>Mission Assets Subtotal</span>
+              <span>₹{totalPrice}</span>
+            </div>
+            <div className="flex justify-between text-xs font-black uppercase tracking-widest text-white/30">
+              <span>Logistics Fee {distance > 0 ? `(${distance} km)` : ''}</span>
+              {isElite || zenPoints >= 200 ? (
+                <span className="text-primary-yellow">FREE BYPASS</span>
+              ) : (
+                <span>₹{deliveryFee}</span>
+              )}
+            </div>
+            <div className="border-t border-white/5 pt-5 md:pt-6 flex justify-between items-center">
+              <span className="text-sm md:text-base font-black uppercase tracking-[0.3em] text-gold-shimmer">Grand Total</span>
+              <span className="text-2xl md:text-3xl font-black text-white tracking-tighter">₹{finalTotal}</span>
+            </div>
           </div>
-          <div className="flex justify-between text-sm font-bold text-secondary-text">
-            <span>Delivery Fee {distance > 0 ? `(${distance} km)` : ''}</span>
-            {isElite || zenPoints >= 200 ? (
-              <span className="text-primary-yellow font-black">FREE {zenPoints >= 200 ? '(Zen Champion)' : '(Elite)'}</span>
-            ) : (
-              <span>₹{deliveryFee}</span>
-            )}
-          </div>
-          <div className="border-t border-white/5 pt-4 flex justify-between items-center">
-            <span className="text-xl font-black">To Pay</span>
-            <span className="text-2xl font-black text-primary-yellow">₹{finalTotal}</span>
-          </div>
-        </div>
+        </Tilt>
 
-        {/* CTA */}
-        <button
-          onClick={handlePlaceOrder}
-          disabled={checkoutStatus === 'processing' || checkoutStatus === 'success'}
-          className="w-full btn-yellow py-6 h-auto text-lg uppercase tracking-[0.2em] font-black shadow-[0_20px_60px_rgba(201,168,76,0.3)] disabled:opacity-30 transition-all premium-tilt animate-text-shimmer"
-        >
-          {checkoutStatus === 'processing' ? 'Processing Order...' : 'Confirm & Pay  →'}
-        </button>
+        {/* CTA with Magnetic */}
+        <div className="pt-4">
+          <Magnetic>
+            <button
+              onClick={handlePlaceOrder}
+              disabled={checkoutStatus === 'processing' || checkoutStatus === 'success'}
+              className="w-full h-20 bg-primary-yellow text-black text-sm uppercase tracking-[0.3em] font-black rounded-full shadow-[0_20px_60px_rgba(201,168,76,0.3)] disabled:opacity-30 transition-all relative overflow-hidden group"
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent -translate-x-full group-hover:animate-shimmer skew-x-12" />
+              {checkoutStatus === 'processing' ? 'Processing Uplink...' : 'Confirm Order & Pay  →'}
+            </button>
+          </Magnetic>
+        </div>
       </div>
 
       <ZenvyModal

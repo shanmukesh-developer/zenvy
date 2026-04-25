@@ -9,6 +9,8 @@ import MapLocationPicker from '@/components/MapLocationPicker';
 import socket from '@/utils/socket';
 import SupportModal from '@/components/SupportModal';
 import SafeImage from '@/components/SafeImage';
+import Tilt from '@/components/Tilt';
+import Magnetic from '@/components/Magnetic';
 
 interface ProfileUser {
   id: string;
@@ -359,108 +361,123 @@ export default function ProfilePage() {
   };
 
   return (
-    <main className="min-h-screen bg-background text-white p-8 pb-32">
+    <main className="min-h-screen bg-[#0A0A0B] text-white p-4 md:p-8 pb-32 relative overflow-x-hidden">
+      {/* Cinematic Background */}
+      <div className="fixed inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(201,168,76,0.05)_0%,transparent_50%)] pointer-events-none" />
+      <div className="fixed inset-0 bg-gradient-to-b from-black via-transparent to-black pointer-events-none opacity-40" />
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-12">
-        <button onClick={handleBack} className="w-10 h-10 bg-white/5 rounded-full flex items-center justify-center border border-white/10 active:scale-95 transition-all">
-          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" /></svg>
-        </button>
-        <h1 className="text-xl font-black uppercase tracking-widest">{user?.name ? `${user.name}${user.name.endsWith('s') ? "'" : "'s"} Profile` : 'Profile'}</h1>
-        <button onClick={() => setIsEditing(true)} className="text-[9px] font-black uppercase tracking-widest text-primary-yellow">Edit</button>
+      <div className="flex items-center justify-between mb-12 relative z-10">
+        <Magnetic>
+          <button onClick={handleBack} className="w-12 h-12 bg-white/5 backdrop-blur-xl rounded-full flex items-center justify-center border border-white/10 active:scale-95 transition-all">
+            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" /></svg>
+          </button>
+        </Magnetic>
+        <h1 className="text-xl font-black uppercase tracking-[0.3em] text-gold-shimmer">Identity Protocol</h1>
+        <Magnetic>
+          <button onClick={() => setIsEditing(true)} className="px-4 py-2 bg-[#C9A84C]/10 rounded-full text-[9px] font-black uppercase tracking-widest text-primary-yellow border border-[#C9A84C]/20">Update</button>
+        </Magnetic>
       </div>
 
-      {/* Identity Card */}
-      <div className={`${user?.isElite ? 'elite-card premium-tilt' : 'bg-white/5 border-white/5'} rounded-[48px] p-8 mb-8 shadow-2xl relative overflow-hidden group border border-white/5 transition-all duration-500`}>
-        {user?.isElite && (
-          <>
-            <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-br from-[#1a1a1c] via-[#0a0a0b] to-[#0a0a0b] z-0" />
-            <div className="elite-hologram" />
-            <div className="luxury-mesh-overlay" />
-            <div className="absolute -top-24 -right-24 w-64 h-64 bg-[#C9A84C]/5 rounded-full blur-[80px] z-10" />
-          </>
-        )}
-        
-        <div className="relative z-20">
-          <div className="flex justify-between items-start mb-10">
-            {/* Profile Photo with Premium Border */}
-            <div className={`w-36 h-36 rounded-full overflow-hidden ${user?.isElite ? 'elite-profile-border' : 'border-2 border-white/10'} shadow-2xl bg-black/40 backdrop-blur-md`}>
-                {user?.profileImage && user.profileImage !== 'null' && user.profileImage !== 'undefined' ? (
-                  <SafeImage 
-                    src={user.profileImage} 
-                    alt="Profile" 
-                    className="w-full h-full object-cover" 
-                  />
-                ) : (
-                  <div className="w-full h-full bg-gradient-to-br from-[#1C1C1E] to-black rounded-full flex items-center justify-center text-5xl">
-                    {user?.isElite ? '👑' : '🧑‍🎓'}
+      {/* Identity Card with Tilt */}
+      <Tilt scale={1.02} className="mb-10 relative z-10">
+        <div className={`${user?.isElite ? 'elite-card' : 'bg-black/40 backdrop-blur-3xl border border-white/5'} rounded-[48px] p-8 shadow-2xl relative overflow-hidden group transition-all duration-500`}>
+          {user?.isElite && (
+            <>
+              <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-br from-[#1a1a1c] via-[#0a0a0b] to-[#0a0a0b] z-0" />
+              <div className="elite-hologram" />
+              <div className="luxury-mesh-overlay" />
+              <div className="absolute -top-24 -right-24 w-64 h-64 bg-[#C9A84C]/5 rounded-full blur-[80px] z-10" />
+            </>
+          )}
+          
+          <div className="relative z-20">
+            <div className="flex justify-between items-start mb-10">
+              {/* Profile Photo with Premium Border */}
+              <div className={`w-36 h-36 rounded-full overflow-hidden ${user?.isElite ? 'elite-profile-border' : 'border-2 border-white/10'} shadow-2xl bg-black/40 backdrop-blur-md relative`}>
+                  {user?.profileImage && user.profileImage !== 'null' && user.profileImage !== 'undefined' ? (
+                    <SafeImage 
+                      src={user.profileImage} 
+                      alt="Profile" 
+                      className="w-full h-full object-cover" 
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-[#1C1C1E] to-black rounded-full flex items-center justify-center">
+                      {user?.isElite ? (
+                        <svg className="w-20 h-20 text-[#C9A84C] drop-shadow-[0_0_15px_rgba(201,168,76,0.5)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M2 19h20M2 19l2-8 4 3 4-7 4 7 4-3 2 8M2 19v2h20v-2" />
+                          <circle cx="12" cy="5" r="1" fill="currentColor" />
+                        </svg>
+                      ) : (
+                        <span className="text-5xl">🧑‍🎓</span>
+                      )}
+                    </div>
+                  )}
+              </div>
+
+              <div className="flex flex-col items-end gap-3">
+                {/* Branded Zenvy Badge */}
+                <div className="zenvy-badge-container scale-110">
+                   <div className="zenvy-badge-label">ZENVY</div>
+                   <div className="flex gap-1 pr-2">
+                      <div className="w-1.5 h-1.5 rounded-full bg-white/20" />
+                      <div className="w-1.5 h-1.5 rounded-full bg-white/20" />
+                   </div>
+                </div>
+
+                {/* Polished Streak Capsule */}
+                <div className="streak-capsule-premium mt-2">
+                   <span className="text-xl">🔥</span>
+                   <div>
+                      <p className="streak-text-main">{streak} day streak</p>
+                      <p className="streak-text-sub">Keep ordering!</p>
+                   </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mb-10">
+              <div className="flex items-center gap-3 mb-2">
+                <h2 className="text-4xl font-black tracking-tight text-white leading-none text-gold-shimmer">{user?.name}</h2>
+                {(user?.zenPoints || 0) >= 200 && (
+                  <div className="zen-champion-medal" title="Zen Champion Status">
+                     <span className="text-lg">🎖️</span>
                   </div>
                 )}
-            </div>
-
-            <div className="flex flex-col items-end gap-3">
-              {/* Branded Zenvy Badge */}
-              <div className="zenvy-badge-container">
-                 <div className="zenvy-badge-label">ZENVY</div>
-                 <div className="flex gap-1 pr-2">
-                    <div className="w-1.5 h-1.5 rounded-full bg-white/20" />
-                    <div className="w-1.5 h-1.5 rounded-full bg-white/20" />
-                 </div>
+              </div>
+              
+              <div className="flex justify-between items-center mb-5">
+                <p className="text-[10px] font-black text-[#C9A84C] uppercase tracking-[0.4em] opacity-60">ZENVY PROTOCOL • {user?.city || 'AMARAVATHI'}</p>
+                <div className="member-id-label px-3 py-1 bg-white/5 rounded-full border border-white/5">ZV-{(user?._id || user?.id || '0000').slice(-8).toUpperCase()}</div>
               </div>
 
-              {/* Polished Streak Capsule */}
-              <div className="streak-capsule-premium">
-                 <span className="text-xl">🔥</span>
-                 <div>
-                    <p className="streak-text-main">{streak} day streak</p>
-                    <p className="streak-text-sub">Keep ordering!</p>
-                 </div>
+              <div className="flex items-center gap-2.5 text-white/40 bg-white/[0.02] p-3 rounded-2xl border border-white/5">
+                 <span className="text-lg">📍</span>
+                 <p className="text-xs font-bold leading-tight line-clamp-1">{user?.address || 'GH-2, Room 105, SRM AP'}</p>
               </div>
             </div>
-          </div>
 
-          <div className="mb-10">
-            <div className="flex items-center gap-3 mb-1.5">
-              <h2 className="text-4xl font-black tracking-tight text-white leading-none">{user?.name}</h2>
-              {(user?.zenPoints || 0) >= 200 && (
-                <div className="zen-champion-medal" title="Zen Champion Status">
-                   <span className="text-lg">🎖️</span>
+            {/* Identity Telemetry Grid */}
+            <div className="identity-telemetry-grid bg-white/[0.03] p-6 rounded-[32px] border border-white/5">
+              <div className="flex gap-10">
+                <div>
+                  <p className="text-[8px] text-white/20 font-black uppercase tracking-[0.2em] mb-2">Deployments</p>
+                  <p className="text-2xl font-black text-white">{user?.totalOrders || 0}</p>
                 </div>
-              )}
-            </div>
-            
-            <div className="flex justify-between items-center mb-4">
-              <p className="text-[10px] font-black text-[#C9A84C] uppercase tracking-[0.4em]">ZENVY • {user?.city || 'AMARAVATHI'}</p>
-              <div className="member-id-label">ZV-{(user?._id || user?.id || '0000').slice(-8).toUpperCase()}</div>
-            </div>
-
-            <div className="flex items-center gap-2 text-white/40">
-               <span className="text-lg">📍</span>
-               <p className="text-xs font-bold">{user?.address || 'GH-2, Room 105, SRM AP'}</p>
-            </div>
-          </div>
-
-          {/* Identity Telemetry Grid */}
-          <div className="identity-telemetry-grid">
-            <div className="flex gap-8">
-              <div>
-                <p className="text-[8px] text-white/30 font-black uppercase tracking-widest mb-1.5">Orders</p>
-                <p className="text-xl font-black text-white">{user?.totalOrders || 0}</p>
+                <div className="w-[1px] bg-white/10 h-10" />
+                <div>
+                  <p className="text-[8px] text-white/20 font-black uppercase tracking-[0.2em] mb-2">Zen Asset Value</p>
+                  <p className="text-2xl font-black text-[#C9A84C]">{user?.zenPoints || 0}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-[8px] text-white/30 font-black uppercase tracking-widest mb-1.5">Zen Coins</p>
-                <p className="text-xl font-black text-[#C9A84C]">{user?.zenPoints || 0}</p>
-              </div>
-            </div>
 
-            <div className="flex items-center gap-4">
-              <div className="flex items-center">
-                <span className="text-[10px] font-black text-[#C9A84C] uppercase tracking-[0.15em]">Status: {user?.isElite ? 'Elite' : 'Standard'}</span>
+              <div className="mt-4 flex items-center justify-between">
+                <span className="text-[10px] font-black text-[#C9A84C]/50 uppercase tracking-[0.1em]">Security Status: <span className="text-[#C9A84C]">{user?.isElite ? 'Nexus Elite' : 'Authenticated'}</span></span>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      </Tilt>
 
 
       {/* 🏠 Saved Addresses */}
@@ -492,7 +509,7 @@ export default function ProfilePage() {
       {/* 🥗 Dietary Preferences */}
       <div className="space-y-3 mb-6">
         <h3 className="text-[9px] font-black text-secondary-text uppercase tracking-[0.3em] pl-4">Dietary Preferences</h3>
-        <div className="glass-card p-6 rounded-[34px] border border-white/5 space-y-6">
+        <div className="glass-card p-4 md:p-6 rounded-[28px] md:rounded-[34px] border border-white/5 space-y-4 md:space-y-6">
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <p className="text-[10px] text-secondary-text uppercase tracking-widest font-black">Selective filter</p>
@@ -512,7 +529,7 @@ export default function ProfilePage() {
                 <button
                   key={opt.id}
                   onClick={() => saveDiet({ ...dietPrefs, mode: opt.id as 'all' | 'veg' | 'non-veg' | 'egg' })}
-                  className={`flex items-center gap-2 px-5 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all duration-300 border ${
+                  className={`flex items-center gap-1.5 px-3 py-2.5 md:px-5 md:py-3 rounded-xl md:rounded-2xl text-[9px] md:text-[10px] font-black uppercase tracking-widest transition-all duration-300 border ${
                     dietPrefs.mode === opt.id 
                       ? 'bg-[#C9A84C] border-[#C9A84C] text-black shadow-lg shadow-[#C9A84C]/20' 
                       : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'
@@ -620,7 +637,9 @@ export default function ProfilePage() {
                 {user.badges.includes('Nexus Legend') && (
                   <div className="relative group overflow-hidden p-6 rounded-3xl bg-gradient-to-br from-amber-500/10 to-transparent border border-amber-500/20 flex flex-col items-center text-center gap-3">
                      <div className="absolute top-0 right-0 w-20 h-20 bg-amber-500/5 blur-2xl group-hover:bg-amber-500/10 transition-all" />
-                     <div className="text-3xl filter drop-shadow-[0_0_8px_rgba(245,158,11,0.5)]">👑</div>
+                      <svg className="w-8 h-8 text-amber-500 drop-shadow-[0_0_8px_rgba(245,158,11,0.5)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                         <path strokeLinecap="round" strokeLinejoin="round" d="M2 19h20M2 19l2-8 4 3 4-7 4 7 4-3 2 8M2 19v2h20v-2" />
+                      </svg>
                      <div>
                         <p className="text-[10px] font-black text-amber-500 uppercase tracking-tighter">Nexus Legend</p>
                         <p className="text-[7px] text-amber-500/60 font-bold uppercase tracking-widest mt-0.5">50+ Orders Completed</p>

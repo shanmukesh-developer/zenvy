@@ -25,9 +25,17 @@ export default function BlockWarsLeaderboard({ userBlock }: { userBlock: string 
     const fetchActivity = async () => {
       try {
         const token = localStorage.getItem('token');
+        // Comfort Guard: Don't fetch if no token (prevents 401s if backend was protected)
+        // Now that backend is public, we can fetch, but we might still want to skip for clean logs
         const res = await fetch(`${API_URL}/api/blocks/activity`, {
-          headers: { 'Authorization': `Bearer ${token}` }
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {}
         });
+        
+        if (res.status === 401) {
+           setBlocks(MOCK_BLOCKS);
+           return;
+        }
+
         const data = await res.json();
         // Guard: only set if we received a real array
         if (Array.isArray(data) && data.length > 0) {
@@ -36,7 +44,7 @@ export default function BlockWarsLeaderboard({ userBlock }: { userBlock: string 
           setBlocks(MOCK_BLOCKS);
         }
       } catch {
-        console.error('Failed to fetch block activity:');
+        console.error('Failed to fetch block activity');
         setBlocks(MOCK_BLOCKS);
       } finally {
         setLoading(false);
@@ -57,10 +65,10 @@ export default function BlockWarsLeaderboard({ userBlock }: { userBlock: string 
       </div>
       
       <div className="flex items-center justify-between mb-6">
-         <div>
-            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-primary-gold mb-1">Block Leaderboard</h3>
-            <p className="text-[7px] font-bold text-secondary-text uppercase tracking-widest">Real-time Activity</p>
-         </div>
+          <div>
+            <h3 className="text-[12px] font-black uppercase tracking-[0.3em] text-primary-gold mb-1">Block Leaderboard</h3>
+            <p className="text-[9px] font-bold text-white/50 uppercase tracking-widest">Real-time Activity</p>
+          </div>
          <div className="flex -space-x-2">
             {[1,2,3].map(i => (
               <div key={i} className="w-5 h-5 rounded-full border border-black bg-white/10 flex items-center justify-center text-[6px] font-black">
@@ -101,7 +109,7 @@ export default function BlockWarsLeaderboard({ userBlock }: { userBlock: string 
         })}
       </div>
 
-      <Link href="/rewards" className="block text-center w-full mt-6 py-3 border border-white/[0.05] rounded-2xl text-[8px] font-black uppercase tracking-[0.2em] text-secondary-text hover:bg-white/5 transition-colors">
+      <Link href="/rewards" className="block text-center w-full mt-6 py-3 border border-white/[0.05] rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] text-secondary-text hover:bg-white/5 transition-colors">
         View Full Rankings →
       </Link>
     </div>

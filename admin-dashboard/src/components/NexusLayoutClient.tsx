@@ -27,7 +27,7 @@ export default function NexusLayoutClient({
             </div>
             <h1 className="text-2xl font-black tracking-tighter text-white">NEXUS</h1>
           </div>
-          <p className="text-[10px] font-black text-blue-500 uppercase tracking-[0.3em] px-1">SRM AP Command</p>
+          <p className="text-[12px] font-black text-blue-500 uppercase tracking-[0.3em] px-1">SRM AP Command</p>
         </div>
 
         <nav className="flex-1 space-y-2">
@@ -81,12 +81,12 @@ export default function NexusLayoutClient({
         <header className="h-20 border-b border-white/5 px-10 flex items-center justify-between sticky top-0 bg-[#0A0A0F]/50 backdrop-blur-md z-40">
           <div className="flex items-center gap-4">
             <div className="w-2 h-2 bg-blue-500 rounded-full shadow-[0_0_10px_rgba(37,99,235,0.8)]" />
-            <span className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">Operational HUD</span>
+            <span className="text-[12px] font-black text-gray-500 uppercase tracking-[0.2em]">Operational HUD</span>
           </div>
           <div className="flex items-center gap-6">
             <div className="text-right">
               <p className="text-xs font-black text-white">SRM Admin</p>
-              <p className="text-[9px] text-emerald-500 font-bold uppercase tracking-wider">Root Access Active</p>
+              <p className="text-[11px] text-emerald-500 font-bold uppercase tracking-wider">Root Access Active</p>
             </div>
             <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#C9A84C] to-[#E5C973] p-[1px]">
               <div className="w-full h-full rounded-full bg-[#0A0A0F] flex items-center justify-center text-lg">

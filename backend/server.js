@@ -96,6 +96,7 @@ const startServer = async () => {
     app.use('/api/vault', require('./routes/vaultRoutes'));
     app.use('/api/admin', require('./routes/adminRoutes'));
     app.use('/api/rewards', require('./routes/rewardRoutes'));
+    app.use('/api/community', require('./routes/communityRoutes'));
     
     // Global Error Handler
     const { errorHandler } = require('./middleware/errorMiddleware');

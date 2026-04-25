@@ -3,6 +3,6 @@ const router = express.Router();
 const { getBlockActivity } = require('../controllers/blockController');
 const { protect } = require('../middleware/authMiddleware');
 
-router.get('/activity', protect, getBlockActivity);
+router.get('/activity', getBlockActivity);
 
 module.exports = router;

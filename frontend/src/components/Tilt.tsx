@@ -5,9 +5,11 @@ import { motion, useMotionValue, useSpring, useTransform } from "framer-motion";
 interface TiltProps {
   children: React.ReactNode;
   className?: string;
+  scale?: number;
+  transitionSpeed?: number;
 }
 
-export default function Tilt({ children, className = "" }: TiltProps) {
+export default function Tilt({ children, className = "", scale = 1.05, transitionSpeed = 400 }: TiltProps) {
   const ref = useRef<HTMLDivElement>(null);
 
   const x = useMotionValue(0);
@@ -59,12 +61,14 @@ export default function Tilt({ children, className = "" }: TiltProps) {
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
       initial={false}
+      whileHover={{ scale }}
       style={{
         rotateY,
         rotateX,
         transformStyle: "preserve-3d",
       }}
-      className={`relative transition-transform duration-200 ease-out ${className}`}
+      className={`relative transition-transform ease-out ${className}`}
+      transition={{ duration: transitionSpeed / 1000 }}
     >
       <div
         style={{

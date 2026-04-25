@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import SafeImage from './SafeImage';
 import Link from 'next/link';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
 
@@ -69,9 +70,22 @@ export default function SearchOverlay({ isOpen, onClose }: { isOpen: boolean; on
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl animate-in fade-in duration-300 flex flex-col">
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95, filter: 'blur(10px)' }}
+          animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+          exit={{ opacity: 0, scale: 1.05, filter: 'blur(10px)' }}
+          transition={{ duration: 0.4, ease: [0.19, 1, 0.22, 1] }}
+          className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-3xl flex flex-col"
+        >
+          {/* Animated Mesh Background */}
+          <div className="absolute inset-0 z-0 opacity-30 pointer-events-none overflow-hidden">
+             <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] bg-[#C9A84C]/20 blur-[120px] rounded-full animate-pulse" />
+             <div className="absolute bottom-[-10%] left-[-10%] w-[40%] h-[40%] bg-emerald-500/10 blur-[100px] rounded-full animate-pulse" style={{ animationDelay: '1s' }} />
+          </div>
       {/* Header */}
-      <div className="p-6 pt-12 flex items-center gap-4">
+      <div className="p-4 md:p-6 pt-10 md:pt-12 flex items-center gap-2 md:gap-4">
         <button onClick={onClose} className="w-10 h-10 bg-white/5 rounded-full flex items-center justify-center border border-white/10">
           <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12" />
@@ -84,7 +98,7 @@ export default function SearchOverlay({ isOpen, onClose }: { isOpen: boolean; on
             placeholder="Search food or restaurants..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="w-full bg-white/5 border border-white/10 rounded-full py-3 px-6 text-white text-lg focus:outline-none focus:ring-2 focus:ring-primary-yellow/50"
+            className="w-full bg-white/5 border border-white/10 rounded-full py-2.5 md:py-3 px-5 md:px-6 text-white text-base md:text-lg focus:outline-none focus:ring-2 focus:ring-primary-yellow/50"
           />
           {loading && (
             <div className="absolute right-4 top-1/2 -translate-y-1/2">
@@ -179,7 +193,9 @@ export default function SearchOverlay({ isOpen, onClose }: { isOpen: boolean; on
           </div>
         )}
       </div>
-    </div>
+    </motion.div>
+  )}
+</AnimatePresence>
   );
 }
 

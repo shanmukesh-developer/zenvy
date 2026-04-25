@@ -215,7 +215,7 @@ export default function Dashboard() {
                         <p className="text-zinc-500 text-sm">{order.items.length} items • {new Date(order.createdAt).toLocaleTimeString()}</p>
                       </div>
                       
-                      <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${order.status === 'Pending' ? 'bg-orange-500/10 text-orange-500 border border-orange-500/20' : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'}`}>
+                      <span className={`px-3 py-1 rounded-full text-[12px] font-black uppercase tracking-widest ${order.status === 'Pending' ? 'bg-orange-500/10 text-orange-500 border border-orange-500/20' : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'}`}>
                         {order.status}
                       </span>
                     </div>
@@ -269,8 +269,8 @@ export default function Dashboard() {
               {pastOrders.slice(0, 8).map(order => (
                 <div key={order.id} className="bg-zinc-900/50 border border-zinc-800/50 rounded-2xl p-5 hover:bg-zinc-900 transition-colors">
                   <div className="flex justify-between items-center mb-3">
-                    <span className="text-[10px] text-zinc-600 font-mono uppercase tracking-tighter">ORD-{order.id.slice(0,8)}</span>
-                    <span className="text-[10px] text-zinc-600">{new Date(order.createdAt).toLocaleDateString()}</span>
+                    <span className="text-[12px] text-zinc-600 font-mono uppercase tracking-tighter">ORD-{order.id.slice(0,8)}</span>
+                    <span className="text-[12px] text-zinc-600">{new Date(order.createdAt).toLocaleDateString()}</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-sm font-medium">{order.items.length} items</span>

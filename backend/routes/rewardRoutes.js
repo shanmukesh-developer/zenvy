@@ -8,4 +8,10 @@ router.post('/use-spin', protect, useSpin);
 router.get('/coupons', protect, getUserCoupons);
 router.get('/leaderboard', getLeaderboard); // Publicly accessible
 
+router.get('/', protect, async (req, res) => {
+  // Return summarized rewards info for the user
+  const { checkSpinEntry } = require('../controllers/rewardController');
+  await checkSpinEntry(req, res);
+});
+
 module.exports = router;

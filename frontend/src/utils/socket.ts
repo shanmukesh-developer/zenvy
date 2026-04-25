@@ -7,12 +7,13 @@ const DEFAULT_SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || API_URL;
 const socketUrl = DEFAULT_SOCKET_URL.replace(/\/$/, "");
 
 export const socket = io(socketUrl, {
-  transports: ['websocket'], // Force websocket only for Render stability
+  transports: ['polling', 'websocket'], // Allow fallback for better resilience
   withCredentials: true,
   autoConnect: true,
   reconnection: true,
-  reconnectionAttempts: Infinity,
-  reconnectionDelay: 1000,
+  reconnectionAttempts: 10,
+  reconnectionDelay: 2000,
+  timeout: 45000,
 });
 
 export default socket;

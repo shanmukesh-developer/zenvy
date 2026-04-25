@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { useCart } from '@/context/CartContext';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
@@ -24,6 +25,12 @@ import socket from '@/utils/socket';
 import { Restaurant, User } from '@/types';
 import RewardsPanel from '@/components/RewardsPanel';
 import NexusLeaderboard from '@/components/NexusLeaderboard';
+import SurgeBanner from '@/components/SurgeBanner';
+import GlobalAnnouncement from '@/components/GlobalAnnouncement';
+import Navbar from '@/components/Navbar';
+import VFXParticles from '@/components/VFXParticles';
+import Meteors from '@/components/Meteors';
+import NexusExplorer from '@/components/NexusExplorer';
 // QRCodeSVG removed to resolve linting errors
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
@@ -62,6 +69,7 @@ interface Order {
 }
 
 export default function Home() {
+  const router = useRouter();
   const { cart } = useCart();
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -121,8 +129,7 @@ export default function Home() {
     setModalConfig({ isOpen: true, title, message, type, onConfirm, confirmLabel, cancelLabel });
   };
   
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const CITY_CATEGORIES = [
+  const CATEGORIES = [
     { emoji: '🍛', label: 'Biryani' },
     { emoji: '🍕', label: 'Pizza' },
     { emoji: '🥗', label: 'South Indian' },
@@ -131,8 +138,7 @@ export default function Home() {
     { emoji: '🥤', label: 'Drinks' },
     { emoji: '🍜', label: 'Chinese' },
     { emoji: '🥙', label: 'Rolls' },
-    { emoji: '🍎', label: 'Fruits' },
-    { emoji: '🚲', label: 'Rental' },
+    { emoji: '🚲', label: 'Rentals' },
     { emoji: '🎁', label: 'Seasonal' },
     { emoji: '💪', label: 'Gym' },
     { emoji: '👔', label: 'Laundry' },
@@ -501,7 +507,8 @@ export default function Home() {
   }, [allProducts, activeCategory, sortBy]);
 
   const displayRestaurants = useMemo(() => {
-    let list = [...liveRestaurants];
+    // Exclude RENTAL vendors from the main restaurant feed
+    let list = liveRestaurants.filter(res => res.vendorType !== 'RENTAL');
 
     // Apply Hard Filters (Dietary/Type)
     if (filter === 'veg') list = list.filter(res => (res.menu || []).some(item => item.isVegetarian));
@@ -576,166 +583,147 @@ export default function Home() {
   return (
     <>
     <ScrollProgressIndicator />
-    <main className={`min-h-screen text-white pb-32 relative overflow-hidden transition-colors duration-1000 ${isAfter9 ? 'bg-[#050507]' : 'bg-background'}`}>
+    <main className={`min-h-screen text-white pb-32 relative ${isAfter9 ? 'bg-[#050507]' : 'bg-[#0A0A0B]'}`}>
+      {/* Background VFX Layer - Minimalist Optimized */}
+      <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+        <div className={`absolute inset-0 opacity-60 transition-colors duration-1000 ${isAfter9 ? 'bg-[radial-gradient(circle_at_50%_0%,rgba(201,168,76,0.15),transparent_70%)]' : 'bg-[radial-gradient(circle_at_50%_0%,rgba(16,185,129,0.08),transparent_70%)]'}`} />
+        
+        {/* Cinematic Film Overlay */}
+        <div className={`absolute inset-0 transition-opacity duration-1000 ${isAfter9 ? 'opacity-100' : 'opacity-0'}`}>
+          <div className="film-grain" />
+          <div className="luxury-mesh-overlay" />
+          <div className="vfx-shimmer-ray" />
+        </div>
+        {/* Note: Global VFXParticles and Meteors are handled by the Root Layout */}
+      </div>
+
+      <SurgeBanner />
+      <GlobalAnnouncement />
       {showIntro && <IntroOverlay onComplete={handleIntroComplete} />}
       
-      {/* Container for main content - only visible when intro is DONE */}
-      <div className={`min-h-screen transition-opacity duration-1000 ${showIntro === false ? 'opacity-100' : 'opacity-0'} ${isAfter9 ? 'midnight-portal' : ''}`}>
+      {/* Container for main content - simple opacity transition */}
+      <div className={`min-h-screen transition-opacity duration-700 ${showIntro === false ? 'opacity-100' : 'opacity-0'} ${isAfter9 ? 'midnight-portal' : ''}`}>
         
-        {/* Ambient Background Orbs (Lunar Shift - Unified Gold) */}
+        {/* Ambient Background Orbs */}
         <div className="fixed inset-0 pointer-events-none z-0">
-          <div className={`absolute -top-40 -right-40 w-96 h-96 rounded-full blur-[120px] transition-colors duration-1000 ${isAfter9 ? 'bg-[#C9A84C]/[0.06]' : 'bg-[#C9A84C]/[0.04]'}`} />
-          <div className={`absolute top-1/3 -left-32 w-80 h-80 rounded-full blur-[100px] transition-colors duration-1000 ${isAfter9 ? 'bg-[#C9A84C]/[0.05]' : 'bg-[#C9A84C]/[0.03]'}`} />
+          <div className={`absolute -top-40 -right-40 w-96 h-96 rounded-full blur-[120px] ${isAfter9 ? 'bg-[#C9A84C]/[0.06]' : 'bg-[#C9A84C]/[0.04]'}`} />
+          <div className={`absolute top-1/3 -left-32 w-80 h-80 rounded-full blur-[100px] ${isAfter9 ? 'bg-[#C9A84C]/[0.05]' : 'bg-[#C9A84C]/[0.03]'}`} />
         </div>
 
         {/* Layout Grid: Content + Sidebar */}
         <div className="max-w-[1500px] mx-auto grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-8 relative z-10">
-          
           {/* Main Feed Content */}
-          <div className="w-full px-6 pt-14 md:px-10 lg:px-14">
-          {/* City Brand Header */}
-          <motion.header 
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, ease: "easeOut" }}
-            className="mb-6"
-          >
-            <div className="flex items-center justify-between mb-6">
-              <Link href="/profile" className="flex items-center gap-2.5 group cursor-pointer">
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#C9A84C] to-[#8B7332] flex items-center justify-center shadow-lg shadow-[#C9A84C]/20 group-hover:scale-105 transition-transform overflow-hidden relative">
-                  {user?.profileImage && user.profileImage !== 'null' && user.profileImage !== 'undefined' ? (
-                    <SafeImage 
-                      src={user.profileImage} 
-                      alt="Me" 
-                      className="w-full h-full object-cover" 
-                      priority
-                    />
-                  ) : (
-                    <span className="text-[13px] font-black text-black">Z</span>
-                  )}
-                </div>
-                <div>
-                  <span className="text-[11px] font-black uppercase tracking-[0.3em] text-gold-gradient block leading-none">Zenvy</span>
-                  <span className="text-[7px] font-bold uppercase tracking-[0.4em] text-secondary-text block mt-0.5">Amaravathi, AP 📍</span>
-                </div>
-              </Link>
-              <div className="flex items-center gap-3">
+          <div className="w-full px-4 pt-10 pt-safe md:px-10 lg:px-14 pb-4">
+            <Navbar />
+            
+            <div className="mt-1 relative">
+              {/* Tactical Background Decals */}
+              <div className="absolute -top-16 left-0 flex flex-col gap-1 opacity-20 pointer-events-none hidden md:flex">
+                <span className="text-[6px] font-black tracking-[0.4em] text-primary-yellow">SYS_OPERATIVE_LINK: ACTIVE</span>
+                <span className="text-[6px] font-black tracking-[0.4em] text-white">LAT: 16.5062° N | LONG: 80.6480° E</span>
+              </div>
 
-                <Magnetic>
-                  <button onClick={() => setShowNotifications(true)} className="w-10 h-10 glass-card rounded-full flex items-center justify-center relative group overflow-hidden">
-                    <div className="absolute inset-0 bg-[#C9A84C]/0 group-hover:bg-[#C9A84C]/10 transition-colors" />
-                    <svg className="w-4 h-4 text-secondary-text group-hover:text-[#C9A84C] transition-colors relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                    </svg>
-                    {notifications.length > 0 && <span className="absolute top-2.5 right-2.5 w-1.5 h-1.5 bg-primary-yellow rounded-full shadow-[0_0_8px_rgba(201,168,76,0.8)]" />}
-                  </button>
-                </Magnetic>
-              </div>
-            </div>
-            <div className="flex justify-between items-end mb-2">
-              <div className="flex flex-col">
-                <div className="flex items-center gap-1.5 mb-1">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-secondary-text">
-                    {mounted ? getGreeting() : 'Welcome'}
-                    {mounted && userName ? `, ${userName.split(' ')[0]}` : ''}
-                  </p>
-                  {mounted && isElite && (
-                    <span className="bg-[#C9A84C]/10 text-[#C9A84C] text-[8px] font-black px-2 py-0.5 rounded-full border border-[#C9A84C]/20 tracking-tighter shadow-[0_0_10px_rgba(201,168,76,0.1)]">ELITE</span>
-                  )}
-                </div>
-              </div>
-              <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest bg-emerald-500/10 px-3 py-1.5 rounded-full">Live Delivery ✓</p>
-            </div>
-            <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
-               <div>
-                  <h1 className={`text-4xl font-extrabold italic leading-tight tracking-tighter ${isAfter9 ? 'midnight-glow-text text-white' : 'text-gold-shimmer'}`} style={{ fontFamily: "'Syne', sans-serif" }}>
-                    {isAfter9 ? 'MIDNIGHT NEXUS' : "LET'S CLEAR YOUR CRAVING"} 
-                  </h1>
-               </div>
-              
-              {/* 🎁 Minimalist Rewards Toolbar (Integrated Header Space) */}
-              <div className="mb-2 md:mb-4">
-                <RewardsPanel onWin={handlePrizeWin} />
-              </div>
-            </div>
-            <div className="mt-4 flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-emerald-500 status-pulse shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
-              <span className="text-[8px] font-black text-secondary-text uppercase tracking-widest opacity-60">Delivering across Amaravathi</span>
-            </div>
-          </motion.header>
-
-          {/* User Requested Top Navigation Replica */}
-          <nav className="flex items-center justify-around px-4 py-4 mb-6 bg-[#141416] border border-white/5 rounded-3xl z-40 relative shadow-2xl">
-            <Link href="/" className="flex flex-col items-center gap-1.5 nav-icon-active">
-              <div className="tab-pill">
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
-              </div>
-              <span className="text-[9px] font-black uppercase tracking-widest">Home</span>
-            </Link>
-            <Link href="/orders" className="flex flex-col items-center gap-1.5 opacity-60 hover:opacity-100 transition-opacity">
-               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
-               <span className="text-[9px] font-bold">Orders</span>
-            </Link>
-            <Link href="/basket" className="flex flex-col items-center gap-1.5 opacity-60 hover:opacity-100 transition-opacity relative">
-               <div className="relative">
-                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
-                 {cartCount > 0 && (
-                   <span className="absolute -top-2 -right-2 w-4 h-4 bg-primary-yellow text-black text-[8px] font-black rounded-full flex items-center justify-center shadow-sm">{cartCount > 9 ? '9+' : cartCount}</span>
-                 )}
-               </div>
-               <span className="text-[9px] font-bold">Basket</span>
-            </Link>
-            <Link href="/profile" className="flex flex-col items-center gap-1.5 opacity-60 hover:opacity-100 transition-opacity">
-               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-               <span className="text-[9px] font-bold">Profile</span>
-            </Link>
-          </nav>
-
-          <SearchOverlay isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
-           <motion.div 
-            whileTap={{ scale: 0.98 }}
-            className="relative mb-6" 
-            onClick={() => setIsSearchOpen(true)}
-           >
-            <Magnetic>
-              <div className="w-full stardust-search py-4 pl-14 pr-4 text-xs text-white font-black uppercase tracking-widest cursor-pointer rounded-2xl group">
-                 <span className="opacity-40 group-hover:opacity-100 transition-opacity">Search for dishes or restaurants...</span>
-              </div>
-            </Magnetic>
-          </motion.div>
-
-          {/* Restored Category Chips */}
-          <section className="mb-10 px-6">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-secondary-text">Explore Categories</h2>
-              <span className="text-[9px] font-bold text-secondary-text uppercase tracking-wider">Swipe →</span>
-            </div>
-            <div className="flex gap-5 overflow-x-auto scrollbar-hide -mx-6 px-6 pb-4">
-              {CITY_CATEGORIES.map((cat, i) => (
-                <motion.button
-                  key={cat.label}
-                  initial={{ opacity: 0, y: 15 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.04, duration: 0.5 }}
-                  onClick={() => {
-                    setRestaurantSearch(cat.label);
-                    setIsSearchOpen(true);
-                  }}
-                  className="flex flex-col items-center gap-3 shrink-0 group active:scale-95 transition-transform"
-                >
-                  <div className="w-16 h-16 rounded-[22px] bg-white/[0.03] border border-white/5 flex items-center justify-center text-2xl group-hover:bg-white/[0.08] group-hover:border-[#C9A84C]/30 transition-all duration-300 shadow-xl relative overflow-hidden">
-                    <div className="absolute inset-0 bg-gradient-to-br from-[#C9A84C]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                    <span className="relative z-10 group-hover:scale-110 transition-transform duration-300 filter group-hover:drop-shadow-[0_0_8px_rgba(201,168,76,0.3)]">
-                      {cat.emoji}
-                    </span>
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-xl shadow-[0_0_20px_rgba(255,255,255,0.05)] overflow-hidden">
+                      {user?.profileImage ? (
+                        <SafeImage src={user.profileImage} alt="profile" fill className="object-cover" />
+                      ) : '👤'}
+                    </div>
+                    <div>
+                      <h2 className="text-[9px] font-black uppercase tracking-[0.3em] text-secondary-text mb-0.5">
+                        {mounted ? getGreeting() : 'Initializing...'}
+                      </h2>
+                      <div className="flex items-center gap-2 pr-32 md:pr-0">
+                        <h1 className="text-2xl font-black text-white tracking-widest uppercase truncate max-w-[200px] md:max-w-none" style={{ fontFamily: "'Syne', sans-serif" }}>
+                          {userName ? `OP_${userName.split(' ')[0]}` : 'OPERATIVE_UNIDENTIFIED'}
+                        </h1>
+                        {isElite && (
+                          <span className="bg-primary-yellow/10 text-primary-yellow text-[8px] font-black px-2 py-0.5 rounded-full border border-primary-yellow/20 tracking-tighter shrink-0">ELITE</span>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <span className="text-[9px] font-black text-secondary-text uppercase tracking-[0.15em] group-hover:text-white transition-colors">
-                    {cat.label}
-                  </span>
-                </motion.button>
-              ))}
+                </div>
+
+                {/* 🎁 Rewards HUD */}
+                <div className="bg-white/5 border border-white/10 rounded-[16px] p-2 flex items-center gap-3 shadow-2xl backdrop-blur-xl">
+                   <RewardsPanel onWin={handlePrizeWin} />
+                   <div className="h-4 w-px bg-white/10" />
+                   <div className="flex flex-col items-end">
+                      <span className="text-[8px] font-black text-[#C9A84C] uppercase tracking-widest mb-1 opacity-90">Nexus Balance</span>
+                      <p className="text-sm font-black text-white tracking-tighter drop-shadow-[0_0_8px_rgba(255,255,255,0.2)]">₹{user?.zenPoints || 0}</p>
+                   </div>
+                </div>
+              </div>
             </div>
-          </section>
+
+            {/* Cinematic Hero Element */}
+            <div className="relative mb-4 group">
+              <div className="absolute inset-x-0 -top-10 h-40 bg-gradient-to-b from-primary-yellow/5 to-transparent pointer-events-none" />
+              <div className="glass-card-extreme overflow-hidden rounded-[30px] border border-white/5 relative h-[210px] md:h-[280px] flex items-center px-6 md:px-12 group">
+                <div className="absolute right-0 top-0 w-1/2 h-full pointer-events-none opacity-40 group-hover:opacity-60 transition-opacity">
+                   <div className="absolute inset-0 bg-gradient-to-l from-black via-transparent to-transparent z-10" />
+                   <SafeImage 
+                    src="https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?q=80&w=2070&auto=format&fit=crop" 
+                    alt="Hero" 
+                    fill 
+                    className="object-cover scale-110 group-hover:scale-100 transition-transform duration-[3000ms]" 
+                   />
+                </div>
+                
+                <div className="relative z-20 max-w-md">
+                   <span className="text-[10px] font-black text-primary-yellow uppercase tracking-[0.5em] mb-4 block">Central Command 🌆</span>
+                   <h1 className="text-xl md:text-5xl font-black text-white leading-[0.9] italic tracking-tighter mb-4" style={{ fontFamily: "'Syne', sans-serif" }}>
+                      LET&apos;S CLEAR <br />
+                      <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-yellow to-white">YOUR CRAVING</span>
+                   </h1>
+                   <p className="text-[9px] font-bold text-secondary-text uppercase tracking-widest max-w-[280px] leading-relaxed mb-6">
+                      Mission-critical speed. Zero friction. <br /> Delivering across Amaravathi.
+                   </p>
+                   <button 
+                    onClick={() => document.getElementById('nexus-catalog')?.scrollIntoView({ behavior: 'smooth' })}
+                    className="btn-yellow text-[10px] py-4 px-10 shadow-[0_0_30px_rgba(201,168,76,0.2)]"
+                   >
+                      IDENTIFY RESTAURANTS →
+                   </button>
+                </div>
+                {/* Stardust Aura Effect */}
+                <div className="absolute bottom-0 left-1/4 w-1/2 h-px bg-gradient-to-r from-transparent via-primary-yellow/40 to-transparent blur-sm" />
+              </div>
+            </div>
+
+            <SearchOverlay isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
+            <motion.div 
+             whileTap={{ scale: 0.98 }}
+             className="relative mb-2" 
+             onClick={() => setIsSearchOpen(true)}
+            >
+             <Magnetic>
+                <div className="w-full stardust-search py-6 pl-12 pr-4 text-xs text-white font-black uppercase tracking-widest cursor-pointer rounded-3xl group shadow-2xl relative overflow-hidden">
+                   <div className="absolute inset-0 bg-gradient-to-r from-primary-yellow/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                   <div className="flex items-center gap-4 relative z-10">
+                      <span className="text-lg opacity-40 group-hover:opacity-100 group-hover:text-primary-yellow transition-all">🔍</span>
+                      <span className="opacity-40 group-hover:opacity-100 transition-opacity">Search for dishes or restaurants...</span>
+                   </div>
+                </div>
+             </Magnetic>
+           </motion.div>
+
+          {/* 🔍 Nexus Explorer: Advanced Discovery Engine */}
+          <div id="nexus-catalog" className="scroll-mt-24 mt-1">
+            <NexusExplorer 
+              restaurants={liveRestaurants}
+              onSelectItem={(item) => {
+                if (item.id) {
+                  router.push(`/products/${item.id}`);
+                }
+              }}
+              favorites={favorites}
+              toggleFavorite={toggleFavorite}
+            />
+          </div>
 
           {/* 🔒 The Zenvy Vault (Daily FOMO Scarcity) */}
           <motion.section 
@@ -787,34 +775,37 @@ export default function Home() {
             whileInView={{ scaleX: 1 }}
             viewport={{ once: true }}
             transition={{ duration: 1, ease: "easeInOut" }}
-            className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent mb-12 origin-left"
+            className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent mb-6 origin-left"
           />
 
           {/* 🔄 Quick Re-order: Last Favorites */}
           {activeOrder && !isLoading && (
-            <section className="mb-10 animate-fade-in">
-              <div className="flex items-center justify-between mb-5">
-                <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-secondary-text">Last Order</h2>
+            <section className="mb-10 animate-fade-in px-6">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-[9px] font-black uppercase tracking-[0.2em] text-secondary-text">Last Manifest</h2>
               </div>
-              <div className="glass-card p-4 flex items-center justify-between border-white/[0.05]">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-[#1A1A1C] flex items-center justify-center border border-white/5 overflow-hidden">
-                      {activeOrder.items?.[0]?.image ? (
-                        <SafeImage src={activeOrder.items[0].image} alt="last" fill className="object-cover" />
+              <div className="glass-card-extreme p-6 flex items-center justify-between border-white/[0.05] rounded-[30px]">
+                <div className="flex items-center gap-5">
+                  <div className="w-16 h-16 rounded-[24px] bg-white/5 flex items-center justify-center border border-white/10 overflow-hidden relative">
+                      {activeOrder?.items?.[0]?.image ? (
+                        <SafeImage src={activeOrder?.items[0].image} alt="last" fill className="object-cover" />
                       ) : (
-                       <svg className="w-5 h-5 text-primary-yellow" fill="currentColor" viewBox="0 0 24 24"><path d="M11 9H9V2H7v7H5V2H3v7c0 2.12 1.66 3.84 3.75 3.97V22h2.5v-9.03C11.34 12.84 13 11.12 13 9V2h-2v7zm5-3v8h2.5v8H21V2c-2.76 0-5 2.24-5 4z"/></svg>
+                       <svg className="w-6 h-6 text-primary-yellow" fill="currentColor" viewBox="0 0 24 24"><path d="M11 9H9V2H7v7H5V2H3v7c0 2.12 1.66 3.84 3.75 3.97V22h2.5v-9.03C11.34 12.84 13 11.12 13 9V2h-2v7zm5-3v8h2.5v8H21V2c-2.76 0-5 2.24-5 4z"/></svg>
                      )}
                   </div>
                   <div>
-                    <h4 className="text-xs font-bold text-white">{activeOrder.items?.[0]?.name || 'Delicious Meal'}</h4>
-                    <p className="text-[9px] font-bold text-secondary-text uppercase tracking-widest">Re-order from last time</p>
+                    <h4 className="text-sm font-black text-white">{activeOrder?.items?.[0]?.name || 'Delicious Meal'}</h4>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="w-2 h-2 rounded-full bg-primary-yellow animate-pulse" />
+                      <p className="text-[8px] font-black text-secondary-text uppercase tracking-widest">Re-establish link →</p>
+                    </div>
                   </div>
                 </div>
                 <Link 
                   href={`/restaurants/${activeOrder.restaurantId || 'shakti-canteen'}`}
-                  className="bg-white/5 hover:bg-white/10 text-primary-yellow text-[9px] font-black px-4 py-2 rounded-full uppercase tracking-tighter border border-white/5 transition-colors"
+                  className="bg-primary-yellow text-black text-[9px] font-black px-6 py-3 rounded-full uppercase tracking-tighter shadow-lg shadow-primary-yellow/20 hover:scale-105 transition-transform"
                 >
-                  Quick Add +
+                  Quick Add
                 </Link>
               </div>
             </section>
@@ -827,12 +818,12 @@ export default function Home() {
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
-                className="mb-10"
+                className="mb-8"
               >
-                <div className="flex items-center justify-between mb-5">
+                <div className="flex items-center justify-between mb-3">
                   <div>
-                    <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-primary-yellow">Gourmet Favorites</h2>
-                    <p className="text-[8px] font-bold text-secondary-text uppercase tracking-widest mt-1">{favoriteItems.length} Saved Discoveries</p>
+                    <h2 className="text-[9px] font-black uppercase tracking-[0.2em] text-primary-yellow">Gourmet Favorites</h2>
+                    <p className="text-[7px] font-bold text-secondary-text uppercase tracking-widest mt-1">{favoriteItems.length} Saved Discoveries</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <select 
@@ -852,7 +843,6 @@ export default function Home() {
                   {favoriteItems.map((item) => (
                     <motion.div 
                       key={item.id}
-                      layout
                       initial={{ opacity: 0, scale: 0.9 }}
                       animate={{ opacity: 1, scale: 1 }}
                       style={{ perspective: 1000 }}
@@ -887,9 +877,12 @@ export default function Home() {
           </AnimatePresence>
 
           <section className="mb-10">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-secondary-text">Chef&apos;s Picks</h2>
-              <span className="text-[9px] font-bold text-secondary-text uppercase tracking-wider">Swipe →</span>
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-[10px] font-black uppercase tracking-[0.4em] text-primary-yellow mb-1">Mission Assets</h2>
+                <p className="text-xl font-black text-white italic tracking-tighter uppercase">Chef&apos;s Picks</p>
+              </div>
+              <span className="text-[9px] font-black text-secondary-text uppercase tracking-widest bg-white/5 border border-white/10 px-4 py-2 rounded-full">Swipe →</span>
             </div>
             <motion.div 
               initial="hidden"
@@ -970,7 +963,6 @@ export default function Home() {
               {groupedCollections.stationary.length > 0 ? (
                 groupedCollections.stationary.map((item) => (
                   <motion.div 
-                     layout
                      initial={{ opacity: 0, y: 20 }}
                      animate={{ opacity: 1, y: 0 }}
                      transition={{ duration: 0.3 }}
@@ -1386,7 +1378,7 @@ export default function Home() {
             </div>
           </section>
 
-        <footer className="fixed bottom-0 left-0 right-0 h-24 bg-[#0A0A0B]/90 backdrop-blur-2xl border-t border-white/[0.03] flex items-center justify-around px-6 z-[60]">
+        <footer className="fixed bottom-0 left-0 right-0 h-16 bg-black/80 backdrop-blur-3xl border-t border-white/5 flex items-center justify-around sm:hidden z-[100] pb-safe">
           <Magnetic>
             <Link href="/" className="flex flex-col items-center gap-1.5 nav-icon-active">
               <div className="tab-pill">
@@ -1405,6 +1397,12 @@ export default function Home() {
             <Link href="/basket" className="flex flex-col items-center gap-1.5 opacity-40">
                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
                <span className="text-[9px] font-bold">Basket</span>
+            </Link>
+          </Magnetic>
+          <Magnetic>
+            <Link href="/community" className="flex flex-col items-center gap-1.5 opacity-40">
+               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z" /></svg>
+               <span className="text-[9px] font-bold">Comms</span>
             </Link>
           </Magnetic>
           <Magnetic>
@@ -1492,7 +1490,9 @@ export default function Home() {
               className="fixed bottom-32 right-6 w-14 h-14 rounded-2xl bg-gradient-to-br from-[#C9A84C] via-[#E6C983] to-[#C9A84C] text-black shadow-[0_0_20px_rgba(201,168,76,0.5)] z-50 flex items-center justify-center border-2 border-white/20 group overflow-hidden"
             >
                <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 skew-x-[-45deg]" />
-               <span className="text-2xl relative z-10">👑</span>
+               <svg className="w-8 h-8 text-black relative z-10" viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth="8">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M25 25 L75 25 L25 75 L75 75" />
+               </svg>
             </motion.button>
           )}
         </AnimatePresence>
@@ -1516,10 +1516,9 @@ export default function Home() {
             </div>
         </aside>
 
-        </div> {/* End Layout Grid (Opened at 453) */}
-      </div> {/* End Intro Visibility Wrapper (Opened at 444) */}
-      
-      </main>
+      </div> {/* End Layout Grid */}
+    </div> {/* End Intro Visibility Wrapper */}
+    </main>
 
       <ConciergeDrawer 
         isOpen={showConcierge} 
@@ -1534,67 +1533,81 @@ export default function Home() {
         <>
           {/* Backdrop */}
           <div
-            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 99998 }}
+            className="fixed inset-0 bg-black/85 backdrop-blur-sm z-[99998]"
             onClick={() => setSelectedRental(null)}
           />
-          {/* Card */}
-          <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', zIndex: 99999, pointerEvents: 'none' }}>
-            <div style={{ width: '100%', maxWidth: '380px', maxHeight: '88vh', overflowY: 'auto', background: '#141416', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '28px', padding: '24px', pointerEvents: 'auto', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }}>
+          {/* Card Wrapper */}
+          <div className="fixed inset-0 flex items-center justify-center p-4 z-[99999] pointer-events-none">
+            {/* Responsive Card */}
+            <div className="w-full max-w-[380px] max-h-[90vh] overflow-y-auto bg-[#141416] border border-white/10 rounded-3xl p-5 md:p-6 pointer-events-auto shadow-2xl relative">
               {/* Header */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                    <span style={{ fontSize: '8px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.2em', color: '#141416', background: '#C9A84C', padding: '2px 8px', borderRadius: '4px' }}>Portal Mediator</span>
-                    <span style={{ fontSize: '8px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.2em', color: '#9CA3AF' }}>{selectedRental?.category || 'Rental'}</span>
+              <div className="flex justify-between items-start mb-4">
+                <div className="flex-1 pr-2">
+                  <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                    <span className="text-[8px] font-black text-[#141416] bg-[#C9A84C] px-2 py-0.5 rounded uppercase tracking-widest leading-tight">Portal Mediator</span>
+                    <span className="text-[8px] font-black text-gray-400 uppercase tracking-widest leading-tight truncate">{selectedRental?.category || 'Rental'}</span>
                   </div>
-                  <h3 style={{ fontSize: '20px', fontWeight: 900, color: 'white', margin: 0, lineHeight: 1 }}>{selectedRental?.name}</h3>
+                  <h3 className="text-lg md:text-xl font-black text-white leading-tight break-words">{selectedRental?.name}</h3>
                 </div>
                 <button
                   onClick={() => setSelectedRental(null)}
-                  style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(255,255,255,0.05)', border: 'none', color: 'white', fontSize: '16px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-                >✕</button>
+                  className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 text-white flex items-center justify-center shrink-0 transition-colors"
+                >×</button>
               </div>
 
               {/* Image */}
-              <div style={{ width: '100%', aspectRatio: '16/9', position: 'relative', borderRadius: '20px', overflow: 'hidden', marginBottom: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <div className="w-full aspect-[16/9] relative rounded-2xl overflow-hidden mb-5 border border-white/5">
                 <SafeImage src={selectedRental?.imageUrl || "/assets/placeholder.png"} alt={selectedRental?.name || "Rental"} fill style={{ objectFit: 'cover' }} />
               </div>
 
               {/* Description & Mission */}
-              <div style={{ marginBottom: '20px' }}>
-                <p style={{ fontSize: '12px', color: '#9CA3AF', lineHeight: '1.6', margin: 0 }}>
-                  Zenvy acting as a <strong style={{ color: 'white' }}>Mediator</strong>. Please review the details below and interact directly with the owner to finalize your rental agreement.
+              <div className="mb-5">
+                <p className="text-xs text-gray-400 leading-relaxed m-0">
+                  Zenvy acting as a <strong className="text-white">Mediator</strong>. Please review the details below and interact directly with the owner to finalize your rental agreement.
                 </p>
               </div>
 
-              {/* Price Info */}
-              <div style={{ padding: '16px', borderRadius: '16px', background: 'rgba(201,168,76,0.05)', border: '1px solid rgba(201,168,76,0.1)', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              {/* Price Info Grid */}
+              <div className="p-4 rounded-2xl bg-[#C9A84C]/5 border border-[#C9A84C]/10 mb-5 flex flex-wrap justify-between items-center gap-3">
                  <div>
-                    <span style={{ fontSize: '9px', textTransform: 'uppercase', fontWeight: 700, color: '#C9A84C', display: 'block', marginBottom: '2px' }}>Rental Rate</span>
-                    <span style={{ fontSize: '24px', fontWeight: 900, color: 'white' }}>₹{selectedRental?.price}<span style={{ fontSize: '12px', color: '#9CA3AF', marginLeft: '4px' }}>/ day</span></span>
+                    <span className="text-[9px] uppercase font-bold text-[#C9A84C] block mb-0.5 tracking-wide">Rental Rate</span>
+                    <div className="flex items-baseline gap-1">
+                       <span className="text-2xl font-black text-white">₹{selectedRental?.price}</span>
+                       <span className="text-xs text-gray-400">/ day</span>
+                    </div>
                  </div>
-                 <div style={{ textAlign: 'right' }}>
-                    <span style={{ fontSize: '8px', textTransform: 'uppercase', fontWeight: 700, color: '#9CA3AF', display: 'block', marginBottom: '2px' }}>Security Deposit</span>
-                    <span style={{ fontSize: '14px', fontWeight: 900, color: 'white' }}>₹{Math.round((selectedRental?.price || 0) * 5)}</span>
+                 <div className="text-right">
+                    <span className="text-[8px] uppercase font-bold text-gray-400 block mb-0.5 tracking-wide">Security Deposit</span>
+                    <span className="text-sm font-black text-white">₹{Math.round((selectedRental?.price || 0) * 5)}</span>
                  </div>
               </div>
 
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button
-                  onClick={() => setModalConfig({
-                     isOpen: true,
-                     title: 'Concierge Connecting',
-                     message: `Connecting you to ${selectedRental?.restaurantName}...`,
-                     type: 'info'
-                  })}
-                  style={{ flex: 2, background: '#C9A84C', color: 'black', fontWeight: 900, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '14px', borderRadius: '12px', border: 'none', cursor: 'pointer' }}
-                >
-                  Contact Owner
-                </button>
+              {/* Action Buttons */}
+              <div className="flex flex-col gap-2 relative">
+                <span className="text-[9px] uppercase font-bold text-gray-400 mb-1 tracking-wide block">Direct Owner Contact</span>
+                {/* 2-Box Responsive Layout for Contacts */}
+                <div className="grid grid-cols-2 gap-2 md:gap-3">
+                  <a
+                    href="tel:+919999999999"
+                    className="flex items-center justify-center gap-1.5 md:gap-2 px-2 py-3.5 bg-sky-400/10 border border-sky-400/20 text-sky-400 font-black text-[11px] md:text-xs rounded-xl hover:bg-sky-400/20 transition-colors text-center truncate"
+                  >
+                    📞 Phone
+                  </a>
+                  <a
+                    href="https://wa.me/919999999999"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-1.5 md:gap-2 px-2 py-3.5 bg-green-500/10 border border-green-500/20 text-green-500 font-black text-[11px] md:text-xs rounded-xl hover:bg-green-500/20 transition-colors text-center truncate"
+                  >
+                    💬 WhatsApp
+                  </a>
+                </div>
                 <button
                   onClick={() => setSelectedRental(null)}
-                  style={{ flex: 1, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', padding: '14px', borderRadius: '12px', cursor: 'pointer' }}
-                >Dismiss</button>
+                  className="w-full mt-2 bg-white/5 border border-white/10 hover:bg-white/10 text-white py-3.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-colors"
+                >
+                  Dismiss
+                </button>
               </div>
             </div>
           </div>

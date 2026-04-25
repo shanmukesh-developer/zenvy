@@ -18,7 +18,7 @@ export default function VFXParticles() {
 
   useEffect(() => {
     // Generate random particles
-    const newParticles = Array.from({ length: 40 }).map((_, i) => ({
+    const newParticles = Array.from({ length: 20 }).map((_, i) => ({
       id: i,
       x: Math.random() * 100, // percentage across screen width
       y: Math.random() * 100, // randomized starting y

@@ -127,12 +127,12 @@ export default function MapLocationPicker({ isOpen, onClose, onConfirm }: MapLoc
   return (
     <div className="fixed inset-0 z-[2000] flex flex-col bg-black/80 backdrop-blur-md animate-fade-in">
       {/* Header */}
-      <div className="bg-[#11111A] border-b border-white/10 p-5 pt-8 flex items-center justify-between shadow-2xl z-10">
+      <div className="bg-black/40 backdrop-blur-3xl border-b border-white/5 p-6 pt-10 flex items-center justify-between shadow-2xl z-20">
         <div>
-          <h2 className="text-white font-black text-lg text-primary-yellow">Pin Delivery Location</h2>
-          <p className="text-gray-400 text-xs mt-1">Move the map or click to set your address.</p>
+          <h2 className="text-primary-yellow font-black text-xl tracking-tight uppercase" style={{ fontFamily: "'Syne', sans-serif" }}>Nexus Target Link</h2>
+          <p className="text-white/40 text-[10px] font-black uppercase tracking-widest mt-1">Acquiring precise delivery coordinates...</p>
         </div>
-        <button onClick={onClose} className="w-10 h-10 bg-white/5 rounded-full flex items-center justify-center text-white/70 hover:text-white transition-colors border border-white/10">✕</button>
+        <button onClick={onClose} className="w-10 h-10 bg-white/5 rounded-full flex items-center justify-center text-white/50 hover:text-white transition-all border border-white/10 hover:border-primary-yellow hover:scale-110">✕</button>
       </div>
 
       {/* Map Area */}
@@ -171,11 +171,11 @@ export default function MapLocationPicker({ isOpen, onClose, onConfirm }: MapLoc
       </div>
 
       {/* Footer Info & Action */}
-      <div className="bg-[#11111A] border-t border-white/10 p-6 shadow-[0_-20px_50px_rgba(0,0,0,0.5)] z-10 pb-10">
-        <div className="bg-white/5 p-4 rounded-2xl border border-white/10 mb-5 relative overflow-hidden group">
-            <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500 rounded-l-2xl"/>
-            <p className="text-[10px] uppercase font-black text-emerald-500 tracking-widest mb-1">Delivering To</p>
-            <p className="text-sm font-bold text-white line-clamp-2 pr-4">{isLoading ? 'Finding precise address...' : address}</p>
+      <div className="bg-black/40 backdrop-blur-3xl border-t border-white/5 p-8 shadow-[0_-30px_60px_rgba(0,0,0,0.5)] z-20 pb-12">
+        <div className="bg-white/5 p-5 rounded-3xl border border-white/5 mb-6 relative overflow-hidden group hover:border-primary-yellow/20 transition-colors">
+            <div className="absolute top-0 left-0 w-1.5 h-full bg-primary-yellow rounded-l-3xl shadow-[0_0_15px_rgba(201,168,76,0.5)]"/>
+            <p className="text-[9px] uppercase font-black text-white/40 tracking-[0.3em] mb-2">Validated Protocol Address</p>
+            <p className="text-[15px] font-black text-white line-clamp-1 pr-4 tracking-tight">{isLoading ? 'CALIBRATING GPS...' : address.toUpperCase()}</p>
         </div>
         
         <button

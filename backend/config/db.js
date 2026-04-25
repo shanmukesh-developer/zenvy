@@ -13,6 +13,7 @@ const { initVaultItemModel } = require('../models/VaultItem');
 const { initGlobalConfigModel } = require('../models/GlobalConfig');
 const { initVerificationLogModel } = require('../models/VerificationLog');
 const { initCouponModel } = require('../models/Coupon');
+const { initCommunityPostModel } = require('../models/CommunityPost');
 
 const initializeAllModels = (instance) => {
   initUserModel(instance);
@@ -24,6 +25,7 @@ const initializeAllModels = (instance) => {
   initGlobalConfigModel(instance);
   initVerificationLogModel(instance);
   initCouponModel(instance);
+  initCommunityPostModel(instance);
 
   // Define Associations
   const Restaurant = instance.models.Restaurant;

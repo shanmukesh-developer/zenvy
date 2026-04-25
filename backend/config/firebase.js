@@ -19,10 +19,10 @@ const cleanPrivateKey = (raw) => {
 
   // 2. Base64 Detection & Decoding
   // If no PEM header is present and string is long, it's likely a base64 wrapper
-  if (!s.includes('-----') && s.length > 500) {
+  if (!s.includes('-----') && (s.length > 500 || s.endsWith('='))) {
     try {
       const decoded = Buffer.from(s, 'base64').toString('utf8');
-      if (decoded.includes('-----') || decoded.includes('{')) {
+      if (decoded.includes('-----')) {
         s = decoded;
       }
     } catch (e) {
@@ -30,24 +30,30 @@ const cleanPrivateKey = (raw) => {
     }
   }
 
-  // 3. Extract core PEM body
+  // 3. Robust PEM Validation
+  // If it already looks like a valid PEM, return it directly but ensured trimmed
+  if (s.includes('-----BEGIN PRIVATE KEY-----') && s.includes('-----END PRIVATE KEY-----')) {
+    return s.trim() + '\n';
+  }
+
+  // 4. Fragmented Key Reconstruction (Last channel fallback)
   const header = '-----BEGIN PRIVATE KEY-----';
   const footer = '-----END PRIVATE KEY-----';
 
-  // Find the content between headers or just the largest base64-like block
-  const parts = s.split('-----').map(p => p.trim()).filter(p => 
-    p.length > 500 && !p.includes('BEGIN') && !p.includes('END') && !p.includes('PRIVATE')
-  );
-
-  let body = parts[0] || '';
+  // Extract only the base64-like characters to rebuild the body
+  let body = s.replace(/-----BEGIN PRIVATE KEY-----|-----END PRIVATE KEY-----/g, '');
+  body = body.replace(/[^a-zA-Z0-9+/=\s]/g, '').trim();
   
-  // Strip any remaining noise, leaving only valid base64 chars
-  body = body.replace(/[^a-zA-Z0-9+/=]/g, '').trim();
+  // Normalize whitespace to single newlines or nothing
+  const cleanBody = body.replace(/\s/g, '');
 
-  if (body.length < 500) return null;
+  if (cleanBody.length < 500) {
+    console.error('[FIREBASE_INIT] Private key body too short.');
+    return null;
+  }
 
-  // 4. Reconstruct standard PEM format
-  const formattedBody = (body.match(/.{1,64}/g) || []).join('\n');
+  // Reconstruct standard PEM format
+  const formattedBody = (cleanBody.match(/.{1,64}/g) || []).join('\n');
   return `${header}\n${formattedBody}\n${footer}\n`;
 };
 

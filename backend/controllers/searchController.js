@@ -10,7 +10,10 @@ const globalSearch = async (req, res) => {
   try {
     const Restaurant = getRestaurantModel();
     const MenuItem = getMenuItemModel();
-    const likeOp = Op.iLike || Op.like; // iLike for PostgreSQL, like for SQLite
+    
+    // Check dialect to use appropriate case-insensitive operator
+    const dialect = Restaurant.sequelize.getDialect();
+    const likeOp = dialect === 'postgres' ? Op.iLike : Op.like;
 
     if (!q || q.trim().length < 2) {
       // Return Trending/Featured if no query

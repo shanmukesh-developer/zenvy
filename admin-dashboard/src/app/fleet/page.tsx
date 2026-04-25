@@ -75,7 +75,7 @@ export default function FleetManagement() {
           <p className="text-gray-400 text-sm font-bold uppercase tracking-widest mt-1">Personnel Onboarding & Approval Terminal</p>
         </div>
         <div className="flex gap-4">
-           <button onClick={() => setIsAdding(true)} className="px-8 py-3 bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest rounded-2xl hover:scale-105 transition-all shadow-[0_0_20px_rgba(37,99,235,0.3)]">
+           <button onClick={() => setIsAdding(true)} className="px-8 py-3 bg-blue-600 text-white text-[12px] font-black uppercase tracking-widest rounded-2xl hover:scale-105 transition-all shadow-[0_0_20px_rgba(37,99,235,0.3)]">
               Recruit New Node
            </button>
         </div>
@@ -116,11 +116,11 @@ export default function FleetManagement() {
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-white/[0.03] border-b border-white/5">
-              <th className="px-8 py-6 text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">Personnel ID</th>
-              <th className="px-8 py-6 text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">Full Name</th>
-              <th className="px-8 py-6 text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">Contact Node</th>
-              <th className="px-8 py-6 text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">Status</th>
-              <th className="px-8 py-6 text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">Action</th>
+              <th className="px-8 py-6 text-[12px] font-black text-gray-500 uppercase tracking-[0.2em]">Personnel ID</th>
+              <th className="px-8 py-6 text-[12px] font-black text-gray-500 uppercase tracking-[0.2em]">Full Name</th>
+              <th className="px-8 py-6 text-[12px] font-black text-gray-500 uppercase tracking-[0.2em]">Contact Node</th>
+              <th className="px-8 py-6 text-[12px] font-black text-gray-500 uppercase tracking-[0.2em]">Status</th>
+              <th className="px-8 py-6 text-[12px] font-black text-gray-500 uppercase tracking-[0.2em]">Action</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-white/[0.02] text-white">
@@ -139,13 +139,13 @@ export default function FleetManagement() {
                 <td className="px-8 py-6">
                   <div className="flex items-center gap-2">
                     <div className={`w-1.5 h-1.5 rounded-full ${rider.isApproved ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]' : 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]'}`} />
-                    <span className={`text-[9px] font-black uppercase tracking-widest ${rider.isApproved ? 'text-emerald-500' : 'text-red-500'}`}>
+                    <span className={`text-[11px] font-black uppercase tracking-widest ${rider.isApproved ? 'text-emerald-500' : 'text-red-500'}`}>
                       {rider.isApproved ? 'Approved' : 'Pending'}
                     </span>
                   </div>
                 </td>
                 <td className="px-8 py-6">
-                  <button onClick={() => handleToggleApproval(rider._id, rider.isApproved)} className={`px-6 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${rider.isApproved ? 'bg-red-500/10 text-red-500' : 'bg-emerald-500/10 text-emerald-500'}`}>
+                  <button onClick={() => handleToggleApproval(rider._id, rider.isApproved)} className={`px-6 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all ${rider.isApproved ? 'bg-red-500/10 text-red-500' : 'bg-emerald-500/10 text-emerald-500'}`}>
                     {rider.isApproved ? 'Deactivate' : 'Hire'}
                   </button>
                 </td>

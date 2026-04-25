@@ -19,7 +19,8 @@ export default function LoginForm({ onLogin, apiUrl }: LoginFormProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const handleLogin = async () => {
+  const handleLogin = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!phone || !password) {
       setError('Credentials required.');
       return;
@@ -72,9 +73,9 @@ export default function LoginForm({ onLogin, apiUrl }: LoginFormProps) {
           <p className="text-[10px] text-slate-500 uppercase tracking-[0.4em] font-bold">Authentication Gateway</p>
         </div>
 
-        <div className="space-y-6">
+        <form onSubmit={handleLogin} className="space-y-6">
           <div className="space-y-2">
-            <label className="text-[10px] text-slate-500 uppercase font-bold tracking-widest ml-1">Credential ID (Phone)</label>
+            <label className="text-[12px] text-slate-500 uppercase font-bold tracking-widest ml-1">Credential ID (Phone)</label>
             <input
               type="text"
               value={phone}
@@ -85,7 +86,7 @@ export default function LoginForm({ onLogin, apiUrl }: LoginFormProps) {
           </div>
 
           <div className="space-y-2">
-            <label className="text-[10px] text-slate-500 uppercase font-bold tracking-widest ml-1">Secure Key (Password)</label>
+            <label className="text-[12px] text-slate-500 uppercase font-bold tracking-widest ml-1">Secure Key (Password)</label>
             <input
               type="password"
               value={password}
@@ -94,23 +95,35 @@ export default function LoginForm({ onLogin, apiUrl }: LoginFormProps) {
               className="w-full px-6 py-4 rounded-[20px] bg-white/[0.02] border border-white/5 outline-none focus:border-blue-500/40 transition-all font-bold"
             />
           </div>
+
+          <AnimatePresence>
+            {error && (
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95 }} 
+                animate={{ opacity: 1, scale: 1 }} 
+                className="mt-6 bg-red-500/5 border border-red-500/10 p-4 rounded-2xl text-red-500/80 text-[11px] font-bold uppercase tracking-widest text-center shadow-lg"
+              >
+                {error}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full mt-6 py-5 rounded-[22px] bg-white text-black font-bold text-xs uppercase tracking-[0.3em] hover:bg-slate-200 transition-all disabled:opacity-50 shadow-xl"
+          >
+            {loading ? 'Processing...' : 'Sign In'}
+          </button>
+        </form>
+
+        <div className="text-center mt-12">
+           <a href="https://hostelbites-customer.onrender.com" className="text-[10px] text-slate-500 hover:text-white transition-colors uppercase tracking-[0.3em] font-black">
+             ← Back to Zenvy Portal
+           </a>
         </div>
 
-        <AnimatePresence>
-          {error && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-6 bg-red-500/10 border border-red-500/20 p-4 rounded-2xl text-red-400 text-[9px] font-bold uppercase tracking-widest text-center">{error}</motion.div>
-          )}
-        </AnimatePresence>
-
-        <button
-          onClick={handleLogin}
-          disabled={loading}
-          className="w-full mt-12 py-5 rounded-[22px] bg-white text-black font-bold text-xs uppercase tracking-[0.3em] hover:bg-slate-200 transition-all disabled:opacity-50"
-        >
-          {loading ? 'Processing...' : 'Sign In'}
-        </button>
-
-        <p className="mt-12 text-center text-[8px] text-slate-600 font-medium uppercase tracking-[0.2em]">Logistics Protocol v2.5.0 // Secured via Nexus</p>
+        <p className="mt-12 text-center text-[9px] text-slate-600 font-medium uppercase tracking-[0.2em]">Logistics Protocol v2.5.0 // Secured via Nexus</p>
       </motion.div>
     </main>
   );

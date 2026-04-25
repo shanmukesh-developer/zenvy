@@ -62,12 +62,19 @@ export default function Login() {
             />
             <p className="text-xs text-zinc-600 mt-2">Leave blank if no password is set for your account yet.</p>
           </div>
+          
           <button 
             type="submit"
             className="w-full bg-orange-500 hover:bg-orange-600 text-white font-medium p-3 rounded-lg transition-colors"
           >
             Access Portal
           </button>
+
+          <div className="text-center mt-6">
+            <a href="https://hostelbites-customer.onrender.com" className="text-xs text-zinc-500 hover:text-orange-400 transition-colors uppercase tracking-widest font-bold">
+              ← Back to Zenvy Main
+            </a>
+          </div>
         </form>
       </motion.div>
     </div>

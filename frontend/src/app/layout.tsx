@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 
@@ -16,6 +16,15 @@ const geistMono = localFont({
 export const metadata: Metadata = {
   title: "Zenvy — Food Delivery in Amaravathi",
   description: "Order food from the best restaurants in Amaravathi. Fast delivery, easy tracking, premium experience.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
+  themeColor: "#0A0A0B"
 };
 
 import { CartProvider } from '@/context/CartContext';
@@ -45,7 +54,6 @@ export default function RootLayout({
           <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
              <div className="film-grain" />
              <div className="vfx-bokeh opacity-40 mix-blend-screen" />
-             <div className="vfx-flare" />
              
              {/* Floating Ambient Orbs */}
              <div className="absolute -top-40 -right-40 w-[600px] h-[600px] bg-[#C9A84C]/[0.08] rounded-full blur-[100px] animate-[pulse_6s_ease-in-out_infinite]" />
@@ -61,7 +69,7 @@ export default function RootLayout({
           {/* Interactive Mouse Lighting */}
           <CursorSpotlight />
 
-          <div className="animate-page overflow-x-hidden w-full max-w-full relative z-10 transition-all duration-700">
+          <div className="relative z-10 transition-all duration-700">
             {children}
           </div>
         </CartProvider>

@@ -3,6 +3,8 @@ import { useState } from 'react';
 import { useCart } from '@/context/CartContext';
 import Link from 'next/link';
 import SafeImage from '@/components/SafeImage';
+import Tilt from '@/components/Tilt';
+import Magnetic from '@/components/Magnetic';
 
 interface CartItem {
   id: string;
@@ -31,8 +33,8 @@ function BasketItem({ item, updateQuantity, removeFromCart, updateCustomName }: 
   };
 
   return (
-    <div key={item.id} className="flex flex-col bg-card-bg p-6 rounded-[35px] border border-white/5 transition-all hover:border-white/10 group premium-tilt">
-      <div className="flex gap-6 items-center">
+    <div key={item.id} className="flex flex-col bg-card-bg p-4 md:p-6 rounded-[28px] md:rounded-[35px] border border-white/5 transition-all hover:border-white/10 group premium-tilt">
+      <div className="flex gap-4 md:gap-6 items-center">
         <div className="w-24 h-24 relative flex-shrink-0">
           <SafeImage 
             src={item.image || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400"} 
@@ -84,53 +86,70 @@ export default function BasketPage() {
   const { cart, updateQuantity, removeFromCart, updateCustomName, totalPrice } = useCart();
 
   return (
-    <main className="min-h-screen bg-background text-white p-8">
-      <div className="flex items-center justify-between mb-10">
-        <Link href="/" className="w-10 h-10 bg-white/5 rounded-full flex items-center justify-center border border-white/10">
-          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" />
-          </svg>
-        </Link>
-        <h1 className="text-xl font-black uppercase tracking-widest">My Basket</h1>
-        <div className="w-10" />
+    <main className="min-h-screen bg-[#0A0A0B] text-white p-4 md:p-8 relative overflow-x-hidden">
+      {/* Cinematic Background */}
+      <div className="fixed inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(201,168,76,0.05)_0%,transparent_50%)] pointer-events-none" />
+      <div className="fixed inset-0 bg-gradient-to-b from-black via-transparent to-black pointer-events-none opacity-40" />
+
+      <div className="relative z-10">
+        <div className="flex items-center justify-between mb-12">
+          <Magnetic>
+            <Link href="/" className="w-12 h-12 bg-white/5 backdrop-blur-xl rounded-full flex items-center justify-center border border-white/10 hover:bg-white/10 transition-all">
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" />
+              </svg>
+            </Link>
+          </Magnetic>
+          <h1 className="text-xl font-black uppercase tracking-[0.3em] text-gold-shimmer">Strategic Vault</h1>
+          <div className="w-12" />
+        </div>
+
+        {cart.length === 0 ? (
+          <div className="flex flex-col items-center justify-center pt-32 animate-in fade-in slide-in-from-bottom-8 duration-700">
+            <div className="w-full flex justify-center mb-10">
+               <div className="w-40 h-40 bg-white/5 rounded-full flex items-center justify-center text-6xl shadow-2xl border border-white/5">🛒</div>
+            </div>
+            <p className="text-secondary-text font-black uppercase tracking-widest mb-12 opacity-40">Your strategic vault is empty</p>
+            <Magnetic>
+              <Link href="/" className="px-12 py-4 bg-primary-yellow text-black rounded-2xl font-black uppercase tracking-widest text-xs shadow-[0_15px_30px_-10px_rgba(201,168,76,0.3)]">Explore The Nexus</Link>
+            </Magnetic>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            <div className="animate-in fade-in slide-in-from-bottom-8 duration-700">
+              {cart.map((item) => (
+                <Tilt key={item.id} scale={1.01} className="mb-4">
+                  <BasketItem 
+                    item={item} 
+                    updateQuantity={updateQuantity} 
+                    removeFromCart={removeFromCart} 
+                    updateCustomName={updateCustomName} 
+                  />
+                </Tilt>
+              ))}
+            </div>
+
+            <div className="pt-12 space-y-5 animate-in fade-in duration-1000 delay-300">
+               <div className="flex justify-between items-center text-xs font-black uppercase tracking-widest text-white/30">
+                 <span>Vault Subtotal</span>
+                 <span>₹{totalPrice}</span>
+               </div>
+               <div className="h-[1px] bg-white/5" />
+               <div className="flex justify-between items-center text-white text-2xl md:text-3xl font-black tracking-tighter">
+                 <span className="text-gold-shimmer uppercase text-[10px] md:text-base tracking-widest">Grand Total</span>
+                 <span className="text-primary-yellow">₹{totalPrice}</span>
+               </div>
+            </div>
+
+            <Magnetic>
+              <Link href="/checkout" className="w-full btn-yellow mt-12 flex justify-center py-6 text-[13px] font-black uppercase tracking-[0.2em] relative overflow-hidden group shadow-[0_20px_50px_rgba(201,168,76,0.25)]">
+                <div className="absolute inset-0 -translate-x-full group-hover:animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/40 to-transparent skew-x-12" />
+                Proceed to Checkout
+              </Link>
+            </Magnetic>
+          </div>
+        )}
       </div>
-
-      {cart.length === 0 ? (
-        <div className="flex flex-col items-center justify-center pt-20">
-          <div className="w-full flex justify-center mb-8">
-             <div className="w-32 h-32 bg-white/5 rounded-full flex items-center justify-center text-5xl">🛒</div>
-          </div>
-          <p className="text-secondary-text font-bold mb-10">Your basket is empty, bro.</p>
-          <Link href="/" className="btn-yellow">EXPLORE FOOD</Link>
-        </div>
-      ) : (
-        <div className="space-y-6">
-          {cart.map((item) => (
-            <BasketItem 
-              key={item.id} 
-              item={item} 
-              updateQuantity={updateQuantity} 
-              removeFromCart={removeFromCart} 
-              updateCustomName={updateCustomName} 
-            />
-          ))}
-
-          <div className="pt-10 space-y-4">
-             <div className="flex justify-between items-center text-secondary-text font-bold">
-               <span>Subtotal</span>
-               <span>₹{totalPrice}</span>
-             </div>
-             <div className="flex justify-between items-center text-white text-xl font-black">
-               <span>Total</span>
-               <span>₹{totalPrice}</span>
-             </div>
-          </div>
-
-          <Link href="/checkout" className="w-full btn-yellow mt-10 flex justify-center py-6 text-lg uppercase tracking-widest animate-text-shimmer shadow-[0_20px_40px_rgba(201,168,76,0.2)]">
-            Proceed to Checkout
-          </Link>
-        </div>
-      )}
     </main>
   );
 }

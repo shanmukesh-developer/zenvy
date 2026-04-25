@@ -1,10 +1,17 @@
 "use client";
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { useDeviceProtocol } from '@/hooks/useDeviceProtocol';
 
 const Navbar = () => {
   const [userName, setUserName] = useState('');
   const [location, setLocation] = useState('Amaravathi, AP');
   const [badgeCount, setBadgeCount] = useState(0);
+  const [isScrolled, setIsScrolled] = useState(false);
+  const pathname = usePathname();
+  const isHomePage = pathname === '/';
+  const { protocol, carrier } = useDeviceProtocol();
 
   useEffect(() => {
     try {
@@ -16,35 +23,58 @@ const Navbar = () => {
         if (parsed.address) setLocation(parsed.address.split(',')[0] || 'Amaravathi, AP');
       }
     } catch { /* ignore */ }
+
+    const handleScroll = () => setIsScrolled(window.scrollY > 20);
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 px-6 h-20 flex items-center justify-between bg-background/80 backdrop-blur-md border-b border-white/5">
-      {/* Location */}
-      <div className="flex flex-col">
+    <nav className={`fixed top-0 left-0 right-0 z-50 px-6 transition-all duration-500 flex items-center justify-between border-b ${
+      isScrolled 
+      ? 'h-16 bg-black/40 backdrop-blur-2xl border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.3)]' 
+      : 'h-16 bg-transparent border-transparent'
+    }`}>
+      {/* Location - Hidden on Home Top to avoid HUD clash */}
+      <div className={`flex flex-col group cursor-pointer transition-opacity duration-500 ${(isHomePage && !isScrolled) ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
         <div className="flex items-center gap-1.5">
-          <span className="text-primary-yellow text-sm">📍</span>
-          <span className="text-white text-[13px] font-black tracking-tight truncate max-w-[160px]">{location}</span>
-          <svg className="w-3 h-3 text-primary-yellow" fill="currentColor" viewBox="0 0 20 20">
+          <span className="text-primary-yellow text-sm animate-bounce">📍</span>
+          <div className="relative">
+            <span className="text-white text-[13px] font-black tracking-tight truncate max-w-[160px] group-hover:text-primary-yellow transition-colors">{location}</span>
+            <div className="absolute -bottom-1 left-0 right-0 h-0.5 bg-primary-yellow scale-x-0 group-hover:scale-x-100 transition-transform origin-left" />
+          </div>
+          <svg className="w-3 h-3 text-primary-yellow opacity-40 group-hover:opacity-100 transition-opacity" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
           </svg>
         </div>
-        <span className="text-secondary-text text-[10px] font-bold tracking-widest uppercase">
-          {userName ? `Hey, ${userName.split(' ')[0]} 👋` : 'Delivering to'}
+        <span className="text-secondary-text text-[9px] font-black tracking-[0.2em] uppercase mt-0.5 opacity-60 group-hover:opacity-100 transition-opacity">
+          {userName ? `HEY, ${userName.split(' ')[0]} 👋` : 'DELIVERING TO'}
         </span>
       </div>
 
-      {/* Avatar */}
-      <div className="relative">
-        <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-primary-yellow to-amber-400 flex items-center justify-center text-black font-black text-sm shadow-[0_0_20px_rgba(201,168,76,0.3)]">
-          {userName ? userName[0].toUpperCase() : '👤'}
+      {/* Avatar Section (Legendary Upgrade) */}
+      <div className="flex items-center gap-4">
+        <div className="hidden sm:flex flex-col items-right text-right">
+           <span className="text-[8px] font-black text-primary-yellow uppercase tracking-widest leading-none">{carrier}</span>
+           <div className="flex items-center justify-end gap-1.5 mt-1">
+             <span className="text-[10px] font-bold text-white/40 leading-none">{protocol === 'ios' ? '' : protocol === 'android' ? '🤖' : '💻'} v4.2.0</span>
+             <div className={`w-1.5 h-1.5 rounded-full ${isScrolled ? 'bg-emerald-500' : 'bg-primary-yellow'} animate-pulse shadow-[0_0_8px_currentColor]`} />
+           </div>
         </div>
-        {badgeCount > 0 && (
-          <div className="absolute -top-1 -right-1 w-5 h-5 bg-black border border-[#C9A84C]/50 rounded-full flex items-center justify-center text-[8px] font-black text-[#C9A84C] shadow-lg animate-in zoom-in">
-            {badgeCount}
+        <Link href="/profile" className="relative group block">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#C9A84C] to-[#8B7332] flex items-center justify-center text-black font-black text-lg shadow-[0_0_15px_rgba(201,168,76,0.3)] transition-all hover:scale-110 active:scale-95 cursor-pointer">
+            <svg className="w-6 h-6 text-black" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+               <path strokeLinecap="round" strokeLinejoin="round" d="M2 19h20M2 19l2-8 4 3 4-7 4 7 4-3 2 8" />
+            </svg>
           </div>
-        )}
-        <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-400 border-2 border-background rounded-full" />
+          
+          {badgeCount > 0 && (
+            <div className="absolute -top-1 -right-1 w-5 h-5 bg-black border border-primary-yellow rounded-full flex items-center justify-center text-[8px] font-black text-primary-yellow shadow-lg group-hover:scale-110 transition-transform">
+              {badgeCount}
+            </div>
+          )}
+          <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-black rounded-full shadow-lg" />
+        </Link>
       </div>
     </nav>
   );
