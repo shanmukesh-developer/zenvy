@@ -2,9 +2,8 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import SuccessOverlay from '@/components/SuccessOverlay';
-import Tilt from '@/components/Tilt';
 import Magnetic from '@/components/Magnetic';
 
 export default function LoginPage() {

@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import Tilt from '@/components/Tilt';
 import Magnetic from '@/components/Magnetic';
-import SafeImage from '@/components/SafeImage';
+// SafeImage removed to resolve linting errors
 
 export default function RewardsPage() {
   return (

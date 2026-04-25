@@ -22,14 +22,12 @@ import RatingModal from '@/components/RatingModal';
 import ZenvyModal from '@/components/ZenvyModal';
 import Tilt from '@/components/Tilt';
 import socket from '@/utils/socket';
-import { Restaurant, User } from '@/types';
+import { Restaurant, User, NexusItem } from '@/types';
 import RewardsPanel from '@/components/RewardsPanel';
 import NexusLeaderboard from '@/components/NexusLeaderboard';
 import SurgeBanner from '@/components/SurgeBanner';
 import GlobalAnnouncement from '@/components/GlobalAnnouncement';
 import Navbar from '@/components/Navbar';
-import VFXParticles from '@/components/VFXParticles';
-import Meteors from '@/components/Meteors';
 import NexusExplorer from '@/components/NexusExplorer';
 // QRCodeSVG removed to resolve linting errors
 
@@ -70,8 +68,8 @@ interface Order {
 
 export default function Home() {
   const router = useRouter();
-  const { cart } = useCart();
-  const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { cart: _cart } = useCart();
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [filter, _setFilter] = useState<'all' | 'budget' | 'veg' | 'jain' | 'eggless' | 'rating' | 'fastest' | 'premium'>('all');
   const [liveRestaurants, setLiveRestaurants] = useState<Restaurant[]>([]);
@@ -128,23 +126,6 @@ export default function Home() {
   ) => {
     setModalConfig({ isOpen: true, title, message, type, onConfirm, confirmLabel, cancelLabel });
   };
-  
-  const CATEGORIES = [
-    { emoji: '🍛', label: 'Biryani' },
-    { emoji: '🍕', label: 'Pizza' },
-    { emoji: '🥗', label: 'South Indian' },
-    { emoji: '🍔', label: 'Burgers' },
-    { emoji: '🧁', label: 'Sweets' },
-    { emoji: '🥤', label: 'Drinks' },
-    { emoji: '🍜', label: 'Chinese' },
-    { emoji: '🥙', label: 'Rolls' },
-    { emoji: '🚲', label: 'Rentals' },
-    { emoji: '🎁', label: 'Seasonal' },
-    { emoji: '💪', label: 'Gym' },
-    { emoji: '👔', label: 'Laundry' },
-    { emoji: '💊', label: 'Pharmacy' },
-    { emoji: '📚', label: 'Stationary' },
-  ];
 
   const hasFetchedRef = useRef(false);
 
@@ -715,8 +696,8 @@ export default function Home() {
           <div id="nexus-catalog" className="scroll-mt-24 mt-1">
             <NexusExplorer 
               restaurants={liveRestaurants}
-              onSelectItem={(item) => {
-                if (item.id) {
+              onSelectItem={(item: NexusItem) => {
+                if (item && item.id) {
                   router.push(`/products/${item.id}`);
                 }
               }}

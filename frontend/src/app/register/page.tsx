@@ -2,7 +2,6 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
 import SuccessOverlay from '@/components/SuccessOverlay';
 
 export default function RegisterPage() {

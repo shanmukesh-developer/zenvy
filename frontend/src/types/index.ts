@@ -44,3 +44,17 @@ export interface User {
   hostelBlock?: string;
   profileImage?: string | null;
 }
+
+export interface NexusItem {
+  id?: string;
+  _id?: string;
+  name?: string;
+  price?: number | string;
+  imageUrl?: string;
+  category?: string;
+  tags?: string[];
+  isVegetarian?: boolean;
+  restaurantName?: string;
+  restaurantId?: string;
+  rating?: number | string;
+}

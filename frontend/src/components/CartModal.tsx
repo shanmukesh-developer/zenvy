@@ -7,8 +7,10 @@ interface CartModalProps {
   onClose: () => void;
 }
 
+import { User } from '@/types';
+
 const CartModal = ({ isOpen, onClose }: CartModalProps) => {
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [isSuccessOpen, setIsSuccessOpen] = useState(false);
   const router = useRouter();
 

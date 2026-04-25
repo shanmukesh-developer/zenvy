@@ -1,13 +1,13 @@
 "use client";
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import Tilt from './Tilt';
+import Tilt from '@/components/Tilt';
 import SafeImage from './SafeImage';
-import { Restaurant } from '@/types';
+import { Restaurant, NexusItem } from '@/types';
 
 interface NexusExplorerProps {
   restaurants: Restaurant[];
-  onSelectItem: (item: any) => void;
+  onSelectItem: (item: NexusItem) => void;
   favorites: string[];
   toggleFavorite: (id: string) => void;
 }
@@ -35,7 +35,7 @@ export default function NexusExplorer({ restaurants, onSelectItem, favorites, to
         // Strict Veg parsing to prevent string "false" bugs
         const isVeg = item.isVegetarian === true || 
                       String(item.isVegetarian).toLowerCase() === 'true' || 
-                      (item.isVegetarian as any) === 1 || 
+                      Number(item.isVegetarian) === 1 || 
                       item.tags?.includes('veg') || 
                       item.tags?.includes('fruits');
 
@@ -83,7 +83,7 @@ export default function NexusExplorer({ restaurants, onSelectItem, favorites, to
             ].map((btn) => (
               <button
                 key={btn.id}
-                onClick={() => setActiveFilter(btn.id as any)}
+                onClick={() => setActiveFilter(btn.id as 'all' | 'veg' | 'jain')}
                 className={`h-8 px-3 rounded-xl flex items-center gap-1.5 transition-all border whitespace-nowrap ${
                   activeFilter === btn.id 
                   ? 'bg-primary-yellow text-black border-primary-yellow font-black' 
@@ -106,7 +106,7 @@ export default function NexusExplorer({ restaurants, onSelectItem, favorites, to
             ].map((btn) => (
               <button
                 key={btn.id}
-                onClick={() => setActiveSort(btn.id as any)}
+                onClick={() => setActiveSort(btn.id as 'recommended' | 'rating' | 'fastest')}
                 className={`h-8 px-3 rounded-xl flex items-center gap-1.5 transition-all border whitespace-nowrap ${
                   activeSort === btn.id 
                   ? 'bg-white text-black border-white font-black' 
