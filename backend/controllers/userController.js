@@ -44,7 +44,6 @@ const registerUser = async (req, res) => {
 // @route   POST /api/users/login
 const authUser = async (req, res) => {
   const { phone, password, firebaseToken } = req.body;
-
   try {
     const User = getUserModel();
     const cleanPhone = normalizePhone(phone);

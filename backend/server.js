@@ -77,10 +77,19 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { 
-    origin: ALLOWED_ORIGINS,
+    origin: (origin, callback) => {
+      if (!origin || origin.includes('localhost') || origin.includes('127.0.0.1') || ALLOWED_ORIGINS.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     methods: ['GET', 'POST'],
     credentials: true
-  }
+  },
+  connectTimeout: 45000,
+  pingTimeout: 20000,
+  pingInterval: 25000
 });
 
 // Make io accessible to routes
@@ -98,6 +107,15 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json({ limit: '5mb' }));
+
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    status: 'online', 
+    nexus: 'connected', 
+    timestamp: new Date(),
+    uptime: process.uptime()
+  });
+});
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Connect to PostgreSQL, then initialize routes
