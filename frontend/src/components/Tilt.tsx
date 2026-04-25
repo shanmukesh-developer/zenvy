@@ -11,6 +11,7 @@ interface TiltProps {
 
 export default function Tilt({ children, className = "", scale = 1.05, transitionSpeed = 400 }: TiltProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const isTouch = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
 
   const x = useMotionValue(0);
   const y = useMotionValue(0);
@@ -63,8 +64,8 @@ export default function Tilt({ children, className = "", scale = 1.05, transitio
       initial={false}
       whileHover={{ scale }}
       style={{
-        rotateY,
-        rotateX,
+        rotateY: isTouch ? 0 : rotateY,
+        rotateX: isTouch ? 0 : rotateX,
         transformStyle: "preserve-3d",
       }}
       className={`relative transition-transform ease-out ${className}`}

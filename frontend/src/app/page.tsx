@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useMemo, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useCart } from '@/context/CartContext';
 import { createPortal } from 'react-dom';
@@ -7,12 +8,16 @@ import Link from 'next/link';
 import RestaurantCard from '@/components/RestaurantCard';
 import { motion, AnimatePresence } from 'framer-motion';
 import SafeImage from '@/components/SafeImage';
-import ConciergeDrawer from '@/components/ConciergeDrawer';
-import SearchOverlay from '@/components/SearchOverlay';
-import IntroOverlay from '@/components/IntroOverlay';
+
+// Heavy Components Dynamic Import
+const ConciergeDrawer = dynamic(() => import('@/components/ConciergeDrawer'), { ssr: false });
+const SearchOverlay = dynamic(() => import('@/components/SearchOverlay'), { ssr: false });
+const IntroOverlay = dynamic(() => import('@/components/IntroOverlay'), { ssr: false });
+const BlockWarsLeaderboard = dynamic(() => import('@/components/BlockWarsLeaderboard'), { ssr: false });
+const ZenvyVault = dynamic(() => import('@/components/ZenvyVault'), { ssr: false });
+const NexusExplorer = dynamic(() => import('@/components/NexusExplorer'), { ssr: false });
+
 import ZenvyPulse from '@/components/ZenvyPulse';
-import BlockWarsLeaderboard from '@/components/BlockWarsLeaderboard';
-import ZenvyVault from '@/components/ZenvyVault';
 import LiveOrderStatusBar from '@/components/LiveOrderStatusBar';
 import ScrollProgressIndicator from '@/components/ScrollProgressIndicator';
 import Magnetic from '@/components/Magnetic';
@@ -28,7 +33,6 @@ import NexusLeaderboard from '@/components/NexusLeaderboard';
 import SurgeBanner from '@/components/SurgeBanner';
 import GlobalAnnouncement from '@/components/GlobalAnnouncement';
 import Navbar from '@/components/Navbar';
-import NexusExplorer from '@/components/NexusExplorer';
 // QRCodeSVG removed to resolve linting errors
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
@@ -664,7 +668,7 @@ export default function Home() {
                       Mission-critical speed. Zero friction. <br /> Delivering across Amaravathi.
                    </p>
                    <button 
-                    onClick={() => document.getElementById('nexus-catalog')?.scrollIntoView({ behavior: 'smooth' })}
+                    onClick={() => document.getElementById('restaurant-feed')?.scrollIntoView({ behavior: 'smooth' })}
                     className="btn-yellow text-[10px] py-4 px-10 shadow-[0_0_30px_rgba(201,168,76,0.2)]"
                    >
                       IDENTIFY RESTAURANTS →
@@ -866,16 +870,6 @@ export default function Home() {
               <span className="text-[9px] font-black text-secondary-text uppercase tracking-widest bg-white/5 border border-white/10 px-4 py-2 rounded-full">Swipe →</span>
             </div>
             <motion.div 
-              initial="hidden"
-              whileInView="show"
-              viewport={{ once: true, margin: "-100px" }}
-              variants={{
-                hidden: { opacity: 0 },
-                show: {
-                  opacity: 1,
-                  transition: { staggerChildren: 0.1 }
-                }
-              }}
               className="flex gap-4 overflow-x-auto scrollbar-hide pb-2 -mx-6 px-6"
             >
               {isLoading ? (
@@ -890,10 +884,6 @@ export default function Home() {
                 chefPicks.map((item) => (
                   <motion.div
                     key={item.id}
-                    variants={{
-                      hidden: { opacity: 0, x: 20 },
-                      show: { opacity: 1, x: 0 }
-                    }}
                   >
                     <Link href={`/products/${item.id}`}>
                       <Tilt className="chef-card bg-[#141416]">
@@ -1340,7 +1330,7 @@ export default function Home() {
               </div>
           </div>
 
-          <section className="pb-20">
+          <section id="restaurant-feed" className="pb-20 scroll-mt-24">
             <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-secondary-text mb-6">Restaurants</h2>
             <div className="space-y-4">
               {displayRestaurants.map((res, index) => (
