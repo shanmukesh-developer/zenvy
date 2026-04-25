@@ -34,6 +34,7 @@ export default function LoginPage() {
     if (isProd && API_URL.includes('localhost')) {
       console.warn('⚠️ WARNING: Production frontend is attempting to connect to localhost API. Check NEXT_PUBLIC_API_URL.');
     }
+    console.log(`[AUTH_LINK] Target Gateway: ${API_URL}`);
 
     try {
       const last10 = /[a-zA-Z]/.test(phone) ? phone : phone.replace(/\D/g, '').slice(-10);

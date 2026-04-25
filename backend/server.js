@@ -70,17 +70,26 @@ const ALLOWED_ORIGINS = [
   'http://localhost:3002',
   'http://127.0.0.1:3000',
   'http://127.0.0.1:3001',
-  'http://127.0.0.1:3002',
-  'https://hostelbites-customer-n453.onrender.com',
-  'https://zenvy-customer.onrender.com'
+  'http://127.0.0.1:3002'
 ];
+
+// 🌐 Production-Resilient CORS Handler
+const isAllowedOrigin = (origin) => {
+  if (!origin) return true;
+  if (ALLOWED_ORIGINS.includes(origin)) return true;
+  if (origin.includes('localhost') || origin.includes('127.0.0.1')) return true;
+  // Allow any Render subdomain for this specific project
+  if (origin.includes('hostelbites') && origin.endsWith('.onrender.com')) return true;
+  if (origin.includes('zenvy') && origin.endsWith('.onrender.com')) return true;
+  return false;
+};
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { 
     origin: (origin, callback) => {
-      if (!origin || origin.includes('localhost') || origin.includes('127.0.0.1') || ALLOWED_ORIGINS.includes(origin)) {
+      if (isAllowedOrigin(origin)) {
         callback(null, true);
       } else {
         callback(new Error('Not allowed by CORS'));
@@ -100,7 +109,7 @@ app.set('io', io);
 // Middleware
 app.use(cors({
   origin: function(origin, callback) {
-    if (!origin || ALLOWED_ORIGINS.indexOf(origin) !== -1 || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+    if (isAllowedOrigin(origin)) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
