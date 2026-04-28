@@ -658,7 +658,7 @@ export default function Home() {
             {/* Cinematic Hero Element */}
             <div className="relative mb-4 group">
               <div className="absolute inset-x-0 -top-10 h-40 bg-gradient-to-b from-primary-yellow/5 to-transparent pointer-events-none" />
-              <div className="glass-card-extreme overflow-hidden rounded-[30px] border border-white/5 relative h-[210px] md:h-[280px] flex items-center px-6 md:px-12 group">
+              <div className="glass-card-extreme overflow-hidden rounded-[30px] border border-white/5 relative min-h-[210px] h-auto md:h-[280px] flex items-center px-6 md:px-12 py-8 md:py-0 group">
                 <div className="absolute right-0 top-0 w-1/2 h-full pointer-events-none opacity-40 group-hover:opacity-60 transition-opacity">
                    <div className="absolute inset-0 bg-gradient-to-l from-black via-transparent to-transparent z-10" />
                    <SafeImage 
