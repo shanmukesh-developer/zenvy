@@ -49,7 +49,7 @@ html, body {
   width: 100%;
   height: auto; /* Prevent height conflicts */
   min-height: 100vh;
-  font-size: 90%; /* Global 10% reduction for all rem-based elements */
+  font-size: 80%; /* Total 20% reduction for all rem-based elements */
 }
 
 body {
@@ -64,7 +64,7 @@ body {
 .discover-header {
   font-family: 'Syne', sans-serif;
   font-weight: 800;
-  font-size: 32px;
+  font-size: 28px;
   line-height: 1.1;
   letter-spacing: -0.5px;
   background: linear-gradient(135deg, #F5F5F5 0%, #C9A84C 50%, #F5F5F5 100%);
@@ -84,19 +84,19 @@ body {
   font-family: 'Syne', sans-serif;
   font-style: normal;
   font-weight: 600;
-  font-size: 20px;
+  font-size: 18px;
   color: var(--secondary-text);
 }
 
 /* ─── Premium Capsule Card ─── */
 .capsule-card {
   background: linear-gradient(135deg, var(--card-bg) 0%, #1A1A1D 100%);
-  border-radius: 54px;
-  padding: 10px;
+  border-radius: 48px;
+  padding: 9px;
   display: flex;
   align-items: center;
   position: relative;
-  height: 100px;
+  height: 90px;
   transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.3s ease, background 0.3s ease;
   border: 1px solid var(--border-subtle);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
@@ -111,8 +111,8 @@ body {
 
 /* ─── Gold-Bordered Circle ─── */
 .food-circle {
-  width: 90px;
-  height: 90px;
+  width: 81px;
+  height: 81px;
   border-radius: 50%;
   border: 2px solid var(--primary-gold);
   overflow: hidden;
@@ -141,8 +141,8 @@ body {
   background: linear-gradient(135deg, var(--primary-gold) 0%, var(--accent-warm) 100%);
   color: #0A0A0B;
   border-radius: 50%;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -155,8 +155,8 @@ body {
   color: #0A0A0B;
   font-weight: 800;
   border-radius: 999px;
-  padding: 14px 28px;
-  font-size: 11px;
+  padding: 12px 24px;
+  font-size: 10px;
   letter-spacing: 0.15em;
   text-transform: uppercase;
   border: none;
@@ -310,9 +310,9 @@ html {
 
 /* ─── Chef's Picks Carousel ─── */
 .chef-card {
-  min-width: 216px;
-  max-width: 234px;
-  border-radius: 25px;
+  min-width: 194px;
+  max-width: 210px;
+  border-radius: 22px;
   overflow: visible;
   position: relative;
   flex-shrink: 0;
@@ -378,8 +378,8 @@ html {
 /* ─── Elite Card Components ─── */
 .zenvy-badge-container {
   background: rgba(201, 168, 76, 0.6);
-  padding: 3.5px;
-  border-radius: 11px;
+  padding: 3px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -390,9 +390,9 @@ html {
   background: #3B5998; /* Specific blue from reference */
   color: white;
   font-weight: 950;
-  font-size: 12px;
-  padding: 1.5px 7px;
-  border-radius: 3.5px;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
   letter-spacing: 0.1em;
 }
 
@@ -429,8 +429,8 @@ html {
 
 .identity-telemetry-grid {
   background: rgba(10, 10, 12, 0.9);
-  border-radius: 28px;
-  padding: 22px;
+  border-radius: 25px;
+  padding: 20px;
   border: 1px solid rgba(255, 255, 255, 0.03);
   display: flex;
   flex-direction: column;
@@ -447,8 +447,8 @@ html {
 }
 
 .elite-profile-border {
-  border: 3.5px solid #1a1a1c;
-  outline: 1.5px solid #C9A84C;
+  border: 3px solid #1a1a1c;
+  outline: 1.2px solid #C9A84C;
   box-shadow: 0 0 20px rgba(201, 168, 76, 0.3);
 }
 
@@ -467,8 +467,8 @@ html {
 
 /* ─── Tracking Timeline ─── */
 .timeline-dot {
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   border: 2px solid var(--border-subtle);
   background: var(--background);
@@ -827,7 +827,7 @@ html {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 36px;
+  border-radius: 32px;
   position: relative;
   z-index: 10;
 }
