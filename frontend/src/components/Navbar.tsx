@@ -48,7 +48,7 @@ const Navbar = () => {
         <div className="flex items-center gap-1.5">
           <span className="text-primary-yellow text-sm animate-bounce">📍</span>
           <div className="relative">
-            <span className="text-white text-[13px] font-black tracking-tight truncate max-w-[160px] group-hover:text-primary-yellow transition-colors">{location}</span>
+            <span className="text-white text-[13px] font-black tracking-tight truncate max-w-[100px] sm:max-w-[160px] group-hover:text-primary-yellow transition-colors">{location}</span>
             <div className="absolute -bottom-1 left-0 right-0 h-0.5 bg-primary-yellow scale-x-0 group-hover:scale-x-100 transition-transform origin-left" />
           </div>
           <svg className="w-3 h-3 text-primary-yellow opacity-40 group-hover:opacity-100 transition-opacity" fill="currentColor" viewBox="0 0 20 20">

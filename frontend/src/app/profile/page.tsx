@@ -395,9 +395,9 @@ export default function ProfilePage() {
           )}
           
           <div className="relative z-20">
-            <div className="flex justify-between items-start mb-10">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-start mb-10 gap-8">
               {/* Profile Photo with Premium Border */}
-              <div className={`w-36 h-36 rounded-full overflow-hidden ${user?.isElite ? 'elite-profile-border' : 'border-2 border-white/10'} shadow-2xl bg-black/40 backdrop-blur-md relative`}>
+              <div className={`w-32 h-32 sm:w-36 sm:h-36 rounded-full overflow-hidden ${user?.isElite ? 'elite-profile-border' : 'border-2 border-white/10'} shadow-2xl bg-black/40 backdrop-blur-md relative shrink-0`}>
                   {user?.profileImage && user.profileImage !== 'null' && user.profileImage !== 'undefined' ? (
                     <SafeImage 
                       src={user.profileImage} 
@@ -407,7 +407,7 @@ export default function ProfilePage() {
                   ) : (
                     <div className="w-full h-full bg-gradient-to-br from-[#1C1C1E] to-black rounded-full flex items-center justify-center">
                       {user?.isElite ? (
-                        <svg className="w-20 h-20 text-[#C9A84C] drop-shadow-[0_0_15px_rgba(201,168,76,0.5)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2">
+                        <svg className="w-16 h-16 sm:w-20 sm:h-20 text-[#C9A84C] drop-shadow-[0_0_15px_rgba(201,168,76,0.5)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2">
                           <path strokeLinecap="round" strokeLinejoin="round" d="M2 19h20M2 19l2-8 4 3 4-7 4 7 4-3 2 8M2 19v2h20v-2" />
                           <circle cx="12" cy="5" r="1" fill="currentColor" />
                         </svg>
@@ -418,24 +418,24 @@ export default function ProfilePage() {
                   )}
               </div>
 
-              <div className="flex flex-col items-end gap-3">
-                {/* Branded Zenvy Badge */}
-                <div className="zenvy-badge-container scale-110">
-                   <div className="zenvy-badge-label">ZENVY</div>
-                   <div className="flex gap-1 pr-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-white/20" />
-                      <div className="w-1.5 h-1.5 rounded-full bg-white/20" />
-                   </div>
-                </div>
+              <div className="flex flex-row sm:flex-col items-center sm:items-end gap-3 w-full sm:w-auto justify-between sm:justify-start">
+                 {/* Branded Zenvy Badge */}
+                 <div className="zenvy-badge-container scale-100 sm:scale-110">
+                    <div className="zenvy-badge-label">ZENVY</div>
+                    <div className="flex gap-1 pr-2">
+                       <div className="w-1.5 h-1.5 rounded-full bg-white/20" />
+                       <div className="w-1.5 h-1.5 rounded-full bg-white/20" />
+                    </div>
+                 </div>
 
-                {/* Polished Streak Capsule */}
-                <div className="streak-capsule-premium mt-2">
-                   <span className="text-xl">🔥</span>
-                   <div>
-                      <p className="streak-text-main">{streak} day streak</p>
-                      <p className="streak-text-sub">Keep ordering!</p>
-                   </div>
-                </div>
+                 {/* Polished Streak Capsule */}
+                 <div className="streak-capsule-premium">
+                    <span className="text-xl">🔥</span>
+                    <div>
+                       <p className="streak-text-main">{streak} day streak</p>
+                       <p className="streak-text-sub">Keep ordering!</p>
+                    </div>
+                 </div>
               </div>
             </div>
 

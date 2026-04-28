@@ -290,15 +290,17 @@ function TrackingContent() {
       <div className="fixed inset-0 bg-gradient-to-b from-black via-transparent to-black pointer-events-none opacity-40" />
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-12 relative z-10">
-        <Magnetic>
-          <Link href="/" className="w-12 h-12 bg-white/5 backdrop-blur-xl rounded-full flex items-center justify-center border border-white/10 hover:bg-white/10 transition-all">
-            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" />
-            </svg>
-          </Link>
-        </Magnetic>
-        <h1 className="text-xl font-black uppercase tracking-[0.3em] text-gold-shimmer">Mission Tracking</h1>
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-12 gap-6 relative z-10">
+        <div className="flex items-center justify-between md:justify-start gap-4">
+          <Magnetic>
+            <Link href="/" className="w-12 h-12 bg-white/5 backdrop-blur-xl rounded-full flex items-center justify-center border border-white/10 hover:bg-white/10 transition-all">
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" />
+              </svg>
+            </Link>
+          </Magnetic>
+          <h1 className="text-xl font-black uppercase tracking-[0.3em] text-gold-shimmer md:ml-4">Mission Tracking</h1>
+        </div>
         <div className="flex items-center gap-4">
           {status === 1 && cancelSecondsLeft > 0 && (
             <Magnetic>
@@ -373,7 +375,7 @@ function TrackingContent() {
             </div>
           </Tilt>
 
-          <div className="mt-8 flex justify-between items-center bg-white/[0.02] p-8 rounded-[36px] border border-white/5 relative z-10">
+          <div className="mt-8 flex flex-col md:flex-row justify-between items-start md:items-center bg-white/[0.02] p-8 rounded-[36px] border border-white/5 relative z-10 gap-6">
              <div className="flex items-center gap-5">
                 <div className="w-14 h-14 bg-[#C9A84C]/10 rounded-2xl flex items-center justify-center text-2xl border border-[#C9A84C]/20 shadow-inner">📡</div>
                 <div>
@@ -381,9 +383,9 @@ function TrackingContent() {
                    <p className="text-base font-black text-white uppercase tracking-tight">{currentCheckpoint}</p>
                 </div>
              </div>
-             <div className="text-right">
+             <div className="text-left md:text-right w-full md:w-auto">
                 <p className="text-[9px] font-black text-white/20 uppercase tracking-[0.4em] mb-1">Tactical ETA</p>
-                <div className="px-4 py-1 bg-[#C9A84C]/10 rounded-full border border-[#C9A84C]/20">
+                <div className="px-4 py-1 bg-[#C9A84C]/10 rounded-full border border-[#C9A84C]/20 inline-block">
                    <p className="text-sm font-black text-primary-yellow animate-pulse uppercase tracking-tighter">{eta}</p>
                 </div>
              </div>
@@ -392,7 +394,7 @@ function TrackingContent() {
       {/* Dynamic Order Summary */}
       {orderInfo && (
         <Tilt scale={1.01} className="mb-6 relative z-10">
-          <div className="p-8 bg-white/[0.02] backdrop-blur-2xl rounded-[48px] border border-white/10 flex items-center justify-between group overflow-hidden">
+          <div className="p-8 bg-white/[0.02] backdrop-blur-2xl rounded-[48px] border border-white/10 flex flex-col md:flex-row md:items-center justify-between group overflow-hidden gap-8">
               <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none group-hover:opacity-10 transition-opacity">
                  <span className="text-4xl font-black italic">VAULT</span>
               </div>
@@ -430,7 +432,7 @@ function TrackingContent() {
       )}
 
       {/* Live Sync Status & Telemetry */}
-      <div className="flex gap-4 mb-8">
+      <div className="flex flex-col lg:flex-row gap-4 mb-8">
         <div 
           onClick={() => orderInfo?.deliveryPartner && setIsProfileOpen(true)}
           className={`flex-[2] glass-card p-6 border-[#C9A84C]/20 relative overflow-hidden transition-all ${orderInfo?.deliveryPartner ? 'cursor-pointer active:scale-95 hover:bg-white/[0.03]' : 'cursor-default'}`}
@@ -453,7 +455,7 @@ function TrackingContent() {
                  )}
               </div>
               <div className="flex-1">
-                 <div className="flex justify-between items-start">
+                 <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
                     <div>
                        <div className="flex items-center gap-1.5 mb-1">
                          <p className="text-[8px] font-black uppercase tracking-[0.3em] text-primary-yellow">Delivery Captain</p>
@@ -467,7 +469,7 @@ function TrackingContent() {
                          {orderInfo?.deliveryPartner?.vehicleNumber ? ` • ${orderInfo.deliveryPartner.vehicleNumber}` : ` # ${orderId?.slice(-4)}`}
                        </p>
                     </div>
-                    <div className="text-right">
+                    <div className="text-left sm:text-right w-full sm:w-auto">
                         <p className="text-[8px] font-black text-secondary-text uppercase mb-1">{eta}</p>
                         <p className="text-xs font-black text-white italic">{status === 4 ? '0' : captainSpeed} km/h</p>
                        {roadEta !== null && (
