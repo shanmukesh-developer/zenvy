@@ -33,6 +33,7 @@ import NexusLeaderboard from '@/components/NexusLeaderboard';
 import SurgeBanner from '@/components/SurgeBanner';
 import GlobalAnnouncement from '@/components/GlobalAnnouncement';
 import Navbar from '@/components/Navbar';
+import RecentlyViewed from '@/components/RecentlyViewed';
 // QRCodeSVG removed to resolve linting errors
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
@@ -172,10 +173,21 @@ export default function Home() {
         if (res.status === 401) {
           const data = await res.json();
           if (data.message && (data.message.includes('Account not found') || data.message.includes('token failed'))) {
-             console.error('[AUTH] Session invalidated by backend. Clearing local storage.');
-             localStorage.removeItem('token');
-             localStorage.removeItem('user');
-             window.location.href = '/login?error=session_expired';
+            // Grace period: Render cold-start can cause a spurious 401.
+            // Wait 4s and retry once before logging the user out.
+            setTimeout(async () => {
+              try {
+                const retry = await fetch(`${API_URL}/api/users/profile`, {
+                  headers: { Authorization: `Bearer ${token}` }
+                });
+                if (retry.status === 401) {
+                  console.error('[AUTH] Session confirmed invalid. Clearing.');
+                  localStorage.removeItem('token');
+                  localStorage.removeItem('user');
+                  window.location.href = '/login?error=session_expired';
+                }
+              } catch { /* network error — keep session alive */ }
+            }, 4000);
           }
         }
       } catch (_err) {
@@ -794,6 +806,8 @@ export default function Home() {
               </div>
             </section>
           )}
+
+          <RecentlyViewed />
 
           {/* 💎 Gourmet Favorites Section */}
           <AnimatePresence>

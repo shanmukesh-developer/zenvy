@@ -8,6 +8,7 @@ import SuccessOverlay from '@/components/SuccessOverlay';
 import { MenuItem } from '@/types';
 import Tilt from '@/components/Tilt';
 import Magnetic from '@/components/Magnetic';
+import { saveRecentlyViewed } from '@/components/RecentlyViewed';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
 
@@ -40,7 +41,16 @@ export default function ProductDetailClient({ productId }: { productId: string }
       })
       .then(data => {
         if (data && (data.name || data.id)) {
-          setProduct({ ...data, image: data.imageUrl || data.image });
+          const productData = { ...data, image: data.imageUrl || data.image };
+          setProduct(productData);
+          saveRecentlyViewed({
+            id: productId,
+            name: productData.name,
+            image: productData.image,
+            type: 'product',
+            price: productData.price,
+            restaurantName: productData.restaurantName
+          });
         } else {
           setNetError(true);
         }

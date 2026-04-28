@@ -13,7 +13,8 @@ export default function RegisterPage() {
     isOpen: false, title: '', message: '',
   });
 
-  const handleRegister = async () => {
+  const handleRegister = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     if (!formData.name || !formData.phone || !formData.password) {
       setOverlay({ isOpen: true, title: 'Missing Details', message: 'Please fill in all required fields.', type: 'error' });
       return;
@@ -85,7 +86,7 @@ export default function RegisterPage() {
           </h2>
         </div>
 
-        <div className="glass-card-extreme p-8 md:p-10 space-y-8 border-white/5 relative">
+        <form onSubmit={handleRegister} autoComplete="on" className="glass-card-extreme p-8 md:p-10 space-y-8 border-white/5 relative">
           <div className="space-y-1">
             <label className="text-[8px] font-black uppercase tracking-[0.4em] text-white/30 ml-2">Display Name</label>
             <input
@@ -135,8 +136,8 @@ export default function RegisterPage() {
           </div>
 
           <div className="pt-4">
-            <button
-              onClick={handleRegister}
+              <button
+              type="submit"
               disabled={isSubmitting}
               className="w-full h-[68px] relative rounded-2xl bg-black border border-primary-yellow/50 text-primary-yellow text-xs uppercase font-black tracking-[0.6em] shadow-[0_0_50px_rgba(201,168,76,0.1)] hover:shadow-[0_0_80px_rgba(201,168,76,0.25)] transition-all duration-700 group/btn overflow-hidden"
             >
@@ -153,7 +154,7 @@ export default function RegisterPage() {
               Known Operative? <Link href="/login" className="text-primary-yellow hover:text-white transition-colors underline underline-offset-8 ml-2">Login To Terminal</Link>
             </p>
           </div>
-        </div>
+        </form>
       </div>
 
       <SuccessOverlay

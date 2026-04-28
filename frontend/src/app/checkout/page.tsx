@@ -9,6 +9,7 @@ import { calculateRoadDistance, calculateDeliveryFee, getCoordsForAddress } from
 import ZenvyModal from '@/components/ZenvyModal';
 import Tilt from '@/components/Tilt';
 import Magnetic from '@/components/Magnetic';
+import { showToast } from '@/components/ToastProvider';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
 
@@ -229,6 +230,7 @@ export default function CheckoutPage() {
       if (response.ok) {
         const data = await response.json();
         setCheckoutStatus('success');
+        showToast('Strategic Mission Initiated!', 'success', '🚀');
         clearCart();
         setTimeout(() => router.push(`/tracking?id=${data._id}`), 2000);
       } else {

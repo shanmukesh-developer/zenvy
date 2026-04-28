@@ -53,7 +53,20 @@ export default function CommunityPage() {
   const fetchPosts = async () => {
     try {
       const res = await fetch(`${API_URL}/api/community`);
-      if (res.ok) { setPosts(await res.json()); }
+      if (res.ok) {
+        const data = await res.json();
+        // Filter out system error strings that accidentally got posted to the feed
+        const ERROR_PATTERNS = [
+          /^INVALID\s/i, /^PAYMENT\s/i, /^ERROR:/i, /^FAILED:/i,
+          /^DB\s/i, /^SQL/i, /^SEQUELIZE/i, /SequelizeValidation/i,
+          /^TypeError/i, /^ReferenceError/i, /^UnhandledPromise/i
+        ];
+        const cleanPosts = data.filter((p: PostType) => {
+          if (!p.content) return true; // image-only posts are fine
+          return !ERROR_PATTERNS.some(rx => rx.test(p.content.trim()));
+        });
+        setPosts(cleanPosts);
+      }
     } catch (e) { console.error('Fetch error:', e); }
     finally { setIsLoading(false); }
   };

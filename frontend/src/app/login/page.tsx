@@ -19,7 +19,8 @@ export default function LoginPage() {
     message: '',
   });
 
-  const handleLogin = async () => {
+  const handleLogin = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     if (!phone || phone.length < 10) {
       setOverlay({ isOpen: true, title: 'INVALID ID', message: 'Nexus authorization requires a valid 10-digit uplink ID.', type: 'error' });
       return;
@@ -196,7 +197,7 @@ export default function LoginPage() {
           {/* Animated Border Module */}
           <div className="absolute -inset-[1px] bg-gradient-to-r from-primary-yellow/30 via-violet-500/20 to-primary-yellow/30 rounded-[40px] animate-gradient-x -z-1 opacity-50 group-hover:opacity-100 transition-opacity" />
           
-          <div className="glass-card-extreme p-8 md:p-10 space-y-8 overflow-hidden border-white/5 relative">
+          <form onSubmit={handleLogin} className="glass-card-extreme p-8 md:p-10 space-y-8 overflow-hidden border-white/5 relative">
             {/* Corner Bracket Decals */}
             <div className="absolute top-4 left-4 w-4 h-4 border-t-2 border-l-2 border-primary-yellow/20 rounded-tl-lg" />
             <div className="absolute top-4 right-4 w-4 h-4 border-t-2 border-r-2 border-primary-yellow/20 rounded-tr-lg" />
@@ -216,6 +217,7 @@ export default function LoginPage() {
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="AUTHORIZE ID"
+                  autoComplete="tel username"
                   className="w-full bg-[#020203] border border-white/[0.05] group-hover/input:border-white/10 group-focus-within/input:border-primary-yellow/40 rounded-2xl h-[68px] pl-16 pr-6 font-bold text-sm tracking-[0.2em] transition-all outline-none uppercase placeholder:text-white/5"
                 />
               </div>
@@ -231,6 +233,7 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="NEXUS CIPHER"
+                  autoComplete="current-password"
                   className="w-full bg-[#020203] border border-white/[0.05] group-hover/input:border-white/10 group-focus-within/input:border-primary-yellow/40 rounded-2xl h-[68px] px-8 font-bold text-sm tracking-[0.2em] transition-all outline-none uppercase placeholder:text-white/5"
                 />
                 <button 
@@ -245,7 +248,7 @@ export default function LoginPage() {
 
             <Magnetic>
               <button 
-                onClick={handleLogin}
+                type="submit"
                 disabled={loading}
                 className="w-full h-[68px] relative rounded-2xl bg-black border border-primary-yellow/50 text-primary-yellow text-xs uppercase font-black tracking-[0.6em] shadow-[0_0_50px_rgba(201,168,76,0.1)] hover:shadow-[0_0_80px_rgba(201,168,76,0.25)] transition-all duration-700 group/btn overflow-hidden"
               >
@@ -263,7 +266,7 @@ export default function LoginPage() {
                 Unregistered Node? <Link href="/register" className="text-primary-yellow hover:text-white transition-colors underline underline-offset-8 ml-2">Begin Onboarding</Link>
               </p>
             </div>
-          </div>
+          </form>
         </motion.div>
 
         {/* Global Technical Footer */}

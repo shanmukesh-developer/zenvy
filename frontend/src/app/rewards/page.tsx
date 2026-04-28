@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import Tilt from '@/components/Tilt';
 import Magnetic from '@/components/Magnetic';
-// SafeImage removed to resolve linting errors
+import NexusSpin from '@/components/NexusSpin';
 
 export default function RewardsPage() {
   return (
@@ -21,6 +21,10 @@ export default function RewardsPage() {
         </Magnetic>
         <h1 className="text-xl font-black uppercase tracking-[0.3em] text-gold-shimmer">Elysian Rewards</h1>
         <div className="w-12" />
+      </div>
+
+      <div className="mb-12 relative z-10">
+        <NexusSpin />
       </div>
 
       {/* Streak Card with Tilt */}

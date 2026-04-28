@@ -8,6 +8,7 @@ import SuccessOverlay from '@/components/SuccessOverlay';
 import { Restaurant, MenuItem } from '@/types';
 import Tilt from '@/components/Tilt';
 import Magnetic from '@/components/Magnetic';
+import { saveRecentlyViewed } from '@/components/RecentlyViewed';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || API_URL;
@@ -42,6 +43,12 @@ export default function RestaurantMenuClient({ restaurantId }: { restaurantId: s
       .then(data => {
         if (data && data.name) {
           setRestaurant(data);
+          saveRecentlyViewed({
+            id: effectiveId,
+            name: data.name,
+            image: data.imageUrl || "",
+            type: 'restaurant'
+          });
           const unavailable = (data.menu || [])
             .filter((i: MenuItem) => i.isAvailable === false)
             .map((i: MenuItem) => i.id || i._id);

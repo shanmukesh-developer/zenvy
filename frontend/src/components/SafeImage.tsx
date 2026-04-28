@@ -1,7 +1,18 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 
-const FALLBACK_IMAGE = "/assets/placeholder_premium.png"; 
+const FALLBACK_IMAGES = [
+  "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=800&auto=format&fit=crop",
+  "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?q=80&w=800&auto=format&fit=crop",
+  "https://images.unsplash.com/photo-1482049016688-2d3e1b311543?q=80&w=800&auto=format&fit=crop",
+  "https://images.unsplash.com/photo-1484723091739-30a097e8f929?q=80&w=800&auto=format&fit=crop"
+];
+
+const getFallback = (alt: string) => {
+  // Deterministic fallback based on alt text so it doesn't flicker on re-renders
+  const index = Math.abs(alt.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)) % FALLBACK_IMAGES.length;
+  return FALLBACK_IMAGES[index];
+};
 
 interface SafeImageProps extends Omit<React.ImgHTMLAttributes<HTMLImageElement>, 'src'> {
   src: string | { src: string } | undefined;
@@ -11,31 +22,42 @@ interface SafeImageProps extends Omit<React.ImgHTMLAttributes<HTMLImageElement>,
 
 export default function SafeImage({ src, alt, className, style, fill, priority, ...rest }: SafeImageProps) {
   const [imgSrc, setImgSrc] = useState(src);
+  const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
     setImgSrc(src);
+    setIsLoaded(false);
   }, [src]);
 
   const containerStyle: React.CSSProperties = fill 
     ? { position: 'absolute', height: '100%', width: '100%', left: 0, top: 0, right: 0, bottom: 0, objectFit: 'cover' }
     : {};
 
-  const mergedStyle = { ...containerStyle, ...style };
+  const opacityStyle = { 
+    opacity: isLoaded ? 1 : 0, 
+    transition: 'opacity 0.4s ease-in-out',
+    filter: isLoaded ? 'blur(0px)' : 'blur(10px)'
+  };
+
+  const mergedStyle = { ...containerStyle, ...opacityStyle, ...style };
 
   let finalSrc = typeof imgSrc === 'string' ? imgSrc : (imgSrc as { src: string })?.src;
-  if (!finalSrc || finalSrc === 'null' || finalSrc === 'undefined') {
-    finalSrc = FALLBACK_IMAGE;
+  
+  const fallback = getFallback(alt || 'food');
+  
+  if (!finalSrc || finalSrc === 'null' || finalSrc === 'undefined' || finalSrc === '/assets/placeholder_premium.png') {
+    finalSrc = fallback;
   }
-  const resolvedSrc = finalSrc;
 
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={resolvedSrc}
+      src={finalSrc}
       alt={alt || 'Image'}
       style={mergedStyle}
+      onLoad={() => setIsLoaded(true)}
       onError={() => {
-        if (imgSrc !== FALLBACK_IMAGE) setImgSrc(FALLBACK_IMAGE);
+        if (imgSrc !== fallback) setImgSrc(fallback);
       }}
       className={className}
       loading={priority ? "eager" : "lazy"}

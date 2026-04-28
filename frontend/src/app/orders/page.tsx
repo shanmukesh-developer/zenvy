@@ -122,12 +122,20 @@ export default function OrdersPage() {
         {loading ? (
           <OrderSkeleton />
         ) : orders.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="w-20 h-20 glass-card rounded-full flex items-center justify-center text-4xl mb-6">🍽️</div>
-            <h2 className="text-xl font-black mb-2">No Orders Yet</h2>
-            <p className="text-secondary-text text-sm mb-8 max-w-[250px]">Your culinary journey awaits. Place your first order today.</p>
-            <Link href="/" className="btn-yellow">
-              Browse Restaurants
+          <div className="flex flex-col items-center justify-center py-24 text-center animate-in fade-in zoom-in duration-700">
+            <div className="relative mb-10">
+              <div className="absolute inset-0 bg-[#C9A84C]/20 blur-[40px] rounded-full animate-pulse" />
+              <div className="w-24 h-24 glass-card rounded-[32px] flex items-center justify-center text-5xl relative z-10 border-[#C9A84C]/20 shadow-[0_0_50px_rgba(201,168,76,0.15)]">
+                🍽️
+              </div>
+            </div>
+            <h2 className="text-2xl font-black mb-3 tracking-tight text-white uppercase italic">Zero Missions</h2>
+            <p className="text-secondary-text text-xs mb-10 max-w-[280px] font-bold leading-relaxed uppercase tracking-widest opacity-60">
+              The Nexus data streams are quiet. <br/>
+              Initiate your first culinary objective today.
+            </p>
+            <Link href="/" className="btn-yellow px-10 py-4 text-[10px] font-black uppercase tracking-[0.2em] shadow-[0_10px_30px_rgba(201,168,76,0.2)] hover:shadow-[0_15px_40px_rgba(201,168,76,0.3)] transition-all active:scale-95">
+              Browse Node Directory
             </Link>
           </div>
         ) : (

@@ -7,6 +7,7 @@ import AndroidBackButton from '@/components/AndroidBackButton';
 import VFXParticles from '@/components/VFXParticles';
 import CursorSpotlight from '@/components/CursorSpotlight';
 import Meteors from '@/components/Meteors';
+import ToastProvider from '@/components/ToastProvider';
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -45,6 +46,7 @@ export default function RootLayout({
       >
         <AndroidBackButton />
         <PushNotificationManager />
+        <ToastProvider />
         <CartProvider>
           {/* Desktop-only VFX layer — hidden via CSS on mobile to save GPU */}
           <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden hidden sm:block">
