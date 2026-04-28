@@ -1,10 +1,8 @@
 "use client";
 import { useEffect, useState } from 'react';
-import { io } from 'socket.io-client';
+import socket from '@/utils/socket';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || API_URL;
-
+// Uses shared singleton socket — no new connection per render
 interface SurgeData {
   multiplier: number;
   orderCount: number;
@@ -14,10 +12,16 @@ export default function SurgeBanner() {
   const [surge, setSurge] = useState<SurgeData | null>(null);
 
   useEffect(() => {
-    const socket = io(SOCKET_URL, { transports: ['websocket'] });
-    socket.on('surge_active', (data: SurgeData) => setSurge(data));
-    socket.on('surge_ended', () => setSurge(null));
-    return () => { socket.disconnect(); };
+    const onSurgeActive = (data: SurgeData) => setSurge(data);
+    const onSurgeEnded = () => setSurge(null);
+
+    socket.on('surge_active', onSurgeActive);
+    socket.on('surge_ended', onSurgeEnded);
+
+    return () => {
+      socket.off('surge_active', onSurgeActive);
+      socket.off('surge_ended', onSurgeEnded);
+    };
   }, []);
 
   if (!surge) return null;

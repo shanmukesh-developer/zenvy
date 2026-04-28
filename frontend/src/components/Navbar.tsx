@@ -24,8 +24,16 @@ const Navbar = () => {
       }
     } catch { /* ignore */ }
 
-    const handleScroll = () => setIsScrolled(window.scrollY > 20);
-    window.addEventListener('scroll', handleScroll);
+    // Only trigger re-render when state actually CHANGES (not on every scroll pixel)
+    let wasScrolled = false;
+    const handleScroll = () => {
+      const nowScrolled = window.scrollY > 20;
+      if (nowScrolled !== wasScrolled) {
+        wasScrolled = nowScrolled;
+        setIsScrolled(nowScrolled);
+      }
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 

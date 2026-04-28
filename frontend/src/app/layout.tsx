@@ -1,6 +1,12 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
+import { CartProvider } from '@/context/CartContext';
+import PushNotificationManager from '@/components/PushNotificationManager';
+import AndroidBackButton from '@/components/AndroidBackButton';
+import VFXParticles from '@/components/VFXParticles';
+import CursorSpotlight from '@/components/CursorSpotlight';
+import Meteors from '@/components/Meteors';
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -27,13 +33,6 @@ export const viewport: Viewport = {
   themeColor: "#0A0A0B"
 };
 
-import { CartProvider } from '@/context/CartContext';
-import PushNotificationManager from '@/components/PushNotificationManager';
-import AndroidBackButton from '@/components/AndroidBackButton';
-import VFXParticles from '@/components/VFXParticles';
-import CursorSpotlight from '@/components/CursorSpotlight';
-import Meteors from '@/components/Meteors';
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -47,25 +46,30 @@ export default function RootLayout({
         <AndroidBackButton />
         <PushNotificationManager />
         <CartProvider>
-          <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
+          {/* Desktop-only VFX layer — hidden via CSS on mobile to save GPU */}
+          <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden hidden sm:block">
              <div className="film-grain" />
              <div className="vfx-bokeh opacity-40 mix-blend-screen" />
-             
              {/* Floating Ambient Orbs */}
              <div className="absolute -top-40 -right-40 w-[600px] h-[600px] bg-[#C9A84C]/[0.08] rounded-full blur-[100px] animate-[pulse_6s_ease-in-out_infinite]" style={{ willChange: 'transform' }} />
              <div className="absolute -bottom-40 -left-40 w-[500px] h-[500px] bg-[#38BDF8]/[0.05] rounded-full blur-[120px] animate-[pulse_8s_ease-in-out_infinite_2s]" style={{ willChange: 'transform' }} />
-             
              {/* Rising Fireflies / Gold Dust */}
              <VFXParticles />
-             
              {/* Diagonal Shooting Stars */}
-             <Meteors number={12} />
+             <Meteors number={8} />
           </div>
 
-          {/* Interactive Mouse Lighting */}
-          <CursorSpotlight />
+          {/* Mobile minimal background — just a subtle gradient, no animations */}
+          <div className="fixed inset-0 z-0 pointer-events-none sm:hidden">
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(201,168,76,0.06),transparent_60%)]" />
+          </div>
 
-          <div className="relative z-10 transition-all duration-700">
+          {/* Cursor spotlight — desktop only */}
+          <div className="hidden sm:block">
+            <CursorSpotlight />
+          </div>
+
+          <div className="relative z-10">
             {children}
           </div>
         </CartProvider>
