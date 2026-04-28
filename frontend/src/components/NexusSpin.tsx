@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { motion, useAnimation } from 'framer-motion';
 import { showToast } from './ToastProvider';
 
@@ -18,7 +18,6 @@ export default function NexusSpin() {
   const [isSpinning, setIsSpinning] = useState(false);
   const [hasSpun, setHasSpun] = useState(false);
   const controls = useAnimation();
-  const wheelRef = useRef<HTMLDivElement>(null);
 
   const handleSpin = async () => {
     if (isSpinning || hasSpun) return;
