@@ -49,7 +49,7 @@ html, body {
   width: 100%;
   height: auto; /* Prevent height conflicts */
   min-height: 100vh;
-  font-size: 80%; /* Total 20% reduction for all rem-based elements */
+  font-size: 85%; /* Net 15% reduction from baseline */
 }
 
 body {
@@ -64,7 +64,7 @@ body {
 .discover-header {
   font-family: 'Syne', sans-serif;
   font-weight: 800;
-  font-size: 28px;
+  font-size: 30px;
   line-height: 1.1;
   letter-spacing: -0.5px;
   background: linear-gradient(135deg, #F5F5F5 0%, #C9A84C 50%, #F5F5F5 100%);
@@ -92,11 +92,11 @@ body {
 .capsule-card {
   background: linear-gradient(135deg, var(--card-bg) 0%, #1A1A1D 100%);
   border-radius: 48px;
-  padding: 9px;
+  padding: 10px;
   display: flex;
   align-items: center;
   position: relative;
-  height: 90px;
+  height: 95px;
   transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.3s ease, background 0.3s ease;
   border: 1px solid var(--border-subtle);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
@@ -310,16 +310,16 @@ html {
 
 /* ─── Chef's Picks Carousel ─── */
 .chef-card {
-  min-width: 194px;
-  max-width: 210px;
+  min-width: 204px;
+  max-width: 220px;
   border-radius: 22px;
   overflow: visible;
   position: relative;
   flex-shrink: 0;
   transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.3s ease, border-color 0.3s ease;
   border: 1px solid var(--border-subtle);
-  padding: 12px;
-  padding-bottom: 8px;
+  padding: 13px;
+  padding-bottom: 9px;
 }
 
 .chef-card:hover {
@@ -403,11 +403,11 @@ html {
   padding: 6px 16px;
   display: flex;
   align-items: center;
-  padding: 5.4px 14.4px;
+  padding: 5.7px 15px;
   display: flex;
   align-items: center;
-  gap: 10.8px;
-  box-shadow: 0 3.6px 18px rgba(0,0,0,0.4);
+  gap: 11.4px;
+  box-shadow: 0 3.8px 19px rgba(0,0,0,0.4);
 }
 
 .streak-text-main {
@@ -823,13 +823,18 @@ html {
 }
 
 .glass-card-extreme {
-  background: rgba(10, 10, 12, 0.7);
+  background: rgba(255, 255, 255, 0.03);
   backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 32px;
-  position: relative;
-  z-index: 10;
+}
+
+@media (max-width: 640px) {
+  .glass-card-extreme, 
+  [class*="backdrop-blur"] {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: rgba(10, 10, 11, 0.95) !important;
+  }
 }
 
 .glass-card-extreme::after {

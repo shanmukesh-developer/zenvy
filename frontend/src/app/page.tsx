@@ -405,7 +405,9 @@ export default function Home() {
     }
   };
 
-  const toggleFavorite = (id: string) => {
+  const toggleFavorite = (idOrItem: string | any) => {
+    const id = typeof idOrItem === 'string' ? idOrItem : (idOrItem?.id || idOrItem?._id);
+    if (!id) return;
     setFavorites(prev => {
       const next = prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id];
       localStorage.setItem('zenvy_favorites', JSON.stringify(next));
@@ -662,11 +664,12 @@ export default function Home() {
                 <div className="absolute right-0 top-0 w-1/2 h-full pointer-events-none opacity-40 group-hover:opacity-60 transition-opacity">
                    <div className="absolute inset-0 bg-gradient-to-l from-black via-transparent to-transparent z-10" />
                    <SafeImage 
-                    src="https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?q=80&w=2070&auto=format&fit=crop" 
-                    alt="Hero" 
-                    fill 
-                    className="object-cover scale-110 group-hover:scale-100 transition-transform [transition-duration:3000ms]" 
-                   />
+          src="https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?q=80&w=2070&auto=format&fit=crop" 
+          alt="Hero"
+          fallback="/assets/placeholder_premium.png"
+          fill
+          className="group-hover:scale-110 transition-transform duration-700 object-cover"
+        />
                 </div>
                 
                 <div className="relative z-20 max-w-md">
@@ -741,11 +744,11 @@ export default function Home() {
             >
                 <div className="elite-hologram" />
                 <div className="absolute inset-0 bg-gradient-to-br from-[#C9A84C]/20 to-[#8B7332]/20 z-0" />
-                <SafeImage 
-                  src="https://images.unsplash.com/photo-1550745165-9bc0b252726f?q=80&w=800&auto=format&fit=crop" 
-                  alt="Elite Promo" 
-                  fill
-                  className="relative z-10 object-cover w-full h-[140px] group-hover:scale-110 transition-transform duration-700 opacity-40 mix-blend-overlay"
+                <SafeImage
+                      src="https://images.unsplash.com/photo-1550745165-9bc0b252726f?q=80&w=800&auto=format&fit=crop"
+                      alt="Elite Promo"
+                      fill
+                      className="relative z-10 object-cover w-full h-[140px] group-hover:scale-110 transition-transform duration-700 opacity-40 mix-blend-overlay"
                 />
                <div className="absolute inset-0 z-20 p-6 flex flex-col justify-center">
                   <span className="text-[8px] font-black text-primary-yellow uppercase tracking-[0.3em] mb-2">{isElite ? 'Elite Member' : 'Exclusive Offer'}</span>
@@ -846,9 +849,9 @@ export default function Home() {
                       style={{ perspective: 1000 }}
                     >
                       <Tilt>
-                        <Link href={`/products/${item.id}`} className="relative shrink-0 w-[240px] block group active:scale-95 transition-transform premium-card-hover rounded-[30px] animate-float">
+                        <Link href={`/products/${item.id}`} className="relative shrink-0 w-[240px] block group active:scale-95 transition-transform premium-card-hover rounded-[30px]">
                           <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-primary-yellow/30 transition-colors">
-                            <SafeImage src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
+                            <SafeImage src={item.image || item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
                             <button 
                               onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(item.id!); }}
                               className="absolute top-4 right-4 w-9 h-9 rounded-full flex items-center justify-center transition-all z-20 bg-primary-yellow text-black scale-110 shadow-lg"
@@ -901,7 +904,7 @@ export default function Home() {
                     <Link href={`/products/${item.id}`}>
                       <Tilt className="chef-card bg-[#141416]">
                         <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-primary-yellow/30 transition-colors">
-                          <SafeImage src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
+                          <SafeImage src={item.image || item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
                         </div>
                         <div className="mt-3">
                           <h3 className="font-bold text-[15px] text-white mb-1">{item.name}</h3>
@@ -954,26 +957,26 @@ export default function Home() {
                      key={item.id} 
                   >
                     <Tilt>
-                    <Link href={`/products/${item.id}`} className="relative shrink-0 w-[240px] block group active:scale-95 transition-transform premium-card-hover rounded-[30px] animate-float">
-                      <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-violet-500/30 transition-colors">
-                          <SafeImage src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
-                          <button 
-                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(item.id!); }}
-                              className={`absolute top-4 right-4 w-9 h-9 rounded-full flex items-center justify-center transition-all z-20 ${favorites.includes(item.id!) ? 'bg-primary-yellow text-black scale-110 shadow-lg' : 'bg-black/40 text-white backdrop-blur-md hover:bg-black/60'}`}
-                            >
-                              <svg className="w-4.5 h-4.5" fill={favorites.includes(item.id!) ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                              </svg>
-                          </button>
-                      </div>
-                      <div className="mt-3">
-                         <h3 className="text-xs font-black text-white">{item.name}</h3>
-                         <div className="flex justify-between items-start mt-1 gap-2 min-w-0 overflow-hidden">
-                           <span className="text-[8px] font-bold text-secondary-text uppercase tracking-widest truncate min-w-0 flex-1" title={item.restaurantName}>{item.restaurantName}</span>
-                            <span className="text-[10px] font-black shrink-0 text-violet-400">₹{item.price}</span>
-                         </div>
-                      </div>
-                    </Link>
+                      <Link href={`/products/${item.id}`} className="relative shrink-0 w-[240px] block group active:scale-95 transition-transform premium-card-hover rounded-[30px]">
+                        <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-violet-500/30 transition-colors">
+                            <SafeImage src={item.image || item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
+                            <button 
+                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(item.id!); }}
+                                className={`absolute top-4 right-4 w-9 h-9 rounded-full flex items-center justify-center transition-all z-20 ${(favorites.includes(item.id!) || (item._id && favorites.includes(item._id))) ? 'bg-primary-yellow text-black scale-110 shadow-lg' : 'bg-black/40 text-white backdrop-blur-md hover:bg-black/60'}`}
+                              >
+                                <svg className="w-4.5 h-4.5" fill={(favorites.includes(item.id!) || (item._id && favorites.includes(item._id))) ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                                </svg>
+                            </button>
+                        </div>
+                        <div className="mt-3">
+                           <h3 className="text-xs font-black text-white">{item.name}</h3>
+                           <div className="flex justify-between items-start mt-1 gap-2 min-w-0 overflow-hidden">
+                             <span className="text-[8px] font-bold text-secondary-text uppercase tracking-widest truncate min-w-0 flex-1" title={item.restaurantName}>{item.restaurantName}</span>
+                              <span className="text-[10px] font-black shrink-0 text-violet-400">₹{item.price}</span>
+                           </div>
+                        </div>
+                      </Link>
                     </Tilt>
                   </motion.div>
                 ))
@@ -1003,7 +1006,7 @@ export default function Home() {
                 >
                   <Link href={`/products/${item.id}`} className="relative shrink-0 w-[240px] block group active:scale-95 transition-transform">
                     <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-cyan-500/30 transition-colors">
-                        <SafeImage src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
+                        <SafeImage src={item.image || item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
                         <button 
                               onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(item.id!); }}
                               className={`absolute top-4 right-4 w-9 h-9 rounded-full flex items-center justify-center transition-all z-20 ${favorites.includes(item.id!) ? 'bg-primary-yellow text-black scale-110 shadow-lg' : 'bg-black/40 text-white backdrop-blur-md hover:bg-black/60'}`}
@@ -1043,7 +1046,7 @@ export default function Home() {
                 >
                   <Link href={`/products/${item.id}`} className="relative shrink-0 w-[240px] block group active:scale-95 transition-transform">
                     <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-rose-500/30 transition-colors">
-                        <SafeImage src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
+                        <SafeImage src={item.image || item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
                         <button 
                               onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(item.id!); }}
                               className={`absolute top-4 right-4 w-9 h-9 rounded-full flex items-center justify-center transition-all z-20 ${favorites.includes(item.id!) ? 'bg-primary-yellow text-black scale-110 shadow-lg' : 'bg-black/40 text-white backdrop-blur-md hover:bg-black/60'}`}
@@ -1081,16 +1084,15 @@ export default function Home() {
                 groupedCollections.rentals.map((item) => (
                   <motion.div 
                     key={item.id}
-                    layout
                     style={{ perspective: 1000 }}
                   >
                     <Tilt>
                       <div 
                         onClick={() => setSelectedRental(item)}
-                        className="relative shrink-0 w-[240px] block group active:scale-95 transition-transform premium-card-hover rounded-[30px] animate-float cursor-pointer"
+                        className="relative shrink-0 w-[240px] block group active:scale-95 transition-transform premium-card-hover rounded-[30px] cursor-pointer"
                       >
                         <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-amber-500/30 transition-colors">
-                            <SafeImage src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill />
+                            <SafeImage src={item.image || item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill />
                             <div className="absolute top-4 left-4 bg-amber-500 text-black text-[7px] font-black px-2 py-1 rounded-md uppercase tracking-widest shadow-lg">Rental</div>
                         </div>
                         <div className="mt-3">
@@ -1126,18 +1128,17 @@ export default function Home() {
                 groupedCollections.fruits.map((item) => (
                   <motion.div 
                     key={item.id}
-                    layout
                     style={{ perspective: 1000 }}
                   >
                     <Tilt>
                       <Link href={`/products/${item.id}`} className="relative shrink-0 w-[200px] block group active:scale-95 transition-transform premium-card-hover rounded-[30px]">
                         <div className="aspect-square relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-emerald-500/30 transition-colors">
-                            <SafeImage src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill />
+                            <SafeImage src={item.image || item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill />
                             <button 
                               onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(item.id!); }}
-                              className={`absolute top-4 right-4 w-9 h-9 rounded-full flex items-center justify-center transition-all z-20 ${favorites.includes(item.id!) ? 'bg-primary-yellow text-black scale-110 shadow-lg' : 'bg-black/40 text-white backdrop-blur-md hover:bg-black/60'}`}
+                              className={`absolute top-4 right-4 w-9 h-9 rounded-full flex items-center justify-center transition-all z-20 ${(favorites.includes(item.id!) || (item._id && favorites.includes(item._id))) ? 'bg-primary-yellow text-black scale-110 shadow-lg' : 'bg-black/40 text-white backdrop-blur-md hover:bg-black/60'}`}
                             >
-                              <svg className="w-4.5 h-4.5" fill={favorites.includes(item.id!) ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
+                              <svg className="w-4.5 h-4.5" fill={(favorites.includes(item.id!) || (item._id && favorites.includes(item._id))) ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                               </svg>
                             </button>
@@ -1175,13 +1176,12 @@ export default function Home() {
                 groupedCollections.pharmacy.map((item) => (
                   <motion.div 
                     key={item.id}
-                    layout
                     style={{ perspective: 1000 }}
                   >
                     <Tilt>
                       <Link href={`/products/${item.id}`} className="relative shrink-0 w-[200px] block group active:scale-95 transition-transform premium-card-hover rounded-[30px]">
                         <div className="aspect-square relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-rose-500/30 transition-colors">
-                            <SafeImage src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill />
+                            <SafeImage src={item.image || item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill />
                             <div className="absolute top-4 left-4 bg-rose-500 text-white text-[7px] font-black px-2 py-1 rounded-md uppercase tracking-widest shadow-lg">Pharmacy</div>
                         </div>
                         <div className="mt-3">
@@ -1217,13 +1217,12 @@ export default function Home() {
                 groupedCollections.laundry.map((item) => (
                   <motion.div 
                     key={item.id}
-                    layout
                     style={{ perspective: 1000 }}
                   >
                     <Tilt>
                       <Link href={`/products/${item.id}`} className="relative shrink-0 w-[200px] block group active:scale-95 transition-transform premium-card-hover rounded-[30px]">
                         <div className="aspect-square relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-blue-500/30 transition-colors">
-                            <SafeImage src={item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill />
+                            <SafeImage src={item.image || item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill />
                             <div className="absolute top-4 left-4 bg-blue-500 text-white text-[7px] font-black px-2 py-1 rounded-md uppercase tracking-widest shadow-lg">Dry Wash</div>
                         </div>
                         <div className="mt-3">

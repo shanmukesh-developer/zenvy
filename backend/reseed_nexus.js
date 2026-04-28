@@ -109,7 +109,6 @@ const RESTAURANTS = [
 
 async function reseed() {
   await connectDB();
-  await connectDB();
   const sequelize = getSequelize();
   const { getRestaurantModel } = require('./models/Restaurant');
   const { getMenuItemModel } = require('./models/MenuItem');

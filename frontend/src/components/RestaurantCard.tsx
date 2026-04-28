@@ -55,6 +55,7 @@ const RestaurantCard = ({ name, rating, time, imageUrl, imagePosition }: Restaur
         <SafeImage 
           src={imageUrl} 
           alt={name}
+          fallback="/assets/placeholder_premium.png"
           fill
           className="group-hover:scale-110 transition-transform duration-700 object-cover"
         />

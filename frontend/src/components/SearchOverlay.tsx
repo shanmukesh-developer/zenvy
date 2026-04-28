@@ -156,7 +156,7 @@ export default function SearchOverlay({ isOpen, onClose }: { isOpen: boolean; on
                 <Link key={item._id} href={`/products/${item._id}`} onClick={onClose} className="bg-white/5 border border-white/5 p-4 rounded-3xl flex items-center gap-4 hover:bg-white/10 transition-all">
                   <div className="w-16 h-16 relative flex-shrink-0 rounded-2xl overflow-hidden">
                     <SafeImage
-                      src={item.imageUrl || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200'}
+                      src={item.image || item.imageUrl || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200'}
                       alt={item.name}
                       fill
                     />

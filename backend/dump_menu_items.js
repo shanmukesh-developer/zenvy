@@ -6,7 +6,7 @@ async function dump() {
   const MenuItem = getMenuItemModel();
   const items = await MenuItem.findAll();
   console.log('MENU_ITEMS_DUMP:');
-  console.log(JSON.stringify(items.map(i => ({id: i.id, name: i.name, restaurantId: i.restaurantId})), null, 2));
+  console.log(JSON.stringify(items.map(i => ({id: i.id, name: i.name, restaurantId: i.restaurantId, imageUrl: i.imageUrl})), null, 2));
   process.exit(0);
 }
 
