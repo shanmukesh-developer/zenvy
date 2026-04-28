@@ -49,6 +49,7 @@ html, body {
   width: 100%;
   height: auto; /* Prevent height conflicts */
   min-height: 100vh;
+  font-size: 90%; /* Global 10% reduction for all rem-based elements */
 }
 
 body {
@@ -63,7 +64,7 @@ body {
 .discover-header {
   font-family: 'Syne', sans-serif;
   font-weight: 800;
-  font-size: 36px;
+  font-size: 32px;
   line-height: 1.1;
   letter-spacing: -0.5px;
   background: linear-gradient(135deg, #F5F5F5 0%, #C9A84C 50%, #F5F5F5 100%);
@@ -83,19 +84,19 @@ body {
   font-family: 'Syne', sans-serif;
   font-style: normal;
   font-weight: 600;
-  font-size: 22px;
+  font-size: 20px;
   color: var(--secondary-text);
 }
 
 /* ─── Premium Capsule Card ─── */
 .capsule-card {
   background: linear-gradient(135deg, var(--card-bg) 0%, #1A1A1D 100%);
-  border-radius: 60px;
-  padding: 12px;
+  border-radius: 54px;
+  padding: 10px;
   display: flex;
   align-items: center;
   position: relative;
-  height: 110px;
+  height: 100px;
   transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.3s ease, background 0.3s ease;
   border: 1px solid var(--border-subtle);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
@@ -110,8 +111,8 @@ body {
 
 /* ─── Gold-Bordered Circle ─── */
 .food-circle {
-  width: 100px;
-  height: 100px;
+  width: 90px;
+  height: 90px;
   border-radius: 50%;
   border: 2px solid var(--primary-gold);
   overflow: hidden;
@@ -140,8 +141,8 @@ body {
   background: linear-gradient(135deg, var(--primary-gold) 0%, var(--accent-warm) 100%);
   color: #0A0A0B;
   border-radius: 50%;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -154,8 +155,8 @@ body {
   color: #0A0A0B;
   font-weight: 800;
   border-radius: 999px;
-  padding: 16px 32px;
-  font-size: 12px;
+  padding: 14px 28px;
+  font-size: 11px;
   letter-spacing: 0.15em;
   text-transform: uppercase;
   border: none;
@@ -309,9 +310,9 @@ html {
 
 /* ─── Chef's Picks Carousel ─── */
 .chef-card {
-  min-width: 240px;
-  max-width: 260px;
-  border-radius: 28px;
+  min-width: 216px;
+  max-width: 234px;
+  border-radius: 25px;
   overflow: visible;
   position: relative;
   flex-shrink: 0;
@@ -377,8 +378,8 @@ html {
 /* ─── Elite Card Components ─── */
 .zenvy-badge-container {
   background: rgba(201, 168, 76, 0.6);
-  padding: 4px;
-  border-radius: 12px;
+  padding: 3.5px;
+  border-radius: 11px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -389,9 +390,9 @@ html {
   background: #3B5998; /* Specific blue from reference */
   color: white;
   font-weight: 950;
-  font-size: 14px;
-  padding: 2px 8px;
-  border-radius: 4px;
+  font-size: 12px;
+  padding: 1.5px 7px;
+  border-radius: 3.5px;
   letter-spacing: 0.1em;
 }
 
@@ -402,21 +403,24 @@ html {
   padding: 6px 16px;
   display: flex;
   align-items: center;
-  gap: 12px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  padding: 5.4px 14.4px;
+  display: flex;
+  align-items: center;
+  gap: 10.8px;
+  box-shadow: 0 3.6px 18px rgba(0,0,0,0.4);
 }
 
 .streak-text-main {
-  color: #D4A853;
+  color: #D4A84C;
   font-weight: 900;
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1;
 }
 
 .streak-text-sub {
   color: rgba(212, 168, 83, 0.4);
   font-weight: 800;
-  font-size: 8px;
+  font-size: 7px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   line-height: 1;
@@ -425,8 +429,8 @@ html {
 
 .identity-telemetry-grid {
   background: rgba(10, 10, 12, 0.9);
-  border-radius: 32px;
-  padding: 24px;
+  border-radius: 28px;
+  padding: 22px;
   border: 1px solid rgba(255, 255, 255, 0.03);
   display: flex;
   flex-direction: column;
@@ -443,8 +447,8 @@ html {
 }
 
 .elite-profile-border {
-  border: 4px solid #1a1a1c;
-  outline: 2px solid #C9A84C;
+  border: 3.5px solid #1a1a1c;
+  outline: 1.5px solid #C9A84C;
   box-shadow: 0 0 20px rgba(201, 168, 76, 0.3);
 }
 
@@ -463,8 +467,8 @@ html {
 
 /* ─── Tracking Timeline ─── */
 .timeline-dot {
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   border: 2px solid var(--border-subtle);
   background: var(--background);
@@ -523,7 +527,7 @@ html {
 .member-id-label {
   font-family: 'JetBrains Mono', monospace; /* or any mono font */
   color: rgba(201, 168, 76, 0.4);
-  font-size: 9px;
+  font-size: 8px;
   letter-spacing: 0.3em;
   font-weight: 700;
 }
@@ -823,7 +827,7 @@ html {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 40px;
+  border-radius: 36px;
   position: relative;
   z-index: 10;
 }
