@@ -6,6 +6,7 @@ const { getOrderModel } = require('../models/Order');
 const { getVaultItemModel } = require('../models/VaultItem');
 const { getGlobalConfigModel } = require('../models/GlobalConfig');
 const { getVerificationLogModel } = require('../models/VerificationLog');
+const { Op } = require('sequelize');
 
 const broadcastSystemUpdate = (req, type, data) => {
   const io = req.app.get('io');
@@ -145,7 +146,6 @@ exports.searchAll = async (req, res) => {
   try {
     const { q } = req.query;
     if (!q) return res.json({ restaurants: [], items: [] });
-    const { Op } = require('sequelize');
     const Restaurant = getRestaurantModel();
     const MenuItem = getMenuItemModel();
 

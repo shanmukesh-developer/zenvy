@@ -188,12 +188,27 @@ const startServer = async () => {
     const storage = multer.memoryStorage();
     const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
     
-    app.post('/api/upload', upload.single('image'), (req, res) => {
+    app.post('/api/upload', upload.single('image'), async (req, res) => {
       if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
       
       const mimetype = req.file.mimetype;
       const base64Data = req.file.buffer.toString('base64');
       const imageUrl = `data:${mimetype};base64,${base64Data}`;
+      
+      // Persist to order if orderId is provided
+      const { orderId } = req.body;
+      if (orderId) {
+        try {
+          const { getOrderModel } = require('./models/Order');
+          const Order = getOrderModel();
+          const order = await Order.findByPk(orderId);
+          if (order) {
+            await order.update({ proofImage: imageUrl, proofTimestamp: new Date() });
+          }
+        } catch (err) {
+          console.error('[UPLOAD_PERSIST_ERROR]', err);
+        }
+      }
       
       res.json({ imageUrl });
     });

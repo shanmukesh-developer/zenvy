@@ -1,8 +1,6 @@
-/* eslint-disable */
-const { connectDB, getSequelize } = require('./config/db');
+const { connectDB } = require('./config/db');
 async function check() {
   await connectDB();
-  const sequelize = getSequelize();
   const { getMenuItemModel } = require('./models/MenuItem');
   const MenuItem = getMenuItemModel();
   const items = await MenuItem.findAll({ limit: 5 });

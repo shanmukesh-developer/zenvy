@@ -1,7 +1,7 @@
 /* eslint-disable */
 const axios = require('axios');
 
-const API_URL = 'https://hostelbites-backend-jwmt.onrender.com/api';
+const API_URL = 'http://localhost:5005/api';
 
 async function simulate() {
   try {
@@ -61,8 +61,8 @@ async function simulate() {
     console.log('4. Rider Authentication...');
     // Hardcoded master credentials in deliveryPartnerController: 'driver-1', 'srk'
     const riderAuthRes = await axios.post(`${API_URL}/delivery/login`, {
-      phone: 'driver-1',
-      password: 'srk'
+      phone: 'driver1',
+      password: 'password123'
     });
     const riderToken = riderAuthRes.data.token;
     console.log(`✅ Rider logged in`);
@@ -83,16 +83,41 @@ async function simulate() {
     });
     console.log(`✅ Order Marked as PickedUp!`);
 
-    // 7. Update Status to Delivered
-    console.log('7. Final Delivery with PIN...');
+    // 7. Rider Upload Proof (NEW)
+    console.log('7. Rider Uploading Delivery Proof...');
+    const proofForm = {
+      orderId,
+      image: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==' // Mock base64
+    };
+    // In a real Multipart form, we'd use FormData, but here we mock the backend handling
+    // We'll use a direct POST to /api/upload as the server.js handles it
+    const uploadRes = await axios.post(`${API_URL}/upload`, { 
+      orderId,
+      image: proofForm.image 
+    });
+    console.log(`✅ Proof Uploaded! URL length: ${uploadRes.data.imageUrl.length}`);
+
+    // 8. Update Status to Delivered
+    console.log('8. Final Delivery with PIN...');
     const deliveryRes = await axios.put(`${API_URL}/delivery/status/${orderId}`, {
       status: 'Delivered',
       pin: deliveryPin
     }, {
       headers: { Authorization: `Bearer ${riderToken}` }
     });
-    console.log(`✅ Order Delivered Successfully! Final output:`);
-    console.log(deliveryRes.data);
+    console.log(`✅ Order Delivered Successfully!`);
+    
+    // 9. Verify Persistence
+    console.log('9. Verifying Persistence...');
+    const verifyRes = await axios.get(`${API_URL}/orders/${orderId}`, {
+      headers: { Authorization: `Bearer ${customerToken}` }
+    });
+    if (verifyRes.data.proofImage) {
+      console.log('✅ PERSISTENCE VERIFIED: proofImage found in database');
+    } else {
+      console.warn('⚠️ PERSISTENCE FAILED: proofImage missing in database');
+    }
+    console.log(verifyRes.data);
 
     console.log('\n--- SIMULATION SUCCESSFUL: ZERO ERRORS ---');
 

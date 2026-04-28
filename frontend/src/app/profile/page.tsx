@@ -308,8 +308,8 @@ export default function ProfilePage() {
         const img = new window.Image();
         img.onload = () => {
           const canvas = document.createElement('canvas');
-          // Resize to max 200x200 to keep data URL small
-          const maxSize = 200;
+          // Resize to max 600x600 — sharp profile pic, still DB-friendly (~60-80KB)
+          const maxSize = 600;
           let w = img.width, h = img.height;
           if (w > h) { h = Math.round(h * maxSize / w); w = maxSize; }
           else { w = Math.round(w * maxSize / h); h = maxSize; }
@@ -317,8 +317,11 @@ export default function ProfilePage() {
           canvas.height = h;
           const ctx = canvas.getContext('2d');
           if (!ctx) { reject(new Error('Canvas not supported')); return; }
+          // Use high-quality image smoothing for crisp downscaling
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
           ctx.drawImage(img, 0, 0, w, h);
-          resolve(canvas.toDataURL('image/jpeg', 0.7));
+          resolve(canvas.toDataURL('image/jpeg', 0.92));
         };
         img.onerror = () => reject(new Error('Failed to load image'));
         img.src = localPreviewUrl;

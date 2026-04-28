@@ -42,7 +42,9 @@ const initOrderModel = (sequelize) => {
     upiStatus: {
       type: DataTypes.ENUM('Pending', 'Verified', 'Rejected'),
       defaultValue: 'Pending'
-    }
+    },
+    proofImage: { type: DataTypes.TEXT },
+    proofTimestamp: { type: DataTypes.DATE }
   }, { 
     timestamps: true,
     indexes: [

@@ -23,8 +23,8 @@ router.get('/products', async (req, res) => {
     const MenuItem = getMenuItemModel();
     const items = await MenuItem.findAll({ where: { isAvailable: true }, order: [['createdAt', 'DESC']] });
     res.json(items);
-  } catch (err) {
-    res.status(500).json({ message: 'Failed to fetch products', error: err.message });
+  } catch (_err) {
+    res.status(500).json({ message: 'Failed to fetch products', error: _err.message });
   }
 });
 
@@ -37,8 +37,8 @@ router.get('/orders', protect, async (req, res) => {
     const Order = getOrderModel();
     const orders = await Order.findAll({ where: { userId: req.user.id }, order: [['createdAt', 'DESC']] });
     res.json(orders);
-  } catch (err) {
-    res.status(500).json({ message: 'Failed to fetch orders', error: err.message });
+  } catch (_err) {
+    res.status(500).json({ message: 'Failed to fetch orders', error: _err.message });
   }
 });
 
@@ -56,8 +56,8 @@ router.get('/rewards', protect, async (req, res) => {
       badges: user.badges || [],
       spinEligible: (user.completedOrders || 0) % 5 === 0 && (user.completedOrders || 0) > 0
     });
-  } catch (err) {
-    res.status(500).json({ message: 'Failed to fetch rewards', error: err.message });
+  } catch (_err) {
+    res.status(500).json({ message: 'Failed to fetch rewards', error: _err.message });
   }
 });
 

@@ -32,9 +32,9 @@ const registerUser = async (req, res) => {
       completedOrders: user.completedOrders || 0,
       token: generateToken(user.id, user.role)
     });
-  } catch (error) {
-    console.error('[USER_REGISTER_ERROR]', error);
-    res.status(500).json({ message: `Registration Failed: ${error.message}` });
+  } catch (_error) {
+    console.error('[USER_REGISTER_ERROR]', _error);
+    res.status(500).json({ message: `Registration Failed: ${_error.message}` });
   }
 };
 
@@ -96,8 +96,8 @@ const authUser = async (req, res) => {
       role: user.role,
       token: generateToken(user.id, user.role)
     });
-  } catch (error) {
-    console.error('[AUTH_ERROR]', error);
+  } catch (_error) {
+    console.error('[AUTH_ERROR]', _error);
     res.status(500).json({ message: 'Internal Server Error' });
   }
 };

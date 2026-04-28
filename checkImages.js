@@ -23,10 +23,13 @@ if (total === 0) {
   process.exit(0);
 }
 
-function checkUrl(url) {
-  const req = https.request(url, { method: 'HEAD', timeout: 5000 }, (res) => {
-    if (res.statusCode >= 400 && res.statusCode !== 403) { 
-      // Unsplash might throw 403 for hotlinking but usually it's 404 for missing
+function checkUrl(url, method = 'HEAD') {
+  const req = https.request(url, { method, timeout: 5000 }, (res) => {
+    if (res.statusCode >= 400) {
+      if (method === 'HEAD' && (res.statusCode === 405 || res.statusCode === 403)) {
+        // Fallback to GET for services that block HEAD
+        return checkUrl(url, 'GET');
+      }
       broken.push({ url, status: res.statusCode });
     }
     done();
