@@ -7,8 +7,7 @@ const { evaluateBadges } = require('../services/BadgeService');
 const jwt = require('jsonwebtoken');
 const { Op } = require('sequelize');
 
-const admin = require('../config/firebase');
-const { normalizePhone, formatForFirebase } = require('../utils/phoneUtils');
+const { normalizePhone } = require('../utils/phoneUtils');
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET || 'secret', { expiresIn: '30d' });
@@ -79,11 +78,6 @@ const acceptOrder = async (req, res) => {
     const Order = getOrderModel();
     const partner = await DeliveryPartner.findByPk(req.user.id);
     
-    // 1. Busy Guard: Prevent rider from accepting if already on a task
-    if (partner && partner.currentOrderId) {
-      return res.status(400).json({ message: 'Finish your current task before accepting a new one!' });
-    }
-
     // 2. Atomic Claim: Use a conditional update to prevent race conditions (Rider A vs Rider B)
     const [updatedRows] = await Order.update(
       { deliveryPartnerId: req.user.id, status: 'Accepted' },
@@ -121,7 +115,7 @@ const acceptOrder = async (req, res) => {
         items: updatedOrder.items,
         totalPrice: updatedOrder.totalPrice,
         finalPrice: updatedOrder.finalPrice,
-        earnings: `₹${Math.round((updatedOrder.finalPrice || updatedOrder.totalPrice) * 0.1)}`
+        earnings: '₹30'
       });
 
       if (customer?.fcmTokens?.length > 0) {
@@ -177,7 +171,7 @@ const getPendingOrders = async (req, res) => {
         items: order.items,
         totalPrice: order.totalPrice,
         finalPrice: order.finalPrice,
-        earnings: `₹${Math.round((order.finalPrice || order.totalPrice) * 0.1)}`,
+        earnings: '₹30',
         createdAt: order.createdAt
       };
     });
@@ -213,7 +207,7 @@ const getOrderHistory = async (req, res) => {
         items: order.items,
         totalPrice: order.totalPrice,
         finalPrice: order.finalPrice,
-        earnings: `₹${Math.round((order.finalPrice || order.totalPrice) * 0.1)}`,
+        earnings: '₹30',
         deliveredAt: order.updatedAt
       };
     });
@@ -254,7 +248,7 @@ const updateOrderStatus = async (req, res) => {
     await order.save();
 
     if (status === 'Delivered') {
-      const earnings = Math.round((order.finalPrice || order.totalPrice) * 0.1);
+      const earnings = 30; // Flat ₹30 per delivery
       const DeliveryPartner = getDeliveryPartnerModel();
       const User = getUserModel();
       const partner = await DeliveryPartner.findByPk(req.user.id);
@@ -308,7 +302,7 @@ const updateOrderStatus = async (req, res) => {
     const io = req.app.get('io');
     io.to(order.id.toString()).emit('statusUpdated', { 
       id: order.id,
-      status: 'Delivered',
+      status: status,
       newBadges: status === 'Delivered' ? (order.newBadges || []) : [] 
     });
     res.json({ ...order.toJSON(), _id: order.id });
@@ -326,6 +320,46 @@ const updateOrderStatus = async (req, res) => {
     }
   } catch (error) {
     console.error('[DELIVERY_UPDATE_ERROR]', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// @desc    Rider emergency-cancels an assigned order
+const cancelOrderByRider = async (req, res) => {
+  try {
+    const Order = getOrderModel();
+    const DeliveryPartner = getDeliveryPartnerModel();
+
+    const order = await Order.findByPk(req.params.orderId);
+    if (!order) return res.status(404).json({ message: 'Order not found' });
+    if (order.deliveryPartnerId !== req.user.id) return res.status(403).json({ message: 'Not your order' });
+    if (!['Accepted', 'PickedUp'].includes(order.status)) {
+      return res.status(400).json({ message: 'Cannot cancel at this stage' });
+    }
+
+    // Unassign rider & reset order to Pending so another rider can claim it
+    order.deliveryPartnerId = null;
+    order.status = 'Pending';
+    await order.save();
+
+    // Clear rider's current task
+    const partner = await DeliveryPartner.findByPk(req.user.id);
+    if (partner) {
+      partner.currentOrderId = null;
+      await partner.save();
+    }
+
+    const io = req.app.get('io');
+    // Notify customer tracking page
+    io.to(order.id.toString()).emit('statusUpdated', { id: order.id, status: 'Pending' });
+    // Notify admin
+    io.to('admin-room').emit('order_unassigned', { orderId: order.id, reason: 'Rider emergency cancel' });
+    // Re-broadcast as new pending so other riders can pick it up
+    io.emit('newOrder', { ...order.toJSON(), id: order.id, _id: order.id });
+
+    res.json({ message: 'Order cancelled by rider. Reassigning...' });
+  } catch (error) {
+    console.error('[RIDER_CANCEL_ERROR]', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -358,7 +392,7 @@ const saveFcmToken = async (req, res) => {
     } else {
       res.status(404).json({ message: 'Partner not found' });
     }
-  } catch (error) {
+  } catch {
     res.status(500).json({ message: 'Failed to save token' });
   }
 };
@@ -404,7 +438,7 @@ const getActiveOrders = async (req, res) => {
         finalPrice: order.finalPrice,
         status: order.status,
         deliveryPin: order.deliveryPin,
-        earnings: `₹${Math.round((order.finalPrice || order.totalPrice) * 0.1)}`,
+        earnings: '₹30',
         createdAt: order.createdAt
       };
     });
@@ -447,7 +481,7 @@ const getLeaderboard = async (req, res) => {
     const countMap = {};
     for (const d of deliveries) {
       const pid = d.deliveryPartnerId;
-      const e = Math.round((d.finalPrice || d.totalPrice || 0) * 0.1);
+      const e = 30; // Flat ₹30 per delivery
       earningsMap[pid] = (earningsMap[pid] || 0) + e;
       countMap[pid] = (countMap[pid] || 0) + 1;
     }
@@ -504,7 +538,7 @@ const getTodayStats = async (req, res) => {
       }
     });
 
-    const earnings = orders.reduce((sum, o) => sum + Math.round((o.finalPrice || o.totalPrice) * 0.1), 0);
+    const earnings = orders.length * 30; // Flat ₹30 per delivery
     const count = orders.length;
 
     res.json({ earnings, orders: count, zenPoints: count * 5, streak: 1 });
@@ -579,5 +613,6 @@ const getPublicRiderProfile = async (req, res) => {
 module.exports = { 
   registerPartner, authPartner, acceptOrder, getPendingOrders, getActiveOrders, 
   updateOrderStatus, toggleOnline, getOrderHistory, saveFcmToken, getLeaderboard,
-  getRiderProfile, updateRiderProfile, getPublicRiderProfile, getTodayStats
+  getRiderProfile, updateRiderProfile, getPublicRiderProfile, getTodayStats,
+  cancelOrderByRider
 };

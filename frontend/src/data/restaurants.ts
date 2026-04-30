@@ -31,7 +31,7 @@ export const restaurants: Restaurant[] = [
     "imageUrl": "https://picsum.photos/seed/biryani/400/300",
     "categories": ["Biryani", "Kebabs", "Main Course"],
     "menu": [
-      { "id": "bir-01", "name": "Special Mutton Fry", "price": 280, "description": "Tender goat cooked in traditional spices.", "image": "https://picsum.photos/seed/mutton/400/300", "category": "Biryani" },
+      { "id": "bir-01", "name": "Special Mutton Fry", "price": 280, "description": "Tender goat cooked in traditional spices.", "image": "https://images.unsplash.com/photo-1544025162-d76694265947?q=80&w=800", "category": "Biryani" },
       { "id": "bir-02", "name": "Royal Egg Biryani", "price": 220, "description": "Fragrant rice with double eggs.", "image": "https://picsum.photos/seed/egg/400/300", "category": "Biryani" },
       { "id": "bir-03", "name": "Chicken Tikka Kebab", "price": 180, "description": "Juicy grilled chicken skewers.", "image": "https://picsum.photos/seed/tikka/400/300", "category": "Kebabs" },
       { "id": "bir-04", "name": "Hyderabadi Dum Biryani", "price": 250, "description": "Classic slow-cooked chicken biryani.", "image": "https://picsum.photos/seed/dum/400/300", "category": "Biryani" },

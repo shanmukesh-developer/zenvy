@@ -299,7 +299,12 @@ function TrackingContent() {
               </svg>
             </Link>
           </Magnetic>
-          <h1 className="text-xl font-black uppercase tracking-[0.3em] text-gold-shimmer md:ml-4">Mission Tracking</h1>
+          <div>
+            <h1 className="text-xl font-black uppercase tracking-[0.3em] text-gold-shimmer md:ml-4">Mission Tracking</h1>
+            {orderId && (
+              <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest md:ml-4 mt-1">Order #{orderId.slice(-6).toUpperCase()}</p>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-4">
           {status === 1 && cancelSecondsLeft > 0 && (

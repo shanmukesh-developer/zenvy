@@ -17,7 +17,7 @@ router.get('/', async (req, res) => {
         order: [['createdAt', 'DESC']],
         limit: 50
       });
-    } catch (_e) {
+    } catch {
       // Fallback: parentId column may not exist yet — fetch all
       rootPosts = await CommunityPost.findAll({
         order: [['createdAt', 'DESC']],
@@ -36,7 +36,7 @@ router.get('/', async (req, res) => {
           where: { parentId: { [Op.in]: rootIds } },
           order: [['createdAt', 'ASC']]
         });
-      } catch (_e) { /* parentId column missing, no replies */ }
+      } catch { /* parentId column missing, no replies */ }
     }
 
     const postsJSON = rootPosts.map(p => {

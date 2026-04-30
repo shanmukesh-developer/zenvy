@@ -1,10 +1,10 @@
 const { connectDB } = require('./config/db');
-const { initRestaurantModel } = require('./models/Restaurant');
+
 
 async function dump() {
   await connectDB();
   const { getSequelize } = require('./config/db');
-  const sequelize = getSequelize();
+  getSequelize();
   const { getRestaurantModel } = require('./models/Restaurant');
   const Restaurant = getRestaurantModel();
   const restaurants = await Restaurant.findAll();

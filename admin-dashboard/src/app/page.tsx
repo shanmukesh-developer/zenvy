@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { io } from 'socket.io-client';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
@@ -64,6 +64,77 @@ interface OperationalEvent {
   timestamp: Date;
 }
 
+// ─── Memoized Components for Performance ───────────────────
+const OrderItem = memo(({ order, onVerify }: { order: LiveOrder, onVerify: (o: LiveOrder) => void }) => (
+  <div 
+    onClick={() => { if (order.paymentMethod === 'UPI' && order.upiStatus === 'Pending') onVerify(order); }}
+    className={`group p-4 rounded-3xl bg-white/[0.015] border border-white/5 hover:border-white/10 transition-all duration-300 ${order.paymentMethod === 'UPI' && order.upiStatus === 'Pending' ? 'cursor-pointer hover:bg-amber-500/5' : ''}`}
+  >
+    <div className="flex justify-between items-start mb-2">
+       <div>
+          <p className="text-[11px] font-black text-blue-500 uppercase tracking-widest mb-0.5">{order.restaurant}</p>
+           <p className="text-sm font-bold text-white group-hover:text-blue-400 transition-colors flex items-center gap-2">
+             {order.customer}
+             <span className="text-[9px] text-gray-600 font-black opacity-50 font-mono tracking-tighter">#{order.id.slice(-6).toUpperCase()}</span>
+           </p>
+       </div>
+        <div className="flex gap-2">
+           {order.paymentMethod === 'UPI' && order.upiStatus === 'Pending' && (
+             <span className="text-[7px] font-black px-1.5 py-0.5 bg-amber-500 text-black rounded animate-pulse">UPI_PENDING</span>
+           )}
+           <span className={`text-[10px] font-black px-2 py-1 rounded-lg uppercase tracking-wider ${
+             order.status === 'Cancelled' ? 'bg-red-500/10 text-red-500' :
+             order.status === 'Delivered' ? 'bg-emerald-500/10 text-emerald-500' :
+             'bg-blue-500/10 text-blue-500'
+           }`}>
+             {order.status}
+           </span>
+        </div>
+    </div>
+    <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/[0.03]">
+        <div className="flex items-center gap-2">
+          {order.deliveryPartnerName ? (
+            <>
+               <div className="w-5 h-5 rounded-full overflow-hidden border border-white/10 bg-slate-800 flex items-center justify-center">
+                  {order.deliveryPartnerPhoto ? (
+                     <Image src={order.deliveryPartnerPhoto} width={20} height={20} alt="Node" className="object-cover" />
+                  ) : '👤'}
+               </div>
+               <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest truncate max-w-[80px]">
+                  {order.deliveryPartnerName}
+               </span>
+            </>
+          ) : (
+            <div className="flex items-center gap-2 text-gray-600 group-hover:text-blue-500/50 transition-colors">
+               <div className="w-5 h-5 rounded-full border border-white/5 bg-white/5 flex items-center justify-center text-[10px] animate-pulse">?</div>
+               <span className="text-[10px] font-black uppercase tracking-widest">Awaiting Dispatch</span>
+            </div>
+          )}
+        </div>
+       <div className="text-right">
+         <span className="text-[12px] text-gray-500 font-bold uppercase tracking-wide block">{order.location}</span>
+         <span className="text-xs text-white font-black tracking-tighter">₹{order.price.toFixed(0)}</span>
+       </div>
+    </div>
+  </div>
+));
+OrderItem.displayName = 'OrderItem';
+
+const EventItem = memo(({ event }: { event: OperationalEvent }) => (
+  <div className={`p-4 rounded-3xl animate-pulse flex items-center gap-4 ${event.type === 'SOS' ? 'bg-red-600/20 border border-red-600' : 'bg-amber-600/20 border border-amber-600'}`}>
+    <div className="text-2xl">{event.type === 'SOS' ? '🚨' : '⚠️'}</div>
+    <div className="flex-1">
+      <p className="text-[12px] font-black uppercase text-white tracking-widest">{event.type} Alert: {event.senderRole}</p>
+      <p className="text-xs font-black text-white">{event.issueType || event.details}</p>
+      {event.orderId && <p className="text-[10px] text-white/50 font-black uppercase mt-1 tracking-tighter">Order ID: <span className="text-[#C9A84C]">#{event.orderId.slice(-6).toUpperCase()}</span></p>}
+    </div>
+    <span className="text-[10px] font-black text-white opacity-40">
+      {new Date(event.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+    </span>
+  </div>
+));
+EventItem.displayName = 'EventItem';
+
 
 export default function AdminHome() {
   const router = useRouter();
@@ -94,16 +165,13 @@ export default function AdminHome() {
       const res = await fetch(`${API_URL}/api/admin/stats`, {
          headers: { 'Authorization': `Bearer ${token}` }
       });
-      if (!res.ok) {
-        console.warn(`[STATS_FETCH_WARN] Status ${res.status}`);
-        return;
-      }
+      if (!res.ok) return;
       const data = await res.json();
       setStats([
         { label: 'Platform Revenue', value: data.revenue || '₹0', growth: 'Delivered', trend: 'up' },
-        { label: 'Active Pipeline', value: data.activeRevenue || '₹0', growth: `${data.activeOrders || 0} Active`, trend: 'up' },
-        { label: 'Active Fleet', value: data.activeFleet || '0', growth: 'Verified', trend: 'neutral' },
-        { label: 'Zenvy Commission', value: data.commission || '₹0', growth: 'Projected', trend: 'up' },
+        { label: 'Active Pipeline', value: data.activeRevenue || '₹0', growth: `${data.activeOrders || 0} Awaiting`, trend: 'up' },
+        { label: 'Active Fleet', value: data.activeFleet || '0', growth: 'Nodes Online', trend: 'neutral' },
+        { label: 'Zenvy Commission', value: data.commission || '₹0', growth: 'Operational Fee', trend: 'up' },
       ]);
     } catch (err) { console.error('[STATS_FETCH_ERROR]', err); }
   }, []);
@@ -116,34 +184,38 @@ export default function AdminHome() {
       });
       const data = await res.json();
       if (res.ok) {
-        const formatted = data.map((o: Record<string, unknown>) => {
-          const userIdObj = o.userId as Record<string, unknown> | undefined;
-          const restaurantObj = o.restaurant as Record<string, unknown> | undefined;
-          const deliveryPartnerObj = o.deliveryPartner as Record<string, unknown> | undefined;
-          return {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const formatted = data.map((o: any) => ({
             id: String(o._id || o.id),
-            customer: userIdObj?.name || 'Student',
-            location: (o.hostelGateDelivery as boolean) ? 'Hostel Gate' : 'Room Delivery',
+            customer: o.userId?.name || 'Student',
+            location: (o.hostelGateDelivery) ? 'Hostel Gate' : 'Room Delivery',
             status: String(o.status),
             price: Number(o.finalPrice || o.totalPrice),
-            restaurant: restaurantObj?.name || 'Zenvy Elite',
+            restaurant: o.restaurant?.name || 'Zenvy Elite',
             timestamp: new Date(String(o.createdAt)),
             paymentMethod: String(o.paymentMethod),
             upiStatus: String(o.upiStatus),
             upiUTR: String(o.upiUTR),
             upiScreenshot: String(o.upiScreenshot),
-            deliveryPartnerName: deliveryPartnerObj?.name,
-            deliveryPartnerPhoto: deliveryPartnerObj?.photoUrl
-          };
-        });
+            deliveryPartnerName: o.deliveryPartner?.name,
+            deliveryPartnerPhoto: o.deliveryPartner?.photoUrl
+        }));
         setLiveOrders(formatted);
       }
-    } catch (_err) {
-      console.error('[ADMIN_FETCH_ERROR]', _err);
+    } catch {
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const lastStatsUpdate = useRef(0);
+  const throttledFetchStats = useCallback(() => {
+    const now = Date.now();
+    if (now - lastStatsUpdate.current > 10000) {
+      fetchStats();
+      lastStatsUpdate.current = now;
+    }
+  }, [fetchStats]);
 
   const handleVerifyUPI = async (orderId: string, isVerified: boolean) => {
     try {
@@ -178,8 +250,9 @@ export default function AdminHome() {
     socketRef.current = socket;
     socket.emit('joinAdmin');
     
-    socket.on('admin_newOrder', (order: { id: string, drop: string, finalPrice?: number, totalPrice: number, restaurant?: string, customer?: string, paymentMethod?: string }) => {
-      fetchStats();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    socket.on('admin_newOrder', (order: any) => {
+      throttledFetchStats();
       setLiveOrders(prev => [{
         id: order.id,
         customer: order.customer || 'Student',
@@ -189,12 +262,12 @@ export default function AdminHome() {
         restaurant: order.restaurant || 'Zenvy Elite',
         timestamp: new Date(),
         paymentMethod: order.paymentMethod || 'COD',
-        upiStatus: 'Verified'
+        upiStatus: order.upiStatus || (order.paymentMethod === 'UPI' ? 'Pending' : 'Verified')
       }, ...prev].slice(0, 20));
     });
 
     socket.on('statusUpdated', (data: { id: string, status: string }) => {
-      fetchStats();
+      throttledFetchStats();
       setLiveOrders(prev => prev.map(o => o.id === data.id ? { ...o, status: data.status } : o));
     });
 
@@ -231,6 +304,31 @@ export default function AdminHome() {
         if (next[data.riderId]) next[data.riderId].isOnline = false;
         return next;
       });
+    });
+    
+    socket.on('admin_rider_status', (data: { riderId: string, isOnline: boolean, name: string }) => {
+      setRiders(prev => ({
+        ...prev,
+        [data.riderId]: {
+          ...(prev[data.riderId] || { activeOrderCount: 0 }),
+          riderId: data.riderId,
+          riderName: data.name,
+          isOnline: data.isOnline
+        }
+      }));
+    });
+
+    socket.on('admin_order_accepted', (data: { orderId: string, riderName: string }) => {
+      setLiveOrders(prev => prev.map(o => o.id === data.orderId ? { ...o, status: 'Accepted', deliveryPartnerName: data.riderName } : o));
+    });
+
+    socket.on('admin_delivery_complete', (data: { orderId: string }) => {
+      throttledFetchStats();
+      setLiveOrders(prev => prev.map(o => o.id === data.orderId ? { ...o, status: 'Delivered' } : o));
+    });
+
+    socket.on('order_unassigned', (data: { orderId: string }) => {
+      setLiveOrders(prev => prev.map(o => o.id === data.orderId ? { ...o, status: 'Pending', deliveryPartnerName: undefined } : o));
     });
 
     socket.on('rider_profile_updated', (data: Record<string, unknown>) => {
@@ -274,7 +372,7 @@ export default function AdminHome() {
     });
 
     return () => { socket.disconnect(); };
-  }, [fetchStats, fetchOrders, router]);
+  }, [fetchStats, fetchOrders, router, throttledFetchStats]);
 
   if (!isAuthed) {
     return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Authenticating Command Terminal...</div>;
@@ -288,7 +386,7 @@ export default function AdminHome() {
           <div key={i} className="glass-card p-8 group overflow-hidden relative">
             <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/[0.03] blur-[40px] group-hover:bg-blue-600/[0.08] transition-all" />
             <p className="stat-label tracking-[0.2em]">{stat.label}</p>
-            <div className="flex items-end justify-between">
+            <div className="flex items-end justify-between mt-2">
               <h4 className="text-3xl font-black text-white">{stat.value}</h4>
               <span className={`text-[12px] font-black px-2 py-1 rounded-md border ${
                 stat.trend === 'up' ? 'text-emerald-400 bg-emerald-400/5 border-emerald-400/20' :
@@ -335,17 +433,7 @@ export default function AdminHome() {
               
               {/* Critical Alerts Priority */}
               {operationalEvents.map(event => (
-                <div key={event.id} className={`p-4 rounded-3xl animate-pulse flex items-center gap-4 ${event.type === 'SOS' ? 'bg-red-600/20 border border-red-600' : 'bg-amber-600/20 border border-amber-600'}`}>
-                  <div className="text-2xl">{event.type === 'SOS' ? '🚨' : '⚠️'}</div>
-                  <div className="flex-1">
-                    <p className="text-[12px] font-black uppercase text-white tracking-widest">{event.type} Alert: {event.senderRole}</p>
-                    <p className="text-xs font-black text-white">{event.issueType || event.details}</p>
-                    {event.orderId && <p className="text-[10px] text-white/50 uppercase mt-1">Order ID: #{event.orderId.slice(-6)}</p>}
-                  </div>
-                  <span className="text-[10px] font-black text-white opacity-40">
-                    {new Date(event.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                </div>
+                <EventItem key={event.id} event={event} />
               ))}
 
               <div className="h-px bg-white/5 my-4" />
@@ -359,61 +447,11 @@ export default function AdminHome() {
                 <p className="text-center py-20 text-gray-600 text-xs italic tracking-wide">No movements detected in the last scan.</p>
               ) : (
                 liveOrders.map((order) => (
-                  <div 
+                  <OrderItem 
                     key={order.id} 
-                    onClick={() => {
-                      if (order.paymentMethod === 'UPI' && order.upiStatus === 'Pending') {
-                        setSelectedUPIOrder(order);
-                      }
-                    }}
-                    className={`group p-4 rounded-3xl bg-white/[0.015] border border-white/5 hover:border-white/10 transition-all duration-300 ${order.paymentMethod === 'UPI' && order.upiStatus === 'Pending' ? 'cursor-pointer hover:bg-amber-500/5' : ''}`}
-                  >
-                    <div className="flex justify-between items-start mb-2">
-                       <div>
-                          <p className="text-[11px] font-black text-blue-500 uppercase tracking-widest mb-0.5">{order.restaurant}</p>
-                          <p className="text-sm font-bold text-white group-hover:text-blue-400 transition-colors">{order.customer}</p>
-                       </div>
-                        <div className="flex gap-2">
-                           {order.paymentMethod === 'UPI' && order.upiStatus === 'Pending' && (
-                             <span className="text-[7px] font-black px-1.5 py-0.5 bg-amber-500 text-black rounded animate-pulse">UPI_PENDING</span>
-                           )}
-                           <span className={`text-[10px] font-black px-2 py-1 rounded-lg uppercase tracking-wider ${
-                             order.status === 'Cancelled' ? 'bg-red-500/10 text-red-500' :
-                             order.status === 'Delivered' ? 'bg-emerald-500/10 text-emerald-500' :
-                             'bg-blue-500/10 text-blue-500'
-                           }`}>
-                             {order.status}
-                           </span>
-                        </div>
-                    </div>
-                    <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/[0.03]">
-                       <div className="flex items-center gap-2">
-                         {order.deliveryPartnerName ? (
-                           <>
-                             <div className="w-5 h-5 rounded-full overflow-hidden border border-white/10 bg-slate-800 flex items-center justify-center">
-                                {order.deliveryPartnerPhoto ? (
-                                  <>
-                                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <Image src={order.deliveryPartnerPhoto} alt={order.deliveryPartnerName || 'Driver'} width={20} height={20} className="w-full h-full object-cover" />
-                                  </>
-                                ) : (
-                                 <span className="text-[10px]">🛵</span>
-                               )}
-                             </div>
-                             <span className="text-[11px] font-black text-gray-300 uppercase truncate max-w-[80px]">
-                               {order.deliveryPartnerName}
-                             </span>
-                           </>
-                         ) : (
-                           <span className="text-[12px] text-gray-600 font-bold uppercase">Unassigned</span>
-                         )}
-                       </div>
-                       <div className="text-right">
-                         <span className="text-[12px] text-gray-500 font-bold uppercase tracking-wide block">{order.location}</span>
-                         <span className="text-xs text-white font-black tracking-tighter">₹{order.price.toFixed(0)}</span>
-                       </div>
-                    </div>
-                  </div>
+                    order={order} 
+                    onVerify={(o) => setSelectedUPIOrder(o)} 
+                  />
                 ))
               )}
            </div>

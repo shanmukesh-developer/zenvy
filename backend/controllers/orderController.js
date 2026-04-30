@@ -27,27 +27,17 @@ const createOrder = async (req, res) => {
 
     // ── Dynamic Delivery Fee Calculation ──────────────────────
     let isSurge = false;
-    let surgeMult = 1.25;
     try {
       const serverModule = require('../server');
       if (typeof serverModule.isSurgeActive === 'function') {
         isSurge = serverModule.isSurgeActive(restaurant.zone);
       }
-      if (serverModule.SURGE_MULTIPLIER) surgeMult = serverModule.SURGE_MULTIPLIER;
-    } catch (_e) { /* server module not ready — skip surge */ }
+    } catch { /* server module not ready — skip surge */ }
 
-    const { getMatrixDistance } = require('../utils/distance');
-    const matrix = await getMatrixDistance(restaurant.location, deliveryAddress || 'Amaravathi');
-    const distanceKm = matrix.distance;
-    const estDuration = matrix.duration;
-
-    // Base fee ₹25. If distance > 2km, add ₹10 per additional km.
-    let calculatedFee = Math.max(25, Math.round(25 + Math.max(0, distanceKm - 2) * 10));
-    
-    // Apply Surge Multiplier (Zone-Aware)
-    if (isSurge) {
-      calculatedFee = Math.round(calculatedFee * surgeMult);
-    }
+    // ── Flat ₹30 Delivery Fee ──────────────────────
+    const distanceKm = 0;
+    const estDuration = '30 mins';
+    const calculatedFee = 30;
 
     // ── Multi-Order Batching (Efficiency Engine) ──────────
     const User = getUserModel();
@@ -130,7 +120,8 @@ const createOrder = async (req, res) => {
         ...i,
         quantity: qty,
         price,
-        name: dbItem.name
+        name: dbItem.name,
+        image: dbItem.image || dbItem.imageUrl
       });
     }
 
@@ -216,7 +207,7 @@ const createOrder = async (req, res) => {
       if (typeof checkSurgeState === 'function') {
         checkSurgeState(io, restaurant.zone || 'Amaravathi_Central');
       }
-    } catch (_e) { /* surge check not critical */ }
+    } catch { /* surge check not critical */ }
 
     // Emit block order pulse for map UI
     try {
@@ -257,6 +248,19 @@ const createOrder = async (req, res) => {
       finalPrice: createdOrder.finalPrice,
       earnings: `₹${createdOrder.deliveryFee}`,
       distance: createdOrder.distance,
+      createdAt: createdOrder.createdAt
+    });
+    
+    // 3. Notify Admin Command Terminal
+    io.to('admin-room').emit('admin_newOrder', {
+      id: createdOrder.id.toString(),
+      restaurant: restaurant.name,
+      customer: currentUser?.name || 'Customer',
+      drop: createdOrder.deliveryAddress,
+      totalPrice: createdOrder.totalPrice,
+      finalPrice: createdOrder.finalPrice,
+      paymentMethod: createdOrder.paymentMethod,
+      upiStatus: createdOrder.upiStatus,
       createdAt: createdOrder.createdAt
     });
 
@@ -318,16 +322,6 @@ const createOrder = async (req, res) => {
         items: createdOrder.items,
         totalPrice: createdOrder.totalPrice,
         address: createdOrder.deliveryAddress
-      });
-      io.emit('admin_newOrder', { 
-        id: createdOrder.id, 
-        restaurant: restaurant.name, 
-        customer: currentUser?.name || 'Student',
-        status: createdOrder.status,
-        drop: createdOrder.deliveryAddress,
-        totalPrice: createdOrder.totalPrice,
-        finalPrice: createdOrder.finalPrice,
-        paymentMethod: createdOrder.paymentMethod
       });
     }
 
@@ -518,8 +512,24 @@ const rateOrder = async (req, res) => {
 const getAllOrders = async (req, res) => {
   try {
     const Order = getOrderModel();
-    const orders = await Order.findAll({ order: [['createdAt', 'DESC']], limit: 50 });
-    res.json(orders.map(o => ({ ...o.toJSON(), _id: o.id })));
+    const User = getUserModel();
+    const Restaurant = getRestaurantModel();
+    const orders = await Order.findAll({ 
+      order: [['createdAt', 'DESC']], 
+      limit: 50,
+      include: [
+        { model: User, as: 'user', attributes: ['name', 'phone'] },
+        { model: Restaurant, as: 'restaurant', attributes: ['name'] }
+      ]
+    });
+    res.json(orders.map(o => {
+      const oJson = o.toJSON();
+      return { 
+        ...oJson, 
+        _id: o.id, 
+        userId: oJson.user // Map to userId for frontend compatibility
+      };
+    }));
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
@@ -689,4 +699,33 @@ const verifyUPIPayment = async (req, res) => {
   }
 };
 
-module.exports = { createOrder, getOrderById, getMyOrders, rateOrder, getAllOrders, cancelOrder, updateOrderStatus, getSurgeStatus, restaurantAcceptOrder, verifyUPIPayment };
+// @desc    Restaurant marks food as ready for pickup
+const restaurantReadyOrder = async (req, res) => {
+  try {
+    const Order = getOrderModel();
+    const order = await Order.findByPk(req.params.id);
+    if (!order) return res.status(404).json({ message: 'Order not found' });
+    if (order.status !== 'Accepted' && order.status !== 'Preparing') {
+       return res.status(400).json({ message: 'Order must be Accepted or Preparing to mark as Ready' });
+    }
+
+    order.status = 'ReadyForPickup';
+    await order.save();
+
+    const io = req.app.get('io');
+    const statusPayload = { id: order.id, status: 'ReadyForPickup' };
+    io.emit('statusUpdated', statusPayload);
+    io.to(order.id.toString()).emit('statusUpdated', statusPayload);
+
+    // Also notify the delivery partner if assigned
+    if (order.deliveryPartnerId) {
+      io.to(`rider_${order.deliveryPartnerId}`).emit('orderReady', { orderId: order.id });
+    }
+
+    res.json({ message: 'Order marked as Ready for Pickup', orderId: order.id });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+module.exports = { createOrder, getOrderById, getMyOrders, rateOrder, getAllOrders, cancelOrder, updateOrderStatus, getSurgeStatus, restaurantAcceptOrder, verifyUPIPayment, restaurantReadyOrder };

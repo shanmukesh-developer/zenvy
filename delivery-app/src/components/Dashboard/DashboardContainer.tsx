@@ -11,7 +11,9 @@ import WeatherSignal from './WeatherSignal';
 import SOSPanel from './SOSPanel';
 import LiveLeaderboard from './LiveLeaderboard';
 import RiderProfilePage from './RiderProfilePage';
+import EarningsDashboard from './EarningsDashboard';
 import ChatDrawer from '@/components/ChatDrawer';
+import { useToast } from '@/components/RiderToast';
 
 
 
@@ -36,6 +38,21 @@ interface Order {
   note?: string;
   createdAt?: string;
   status?: string;
+  _id?: string;
+}
+
+interface RawOrder {
+  _id?: string;
+  id?: string;
+  customerName?: string;
+  userId?: { name?: string };
+  restaurant?: string;
+  restaurantId?: { name?: string };
+  drop?: string;
+  deliveryAddress?: string;
+  status?: string;
+  items?: { name: string; quantity: number; price?: number; image?: string }[];
+  [key: string]: unknown;
 }
 
 interface DashboardContainerProps {
@@ -56,15 +73,18 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
   const [currentDriver, setCurrentDriver] = useState(driver);
   const [activeIssue, setActiveIssue] = useState<{ issueType: string; details: string; senderRole: string } | null>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const [orderTimers, setOrderTimers] = useState<Record<string, number>>({});
+  const [activeChatOrderId, setActiveChatOrderId] = useState<string>('');
   const [todayStats, setTodayStats] = useState({ earnings: 0, orders: 0, zenPoints: 0, streak: 0 });
   const [showProfile, setShowProfile] = useState(false);
+  const [showEarnings, setShowEarnings] = useState(false);
   const [driverPhoto, setDriverPhoto] = useState<string | undefined>();
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [currentCheckpoint, _setCurrentCheckpoint] = useState<string>('Mangalagiri Jn');
-  const [showOrdersBrowse, setShowOrdersBrowse] = useState(false); // toggle to browse orders while active task
+
+  const [orderTimers, setOrderTimers] = useState<Record<string, number>>({});
 
   const socketRef = useRef<Socket | null>(null);
+  const { toast } = useToast();
 
   const { token: driverToken } = driver;
 
@@ -93,7 +113,7 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
   useEffect(() => {
     const syncOnlineStatus = async (status: boolean) => {
       try {
-        await fetch(`${apiUrl}/api/delivery/partner/online`, {
+        await fetch(`${apiUrl}/api/delivery/online`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -128,9 +148,15 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
       if (res.ok) {
         const data = await res.json();
         const orders = data.orders || [];
-        setActiveOrders(orders.map((o: { _id?: string; id?: string; status?: string }) => ({ ...o, id: String(o._id || o.id) })));
+        setActiveOrders(orders.map((o: RawOrder) => ({ 
+          ...o, 
+          id: String(o._id || o.id),
+          customerName: o.customerName || o.userId?.name || 'Customer',
+          restaurant: o.restaurant || o.restaurantId?.name || 'Restaurant',
+          drop: o.drop || o.deliveryAddress || 'Delivery'
+        })));
         const statusMap: Record<string, string> = {};
-        orders.forEach((o: { _id?: string; id?: string; status?: string }) => { statusMap[String(o._id || o.id)] = o.status || 'Accepted'; });
+        orders.forEach((o: RawOrder) => { statusMap[String(o._id || o.id)] = o.status || 'Accepted'; });
         setOrderStatus(statusMap);
       }
     } catch (err) { console.error('[RT] Active orders fetch failed:', err); }
@@ -145,10 +171,44 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
       if (res.status === 401) return onLogout();
       if (res.ok) {
         const data = await res.json();
-        setAvailableOrders(data.map((o: Record<string, unknown>) => ({ ...o, id: String(o._id || o.id) })));
+        const orders = data.map((o: RawOrder) => ({ 
+          ...o, 
+          id: String(o._id || o.id),
+          restaurant: o.restaurant || o.restaurantId?.name || 'Restaurant',
+          drop: o.drop || o.deliveryAddress || 'Delivery'
+        }));
+        setAvailableOrders(orders);
+        
+        // Initialize timers for new orders (e.g. 60s to accept)
+        setOrderTimers(prev => {
+          const newTimers = { ...prev };
+          orders.forEach((o: RawOrder) => {
+            const id = o.id as string;
+            if (id && !newTimers[id]) newTimers[id] = 60;
+          });
+          return newTimers;
+        });
       }
-    } catch (err) { console.error('[RT] Pending fetch failed:', err); }
+    } catch (err) { console.error('[RT] Pending orders fetch failed:', err); }
   }, [apiUrl, driverToken, isOnline, onLogout]);
+
+  // Timer Countdown Logic
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setOrderTimers(prev => {
+        const next = { ...prev };
+        let changed = false;
+        Object.keys(next).forEach(id => {
+          if (next[id] > 0) {
+            next[id] -= 1;
+            changed = true;
+          }
+        });
+        return changed ? next : prev;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const fetchHistory = useCallback(async () => {
     try {
@@ -158,7 +218,13 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
       if (res.status === 401) return onLogout();
       if (res.ok) {
         const data = await res.json();
-        setHistoryOrders(data.map((o: Record<string, unknown>) => ({ ...o, id: String(o._id || o.id) })));
+        setHistoryOrders(data.map((o: RawOrder) => ({ 
+          ...o, 
+          id: String(o._id || o.id),
+          customerName: o.customerName || o.userId?.name || 'Customer',
+          restaurant: o.restaurant || o.restaurantId?.name || 'Restaurant',
+          drop: o.drop || o.deliveryAddress || 'Delivery'
+        })));
       }
     } catch (err) { console.error('[RT] History fetch failed:', err); }
   }, [apiUrl, driverToken, onLogout]);
@@ -178,18 +244,32 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiUrl, driverToken, onLogout]);
 
+  const fetchProfile = useCallback(async () => {
+    try {
+      const res = await fetch(`${apiUrl}/api/delivery/profile`, {
+        headers: { 'Authorization': `Bearer ${driverToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCurrentDriver(prev => ({ ...prev, ...data }));
+        if (data.photoUrl) setDriverPhoto(data.photoUrl);
+      }
+    } catch {}
+  }, [apiUrl, driverToken]);
+
   useEffect(() => {
     fetchActiveOrders();
     fetchPendingOrders();
     fetchHistory();
     fetchTodayStats();
+    fetchProfile();
+    // Reduced from 15s to 30s — socket handles real-time updates, polling is a safety net
     const pollInterval = setInterval(() => {
       fetchActiveOrders();
       if (isOnline) fetchPendingOrders();
-      fetchHistory();
-    }, 15000);
+    }, 30000);
     return () => clearInterval(pollInterval);
-  }, [fetchActiveOrders, fetchPendingOrders, fetchHistory, fetchTodayStats, isOnline]);
+  }, [fetchActiveOrders, fetchPendingOrders, fetchHistory, fetchTodayStats, fetchProfile, isOnline]);
 
   useEffect(() => {
     const socket = io(apiUrl.replace(/\/$/, ""), {
@@ -230,7 +310,6 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
           status: 'Pending'
         }, ...prev];
       });
-      setOrderTimers(prev => ({ ...prev, [id]: 30 }));
     });
 
     socket.on('orderCancelled', ({ orderId }: { orderId: string }) => {
@@ -248,6 +327,16 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
       socket.disconnect();
     };
   }, [apiUrl, driverToken, currentDriver._id, currentDriver.name, isOnline]);
+
+  useEffect(() => {
+    if (socketRef.current?.connected) {
+      socketRef.current.emit('rider_status_change', {
+        riderId: currentDriver._id,
+        name: currentDriver.name,
+        isOnline
+      });
+    }
+  }, [isOnline, currentDriver._id, currentDriver.name]);
 
   useEffect(() => {
     if (!socketRef.current) return;
@@ -268,22 +357,13 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
     });
   }, [currentCheckpoint, activeOrders, currentDriver._id, currentDriver.name, isOnline]);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setOrderTimers(prev => {
-        const next = { ...prev };
-        let changed = false;
-        Object.keys(next).forEach(id => {
-          if (next[id] > 0) { next[id] -= 1; changed = true; }
-          else { delete next[id]; changed = true; }
-        });
-        return changed ? next : prev;
-      });
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
+
 
   const toggleOnline = async () => {
+    if (isOnline && activeOrders.length > 0) {
+      toast('Complete or cancel active tasks before going offline.', 'warning');
+      return;
+    }
     const newStatus = !isOnline;
     try {
       const res = await fetch(`${apiUrl}/api/delivery/online`, {
@@ -302,7 +382,7 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
         if (newStatus) fetchPendingOrders();
         else setAvailableOrders([]);
       }
-    } catch { alert('Network error. Could not update status.'); }
+    } catch { toast('Network error. Could not update status.', 'error'); }
   };
 
   const acceptOrder = async (orderId: string) => {
@@ -324,9 +404,9 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
         fetchHistory();
       } else {
         const data = await res.json();
-        alert(data.message || 'Failed to accept order.');
+        toast(data.message || 'Failed to accept order.', 'error');
       }
-    } catch { alert('Network error during acceptance.'); }
+    } catch { toast('Network error during acceptance.', 'error'); }
     setActionLoading(false);
   };
 
@@ -344,7 +424,7 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
         fetchHistory();
         setPinValues(prev => ({ ...prev, [orderId]: '' }));
       }
-    } catch { alert('Network error during pick-up.'); }
+    } catch { toast('Network error during pick-up.', 'error'); }
     setActionLoading(false);
   };
 
@@ -358,9 +438,7 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
         body: JSON.stringify({ status: 'Delivered', pin })
       });
       if (res.ok) {
-        const orderData = activeOrders.find(o => o.id === orderId);
-        const price = orderData?.finalPrice || orderData?.totalPrice || 0;
-        const earned = Math.round(price * 0.1);
+        const earned = 30; // Flat ₹30 per delivery
         setTodayStats(prev => {
           const next = {
             ...prev,
@@ -385,9 +463,9 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
         fetchTodayStats();
       } else {
         const data = await res.json();
-        alert(data.message || 'Delivery verification failed.');
+        toast(data.message || 'Delivery verification failed.', 'error');
       }
-    } catch { alert('Network error during delivery.'); }
+    } catch { toast('Network error during delivery.', 'error'); }
     setActionLoading(false);
   };
 
@@ -399,7 +477,27 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
       riderName: currentDriver.name,
       details: `Captain ${currentDriver.name} reported: ${issueType}`
     });
-    alert('Issue reported to Customer & Dispatch');
+    toast('Issue reported to Customer & Dispatch', 'success');
+  };
+
+  const cancelOrder = async (orderId: string) => {
+    setActionLoading(true);
+    try {
+      const res = await fetch(`${apiUrl}/api/delivery/cancel/${orderId}`, {
+        method: 'PUT',
+        headers: { 'Authorization': `Bearer ${driverToken}` }
+      });
+      if (res.ok) {
+        setActiveOrders(prev => prev.filter(o => o.id !== orderId));
+        socketRef.current?.emit('rider_cancelled', { orderId, riderId: currentDriver._id });
+        toast('Order released. It will be reassigned.', 'warning');
+        fetchPendingOrders();
+      } else {
+        const data = await res.json();
+        toast(data.message || 'Could not cancel order.', 'error');
+      }
+    } catch { toast('Network error during cancel.', 'error'); }
+    setActionLoading(false);
   };
 
   if (showProfile) {
@@ -427,6 +525,7 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
             toggleOnline={toggleOnline}
             onLogout={onLogout}
             onOpenProfile={() => setShowProfile(true)}
+            onOpenEarnings={() => setShowEarnings(true)}
             currentEarnings={todayStats.earnings}
           />
         </motion.div>
@@ -466,11 +565,7 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
             <div className="md:col-span-8 space-y-6">
               
               {/* Tab Navigation */}
-              <motion.div 
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-surface border border-white/5 rounded-2xl p-1.5 flex gap-1"
-              >
+              <div className="bg-surface border border-white/5 rounded-2xl p-1.5 flex gap-1">
                 <button 
                   onClick={() => setActiveTab('pending')}
                   className={`flex-1 py-3 rounded-xl text-[10px] font-bold uppercase tracking-[0.2em] transition-all duration-300 ${activeTab === 'pending' ? 'bg-white text-black' : 'text-slate-500 hover:text-slate-300'}`}
@@ -483,68 +578,67 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
                 >
                   Past Tasks
                 </button>
-              </motion.div>
+              </div>
 
               <AnimatePresence mode="wait">
-                {activeOrders.length > 0 && !showOrdersBrowse ? (
+                {activeTab === 'pending' ? (
                   <motion.div 
-                    key="active-tasks"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
+                    key="pending-tab"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
                     className="space-y-6"
                   >
-                    {/* Active Task Header with back button */}
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-[9px] font-bold text-emerald-500 uppercase tracking-widest">Active Task</p>
-                        <p className="text-xs font-bold text-white">{activeOrders.length} order{activeOrders.length > 1 ? 's' : ''} in progress</p>
+                    {/* Active Tasks Section */}
+                    {activeOrders.length > 0 && (
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-2">
+                           <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+                           <p className="text-[9px] font-bold text-emerald-500 uppercase tracking-widest">Active Task</p>
+                        </div>
+                        {activeOrders.map((order) => (
+                          <ActiveOrderCard
+                            key={order.id}
+                            order={order}
+                            status={orderStatus[order.id] || order.status || 'Accepted'}
+                            actionLoading={actionLoading}
+                            pinValue={pinValues[order.id] || ''}
+                            onPinChange={(val) => setPinValues(prev => ({ ...prev, [order.id]: val }))}
+                            onPickUp={pickUpOrder}
+                            onDeliver={deliverOrder}
+                            onChatOpen={(id) => { setActiveChatOrderId(id); setIsChatOpen(true); }}
+                            onReportIssue={reportIssue}
+                            onCancel={cancelOrder}
+                          />
+                        ))}
+                        <div className="gold-line !opacity-20" />
                       </div>
-                      <button
-                        onClick={() => setShowOrdersBrowse(true)}
-                        className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white/[0.04] border border-white/10 text-[9px] font-bold uppercase tracking-widest text-slate-400 hover:text-white hover:bg-white/10 transition-all"
-                      >
-                        ← Browse Orders
-                      </button>
-                    </div>
-                    {activeOrders.map((order) => (
-                      <ActiveOrderCard
-                        key={order.id}
-                        order={order}
-                        status={orderStatus[order.id] || order.status || 'Accepted'}
-                        actionLoading={actionLoading}
-                        pinValue={pinValues[order.id] || ''}
-                        onPinChange={(val) => setPinValues(prev => ({ ...prev, [order.id]: val }))}
-                        onPickUp={pickUpOrder}
-                        onDeliver={deliverOrder}
-                        onChatOpen={() => setIsChatOpen(true)}
-                        onReportIssue={reportIssue}
-                      />
-                    ))}
+                    )}
+
+                    {/* Available Tasks Section */}
+                    <OrdersList
+                      orders={availableOrders}
+                      orderTimers={orderTimers}
+                      activeTab="pending"
+                      onAccept={acceptOrder}
+                      onDecline={(id) => setAvailableOrders(prev => prev.filter(o => o.id !== id))}
+                      onRefresh={fetchPendingOrders}
+                    />
                   </motion.div>
                 ) : (
                   <motion.div 
-                    key="pending-list"
+                    key="history-tab"
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
                   >
-                    {/* Back to active task banner */}
-                    {activeOrders.length > 0 && showOrdersBrowse && (
-                      <button
-                        onClick={() => setShowOrdersBrowse(false)}
-                        className="w-full mb-4 flex items-center justify-center gap-2 py-3 rounded-xl bg-emerald-600/20 border border-emerald-500/30 text-[9px] font-bold uppercase tracking-widest text-emerald-400 hover:bg-emerald-600/30 transition-all"
-                      >
-                        ↩ Return to Active Task
-                      </button>
-                    )}
                     <OrdersList
-                      orders={activeTab === 'pending' ? availableOrders : historyOrders}
+                      orders={historyOrders}
                       orderTimers={orderTimers}
-                      activeTab={activeTab}
+                      activeTab="history"
                       onAccept={acceptOrder}
-                      onDecline={(id) => setAvailableOrders(prev => prev.filter(o => o.id !== id))}
-                      onRefresh={activeTab === 'pending' ? fetchPendingOrders : fetchHistory}
+                      onDecline={() => {}}
+                      onRefresh={fetchHistory}
                     />
                   </motion.div>
                 )}
@@ -564,6 +658,13 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
 
       {/* Critical Status Overlay */}
       <AnimatePresence>
+        {showEarnings && (
+          <EarningsDashboard 
+            onClose={() => setShowEarnings(false)}
+            stats={todayStats}
+          />
+        )}
+        
         {activeIssue && (
           <motion.div 
             initial={{ opacity: 0, y: -20 }}
@@ -584,7 +685,7 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
       </AnimatePresence>
 
       <ChatDrawer
-        orderId={activeOrders[0]?.id || ''}
+        orderId={activeChatOrderId}
         userName={driver.name}
         userRole="rider"
         socket={socketRef.current}

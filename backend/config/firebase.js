@@ -25,7 +25,7 @@ const cleanPrivateKey = (raw) => {
       if (decoded.includes('-----')) {
         s = decoded;
       }
-    } catch (e) {
+    } catch {
       console.warn('[FIREBASE_INIT] Base64 decode attempt failed.');
     }
   }

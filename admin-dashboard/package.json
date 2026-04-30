@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3004",
+    "dev": "next dev -H 0.0.0.0 -p 3004",
     "build": "next build",
     "start": "npx -y serve@latest out -l $PORT -s",
     "lint": "next lint"

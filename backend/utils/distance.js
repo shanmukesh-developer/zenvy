@@ -24,8 +24,8 @@ function getHaversineDistance(lat1, lon1, lat2, lon2) {
  * For now, it returns simulated coordinates for Amaravathi region.
  */
 function getCoordsForAddress(address) {
-    if (!address) return { lat: 16.5062, lon: 80.6480 };
-    if (address.toUpperCase().includes('SRM')) {
+    const addr = address.toUpperCase();
+    if (addr.includes('SRM') || addr.includes('CAMPUS') || addr.includes('HOSTEL') || addr.includes('BLOCK') || addr.includes('MESS')) {
         return { lat: 16.4632, lon: 80.5064 };
     }
     // Default: Amaravathi City Center (simulated offset)

@@ -40,7 +40,7 @@ const calculateBadgePerks = (user) => {
   let orderDiscount = 0;
   let status = 'Standard Citizen';
 
-  if (badges.some(b => b.includes('Elite'))) {
+  if (user.isElite || badges.some(b => b.includes('Elite'))) {
     deliveryDiscount = 1;
     orderDiscount = 100;
     status = 'Elite Sovereign';

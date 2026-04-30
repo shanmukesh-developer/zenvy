@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import SafeImage from '@/components/SafeImage';
 import CheckoutProcessingModal from '@/components/CheckoutProcessingModal';
 import MapLocationPicker from '@/components/MapLocationPicker';
-import { calculateRoadDistance, calculateDeliveryFee, getCoordsForAddress } from '@/utils/logistics';
+
 import ZenvyModal from '@/components/ZenvyModal';
 import Tilt from '@/components/Tilt';
 import Magnetic from '@/components/Magnetic';
@@ -26,8 +26,8 @@ export default function CheckoutPage() {
   const [upiUTR, setUpiUTR] = useState('');
   const [upiScreenshot, setUpiScreenshot] = useState<string | null>(null);
   const [isElite, setIsElite] = useState(false);
-  const [distance, setDistance] = useState(0);
-  const [deliveryFee, setDeliveryFee] = useState(35);
+  const distance = 0;
+  const [deliveryFee, setDeliveryFee] = useState(30);
   const [surge, setSurge] = useState({ isSurge: false, multiplier: 1 });
   const [isMapOpen, setIsMapOpen] = useState(false);
   const [isQrZoomed, setIsQrZoomed] = useState(false);
@@ -138,25 +138,10 @@ export default function CheckoutPage() {
     fetchCoupons();
   }, [router]);
 
-  // Dynamic fee calculation based on address
+  // Flat ₹30 delivery fee for all orders. Elite/ZenPoints users get free delivery.
   useEffect(() => {
-    if (!deliveryAddress) {
-      setDeliveryFee(isElite || zenPoints >= 200 ? 0 : 25);
-      setDistance(0);
-      return;
-    }
-
-    const restaurantCoords = getCoordsForAddress(cart[0]?.restaurantName || 'SRM');
-    const customerCoords = getCoordsForAddress(deliveryAddress);
-
-    const dist = calculateRoadDistance(
-      restaurantCoords.lat, restaurantCoords.lon,
-      customerCoords.lat, customerCoords.lon
-    );
-
-    setDistance(dist);
-    setDeliveryFee(calculateDeliveryFee(dist, isElite || zenPoints >= 200, surge.multiplier));
-  }, [deliveryAddress, isElite, zenPoints, cart, surge]);
+    setDeliveryFee(isElite || zenPoints >= 200 ? 0 : 30);
+  }, [isElite, zenPoints]);
 
   const [checkoutStatus, setCheckoutStatus] = useState<'idle' | 'processing' | 'success' | 'error'>('idle');
   const [modalConfig, setModalConfig] = useState<{
@@ -519,6 +504,19 @@ export default function CheckoutPage() {
                 }}>ID: kesavakesava764@ybl</p>
                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">(Tap to Copy ID if buttons don&apos;t open app)</p>
                 </div>
+
+                {/* Simulation Button for Testing */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUpiUTR('SIM-' + Math.random().toString(36).substring(7).toUpperCase());
+                    setUpiScreenshot('https://picsum.photos/seed/payment/400/800');
+                    showToast('Payment Simulated!', 'success', '💎');
+                  }}
+                  className="mt-2 px-6 py-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[9px] font-black uppercase tracking-[0.2em] rounded-full hover:bg-emerald-500/20 transition-all active:scale-95"
+                >
+                  ⚡ Simulate Success (Dev Mode)
+                </button>
               </div>
 
               <div className="space-y-4 pt-4 border-t border-white/5">
@@ -592,7 +590,7 @@ export default function CheckoutPage() {
               <span>₹{totalPrice}</span>
             </div>
             <div className="flex justify-between text-xs font-black uppercase tracking-widest text-white/30">
-              <span>Logistics Fee {distance > 0 ? `(${distance} km)` : ''}</span>
+              <span>Logistics Fee</span>
               {isElite || zenPoints >= 200 ? (
                 <span className="text-primary-yellow">FREE BYPASS</span>
               ) : (

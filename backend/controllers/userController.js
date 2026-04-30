@@ -1,7 +1,7 @@
 const { getUserModel } = require('../models/User');
 const jwt = require('jsonwebtoken');
 const admin = require('../config/firebase');
-const { normalizePhone, formatForFirebase } = require('../utils/phoneUtils');
+const { normalizePhone } = require('../utils/phoneUtils');
 
 const generateToken = (id, role) => {
   return jwt.sign({ id, role }, process.env.JWT_SECRET || 'secret', { expiresIn: '30d' });

@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const compression = require('compression');
 const http = require('http');
 const { Server } = require('socket.io');
 const { connectDB } = require('./config/db');
@@ -8,12 +9,21 @@ const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
 
+// ── Async Buffered Logger (Non-Blocking) ──────────────────────
 const logFile = path.join(__dirname, 'socket_debug.txt');
+let logBuffer = [];
+let logFlushTimer = null;
+const flushLogs = () => {
+  if (logBuffer.length === 0) return;
+  const batch = logBuffer.join('');
+  logBuffer = [];
+  fs.appendFile(logFile, batch, () => { /* fire-and-forget */ });
+};
 const log = (msg) => {
-  try {
-    const line = `[${new Date().toISOString()}] ${msg}\n`;
-    fs.appendFileSync(logFile, line);
-  } catch (_) { /* file may not exist — ignore */ }
+  logBuffer.push(`[${new Date().toISOString()}] ${msg}\n`);
+  if (!logFlushTimer) {
+    logFlushTimer = setTimeout(() => { logFlushTimer = null; flushLogs(); }, 2000);
+  }
 };
 
 // Surge Pricing Engine (Zone-Aware) ────────────────────────
@@ -117,6 +127,7 @@ app.use(cors({
   },
   credentials: true
 }));
+app.use(compression());
 app.use(express.json({ limit: '5mb' }));
 
 app.get('/api/health', (req, res) => {
@@ -127,7 +138,7 @@ app.get('/api/health', (req, res) => {
     uptime: process.uptime()
   });
 });
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Static uploads served once below after DB init
 
 // Connect to PostgreSQL, then initialize routes
 const startServer = async () => {
@@ -141,21 +152,39 @@ const startServer = async () => {
     app.use('/api/delivery', require('./routes/deliveryPartnerRoutes'));
     app.use('/api/search', require('./routes/searchRoutes'));
 
-    // 🚀 Automated One-Time Production Seed
-    const { unifiedSeed } = require('./scripts/unified_seed');
-    const { getUserModel } = require('./models/User');
-    const User = getUserModel();
-    if (User) {
-      const userCount = await User.count();
-      const { getSequelize } = require('./config/db');
-      const instance = getSequelize();
-      const Restaurant = instance.models.Restaurant;
-      const restCount = Restaurant ? await Restaurant.count() : 0;
-      
-      if (userCount === 0 || restCount === 0) {
-        console.log(`🌱 [AUTO_SEED] Data missing (Users: ${userCount}, Rests: ${restCount}). Initializing...`);
-        await unifiedSeed();
-        console.log('✅ [AUTO_SEED] Production defaults initialized.');
+    // 🚀 Auto-Seed: DEVELOPMENT ONLY — Never overwrite production data
+    const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
+    if (!isProduction) {
+      const { unifiedSeed } = require('./scripts/unified_seed');
+      const { getUserModel } = require('./models/User');
+      const User = getUserModel();
+      if (User) {
+        const userCount = await User.count();
+        const { getSequelize } = require('./config/db');
+        const instance = getSequelize();
+        const Restaurant = instance.models.Restaurant;
+        const restCount = Restaurant ? await Restaurant.count() : 0;
+        
+        if (userCount === 0 || restCount === 0) {
+          console.log(`🌱 [AUTO_SEED] Dev data missing (Users: ${userCount}, Rests: ${restCount}). Seeding...`);
+          await unifiedSeed();
+          console.log('✅ [AUTO_SEED] Development defaults initialized.');
+        }
+      }
+    } else {
+      // Production: Just log the state, NEVER auto-seed
+      const { getUserModel } = require('./models/User');
+      const User = getUserModel();
+      if (User) {
+        const userCount = await User.count();
+        const { getSequelize } = require('./config/db');
+        const instance = getSequelize();
+        const Restaurant = instance.models.Restaurant;
+        const restCount = Restaurant ? await Restaurant.count() : 0;
+        console.log(`📊 [PROD_STATUS] Users: ${userCount}, Restaurants: ${restCount}`);
+        if (userCount === 0 || restCount === 0) {
+          console.warn('⚠️ [PROD_WARN] Database appears empty. Use POST /api/seed with JWT_SECRET to manually seed.');
+        }
       }
     }
 
@@ -164,7 +193,8 @@ const startServer = async () => {
       const { key } = req.body;
       if (key === (process.env.JWT_SECRET || 'nexus_protocol_9')) {
         console.log('📥 [MANUAL_SEED] Triggered via API');
-        await unifiedSeed();
+        const { unifiedSeed: runSeed } = require('./scripts/unified_seed');
+        await runSeed();
         return res.json({ message: 'Seeding complete' });
       }
       res.status(403).json({ error: 'Access Denied' });
@@ -246,7 +276,7 @@ const startServer = async () => {
         io.to('admin-room').emit('sos_received', data);
       });
 
-      socket.on('admin_announcement', (data) => {
+      socket.on('admin_broadcast', (data) => {
         log(`[MEGAPHONE] Admin broadcast: "${data.message}" (type: ${data.type})`);
         io.emit('global_announcement', data);
       });

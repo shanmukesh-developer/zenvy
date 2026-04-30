@@ -9,6 +9,7 @@ const Navbar = () => {
   const [location, setLocation] = useState('Amaravathi, AP');
   const [badgeCount, setBadgeCount] = useState(0);
   const [isScrolled, setIsScrolled] = useState(false);
+
   const pathname = usePathname();
   const isHomePage = pathname === '/';
   const { protocol, carrier } = useDeviceProtocol();
@@ -36,6 +37,12 @@ const Navbar = () => {
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    window.location.href = '/login';
+  };
 
   return (
     <nav className={`fixed top-0 left-0 right-0 z-50 px-6 transition-all duration-500 flex items-center justify-between border-b ${
@@ -83,6 +90,18 @@ const Navbar = () => {
           )}
           <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-black rounded-full shadow-lg" />
         </Link>
+        
+        <button 
+          onClick={handleLogout}
+          className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all active:scale-90 border ${
+            isScrolled ? 'bg-red-500/10 border-red-500/20 text-red-500' : 'bg-white/5 border-white/10 text-white/40'
+          }`}
+          title="Sign Out"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+          </svg>
+        </button>
       </div>
     </nav>
   );

@@ -6,7 +6,7 @@ const sendPushToTokens = async (tokens, title, body, data = {}) => {
   if (typeof tokens === 'string') {
     try {
       tokenList = JSON.parse(tokens);
-    } catch (e) {
+    } catch {
       tokenList = [];
     }
   }

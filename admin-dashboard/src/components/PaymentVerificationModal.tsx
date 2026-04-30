@@ -1,6 +1,7 @@
+/* eslint-disable @next/next/no-img-element */
 "use client";
 import { useState } from 'react';
-import Image from 'next/image';
+
 
 interface PaymentVerificationModalProps {
   isOpen: boolean;
@@ -61,15 +62,18 @@ export default function PaymentVerificationModal({ isOpen, onClose, order, onVer
             <p className="text-[8px] font-black text-gray-500 uppercase tracking-[0.3em]">Visual Evidence</p>
             <div className="aspect-video bg-black rounded-3xl border border-white/5 overflow-hidden relative group">
               {order.upiScreenshot ? (
-                /* eslint-disable-next-line @next/next/no-img-element */
-                <Image 
+                <img 
                   src={order.upiScreenshot} 
                   alt="Payment Screenshot" 
-                  width={512}
-                  height={288}
                   className="w-full h-full object-contain cursor-zoom-in group-hover:scale-105 transition-transform duration-500" 
-                  onClick={() => window.open(order.upiScreenshot, '_blank')}
-                  unoptimized
+                  onClick={() => window.open(order.upiScreenshot!, '_blank')}
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    target.style.display = 'none';
+                    if (target.parentElement) {
+                      target.parentElement.innerHTML = '<div class="w-full h-full flex items-center justify-center text-red-500/50 font-black text-[10px] uppercase tracking-widest italic">Signal Corrupted / Invalid Data</div>';
+                    }
+                  }}
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-gray-700 font-black text-[10px] uppercase tracking-widest italic">

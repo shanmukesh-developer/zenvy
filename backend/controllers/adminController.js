@@ -284,6 +284,20 @@ exports.approveRider = async (req, res) => {
   }
 };
 
+exports.resetRiderSos = async (req, res) => {
+  try {
+    const DeliveryPartner = getDeliveryPartnerModel();
+    const rider = await DeliveryPartner.findByPk(req.params.id);
+    if (!rider) return res.status(404).json({ message: 'Rider not found' });
+    await rider.update({ isSosActive: false });
+    broadcastSystemUpdate(req, 'RIDER_SOS_RESET', { id: req.params.id });
+    await logAuditAction(req, rider.id, 'FLEET_SOS_RESET', { name: rider.name });
+    res.json({ message: 'SOS reset successful' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 // ─── User & Elite Tiering ──────────────────────────────────────
 exports.getAllUsers = async (req, res) => {
   try {
@@ -306,6 +320,25 @@ exports.setEliteStatus = async (req, res) => {
     res.json({ ...user.toJSON(), _id: user.id });
   } catch (error) {
     res.status(400).json({ message: error.message });
+  }
+};
+
+exports.updateUserWallet = async (req, res) => {
+  try {
+    const User = getUserModel();
+    const { amount } = req.body;
+    const user = await User.findByPk(req.params.userId);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    
+    const newBalance = (user.walletBalance || 0) + Number(amount);
+    await user.update({ walletBalance: newBalance });
+    
+    await logAuditAction(req, user.id, 'WALLET_UPDATE', { email: user.email, added: amount, newBalance });
+    broadcastSystemUpdate(req, 'USER_UPDATED', { userId: user.id, walletBalance: newBalance });
+    
+    res.json({ message: 'Wallet updated', walletBalance: newBalance });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 };
 
@@ -345,15 +378,26 @@ exports.getDashboardStats = async (req, res) => {
   try {
     const Order = getOrderModel();
     const DeliveryPartner = getDeliveryPartnerModel();
-    const { Op } = require('sequelize');
+    
+    // Optimized single-pass aggregation
+    const [totalOrders, activeFleet] = await Promise.all([
+      Order.count(),
+      DeliveryPartner.count({ where: { isApproved: true } })
+    ]);
 
-    const totalOrders = await Order.count();
-    const activeOrdersList = await Order.findAll({ where: { status: { [Op.notIn]: ['Delivered', 'Cancelled'] } } });
-    const activeOrdersCount = activeOrdersList.length;
+    const deliveredStats = await Order.findAll({
+      where: { status: 'Delivered' },
+      attributes: [[require('sequelize').fn('SUM', require('sequelize').col('totalPrice')), 'revenue']]
+    });
+
+    const activeOrdersList = await Order.findAll({
+      where: { status: { [Op.notIn]: ['Delivered', 'Cancelled'] } },
+      attributes: ['totalPrice']
+    });
+
+    const totalRevenue = Number(deliveredStats[0]?.dataValues.revenue || 0);
     const activeRevenue = activeOrdersList.reduce((sum, o) => sum + (o.totalPrice || 0), 0);
-    const deliveredOrders = await Order.findAll({ where: { status: 'Delivered' } });
-    const totalRevenue = deliveredOrders.reduce((sum, o) => sum + (o.totalPrice || 0), 0);
-    const activeFleet = await DeliveryPartner.count({ where: { isApproved: true } });
+    const activeOrdersCount = activeOrdersList.length;
 
     res.json({
       revenue: `₹${totalRevenue.toLocaleString()}`,
@@ -386,7 +430,7 @@ exports.getFinanceReport = async (req, res) => {
         restaurantName: restaurant.name,
         totalAmount: itemPrice,
         commissionEarned: Math.round(commission),
-        deliveryFee: order.deliveryFee || 20,
+        deliveryFee: 30, // Updated to Flat ₹30 per order
         timestamp: order.createdAt
       };
     });
@@ -394,7 +438,8 @@ exports.getFinanceReport = async (req, res) => {
     res.json({
       transactions: report.reverse(),
       totalRevenue: report.reduce((s, r) => s + r.totalAmount, 0),
-      totalCommission: report.reduce((s, r) => s + r.commissionEarned + r.deliveryFee, 0)
+      totalCommission: report.reduce((s, r) => s + r.commissionEarned, 0),
+      totalDeliveryFees: report.reduce((s, r) => s + r.deliveryFee, 0)
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -404,9 +449,43 @@ exports.getFinanceReport = async (req, res) => {
 // ─── Seed Database ─────────────────────────────────────────────
 exports.seedDatabase = async (req, res) => {
   try {
-    const { restaurants } = req.body;
-    if (!restaurants || !Array.isArray(restaurants)) {
-      return res.status(400).json({ message: 'Invalid seed data' });
+    let { restaurants } = req.body;
+    
+    if (!restaurants || !Array.isArray(restaurants) || restaurants.length === 0) {
+      // Default cinematic collection
+      restaurants = [
+        {
+          "name": "Biryani Hub",
+          "location": "Amaravathi Central",
+          "imageUrl": "https://images.unsplash.com/photo-1589302168068-964664d93dc0?q=80&w=400&auto=format&fit=crop",
+          "categories": ["Biryani", "Kebabs"],
+          "vendorType": "RESTAURANT",
+          "menu": [
+            { "name": "Special Mutton Fry", "price": 280, "description": "Tender goat cooked in traditional spices.", "image": "https://images.unsplash.com/photo-1514327605112-b887c0e61c0a?w=400", "category": "Biryani" },
+            { "name": "Hyderabadi Dum Biryani", "price": 250, "description": "Classic slow-cooked chicken biryani.", "image": "https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=400", "category": "Biryani" }
+          ]
+        },
+        {
+          "name": "The Burger Club",
+          "location": "SRM North",
+          "imageUrl": "https://images.unsplash.com/photo-1571091718767-18b5b1457add?q=80&w=400",
+          "categories": ["Burgers", "Shakes"],
+          "vendorType": "RESTAURANT",
+          "menu": [
+            { "name": "Classic Cheeseburger", "price": 150, "description": "Juicy patty with melted cheddar.", "image": "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400", "category": "Burgers" }
+          ]
+        },
+        {
+          "name": "Nezumi Sushi",
+          "location": "Amaravathi East",
+          "imageUrl": "https://images.unsplash.com/photo-1579871494447-9811cf80d66c?q=80&w=400",
+          "categories": ["Sushi", "Japanese"],
+          "vendorType": "RESTAURANT",
+          "menu": [
+            { "name": "Salmon Nigiri", "price": 450, "description": "Fresh salmon on vinegared rice.", "image": "https://images.unsplash.com/photo-1583623025817-d180a2221d0a?w=400", "category": "Sushi" }
+          ]
+        }
+      ];
     }
 
     const Restaurant = getRestaurantModel();

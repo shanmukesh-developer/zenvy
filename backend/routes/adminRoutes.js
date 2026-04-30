@@ -55,10 +55,18 @@ router.delete('/restaurants/:id', deleteRestaurant);
 // Fleet Management
 router.get('/riders', getAllRiders);
 router.put('/riders/:id/approve', approveRider);
+router.post('/riders/:id/reset-sos', (req, res, next) => {
+  const { resetRiderSos } = require('../controllers/adminController');
+  resetRiderSos(req, res, next);
+});
 
 // User Management
 router.get('/users', getAllUsers);
 router.put('/users/:userId/elite', setEliteStatus);
+router.post('/users/:userId/wallet', (req, res, next) => {
+  const { updateUserWallet } = require('../controllers/adminController');
+  updateUserWallet(req, res, next);
+});
 
 // Global Configuration
 router.get('/config', getGlobalConfig);

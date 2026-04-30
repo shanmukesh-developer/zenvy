@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { connectDB, getSequelize } = require('../config/db');
+const { connectDB } = require('../config/db');
 const { getUserModel } = require('../models/User');
 const { getVaultItemModel } = require('../models/VaultItem');
 const https = require('https');
@@ -72,7 +72,7 @@ async function verify() {
     } else {
       console.log(`- Primary Admin       : MISSING ❌`);
     }
-  } catch (err) {
+  } catch {
     console.error(`- Admin Verification  : FAILED ❌`);
   }
 

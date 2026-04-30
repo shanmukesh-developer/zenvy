@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, memo } from 'react';
 import { useAdminAuth } from '@/utils/useAdminAuth';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
@@ -10,8 +10,64 @@ interface Rider {
   phone: string;
   isApproved: boolean;
   isOnline: boolean;
+  isSosActive: boolean;
   vehicleType?: string;
+  completedOrders?: number;
 }
+
+const RiderRow = memo(({ rider, onToggleApproval, onResetSos }: { 
+  rider: Rider, 
+  onToggleApproval: (id: string, status: boolean) => void,
+  onResetSos: (id: string) => void 
+}) => (
+  <tr className="hover:bg-white/[0.02] transition-colors group">
+    <td className="px-8 py-6">
+      <span className="text-xs font-black text-blue-500/50 group-hover:text-blue-400 transition-colors">#{rider._id.slice(-6)}</span>
+    </td>
+    <td className="px-8 py-6 text-sm font-bold text-white uppercase tracking-tight">
+      {rider.name}
+      {rider.vehicleType && <span className="ml-2 text-[8px] px-2 py-0.5 bg-blue-500/10 text-blue-400 rounded-md">{rider.vehicleType}</span>}
+    </td>
+    <td className="px-8 py-6">
+      <p className="text-xs text-gray-400 font-mono tracking-tighter">{rider.phone}</p>
+      <div className="mt-1 flex items-center gap-2">
+         <span className="text-[8px] font-black text-emerald-400 uppercase tracking-widest">{rider.completedOrders || 0} Cycles Completed</span>
+      </div>
+    </td>
+    <td className="px-8 py-6">
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-2">
+          <div className={`w-1.5 h-1.5 rounded-full ${rider.isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-gray-700'}`} />
+          <span className={`text-[10px] font-black uppercase tracking-widest ${rider.isOnline ? 'text-emerald-500' : 'text-gray-500'}`}>
+            {rider.isOnline ? 'Online' : 'Offline'}
+          </span>
+        </div>
+        {rider.isSosActive && (
+          <button 
+            onClick={() => onResetSos(rider._id)}
+            className="flex flex-col items-start gap-1 group/sos"
+          >
+            <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 px-3 py-1 rounded-lg animate-bounce group-hover/sos:bg-red-500/20 transition-all">
+              <span className="text-[9px] font-black text-red-500 uppercase tracking-widest">🚨 EMERGENCY SOS</span>
+            </div>
+            <span className="text-[7px] text-gray-600 uppercase font-black tracking-widest ml-1 opacity-0 group-hover/sos:opacity-100 transition-opacity">Click to Resolve</span>
+          </button>
+        )}
+      </div>
+    </td>
+    <td className="px-8 py-6">
+       <div className="flex items-center gap-3">
+          <button onClick={() => onToggleApproval(rider._id, rider.isApproved)} className={`px-6 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all ${rider.isApproved ? 'bg-red-500/10 text-red-500' : 'bg-emerald-500/10 text-emerald-500'}`}>
+            {rider.isApproved ? 'Deactivate' : 'Hire'}
+          </button>
+          <div className={`px-3 py-1.5 rounded-lg border text-[9px] font-black uppercase tracking-widest ${rider.isApproved ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-amber-500/10 text-amber-500 border-amber-500/20'}`}>
+             {rider.isApproved ? 'Active' : 'Awaiting Approval'}
+          </div>
+       </div>
+    </td>
+  </tr>
+));
+RiderRow.displayName = 'RiderRow';
 
 export default function FleetManagement() {
   const isAuthed = useAdminAuth();
@@ -49,6 +105,18 @@ export default function FleetManagement() {
       });
       if (res.ok) fetchRiders();
     } catch (err) { console.error('[FLEET_APPROVE_ERROR]', err); }
+  };
+
+  const handleResetSos = async (id: string) => {
+    if (!confirm('Mark emergency as resolved and reset SOS?')) return;
+    try {
+      const token = localStorage.getItem('token');
+      await fetch(`${API_URL}/api/admin/riders/${id}/reset-sos`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      fetchRiders();
+    } catch (err) { console.error('[SOS_RESET_ERROR]', err); }
   };
 
   const handleCreateRider = async () => {
@@ -127,29 +195,12 @@ export default function FleetManagement() {
             {loading ? (
               <tr><td colSpan={5} className="px-8 py-20 text-center text-gray-600 animate-pulse font-black uppercase tracking-widest">Scanning Grid for Personnel...</td></tr>
             ) : riders.map((rider) => (
-              <tr key={rider._id} className="hover:bg-white/[0.02] transition-colors group">
-                <td className="px-8 py-6">
-                  <span className="text-xs font-black text-blue-500/50 group-hover:text-blue-400 transition-colors">#{rider._id.slice(-6)}</span>
-                </td>
-                <td className="px-8 py-6 text-sm font-bold text-white uppercase tracking-tight">
-                  {rider.name}
-                  {rider.vehicleType && <span className="ml-2 text-[8px] px-2 py-0.5 bg-blue-500/10 text-blue-400 rounded-md">{rider.vehicleType}</span>}
-                </td>
-                <td className="px-8 py-6 text-xs text-gray-400 font-mono tracking-tighter">{rider.phone}</td>
-                <td className="px-8 py-6">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-1.5 h-1.5 rounded-full ${rider.isApproved ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]' : 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]'}`} />
-                    <span className={`text-[11px] font-black uppercase tracking-widest ${rider.isApproved ? 'text-emerald-500' : 'text-red-500'}`}>
-                      {rider.isApproved ? 'Approved' : 'Pending'}
-                    </span>
-                  </div>
-                </td>
-                <td className="px-8 py-6">
-                  <button onClick={() => handleToggleApproval(rider._id, rider.isApproved)} className={`px-6 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all ${rider.isApproved ? 'bg-red-500/10 text-red-500' : 'bg-emerald-500/10 text-emerald-500'}`}>
-                    {rider.isApproved ? 'Deactivate' : 'Hire'}
-                  </button>
-                </td>
-              </tr>
+              <RiderRow 
+                key={rider._id} 
+                rider={rider} 
+                onToggleApproval={handleToggleApproval} 
+                onResetSos={handleResetSos} 
+              />
             ))}
           </tbody>
         </table>

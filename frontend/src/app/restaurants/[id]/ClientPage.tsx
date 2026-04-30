@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 import Link from 'next/link';
 import { useCart } from '@/context/CartContext';
@@ -19,16 +19,17 @@ export default function RestaurantMenuClient({ restaurantId }: { restaurantId: s
     'sweet-shop': 'boutique-sweets-elite',
     'zenvy-bakery': 'boutique-bakery-elite',
     'summer-specials': 'boutique-summer-elite',
-    'fruit-shop': 'boutique-fruits-elite'
+    'fruit-shop': 'boutique-fruits-elite',
+    'biryani-hub': '8467dbf0-1b1b-4ae5-88b6-0fccbfcb1cbb'
   };
 
   const effectiveId = (legacyIdMap[restaurantId] || restaurantId).replace(/\/$/, "");
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [loading, setLoading] = useState(true);
   const [soldOutItems, setSoldOutItems] = useState<Set<string>>(new Set());
-  const { totalItems, addToCart } = useCart();
+  const { totalItems, addToCart, clearCart } = useCart();
   const [scrollY, setScrollY] = useState(0);
-  const [overlay, setOverlay] = useState<{ isOpen: boolean; title: string; message: string; type?: 'success' | 'error' }>({
+  const [overlay, setOverlay] = useState<{ isOpen: boolean; title: string; message: string; type?: 'success' | 'error'; actionLabel?: string; onAction?: () => void }>({
     isOpen: false,
     title: '',
     message: '',
@@ -105,26 +106,51 @@ export default function RestaurantMenuClient({ restaurantId }: { restaurantId: s
     : (restaurant.menu || []).filter((item) => item.category === activeCategory);
 
   const handleAddToCart = (item: MenuItem) => {
-    addToCart({
-      id: item.id || item._id || "",
-      name: item.name,
-      price: item.price,
-      image: item.image || item.imageUrl || "",
-      restaurantId: restaurant.id || restaurant._id,
-      restaurantName: restaurant.name,
-    });
-    setAddedId(item.id || item._id || null);
-    setOverlay({
-      isOpen: true,
-      title: 'Added to Basket',
-      message: `${item.name} is waiting for you!`,
-      type: 'success'
-    });
-    setTimeout(() => setAddedId(null), 800);
+    try {
+      addToCart({
+        id: item.id || item._id || "",
+        name: item.name,
+        price: item.price,
+        image: item.image || item.imageUrl || "",
+        restaurantId: restaurant.id || restaurant._id,
+        restaurantName: restaurant.name,
+      });
+      setAddedId(item.id || item._id || null);
+      setOverlay({
+        isOpen: true,
+        title: 'Added to Basket',
+        message: `${item.name} is waiting for you!`,
+        type: 'success'
+      });
+      setTimeout(() => setAddedId(null), 800);
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message === 'MULTIPLE_RESTAURANTS') {
+        setOverlay({
+          isOpen: true,
+          title: 'Clear Basket?',
+          message: 'Your basket contains items from another restaurant. Clear it to add this item?',
+          type: 'error',
+          actionLabel: 'Clear \u0026 Add',
+          onAction: () => {
+            clearCart();
+            setTimeout(() => handleAddToCart(item), 100);
+          }
+        });
+      }
+    }
   };
 
   return (
     <main ref={mainRef} className="min-h-screen bg-background text-white overflow-y-auto overflow-x-hidden relative">
+      <SuccessOverlay 
+        isOpen={overlay.isOpen}
+        onClose={() => setOverlay(prev => ({ ...prev, isOpen: false }))}
+        title={overlay.title}
+        message={overlay.message}
+        type={overlay.type}
+        actionLabel={overlay.actionLabel}
+        onAction={overlay.onAction}
+      />
       {/* ── Parallax Hero Image ── */}
       <div className="relative h-[320px] overflow-hidden">
         <div
@@ -256,13 +282,6 @@ export default function RestaurantMenuClient({ restaurantId }: { restaurantId: s
         </Link>
       )}
 
-      <SuccessOverlay 
-        isOpen={overlay.isOpen}
-        onClose={() => setOverlay(prev => ({ ...prev, isOpen: false }))}
-        title={overlay.title}
-        message={overlay.message}
-        type={overlay.type}
-      />
     </main>
   );
 }

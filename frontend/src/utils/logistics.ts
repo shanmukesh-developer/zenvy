@@ -22,12 +22,11 @@ export function calculateRoadDistance(lat1: number, lon1: number, lat2: number, 
 }
 
 /**
- * Fee logic: ₹25 base + ₹10/km after 2km (with Surge support)
+ * Fee logic: Flat ₹30 for all orders. Elite users get free delivery.
  */
-export function calculateDeliveryFee(distanceKm: number, isElite: boolean = false, surgeMultiplier: number = 1): number {
+export function calculateDeliveryFee(distanceKm: number, isElite: boolean = false): number {
     if (isElite) return 0;
-    const baseFee = Math.max(25, Math.round(25 + Math.max(0, distanceKm - 2) * 10));
-    return Math.round(baseFee * surgeMultiplier);
+    return 30;
 }
 
 /**

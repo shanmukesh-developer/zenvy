@@ -26,6 +26,15 @@ export default function LoginForm({ onLogin, apiUrl }: LoginFormProps) {
       return;
     }
     
+    // Check if it's not a legacy string ID (e.g. driver1)
+    if (!/[a-zA-Z]/.test(phone)) {
+       const digits = phone.replace(/\D/g, '');
+       if (digits.length < 10) {
+         setError('Invalid phone number format. Must be 10 digits.');
+         return;
+       }
+    }
+    
     setLoading(true);
     setError('');
     try {
@@ -115,6 +124,16 @@ export default function LoginForm({ onLogin, apiUrl }: LoginFormProps) {
           >
             {loading ? 'Processing...' : 'Sign In'}
           </button>
+          
+          <div className="pt-2">
+            <button
+              type="button"
+              className="w-full py-4 rounded-[22px] bg-white/5 border border-white/10 text-white/70 font-bold text-xs uppercase tracking-[0.2em] hover:bg-white/10 transition-all shadow-xl"
+              onClick={() => alert("Partner Registration Portal is currently closed. Please contact Zenvy Logistics Hub for onboarding.")}
+            >
+              Register as Rider
+            </button>
+          </div>
         </form>
 
         <div className="text-center mt-12">

@@ -8,8 +8,8 @@ const initUserModel = (sequelize) => {
 
   User = sequelize.define('User', {
     id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-    name: { type: DataTypes.STRING, allowNull: false, unique: true },
-    phone: { type: DataTypes.STRING, allowNull: false },
+    name: { type: DataTypes.STRING, allowNull: false },
+    phone: { type: DataTypes.STRING, allowNull: false, unique: true },
     password: { type: DataTypes.STRING, allowNull: false },
     hostelBlock: { type: DataTypes.STRING, allowNull: true },
     roomNumber: { type: DataTypes.STRING, allowNull: true },
@@ -51,8 +51,18 @@ const initUserModel = (sequelize) => {
     lateNightOrders: { type: DataTypes.INTEGER, defaultValue: 0 }
   }, { timestamps: true });
 
-  User.beforeCreate(async (user) => {
-    user.password = await bcrypt.hash(user.password, 10);
+  const hashPassword = async (user) => {
+    if (user.changed('password')) {
+      user.password = await bcrypt.hash(user.password, 10);
+    }
+  };
+
+  User.beforeCreate(hashPassword);
+  User.beforeUpdate(hashPassword);
+  User.beforeBulkCreate(async (users) => {
+    for (const user of users) {
+      user.password = await bcrypt.hash(user.password, 10);
+    }
   });
 
   User.prototype.comparePassword = async function(candidatePassword) {

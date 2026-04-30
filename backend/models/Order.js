@@ -10,7 +10,17 @@ const initOrderModel = (sequelize) => {
     userId: { type: DataTypes.UUID, allowNull: false },
     restaurantId: { type: DataTypes.UUID, allowNull: false },
     deliveryPartnerId: { type: DataTypes.UUID },
-    items: { type: DataTypes.JSON, defaultValue: [] },
+    items: { 
+      type: DataTypes.JSON, 
+      defaultValue: [],
+      get() {
+        const rawValue = this.getDataValue('items');
+        if (typeof rawValue === 'string') {
+          try { return JSON.parse(rawValue); } catch { return []; }
+        }
+        return rawValue || [];
+      }
+    },
     totalPrice: { type: DataTypes.FLOAT, allowNull: false },
     deliveryFee: { type: DataTypes.FLOAT, allowNull: false },
     batchDiscount: { type: DataTypes.FLOAT, defaultValue: 0 },
@@ -38,7 +48,7 @@ const initOrderModel = (sequelize) => {
     review: { type: DataTypes.TEXT },
     deliveryPin: { type: DataTypes.STRING },
     upiUTR: { type: DataTypes.STRING },
-    upiScreenshot: { type: DataTypes.STRING },
+    upiScreenshot: { type: DataTypes.TEXT },
     upiStatus: {
       type: DataTypes.ENUM('Pending', 'Verified', 'Rejected'),
       defaultValue: 'Pending'

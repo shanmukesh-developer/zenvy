@@ -111,7 +111,7 @@ export default function ConfigTerminal() {
 
            <div className="space-y-6">
               <div className="pt-4 border-t border-white/5">
-                 <div className="flex items-center justify-between">
+                 <div className="flex items-center justify-between mb-6">
                     <div>
                        <h5 className="text-[11px] font-black text-white uppercase tracking-wider">Pulse Social Ripples</h5>
                        <p className="text-[9px] text-gray-500">Enable/Disable campus-wide order triggers</p>
@@ -122,6 +122,28 @@ export default function ConfigTerminal() {
                     >
                        <div className={`absolute top-1 w-6 h-6 rounded-full bg-white transition-all ${configs.find(c => c.key === 'pulse_enabled')?.value !== false ? 'left-7' : 'left-1'}`} />
                     </button>
+                 </div>
+
+                 <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                       <label className="text-[8px] font-black text-gray-500 uppercase tracking-widest ml-1">Global Delivery Fee (₹)</label>
+                       <input 
+                         type="number" 
+                         className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white font-black text-xs"
+                         defaultValue={(configs.find(c => c.key === 'delivery_fee')?.value as number) ?? 30}
+                         onBlur={(e) => handleUpdateConfig('delivery_fee', Number(e.target.value))}
+                       />
+                    </div>
+                    <div className="space-y-2">
+                       <label className="text-[8px] font-black text-gray-500 uppercase tracking-widest ml-1">Surge Multiplier (x)</label>
+                       <input 
+                         type="number" 
+                         step="0.1"
+                         className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white font-black text-xs"
+                         defaultValue={(configs.find(c => c.key === 'surge_multiplier')?.value as number) ?? 1.0}
+                         onBlur={(e) => handleUpdateConfig('surge_multiplier', Number(e.target.value))}
+                       />
+                    </div>
                  </div>
               </div>
            </div>

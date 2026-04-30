@@ -29,7 +29,7 @@ const unifiedSeed = async () => {
       defaults: r
     });
     if (!created) {
-      await rider.update(r);
+      await rider.update(r, { individualHooks: true });
       console.log(`✅ Rider Updated: ${r.phone}`);
     } else {
       console.log(`✅ Rider Created: ${r.phone}`);
@@ -49,7 +49,7 @@ const unifiedSeed = async () => {
       defaults: u
     });
     if (!created) {
-      await user.update(u);
+      await user.update(u, { individualHooks: true });
       console.log(`✅ User Updated: ${u.phone}`);
     } else {
       console.log(`✅ User Created: ${u.phone}`);
@@ -116,7 +116,7 @@ const unifiedSeed = async () => {
       imageUrl: "https://images.unsplash.com/photo-1589302168068-964664d93dc0?q=80&w=400&auto=format&fit=crop",
       categories: ["Biryani", "Kebabs", "Main Course"],
       menu: [
-        { name: "Special Mutton Fry", price: 280, description: "Tender goat cooked in traditional spices.", image: "https://images.unsplash.com/photo-1514327605112-b887c0e61c0a?w=400", category: "Biryani" }
+        { name: "Special Mutton Fry", price: 280, description: "Tender goat cooked in traditional spices.", imageUrl: "https://images.unsplash.com/photo-1601356616077-6957284f707c?q=80&w=800", category: "Biryani", isVegetarian: false }
       ]
     }
   ];
@@ -139,6 +139,9 @@ const unifiedSeed = async () => {
       }
     });
     
+    // Always update password and trigger hooks to ensure hashing
+    await restaurant.update({ password: 'password123' }, { individualHooks: true });
+
     if (created || ((await MenuItem.count({ where: { restaurantId: restaurant.id } })) === 0)) {
       if (restData.menu && Array.isArray(restData.menu)) {
         const menuItems = restData.menu.map(item => ({
@@ -146,8 +149,9 @@ const unifiedSeed = async () => {
           name: item.name,
           price: item.price,
           description: item.description,
-          image: item.image || item.imageUrl,
+          imageUrl: item.image || item.imageUrl,
           category: item.category,
+          isVegetarian: item.isVegetarian !== undefined ? item.isVegetarian : true,
           isAvailable: true,
           isEliteOnly: false
         }));

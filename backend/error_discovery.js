@@ -26,39 +26,45 @@ async function test(name, fn) {
 
 async function run() {
   let custToken, drvToken, orderId, rid, itemId, deliveryPin;
+  let custH, drvH;
 
   // ═══ AUTH TESTS ═══
   console.log('\n══ AUTH ENDPOINTS ══');
   
   await test('Customer Login (valid)', async () => {
-    const r = await axios.post(`${API}/users/login`, { phone: '9999999999', password: 'password123' });
+    const r = await axios.post(`${API}/users/login`, {
+      phone: '9123456789',
+      password: 'password123'
+    });
     custToken = r.data.token;
+    custH = { Authorization: `Bearer ${custToken}` };
     if (!custToken) throw new Error('No token returned');
   });
 
+  await test('Driver Login (valid)', async () => {
+    const r = await axios.post(`${API}/delivery/login`, {
+      phone: 'driver1',
+      password: 'password123'
+    });
+    drvToken = r.data.token;
+    drvH = { Authorization: `Bearer ${drvToken}` };
+    if (!drvToken) throw new Error('No token returned');
+  });
+
   await test('Customer Login (wrong password)', async () => {
-    const r = await axios.post(`${API}/users/login`, { phone: '9999999999', password: 'wrongpass' });
+    await axios.post(`${API}/users/login`, { phone: '9999999999', password: 'wrongpass' });
     throw new Error('Should have failed but got 200');
   });
 
   await test('Customer Login (missing fields)', async () => {
-    const r = await axios.post(`${API}/users/login`, {});
+    await axios.post(`${API}/users/login`, {});
     throw new Error('Should have failed but got 200');
-  });
-
-  await test('Driver Login (valid)', async () => {
-    const r = await axios.post(`${API}/delivery/login`, { phone: '8888888888', password: 'password123' });
-    drvToken = r.data.token;
-    if (!drvToken) throw new Error('No token returned');
   });
 
   await test('Driver Login (wrong password)', async () => {
-    const r = await axios.post(`${API}/delivery/login`, { phone: 'driver1', password: 'wrong' });
+    await axios.post(`${API}/delivery/login`, { phone: 'driver1', password: 'wrong' });
     throw new Error('Should have failed but got 200');
   });
-
-  const custH = { Authorization: `Bearer ${custToken}` };
-  const drvH = { Authorization: `Bearer ${drvToken}` };
 
   // ═══ CATALOG TESTS ═══
   console.log('\n══ CATALOG ENDPOINTS ══');
@@ -77,7 +83,7 @@ async function run() {
   });
 
   await test('GET /restaurants/:id (invalid UUID)', async () => {
-    const r = await axios.get(`${API}/users/restaurants/nonexistent-id-12345`);
+    await axios.get(`${API}/users/restaurants/nonexistent-id-12345`);
     throw new Error('Should have returned 404 but got 200');
   });
 
@@ -91,7 +97,7 @@ async function run() {
   });
 
   await test('GET /products/:id (invalid)', async () => {
-    const r = await axios.get(`${API}/users/products/fake-product-does-not-exist`);
+    await axios.get(`${API}/users/products/fake-product-does-not-exist`);
     throw new Error('Should have returned 404');
   });
 
@@ -112,7 +118,7 @@ async function run() {
   });
 
   await test('POST /orders (missing restaurantId)', async () => {
-    const r = await axios.post(`${API}/orders`, {
+    await axios.post(`${API}/orders`, {
       items: [{ id: itemId, quantity: 1 }],
       deliveryAddress: 'Test',
       paymentMethod: 'Cash'
@@ -121,7 +127,7 @@ async function run() {
   });
 
   await test('POST /orders (missing paymentMethod)', async () => {
-    const r = await axios.post(`${API}/orders`, {
+    await axios.post(`${API}/orders`, {
       restaurantId: rid,
       items: [{ id: itemId, quantity: 1 }],
       deliveryAddress: 'Test'
@@ -130,7 +136,7 @@ async function run() {
   });
 
   await test('POST /orders (empty items)', async () => {
-    const r = await axios.post(`${API}/orders`, {
+    await axios.post(`${API}/orders`, {
       restaurantId: rid,
       items: [],
       deliveryAddress: 'Test',
@@ -140,7 +146,7 @@ async function run() {
   });
 
   await test('POST /orders (no auth)', async () => {
-    const r = await axios.post(`${API}/orders`, {
+    await axios.post(`${API}/orders`, {
       restaurantId: rid,
       items: [{ id: itemId, quantity: 1 }],
       deliveryAddress: 'Test',
@@ -197,17 +203,17 @@ async function run() {
   console.log('\n══ EDGE CASES ══');
 
   await test('Double deliver (should fail)', async () => {
-    const r = await axios.put(`${API}/delivery/status/${orderId}`, { status: 'Delivered', pin: '' }, { headers: drvH });
+    await axios.put(`${API}/delivery/status/${orderId}`, { status: 'Delivered', pin: '' }, { headers: drvH });
     throw new Error('Should have rejected double delivery');
   });
 
   await test('Accept nonexistent order', async () => {
-    const r = await axios.put(`${API}/delivery/accept/fake-order-id-000`, {}, { headers: drvH });
+    await axios.put(`${API}/delivery/accept/fake-order-id-000`, {}, { headers: drvH });
     throw new Error('Should have returned 404');
   });
 
   await test('Pickup nonexistent order', async () => {
-    const r = await axios.put(`${API}/delivery/status/fake-order-id-000`, { status: 'PickedUp' }, { headers: drvH });
+    await axios.put(`${API}/delivery/status/fake-order-id-000`, { status: 'PickedUp' }, { headers: drvH });
     throw new Error('Should have returned 404');
   });
 

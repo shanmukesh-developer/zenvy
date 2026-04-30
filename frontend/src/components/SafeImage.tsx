@@ -2,10 +2,8 @@
 import React, { useState, useEffect } from 'react';
 
 const FALLBACK_IMAGES = [
-  "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=800&auto=format&fit=crop",
-  "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?q=80&w=800&auto=format&fit=crop",
-  "https://images.unsplash.com/photo-1482049016688-2d3e1b311543?q=80&w=800&auto=format&fit=crop",
-  "https://images.unsplash.com/photo-1484723091739-30a097e8f929?q=80&w=800&auto=format&fit=crop"
+  "/assets/placeholder.png",
+  "/assets/placeholder_premium.png"
 ];
 
 const getFallback = (alt: string) => {
@@ -16,6 +14,7 @@ const getFallback = (alt: string) => {
 
 interface SafeImageProps extends Omit<React.ImgHTMLAttributes<HTMLImageElement>, 'src'> {
   src: string | { src: string } | undefined;
+  fallback?: string;
   fill?: boolean;
   priority?: boolean;
 }
@@ -45,7 +44,11 @@ export default function SafeImage({ src, alt, className, style, fill, priority, 
   
   const fallback = getFallback(alt || 'food');
   
-  if (!finalSrc || finalSrc === 'null' || finalSrc === 'undefined' || finalSrc === '/assets/placeholder_premium.png') {
+  if (!finalSrc || 
+      finalSrc === 'null' || 
+      finalSrc === 'undefined' || 
+      finalSrc === '/assets/placeholder.png' || 
+      finalSrc === '/assets/placeholder_premium.png') {
     finalSrc = fallback;
   }
 

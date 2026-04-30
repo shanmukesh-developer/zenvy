@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Image from 'next/image';
+import { useToast } from '@/components/RiderToast';
 
 interface RiderProfilePageProps {
   driver: { _id: string; name: string; token: string };
@@ -30,6 +31,7 @@ export default function RiderProfilePage({ driver, apiUrl, onClose, onUpdate }: 
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [form, setForm] = useState<Partial<ProfileData>>({});
   const photoRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
 
   const fetchProfile = useCallback(async () => {
     try {
@@ -60,7 +62,7 @@ export default function RiderProfilePage({ driver, apiUrl, onClose, onUpdate }: 
         const data = await res.json();
         setForm(prev => ({ ...prev, photoUrl: data.imageUrl }));
       }
-    } catch { alert('Photo upload failed.'); }
+    } catch { toast('Photo upload failed.', 'error'); }
     setUploadingPhoto(false);
   };
 
@@ -85,9 +87,9 @@ export default function RiderProfilePage({ driver, apiUrl, onClose, onUpdate }: 
         if (onUpdate) onUpdate({ name: form.name || '', photoUrl: form.photoUrl || '' });
       } else {
         const d = await res.json();
-        alert(d.message || 'Update failed.');
+        toast(d.message || 'Update failed.', 'error');
       }
-    } catch { alert('Network error.'); }
+    } catch { toast('Network error.', 'error'); }
     setSaving(false);
   };
 
@@ -224,19 +226,36 @@ export default function RiderProfilePage({ driver, apiUrl, onClose, onUpdate }: 
           <div className="space-y-1">
             <label className="text-[9px] font-black uppercase tracking-widest text-gray-500">Vehicle Type</label>
             {editing ? (
-              <select value={form.vehicleType || ''} onChange={(e) => setForm(p => ({ ...p, vehicleType: e.target.value }))}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm font-bold outline-none focus:border-emerald-500/50 transition-all">
-                <option value="">Select type</option>
-                <option value="Scooter">🛵 Scooter</option>
-                <option value="Bike">🏍️ Bike</option>
-                <option value="Cycle">🚲 Cycle</option>
-                <option value="Auto">🛺 Auto</option>
-                <option value="Car">🚗 Car</option>
-              </select>
+              <div className="grid grid-cols-5 gap-2 pt-1">
+                {[
+                  { value: 'Scooter', emoji: '🛵' },
+                  { value: 'Bike',    emoji: '🏍️' },
+                  { value: 'Cycle',   emoji: '🚲' },
+                  { value: 'Auto',    emoji: '🛺' },
+                  { value: 'Car',     emoji: '🚗' },
+                ].map(({ value, emoji }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setForm(p => ({ ...p, vehicleType: value }))}
+                    className={`flex flex-col items-center gap-1.5 py-3 rounded-2xl border transition-all ${
+                      form.vehicleType === value
+                        ? 'bg-emerald-500/15 border-emerald-500/50 shadow-sm shadow-emerald-500/10'
+                        : 'bg-white/[0.03] border-white/10 hover:border-white/20'
+                    }`}
+                  >
+                    <span className="text-xl">{emoji}</span>
+                    <span className={`text-[9px] font-black uppercase tracking-widest ${form.vehicleType === value ? 'text-emerald-400' : 'text-slate-500'}`}>
+                      {value}
+                    </span>
+                  </button>
+                ))}
+              </div>
             ) : (
               <p className="text-white font-bold text-sm">{profile.vehicleType || '—'}</p>
             )}
           </div>
+
 
           <div className="space-y-1">
             <label className="text-[9px] font-black uppercase tracking-widest text-gray-500">Vehicle Number</label>

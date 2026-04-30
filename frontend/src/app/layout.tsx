@@ -5,9 +5,7 @@ import "./globals.css";
 import { CartProvider } from '@/context/CartContext';
 import PushNotificationManager from '@/components/PushNotificationManager';
 import AndroidBackButton from '@/components/AndroidBackButton';
-import VFXParticles from '@/components/VFXParticles';
-import CursorSpotlight from '@/components/CursorSpotlight';
-import Meteors from '@/components/Meteors';
+
 import ToastProvider from '@/components/ToastProvider';
 import VFXLayer from '@/components/VFXLayer';
 

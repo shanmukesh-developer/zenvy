@@ -11,6 +11,7 @@ interface CartItem {
   name: string;
   price: number;
   image?: string;
+  imageUrl?: string;
   restaurantName?: string;
   quantity: number;
   isCake?: boolean;
@@ -37,7 +38,7 @@ function BasketItem({ item, updateQuantity, removeFromCart, updateCustomName }: 
       <div className="flex gap-4 md:gap-6 items-center">
         <div className="w-24 h-24 relative flex-shrink-0">
           <SafeImage 
-            src={item.image || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400"} 
+            src={item.image || item.imageUrl} 
             alt={item.name} 
             fill
             className="rounded-full border-2 border-primary-yellow shadow-2xl" 

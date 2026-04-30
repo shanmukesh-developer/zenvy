@@ -13,7 +13,6 @@ import SafeImage from '@/components/SafeImage';
 const ConciergeDrawer = dynamic(() => import('@/components/ConciergeDrawer'), { ssr: false });
 const SearchOverlay = dynamic(() => import('@/components/SearchOverlay'), { ssr: false });
 const IntroOverlay = dynamic(() => import('@/components/IntroOverlay'), { ssr: false });
-const BlockWarsLeaderboard = dynamic(() => import('@/components/BlockWarsLeaderboard'), { ssr: false });
 const ZenvyVault = dynamic(() => import('@/components/ZenvyVault'), { ssr: false });
 const NexusExplorer = dynamic(() => import('@/components/NexusExplorer'), { ssr: false });
 
@@ -75,8 +74,7 @@ export default function Home() {
   const router = useRouter();
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { cart: _cart } = useCart();
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [filter, _setFilter] = useState<'all' | 'budget' | 'veg' | 'jain' | 'eggless' | 'rating' | 'fastest' | 'premium'>('all');
+  const [filter, setFilter] = useState<'all' | 'budget' | 'veg' | 'jain' | 'eggless' | 'rating' | 'fastest' | 'premium'>('all');
   const [liveRestaurants, setLiveRestaurants] = useState<Restaurant[]>([]);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [showSupport, setShowSupport] = useState(false);
@@ -100,8 +98,7 @@ export default function Home() {
   const [cancelSecondsLeft, setCancelSecondsLeft] = useState(0);
   const [isRatingModalOpen, setIsRatingModalOpen] = useState(false);
   // favorites moved down for grouping
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [sortBy, _setSortBy] = useState<'default' | 'price-asc' | 'price-desc' | 'rating' | 'fastest'>('default');
+  const [sortBy, setSortBy] = useState<'default' | 'price-asc' | 'price-desc' | 'rating' | 'fastest'>('default');
   const [favSort, setFavSort] = useState<'default' | 'price-asc' | 'price-desc' | 'name'>('default');
   const [restaurantSearch, setRestaurantSearch] = useState('');
   const [showConcierge, setShowConcierge] = useState(false);
@@ -251,7 +248,7 @@ export default function Home() {
   useEffect(() => {
     if (!user) return;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handleSystemUpdate = (payload: { type: string; data: any }) => {
+    const handleSystemUpdate = (payload: { type: string; data: Record<string, unknown> }) => {
       if (payload.type === 'USER_ELITE_STATUS') {
         const userId = user?._id || user?.id;
         if (payload.data.userId === userId) {
@@ -405,7 +402,7 @@ export default function Home() {
     }
   };
 
-  const toggleFavorite = (idOrItem: string | any) => {
+  const toggleFavorite = (idOrItem: string | Record<string, unknown>) => {
     const id = typeof idOrItem === 'string' ? idOrItem : (idOrItem?.id || idOrItem?._id);
     if (!id) return;
     setFavorites(prev => {
@@ -851,7 +848,7 @@ export default function Home() {
                       <Tilt>
                         <Link href={`/products/${item.id}`} className="relative shrink-0 w-[240px] block group active:scale-95 transition-transform premium-card-hover rounded-[30px]">
                           <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-primary-yellow/30 transition-colors">
-                            <SafeImage src={item.image || item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
+                            <SafeImage src={item.image || item.imageUrl} alt={item.name} fill style={{ objectFit: 'cover' }} />
                             <button 
                               onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(item.id!); }}
                               className="absolute top-4 right-4 w-9 h-9 rounded-full flex items-center justify-center transition-all z-20 bg-primary-yellow text-black scale-110 shadow-lg"
@@ -904,7 +901,7 @@ export default function Home() {
                     <Link href={`/products/${item.id}`}>
                       <Tilt className="chef-card bg-[#141416]">
                         <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-primary-yellow/30 transition-colors">
-                          <SafeImage src={item.image || item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
+                          <SafeImage src={item.image || item.imageUrl} alt={item.name} fill style={{ objectFit: 'cover' }} />
                         </div>
                         <div className="mt-3">
                           <h3 className="font-bold text-[15px] text-white mb-1">{item.name}</h3>
@@ -929,10 +926,7 @@ export default function Home() {
             className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent my-14 origin-left"
           />
 
-          {/* ⚔️ Zenvy Block Wars: Leaderboard */}
-          <section className="mb-10 animate-slide-up" style={{ animationDelay: '0.3s' }}>
-             <BlockWarsLeaderboard userBlock={user?.hostelBlock || null} />
-          </section>
+          <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent my-1 origin-left opacity-0" />
 
          
 
@@ -959,7 +953,7 @@ export default function Home() {
                     <Tilt>
                       <Link href={`/products/${item.id}`} className="relative shrink-0 w-[240px] block group active:scale-95 transition-transform premium-card-hover rounded-[30px]">
                         <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-violet-500/30 transition-colors">
-                            <SafeImage src={item.image || item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
+                            <SafeImage src={item.image || item.imageUrl} alt={item.name} fill style={{ objectFit: 'cover' }} />
                             <button 
                                 onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(item.id!); }}
                                 className={`absolute top-4 right-4 w-9 h-9 rounded-full flex items-center justify-center transition-all z-20 ${(favorites.includes(item.id!) || (item._id && favorites.includes(item._id))) ? 'bg-primary-yellow text-black scale-110 shadow-lg' : 'bg-black/40 text-white backdrop-blur-md hover:bg-black/60'}`}
@@ -982,7 +976,7 @@ export default function Home() {
                 ))
               ) : (
                 <div className="w-full flex flex-col items-center justify-center py-10 px-6 border border-white/5 rounded-[30px] bg-white/[0.02]">
-                   <span className="text-4xl mb-4 opacity-50">📚</span>
+                   <SafeImage src="/assets/placeholder_premium.png" alt="No stationary" width={60} height={60} className="mb-4 opacity-50 grayscale" />
                    <p className="text-xs font-black text-secondary-text uppercase tracking-widest">No Active Stationary Shops</p>
                 </div>
               )}
@@ -1006,12 +1000,12 @@ export default function Home() {
                 >
                   <Link href={`/products/${item.id}`} className="relative shrink-0 w-[240px] block group active:scale-95 transition-transform">
                     <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-cyan-500/30 transition-colors">
-                        <SafeImage src={item.image || item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
+                        <SafeImage src={item.image || item.imageUrl} alt={item.name} fill style={{ objectFit: 'cover' }} />
                         <button 
                               onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(item.id!); }}
-                              className={`absolute top-4 right-4 w-9 h-9 rounded-full flex items-center justify-center transition-all z-20 ${favorites.includes(item.id!) ? 'bg-primary-yellow text-black scale-110 shadow-lg' : 'bg-black/40 text-white backdrop-blur-md hover:bg-black/60'}`}
+                              className={`absolute top-4 right-4 w-9 h-9 rounded-full flex items-center justify-center transition-all z-20 ${(favorites.includes(item.id!) || (item._id && favorites.includes(item._id))) ? 'bg-primary-yellow text-black scale-110 shadow-lg' : 'bg-black/40 text-white backdrop-blur-md hover:bg-black/60'}`}
                             >
-                              <svg className="w-4.5 h-4.5" fill={favorites.includes(item.id!) ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
+                              <svg className="w-4.5 h-4.5" fill={(favorites.includes(item.id!) || (item._id && favorites.includes(item._id))) ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                               </svg>
                          </button>
@@ -1046,12 +1040,12 @@ export default function Home() {
                 >
                   <Link href={`/products/${item.id}`} className="relative shrink-0 w-[240px] block group active:scale-95 transition-transform">
                     <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-rose-500/30 transition-colors">
-                        <SafeImage src={item.image || item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
+                        <SafeImage src={item.image || item.imageUrl} alt={item.name} fill style={{ objectFit: 'cover' }} />
                         <button 
                               onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(item.id!); }}
-                              className={`absolute top-4 right-4 w-9 h-9 rounded-full flex items-center justify-center transition-all z-20 ${favorites.includes(item.id!) ? 'bg-primary-yellow text-black scale-110 shadow-lg' : 'bg-black/40 text-white backdrop-blur-md hover:bg-black/60'}`}
+                              className={`absolute top-4 right-4 w-9 h-9 rounded-full flex items-center justify-center transition-all z-20 ${(favorites.includes(item.id!) || (item._id && favorites.includes(item._id))) ? 'bg-primary-yellow text-black scale-110 shadow-lg' : 'bg-black/40 text-white backdrop-blur-md hover:bg-black/60'}`}
                             >
-                              <svg className="w-4.5 h-4.5" fill={favorites.includes(item.id!) ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
+                              <svg className="w-4.5 h-4.5" fill={(favorites.includes(item.id!) || (item._id && favorites.includes(item._id))) ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                               </svg>
                          </button>
@@ -1092,7 +1086,7 @@ export default function Home() {
                         className="relative shrink-0 w-[240px] block group active:scale-95 transition-transform premium-card-hover rounded-[30px] cursor-pointer"
                       >
                         <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-amber-500/30 transition-colors">
-                            <SafeImage src={item.image || item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill />
+                            <SafeImage src={item.image || item.imageUrl} alt={item.name} fill />
                             <div className="absolute top-4 left-4 bg-amber-500 text-black text-[7px] font-black px-2 py-1 rounded-md uppercase tracking-widest shadow-lg">Rental</div>
                         </div>
                         <div className="mt-3">
@@ -1133,7 +1127,7 @@ export default function Home() {
                     <Tilt>
                       <Link href={`/products/${item.id}`} className="relative shrink-0 w-[200px] block group active:scale-95 transition-transform premium-card-hover rounded-[30px]">
                         <div className="aspect-square relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-emerald-500/30 transition-colors">
-                            <SafeImage src={item.image || item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill />
+                            <SafeImage src={item.image || item.imageUrl} alt={item.name} fill />
                             <button 
                               onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(item.id!); }}
                               className={`absolute top-4 right-4 w-9 h-9 rounded-full flex items-center justify-center transition-all z-20 ${(favorites.includes(item.id!) || (item._id && favorites.includes(item._id))) ? 'bg-primary-yellow text-black scale-110 shadow-lg' : 'bg-black/40 text-white backdrop-blur-md hover:bg-black/60'}`}
@@ -1181,7 +1175,7 @@ export default function Home() {
                     <Tilt>
                       <Link href={`/products/${item.id}`} className="relative shrink-0 w-[200px] block group active:scale-95 transition-transform premium-card-hover rounded-[30px]">
                         <div className="aspect-square relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-rose-500/30 transition-colors">
-                            <SafeImage src={item.image || item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill />
+                            <SafeImage src={item.image || item.imageUrl} alt={item.name} fill />
                             <div className="absolute top-4 left-4 bg-rose-500 text-white text-[7px] font-black px-2 py-1 rounded-md uppercase tracking-widest shadow-lg">Pharmacy</div>
                         </div>
                         <div className="mt-3">
@@ -1222,7 +1216,7 @@ export default function Home() {
                     <Tilt>
                       <Link href={`/products/${item.id}`} className="relative shrink-0 w-[200px] block group active:scale-95 transition-transform premium-card-hover rounded-[30px]">
                         <div className="aspect-square relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-blue-500/30 transition-colors">
-                            <SafeImage src={item.image || item.imageUrl || "/assets/placeholder.png"} alt={item.name} fill />
+                            <SafeImage src={item.image || item.imageUrl} alt={item.name} fill />
                             <div className="absolute top-4 left-4 bg-blue-500 text-white text-[7px] font-black px-2 py-1 rounded-md uppercase tracking-widest shadow-lg">Dry Wash</div>
                         </div>
                         <div className="mt-3">
@@ -1238,7 +1232,7 @@ export default function Home() {
                 ))
               ) : (
                 <div className="w-full flex flex-col items-center justify-center py-10 px-6 border border-white/5 rounded-[30px] bg-white/[0.02]">
-                   <span className="text-4xl mb-4 opacity-50">🧺</span>
+                   <SafeImage src="/assets/placeholder_premium.png" alt="No laundry" width={60} height={60} className="mb-4 opacity-50 grayscale" />
                    <p className="text-xs font-black text-secondary-text uppercase tracking-widest">Optimizing Logistics Path...</p>
                 </div>
               )}
@@ -1259,12 +1253,12 @@ export default function Home() {
                 >
                   <Link href={`/products/${item.id}`} className="relative shrink-0 w-[240px] block group active:scale-95 transition-transform">
                     <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-[#A5B4FC]/30 transition-colors">
-                       <SafeImage src={item.imageUrl || "/assets/placeholder_premium.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
+                       <SafeImage src={item.image || item.imageUrl} alt={item.name} fill style={{ objectFit: 'cover' }} />
                        <button 
                               onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(item.id!); }}
-                              className={`absolute top-4 right-4 w-9 h-9 rounded-full flex items-center justify-center transition-all z-20 ${favorites.includes(item.id!) ? 'bg-primary-yellow text-black scale-110 shadow-lg' : 'bg-black/40 text-white backdrop-blur-md hover:bg-black/60'}`}
+                              className={`absolute top-4 right-4 w-9 h-9 rounded-full flex items-center justify-center transition-all z-20 ${(favorites.includes(item.id!) || (item._id && favorites.includes(item._id))) ? 'bg-primary-yellow text-black scale-110 shadow-lg' : 'bg-black/40 text-white backdrop-blur-md hover:bg-black/60'}`}
                             >
-                              <svg className="w-4.5 h-4.5" fill={favorites.includes(item.id!) ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
+                              <svg className="w-4.5 h-4.5" fill={(favorites.includes(item.id!) || (item._id && favorites.includes(item._id))) ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                               </svg>
                          </button>
@@ -1297,12 +1291,12 @@ export default function Home() {
                 >
                   <Link href={`/products/${item.id}`} className="relative shrink-0 w-[240px] block group active:scale-95 transition-transform">
                     <div className="aspect-[4/3] relative rounded-[30px] overflow-hidden border border-white/10 group-hover:border-[#C9A84C]/30 transition-colors">
-                       <SafeImage src={item.imageUrl || "/assets/placeholder_premium.png"} alt={item.name} fill style={{ objectFit: 'cover' }} />
+                       <SafeImage src={item.image || item.imageUrl} alt={item.name} fill style={{ objectFit: 'cover' }} />
                        <button 
                               onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleFavorite(item.id!); }}
-                              className={`absolute top-4 right-4 w-9 h-9 rounded-full flex items-center justify-center transition-all z-20 ${favorites.includes(item.id!) ? 'bg-primary-yellow text-black scale-110 shadow-lg' : 'bg-black/40 text-white backdrop-blur-md hover:bg-black/60'}`}
+                              className={`absolute top-4 right-4 w-9 h-9 rounded-full flex items-center justify-center transition-all z-20 ${(favorites.includes(item.id!) || (item._id && favorites.includes(item._id))) ? 'bg-primary-yellow text-black scale-110 shadow-lg' : 'bg-black/40 text-white backdrop-blur-md hover:bg-black/60'}`}
                             >
-                              <svg className="w-4.5 h-4.5" fill={favorites.includes(item.id!) ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
+                              <svg className="w-4.5 h-4.5" fill={(favorites.includes(item.id!) || (item._id && favorites.includes(item._id))) ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                               </svg>
                          </button>
@@ -1329,16 +1323,47 @@ export default function Home() {
           />
 
           {/* All Restaurants List & Advanced Filters */}
-          <div className="mb-8 px-6">
-              <div className="relative w-full group">
-                <input 
-                  type="text"
-                  placeholder="Search for restaurant or dish"
-                  value={restaurantSearch}
-                  onChange={(e) => setRestaurantSearch(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-xs font-bold tracking-wide outline-none focus:border-primary-yellow/40 transition-all placeholder:text-white/30 shadow-lg"
-                />
-                <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/30 group-focus-within:text-primary-yellow/40 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+          <div className="mb-8 px-6 space-y-4">
+              {/* Category Chips */}
+              <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-2">
+                {['All', 'Veg', 'Premium', 'Budget', 'Jain', 'Eggless'].map(cat => (
+                  <button 
+                    key={cat}
+                    onClick={() => setFilter(cat.toLowerCase() as 'all' | 'budget' | 'veg' | 'jain' | 'eggless' | 'rating' | 'fastest' | 'premium')}
+                    className={`px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all border ${filter === cat.toLowerCase() ? 'bg-primary-yellow text-black border-primary-yellow' : 'bg-white/5 text-secondary-text border-white/10 hover:border-white/20'}`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+
+              {/* Search & Sort Controls */}
+              <div className="flex flex-col md:flex-row gap-3">
+                <div className="relative flex-1 group">
+                  <input 
+                    type="text"
+                    placeholder="Instant search for restaurants or dishes..."
+                    value={restaurantSearch}
+                    onChange={(e) => setRestaurantSearch(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-xs font-bold tracking-wide outline-none focus:border-primary-yellow/40 transition-all placeholder:text-white/30 shadow-lg"
+                  />
+                  <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/30 group-focus-within:text-primary-yellow/40 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                </div>
+                
+                <div className="relative shrink-0">
+                  <select 
+                    value={sortBy} 
+                    onChange={(e) => setSortBy(e.target.value as 'default' | 'price-asc' | 'price-desc' | 'rating' | 'fastest')}
+                    className="w-full md:w-auto h-full text-[10px] font-black uppercase tracking-widest bg-white/5 border border-white/10 rounded-2xl px-6 py-4 outline-none focus:border-primary-yellow/40 appearance-none pr-10 text-white"
+                    style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 24 24\' stroke=\'%23C9A84C\'%3E%3Cpath stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'2\' d=\'M19 9l-7 7-7-7\' /%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 16px center', backgroundSize: '12px' }}
+                  >
+                    <option value="default" className="bg-[#141416]">Sort: Smart</option>
+                    <option value="rating" className="bg-[#141416]">Top Rated</option>
+                    <option value="fastest" className="bg-[#141416]">Fastest Delivery</option>
+                    <option value="price-asc" className="bg-[#141416]">Price: Low to High</option>
+                    <option value="price-desc" className="bg-[#141416]">Price: High to Low</option>
+                  </select>
+                </div>
               </div>
           </div>
 

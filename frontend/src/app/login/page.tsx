@@ -1,6 +1,6 @@
 "use client";
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import SuccessOverlay from '@/components/SuccessOverlay';
@@ -18,6 +18,12 @@ export default function LoginPage() {
     title: '',
     message: '',
   });
+
+  // Ensure field is clean on mount to prevent stale/phantom pre-fills
+  useEffect(() => {
+    setPhone('');
+    setPassword('');
+  }, []);
 
   const handleLogin = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -213,11 +219,10 @@ export default function LoginPage() {
                     +91
                 </span>
                 <input 
-                  type="tel"
+                  type="text"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="AUTHORIZE ID"
-                  autoComplete="tel username"
                   className="w-full bg-[#020203] border border-white/[0.05] group-hover/input:border-white/10 group-focus-within/input:border-primary-yellow/40 rounded-2xl h-[68px] pl-16 pr-6 font-bold text-sm tracking-[0.2em] transition-all outline-none uppercase placeholder:text-white/5"
                 />
               </div>

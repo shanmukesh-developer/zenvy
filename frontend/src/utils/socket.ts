@@ -6,7 +6,7 @@ const DEFAULT_SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localho
 const socketUrl = DEFAULT_SOCKET_URL.replace(/\/$/, "");
 
 export const socket = io(socketUrl, {
-  transports: ['polling', 'websocket'], // Allow fallback for better resilience
+  transports: ['websocket', 'polling'], // WebSocket first, polling fallback only
   withCredentials: true,
   autoConnect: true,
   reconnection: true,

@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
 import Image from 'next/image';
 import { useAdminAuth } from '@/utils/useAdminAuth';
 
@@ -172,6 +172,10 @@ interface MenuItem {
   isVegetarian?: boolean;
 }
 
+import { AddRestaurantForm, AddMenuItemForm } from '@/components/GourmetForms';
+
+// ... (LEGACY_DATA unchanged)
+
 export default function GourmetManagement() {
   const isAuthed = useAdminAuth();
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
@@ -182,10 +186,8 @@ export default function GourmetManagement() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [isAddingItem, setIsAddingItem] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [newRest, setNewRest] = useState({ name: '', location: 'Main Campus', imageUrl: '', commissionRate: 10, commissionType: 'percentage', vendorType: 'RESTAURANT', rating: 0, deliveryTime: 30, tags: '', operatingHoursStart: '09:00', operatingHoursEnd: '22:00', isActive: true, isOffline: false, password: '' });
-  const [newItem, setNewItem] = useState({ name: '', price: 0, category: '', description: '', image: '', isEliteOnly: false, tags: '', isVegetarian: false });
+  const [isCreating, setIsCreating] = useState(false);
+  const [isCreatingItem, setIsCreatingItem] = useState(false);
 
   useEffect(() => {
     fetchRestaurants();
@@ -199,8 +201,7 @@ export default function GourmetManagement() {
       });
       const data = await res.json();
       if (res.ok) setRestaurants(data);
-    } catch (_err) {
-      console.error('[RESTAURANT_FETCH_ERROR]', _err);
+    } catch {
     } finally {
       setLoading(false);
     }
@@ -217,16 +218,15 @@ export default function GourmetManagement() {
         body: JSON.stringify({ restaurants: LEGACY_DATA })
       });
       if (res.ok) fetchRestaurants();
-    } catch (_err) { console.error('[SYNC_ERROR]', _err); } finally { setIsSyncing(false); }
+    } catch { } finally { setIsSyncing(false); }
   };
 
-  const handleCreateRestaurant = async () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleCreateRestaurant = async (newRest: any, imageFile: File | null) => {
+    if (isCreating) return;
+    setIsCreating(true);
     try {
-      if (!newRest.name.trim()) return alert('Restaurant Name is required!');
-      if (!newRest.location.trim()) return alert('Location is required!');
-
       const token = localStorage.getItem('token');
-      
       let finalImageUrl = newRest.imageUrl;
       if (imageFile) {
         const formData = new FormData();
@@ -235,15 +235,13 @@ export default function GourmetManagement() {
           const uploadRes = await fetch(`${API_URL}/api/upload`, { method: 'POST', body: formData });
           const uploadData = await uploadRes.json();
           if (uploadData.imageUrl) finalImageUrl = uploadData.imageUrl;
-        } catch (_err) {
-          console.error("Upload failed", _err);
-        }
+        } catch (err) { console.error("Upload failed", err); }
       }
 
       const payload = {
         ...newRest,
         imageUrl: finalImageUrl,
-        tags: newRest.tags.split(',').map(t => t.trim()).filter(t => t),
+        tags: (newRest.tags || '').split(',').map((t: string) => t.trim()).filter((t: string) => t),
         operatingHours: { start: newRest.operatingHoursStart, end: newRest.operatingHoursEnd }
       };
       
@@ -253,28 +251,22 @@ export default function GourmetManagement() {
         body: JSON.stringify(payload)
       });
       
-      const data = await res.json();
       if (res.ok) { 
         setIsAdding(false); 
         fetchRestaurants(); 
-        setNewRest({ name: '', location: 'Main Campus', imageUrl: '', commissionRate: 10, commissionType: 'percentage', vendorType: 'RESTAURANT', rating: 0, deliveryTime: 30, tags: '', operatingHoursStart: '09:00', operatingHoursEnd: '22:00', isActive: true, isOffline: false, password: '' });
-      } else {
-        alert(`Failed to create restaurant: ${data.message || 'Unknown error'}`);
       }
-    } catch (_err) { 
-      console.error('[CREATE_ERROR]', _err); 
-      alert('Network or server error creating restaurant');
+    } catch { 
+    } finally {
+      setIsCreating(false);
     }
   };
 
-  const handleCreateMenuItem = async () => {
-    if(!selectedRestaurant) return;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleCreateMenuItem = async (newItem: any, imageFile: File | null) => {
+    if(!selectedRestaurant || isCreatingItem) return;
+    setIsCreatingItem(true);
     try {
-      if (!newItem.name.trim()) return alert('Item Name is required!');
-      if (isNaN(newItem.price) || newItem.price <= 0) return alert('Price must be a positive number!');
-
       const token = localStorage.getItem('token');
-      
       let finalImageUrl = newItem.image;
       if (imageFile) {
         const formData = new FormData();
@@ -283,9 +275,7 @@ export default function GourmetManagement() {
           const uploadRes = await fetch(`${API_URL}/api/upload`, { method: 'POST', body: formData });
           const uploadData = await uploadRes.json();
           if (uploadData.imageUrl) finalImageUrl = uploadData.imageUrl;
-        } catch (_err) {
-          console.error("Upload failed", _err);
-        }
+        } catch (err) { console.error("Item upload failed", err); }
       }
 
       const res = await fetch(`${API_URL}/api/admin/menu-items/new`, {
@@ -296,22 +286,17 @@ export default function GourmetManagement() {
           image: finalImageUrl,
           imageUrl: finalImageUrl,
           restaurantId: selectedRestaurant._id,
-          tags: newItem.tags.split(',').map(t => t.trim()).filter(t => t),
+          tags: (newItem.tags || '').split(',').map((t: string) => t.trim()).filter((t: string) => t),
           isVegetarian: newItem.isVegetarian
         })
       });
       
-      const data = await res.json();
       if (res.ok) { 
         setIsAddingItem(false); 
         fetchMenu(selectedRestaurant._id); 
-      } else {
-        alert(`Failed to create item: ${data.message || 'Unknown error'}`);
       }
-    } catch (_err) { 
-      console.error('[ITEM_CREATE_ERROR]', _err); 
-      alert('Network or server error creating menu item');
-    }
+    } catch { 
+    } finally { setIsCreatingItem(false); }
   };
 
   const fetchMenu = async (restaurantId: string) => {
@@ -322,7 +307,7 @@ export default function GourmetManagement() {
       });
       const data = await res.json();
       if (res.ok) setMenuItems(data);
-    } catch (_err) { console.error('[MENU_FETCH_ERROR]', _err); }
+    } catch { }
   };
 
   const toggleEliteItem = async (menuItem: MenuItem) => {
@@ -334,7 +319,7 @@ export default function GourmetManagement() {
         body: JSON.stringify({ ...menuItem, isEliteOnly: !menuItem.isEliteOnly })
       });
       if (res.ok && selectedRestaurant) fetchMenu(selectedRestaurant._id);
-    } catch (_err) { console.error('[ELITE_TOGGLE_ERROR]', _err); }
+    } catch { }
   };
 
   const deleteMenuItem = async (menuItemId: string) => {
@@ -345,9 +330,8 @@ export default function GourmetManagement() {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      // Optimistically remove from state
       setMenuItems(prev => prev.filter(i => i._id !== menuItemId));
-    } catch (_err) { console.error('[ITEM_DELETE_ERROR]', _err); }
+    } catch { }
   };
 
   const deleteRestaurant = async (restaurantId: string) => {
@@ -360,11 +344,8 @@ export default function GourmetManagement() {
       });
       if (res.ok) {
         setRestaurants(prev => prev.filter(r => r._id !== restaurantId));
-      } else {
-        const data = await res.json();
-        alert(`Failed to delete: ${data.message || 'Unknown error'}`);
       }
-    } catch (_err) { console.error('[REST_DELETE_ERROR]', _err); }
+    } catch { }
   };
 
   if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Authenticating...</div>;
@@ -401,150 +382,18 @@ export default function GourmetManagement() {
       </header>
 
       {isAdding && (
-        <div className="glass-card p-10 border-emerald-500/30">
-           <h3 className="text-xl font-black text-white uppercase tracking-tight mb-8">Deploy New Restaurant Node</h3>
-           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              <div className="space-y-3">
-                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Restaurant Name</label>
-                <input placeholder="e.g. Nexus Cafe" className="admin-input w-full" value={newRest.name} onChange={(e) => setNewRest({...newRest, name: e.target.value})} />
-              </div>
-
-              <div className="space-y-3">
-                <label className="text-[10px] font-black uppercase tracking-widest text-emerald-500 ml-1">Cover Image (Local File)</label>
-                <input type="file" accept="image/*" className="admin-input cursor-pointer w-full text-xs file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-[9px] file:font-black file:uppercase file:tracking-widest file:bg-emerald-500/20 file:text-emerald-400 hover:file:bg-emerald-500 hover:file:text-black transition-all" onChange={(e) => setImageFile(e.target.files?.[0] || null)} />
-              </div>
-
-              <div className="space-y-3">
-                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Location Campus</label>
-                <input placeholder="e.g. Main Campus" className="admin-input w-full" value={newRest.location} onChange={(e) => setNewRest({...newRest, location: e.target.value})} />
-              </div>
-              
-              <div className="space-y-3">
-                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Commission Split</label>
-                <div className="flex gap-4">
-                  <input placeholder="Amount" type="number" className="admin-input w-full" value={newRest.commissionRate} onChange={(e) => setNewRest({...newRest, commissionRate: parseFloat(e.target.value)})} />
-                  <select className="admin-input w-24 p-0 px-2 text-center" value={newRest.commissionType} onChange={(e) => setNewRest({...newRest, commissionType: e.target.value})}>
-                      <option value="percentage">%</option>
-                      <option value="flat">₹</option>
-                  </select>
-                </div>
-              </div>
-              
-              <div className="space-y-3">
-                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Vendor Category</label>
-                <select className="admin-input w-full" value={newRest.vendorType} onChange={(e) => setNewRest({...newRest, vendorType: e.target.value})}>
-                    <option value="RESTAURANT">🍽️ Restaurant (Food)</option>
-                    <option value="GROCERY">🍎 Grocery / Fresh Fruits</option>
-                    <option value="SWEETS">🍩 Sweets & Bakery</option>
-                    <option value="DRINKS">🥤 Drinks & Beverages</option>
-                    <option value="RENTAL">🚗 Rental (Bikes/Scooters)</option>
-                    <option value="GYM">💪 Gym & Nutrition</option>
-                    <option value="LAUNDRY">👔 Laundry & Dry Wash</option>
-                    <option value="PHARMACY">💊 Pharmacy & Wellness</option>
-                    <option value="STATIONARY">📚 Stationary & Books</option>
-                    <option value="SEASONAL">🎁 Seasonal & Gifts</option>
-                    <option value="GLOBAL_MARKET">🌐 Global Marketplace</option>
-                </select>
-              </div>
-
-              <div className="space-y-3">
-                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Starting Rating</label>
-                <input placeholder="e.g. 4.5" type="number" step="0.1" className="admin-input w-full" value={newRest.rating || ''} onChange={(e) => setNewRest({...newRest, rating: parseFloat(e.target.value)})} />
-              </div>
-
-              <div className="space-y-3">
-                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Delivery Time (Mins)</label>
-                <input placeholder="e.g. 30" type="number" className="admin-input w-full" value={newRest.deliveryTime || ''} onChange={(e) => setNewRest({...newRest, deliveryTime: parseInt(e.target.value)})} />
-              </div>
-
-              <div className="space-y-3">
-                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Search Tags</label>
-                <input placeholder="e.g. spicy, vegan, fast" autoComplete="off" className="admin-input w-full" value={newRest.tags} onChange={(e) => setNewRest({...newRest, tags: e.target.value})} />
-              </div>
-              
-              <div className="space-y-3">
-                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Operating Hours</label>
-                <div className="flex gap-4 admin-input items-center w-full">
-                  <input type="time" className="bg-transparent text-white outline-none w-full text-center" value={newRest.operatingHoursStart} onChange={(e) => setNewRest({...newRest, operatingHoursStart: e.target.value})} />
-                  <span className="text-gray-500">-</span>
-                  <input type="time" className="bg-transparent text-white outline-none w-full text-center" value={newRest.operatingHoursEnd} onChange={(e) => setNewRest({...newRest, operatingHoursEnd: e.target.value})} />
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Operational Toggles</label>
-                <div className="flex gap-4">
-                  <label className="flex-1 flex items-center justify-between admin-input cursor-pointer hover:bg-white/5 transition-colors">
-                    <span className="text-[10px] uppercase font-black text-gray-400">Active Node</span>
-                    <input type="checkbox" className="w-5 h-5 rounded-lg accent-emerald-500" checked={newRest.isActive} onChange={(e) => setNewRest({...newRest, isActive: e.target.checked})} />
-                  </label>
-                  <label className="flex-1 flex items-center justify-between admin-input cursor-pointer hover:bg-white/5 transition-colors">
-                    <span className="text-[10px] uppercase font-black text-gray-400">Offline Shop</span>
-                    <input type="checkbox" className="w-5 h-5 rounded-lg accent-emerald-500" checked={newRest.isOffline} onChange={(e) => setNewRest({...newRest, isOffline: e.target.checked})} />
-                  </label>
-                </div>
-              </div>
-              
-              {!newRest.isOffline && (
-                <div className="space-y-3">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Portal Access Password</label>
-                  <div className="relative w-full">
-                    <input placeholder="Setup Restaurant Password" autoComplete="new-password" type={showPassword ? "text" : "password"} className="admin-input w-full pr-12" value={newRest.password} onChange={(e) => setNewRest({...newRest, password: e.target.value})} />
-                    <button type="button" title={showPassword ? "Hide password" : "Show password"} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-emerald-500 transition-colors" onClick={() => setShowPassword(!showPassword)}>
-                      {showPassword ? "Hide" : "Show"}
-                    </button>
-                  </div>
-                </div>
-              )}
-           </div>
-           <div className="flex gap-4 mt-8">
-              <button onClick={handleCreateRestaurant} className="flex-1 py-5 bg-emerald-600 text-white font-black uppercase tracking-widest rounded-3xl">Execute Deployment</button>
-              <button onClick={() => setIsAdding(false)} className="px-10 py-5 bg-white/5 text-gray-500 font-black uppercase tracking-widest rounded-3xl">Cancel</button>
-           </div>
-        </div>
+        <AddRestaurantForm 
+          onCancel={() => setIsAdding(false)} 
+          onSubmit={handleCreateRestaurant} 
+          isCreating={isCreating} 
+        />
       )}
 
       {isAddingItem && (
-        <div className="glass-card p-10 border-blue-500/30">
-           <h3 className="text-xl font-black text-white uppercase tracking-tight mb-8">Deploy New Menu Asset</h3>
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div className="space-y-3">
-                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Asset Name</label>
-                <input placeholder="e.g. Premium Burger" className="admin-input w-full" value={newItem.name} onChange={(e) => setNewItem({...newItem, name: e.target.value})} />
-              </div>
-              <div className="space-y-3">
-                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Price (₹)</label>
-                <input placeholder="e.g. 150" type="number" className="admin-input w-full" value={newItem.price} onChange={(e) => setNewItem({...newItem, price: parseInt(e.target.value)})} />
-              </div>
-              <div className="space-y-3">
-                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Category</label>
-                <input placeholder="e.g. Mains, Sides" className="admin-input w-full" value={newItem.category} onChange={(e) => setNewItem({...newItem, category: e.target.value})} />
-              </div>
-              <div className="space-y-3">
-                <label className="text-[10px] font-black uppercase tracking-widest text-blue-500 ml-1">Item Image (Local File)</label>
-                <input type="file" accept="image/*" className="admin-input cursor-pointer w-full text-xs file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-[9px] file:font-black file:uppercase file:tracking-widest file:bg-blue-500/20 file:text-blue-400 hover:file:bg-blue-500 hover:file:text-white transition-all" onChange={(e) => setImageFile(e.target.files?.[0] || null)} />
-              </div>
-              <div className="space-y-3">
-                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Search Tags (Comma Separated)</label>
-                <input placeholder="e.g. spicy, vegan, bestseller" autoComplete="off" className="admin-input w-full" value={newItem.tags} onChange={(e) => setNewItem({...newItem, tags: e.target.value})} />
-              </div>
-              <div className="space-y-3">
-                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Dietary Config</label>
-                <label className="flex items-center justify-between admin-input cursor-pointer hover:bg-white/5 transition-colors w-full h-[58px]">
-                  <span className="text-[10px] uppercase font-black text-emerald-400">Strictly Vegetarian?</span>
-                  <input type="checkbox" className="w-5 h-5 rounded-lg accent-emerald-500" checked={newItem.isVegetarian} onChange={(e) => setNewItem({...newItem, isVegetarian: e.target.checked})} />
-                </label>
-              </div>
-              <div className="space-y-3 col-span-full">
-                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Description / Ingredients</label>
-                <textarea placeholder="Describe the item perfectly..." className="admin-input w-full h-24 p-5" value={newItem.description} onChange={(e) => setNewItem({...newItem, description: e.target.value})} />
-              </div>
-           </div>
-           <div className="flex gap-4 mt-8">
-              <button onClick={handleCreateMenuItem} className="flex-1 py-5 bg-blue-600 text-white font-black uppercase tracking-widest rounded-3xl">Commit Asset</button>
-              <button onClick={() => setIsAddingItem(false)} className="px-10 py-5 bg-white/5 text-gray-500 font-black uppercase tracking-widest rounded-3xl">Cancel</button>
-           </div>
-        </div>
+        <AddMenuItemForm 
+          onCancel={() => setIsAddingItem(false)} 
+          onSubmit={handleCreateMenuItem} 
+        />
       )}
 
       {view === 'list' && !isAdding ? (
@@ -552,55 +401,24 @@ export default function GourmetManagement() {
           {loading ? (
             <div className="col-span-full py-20 text-center font-black text-gray-600 animate-pulse tracking-widest uppercase">Initializing Gourmet Nodes...</div>
           ) : restaurants.map((rest) => (
-            <div key={rest._id} className="glass-card p-8 group hover:border-emerald-500/50 transition-all">
-              <div className="flex justify-between items-start mb-6">
-                <div className="w-16 h-16 bg-emerald-500/20 rounded-2xl overflow-hidden border border-white/10 relative">
-                    <Image src={rest.imageUrl || "/assets/placeholder.png"} fill style={{ objectFit: 'cover' }} alt={rest.name} />
-                </div>
-                <div className="text-right">
-                  <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Commission</span>
-                  <p className="text-xl font-black text-white">{rest.commissionRate}%</p>
-                </div>
-              </div>
-              <h4 className="text-xl font-black text-white uppercase tracking-tight mb-1">{rest.name}</h4>
-              <div className="flex items-center gap-2 mb-2">
-                <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${
-                  rest.vendorType === 'PHARMACY' ? 'bg-pink-500/20 text-pink-400' :
-                  rest.vendorType === 'STATIONARY' ? 'bg-indigo-500/20 text-indigo-400' :
-                  rest.vendorType === 'LAUNDRY' ? 'bg-cyan-500/20 text-cyan-400' :
-                  rest.vendorType === 'GYM' ? 'bg-orange-500/20 text-orange-400' :
-                  rest.vendorType === 'DRINKS' ? 'bg-purple-500/20 text-purple-400' :
-                  rest.vendorType === 'SEASONAL' ? 'bg-rose-500/20 text-rose-400' :
-                  rest.vendorType === 'RENTAL' ? 'bg-sky-500/20 text-sky-400' :
-                  rest.vendorType === 'GROCERY' ? 'bg-lime-500/20 text-lime-400' :
-                  rest.vendorType === 'SWEETS' ? 'bg-amber-500/20 text-amber-400' :
-                  rest.vendorType === 'GLOBAL_MARKET' ? 'bg-emerald-500/20 text-emerald-400' :
-                  'bg-white/10 text-gray-400'
-                }`}>{rest.vendorType || 'RESTAURANT'}</span>
-              </div>
-              <p className="text-xs text-gray-500 font-bold uppercase tracking-widest mb-6">{rest.location}</p>
-              <div className="flex gap-3">
-                <button onClick={() => { setSelectedRestaurant(rest); fetchMenu(rest._id); setView('menu'); }} className="flex-1 py-4 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-2xl text-[10px] font-black uppercase tracking-[0.1em] hover:bg-emerald-500 hover:text-white transition-all">Manage Assets</button>
-                <button onClick={() => deleteRestaurant(rest._id)} className="px-5 py-4 bg-red-500/10 text-red-500 border border-red-500/20 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all">Remove</button>
-              </div>
-            </div>
+            <RestaurantCard 
+              key={rest._id} 
+              rest={rest} 
+              onManage={(r: Restaurant) => { setSelectedRestaurant(r); fetchMenu(r._id); setView('menu'); }}
+              onDelete={deleteRestaurant}
+            />
           ))}
         </div>
       ) : view === 'menu' && !isAddingItem ? (
         <div className="glass-card p-8 bg-white/[0.01]">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {menuItems.map((item: MenuItem) => (
-                <div key={item._id} className="p-6 rounded-3xl bg-white/[0.02] border border-white/5 group hover:border-emerald-500/30 transition-all flex justify-between">
-                   <div>
-                      <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest mb-1">{item.category}</p>
-                      <h5 className="text-sm font-black text-white line-clamp-1">{item.name}</h5>
-                      <p className="text-xs font-black text-emerald-500 mt-1">₹{item.price}</p>
-                   </div>
-                   <div className="flex flex-col items-end justify-between">
-                     <button onClick={() => toggleEliteItem(item)} className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest ${item.isEliteOnly ? 'bg-[#C9A84C]/20 text-[#C9A84C]' : 'bg-white/5 text-gray-500'}`}>{item.isEliteOnly ? 'Elite' : 'Std'}</button>
-                     <button className="text-[9px] text-red-500/50 hover:text-red-500 font-black uppercase" onClick={() => deleteMenuItem(item._id)}>Remove</button>
-                   </div>
-                </div>
+                <MenuItemCard 
+                  key={item._id} 
+                  item={item} 
+                  onToggleElite={toggleEliteItem} 
+                  onDelete={deleteMenuItem} 
+                />
               ))}
               <div onClick={() => setIsAddingItem(true)} className="p-10 rounded-3xl border border-dashed border-white/10 flex flex-col items-center justify-center gap-4 cursor-pointer hover:bg-white/5 group transition-all">
                   <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-xl group-hover:scale-110 transition-transform">➕</div>
@@ -620,19 +438,85 @@ export default function GourmetManagement() {
           outline: none;
         }
         .admin-input:focus { border-color: rgba(16, 185, 129, 0.5); }
-        select.admin-input option {
-          background: #1a1a2e;
-          color: #ffffff;
-          padding: 12px 16px;
-          font-weight: 700;
-          font-size: 14px;
-        }
-        select.admin-input option:checked {
-          background: #10b981;
-          color: #000;
-        }
       `}</style>
     </div>
   );
 }
+
+// ─── Optimized Sub-Components ─────────────────────────────────
+
+const RestaurantCard = memo(({ rest, onManage, onDelete }: { rest: Restaurant, onManage: (r: Restaurant) => void, onDelete: (id: string) => void }) => (
+  <div className="glass-card p-8 group relative overflow-hidden flex flex-col justify-between h-full">
+    <div className="flex gap-6 items-start mb-6">
+      <div className="w-24 h-24 rounded-3xl overflow-hidden border border-white/10 shrink-0 relative bg-slate-900">
+        <Image 
+          src={rest.imageUrl || "/assets/placeholder.png"} 
+          fill 
+          style={{ objectFit: 'cover' }} 
+          alt={rest.name} 
+          className="group-hover:scale-110 transition-transform duration-700 ease-out" 
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex justify-between items-start">
+           <span className="text-[8px] font-black text-emerald-500 uppercase tracking-[0.2em] mb-1">{rest.vendorType || 'RESTAURANT'}</span>
+           <button onClick={() => onDelete(rest._id)} className="text-red-500/30 hover:text-red-500 hover:scale-125 transition-all text-xs">✕</button>
+        </div>
+        <h4 className="text-xl font-black text-white uppercase tracking-tight truncate">{rest.name}</h4>
+        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">📍 {rest.location}</p>
+        <div className="flex gap-2 mt-3">
+          {(rest.tags || []).slice(0, 2).map((t, i) => (
+            <span key={i} className="px-2 py-0.5 bg-white/5 border border-white/5 rounded text-[8px] font-black text-gray-400">{t}</span>
+          ))}
+        </div>
+      </div>
+    </div>
+    <div className="flex items-center justify-between pt-6 border-t border-white/5 mt-auto">
+       <div className="flex flex-col">
+          <span className="text-[8px] font-black text-gray-500 uppercase tracking-widest">Revenue Split</span>
+          <span className="text-sm font-black text-white">{rest.commissionRate}{rest.commissionType === 'percentage' ? '%' : '₹'}</span>
+       </div>
+       <button 
+         onClick={() => onManage(rest)}
+         className="px-6 py-2.5 bg-white/5 border border-white/10 rounded-2xl text-[9px] font-black uppercase tracking-widest text-white hover:bg-white/10 hover:border-white/20 transition-all"
+       >
+         Manage Assets →
+       </button>
+    </div>
+  </div>
+));
+RestaurantCard.displayName = 'RestaurantCard';
+
+const MenuItemCard = memo(({ item, onToggleElite, onDelete }: { item: MenuItem, onToggleElite: (i: MenuItem) => void, onDelete: (id: string) => void }) => (
+  <div className={`glass-card p-6 group transition-all duration-300 ${item.isEliteOnly ? 'border-[#C9A84C]/30 bg-[#C9A84C]/[0.02]' : 'border-white/5'}`}>
+     <div className="flex gap-6">
+        <div className="w-20 h-20 rounded-2xl overflow-hidden border border-white/10 shrink-0 relative bg-slate-900">
+           <Image src={item.image || "/assets/placeholder.png"} fill style={{ objectFit: 'cover' }} alt={item.name} />
+           {item.isEliteOnly && <div className="absolute top-1 left-1 bg-[#C9A84C] text-black text-[7px] font-black px-1 rounded">ELITE</div>}
+        </div>
+        <div className="flex-1 min-w-0 flex flex-col justify-between py-1">
+           <div>
+              <div className="flex justify-between items-start">
+                 <h5 className="text-sm font-black text-white uppercase tracking-tight truncate">{item.name}</h5>
+                 <button onClick={() => onDelete(item._id)} className="text-red-500/40 hover:text-red-500 text-[10px]">✕</button>
+              </div>
+              <p className="text-[10px] font-bold text-gray-500 uppercase">{item.category}</p>
+           </div>
+           <div className="flex justify-between items-end">
+              <span className="text-sm font-black text-emerald-400">₹{item.price}</span>
+              <div className="flex gap-2">
+                 <button 
+                   onClick={() => onToggleElite(item)}
+                   className={`p-1.5 rounded-lg border transition-all ${item.isEliteOnly ? 'bg-[#C9A84C] border-[#C9A84C] text-black' : 'bg-white/5 border-white/10 text-gray-500 hover:border-white/20'}`}
+                 >
+                   <span className="text-[8px] font-black uppercase">{item.isEliteOnly ? '★ Elite' : '☆ Standard'}</span>
+                 </button>
+              </div>
+           </div>
+        </div>
+     </div>
+  </div>
+));
+MenuItemCard.displayName = 'MenuItemCard';
 

@@ -763,8 +763,14 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      <div className="mt-10 pt-6 border-t border-white/5 pb-10">
-        <button onClick={handleLogout} className="w-full bg-white/5 hover:bg-white/10 text-white/20 py-5 rounded-[30px] text-[10px] uppercase font-black tracking-[0.4em] transition-all border border-white/5">Sign Out</button>
+      <div className="mt-10 pt-10 border-t border-white/5 pb-20">
+        <button 
+          onClick={handleLogout} 
+          className="w-full bg-red-500/5 hover:bg-red-500/10 text-red-500/60 hover:text-red-500 py-6 rounded-[32px] text-[11px] uppercase font-black tracking-[0.5em] transition-all border border-red-500/10 hover:border-red-500/30 shadow-lg active:scale-[0.98]"
+        >
+          De-authorize Session
+        </button>
+        <p className="text-center mt-6 text-[8px] font-bold text-white/10 uppercase tracking-[0.3em]">End active nexus uplink and clear local cache</p>
       </div>
 
 

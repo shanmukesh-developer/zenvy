@@ -1,4 +1,4 @@
-const { connectDB, getSequelize } = require('./config/db');
+const { connectDB } = require('./config/db');
 const { getMenuItemModel } = require('./models/MenuItem');
 
 async function dump() {

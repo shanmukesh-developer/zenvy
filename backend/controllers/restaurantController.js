@@ -53,7 +53,7 @@ const getRestaurantOrders = async (req, res) => {
       order: [['createdAt', 'DESC']]
     });
     res.json(orders.map(o => ({ ...o.toJSON(), _id: o.id })));
-  } catch (error) {
+  } catch {
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -127,6 +127,11 @@ const toggleMenuItemAvailability = async (req, res) => {
     const item = await MenuItem.findByPk(req.params.itemId);
     if (!item) return res.status(401).json({ message: 'Menu data missing or session stale (Nexus Sync Required)' });
 
+    // Security: Only the restaurant that owns the item can toggle it
+    if (req.user.role === 'restaurant' && item.restaurantId !== req.user.id) {
+       return res.status(403).json({ message: 'Not authorized to manage this asset' });
+    }
+
     item.isAvailable = !item.isAvailable;
     await item.save();
 
@@ -134,7 +139,7 @@ const toggleMenuItemAvailability = async (req, res) => {
     io.emit('inventory_updated', { itemId: item.id, isAvailable: item.isAvailable });
 
     res.json({ message: 'Item availability updated', _id: item.id, isAvailable: item.isAvailable });
-  } catch (error) {
+  } catch {
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -148,11 +153,64 @@ const updateMenuItemTags = async (req, res) => {
     const item = await MenuItem.findByPk(req.params.itemId);
     if (!item) return res.status(401).json({ message: 'Menu data missing or session stale (Nexus Sync Required)' });
 
+    // Security check
+    if (req.user.role === 'restaurant' && item.restaurantId !== req.user.id) {
+       return res.status(403).json({ message: 'Not authorized to manage this asset' });
+    }
+
     item.tags = tags;
     await item.save();
 
     res.json({ message: 'Item tags updated', _id: item.id, tags: item.tags });
+  } catch {
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Create Menu Item (Restaurant Portal)
+// @route   POST /api/restaurants/menu
+const createMenuItem = async (req, res) => {
+  try {
+    const { name, price, description, imageUrl, category, isVegetarian } = req.body;
+    const MenuItem = getMenuItemModel();
+    
+    const restaurantId = req.user.role === 'restaurant' ? req.user.id : req.body.restaurantId;
+    if (!restaurantId) return res.status(400).json({ message: 'Restaurant ID required' });
+
+    const newItem = await MenuItem.create({
+      restaurantId,
+      name,
+      price,
+      description,
+      imageUrl,
+      category,
+      isVegetarian,
+      isAvailable: true
+    });
+
+    res.status(201).json(newItem);
   } catch (error) {
+    console.error('[CREATE_MENU_ITEM_ERROR]', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Update Menu Item (Restaurant Portal)
+// @route   PUT /api/restaurants/menu/:itemId
+const updateMenuItem = async (req, res) => {
+  try {
+    const MenuItem = getMenuItemModel();
+    const item = await MenuItem.findByPk(req.params.itemId);
+    if (!item) return res.status(404).json({ message: 'Menu item not found' });
+
+    // Security check
+    if (req.user.role === 'restaurant' && item.restaurantId !== req.user.id) {
+       return res.status(403).json({ message: 'Not authorized to manage this asset' });
+    }
+
+    await item.update(req.body);
+    res.json(item);
+  } catch {
     res.status(500).json({ message: 'Server error' });
   }
 };
@@ -164,5 +222,7 @@ module.exports = {
   restaurantLogin, 
   getRestaurantOrders, 
   toggleMenuItemAvailability,
-  updateMenuItemTags
+  updateMenuItemTags,
+  createMenuItem,
+  updateMenuItem
 };

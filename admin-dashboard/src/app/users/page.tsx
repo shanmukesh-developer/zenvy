@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, memo } from 'react';
 import { useAdminAuth } from '@/utils/useAdminAuth';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
@@ -8,7 +8,7 @@ interface User {
   _id: string;
   name: string;
   email: string;
-  phoneNumber: string;
+  phone: string;
   isElite: boolean;
   walletBalance: number;
 }
@@ -19,6 +19,35 @@ interface AuditLog {
   details: string;
   timestamp: string;
 }
+
+const UserCard = memo(({ user, onToggleElite, onAddWallet }: { 
+  user: User, 
+  onToggleElite: (id: string, status: boolean) => void,
+  onAddWallet: (id: string) => void 
+}) => (
+  <div className="glass-card p-8 group relative overflow-hidden border-white/5 group hover:border-[#C9A84C]/30 transition-all">
+    <div className="flex items-start justify-between mb-8">
+       <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-xl font-black text-white">{user.name[0]}</div>
+       <button onClick={() => onToggleElite(user._id, user.isElite)} className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border transition-all ${user.isElite ? 'bg-[#C9A84C]/20 text-[#C9A84C] border-[#C9A84C]/30' : 'bg-white/5 text-gray-500 border-white/10'}`}>
+         {user.isElite ? 'Elite Mode' : 'Standard'}
+       </button>
+    </div>
+    <h4 className="text-xl font-black text-white uppercase tracking-tight line-clamp-1">{user.name}</h4>
+    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-4">{user.phone || 'NO_CONTACT'}</p>
+    
+    <button 
+      onClick={() => onAddWallet(user._id)}
+      className="w-full mb-6 py-2 bg-white/5 border border-white/10 rounded-xl text-[8px] font-black uppercase text-gray-400 hover:bg-emerald-500/10 hover:text-emerald-400 hover:border-emerald-500/20 transition-all"
+    >
+      + Inject Credits
+    </button>
+    <div className="pt-6 border-t border-white/5 flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-emerald-500">
+        <span>Verified Resident</span>
+        <span className="text-white">₹{user.walletBalance.toFixed(0)} Credits</span>
+    </div>
+  </div>
+));
+UserCard.displayName = 'UserCard';
 
 export default function UserManagement() {
   const isAuthed = useAdminAuth();
@@ -67,10 +96,24 @@ export default function UserManagement() {
     } catch (err) { console.error('[ELITE_TOGGLE_ERROR]', err); }
   };
 
+  const addWalletBalance = async (userId: string) => {
+    const amount = prompt('Enter amount to add to credits:');
+    if (!amount || isNaN(Number(amount))) return;
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_URL}/api/admin/users/${userId}/wallet`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ amount: Number(amount) })
+      });
+      if (res.ok) fetchUsers();
+    } catch (err) { console.error('[WALLET_ERROR]', err); }
+  };
+
   const filteredUsers = users.filter(u => 
     u.name?.toLowerCase().includes(search.toLowerCase()) || 
     u.email?.toLowerCase().includes(search.toLowerCase()) ||
-    u.phoneNumber?.toLowerCase().includes(search.toLowerCase())
+    u.phone?.toLowerCase().includes(search.toLowerCase())
   );
 
   if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Authenticating...</div>;
@@ -97,20 +140,12 @@ export default function UserManagement() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
              {loading ? <div className="col-span-full py-20 text-center animate-pulse text-gray-600 font-black uppercase">Initialising Node Scan...</div> : 
              filteredUsers.map((user) => (
-               <div key={user._id} className="glass-card p-8 group relative overflow-hidden border-white/5 group hover:border-[#C9A84C]/30 transition-all">
-                  <div className="flex items-start justify-between mb-8">
-                     <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-xl font-black text-white">{user.name[0]}</div>
-                     <button onClick={() => toggleElite(user._id, user.isElite)} className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border transition-all ${user.isElite ? 'bg-[#C9A84C]/20 text-[#C9A84C] border-[#C9A84C]/30' : 'bg-white/5 text-gray-500 border-white/10'}`}>
-                       {user.isElite ? 'Elite Mode' : 'Standard'}
-                     </button>
-                  </div>
-                  <h4 className="text-xl font-black text-white uppercase tracking-tight line-clamp-1">{user.name}</h4>
-                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-6">{user.email}</p>
-                  <div className="pt-6 border-t border-white/5 flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-emerald-500">
-                      <span>Verified Resident</span>
-                      <span className="text-white">₹{user.walletBalance.toFixed(0)} Credits</span>
-                  </div>
-               </div>
+               <UserCard 
+                 key={user._id} 
+                 user={user} 
+                 onToggleElite={toggleElite} 
+                 onAddWallet={addWalletBalance} 
+               />
              ))}
           </div>
         </div>

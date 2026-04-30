@@ -209,7 +209,7 @@ export default function NexusExplorer({ restaurants, onSelectItem, favorites, to
                     {/* Image Hub */}
                     <div className="relative h-32 md:h-64 w-full rounded-[16px] md:rounded-[36px] overflow-hidden mb-3 md:mb-6 border border-white/5">
                       <SafeImage 
-                        src={item.imageUrl} 
+                        src={item.image || item.imageUrl} 
                         alt={item.name}
                         fill
                         className="object-cover group-hover:scale-110 transition-transform duration-700"
@@ -220,11 +220,11 @@ export default function NexusExplorer({ restaurants, onSelectItem, favorites, to
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (item.id) toggleFavorite(item.id);
+                          if (item.id || item._id) toggleFavorite((item.id || item._id)!);
                         }}
                         className="absolute top-6 right-6 w-12 h-12 rounded-full bg-black/40 backdrop-blur-xl border border-white/10 flex items-center justify-center text-white/40 hover:text-red-500 transition-all active:scale-90"
                       >
-                        <svg className={`w-5 h-5 ${item.id && favorites.includes(item.id) ? 'fill-red-500 text-red-500' : 'fill-none'}`} viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                        <svg className={`w-5 h-5 ${(item.id && favorites.includes(item.id)) || (item._id && favorites.includes(item._id)) ? 'fill-red-500 text-red-500' : 'fill-none'}`} viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                           <path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                         </svg>
                       </button>

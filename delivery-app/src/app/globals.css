@@ -17,6 +17,10 @@
   --surface: #111114;
 }
 
+html {
+  font-size: 90%;
+}
+
 body {
   color: var(--foreground);
   background: var(--background);

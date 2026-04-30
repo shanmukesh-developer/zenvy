@@ -11,6 +11,10 @@
   --nexus-emerald: #10B981;
 }
 
+html {
+  font-size: 90%;
+}
+
 body {
   color: rgb(var(--foreground-rgb));
   background: radial-gradient(circle at top right, rgba(37, 99, 235, 0.05), transparent 400px),

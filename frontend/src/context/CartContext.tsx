@@ -44,8 +44,17 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
     }
   }, [cart, isLoaded]);
 
-  const addToCart = (item: Omit<CartItem, 'quantity'> & { quantity?: number }) => {
-    const itemWithQty = { ...item, quantity: item.quantity || 1 };
+  const addToCart = (item: Omit<CartItem, 'quantity'> & { quantity?: number, imageUrl?: string }) => {
+    const itemWithQty = { ...item, quantity: item.quantity || 1, image: item.image || item.imageUrl };
+    
+    // Multi-Restaurant Validation
+    if (cart.length > 0) {
+      const currentRestaurantId = cart[0].restaurantId;
+      if (currentRestaurantId !== itemWithQty.restaurantId) {
+         throw new Error('MULTIPLE_RESTAURANTS');
+      }
+    }
+
     setCart((prev) => {
       const normalizedId = String(itemWithQty.id).trim();
       const existing = prev.find((i) => String(i.id).trim() === normalizedId);

@@ -11,6 +11,8 @@ interface OrderRecord {
   restaurantId?: string;
   items: { name?: string; quantity: number; priceAtOrder: number }[];
   deliveryPin?: string;
+  paymentMethod?: string;
+  upiStatus?: string;
 }
 
 // Skeleton loading component
@@ -163,7 +165,9 @@ export default function OrdersPage() {
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
                       <span className={`text-xs ${statusColor(order.status)}`}>{statusIcon(order.status)}</span>
-                      <h3 className="text-sm font-black">Order #{orders.length - orders.findIndex(o => o._id === order._id)}</h3>
+                      <h3 className="text-sm font-black tracking-tight text-white/80">
+                        Order <span className="text-[#C9A84C]">#{order._id.slice(-6).toUpperCase()}</span>
+                      </h3>
                     </div>
                     <span className={`text-[9px] font-black uppercase tracking-widest ${statusColor(order.status)}`}>
                       {order.status}
@@ -191,6 +195,15 @@ export default function OrdersPage() {
                                 <p className="text-[9px] font-bold text-white/50">Show to Rider</p>
                              </div>
                           </div>
+                          
+                          {order.paymentMethod === 'UPI' && (
+                            <div className={`mt-3 px-4 py-2 rounded-xl border flex items-center justify-between ${order.upiStatus === 'Verified' ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-amber-500/10 border-amber-500/20 animate-pulse'}`}>
+                               <p className="text-[8px] font-black uppercase tracking-widest text-secondary-text">UPI Verification</p>
+                               <span className={`text-[10px] font-black uppercase tracking-widest ${order.upiStatus === 'Verified' ? 'text-emerald-400' : 'text-amber-500'}`}>
+                                 {order.upiStatus === 'Verified' ? '✓ Platform Confirmed' : '⌚ Awaiting Admin Sync'}
+                               </span>
+                            </div>
+                          )}
                        </div>
                        
                        <div className="space-y-2 mb-4">

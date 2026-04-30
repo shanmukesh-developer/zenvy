@@ -22,14 +22,13 @@ interface TaskCardProps {
   onDecline: (id: string) => void;
 }
 
-export function TaskCard({ order, timer, sequence, onAccept, onDecline }: TaskCardProps) {
-  const isUrgent = timer !== undefined && timer <= 10;
+export function TaskCard({ order, sequence, onAccept, onDecline }: TaskCardProps) {
 
   return (
     <motion.div 
       initial={{ opacity: 0, scale: 0.98, y: 10 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
-      className={`metric-card relative overflow-hidden group border ${isUrgent ? 'border-red-500/30' : 'border-white/5'}`}
+      className="metric-card relative overflow-hidden group border border-white/5"
     >
       <div className="flex justify-between items-start mb-6">
         <div className="space-y-1">
@@ -37,14 +36,13 @@ export function TaskCard({ order, timer, sequence, onAccept, onDecline }: TaskCa
             {sequence ? `Priority Task #${sequence}` : 'Available Task'}
           </p>
           <h4 className="text-xl font-bold text-white tracking-tight">{order.restaurant}</h4>
+          <p className="text-[9px] font-bold text-blue-400/70 uppercase tracking-widest mt-0.5">#{order.id?.slice(-6).toUpperCase()}</p>
         </div>
         
-        {timer !== undefined && (
-          <div className="flex flex-col items-end">
-            <span className={`text-2xl font-bold tabular-nums ${isUrgent ? 'text-red-500' : 'text-blue-500'}`}>{timer}s</span>
-            <span className="text-[8px] font-bold text-slate-500 uppercase tracking-widest mt-1">Expiring</span>
-          </div>
-        )}
+        <div className="text-right">
+          <span className="text-xl font-bold text-emerald-500">+₹30</span>
+          <p className="text-[8px] font-bold text-slate-500 uppercase tracking-widest mt-1">Your Earn</p>
+        </div>
       </div>
 
       <div className="bg-white/[0.02] rounded-2xl p-4 mb-8 border border-white/5">
@@ -78,16 +76,7 @@ export function TaskCard({ order, timer, sequence, onAccept, onDecline }: TaskCa
         </button>
       </div>
 
-      {timer !== undefined && (
-        <div className="absolute top-0 left-0 w-full h-1 bg-white/[0.03]">
-           <motion.div 
-             initial={{ width: '100%' }}
-             animate={{ width: '0%' }}
-             transition={{ duration: 30, ease: 'linear' }}
-             className={`h-full ${isUrgent ? 'bg-red-500' : 'bg-blue-500'}`}
-           />
-        </div>
-      )}
+
     </motion.div>
   );
 }
@@ -108,12 +97,17 @@ export function HistoryCard({ order }: { order: Order }) {
         <div>
           <h4 className="text-[13px] font-bold text-white uppercase tracking-tight">{order.restaurant}</h4>
           <p className="text-[9px] text-slate-500 font-bold uppercase tracking-[0.15em] mt-0.5">
-            Success • {date}
+            #{order.id?.slice(-6).toUpperCase()} • {date}
           </p>
         </div>
       </div>
-      <div className="text-right">
-        <p className="text-sm font-bold text-emerald-500 tabular-nums">+{order.earnings}</p>
+        <div className="text-right">
+        <p className="text-sm font-bold text-emerald-500 tabular-nums">
+          {order.earnings 
+            ? (typeof order.earnings === 'string' && order.earnings.includes('₹') ? order.earnings : `₹${order.earnings}`)
+            : '+₹30'
+          }
+        </p>
         <p className="text-[8px] font-bold text-slate-600 uppercase tracking-widest">Earned</p>
       </div>
     </motion.div>

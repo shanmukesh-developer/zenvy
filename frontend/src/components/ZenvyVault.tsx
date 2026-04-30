@@ -14,6 +14,7 @@ interface VaultItem {
   originalPrice: number;
   remainingCount: number;
   imageUrl: string;
+  image?: string;
   streakRequirement?: number;
 }
 
@@ -236,7 +237,7 @@ export default function ZenvyVault() {
                         
                         <div className="w-28 h-28 rounded-2xl relative overflow-hidden shrink-0 border border-white/10">
                            <SafeImage 
-                            src={item.imageUrl} 
+                            src={item.image || item.imageUrl} 
                             alt={item.name} 
                             fill 
                             className="object-cover group-hover:scale-110 transition-transform duration-1000" 

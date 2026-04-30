@@ -46,9 +46,6 @@ export default function NexusLayoutClient({
           <Link href="/vault" className="sidebar-link">
             <span>🕯️</span> Zenvy Vault
           </Link>
-          <Link href="/blocks" className="sidebar-link">
-            <span>🏆</span> Block Wars
-          </Link>
           <Link href="/finance" className="sidebar-link">
             <span>💰</span> Finance Trace
           </Link>

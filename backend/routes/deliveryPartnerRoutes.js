@@ -1,5 +1,5 @@
 const express = require('express');
-const { registerPartner, authPartner, acceptOrder, getPendingOrders, getActiveOrders, updateOrderStatus, toggleOnline, getOrderHistory, saveFcmToken, getLeaderboard, getRiderProfile, updateRiderProfile, getPublicRiderProfile, getTodayStats } = require('../controllers/deliveryPartnerController');
+const { registerPartner, authPartner, acceptOrder, getPendingOrders, getActiveOrders, updateOrderStatus, toggleOnline, getOrderHistory, saveFcmToken, getLeaderboard, getRiderProfile, updateRiderProfile, getPublicRiderProfile, getTodayStats, cancelOrderByRider } = require('../controllers/deliveryPartnerController');
 const { protect } = require('../middleware/authMiddleware');
 const router = express.Router();
 
@@ -16,6 +16,7 @@ router.put('/profile', protect, updateRiderProfile);
 router.get('/profile/:id/public', getPublicRiderProfile);   // No auth — customer tracking
 router.put('/accept/:orderId', protect, acceptOrder);
 router.put('/status/:orderId', protect, updateOrderStatus);
+router.put('/cancel/:orderId', protect, cancelOrderByRider);
 router.put('/online', protect, toggleOnline);
 
 module.exports = router;

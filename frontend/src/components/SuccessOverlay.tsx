@@ -8,9 +8,11 @@ interface SuccessOverlayProps {
   title: string;
   message: string;
   type?: 'success' | 'error';
+  actionLabel?: string;
+  onAction?: () => void;
 }
 
-export default function SuccessOverlay({ isOpen, onClose, title, message, type = 'success' }: SuccessOverlayProps) {
+export default function SuccessOverlay({ isOpen, onClose, title, message, type = 'success', actionLabel, onAction }: SuccessOverlayProps) {
   const [mounted, setMounted] = useState(false);
   const [show, setShow] = useState(false);
 
@@ -60,12 +62,22 @@ export default function SuccessOverlay({ isOpen, onClose, title, message, type =
         <h2 className={`text-2xl font-black mb-3 tracking-tight ${isError ? 'text-red-500' : 'text-gold-gradient'}`}>{title}</h2>
         <p className="text-secondary-text text-sm font-medium leading-relaxed mb-8">{message}</p>
 
-        <button 
-          onClick={() => { setShow(false); setTimeout(onClose, 500); }}
-          className="w-full h-14 bg-white/5 border border-white/10 rounded-full text-[10px] font-black uppercase tracking-[0.2em] hover:bg-white/10 transition-all"
-        >
-          {isError ? 'Close' : 'Dismiss'}
-        </button>
+        <div className="w-full space-y-3">
+          {actionLabel && onAction && (
+            <button 
+              onClick={() => { onAction(); setShow(false); setTimeout(onClose, 500); }}
+              className={`w-full h-14 ${isError ? 'bg-red-500 text-white' : 'bg-primary-yellow text-black'} rounded-full text-[10px] font-black uppercase tracking-[0.2em] shadow-lg transition-all active:scale-95`}
+            >
+              {actionLabel}
+            </button>
+          )}
+          <button 
+            onClick={() => { setShow(false); setTimeout(onClose, 500); }}
+            className="w-full h-14 bg-white/5 border border-white/10 rounded-full text-[10px] font-black uppercase tracking-[0.2em] hover:bg-white/10 transition-all"
+          >
+            {isError ? 'Close' : 'Dismiss'}
+          </button>
+        </div>
 
         {/* Ambient Glow */}
         <div className={`absolute -z-10 w-48 h-48 ${isError ? 'bg-red-500/10' : 'bg-[#C9A84C]/10'} rounded-full blur-[60px]`} />

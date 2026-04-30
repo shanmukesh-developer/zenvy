@@ -26,9 +26,19 @@ const initRestaurantModel = (sequelize) => {
     password: { type: DataTypes.STRING, allowNull: true } // For restaurant portal login
   }, { timestamps: true });
 
-  Restaurant.beforeCreate(async (restaurant) => {
-    if (restaurant.password) {
+  const hashPassword = async (restaurant) => {
+    if (restaurant.password && restaurant.changed('password')) {
       restaurant.password = await bcrypt.hash(restaurant.password, 10);
+    }
+  };
+
+  Restaurant.beforeCreate(hashPassword);
+  Restaurant.beforeUpdate(hashPassword);
+  Restaurant.beforeBulkCreate(async (restaurants) => {
+    for (const rest of restaurants) {
+      if (rest.password) {
+        rest.password = await bcrypt.hash(rest.password, 10);
+      }
     }
   });
 

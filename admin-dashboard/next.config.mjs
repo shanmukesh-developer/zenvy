@@ -2,6 +2,8 @@
 const nextConfig = {
   output: 'export',
   trailingSlash: true,
+  compress: true,
+  poweredByHeader: false,
   images: { unoptimized: true },
 };
 

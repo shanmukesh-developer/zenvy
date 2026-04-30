@@ -97,8 +97,8 @@ const connectDB = async () => {
         }
       },
       pool: {
-        max: 5,
-        min: 1,
+        max: 10,
+        min: 2,
         acquire: 60000,
         idle: 20000
       },
@@ -151,7 +151,7 @@ const connectDB = async () => {
         await sequelize.query('ALTER TABLE "Restaurants" ALTER COLUMN "imageUrl" TYPE TEXT;');
         await sequelize.query('ALTER TABLE "MenuItems" ALTER COLUMN "imageUrl" TYPE TEXT;');
         console.log('✅ [DB_MIGRATION] Asset columns expanded to TEXT.');
-      } catch (e) { /* already done or table missing — safe to skip */ }
+      } catch { /* already done or table missing — safe to skip */ }
     }
   } catch (error) {
     console.error('❌ [DB_FATAL] Database connection failed:', error.message);
@@ -168,7 +168,7 @@ const connectDB = async () => {
       logging: false
     });
     initializeAllModels(sequelize);
-    await sequelize.sync();
+    await sequelize.sync({ alter: false });
     console.log('✅ [DB_FALLBACK] Emergency SQLite is now active with models.');
   }
 };

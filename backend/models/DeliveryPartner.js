@@ -13,7 +13,7 @@ const initDeliveryPartnerModel = (sequelize) => {
     password: { type: DataTypes.STRING, allowNull: false },
     vehicleType: { type: DataTypes.STRING },
     vehicleNumber: { type: DataTypes.STRING },
-    photoUrl: { type: DataTypes.STRING },
+    photoUrl: { type: DataTypes.TEXT },
     bio: { type: DataTypes.TEXT },
     emergencyContact: { type: DataTypes.STRING },
     liveLocation: { type: DataTypes.JSON, defaultValue: { lat: null, lng: null } },
@@ -24,6 +24,8 @@ const initDeliveryPartnerModel = (sequelize) => {
     averageRating: { type: DataTypes.FLOAT, defaultValue: 5 },
     totalRatings: { type: DataTypes.INTEGER, defaultValue: 0 },
     fcmTokens: { type: DataTypes.JSON, defaultValue: [] },
+    isFcmActive: { type: DataTypes.BOOLEAN, defaultValue: false },
+    isSosActive: { type: DataTypes.BOOLEAN, defaultValue: false },
     isApproved: { type: DataTypes.BOOLEAN, defaultValue: false }
   }, { 
     timestamps: true,
@@ -33,8 +35,18 @@ const initDeliveryPartnerModel = (sequelize) => {
     ]
   });
 
-  DeliveryPartner.beforeCreate(async (partner) => {
-    partner.password = await bcrypt.hash(partner.password, 10);
+  const hashPassword = async (partner) => {
+    if (partner.changed('password')) {
+      partner.password = await bcrypt.hash(partner.password, 10);
+    }
+  };
+  
+  DeliveryPartner.beforeCreate(hashPassword);
+  DeliveryPartner.beforeUpdate(hashPassword);
+  DeliveryPartner.beforeBulkCreate(async (partners) => {
+    for (const partner of partners) {
+      partner.password = await bcrypt.hash(partner.password, 10);
+    }
   });
 
   DeliveryPartner.prototype.comparePassword = async function(candidatePassword) {
