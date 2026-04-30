@@ -621,7 +621,7 @@ export default function Home() {
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
                 <div className="flex flex-col">
                   <div className="flex items-center gap-3 mb-2">
-                    <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-xl shadow-[0_0_20px_rgba(255,255,255,0.05)] overflow-hidden">
+                    <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-xl overflow-hidden">
                       {user?.profileImage ? (
                         <SafeImage src={user.profileImage} alt="profile" fill className="object-cover" />
                       ) : '👤'}
@@ -1386,7 +1386,7 @@ export default function Home() {
             </div>
           </section>
 
-        <footer className="fixed bottom-0 left-0 right-0 h-16 bg-black/80 backdrop-blur-3xl border-t border-white/5 flex items-center justify-around sm:hidden z-[100] pb-safe">
+        <footer className="fixed bottom-0 left-0 right-0 h-[4.4rem] bg-black/80 backdrop-blur-3xl border-t border-white/5 flex items-center justify-around sm:hidden z-[100] pb-safe">
           <Magnetic>
             <Link href="/" className="flex flex-col items-center gap-1.5 nav-icon-active">
               <div className="tab-pill">
