@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Root of the HostelBites (zenvy) Ecosystem. USE RENDER BLUEPRINTS TO DEPLOY.",
   "scripts": {
-    "dev": "start \"Backend\" cmd /c \"cd backend && npm run dev\" & start \"Frontend\" cmd /c \"cd frontend && npm run dev\" & start \"Delivery\" cmd /c \"cd delivery-app && npm run dev\" & start \"Admin\" cmd /c \"cd admin-dashboard && npm run dev\" & start \"Restaurant\" cmd /c \"cd restaurant-portal && npm run dev\"",
+    "dev": "start \"Backend\" cmd /c \"cd backend && npm run dev\" & start \"Frontend\" cmd /c \"cd frontend && npm run dev\" & start \"Delivery\" cmd /c \"cd delivery-app && npm run dev\" & start \"Admin\" cmd /c \"cd admin-dashboard && npm run dev\" & start \"Restaurant\" cmd /c \"cd restaurant-portal && npm run dev\",
     "reset": "taskkill /F /IM node.exe /T",
     "start": "echo 'ERR: Do not deploy root. Use the Blueprints feature on Render with render.yaml.' && exit 1"
   },

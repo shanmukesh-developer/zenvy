@@ -1,7 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="app_name">HostelBites Delivery</string>
-    <string name="title_activity_main">HostelBites Delivery</string>
-    <string name="package_name">com.srm.hostelbitesdelivery</string>
-    <string name="custom_url_scheme">com.srm.hostelbitesdelivery</string>
-</resources>

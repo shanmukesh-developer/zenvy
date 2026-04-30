@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 
@@ -16,6 +16,15 @@ const geistMono = localFont({
 export const metadata: Metadata = {
   title: "Zenvy Rider | Logistics Command",
   description: "Elite Delivery Networking & Real-time Logistics Management",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
+  themeColor: "#0A0A0B"
 };
 
 import PushNotificationManager from '@/components/PushNotificationManager';

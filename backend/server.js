@@ -87,7 +87,7 @@ const ALLOWED_ORIGINS = [
 const isAllowedOrigin = (origin) => {
   if (!origin) return true;
   if (ALLOWED_ORIGINS.includes(origin)) return true;
-  if (origin.includes('localhost') || origin.includes('127.0.0.1')) return true;
+  if (origin.includes('localhost') || origin.includes('127.0.0.1') || origin.startsWith('capacitor://')) return true;
   // Allow any Render subdomain for this specific project
   if (origin.includes('hostelbites') && origin.endsWith('.onrender.com')) return true;
   if (origin.includes('zenvy') && origin.endsWith('.onrender.com')) return true;

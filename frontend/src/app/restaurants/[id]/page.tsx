@@ -1,6 +1,10 @@
 import RestaurantMenuClient from './ClientPage';
 
-export const dynamicParams = true;
+export function generateStaticParams() {
+  return [{ id: '1' }];
+}
+
+export const dynamicParams = false;
 
 export default function RestaurantMenuPage({ params }: { params: { id: string } }) {
   return <RestaurantMenuClient restaurantId={params.id} />;
