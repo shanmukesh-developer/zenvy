@@ -3,8 +3,6 @@ import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import { CartProvider } from '@/context/CartContext';
-import PushNotificationManager from '@/components/PushNotificationManager';
-import AndroidBackButton from '@/components/AndroidBackButton';
 
 import ToastProvider from '@/components/ToastProvider';
 import VFXLayer from '@/components/VFXLayer';
@@ -44,8 +42,6 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <AndroidBackButton />
-        <PushNotificationManager />
         <ToastProvider />
         <CartProvider>
           {/* Performance Optimized VFX Layer */}

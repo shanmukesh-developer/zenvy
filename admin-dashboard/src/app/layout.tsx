@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Outfit } from "next/font/google";
 import "./globals.css";
-import PushNotificationManager from '@/components/PushNotificationManager';
 import SOSAlertModal from '@/components/SOSAlertModal';
 import NexusLayoutClient from '@/components/NexusLayoutClient';
 
@@ -20,7 +19,6 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className={`${outfit.className} antialiased bg-[#0A0A0F] text-slate-200 selection:bg-blue-500/30`}>
-        <PushNotificationManager />
         <SOSAlertModal />
         
         {/* Cinematic Backdrop */}

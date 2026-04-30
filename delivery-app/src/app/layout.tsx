@@ -27,8 +27,6 @@ export const viewport: Viewport = {
   themeColor: "#0A0A0B"
 };
 
-import PushNotificationManager from '@/components/PushNotificationManager';
-import AndroidBackButton from '@/components/AndroidBackButton';
 import GlobalAnnouncement from '@/components/GlobalAnnouncement';
 import { RiderToastProvider } from '@/components/RiderToast';
 
@@ -42,8 +40,6 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <AndroidBackButton />
-        <PushNotificationManager />
         <GlobalAnnouncement />
         <RiderToastProvider>
           {children}
