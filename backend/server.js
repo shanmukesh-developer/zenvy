@@ -135,10 +135,21 @@ app.get('/api/health', async (req, res) => {
   const instance = getSequelize();
   let dbStatus = 'disconnected';
   
+  let dbHost = 'unknown';
   if (instance) {
     try {
       await instance.authenticate();
       dbStatus = 'connected';
+      // Safely extract hostname if possible
+      const dbUrl = process.env.DATABASE_URL;
+      if (dbUrl) {
+         try {
+           const url = new URL(dbUrl);
+           dbHost = `${url.hostname.slice(0, 4)}***${url.hostname.slice(-4)}`;
+         } catch { /* ignore */ }
+      } else {
+        dbHost = 'local-sqlite';
+      }
     } catch (err) {
       dbStatus = 'error';
     }
@@ -148,6 +159,7 @@ app.get('/api/health', async (req, res) => {
     status: 'online', 
     nexus: dbStatus,
     dialect: instance ? instance.getDialect() : 'none',
+    host: dbHost,
     timestamp: new Date(),
     uptime: process.uptime()
   });

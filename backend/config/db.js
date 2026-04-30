@@ -87,7 +87,16 @@ const connectDB = async () => {
       }
     });
   } else {
-    console.log('📡 Connecting to PostgreSQL Nexus (with Resilience)...');
+    try {
+      const url = new URL(dbUrl);
+      console.log(`📡 Connecting to PostgreSQL at ${url.hostname.slice(0, 4)}***${url.hostname.slice(-4)}`);
+      if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
+        console.warn('⚠️ [DB_WARNING] DATABASE_URL points to LOCALHOST. This will NOT persist data on Render!');
+      }
+    } catch {
+      console.log('📡 Connecting to PostgreSQL Nexus...');
+    }
+
     sequelize = new Sequelize(dbUrl, {
       dialect: 'postgres',
       dialectOptions: {
