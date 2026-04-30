@@ -36,7 +36,7 @@ const createOrder = async (req, res) => {
 
     // ── Flat ₹30 Delivery Fee ──────────────────────
     const distanceKm = 0;
-    const estDuration = '30 mins';
+    const estDuration = 30;
     const calculatedFee = 30;
 
     // ── Multi-Order Batching (Efficiency Engine) ──────────
