@@ -26,7 +26,8 @@
     "braces": "^3.0.3",
     "@tootallnate/once": "^3.0.1",
     "micromatch": "^4.0.8",
-    "cross-spawn": "^7.0.6"
+    "cross-spawn": "^7.0.6",
+    "nanoid": "^3.3.8"
   },
   "devDependencies": {
     "@types/node": "^20",
