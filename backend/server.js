@@ -130,10 +130,24 @@ app.use(cors({
 app.use(compression());
 app.use(express.json({ limit: '5mb' }));
 
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
+  const { getSequelize } = require('./config/db');
+  const instance = getSequelize();
+  let dbStatus = 'disconnected';
+  
+  if (instance) {
+    try {
+      await instance.authenticate();
+      dbStatus = 'connected';
+    } catch (err) {
+      dbStatus = 'error';
+    }
+  }
+
   res.json({ 
     status: 'online', 
-    nexus: 'connected', 
+    nexus: dbStatus,
+    dialect: instance ? instance.getDialect() : 'none',
     timestamp: new Date(),
     uptime: process.uptime()
   });

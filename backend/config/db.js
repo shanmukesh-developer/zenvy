@@ -131,17 +131,19 @@ const connectDB = async () => {
       console.log('🔄 Development Sync: Running { alter: true }...');
       await sequelize.sync({ alter: true });
     } else {
-      console.log('🔒 Production Sync: Running { alter: false } (Safe Mode)');
-      await sequelize.sync({ alter: false });
+      console.log('🔒 Production Sync: Running { alter: true } (Resilient Mode)');
+      // Changed to alter: true in production to ensure tables are created on fresh DBs, 
+      // but protected by the isProduction check in server.js to prevent auto-seeding.
+      await sequelize.sync({ alter: true });
       
       // Auto-check for empty DB to help user identify missing data
       const Restaurant = sequelize.models.Restaurant;
       if (Restaurant) {
         const count = await Restaurant.count();
         if (count === 0) {
-          console.warn('⚠️ [DB_EMPTY] No restaurants found in PostgreSQL. Please use the Admin Portal to seed legacy data.');
+          console.warn('⚠️ [DB_EMPTY] No restaurants found in PostgreSQL. Please use the Admin Portal to seed data or POST /api/seed.');
         } else {
-          console.log(`✅ [DB_STATUS] Found ${count} restaurants in PostgreSQL.`);
+          console.log(`✅ [DB_STATUS] Found ${count} restaurants in PostgreSQL. Persistence confirmed.`);
         }
       }
 
@@ -151,16 +153,21 @@ const connectDB = async () => {
         await sequelize.query('ALTER TABLE "Restaurants" ALTER COLUMN "imageUrl" TYPE TEXT;');
         await sequelize.query('ALTER TABLE "MenuItems" ALTER COLUMN "imageUrl" TYPE TEXT;');
         console.log('✅ [DB_MIGRATION] Asset columns expanded to TEXT.');
-      } catch { /* already done or table missing — safe to skip */ }
+      } catch (err) { 
+        // console.log('[DB_MIGRATION_SKIP] Already done or PG error:', err.message); 
+      }
     }
   } catch (error) {
     console.error('❌ [DB_FATAL] Database connection failed:', error.message);
+    
+    // STRICT GUARD: Never fallback to SQLite on Render or Production
     if (isProduction) {
-      console.error('⚠️ [CRITICAL] Falling back to SQLite is FORBIDDEN in production to prevent data loss.');
-      throw error;
+      console.error('🛑 [CRITICAL_FAILURE] Production environment detected. Fallback to SQLite is FORBIDDEN.');
+      console.error('🛑 Data loss prevention triggered. Process will exit to prevent erroneous local storage usage.');
+      process.exit(1); 
     }
     
-    console.log('🔄 Fallback: Triggering Emergency SQLite (Dev Only)...');
+    console.log('🔄 Fallback: Triggering Emergency SQLite (Local Dev Only)...');
     const sqlitePath = path.join(__dirname, '..', 'local_dev.sqlite');
     sequelize = new Sequelize({
       dialect: 'sqlite',
@@ -168,8 +175,8 @@ const connectDB = async () => {
       logging: false
     });
     initializeAllModels(sequelize);
-    await sequelize.sync({ alter: false });
-    console.log('✅ [DB_FALLBACK] Emergency SQLite is now active with models.');
+    await sequelize.sync({ alter: true });
+    console.log('✅ [DB_FALLBACK] Emergency SQLite is now active.');
   }
 };
 
