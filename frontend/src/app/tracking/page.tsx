@@ -426,12 +426,12 @@ function TrackingContent() {
              </div>
              
              {orderInfo.deliveryPin && (
-               <div className="text-right relative z-10">
-                  <p className="text-[9px] font-black uppercase text-white/30 tracking-[0.2em] mb-2">Gate Activation PIN</p>
-                  <div className="bg-gradient-to-br from-primary-yellow to-amber-600 text-black px-6 py-3 rounded-2xl font-black text-2xl tracking-[0.3em] shadow-[0_10px_30px_rgba(201,168,76,0.3)]">
-                    {orderInfo.deliveryPin}
-                  </div>
-               </div>
+                <div className="text-right relative z-10">
+                   <p className="text-xs font-black uppercase text-white/50 tracking-wider mb-2">Gate Activation PIN</p>
+                   <div className="bg-[#C9A84C] text-white px-6 py-4 rounded-2xl font-black text-3xl tracking-[0.3em] shadow-[0_10px_30px_rgba(201,168,76,0.5)] border border-[#E8D48B]/30">
+                     {orderInfo.deliveryPin}
+                   </div>
+                </div>
              )}
           </div>
         </Tilt>
