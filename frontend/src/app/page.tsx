@@ -181,7 +181,7 @@ export default function Home() {
                   console.error('[AUTH] Session confirmed invalid. Clearing.');
                   localStorage.removeItem('token');
                   localStorage.removeItem('user');
-                  window.location.href = '/login?error=session_expired';
+                  window.location.href = '/login/?error=session_expired';
                 }
               } catch { /* network error — keep session alive */ }
             }, 4000);

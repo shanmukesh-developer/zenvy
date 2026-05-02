@@ -4,7 +4,7 @@ export function generateStaticParams() {
   return [{ id: '1' }];
 }
 
-export const dynamicParams = false;
+export const dynamicParams = true;
 
 export default function RestaurantMenuPage({ params }: { params: { id: string } }) {
   return <RestaurantMenuClient restaurantId={params.id} />;
