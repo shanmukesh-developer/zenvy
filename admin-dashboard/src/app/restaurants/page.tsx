@@ -168,8 +168,12 @@ interface MenuItem {
   isEliteOnly: boolean;
   description?: string;
   image?: string;
+  imageUrl?: string;
   tags?: string[];
   isVegetarian?: boolean;
+  specs?: { engine?: string; topSpeed?: string };
+  ownerName?: string;
+  ownerPhone?: string;
 }
 
 import { AddRestaurantForm, AddMenuItemForm } from '@/components/GourmetForms';
@@ -306,7 +310,8 @@ export default function GourmetManagement() {
     try {
       const token = localStorage.getItem('token');
       const res = await fetch(`${API_URL}/api/admin/menu-items?restaurantId=${restaurantId}`, {
-         headers: { 'Authorization': `Bearer ${token}` }
+         headers: { 'Authorization': `Bearer ${token}` },
+         cache: 'no-store'
       });
       const data = await res.json();
       if (res.ok) setMenuItems(data);
