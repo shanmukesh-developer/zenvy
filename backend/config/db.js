@@ -68,8 +68,11 @@ const connectDB = async () => {
 
   if (!dbUrl) {
     if (isProduction) {
-      console.error('❌ FATAL: DATABASE_URL is missing in production environment!');
-      throw new Error('DATABASE_URL is required in production');
+      console.error('❌ [FATAL_ERROR] DATABASE_URL IS MISSING ON RENDER!');
+      console.error('❌ All data (restaurants, items, users) WILL BE LOST on the next deploy if using SQLite.');
+      console.error('❌ Please create a PostgreSQL database on Render and add the DATABASE_URL environment variable.');
+      // Exit strictly to force the user to fix the configuration rather than losing data silently
+      process.exit(1);
     }
     const sqlitePath = path.join(__dirname, '..', 'local_dev.sqlite');
     console.log(`📦 Using LOCAL SQLite: ${sqlitePath}`);

@@ -13,6 +13,21 @@ const broadcastSystemUpdate = (req, type, data) => {
   if (io) io.emit('systemUpdate', { type, data });
 };
 
+exports.getSystemHealth = async (req, res) => {
+  try {
+    const { getSequelize } = require('../config/db');
+    const sequelize = getSequelize();
+    const dialect = sequelize.getDialect();
+    res.json({
+      database: dialect.toUpperCase(),
+      persistence: dialect === 'postgres' ? 'PERSISTENT' : 'VOLATILE',
+      timestamp: new Date()
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Health Check Failed' });
+  }
+};
+
 const logAuditAction = async (req, targetId, action, details) => {
   try {
     const VerificationLog = getVerificationLogModel();

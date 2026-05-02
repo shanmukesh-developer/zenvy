@@ -17,6 +17,7 @@ export default function AuditPage() {
   const isAuthed = useAdminAuth();
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
     const fetchLogs = async () => {
@@ -45,6 +46,15 @@ export default function AuditPage() {
           <h1 className="text-3xl font-black tracking-tighter text-white uppercase">Audit Intelligence</h1>
           <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mt-1">Operational mutation ledger</p>
         </div>
+        <div className="flex items-center gap-4">
+           <input 
+              type="text" 
+              placeholder="Search Mutations..." 
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="bg-white/5 border border-white/10 rounded-2xl px-4 py-2 text-sm text-white outline-none focus:border-blue-500/50 transition-all w-64"
+           />
+        </div>
       </div>
 
       <div className="glass-card overflow-hidden">
@@ -65,7 +75,11 @@ export default function AuditPage() {
               ) : logs.length === 0 ? (
                 <tr><td colSpan={5} className="px-6 py-12 text-center text-xs text-gray-500">No recent mutations recorded.</td></tr>
               ) : (
-                logs.map((log) => (
+                logs.filter(log => 
+                  log.action.toLowerCase().includes(search.toLowerCase()) || 
+                  log.adminId.toLowerCase().includes(search.toLowerCase()) || 
+                  log.details.toLowerCase().includes(search.toLowerCase())
+                ).map((log) => (
                   <tr key={log.id} className="hover:bg-white/[0.02] transition-colors">
                     <td className="px-6 py-4 text-[11px] text-gray-400 font-medium">
                       {new Date(log.timestamp).toLocaleString()}

@@ -380,6 +380,14 @@ export default function AdminHome() {
 
   return (
     <div className="space-y-12 animate-fade-in relative pb-20">
+      {/* 🚀 Header */}
+      <header className="flex justify-between items-center mb-8">
+         <div className="flex flex-col">
+            <h1 className="text-3xl font-black text-white italic tracking-tighter">COMMAND<span className="text-blue-500">CENTER</span></h1>
+            <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.4em] mt-1">SRM AP LOGISTICS HUB v4.2.0</p>
+         </div>
+      </header>
+
       {/* ─── Hero Metrics ─── */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {stats.map((stat, i) => (

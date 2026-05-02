@@ -21,7 +21,8 @@ const {
   getDashboardStats,
   getFinanceReport,
   getAuditLogs,
-  getRewardsAnalytics
+  getRewardsAnalytics,
+  getSystemHealth
 } = require('../controllers/adminController');
 const { getAllOrders } = require('../controllers/orderController');
 const { protect } = require('../middleware/authMiddleware');
@@ -84,5 +85,6 @@ router.post('/seed', seedDatabase);
 router.get('/finance', getFinanceReport);
 router.get('/audit', getAuditLogs);
 router.get('/rewards-analytics', getRewardsAnalytics);
+router.get('/health', getSystemHealth);
 
 module.exports = router;

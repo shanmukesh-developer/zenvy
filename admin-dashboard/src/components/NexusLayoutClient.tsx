@@ -3,6 +3,9 @@
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import NetworkStatus from '@/components/NetworkStatus';
+import { useState, useEffect } from 'react';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
 
 export default function NexusLayoutClient({
   children,
@@ -11,6 +14,23 @@ export default function NexusLayoutClient({
 }) {
   const pathname = usePathname();
   const isLoginPage = pathname === "/login";
+  const [systemHealth, setSystemHealth] = useState<{ database: string, persistence: string }>({ database: '...', persistence: '...' });
+
+  useEffect(() => {
+    if (isLoginPage) return;
+    const fetchHealth = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/admin/health`, {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        });
+        const data = await res.json();
+        setSystemHealth(data);
+      } catch { /* ignore */ }
+    };
+    fetchHealth();
+    const timer = setInterval(fetchHealth, 30000); // Check every 30s
+    return () => clearInterval(timer);
+  }, [isLoginPage]);
 
   if (isLoginPage) {
     return <>{children}</>;
@@ -79,6 +99,12 @@ export default function NexusLayoutClient({
           <div className="flex items-center gap-4">
             <div className="w-2 h-2 bg-blue-500 rounded-full shadow-[0_0_10px_rgba(37,99,235,0.8)]" />
             <span className="text-[12px] font-black text-gray-500 uppercase tracking-[0.2em]">Operational HUD</span>
+            
+            {/* 🛡️ Global Persistence Shield */}
+            <div className={`ml-4 px-3 py-1 rounded-full border text-[8px] font-black uppercase tracking-widest flex items-center gap-2 ${systemHealth.persistence === 'VOLATILE' ? 'bg-red-500/10 border-red-500/30 text-red-500' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-500'}`}>
+                <div className={`w-1.5 h-1.5 rounded-full ${systemHealth.persistence === 'VOLATILE' ? 'bg-red-500 animate-pulse' : 'bg-emerald-500'}`} />
+                {systemHealth.persistence} STORAGE
+            </div>
           </div>
           <div className="flex items-center gap-6">
             <div className="text-right">

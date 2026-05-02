@@ -263,9 +263,18 @@ export default function Home() {
       } else if (payload.type === 'USER_UPDATED') {
         const userId = user._id || user.id;
         if (payload.data.userId === userId) {
-          const updatedUser = { ...user, walletBalance: payload.data.walletBalance };
-          setUser(updatedUser);
-          localStorage.setItem('user', JSON.stringify(updatedUser));
+          // Re-fetch full profile to ensure data integrity and avoid "vanishing info"
+          const token = localStorage.getItem('token');
+          fetch(`${API_URL}/api/users/profile`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          }).then(res => res.json()).then(data => {
+            if (data && (data._id || data.id)) {
+              // Ensure we have BOTH id and _id to prevent vanishing info in components
+              const normalizedUser = { ...data, id: data.id || data._id, _id: data._id || data.id };
+              setUser(normalizedUser);
+              localStorage.setItem('user', JSON.stringify(normalizedUser));
+            }
+          }).catch(err => console.error('[WALLET_SYNC_ERROR]', err));
         }
       } else if (payload.type === 'RESTAURANT_CREATED') {
         const newRes = payload.data as Restaurant;

@@ -22,7 +22,9 @@ export function AddRestaurantForm({ onCancel, onSubmit, isCreating }: Restaurant
     operatingHoursEnd: '22:00', 
     isActive: true, 
     isOffline: false, 
-    password: '' 
+    password: '',
+    ownerName: '',
+    ownerPhone: ''
   });
   const [imageFile, setImageFile] = useState<File | null>(null);
 
@@ -82,6 +84,19 @@ export function AddRestaurantForm({ onCancel, onSubmit, isCreating }: Restaurant
               <input type="time" className="bg-transparent text-white outline-none font-semibold font-sans text-sm" value={formData.operatingHoursEnd} onChange={(e) => setFormData({...formData, operatingHoursEnd: e.target.value})} />
             </div>
           </div>
+
+          {formData.vendorType === 'RENTAL' && (
+            <>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-amber-500 ml-1">Owner Name</label>
+                <input placeholder="e.g. Shanmukesh K." className="w-full bg-white text-black px-3 py-2 outline-none font-semibold text-sm" value={formData.ownerName} onChange={(e) => setFormData({...formData, ownerName: e.target.value})} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-amber-500 ml-1">Owner Contact</label>
+                <input placeholder="e.g. 9391955674" className="w-full bg-white text-black px-3 py-2 outline-none font-semibold text-sm" value={formData.ownerPhone} onChange={(e) => setFormData({...formData, ownerPhone: e.target.value})} />
+              </div>
+            </>
+          )}
        </div>
        <div className="flex gap-4 mt-8">
           <button 
