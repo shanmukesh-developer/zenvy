@@ -945,8 +945,8 @@ export default function ProfilePage() {
 
                 <div className="pt-4 flex flex-col items-center gap-4">
                   <p className="text-[9px] text-white/30 font-bold uppercase tracking-[0.1em] text-center leading-relaxed">
-                     Designed by three friends, <br />
-                     Shanmukesh Kunjam, Rohan Malladi & Kesava Sarella
+                     Designed by <br />
+                     Shanmukesh Kunjam
                   </p>
                   <button onClick={() => setShowAbout(false)} className="w-full bg-white/5 hover:bg-white/10 py-4 rounded-2xl text-[10px] uppercase font-black tracking-widest transition-all">Close Info</button>
                 </div>
