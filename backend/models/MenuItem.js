@@ -17,7 +17,10 @@ const initMenuItemModel = (sequelize) => {
     isVegetarian: { type: DataTypes.BOOLEAN, defaultValue: true },
     isAvailable: { type: DataTypes.BOOLEAN, defaultValue: true },
     isEliteOnly: { type: DataTypes.BOOLEAN, defaultValue: false },
-    customCommission: { type: DataTypes.FLOAT }
+    customCommission: { type: DataTypes.FLOAT },
+    specs: { type: DataTypes.JSON, defaultValue: {} },
+    ownerName: { type: DataTypes.STRING },
+    ownerPhone: { type: DataTypes.STRING }
   }, { 
     timestamps: true,
     indexes: [

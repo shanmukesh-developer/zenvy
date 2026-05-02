@@ -514,7 +514,7 @@ export default function AdminHome() {
             onClick={() => {
               if (!socketRef.current || !megaMsg.trim()) return;
               setBroadcasting(true);
-              socketRef.current.emit('admin_announcement', { message: megaMsg.trim(), type: megaType });
+              socketRef.current.emit('admin_broadcast', { message: megaMsg.trim(), type: megaType });
               setTimeout(() => { setMegaMsg(''); setBroadcasting(false); }, 1500);
             }}
             className="self-end px-8 py-3 rounded-xl text-[13px] font-black uppercase tracking-widest bg-[#C9A84C] text-black hover:bg-yellow-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all"

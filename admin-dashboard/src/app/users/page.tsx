@@ -66,7 +66,8 @@ export default function UserManagement() {
     try {
       const token = localStorage.getItem('token');
       const res = await fetch(`${API_URL}/api/admin/users`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { 'Authorization': `Bearer ${token}` },
+        cache: 'no-store'
       });
       const data = await res.json();
       if (res.ok) setUsers(data);
@@ -77,7 +78,8 @@ export default function UserManagement() {
     try {
       const token = localStorage.getItem('token');
       const res = await fetch(`${API_URL}/api/admin/audit`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { 'Authorization': `Bearer ${token}` },
+        cache: 'no-store'
       });
       const data = await res.json();
       if (res.ok) setLogs(data);

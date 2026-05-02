@@ -287,7 +287,10 @@ export default function GourmetManagement() {
           imageUrl: finalImageUrl,
           restaurantId: selectedRestaurant._id,
           tags: (newItem.tags || '').split(',').map((t: string) => t.trim()).filter((t: string) => t),
-          isVegetarian: newItem.isVegetarian
+          isVegetarian: newItem.isVegetarian,
+          specs: { engine: newItem.engine, topSpeed: newItem.topSpeed },
+          ownerName: newItem.ownerName,
+          ownerPhone: newItem.ownerPhone
         })
       });
       
@@ -393,6 +396,7 @@ export default function GourmetManagement() {
         <AddMenuItemForm 
           onCancel={() => setIsAddingItem(false)} 
           onSubmit={handleCreateMenuItem} 
+          vendorType={selectedRestaurant?.vendorType}
         />
       )}
 
@@ -492,7 +496,7 @@ const MenuItemCard = memo(({ item, onToggleElite, onDelete }: { item: MenuItem, 
   <div className={`glass-card p-6 group transition-all duration-300 ${item.isEliteOnly ? 'border-[#C9A84C]/30 bg-[#C9A84C]/[0.02]' : 'border-white/5'}`}>
      <div className="flex gap-6">
         <div className="w-20 h-20 rounded-2xl overflow-hidden border border-white/10 shrink-0 relative bg-slate-900">
-           <Image src={item.image || "/assets/placeholder.png"} fill style={{ objectFit: 'cover' }} alt={item.name} />
+           <Image src={item.imageUrl || item.image || "/assets/placeholder.png"} fill style={{ objectFit: 'cover' }} alt={item.name} />
            {item.isEliteOnly && <div className="absolute top-1 left-1 bg-[#C9A84C] text-black text-[7px] font-black px-1 rounded">ELITE</div>}
         </div>
         <div className="flex-1 min-w-0 flex flex-col justify-between py-1">

@@ -100,10 +100,24 @@ export function AddRestaurantForm({ onCancel, onSubmit, isCreating }: Restaurant
 interface ItemFormProps {
   onCancel: () => void;
   onSubmit: (data: Record<string, unknown>, image: File | null) => void;
+  vendorType?: string;
 }
 
-export function AddMenuItemForm({ onCancel, onSubmit }: ItemFormProps) {
-  const [formData, setFormData] = useState({ name: '', price: 0, category: '', description: '', image: '', isEliteOnly: false, tags: '', isVegetarian: false });
+export function AddMenuItemForm({ onCancel, onSubmit, vendorType }: ItemFormProps) {
+  const [formData, setFormData] = useState({ 
+    name: '', 
+    price: 0, 
+    category: '', 
+    description: '', 
+    image: '', 
+    isEliteOnly: false, 
+    tags: '', 
+    isVegetarian: false,
+    ownerName: '',
+    ownerPhone: '',
+    engine: '',
+    topSpeed: ''
+  });
   const [imageFile, setImageFile] = useState<File | null>(null);
 
   return (
@@ -130,6 +144,27 @@ export function AddMenuItemForm({ onCancel, onSubmit }: ItemFormProps) {
             <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Description / Ingredients</label>
             <textarea placeholder="Describe the item perfectly..." className="w-full bg-white text-black px-3 py-2 outline-none font-semibold text-sm h-24" value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} />
           </div>
+
+          {vendorType === 'RENTAL' && (
+            <>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-amber-500 ml-1">Owner Name</label>
+                <input placeholder="e.g. Shanmukesh K." className="w-full bg-white text-black px-3 py-2 outline-none font-semibold text-sm" value={formData.ownerName} onChange={(e) => setFormData({...formData, ownerName: e.target.value})} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-amber-500 ml-1">Owner Contact</label>
+                <input placeholder="e.g. 9391955674" className="w-full bg-white text-black px-3 py-2 outline-none font-semibold text-sm" value={formData.ownerPhone} onChange={(e) => setFormData({...formData, ownerPhone: e.target.value})} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-blue-400 ml-1">Engine / Battery Specs</label>
+                <input placeholder="e.g. 250W Brushless" className="w-full bg-white text-black px-3 py-2 outline-none font-semibold text-sm" value={formData.engine} onChange={(e) => setFormData({...formData, engine: e.target.value})} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-blue-400 ml-1">Top Speed (km/h)</label>
+                <input placeholder="e.g. 25" className="w-full bg-white text-black px-3 py-2 outline-none font-semibold text-sm" value={formData.topSpeed} onChange={(e) => setFormData({...formData, topSpeed: e.target.value})} />
+              </div>
+            </>
+          )}
        </div>
        <div className="flex gap-4 mt-8">
           <button onClick={() => onSubmit(formData, imageFile)} className="flex-1 py-4 bg-blue-600 hover:bg-blue-500 transition-colors text-white font-black uppercase tracking-widest rounded-2xl">Commit Asset</button>

@@ -247,10 +247,10 @@ export default function Home() {
   }, [activeOrder, cancelSecondsLeft]);
   useEffect(() => {
     if (!user) return;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handleSystemUpdate = (payload: { type: string; data: Record<string, unknown> }) => {
+    
+    const handleSystemUpdate = (payload: { type: string; data: any }) => {
       if (payload.type === 'USER_ELITE_STATUS') {
-        const userId = user?._id || user?.id;
+        const userId = user._id || user.id;
         if (payload.data.userId === userId) {
           setIsElite(payload.data.isElite);
           const stored = localStorage.getItem('user');
@@ -260,10 +260,16 @@ export default function Home() {
             localStorage.setItem('user', JSON.stringify(parsed));
           }
         }
+      } else if (payload.type === 'USER_UPDATED') {
+        const userId = user._id || user.id;
+        if (payload.data.userId === userId) {
+          const updatedUser = { ...user, walletBalance: payload.data.walletBalance };
+          setUser(updatedUser);
+          localStorage.setItem('user', JSON.stringify(updatedUser));
+        }
       } else if (payload.type === 'RESTAURANT_CREATED') {
         const newRes = payload.data as Restaurant;
         setLiveRestaurants(prev => {
-          // Prevent duplicates
           const exists = prev.some(r => (r._id || r.id) === (newRes._id || newRes.id));
           if (exists) return prev;
           return [...prev, newRes];
@@ -275,6 +281,7 @@ export default function Home() {
         ));
       }
     };
+
     socket.on('systemUpdate', handleSystemUpdate);
     return () => { socket.off('systemUpdate', handleSystemUpdate); };
   }, [user]);
@@ -646,9 +653,15 @@ export default function Home() {
                 <div className="bg-white/5 border border-white/10 rounded-[16px] p-2 flex items-center gap-3 shadow-2xl backdrop-blur-xl">
                    <RewardsPanel onWin={handlePrizeWin} />
                    <div className="h-4 w-px bg-white/10" />
-                   <div className="flex flex-col items-end">
-                      <span className="text-[8px] font-black text-[#C9A84C] uppercase tracking-widest mb-1 opacity-90">Nexus Balance</span>
-                      <p className="text-sm font-black text-white tracking-tighter drop-shadow-[0_0_8px_rgba(255,255,255,0.2)]">₹{user?.zenPoints || 0}</p>
+                   <div className="flex gap-4">
+                      <div className="flex flex-col items-end">
+                         <span className="text-[7px] font-black text-[#C9A84C] uppercase tracking-widest mb-0.5 opacity-90">Nexus Credits</span>
+                         <p className="text-[13px] font-black text-white tracking-tighter drop-shadow-[0_0_8px_rgba(255,255,255,0.2)]">₹{user?.walletBalance || 0}</p>
+                      </div>
+                      <div className="flex flex-col items-end">
+                         <span className="text-[7px] font-black text-blue-400 uppercase tracking-widest mb-0.5 opacity-90">ZenPoints</span>
+                         <p className="text-[13px] font-black text-white tracking-tighter">{user?.zenPoints || 0}</p>
+                      </div>
                    </div>
                 </div>
               </div>
@@ -1586,23 +1599,43 @@ export default function Home() {
                  </div>
                  <div className="text-right">
                     <span className="text-[8px] uppercase font-bold text-gray-400 block mb-0.5 tracking-wide">Security Deposit</span>
-                    <span className="text-sm font-black text-white">₹{Math.round((selectedRental?.price || 0) * 5)}</span>
+                    <span className="text-sm font-black text-white">₹{Math.round((selectedRental?.price || 0) * 3)}</span>
                  </div>
               </div>
 
+              {/* Specs Grid */}
+              {selectedRental?.specs && (selectedRental.specs.engine || selectedRental.specs.topSpeed) && (
+                <div className="grid grid-cols-2 gap-3 mb-6">
+                  {selectedRental.specs.engine && (
+                    <div className="p-3 bg-white/5 rounded-xl border border-white/5">
+                      <span className="text-[7px] font-black text-gray-500 uppercase tracking-widest block mb-1">Power Source</span>
+                      <span className="text-[10px] font-bold text-white uppercase">{selectedRental.specs.engine}</span>
+                    </div>
+                  )}
+                  {selectedRental.specs.topSpeed && (
+                    <div className="p-3 bg-white/5 rounded-xl border border-white/5">
+                      <span className="text-[7px] font-black text-gray-500 uppercase tracking-widest block mb-1">Velocity Cap</span>
+                      <span className="text-[10px] font-bold text-white uppercase">{selectedRental.specs.topSpeed} km/h</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Action Buttons */}
               <div className="flex flex-col gap-2 relative">
-                <span className="text-[9px] uppercase font-bold text-gray-400 mb-1 tracking-wide block">Direct Owner Contact</span>
+                <span className="text-[9px] uppercase font-bold text-gray-400 mb-1 tracking-wide block">
+                  {selectedRental?.ownerName ? `Owner: ${selectedRental.ownerName}` : 'Direct Owner Contact'}
+                </span>
                 {/* 2-Box Responsive Layout for Contacts */}
                 <div className="grid grid-cols-2 gap-2 md:gap-3">
                   <a
-                    href="tel:+919999999999"
+                    href={`tel:${selectedRental?.ownerPhone || '+919391955674'}`}
                     className="flex items-center justify-center gap-1.5 md:gap-2 px-2 py-3.5 bg-sky-400/10 border border-sky-400/20 text-sky-400 font-black text-[11px] md:text-xs rounded-xl hover:bg-sky-400/20 transition-colors text-center truncate"
                   >
                     📞 Phone
                   </a>
                   <a
-                    href="https://wa.me/919999999999"
+                    href={`https://wa.me/${selectedRental?.ownerPhone || '919391955674'}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center justify-center gap-1.5 md:gap-2 px-2 py-3.5 bg-green-500/10 border border-green-500/20 text-green-500 font-black text-[11px] md:text-xs rounded-xl hover:bg-green-500/20 transition-colors text-center truncate"
