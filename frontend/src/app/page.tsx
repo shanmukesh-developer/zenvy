@@ -425,6 +425,7 @@ export default function Home() {
           isVegetarian: isVeg,
           restaurantName: res.name, 
           restaurantId: res._id || res.id,
+          vendorType: res.vendorType,
           tags: Array.isArray(item.tags) ? item.tags : []
         };
       })
@@ -454,15 +455,16 @@ export default function Home() {
 
     allProducts.forEach(p => {
       const tags = p.tags || [];
-      if (tags.includes('fruits')) collections.fruits.push(p);
-      if (tags.includes('rental')) collections.rentals.push(p);
-      if (tags.includes('sweets')) collections.sweets.push(p);
-      if (tags.includes('seasonal')) collections.seasonal.push(p);
-      if (tags.includes('drinks')) collections.drinks.push(p);
-      if (tags.includes('gym') || tags.includes('high-protein')) collections.gym.push(p);
-      if (tags.includes('laundry') || tags.includes('dry-wash')) collections.laundry.push(p);
-      if (tags.includes('medicine') || tags.includes('pharmacy')) collections.pharmacy.push(p);
-      if (tags.includes('stationary') || tags.includes('books') || tags.includes('print')) collections.stationary.push(p);
+      const vt = p.vendorType;
+      if (tags.includes('fruits') || vt === 'GROCERY') collections.fruits.push(p);
+      if (tags.includes('rental') || vt === 'RENTAL') collections.rentals.push(p);
+      if (tags.includes('sweets') || vt === 'SWEETS') collections.sweets.push(p);
+      if (tags.includes('seasonal') || vt === 'SEASONAL') collections.seasonal.push(p);
+      if (tags.includes('drinks') || vt === 'DRINKS') collections.drinks.push(p);
+      if (tags.includes('gym') || tags.includes('high-protein') || vt === 'GYM') collections.gym.push(p);
+      if (tags.includes('laundry') || tags.includes('dry-wash') || vt === 'LAUNDRY') collections.laundry.push(p);
+      if (tags.includes('medicine') || tags.includes('pharmacy') || vt === 'PHARMACY') collections.pharmacy.push(p);
+      if (tags.includes('stationary') || tags.includes('books') || tags.includes('print') || vt === 'STATIONARY') collections.stationary.push(p);
     });
 
     return collections;
