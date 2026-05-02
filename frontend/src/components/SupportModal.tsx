@@ -8,8 +8,8 @@ interface SupportModalProps {
   onClose: () => void;
 }
 
-const SUPPORT_PHONE = "+919876543210";
-const SUPPORT_DISPLAY = "+91 98765 43210";
+const SUPPORT_PHONE = "+919391955674";
+const SUPPORT_DISPLAY = "+91 93919 55674";
 
 export default function SupportModal({ isOpen, onClose }: SupportModalProps) {
   const [copied, setCopied] = useState(false);
