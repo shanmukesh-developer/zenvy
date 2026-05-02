@@ -623,10 +623,8 @@ export default function Home() {
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
                 <div className="flex flex-col">
                   <div className="flex items-center gap-3 mb-2">
-                    <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-xl overflow-hidden">
-                      {user?.profileImage ? (
-                        <SafeImage src={user.profileImage} alt="profile" fill className="object-cover" />
-                      ) : '👤'}
+                    <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-xl border border-white/10">
+                      👤
                     </div>
                     <div>
                       <h2 className="text-[9px] font-black uppercase tracking-[0.3em] text-secondary-text mb-0.5">
