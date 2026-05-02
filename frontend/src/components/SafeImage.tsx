@@ -1,4 +1,3 @@
-// SafeImage.tsx – reliable image component with graceful fallback
 "use client";
 import React, { useState, useEffect } from "react";
 
@@ -17,12 +16,25 @@ const getFallback = (alt: string) => {
 };
 
 interface SafeImageProps extends Omit<React.ImgHTMLAttributes<HTMLImageElement>, "src"> {
-  src: string | { src: string } | undefined;
+  src: string | { src: string } | undefined | null;
   fallback?: string;
   fill?: boolean; // when true, image fills its container absolutely
   priority?: boolean; // eager loading if true
   alt?: string;
 }
+
+const resolveSrc = (src: any, fallbackUrl: string) => {
+  let finalSrc = typeof src === "string" ? src : src?.src;
+  
+  if (!finalSrc || 
+      finalSrc === "null" || 
+      finalSrc === "undefined" || 
+      finalSrc === "" ||
+      finalSrc.includes("placeholder")) {
+    return fallbackUrl;
+  }
+  return finalSrc;
+};
 
 export default function SafeImage({
   src,
@@ -35,13 +47,13 @@ export default function SafeImage({
   ...rest
 }: SafeImageProps) {
   const deterministicFallback = fallback ?? getFallback(alt);
-  const initialSrc = typeof src === "string" ? src : (src as any)?.src;
-  const [imgSrc, setImgSrc] = useState<string>(initialSrc ?? deterministicFallback);
+  
+  // Initialize state synchronously
+  const [imgSrc, setImgSrc] = useState<string>(() => resolveSrc(src, deterministicFallback));
 
   // Update when src prop changes
   useEffect(() => {
-    const newSrc = typeof src === "string" ? src : (src as any)?.src;
-    setImgSrc(newSrc ?? deterministicFallback);
+    setImgSrc(resolveSrc(src, deterministicFallback));
   }, [src, deterministicFallback]);
 
   // Styles for fill mode (absolute covering)
@@ -58,7 +70,7 @@ export default function SafeImage({
   const mergedStyle: React.CSSProperties = { ...containerStyle, ...style };
 
   const handleError = () => {
-    // Switch to fallback if the original source fails
+    // Switch to fallback if the original source fails on network
     if (imgSrc !== deterministicFallback) {
       setImgSrc(deterministicFallback);
     }
