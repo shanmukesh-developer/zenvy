@@ -284,13 +284,14 @@ function TrackingContent() {
   }
 
   return (
-    <main className={`min-h-screen bg-[#0A0A0B] text-white p-8 animate-page relative overflow-x-hidden ${status === 3 || status === 4 ? 'animate-edge-glow' : ''}`}>
+    <main className={`min-h-screen bg-[#0A0A0B] text-white px-4 py-6 md:p-8 animate-page relative overflow-x-hidden ${status === 3 || status === 4 ? 'animate-edge-glow' : ''}`} style={{ fontSize: '16px' }}>
+      <div className="max-w-3xl mx-auto w-full">
       {/* Cinematic Background */}
       <div className="fixed inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(201,168,76,0.05)_0%,transparent_50%)] pointer-events-none" />
       <div className="fixed inset-0 bg-gradient-to-b from-black via-transparent to-black pointer-events-none opacity-40" />
 
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between mb-12 gap-6 relative z-10">
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 md:mb-12 gap-4 md:gap-6 relative z-10">
         <div className="flex items-center justify-between md:justify-start gap-4">
           <Magnetic>
             <Link href="/" className="w-12 h-12 bg-white/5 backdrop-blur-xl rounded-full flex items-center justify-center border border-white/10 hover:bg-white/10 transition-all">
@@ -300,9 +301,9 @@ function TrackingContent() {
             </Link>
           </Magnetic>
           <div>
-            <h1 className="text-xl font-black uppercase tracking-[0.3em] text-gold-shimmer md:ml-4">Mission Tracking</h1>
+            <h1 className="text-lg md:text-xl font-black uppercase tracking-[0.2em] md:tracking-[0.3em] text-gold-shimmer md:ml-4">Mission Tracking</h1>
             {orderId && (
-              <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest md:ml-4 mt-1">Order #{orderId.slice(-6).toUpperCase()}</p>
+              <p className="text-xs font-bold text-blue-400 uppercase tracking-widest md:ml-4 mt-1">Order #{orderId.slice(-6).toUpperCase()}</p>
             )}
           </div>
         </div>
@@ -311,7 +312,7 @@ function TrackingContent() {
             <Magnetic>
               <button
                 onClick={() => setShowCancelConfirmation(true)}
-                className="px-6 py-3 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-black transition-all text-[9px] font-black uppercase tracking-widest rounded-full border border-red-500/20 shadow-lg shadow-red-500/10"
+                className="px-5 py-3 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-black transition-all text-xs font-black uppercase tracking-wider rounded-full border border-red-500/20 shadow-lg shadow-red-500/10"
               >
                 Abort ({cancelSecondsLeft}s)
               </button>
@@ -329,21 +330,21 @@ function TrackingContent() {
       </div>
 
       {showCancelConfirmation && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ fontSize: '16px' }}>
            <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setShowCancelConfirmation(false)} />
-           <div className="relative bg-[#1A1A1C] border border-white/10 p-8 rounded-[40px] max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-300">
+           <div className="relative bg-[#1A1A1C] border border-white/10 p-6 md:p-8 rounded-3xl md:rounded-[40px] max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-300 mx-auto">
               <h3 className="text-xl font-black text-white mb-2">Cancel Order?</h3>
-              <p className="text-xs text-secondary-text mb-8 leading-relaxed font-bold">This action cannot be undone. You will lose your current queue position and any batch discounts.</p>
+              <p className="text-sm text-secondary-text mb-6 leading-relaxed font-bold">This action cannot be undone. You will lose your current queue position and any batch discounts.</p>
               <div className="flex flex-col gap-3">
                  <button 
                    onClick={cancelOrderAction}
-                   className="w-full py-4 bg-red-500 text-black font-black uppercase tracking-widest text-[10px] rounded-2xl shadow-xl shadow-red-500/20"
+                   className="w-full py-4 bg-red-500 text-white font-black uppercase tracking-widest text-xs rounded-2xl shadow-xl shadow-red-500/20"
                  >
                    Yes, Cancel Order
                  </button>
                  <button 
                    onClick={() => setShowCancelConfirmation(false)}
-                   className="w-full py-4 bg-white/5 text-white font-black uppercase tracking-widest text-[10px] rounded-2xl border border-white/5"
+                   className="w-full py-4 bg-white/5 text-white font-black uppercase tracking-widest text-xs rounded-2xl border border-white/5"
                  >
                    Keep My Order
                  </button>
@@ -354,7 +355,7 @@ function TrackingContent() {
 
 
           {/* ─── Mission Progress Radar (Hybrid Map) ─── */}
-          <Tilt scale={1.01} className="relative h-[480px] rounded-[48px] overflow-hidden border border-white/10 bg-black/40 shadow-2xl z-10 transition-all">
+          <Tilt scale={1.01} className="relative h-[280px] md:h-[480px] rounded-3xl md:rounded-[48px] overflow-hidden border border-white/10 bg-black/40 shadow-2xl z-10 transition-all">
             <LeafletTrackingMapSub 
               currentCheckpoint={currentCheckpoint}
               checkpoints={CHECKPOINTS}
@@ -362,13 +363,13 @@ function TrackingContent() {
             />
             
             {/* Mission HUD Overlays */}
-            <div className="absolute top-8 left-8 right-8 z-[1000] flex justify-between items-start pointer-events-none">
-              <div className="bg-black/40 backdrop-blur-3xl px-6 py-4 rounded-[32px] border border-white/10 shadow-2xl">
-                <h3 className="text-[10px] font-black text-primary-yellow uppercase tracking-[0.2em] mb-1.5 flex items-center gap-2">
+            <div className="absolute top-4 left-4 right-4 md:top-8 md:left-8 md:right-8 z-[1000] flex justify-between items-start pointer-events-none">
+              <div className="bg-black/60 backdrop-blur-3xl px-4 py-3 md:px-6 md:py-4 rounded-2xl md:rounded-[32px] border border-white/10 shadow-2xl">
+                <h3 className="text-xs font-black text-primary-yellow uppercase tracking-wider mb-1 flex items-center gap-2">
                   <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
-                  Nexus Uplink: Active
+                  Uplink: Active
                 </h3>
-                <p className="text-[8px] font-black text-white/40 uppercase tracking-[0.1em]">LIVE TELEMETRY FEED • {currentCheckpoint?.toUpperCase()}</p>
+                <p className="text-[10px] font-black text-white/50 uppercase tracking-wide">{currentCheckpoint?.toUpperCase()}</p>
               </div>
               
               {!isConnected && (
@@ -380,18 +381,18 @@ function TrackingContent() {
             </div>
           </Tilt>
 
-          <div className="mt-8 flex flex-col md:flex-row justify-between items-start md:items-center bg-white/[0.02] p-8 rounded-[36px] border border-white/5 relative z-10 gap-6">
-             <div className="flex items-center gap-5">
-                <div className="w-14 h-14 bg-[#C9A84C]/10 rounded-2xl flex items-center justify-center text-2xl border border-[#C9A84C]/20 shadow-inner">📡</div>
+          <div className="mt-6 md:mt-8 flex flex-col md:flex-row justify-between items-start md:items-center bg-white/[0.03] p-5 md:p-8 rounded-2xl md:rounded-[36px] border border-white/5 relative z-10 gap-4 md:gap-6">
+             <div className="flex items-center gap-4">
+                <div className="w-12 h-12 md:w-14 md:h-14 bg-[#C9A84C]/10 rounded-xl md:rounded-2xl flex items-center justify-center text-xl md:text-2xl border border-[#C9A84C]/20 shadow-inner">📡</div>
                 <div>
-                   <p className="text-[9px] font-black text-white/20 uppercase tracking-[0.4em] mb-1">Current Sector</p>
+                   <p className="text-[11px] font-black text-white/30 uppercase tracking-wider mb-1">Current Sector</p>
                    <p className="text-base font-black text-white uppercase tracking-tight">{currentCheckpoint}</p>
                 </div>
              </div>
              <div className="text-left md:text-right w-full md:w-auto">
-                <p className="text-[9px] font-black text-white/20 uppercase tracking-[0.4em] mb-1">Tactical ETA</p>
-                <div className="px-4 py-1 bg-[#C9A84C]/10 rounded-full border border-[#C9A84C]/20 inline-block">
-                   <p className="text-sm font-black text-primary-yellow animate-pulse uppercase tracking-tighter">{eta}</p>
+                <p className="text-[11px] font-black text-white/30 uppercase tracking-wider mb-1">Tactical ETA</p>
+                <div className="px-4 py-1.5 bg-[#C9A84C]/10 rounded-full border border-[#C9A84C]/20 inline-block">
+                   <p className="text-sm font-black text-primary-yellow animate-pulse uppercase">{eta}</p>
                 </div>
              </div>
           </div>
@@ -399,7 +400,7 @@ function TrackingContent() {
       {/* Dynamic Order Summary */}
       {orderInfo && (
         <Tilt scale={1.01} className="mb-6 relative z-10">
-          <div className="p-8 bg-white/[0.02] backdrop-blur-2xl rounded-[48px] border border-white/10 flex flex-col md:flex-row md:items-center justify-between group overflow-hidden gap-8">
+          <div className="p-5 md:p-8 bg-white/[0.03] backdrop-blur-2xl rounded-2xl md:rounded-[48px] border border-white/10 flex flex-col md:flex-row md:items-center justify-between group overflow-hidden gap-5 md:gap-8">
               <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none group-hover:opacity-10 transition-opacity">
                  <span className="text-4xl font-black italic">VAULT</span>
               </div>
@@ -408,7 +409,7 @@ function TrackingContent() {
                    📦
                 </div>
                 <div>
-                   <h4 className="text-xs font-black uppercase tracking-[0.3em] text-white/40 mb-1">STRATEGIC ORDER #{orderId?.slice(-6)}</h4>
+                   <h4 className="text-xs font-black uppercase tracking-wider text-white/40 mb-1">ORDER #{orderId?.slice(-6)}</h4>
                    <div className="flex flex-col gap-1">
                       <p className="text-lg font-black text-white tracking-widest">
                         {orderInfo?.items ? (Array.isArray(orderInfo.items) ? orderInfo.items.length : 0) : 0} Items <span className="text-[#C9A84C] mx-2">•</span> ₹{orderInfo?.totalPrice || 0}
@@ -440,7 +441,7 @@ function TrackingContent() {
       <div className="flex flex-col lg:flex-row gap-4 mb-8">
         <div 
           onClick={() => orderInfo?.deliveryPartner && setIsProfileOpen(true)}
-          className={`flex-[2] glass-card p-6 border-[#C9A84C]/20 relative overflow-hidden transition-all ${orderInfo?.deliveryPartner ? 'cursor-pointer active:scale-95 hover:bg-white/[0.03]' : 'cursor-default'}`}
+          className={`flex-[2] glass-card p-4 md:p-6 border-[#C9A84C]/20 relative overflow-hidden transition-all ${orderInfo?.deliveryPartner ? 'cursor-pointer active:scale-95 hover:bg-white/[0.03]' : 'cursor-default'}`}
         >
            <div className="absolute top-0 right-0 p-2 opacity-5 pointer-events-none">
               <span className="text-[40px] font-black italic">ELITE</span>
@@ -463,19 +464,19 @@ function TrackingContent() {
                  <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
                     <div>
                        <div className="flex items-center gap-1.5 mb-1">
-                         <p className="text-[8px] font-black uppercase tracking-[0.3em] text-primary-yellow">Delivery Captain</p>
-                         <span className="bg-emerald-500/10 text-emerald-500 text-[6px] font-black px-1.5 py-0.5 rounded border border-emerald-500/20">VERIFIED</span>
+                         <p className="text-[11px] font-black uppercase tracking-wider text-primary-yellow">Delivery Captain</p>
+                         <span className="bg-emerald-500/10 text-emerald-500 text-[10px] font-black px-1.5 py-0.5 rounded border border-emerald-500/20">VERIFIED</span>
                        </div>
                        <h3 className="text-sm font-black text-white">
                          {orderInfo?.deliveryPartner?.name || 'Searching Captain...'} • {orderInfo?.deliveryPartner?.averageRating || '5.0'}⭐
                        </h3>
-                       <p className="text-[7px] font-bold text-secondary-text uppercase tracking-widest mt-0.5 whitespace-nowrap">
+                       <p className="text-[11px] font-bold text-secondary-text uppercase tracking-wide mt-0.5">
                          {orderInfo?.deliveryPartner?.vehicleType || 'Zenvy Rider'} 
                          {orderInfo?.deliveryPartner?.vehicleNumber ? ` • ${orderInfo.deliveryPartner.vehicleNumber}` : ` # ${orderId?.slice(-4)}`}
                        </p>
                     </div>
                     <div className="text-left sm:text-right w-full sm:w-auto">
-                        <p className="text-[8px] font-black text-secondary-text uppercase mb-1">{eta}</p>
+                        <p className="text-[11px] font-black text-secondary-text uppercase mb-1">{eta}</p>
                         <p className="text-xs font-black text-white italic">{status === 4 ? '0' : captainSpeed} km/h</p>
                        {roadEta !== null && (
                          <p className="text-[6px] font-bold text-primary-yellow mt-1">Road Distance Ready</p>
@@ -497,13 +498,13 @@ function TrackingContent() {
            </div>
         </div>
 
-        <div className="flex-1 glass-card p-6 border-white/[0.05] flex flex-col justify-center items-center">
-           <p className="text-[8px] font-black uppercase tracking-[0.3em] text-primary-yellow mb-2 text-center">Security Status</p>
+        <div className="flex-1 glass-card p-4 md:p-6 border-white/[0.05] flex flex-col justify-center items-center">
+           <p className="text-[11px] font-black uppercase tracking-wider text-primary-yellow mb-2 text-center">Security Status</p>
            <div className="flex items-center gap-2">
               <span className="text-xl">{status === 4 ? '✅' : '🔒'}</span>
               <span className="text-sm font-black text-white">{status === 4 ? 'DELIVERED' : 'EN ROUTE'}</span>
            </div>
-           <p className="text-[6px] font-black text-secondary-text uppercase mt-2 text-center">End-to-End <br /> Encryption Active</p>
+           <p className="text-[10px] font-black text-secondary-text uppercase mt-2 text-center">End-to-End Encryption Active</p>
         </div>
       </div>
 
@@ -542,12 +543,12 @@ function TrackingContent() {
  
                <div className="pb-4">
                   <div className="flex flex-col mb-1">
-                     <span className={`text-[9px] font-black uppercase tracking-[0.3em] mb-1 ${isCurrent ? 'text-primary-gold' : 'text-secondary-text'}`}>
+                     <span className={`text-[11px] font-black uppercase tracking-wider mb-1 ${isCurrent ? 'text-primary-gold' : 'text-secondary-text'}`}>
                         {isCurrent ? 'Current Status' : isActive ? 'Completed' : 'Upcoming'}
                      </span>
                      <h3 className="font-black text-sm uppercase tracking-widest">{step.label}</h3>
                   </div>
-                  <p className="text-[11px] text-secondary-text leading-relaxed font-medium">
+                  <p className="text-sm text-secondary-text leading-relaxed font-medium">
                      {step.desc}
                   </p>
                   {isCurrent && (
@@ -633,6 +634,7 @@ function TrackingContent() {
         onClose={() => setIsProfileOpen(false)}
         partner={orderInfo?.deliveryPartner || null}
       />
+      </div>
     </main>
   );
 }
