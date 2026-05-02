@@ -21,7 +21,7 @@ api.interceptors.response.use(
       console.warn('Authentication failure detected by Nexus. Clearing session...');
       if (typeof window !== 'undefined') {
         localStorage.clear();
-        window.location.href = '/login';
+        window.location.href = '/login/';
       }
     }
     return Promise.reject(error);
