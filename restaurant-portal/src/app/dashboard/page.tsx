@@ -247,7 +247,9 @@ export default function Dashboard() {
            </div>
            <button 
              onClick={() => {
-               localStorage.clear();
+               localStorage.removeItem('restaurantToken');
+               localStorage.removeItem('restaurantId');
+               localStorage.removeItem('restaurantUser');
                router.push('/login');
              }}
              className="w-10 h-10 bg-zinc-900 border border-zinc-800 rounded-full flex items-center justify-center text-zinc-500 hover:text-white hover:border-zinc-700 transition-all"

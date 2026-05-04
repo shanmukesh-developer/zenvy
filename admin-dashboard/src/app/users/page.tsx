@@ -23,8 +23,11 @@ interface AuditLog {
 const UserCard = memo(({ user, onToggleElite, onAddWallet }: { 
   user: User, 
   onToggleElite: (id: string, status: boolean) => void,
-  onAddWallet: (id: string) => void 
-}) => (
+  onAddWallet: (id: string, amount: number) => void 
+}) => {
+  const [amount, setAmount] = useState<string>('500');
+  
+  return (
   <div className="glass-card p-8 group relative overflow-hidden border-white/5 group hover:border-[#C9A84C]/30 transition-all">
     <div className="flex items-start justify-between mb-8">
        <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-xl font-black text-white">{user.name[0]}</div>
@@ -35,18 +38,28 @@ const UserCard = memo(({ user, onToggleElite, onAddWallet }: {
     <h4 className="text-xl font-black text-white uppercase tracking-tight line-clamp-1">{user.name}</h4>
     <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-4">{user.phone || 'NO_CONTACT'}</p>
     
-    <button 
-      onClick={() => onAddWallet(user._id)}
-      className="w-full mb-6 py-2 bg-white/5 border border-white/10 rounded-xl text-[8px] font-black uppercase text-gray-400 hover:bg-emerald-500/10 hover:text-emerald-400 hover:border-emerald-500/20 transition-all"
-    >
-      + Inject Credits
-    </button>
+    <div className="flex gap-2 mb-6">
+       <input 
+          type="number" 
+          value={amount} 
+          onChange={(e) => setAmount(e.target.value)}
+          className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-white outline-none focus:border-emerald-500/30 transition-all"
+          placeholder="Amount"
+       />
+       <button 
+         onClick={() => onAddWallet(user._id, Number(amount))}
+         className="px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-[8px] font-black uppercase text-emerald-400 hover:bg-emerald-500 hover:text-white transition-all"
+       >
+         Inject
+       </button>
+    </div>
     <div className="pt-6 border-t border-white/5 flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-emerald-500">
         <span>Verified Resident</span>
         <span className="text-white">₹{user.walletBalance.toFixed(0)} Credits</span>
     </div>
   </div>
-));
+  );
+});
 UserCard.displayName = 'UserCard';
 
 export default function UserManagement() {
@@ -98,17 +111,19 @@ export default function UserManagement() {
     } catch (err) { console.error('[ELITE_TOGGLE_ERROR]', err); }
   };
 
-  const addWalletBalance = async (userId: string) => {
-    const amount = prompt('Enter amount to add to credits:');
-    if (!amount || isNaN(Number(amount))) return;
+  const addWalletBalance = async (userId: string, amount: number) => {
+    if (!amount || isNaN(amount)) return;
     try {
       const token = localStorage.getItem('token');
       const res = await fetch(`${API_URL}/api/admin/users/${userId}/wallet`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ amount: Number(amount) })
+        body: JSON.stringify({ amount })
       });
-      if (res.ok) fetchUsers();
+      if (res.ok) {
+        fetchUsers();
+        fetchLogs();
+      }
     } catch (err) { console.error('[WALLET_ERROR]', err); }
   };
 

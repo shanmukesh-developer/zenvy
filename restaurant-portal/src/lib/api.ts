@@ -16,11 +16,22 @@ api.interceptors.request.use((config) => {
 
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
+    const originalRequest = error.config;
+    
+    // If server is waking up (timeout/network error), retry once after 5s
+    if (!error.response && !originalRequest._retried) {
+      originalRequest._retried = true;
+      console.warn('[API] Server may be waking up, retrying in 5s...');
+      await new Promise(r => setTimeout(r, 5000));
+      return api(originalRequest);
+    }
+
     if (error.response?.status === 401) {
-      console.warn('Authentication failure detected by Nexus. Clearing session...');
+      console.warn('Authentication failure detected. Clearing session...');
       if (typeof window !== 'undefined') {
-        localStorage.clear();
+        localStorage.removeItem('restaurantToken');
+        localStorage.removeItem('restaurantUser');
         window.location.href = '/login/';
       }
     }

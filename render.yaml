@@ -25,9 +25,11 @@ services:
       - key: FIREBASE_PRIVATE_KEY
         sync: false
       - key: JWT_SECRET
-        generateValue: true
+        sync: false
       - key: NODE_ENV
         value: production
+      - key: RENDER_EXTERNAL_URL
+        value: https://hostelbites-backend-jwmt.onrender.com
 
   # 2. Customer Frontend (SSR)
   - type: web

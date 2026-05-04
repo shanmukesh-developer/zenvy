@@ -419,6 +419,27 @@ const startServer = async () => {
 
     server.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Server running on port ${PORT}`);
+
+      // ── Self-Ping Keep-Alive (Prevents Render Free Tier Sleep) ──
+      if (process.env.NODE_ENV === 'production' || process.env.RENDER === 'true') {
+        const KEEP_ALIVE_INTERVAL = 14 * 60 * 1000; // 14 minutes (Render sleeps at 15 min)
+        const selfUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+        setInterval(async () => {
+          try {
+            const https = require('https');
+            const httpModule = require('http');
+            const mod = selfUrl.startsWith('https') ? https : httpModule;
+            mod.get(`${selfUrl}/api/health`, (res) => {
+              console.log(`[KEEP_ALIVE] Ping OK (${res.statusCode})`);
+            }).on('error', (err) => {
+              console.warn('[KEEP_ALIVE] Ping failed:', err.message);
+            });
+          } catch (err) {
+            console.warn('[KEEP_ALIVE] Error:', err.message);
+          }
+        }, KEEP_ALIVE_INTERVAL);
+        console.log(`🏓 Keep-alive enabled: pinging every ${KEEP_ALIVE_INTERVAL / 60000} minutes`);
+      }
     });
   } catch (error) {
     console.error('❌ Server failed to start. CRITICAL ERROR:');
