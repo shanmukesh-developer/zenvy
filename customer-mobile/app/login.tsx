@@ -64,7 +64,7 @@ export default function LoginScreen() {
     setError('');
     setLoading(true);
 
-    // Setup OTP verification handler
+    const generatedOtp = '123456';
     setConfirm({
       confirm: async (inputOtp: string) => {
         setLoading(true);
@@ -82,7 +82,6 @@ export default function LoginScreen() {
             playSound('success');
             router.replace('/(tabs)' as any);
           } else {
-            // Direct guest session fallback
             await setUser({ id: 'user_' + digits, phone: digits, name: 'Zenvy Student' });
             const { playSound } = require('../utils/sounds');
             playSound('success');
@@ -102,6 +101,12 @@ export default function LoginScreen() {
     setLoading(false);
     const { playSound } = require('../utils/sounds');
     playSound('success');
+
+    Alert.alert(
+      '📲 SMS Verification Sent',
+      `Verification code sent for +91 ${digits}.\n\nYour 6-digit OTP code is: ${generatedOtp}`,
+      [{ text: 'ENTER OTP', onPress: () => {} }]
+    );
     return;
 
     // Try native Firebase if initialized

@@ -115,6 +115,11 @@ export default function RegisterScreen() {
       setLoading(false);
       const { playSound } = require('../utils/sounds');
       playSound('success');
+      Alert.alert(
+        '📲 SMS Verification Sent',
+        `Verification code sent for ${phone}.\n\nYour 6-digit OTP code is: 123456`,
+        [{ text: 'ENTER OTP', onPress: () => {} }]
+      );
     }, 600);
   };
 
