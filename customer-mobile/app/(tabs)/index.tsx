@@ -77,10 +77,11 @@ const CLASSICS = [
 ];
 
 const PROMOS = [
-  { id: 'kfc', tagline: 'KFC TAKEOVER LIVE', title: 'CRISPY JUICY', subtitle: 'CRUNCHY BUCKET', desc: 'Premium takeover is now live. Tap to order.', btn: 'ORDER KFC', img: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?q=80&w=600' },
-  { id: 'ride', tagline: 'ZENVY CO-RIDE', title: 'SPLIT THE', subtitle: 'RIDE', desc: 'Connect with campus peers for instant bike pooling.', btn: 'FIND A RIDE', img: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?q=80&w=600' },
-  { id: 'stays', tagline: 'PREMIUM STAYS', title: 'YOUR NEXT', subtitle: 'CAMPUS HOME', desc: 'Discover verified hostels and PG accommodations.', btn: 'EXPLORE HOSTELS', img: 'https://images.unsplash.com/photo-1555854877-bab0e564b8d5?q=80&w=600' },
-  { id: 'elite', tagline: 'NEXUS OFFERS', title: 'UNLIMITED', subtitle: 'FREE DELIVERY', desc: 'Join Zenvy Elite today. Zero delivery charges.', btn: 'CLAIM ELITE', img: 'https://images.unsplash.com/photo-1618331835717-801e976710b2?q=80&w=600' },
+  { id: 'biryani', tagline: 'SPECIAL CAMPUS CRAVING', title: 'HYDERABADI DUM', subtitle: 'ROYAL BIRYANI', desc: 'Aromatic basmati rice & succulent spiced chicken.', btn: 'ORDER NOW', img: 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?q=80&w=1200' },
+  { id: 'kfc', tagline: 'KFC TAKEOVER LIVE', title: 'CRISPY JUICY', subtitle: 'CRUNCHY BUCKET', desc: 'Golden fried chicken buckets delivered hot to your hostel.', btn: 'ORDER KFC', img: 'https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?q=80&w=1200' },
+  { id: 'ride', tagline: 'ZENVY CO-RIDE 🏍️', title: 'SPLIT THE', subtitle: 'RIDE', desc: 'Connect with campus peers for instant bike pooling.', btn: 'FIND A RIDE', img: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?q=80&w=1200' },
+  { id: 'stays', tagline: 'VERIFIED CAMPUS STAYS', title: 'YOUR NEXT', subtitle: 'LUXURY HOME', desc: 'Discover verified hostels and PG accommodations near SRM.', btn: 'EXPLORE STAYS', img: 'https://images.unsplash.com/photo-1555854877-bab0e564b8d5?q=80&w=1200' },
+  { id: 'elite', tagline: 'ZENVY ELITE PASS ✨', title: 'UNLIMITED', subtitle: 'FREE DELIVERY', desc: 'Zero delivery fee & VIP priority dispatch on every order.', btn: 'CLAIM ELITE', img: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=1200' },
 ];
 
 const CATEGORIES = [
@@ -518,7 +519,9 @@ export default function HomeScreen() {
               <Text style={[s.greeting, { color: txtSec }]}>{getGreeting().toUpperCase()}</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <Text style={[s.userName, { color: txt }]}>{(user?.name || 'Zenvy').split(' ')[0].toUpperCase()}</Text>
-                {user?.isElite && <BounceIn delay={400}><View style={[s.eliteBadge, { backgroundColor: goldColor }]}><Text style={s.eliteBadgeText}>ELITE</Text></View></BounceIn>}
+                <View style={[s.eliteBadge, { backgroundColor: '#D4AF7A', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 }]}>
+                  <Text style={{ fontSize: 7, fontWeight: '900', color: '#000', letterSpacing: 1.5 }}>✨ VIP GOLD</Text>
+                </View>
               </View>
             </View>
           </TouchableOpacity>
