@@ -540,7 +540,11 @@ const connectDB = async () => {
       } catch (syncErr) {
         console.warn('⚠️ [DB_SYNC_WARN] PostgreSQL alter sync warning:', syncErr.message);
         console.log('🔄 Retrying standard PostgreSQL sync...');
-        await sequelize.sync();
+        try {
+          await sequelize.sync();
+        } catch (normalSyncErr) {
+          console.warn('⚠️ [DB_SYNC_WARN] Standard sync warning:', normalSyncErr.message);
+        }
       }
       
       // Auto-check for empty DB to help user identify missing data
