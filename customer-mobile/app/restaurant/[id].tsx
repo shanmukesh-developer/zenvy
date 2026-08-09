@@ -624,9 +624,9 @@ export default function RestaurantDetail() {
 }
 
 const st = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, width: '100%', maxWidth: 600, alignSelf: 'center' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  hero: { width: SW, height: 200, position: 'relative' },
+  hero: { width: '100%', height: 200, position: 'relative' },
   heroImg: { width: '100%', height: '100%', resizeMode: 'cover' },
   heroGrad: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.4)' },
   backBtn: { position: 'absolute', top: Platform.OS === 'android' ? 36 : 50, left: 16, width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', zIndex: 2 },

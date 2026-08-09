@@ -4050,7 +4050,7 @@ export default function OthersScreen() {
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, paddingTop: Platform.OS === 'android' ? 40 : 50 },
+  container: { flex: 1, paddingTop: Platform.OS === 'android' ? 40 : 50, width: '100%', maxWidth: 600, alignSelf: 'center' },
 
   // BigBasket Custom Header Styles
   bbHeader: {

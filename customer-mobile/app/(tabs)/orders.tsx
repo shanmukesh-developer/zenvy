@@ -264,7 +264,7 @@ export default function OrdersScreen() {
 }
 
 const st = StyleSheet.create({
-  container: { flex: 1, paddingTop: Platform.OS === 'android' ? 40 : 50 },
+  container: { flex: 1, paddingTop: Platform.OS === 'android' ? 40 : 50, width: '100%', maxWidth: 600, alignSelf: 'center' },
   pageTitle: { fontSize: 24, fontWeight: '900', letterSpacing: 4, paddingHorizontal: 16, marginBottom: 4 },
   pageSub: { fontSize: 9, fontWeight: '700', letterSpacing: 2, paddingHorizontal: 16, marginBottom: 20 },
   empty: { padding: 40, alignItems: 'center' },

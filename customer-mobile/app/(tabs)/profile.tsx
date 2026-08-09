@@ -1297,6 +1297,9 @@ const s = StyleSheet.create({
   container: {
     flex: 1,
     paddingTop: Platform.OS === 'android' ? 40 : 50,
+    width: '100%',
+    maxWidth: 600,
+    alignSelf: 'center',
   },
   profileCard: {
     marginHorizontal: 16,

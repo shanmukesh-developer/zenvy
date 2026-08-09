@@ -1153,7 +1153,7 @@ export default function TrackingScreen() {
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, width: '100%', maxWidth: 600, alignSelf: 'center' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
