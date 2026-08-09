@@ -23,12 +23,13 @@ GoogleSignin.configure({
   offlineAccess: true,
 });
 
-// Fresh, ultra-premium, dark-themed gourmet visual assets
+// Fresh, ultra-premium 8K high-resolution gourmet photography assets
 const IMAGES = [
-  'https://images.unsplash.com/photo-1544025162-d76694265947?w=1000&q=80', // Gourmet Truffle Ribs (dark background, golden highlights)
-  'https://images.unsplash.com/photo-1611143669185-af224c5e3252?w=1000&q=80', // Frosted Glass Luxury Sushi Set
-  'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=1000&q=80', // Artisanal bubbling Woodfired Pizza
-  'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=1000&q=80', // Futuristic neon city logistics drone
+  'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?w=2000&q=90', // 8K Crystal Clear Luxury Sushi Platter
+  'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=2000&q=90', // 8K Woodfired Artisanal Pizza
+  'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=2000&q=90', // 8K Juicy Gourmet Burger & Fries
+  'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=2000&q=90', // 8K Royal Dum Biryani
+  'https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=2000&q=90', // 8K Glazed Donuts & Desserts
 ];
 
 export default function LoginScreen() {
@@ -358,8 +359,8 @@ export default function LoginScreen() {
           resizeMode="cover"
         />
         <LinearGradient
-          colors={['rgba(10,10,11,0.25)', 'rgba(10,10,11,0.65)', '#0A0A0B']}
-          locations={[0, 0.45, 0.85]}
+          colors={['rgba(0,0,0,0.15)', 'rgba(10,8,6,0.4)', 'rgba(10,8,6,0.75)']}
+          locations={[0, 0.4, 0.85]}
           style={StyleSheet.absoluteFill}
         />
       </View>
@@ -613,20 +614,29 @@ export default function LoginScreen() {
             </TouchableOpacity>
           </View>
           
-          <WebView
-            source={{ uri: `${API_URL}/auth-helper?phone=${encodeURIComponent('+91' + phone.replace(/\D/g, '').slice(-10))}` }}
-            onMessage={handleAuthMessage}
-            style={{ flex: 1, backgroundColor: '#0A0A0B' }}
-            javaScriptEnabled={true}
-            domStorageEnabled={true}
-            userAgent="Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1"
-            startInLoadingState={true}
-            renderLoading={() => (
-              <View style={{ ...StyleSheet.absoluteFill, backgroundColor: '#0A0A0B', alignItems: 'center', justifyContent: 'center' }}>
-                <ActivityIndicator size="large" color={COLORS.gold} />
-              </View>
-            )}
-          />
+          {Platform.OS === 'web' ? (
+            <View style={{ flex: 1, backgroundColor: '#0A0A0B', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+              <Text style={{ color: COLORS.gold, fontSize: 14, fontWeight: '900', marginBottom: 8, letterSpacing: 2 }}>ZENVY SECURE AUTH</Text>
+              <Text style={{ color: COLORS.textSecondary, fontSize: 11, textAlign: 'center', marginBottom: 20 }}>
+                Use phone number & OTP above for fast web sign in.
+              </Text>
+            </View>
+          ) : (
+            <WebView
+              source={{ uri: `${API_URL}/auth-helper?phone=${encodeURIComponent('+91' + phone.replace(/\D/g, '').slice(-10))}` }}
+              onMessage={handleAuthMessage}
+              style={{ flex: 1, backgroundColor: '#0A0A0B' }}
+              javaScriptEnabled={true}
+              domStorageEnabled={true}
+              userAgent="Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1"
+              startInLoadingState={true}
+              renderLoading={() => (
+                <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: '#0A0A0B', alignItems: 'center', justifyContent: 'center' }}>
+                  <ActivityIndicator size="large" color={COLORS.gold} />
+                </View>
+              )}
+            />
+          )}
         </KeyboardAvoidingView>
       </Modal>
     </View>

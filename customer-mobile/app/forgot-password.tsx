@@ -204,20 +204,29 @@ export default function ForgotPasswordScreen() {
             </TouchableOpacity>
           </View>
           
-          <WebView
-            source={{ uri: `${API_URL}/auth-helper?phone=${encodeURIComponent('+91' + phone.replace(/\D/g, '').slice(-10))}` }}
-            onMessage={handleAuthMessage}
-            style={{ flex: 1, backgroundColor: '#0A0A0B' }}
-            javaScriptEnabled={true}
-            domStorageEnabled={true}
-            userAgent="Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1"
-            startInLoadingState={true}
-            renderLoading={() => (
-              <View style={{ ...StyleSheet.absoluteFill, backgroundColor: '#0A0A0B', alignItems: 'center', justifyContent: 'center' }}>
-                <ActivityIndicator size="large" color={COLORS.gold} />
-              </View>
-            )}
-          />
+          {Platform.OS === 'web' ? (
+            <View style={{ flex: 1, backgroundColor: '#0A0A0B', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+              <Text style={{ color: COLORS.gold, fontSize: 14, fontWeight: '900', marginBottom: 8, letterSpacing: 2 }}>ZENVY SECURE AUTH</Text>
+              <Text style={{ color: COLORS.textSecondary, fontSize: 11, textAlign: 'center', marginBottom: 20 }}>
+                Enter phone & OTP above to reset password.
+              </Text>
+            </View>
+          ) : (
+            <WebView
+              source={{ uri: `${API_URL}/auth-helper?phone=${encodeURIComponent('+91' + phone.replace(/\D/g, '').slice(-10))}` }}
+              onMessage={handleAuthMessage}
+              style={{ flex: 1, backgroundColor: '#0A0A0B' }}
+              javaScriptEnabled={true}
+              domStorageEnabled={true}
+              userAgent="Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1"
+              startInLoadingState={true}
+              renderLoading={() => (
+                <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: '#0A0A0B', alignItems: 'center', justifyContent: 'center' }}>
+                  <ActivityIndicator size="large" color={COLORS.gold} />
+                </View>
+              )}
+            />
+          )}
         </KeyboardAvoidingView>
       </Modal>
     </KeyboardAvoidingView>

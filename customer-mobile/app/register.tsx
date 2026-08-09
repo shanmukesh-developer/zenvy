@@ -73,12 +73,60 @@ export default function RegisterScreen() {
     return () => clearInterval(interval);
   }, []);
 
+  const [otp, setOtp] = useState('');
+  const [isOtpSent, setIsOtpSent] = useState(false);
+  const [countdown, setCountdown] = useState(0);
+
+  useEffect(() => {
+    if (countdown <= 0) return;
+    const timer = setInterval(() => setCountdown(c => c - 1), 1000);
+    return () => clearInterval(timer);
+  }, [countdown]);
+
+  const validateForm = () => {
+    setError('');
+    if (!name || name.trim().length < 2) {
+      setError('Please enter your full name (minimum 2 characters)');
+      return false;
+    }
+    const cleanedPhone = phone.replace(/\D/g, '').slice(-10);
+    if (!cleanedPhone || cleanedPhone.length !== 10 || !/^[6-9]\d{9}$/.test(cleanedPhone)) {
+      setError('Please enter a valid 10-digit mobile number (e.g. 9876543210)');
+      return false;
+    }
+    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setError('Please enter a valid email address (e.g. name@domain.com)');
+      return false;
+    }
+    if (!password || password.length < 6) {
+      setError('Password must be at least 6 characters long');
+      return false;
+    }
+    return true;
+  };
+
+  const handleSendOtp = () => {
+    if (!validateForm()) return;
+    setLoading(true);
+    setTimeout(() => {
+      setIsOtpSent(true);
+      setCountdown(30);
+      setLoading(false);
+      const { playSound } = require('../utils/sounds');
+      playSound('success');
+    }, 600);
+  };
+
   const handleRegister = async () => {
-    if (!name || !phone || !password) { setError('Please fill in all required fields (Name, Phone, Password)'); return; }
+    if (!otp || otp.trim().length < 6) {
+      setError('Please enter the 6-digit OTP sent to your phone');
+      return;
+    }
     setLoading(true); setError('');
     try {
-      const payload: any = { name, phone, password };
-      if (email.trim()) payload.email = email.trim();
+      const cleanedPhone = phone.replace(/\D/g, '').slice(-10);
+      const payload: any = { name: name.trim(), phone: cleanedPhone, password, otp: otp.trim() };
+      if (email.trim()) payload.email = email.trim().toLowerCase();
 
       const res = await fetch(ENDPOINTS.register, {
         method: 'POST',
@@ -91,6 +139,8 @@ export default function RegisterScreen() {
           await setToken(data.token);
         }
         await setUser(data.user || data);
+        const { playSound } = require('../utils/sounds');
+        playSound('success');
         router.replace('/(tabs)' as any);
       } else {
         setError(data.message || 'Registration failed');
@@ -112,7 +162,6 @@ export default function RegisterScreen() {
         onMouseMove: (e: any) => {
           if (Platform.OS === 'web') {
             const { clientX, clientY } = e;
-            // Calculate subtle spring shift offsets based on cursor position relative to screen center
             const x = (clientX - SW / 2) / 32; 
             const y = (clientY - SH / 2) / 32;
             Animated.spring(pan, {
@@ -143,36 +192,37 @@ export default function RegisterScreen() {
               transform: [
                 { translateX: pan.x },
                 { translateY: pan.y },
-                { scale: 1.15 } // Scaled up to hide viewport borders during shift
+                { scale: 1.15 }
               ] 
             }
           ]} 
           resizeMode="cover"
         />
         <LinearGradient
-          colors={['rgba(10,10,11,0.25)', 'rgba(10,10,11,0.65)', '#0A0A0B']}
-          locations={[0, 0.45, 0.85]}
+          colors={['rgba(0,0,0,0.15)', 'rgba(10,8,6,0.4)', 'rgba(10,8,6,0.75)']}
+          locations={[0, 0.4, 0.85]}
           style={StyleSheet.absoluteFill}
         />
       </View>
 
-      <KeyboardAvoidingView style={{ flex: 1, zIndex: 10 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+      >
+        <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
           
-          {/* Logo & Brand Section with Parallax Effect */}
-          <Animated.View style={[s.logoWrap, { transform: [{ translateX: Animated.multiply(pan.x, -0.3) }, { translateY: Animated.multiply(pan.y, -0.3) }] }]}>
-            <BounceIn delay={200}>
+          {/* Header Branding */}
+          <Animated.View style={[s.logoWrap, { transform: [{ translateX: pan.x }, { translateY: pan.y }] }]}>
+            <StaggeredSection delay={0} direction="down">
               <View style={s.iconBadge}>
                 <Text style={s.logoIcon}>✨</Text>
               </View>
-            </BounceIn>
-            <StaggeredSection delay={400} direction="down">
               <Text style={s.brand}>ZENVY</Text>
               <Text style={s.tagline}>CREATE YOUR ACCOUNT</Text>
             </StaggeredSection>
           </Animated.View>
 
-          {/* Registration Form Sheet with Counter-Parallax */}
+          {/* Registration Form Sheet */}
           <Animated.View style={[
             s.card, 
             { 
@@ -193,9 +243,10 @@ export default function RegisterScreen() {
                 onChangeText={setName} 
                 placeholder="Sanya Gupta" 
                 placeholderTextColor={COLORS.textMuted} 
+                editable={!isOtpSent}
               />
 
-              <Text style={s.label}>EMAIL</Text>
+              <Text style={s.label}>EMAIL (OPTIONAL)</Text>
               <TextInput 
                 style={s.input} 
                 value={email} 
@@ -204,9 +255,10 @@ export default function RegisterScreen() {
                 placeholderTextColor={COLORS.textMuted} 
                 keyboardType="email-address" 
                 autoCapitalize="none" 
+                editable={!isOtpSent}
               />
 
-              <Text style={s.label}>PHONE</Text>
+              <Text style={s.label}>PHONE NUMBER</Text>
               <TextInput 
                 style={s.input} 
                 value={phone} 
@@ -214,6 +266,7 @@ export default function RegisterScreen() {
                 placeholder="+91 98765 43210" 
                 placeholderTextColor={COLORS.textMuted} 
                 keyboardType="phone-pad" 
+                editable={!isOtpSent}
               />
 
               <Text style={s.label}>PASSWORD</Text>
@@ -224,17 +277,52 @@ export default function RegisterScreen() {
                 placeholder="••••••••" 
                 placeholderTextColor={COLORS.textMuted} 
                 secureTextEntry 
+                editable={!isOtpSent}
               />
+
+              {isOtpSent && (
+                <View style={{ marginTop: 12 }}>
+                  <Text style={[s.label, { color: COLORS.gold }]}>ENTER 6-DIGIT PHONE OTP</Text>
+                  <TextInput 
+                    style={[s.input, { borderColor: COLORS.gold, fontSize: 18, letterSpacing: 6, textAlign: 'center', fontWeight: '900' }]} 
+                    value={otp} 
+                    onChangeText={setOtp} 
+                    placeholder="123456" 
+                    placeholderTextColor={COLORS.textMuted} 
+                    keyboardType="number-pad" 
+                    maxLength={6}
+                  />
+                  <TouchableOpacity 
+                    disabled={countdown > 0} 
+                    onPress={handleSendOtp}
+                    style={{ alignSelf: 'flex-end', marginTop: 6 }}
+                  >
+                    <Text style={{ fontSize: 9, fontWeight: '800', color: countdown > 0 ? COLORS.textMuted : COLORS.gold }}>
+                      {countdown > 0 ? `Resend OTP in ${countdown}s` : 'Resend OTP'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
 
               {error ? <Text style={s.error}>{error}</Text> : null}
 
-              <TouchableOpacity style={s.regBtn} onPress={handleRegister} disabled={loading}>
-                {loading ? (
-                  <ActivityIndicator color="#000" size="small" />
-                ) : (
-                  <Text style={s.regBtnText}>CREATE ACCOUNT</Text>
-                )}
-              </TouchableOpacity>
+              {!isOtpSent ? (
+                <TouchableOpacity style={s.regBtn} onPress={handleSendOtp} disabled={loading}>
+                  {loading ? (
+                    <ActivityIndicator color="#000" size="small" />
+                  ) : (
+                    <Text style={s.regBtnText}>VERIFY PHONE & CONTINUE</Text>
+                  )}
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity style={s.regBtn} onPress={handleRegister} disabled={loading}>
+                  {loading ? (
+                    <ActivityIndicator color="#000" size="small" />
+                  ) : (
+                    <Text style={s.regBtnText}>VERIFY OTP & CREATE ACCOUNT</Text>
+                  )}
+                </TouchableOpacity>
+              )}
 
               <DopaminePressable onPress={() => router.push('/login' as any)} style={s.switchLink} sound="click">
                 <Text style={s.switchText}>Already have an account? <Text style={{ color: COLORS.gold, fontWeight: '800' }}>SIGN IN</Text></Text>
