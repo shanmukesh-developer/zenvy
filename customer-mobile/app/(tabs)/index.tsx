@@ -1030,7 +1030,13 @@ export default function HomeScreen() {
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, paddingTop: Platform.OS === 'android' ? 40 : 50 },
+  container: { 
+    flex: 1, 
+    paddingTop: Platform.OS === 'android' ? 40 : 50,
+    maxWidth: 600,
+    width: '100%',
+    alignSelf: 'center',
+  },
   // Nav
   nav: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, marginBottom: 16 },
   navLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },

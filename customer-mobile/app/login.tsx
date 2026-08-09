@@ -26,6 +26,9 @@ GoogleSignin.configure({
 // Official 8K curated Zenvy Campus brand visual assets
 const IMAGES = [
   require('../assets/zenvy_auth_hero_banner.png'),
+  require('../assets/zenvy_auth_asian_banner.png'),
+  require('../assets/zenvy_auth_dessert_banner.png'),
+  require('../assets/zenvy_auth_grill_banner.png'),
   require('../assets/zenvy_auth_lifestyle_banner.png'),
 ];
 
@@ -455,7 +458,7 @@ export default function LoginScreen() {
                     style={s.input} 
                     value={phone} 
                     onChangeText={setPhone} 
-                    placeholder="9876543210" 
+                    placeholder="Enter mobile number" 
                     placeholderTextColor={COLORS.textMuted} 
                     keyboardType="phone-pad" 
                     autoCapitalize="none" 
@@ -466,7 +469,7 @@ export default function LoginScreen() {
                     style={s.input} 
                     value={password} 
                     onChangeText={setPassword} 
-                    placeholder="••••••••" 
+                    placeholder="Enter password" 
                     placeholderTextColor={COLORS.textMuted} 
                     secureTextEntry 
                   />
@@ -474,7 +477,7 @@ export default function LoginScreen() {
               ) : (
                 <>
                   <Text style={[s.label, { textAlign: 'center', marginTop: 12, fontSize: 10, color: COLORS.textSecondary }]}>
-                    Authenticate securely using real-time Firebase SMS verification.
+                    Authenticate securely using real-time SMS verification.
                   </Text>
                   
                   {!confirm ? (
@@ -484,7 +487,7 @@ export default function LoginScreen() {
                         style={s.input} 
                         value={phone} 
                         onChangeText={setPhone} 
-                        placeholder="9876543210" 
+                        placeholder="Enter mobile number" 
                         placeholderTextColor={COLORS.textMuted} 
                         keyboardType="phone-pad" 
                         autoCapitalize="none" 

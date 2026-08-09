@@ -235,7 +235,7 @@ export default function ForgotPasswordScreen() {
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bgDark },
-  scroll: { flexGrow: 1, justifyContent: 'center', padding: 24 },
+  scroll: { flexGrow: 1, justifyContent: 'center', padding: 24, maxWidth: 520, width: '100%', alignSelf: 'center' },
   backLink: { position: 'absolute', top: Platform.OS === 'ios' ? 60 : 40, left: 24, padding: 8 },
   backText: { color: COLORS.gold, fontSize: 10, fontWeight: '900', letterSpacing: 2 },
   logoWrap: { alignItems: 'center', marginBottom: 30, marginTop: 40 },
@@ -243,7 +243,7 @@ const s = StyleSheet.create({
   brand: { fontSize: 28, fontWeight: '900', color: COLORS.gold, letterSpacing: 10 },
   tagline: { fontSize: 8, fontWeight: '700', color: COLORS.textSecondary, letterSpacing: 4, marginTop: 4 },
 
-  card: { backgroundColor: COLORS.bgCard, borderWidth: 1, borderColor: COLORS.borderDark, borderRadius: 24, padding: 24 },
+  card: { backgroundColor: COLORS.bgCard, borderWidth: 1, borderColor: COLORS.borderDark, borderRadius: 24, padding: 24, maxWidth: 520, width: '100%', alignSelf: 'center' },
   stepTitle: { fontSize: 18, fontWeight: '900', color: '#FFF' },
   stepSub: { fontSize: 11, fontWeight: '700', color: COLORS.textSecondary, marginTop: 4 },
 

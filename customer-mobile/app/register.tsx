@@ -15,6 +15,9 @@ const { width: SW, height: SH } = Dimensions.get('window');
 // Official 8K curated Zenvy Campus brand visual assets
 const IMAGES = [
   require('../assets/zenvy_auth_hero_banner.png'),
+  require('../assets/zenvy_auth_asian_banner.png'),
+  require('../assets/zenvy_auth_dessert_banner.png'),
+  require('../assets/zenvy_auth_grill_banner.png'),
   require('../assets/zenvy_auth_lifestyle_banner.png'),
 ];
 
@@ -239,7 +242,7 @@ export default function RegisterScreen() {
                 style={s.input} 
                 value={name} 
                 onChangeText={setName} 
-                placeholder="Sanya Gupta" 
+                placeholder="Enter your full name" 
                 placeholderTextColor={COLORS.textMuted} 
                 editable={!isOtpSent}
               />
@@ -249,7 +252,7 @@ export default function RegisterScreen() {
                 style={s.input} 
                 value={email} 
                 onChangeText={setEmail} 
-                placeholder="your@email.com" 
+                placeholder="name@example.com (optional)" 
                 placeholderTextColor={COLORS.textMuted} 
                 keyboardType="email-address" 
                 autoCapitalize="none" 
@@ -261,7 +264,7 @@ export default function RegisterScreen() {
                 style={s.input} 
                 value={phone} 
                 onChangeText={setPhone} 
-                placeholder="+91 98765 43210" 
+                placeholder="Enter 10-digit mobile number" 
                 placeholderTextColor={COLORS.textMuted} 
                 keyboardType="phone-pad" 
                 editable={!isOtpSent}
@@ -272,7 +275,7 @@ export default function RegisterScreen() {
                 style={s.input} 
                 value={password} 
                 onChangeText={setPassword} 
-                placeholder="••••••••" 
+                placeholder="Enter password (min 6 chars)" 
                 placeholderTextColor={COLORS.textMuted} 
                 secureTextEntry 
                 editable={!isOtpSent}
