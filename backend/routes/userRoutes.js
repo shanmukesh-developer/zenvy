@@ -44,6 +44,8 @@ const loginValidation = [
 
 router.post('/register', authLimiter, registerValidation, validate, registerUser);
 router.post('/login', authLimiter, accountLockout, loginValidation, validate, authUser);
+router.post('/send-otp', authLimiter, require('../controllers/userController').sendOtp);
+router.post('/verify-otp', authLimiter, require('../controllers/userController').verifyOtp);
 router.post('/google-login', authLimiter, require('../controllers/userController').googleLogin);
 router.post('/reset-password', authLimiter, require('../controllers/userController').resetPassword);
 router.post('/logout', logoutUser);
