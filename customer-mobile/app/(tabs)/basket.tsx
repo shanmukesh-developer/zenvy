@@ -7,6 +7,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { summarizeCustomizations } from '../../components/CustomizeDrawer';
 import AmbientBackground from '../../components/AmbientBackground';
 import { StaggeredSection, FloatingPulse, BounceIn } from '../../components/AnimatedSection';
+import DopaminePressable from '../../components/DopaminePressable';
 
 export default function BasketScreen() {
   const { isDark } = useTheme();
@@ -105,19 +106,23 @@ export default function BasketScreen() {
                     <Text style={{ fontSize: 16, fontWeight: '900', color: goldColor, marginTop: 4 }}>₹{item.price}</Text>
                   </View>
                   <View style={[s.qtyWrap, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F3F4F6' }]}>
-                    <TouchableOpacity 
+                    <DopaminePressable 
                       style={[s.qtyBtn, { backgroundColor: isDark ? '#2C2C2E' : '#fff' }]} 
                       onPress={() => updateQuantity(item.cartKey || item.id, Math.max(0, item.quantity - 1))}
+                      sound="click"
+                      activeScale={0.88}
                     >
                       <Text style={[s.qtyText, { color: txt }]}>-</Text>
-                    </TouchableOpacity>
+                    </DopaminePressable>
                     <Text style={[s.qtyNum, { color: txt }]}>{item.quantity}</Text>
-                    <TouchableOpacity 
+                    <DopaminePressable 
                       style={[s.qtyBtn, { backgroundColor: isDark ? '#2C2C2E' : '#fff' }]} 
                       onPress={() => updateQuantity(item.cartKey || item.id, item.quantity + 1)}
+                      sound="click"
+                      activeScale={0.88}
                     >
                       <Text style={[s.qtyText, { color: txt }]}>+</Text>
-                    </TouchableOpacity>
+                    </DopaminePressable>
                   </View>
                 </View>
               </StaggeredSection>

@@ -168,7 +168,7 @@ export default function OrdersScreen() {
   const statusColor = (s: string) => {
     if (s === 'Delivered') return COLORS.emerald;
     if (s === 'Cancelled') return '#EF4444';
-    return '#D4AF7A';
+    return COLORS.gold;
   };
 
   return (

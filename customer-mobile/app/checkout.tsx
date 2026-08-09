@@ -21,6 +21,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { apiFetch } from '../utils/auth';
 import { StaggeredSection, FloatingPulse, BounceIn } from '../components/AnimatedSection';
+import DopaminePressable from '../components/DopaminePressable';
 import * as ImagePicker from 'expo-image-picker';
 
 interface ExtraItem {
@@ -406,30 +407,37 @@ export default function CheckoutScreen() {
             value={address}
             onChangeText={setAddress}
           />
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
-            {['Block A', 'Block B', 'BH-1 Ganga', 'BH-2 Yamuna', 'GH-1 Kaveri', 'KC Block'].map((block) => {
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+            {['Block A', 'Block B', 'BH-1 Ganga', 'BH-2 Yamuna', 'GH-1 Kaveri', 'KC Block', 'Gorena Block'].map((block) => {
               const isSelected = address.includes(block);
               return (
-                <TouchableOpacity
+                <DopaminePressable
                   key={block}
                   style={{
-                    paddingHorizontal: 10,
-                    paddingVertical: 5,
-                    borderRadius: 12,
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderRadius: 14,
                     backgroundColor: isSelected ? goldColor : cardBg,
-                    borderWidth: 1,
-                    borderColor: isSelected ? goldColor : border
+                    borderWidth: 1.5,
+                    borderColor: isSelected ? goldColor : border,
+                    shadowColor: isSelected ? goldColor : '#000',
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: isSelected ? 0.25 : 0.05,
+                    shadowRadius: 4,
+                    elevation: 2,
                   }}
                   onPress={() => {
                     if (!isSelected) {
                       setAddress(address ? `${block}, ${address}` : block);
                     }
                   }}
+                  sound="click"
+                  activeScale={0.92}
                 >
-                  <Text style={{ fontSize: 9, fontWeight: '900', color: isSelected ? '#000' : txt }}>
+                  <Text style={{ fontSize: 9, fontWeight: '900', color: isSelected ? '#000' : txt, letterSpacing: 0.5 }}>
                     🏢 {block}
                   </Text>
-                </TouchableOpacity>
+                </DopaminePressable>
               );
             })}
           </View>
