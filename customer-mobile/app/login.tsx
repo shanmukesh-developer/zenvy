@@ -73,10 +73,10 @@ export default function LoginScreen() {
     // Try native Firebase if initialized
     if (Platform.OS !== 'web') {
       try {
-        if (auth && typeof auth === 'function') {
-          const firebaseApp = auth().app;
-          if (firebaseApp) {
-            const confirmation = await auth().signInWithPhoneNumber('+91' + digits);
+        const nativeAuthInstance = auth();
+        if (nativeAuthInstance && nativeAuthInstance.signInWithPhoneNumber) {
+          const confirmation = await nativeAuthInstance.signInWithPhoneNumber('+91' + digits);
+          if (confirmation) {
             setConfirm(confirmation);
             setCountdown(30);
             setLoading(false);
@@ -84,7 +84,7 @@ export default function LoginScreen() {
           }
         }
       } catch (e) {
-        // Fallthrough to web/backend OTP handler
+        // Native Firebase uninitialized or web mode — silently use backend SMS API
       }
     }
 
