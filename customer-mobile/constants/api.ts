@@ -1,7 +1,16 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
-export const API_URL = 'https://hostelbites-backend-jwmt.onrender.com';
+const getDevHost = () => {
+  if (!__DEV__) return 'https://hostelbites-backend-jwmt.onrender.com';
+  const hostUri = Constants.expoConfig?.hostUri;
+  if (hostUri) {
+    return `http://${hostUri.split(':')[0]}:5005`;
+  }
+  return Platform.OS === 'android' ? 'http://10.0.2.2:5005' : 'http://localhost:5005';
+};
+
+export const API_URL = getDevHost();
 
 export const ENDPOINTS = {
   // Auth

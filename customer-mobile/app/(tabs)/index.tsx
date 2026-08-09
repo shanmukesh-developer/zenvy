@@ -54,6 +54,9 @@ const CARD_W = (SW - 48) / 2;
 const FILTERS = [
   { key: 'all', label: '✨ ALL' },
   { key: 'veg', label: '🥗 VEG' },
+  { key: 'under99', label: '🔥 UNDER ₹99' },
+  { key: 'topRated', label: '⭐ 4.5+ RATED' },
+  { key: 'express', label: '⚡ 15 MIN EXPRESS' },
   { key: 'premium', label: '👑 PREMIUM' },
   { key: 'budget', label: '💰 BUDGET' },
   { key: 'jain', label: '🙏 JAIN' },
@@ -67,6 +70,10 @@ const CLASSICS = [
   { name: 'South Indian', img: 'https://images.unsplash.com/photo-1541832676-9b763b0239ab?q=80&w=200' },
   { name: 'Drinks', img: 'https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?q=80&w=200' },
   { name: 'Chinese', img: 'https://images.unsplash.com/photo-1585032226651-759b368d7246?q=80&w=200' },
+  { name: 'Momos & Rolls', img: 'https://images.unsplash.com/photo-1626777552726-4a6b54c97e46?q=80&w=200' },
+  { name: 'Shakes', img: 'https://images.unsplash.com/photo-1572490122747-3968b75cc699?q=80&w=200' },
+  { name: 'Gym Fuel', img: 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?q=80&w=200' },
+  { name: 'Bakery', img: 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?q=80&w=200' },
 ];
 
 const PROMOS = [
@@ -405,6 +412,9 @@ export default function HomeScreen() {
     .filter(r => { const t = (r.vendorType||'').toUpperCase(); return t === 'FOOD' || t === 'RESTAURANT'; })
     .filter(r => {
       if (filter === 'veg') return (r.menu||[]).some((i:any) => i.isVegetarian);
+      if (filter === 'under99') return (r.menu||[]).some((i:any) => i.price <= 99);
+      if (filter === 'topRated') return (r.rating || 4.5) >= 4.5;
+      if (filter === 'express') return (r.deliveryTime || '').includes('15') || (r.deliveryTime || '').includes('10');
       if (filter === 'budget') return (r.menu||[]).some((i:any) => i.price < 150);
       if (filter === 'premium') return r.subscriptionTier === 'premium' || r.isFeatured;
       if (filter === 'jain') return (r.cuisine||'').toLowerCase().includes('jain');

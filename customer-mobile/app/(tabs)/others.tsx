@@ -87,7 +87,6 @@ const TABS = [
   { key: 'food', label: 'FOOD & BASKET' },
   { key: 'pg', label: 'PG HOMES' },
   { key: 'coride', label: 'CO-RIDE' },
-  { key: 'promos', label: 'DEALS & SPINS' },
 ];
 
 const BB_CATEGORIES = [

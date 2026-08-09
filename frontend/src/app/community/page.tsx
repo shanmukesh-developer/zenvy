@@ -21,6 +21,10 @@ interface PostType {
   createdAt: string;
   expiresAt?: string | null;
   replies?: PostType[];
+  postType?: 'post' | 'review';
+  starRating?: number;
+  restaurantName?: string;
+  productName?: string;
 }
 
 

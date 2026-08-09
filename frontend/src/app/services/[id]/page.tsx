@@ -18,13 +18,14 @@ const SERVICE_CONFIG = {
   mart: { name: 'Zenvy Mini-Mart', icon: ShoppingCart, color: 'text-yellow-500', bg: 'bg-yellow-500/10' },
 };
 
-export default function ZenvyServicePage({ params }: { params: { id: string } }) {
+export default function ZenvyServicePage({ params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = React.use(params);
   const router = useRouter();
   const { addToCart } = useCart();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const service = SERVICE_CONFIG[params.id as keyof typeof SERVICE_CONFIG];
+  const service = SERVICE_CONFIG[resolvedParams.id as keyof typeof SERVICE_CONFIG];
 
   useEffect(() => {
     // In a real app, we would fetch specifically filtered items from the backend based on the service ID.
@@ -48,22 +49,22 @@ export default function ZenvyServicePage({ params }: { params: { id: string } })
         allProducts = allProducts.filter((p: any) => {
           const t = p.tags || [];
           const vt = p.vendorType;
-          if (params.id === 'grocery') return t.includes('fruits') || vt === 'GROCERY';
-          if (params.id === 'meat') return t.includes('meat') || vt === 'MEAT';
-          if (params.id === 'bakery') return t.includes('sweets') || vt === 'SWEETS';
-          if (params.id === 'rentals') return t.includes('rental') || vt === 'RENTAL';
-          if (params.id === 'pharmacy') return t.includes('medicine') || t.includes('pharmacy') || vt === 'PHARMACY';
-          if (params.id === 'laundry') return t.includes('laundry') || vt === 'LAUNDRY';
-          if (params.id === 'print') return t.includes('stationary') || t.includes('print') || vt === 'STATIONARY';
-          if (params.id === 'mart') return t.includes('mart') || vt === 'MART';
+          if (resolvedParams.id === 'grocery') return t.includes('fruits') || vt === 'GROCERY';
+          if (resolvedParams.id === 'meat') return t.includes('meat') || vt === 'MEAT';
+          if (resolvedParams.id === 'bakery') return t.includes('sweets') || vt === 'SWEETS';
+          if (resolvedParams.id === 'rentals') return t.includes('rental') || vt === 'RENTAL';
+          if (resolvedParams.id === 'pharmacy') return t.includes('medicine') || t.includes('pharmacy') || vt === 'PHARMACY';
+          if (resolvedParams.id === 'laundry') return t.includes('laundry') || vt === 'LAUNDRY';
+          if (resolvedParams.id === 'print') return t.includes('stationary') || t.includes('print') || vt === 'STATIONARY';
+          if (resolvedParams.id === 'mart') return t.includes('mart') || vt === 'MART';
           return false;
         });
 
         // Add dummy data if empty so the UI doesn't look blank during development
         if (allProducts.length === 0) {
           allProducts = [
-            { id: '1', name: 'Premium Service Item', price: 99, description: 'High quality ' + params.id + ' service.', imageUrl: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=500', isAvailable: true },
-            { id: '2', name: 'Standard Request', price: 49, description: 'Quick and reliable ' + params.id + ' request.', imageUrl: 'https://images.unsplash.com/photo-1588675646184-f5b0b0b0b2de?w=500', isAvailable: true }
+            { id: '1', name: 'Premium Service Item', price: 99, description: 'High quality ' + resolvedParams.id + ' service.', imageUrl: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=500', isAvailable: true },
+            { id: '2', name: 'Standard Request', price: 49, description: 'Quick and reliable ' + resolvedParams.id + ' request.', imageUrl: 'https://images.unsplash.com/photo-1588675646184-f5b0b0b0b2de?w=500', isAvailable: true }
           ];
         }
 
@@ -75,7 +76,7 @@ export default function ZenvyServicePage({ params }: { params: { id: string } })
       }
     };
     fetchItems();
-  }, [params.id]);
+  }, [resolvedParams.id]);
 
   if (!service) {
     return (
