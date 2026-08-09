@@ -336,23 +336,41 @@ export default function RegisterScreen() {
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bgDark },
-  scroll: { flexGrow: 1, justifyContent: 'flex-end' },
+  scroll: { 
+    flexGrow: 1, 
+    justifyContent: 'flex-end',
+    width: '100%',
+    maxWidth: 520,
+    alignSelf: 'center',
+  },
   
-  logoWrap: { alignItems: 'center', marginBottom: 20, marginTop: 40, paddingHorizontal: 24, zIndex: 5 },
+  logoWrap: { 
+    alignItems: 'center', 
+    marginBottom: 20, 
+    marginTop: Platform.OS === 'web' ? 30 : 40, 
+    paddingHorizontal: 24, 
+    zIndex: 5 
+  },
   iconBadge: { width: 64, height: 64, borderRadius: 32, backgroundColor: 'rgba(201, 168, 76, 0.1)', borderWidth: 1.5, borderColor: COLORS.goldBorder, alignItems: 'center', justifyContent: 'center', ...SHADOWS.goldGlow },
   logoIcon: { fontSize: 28 },
   brand: { fontSize: 32, fontWeight: '900', color: COLORS.gold, letterSpacing: 8, marginTop: 10, textShadowColor: 'rgba(201,168,76,0.3)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 8 },
   tagline: { fontSize: 8, fontWeight: '800', color: COLORS.textSecondary, letterSpacing: 3, marginTop: 4, textTransform: 'uppercase' },
   
   card: {
-    backgroundColor: 'rgba(26,26,28,0.92)',
+    backgroundColor: 'rgba(26,26,28,0.94)',
     borderTopLeftRadius: 32,
     borderTopRightRadius: 32,
+    borderBottomLeftRadius: Platform.OS === 'web' ? 32 : 0,
+    borderBottomRightRadius: Platform.OS === 'web' ? 32 : 0,
     borderWidth: 1.5,
     borderColor: 'rgba(255, 255, 255, 0.08)',
     paddingHorizontal: 24,
     paddingTop: 24,
-    paddingBottom: Platform.OS === 'ios' ? 44 : 80,
+    paddingBottom: Platform.OS === 'ios' ? 44 : 36,
+    width: '100%',
+    maxWidth: 520,
+    alignSelf: 'center',
+    marginBottom: Platform.OS === 'web' ? 24 : 0,
     ...SHADOWS.card,
     zIndex: 15,
   },
