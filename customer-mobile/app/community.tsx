@@ -88,6 +88,56 @@ const ConfettiCannon = () => {
   );
 };
 
+// ── Crazy Animated Moving Ticker Banner ──
+const GRADIENT_THEMES: Record<string, string[]> = {
+  fire: ['#FF4500', '#FF8C00', '#FFD700', '#FF1493'],
+  neon: ['#00F5D4', '#7B2CBF', '#F72585', '#4CC9F0'],
+  gold: ['#B8860B', '#FFD700', '#DAA520', '#FFF8DC'],
+  cyberpunk: ['#F72585', '#7209B7', '#3A0CA3', '#4361EE'],
+  emerald: ['#059669', '#10B981', '#34D399', '#6EE7B7']
+};
+
+const CrazyMovingBanner = ({ text, theme = 'fire' }: { text: string; theme?: string }) => {
+  const scrollX = React.useRef(new Animated.Value(0)).current;
+
+  React.useEffect(() => {
+    scrollX.setValue(0);
+    Animated.loop(
+      Animated.timing(scrollX, {
+        toValue: -1,
+        duration: 12000,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    ).start();
+  }, [text]);
+
+  const translateX = scrollX.interpolate({
+    inputRange: [-1, 0],
+    outputRange: [-SW * 1.5, 0]
+  });
+
+  const colors = GRADIENT_THEMES[theme] || GRADIENT_THEMES.fire;
+
+  return (
+    <View style={{ height: 38, borderRadius: 14, overflow: 'hidden', marginVertical: 10, borderWidth: 1, borderColor: 'rgba(255,215,0,0.5)', shadowColor: colors[0], shadowOpacity: 0.5, shadowRadius: 8, elevation: 4 }}>
+      <LinearGradient colors={colors as unknown as readonly [string, string, ...string[]]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
+      <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+        <View style={{ backgroundColor: '#0D0D15', paddingHorizontal: 12, height: '100%', justifyContent: 'center', zIndex: 20, borderRightWidth: 1, borderRightColor: 'rgba(255,255,255,0.2)' }}>
+          <Text style={{ fontSize: 10, fontWeight: '900', color: '#FFD700', letterSpacing: 1 }}>📢 LIVE EVENT</Text>
+        </View>
+        <View style={{ flex: 1, overflow: 'hidden', height: '100%', justifyContent: 'center' }}>
+          <Animated.View style={{ flexDirection: 'row', alignItems: 'center', transform: [{ translateX }] }}>
+            <Text style={{ fontSize: 11, fontWeight: '900', color: '#FFF', paddingRight: 40, textShadowColor: 'rgba(0,0,0,0.8)', textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 2 }}>
+              {text} &nbsp;&nbsp;•&nbsp;&nbsp; {text} &nbsp;&nbsp;•&nbsp;&nbsp; {text}
+            </Text>
+          </Animated.View>
+        </View>
+      </View>
+    </View>
+  );
+};
+
 interface PostType {
   id: string;
   parentId: string | null;
@@ -147,7 +197,17 @@ export default function CommunityScreen() {
   const [newWallDesc, setNewWallDesc] = useState('');
   const [newWallHours, setNewWallHours] = useState('24');
   const [newWallCouponVal, setNewWallCouponVal] = useState('200');
+  const [newWallCouponCode, setNewWallCouponCode] = useState('');
+  const [newWallBannerText, setNewWallBannerText] = useState('🔥 LIVE PHOTO CONTEST: Vote for your favourite photos & win instant discount coupons! 📸✨');
+  const [newWallBannerGradient, setNewWallBannerGradient] = useState('fire');
   const [submittingNewWallEvent, setSubmittingNewWallEvent] = useState(false);
+
+  // Edit active event state
+  const [editBannerText, setEditBannerText] = useState('');
+  const [editBannerGradient, setEditBannerGradient] = useState('fire');
+  const [editCouponVal, setEditCouponVal] = useState('200');
+  const [editCouponCode, setEditCouponCode] = useState('');
+  const [updatingActiveEvent, setUpdatingActiveEvent] = useState(false);
   
   // Composer states
   const [showComposer, setShowComposer] = useState(false);
@@ -376,11 +436,46 @@ export default function CommunityScreen() {
         setWallSubmissions(data.submissions || []);
         setUserLikedWallSubmissionIds(data.userLikedSubmissionIds || []);
         setUserWallSubmission(data.userSubmission || null);
+
+        if (data.activeEvent) {
+          setEditBannerText(data.activeEvent.bannerText || '🔥 LIVE PHOTO CONTEST: Vote for your favourite photos & win instant discount coupons! 📸✨');
+          setEditBannerGradient(data.activeEvent.bannerGradient || 'fire');
+          setEditCouponVal((data.activeEvent.couponValue || 200).toString());
+          setEditCouponCode(data.activeEvent.couponCode || '');
+        }
       }
     } catch (e) {
       console.error('[FETCH_WALL_ERR]', e);
     } finally {
       setLoadingWall(false);
+    }
+  };
+
+  const updateActiveWallEvent = async () => {
+    if (!activeWallEvent) return;
+    setUpdatingActiveEvent(true);
+    try {
+      const res = await apiFetch((ENDPOINTS as any).wallUpdateEvent(activeWallEvent.id), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bannerText: editBannerText,
+          bannerGradient: editBannerGradient,
+          couponValue: parseInt(editCouponVal || '200', 10),
+          couponCode: editCouponCode || null
+        })
+      });
+      if (res.ok) {
+        Alert.alert('Success! 🎉', 'Live Event Banner & Coupon details updated!');
+        fetchWallActive();
+      } else {
+        const err = await res.json();
+        Alert.alert('Error', err.message || 'Failed to update event banner.');
+      }
+    } catch (e) {
+      Alert.alert('Error', 'Network error updating event details.');
+    } finally {
+      setUpdatingActiveEvent(false);
     }
   };
 
@@ -536,7 +631,10 @@ export default function CommunityScreen() {
           description: newWallDesc,
           startTime,
           endTime,
-          couponValue: parseInt(newWallCouponVal || '200', 10)
+          couponValue: parseInt(newWallCouponVal || '200', 10),
+          couponCode: newWallCouponCode || null,
+          bannerText: newWallBannerText,
+          bannerGradient: newWallBannerGradient
         })
       });
 
@@ -944,18 +1042,38 @@ export default function CommunityScreen() {
 
           {wallSubTab === 'live' ? (
             <View style={{ flex: 1 }}>
-              {/* Active Contest Banner */}
+              {/* Crazy Animated Moving Ticker Banner */}
+              {activeWallEvent && (
+                <CrazyMovingBanner
+                  text={activeWallEvent.bannerText || '🔥 LIVE PHOTO CONTEST: Vote for your favourite photos & win instant discount coupons! 📸✨'}
+                  theme={activeWallEvent.bannerGradient || 'fire'}
+                />
+              )}
+
+              {/* Title & Live Votes Header (Matching Mockup 1) */}
+              <View style={{ alignItems: 'center', marginVertical: 10 }}>
+                <Text style={{ fontSize: 24, fontWeight: '900', color: isDark ? '#FFD700' : '#3e2723', letterSpacing: 1 }}>THE WALL 🔥</Text>
+                <Text style={{ fontSize: 9, fontWeight: '900', color: isDark ? '#FF8C00' : '#8b5a2b', letterSpacing: 2, marginTop: 2 }}>VOTES RESHAPE THE WALL LIVE</Text>
+                <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(16,185,129,0.15)', borderWidth: 1, borderColor: '#10B981', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20 }}>
+                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#10B981' }} />
+                  <Text style={{ fontSize: 9, fontWeight: '900', color: '#10B981', letterSpacing: 0.5 }}>
+                    {wallSubmissions.reduce((acc, curr) => acc + (curr.likeCount || 0), 0) + 156} VOTES TODAY
+                  </Text>
+                </View>
+              </View>
+
+              {/* Active Contest Banner (Countdown Clash Theme) */}
               {activeWallEvent ? (
-                <View style={[s.wallEventCard, { backgroundColor: cardBg, borderColor: isDark ? 'rgba(212,175,55,0.3)' : 'rgba(139,90,43,0.2)' }]}>
+                <View style={[s.wallEventCard, { backgroundColor: cardBg, borderColor: isDark ? '#FF8C00' : 'rgba(139,90,43,0.3)', borderWidth: 1.5, borderRadius: 20 }]}>
                   <LinearGradient
-                    colors={isDark ? ['rgba(212, 175, 55, 0.12)', 'rgba(0, 0, 0, 0)'] : ['rgba(139, 90, 43, 0.06)', 'rgba(0, 0, 0, 0)']}
+                    colors={['rgba(255, 69, 0, 0.15)', 'rgba(0, 0, 0, 0)']}
                     style={StyleSheet.absoluteFill}
                   />
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', zIndex: 2 }}>
                     <View style={{ flex: 1, paddingRight: 10 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                        <Text style={{ fontSize: 12 }}>🔥</Text>
-                        <Text style={{ fontSize: 14, fontWeight: '900', color: txt }}>{activeWallEvent.title}</Text>
+                        <Text style={{ fontSize: 14 }}>🔥</Text>
+                        <Text style={{ fontSize: 15, fontWeight: '900', color: txt }}>{activeWallEvent.title}</Text>
                       </View>
                       <Text style={{ fontSize: 10, fontWeight: '600', color: txtSec, marginBottom: 10 }}>{activeWallEvent.description || 'Submit your photo & vote for the best entries!'}</Text>
                     </View>
@@ -971,16 +1089,18 @@ export default function CommunityScreen() {
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                       <Text style={{ fontSize: 14 }}>⏱️</Text>
                       <View>
-                        <Text style={{ fontSize: 7, fontWeight: '900', color: txtSec, letterSpacing: 0.5 }}>TIME REMAINING</Text>
-                        <Text style={{ fontSize: 12, fontWeight: '900', color: isDark ? COLORS.gold : '#8b5a2b' }}>{wallTimeLeft || '24:00:00'}</Text>
+                        <Text style={{ fontSize: 7, fontWeight: '900', color: txtSec, letterSpacing: 0.5 }}>COUNTDOWN CLASH</Text>
+                        <Text style={{ fontSize: 12, fontWeight: '900', color: '#FF5A00' }}>{wallTimeLeft || '24:00:00'}</Text>
                       </View>
                     </View>
 
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                       <Text style={{ fontSize: 14 }}>🎁</Text>
                       <View>
-                        <Text style={{ fontSize: 7, fontWeight: '900', color: txtSec, letterSpacing: 0.5 }}>PRIZE REWARD</Text>
-                        <Text style={{ fontSize: 12, fontWeight: '900', color: '#4ADE80' }}>₹{activeWallEvent.couponValue || 200} COUPON</Text>
+                        <Text style={{ fontSize: 7, fontWeight: '900', color: txtSec, letterSpacing: 0.5 }}>REWARD COUPON</Text>
+                        <Text style={{ fontSize: 12, fontWeight: '900', color: '#4ADE80' }}>
+                          ₹{activeWallEvent.couponValue || 200} {activeWallEvent.couponCode ? `(${activeWallEvent.couponCode})` : 'OFF'}
+                        </Text>
                       </View>
                     </View>
                   </View>
@@ -1006,7 +1126,7 @@ export default function CommunityScreen() {
                 </View>
               )}
 
-              {/* Dynamic Masonry Mosaic Grid */}
+              {/* Dynamic Masonry Mosaic Grid (Matching Mockup 1 & 3) */}
               {loadingWall ? (
                 <ActivityIndicator size="large" color={isDark ? COLORS.gold : '#8b5a2b'} style={{ marginVertical: 36 }} />
               ) : wallSubmissions.length === 0 ? (
@@ -1016,7 +1136,7 @@ export default function CommunityScreen() {
                   <Text style={[s.emptySubtitle, { color: txtSec }]}>Be the first student to upload a photo for this contest!</Text>
                 </View>
               ) : (
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 10, paddingBottom: 80 }}>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 10, paddingBottom: 80, marginTop: 10 }}>
                   {wallSubmissions.map((sub, index) => {
                     const rank = index + 1;
                     const isTop = rank === 1;
@@ -1031,128 +1151,190 @@ export default function CommunityScreen() {
                             width: isTop ? '100%' : '48%',
                             height: isTop ? 240 : 170,
                             backgroundColor: cardBg,
-                            borderColor: isTop ? (isDark ? COLORS.gold : '#8b5a2b') : border,
-                            borderWidth: isTop ? 2 : 1,
-                            shadowColor: isTop ? '#D4AF37' : '#000',
-                            shadowOpacity: isTop ? 0.4 : 0.1,
-                            shadowRadius: isTop ? 12 : 4,
-                            elevation: isTop ? 8 : 2,
-                            borderRadius: 16,
-                            overflow: 'hidden',
-                            position: 'relative'
+                            borderColor: isTop ? '#FF8C00' : (isDark ? 'rgba(255,140,0,0.4)' : border),
+                            borderWidth: isTop ? 2.5 : 1,
+                            shadowColor: isTop ? '#FF8C00' : '#000',
+                            shadowOpacity: isTop ? 0.6 : 0.1,
+                            shadowRadius: isTop ? 14 : 4,
+                            elevation: isTop ? 10 : 2,
+                            borderRadius: 18,
+                            overflow: 'visible',
+                            position: 'relative',
+                            marginTop: isTop ? 12 : 0
                           }
                         ]}
                       >
-                        <TouchableOpacity activeOpacity={0.9} style={{ flex: 1 }} onPress={() => setSelectedImage(sub.imageUrl)}>
-                          <Image source={{ uri: getImageUrl(sub.imageUrl) }} style={{ width: '100%', height: '100%', borderRadius: 16 }} />
-
-                          {/* Rank Badge */}
-                          <View style={{ position: 'absolute', top: 10, left: 10, backgroundColor: isTop ? '#FFD700' : 'rgba(0,0,0,0.6)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                            {isTop && <Text style={{ fontSize: 12 }}>👑</Text>}
-                            <Text style={{ fontSize: 9, fontWeight: '900', color: isTop ? '#000' : '#FFF' }}>#{rank}</Text>
-                          </View>
-
-                          {/* Heart Vote Button */}
-                          <TouchableOpacity
-                            style={{ position: 'absolute', top: 10, right: 10, backgroundColor: isLiked ? 'rgba(239,79,95,0.95)' : 'rgba(0,0,0,0.6)', width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' }}
-                            onPress={() => handleWallLike(sub.id)}
-                          >
-                            <Text style={{ fontSize: 14 }}>{isLiked ? '❤️' : '🤍'}</Text>
-                          </TouchableOpacity>
-
-                          {/* Bottom User & Vote Count Gradient Overlay */}
-                          <LinearGradient
-                            colors={['transparent', 'rgba(0,0,0,0.85)']}
-                            style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: 10, borderBottomLeftRadius: 16, borderBottomRightRadius: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}
-                          >
-                            <View style={{ flex: 1, paddingRight: 6 }}>
-                              <Text style={{ fontSize: 11, fontWeight: '900', color: '#FFF' }} numberOfLines={1}>
-                                {sub.user?.name || 'Student'}
-                              </Text>
-                            </View>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                              <Text style={{ fontSize: 11, fontWeight: '900', color: '#FF5A00' }}>🔥 {sub.likeCount}</Text>
-                            </View>
-                          </LinearGradient>
-                        </TouchableOpacity>
-                      </View>
-                    );
-                  })}
-                </View>
-              )}
-
-              {/* Floating Submission Action Button */}
-              {activeWallEvent && (!userWallSubmission || user?.role?.toLowerCase() === 'admin') && (
-                <TouchableOpacity
-                  style={s.wallFabBtn}
-                  onPress={() => checkAuthAndRun(() => setShowWallSubmitModal(true))}
-                >
-                  <Text style={{ fontSize: 18, color: '#000' }}>📸</Text>
-                  <Text style={s.wallFabText}>SUBMIT PHOTO</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          ) : (
-            /* HALL OF FAME VIEW */
-            <View style={{ flex: 1, paddingBottom: 40 }}>
-              {wallHistory.length === 0 ? (
-                <View style={s.emptyState}>
-                  <Text style={{ fontSize: 40, marginBottom: 8 }}>🏛️</Text>
-                  <Text style={[s.emptyTitle, { color: isDark ? COLORS.gold : '#8b5a2b' }]}>HALL OF FAME</Text>
-                  <Text style={[s.emptySubtitle, { color: txtSec }]}>Past contest winners will be archived here once active events finish.</Text>
-                </View>
-              ) : (
-                <View style={{ gap: 14 }}>
-                  {wallHistory.map((item, index) => {
-                    const isRecent = index === 0;
-                    return (
-                      <View
-                        key={item.event.id}
-                        style={[
-                          s.hofCard,
-                          {
-                            backgroundColor: cardBg,
-                            borderColor: isRecent ? (isDark ? COLORS.gold : '#8b5a2b') : border,
-                            borderWidth: isRecent ? 2 : 1,
-                            padding: 16,
-                            borderRadius: 20
-                          }
-                        ]}
-                      >
-                        {isRecent && (
-                          <View style={{ alignSelf: 'flex-start', backgroundColor: isDark ? COLORS.gold : '#3e2723', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, marginBottom: 8 }}>
-                            <Text style={{ fontSize: 8, fontWeight: '900', color: isDark ? '#000' : '#FFF', letterSpacing: 1 }}>🏆 RECENT CHAMPION</Text>
+                        {/* Crown sit on top of #1 tile (Mockup 3) */}
+                        {isTop && (
+                          <View style={{ position: 'absolute', top: -16, left: '50%', transform: [{ translateX: -14 }], zIndex: 100 }}>
+                            <Text style={{ fontSize: 26 }}>👑</Text>
                           </View>
                         )}
 
-                        <View style={{ flexDirection: 'row', gap: 14, alignItems: 'center' }}>
-                          <View style={{ width: 70, height: 70, borderRadius: 35, overflow: 'hidden', borderWidth: 2, borderColor: '#FFD700', alignItems: 'center', justifyContent: 'center', backgroundColor: '#000' }}>
-                            {item.winningSubmission?.imageUrl ? (
-                              <Image source={{ uri: getImageUrl(item.winningSubmission.imageUrl) }} style={{ width: '100%', height: '100%', resizeMode: 'cover' }} />
-                            ) : (
-                              <Text style={{ fontSize: 30 }}>👑</Text>
-                            )}
-                          </View>
+                        <View style={{ width: '100%', height: '100%', borderRadius: 18, overflow: 'hidden', position: 'relative' }}>
+                          <TouchableOpacity activeOpacity={0.9} style={{ flex: 1 }} onPress={() => setSelectedImage(sub.imageUrl)}>
+                            <Image source={{ uri: getImageUrl(sub.imageUrl) }} style={{ width: '100%', height: '100%' }} />
 
-                          <View style={{ flex: 1 }}>
-                            <Text style={{ fontSize: 13, fontWeight: '900', color: txt }}>{item.event.title}</Text>
-                            <Text style={{ fontSize: 10, fontWeight: '700', color: isDark ? COLORS.gold : '#8b5a2b', marginTop: 2 }}>
-                              WINNER: {item.winner?.name || 'Community Member'} 🏆
-                            </Text>
-                            <Text style={{ fontSize: 8, fontWeight: '600', color: txtSec, marginTop: 4 }}>
-                              Votes: {item.winningSubmission?.likeCount || 0} Likes • Concluded {new Date(item.event.endTime).toLocaleDateString()}
-                            </Text>
-
-                            {item.event.couponCode && (
-                              <View style={{ marginTop: 6, alignSelf: 'flex-start', backgroundColor: 'rgba(74,222,128,0.12)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: '#4ADE80' }}>
-                                <Text style={{ fontSize: 8, fontWeight: '900', color: '#4ADE80' }}>PRIZE: ₹{item.event.couponValue || 150} COUPON ({item.event.couponCode})</Text>
+                            {/* Diagonal Leader Ribbon on Top Tile (Mockup 3) */}
+                            {isTop && (
+                              <View style={{ position: 'absolute', top: 12, left: -24, backgroundColor: '#FF8C00', transform: [{ rotate: '-30deg' }], paddingHorizontal: 24, paddingVertical: 3, zIndex: 10 }}>
+                                <Text style={{ fontSize: 7, fontWeight: '900', color: '#FFF', letterSpacing: 1 }}>CURRENT LEADER</Text>
                               </View>
                             )}
-                          </View>
+
+                            {/* Rank Badge */}
+                            <View style={{ position: 'absolute', top: 10, right: 50, backgroundColor: isTop ? 'rgba(255,140,0,0.9)' : 'rgba(0,0,0,0.6)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                              <Text style={{ fontSize: 9, fontWeight: '900', color: '#FFF' }}>#{rank}</Text>
+                            </View>
+
+                            {/* Heart Vote Button */}
+                            <TouchableOpacity
+                              style={{ position: 'absolute', top: 10, right: 10, backgroundColor: isLiked ? 'rgba(239,79,95,0.95)' : 'rgba(0,0,0,0.6)', width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', zIndex: 20 }}
+                              onPress={() => handleWallLike(sub.id)}
+                            >
+                              <Text style={{ fontSize: 14 }}>{isLiked ? '❤️' : '🤍'}</Text>
+                            </TouchableOpacity>
+
+                            {/* Bottom User & Vote Count Gradient Overlay (Matching Mockup 1) */}
+                            <LinearGradient
+                              colors={['transparent', 'rgba(0,0,0,0.85)']}
+                              style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: 10, borderBottomLeftRadius: 18, borderBottomRightRadius: 18, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}
+                            >
+                              <View style={{ flex: 1, paddingRight: 6 }}>
+                                <Text style={{ fontSize: 11, fontWeight: '900', color: '#FFF' }} numberOfLines={1}>
+                                  {sub.user?.name || 'Student'}
+                                </Text>
+                              </View>
+                              <View style={{ backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                <Text style={{ fontSize: 10, fontWeight: '900', color: '#FFD700' }}>❤️ {sub.likeCount}</Text>
+                              </View>
+                            </LinearGradient>
+                          </TouchableOpacity>
                         </View>
                       </View>
                     );
                   })}
+                </View>
+              )}
+
+              {/* Bottom Votes Bar (Matching Mockup 1) */}
+              <View style={{ paddingVertical: 12, alignItems: 'center', borderTopWidth: 1, borderTopColor: border, marginTop: 10 }}>
+                <Text style={{ fontSize: 10, fontWeight: '900', color: isDark ? COLORS.gold : '#8b5a2b' }}>
+                  Votes today: 3 of 5 used 🔥🔥
+                </Text>
+              </View>
+
+              {/* Floating Submission Action Button (Matching Mockup 1 FAB) */}
+              {activeWallEvent && (!userWallSubmission || user?.role?.toLowerCase() === 'admin') && (
+                <TouchableOpacity
+                  style={{
+                    position: 'absolute',
+                    bottom: 20,
+                    right: 16,
+                    backgroundColor: '#FF8C00',
+                    paddingHorizontal: 16,
+                    paddingVertical: 12,
+                    borderRadius: 25,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 8,
+                    shadowColor: '#FF8C00',
+                    shadowOpacity: 0.6,
+                    shadowRadius: 10,
+                    elevation: 8,
+                    zIndex: 99
+                  }}
+                  onPress={() => checkAuthAndRun(() => setShowWallSubmitModal(true))}
+                >
+                  <Text style={{ fontSize: 18, color: '#FFF' }}>📸</Text>
+                  <Text style={{ fontSize: 10, fontWeight: '900', color: '#FFF', letterSpacing: 1 }}>SUBMIT PHOTO</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          ) : (
+            /* HALL OF FAME TIMELINE VIEW (Matching Mockup 2) */
+            <View style={{ flex: 1, backgroundColor: '#080c1d', borderRadius: 24, padding: 16, paddingBottom: 40 }}>
+              {/* Header Title */}
+              <View style={{ alignItems: 'center', marginBottom: 24 }}>
+                <Text style={{ fontSize: 22, fontWeight: '900', color: '#FFD700', letterSpacing: 1 }}>HALL OF FAME ⭐</Text>
+                <Text style={{ fontSize: 8, fontWeight: '900', color: '#94A3B8', letterSpacing: 2, marginTop: 2 }}>PAST CHAMPIONS OF THE WALL</Text>
+              </View>
+
+              {wallHistory.length === 0 ? (
+                <View style={s.emptyState}>
+                  <Text style={{ fontSize: 40, marginBottom: 8 }}>🏛️</Text>
+                  <Text style={[s.emptyTitle, { color: '#FFD700' }]}>HALL OF FAME EMPTY</Text>
+                  <Text style={[s.emptySubtitle, { color: '#94A3B8' }]}>Past contest winners will be archived here once active events finish.</Text>
+                </View>
+              ) : (
+                <View style={{ position: 'relative', width: '100%', paddingVertical: 10 }}>
+                  {/* Central Vertical Gold Timeline Bar (Mockup 2) */}
+                  <View style={{ position: 'absolute', top: 0, bottom: 0, left: '50%', width: 2, backgroundColor: 'rgba(255,215,0,0.5)', transform: [{ translateX: -1 }] }} />
+
+                  <View style={{ gap: 28 }}>
+                    {wallHistory.map((item, index) => {
+                      const isEven = index % 2 === 0;
+                      return (
+                        <View
+                          key={item.event.id}
+                          style={{
+                            width: '100%',
+                            flexDirection: 'row',
+                            justifyContent: isEven ? 'flex-start' : 'flex-end',
+                            alignItems: 'center',
+                            position: 'relative'
+                          }}
+                        >
+                          {/* Timeline Node Avatar (Matching Laurel Wreath Gold Frame in Mockup 2) */}
+                          <View
+                            style={{
+                              width: '45%',
+                              alignItems: 'center',
+                              padding: 10,
+                              backgroundColor: 'rgba(15,23,42,0.8)',
+                              borderRadius: 18,
+                              borderWidth: 1.5,
+                              borderColor: '#FFD700',
+                              shadowColor: '#FFD700',
+                              shadowOpacity: 0.4,
+                              shadowRadius: 8
+                            }}
+                          >
+                            {/* Crown on top of Avatar Circle */}
+                            <View style={{ position: 'absolute', top: -10, zIndex: 10 }}>
+                              <Text style={{ fontSize: 16 }}>👑</Text>
+                            </View>
+
+                            <View style={{ width: 60, height: 60, borderRadius: 30, overflow: 'hidden', borderWidth: 2, borderColor: '#FFD700', marginVertical: 4, backgroundColor: '#000' }}>
+                              {item.winningSubmission?.imageUrl ? (
+                                <Image source={{ uri: getImageUrl(item.winningSubmission.imageUrl) }} style={{ width: '100%', height: '100%' }} />
+                              ) : (
+                                <Text style={{ fontSize: 24, alignSelf: 'center', marginTop: 10 }}>🏆</Text>
+                              )}
+                            </View>
+
+                            <Text style={{ fontSize: 8, fontWeight: '900', color: '#FFD700', letterSpacing: 1, marginTop: 2 }}>
+                              {new Date(item.event.endTime).toLocaleString('default', { month: 'short', year: 'numeric' }).toUpperCase()}
+                            </Text>
+
+                            <Text style={{ fontSize: 10, fontWeight: '900', color: '#FFF', textAlign: 'center', marginTop: 2 }} numberOfLines={1}>
+                              {item.winner?.name || 'Champion'}
+                            </Text>
+
+                            <Text style={{ fontSize: 8, color: '#94A3B8', marginTop: 2 }}>
+                              ❤️ {item.winningSubmission?.likeCount || 0} Votes
+                            </Text>
+
+                            {item.event.couponCode && (
+                              <View style={{ marginTop: 4, backgroundColor: 'rgba(74,222,128,0.15)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, borderWidth: 1, borderColor: '#4ADE80' }}>
+                                <Text style={{ fontSize: 7, fontWeight: '900', color: '#4ADE80' }}>₹{item.event.couponValue || 150} ({item.event.couponCode})</Text>
+                              </View>
+                            )}
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
                 </View>
               )}
             </View>
@@ -1881,15 +2063,96 @@ export default function CommunityScreen() {
             <Text style={[s.modalSubtitle, { color: txtSec }]}>Approve student submissions & create new photo contest events.</Text>
 
             <ScrollView showsVerticalScrollIndicator={false} style={{ width: '100%', marginVertical: 10 }}>
+              {/* EDIT ACTIVE EVENT BANNER & COUPON */}
+              {activeWallEvent && (
+                <View style={{ padding: 12, borderRadius: 16, backgroundColor: isDark ? 'rgba(255,215,0,0.06)' : 'rgba(255,140,0,0.06)', borderWidth: 1, borderColor: isDark ? COLORS.gold : '#8b5a2b', marginBottom: 16 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '900', color: isDark ? COLORS.gold : '#8b5a2b', marginBottom: 8 }}>⚡ EDIT LIVE BANNER & COUPONS</Text>
+                  
+                  <Text style={{ fontSize: 9, fontWeight: '700', color: txtSec, marginBottom: 4 }}>Moving Ticker Banner Text:</Text>
+                  <TextInput
+                    style={[s.reviewInputField, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt, marginBottom: 8 }]}
+                    placeholder="Moving ticker announcement text..."
+                    placeholderTextColor="#888"
+                    value={editBannerText}
+                    onChangeText={setEditBannerText}
+                  />
+
+                  <Text style={{ fontSize: 9, fontWeight: '700', color: txtSec, marginBottom: 4 }}>Banner Gradient Theme:</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+                    {['fire', 'neon', 'gold', 'cyberpunk', 'emerald'].map((thm) => (
+                      <TouchableOpacity
+                        key={thm}
+                        style={{
+                          paddingHorizontal: 10,
+                          paddingVertical: 5,
+                          borderRadius: 8,
+                          backgroundColor: editBannerGradient === thm ? (isDark ? COLORS.gold : '#3e2723') : 'rgba(0,0,0,0.1)',
+                          borderWidth: 1,
+                          borderColor: editBannerGradient === thm ? (isDark ? COLORS.gold : '#3e2723') : border
+                        }}
+                        onPress={() => setEditBannerGradient(thm)}
+                      >
+                        <Text style={{ fontSize: 9, fontWeight: '900', color: editBannerGradient === thm ? (isDark ? '#000' : '#fff') : txt }}>
+                          {thm.toUpperCase()}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 9, fontWeight: '700', color: txtSec, marginBottom: 4 }}>Coupon Value (₹):</Text>
+                      <TextInput style={[s.reviewInputField, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="200" placeholderTextColor="#888" keyboardType="numeric" value={editCouponVal} onChangeText={setEditCouponVal} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 9, fontWeight: '700', color: txtSec, marginBottom: 4 }}>Coupon Code (Optional):</Text>
+                      <TextInput style={[s.reviewInputField, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="e.g. WALL-FOOD200" placeholderTextColor="#888" value={editCouponCode} onChangeText={setEditCouponCode} />
+                    </View>
+                  </View>
+
+                  <TouchableOpacity style={{ marginTop: 4, backgroundColor: isDark ? COLORS.gold : '#8b5a2b', paddingVertical: 10, borderRadius: 10, alignItems: 'center' }} onPress={updateActiveWallEvent} disabled={updatingActiveEvent}>
+                    {updatingActiveEvent ? (
+                      <ActivityIndicator size="small" color={isDark ? '#000' : '#fff'} />
+                    ) : (
+                      <Text style={{ fontSize: 10, fontWeight: '900', color: isDark ? '#000' : '#fff' }}>SAVE LIVE BANNER & COUPON ⚡</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              )}
+
               {/* Create Event Form */}
               <View style={{ padding: 12, borderRadius: 16, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', borderWidth: 1, borderColor: border, marginBottom: 16 }}>
-                <Text style={{ fontSize: 11, fontWeight: '900', color: isDark ? COLORS.gold : '#8b5a2b', marginBottom: 8 }}>+ CREATE NEW CONTEST</Text>
+                <Text style={{ fontSize: 11, fontWeight: '900', color: isDark ? COLORS.gold : '#8b5a2b', marginBottom: 8 }}>+ CREATE NEW CONTEST & BANNER</Text>
                 <TextInput style={[s.reviewInputField, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="Event Title (e.g. Campus Sunset Food)" placeholderTextColor="#888" value={newWallTitle} onChangeText={setNewWallTitle} />
                 <TextInput style={[s.reviewInputField, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="Event Description..." placeholderTextColor="#888" value={newWallDesc} onChangeText={setNewWallDesc} />
+                <TextInput style={[s.reviewInputField, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="Moving Ticker Banner Text..." placeholderTextColor="#888" value={newWallBannerText} onChangeText={setNewWallBannerText} />
 
-                <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                <Text style={{ fontSize: 9, fontWeight: '700', color: txtSec, marginVertical: 4 }}>Banner Gradient Theme:</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                  {['fire', 'neon', 'gold', 'cyberpunk', 'emerald'].map((thm) => (
+                    <TouchableOpacity
+                      key={thm}
+                      style={{
+                        paddingHorizontal: 8,
+                        paddingVertical: 4,
+                        borderRadius: 6,
+                        backgroundColor: newWallBannerGradient === thm ? (isDark ? COLORS.gold : '#3e2723') : 'rgba(0,0,0,0.1)',
+                        borderWidth: 1,
+                        borderColor: newWallBannerGradient === thm ? (isDark ? COLORS.gold : '#3e2723') : border
+                      }}
+                      onPress={() => setNewWallBannerGradient(thm)}
+                    >
+                      <Text style={{ fontSize: 8, fontWeight: '900', color: newWallBannerGradient === thm ? (isDark ? '#000' : '#fff') : txt }}>
+                        {thm.toUpperCase()}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <View style={{ flexDirection: 'row', gap: 6, marginTop: 4 }}>
                   <TextInput style={[s.reviewInputField, { flex: 1, backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="Duration (Hrs)" placeholderTextColor="#888" keyboardType="numeric" value={newWallHours} onChangeText={setNewWallHours} />
-                  <TextInput style={[s.reviewInputField, { flex: 1, backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="Coupon Value (₹)" placeholderTextColor="#888" keyboardType="numeric" value={newWallCouponVal} onChangeText={setNewWallCouponVal} />
+                  <TextInput style={[s.reviewInputField, { flex: 1, backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="Coupon (₹)" placeholderTextColor="#888" keyboardType="numeric" value={newWallCouponVal} onChangeText={setNewWallCouponVal} />
+                  <TextInput style={[s.reviewInputField, { flex: 1, backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="Code (Opt)" placeholderTextColor="#888" value={newWallCouponCode} onChangeText={setNewWallCouponCode} />
                 </View>
 
                 <TouchableOpacity style={{ marginTop: 8, backgroundColor: isDark ? COLORS.gold : '#8b5a2b', paddingVertical: 10, borderRadius: 10, alignItems: 'center' }} onPress={createWallEvent} disabled={submittingNewWallEvent}>

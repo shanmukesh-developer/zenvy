@@ -254,11 +254,25 @@ export default function HomeScreen() {
 
 
 
+  const sanitizeImage = (url: any) => {
+    const fallback = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400';
+    if (!url || typeof url !== 'string') return fallback;
+    if (url.startsWith('data:image/') || url.length > 1000) return fallback;
+    return url;
+  };
+
   const fetchData = useCallback(async () => {
     try {
       const res = await fetch(ENDPOINTS.restaurants);
       const data = await res.json();
-      if (Array.isArray(data)) setRestaurants(data);
+      if (Array.isArray(data)) {
+        const cleaned = data.map((r: any) => ({
+          ...r,
+          imageUrl: sanitizeImage(r.imageUrl || r.image),
+          image: sanitizeImage(r.imageUrl || r.image)
+        }));
+        setRestaurants(cleaned);
+      }
     } catch (e: any) { 
       if (e.message && (e.message.includes('Network') || e.message.includes('Failed to fetch') || e.message.includes('JSON'))) {
         setShowWakeup(true);

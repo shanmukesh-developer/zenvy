@@ -94,18 +94,30 @@ const getRestaurants = async (req, res) => {
     // Stitch all valid menu items into the restaurants array for catalog rendering
     const allMenuItems = await MenuItem.findAll({ where: { isAvailable: true } });
     
+    const fallbackImage = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400';
+    const cleanImageUrl = (url) => {
+      if (!url || typeof url !== 'string') return fallbackImage;
+      if (url.startsWith('data:image/') || url.length > 1000) return fallbackImage;
+      return url;
+    };
+
     const augmentedRestaurants = restaurants.map(r => {
       const rJson = r.toJSON();
+      delete rJson.password;
       rJson._id = rJson.id; // Map UUIDs to expected legacy Mongo _id formats
+      rJson.imageUrl = cleanImageUrl(rJson.imageUrl || rJson.image);
+      rJson.image = rJson.imageUrl;
       rJson.menu = allMenuItems
         .filter(m => m.restaurantId === r.id)
         .map(m => {
           const item = m.toJSON();
+          delete item.password;
           // Ensure tags is an array (SQLite might return it as a string)
           if (typeof item.tags === 'string') {
             try { item.tags = JSON.parse(item.tags); } catch { item.tags = []; }
           }
-          return { ...item, _id: item.id };
+          const cleanedImg = cleanImageUrl(item.imageUrl || item.image);
+          return { ...item, _id: item.id, imageUrl: cleanedImg, image: cleanedImg };
         });
       return rJson;
     });

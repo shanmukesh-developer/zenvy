@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
 
@@ -42,37 +42,23 @@ export default function RecentlyViewed() {
   const { isDark } = useTheme();
   const [items, setItems] = useState<ViewedItem[]>([]);
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const existing = await AsyncStorage.getItem(STORAGE_KEY);
-        if (existing) {
-          setItems(JSON.parse(existing));
-        }
-      } catch (e) {
-        console.error(e);
-      }
-    };
-    load();
-  }, []);
-
-  // Re-load whenever the component is focused (e.g. navigating back)
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      try {
-        const existing = await AsyncStorage.getItem(STORAGE_KEY);
-        if (existing) {
-          const parsed = JSON.parse(existing);
-          if (parsed.length !== items.length) {
-            setItems(parsed);
+  useFocusEffect(
+    useCallback(() => {
+      let isMounted = true;
+      const load = async () => {
+        try {
+          const existing = await AsyncStorage.getItem(STORAGE_KEY);
+          if (existing && isMounted) {
+            setItems(JSON.parse(existing));
           }
+        } catch (e) {
+          console.error(e);
         }
-      } catch (err) {
-        console.error('[RECENTLY_VIEWED_LOAD_ERROR]', err);
-      }
-    }, 2000);
-    return () => clearInterval(interval);
-  }, [items.length]);
+      };
+      load();
+      return () => { isMounted = false; };
+    }, [])
+  );
 
   if (items.length === 0) return null;
 

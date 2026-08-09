@@ -67,6 +67,13 @@ exports.getRestaurants = async (req, res) => {
       : [];
 
     // Index menu items by restaurantId for O(1) lookup
+    const fallbackImage = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400';
+    const cleanImageUrl = (url) => {
+      if (!url || typeof url !== 'string') return fallbackImage;
+      if (url.startsWith('data:image/') || url.length > 1000) return fallbackImage;
+      return url;
+    };
+
     const menuByRestaurant = {};
     for (const m of allMenuItems) {
       const mObj = m.toJSON();
@@ -74,21 +81,26 @@ exports.getRestaurants = async (req, res) => {
       if (typeof mTags === 'string') {
         try { mTags = JSON.parse(mTags); } catch { mTags = []; }
       }
-      const item = { ...mObj, tags: mTags, _id: m.id, id: m.id, image: mObj.imageUrl || mObj.image };
+      const cleanedImg = cleanImageUrl(mObj.imageUrl || mObj.image);
+      const item = { ...mObj, tags: mTags, _id: m.id, id: m.id, image: cleanedImg, imageUrl: cleanedImg };
       if (!menuByRestaurant[m.restaurantId]) menuByRestaurant[m.restaurantId] = [];
       menuByRestaurant[m.restaurantId].push(item);
     }
 
     const result = restaurants.map(r => {
       const rObj = r.toJSON();
+      delete rObj.password;
       let tags = rObj.tags || [];
       if (typeof tags === 'string') {
         try { tags = JSON.parse(tags); } catch { tags = []; }
       }
+      const cleanedImg = cleanImageUrl(rObj.imageUrl || rObj.image);
       return {
         ...rObj,
         _id: r.id,
         id: r.id,
+        imageUrl: cleanedImg,
+        image: cleanedImg,
         tags,
         categories: tags,
         // Map deliveryTime (integer minutes) to time string for frontend compatibility
