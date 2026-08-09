@@ -27,7 +27,7 @@ router.post('/events', protect, admin, async (req, res) => {
     const WallEvent = getWallEventModel();
     if (!WallEvent) return res.status(500).json({ message: 'WallEvent model not initialized.' });
 
-    const { title, description, startTime, endTime, couponValue } = req.body;
+    const { title, description, startTime, endTime, couponValue, couponCode, bannerText, bannerGradient } = req.body;
     if (!title || !startTime || !endTime) {
       return res.status(400).json({ message: 'Title, startTime, and endTime are required.' });
     }
@@ -38,7 +38,10 @@ router.post('/events', protect, admin, async (req, res) => {
       startTime: new Date(startTime),
       endTime: new Date(endTime),
       status: 'ACTIVE',
-      couponValue: couponValue ? parseInt(couponValue, 10) : 100
+      couponCode: couponCode || null,
+      couponValue: couponValue ? parseInt(couponValue, 10) : 100,
+      bannerText: bannerText || '🔥 LIVE PHOTO CONTEST: Vote for your favourite photos & win instant discount coupons! 📸✨',
+      bannerGradient: bannerGradient || 'fire'
     });
 
     // Notify all users about new Wall Event
@@ -55,6 +58,33 @@ router.post('/events', protect, admin, async (req, res) => {
   } catch (err) {
     console.error('Error creating Wall event:', err);
     res.status(500).json({ message: 'Failed to create Wall event.' });
+  }
+});
+
+// ── ADMIN: Update Wall Event & Moving Banner ──
+// PUT /api/wall/events/:id
+router.put('/events/:id', protect, admin, async (req, res) => {
+  try {
+    const WallEvent = getWallEventModel();
+    if (!WallEvent) return res.status(500).json({ message: 'WallEvent model not initialized.' });
+
+    const event = await WallEvent.findByPk(req.params.id);
+    if (!event) return res.status(404).json({ message: 'Event not found.' });
+
+    const { title, description, bannerText, bannerGradient, couponValue, couponCode, endTime } = req.body;
+    if (title !== undefined) event.title = title;
+    if (description !== undefined) event.description = description;
+    if (bannerText !== undefined) event.bannerText = bannerText;
+    if (bannerGradient !== undefined) event.bannerGradient = bannerGradient;
+    if (couponValue !== undefined) event.couponValue = parseInt(couponValue, 10);
+    if (couponCode !== undefined) event.couponCode = couponCode;
+    if (endTime !== undefined) event.endTime = new Date(endTime);
+
+    await event.save();
+    res.json({ message: 'Event and moving banner updated successfully!', event });
+  } catch (err) {
+    console.error('Error updating Wall event:', err);
+    res.status(500).json({ message: 'Failed to update Wall event.' });
   }
 });
 
@@ -101,7 +131,7 @@ router.get('/events/active', async (req, res) => {
         {
           model: User,
           as: 'user',
-          attributes: ['id', 'name', 'avatar', 'profileImage']
+          attributes: ['id', 'name', 'profileImage']
         }
       ]
     });
@@ -166,7 +196,7 @@ router.get('/events/history', async (req, res) => {
 
       if (evt.winnerUserId) {
         winnerUser = await User.findByPk(evt.winnerUserId, {
-          attributes: ['id', 'name', 'avatar', 'profileImage']
+          attributes: ['id', 'name', 'profileImage']
         });
         winningSubmission = await WallSubmission.findOne({
           where: { eventId: evt.id, userId: evt.winnerUserId, isApproved: true },
@@ -179,7 +209,7 @@ router.get('/events/history', async (req, res) => {
         winningSubmission = await WallSubmission.findOne({
           where: { eventId: evt.id, isApproved: true },
           order: [['likeCount', 'DESC'], ['createdAt', 'ASC']],
-          include: [{ model: User, as: 'user', attributes: ['id', 'name', 'avatar', 'profileImage'] }]
+          include: [{ model: User, as: 'user', attributes: ['id', 'name', 'profileImage'] }]
         });
         if (winningSubmission && winningSubmission.user) {
           winnerUser = winningSubmission.user;
@@ -316,13 +346,86 @@ router.get('/events/:id/leaderboard', async (req, res) => {
     const submissions = await WallSubmission.findAll({
       where: { eventId: req.params.id, isApproved: true },
       order: [['likeCount', 'DESC'], ['createdAt', 'ASC']],
-      include: [{ model: User, as: 'user', attributes: ['id', 'name', 'avatar', 'profileImage'] }]
+      include: [{ model: User, as: 'user', attributes: ['id', 'name', 'profileImage'] }]
     });
 
     res.json(submissions);
   } catch (err) {
     console.error('Error fetching leaderboard:', err);
     res.status(500).json({ message: 'Failed to fetch leaderboard.' });
+  }
+});
+
+// ── ADMIN: End Wall Event Manually ──
+// PUT /api/wall/events/:id/end
+router.put('/events/:id/end', protect, admin, async (req, res) => {
+  try {
+    const WallEvent = getWallEventModel();
+    const WallSubmission = getWallSubmissionModel();
+    const User = getUserModel();
+    if (!WallEvent || !WallSubmission) return res.status(500).json({ message: 'Models not initialized.' });
+
+    const event = await WallEvent.findByPk(req.params.id);
+    if (!event) return res.status(404).json({ message: 'Event not found.' });
+    if (event.status === 'ENDED') return res.status(400).json({ message: 'Event is already ended.' });
+
+    // Find winner — top approved submission by likeCount
+    const topSubmission = await WallSubmission.findOne({
+      where: { eventId: event.id, isApproved: true },
+      order: [['likeCount', 'DESC'], ['createdAt', 'ASC']],
+      include: [{ model: User, as: 'user', attributes: ['id', 'name', 'profileImage'] }]
+    });
+
+    event.status = 'ENDED';
+    event.endTime = new Date();
+    if (topSubmission) {
+      event.winnerUserId = topSubmission.userId;
+    }
+    await event.save();
+
+    res.json({
+      message: 'Event ended successfully!',
+      event,
+      winner: topSubmission ? topSubmission.user : null,
+      winningSubmission: topSubmission
+    });
+  } catch (err) {
+    console.error('Error ending Wall event:', err);
+    res.status(500).json({ message: 'Failed to end event.' });
+  }
+});
+
+// ── ADMIN: Get All Wall Events (for management) ──
+// GET /api/wall/admin/events
+router.get('/admin/events', protect, admin, async (req, res) => {
+  try {
+    const WallEvent = getWallEventModel();
+    const WallSubmission = getWallSubmissionModel();
+    if (!WallEvent) return res.status(500).json({ message: 'Models not initialized.' });
+
+    const events = await WallEvent.findAll({
+      order: [['createdAt', 'DESC']],
+      limit: 50
+    });
+
+    // Attach submission counts
+    const enriched = [];
+    for (const evt of events) {
+      const totalSubmissions = await WallSubmission.count({ where: { eventId: evt.id } });
+      const approvedSubmissions = await WallSubmission.count({ where: { eventId: evt.id, isApproved: true } });
+      const pendingSubmissions = await WallSubmission.count({ where: { eventId: evt.id, isApproved: false } });
+      enriched.push({
+        ...evt.toJSON(),
+        totalSubmissions,
+        approvedSubmissions,
+        pendingSubmissions
+      });
+    }
+
+    res.json(enriched);
+  } catch (err) {
+    console.error('Error fetching admin events:', err);
+    res.status(500).json({ message: 'Failed to fetch events.' });
   }
 });
 
@@ -338,7 +441,7 @@ router.get('/admin/pending', protect, admin, async (req, res) => {
       where: { isApproved: false },
       order: [['createdAt', 'DESC']],
       include: [
-        { model: User, as: 'user', attributes: ['id', 'name', 'avatar', 'profileImage'] },
+        { model: User, as: 'user', attributes: ['id', 'name', 'profileImage'] },
         { model: WallEvent, as: 'event', attributes: ['id', 'title', 'status'] }
       ]
     });

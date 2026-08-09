@@ -1,21 +1,7 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
-// ADB reverse port forwarding tunnels localhost:5005 on the phone
-// directly to your PC's backend over USB. No WiFi/firewall needed.
-// To set up: adb reverse tcp:5005 tcp:5005
-
-const getDevHost = () => {
-  // 1. If Metro is running, expo-constants gives us the host IP automatically
-  const hostUri = Constants.expoConfig?.hostUri;
-  if (hostUri) {
-    return `http://${hostUri.split(':')[0]}:5005`;
-  }
-  // 2. Default to ADB reverse port forwarding localhost:5005 over USB
-  return 'http://localhost:5005';
-};
-
-export const API_URL = getDevHost();
+export const API_URL = 'https://hostelbites-backend-jwmt.onrender.com';
 
 export const ENDPOINTS = {
   // Auth
@@ -108,5 +94,6 @@ export const ENDPOINTS = {
   wallApprove: (id: string) => `${API_URL}/api/wall/admin/submissions/${id}/approve`,
   wallReject: (id: string) => `${API_URL}/api/wall/admin/submissions/${id}/reject`,
   wallCreateEvent: `${API_URL}/api/wall/events`,
+  wallUpdateEvent: (id: string) => `${API_URL}/api/wall/events/${id}`,
 };
 

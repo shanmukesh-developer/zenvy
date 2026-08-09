@@ -14,7 +14,9 @@ const initWallEventModel = (sequelize) => {
     status: { type: DataTypes.ENUM('ACTIVE', 'ENDED'), defaultValue: 'ACTIVE' },
     couponCode: { type: DataTypes.STRING, allowNull: true },
     couponValue: { type: DataTypes.INTEGER, defaultValue: 100 },
-    winnerUserId: { type: DataTypes.STRING, allowNull: true }
+    winnerUserId: { type: DataTypes.STRING, allowNull: true },
+    bannerText: { type: DataTypes.TEXT, allowNull: true },
+    bannerGradient: { type: DataTypes.STRING, defaultValue: 'fire' }
   }, {
     timestamps: true,
     indexes: [

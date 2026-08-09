@@ -503,6 +503,17 @@ const connectDB = async () => {
           } catch (_err) {}
         }
         
+        // WallEvents migration
+        try {
+          await sequelize.query('ALTER TABLE "WallEvents" ADD COLUMN "bannerText" TEXT;');
+          console.log('✅ [SQLite_MIGRATION] Added bannerText column to WallEvents.');
+        } catch (_err) {}
+
+        try {
+          await sequelize.query('ALTER TABLE "WallEvents" ADD COLUMN "bannerGradient" VARCHAR(255) DEFAULT \'fire\';');
+          console.log('✅ [SQLite_MIGRATION] Added bannerGradient column to WallEvents.');
+        } catch (_err) {}
+
         // Friendships new fields migration
         const friendshipCols = [
           { name: 'streakCount', type: 'INTEGER DEFAULT 0' },
@@ -529,9 +540,13 @@ const connectDB = async () => {
         }
       }
     } else {
-      console.log('🔒 Production Sync: Running { alter: true } (Resilient Mode)');
-      // In production (PostgreSQL), alter:true is safer and necessary for fresh deploys.
-      await sequelize.sync({ alter: true });
+      try {
+        await sequelize.sync({ alter: true });
+      } catch (syncErr) {
+        console.warn('⚠️ [DB_SYNC_WARN] PostgreSQL alter sync warning:', syncErr.message);
+        console.log('🔄 Retrying standard PostgreSQL sync...');
+        await sequelize.sync();
+      }
       
       // Auto-check for empty DB to help user identify missing data
       const Restaurant = sequelize.models.Restaurant;

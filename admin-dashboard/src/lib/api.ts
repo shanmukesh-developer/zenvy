@@ -1,8 +1,13 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
 
+const normalizeUrl = (url: string) => {
+  const path = url.startsWith('/api/') ? url.substring(4) : url.startsWith('/api') ? url.substring(4) : url;
+  return `${API_URL}/api${path.startsWith('/') ? '' : '/'}${path}`;
+};
+
 const api = {
   get: async (url: string) => {
-    const res = await fetch(`${API_URL}/api${url}`, {
+    const res = await fetch(normalizeUrl(url), {
       method: 'GET',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -12,7 +17,7 @@ const api = {
   },
 
   post: async (url: string, body?: any) => {
-    const res = await fetch(`${API_URL}/api${url}`, {
+    const res = await fetch(normalizeUrl(url), {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -23,7 +28,7 @@ const api = {
   },
 
   put: async (url: string, body?: any) => {
-    const res = await fetch(`${API_URL}/api${url}`, {
+    const res = await fetch(normalizeUrl(url), {
       method: 'PUT',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -34,7 +39,7 @@ const api = {
   },
 
   delete: async (url: string) => {
-    const res = await fetch(`${API_URL}/api${url}`, {
+    const res = await fetch(normalizeUrl(url), {
       method: 'DELETE',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },

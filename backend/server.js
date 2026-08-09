@@ -177,6 +177,12 @@ app.set('authRateLimiter', authRateLimiter);
 // Apply the global rate limiting middleware to all requests starting with /api
 app.use('/api/', globalLimiter);
 app.post('/api/orders', orderRateLimiter);
+
+// 📦 Serve compiled APK directly for download
+app.get('/Zenvy_Customer_Standalone.apk', (req, res) => {
+  res.download(path.join(__dirname, '..', 'Zenvy_Customer_Standalone.apk'));
+});
+
 const server = http.createServer(app);
 
 // ── High-Concurrency Server Tuning ──────────────────────
