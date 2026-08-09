@@ -377,14 +377,9 @@ const connectDB = async () => {
         // We try a normal sync first.
         await sequelize.sync({ alter: true });
       } catch (syncErr) {
-        if (dialect === 'sqlite') {
-          console.warn('⚠️ [DB_SYNC_WARN] SQLite alter failed. Attempting graceful recovery...');
-          // If alter fails in SQLite, it's often due to backup table leftover or complex FK changes.
-          // We'll fallback to a non-altering sync and log the need for manual migration if columns changed.
-          await sequelize.sync(); 
-        } else {
-          throw syncErr;
-        }
+        console.warn('⚠️ [DB_SYNC_WARN] Database alter sync warning:', syncErr.message);
+        console.log('🔄 Retrying standard sync without alter...');
+        await sequelize.sync(); 
       }
 
       // Self-Healing SQLite Migration Guard: Ensure community post expiry column exists
