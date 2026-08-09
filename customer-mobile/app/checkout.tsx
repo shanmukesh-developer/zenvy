@@ -406,6 +406,33 @@ export default function CheckoutScreen() {
             value={address}
             onChangeText={setAddress}
           />
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+            {['Block A', 'Block B', 'BH-1 Ganga', 'BH-2 Yamuna', 'GH-1 Kaveri', 'KC Block'].map((block) => {
+              const isSelected = address.includes(block);
+              return (
+                <TouchableOpacity
+                  key={block}
+                  style={{
+                    paddingHorizontal: 10,
+                    paddingVertical: 5,
+                    borderRadius: 12,
+                    backgroundColor: isSelected ? goldColor : cardBg,
+                    borderWidth: 1,
+                    borderColor: isSelected ? goldColor : border
+                  }}
+                  onPress={() => {
+                    if (!isSelected) {
+                      setAddress(address ? `${block}, ${address}` : block);
+                    }
+                  }}
+                >
+                  <Text style={{ fontSize: 9, fontWeight: '900', color: isSelected ? '#000' : txt }}>
+                    🏢 {block}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
           <TextInput
             style={[s.input, { backgroundColor: cardBg, color: txt }]}
             placeholder="Landmark (Optional)"

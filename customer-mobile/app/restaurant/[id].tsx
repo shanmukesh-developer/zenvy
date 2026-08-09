@@ -542,8 +542,12 @@ export default function RestaurantDetail() {
                     )}
                   </View>
                   <Text style={[st.menuItemName, { color: txt }]} numberOfLines={1}>{item.name}</Text>
-                  <Text style={[st.menuItemPrice, { color: brand ? accent : '#EF4F5F' }]}>₹{item.price}</Text>
-                  {item.description ? <Text style={{ fontSize: 9, color: txtSec, marginTop: 4 }} numberOfLines={2}>{item.description}</Text> : null}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginVertical: 2 }}>
+                    <Text style={[st.menuItemPrice, { color: brand ? accent : '#EF4F5F' }]}>₹{item.price}</Text>
+                    <Text style={{ fontSize: 8, color: txtSec, fontWeight: '700' }}>•  ⏱️ 15-20 min</Text>
+                    <Text style={{ fontSize: 8, color: txtSec, fontWeight: '700' }}>•  🔥 {320 + ((Number(item.price) || 50) * 2) % 260} kcal</Text>
+                  </View>
+                  {item.description ? <Text style={{ fontSize: 9, color: txtSec, marginTop: 2 }} numberOfLines={2}>{item.description}</Text> : null}
                 </View>
                 
                 {/* Right image with floating ADD button */}

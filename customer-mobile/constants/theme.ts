@@ -3,15 +3,15 @@
 
 export const COLORS = {
   // Core Backgrounds
-  bgDark: '#0A0A0B',
-  bgCard: '#1A1A1C',
-  bgCardHover: '#222224',
+  bgDark: '#09090B',
+  bgCard: '#18181B',
+  bgCardHover: '#27272A',
   bgLight: '#F8F9FA',
   bgLightCard: '#FFFFFF',
 
   // Primary Accents
-  gold: '#C9A84C',
-  goldLight: '#E4C875',
+  gold: '#D4AF7A',
+  goldLight: '#F0D9A8',
   goldMuted: 'rgba(201, 168, 76, 0.15)',
   goldBorder: 'rgba(201, 168, 76, 0.4)',
   red: '#EF4F5F',
@@ -25,13 +25,13 @@ export const COLORS = {
 
   // Text
   textPrimary: '#FFFFFF',
-  textSecondary: '#9CA3AF',
-  textMuted: '#6B7280',
+  textSecondary: '#A1A1AA',
+  textMuted: '#71717A',
   textDark: '#111827',
   textDarkSecondary: '#4B5563',
 
   // Borders
-  borderDark: 'rgba(255, 255, 255, 0.05)',
+  borderDark: 'rgba(255, 255, 255, 0.08)',
   borderLight: 'rgba(0, 0, 0, 0.08)',
   borderGold: 'rgba(201, 168, 76, 0.3)',
 

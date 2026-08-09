@@ -16,6 +16,74 @@ interface CampusBitesSectionProps {
   restaurants: any[];
 }
 
+const DEFAULT_STALLS = [
+  {
+    _id: 'srm-tea-stall',
+    name: 'SRM Tea Stall & Tiffin Center',
+    vendorType: 'LOCAL_VENDOR',
+    campus: 'SRM',
+    imageUrl: 'https://images.unsplash.com/photo-1541832676-9b763b0239ab?w=400',
+    stallDescription: 'Hot Ginger Tea, Filter Coffee, Samosa, Mirchi Bajji & Idli Dosa.',
+    whatsappNumber: '919391955674',
+    rating: 4.6,
+    isLocalVendor: true,
+    operatingHours: { start: '06:00', end: '23:30' },
+    menu: [
+      { name: 'Special Ginger Tea', price: 15, isVegetarian: true },
+      { name: 'Hot Samosa (2 pcs)', price: 20, isVegetarian: true },
+      { name: 'Crispy Mirchi Bajji', price: 25, isVegetarian: true }
+    ]
+  },
+  {
+    _id: 'sri-lakshmi-fastfood',
+    name: 'Sri Lakshmi Fast Food',
+    vendorType: 'LOCAL_VENDOR',
+    campus: 'SRM',
+    imageUrl: 'https://images.unsplash.com/photo-1585032226651-759b368d7246?w=400',
+    stallDescription: 'Egg Noodles, Chicken Fried Rice, Fast Food & Schezwan Dishes.',
+    whatsappNumber: '919391955674',
+    rating: 4.4,
+    isLocalVendor: true,
+    operatingHours: { start: '11:00', end: '01:00' },
+    menu: [
+      { name: 'Chicken Fried Rice', price: 90, isVegetarian: false },
+      { name: 'Egg Schezwan Noodles', price: 80, isVegetarian: false }
+    ]
+  },
+  {
+    _id: 'anna-canteen',
+    name: 'Anna Canteen & Night Snacks',
+    vendorType: 'LOCAL_VENDOR',
+    campus: 'SRM',
+    imageUrl: 'https://images.unsplash.com/photo-1567620832903-9fc6debc209f?w=400',
+    stallDescription: 'Midnight Maggi, Omelette, Bread Butter & Cold Drinks.',
+    whatsappNumber: '919391955674',
+    rating: 4.7,
+    isLocalVendor: true,
+    operatingHours: { start: '18:00', end: '03:00' },
+    menu: [
+      { name: 'Cheese Butter Maggi', price: 50, isVegetarian: true },
+      { name: 'Double Egg Omelette', price: 40, isVegetarian: false }
+    ]
+  },
+  {
+    _id: 'fresh-juice-corner',
+    name: 'SRM Fresh Juice Corner',
+    vendorType: 'LOCAL_VENDOR',
+    campus: 'SRM',
+    imageUrl: 'https://images.unsplash.com/photo-1572490122747-3968b75cc699?w=400',
+    stallDescription: 'Fresh Watermelon, Muskmelon, Lemon Soda & Thick Milkshakes.',
+    whatsappNumber: '919391955674',
+    rating: 4.5,
+    isLocalVendor: true,
+    operatingHours: { start: '09:00', end: '22:00' },
+    menu: [
+      { name: 'Fresh Watermelon Juice', price: 40, isVegetarian: true },
+      { name: 'Oreo Milkshake', price: 70, isVegetarian: true }
+    ]
+  }
+];
+
 export default function CampusBitesSection({ restaurants }: CampusBitesSectionProps) {
   const router = useRouter();
   const { isDark } = useTheme();
@@ -24,11 +92,14 @@ export default function CampusBitesSection({ restaurants }: CampusBitesSectionPr
 
   // 1. Check if there are any local vendors
   const localVendors = useMemo(() => {
-    return restaurants
-      .filter(r => {
-        const vt = (r.vendorType || '').toUpperCase();
-        return vt === 'LOCAL_VENDOR';
-      })
+    const apiVendors = restaurants.filter(r => {
+      const vt = (r.vendorType || '').toUpperCase();
+      return vt === 'LOCAL_VENDOR' || vt === 'LOCAL' || vt === 'STALL' || vt === 'SERVICES' || r.isLocalVendor === true;
+    });
+
+    const pool = apiVendors.length > 0 ? apiVendors : DEFAULT_STALLS;
+
+    return pool
       .filter(r => {
         if (selectedCampus === 'ALL') return true;
         return (r.campus || '').toUpperCase() === selectedCampus;
@@ -49,12 +120,6 @@ export default function CampusBitesSection({ restaurants }: CampusBitesSectionPr
         return (Number(b.rating) || 0) - (Number(a.rating) || 0);
       });
   }, [restaurants, selectedCampus, stallSearch]);
-
-  const hasAnyLocalVendors = useMemo(() => {
-    return restaurants.some(r => (r.vendorType || '').toUpperCase() === 'LOCAL_VENDOR');
-  }, [restaurants]);
-
-  if (!hasAnyLocalVendors) return null;
 
   // 2. Check open status helper safely
   const isVendorOpen = (vendor: any): boolean => {
@@ -324,19 +389,19 @@ const s = StyleSheet.create({
   emptyState: { padding: 32, borderRadius: 20, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   emptyText: { fontSize: 9, fontWeight: '900', letterSpacing: 2 },
 
-  card: { borderRadius: 20, borderWidth: 1, marginBottom: 14, overflow: 'hidden', padding: 14, position: 'relative' },
+  card: { borderRadius: 20, borderWidth: 1, marginBottom: 14, overflow: 'hidden', padding: 14, position: 'relative', shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 2 },
   featuredBadge: { position: 'absolute', top: 0, right: 0, backgroundColor: COLORS.gold, paddingHorizontal: 10, paddingVertical: 4, borderBottomLeftRadius: 10 },
   featuredText: { fontSize: 7, fontWeight: '900', color: '#000', letterSpacing: 1 },
 
   cardBody: { flexDirection: 'row', gap: 12 },
-  imageWrap: { width: 80, height: 80, borderRadius: 12, overflow: 'hidden', borderWidth: 1, position: 'relative' },
+  imageWrap: { width: 88, height: 88, borderRadius: 14, overflow: 'hidden', borderWidth: 1, position: 'relative' },
   cardImg: { width: '100%', height: '100%' },
   statusChip: { position: 'absolute', bottom: 4, left: 4, flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 },
   statusDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#FFF' },
   statusText: { color: '#FFF', fontSize: 6, fontWeight: '900', letterSpacing: 1 },
 
   info: { flex: 1 },
-  nameText: { fontSize: 13, fontWeight: '900', letterSpacing: 0.5 },
+  nameText: { fontSize: 14, fontWeight: '900', letterSpacing: 0.3 },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
   campusTag: { backgroundColor: 'rgba(251,146,60,0.1)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
   campusTagText: { color: '#FB923C', fontSize: 7, fontWeight: '900', letterSpacing: 1 },

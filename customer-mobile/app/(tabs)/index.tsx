@@ -723,7 +723,7 @@ export default function HomeScreen() {
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', justifyContent: 'space-between' }}>
             <View style={s.vaultLeft}>
-              <PulseGlow size={44} color="#C9A84C">
+              <PulseGlow size={44} color={COLORS.gold}>
                 <View style={s.vaultIcon}><Text style={{ fontSize: 24 }}>✨</Text></View>
               </PulseGlow>
               <View>
@@ -793,7 +793,7 @@ export default function HomeScreen() {
                 style={{ width: CARD_W }}
               >
               <CardPressable 
-                style={[s.rCard, { backgroundColor: cardBg, borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)', borderWidth: 1.5, width: '100%', marginHorizontal: 0 }]} 
+                style={[s.rCard, { backgroundColor: cardBg, borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.06)', borderWidth: 1, width: '100%', marginHorizontal: 0 }]} 
                 onPress={() => router.push(`/restaurant/${id}` as any)}
                 sound={isPremium ? 'premiumRestaurantTransition' : 'click'}
               >
@@ -840,8 +840,8 @@ export default function HomeScreen() {
                     <Text style={[s.rCuisine, { color: txtSec, flex: 1, marginRight: 4 }]} numberOfLines={1}>
                       {r.cuisine || 'North Indian, Fast Food'}
                     </Text>
-                    <Text style={{ fontSize: 11, fontWeight: '800', color: txt }}>
-                      ₹{priceForTwo}
+                    <Text style={{ fontSize: 10, fontWeight: '800', color: txtSec }}>
+                      ₹{priceForTwo} for two
                     </Text>
                   </View>
  
@@ -1048,7 +1048,7 @@ const s = StyleSheet.create({
   avatarText: { fontSize: 13, fontWeight: '900', color: COLORS.gold },
   greeting: { fontSize: 9, fontWeight: '800', letterSpacing: 3 },
   userName: { fontSize: 18, fontWeight: '900', letterSpacing: -0.5 },
-  eliteBadge: { backgroundColor: COLORS.gold, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 20 },
+  eliteBadge: { backgroundColor: COLORS.gold, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
   eliteBadgeText: { fontSize: 8, fontWeight: '900', color: '#000', letterSpacing: 2 },
   navRight: { flexDirection: 'row', gap: 8 },
   navBtn: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.goldBorder },

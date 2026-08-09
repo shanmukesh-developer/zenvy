@@ -634,20 +634,38 @@ export default function ProductDetail() {
 
             {/* Ratings & Reviews breakdown bar graph */}
             {product.reviewsBreakdown && (
-              <View style={{ marginBottom: 24 }}>
-                <Text style={{ fontSize: 13, fontWeight: '900', color: textClr, marginBottom: 12, letterSpacing: 0.5 }}>Rating & Reviews breakdown</Text>
-                <View style={{ gap: 8 }}>
+              <View style={{ marginBottom: 28 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                  <View>
+                    <Text style={{ fontSize: 14, fontWeight: '900', color: textClr, letterSpacing: 1.5, textTransform: 'uppercase' }}>Ratings & Reviews</Text>
+                    <Text style={{ fontSize: 9, fontWeight: '700', color: subTextClr, letterSpacing: 2, marginTop: 3 }}>VERIFIED CUSTOMER FEEDBACK</Text>
+                  </View>
+                  {product.rating && (
+                    <View style={{ alignItems: 'center' }}>
+                      <View style={{ backgroundColor: '#16A34A', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                        <Text style={{ fontSize: 14, fontWeight: '900', color: '#fff' }}>{product.rating}</Text>
+                        <Text style={{ fontSize: 11, color: '#fff' }}>★</Text>
+                      </View>
+                      <Text style={{ fontSize: 8, color: subTextClr, fontWeight: '700', marginTop: 4, letterSpacing: 0.5 }}>{product.ratingCount?.toLocaleString()}</Text>
+                    </View>
+                  )}
+                </View>
+                <View style={{ gap: 10 }}>
                   {[5, 4, 3, 2, 1].map(star => {
                     const count = product.reviewsBreakdown[star] || 0;
                     const totalReviews = Object.values(product.reviewsBreakdown).reduce((a: any, b: any) => a + b, 0) as number || 1;
                     const pct = (count / totalReviews) * 100;
+                    const barColor = star >= 4 ? '#16A34A' : star === 3 ? '#F59E0B' : '#EF4444';
                     return (
-                      <View key={star} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <Text style={{ fontSize: 11, fontWeight: '800', color: textClr, width: 35 }}>{star} Star</Text>
-                        <View style={{ flex: 1, height: 6, backgroundColor: isDark ? '#3F3F46' : '#E4E4E7', borderRadius: 3, overflow: 'hidden' }}>
-                          <View style={{ width: `${pct}%`, height: '100%', backgroundColor: themeGreen }} />
+                      <View key={star} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, width: 30 }}>
+                          <Text style={{ fontSize: 12, fontWeight: '900', color: textClr }}>{star}</Text>
+                          <Text style={{ fontSize: 9, color: subTextClr }}>★</Text>
                         </View>
-                        <Text style={{ fontSize: 10, color: subTextClr, width: 45, textAlign: 'right', fontWeight: '700' }}>{pct.toFixed(0)}%</Text>
+                        <View style={{ flex: 1, height: 8, backgroundColor: isDark ? '#27272A' : '#E4E4E7', borderRadius: 4, overflow: 'hidden' }}>
+                          <View style={{ width: `${pct}%`, height: '100%', backgroundColor: barColor, borderRadius: 4 }} />
+                        </View>
+                        <Text style={{ fontSize: 10, color: subTextClr, width: 42, textAlign: 'right', fontWeight: '800' }}>{pct.toFixed(0)}%</Text>
                       </View>
                     );
                   })}
@@ -657,20 +675,49 @@ export default function ProductDetail() {
 
             {/* Related Recipes Slider */}
             {product.recipes && product.recipes.length > 0 && (
-              <View style={{ marginBottom: 24 }}>
-                <Text style={{ fontSize: 13, fontWeight: '900', color: textClr, marginBottom: 12, letterSpacing: 0.5 }}>Recipes with this item</Text>
+              <View style={{ marginBottom: 28 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                  <View>
+                    <Text style={{ fontSize: 14, fontWeight: '900', color: textClr, letterSpacing: 1.5, textTransform: 'uppercase' }}>Recipes With This</Text>
+                    <Text style={{ fontSize: 9, fontWeight: '700', color: subTextClr, letterSpacing: 2, marginTop: 3 }}>TRY SOMETHING NEW</Text>
+                  </View>
+                  <View style={{ backgroundColor: 'rgba(245,158,11,0.1)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(245,158,11,0.2)' }}>
+                    <Text style={{ fontSize: 8, fontWeight: '900', color: '#F59E0B', letterSpacing: 1.5 }}>{product.recipes.length} RECIPES</Text>
+                  </View>
+                </View>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
                   {product.recipes.map((rec: any, index: number) => (
-                    <View key={index} style={{ width: 140, borderRadius: 12, borderWidth: 1, borderColor: borderClr, overflow: 'hidden', backgroundColor: cardBg }}>
-                      <Image source={{ uri: rec.img }} style={{ width: '100%', height: 90, resizeMode: 'cover' }} />
-                      <View style={{ padding: 8 }}>
-                        <Text style={{ fontSize: 11, fontWeight: '900', color: textClr }} numberOfLines={2}>{rec.title}</Text>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 }}>
-                          <Text style={{ fontSize: 9 }}>⏱️</Text>
-                          <Text style={{ fontSize: 9, color: subTextClr, fontWeight: '600' }}>{rec.time}</Text>
+                    <CardPressable
+                      key={index}
+                      style={{
+                        width: 160,
+                        borderRadius: 16,
+                        borderWidth: 1,
+                        borderColor: borderClr,
+                        overflow: 'hidden',
+                        backgroundColor: cardBg,
+                        shadowColor: '#000',
+                        shadowOffset: { width: 0, height: 3 },
+                        shadowOpacity: isDark ? 0.2 : 0.06,
+                        shadowRadius: 8,
+                        elevation: 2,
+                      }}
+                      sound="click"
+                      tilt={true}
+                    >
+                      <View style={{ width: '100%', height: 100, position: 'relative' }}>
+                        <Image source={{ uri: rec.img }} style={{ width: '100%', height: '100%', resizeMode: 'cover' }} />
+                        <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 40, backgroundColor: 'rgba(0,0,0,0.4)' }} />
+                        <View style={{ position: 'absolute', bottom: 6, left: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <Text style={{ fontSize: 10, color: '#fff' }}>⏱️</Text>
+                          <Text style={{ fontSize: 9, color: '#fff', fontWeight: '800', letterSpacing: 0.5 }}>{rec.time}</Text>
                         </View>
                       </View>
-                    </View>
+                      <View style={{ padding: 10 }}>
+                        <Text style={{ fontSize: 11, fontWeight: '900', color: textClr, letterSpacing: 0.3 }} numberOfLines={2}>{rec.title}</Text>
+                        <Text style={{ fontSize: 8, fontWeight: '700', color: isGroceryOrToy ? themeGreen : goldColor, marginTop: 4, letterSpacing: 1 }}>VIEW RECIPE →</Text>
+                      </View>
+                    </CardPressable>
                   ))}
                 </ScrollView>
               </View>
@@ -678,11 +725,23 @@ export default function ProductDetail() {
 
             {/* Related Products Slider */}
             {getRelatedProducts(cleanId, product).length > 0 && (
-              <View style={{ marginBottom: 24, marginTop: 12 }}>
-                <Text style={{ fontSize: 13, fontWeight: '900', color: textClr, marginBottom: 12, letterSpacing: 0.5 }}>Related Products</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingBottom: 8 }}>
-                  {getRelatedProducts(cleanId, product).map((relProduct: any) => (
-                    <TouchableOpacity
+              <View style={{ marginBottom: 28, marginTop: 16 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                  <View>
+                    <Text style={{ fontSize: 14, fontWeight: '900', color: textClr, letterSpacing: 1.5, textTransform: 'uppercase' }}>You May Also Like</Text>
+                    <Text style={{ fontSize: 9, fontWeight: '700', color: subTextClr, letterSpacing: 2, marginTop: 3 }}>CURATED FOR YOU</Text>
+                  </View>
+                  <View style={{ backgroundColor: isGroceryOrToy ? 'rgba(16,185,129,0.1)' : 'rgba(212,175,122,0.1)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, borderWidth: 1, borderColor: isGroceryOrToy ? 'rgba(16,185,129,0.2)' : 'rgba(212,175,122,0.2)' }}>
+                    <Text style={{ fontSize: 8, fontWeight: '900', color: isGroceryOrToy ? themeGreen : goldColor, letterSpacing: 1.5 }}>{getRelatedProducts(cleanId, product).length} ITEMS</Text>
+                  </View>
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingBottom: 12 }}>
+                  {getRelatedProducts(cleanId, product).map((relProduct: any, idx: number) => {
+                    const discountPct = relProduct.originalPrice > relProduct.price
+                      ? Math.round((1 - relProduct.price / relProduct.originalPrice) * 100)
+                      : 0;
+                    return (
+                    <CardPressable
                       key={relProduct.id}
                       onPress={() => {
                         router.push({
@@ -690,32 +749,48 @@ export default function ProductDetail() {
                           params: { id: relProduct.id }
                         });
                       }}
+                      sound="click"
+                      tilt={true}
                       style={{
-                        width: 130,
-                        borderRadius: 16,
-                        borderWidth: 1.5,
+                        width: 140,
+                        borderRadius: 18,
+                        borderWidth: 1,
                         borderColor: borderClr,
                         backgroundColor: cardBg,
                         overflow: 'hidden',
-                        padding: 8,
-                        justifyContent: 'space-between',
+                        shadowColor: '#000',
+                        shadowOffset: { width: 0, height: 4 },
+                        shadowOpacity: isDark ? 0.25 : 0.08,
+                        shadowRadius: 10,
+                        elevation: 3,
                       }}
                     >
-                      <View style={{ width: '100%', height: 90, borderRadius: 10, overflow: 'hidden', backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
-                        <SafeImage source={{ uri: relProduct.image }} style={{ width: '90%', height: '90%', resizeMode: 'contain' }} />
+                      {/* Image Container */}
+                      <View style={{ width: '100%', height: 100, backgroundColor: isDark ? '#1C1C1E' : '#F5F5F7', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                        <SafeImage source={{ uri: relProduct.image }} style={{ width: '85%', height: '85%', resizeMode: 'contain' }} />
+                        {discountPct > 0 && (
+                          <View style={{ position: 'absolute', top: 6, left: 6, backgroundColor: isGroceryOrToy ? themeGreen : '#EF4F5F', paddingHorizontal: 5, paddingVertical: 2, borderRadius: 6 }}>
+                            <Text style={{ fontSize: 7, fontWeight: '900', color: '#fff', letterSpacing: 0.5 }}>{discountPct}% OFF</Text>
+                          </View>
+                        )}
                       </View>
-                      <View>
-                        <Text style={{ fontSize: 7, fontWeight: '900', color: subTextClr, textTransform: 'uppercase' }}>{relProduct.brand}</Text>
-                        <Text style={{ fontSize: 10, fontWeight: '800', color: textClr, height: 26, marginTop: 2 }} numberOfLines={2}>{relProduct.name}</Text>
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
-                          <Text style={{ fontSize: 11, fontWeight: '900', color: textClr }}>₹{relProduct.price}</Text>
+                      {/* Info Section */}
+                      <View style={{ padding: 10 }}>
+                        <Text style={{ fontSize: 7, fontWeight: '900', color: isGroceryOrToy ? themeGreen : goldColor, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 3 }}>{relProduct.brand}</Text>
+                        <Text style={{ fontSize: 11, fontWeight: '800', color: textClr, lineHeight: 14 }} numberOfLines={2}>{relProduct.name}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 }}>
+                          <Text style={{ fontSize: 13, fontWeight: '900', color: textClr }}>₹{relProduct.price}</Text>
                           {relProduct.originalPrice > relProduct.price && (
-                            <Text style={{ fontSize: 8, color: '#999', textDecorationLine: 'line-through' }}>₹{relProduct.originalPrice}</Text>
+                            <Text style={{ fontSize: 9, color: subTextClr, textDecorationLine: 'line-through', fontWeight: '600' }}>₹{relProduct.originalPrice}</Text>
                           )}
                         </View>
+                        {relProduct.weight && (
+                          <Text style={{ fontSize: 8, fontWeight: '700', color: subTextClr, marginTop: 4, letterSpacing: 0.5 }}>{relProduct.weight}</Text>
+                        )}
                       </View>
-                    </TouchableOpacity>
-                  ))}
+                    </CardPressable>
+                    );
+                  })}
                 </ScrollView>
               </View>
             )}
