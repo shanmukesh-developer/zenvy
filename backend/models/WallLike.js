@@ -8,7 +8,7 @@ const initWallLikeModel = (sequelize) => {
   WallLike = sequelize.define('WallLike', {
     id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
     submissionId: { type: DataTypes.UUID, allowNull: false },
-    userId: { type: DataTypes.STRING, allowNull: false }
+    userId: { type: DataTypes.UUID, allowNull: false }
   }, {
     timestamps: true,
     indexes: [

@@ -8,7 +8,7 @@ const initWallSubmissionModel = (sequelize) => {
   WallSubmission = sequelize.define('WallSubmission', {
     id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
     eventId: { type: DataTypes.UUID, allowNull: false },
-    userId: { type: DataTypes.STRING, allowNull: false },
+    userId: { type: DataTypes.UUID, allowNull: false },
     imageUrl: { type: DataTypes.TEXT, allowNull: false },
     likeCount: { type: DataTypes.INTEGER, defaultValue: 0 },
     isApproved: { type: DataTypes.BOOLEAN, defaultValue: false }
