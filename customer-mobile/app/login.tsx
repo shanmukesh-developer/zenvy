@@ -23,13 +23,10 @@ GoogleSignin.configure({
   offlineAccess: true,
 });
 
-// Fresh, ultra-premium 8K high-resolution gourmet photography assets
+// Official 8K curated Zenvy Campus brand visual assets
 const IMAGES = [
-  'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?w=2000&q=90', // 8K Crystal Clear Luxury Sushi Platter
-  'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=2000&q=90', // 8K Woodfired Artisanal Pizza
-  'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=2000&q=90', // 8K Juicy Gourmet Burger & Fries
-  'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=2000&q=90', // 8K Royal Dum Biryani
-  'https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=2000&q=90', // 8K Glazed Donuts & Desserts
+  require('../assets/zenvy_auth_hero_banner.png'),
+  require('../assets/zenvy_auth_lifestyle_banner.png'),
 ];
 
 export default function LoginScreen() {
@@ -344,7 +341,7 @@ export default function LoginScreen() {
       {/* Background Slideshow with Parallax Shift */}
       <View style={StyleSheet.absoluteFill}>
         <Animated.Image 
-          source={{ uri: IMAGES[imgIndex] }} 
+          source={typeof IMAGES[imgIndex] === 'string' ? { uri: IMAGES[imgIndex] } : IMAGES[imgIndex]} 
           style={[
             StyleSheet.absoluteFill, 
             { 

@@ -12,12 +12,10 @@ import ServerWakeupOverlay from '../components/ServerWakeupOverlay';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 
-// Local premium 8K assets
+// Official 8K curated Zenvy Campus brand visual assets
 const IMAGES = [
-  require('../assets/steak.png'),
-  require('../assets/sushi.png'),
-  require('../assets/pizza.png'),
-  require('../assets/drone.png'),
+  require('../assets/zenvy_auth_hero_banner.png'),
+  require('../assets/zenvy_auth_lifestyle_banner.png'),
 ];
 
 export default function RegisterScreen() {
