@@ -40,6 +40,90 @@ const BRAND_LOGOS: Record<string, { logo: string; type: 'kfc-bucket-drop' | 'dom
   dominos: { logo: `${API_URL}/assets/dominos_logo.png`, type: 'dominos-flip' },
 };
 
+const DEFAULT_LOCAL_STALLS = [
+  {
+    _id: 'srm-tea-stall',
+    id: 'srm-tea-stall',
+    name: 'SRM Tea Stall & Tiffin Center',
+    vendorType: 'LOCAL_VENDOR',
+    campus: 'SRM',
+    imageUrl: 'https://images.unsplash.com/photo-1541832676-9b763b0239ab?w=600',
+    stallDescription: 'Hot Ginger Tea, Filter Coffee, Samosa, Mirchi Bajji & Idli Dosa.',
+    whatsappNumber: '919391955674',
+    rating: 4.6,
+    isLocalVendor: true,
+    deliveryTime: '10-15 min',
+    location: 'SRM Campus Gate 2',
+    menu: [
+      { id: 'item-tea-1', name: 'Special Ginger Tea', price: 15, isVegetarian: true, category: 'Hot Beverages', description: 'Freshly brewed ginger infused milk tea' },
+      { id: 'item-tea-2', name: 'South Indian Filter Coffee', price: 20, isVegetarian: true, category: 'Hot Beverages', description: 'Authentic aromatic filter coffee' },
+      { id: 'item-tea-3', name: 'Hot Samosa (2 pcs)', price: 20, isVegetarian: true, category: 'Snacks', description: 'Crispy fried potato and pea stuffed samosas' },
+      { id: 'item-tea-4', name: 'Crispy Mirchi Bajji (3 pcs)', price: 25, isVegetarian: true, category: 'Snacks', description: 'Deep fried chili fritters with chutney' },
+      { id: 'item-tea-5', name: 'Steamed Idli (2 pcs) + Vada', price: 35, isVegetarian: true, category: 'Tiffin', description: 'Served with hot sambar and peanut chutney' }
+    ]
+  },
+  {
+    _id: 'sri-lakshmi-fastfood',
+    id: 'sri-lakshmi-fastfood',
+    name: 'Sri Lakshmi Fast Food',
+    vendorType: 'LOCAL_VENDOR',
+    campus: 'SRM',
+    imageUrl: 'https://images.unsplash.com/photo-1585032226651-759b368d7246?w=600',
+    stallDescription: 'Egg Noodles, Chicken Fried Rice, Fast Food & Schezwan Dishes.',
+    whatsappNumber: '919391955674',
+    rating: 4.4,
+    isLocalVendor: true,
+    deliveryTime: '15-20 min',
+    location: 'Near Hostel Block 3',
+    menu: [
+      { id: 'item-sl-1', name: 'Chicken Fried Rice', price: 90, isVegetarian: false, category: 'Rice Items', description: 'Wok tossed basmati rice with chicken' },
+      { id: 'item-sl-2', name: 'Egg Schezwan Noodles', price: 80, isVegetarian: false, category: 'Noodles', description: 'Spicy schezwan wok tossed noodles' },
+      { id: 'item-sl-3', name: 'Veg Manchurian Dry', price: 70, isVegetarian: true, category: 'Starters', description: 'Crispy veg dumplings in chili soya sauce' },
+      { id: 'item-sl-4', name: 'Double Egg Chicken Roll', price: 75, isVegetarian: false, category: 'Rolls', description: 'Layered paratha wrapped with seasoned chicken' }
+    ]
+  },
+  {
+    _id: 'anna-canteen',
+    id: 'anna-canteen',
+    name: 'Anna Canteen & Night Snacks',
+    vendorType: 'LOCAL_VENDOR',
+    campus: 'SRM',
+    imageUrl: 'https://images.unsplash.com/photo-1567620832903-9fc6debc209f?w=600',
+    stallDescription: 'Midnight Maggi, Omelette, Bread Butter & Cold Drinks.',
+    whatsappNumber: '919391955674',
+    rating: 4.7,
+    isLocalVendor: true,
+    deliveryTime: '10-15 min',
+    location: 'SRM Night Food Court',
+    menu: [
+      { id: 'item-ac-1', name: 'Cheese Butter Maggi', price: 50, isVegetarian: true, category: 'Maggi Special', description: 'Loaded with melted cheese and butter' },
+      { id: 'item-ac-2', name: 'Double Egg Omelette', price: 40, isVegetarian: false, category: 'Egg Corner', description: 'With onions, green chilies, and toast' },
+      { id: 'item-ac-3', name: 'Bread Butter Jam Toast', price: 30, isVegetarian: true, category: 'Quick Bites', description: 'Crispy golden toasted bread slices' },
+      { id: 'item-ac-4', name: 'Peri Peri French Fries', price: 60, isVegetarian: true, category: 'Quick Bites', description: 'Hot fries with spicy peri-peri dust' }
+    ]
+  },
+  {
+    _id: 'fresh-juice-corner',
+    id: 'fresh-juice-corner',
+    name: 'SRM Fresh Juice Corner',
+    vendorType: 'LOCAL_VENDOR',
+    campus: 'SRM',
+    imageUrl: 'https://images.unsplash.com/photo-1572490122747-3968b75cc699?w=600',
+    stallDescription: 'Fresh Watermelon, Muskmelon, Lemon Soda & Thick Milkshakes.',
+    whatsappNumber: '919391955674',
+    rating: 4.5,
+    isLocalVendor: true,
+    deliveryTime: '10-15 min',
+    location: 'Hostel Courtyard',
+    menu: [
+      { id: 'item-fjc-1', name: 'Fresh Watermelon Juice', price: 40, isVegetarian: true, category: 'Fresh Juices', description: '100% pure cold-pressed watermelon' },
+      { id: 'item-fjc-2', name: 'Thick Oreo Milkshake', price: 70, isVegetarian: true, category: 'Milkshakes', description: 'Blended with ice cream and crushed Oreos' },
+      { id: 'item-fjc-3', name: 'Fresh Lemon Mint Soda', price: 30, isVegetarian: true, category: 'Beverages', description: 'Refreshing sparkling cooler' },
+      { id: 'item-fjc-4', name: 'KitKat Chocolate Shake', price: 80, isVegetarian: true, category: 'Milkshakes', description: 'Rich chocolate shake topped with KitKat' }
+    ]
+  }
+];
+
 const seenTakeovers = new Set<string>();
 
 export default function RestaurantDetail() {
@@ -152,6 +236,16 @@ export default function RestaurantDetail() {
           } catch (e) {
             console.warn('[DIRECT_MENU_FETCH_WARN]', e);
           }
+        }
+
+        // 5. Check Default Campus Stalls & Local Vendors fallback
+        if (!found) {
+          found = DEFAULT_LOCAL_STALLS.find((s: any) => 
+            s._id === id || 
+            s.id === id || 
+            s.name.toLowerCase().includes((id || '').toLowerCase()) ||
+            (id || '').toLowerCase().includes(s.id)
+          );
         }
 
         if (found) {
