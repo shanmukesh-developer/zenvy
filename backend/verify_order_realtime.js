@@ -4,7 +4,8 @@ const jwt = require('jsonwebtoken');
 require('dotenv').config();
 
 const API_URL = 'http://localhost:5005';
-const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_zenvy_token_2026';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) { console.error('❌ JWT_SECRET not set in .env'); process.exit(1); }
 
 async function verify() {
   console.log('--- Phase 1: Customer -> Delivery Portal Real-Time Verification ---');

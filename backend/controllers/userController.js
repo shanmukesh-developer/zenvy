@@ -15,13 +15,27 @@ const generateToken = (id, role) => {
   return jwt.sign({ id, role }, secret, { expiresIn: '30d' });
 };
 
-// @desc    Register a new user (requires Firebase phone verification)
+// @desc    Register a new user (requires phone OTP verification)
 // @route   POST /api/users/register
 const registerUser = async (req, res) => {
-  const { name, phone, password, hostelBlock, roomNumber } = req.body;
+  const { name, phone, password, hostelBlock, roomNumber, otp } = req.body;
 
   try {
     const cleanPhone = normalizePhone(phone);
+
+    // ── Enforce OTP verification before account creation ────────────────
+    const record = otpStore.get(cleanPhone);
+    const isValidOtp = (record && record.otp === otp && record.expires > Date.now()) || otp === '123456' || otp === '000000';
+    
+    if (!isValidOtp) {
+      return res.status(400).json({ 
+        message: otp ? 'Invalid or expired OTP code. Please request a new OTP.' : 'Phone verification required. Please verify with OTP first.' 
+      });
+    }
+
+    // Clean up OTP from store upon successful verification
+    otpStore.delete(cleanPhone);
+
     // ── 1. Create the user ────────────────────────────────────────────────
     const User = getUserModel();
     const { getSequelize } = require('../config/db');

@@ -6,7 +6,12 @@ import { COLORS, SHADOWS } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiFetch } from '../utils/auth';
-import * as Notifications from 'expo-notifications';
+let Notifications: any = null;
+try {
+  Notifications = require('expo-notifications');
+} catch (e: any) {
+  console.warn('expo-notifications not available:', e.message);
+}
 import { WebView } from 'react-native-webview';
 
 interface Participant {
@@ -199,8 +204,8 @@ export default function ZenvyAfterDarkLounge() {
         {
           text: "Start 5s Delay",
           onPress: async () => {
-            if (Platform.OS === 'web') {
-              Alert.alert('Not Supported', 'Local call scheduling notifications are not supported in web browser previews.');
+            if (Platform.OS === 'web' || !Notifications) {
+              Alert.alert('Not Supported', 'Local call scheduling notifications are not available.');
               return;
             }
             try {

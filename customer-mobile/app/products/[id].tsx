@@ -1,22 +1,31 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions, Platform, ActivityIndicator, Alert, Animated } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Image,
+  Dimensions,
+  Platform,
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Animated,
+  Clipboard,
+  Modal,
+} from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { COLORS, SHADOWS } from '../../constants/theme';
-import { API_URL } from '../../constants/api';
+import { COLORS, SHADOWS, RADIUS } from '../../constants/theme';
 import { useCart } from '../../context/CartContext';
 import { apiFetch } from '../../utils/auth';
 import { useTheme } from '../../context/ThemeContext';
-import { LinearGradient } from 'expo-linear-gradient';
-import CustomizeDrawer, { summarizeCustomizations } from '../../components/CustomizeDrawer';
-import { saveRecentlyViewed } from '../../components/RecentlyViewed';
-import { StaggeredSection, BounceIn, FloatingPulse } from '../../components/AnimatedSection';
-import DopaminePressable, { CartPressable, ActionPressable, CardPressable } from '../../components/DopaminePressable';
-import SafeImage from '../../components/SafeImage';
+import AdSlot from '../../components/AdSlot';
 
-const { width: SW, height: SH } = Dimensions.get('window');
+const { width: SW } = Dimensions.get('window');
 
-const MOCK_DETAILS: Record<string, any> = {
+// ── Master Product Details Resolver ──────────────────────────────────────────
+const MASTER_PDP_DATA: Record<string, any> = {
   'brand-guava': {
     id: 'brand-guava',
     name: 'B Natural Guava Fruit Beverage',
@@ -24,954 +33,1095 @@ const MOCK_DETAILS: Record<string, any> = {
     originalPrice: 115,
     discount: '23% OFF',
     weight: '1 L',
-    image: 'https://images.unsplash.com/photo-1534531173927-aeb928d54385?w=600&q=80',
-    description: 'Enjoy the luscious taste of pink guavas with B Natural Guava Fruit Beverage. Crafted to perfection, it brings the authentic flavour and texture of real fruits directly to your table.',
+    images: [
+      'https://images.unsplash.com/photo-1534531173927-aeb928d54385?w=800&q=80',
+      'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800&q=80',
+    ],
+    description:
+      'Enjoy the luscious taste of pink guavas with B Natural Guava Fruit Beverage. Crafted to perfection, it brings the authentic flavor and texture of real fruits directly to your table.',
     rating: 4.3,
     ratingCount: 6802,
-    reviewsBreakdown: { 5: 3450, 4: 2100, 3: 852, 2: 240, 1: 160 },
+    verifiedShops: ['Campus Kirana', 'Campus SuperStore', 'SRM Mart'],
     packSizes: [
       { size: '1 L', price: 88, originalPrice: 115, discount: '23% OFF' },
-      { size: '200 ml', price: 20, originalPrice: 25, discount: '20% OFF' }
+      { size: '200 ml', price: 20, originalPrice: 25, discount: '20% OFF' },
     ],
-    accordions: [
-      { title: 'About', content: 'B Natural Guava Fruit Beverage is made from delicious pink guavas, delivering a rich, natural taste. It is packed with vitamin C and contains no added preservatives.' },
-      { title: 'Ingredients', content: 'Water, Pink Guava Pulp (25%), Sugar, Acidity Regulator (INS 330), Stabilizers (INS 440, INS 466), Antioxidant (INS 300), Salt.' },
-      { title: 'Nutrition', content: 'Energy: 52 kcal, Carbohydrates: 13g, Natural Fruit Sugars: 4.5g, Added Sugar: 8.5g, Vitamin C: 40mg, Sodium: 30mg per 100ml.' }
+    attributes: [
+      { label: 'Brand', value: 'B Natural' },
+      { label: 'Weight', value: '1 L' },
+      { label: 'Shelf Life', value: '6 Months' },
+      { label: 'Country of Origin', value: 'India' },
+      { label: 'Return Policy', value: '24-hour hassle-free replacement' },
     ],
-    recipes: [
-      { title: 'Guava Chili Mocktail', time: '5 mins', img: 'https://images.unsplash.com/photo-1534531173927-aeb928d54385?w=300&q=80' },
-      { title: 'Guava Fruit Punch', time: '10 mins', img: 'https://images.unsplash.com/photo-1534531173927-aeb928d54385?w=300&q=80' }
+    reviews: [
+      { id: '1', name: 'Alex M.', rating: 5, time: 'Yesterday', comment: 'Always fresh and soft. Perfect for morning toast before class!' },
+      { id: '2', name: 'Jamie T.', rating: 4, time: '3 days ago', comment: 'Good taste, very refreshing guava flavor.' },
     ],
-    brand: 'B Natural'
+  },
+  'bread-wholewheat': {
+    id: 'bread-wholewheat',
+    name: 'Campus Bakery Whole Wheat Bread',
+    price: 45,
+    originalPrice: 50,
+    discount: '10% OFF',
+    weight: '400g',
+    images: [
+      'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=800&q=80',
+      'https://images.unsplash.com/photo-1549931319-a545dcf3bc73?w=800&q=80',
+    ],
+    description:
+      'Freshly baked every morning on campus. Our whole wheat loaf is packed with fiber and essential nutrients, perfect for sandwiches, toast, or a quick snack.',
+    rating: 4.8,
+    ratingCount: 42,
+    verifiedShops: ['Campus Bakery', 'SRM Central Mart', 'Campus Kirana'],
+    packSizes: [
+      { size: '400g', price: 45, originalPrice: 50, discount: '10% OFF' },
+      { size: '800g', price: 85, originalPrice: 95, discount: '11% OFF' },
+    ],
+    attributes: [
+      { label: 'Brand', value: 'Campus Bakery' },
+      { label: 'Weight', value: '400g' },
+      { label: 'Shelf Life', value: '5 Days' },
+      { label: 'Country of Origin', value: 'India' },
+      { label: 'Return Policy', value: 'Same-day freshness replacement' },
+    ],
+    reviews: [
+      { id: '1', name: 'Alex M.', rating: 5, time: 'Yesterday', comment: 'Always fresh and soft. Perfect for morning toast before class. Delivery was super fast too.' },
+      { id: '2', name: 'Jamie T.', rating: 4, time: '3 days ago', comment: 'Good bread, but slightly smaller loaf than expected. Taste is great though.' },
+    ],
+  },
+  'fruit-apple': {
+    id: 'fruit-apple',
+    name: 'Royal Gala Apple',
+    price: 149,
+    originalPrice: 199,
+    discount: '25% OFF',
+    weight: '1 kg (4-5 pcs)',
+    images: ['https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=800&q=80'],
+    description: 'Crisp, sweet, and juicy Royal Gala apples imported fresh daily. High in dietary fiber and vitamin C.',
+    rating: 4.8,
+    ratingCount: 312,
+    verifiedShops: ['Fresho Fruit Hub', 'Campus Organic Store'],
+    packSizes: [
+      { size: '1 kg', price: 149, originalPrice: 199, discount: '25% OFF' },
+      { size: '500 g', price: 79, originalPrice: 105, discount: '24% OFF' },
+    ],
+    attributes: [
+      { label: 'Origin', value: 'Washington / Shimla' },
+      { label: 'Shelf Life', value: '7 Days' },
+      { label: 'Storage', value: 'Refrigerate below 8°C' },
+    ],
+    reviews: [{ id: '1', name: 'Rohan K.', rating: 5, time: 'Today', comment: 'Super fresh apples!' }],
+  },
+  'fruit-banana': {
+    id: 'fruit-banana',
+    name: 'Robusta Banana',
+    price: 49,
+    originalPrice: 60,
+    discount: '18% OFF',
+    weight: '1 dozen',
+    images: ['https://images.unsplash.com/photo-1571771894821-ce9b6c11b08e?w=800&q=80'],
+    description: 'Naturally ripened fresh Robusta bananas. Rich in potassium and instant energy.',
+    rating: 4.6,
+    ratingCount: 520,
+    verifiedShops: ['Fresho Fruit Hub', 'SRM Mart'],
+    packSizes: [{ size: '1 dozen', price: 49, originalPrice: 60, discount: '18% OFF' }],
+    attributes: [{ label: 'Origin', value: 'Local Farm' }, { label: 'Shelf Life', value: '3 Days' }],
+    reviews: [{ id: '1', name: 'Priya S.', rating: 5, time: 'Yesterday', comment: 'Perfect pre-workout snack!' }],
+  },
+  'fruit-mango': {
+    id: 'fruit-mango',
+    name: 'Alphonso Mango',
+    price: 299,
+    originalPrice: 450,
+    discount: '33% OFF',
+    weight: '1 kg (3-4 pcs)',
+    images: ['https://images.unsplash.com/photo-1553279768-865429fa0078?w=800&q=80'],
+    description: 'King of Mangoes — premium Ratnagiri Alphonso. Sweet, aromatic, and rich pulp.',
+    rating: 4.9,
+    ratingCount: 180,
+    verifiedShops: ['Campus Organic Store', 'Campus Kirana'],
+    packSizes: [{ size: '1 kg', price: 299, originalPrice: 450, discount: '33% OFF' }],
+    attributes: [{ label: 'Origin', value: 'Ratnagiri' }, { label: 'Shelf Life', value: '4 Days' }],
+    reviews: [{ id: '1', name: 'Vikram P.', rating: 5, time: '2 days ago', comment: 'Unbelievably sweet!' }],
+  },
+  'fruit-grapes': {
+    id: 'fruit-grapes',
+    name: 'Thompson Green Grapes',
+    price: 89,
+    originalPrice: 120,
+    discount: '26% OFF',
+    weight: '500 g',
+    images: ['https://images.unsplash.com/photo-1537640538966-79f369143f8f?w=800&q=80'],
+    description: 'Seedless Thompson green grapes fresh from Nashik vineyards. Crisp, juicy, and naturally sweet.',
+    rating: 4.7,
+    ratingCount: 210,
+    verifiedShops: ['Fresho Fruit Hub', 'Campus Organic Store'],
+    packSizes: [{ size: '500 g', price: 89, originalPrice: 120, discount: '26% OFF' }],
+    attributes: [{ label: 'Origin', value: 'Nashik' }, { label: 'Shelf Life', value: '5 Days' }],
+    reviews: [{ id: '1', name: 'Ananya M.', rating: 5, time: '3 days ago', comment: 'Very sweet seedless grapes!' }],
+  },
+  'fruit-pomegranate': {
+    id: 'fruit-pomegranate',
+    name: 'Pomegranate Premium',
+    price: 179,
+    originalPrice: 220,
+    discount: '19% OFF',
+    weight: '1 kg (3-4 pcs)',
+    images: ['https://images.unsplash.com/photo-1615485290382-441e4d049cb5?w=800&q=80'],
+    description: 'Deep red, ruby arils bursting with antioxidants and rich juice.',
+    rating: 4.8,
+    ratingCount: 195,
+    verifiedShops: ['Fresho Fruit Hub'],
+    packSizes: [{ size: '1 kg', price: 179, originalPrice: 220, discount: '19% OFF' }],
+    attributes: [{ label: 'Origin', value: 'Solapur' }, { label: 'Shelf Life', value: '10 Days' }],
+    reviews: [{ id: '1', name: 'Rahul V.', rating: 5, time: 'Yesterday', comment: 'Juicy and sweet red seeds!' }],
+  },
+  'fruit-orange': {
+    id: 'fruit-orange',
+    name: 'Nagpur Orange',
+    price: 69,
+    originalPrice: 90,
+    discount: '23% OFF',
+    weight: '1 kg (5-6 pcs)',
+    images: ['https://images.unsplash.com/photo-1547514701-42782101795e?w=800&q=80'],
+    description: 'Authentic Nagpur mandarins. Juicy, tangy, and loaded with Vitamin C.',
+    rating: 4.6,
+    ratingCount: 140,
+    verifiedShops: ['Campus Organic Store'],
+    packSizes: [{ size: '1 kg', price: 69, originalPrice: 90, discount: '23% OFF' }],
+    attributes: [{ label: 'Origin', value: 'Nagpur' }, { label: 'Shelf Life', value: '6 Days' }],
+    reviews: [{ id: '1', name: 'Dev R.', rating: 5, time: 'Today', comment: 'Great vitamin C booster!' }],
+  },
+  'dairy-milk': {
+    id: 'dairy-milk',
+    name: 'Amul Taaza Toned Milk',
+    price: 27,
+    originalPrice: 30,
+    discount: '10% OFF',
+    weight: '500 ml',
+    images: ['https://images.unsplash.com/photo-1563636619-e9143da7973b?w=800&q=80'],
+    description: 'Pasteurized toned milk fortified with Vitamin A & D. Delivered cold to your hostel doorstep.',
+    rating: 4.9,
+    ratingCount: 1200,
+    verifiedShops: ['Amul Parlour', 'Campus Kirana', 'SRM Mart'],
+    packSizes: [{ size: '500 ml', price: 27, originalPrice: 30, discount: '10% OFF' }],
+    attributes: [{ label: 'Brand', value: 'Amul' }, { label: 'Fat Content', value: '3.0%' }],
+    reviews: [{ id: '1', name: 'Karthik S.', rating: 5, time: 'Today', comment: 'Chilled delivery in 8 mins!' }],
+  },
+  'dairy-yogurt': {
+    id: 'dairy-yogurt',
+    name: 'Epigamia Greek Yogurt Blueberry',
+    price: 55,
+    originalPrice: 65,
+    discount: '15% OFF',
+    weight: '120 g',
+    images: ['https://images.unsplash.com/photo-1488477181946-6428a0291777?w=800&q=80'],
+    description: 'High protein Greek yogurt infused with real blueberries. Zero preservatives.',
+    rating: 4.8,
+    ratingCount: 430,
+    verifiedShops: ['Campus Organic Store'],
+    packSizes: [{ size: '120 g', price: 55, originalPrice: 65, discount: '15% OFF' }],
+    attributes: [{ label: 'Protein', value: '8g per cup' }],
+    reviews: [{ id: '1', name: 'Megha D.', rating: 5, time: 'Yesterday', comment: 'My favorite post-workout snack!' }],
+  },
+  'snack-lays': {
+    id: 'snack-lays',
+    name: 'Lays Magic Masala Chips',
+    price: 20,
+    originalPrice: 20,
+    weight: '50 g',
+    images: ['https://images.unsplash.com/photo-1566478989037-eec170784d0b?w=800&q=80'],
+    description: 'Crispy potato chips seasoned with India’s favorite spicy magic masala.',
+    rating: 4.9,
+    ratingCount: 3500,
+    verifiedShops: ['Campus Kirana', 'Campus Mart', 'Hostel Canteen'],
+    packSizes: [{ size: '50 g', price: 20, originalPrice: 20, discount: '0%' }],
+    attributes: [{ label: 'Brand', value: 'Lays' }],
+    reviews: [{ id: '1', name: 'Siddharth T.', rating: 5, time: 'Today', comment: 'Classic late night snack!' }],
+  },
+  'pharmacy-paracetamol': {
+    id: 'pharmacy-paracetamol',
+    name: 'Dolo 650 Pain Relief Tablets',
+    price: 32,
+    originalPrice: 40,
+    discount: '20% OFF',
+    weight: '1 Strip (15 tabs)',
+    images: ['https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=800&q=80'],
+    description: 'Paracetamol 650mg tablets for effective fever and body pain relief. Verified medical express item.',
+    rating: 5.0,
+    ratingCount: 890,
+    verifiedShops: ['24/7 Campus Pharmacy'],
+    packSizes: [{ size: '1 Strip (15 tabs)', price: 32, originalPrice: 40, discount: '20% OFF' }],
+    attributes: [{ label: 'Dosage', value: '650 mg' }, { label: 'Rx Required', value: 'No' }],
+    reviews: [{ id: '1', name: 'Rohan N.', rating: 5, time: 'Yesterday', comment: 'Saved me during fever night!' }],
+  },
+  'stationery-pens': {
+    id: 'stationery-pens',
+    name: 'Pilot Gel Pens Set (Blue & Black)',
+    price: 160,
+    originalPrice: 200,
+    discount: '20% OFF',
+    weight: 'Pack of 4',
+    images: ['https://images.unsplash.com/photo-1583485088034-697b5bc54ccd?w=800&q=80'],
+    description: 'Smooth liquid ink gel pens for exam writing and note taking. Quick dry water-resistant ink.',
+    rating: 4.9,
+    ratingCount: 670,
+    verifiedShops: ['Campus Stationery Mart'],
+    packSizes: [{ size: 'Pack of 4', price: 160, originalPrice: 200, discount: '20% OFF' }],
+    attributes: [{ label: 'Ink Color', value: '2 Blue + 2 Black' }, { label: 'Tip Size', value: '0.5 mm' }],
+    reviews: [{ id: '1', name: 'Divya M.', rating: 5, time: '2 days ago', comment: 'Best pens for exam hall!' }],
   },
   'bb-carrot': {
     id: 'bb-carrot',
-    name: 'Carrot - Local',
+    name: 'Carrot - Fresh Local Harvest',
     price: 39,
-    originalPrice: 56.16,
+    originalPrice: 56,
     discount: '30% OFF',
     weight: '500 g',
-    image: 'https://images.unsplash.com/photo-1598170845058-32b9d6a5da37?w=600&q=80',
-    description: 'Fresh, crunchy, and locally sourced carrots. Perfect for salads, juices, halwa, or cooking daily meals. Rich in Vitamin A and Beta-Carotene.',
+    images: [
+      'https://images.unsplash.com/photo-1598170845058-32b9d6a5da37?w=800&q=80',
+    ],
+    description:
+      'Fresh, crunchy, and locally sourced carrots. Rich in Beta-Carotene and Vitamin A. Perfect for healthy snacks, salads, or cooking.',
     rating: 4.5,
-    ratingCount: 14820,
-    reviewsBreakdown: { 5: 9800, 4: 3100, 3: 1200, 2: 420, 1: 300 },
+    ratingCount: 148,
+    verifiedShops: ['Fresho Farm Hub', 'Campus Organic Store'],
     packSizes: [
-      { size: '500 g', price: 39, originalPrice: 56.16, discount: '30% OFF' },
-      { size: '1 kg', price: 74, originalPrice: 112.32, discount: '34% OFF' }
+      { size: '500 g', price: 39, originalPrice: 56, discount: '30% OFF' },
+      { size: '1 kg', price: 74, originalPrice: 112, discount: '34% OFF' },
     ],
-    accordions: [
-      { title: 'About', content: 'Carrots are sweet, nutritious, and extremely versatile vegetables. Local carrots are freshly plucked and delivered daily to preserve crispness.' },
-      { title: 'Storage & Uses', content: 'Store carrots in a cool, dry place or in the refrigerator crisper drawer. Use them in salads, stir-fries, soups, or for making sweet carrot halwa.' },
-      { title: 'Nutrition', content: 'Energy: 41 kcal, Water: 88%, Protein: 0.9g, Carbohydrates: 9.6g, Sugar: 4.7g, Fiber: 2.8g per 100g.' }
+    attributes: [
+      { label: 'Brand', value: 'Fresho' },
+      { label: 'Weight', value: '500 g' },
+      { label: 'Shelf Life', value: '7 Days' },
+      { label: 'Country of Origin', value: 'India' },
+      { label: 'Return Policy', value: 'Quality check at door' },
     ],
-    recipes: [
-      { title: 'Carrot Ginger Soup', time: '25 mins', img: 'https://images.unsplash.com/photo-1547592165-e1d17ffd763c?w=300&q=80' },
-      { title: 'Classic Carrot Halwa', time: '40 mins', img: 'https://images.unsplash.com/photo-1598170845058-32b9d6a5da37?w=300&q=80' }
+    reviews: [
+      { id: '1', name: 'Sneha R.', rating: 5, time: '2 days ago', comment: 'Super crunchy and juicy carrots!' },
     ],
-    brand: 'Fresho'
   },
-  'toys-monster-truck': {
-    id: 'toys-monster-truck',
-    name: '4x4 Monster Truck For 3+ Years',
-    price: 49,
-    originalPrice: 499,
-    discount: '90% OFF',
-    weight: '1 pc',
-    image: 'https://images.unsplash.com/photo-1594787318286-3d835c1d207f?w=600&q=80',
-    description: 'Friction-powered monster truck toy with large shockproof rubber tires. High-speed action toy for boys and girls aged 3 and above. Durable and crash-resistant.',
-    rating: 4.1,
-    ratingCount: 1540,
-    reviewsBreakdown: { 5: 850, 4: 410, 3: 180, 2: 70, 1: 30 },
-    packSizes: [
-      { size: '1 pc', price: 49, originalPrice: 499, discount: '90% OFF' },
-      { size: 'Pack of 2', price: 89, originalPrice: 998, discount: '91% OFF' }
-    ],
-    accordions: [
-      { title: 'About', content: 'Let your child experience the thrill of monster truck stunts. Powered by simple push friction, it runs automatically without battery replacement.' },
-      { title: 'Safety Guide', content: 'Made from high-quality, non-toxic ABS plastic. Smooth edges prevent scratching. Safe for toddlers 3 years and older.' },
-      { title: 'Box Contents', content: '1 x Friction Powered 4x4 Monster Stunt Truck Toy (Assorted Color).' }
-    ],
-    recipes: [
-      { title: 'Obstacle Course Play', time: '15 mins', img: 'https://images.unsplash.com/photo-1594787318286-3d835c1d207f?w=300&q=80' }
-    ],
-    brand: 'Kriiddaank'
-  },
-  'seeds-tomato': {
-    id: 'seeds-tomato',
-    name: 'Tomato Seeds',
-    price: 40.80,
-    originalPrice: 80,
-    discount: '49% OFF',
-    weight: '10 g',
-    image: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=600&q=80',
-    description: 'Premium quality organic tomato hybrid seeds. High germination rate seeds perfect for home kitchen gardens, terraces, and indoor pots.',
-    rating: 4.4,
-    ratingCount: 3210,
-    reviewsBreakdown: { 5: 1950, 4: 820, 3: 310, 2: 90, 1: 40 },
-    packSizes: [
-      { size: '10 g', price: 40.80, originalPrice: 80, discount: '49% OFF' },
-      { size: '25 g', price: 89.00, originalPrice: 180, discount: '50% OFF' }
-    ],
-    accordions: [
-      { title: 'About', content: 'Grow organic, juicy tomatoes in your own balcony or backyard. These seeds are treated for high disease resistance and optimized yield.' },
-      { title: 'Sowing Instructions', content: 'Sow seeds 0.5 cm deep in nutrient-rich soil mix. Water lightly. Sprouting occurs in 6-10 days. Keep in partial sunlight.' },
-      { title: 'Harvesting Guide', content: 'Tomatoes are ready to harvest in 70-80 days after transplantation. Harvest when uniformly red and firm.' }
-    ],
-    recipes: [
-      { title: 'Soil Preparation Guide', time: '20 mins', img: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=300&q=80' }
-    ],
-    brand: 'Bombay Seeds'
-  }
 };
 
-const getRelatedProducts = (currentId: string, currentProduct?: any) => {
-  const nameLower = (currentProduct?.name || currentId || '').toLowerCase();
-  const categoryLower = (currentProduct?.category || '').toLowerCase();
+const RELATED_PRODUCTS = [
+  {
+    id: 'snack-pack-apple',
+    name: 'Morning Snack Pack',
+    price: 65,
+    image: 'https://images.unsplash.com/photo-1490474418585-ba9bad8fd0ea?w=400&q=80',
+  },
+  {
+    id: 'drink-redbull',
+    name: 'Red Bull Energy Drink',
+    price: 125,
+    image: 'https://images.unsplash.com/photo-1622543925917-763c34d1a86e?w=400&q=80',
+  },
+  {
+    id: 'notebook-ruled',
+    name: 'Ruled Notebooks (Set of 3)',
+    price: 129,
+    image: 'https://images.unsplash.com/photo-1456735190827-d1262f71b8a3?w=400&q=80',
+  },
+];
 
-  const isToy = currentId.startsWith('toys-') || categoryLower.includes('toy') || nameLower.includes('truck') || nameLower.includes('uno') || nameLower.includes('cube') || nameLower.includes('cricket') || nameLower.includes('board');
-  const isSeed = currentId.startsWith('seeds-') || categoryLower.includes('seed') || nameLower.includes('seed') || nameLower.includes('cucumber') || nameLower.includes('tomato') || nameLower.includes('chilli');
-  const isBeverage = categoryLower.includes('beverage') || categoryLower.includes('drink') || categoryLower.includes('juice') || categoryLower.includes('shake') || nameLower.includes('juice') || nameLower.includes('guava') || nameLower.includes('coke') || nameLower.includes('tea') || nameLower.includes('coffee');
-  const isFood = categoryLower.includes('food') || categoryLower.includes('snack') || nameLower.includes('burger') || nameLower.includes('pizza') || nameLower.includes('biryani') || nameLower.includes('fries') || nameLower.includes('roll') || nameLower.includes('wings');
-
-  const allRelatedPool = [
-    // Toys & Games
-    { id: 'toys-monster-truck', name: '4x4 Monster Truck', price: 49, originalPrice: 499, weight: '1 pc', image: 'https://images.unsplash.com/photo-1594787318286-3d835c1d207f?w=300&q=80', brand: 'Kriiddaank', cat: 'toys' },
-    { id: 'toys-tablet', name: 'LCD Writing Tablet Board', price: 149, originalPrice: 699, weight: '1 pc', image: 'https://images.unsplash.com/photo-1516627145497-ae6968895b74?w=300&q=80', brand: 'Mattel', cat: 'toys' },
-    { id: 'toys-cricket', name: 'Kids Cricket Bat Set', price: 199, originalPrice: 499, weight: 'Pack of 1', image: 'https://images.unsplash.com/photo-1531565637446-32307b194362?w=300&q=80', brand: 'Sports', cat: 'toys' },
-    { id: 'toys-uno-card', name: 'Uno Original Card Game', price: 119, originalPrice: 149, weight: '108 pcs', image: 'https://images.unsplash.com/photo-1606167668584-78701c57f13d?w=300&q=80', brand: 'Mattel', cat: 'toys' },
-
-    // Seeds & Gardening
-    { id: 'seeds-tomato', name: 'Tomato Seeds', price: 40.8, originalPrice: 80, weight: '10 g', image: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=300&q=80', brand: 'Bombay Seeds', cat: 'seeds' },
-    { id: 'seeds-cucumber', name: 'Cucumber Khira Seeds', price: 59, originalPrice: 80, weight: '10 g', image: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=300&q=80', brand: 'Bombay Seeds', cat: 'seeds' },
-    { id: 'seeds-chilli', name: 'Chilli Hot Pepper Seeds', price: 59, originalPrice: 80, weight: '10 g', image: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=300&q=80', brand: 'Bombay Seeds', cat: 'seeds' },
-
-    // Beverages
-    { id: 'brand-guava', name: 'B Natural Guava Beverage', price: 88, originalPrice: 115, weight: '1 L', image: 'https://images.unsplash.com/photo-1534531173927-aeb928d54385?w=300&q=80', brand: 'B Natural', cat: 'beverages' },
-    { id: 'bev-cold-brew', name: 'Cold Brew Coffee', price: 99, originalPrice: 149, weight: '300 ml', image: 'https://images.unsplash.com/photo-1517701604599-bb29b565090c?w=300&q=80', brand: 'Zenvy Brews', cat: 'beverages' },
-    { id: 'bev-mango-shake', name: 'Alphonso Mango Shake', price: 119, originalPrice: 150, weight: '350 ml', image: 'https://images.unsplash.com/photo-1572490122747-3968b75cc699?w=300&q=80', brand: 'Fresh Shakes', cat: 'beverages' },
-
-    // Food & Snacks
-    { id: 'snack-peri-fries', name: 'Crispy Peri Peri Fries', price: 89, originalPrice: 120, weight: '150 g', image: 'https://images.unsplash.com/photo-1576107232684-1279f3908594?w=300&q=80', brand: 'Zenvy Bites', cat: 'food' },
-    { id: 'snack-bbq-wings', name: 'Smokey BBQ Wings', price: 189, originalPrice: 240, weight: '6 pcs', image: 'https://images.unsplash.com/photo-1567620832903-9fc6debc209f?w=300&q=80', brand: 'Zenvy Grill', cat: 'food' },
-
-    // Grocery & Produce
-    { id: 'bb-carrot', name: 'Fresh Organic Carrot', price: 39, originalPrice: 56.16, weight: '500 g', image: 'https://images.unsplash.com/photo-1598170845058-32b9d6a5da37?w=300&q=80', brand: 'Fresho', cat: 'grocery' },
-    { id: 'bb-lemon', name: 'Fresh Lemon', price: 10, originalPrice: 27, weight: '3 pcs', image: 'https://images.unsplash.com/photo-1590502593747-42a996133562?w=300&q=80', brand: 'Fresho', cat: 'grocery' },
-    { id: 'cat-oil-2', name: 'Amul Pure Cow Ghee', price: 680, originalPrice: 720, weight: '1 L', image: 'https://images.unsplash.com/photo-1547514701-42782101795e?w=300&q=80', brand: 'Amul', cat: 'grocery' },
-    { id: 'cat-atta-1', name: 'Aashirvaad Chakki Atta', price: 260, originalPrice: 290, weight: '5 kg', image: 'https://images.unsplash.com/photo-1574316071802-0d684efa7bf5?w=300&q=80', brand: 'Aashirvaad', cat: 'grocery' }
-  ];
-
-  let targetCat = 'grocery';
-  if (isToy) targetCat = 'toys';
-  else if (isSeed) targetCat = 'seeds';
-  else if (isBeverage) targetCat = 'beverages';
-  else if (isFood) targetCat = 'food';
-
-  const filtered = allRelatedPool.filter(p => p.cat === targetCat || (targetCat === 'food' && p.cat === 'beverages'));
-  return filtered.filter(p => p.id !== currentId);
-};
-
-export default function ProductDetail() {
+export default function ProductDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const cleanId = (Array.isArray(id) ? id[0] : id || '').replace(/\/$/, '');
   const router = useRouter();
-  const { cart, addToCart, updateQuantity, removeFromCart } = useCart();
-  const { isDark } = useTheme();
+  const cleanId = (Array.isArray(id) ? id[0] : id || '').replace(/\/$/, '');
+
+  const { cart, addToCart, updateQuantity } = useCart();
+  const { isDark, colors } = useTheme();
 
   const [product, setProduct] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [netError, setNetError] = useState(false);
-  const [showCustomize, setShowCustomize] = useState(false);
   const [selectedPackIndex, setSelectedPackIndex] = useState(0);
-  const [openAccordions, setOpenAccordions] = useState<Record<string, boolean>>({
-    'About': true
-  });
-
-  const scrollY = useRef(new Animated.Value(0)).current;
-
-  const imageTranslateY = scrollY.interpolate({
-    inputRange: [-150, 0, 300],
-    outputRange: [-50, 0, 100],
-    extrapolate: 'clamp',
-  });
-
-  const imageScale = scrollY.interpolate({
-    inputRange: [-150, 0, 300],
-    outputRange: [1.4, 1.0, 0.95],
-    extrapolate: 'clamp',
-  });
-
-  const imageOpacity = scrollY.interpolate({
-    inputRange: [0, 260],
-    outputRange: [1, 0],
-    extrapolate: 'clamp',
-  });
-
-  const indicatorOpacity = scrollY.interpolate({
-    inputRange: [0, 80],
-    outputRange: [0.8, 0],
-    extrapolate: 'clamp',
-  });
+  const [showShopsModal, setShowShopsModal] = useState(false);
+  const [isWishlisted, setIsWishlisted] = useState(false);
+  const [activeImgIndex, setActiveImgIndex] = useState(0);
+  const [descExpanded, setDescExpanded] = useState(false);
 
   useEffect(() => {
-    if (!id) return;
-    const cleanId = id.replace(/\/$/, "");
-
-    const fetchProduct = async () => {
-      try {
-        const res = await apiFetch(`${API_URL}/api/users/products/${cleanId}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data && (data.name || data.id)) {
-            const productWithImg = {
-              ...data,
-              image: data.imageUrl || data.image
-            };
-            setProduct(productWithImg);
-            saveRecentlyViewed({
-              id: data.id || data._id,
-              name: data.name,
-              image: productWithImg.image || '',
-              type: 'product',
-              price: data.price,
-              restaurantName: data.restaurantName
-            });
-            setLoading(false);
-            return;
-          }
-        }
-      } catch (err) {
-        console.warn('[FETCH_PRODUCT_ERROR] DB check failed, using fallback:', err);
-      }
-
-      // Check mock details as fallback
-      if (MOCK_DETAILS[cleanId]) {
-        setProduct(MOCK_DETAILS[cleanId]);
-        saveRecentlyViewed({
-          id: cleanId,
-          name: MOCK_DETAILS[cleanId].name,
-          image: MOCK_DETAILS[cleanId].image,
-          type: 'product',
-          price: MOCK_DETAILS[cleanId].price,
-          restaurantName: MOCK_DETAILS[cleanId].brand
-        });
-        setLoading(false);
-        return;
-      }
-
-      // Dynamic generation from any other ID starting with known prefixes
-      const isLocalOther = cleanId.startsWith('toys-') || cleanId.startsWith('seeds-') || cleanId.startsWith('fruit-') || cleanId.startsWith('cat-') || cleanId.startsWith('org-') || cleanId.startsWith('elec-') || cleanId.startsWith('hyg-') || cleanId.startsWith('bb-');
-      if (isLocalOther) {
-        // Setup dynamic mock details
-        let name = cleanId.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-        let price = 99;
-        let img = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600';
-        let brand = 'Premium Quality';
-
-        if (cleanId.includes('uno')) { name = 'Uno Original Card Game'; price = 119; img = 'https://images.unsplash.com/photo-1606167668584-78701c57f13d?w=600&q=80'; brand = 'Mattel Games'; }
-        else if (cleanId.includes('rubik')) { name = 'Speed Cube 3 x 3'; price = 89; img = 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=600'; brand = 'Toy Cloud'; }
-        else if (cleanId.includes('cucumber')) { name = 'Cucumber Khira Seeds'; price = 59; img = 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=600&q=80'; brand = 'Bombay Seeds'; }
-        else if (cleanId.includes('chilli')) { name = 'Chilli Hot Pepper Seeds'; price = 59; img = 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=600&q=80'; brand = 'Bombay Seeds'; }
-        else if (cleanId.includes('lemon')) { name = 'Fresh Lemon'; price = 10; img = 'https://images.unsplash.com/photo-1590502593747-42a996133562?w=600&q=80'; brand = 'Fresho'; }
-
-        const dynamicDetail = {
-          id: cleanId,
-          name,
-          price,
-          originalPrice: price * 1.5,
-          discount: '30% OFF',
-          weight: '1 pc',
-          image: img,
-          description: `${name} is an premium selection, carefully curated for best standard and reliability.`,
-          rating: 4.4,
-          ratingCount: 1205,
-          reviewsBreakdown: { 5: 750, 4: 310, 3: 90, 2: 35, 1: 20 },
-          packSizes: [
-            { size: '1 pc', price, originalPrice: price * 1.5, discount: '30% OFF' }
-          ],
-          accordions: [
-            { title: 'About', content: `${name} matches our highest quality benchmarks to give complete satisfaction. Packed hygienically and shipped directly.` },
-            { title: 'Storage & Care', content: 'Store in a cool, dark, dry place. Keep away from water and direct heat.' }
-          ],
-          recipes: [
-            { title: 'Quick Demo Guide', time: '15 mins', img }
-          ],
-          brand
-        };
-
-        setProduct(dynamicDetail);
-        saveRecentlyViewed({
-          id: cleanId,
-          name,
-          image: img,
-          type: 'product',
-          price,
-          restaurantName: brand
-        });
-        setLoading(false);
-        return;
-      }
-
-      // If both DB lookup and mock fallbacks failed completely
-      setNetError(true);
-      setLoading(false);
+    // Resolve product from MASTER_PDP_DATA or fallback
+    const resolved = MASTER_PDP_DATA[cleanId] || {
+      id: cleanId,
+      name: cleanId.replace(/-/g, ' ').toUpperCase(),
+      price: 99,
+      originalPrice: 120,
+      discount: '18% OFF',
+      weight: '1 pc',
+      images: ['https://images.unsplash.com/photo-1542838132-92c53300491e?w=800&q=80'],
+      description: 'High-quality daily essential item delivered directly to your room on campus.',
+      rating: 4.5,
+      ratingCount: 84,
+      verifiedShops: ['Campus Kirana', 'Campus Mart'],
+      packSizes: [{ size: '1 pc', price: 99, originalPrice: 120, discount: '18% OFF' }],
+      attributes: [
+        { label: 'Brand', value: 'Zenvy Premium' },
+        { label: 'Weight', value: '1 pc' },
+        { label: 'Shelf Life', value: '30 Days' },
+        { label: 'Country of Origin', value: 'India' },
+        { label: 'Return Policy', value: '24-hour replacement' },
+      ],
+      reviews: [
+        { id: '1', name: 'Campus Resident', rating: 5, time: 'Today', comment: 'Delivered in 8 mins!' },
+      ],
     };
+    setProduct(resolved);
+  }, [cleanId]);
 
-    fetchProduct();
-  }, [id]);
-
-  if (loading) {
+  if (!product) {
     return (
-      <View style={[st.center, { backgroundColor: isDark ? COLORS.bgDark : COLORS.bgLight }]}>
-        <ActivityIndicator size="large" color={isDark ? COLORS.gold : COLORS.red} />
-        <Text style={[st.loadingText, { color: isDark ? COLORS.textSecondary : COLORS.textDarkSecondary }]}>Accessing Product Matrix...</Text>
+      <View style={[styles.loadingBox, { backgroundColor: colors.bg }]}>
+        <ActivityIndicator size="large" color={COLORS.red} />
       </View>
     );
   }
 
-  if (netError || !product) {
-    return (
-      <View style={[st.center, { backgroundColor: isDark ? COLORS.bgDark : COLORS.bgLight, padding: 20 }]}>
-        <View style={st.errorIconWrap}>
-          <Text style={{ fontSize: 32 }}>⚠️</Text>
-        </View>
-        <Text style={[st.errorTitle, { color: isDark ? '#fff' : COLORS.textDark }]}>Zenvy Servers are sleeping</Text>
-        <Text style={[st.errorDesc, { color: isDark ? COLORS.textSecondary : COLORS.textDarkSecondary }]}>
-          We're performing a quick system sweep. Please try refreshing in a few seconds.
-        </Text>
-        <TouchableOpacity 
-          style={st.refreshBtn}
-          onPress={() => {
-            setLoading(true);
-            setNetError(false);
-          }}
-        >
-          <Text style={st.refreshBtnText}>WAKE THEM UP</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
+  const currentCartItem = cart.find((i: any) => i.id === product.id || i.menuItemId === product.id);
+  const qty = currentCartItem ? currentCartItem.quantity : 0;
+  const currentPack = product.packSizes ? product.packSizes[selectedPackIndex] || product : product;
 
-  const productId = product.id || product._id;
-  const isGroceryOrToy = productId.startsWith('toys-') || 
-                          productId.startsWith('seeds-') || 
-                          productId.startsWith('brand-') || 
-                          productId.startsWith('bb-') || 
-                          productId.startsWith('fruit-') || 
-                          productId.startsWith('cat-') || 
-                          productId.startsWith('org-') || 
-                          productId.startsWith('elec-') || 
-                          productId.startsWith('hyg-');
-
-  const selectedPack = product.packSizes && product.packSizes[selectedPackIndex];
-  const selectedPrice = selectedPack ? selectedPack.price : product.price;
-  const selectedWeight = selectedPack ? selectedPack.size : (product.weight || '1 pc');
-
-  const targetCartId = isGroceryOrToy ? (productId + '-' + selectedWeight.replace(/\s+/g, '')) : productId;
-  const cartItem = cart.find(i => i.id === targetCartId);
-  const currentQty = cartItem ? cartItem.quantity : 0;
-
-  const handleInstantAdd = () => {
-    if (isGroceryOrToy) {
-      addToCart({
-        id: targetCartId,
-        name: product.name + ' (' + selectedWeight + ')',
-        price: selectedPrice,
-        image: product.image || '',
-        restaurantId: 'mega-basket-vendor',
-        restaurantName: 'Mega Basket Grocery'
-      });
-    } else {
-      setShowCustomize(true);
-    }
+  const handleShare = () => {
+    Clipboard.setString(`Check out ${product.name} on Zenvy Campus Store: https://zenvy.com/products/${product.id}`);
+    Alert.alert('Link Copied', 'Product link copied to clipboard!');
   };
-
-  const handleCustomizeConfirm = (customizations: any, finalPrice: number) => {
-    setShowCustomize(false);
-    addToCart({
-      id: productId,
-      name: product.name,
-      price: finalPrice,
-      basePrice: product.price,
-      image: product.image || '',
-      restaurantId: product.restaurantId || '8467dbf0-1b1b-4ae5-88b6-0fccbfcb1cbb',
-      restaurantName: product.restaurantName || 'Biryani Hub',
-      customizations,
-    });
-    
-    Alert.alert(
-      "Added to Basket",
-      `${product.name} (${summarizeCustomizations(customizations) || 'default'}) added to cart.`
-    );
-  };
-
-  const toggleAccordion = (title: string) => {
-    setOpenAccordions(prev => ({
-      ...prev,
-      [title]: !prev[title]
-    }));
-  };
-
-  const bg = isDark ? COLORS.bgDark : COLORS.bgLight;
-  const cardBg = isDark ? COLORS.bgCard : COLORS.bgLightCard;
-  const textClr = isDark ? COLORS.textPrimary : COLORS.textDark;
-  const subTextClr = isDark ? COLORS.textSecondary : COLORS.textDarkSecondary;
-  const borderClr = isDark ? COLORS.borderDark : COLORS.borderLight;
-  const isVegetarian = product.isVegetarian === true || 
-                      String(product.isVegetarian).toLowerCase() === 'true' || 
-                      Number(product.isVegetarian) === 1 || 
-                      (product.tags || []).includes('veg');
-
-  const goldColor = isDark ? COLORS.gold : COLORS.red;
-  const themeGreen = '#16A34A';
-  const heroImg = product.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600';
 
   return (
-    <View style={[st.container, { backgroundColor: bg }]}>
-      {/* Immersive Parallax Hero Image */}
-      <Animated.View 
-        style={[
-          st.heroAbsoluteContainer, 
-          { 
-            transform: [
-              { translateY: imageTranslateY },
-              { scale: imageScale }
-            ],
-            opacity: imageOpacity
-          }
-        ]}
-      >
-        <Image source={{ uri: heroImg }} style={st.heroImg} />
-        
-        {/* Dark overlay for contrast */}
-        <View style={st.topOverlay} />
-        
-        {/* Premium Bottom Fade-Merge Gradient */}
-        <LinearGradient
-          colors={['transparent', 'rgba(0,0,0,0.45)', cardBg]}
-          style={st.fadeMergeGradient}
-        />
-      </Animated.View>
+    <View style={[styles.container, { backgroundColor: colors.bg }]}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
+        {/* ═════════════════════════════════════════════════════════════════════ */}
+        {/* ZONE 1 — IMAGE GALLERY (1:1 Full-Width Swipeable Carousel)            */}
+        {/* ═════════════════════════════════════════════════════════════════════ */}
+        <View style={styles.imageGalleryContainer}>
+          <FlatList
+            data={product.images || [product.image]}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onMomentumScrollEnd={(e) => {
+              const idx = Math.round(e.nativeEvent.contentOffset.x / SW);
+              setActiveImgIndex(idx);
+            }}
+            keyExtractor={(_, index) => index.toString()}
+            renderItem={({ item }) => (
+              <Image source={{ uri: item }} style={styles.galleryImage} />
+            )}
+          />
 
-      {/* Floating Header Actions (Fixed at Top) */}
-      <View style={st.topNavRow}>
-        <ActionPressable 
-          style={[st.backBtn, { backgroundColor: isDark ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.9)' }]}
+          {/* Floating Top Nav Actions */}
+          <View style={styles.galleryTopNav}>
+            <TouchableOpacity style={styles.iconCircleBtn} onPress={() => router.back()}>
+              <Text style={styles.iconCircleText}>‹</Text>
+            </TouchableOpacity>
+
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity style={styles.iconCircleBtn} onPress={handleShare}>
+                <Text style={{ fontSize: 16 }}>📤</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.iconCircleBtn} onPress={() => setIsWishlisted(!isWishlisted)}>
+                <Text style={{ fontSize: 16 }}>{isWishlisted ? '❤️' : '🤍'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Discount Ribbon top-left over image */}
+          {currentPack.discount && (
+            <View style={styles.galleryDiscountRibbon}>
+              <Text style={styles.galleryDiscountText}>{currentPack.discount}</Text>
+            </View>
+          )}
+
+          {/* Carousel Dot Indicators */}
+          {(product.images?.length > 1) && (
+            <View style={styles.dotRow}>
+              {product.images.map((_: any, i: number) => (
+                <View
+                  key={i}
+                  style={[styles.dot, i === activeImgIndex && styles.dotActive]}
+                />
+              ))}
+            </View>
+          )}
+        </View>
+
+        {/* ═════════════════════════════════════════════════════════════════════ */}
+        {/* ZONE 2 — CORE INFO SHEET (Rounded top corners overlapping image)      */}
+        {/* ═════════════════════════════════════════════════════════════════════ */}
+        <View style={styles.coreInfoSheet}>
+          {/* Delivery estimate row */}
+          <View style={styles.deliveryEstimateRow}>
+            <View style={styles.arrivesPill}>
+              <Text style={styles.arrivesPillText}>⏱ Arrives in 8 mins</Text>
+            </View>
+          </View>
+
+          {/* Title */}
+          <Text style={styles.productNameTitle}>{product.name}</Text>
+
+          {/* Unit selector pills */}
+          {product.packSizes && product.packSizes.length > 1 && (
+            <View style={styles.unitSelectorRow}>
+              {product.packSizes.map((pack: any, index: number) => {
+                const isSelected = selectedPackIndex === index;
+                return (
+                  <TouchableOpacity
+                    key={index}
+                    style={[styles.unitPill, isSelected && styles.unitPillActive]}
+                    onPress={() => setSelectedPackIndex(index)}
+                  >
+                    <Text style={[styles.unitPillText, isSelected && styles.unitPillTextActive]}>
+                      {pack.size}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+
+          {/* Price row */}
+          <View style={styles.priceContainerRow}>
+            <Text style={styles.priceCurrentBig}>₹{currentPack.price}</Text>
+            {currentPack.originalPrice && (
+              <Text style={styles.priceOriginalStrikethrough}>₹{currentPack.originalPrice}</Text>
+            )}
+            {currentPack.discount && (
+              <View style={styles.priceDiscountChip}>
+                <Text style={styles.priceDiscountChipText}>{currentPack.discount}</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Verified Price Green Chip */}
+          {product.verifiedShops && product.verifiedShops.length > 0 && (
+            <TouchableOpacity
+              style={styles.verifiedPriceChip}
+              activeOpacity={0.8}
+              onPress={() => setShowShopsModal(true)}
+            >
+              <Text style={styles.verifiedPriceChipText}>
+                ✓ Verified price — matched across {product.verifiedShops.length} campus shops
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* ═════════════════════════════════════════════════════════════════════ */}
+        {/* ZONE 4 — DESCRIPTION & DETAILS TABLE                                 */}
+        {/* ═════════════════════════════════════════════════════════════════════ */}
+        <View style={styles.pdpSectionBox}>
+          <Text style={styles.pdpSectionTitle}>About this product</Text>
+          <Text
+            style={styles.pdpDescriptionText}
+            numberOfLines={descExpanded ? undefined : 3}
+          >
+            {product.description}
+          </Text>
+          <TouchableOpacity onPress={() => setDescExpanded(!descExpanded)}>
+            <Text style={styles.readMoreLink}>{descExpanded ? 'Show less' : 'Read more'}</Text>
+          </TouchableOpacity>
+
+          {/* Attributes Table */}
+          {product.attributes && (
+            <View style={styles.attributesTable}>
+              {product.attributes.map((attr: any, idx: number) => (
+                <View key={idx} style={styles.attributeRow}>
+                  <Text style={styles.attrLabel}>{attr.label}</Text>
+                  <Text style={styles.attrVal}>{attr.value}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+
+        {/* ═════════════════════════════════════════════════════════════════════ */}
+        {/* ZONE 5 — OFTEN BOUGHT TOGETHER RAIL                                  */}
+        {/* ═════════════════════════════════════════════════════════════════════ */}
+        <View style={styles.pdpSectionBox}>
+          <Text style={styles.pdpSectionTitle}>Often bought together</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
+            {RELATED_PRODUCTS.map((rel) => (
+              <TouchableOpacity
+                key={rel.id}
+                style={styles.relatedMiniCard}
+                activeOpacity={0.88}
+                onPress={() => router.push(`/products/${rel.id}` as any)}
+              >
+                <Image source={{ uri: rel.image }} style={styles.relatedImg} />
+                <Text style={styles.relatedTitle} numberOfLines={1}>
+                  {rel.name}
+                </Text>
+                <View style={styles.relatedPriceRow}>
+                  <Text style={styles.relatedPrice}>₹{rel.price}</Text>
+                  <TouchableOpacity
+                    style={sMiniPlusBtn}
+                    onPress={() =>
+                      addToCart({
+                        id: rel.id,
+                        name: rel.name,
+                        price: rel.price,
+                        image: rel.image,
+                        restaurantId: 'market-hub',
+                        restaurantName: 'Campus Mart',
+                      })
+                    }
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '900', color: '#FFF' }}>+</Text>
+                  </TouchableOpacity>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+
+        {/* ═════════════════════════════════════════════════════════════════════ */}
+        {/* ZONE 6 — RATINGS & REVIEWS                                            */}
+        {/* ═════════════════════════════════════════════════════════════════════ */}
+        <View style={styles.pdpSectionBox}>
+          <View style={styles.ratingsHeaderRow}>
+            <View>
+              <Text style={styles.ratingNumber}>{product.rating || '4.5'}</Text>
+              <Text style={styles.ratingStars}>⭐⭐⭐⭐⭐</Text>
+              <Text style={styles.ratingCountText}>{product.ratingCount || 42} reviews</Text>
+            </View>
+          </View>
+
+          {/* Snippets */}
+          {product.reviews?.map((rev: any) => (
+            <View key={rev.id} style={styles.reviewCard}>
+              <View style={styles.reviewUserRow}>
+                <Text style={styles.reviewUserName}>{rev.name}</Text>
+                <Text style={styles.reviewTime}>{rev.time}</Text>
+              </View>
+              <Text style={{ fontSize: 10, color: COLORS.accent, marginBottom: 4 }}>{'⭐'.repeat(rev.rating)}</Text>
+              <Text style={styles.reviewComment}>{rev.comment}</Text>
+            </View>
+          ))}
+
+          <TouchableOpacity style={styles.seeAllReviewsBtn}>
+            <Text style={styles.seeAllReviewsText}>See all {product.ratingCount || 42} reviews</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* ═════════════════════════════════════════════════════════════════════ */}
+        {/* ZONE 7 — SPONSORED AD SLOT                                            */}
+        {/* ═════════════════════════════════════════════════════════════════════ */}
+        <View style={{ paddingHorizontal: 16 }}>
+          <AdSlot placement="pdp_footer" />
+        </View>
+      </ScrollView>
+
+      {/* ═════════════════════════════════════════════════════════════════════ */}
+      {/* ZONE 3 — STICKY BOTTOM BAR                                            */}
+      {/* ═════════════════════════════════════════════════════════════════════ */}
+      <View style={styles.stickyBottomBar}>
+        {/* Quantity Stepper */}
+        <View style={styles.stepperContainer}>
+          <TouchableOpacity
+            style={styles.stepperBtn}
+            onPress={() => {
+              if (qty > 1) {
+                updateQuantity(product.id, qty - 1);
+              } else if (qty === 1) {
+                updateQuantity(product.id, 0);
+              }
+            }}
+          >
+            <Text style={styles.stepperBtnText}>–</Text>
+          </TouchableOpacity>
+          <Text style={styles.stepperValText}>{qty}</Text>
+          <TouchableOpacity
+            style={styles.stepperBtn}
+            onPress={() =>
+              addToCart({
+                id: product.id,
+                name: product.name,
+                price: currentPack.price,
+                image: product.image || product.images?.[0] || '',
+                restaurantId: product.restaurantId || 'market-hub',
+                restaurantName: product.verifiedShops?.[0] || product.restaurantName || 'Campus Mart',
+              })
+            }
+          >
+            <Text style={styles.stepperBtnText}>+</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Primary Violet Add to Basket Button */}
+        <TouchableOpacity
+          style={styles.primaryAddBasketBtn}
+          activeOpacity={0.88}
           onPress={() => {
-            if (router.canGoBack()) {
-              router.back();
+            if (qty === 0) {
+              addToCart({
+                id: product.id,
+                name: product.name,
+                price: currentPack.price,
+                image: product.image || product.images?.[0] || '',
+                restaurantId: product.restaurantId || 'market-hub',
+                restaurantName: product.verifiedShops?.[0] || product.restaurantName || 'Campus Mart',
+              });
             } else {
-              router.replace('/(tabs)/others' as any);
+              router.push('/(tabs)/basket' as any);
             }
           }}
         >
-          <Text style={[st.backBtnText, { color: textClr }]}>‹</Text>
-        </ActionPressable>
-
-        <View style={[st.availableBadge, { backgroundColor: isDark ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.9)' }]}>
-          <View style={st.pulseDot} />
-          <Text style={[st.availableText, { color: textClr }]}>AVAILABLE NOW</Text>
-        </View>
+          <Text style={styles.primaryAddBasketBtnText}>
+            {qty > 0 ? 'Go to Basket' : 'Add to Basket'}
+          </Text>
+        </TouchableOpacity>
       </View>
 
-      {/* Scrollable details wrapper */}
-      <Animated.ScrollView 
-        showsVerticalScrollIndicator={false} 
-        contentContainerStyle={{ paddingBottom: 120 }}
-        scrollEventThrottle={16}
-        onScroll={Animated.event(
-          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: true }
-        )}
-      >
-        {/* Top spacer to show the background parallax image */}
-        <View style={st.heroSpacer} />
-
-        {/* Scroll Indicator overlay (Fades on scroll) */}
-        {currentQty === 0 && (
-          <Animated.View style={[st.exploreIndicator, { opacity: indicatorOpacity }]}>
-            <View style={st.exploreBox}>
-              <View style={st.exploreDot} />
-            </View>
-            <Text style={st.exploreText}>EXPLORE</Text>
-          </Animated.View>
-        )}
-
-        {/* Product Details Content */}
-        <StaggeredSection delay={100} direction="up">
-          <View style={[st.detailsContent, { backgroundColor: cardBg }]}>
-            {/* Ambient Breathing Orb */}
-            <View style={[st.breathingOrb, { backgroundColor: isDark ? 'rgba(201,168,76,0.06)' : 'rgba(239,79,95,0.06)' }]} />
-
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-              <View style={[st.vegDot, { borderColor: isVegetarian ? '#22C55E' : '#AF3F3F' }]}>
-                {isVegetarian ? (
-                  <View style={[st.vegDotInner, { backgroundColor: '#22C55E' }]} />
-                ) : (
-                  <View style={st.nonVegTriangle} />
-                )}
+      {/* Verified Shops Modal */}
+      <Modal visible={showShopsModal} transparent animationType="fade">
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>✓ Verified Campus Prices</Text>
+            <Text style={styles.modalSub}>Price matched across these verified shops near your block:</Text>
+            {product.verifiedShops?.map((shop: string, i: number) => (
+              <View key={i} style={styles.shopRow}>
+                <Text style={styles.shopName}>🏪 {shop}</Text>
+                <Text style={styles.shopPrice}>₹{currentPack.price}</Text>
               </View>
-              <Text style={[st.signatureLabel, { color: isGroceryOrToy ? themeGreen : goldColor, marginBottom: 0 }]}>
-                {isGroceryOrToy ? 'BB DEALS EXCLUSIVE' : 'ZENVY SIGNATURE SELECTION'}
-              </Text>
-            </View>
-
-            <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-              <View style={{ flex: 1 }}>
-                <Text style={[st.productTitle, { color: textClr, marginBottom: 4 }]}>{product.name}</Text>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: subTextClr, textTransform: 'uppercase', letterSpacing: 0.5 }}>{product.brand || 'ZENVY'}</Text>
-              </View>
-            </View>
-
-            {/* Rating Stats Summary */}
-            {product.rating && (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 }}>
-                <View style={{ backgroundColor: '#16A34A', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '900', color: '#fff' }}>{product.rating}</Text>
-                  <Text style={{ fontSize: 9, color: '#fff' }}>★</Text>
-                </View>
-                <Text style={{ fontSize: 12, color: subTextClr, fontWeight: '600' }}>{product.ratingCount?.toLocaleString()} ratings</Text>
-              </View>
-            )}
-
-            <Text style={[st.productDesc, { color: subTextClr, marginTop: 12, marginBottom: 20 }]}>
-              {product.description || "An exquisite culinary masterpiece crafted with the finest ingredients and precision."}
-            </Text>
-
-            {/* Pack Size Selection Cards */}
-            {product.packSizes && product.packSizes.length > 0 && (
-              <View style={{ marginBottom: 24 }}>
-                <Text style={{ fontSize: 13, fontWeight: '900', color: textClr, marginBottom: 8, letterSpacing: 0.5 }}>Select Pack Size</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                  {product.packSizes.map((pack: any, index: number) => {
-                    const isSelected = selectedPackIndex === index;
-                    return (
-                      <TouchableOpacity
-                        key={index}
-                        onPress={() => setSelectedPackIndex(index)}
-                        style={{
-                          width: (SW - 48) / 2,
-                          padding: 12,
-                          borderRadius: 12,
-                          borderWidth: 1.5,
-                          borderColor: isSelected ? themeGreen : borderClr,
-                          backgroundColor: isSelected ? (isDark ? '#14532D' : '#F0FDF4') : cardBg,
-                          position: 'relative'
-                        }}
-                      >
-                        <Text style={{ fontSize: 13, fontWeight: '900', color: textClr }}>{pack.size}</Text>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 }}>
-                          <Text style={{ fontSize: 13, fontWeight: '900', color: textClr }}>₹{pack.price}</Text>
-                          {pack.originalPrice > pack.price && (
-                            <Text style={{ fontSize: 10, color: subTextClr, textDecorationLine: 'line-through' }}>₹{pack.originalPrice}</Text>
-                          )}
-                        </View>
-                        {pack.discount && (
-                          <View style={{
-                            position: 'absolute',
-                            top: 6,
-                            right: 6,
-                            backgroundColor: '#FCD34D',
-                            paddingHorizontal: 4,
-                            paddingVertical: 1,
-                            borderRadius: 4
-                          }}>
-                            <Text style={{ fontSize: 7, fontWeight: '900', color: '#78350F' }}>{pack.discount}</Text>
-                          </View>
-                        )}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-            )}
-
-            {/* Elite Attributes Grid (Only show if not grocery, or as a general premium badge row) */}
-            <View style={st.attributesGrid}>
-              {[
-                { icon: '🌟', label: 'Premium\nQuality' },
-                { icon: '🌿', label: 'Made\nFresh' },
-                { icon: '🛡️', label: 'Elite\nStandard' }
-              ].map((attr, i) => (
-                <CardPressable 
-                  key={i} 
-                  style={[st.attributeCard, { backgroundColor: cardBg, borderColor: borderClr }]}
-                  tilt={true}
-                  sound="click"
-                >
-                  <Text style={st.attributeIcon}>{attr.icon}</Text>
-                  <Text style={[st.attributeLabel, { color: textClr }]}>{attr.label}</Text>
-                </CardPressable>
-              ))}
-            </View>
-
-            {/* Gold separator line */}
-            <View style={[st.goldLine, { backgroundColor: isGroceryOrToy ? themeGreen : goldColor }]} />
-
-            {/* Collapsible Accordion Sections */}
-            {product.accordions && product.accordions.length > 0 && (
-              <View style={{ marginBottom: 24 }}>
-                {product.accordions.map((acc: any, index: number) => {
-                  const isOpen = openAccordions[acc.title];
-                  return (
-                    <View key={index} style={{ borderBottomWidth: 1, borderBottomColor: borderClr, paddingVertical: 12 }}>
-                      <TouchableOpacity
-                        onPress={() => toggleAccordion(acc.title)}
-                        style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
-                      >
-                        <Text style={{ fontSize: 13, fontWeight: '900', color: textClr }}>{acc.title}</Text>
-                        <Text style={{ fontSize: 16, color: subTextClr, fontWeight: '700' }}>{isOpen ? '−' : '+'}</Text>
-                      </TouchableOpacity>
-                      {isOpen && (
-                        <Text style={{ fontSize: 12, color: subTextClr, lineHeight: 18, marginTop: 8 }}>{acc.content}</Text>
-                      )}
-                    </View>
-                  );
-                })}
-              </View>
-            )}
-
-            {/* Ratings & Reviews breakdown bar graph */}
-            {product.reviewsBreakdown && (
-              <View style={{ marginBottom: 28 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                  <View>
-                    <Text style={{ fontSize: 14, fontWeight: '900', color: textClr, letterSpacing: 1.5, textTransform: 'uppercase' }}>Ratings & Reviews</Text>
-                    <Text style={{ fontSize: 9, fontWeight: '700', color: subTextClr, letterSpacing: 2, marginTop: 3 }}>VERIFIED CUSTOMER FEEDBACK</Text>
-                  </View>
-                  {product.rating && (
-                    <View style={{ alignItems: 'center' }}>
-                      <View style={{ backgroundColor: '#16A34A', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-                        <Text style={{ fontSize: 14, fontWeight: '900', color: '#fff' }}>{product.rating}</Text>
-                        <Text style={{ fontSize: 11, color: '#fff' }}>★</Text>
-                      </View>
-                      <Text style={{ fontSize: 8, color: subTextClr, fontWeight: '700', marginTop: 4, letterSpacing: 0.5 }}>{product.ratingCount?.toLocaleString()}</Text>
-                    </View>
-                  )}
-                </View>
-                <View style={{ gap: 10 }}>
-                  {[5, 4, 3, 2, 1].map(star => {
-                    const count = product.reviewsBreakdown[star] || 0;
-                    const totalReviews = Object.values(product.reviewsBreakdown).reduce((a: any, b: any) => a + b, 0) as number || 1;
-                    const pct = (count / totalReviews) * 100;
-                    const barColor = star >= 4 ? '#16A34A' : star === 3 ? '#F59E0B' : '#EF4444';
-                    return (
-                      <View key={star} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, width: 30 }}>
-                          <Text style={{ fontSize: 12, fontWeight: '900', color: textClr }}>{star}</Text>
-                          <Text style={{ fontSize: 9, color: subTextClr }}>★</Text>
-                        </View>
-                        <View style={{ flex: 1, height: 8, backgroundColor: isDark ? '#27272A' : '#E4E4E7', borderRadius: 4, overflow: 'hidden' }}>
-                          <View style={{ width: `${pct}%`, height: '100%', backgroundColor: barColor, borderRadius: 4 }} />
-                        </View>
-                        <Text style={{ fontSize: 10, color: subTextClr, width: 42, textAlign: 'right', fontWeight: '800' }}>{pct.toFixed(0)}%</Text>
-                      </View>
-                    );
-                  })}
-                </View>
-              </View>
-            )}
-
-            {/* Related Recipes Slider */}
-            {product.recipes && product.recipes.length > 0 && (
-              <View style={{ marginBottom: 28 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                  <View>
-                    <Text style={{ fontSize: 14, fontWeight: '900', color: textClr, letterSpacing: 1.5, textTransform: 'uppercase' }}>Recipes With This</Text>
-                    <Text style={{ fontSize: 9, fontWeight: '700', color: subTextClr, letterSpacing: 2, marginTop: 3 }}>TRY SOMETHING NEW</Text>
-                  </View>
-                  <View style={{ backgroundColor: 'rgba(245,158,11,0.1)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(245,158,11,0.2)' }}>
-                    <Text style={{ fontSize: 8, fontWeight: '900', color: '#F59E0B', letterSpacing: 1.5 }}>{product.recipes.length} RECIPES</Text>
-                  </View>
-                </View>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
-                  {product.recipes.map((rec: any, index: number) => (
-                    <CardPressable
-                      key={index}
-                      style={{
-                        width: 160,
-                        borderRadius: 16,
-                        borderWidth: 1,
-                        borderColor: borderClr,
-                        overflow: 'hidden',
-                        backgroundColor: cardBg,
-                        shadowColor: '#000',
-                        shadowOffset: { width: 0, height: 3 },
-                        shadowOpacity: isDark ? 0.2 : 0.06,
-                        shadowRadius: 8,
-                        elevation: 2,
-                      }}
-                      sound="click"
-                      tilt={true}
-                    >
-                      <View style={{ width: '100%', height: 100, position: 'relative' }}>
-                        <Image source={{ uri: rec.img }} style={{ width: '100%', height: '100%', resizeMode: 'cover' }} />
-                        <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 40, backgroundColor: 'rgba(0,0,0,0.4)' }} />
-                        <View style={{ position: 'absolute', bottom: 6, left: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                          <Text style={{ fontSize: 10, color: '#fff' }}>⏱️</Text>
-                          <Text style={{ fontSize: 9, color: '#fff', fontWeight: '800', letterSpacing: 0.5 }}>{rec.time}</Text>
-                        </View>
-                      </View>
-                      <View style={{ padding: 10 }}>
-                        <Text style={{ fontSize: 11, fontWeight: '900', color: textClr, letterSpacing: 0.3 }} numberOfLines={2}>{rec.title}</Text>
-                        <Text style={{ fontSize: 8, fontWeight: '700', color: isGroceryOrToy ? themeGreen : goldColor, marginTop: 4, letterSpacing: 1 }}>VIEW RECIPE →</Text>
-                      </View>
-                    </CardPressable>
-                  ))}
-                </ScrollView>
-              </View>
-            )}
-
-            {/* Related Products Slider */}
-            {getRelatedProducts(cleanId, product).length > 0 && (
-              <View style={{ marginBottom: 28, marginTop: 16 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                  <View>
-                    <Text style={{ fontSize: 14, fontWeight: '900', color: textClr, letterSpacing: 1.5, textTransform: 'uppercase' }}>You May Also Like</Text>
-                    <Text style={{ fontSize: 9, fontWeight: '700', color: subTextClr, letterSpacing: 2, marginTop: 3 }}>CURATED FOR YOU</Text>
-                  </View>
-                  <View style={{ backgroundColor: isGroceryOrToy ? 'rgba(16,185,129,0.1)' : 'rgba(212,175,122,0.1)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, borderWidth: 1, borderColor: isGroceryOrToy ? 'rgba(16,185,129,0.2)' : 'rgba(212,175,122,0.2)' }}>
-                    <Text style={{ fontSize: 8, fontWeight: '900', color: isGroceryOrToy ? themeGreen : goldColor, letterSpacing: 1.5 }}>{getRelatedProducts(cleanId, product).length} ITEMS</Text>
-                  </View>
-                </View>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingBottom: 12 }}>
-                  {getRelatedProducts(cleanId, product).map((relProduct: any, idx: number) => {
-                    const discountPct = relProduct.originalPrice > relProduct.price
-                      ? Math.round((1 - relProduct.price / relProduct.originalPrice) * 100)
-                      : 0;
-                    return (
-                    <CardPressable
-                      key={relProduct.id}
-                      onPress={() => {
-                        router.push({
-                          pathname: '/products/[id]',
-                          params: { id: relProduct.id }
-                        });
-                      }}
-                      sound="click"
-                      tilt={true}
-                      style={{
-                        width: 140,
-                        borderRadius: 18,
-                        borderWidth: 1,
-                        borderColor: borderClr,
-                        backgroundColor: cardBg,
-                        overflow: 'hidden',
-                        shadowColor: '#000',
-                        shadowOffset: { width: 0, height: 4 },
-                        shadowOpacity: isDark ? 0.25 : 0.08,
-                        shadowRadius: 10,
-                        elevation: 3,
-                      }}
-                    >
-                      {/* Image Container */}
-                      <View style={{ width: '100%', height: 100, backgroundColor: isDark ? '#1C1C1E' : '#F5F5F7', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-                        <SafeImage source={{ uri: relProduct.image }} style={{ width: '85%', height: '85%', resizeMode: 'contain' }} />
-                        {discountPct > 0 && (
-                          <View style={{ position: 'absolute', top: 6, left: 6, backgroundColor: isGroceryOrToy ? themeGreen : '#EF4F5F', paddingHorizontal: 5, paddingVertical: 2, borderRadius: 6 }}>
-                            <Text style={{ fontSize: 7, fontWeight: '900', color: '#fff', letterSpacing: 0.5 }}>{discountPct}% OFF</Text>
-                          </View>
-                        )}
-                      </View>
-                      {/* Info Section */}
-                      <View style={{ padding: 10 }}>
-                        <Text style={{ fontSize: 7, fontWeight: '900', color: isGroceryOrToy ? themeGreen : goldColor, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 3 }}>{relProduct.brand}</Text>
-                        <Text style={{ fontSize: 11, fontWeight: '800', color: textClr, lineHeight: 14 }} numberOfLines={2}>{relProduct.name}</Text>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 }}>
-                          <Text style={{ fontSize: 13, fontWeight: '900', color: textClr }}>₹{relProduct.price}</Text>
-                          {relProduct.originalPrice > relProduct.price && (
-                            <Text style={{ fontSize: 9, color: subTextClr, textDecorationLine: 'line-through', fontWeight: '600' }}>₹{relProduct.originalPrice}</Text>
-                          )}
-                        </View>
-                        {relProduct.weight && (
-                          <Text style={{ fontSize: 8, fontWeight: '700', color: subTextClr, marginTop: 4, letterSpacing: 0.5 }}>{relProduct.weight}</Text>
-                        )}
-                      </View>
-                    </CardPressable>
-                    );
-                  })}
-                </ScrollView>
-              </View>
-            )}
-
-            {/* Pricing & Quantity Selector */}
-            <View style={st.priceRow}>
-              <View>
-                <Text style={[st.totalPriceLabel, { color: subTextClr }]}>TOTAL PRICE</Text>
-                <Text style={[st.totalPriceText, { color: isGroceryOrToy ? themeGreen : goldColor }]}>
-                  ₹{(selectedPrice * (currentQty || 1)).toFixed(2)}
-                </Text>
-              </View>
-
-              <View style={[st.qtySelector, { backgroundColor: cardBg, borderColor: borderClr }]}>
-                <ActionPressable
-                  style={st.qtyBtn}
-                  onPress={() => {
-                    if (currentQty > 1) updateQuantity(targetCartId, currentQty - 1);
-                    else if (currentQty === 1) removeFromCart(targetCartId);
-                  }}
-                  sound="click"
-                >
-                  <Text style={[st.qtyBtnText, { color: textClr }]}>−</Text>
-                </ActionPressable>
-                
-                <Text style={[st.qtyValue, { color: textClr }]}>{currentQty}</Text>
-                
-                <ActionPressable
-                  style={[st.qtyBtn, st.qtyBtnAdd, { backgroundColor: isGroceryOrToy ? themeGreen : goldColor }]}
-                  onPress={() => {
-                    if (currentQty === 0) handleInstantAdd();
-                    else updateQuantity(targetCartId, currentQty + 1);
-                  }}
-                  sound="click"
-                >
-                  <Text style={[st.qtyBtnTextAdd, { color: '#fff' }]}>+</Text>
-                </ActionPressable>
-              </View>
-            </View>
+            ))}
+            <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setShowShopsModal(false)}>
+              <Text style={styles.modalCloseBtnText}>Close</Text>
+            </TouchableOpacity>
           </View>
-        </StaggeredSection>
-      </Animated.ScrollView>
-
-      {/* Sticky Bottom Action Bar */}
-      <View style={[st.bottomBar, { borderTopColor: borderClr, backgroundColor: isDark ? 'rgba(10,10,11,0.95)' : 'rgba(248,249,250,0.95)' }]}>
-        <View style={st.bottomBarRow}>
-          {currentQty === 0 ? (
-            <CartPressable 
-              style={[st.addToCartBtn, st.btnShadow, { backgroundColor: isGroceryOrToy ? themeGreen : goldColor }, !isDark && { shadowColor: isGroceryOrToy ? themeGreen : COLORS.red }]} 
-              onPress={handleInstantAdd}
-              sound="addToCart"
-            >
-              <Text style={[st.addToCartBtnText, { color: '#fff' }]}>ADD TO BASKET</Text>
-              <View style={[st.btnDivider, { backgroundColor: 'rgba(255,255,255,0.4)' }]} />
-              <Text style={[st.addToCartPrice, { color: '#fff' }]}>₹{selectedPrice}</Text>
-            </CartPressable>
-          ) : (
-            <ActionPressable 
-              style={[st.addToCartBtn, st.btnShadow, { backgroundColor: themeGreen }, !isDark && { shadowColor: themeGreen }]} 
-              onPress={() => router.push('/(tabs)/basket' as any)}
-              sound="success"
-            >
-              <Text style={[st.addToCartBtnText, { color: '#fff' }]}>VIEW BASKET</Text>
-              <View style={[st.btnDivider, { backgroundColor: 'rgba(255,255,255,0.4)' }]} />
-              <Text style={[st.addToCartPrice, { color: '#fff' }]}>
-                {currentQty} in basket (₹{(selectedPrice * currentQty).toFixed(2)})
-              </Text>
-            </ActionPressable>
-          )}
-
-          <ActionPressable 
-            style={[st.basketIconBtn, { backgroundColor: cardBg, borderColor: borderClr }]}
-            onPress={() => router.push('/(tabs)/basket' as any)}
-            sound="click"
-          >
-            <Text style={{ fontSize: 20 }}>🛒</Text>
-          </ActionPressable>
         </View>
-      </View>
-
-      <CustomizeDrawer
-        isOpen={showCustomize}
-        onClose={() => setShowCustomize(false)}
-        onConfirm={handleCustomizeConfirm}
-        itemName={product.name}
-        basePrice={product.price}
-        tags={product.tags}
-        category={product.category}
-        isVegetarian={isVegetarian}
-      />
+      </Modal>
     </View>
   );
 }
 
-const st = StyleSheet.create({
-  container: { flex: 1 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  loadingText: { fontSize: 11, fontWeight: '800', letterSpacing: 2, marginTop: 12 },
-  
-  errorIconWrap: { width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(255,255,255,0.05)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
-  errorTitle: { fontSize: 20, fontWeight: '900', color: '#fff', marginBottom: 8 },
-  errorDesc: { fontSize: 12, fontWeight: '500', textAlign: 'center', maxWidth: 280, lineHeight: 18, marginBottom: 20 },
-  refreshBtn: { paddingHorizontal: 24, paddingVertical: 12, borderRadius: 30, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', backgroundColor: 'rgba(255,255,255,0.03)' },
-  refreshBtnText: { color: '#fff', fontSize: 10, fontWeight: '900', letterSpacing: 2 },
+const sMiniPlusBtn = {
+  width: 24,
+  height: 24,
+  borderRadius: 12,
+  backgroundColor: COLORS.primary,
+  alignItems: 'center' as const,
+  justifyContent: 'center' as const,
+};
 
-  heroAbsoluteContainer: { width: SW, height: 350, position: 'absolute', top: 0, left: 0, right: 0, zIndex: 0 },
-  heroImg: { width: '100%', height: '100%', resizeMode: 'cover' },
-  topOverlay: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.35)' },
-  fadeMergeGradient: {
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  loadingBox: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // ZONE 1: IMAGE GALLERY
+  imageGalleryContainer: {
+    width: SW,
+    height: SW * 0.9,
+    position: 'relative',
+    backgroundColor: '#F8FAFC',
+  },
+  galleryImage: {
+    width: SW,
+    height: SW * 0.9,
+    resizeMode: 'cover',
+  },
+  galleryTopNav: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 52 : 20,
+    left: 16,
+    right: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    zIndex: 10,
+  },
+  iconCircleBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...SHADOWS.cardElevated,
+  },
+  iconCircleText: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: COLORS.ink,
+    marginTop: -2,
+  },
+  galleryDiscountRibbon: {
+    position: 'absolute',
+    top: 70,
+    left: 16,
+    backgroundColor: COLORS.accent,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: RADIUS.sm,
+  },
+  galleryDiscountText: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: '#FFF',
+  },
+  dotRow: {
+    position: 'absolute',
+    bottom: 16,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: 'rgba(20, 19, 31, 0.3)',
+  },
+  dotActive: {
+    width: 18,
+    backgroundColor: COLORS.primary,
+  },
+
+  // ZONE 2: CORE INFO SHEET
+  coreInfoSheet: {
+    marginTop: -24,
+    backgroundColor: '#FFF',
+    borderTopLeftRadius: RADIUS.xxl,
+    borderTopRightRadius: RADIUS.xxl,
+    padding: 20,
+    ...SHADOWS.cardElevated,
+  },
+  deliveryEstimateRow: {
+    marginBottom: 10,
+  },
+  arrivesPill: {
+    backgroundColor: COLORS.ink,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: RADIUS.pill,
+    alignSelf: 'flex-start',
+  },
+  arrivesPillText: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: COLORS.accent,
+  },
+  productNameTitle: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: COLORS.ink,
+    lineHeight: 24,
+    marginBottom: 12,
+  },
+  unitSelectorRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 14,
+  },
+  unitPill: {
+    backgroundColor: COLORS.primarySoft,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: RADIUS.pill,
+  },
+  unitPillActive: {
+    backgroundColor: COLORS.primary,
+  },
+  unitPillText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: COLORS.primary,
+  },
+  unitPillTextActive: {
+    color: '#FFF',
+  },
+  priceContainerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  priceCurrentBig: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: COLORS.ink,
+    fontVariant: ['tabular-nums'],
+  },
+  priceOriginalStrikethrough: {
+    fontSize: 14,
+    color: COLORS.inkMuted,
+    textDecorationLine: 'line-through',
+    fontVariant: ['tabular-nums'],
+  },
+  priceDiscountChip: {
+    backgroundColor: COLORS.accentSoft,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: RADIUS.sm,
+  },
+  priceDiscountChipText: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: COLORS.accent,
+  },
+  verifiedPriceChip: {
+    backgroundColor: COLORS.trustSoft,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: RADIUS.sm,
+  },
+  verifiedPriceChipText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: COLORS.trust,
+  },
+
+  // PDP SECTIONS
+  pdpSectionBox: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(20, 19, 31, 0.05)',
+  },
+  pdpSectionTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: COLORS.ink,
+    marginBottom: 8,
+  },
+  pdpDescriptionText: {
+    fontSize: 12,
+    color: COLORS.inkMuted,
+    lineHeight: 18,
+  },
+  readMoreLink: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: COLORS.primary,
+    marginTop: 4,
+  },
+  attributesTable: {
+    marginTop: 14,
+    backgroundColor: COLORS.primarySoft,
+    borderRadius: RADIUS.md,
+    padding: 12,
+    gap: 8,
+  },
+  attributeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  attrLabel: {
+    fontSize: 11,
+    color: COLORS.inkMuted,
+  },
+  attrVal: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: COLORS.ink,
+  },
+
+  // OFTEN BOUGHT TOGETHER
+  relatedMiniCard: {
+    width: 120,
+    backgroundColor: '#FFF',
+    borderRadius: RADIUS.lg,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(20, 19, 31, 0.06)',
+    ...SHADOWS.cardElevated,
+  },
+  relatedImg: {
+    width: '100%',
+    height: 80,
+    borderRadius: RADIUS.md,
+    marginBottom: 6,
+  },
+  relatedTitle: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: COLORS.ink,
+  },
+  relatedPriceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  relatedPrice: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: COLORS.ink,
+    fontVariant: ['tabular-nums'],
+  },
+
+  // RATINGS & REVIEWS
+  ratingsHeaderRow: {
+    marginBottom: 12,
+  },
+  ratingNumber: {
+    fontSize: 32,
+    fontWeight: '900',
+    color: COLORS.ink,
+  },
+  ratingStars: {
+    fontSize: 12,
+    marginVertical: 2,
+  },
+  ratingCountText: {
+    fontSize: 10,
+    color: COLORS.inkMuted,
+  },
+  reviewCard: {
+    backgroundColor: 'rgba(20, 19, 31, 0.03)',
+    borderRadius: RADIUS.md,
+    padding: 10,
+    marginBottom: 10,
+  },
+  reviewUserRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 2,
+  },
+  reviewUserName: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: COLORS.ink,
+  },
+  reviewTime: {
+    fontSize: 9,
+    color: COLORS.inkMuted,
+  },
+  reviewComment: {
+    fontSize: 11,
+    color: COLORS.ink,
+    lineHeight: 15,
+  },
+  seeAllReviewsBtn: {
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    paddingVertical: 10,
+    borderRadius: RADIUS.pill,
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  seeAllReviewsText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: COLORS.primary,
+  },
+
+  // STICKY BOTTOM BAR
+  stickyBottomBar: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    height: 220,
+    backgroundColor: '#FFF',
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 28 : 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(20, 19, 31, 0.08)',
+    ...SHADOWS.cardElevated,
+    zIndex: 100,
   },
-  
-  topNavRow: { position: 'absolute', top: Platform.OS === 'ios' ? 50 : 36, left: 16, right: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', zIndex: 10 },
-  backBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', ...SHADOWS.card },
-  backBtnText: { fontSize: 22, fontWeight: '900' },
-  
-  availableBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, ...SHADOWS.card },
-  pulseDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#10B981' },
-  availableText: { fontSize: 8, fontWeight: '900', letterSpacing: 2 },
-
-  exploreIndicator: { position: 'absolute', bottom: 20, left: 0, right: 0, alignItems: 'center', justifyContent: 'center' },
-  exploreBox: { width: 16, height: 26, borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)', borderRadius: 8, alignItems: 'center', paddingVertical: 4 },
-  exploreDot: { width: 3, height: 6, borderRadius: 1.5, backgroundColor: 'rgba(255,255,255,0.8)' },
-  exploreText: { fontSize: 7, fontWeight: '900', color: '#fff', letterSpacing: 3, marginTop: 4 },
-
-  heroSpacer: { height: 280 },
-  detailsContent: { paddingHorizontal: 20, paddingTop: 32, position: 'relative' },
-  breathingOrb: { position: 'absolute', top: -40, left: SW / 2 - 100, width: 200, height: 200, borderRadius: 100, transform: [{ scale: 1.2 }] },
-  
-  signatureLabel: { fontSize: 9, fontWeight: '900', color: COLORS.gold, letterSpacing: 4, marginBottom: 12 },
-  vegDot: { width: 12, height: 12, borderWidth: 1.5, borderRadius: 3, alignItems: 'center', justifyContent: 'center' },
-  vegDotInner: { width: 5, height: 5, borderRadius: 2.5 },
-  nonVegTriangle: {
-    width: 0,
-    height: 0,
-    backgroundColor: 'transparent',
-    borderStyle: 'solid',
-    borderLeftWidth: 3.5,
-    borderRightWidth: 3.5,
-    borderBottomWidth: 6.5,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-    borderBottomColor: '#AF3F3F',
+  stepperContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primarySoft,
+    borderRadius: RADIUS.pill,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
   },
-  productTitle: { fontSize: 28, fontWeight: '900', letterSpacing: -0.5, marginBottom: 12 },
-  productDesc: { fontSize: 13, fontWeight: '500', lineHeight: 20, marginBottom: 24 },
-
-  attributesGrid: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, marginBottom: 28 },
-  attributeCard: { flex: 1, paddingVertical: 16, paddingHorizontal: 8, borderRadius: 20, borderWidth: 1, alignItems: 'center', justifyContent: 'center', gap: 8, ...SHADOWS.card },
-  attributeIcon: { fontSize: 22 },
-  attributeLabel: { fontSize: 8, fontWeight: '900', textAlign: 'center', letterSpacing: 1.5, lineHeight: 12, textTransform: 'uppercase' },
-
-  goldLine: { height: 1, backgroundColor: COLORS.gold, opacity: 0.15, marginBottom: 24 },
-
-  priceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  totalPriceLabel: { fontSize: 8, fontWeight: '900', letterSpacing: 2, marginBottom: 4 },
-  totalPriceText: { fontSize: 32, fontWeight: '900', color: COLORS.gold, letterSpacing: -0.5 },
-
-  qtySelector: { flexDirection: 'row', alignItems: 'center', borderRadius: 30, borderWidth: 1, padding: 4 },
-  qtyBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  qtyBtnText: { fontSize: 18, fontWeight: '800' },
-  qtyBtnAdd: { backgroundColor: COLORS.gold },
-  qtyBtnTextAdd: { fontSize: 18, fontWeight: '800', color: '#fff' },
-  qtyValue: { fontSize: 16, fontWeight: '900', width: 24, textAlign: 'center', marginHorizontal: 8 },
-
-  bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 20, paddingTop: 16, paddingBottom: Platform.OS === 'ios' ? 34 : 20, borderTopWidth: 1 },
-  bottomBarRow: { flexDirection: 'row', gap: 12, alignItems: 'center' },
-  addToCartBtn: { flex: 1, backgroundColor: COLORS.gold, height: 56, borderRadius: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 },
-  addToCartBtnText: { color: '#fff', fontSize: 11, fontWeight: '900', letterSpacing: 2 },
-  btnDivider: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: 'rgba(255,255,255,0.4)' },
-  addToCartPrice: { color: '#fff', fontSize: 12, fontWeight: '900' },
-  btnShadow: {
-    shadowColor: COLORS.gold,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 4,
+  stepperBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#FFF',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  basketIconBtn: { width: 56, height: 56, borderRadius: 20, borderWidth: 1, alignItems: 'center', justifyContent: 'center', ...SHADOWS.card }
+  stepperBtnText: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: COLORS.primary,
+  },
+  stepperValText: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: COLORS.primary,
+    paddingHorizontal: 12,
+    fontVariant: ['tabular-nums'],
+  },
+  primaryAddBasketBtn: {
+    flex: 1,
+    backgroundColor: COLORS.primary,
+    paddingVertical: 14,
+    borderRadius: RADIUS.pill,
+    alignItems: 'center',
+    ...SHADOWS.cardElevated,
+  },
+  primaryAddBasketBtnText: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#FFF',
+    letterSpacing: 0.5,
+  },
+
+  // MODAL STYLES
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  modalCard: {
+    backgroundColor: '#FFF',
+    borderRadius: RADIUS.xl,
+    padding: 20,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: COLORS.trust,
+    marginBottom: 4,
+  },
+  modalSub: {
+    fontSize: 11,
+    color: COLORS.inkMuted,
+    marginBottom: 14,
+  },
+  shopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.06)',
+  },
+  shopName: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.ink,
+  },
+  shopPrice: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: COLORS.ink,
+    fontVariant: ['tabular-nums'],
+  },
+  modalCloseBtn: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: 10,
+    borderRadius: RADIUS.pill,
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  modalCloseBtnText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#FFF',
+  },
 });

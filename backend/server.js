@@ -412,6 +412,10 @@ app.get('/api/health', async (req, res) => {
     uptime: process.uptime()
   });
 });
+
+app.get(['/api/ping', '/ping'], (req, res) => {
+  res.json({ status: 'pong', timestamp: Date.now() });
+});
 // Static uploads served once below after DB init
 
 // Connect to PostgreSQL, then initialize routes
@@ -877,6 +881,7 @@ const startServer = async () => {
     app.use('/api/pg', require('./routes/pgRoutes'));
     app.use('/api/mega-basket', require('./routes/megaBasketRoutes'));
     app.use('/api/wall', require('./routes/wallRoutes'));
+    app.use('/api/services', require('./routes/serviceRoutes'));
 
     // 🚀 Auto-Seed: DEVELOPMENT ONLY — Never overwrite production data
     const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
@@ -1690,7 +1695,7 @@ const startServer = async () => {
       });
     });
 
-    const PORT = process.env.PORT || 5005;
+    const PORT = process.env.PORT || 8080;
     
     server.on('error', (e) => {
       if (e.code === 'EADDRINUSE') {

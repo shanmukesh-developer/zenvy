@@ -20,6 +20,8 @@ interface User {
   completedOrders?: number;
   address?: string;
   hostelBlock?: string;
+  roomNumber?: string;
+  roomNo?: string;
   karmaPoints?: number;
   city?: string;
   badges?: string[];

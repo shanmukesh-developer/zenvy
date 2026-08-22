@@ -26,7 +26,7 @@ const PRIZES = [
 export default function RewardsScreen() {
   const router = useRouter();
   const { user, setUser } = useAuth();
-  const { isDark } = useTheme();
+  const { isDark, colors } = useTheme();
 
   const streak = user?.streakCount || 0;
   const progressPercent = Math.min(100, (streak / 14) * 100);
@@ -94,7 +94,7 @@ export default function RewardsScreen() {
   const startSpin = async () => {
     if (spinning) return;
     if (!eligibility || eligibility.spinsAvailable <= 0) {
-      Alert.alert('Nexus Matrix Empty', 'Zero spins available. Complete more orders to unlock the daily spin!');
+      Alert.alert('No Spins Left', 'Complete more orders to earn your next spin!');
       return;
     }
 
@@ -168,8 +168,8 @@ export default function RewardsScreen() {
         const data = await res.json();
         if (res.ok) {
           Alert.alert(
-            'Nexus Decryption Complete', 
-            `🎉 You have unlocked: ${wonPrize.display}! Check your profile coupons and wallet.`
+            'You Won! 🎉', 
+            `You unlocked: ${wonPrize.display}! Check your coupons & wallet.`
           );
           
           // Refresh eligibility
@@ -196,11 +196,11 @@ export default function RewardsScreen() {
     outputRange: ['0deg', '360deg'],
   });
 
-  const txt = isDark ? '#FFF' : '#111';
-  const txtSec = isDark ? '#AAA' : '#666';
-  const bg = isDark ? '#0A0A0C' : '#FAFAFA';
-  const cardBg = isDark ? '#141416' : '#FFF';
-  const border = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+  const txt = colors.text;
+  const txtSec = colors.textSecondary;
+  const bg = colors.bg;
+  const cardBg = colors.card;
+  const border = colors.border;
 
   // Perimeter Bulb Positions (8 light bulbs around the wheel rim)
   const bulbPositions = Array.from({ length: 8 }).map((_, idx) => {
@@ -231,8 +231,8 @@ export default function RewardsScreen() {
           <Text style={[s.backIcon, { color: txt }]}>‹</Text>
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={s.subText}>SECURE CAMPUS REWARDS</Text>
-          <Text style={[s.title, { color: txt }]}>Elysian Rewards</Text>
+          <Text style={s.subText}>YOUR REWARDS</Text>
+          <Text style={[s.title, { color: txt }]}>Rewards & Streaks</Text>
         </View>
       </View>
 
@@ -243,7 +243,7 @@ export default function RewardsScreen() {
           <View style={[s.card, { backgroundColor: cardBg, borderColor: border }]}>
             <View style={s.streakHeader}>
               <View>
-                <Text style={s.cardLabel}>AUTHENTICATION STREAK</Text>
+                <Text style={s.cardLabel}>ORDER STREAK</Text>
                 <Text style={[s.streakVal, { color: txt }]}>🔥 {streak} Days</Text>
               </View>
               <View style={s.tierBadge}>
@@ -257,14 +257,14 @@ export default function RewardsScreen() {
             </View>
 
             <Text style={[s.cardDesc, { color: txtSec }]}>
-              Maintain daily connection uplink to synchronize with the Nexus Tier and decrypt universal premium assets.
+              Keep ordering daily to level up your tier and unlock better rewards.
             </Text>
           </View>
         </StaggeredSection>
 
-        {/* ── HIGH FIDELITY NEXUS SPIN DECRYPTOR ── */}
+        {/* ── DAILY SPIN WHEEL ── */}
         <StaggeredSection delay={130} direction="up">
-          <Text style={[s.sectionTitle, { color: txt }]}>NEXUS SPIN DECRYPTOR</Text>
+          <Text style={[s.sectionTitle, { color: txt }]}>DAILY SPIN</Text>
           
           <View style={[s.wheelCard, { backgroundColor: cardBg, borderColor: border }]}>
             {loadingEligibility ? (
@@ -272,8 +272,8 @@ export default function RewardsScreen() {
             ) : (
               <Text style={s.wheelSub}>
                 {eligibility && eligibility.spinsAvailable > 0 
-                  ? `${eligibility.spinsAvailable} SPIN${eligibility.spinsAvailable > 1 ? 'S' : ''} EARNED! TAP TO INITIALIZE DECRYPTION`
-                  : `NEXT SPIN UNLOCKS IN ${eligibility?.nextMilestoneIn || 2} MORE COMPLETED ORDERS`}
+                  ? `${eligibility.spinsAvailable} SPIN${eligibility.spinsAvailable > 1 ? 'S' : ''} AVAILABLE! TAP TO SPIN`
+                  : `NEXT SPIN IN ${eligibility?.nextMilestoneIn || 2} MORE ORDERS`}
               </Text>
             )}
 
@@ -365,31 +365,31 @@ export default function RewardsScreen() {
             >
               <Text style={s.spinBtnText}>
                 {spinning 
-                  ? 'DECRYPTING...' 
+                  ? 'SPINNING...' 
                   : (eligibility && eligibility.spinsAvailable <= 0) 
-                    ? 'MATRIX LOCKED' 
-                    : 'INITIALIZE NEXUS SPIN'
+                    ? 'NO SPINS LEFT' 
+                    : 'SPIN THE WHEEL'
                 }
               </Text>
             </TouchableOpacity>
 
             {selectedPrize && (
               <View style={s.resultBox}>
-                <Text style={s.resultLabel}>DECRYPTED PRIZE</Text>
+                <Text style={s.resultLabel}>YOU WON</Text>
                 <Text style={s.resultVal}>{selectedPrize}</Text>
               </View>
             )}
           </View>
         </StaggeredSection>
 
-        {/* Strategic Unlockables */}
+        {/* Streak Rewards */}
         <StaggeredSection delay={210} direction="up">
-          <Text style={[s.sectionTitle, { color: txt }]}>STRATEGIC UNLOCKABLES</Text>
+          <Text style={[s.sectionTitle, { color: txt }]}>STREAK REWARDS</Text>
           <View style={s.tierList}>
             {[
-              { icon: '🥉', title: '3 Day Sequence', desc: 'Complimentary Logistics Bypass', level: 'Bronze', req: 3 },
-              { icon: '🥈', title: '7 Day Sequence', desc: '₹50 Asset Injection', level: 'Silver', req: 7 },
-              { icon: '🥇', title: '14 Day Sequence', desc: 'Universal Sustenance Pass', level: 'Gold', req: 14 }
+              { icon: '🥉', title: '3 Day Streak', desc: 'Free Delivery on next order', level: 'Bronze', req: 3 },
+              { icon: '🥈', title: '7 Day Streak', desc: '₹50 Cashback', level: 'Silver', req: 7 },
+              { icon: '🥇', title: '14 Day Streak', desc: 'Unlimited Free Delivery Pass', level: 'Gold', req: 14 }
             ].map((reward, idx) => {
               const unlocked = streak >= reward.req;
               return (
@@ -416,7 +416,7 @@ export default function RewardsScreen() {
                   </View>
                   <View style={[s.statusBox, unlocked && s.statusBoxUnlocked]}>
                     <Text style={[s.statusBoxText, unlocked && { color: '#22c55e' }]}>
-                      {unlocked ? 'DECRYPTED' : 'ENCRYPTED'}
+                      {unlocked ? 'UNLOCKED' : 'LOCKED'}
                     </Text>
                   </View>
                 </View>

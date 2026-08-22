@@ -77,6 +77,7 @@ const CLASSICS = [
 ];
 
 const PROMOS = [
+  { id: 'mega-basket', tagline: '🏢 APARTMENT & HOSTEL BULK BASKET', title: 'BIG BASKET FOR', subtitle: 'APARTMENT PEOPLE', desc: 'Order bulk groceries, daily essentials & Kirana items together with flatmates.', btn: 'START BASKET', img: 'https://images.unsplash.com/photo-1542838132-92c53300491e?q=80&w=1200' },
   { id: 'biryani', tagline: 'SPECIAL CAMPUS CRAVING', title: 'HYDERABADI DUM', subtitle: 'ROYAL BIRYANI', desc: 'Aromatic basmati rice & succulent spiced chicken.', btn: 'ORDER NOW', img: 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?q=80&w=1200' },
   { id: 'kfc', tagline: 'KFC TAKEOVER LIVE', title: 'CRISPY JUICY', subtitle: 'CRUNCHY BUCKET', desc: 'Golden fried chicken buckets delivered hot to your hostel.', btn: 'ORDER KFC', img: 'https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?q=80&w=1200' },
   { id: 'ride', tagline: 'ZENVY CO-RIDE 🏍️', title: 'SPLIT THE', subtitle: 'RIDE', desc: 'Connect with campus peers for instant bike pooling.', btn: 'FIND A RIDE', img: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?q=80&w=1200' },
@@ -87,15 +88,15 @@ const PROMOS = [
 const CATEGORIES = [
   { key: 'food', label: 'Food', emoji: '🍔' },
   { key: 'basket', label: 'Basket', emoji: '🧺' },
-  { key: 'hostels', label: 'Hostels', emoji: '🏨' },
-  { key: 'coride', label: 'Co-Ride', emoji: '🏍️' },
+  { key: 'services', label: 'Tech Fix', emoji: '💻' },
+  { key: 'rides', label: 'Auto & Rides', emoji: '🛺' },
 ];
 
 const CATEGORY_IMAGES = {
   food: { uri: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=200&q=80' },
   basket: { uri: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=200&q=80' },
-  hostels: { uri: 'https://images.unsplash.com/photo-1555854877-bab0e564b8d5?w=200&q=80' },
-  coride: { uri: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=200&q=80' },
+  services: { uri: 'https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?w=200&q=80' },
+  rides: { uri: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=200&q=80' },
 };
 
 function getGreeting() {
@@ -109,7 +110,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const { user, refreshUser } = useAuth();
   const { totalItems } = useCart();
-  const { isDark, toggleTheme } = useTheme();
+  const { isDark, toggleTheme, colors } = useTheme();
   const { triggerTransition } = useWorldTransition();
   const scrollRef = useRef<ScrollView>(null);
   const nexusY = useRef(0);
@@ -229,14 +230,14 @@ export default function HomeScreen() {
       const res = await apiFetch(ENDPOINTS.vaultClaim(itemId), { method: 'POST' });
       const data = await res.json();
       if (res.ok) {
-        Alert.alert('Access Granted', data.message || 'Secured in your vault!');
+        Alert.alert('Deal Claimed!', data.message || 'Added to your coupons!');
         fetchVaultItems();
         if (refreshUser) refreshUser();
       } else {
         Alert.alert('Access Denied', data.message || 'Claim failed.');
       }
     } catch (e) {
-      Alert.alert('Error', 'Network error claiming vault item.');
+      Alert.alert('Error', 'Could not claim this deal. Check your connection.');
     } finally {
       setClaimingItemId(null);
     }
@@ -348,7 +349,7 @@ export default function HomeScreen() {
               setUnreadCount(notifs.filter((n: any) => !n.read).length);
             }
           } else {
-            setUnreadCount(2); // Default mock notifications
+            setUnreadCount(0);
           }
         } catch (e) {
           console.error(e);
@@ -480,19 +481,19 @@ export default function HomeScreen() {
       }
     }
   ];
-  const cardBg = isDark ? 'rgba(255, 255, 255, 0.08)' : COLORS.bgLightCard;
-  const txt = isDark ? COLORS.textPrimary : COLORS.textDark;
-  const txtSec = isDark ? COLORS.textSecondary : COLORS.textDarkSecondary;
-  const border = isDark ? 'rgba(201, 168, 76, 0.25)' : COLORS.borderLight;
-  const bgColors: [string, string] = isDark ? ['#1A1512', '#0A0806'] : [COLORS.bgLight, '#EFEFEF'];
+  const cardBg = isDark ? 'rgba(255, 255, 255, 0.08)' : colors.card;
+  const txt = colors.text;
+  const txtSec = colors.textSecondary;
+  const border = isDark ? 'rgba(201, 168, 76, 0.25)' : colors.border;
+  const bg = colors.bg;
 
-  const goldColor = isDark ? COLORS.gold : COLORS.red;
-  const goldBorderColor = isDark ? COLORS.goldBorder : 'rgba(239, 79, 95, 0.4)';
-  const goldMutedColor = isDark ? COLORS.goldMuted : 'rgba(239, 79, 95, 0.15)';
+  const goldColor = isDark ? COLORS.gold : colors.gold;
+  const goldBorderColor = isDark ? COLORS.goldBorder : 'rgba(239, 79, 95, 0.35)';
+  const goldMutedColor = isDark ? COLORS.goldMuted : 'rgba(239, 79, 95, 0.1)';
   const goldGlowShadow = isDark ? SHADOWS.goldGlow : SHADOWS.redGlow;
 
   return (
-    <View style={s.container}>
+    <View style={[s.container, { backgroundColor: bg }]}>
       <ServerWakeupOverlay 
         visible={showWakeup} 
         onWakeupComplete={() => {
@@ -571,11 +572,11 @@ export default function HomeScreen() {
                 if (c.key === 'food') {
                   if (scrollRef.current) scrollRef.current.scrollTo({ y: 485, animated: true });
                 } else if (c.key === 'basket') {
-                  triggerTransition('/(tabs)/others?tab=food', 'mega-basket');
-                } else if (c.key === 'hostels') {
-                  triggerTransition('/(tabs)/others?tab=pg', 'pg');
-                } else if (c.key === 'coride') {
-                  triggerTransition('/(tabs)/others?tab=coride', 'bikepool');
+                  router.push('/mega-basket' as any);
+                } else if (c.key === 'services') {
+                  router.push({ pathname: '/(tabs)/others', params: { tab: 'services' } } as any);
+                } else if (c.key === 'rides') {
+                  router.push({ pathname: '/(tabs)/others', params: { tab: 'rides' } } as any);
                 }
               }}
               sound="tabSwitch"
@@ -614,7 +615,7 @@ export default function HomeScreen() {
         </TouchableOpacity>
         </StaggeredSection>
 
-        {/* ── BLOCKWARS ARENA TRIGGER ── */}
+        {/* ── HOSTEL CHALLENGE ── */}
         <StaggeredSection delay={450} direction="right">
         <CardPressable 
           style={[s.blockwarsBanner, { backgroundColor: cardBg, borderColor: goldBorderColor }]} 
@@ -630,8 +631,8 @@ export default function HomeScreen() {
                 <View style={[s.blockwarsIcon, { backgroundColor: goldMutedColor, borderColor: goldBorderColor }]}><Text style={{ fontSize: 22 }}>🏆</Text></View>
               </PulseGlow>
               <View>
-                <Text style={[s.blockwarsTitle, { color: txt }]}>ENTER BLOCKWARS ARENA</Text>
-                <Text style={[s.blockwarsSub, { color: txtSec }]}>ACTIVE WEEKLY CAMPUS CHALLENGES</Text>
+                <Text style={[s.blockwarsTitle, { color: txt }]}>HOSTEL CHALLENGE</Text>
+                <Text style={[s.blockwarsSub, { color: txtSec }]}>WEEKLY CAMPUS COMPETITIONS</Text>
               </View>
             </View>
             <Text style={{ color: goldColor, fontSize: 16 }}>›</Text>
@@ -675,7 +676,7 @@ export default function HomeScreen() {
           })}
         </ScrollView>
 
-        {/* ── NEXUS EXPLORER: Dish Discovery ── */}
+        {/* ── MENU EXPLORER: Dish Discovery ── */}
         {classicFilter !== '' && (
           <Animated.View 
             onLayout={(e) => { nexusY.current = e.nativeEvent.layout.y; }}
@@ -711,7 +712,7 @@ export default function HomeScreen() {
           </Animated.View>
         )}
 
-        {/* ── ZENVY VAULT ── */}
+        {/* ── DAILY DEALS ── */}
         <StaggeredSection delay={600} direction="up">
         <CardPressable 
           style={[s.vaultCard, { backgroundColor: cardBg }]} 
@@ -727,13 +728,13 @@ export default function HomeScreen() {
                 <View style={s.vaultIcon}><Text style={{ fontSize: 24 }}>✨</Text></View>
               </PulseGlow>
               <View>
-                <Text style={[s.vaultTitle, { color: txt }]}>THE ZENVY VAULT</Text>
-                <Text style={[s.vaultSub, { color: txtSec }]}>3 ULTRA-PREMIUM DROPS</Text>
+                <Text style={[s.vaultTitle, { color: txt }]}>DAILY DEALS</Text>
+                <Text style={[s.vaultSub, { color: txtSec }]}>LIMITED-TIME OFFERS</Text>
               </View>
             </View>
             <View style={s.vaultRight}>
               <VaultTimerBadge pulseAnim={pulseAnim} />
-              <Text style={[s.vaultUntil, { color: txtSec }]}>UNTIL SEALED</Text>
+              <Text style={[s.vaultUntil, { color: txtSec }]}>TIME LEFT</Text>
             </View>
           </View>
         </CardPressable>

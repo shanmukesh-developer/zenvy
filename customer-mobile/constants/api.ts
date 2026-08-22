@@ -1,12 +1,26 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
-export const API_URL = 'https://hostelbites-backend-jwmt.onrender.com';
+// Production Cloud API URL (Render)
+export const PROD_API_URL = 'https://hostelbites-backend-jwmt.onrender.com';
+
+// Local / Development Port 8080 API URL
+export const DEV_PORT = 8080;
+export const LOCAL_API_URL = 'http://10.1.170.72:8080';
+
+// Release standalone APK uses live Render cloud backend
+export const API_URL = PROD_API_URL;
 
 export const ENDPOINTS = {
+  // System Health & Diagnostics
+  health: `${API_URL}/api/health`,
+  ping: `${API_URL}/api/ping`,
+
   // Auth
   login: `${API_URL}/api/users/login`,
   register: `${API_URL}/api/users/register`,
+  sendOtp: `${API_URL}/api/users/send-otp`,
+  verifyOtp: `${API_URL}/api/users/verify-otp`,
   profile: `${API_URL}/api/users/profile`,
   forgotPassword: `${API_URL}/api/users/forgot-password`,
 
@@ -92,8 +106,14 @@ export const ENDPOINTS = {
   wallLeaderboard: (id: string) => `${API_URL}/api/wall/events/${id}/leaderboard`,
   wallAdminPending: `${API_URL}/api/wall/admin/pending`,
   wallApprove: (id: string) => `${API_URL}/api/wall/admin/submissions/${id}/approve`,
-  wallReject: (id: string) => `${API_URL}/api/wall/admin/submissions/${id}/reject`,
-  wallCreateEvent: `${API_URL}/api/wall/events`,
-  wallUpdateEvent: (id: string) => `${API_URL}/api/wall/events/${id}`,
+  // Services & Tech Hub
+  servicesBook: `${API_URL}/api/services/book`,
+  servicesMyBookings: `${API_URL}/api/services/my-bookings`,
+  servicesDetail: (id: string) => `${API_URL}/api/services/${id}`,
+  servicesConfirmQuote: (id: string) => `${API_URL}/api/services/${id}/confirm-quote`,
+  servicesCancel: (id: string) => `${API_URL}/api/services/${id}/cancel`,
+  servicesRate: (id: string) => `${API_URL}/api/services/${id}/rate`,
+  servicesStats: `${API_URL}/api/services/stats/overview`,
+  servicesStatusUpdate: (id: string) => `${API_URL}/api/services/${id}/status`,
 };
 

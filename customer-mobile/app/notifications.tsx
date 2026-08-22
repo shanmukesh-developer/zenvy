@@ -29,8 +29,8 @@ const DEFAULT_NOTIFICATIONS: NotificationItem[] = [
   },
   {
     id: 'default-2',
-    title: '🏆 Blockwars Challenge is Live!',
-    body: 'Amaravathi Central is currently leading the weekly board. Order now to earn extra ZPoints and secure the block trophy! ⚡',
+    title: '🏆 Hostel Challenge is Live!',
+    body: 'Amaravathi Central is leading the weekly leaderboard. Order now to earn bonus points and claim your hostel\'s trophy! ⚡',
     timestamp: new Date(Date.now() - 3600000 * 5).toISOString(),
     type: 'info',
     read: false,
@@ -47,7 +47,7 @@ const DEFAULT_NOTIFICATIONS: NotificationItem[] = [
 
 export default function NotificationsScreen() {
   const router = useRouter();
-  const { isDark } = useTheme();
+  const { isDark, colors } = useTheme();
   const { user } = useAuth();
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -185,12 +185,12 @@ export default function NotificationsScreen() {
     }
   };
 
-  const txt = isDark ? '#FFF' : '#111';
-  const txtSec = isDark ? '#AAA' : '#666';
-  const bg = isDark ? '#0A0A0C' : '#FAFAFA';
-  const cardBg = isDark ? '#141416' : '#FFF';
-  const border = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
-  const goldColor = isDark ? COLORS.gold : COLORS.red;
+  const txt = colors.text;
+  const txtSec = colors.textSecondary;
+  const bg = colors.bg;
+  const cardBg = colors.card;
+  const border = colors.border;
+  const goldColor = isDark ? COLORS.gold : colors.gold;
 
   return (
     <View style={[s.container, { backgroundColor: bg }]}>

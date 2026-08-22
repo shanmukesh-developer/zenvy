@@ -94,12 +94,27 @@ export default function PGDetailScreen() {
       setBookingRoomId(roomId);
       const res = await apiFetch(ENDPOINTS.pgBook(roomId), {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ checkInDate })
       });
       const data = await res.json();
       if (res.ok) {
-        showToast("⚡ Booking request sent successfully! Warden will contact you.");
+        showToast("⚡ Booking request sent & WhatsApp message dispatched!");
         fetchDetails(); // Refresh to update availability if any changes
+
+        const waLink = data.whatsappUrl || `https://wa.me/919391955674?text=${encodeURIComponent(`Hi, I just submitted a booking request for ${pg?.name || 'PG'} on Zenvy.`)}`;
+        
+        Alert.alert(
+          '🏠 PG Booking Request Sent!',
+          `Your booking request for ${pg?.name || 'PG Residence'} has been registered.\n\nDirect notification dispatched to WhatsApp (+91 9391955674) with your profile, contact, and check-in date.`,
+          [
+            {
+              text: '💬 OPEN WHATSAPP CHAT',
+              onPress: () => Linking.openURL(waLink)
+            },
+            { text: 'DONE', style: 'cancel' }
+          ]
+        );
       } else {
         showToast(data.message || "Booking failed. Please try again.");
       }

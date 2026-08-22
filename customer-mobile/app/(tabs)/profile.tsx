@@ -27,7 +27,12 @@ import DopaminePressable from '../../components/DopaminePressable';
 import SafeImage from '../../components/SafeImage';
 import { apiFetch } from '../../utils/auth';
 import { API_URL, ENDPOINTS } from '../../constants/api';
-import * as Notifications from 'expo-notifications';
+let Notifications: any = null;
+try {
+  Notifications = require('expo-notifications');
+} catch (e: any) {
+  console.warn('expo-notifications not available:', e.message);
+}
 import Constants from 'expo-constants';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -62,16 +67,16 @@ interface NotifPrefs {
 
 export default function ProfileScreen() {
   const { user, setUser, logout } = useAuth();
-  const { isDark, toggleTheme } = useTheme();
+  const { isDark, toggleTheme, colors } = useTheme();
   const router = useRouter();
 
   // Color Palette mappings
-  const bg = isDark ? '#0A0A0C' : '#FAFAFA';
-  const cardBg = isDark ? '#141416' : '#FFF';
-  const txt = isDark ? '#FFF' : '#111';
-  const txtSec = isDark ? '#AAA' : '#666';
-  const border = isDark ? 'rgba(212, 175, 122, 0.25)' : 'rgba(0, 0, 0, 0.06)';
-  const goldColor = '#D4AF37';
+  const bg = colors.bg;
+  const cardBg = colors.card;
+  const txt = colors.text;
+  const txtSec = colors.textSecondary;
+  const border = colors.border;
+  const goldColor = isDark ? COLORS.gold : colors.gold;
 
   // Feature states
   const [loading, setLoading] = useState(false);
@@ -125,15 +130,15 @@ export default function ProfileScreen() {
   const loadLocalPreferences = async () => {
     try {
       const savedAddrRaw = await AsyncStorage.getItem('zenvy_saved_addresses');
-      if (savedAddrRaw) setSavedAddresses(JSON.parse(savedAddrRaw));
+      if (savedAddrRaw) { try { setSavedAddresses(JSON.parse(savedAddrRaw)); } catch { /* corrupted data, reset */ } }
 
       const dietPrefsRaw = await AsyncStorage.getItem('zenvy_diet_prefs');
-      if (dietPrefsRaw) setDietPrefs(JSON.parse(dietPrefsRaw));
+      if (dietPrefsRaw) { try { setDietPrefs(JSON.parse(dietPrefsRaw)); } catch { /* corrupted data, reset */ } }
 
       const notifPrefsRaw = await AsyncStorage.getItem('zenvy_notif_prefs');
-      if (notifPrefsRaw) setNotifPrefs(JSON.parse(notifPrefsRaw));
+      if (notifPrefsRaw) { try { setNotifPrefs(JSON.parse(notifPrefsRaw)); } catch { /* corrupted data, reset */ } }
     } catch (e) {
-      console.log('Error loading local preferences:', e);
+      if (__DEV__) console.log('Error loading local preferences:', e);
     }
   };
 
@@ -223,8 +228,8 @@ export default function ProfileScreen() {
   };
 
   const handleEnablePush = async (silent = false) => {
-    if (Platform.OS === 'web') {
-      if (!silent) Alert.alert('Not Supported', 'Push notifications are not supported in web browser previews.');
+    if (Platform.OS === 'web' || !Notifications) {
+      if (!silent) Alert.alert('Not Supported', 'Push notifications are not supported on this device.');
       return;
     }
     try {
@@ -721,7 +726,7 @@ export default function ProfileScreen() {
             {([
               { key: 'orders', emoji: '🛵', label: 'Order Updates', desc: 'Placed, accepted, delivered' },
               { key: 'surge', emoji: '⚡', label: 'Surge Alerts', desc: 'High demand zone notifications' },
-              { key: 'promos', emoji: '🎁', label: 'Promotions', desc: 'Deals, rewards, Vault drops' },
+              { key: 'promos', emoji: '🎁', label: 'Promotions', desc: 'Deals, rewards, special offers' },
             ] as const).map(({ key, emoji, label, desc }) => (
               <View key={key} style={s.notifRow}>
                 <View style={s.notifLeft}>
@@ -744,9 +749,9 @@ export default function ProfileScreen() {
           </View>
         </StaggeredSection>
 
-        {/* 🏆 Nexus Achievements */}
+        {/* 🏆 Your Badges */}
         <StaggeredSection delay={220} direction="up">
-          <Text style={[s.sectionTitleText, { color: isDark ? goldColor : '#111' }]}>NEXUS ACHIEVEMENTS</Text>
+          <Text style={[s.sectionTitleText, { color: isDark ? goldColor : '#111' }]}>YOUR BADGES</Text>
           <View style={[s.achievementsCard, { backgroundColor: cardBg, borderColor: border }]}>
             {user?.badges && user.badges.length > 0 ? (
               <View style={s.badgeGrid}>
@@ -798,10 +803,10 @@ export default function ProfileScreen() {
           </View>
         </StaggeredSection>
 
-        {/* 🎟️ Gourmet Vault (Active Coupons) */}
+        {/* 🎫 My Coupons */}
         <StaggeredSection delay={240} direction="up">
           <View style={s.sectionHeader}>
-            <Text style={[s.sectionTitleText, { color: isDark ? goldColor : '#111' }]}>GOURMET VAULT</Text>
+            <Text style={[s.sectionTitleText, { color: isDark ? goldColor : '#111' }]}>MY COUPONS</Text>
             <TouchableOpacity onPress={() => router.push('/rewards')}>
               <Text style={[s.sectionAddBtn, { color: goldColor }]}>🎯 SPIN & WIN</Text>
             </TouchableOpacity>
@@ -810,7 +815,7 @@ export default function ProfileScreen() {
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.couponsScroll}>
               {coupons.map((cpn, i) => (
                 <View key={i} style={[s.couponCard, { backgroundColor: isDark ? '#1C1917' : '#FFFDF5', borderColor: goldColor }]}>
-                  <Text style={[s.couponType, { color: goldColor }]}>{cpn.type === 'FREEDEL' ? 'LOGISTICS' : 'GOURMET'}</Text>
+                  <Text style={[s.couponType, { color: goldColor }]}>{cpn.type === 'FREEDEL' ? 'DELIVERY' : 'DISCOUNT'}</Text>
                   <Text style={[s.couponHeader, { color: txt }]}>{cpn.type === 'FREEDEL' ? 'FREE DELIVERY' : 'DISCOUNT'}</Text>
                   <View style={s.couponCodeRow}>
                     <Text style={[s.couponCodeText, { color: goldColor }]}>{cpn.code}</Text>
@@ -830,7 +835,7 @@ export default function ProfileScreen() {
           ) : (
             <View style={[s.emptyCard, { backgroundColor: cardBg, borderColor: border }]}>
               <Text style={{ fontSize: 24, marginBottom: 8 }}>🎫</Text>
-              <Text style={[s.emptyText, { color: txtSec }]}>Vault is Empty</Text>
+              <Text style={[s.emptyText, { color: txtSec }]}>No coupons yet</Text>
               <Text style={[s.emptySubText, { color: txtSec, marginBottom: 12 }]}>Spin the wheel to earn exclusive rewards</Text>
               <TouchableOpacity
                 style={{
@@ -1258,12 +1263,12 @@ export default function ProfileScreen() {
               </View>
               <View>
                 <Text style={[s.aboutTitle, { color: goldColor }]}>Project Zenvy</Text>
-                <Text style={s.aboutSub}>Nexus Mobile Portal</Text>
+                <Text style={s.aboutSub}>Mobile App</Text>
               </View>
             </View>
 
             <Text style={s.aboutQuote}>
-              &quot;Redefining campus logistics through cinematic design and surgical precision. Zenvy Nexus isn&apos;t just a delivery platform; it&apos;s the heartbeat of university commerce.&quot;
+              &quot;Built for students, by a student. Zenvy brings food, essentials, and campus services right to your hostel door — fast, fresh, and hassle-free.&quot;
             </Text>
 
             <View style={s.aboutStatsRow}>
@@ -1272,8 +1277,8 @@ export default function ProfileScreen() {
                 <Text style={s.aboutStatVal}>2.4.0-STABLE</Text>
               </View>
               <View style={s.aboutStatCol}>
-                <Text style={s.aboutStatLabel}>ARCHITECTURE</Text>
-                <Text style={s.aboutStatVal}>NEXUS_V2</Text>
+                <Text style={s.aboutStatLabel}>PLATFORM</Text>
+                <Text style={s.aboutStatVal}>REACT_NATIVE</Text>
               </View>
             </View>
 

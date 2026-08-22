@@ -1,5 +1,5 @@
 // ── Zenvy Design System ──────────────────────────────────────────────────────
-// Extracted from the live website. Every token matches the production portal.
+// High-performance, luxury campus dining & services design tokens.
 
 export const COLORS = {
   // Core Backgrounds
@@ -38,7 +38,73 @@ export const COLORS = {
   // Overlays
   overlayDark: 'rgba(0, 0, 0, 0.6)',
   overlayLight: 'rgba(255, 255, 255, 0.95)',
+
+  // Architect Redesign System Tokens
+  bg: '#FFFFFF',
+  ink: '#14131F',
+  inkMuted: '#7A7887',
+  primary: '#6C2BD9',
+  primaryDark: '#4C1D9E',
+  primarySoft: '#F1E9FE',
+  accent: '#FF6B2C',
+  accentSoft: '#FFEDE2',
+  trust: '#1DA870',
+  trustSoft: '#E4F7EE',
 } as const;
+
+export const LIGHT_THEME = {
+  bg: '#F8F9FA',
+  bgSubtle: '#F1F3F5',
+  card: '#FFFFFF',
+  cardSecondary: '#F8F9FB',
+  cardBorder: 'rgba(0, 0, 0, 0.07)',
+  cardHover: '#F1F3F9',
+  text: '#0F172A',
+  textSecondary: '#475569',
+  textMuted: '#94A3B8',
+  border: 'rgba(0, 0, 0, 0.08)',
+  borderSubtle: 'rgba(0, 0, 0, 0.04)',
+  borderGold: 'rgba(201, 151, 46, 0.45)',
+  gold: '#B8860B',
+  goldMuted: 'rgba(184, 134, 11, 0.12)',
+  red: '#EF4F5F',
+  redMuted: 'rgba(239, 79, 95, 0.1)',
+  inputBg: '#F1F4F8',
+  inputBorder: 'rgba(0, 0, 0, 0.1)',
+  tabBarBg: '#FFFFFF',
+  tabBarBorder: 'rgba(0, 0, 0, 0.06)',
+  glassBg: 'rgba(255, 255, 255, 0.92)',
+  shadowColor: '#000000',
+  isDark: false,
+};
+
+export const DARK_THEME = {
+  bg: '#09090B',
+  bgSubtle: '#121215',
+  card: '#18181B',
+  cardSecondary: '#222226',
+  cardBorder: 'rgba(255, 255, 255, 0.08)',
+  cardHover: '#27272A',
+  text: '#FFFFFF',
+  textSecondary: '#A1A1AA',
+  textMuted: '#71717A',
+  border: 'rgba(255, 255, 255, 0.08)',
+  borderSubtle: 'rgba(255, 255, 255, 0.04)',
+  borderGold: 'rgba(201, 168, 76, 0.4)',
+  gold: '#D4AF7A',
+  goldMuted: 'rgba(201, 168, 76, 0.15)',
+  red: '#EF4F5F',
+  redMuted: 'rgba(239, 79, 95, 0.15)',
+  inputBg: 'rgba(255, 255, 255, 0.05)',
+  inputBorder: 'rgba(255, 255, 255, 0.12)',
+  tabBarBg: '#0D0D10',
+  tabBarBorder: 'rgba(255, 255, 255, 0.08)',
+  glassBg: 'rgba(24, 24, 27, 0.92)',
+  shadowColor: '#000000',
+  isDark: true,
+};
+
+export const getThemeColors = (isDark: boolean) => (isDark ? DARK_THEME : LIGHT_THEME);
 
 export const SPACING = {
   xs: 4,
@@ -99,5 +165,12 @@ export const SHADOWS = {
     shadowOpacity: 0.3,
     shadowRadius: 12,
     elevation: 6,
+  },
+  cardElevated: {
+    shadowColor: '#14131F',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    elevation: 4,
   },
 };

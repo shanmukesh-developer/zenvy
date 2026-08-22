@@ -21,7 +21,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { apiFetch } from '../utils/auth';
 import { StaggeredSection, FloatingPulse, BounceIn } from '../components/AnimatedSection';
-import DopaminePressable from '../components/DopaminePressable';
+import DopaminePressable, { ActionPressable } from '../components/DopaminePressable';
 import * as ImagePicker from 'expo-image-picker';
 
 interface ExtraItem {
@@ -129,7 +129,7 @@ export default function CheckoutScreen() {
   const router = useRouter();
   const { cart, totalPrice, clearCart, addToCart, uniqueRestaurants, deliveryFee: cartDeliveryFee, isRoomOrder } = useCart();
   const { user } = useAuth();
-  const { isDark } = useTheme();
+  const { isDark, colors } = useTheme();
 
   const [locationType, setLocationType] = useState<'srmap' | 'vitap' | 'amrita' | 'other'>('srmap');
   const [address, setAddress] = useState('');
@@ -157,7 +157,7 @@ export default function CheckoutScreen() {
     if (!user) {
       Alert.alert(
         'Authentication Required',
-        'Please sign in to complete your order mission.',
+        'Please sign in to complete your order.',
         [
           { text: 'Cancel', onPress: () => router.replace('/(tabs)' as any), style: 'cancel' },
           { text: 'Sign In', onPress: () => router.push('/login' as any) }
@@ -166,7 +166,11 @@ export default function CheckoutScreen() {
       );
       return;
     }
-    if (user?.address) setAddress(user.address);
+    if (user?.hostelBlock && user?.roomNumber) {
+      setAddress(`${user.hostelBlock}, Room ${user.roomNumber}`);
+    } else if (user?.address) {
+      setAddress(user.address);
+    }
     if (user?.zenPoints) setZenPoints(user.zenPoints);
 
     // Fetch user coupons
@@ -293,6 +297,7 @@ export default function CheckoutScreen() {
   };
 
   const simulateSuccess = () => {
+    if (!__DEV__) return; // Security: Block in production builds
     setUpiUTR('SIM-' + Math.random().toString(36).substring(7).toUpperCase());
     setUpiScreenshot('https://picsum.photos/seed/payment/400/800');
     Alert.alert('Dev Mode Payment Simulated', 'UTR Code and Screenshot attachment set.');
@@ -340,12 +345,12 @@ export default function CheckoutScreen() {
     });
   };
 
-  const bg = isDark ? COLORS.bgDark : COLORS.bgLight;
-  const cardBg = isDark ? COLORS.bgCard : COLORS.bgLightCard;
-  const txt = isDark ? COLORS.textPrimary : COLORS.textDark;
-  const txtSec = isDark ? COLORS.textSecondary : COLORS.textDarkSecondary;
-  const border = isDark ? COLORS.borderDark : COLORS.borderLight;
-  const goldColor = isDark ? COLORS.gold : COLORS.red;
+  const bg = colors.bg;
+  const cardBg = colors.card;
+  const txt = colors.text;
+  const txtSec = colors.textSecondary;
+  const border = colors.border;
+  const goldColor = isDark ? COLORS.gold : colors.gold;
 
   return (
     <View style={[s.container, { backgroundColor: bg }]}>
@@ -362,7 +367,7 @@ export default function CheckoutScreen() {
         >
           <Text style={{ color: txt, fontSize: 18 }}>‹</Text>
         </TouchableOpacity>
-        <Text style={[s.title, { color: goldColor }]}>STRATEGIC CHECKOUT</Text>
+        <Text style={[s.title, { color: goldColor }]}>CHECKOUT & DELIVERY</Text>
       </View>
 
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
@@ -401,14 +406,14 @@ export default function CheckoutScreen() {
           </View>
 
           <TextInput
-            style={[s.input, { backgroundColor: cardBg, color: txt }]}
-            placeholder="Hostel Block, Room No. or Street Name"
+            style={[s.input, { backgroundColor: cardBg, color: txt, borderColor: border }]}
+            placeholder="Hostel Block, Room No. or Delivery Point"
             placeholderTextColor={txtSec}
             value={address}
             onChangeText={setAddress}
           />
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-            {['Block A', 'Block B', 'BH-1 Ganga', 'BH-2 Yamuna', 'GH-1 Kaveri', 'KC Block', 'Gorena Block'].map((block) => {
+            {['Vedha', 'Kaveri', 'Paari', 'Godavari', 'Manas', 'Brahmaputra', 'Ganga', 'Krishna', 'Girls Hostel', 'Non-Veg Mess'].map((block) => {
               const isSelected = address.includes(block);
               return (
                 <DopaminePressable
@@ -417,12 +422,12 @@ export default function CheckoutScreen() {
                     paddingHorizontal: 12,
                     paddingVertical: 6,
                     borderRadius: 14,
-                    backgroundColor: isSelected ? goldColor : cardBg,
+                    backgroundColor: isSelected ? (isDark ? goldColor : '#EF4F5F') : cardBg,
                     borderWidth: 1.5,
-                    borderColor: isSelected ? goldColor : border,
-                    shadowColor: isSelected ? goldColor : '#000',
+                    borderColor: isSelected ? (isDark ? goldColor : '#EF4F5F') : border,
+                    shadowColor: '#000',
                     shadowOffset: { width: 0, height: 2 },
-                    shadowOpacity: isSelected ? 0.25 : 0.05,
+                    shadowOpacity: isSelected ? 0.25 : 0.04,
                     shadowRadius: 4,
                     elevation: 2,
                   }}
@@ -434,7 +439,7 @@ export default function CheckoutScreen() {
                   sound="click"
                   activeScale={0.92}
                 >
-                  <Text style={{ fontSize: 9, fontWeight: '900', color: isSelected ? '#000' : txt, letterSpacing: 0.5 }}>
+                  <Text style={{ fontSize: 10, fontWeight: '800', color: isSelected ? '#FFFFFF' : txt, letterSpacing: 0.5 }}>
                     🏢 {block}
                   </Text>
                 </DopaminePressable>
@@ -442,8 +447,8 @@ export default function CheckoutScreen() {
             })}
           </View>
           <TextInput
-            style={[s.input, { backgroundColor: cardBg, color: txt }]}
-            placeholder="Landmark (Optional)"
+            style={[s.input, { backgroundColor: cardBg, color: txt, borderColor: border }]}
+            placeholder="Landmark / Instructions for Delivery Boy (Optional)"
             placeholderTextColor={txtSec}
             value={landmark}
             onChangeText={setLandmark}
@@ -591,8 +596,8 @@ export default function CheckoutScreen() {
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
                       <Text style={{ fontSize: 22 }}>{item.icon}</Text>
                       <View style={{ flex: 1 }}>
-                        <Text style={[s.payCardTitle, isActive && { color: COLORS.red }]}>{item.title}</Text>
-                        <Text style={s.payCardDesc}>{item.desc}</Text>
+                        <Text style={[s.payCardTitle, { color: isActive ? COLORS.red : txt }]}>{item.title}</Text>
+                        <Text style={[s.payCardDesc, { color: txtSec }]}>{item.desc}</Text>
                       </View>
                     </View>
                     <View style={[s.radioOuter, { borderColor: isActive ? COLORS.red : border }]}>
@@ -615,14 +620,14 @@ export default function CheckoutScreen() {
           )}
 
           {paymentMethod === 'UPI' && (
-            <View style={[s.upiBox, { backgroundColor: cardBg }]}>
-              <Text style={{ fontSize: 10, fontWeight: '900', color: COLORS.gold, letterSpacing: 2, marginBottom: 8 }}>SCAN & PAY INSTANTLY</Text>
+            <View style={[s.upiBox, { backgroundColor: cardBg, borderColor: border }]}>
+              <Text style={{ fontSize: 10, fontWeight: '900', color: goldColor, letterSpacing: 2, marginBottom: 8 }}>SCAN & PAY INSTANTLY</Text>
 
               {/* UPI Intent Apps */}
               <View style={s.intentRow}>
-                <TouchableOpacity style={s.intentBtn} onPress={openUpiApp}>
+                <TouchableOpacity style={[s.intentBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', borderColor: border }]} onPress={openUpiApp}>
                   <Text style={{ fontSize: 20 }}>📲</Text>
-                  <Text style={s.intentText}>PAY VIA INSTANT APP</Text>
+                  <Text style={[s.intentText, { color: txt }]}>PAY VIA INSTANT APP</Text>
                 </TouchableOpacity>
               </View>
 
@@ -698,9 +703,9 @@ export default function CheckoutScreen() {
         </StaggeredSection>
 
         <FloatingPulse color={COLORS.red} style={s.placeBtnContainer}>
-          <TouchableOpacity style={[s.placeBtn, { width: '100%' }]} onPress={handlePlaceOrder} disabled={loading}>
+          <ActionPressable style={[s.placeBtn, { width: '100%' }]} onPress={handlePlaceOrder} disabled={loading} sound="success">
             {loading ? <ActivityIndicator color="#fff" /> : <Text style={s.placeText}>PLACE ORDER</Text>}
-          </TouchableOpacity>
+          </ActionPressable>
         </FloatingPulse>
       </ScrollView>
     </View>
@@ -723,7 +728,7 @@ const s = StyleSheet.create({
   input: { borderWidth: 1, borderRadius: 12, padding: 14, fontSize: 13, marginBottom: 10, fontWeight: '600' },
   payRowNew: { gap: 10, marginBottom: 12 },
   payCardNew: { padding: 14, borderRadius: 16, borderWidth: 1.5 },
-  payCardTitle: { fontSize: 11, fontWeight: '900', color: '#fff', letterSpacing: 1.5 },
+  payCardTitle: { fontSize: 11, fontWeight: '900', letterSpacing: 1.5 },
   payCardDesc: { fontSize: 8, color: COLORS.textSecondary, fontWeight: '600', marginTop: 2 },
   radioOuter: { width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
   radioInner: { width: 8, height: 8, borderRadius: 4 },

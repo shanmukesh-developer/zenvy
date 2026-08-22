@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Image, Dimensions, TouchableOpacity, FlatList } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, TouchableOpacity, FlatList } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
+import SafeImage from './SafeImage';
+import DopaminePressable, { ActionPressable } from './DopaminePressable';
 
 const { width: SW } = Dimensions.get('window');
 const SLIDE_WIDTH = SW - 32;
@@ -93,26 +95,28 @@ export default function PromoCarousel({ offers, containerStyle }: PromoCarouselP
           <View style={{ width: SLIDE_WIDTH, height: 220, position: 'relative' }}>
             {/* Background Image */}
             <View style={StyleSheet.absoluteFill}>
-              <Image source={{ uri: item.imageUrl }} style={s.bgImage} />
+              <SafeImage source={{ uri: item.imageUrl }} style={s.bgImage} />
               <LinearGradient 
-                colors={overlayColors} 
-                start={{ x: 0, y: 1 }} 
-                end={{ x: 0, y: 0 }} 
+                colors={isDark 
+                  ? ['rgba(10, 10, 11, 0.95)', 'rgba(10, 10, 11, 0.75)', 'rgba(10, 10, 11, 0.25)'] 
+                  : ['rgba(255, 255, 255, 0.98)', 'rgba(255, 255, 255, 0.85)', 'rgba(255, 255, 255, 0.35)']} 
+                start={{ x: 0, y: 0 }} 
+                end={{ x: 1, y: 0 }} 
                 style={StyleSheet.absoluteFill} 
               />
             </View>
 
             {/* Content wrapper */}
             <View style={s.content}>
-              <Text style={[s.tagline, { color: accent }]}>{item.tagline.toUpperCase()} 🌆</Text>
+              <Text style={[s.tagline, { color: accent }]}>{item.tagline.toUpperCase()}</Text>
               <Text style={[s.title1, { color: title1Color }]}>{item.title1.toUpperCase()}</Text>
               <Text style={[s.title2, { color: accent }]}>{item.title2.toUpperCase()}</Text>
               <Text style={[s.desc, { color: descColor }]}>{item.description.toUpperCase()}</Text>
 
-              <TouchableOpacity 
+              <ActionPressable 
                 style={[s.ctaBtnWrapper, !isDark && { shadowColor: COLORS.red }]} 
-                activeOpacity={0.8}
                 onPress={() => item.redirectAction && item.redirectAction()}
+                sound="click"
               >
                 <LinearGradient
                   colors={ctaBtnGradientColors}
@@ -122,7 +126,7 @@ export default function PromoCarousel({ offers, containerStyle }: PromoCarouselP
                 >
                   <Text style={[s.ctaText, { color: ctaTextColor }]}>{item.buttonText.toUpperCase()} →</Text>
                 </LinearGradient>
-              </TouchableOpacity>
+              </ActionPressable>
             </View>
           </View>
         )}

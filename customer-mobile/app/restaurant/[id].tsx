@@ -24,6 +24,7 @@ import CustomizeDrawer from '../../components/CustomizeDrawer';
 import { saveRecentlyViewed } from '../../components/RecentlyViewed';
 import DopaminePressable, { CartPressable, ActionPressable, CardPressable } from '../../components/DopaminePressable';
 import { StaggeredSection, BounceIn, FloatingPulse, PulseGlow } from '../../components/AnimatedSection';
+import SafeImage from '../../components/SafeImage';
 
 const { width: SW } = Dimensions.get('window');
 
@@ -45,7 +46,7 @@ export default function RestaurantDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { addToCart, totalItems, clearCart } = useCart();
-  const { isDark } = useTheme();
+  const { isDark, colors } = useTheme();
   const [restaurant, setRestaurant] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showTakeover, setShowTakeover] = useState(false);
@@ -80,39 +81,105 @@ export default function RestaurantDetail() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`${API_URL}/api/users/restaurants`);
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          const found = data.find((r: any) => (r._id || r.id) === id);
-          if (found) {
-            setRestaurant(found);
-            saveRecentlyViewed({
-              id: found._id || found.id,
-              name: found.name,
-              image: found.imageUrl || found.image || '',
-              type: 'restaurant'
-            });
+        setLoading(true);
+        let found: any = null;
 
-            // Parse brandTheme and check if seen safely
-            let parsedTheme = null;
-            if (found.brandTheme) {
-              try {
-                parsedTheme = typeof found.brandTheme === 'string' ? JSON.parse(found.brandTheme) : found.brandTheme;
-              } catch (err) {
-                console.error('Error parsing brandTheme in useEffect:', err);
-              }
+        // 1. Fetch main restaurants
+        try {
+          const res = await fetch(`${API_URL}/api/users/restaurants`);
+          const data = await res.json();
+          if (Array.isArray(data)) {
+            found = data.find((r: any) => 
+              (r._id || r.id) === id || 
+              (r.name && r.name.toLowerCase() === id?.toLowerCase()) ||
+              (r.slug && r.slug.toLowerCase() === id?.toLowerCase())
+            );
+          }
+        } catch (e) {
+          console.warn('[RESTAURANTS_FETCH_WARN]', e);
+        }
+
+        // 2. If not found, fetch from local vendors endpoint
+        if (!found) {
+          try {
+            const resVendors = await fetch(`${API_URL}/api/restaurants/local-vendors`);
+            const vendorsData = await resVendors.json();
+            if (Array.isArray(vendorsData)) {
+              found = vendorsData.find((r: any) => 
+                (r._id || r.id) === id || 
+                (r.name && r.name.toLowerCase() === id?.toLowerCase()) ||
+                (r.slug && r.slug.toLowerCase() === id?.toLowerCase())
+              );
             }
+          } catch (e) {
+            console.warn('[LOCAL_VENDORS_FETCH_WARN]', e);
+          }
+        }
 
-            if (parsedTheme && !seenTakeovers.has(id)) {
+        // 3. If still not found, fetch from general restaurants endpoint
+        if (!found) {
+          try {
+            const resAll = await fetch(`${API_URL}/api/restaurants`);
+            const allData = await resAll.json();
+            if (Array.isArray(allData)) {
+              found = allData.find((r: any) => 
+                (r._id || r.id) === id || 
+                (r.name && r.name.toLowerCase() === id?.toLowerCase())
+              );
+            }
+          } catch (e) {
+            console.warn('[ALL_RESTAURANTS_FETCH_WARN]', e);
+          }
+        }
+
+        // 4. If still not found, fetch menu directly by ID
+        if (!found && id) {
+          try {
+            const resMenu = await fetch(`${API_URL}/api/restaurants/${id}/menu`);
+            const menuData = await resMenu.json();
+            if (Array.isArray(menuData) && menuData.length > 0) {
+              found = {
+                _id: id,
+                id: id,
+                name: id.replace(/[-_]/g, ' ').toUpperCase(),
+                location: 'SRM AP Campus',
+                rating: 4.8,
+                deliveryTime: '15-20 min',
+                imageUrl: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=600',
+                menu: menuData
+              };
+            }
+          } catch (e) {
+            console.warn('[DIRECT_MENU_FETCH_WARN]', e);
+          }
+        }
+
+        if (found) {
+          setRestaurant(found);
+          saveRecentlyViewed({
+            id: found._id || found.id,
+            name: found.name,
+            image: found.imageUrl || found.image || '',
+            type: 'restaurant'
+          });
+
+          // Parse brandTheme and check if seen safely
+          let parsedTheme = null;
+          if (found.brandTheme) {
+            try {
+              parsedTheme = typeof found.brandTheme === 'string' ? JSON.parse(found.brandTheme) : found.brandTheme;
+            } catch (err) {
+              console.error('Error parsing brandTheme in useEffect:', err);
+            }
+          }
+
+          if (parsedTheme && !seenTakeovers.has(id)) {
+            seenTakeovers.add(id);
+          } else {
+            const rName = (found.name || '').toLowerCase();
+            const bk = Object.keys(BRAND_LOGOS).find(k => rName && typeof rName.includes === 'function' && rName.includes(k));
+            if (bk && !seenTakeovers.has(id)) {
               seenTakeovers.add(id);
-              // setShowTakeover(true);
-            } else {
-              const rName = (found.name || '').toLowerCase();
-              const bk = Object.keys(BRAND_LOGOS).find(k => rName && typeof rName.includes === 'function' && rName.includes(k));
-              if (bk && !seenTakeovers.has(id)) {
-                seenTakeovers.add(id);
-                // setShowTakeover(true);
-              }
             }
           }
         }
@@ -173,11 +240,11 @@ export default function RestaurantDetail() {
     );
   }
 
-  const bgColor = brand ? (brand.primaryColor || '#1A0000') : (isDark ? COLORS.bgDark : COLORS.bgLight);
-  const accent = brand ? (brand.accentColor || COLORS.gold) : (isDark ? COLORS.gold : COLORS.red);
-  const txt = brand ? (brand.fontColor || '#fff') : (isDark ? '#fff' : COLORS.textDark);
-  const txtSec = brand ? (brand.fontColor ? brand.fontColor + 'B0' : COLORS.textSecondary) : (isDark ? COLORS.textSecondary : COLORS.textDarkSecondary);
-  const cardBg = brand ? 'rgba(0,0,0,0.6)' : (isDark ? COLORS.bgCard : '#fff');
+  const bgColor = brand ? (brand.primaryColor || '#1A0000') : colors.bg;
+  const accent = brand ? (brand.accentColor || (isDark ? COLORS.gold : colors.gold)) : (isDark ? COLORS.gold : COLORS.red);
+  const txt = brand ? (brand.fontColor || '#fff') : colors.text;
+  const txtSec = brand ? (brand.fontColor ? brand.fontColor + 'B0' : colors.textSecondary) : colors.textSecondary;
+  const cardBg = brand ? 'rgba(0,0,0,0.6)' : colors.card;
   const border = brand ? 'rgba(255,255,255,0.05)' : (isDark ? COLORS.borderDark : COLORS.borderLight);
   const rating = Number(restaurant.rating) || 4.0;
   const menu = Array.isArray(restaurant.menu) ? restaurant.menu.filter(Boolean) : [];
@@ -374,7 +441,7 @@ export default function RestaurantDetail() {
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Hero Banner */}
         <View style={st.hero}>
-          <Image source={{ uri: heroImg }} style={st.heroImg} />
+          <SafeImage source={{ uri: heroImg }} style={st.heroImg} />
           <View style={st.heroGrad} />
           
           {/* Back button */}
@@ -552,7 +619,7 @@ export default function RestaurantDetail() {
                 
                 {/* Right image with floating ADD button */}
                 <View style={st.imgBtnContainer} pointerEvents="box-none">
-                  <Image source={{ uri: itemImg }} style={st.menuItemImg} />
+                  <SafeImage source={{ uri: itemImg }} style={st.menuItemImg} />
                   <View style={st.floatingAddWrap} pointerEvents="box-none">
                     {isLocalVendor ? (
                       <ActionPressable

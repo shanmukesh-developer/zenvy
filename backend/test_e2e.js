@@ -69,8 +69,8 @@ async function runSimulation() {
     });
     console.log("-> Created Rider");
 
-    const userToken = jwt.sign({ id: testUser.id, role: 'user' }, process.env.JWT_SECRET || 'secret123', { expiresIn: '1d' });
-    const riderToken = jwt.sign({ id: testRider.id, role: 'delivery' }, process.env.JWT_SECRET || 'secret123', { expiresIn: '1d' });
+    const userToken = jwt.sign({ id: testUser.id, role: 'user' }, process.env.JWT_SECRET, { expiresIn: '1d' });
+    const riderToken = jwt.sign({ id: testRider.id, role: 'delivery' }, process.env.JWT_SECRET, { expiresIn: '1d' });
 
     console.log("\n== 2. Customer places order ==");
     const orderPayload = {

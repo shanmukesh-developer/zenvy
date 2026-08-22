@@ -1,6 +1,8 @@
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = 'super_secret_zenvy_token_2026';
+require('dotenv').config();
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) { console.error('❌ JWT_SECRET not set in .env'); process.exit(1); }
 const userId = '22ed9faf-9ce8-4814-a2d4-8a30dfd60b46'; // Admin ID on live PG
 
 const token = jwt.sign({ id: userId, role: 'admin' }, JWT_SECRET, { expiresIn: '30d' });

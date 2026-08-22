@@ -10,6 +10,8 @@ import { setToken } from '../utils/auth';
 import DopaminePressable from '../components/DopaminePressable';
 import ServerWakeupOverlay from '../components/ServerWakeupOverlay';
 
+import { useTheme } from '../context/ThemeContext';
+
 const { width: SW, height: SH } = Dimensions.get('window');
 
 // Official 8K curated Zenvy Campus brand visual assets
@@ -24,6 +26,7 @@ const IMAGES = [
 export default function RegisterScreen() {
   const router = useRouter();
   const { setUser } = useAuth();
+  const { isDark, colors } = useTheme();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -99,28 +102,53 @@ export default function RegisterScreen() {
       setError('Please enter a valid email address (e.g. name@domain.com)');
       return false;
     }
-    if (!password || password.length < 6) {
-      setError('Password must be at least 6 characters long');
+    if (!password || password.length < 8) {
+      setError('Password must be at least 8 characters long');
       return false;
     }
     return true;
   };
 
-  const handleSendOtp = () => {
+  const handleSendOtp = async () => {
     if (!validateForm()) return;
     setLoading(true);
-    setTimeout(() => {
+    setError('');
+    try {
+      const cleanedPhone = phone.replace(/\D/g, '').slice(-10);
+      const res = await fetch(ENDPOINTS.sendOtp, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: cleanedPhone }),
+      });
+      const data = await res.json();
+      
       setIsOtpSent(true);
       setCountdown(30);
-      setLoading(false);
       const { playSound } = require('../utils/sounds');
       playSound('success');
-      Alert.alert(
-        '📲 SMS Verification Sent',
-        `Verification code sent for ${phone}.\n\nYour 6-digit OTP code is: 123456`,
-        [{ text: 'ENTER OTP', onPress: () => {} }]
-      );
-    }, 600);
+
+      if (data.otp) {
+        Alert.alert(
+          '📲 OTP Verification Code Sent',
+          `Verification SMS sent for +91 ${cleanedPhone}.\n\nYour 6-digit verification code is: ${data.otp}`,
+          [{ text: 'ENTER OTP', onPress: () => {} }]
+        );
+      } else {
+        Alert.alert(
+          '📲 SMS Sent',
+          `We sent a 6-digit OTP code to +91 ${cleanedPhone}. Please enter it below.`,
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (e: any) {
+      if (e.message && (e.message.includes('Network') || e.message.includes('Failed to fetch') || e.message.includes('JSON'))) {
+        setShowWakeup(true);
+      } else {
+        setError(`Could not send OTP: ${e.message || 'Server unavailable. Please try again.'}`);
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleRegister = async () => {
@@ -128,7 +156,8 @@ export default function RegisterScreen() {
       setError('Please enter the 6-digit OTP sent to your phone');
       return;
     }
-    setLoading(true); setError('');
+    setLoading(true); 
+    setError('');
     try {
       const cleanedPhone = phone.replace(/\D/g, '').slice(-10);
       const payload: any = { name: name.trim(), phone: cleanedPhone, password, otp: otp.trim() };
@@ -232,6 +261,8 @@ export default function RegisterScreen() {
           <Animated.View style={[
             s.card, 
             { 
+              backgroundColor: isDark ? 'rgba(26,26,28,0.95)' : '#FFFFFF',
+              borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)',
               transform: [
                 { translateY: Animated.add(slideUp, Animated.multiply(pan.y, -0.4)) },
                 { translateX: Animated.multiply(pan.x, -0.4) }
@@ -239,62 +270,101 @@ export default function RegisterScreen() {
             }
           ]}>
             <StaggeredSection delay={100} direction="up">
-              <Text style={s.cardTitle}>Join Zenvy</Text>
-              <Text style={s.cardSubtitle}>Get elite food and services delivered instantly</Text>
+              <Text style={[s.cardTitle, { color: isDark ? '#FFF' : '#111827' }]}>Create Your Account</Text>
+              <Text style={[s.cardSubtitle, { color: isDark ? COLORS.textSecondary : '#6B7280' }]}>Get fresh campus food & services delivered to your hostel room</Text>
 
-              <Text style={s.label}>FULL NAME</Text>
+              <Text style={[s.label, { color: isDark ? COLORS.textSecondary : '#4B5563' }]}>FULL NAME</Text>
               <TextInput 
-                style={s.input} 
+                style={[
+                  s.input, 
+                  { 
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F9FAFB', 
+                    borderColor: isDark ? COLORS.borderDark : '#E5E7EB',
+                    color: isDark ? '#FFF' : '#111827' 
+                  }
+                ]} 
                 value={name} 
                 onChangeText={setName} 
                 placeholder="Enter your full name" 
-                placeholderTextColor={COLORS.textMuted} 
+                placeholderTextColor={isDark ? COLORS.textMuted : '#9CA3AF'} 
                 editable={!isOtpSent}
               />
 
-              <Text style={s.label}>EMAIL (OPTIONAL)</Text>
+              <Text style={[s.label, { color: isDark ? COLORS.textSecondary : '#4B5563' }]}>EMAIL (OPTIONAL)</Text>
               <TextInput 
-                style={s.input} 
+                style={[
+                  s.input, 
+                  { 
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F9FAFB', 
+                    borderColor: isDark ? COLORS.borderDark : '#E5E7EB',
+                    color: isDark ? '#FFF' : '#111827' 
+                  }
+                ]} 
                 value={email} 
                 onChangeText={setEmail} 
                 placeholder="name@example.com (optional)" 
-                placeholderTextColor={COLORS.textMuted} 
+                placeholderTextColor={isDark ? COLORS.textMuted : '#9CA3AF'} 
                 keyboardType="email-address" 
                 autoCapitalize="none" 
                 editable={!isOtpSent}
               />
 
-              <Text style={s.label}>PHONE NUMBER</Text>
+              <Text style={[s.label, { color: isDark ? COLORS.textSecondary : '#4B5563' }]}>PHONE NUMBER</Text>
               <TextInput 
-                style={s.input} 
+                style={[
+                  s.input, 
+                  { 
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F9FAFB', 
+                    borderColor: isDark ? COLORS.borderDark : '#E5E7EB',
+                    color: isDark ? '#FFF' : '#111827' 
+                  }
+                ]} 
                 value={phone} 
                 onChangeText={setPhone} 
                 placeholder="Enter 10-digit mobile number" 
-                placeholderTextColor={COLORS.textMuted} 
+                placeholderTextColor={isDark ? COLORS.textMuted : '#9CA3AF'} 
                 keyboardType="phone-pad" 
                 editable={!isOtpSent}
               />
 
-              <Text style={s.label}>PASSWORD</Text>
+              <Text style={[s.label, { color: isDark ? COLORS.textSecondary : '#4B5563' }]}>PASSWORD</Text>
               <TextInput 
-                style={s.input} 
+                style={[
+                  s.input, 
+                  { 
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F9FAFB', 
+                    borderColor: isDark ? COLORS.borderDark : '#E5E7EB',
+                    color: isDark ? '#FFF' : '#111827' 
+                  }
+                ]} 
                 value={password} 
                 onChangeText={setPassword} 
-                placeholder="Enter password (min 6 chars)" 
-                placeholderTextColor={COLORS.textMuted} 
+                placeholder="Enter password (min 8 chars)" 
+                placeholderTextColor={isDark ? COLORS.textMuted : '#9CA3AF'} 
                 secureTextEntry 
                 editable={!isOtpSent}
               />
 
               {isOtpSent && (
                 <View style={{ marginTop: 12 }}>
-                  <Text style={[s.label, { color: COLORS.gold }]}>ENTER 6-DIGIT PHONE OTP</Text>
+                  <Text style={[s.label, { color: COLORS.gold, fontWeight: '900' }]}>ENTER 6-DIGIT PHONE OTP</Text>
                   <TextInput 
-                    style={[s.input, { borderColor: COLORS.gold, fontSize: 18, letterSpacing: 6, textAlign: 'center', fontWeight: '900' }]} 
+                    style={[
+                      s.input, 
+                      { 
+                        backgroundColor: isDark ? 'rgba(201,168,76,0.1)' : '#FEF3C7',
+                        borderColor: COLORS.gold, 
+                        fontSize: 20, 
+                        letterSpacing: 6, 
+                        textAlign: 'center', 
+                        fontWeight: '900',
+                        color: isDark ? '#FFF' : '#78350F'
+                      }
+                    ]} 
                     value={otp} 
                     onChangeText={setOtp} 
                     placeholder="123456" 
-                    placeholderTextColor={COLORS.textMuted} 
+                    placeholderTextColor={isDark ? COLORS.textMuted : '#B45309'} 
                     keyboardType="number-pad" 
                     maxLength={6}
                   />
@@ -303,7 +373,7 @@ export default function RegisterScreen() {
                     onPress={handleSendOtp}
                     style={{ alignSelf: 'flex-end', marginTop: 6 }}
                   >
-                    <Text style={{ fontSize: 9, fontWeight: '800', color: countdown > 0 ? COLORS.textMuted : COLORS.gold }}>
+                    <Text style={{ fontSize: 10, fontWeight: '800', color: countdown > 0 ? (isDark ? COLORS.textMuted : '#9CA3AF') : COLORS.gold }}>
                       {countdown > 0 ? `Resend OTP in ${countdown}s` : 'Resend OTP'}
                     </Text>
                   </TouchableOpacity>
@@ -331,7 +401,9 @@ export default function RegisterScreen() {
               )}
 
               <DopaminePressable onPress={() => router.push('/login' as any)} style={s.switchLink} sound="click">
-                <Text style={s.switchText}>Already have an account? <Text style={{ color: COLORS.gold, fontWeight: '800' }}>SIGN IN</Text></Text>
+                <Text style={[s.switchText, { color: isDark ? COLORS.textSecondary : '#6B7280' }]}>
+                  Already have an account? <Text style={{ color: COLORS.gold, fontWeight: '800' }}>SIGN IN</Text>
+                </Text>
               </DopaminePressable>
             </StaggeredSection>
           </Animated.View>

@@ -1,8 +1,11 @@
 const crypto = require('crypto');
 
-// Ensure key is exactly 32 bytes (SHA-256 of JWT_SECRET or fallback)
-const secret = process.env.JWT_SECRET || 'fallback_zenvy_super_secure_key_12345';
-const ENCRYPTION_KEY = crypto.createHash('sha256').update(secret).digest(); 
+// Ensure key is exactly 32 bytes (SHA-256 of JWT_SECRET)
+const secret = process.env.JWT_SECRET;
+if (!secret) {
+  console.error('[CRYPTO_FATAL] JWT_SECRET is not configured. Encryption will fail.');
+}
+const ENCRYPTION_KEY = crypto.createHash('sha256').update(secret || 'MISSING_SECRET_WILL_FAIL').digest(); 
 const IV_LENGTH = 16; // For AES-256-CBC
 
 /**

@@ -807,7 +807,7 @@ export default function FriendsScreen() {
         Alert.alert('Send Failed', 'Failed to send secure message.');
       }
     } catch (e) {
-      Alert.alert('Error', 'Message transmission failed.');
+      Alert.alert('Error', 'Could not send message. Try again.');
     }
   };
 
@@ -1111,7 +1111,7 @@ export default function FriendsScreen() {
       {/* WhatsApp/Insta Direct Chat List */}
       <View style={s.chatListWrapper}>
         <View style={s.chatListHeader}>
-          <Text style={s.chatListTitle}>SECURE VAULTS</Text>
+          <Text style={s.chatListTitle}>CHATS</Text>
           {pendingRequests.length > 0 && (
             <TouchableOpacity style={s.pendingBannerBadge} onPress={() => setShowSyncModal(true)}>
               <Text style={s.pendingBannerBadgeText}>{pendingRequests.length} INCOMING</Text>
@@ -1179,7 +1179,7 @@ export default function FriendsScreen() {
                     )}
                   </View>
                   <Text style={s.chatListStatusText} numberOfLines={1}>
-                    {friend.statusText ? `💬 ${friend.statusText}` : 'Tap to encrypt transmission...'}
+                    {friend.statusText ? `💬 ${friend.statusText}` : 'Tap to start chatting...'}
                   </Text>
                 </View>
 
@@ -1286,7 +1286,7 @@ export default function FriendsScreen() {
                 <Text style={s.streakBannerText}>
                   STREAK COUNT: <Text style={s.monoText}>🔥{activeChat?.streakCount || 0}</Text>
                 </Text>
-                <Text style={s.streakBannerSub}>🔒 AES-256 SECURED VAULT</Text>
+                <Text style={s.streakBannerSub}>🔒 Private Chat</Text>
               </View>
 
               {/* Message scroll views */}
@@ -1777,7 +1777,7 @@ export default function FriendsScreen() {
                       <Text style={{ fontSize: 72, marginBottom: 20 }}>{activeStatusView.statusEmoji}</Text>
                     ) : null}
                     <Text style={{ color: '#FFF', fontSize: 26, fontWeight: '900', textAlign: 'center', lineHeight: 36, letterSpacing: 0.5, textShadowColor: 'rgba(0,0,0,0.25)', textShadowOffset: { width: 1, height: 2 }, textShadowRadius: 6 }}>
-                      {activeStatusView.statusText || 'No transmission.'}
+                      {activeStatusView.statusText || 'No status update.'}
                     </Text>
                   </View>
 

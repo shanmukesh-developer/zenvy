@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Platform, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 import { COLORS, SHADOWS } from '../../constants/theme';
 import { useCart } from '../../context/CartContext';
@@ -7,20 +7,23 @@ import { useTheme } from '../../context/ThemeContext';
 import { summarizeCustomizations } from '../../components/CustomizeDrawer';
 import AmbientBackground from '../../components/AmbientBackground';
 import { StaggeredSection, FloatingPulse, BounceIn } from '../../components/AnimatedSection';
-import DopaminePressable from '../../components/DopaminePressable';
+import DopaminePressable, { ActionPressable } from '../../components/DopaminePressable';
+import SafeImage from '../../components/SafeImage';
 
 export default function BasketScreen() {
-  const { isDark } = useTheme();
+  const { isDark, colors } = useTheme();
   const { cart, removeFromCart, updateQuantity, totalPrice, totalItems, roomCode, isHosting, isJoined, handleHostRoom, handleJoinRoom, handleDisconnect } = useCart();
   const [isJoinOpen, setIsJoinOpen] = React.useState(false);
   const [inputCode, setInputCode] = React.useState('');
   const router = useRouter();
-  const bg = isDark ? COLORS.bgDark : COLORS.bgLight;
-  const cardBg = isDark ? COLORS.bgCard : COLORS.bgLightCard;
-  const txt = isDark ? COLORS.textPrimary : COLORS.textDark;
-  const txtSec = isDark ? COLORS.textSecondary : COLORS.textDarkSecondary;
-  const border = isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)';
-  const goldColor = isDark ? COLORS.gold : COLORS.red;
+
+  const bg = colors.bg;
+  const cardBg = colors.card;
+  const txt = colors.text;
+  const txtSec = colors.textSecondary;
+  const border = colors.border;
+  const goldColor = isDark ? COLORS.gold : colors.gold;
+  const actionBtnBg = COLORS.red;
 
   return (
     <View style={[s.container, { backgroundColor: bg }]}>
@@ -34,10 +37,10 @@ export default function BasketScreen() {
             {!roomCode ? (
               <View>
                 <Text style={{ fontSize: 11, fontWeight: '900', color: goldColor, letterSpacing: 2, marginBottom: 2 }}>ROOMMATE GROUP CART</Text>
-                <Text style={[s.groupDesc, { color: txt }]}>ORDER TOGETHER WITH YOUR ROOMMATES AND SPLIT THE BILL</Text>
+                <Text style={[s.groupDesc, { color: txtSec }]}>ORDER TOGETHER WITH YOUR ROOMMATES AND SPLIT THE BILL</Text>
                 <View style={s.groupBtns}>
-                  <TouchableOpacity style={[s.hostBtn, { borderColor: txtSec }]} onPress={handleHostRoom}>
-                    <Text style={[s.hostBtnText, { color: txtSec }]}>📡 HOST CART</Text>
+                  <TouchableOpacity style={[s.hostBtn, { borderColor: border, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)' }]} onPress={handleHostRoom}>
+                    <Text style={[s.hostBtnText, { color: txt }]}>📡 HOST CART</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={[s.joinBtn, { backgroundColor: goldColor }]} onPress={() => setIsJoinOpen(!isJoinOpen)}>
                     <Text style={s.joinBtnText}>👥 JOIN CART</Text>
@@ -46,7 +49,7 @@ export default function BasketScreen() {
                 {isJoinOpen && (
                   <View style={s.joinInputRow}>
                     <TextInput
-                      style={[s.joinInput, { color: txt, borderColor: border }]}
+                      style={[s.joinInput, { color: txt, borderColor: border, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F1F4F8' }]}
                       placeholder="ENTER ROOM CODE (e.g. ZN-8B2A)"
                       placeholderTextColor={txtSec}
                       value={inputCode}
@@ -80,34 +83,52 @@ export default function BasketScreen() {
         </StaggeredSection>
 
         {cart.length === 0 ? (
-          <View style={s.empty}>
-            <Text style={{ fontSize: 40, marginBottom: 12 }}>🛒</Text>
-            <Text style={[s.emptyText, { color: txtSec }]}>Your basket is empty</Text>
-          </View>
+          <StaggeredSection delay={100} direction="up">
+            <View style={[s.emptyBox, { backgroundColor: cardBg, borderColor: border }]}>
+              <Text style={{ fontSize: 48, marginBottom: 16 }}>🛒</Text>
+              <Text style={[s.emptyTitle, { color: txt }]}>Your Basket Is Empty</Text>
+              <Text style={[s.emptyDesc, { color: txtSec }]}>
+                Add delicious dishes from campus restaurants, snacks from night canteens, or groceries for your hostel room.
+              </Text>
+              <TouchableOpacity 
+                style={[s.exploreBtn, { backgroundColor: COLORS.red }]}
+                activeOpacity={0.85}
+                onPress={() => router.push('/(tabs)' as any)}
+              >
+                <Text style={s.exploreBtnText}>BROWSE DELICIOUS BITES →</Text>
+              </TouchableOpacity>
+            </View>
+          </StaggeredSection>
         ) : (
           <>
             {cart.map((item: any, i: number) => (
               <StaggeredSection key={item.cartKey || item.id || i} delay={(i + 1) * 80} direction="up">
                 <View style={[s.itemCard, { backgroundColor: cardBg, borderColor: border }]}>
-                  {item.image && <Image source={{ uri: item.image }} style={s.itemImg} />}
+                  {item.image ? (
+                    <SafeImage source={{ uri: item.image }} style={s.itemImg} />
+                  ) : (
+                    <View style={[s.itemImg, { backgroundColor: isDark ? '#222' : '#E5E7EB', alignItems: 'center', justifyContent: 'center' }]}>
+                      <Text style={{ fontSize: 22 }}>🍽️</Text>
+                    </View>
+                  )}
                   <View style={s.itemInfo}>
                     <Text style={[s.itemName, { color: txt }]}>{item.name}</Text>
-                    <Text style={{ fontSize: 9, color: txtSec }}>from {item.restaurantName || 'Restaurant'}</Text>
+                    <Text style={{ fontSize: 10, color: txtSec }}>from {item.restaurantName || 'Restaurant'}</Text>
                     {item.customizations && Object.keys(item.customizations).length > 0 && (
-                      <Text style={{ fontSize: 9, color: isDark ? COLORS.gold : COLORS.red, marginTop: 2, fontStyle: 'italic', fontWeight: '600' }}>
+                      <Text style={{ fontSize: 10, color: goldColor, marginTop: 2, fontStyle: 'italic', fontWeight: '600' }}>
                         {summarizeCustomizations(item.customizations)}
                       </Text>
                     )}
                     {item.addedBy && (
-                      <View style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)', alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginTop: 4 }}>
+                      <View style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)', alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginTop: 4 }}>
                         <Text style={{ fontSize: 8, fontWeight: '800', color: txtSec, textTransform: 'uppercase' }}>👤 ADDED BY {item.addedBy}</Text>
                       </View>
                     )}
-                    <Text style={{ fontSize: 16, fontWeight: '900', color: goldColor, marginTop: 4 }}>₹{item.price}</Text>
+                    <Text style={{ fontSize: 16, fontWeight: '900', color: txt, marginTop: 4 }}>₹{item.price}</Text>
                   </View>
-                  <View style={[s.qtyWrap, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F3F4F6' }]}>
+                  <View style={[s.qtyWrap, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F1F4F8' }]}>
                     <DopaminePressable 
-                      style={[s.qtyBtn, { backgroundColor: isDark ? '#2C2C2E' : '#fff' }]} 
+                      style={[s.qtyBtn, { backgroundColor: isDark ? '#27272A' : '#FFFFFF' }]} 
                       onPress={() => updateQuantity(item.cartKey || item.id, Math.max(0, item.quantity - 1))}
                       sound="click"
                       activeScale={0.88}
@@ -116,7 +137,7 @@ export default function BasketScreen() {
                     </DopaminePressable>
                     <Text style={[s.qtyNum, { color: txt }]}>{item.quantity}</Text>
                     <DopaminePressable 
-                      style={[s.qtyBtn, { backgroundColor: isDark ? '#2C2C2E' : '#fff' }]} 
+                      style={[s.qtyBtn, { backgroundColor: isDark ? '#27272A' : '#FFFFFF' }]} 
                       onPress={() => updateQuantity(item.cartKey || item.id, item.quantity + 1)}
                       sound="click"
                       activeScale={0.88}
@@ -131,15 +152,15 @@ export default function BasketScreen() {
             <StaggeredSection delay={(cart.length + 1) * 80} direction="up">
               <View style={[s.billCard, { backgroundColor: cardBg, borderColor: border, borderWidth: 1 }]}>
                 <View style={s.billRow}>
-                  <Text style={[s.billLabel, { color: txt }]}>ITEMS SUBTOTAL</Text>
+                  <Text style={[s.billLabel, { color: txtSec }]}>ITEMS SUBTOTAL</Text>
                   <Text style={[s.billVal, { color: txt }]}>₹{totalPrice}</Text>
                 </View>
                 <View style={s.billRow}>
-                  <Text style={[s.billLabel, { color: txt }]}>DELIVERY FEE</Text>
+                  <Text style={[s.billLabel, { color: txtSec }]}>DELIVERY FEE</Text>
                   <Text style={[s.billVal, { color: txt }]}>₹30</Text>
                 </View>
-                <View style={[s.billRow, { borderTopWidth: 1, borderTopColor: border, paddingTop: 12 }]}>
-                  <Text style={[s.billLabel, { color: txt, fontSize: 14, fontWeight: '900' }]}>GRAND TOTAL</Text>
+                <View style={[s.billRow, { borderTopWidth: 1, borderTopColor: border, paddingTop: 12, marginTop: 4 }]}>
+                  <Text style={[s.billLabel, { color: txt, fontSize: 13, fontWeight: '900' }]}>GRAND TOTAL</Text>
                   <Text style={{ fontSize: 22, fontWeight: '900', color: goldColor }}>₹{totalPrice + 30}</Text>
                 </View>
               </View>
@@ -151,10 +172,14 @@ export default function BasketScreen() {
       </ScrollView>
 
       {totalItems > 0 && (
-        <FloatingPulse color={goldColor} style={s.checkoutBtnContainer}>
-          <TouchableOpacity style={[s.checkoutBtn, { backgroundColor: goldColor, width: '100%' }]} onPress={() => router.push('/checkout' as any)}>
-            <Text style={s.checkoutText}>PROCEED TO CHECKOUT</Text>
-          </TouchableOpacity>
+        <FloatingPulse color={COLORS.red} style={s.checkoutBtnContainer}>
+          <ActionPressable 
+            style={[s.checkoutBtn, { backgroundColor: actionBtnBg, width: '100%' }]} 
+            onPress={() => router.push('/checkout' as any)}
+            sound="click"
+          >
+            <Text style={s.checkoutText}>PROCEED TO CHECKOUT • ₹{totalPrice + 30}</Text>
+          </ActionPressable>
         </FloatingPulse>
       )}
     </View>
@@ -173,6 +198,11 @@ const s = StyleSheet.create({
   joinBtnText: { fontSize: 10, fontWeight: '800', color: '#fff', letterSpacing: 1 },
   empty: { padding: 60, alignItems: 'center' },
   emptyText: { fontSize: 13, fontWeight: '600' },
+  emptyBox: { marginHorizontal: 16, marginTop: 24, padding: 32, borderRadius: 24, alignItems: 'center', borderWidth: 1, ...SHADOWS.card },
+  emptyTitle: { fontSize: 18, fontWeight: '800', marginBottom: 8, textAlign: 'center' },
+  emptyDesc: { fontSize: 13, textAlign: 'center', lineHeight: 20, marginBottom: 24, paddingHorizontal: 12 },
+  exploreBtn: { paddingHorizontal: 24, paddingVertical: 14, borderRadius: 16, ...SHADOWS.redGlow },
+  exploreBtnText: { color: '#FFFFFF', fontSize: 11, fontWeight: '900', letterSpacing: 1.5 },
   itemCard: { flexDirection: 'row', marginHorizontal: 16, padding: 12, borderRadius: 16, marginBottom: 10, borderWidth: 1, alignItems: 'center' },
   itemImg: { width: 60, height: 60, borderRadius: 12, marginRight: 12 },
   itemInfo: { flex: 1 },

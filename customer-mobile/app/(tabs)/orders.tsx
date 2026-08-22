@@ -10,6 +10,7 @@ import { useAuth } from '../../context/AuthContext';
 import { apiFetch } from '../../utils/auth';
 import AmbientBackground from '../../components/AmbientBackground';
 import { StaggeredSection, BounceIn, FloatingPulse, PulseGlow } from '../../components/AnimatedSection';
+import { ActionPressable } from '../../components/DopaminePressable';
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -54,7 +55,7 @@ const ScalePressable = ({ children, onPress, style, activeOpacity = 0.85 }: any)
 
 export default function OrdersScreen() {
   const router = useRouter();
-  const { isDark } = useTheme();
+  const { isDark, colors } = useTheme();
   const { user } = useAuth();
   const { addToCart, clearCart, cart } = useCart();
   const [orders, setOrders] = useState<any[]>([]);
@@ -102,8 +103,8 @@ export default function OrdersScreen() {
       } else {
         performReorder();
       }
-    } catch (err) {
-      console.error(err);
+    } catch (e) {
+      console.error('Reorder error:', e);
     }
   };
 
@@ -127,22 +128,23 @@ export default function OrdersScreen() {
     setRefreshing(false);
   };
 
-  const bgColors: [string, string] = isDark ? ['#0B0B0D', '#161618'] : [COLORS.bgLight, '#EFEFEF'];
-  const cardBg = isDark ? 'rgba(255, 255, 255, 0.08)' : COLORS.bgLightCard;
-  const txt = isDark ? COLORS.textPrimary : COLORS.textDark;
-  const txtSec = isDark ? COLORS.textSecondary : COLORS.textDarkSecondary;
-  const border = isDark ? 'rgba(255, 255, 255, 0.08)' : COLORS.borderLight;
+  const bg = colors.bg;
+  const cardBg = colors.card;
+  const txt = colors.text;
+  const txtSec = colors.textSecondary;
+  const border = colors.border;
+  const goldColor = isDark ? COLORS.gold : colors.gold;
 
   if (!user) {
     return (
-      <View style={[st.container, { backgroundColor: isDark ? '#0B0B0D' : COLORS.bgLight, justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
+      <View style={[st.container, { backgroundColor: bg, justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
         <AmbientBackground />
         <Text style={{ fontSize: 48, marginBottom: 16 }}>🔐</Text>
         <Text style={{ fontSize: 18, fontWeight: '900', color: txt, letterSpacing: 2, textAlign: 'center', marginBottom: 8 }}>
           AUTHENTICATION REQUIRED
         </Text>
-        <Text style={{ fontSize: 11, color: txtSec, fontWeight: '600', textAlign: 'center', marginBottom: 24, lineHeight: 18 }}>
-          Please sign in to access your secure Zenvy order records and tracking missions.
+        <Text style={{ fontSize: 12, color: txtSec, fontWeight: '600', textAlign: 'center', marginBottom: 24, lineHeight: 18 }}>
+          Please sign in to access your live order records, OTP verification, and tracking.
         </Text>
         <TouchableOpacity 
           style={{ 
@@ -168,68 +170,81 @@ export default function OrdersScreen() {
   const statusColor = (s: string) => {
     if (s === 'Delivered') return COLORS.emerald;
     if (s === 'Cancelled') return '#EF4444';
-    return COLORS.gold;
+    return isDark ? COLORS.gold : colors.gold;
   };
 
   return (
-    <View style={st.container}>
+    <View style={[st.container, { backgroundColor: bg }]}>
       <AmbientBackground />
       <ScrollView
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={isDark ? '#D4AF7A' : COLORS.gold} colors={['#D4AF7A']} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={goldColor} colors={[COLORS.red, COLORS.gold]} />
         }
       >
         <Text style={[st.pageTitle, { color: txt }]}>MY ORDERS</Text>
-        <Text style={[st.pageSub, { color: txtSec }]}>← SWIPE TO REORDER • TAP TO EXPAND</Text>
+        <Text style={[st.pageSub, { color: txtSec }]}>LIVE TRACKING • ONE-TAP REORDER • OTP CODES</Text>
 
         {orders.length === 0 && (
-          <View style={st.empty}><Text style={[st.emptyText, { color: txtSec }]}>No orders yet. Start exploring!</Text></View>
+          <View style={[st.emptyBox, { backgroundColor: cardBg, borderColor: border }]}>
+            <Text style={{ fontSize: 44, marginBottom: 12 }}>🍱</Text>
+            <Text style={[st.emptyTitle, { color: txt }]}>No Orders Found Yet</Text>
+            <Text style={[st.emptyDesc, { color: txtSec }]}>
+              Explore our wide variety of campus bites, bulk hostel grocery baskets, and fresh student meals.
+            </Text>
+            <TouchableOpacity 
+              style={[st.browseBtn, { backgroundColor: COLORS.red }]}
+              activeOpacity={0.85}
+              onPress={() => router.push('/(tabs)' as any)}
+            >
+              <Text style={st.browseBtnText}>EXPLORE CAMPUS EATS →</Text>
+            </TouchableOpacity>
+          </View>
         )}
 
         {orders.map((o, idx) => {
           const id = (o._id || o.id || '').slice(-6).toUpperCase();
           const isExpanded = expanded === (o._id || o.id);
           return (
-            <StaggeredSection key={o._id || o.id} delay={idx * 100} direction="up">
+            <StaggeredSection key={o._id || o.id} delay={idx * 80} direction="up">
             <ScalePressable 
               style={[st.card, { backgroundColor: cardBg, borderColor: border }]} 
               onPress={() => toggleExpand(o._id || o.id)}
             >
               <View style={st.cardHeader}>
-                <View>
+                <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 10, color: txtSec, fontWeight: '700', letterSpacing: 1.5 }}>
                     {o.status === 'Cancelled' ? '✕' : o.status === 'Delivered' ? '✓' : '◉'}{' '}
-                    <Text style={{ color: '#D4AF7A', fontWeight: '800' }}>ORDER #{id}</Text>
+                    <Text style={{ color: goldColor, fontWeight: '800' }}>ORDER #{id}</Text>
                   </Text>
                   <Text style={[st.restaurantName, { color: txt }]}>{o.restaurant || 'Zenvy Partner'}</Text>
-                  <Text style={{ fontSize: 9, color: txtSec, fontWeight: '600' }}>{(o.items || []).length} item{(o.items||[]).length !== 1 ? 's' : ''} • {o.createdAt ? new Date(o.createdAt).toLocaleDateString() : ''}</Text>
+                  <Text style={{ fontSize: 10, color: txtSec, fontWeight: '600' }}>{(o.items || []).length} item{(o.items||[]).length !== 1 ? 's' : ''} • {o.createdAt ? new Date(o.createdAt).toLocaleDateString() : ''}</Text>
                 </View>
-                <View style={{ alignItems: 'flex-end' }}>
+                <View style={{ alignItems: 'flex-end', justifyContent: 'center' }}>
                   <Text style={[st.statusBadge, { color: statusColor(o.status) }]}>{(o.status || 'PENDING').toUpperCase()}</Text>
-                  <Text style={[st.price, { color: isDark ? '#D4AF7A' : '#000' }]}>₹{o.totalPrice || 0}</Text>
+                  <Text style={[st.price, { color: txt }]}>₹{o.totalPrice || 0}</Text>
                 </View>
               </View>
 
               {isExpanded && (
                 <View style={[st.details, { borderTopColor: border }]}>
                   {o.deliveryOTP && (
-                    <View style={[st.otpSection, { borderColor: 'rgba(212,175,122,0.3)', backgroundColor: 'rgba(212,175,122,0.08)' }]}>
-                      <Text style={{ fontSize: 8, fontWeight: '900', color: '#D4AF7A', letterSpacing: 2, marginBottom: 4 }}>DELIVERY OTP PIN</Text>
+                    <View style={[st.otpSection, { borderColor: isDark ? 'rgba(212,175,122,0.3)' : 'rgba(201,151,46,0.3)', backgroundColor: isDark ? 'rgba(212,175,122,0.08)' : 'rgba(201,151,46,0.08)' }]}>
+                      <Text style={{ fontSize: 9, fontWeight: '900', color: goldColor, letterSpacing: 2, marginBottom: 4 }}>DELIVERY OTP PIN</Text>
                       <View style={st.otpBox}>
-                        <Text style={st.otpText}>{o.deliveryOTP}</Text>
-                        <Text style={{ fontSize: 8, color: txtSec, fontWeight: '700', lineHeight: 12 }}>VERIFICATION PIN{'\n'}Show to Delivery Partner</Text>
+                        <Text style={[st.otpText, { color: goldColor }]}>{o.deliveryOTP}</Text>
+                        <Text style={{ fontSize: 9, color: txtSec, fontWeight: '700', lineHeight: 14 }}>VERIFICATION PIN{'\n'}Show to Delivery Partner</Text>
                       </View>
                     </View>
                   )}
                   {(o.items || []).map((item: any, i: number) => (
                     <View key={i} style={st.itemRow}>
-                      <Text style={{ fontSize: 10, color: txt, fontWeight: '600' }}>{item.quantity}x  {item.name}</Text>
-                      <Text style={{ fontSize: 10, color: txt, fontWeight: '800' }}>₹{(item.price || 0) * (item.quantity || 1)}</Text>
+                      <Text style={{ fontSize: 11, color: txt, fontWeight: '600' }}>{item.quantity}x  {item.name}</Text>
+                      <Text style={{ fontSize: 11, color: txt, fontWeight: '800' }}>₹{(item.price || 0) * (item.quantity || 1)}</Text>
                     </View>
                   ))}
                   {o.status !== 'Delivered' && o.status !== 'Cancelled' ? (
-                    <TouchableOpacity style={{ borderRadius: 16, overflow: 'hidden', marginTop: 12 }} onPress={() => router.push(`/tracking/${o._id || o.id}` as any)}>
+                    <ActionPressable style={{ borderRadius: 16, overflow: 'hidden', marginTop: 12 }} onPress={() => router.push(`/tracking/${o._id || o.id}` as any)} sound="click">
                       <LinearGradient
                         colors={['#D4AF7A', '#F0D9A8']}
                         start={{ x: 0, y: 0 }}
@@ -238,9 +253,9 @@ export default function OrdersScreen() {
                       >
                         <Text style={st.trackBtnText}>TRACK LIVE LOCATION →</Text>
                       </LinearGradient>
-                    </TouchableOpacity>
+                    </ActionPressable>
                   ) : (
-                    <TouchableOpacity style={{ borderRadius: 16, overflow: 'hidden', marginTop: 12 }} onPress={() => handleReorder(o)}>
+                    <ActionPressable style={{ borderRadius: 16, overflow: 'hidden', marginTop: 12 }} onPress={() => handleReorder(o)} sound="click">
                       <LinearGradient
                         colors={['#EF4F5F', '#FF6B7B']}
                         start={{ x: 0, y: 0 }}
@@ -249,7 +264,7 @@ export default function OrdersScreen() {
                       >
                         <Text style={[st.trackBtnText, { color: '#fff' }]}>REORDER THIS MEAL 🔁</Text>
                       </LinearGradient>
-                    </TouchableOpacity>
+                    </ActionPressable>
                   )}
                 </View>
               )}
@@ -269,6 +284,11 @@ const st = StyleSheet.create({
   pageSub: { fontSize: 9, fontWeight: '700', letterSpacing: 2, paddingHorizontal: 16, marginBottom: 20 },
   empty: { padding: 40, alignItems: 'center' },
   emptyText: { fontSize: 12, fontWeight: '600' },
+  emptyBox: { marginHorizontal: 16, marginTop: 20, padding: 32, borderRadius: 24, alignItems: 'center', borderWidth: 1, ...SHADOWS.card },
+  emptyTitle: { fontSize: 18, fontWeight: '800', marginBottom: 8, textAlign: 'center' },
+  emptyDesc: { fontSize: 13, textAlign: 'center', lineHeight: 20, marginBottom: 24, paddingHorizontal: 12 },
+  browseBtn: { paddingHorizontal: 24, paddingVertical: 14, borderRadius: 16, ...SHADOWS.redGlow },
+  browseBtnText: { color: '#FFFFFF', fontSize: 11, fontWeight: '900', letterSpacing: 1.5 },
   card: { marginHorizontal: 16, marginBottom: 12, borderRadius: 20, padding: 16, borderWidth: 1, ...SHADOWS.card },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between' },
   restaurantName: { fontSize: 15, fontWeight: '900', marginVertical: 3, letterSpacing: -0.2 },

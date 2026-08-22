@@ -9,8 +9,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { playSound, resumeAudio } from '../../utils/sounds';
 
 function TabIcon({ name, focused, iconName, isDark }: { name: string; focused: boolean; iconName: any; isDark: boolean }) {
-  const inactiveColor = isDark ? '#666' : '#999';
-  const labelColor = isDark ? COLORS.textMuted : '#9CA3AF';
+  const inactiveColor = isDark ? '#71717A' : '#64748B';
+  const labelColor = isDark ? '#A1A1AA' : '#64748B';
 
   return (
     <View style={styles.tabIconWrap}>
@@ -21,7 +21,7 @@ function TabIcon({ name, focused, iconName, isDark }: { name: string; focused: b
         color={focused ? COLORS.red : inactiveColor} 
         style={focused ? styles.tabIconActive : styles.tabIcon}
       />
-      <Text style={[styles.tabLabel, { color: focused ? COLORS.red : labelColor }]}>
+      <Text style={[styles.tabLabel, { color: focused ? COLORS.red : labelColor, fontWeight: focused ? '900' : '700' }]}>
         {name}
       </Text>
     </View>
@@ -30,7 +30,7 @@ function TabIcon({ name, focused, iconName, isDark }: { name: string; focused: b
 
 export default function TabLayout() {
   const { triggerTransition } = useWorldTransition();
-  const { isDark } = useTheme();
+  const { isDark, colors } = useTheme();
   const insets = useSafeAreaInsets();
 
   // Only Home and Others get the cinematic world transition.
@@ -44,16 +44,16 @@ export default function TabLayout() {
 
   // Theme-aware tab bar style
   const tabBarStyle = {
-    backgroundColor: isDark ? COLORS.bgDark : '#FFFFFF',
+    backgroundColor: isDark ? '#09090B' : '#FFFFFF',
     borderTopWidth: 1,
-    borderTopColor: isDark ? COLORS.borderDark : 'rgba(0,0,0,0.06)',
+    borderTopColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
     height: Platform.OS === 'ios' ? 88 : 60 + insets.bottom,
     paddingTop: 8,
     paddingBottom: Platform.OS === 'ios' ? 24 : insets.bottom > 0 ? insets.bottom : 8,
     elevation: 20,
-    shadowColor: isDark ? '#000' : 'rgba(0,0,0,0.1)',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: isDark ? 0.3 : 0.08,
+    shadowOpacity: isDark ? 0.35 : 0.06,
     shadowRadius: 12,
   };
 

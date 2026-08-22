@@ -9,6 +9,7 @@ import { useTheme } from '../context/ThemeContext';
 import { io, Socket } from 'socket.io-client';
 import { StaggeredSection, FloatingPulse, BounceIn } from '../components/AnimatedSection';
 import { LinearGradient } from 'expo-linear-gradient';
+import Clipboard from '@react-native-clipboard/clipboard';
 
 const { width: SW } = Dimensions.get('window');
 
@@ -349,8 +350,8 @@ export default function MegaBasketScreen() {
           <Text style={[s.backIcon, { color: txt }]}>‹</Text>
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={s.subText}>MEGA BASKET</Text>
-          <Text style={[s.title, { color: txt }]}>Essentials Delivery</Text>
+          <Text style={[s.subText, { color: '#F59E0B' }]}>🏢 APARTMENT & HOSTEL BULK BASKET</Text>
+          <Text style={[s.title, { color: txt }]}>Kirana & Bulk Essentials</Text>
         </View>
       </View>
 
@@ -391,6 +392,40 @@ export default function MegaBasketScreen() {
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
         {activeTab === 'new' ? (
           <View style={s.scrollContent}>
+            {/* Apartment & Hostel Group Buying Hero Card */}
+            <StaggeredSection delay={20} direction="down">
+              <View style={{
+                borderRadius: 20,
+                borderWidth: 1.5,
+                borderColor: '#F59E0B',
+                backgroundColor: isDark ? 'rgba(245, 158, 11, 0.1)' : '#FEF3C7',
+                padding: 16,
+                marginBottom: 16,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12
+              }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 9, fontWeight: '900', color: '#B45309', letterSpacing: 1.5 }}>🏢 APARTMENT & HOSTEL BULK HUB</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '900', color: isDark ? '#FFF' : '#78350F', marginTop: 2 }}>
+                    {(user as any)?.hostelBlock ? `Block ${(user as any).hostelBlock} Basket` : 'Apartment Essentials Hub'}
+                  </Text>
+                  <Text style={{ fontSize: 10, fontWeight: '600', color: isDark ? 'rgba(255,255,255,0.7)' : '#92400E', marginTop: 2, lineHeight: 14 }}>
+                    Order Kirana & groceries in bulk with flatmates. Real-time prices verified directly at shop door!
+                  </Text>
+                </View>
+                <TouchableOpacity 
+                  style={{ backgroundColor: '#F59E0B', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 14, elevation: 2 }}
+                  onPress={() => {
+                    Clipboard.setString(`🛒 Join our Apartment Bulk Basket on Zenvy! Delivery location: ${deliveryAddress || 'Apartment Block'}. Order together for fast Kirana dispatch!`);
+                    Alert.alert('📲 Copied Invite Link', 'Share this message with your apartment flatmates to order together!');
+                  }}
+                >
+                  <Text style={{ fontSize: 10, fontWeight: '900', color: '#000' }}>INVITE 📲</Text>
+                </TouchableOpacity>
+              </View>
+            </StaggeredSection>
             {/* Quick Add */}
             <StaggeredSection delay={50} direction="up">
               <View style={[s.card, { backgroundColor: cardBg, borderColor: border }]}>

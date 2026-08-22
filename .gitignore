@@ -3,6 +3,16 @@ node_modules/
 .pnp
 .pnp.js
 
+# Firebase credentials (NEVER commit)
+customer-mobile/android/app/google-services.json
+customer-mobile/ios/GoogleService-Info.plist
+
+# Backend test scripts with secrets
+backend/test_live_*.js
+backend/check_live_*.js
+backend/send_live_*.js
+.pnp.js
+
 # testing
 coverage
 

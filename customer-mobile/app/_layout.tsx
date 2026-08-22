@@ -1,6 +1,8 @@
 import React from 'react';
 import { Stack } from 'expo-router';
-import { Platform, View, StyleSheet, Alert } from 'react-native';
+import { Platform, View, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { useFonts } from 'expo-font';
+import { Ionicons } from '@expo/vector-icons';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import { StatusBar as RNStatusBar } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -15,6 +17,7 @@ import IntroOverlay from '../components/IntroOverlay';
 import GlobalAnnouncement from '../components/GlobalAnnouncement';
 import ThemedAlert, { showGlobalAlert } from '../components/ThemedAlert';
 import OfflineBanner from '../components/OfflineBanner';
+import ErrorBoundary from '../components/ErrorBoundary';
 
 // Global interceptor to theme all native Alert.alert calls across the codebase automatically
 const originalAlert = Alert.alert;
@@ -30,6 +33,11 @@ function AppContainer() {
   const { isDark } = useTheme();
   const [showIntro, setShowIntro] = React.useState(true);
   const [checkingIntro, setCheckingIntro] = React.useState(true);
+
+  // Preload Ionicons so tab bar icons render on Expo Web
+  const [fontsLoaded] = useFonts({
+    ...Ionicons.font,
+  });
 
   // Fix status bar blinking: use imperative API to set once, not on every render
   React.useEffect(() => {
@@ -67,6 +75,15 @@ function AppContainer() {
     setShowIntro(false);
   };
 
+  // Wait for icon fonts to load (critical for Expo Web)
+  if (!fontsLoaded) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#0A0A0B' : '#F5F5F7' }}>
+        <ActivityIndicator size="large" color="#F59E0B" />
+      </View>
+    );
+  }
+
   return (
     <SafeAreaProvider>
       <GestureHandlerRootView style={{ flex: 1, backgroundColor: isDark ? '#0A0A0B' : '#F5F5F7' }}>
@@ -95,8 +112,10 @@ function AppContainer() {
 
 export default function RootLayout() {
   return (
-    <ThemeProvider>
-      <AppContainer />
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <AppContainer />
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }

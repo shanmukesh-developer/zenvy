@@ -13,6 +13,8 @@ import SearchOverlay from '../../components/SearchOverlay';
 import AmbientBackground from '../../components/AmbientBackground';
 import DopaminePressable, { CardPressable, ActionPressable } from '../../components/DopaminePressable';
 import { StaggeredSection, FloatingPulse, BounceIn } from '../../components/AnimatedSection';
+import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ── Self-contained countdown timer to prevent re-rendering the entire screen ──
 const FlashDealTimer = memo(() => {
@@ -80,13 +82,16 @@ const DEPARTMENTS = [
   { id: 'gym', name: 'Gym & Protein', img: 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=200&q=80' },
   { id: 'rentals', name: 'Campus Rides', img: 'https://images.unsplash.com/photo-1485965120184-e220f721d03e?w=200&q=80' },
   { id: 'laundry', name: 'Dry Wash', img: 'https://images.unsplash.com/photo-1582735689369-4fe89db7114c?w=200&q=80' },
+  { id: 'tailoring', name: 'Tailor & Stitch', img: 'https://images.unsplash.com/photo-1582735689369-4fe89db7114c?w=200&q=80' },
   { id: 'seasonal', name: 'Festive', img: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=200&q=80' },
 ];
 
 const TABS = [
-  { key: 'food', label: 'FOOD & BASKET' },
-  { key: 'pg', label: 'PG HOMES' },
-  { key: 'coride', label: 'CO-RIDE' },
+  { key: 'food', label: 'Food & Basket', icon: '🧺' },
+  { key: 'services', label: 'Tech & Repairs', icon: '🛠️' },
+  { key: 'pg', label: 'PG Homes', icon: '🏢' },
+  { key: 'coride', label: 'Co-Ride & Rapido', icon: '🏍️' },
+  { key: 'promos', label: 'Offers & Wheel', icon: '🎁' },
 ];
 
 const BB_CATEGORIES = [
@@ -111,11 +116,46 @@ const WHEEL_SECTORS = [
   { label: 'Try Again', emoji: '🔄', color: '#6B7280', code: 'TRYAGAIN' },
 ];
 
-const PROMOS = [
-  { id: '1', tagline: 'MEGA DEAL 🎁', title: 'STATIONARY', subtitle: 'BLOWOUT SALE', desc: 'UP TO 60% OFF ON NOTEBOOKS, PENS, AND BACKPACKS.', btn: 'SHOP NOW →', img: 'https://images.unsplash.com/photo-1456735190827-d1262f71b8a3?w=600' },
-  { id: '2', tagline: 'FITNESS FIRST 💪', title: 'PROTEIN', subtitle: 'RESTOCK', desc: 'GET 100% AUTHENTIC WHEY. FREE SHAKER ON EVERY ORDER.', btn: 'BROWSE SUPPLEMENTS →', img: 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=600' },
-  { id: '3', tagline: 'CAMPUS RIDES 🚲', title: 'YOUR RIDE', subtitle: 'AWAITS', desc: 'BIKE AND CYCLE RENTALS FROM ₹49/DAY.', btn: 'FIND A RIDE →', img: 'https://images.unsplash.com/photo-1485965120184-e220f721d03e?w=600' },
+const PROMOS_FOOD = [
+  { id: 'f1', tagline: 'CAMPUS STATIONERY 📚', title: 'EXAM ESSENTIALS', subtitle: 'STATIONERY HUB', desc: 'Notebooks, engineering graphics tools, pens & lab supplies delivered to your hostel.', btn: 'EXPLORE SUPPLIES →', img: 'https://images.unsplash.com/photo-1456735190827-d1262f71b8a3?w=600' },
+  { id: 'f2', tagline: 'NUTRITION & FITNESS 🏋️', title: 'SPORTS NUTRITION', subtitle: 'SUPPLEMENTS', desc: '100% genuine whey protein, protein bars & electrolyte drinks for campus athletes.', btn: 'VIEW NUTRITION →', img: 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=600' },
+  { id: 'f3', tagline: 'NIGHT CANTEEN & PANTRY 🛒', title: 'HOSTEL BASKET', subtitle: 'GROCERY RUN', desc: 'Late night snacks, dairy, instant noodles & beverages delivered in 15 minutes.', btn: 'ORDER GROCERIES →', img: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=600' },
 ];
+
+const PROMOS_SERVICES = [
+  { id: 's1', tagline: 'CERTIFIED TECHNICIANS 💻', title: 'LAPTOP & PHONE', subtitle: 'REPAIR HUB', desc: 'Motherboard fix, fan overhaul, screen replacement & thermal paste servicing on campus.', btn: 'BOOK REPAIR →', img: 'https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?w=1200&q=80' },
+  { id: 's2', tagline: 'CAMPUS TAILORING ✂️', title: 'UNIFORM & FABRIC', subtitle: 'ALTERATIONS', desc: 'Lab coat tailoring, fitting alterations, blazer adjustments & urgent stitching requests.', btn: 'REQUEST TAILOR →', img: 'https://images.unsplash.com/photo-1528458909336-e7a0adfed0a5?w=1200&q=80' },
+  { id: 's3', tagline: 'DOCUMENT HUB 🖨️', title: 'HIGH-RES PRINTING', subtitle: '& BINDING', desc: 'Project reports, spiral binding, colour charts and assignment prints delivered directly.', btn: 'SUBMIT PRINT JOB →', img: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?w=1200&q=80' },
+];
+
+const PROMOS_PG = [
+  { id: 'p1', tagline: 'VERIFIED ACCOMMODATIONS 🏢', title: 'STUDENT RESIDENCES', subtitle: 'NEAR CAMPUS', desc: 'Inspected private PGs with high-speed WiFi, power backup, hygienic mess and 24/7 security.', btn: 'BROWSE STAYS →', img: 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=1200&q=80' },
+  { id: 'p2', tagline: 'FLATSHARE & ROOMMATES 🤝', title: 'SHARED APARTMENTS', subtitle: 'FLATMATES', desc: 'Find verified SRM batchmates looking for 2BHK/3BHK flat sharing near Amaravathi.', btn: 'FIND ROOMMATES →', img: 'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=1200&q=80' },
+  { id: 'p3', tagline: 'ZERO BROKERAGE 🏷️', title: 'DIRECT OWNER', subtitle: 'LISTINGS', desc: 'Direct landlord contact with transparent security deposit terms & verified rental agreements.', btn: 'VIEW LISTINGS →', img: 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=1200&q=80' },
+];
+
+const PROMOS_CORIDE = [
+  { id: 'c1', tagline: 'STUDENT COMMUTE NETWORK 🏍️', title: 'PEER CO-RIDE', subtitle: 'FUEL SPLIT', desc: 'Share daily rides between SRM AP, Vijayawada & Guntur. Verified university ID matching.', btn: 'FIND OR POST RIDE →', img: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=1200&q=80' },
+  { id: 'c2', tagline: 'INSTANT TWO-WHEELER 🛵', title: 'RAPIDO CAMPUS', subtitle: 'CONNECT', desc: 'Quick bike-taxi booking to Neerukonda, Mangalagiri station, and local transit points.', btn: 'LAUNCH RAPIDO →', img: 'https://images.unsplash.com/photo-1558980394-0a06c4631733?w=1200&q=80' },
+  { id: 'c3', tagline: 'STATION & AIRPORT CABS 🚖', title: 'CAMPUS SHUTTLES', subtitle: '& OUTSTATION CABS', desc: 'Fixed fare group cabs to Gannavaram Airport (VGA) & Vijayawada Junction (BZA).', btn: 'DISPATCH CAB →', img: 'https://images.unsplash.com/photo-1449965408869-ebd13bc9e5a8?w=1200&q=80' },
+];
+
+const PROMOS_OFFERS = [
+  { id: 'o1', tagline: 'DAILY REWARDS 🎁', title: 'LUCKY REWARD', subtitle: 'SPIN WHEEL', desc: 'Spin daily to earn Zenvy Campus Coins, free meal vouchers and discount coupons.', btn: 'SPIN WHEEL NOW →', img: 'https://images.unsplash.com/photo-1596451190630-186aff535bf2?w=600' },
+  { id: 'o2', tagline: 'ORDER PERKS 🎫', title: 'SCRATCH & WIN', subtitle: 'CASHBACK', desc: 'Unlock guaranteed cash discounts and delivery passes on every order from campus outlets.', btn: 'REDEEM REWARDS →', img: 'https://images.unsplash.com/photo-1607344645866-009c320b63e0?w=600' },
+  { id: 'o3', tagline: 'CAMPUS AMBASSADOR 🌟', title: 'REFER FRIENDS', subtitle: 'EARN CREDITS', desc: 'Invite your hostel mates to Zenvy and earn ₹100 credit on their first completed order.', btn: 'SHARE INVITE →', img: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=600' },
+];
+
+const TAB_PROMOS: Record<string, typeof PROMOS_FOOD> = {
+  food: PROMOS_FOOD,
+  services: PROMOS_SERVICES,
+  pg: PROMOS_PG,
+  coride: PROMOS_CORIDE,
+  promos: PROMOS_OFFERS,
+};
+
+const PROMOS = PROMOS_FOOD;
+
 
 const TRENDING = [
   { id: '1', title: 'Essentials Mega Basket', desc: 'Build a custom grocery list & get delivery with live shop pricing', tag: 'NEW SERVICE', badge: '⚡ Zero Estimation Errors', img: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=400' },
@@ -483,9 +523,9 @@ const getCategoryProducts = (categoryName: string) => {
     ];
   } else {
     items = [
-      { id: `mock-${categoryName}-1`, name: `Organic ${categoryName} Premium Pack`, price: 120, originalPrice: 150, weight: '500 g', image: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=400&q=80', isVeg: true, discount: '20% OFF' },
-      { id: `mock-${categoryName}-2`, name: `Fresh ${categoryName} Value Selection`, price: 65, originalPrice: 80, weight: '1 unit', image: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=400&q=80', isVeg: true, discount: '18% OFF' },
-      { id: `mock-${categoryName}-3`, name: `Campus Choice ${categoryName}`, price: 45, originalPrice: 50, weight: '250 g', image: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=400&q=80', isVeg: true }
+      { id: `${categoryName}-1`, name: `${categoryName} Campus Essentials Pack`, price: 120, originalPrice: 150, weight: '500 g', image: 'https://images.unsplash.com/photo-1604719312566-8912e9227c6a?w=400&q=80', isVeg: true, discount: '20% OFF' },
+      { id: `${categoryName}-2`, name: `${categoryName} Student Value Box`, price: 65, originalPrice: 80, weight: '1 unit', image: 'https://images.unsplash.com/photo-1584568694244-14fbdf83bd30?w=400&q=80', isVeg: true, discount: '18% OFF' },
+      { id: `${categoryName}-3`, name: `${categoryName} Hostel Budget Pack`, price: 45, originalPrice: 50, weight: '250 g', image: 'https://images.unsplash.com/photo-1590779033100-9f60a05a013d?w=400&q=80', isVeg: true }
     ];
   }
   return items;
@@ -543,7 +583,7 @@ const Confetti = () => {
 };
 
 export default function OthersScreen() {
-  const { isDark, toggleTheme } = useTheme();
+  const { isDark, toggleTheme, colors } = useTheme();
   const { user } = useAuth();
   const router = useRouter();
   const { tab } = useLocalSearchParams<{ tab: string }>();
@@ -1327,20 +1367,91 @@ export default function OthersScreen() {
     return true;
   });
 
-  const cardBg = isDark ? 'rgba(255, 255, 255, 0.08)' : COLORS.bgLightCard;
-  const cardSurface = isDark ? '#1D1D20' : '#FFFFFF';
-  const txt = isDark ? COLORS.textPrimary : COLORS.textDark;
-  const txtSec = isDark ? COLORS.textSecondary : COLORS.textDarkSecondary;
-  const border = isDark ? 'rgba(255, 255, 255, 0.18)' : '#E2E8F0';
-  const bgColors: [string, string] = isDark ? ['#0B0B0D', '#161618'] : [COLORS.bgLight, '#EFEFEF'];
+  // In-App Vehicle Web Booking Frame State (Rapido & Uber)
+  const [rideWebModalVisible, setRideWebModalVisible] = useState(false);
+  const [rideWebUrl, setRideWebUrl] = useState('https://www.rapido.bike/');
+  const [rideWebTitle, setRideWebTitle] = useState('Rapido Bike-Taxi');
+  const [rideWebIcon, setRideWebIcon] = useState('🛵');
+  const [rideWebThemeColor, setRideWebThemeColor] = useState('#F59E0B');
 
-  const goldColor = isDark ? COLORS.gold : COLORS.red;
+  // Saved Favourites Wishlist State
+  const [favoritesModalVisible, setFavoritesModalVisible] = useState(false);
+  const [favFilter, setFavFilter] = useState<'ALL' | 'MEALS' | 'SERVICES' | 'PG' | 'GROCERY'>('ALL');
+  const [savedFavoritesList, setSavedFavoritesList] = useState([
+    {
+      id: 'fav-1',
+      title: 'Special Paneer Tikka Kathi Roll',
+      subtitle: 'SRM Campus Night Canteen • Ground Floor',
+      type: 'MEALS',
+      price: '₹120',
+      rating: '4.8 (280+)',
+      badge: '🔥 BESTSELLER',
+      image: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=600&q=80',
+      targetRoute: '/(tabs)',
+    },
+    {
+      id: 'fav-2',
+      title: 'Laptop Diagnostic & Thermal Paste Overhaul',
+      subtitle: 'Certified Campus Tech Fix • Hostel Doorstep',
+      type: 'SERVICES',
+      price: 'Starts ₹99',
+      rating: '4.9 (420+)',
+      badge: '⚡ 4-HR SLA',
+      image: 'https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?w=600&q=80',
+      targetRoute: '/category/repairs',
+    },
+    {
+      id: 'fav-3',
+      title: 'Jeans Length Shortening & Fitting',
+      subtitle: 'Campus Tailoring & Stitching Hub',
+      type: 'SERVICES',
+      price: 'Starts ₹60',
+      rating: '4.9 (310+)',
+      badge: '🪡 ROOM PICKUP',
+      image: 'https://images.unsplash.com/photo-1528458909336-e7a0adfed0a5?w=600&q=80',
+      targetRoute: '/category/tailoring',
+    },
+    {
+      id: 'fav-4',
+      title: 'Sri Sai Luxury Student Residence',
+      subtitle: '2-Sharing AC • High Speed WiFi • Neerukonda (0.8km)',
+      type: 'PG',
+      price: '₹8,500 / mo',
+      rating: '4.7 (150+)',
+      badge: '🏢 ZERO BROKERAGE',
+      image: 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=600&q=80',
+      targetRoute: '/pg/sri-sai-residence',
+    },
+    {
+      id: 'fav-5',
+      title: 'Amul Taaza Homogenised Toned Milk 1L',
+      subtitle: 'Hostel Grocery Basket • 15 Min Delivery',
+      type: 'GROCERY',
+      price: '₹74',
+      rating: '4.9 (890+)',
+      badge: '🥛 DAILY ESSENTIAL',
+      image: 'https://images.unsplash.com/photo-1550583724-b2692b85b150?w=600&q=80',
+      targetRoute: '/category/grocery',
+    },
+  ]);
+
+  const cardBg = isDark ? 'rgba(255, 255, 255, 0.08)' : colors.card;
+  const cardSurface = isDark ? '#1D1D20' : colors.card;
+  const txt = colors.text;
+  const txtSec = colors.textSecondary;
+  const border = isDark ? 'rgba(255, 255, 255, 0.18)' : colors.border;
+  const bg = colors.bg;
+
+  const goldColor = isDark ? COLORS.gold : colors.gold;
   const goldBorderColor = isDark ? COLORS.goldBorder : 'rgba(239, 79, 95, 0.4)';
   const goldMutedColor = isDark ? COLORS.goldMuted : 'rgba(239, 79, 95, 0.15)';
   const goldGlowShadow = isDark ? SHADOWS.goldGlow : SHADOWS.redGlow;
   const accentGradient: [string, string] = isDark ? ['#C9A84C', '#E4C875'] : ['#EF4F5F', '#D43F4F'];
 
-  const carouselOffers = PROMOS.map(p => ({
+  const userLocation = (user?.hostelBlock ? `${user.hostelBlock}${user?.roomNumber || user?.roomNo ? `, Room ${user.roomNumber || user.roomNo}` : ''}` : null) || user?.defaultAddress || user?.address || 'SRM University AP';
+
+  const currentTabPromos = TAB_PROMOS[activeTab] || PROMOS_FOOD;
+  const carouselOffers = currentTabPromos.map(p => ({
     id: p.id,
     imageUrl: p.img,
     tagline: p.tagline,
@@ -1349,141 +1460,164 @@ export default function OthersScreen() {
     description: p.desc,
     buttonText: p.btn.replace(' →', ''),
     redirectAction: () => {
-      if (p.id === '1') {
-        router.push('/category/stationary' as any);
-      } else if (p.id === '2') {
-        router.push('/category/gym' as any);
-      } else if (p.id === '3') {
-        router.push('/category/rentals' as any);
+      if (activeTab === 'food') {
+        router.push('/category/grocery' as any);
+      } else if (activeTab === 'services') {
+        scrollViewRef.current?.scrollTo({ y: 350, animated: true });
+      } else if (activeTab === 'pg') {
+        scrollViewRef.current?.scrollTo({ y: 300, animated: true });
+      } else if (activeTab === 'coride') {
+        setShowCreateModal(true);
+      } else if (activeTab === 'promos') {
+        scrollViewRef.current?.scrollTo({ y: 250, animated: true });
       }
     }
   }));
 
   return (
-    <View style={s.container}>
+    <View style={[s.container, { backgroundColor: bg }]}>
       <AmbientBackground />
-      {activeTab === 'food' ? (
-        <View style={[s.bbHeader, { backgroundColor: isDark ? '#1C1917' : '#FEF9E7' }]}>
-          {/* Top Row: Clock slot & Home location & profile bubble */}
-          <View style={s.bbHeaderTop}>
-            <View style={s.bbHeaderLeft}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Text style={{ fontSize: 11 }}>⏰</Text>
-                <Text style={{ fontSize: 9, color: txtSec, fontWeight: '700' }}>Next slot in</Text>
-                <Text style={{ fontSize: 11, fontWeight: '900', color: txt }}> 11 hrs</Text>
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                <Text style={{ fontSize: 11 }}>📍</Text>
-                <Text style={{ fontSize: 11, fontWeight: '900', color: txt, maxWidth: SW * 0.65 }} numberOfLines={1}>
-                  Home - SRM University ap, SRM Universit...
-                </Text>
-                <Text style={{ fontSize: 8, color: txtSec }}> ▼</Text>
-              </View>
-            </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <ActionPressable style={[s.navBtn, { backgroundColor: cardBg, width: 34, height: 34 }]} onPress={toggleTheme}>
-                <Text style={{ fontSize: 14 }}>{isDark ? '☀️' : '🌙'}</Text>
-              </ActionPressable>
-              <TouchableOpacity 
-                style={s.bbProfileBtn}
-                onPress={() => router.push('/(tabs)/profile')}
-              >
-                <Image 
-                  source={{ uri: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&q=80' }} 
-                  style={s.bbProfileImg} 
-                />
-              </TouchableOpacity>
+      {/* ── UNIFIED LUXURY CAMPUS HEADER ── */}
+      <View style={[s.bbHeader, { backgroundColor: cardSurface, borderBottomWidth: 1, borderColor: border, paddingBottom: 12, paddingTop: 6 }]}>
+        {/* Top Navigation Row: Back Button + Inspirational Campus Tagline + Live Status */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 }}>
+            <TouchableOpacity 
+              style={{ 
+                width: 38, 
+                height: 38, 
+                borderRadius: 19, 
+                backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#F1F5F9', 
+                borderWidth: 1, 
+                borderColor: border, 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                marginRight: 10
+              }}
+              onPress={() => router.replace('/(tabs)')}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="arrow-back" size={19} color={txt} />
+            </TouchableOpacity>
+
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 13, fontWeight: '900', color: txt, letterSpacing: 0.3 }} numberOfLines={1}>
+                Campus Hub & Services 🚀
+              </Text>
+              <Text style={{ fontSize: 9.5, fontWeight: '600', color: txtSec, fontStyle: 'italic' }} numberOfLines={1}>
+                “Everything you need for effortless hostel life”
+              </Text>
             </View>
           </View>
 
-          {/* Second Row: Search bar + Separate Shortcuts Pill */}
-          <View style={s.bbHeaderSearchRow}>
-            <CardPressable 
-              style={[s.bbSearchBar, { backgroundColor: cardSurface, borderColor: border }]} 
-              onPress={() => setIsSearchOpen(true)}
-              tilt={false}
-            >
-              <Text style={{ fontSize: 14, color: '#F97316' }}>🔍 </Text>
-              <TextInput 
-                style={[s.bbSearchInput, { color: txt }]} 
-                placeholder={searchPH} 
-                placeholderTextColor={txtSec} 
-                editable={false} 
-                pointerEvents="none"
-              />
-              <TouchableOpacity style={{ padding: 4 }}><Text style={{ fontSize: 14 }}>🎁</Text></TouchableOpacity>
-            </CardPressable>
-
-            <View style={[s.bbShortcutsPill, { backgroundColor: cardSurface, borderColor: border }]}>
-              <TouchableOpacity style={s.bbShortcutBtn} onPress={() => Alert.alert('Wishlist', 'Your saved/favorite items will appear here.')}><Text style={{ fontSize: 14 }}>❤️</Text></TouchableOpacity>
-              <View style={{ width: 1, height: 14, backgroundColor: border }} />
-              <TouchableOpacity style={s.bbShortcutBtn} onPress={() => Alert.alert('Notifications', 'No new campus announcements.')}><Text style={{ fontSize: 14 }}>🔔</Text></TouchableOpacity>
-            </View>
+          <View style={{ 
+            flexDirection: 'row', 
+            alignItems: 'center', 
+            backgroundColor: isDark ? 'rgba(34, 197, 94, 0.15)' : '#DCFCE7', 
+            paddingHorizontal: 8, 
+            paddingVertical: 4, 
+            borderRadius: 10, 
+            borderWidth: 1, 
+            borderColor: isDark ? 'rgba(34, 197, 94, 0.3)' : '#86EFAC' 
+          }}>
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#22C55E', marginRight: 5 }} />
+            <Text style={{ fontSize: 9, fontWeight: '900', color: isDark ? '#4ADE80' : '#15803D', letterSpacing: 0.5 }}>OPEN 24/7</Text>
           </View>
         </View>
-      ) : (
-        <>
-          {/* ── NAVBAR ── */}
-          <View style={s.nav}>
-            <View>
-              <Text style={[s.loc, { color: txtSec }]}>📍 AMARAVATHI, AP</Text>
-              <Text style={[s.greeting, { color: txt }]}>HEY, {(user?.name || 'SANYA').split(' ')[0].toUpperCase()} 👋</Text>
-            </View>
-            <View style={s.navRight}>
-              <ActionPressable style={[s.navBtn, { backgroundColor: cardBg }]} onPress={toggleTheme}>
-                <Text style={{ fontSize: 18 }}>{isDark ? '☀️' : '🌙'}</Text>
-              </ActionPressable>
-              <ActionPressable style={[s.navBtn, { backgroundColor: cardBg }]} onPress={() => router.push('/(tabs)/profile')}>
-                <Text style={{ fontSize: 18 }}>🛍️</Text>
-              </ActionPressable>
-            </View>
-          </View>
 
-          {/* ── HERO HEADER ── */}
-          <View style={s.heroHeader}>
-            <View style={s.ecoBadgeWrapper}>
-              <LinearGradient
-                colors={accentGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={s.ecoBadgeGradient}
-              >
-                <Text style={s.ecoBadgeText}>ECOSYSTEM</Text>
-              </LinearGradient>
-            </View>
-            <Text style={[s.heroTitle, { color: txt }]}>Explore More</Text>
-            <View style={[s.underline, { backgroundColor: goldColor }]} />
-          </View>
-        </>
-      )}
-
-      {/* ── TAB SELECTOR ── */}
-      <View style={[s.tabRow, { backgroundColor: cardBg, borderColor: border }]}>
-        {TABS.map(t => {
-          const isActive = activeTab === t.key;
-          return (
-            <DopaminePressable 
-              key={t.key} 
-              style={[s.tabBtn, isActive && s.tabBtnActive]} 
-              onPress={() => setActiveTab(t.key)}
-              sound="tabSwitch"
-              activeScale={0.96}
+        {/* Search Bar & Wishlist */}
+        <View style={s.bbHeaderSearchRow}>
+          <CardPressable 
+            style={[s.bbSearchBar, { backgroundColor: isDark ? '#27272A' : '#F4F4F5', borderColor: border, height: 42, flex: 1 }]} 
+            onPress={() => setIsSearchOpen(true)}
+            tilt={false}
+          >
+            <Text style={{ fontSize: 14, color: '#F59E0B' }}>🔍</Text>
+            <TextInput 
+              style={[s.bbSearchInput, { color: txt, fontSize: 12, fontWeight: '600' }]} 
+              placeholder={searchPH} 
+              placeholderTextColor={txtSec} 
+              editable={false} 
+              pointerEvents="none"
+            />
+            <TouchableOpacity 
+              style={{ padding: 4, backgroundColor: 'rgba(245, 158, 11, 0.15)', borderRadius: 8 }}
+              onPress={() => setActiveTab('promos')}
             >
-              {isActive ? (
-                <LinearGradient
-                  colors={accentGradient}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={s.tabBtnActiveGradient}
-                >
-                  <Text style={[s.tabLabel, { color: '#000', fontWeight: '900' }]}>{t.label}</Text>
-                </LinearGradient>
-              ) : (
-                <Text style={[s.tabLabel, { color: txtSec, paddingVertical: 12 }]}>{t.label}</Text>
-              )}
-            </DopaminePressable>
-          );
-        })}
+              <Text style={{ fontSize: 13 }}>🎁</Text>
+            </TouchableOpacity>
+          </CardPressable>
+
+          <TouchableOpacity 
+            style={[s.bbShortcutBtn, { backgroundColor: isDark ? '#27272A' : '#F4F4F5', borderWidth: 1, borderColor: border, width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }]} 
+            onPress={() => setFavoritesModalVisible(true)}
+            activeOpacity={0.8}
+          >
+            <Text style={{ fontSize: 15 }}>❤️</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* ── TAB SELECTOR (HORIZONTAL SCROLLABLE CHIPS) ── */}
+      <View style={{ marginBottom: 14 }}>
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false} 
+          contentContainerStyle={{ paddingHorizontal: 16, gap: 8, alignItems: 'center' }}
+        >
+          {TABS.map(t => {
+            const isActive = activeTab === t.key;
+            return (
+              <DopaminePressable 
+                key={t.key} 
+                onPress={() => setActiveTab(t.key)}
+                sound="tabSwitch"
+                activeScale={0.95}
+              >
+                {isActive ? (
+                  <LinearGradient
+                    colors={accentGradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 6,
+                      paddingHorizontal: 16,
+                      paddingVertical: 9,
+                      borderRadius: 14,
+                      shadowColor: '#F59E0B',
+                      shadowOffset: { width: 0, height: 3 },
+                      shadowOpacity: 0.3,
+                      shadowRadius: 6,
+                      elevation: 3,
+                    }}
+                  >
+                    <Text style={{ fontSize: 15 }}>{t.icon}</Text>
+                    <Text style={{ color: '#000', fontWeight: '900', fontSize: 12, letterSpacing: 0.2 }}>{t.label}</Text>
+                  </LinearGradient>
+                ) : (
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 6,
+                      paddingHorizontal: 14,
+                      paddingVertical: 8,
+                      borderRadius: 14,
+                      backgroundColor: cardBg,
+                      borderWidth: 1,
+                      borderColor: border,
+                    }}
+                  >
+                    <Text style={{ fontSize: 14 }}>{t.icon}</Text>
+                    <Text style={{ color: txtSec, fontWeight: '700', fontSize: 12 }}>{t.label}</Text>
+                  </View>
+                )}
+              </DopaminePressable>
+            );
+          })}
+        </ScrollView>
       </View>
 
       <Animated.View style={{ opacity: tabContentFade, transform: [{ translateY: tabContentTranslateY }], flex: 1 }}>
@@ -2789,6 +2923,139 @@ export default function OthersScreen() {
           </View>
         )}
 
+        {/* ── TECH & REPAIRS & 24/7 SERVICES TAB ── */}
+        {activeTab === 'services' && (
+          <View style={{ paddingHorizontal: 16 }}>
+            {/* Section Header */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, marginTop: 4 }}>
+              <View>
+                <Text style={{ fontSize: 9, fontWeight: '900', color: '#3B82F6', letterSpacing: 1.5 }}>
+                  VERIFIED CAMPUS PARTNERS
+                </Text>
+                <Text style={{ fontSize: 16, fontWeight: '900', color: txt, marginTop: 2 }}>
+                  Doorstep Campus Services 🛠️
+                </Text>
+              </View>
+              <View style={{ backgroundColor: isDark ? 'rgba(59,130,246,0.15)' : '#EFF6FF', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, borderWidth: 1, borderColor: isDark ? 'rgba(59,130,246,0.3)' : '#BFDBFE' }}>
+                <Text style={{ fontSize: 9.5, fontWeight: '900', color: '#2563EB' }}>HOSTEL PICKUP</Text>
+              </View>
+            </View>
+
+            {/* Curated Service Directory Cards */}
+            {[
+              {
+                id: 'LAPTOP_REPAIR',
+                title: 'Laptop Diagnostic & Hardware Fix',
+                tag: '⚡ 4-HR TURNAROUND',
+                desc: 'Screen replacement, thermal paste overhaul, fan cleaning, SSD upgrade & motherboard repair.',
+                icon: '💻',
+                price: 'Starts ₹99',
+                cat: 'repairs',
+                image: 'https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?w=600&q=80',
+              },
+              {
+                id: 'TAILORING',
+                title: 'Campus Tailoring & Stitching',
+                tag: '🪡 ROOM FITTING',
+                desc: 'Jeans length shortening, shirt/kurti alterations, lab coat resizing & zipper replacement.',
+                icon: '✂️',
+                price: 'Starts ₹30',
+                cat: 'tailoring',
+                image: 'https://images.unsplash.com/photo-1528458909336-e7a0adfed0a5?w=600&q=80',
+              },
+              {
+                id: 'PRINTOUT',
+                title: '24/7 Laser Print & Project Binding',
+                tag: '🖨️ ROOM DELIVERY',
+                desc: 'High-speed B&W / Color printouts, CAD schematics, and spiral/hardbound thesis binding.',
+                icon: '📄',
+                price: '₹2 / page',
+                cat: 'print',
+                image: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?w=600&q=80',
+              },
+              {
+                id: 'LAUNDRY',
+                title: 'Hostel Wash & Steam Ironing',
+                tag: '🧺 SAME DAY RETURN',
+                desc: 'Doorstep pickup for daily clothes, bedsheets, blankets, and sneaker deep cleaning.',
+                icon: '👕',
+                price: '₹60 / kg',
+                cat: 'laundry',
+                image: 'https://images.unsplash.com/photo-1582735689369-4fe89db7114c?w=600&q=80',
+              },
+              {
+                id: 'MATTRESSES',
+                title: 'Hostel Mattresses & Room Gear',
+                tag: '🛏️ MOVE-IN PACK',
+                desc: 'Single bed high-density foam mattresses, pillows, bedsheets, buckets & drying racks.',
+                icon: '📦',
+                price: 'Starts ₹149',
+                cat: 'mattresses',
+                image: 'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=600&q=80',
+              },
+              {
+                id: 'ELECTRONICS',
+                title: '65W GaN Chargers & Tech Gadgets',
+                tag: '🔌 15-MIN DISPATCH',
+                desc: 'Laptop power adapters, heavy extension boards, scientific calculators & study lamps.',
+                icon: '🔋',
+                price: 'Starts ₹299',
+                cat: 'electronics',
+                image: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?w=600&q=80',
+              },
+            ].map((srv) => (
+              <TouchableOpacity
+                key={srv.id}
+                style={{
+                  borderRadius: 18,
+                  backgroundColor: cardBg,
+                  borderWidth: 1,
+                  borderColor: border,
+                  marginBottom: 14,
+                  overflow: 'hidden',
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.05,
+                  shadowRadius: 6,
+                  elevation: 2,
+                }}
+                onPress={() => router.push(`/category/${srv.cat}` as any)}
+                activeOpacity={0.85}
+              >
+                <View style={{ flexDirection: 'row', padding: 14, gap: 14 }}>
+                  <Image source={{ uri: srv.image }} style={{ width: 80, height: 80, borderRadius: 14, backgroundColor: isDark ? '#27272A' : '#F1F5F9' }} />
+                  <View style={{ flex: 1, justifyContent: 'space-between' }}>
+                    <View>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
+                        <Text style={{ fontSize: 8, fontWeight: '900', color: '#3B82F6', letterSpacing: 0.8 }}>
+                          {srv.tag}
+                        </Text>
+                        <Text style={{ fontSize: 12, fontWeight: '900', color: '#10B981' }}>
+                          {srv.price}
+                        </Text>
+                      </View>
+                      <Text style={{ fontSize: 13, fontWeight: '900', color: txt, lineHeight: 17 }}>
+                        {srv.title}
+                      </Text>
+                      <Text style={{ fontSize: 10, color: txtSec, lineHeight: 14, marginTop: 4 }} numberOfLines={2}>
+                        {srv.desc}
+                      </Text>
+                    </View>
+
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 8 }}>
+                      <View style={{ backgroundColor: isDark ? '#27272A' : '#F1F5F9', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: border }}>
+                        <Text style={{ fontSize: 9.5, fontWeight: '900', color: txt }}>
+                          BOOK SERVICE ➔
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
         {/* ── PG & HOMES TAB ── */}
         {activeTab === 'pg' && (
           <View style={{ paddingHorizontal: 16 }}>
@@ -2802,8 +3069,8 @@ export default function OthersScreen() {
             <Text style={[s.filterLabel, { color: txt }]}>GENDER TYPE</Text>
             <View style={s.rowFilters}>
               {['All', 'Boys', 'Girls', 'Co-ed'].map(g => (
-                <DopaminePressable key={g} style={[s.chip, genderFilter === g && s.chipActive, { borderColor: border }]} onPress={() => setGenderFilter(g)} sound="click" activeScale={0.93}>
-                  <Text style={[s.chipText, genderFilter === g && s.chipTextActive]}>{g.toUpperCase()}</Text>
+                <DopaminePressable key={g} style={[s.chip, { backgroundColor: cardBg }, genderFilter === g && s.chipActive, { borderColor: border }]} onPress={() => setGenderFilter(g)} sound="click" activeScale={0.93}>
+                  <Text style={[s.chipText, { color: colors.textSecondary }, genderFilter === g && s.chipTextActive]}>{g.toUpperCase()}</Text>
                 </DopaminePressable>
               ))}
             </View>
@@ -2812,8 +3079,8 @@ export default function OthersScreen() {
             <Text style={[s.filterLabel, { color: txt }]}>MAX RENT BUDGET</Text>
             <View style={s.rowFilters}>
               {['All', '5000', '8000', '10000', '15000'].map(b => (
-                <DopaminePressable key={b} style={[s.chip, budgetFilter === b && s.chipActive, { borderColor: border }]} onPress={() => setBudgetFilter(b)} sound="click" activeScale={0.93}>
-                  <Text style={[s.chipText, budgetFilter === b && s.chipTextActive]}>{b === 'All' ? 'ANY' : `₹${b}`}</Text>
+                <DopaminePressable key={b} style={[s.chip, { backgroundColor: cardBg }, budgetFilter === b && s.chipActive, { borderColor: border }]} onPress={() => setBudgetFilter(b)} sound="click" activeScale={0.93}>
+                  <Text style={[s.chipText, { color: colors.textSecondary }, budgetFilter === b && s.chipTextActive]}>{b === 'All' ? 'ANY' : `₹${b}`}</Text>
                 </DopaminePressable>
               ))}
             </View>
@@ -2822,8 +3089,8 @@ export default function OthersScreen() {
             <Text style={[s.filterLabel, { color: txt }]}>CAMPUS PROXIMITY</Text>
             <View style={s.rowFilters}>
               {['All', '1', '3', '5', '10'].map(d => (
-                <DopaminePressable key={d} style={[s.chip, distanceFilter === d && s.chipActive, { borderColor: border }]} onPress={() => setDistanceFilter(d)} sound="click" activeScale={0.93}>
-                  <Text style={[s.chipText, distanceFilter === d && s.chipTextActive]}>{d === 'All' ? 'ANY' : `< ${d} km`}</Text>
+                <DopaminePressable key={d} style={[s.chip, { backgroundColor: cardBg }, distanceFilter === d && s.chipActive, { borderColor: border }]} onPress={() => setDistanceFilter(d)} sound="click" activeScale={0.93}>
+                  <Text style={[s.chipText, { color: colors.textSecondary }, distanceFilter === d && s.chipTextActive]}>{d === 'All' ? 'ANY' : `< ${d} km`}</Text>
                 </DopaminePressable>
               ))}
             </View>
@@ -2901,13 +3168,66 @@ export default function OthersScreen() {
               </View>
             </View>
 
+            {/* 1-Tap In-App Vehicle Booking Frames (Rapido & Uber) */}
+            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+              <TouchableOpacity
+                style={{
+                  flex: 1,
+                  padding: 12,
+                  borderRadius: 14,
+                  backgroundColor: '#F59E0B15',
+                  borderWidth: 1.5,
+                  borderColor: '#F59E0B40',
+                }}
+                onPress={() => {
+                  setRideWebTitle('Rapido Bike-Taxi');
+                  setRideWebUrl('https://www.rapido.bike/');
+                  setRideWebIcon('🛵');
+                  setRideWebThemeColor('#F59E0B');
+                  setRideWebModalVisible(true);
+                }}
+                activeOpacity={0.8}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                  <Text style={{ fontSize: 18 }}>🛵</Text>
+                  <Text style={{ fontSize: 12, fontWeight: '900', color: '#F59E0B' }}>RAPIDO</Text>
+                </View>
+                <Text style={{ fontSize: 9, color: txtSec }}>In-App Web Frame Booking</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={{
+                  flex: 1,
+                  padding: 12,
+                  borderRadius: 14,
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F3F4F6',
+                  borderWidth: 1.5,
+                  borderColor: isDark ? 'rgba(255,255,255,0.15)' : '#E5E7EB',
+                }}
+                onPress={() => {
+                  setRideWebTitle('Uber Cab & Auto');
+                  setRideWebUrl('https://m.uber.com/looking');
+                  setRideWebIcon('🚗');
+                  setRideWebThemeColor('#000000');
+                  setRideWebModalVisible(true);
+                }}
+                activeOpacity={0.8}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                  <Text style={{ fontSize: 18 }}>🚗</Text>
+                  <Text style={{ fontSize: 12, fontWeight: '900', color: txt }}>UBER</Text>
+                </View>
+                <Text style={{ fontSize: 9, color: txtSec }}>In-App Cab Dispatch</Text>
+              </TouchableOpacity>
+            </View>
+
             {/* Commute Sub-Tabs */}
             <View style={s.corideSubTabs}>
               <DopaminePressable style={[s.corideSubTabBtn, corideTab === 'browse' && s.corideSubTabBtnActive, { flex: 1 }]} onPress={() => setCorideTab('browse')} sound="tabSwitch">
-                <Text style={[s.corideSubTabLabel, corideTab === 'browse' && s.corideSubTabLabelActive]}>🚗 BROWSE COMMUTES</Text>
+                <Text style={[s.corideSubTabLabel, { color: colors.textSecondary }, corideTab === 'browse' && s.corideSubTabLabelActive]}>🚗 BROWSE COMMUTES</Text>
               </DopaminePressable>
               <DopaminePressable style={[s.corideSubTabBtn, corideTab === 'my-rides' && s.corideSubTabBtnActive, { flex: 1 }]} onPress={() => setCorideTab('my-rides')} sound="tabSwitch">
-                <Text style={[s.corideSubTabLabel, corideTab === 'my-rides' && s.corideSubTabLabelActive]}>❤️ MY RIDES</Text>
+                <Text style={[s.corideSubTabLabel, { color: colors.textSecondary }, corideTab === 'my-rides' && s.corideSubTabLabelActive]}>❤️ MY RIDES</Text>
               </DopaminePressable>
             </View>
 
@@ -2920,8 +3240,8 @@ export default function OthersScreen() {
                     <Text style={[s.filterLabel, { color: txt, marginBottom: 4 }]}>VEHICLE</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.rowFilters}>
                       {['All', 'Bike', 'Car', 'Auto'].map(v => (
-                        <DopaminePressable key={v} style={[s.chip, vehicleFilter === v && s.chipActive, { borderColor: border }]} onPress={() => setVehicleFilter(v as any)} sound="click">
-                          <Text style={[s.chipText, vehicleFilter === v && s.chipTextActive]}>{v.toUpperCase()}</Text>
+                        <DopaminePressable key={v} style={[s.chip, { backgroundColor: cardBg }, vehicleFilter === v && s.chipActive, { borderColor: border }]} onPress={() => setVehicleFilter(v as any)} sound="click">
+                          <Text style={[s.chipText, { color: colors.textSecondary }, vehicleFilter === v && s.chipTextActive]}>{v.toUpperCase()}</Text>
                         </DopaminePressable>
                       ))}
                     </ScrollView>
@@ -3061,18 +3381,18 @@ export default function OthersScreen() {
 
                         {/* Invoice split receipt details if Completed */}
                         {ride.status === 'Completed' && (
-                          <View style={s.invoiceCard}>
+                          <View style={[s.invoiceCard, { borderColor: border, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#F1F3F5' }]}>
                             <Text style={s.invoiceTitle}>SPLIT INVOICE RECEIPT 🧾</Text>
                             <View style={s.invoiceRow}>
-                              <Text style={s.invoiceLabel}>TOTAL FUEL ESTIMATE</Text>
+                              <Text style={[s.invoiceLabel, { color: colors.textSecondary }]}>TOTAL FUEL ESTIMATE</Text>
                               <Text style={s.invoiceVal}>₹{ride.estimatedFuelCost}</Text>
                             </View>
                             <View style={s.invoiceRow}>
-                              <Text style={s.invoiceLabel}>SPLIT COST PER RIDER</Text>
+                              <Text style={[s.invoiceLabel, { color: colors.textSecondary }]}>SPLIT COST PER RIDER</Text>
                               <Text style={[s.invoiceVal, { color: COLORS.red }]}>₹{(ride.estimatedFuelCost / 2).toFixed(1)}</Text>
                             </View>
                             <View style={s.invoiceRow}>
-                              <Text style={s.invoiceLabel}>PAYMENT STATUS</Text>
+                              <Text style={[s.invoiceLabel, { color: colors.textSecondary }]}>PAYMENT STATUS</Text>
                               <Text style={[s.invoiceVal, { color: COLORS.emerald }]}>{ride.paymentStatus.toUpperCase()}</Text>
                             </View>
                           </View>
@@ -3675,10 +3995,10 @@ export default function OthersScreen() {
               <Text style={[s.formLabel, { color: txt }]}>I AM THE:</Text>
               <View style={s.formRoleRow}>
                 <DopaminePressable style={[s.roleBtn, creatorRole === 'rider' && s.roleBtnActive, { flex: 1 }]} onPress={() => setCreatorRole('rider')} sound="click" activeScale={0.95}>
-                  <Text style={[s.roleBtnTextLabel, creatorRole === 'rider' && s.roleBtnTextLabelActive]}>🏍️ RIDER (HAVE BIKE)</Text>
+                  <Text style={[s.roleBtnTextLabel, { color: colors.textSecondary }, creatorRole === 'rider' && s.roleBtnTextLabelActive]}>🏍️ RIDER (HAVE BIKE)</Text>
                 </DopaminePressable>
                 <DopaminePressable style={[s.roleBtn, creatorRole === 'passenger' && s.roleBtnActive, { flex: 1 }]} onPress={() => setCreatorRole('passenger')} sound="click" activeScale={0.95}>
-                  <Text style={[s.roleBtnTextLabel, creatorRole === 'passenger' && s.roleBtnTextLabelActive]}>🚶 PASSENGER</Text>
+                  <Text style={[s.roleBtnTextLabel, { color: colors.textSecondary }, creatorRole === 'passenger' && s.roleBtnTextLabelActive]}>🚶 PASSENGER</Text>
                 </DopaminePressable>
               </View>
 
@@ -3695,7 +4015,7 @@ export default function OthersScreen() {
               <View style={s.formRoleRow}>
                 {['Bike', 'Car', 'Auto'].map(v => (
                   <DopaminePressable key={v} style={[s.roleBtn, vehicleType === v && s.roleBtnActive, { flex: 1 }]} onPress={() => setVehicleType(v)} sound="click" activeScale={0.95}>
-                    <Text style={[s.roleBtnTextLabel, vehicleType === v && s.roleBtnTextLabelActive]}>{v.toUpperCase()}</Text>
+                    <Text style={[s.roleBtnTextLabel, { color: colors.textSecondary }, vehicleType === v && s.roleBtnTextLabelActive]}>{v.toUpperCase()}</Text>
                   </DopaminePressable>
                 ))}
               </View>
@@ -3707,7 +4027,7 @@ export default function OthersScreen() {
               <View style={s.formRoleRow}>
                 {['Any', 'Silent Ride 🤫', 'Chatty 💬'].map(vb => (
                   <DopaminePressable key={vb} style={[s.roleBtn, rideVibe === vb && s.roleBtnActive, { flex: 1 }]} onPress={() => setRideVibe(vb)} sound="click" activeScale={0.95}>
-                    <Text style={[s.roleBtnTextLabel, rideVibe === vb && s.roleBtnTextLabelActive]}>{vb.toUpperCase()}</Text>
+                    <Text style={[s.roleBtnTextLabel, { color: colors.textSecondary }, rideVibe === vb && s.roleBtnTextLabelActive]}>{vb.toUpperCase()}</Text>
                   </DopaminePressable>
                 ))}
               </View>
@@ -3715,10 +4035,10 @@ export default function OthersScreen() {
               <Text style={[s.formLabel, { color: txt }]}>APPROVAL & MATCHING MODE</Text>
               <View style={s.formRoleRow}>
                 <DopaminePressable style={[s.roleBtn, autoApprove && s.roleBtnActive, { flex: 1 }]} onPress={() => setAutoApprove(true)} sound="click" activeScale={0.95}>
-                  <Text style={[s.roleBtnTextLabel, autoApprove && s.roleBtnTextLabelActive]}>⚡ INSTANT MATCH</Text>
+                  <Text style={[s.roleBtnTextLabel, { color: colors.textSecondary }, autoApprove && s.roleBtnTextLabelActive]}>⚡ INSTANT MATCH</Text>
                 </DopaminePressable>
                 <DopaminePressable style={[s.roleBtn, !autoApprove && s.roleBtnActive, { flex: 1 }]} onPress={() => setAutoApprove(false)} sound="click" activeScale={0.95}>
-                  <Text style={[s.roleBtnTextLabel, !autoApprove && s.roleBtnTextLabelActive]}>🛡️ MANUAL APPROVAL</Text>
+                  <Text style={[s.roleBtnTextLabel, { color: colors.textSecondary }, !autoApprove && s.roleBtnTextLabelActive]}>🛡️ MANUAL APPROVAL</Text>
                 </DopaminePressable>
               </View>
 
@@ -3734,7 +4054,7 @@ export default function OthersScreen() {
               </ActionPressable>
 
               <DopaminePressable style={s.formCancelBtn} onPress={() => setShowCreateModal(false)} sound="click">
-                <Text style={s.formCancelText}>DISMISS</Text>
+                <Text style={[s.formCancelText, { color: colors.textSecondary }]}>DISMISS</Text>
               </DopaminePressable>
             </ScrollView>
           </View>
@@ -4045,12 +4365,248 @@ export default function OthersScreen() {
           </View>
         </View>
       </Modal>
+      {/* ── PROFESSIONAL SAVED FAVOURITES & WISHLIST MODAL ── */}
+      <Modal
+        visible={favoritesModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setFavoritesModalVisible(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' }}>
+          <View style={{ 
+            backgroundColor: isDark ? '#1C1C1E' : '#FFF', 
+            borderTopLeftRadius: 28, 
+            borderTopRightRadius: 28, 
+            maxHeight: '85%',
+            minHeight: '55%',
+            paddingBottom: Platform.OS === 'ios' ? 36 : 24,
+            borderWidth: 1,
+            borderColor: border,
+          }}>
+            {/* Sheet Handle */}
+            <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: isDark ? '#3F3F46' : '#E4E4E7', alignSelf: 'center', marginTop: 10, marginBottom: 14 }} />
+
+            {/* Header */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 14, borderBottomWidth: 1, borderColor: border }}>
+              <View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={{ fontSize: 17, fontWeight: '900', color: txt }}>
+                    Saved Bookmarks ❤️
+                  </Text>
+                  <View style={{ backgroundColor: 'rgba(239, 68, 68, 0.12)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 }}>
+                    <Text style={{ color: '#EF4444', fontSize: 10, fontWeight: '900' }}>
+                      {savedFavoritesList.length} SAVED
+                    </Text>
+                  </View>
+                </View>
+                <Text style={{ fontSize: 10.5, color: txtSec, fontWeight: '600', marginTop: 2 }}>
+                  Your bookmarked campus meals, services & PG listings
+                </Text>
+              </View>
+
+              <TouchableOpacity 
+                style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: isDark ? '#27272A' : '#F1F5F9', alignItems: 'center', justifyContent: 'center' }}
+                onPress={() => setFavoritesModalVisible(false)}
+              >
+                <Ionicons name="close" size={18} color={txt} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Filter Tabs */}
+            <View style={{ paddingVertical: 12, paddingHorizontal: 16 }}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                {[
+                  { id: 'ALL', label: `All (${savedFavoritesList.length})` },
+                  { id: 'MEALS', label: `Meals 🍔 (${savedFavoritesList.filter(f => f.type === 'MEALS').length})` },
+                  { id: 'SERVICES', label: `Services 🛠️ (${savedFavoritesList.filter(f => f.type === 'SERVICES').length})` },
+                  { id: 'PG', label: `PG Stays 🏢 (${savedFavoritesList.filter(f => f.type === 'PG').length})` },
+                  { id: 'GROCERY', label: `Essentials 🛒 (${savedFavoritesList.filter(f => f.type === 'GROCERY').length})` },
+                ].map((tab) => {
+                  const active = favFilter === tab.id;
+                  return (
+                    <TouchableOpacity
+                      key={tab.id}
+                      style={{
+                        paddingHorizontal: 14,
+                        paddingVertical: 7,
+                        borderRadius: 12,
+                        backgroundColor: active ? (isDark ? '#EF4444' : '#EF4444') : (isDark ? '#27272A' : '#F4F4F5'),
+                        borderWidth: 1,
+                        borderColor: active ? '#EF4444' : border,
+                      }}
+                      onPress={() => setFavFilter(tab.id as any)}
+                    >
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: active ? '#FFF' : txtSec }}>
+                        {tab.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+
+            {/* Favorites List */}
+            <ScrollView style={{ paddingHorizontal: 16 }} showsVerticalScrollIndicator={false}>
+              {savedFavoritesList.filter(f => favFilter === 'ALL' || f.type === favFilter).length > 0 ? (
+                savedFavoritesList
+                  .filter(f => favFilter === 'ALL' || f.type === favFilter)
+                  .map((item) => (
+                    <View
+                      key={item.id}
+                      style={{
+                        flexDirection: 'row',
+                        backgroundColor: isDark ? '#242428' : '#F8FAFC',
+                        borderRadius: 16,
+                        borderWidth: 1,
+                        borderColor: border,
+                        padding: 12,
+                        marginBottom: 12,
+                        gap: 12,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Image source={{ uri: item.image }} style={{ width: 72, height: 72, borderRadius: 12, backgroundColor: isDark ? '#333' : '#E2E8F0' }} />
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+                          <Text style={{ fontSize: 8, fontWeight: '900', color: '#EF4444', letterSpacing: 0.8 }}>
+                            {item.badge}
+                          </Text>
+                          <Text style={{ fontSize: 9.5, fontWeight: '800', color: '#F59E0B' }}>
+                            ⭐ {item.rating}
+                          </Text>
+                        </View>
+                        <Text style={{ fontSize: 12.5, fontWeight: '900', color: txt, lineHeight: 16 }}>
+                          {item.title}
+                        </Text>
+                        <Text style={{ fontSize: 9.5, color: txtSec, marginTop: 2 }} numberOfLines={1}>
+                          {item.subtitle}
+                        </Text>
+
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+                          <Text style={{ fontSize: 13, fontWeight: '900', color: '#10B981' }}>
+                            {item.price}
+                          </Text>
+
+                          <View style={{ flexDirection: 'row', gap: 6 }}>
+                            <TouchableOpacity
+                              style={{ paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8, backgroundColor: isDark ? '#3F3F46' : '#E2E8F0' }}
+                              onPress={() => {
+                                setSavedFavoritesList(prev => prev.filter(x => x.id !== item.id));
+                              }}
+                            >
+                              <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec }}>REMOVE</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                              style={{ paddingHorizontal: 12, paddingVertical: 5, borderRadius: 8, backgroundColor: '#EF4444' }}
+                              onPress={() => {
+                                setFavoritesModalVisible(false);
+                                router.push(item.targetRoute as any);
+                              }}
+                            >
+                              <Text style={{ fontSize: 9, fontWeight: '900', color: '#FFF' }}>VIEW ➔</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      </View>
+                    </View>
+                  ))
+              ) : (
+                <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 40 }}>
+                  <Text style={{ fontSize: 36, marginBottom: 10 }}>🔖</Text>
+                  <Text style={{ fontSize: 15, fontWeight: '900', color: txt }}>No Bookmarks in this Category</Text>
+                  <Text style={{ fontSize: 11, color: txtSec, marginTop: 4, textAlign: 'center', maxWidth: 260 }}>
+                    Tap the heart icon on any meal, service or PG listing to save it here for quick access.
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── IN-APP VEHICLE BOOKING WEB FRAME MODAL (RAPIDO & UBER) ── */}
+      <Modal
+        visible={rideWebModalVisible}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => setRideWebModalVisible(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: isDark ? '#141416' : '#FFF' }}>
+          {/* Top In-App Browser Navigation Bar */}
+          <View style={{ 
+            flexDirection: 'row', 
+            alignItems: 'center', 
+            justifyContent: 'space-between',
+            paddingHorizontal: 16, 
+            paddingTop: Platform.OS === 'ios' ? 52 : 14, 
+            paddingBottom: 12,
+            borderBottomWidth: 1,
+            borderColor: border,
+            backgroundColor: isDark ? '#1E1E22' : '#FFF'
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+              <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: `${rideWebThemeColor}20`, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 18 }}>{rideWebIcon}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 13, fontWeight: '900', color: txt }}>
+                  {rideWebTitle}
+                </Text>
+                <Text style={{ fontSize: 9.5, color: txtSec, fontWeight: '600' }} numberOfLines={1}>
+                  🔒 {rideWebUrl}
+                </Text>
+              </View>
+            </View>
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <TouchableOpacity 
+                style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: isDark ? '#2A2A2E' : '#F1F5F9' }}
+                onPress={() => Linking.openURL(rideWebUrl)}
+              >
+                <Text style={{ fontSize: 9, fontWeight: '800', color: txt }}>EXTERNAL ↗</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: isDark ? '#2A2A2E' : '#F1F5F9', alignItems: 'center', justifyContent: 'center' }}
+                onPress={() => setRideWebModalVisible(false)}
+              >
+                <Ionicons name="close" size={18} color={txt} />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Embedded Live Web Frame */}
+          {Platform.OS === 'web' ? (
+            <iframe 
+              src={rideWebUrl}
+              style={{ flex: 1, width: '100%', height: '100%', border: 'none' }}
+              allow="geolocation; camera; microphone"
+            />
+          ) : (
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+              <Text style={{ fontSize: 36, marginBottom: 12 }}>{rideWebIcon}</Text>
+              <Text style={{ fontSize: 16, fontWeight: '900', color: txt, textAlign: 'center' }}>
+                {rideWebTitle} In-App Portal
+              </Text>
+              <Text style={{ fontSize: 12, color: txtSec, textAlign: 'center', marginTop: 6, marginBottom: 20 }}>
+                Tap below to open {rideWebTitle} securely or book your ride.
+              </Text>
+              <TouchableOpacity 
+                style={{ paddingHorizontal: 24, paddingVertical: 12, borderRadius: 14, backgroundColor: '#EF4444' }}
+                onPress={() => Linking.openURL(rideWebUrl)}
+              >
+                <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '900' }}>LAUNCH {rideWebTitle.toUpperCase()} ➔</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </Modal>
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, paddingTop: Platform.OS === 'android' ? 40 : 50, width: '100%', maxWidth: 600, alignSelf: 'center' },
+  container: { flex: 1, paddingTop: Platform.OS === 'android' ? 36 : Platform.OS === 'web' ? 12 : 44, width: '100%', maxWidth: 600, alignSelf: 'center' },
 
   // BigBasket Custom Header Styles
   bbHeader: {

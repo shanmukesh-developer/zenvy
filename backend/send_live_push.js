@@ -1,7 +1,9 @@
 const jwt = require('jsonwebtoken');
 
 const API_URL = 'https://hostelbites-backend-jwmt.onrender.com';
-const JWT_SECRET = 'super_secret_zenvy_token_2026';
+require('dotenv').config();
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) { console.error('❌ JWT_SECRET not set in .env'); process.exit(1); }
 
 async function run() {
   try {

@@ -1,20 +1,20 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../context/ThemeContext';
-import { COLORS, SHADOWS } from '../constants/theme';
+import { COLORS } from '../constants/theme';
 import DopaminePressable from './DopaminePressable';
-import { StaggeredSection, BounceIn } from './AnimatedSection';
+import { StaggeredSection } from './AnimatedSection';
 
 const ECOSYSTEM_SERVICES = [
-  { id: 'mart', name: 'Zenvy Mart', emoji: '🛒', color: '#EAB308', bg: 'rgba(234, 179, 8, 0.1)' },
-  { id: 'pharmacy', name: 'Pharmacy SOS', emoji: '⚕️', color: '#14B8A6', bg: 'rgba(20, 184, 166, 0.1)' },
-  { id: 'laundry', name: 'Wash & Fold', emoji: '🧺', color: '#8B5CF6', bg: 'rgba(139, 92, 246, 0.1)' },
-  { id: 'print', name: 'Print & Drop', emoji: '🖨️', color: '#9CA3AF', bg: 'rgba(156, 163, 175, 0.1)' },
-  { id: 'grocery', name: 'Groceries', emoji: '🍎', color: '#22C55E', bg: 'rgba(34, 197, 94, 0.1)' },
-  { id: 'meat', name: 'Meat & Fish', emoji: '🥩', color: '#EF4444', bg: 'rgba(239, 68, 68, 0.1)' },
-  { id: 'bakery', name: 'Sweets', emoji: '🍰', color: '#EC4899', bg: 'rgba(236, 72, 153, 0.1)' },
-  { id: 'rentals', name: 'Rentals', emoji: '🚲', color: '#3B82F6', bg: 'rgba(59, 130, 246, 0.1)' },
+  { id: 'repairs', name: 'Laptop Fix', emoji: '💻', color: '#3B82F6', bg: 'rgba(59, 130, 246, 0.15)', badge: 'DOORSTEP', route: '/others?tab=services' },
+  { id: 'print', name: 'Print & Xerox', emoji: '🖨️', color: '#10B981', bg: 'rgba(16, 185, 129, 0.15)', badge: '24/7', route: '/category/print' },
+  { id: 'mattresses', name: 'Mattresses & Bed', emoji: '🛏️', color: '#EC4899', bg: 'rgba(236, 72, 153, 0.15)', badge: 'ROOM SET', route: '/category/mattresses' },
+  { id: 'electronics', name: 'Electronics', emoji: '🔌', color: '#8B5CF6', bg: 'rgba(139, 92, 246, 0.15)', badge: 'HOT', route: '/category/electronics' },
+  { id: 'rides', name: 'Auto & Rapido', emoji: '🛺', color: '#F59E0B', bg: 'rgba(245, 158, 11, 0.15)', badge: 'INSTANT', route: '/others?tab=rides' },
+  { id: 'groceries', name: 'Kirana & Mart', emoji: '🛒', color: '#EAB308', bg: 'rgba(234, 179, 8, 0.15)', route: '/category/groceries' },
+  { id: 'laundry', name: 'Wash & Fold', emoji: '🧺', color: '#06B6D4', bg: 'rgba(6, 182, 212, 0.15)', route: '/category/laundry' },
+  { id: 'stays', name: 'Campus Stays', emoji: '🏨', color: '#6366F1', bg: 'rgba(99, 102, 241, 0.15)', route: '/others?tab=stays' },
 ];
 
 export default function ZenvyEcosystemGrid() {
@@ -23,27 +23,39 @@ export default function ZenvyEcosystemGrid() {
   
   const txt = isDark ? COLORS.textPrimary : COLORS.textDark;
   const txtSec = isDark ? COLORS.textSecondary : COLORS.textDarkSecondary;
-  const cardBg = isDark ? 'rgba(255, 255, 255, 0.08)' : COLORS.bgLightCard;
-  const border = isDark ? 'rgba(255, 255, 255, 0.1)' : COLORS.borderLight;
+  const cardBg = isDark ? 'rgba(255, 255, 255, 0.05)' : COLORS.bgLightCard;
+  const border = isDark ? 'rgba(255, 255, 255, 0.08)' : COLORS.borderLight;
 
   return (
     <View style={s.container}>
       <View style={s.header}>
-        <Text style={[s.title, { color: txt }]}>MEGA MARKET</Text>
-        <Text style={[s.sub, { color: txtSec }]}>YOUR CAMPUS ESSENTIALS</Text>
+        <View style={s.titleRow}>
+          <Text style={[s.title, { color: txt }]}>CAMPUS SUPER ECOSYSTEM</Text>
+          <View style={s.superBadge}>
+            <Text style={s.superBadgeText}>A TO Z</Text>
+          </View>
+        </View>
+        <Text style={[s.sub, { color: txtSec }]}>EVERYTHING A HOSTELER & STUDENT NEEDS</Text>
       </View>
       
       <View style={s.grid}>
         {ECOSYSTEM_SERVICES.map((service, index) => (
-          <StaggeredSection key={service.id} delay={100 + index * 50} direction="up" style={{ width: '23%', marginBottom: 12 }}>
+          <StaggeredSection key={service.id} delay={60 + index * 30} direction="up" style={{ width: '23%', marginBottom: 12 }}>
             <DopaminePressable 
               style={[s.card, { backgroundColor: cardBg, borderColor: border }]}
-              onPress={() => router.push(`/category/${service.id}` as any)}
+              onPress={() => {
+                router.push(service.route as any);
+              }}
               sound="tabSwitch"
-              activeScale={0.9}
+              activeScale={0.92}
             >
+              {service.badge && (
+                <View style={[s.badgeBox, { backgroundColor: service.color }]}>
+                  <Text style={s.badgeText}>{service.badge}</Text>
+                </View>
+              )}
               <View style={[s.iconBox, { backgroundColor: service.bg, borderColor: service.color }]}>
-                <Text style={{ fontSize: 24 }}>{service.emoji}</Text>
+                <Text style={{ fontSize: 22 }}>{service.emoji}</Text>
               </View>
               <Text style={[s.label, { color: txt }]} numberOfLines={1}>{service.name}</Text>
             </DopaminePressable>
@@ -55,12 +67,17 @@ export default function ZenvyEcosystemGrid() {
 }
 
 const s = StyleSheet.create({
-  container: { marginHorizontal: 16, marginBottom: 24 },
-  header: { marginBottom: 16 },
-  title: { fontSize: 14, fontWeight: '900', letterSpacing: 2 },
-  sub: { fontSize: 9, fontWeight: '700', letterSpacing: 3, marginTop: -2 },
+  container: { marginHorizontal: 16, marginBottom: 20 },
+  header: { marginBottom: 14 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  title: { fontSize: 13, fontWeight: '900', letterSpacing: 1.5 },
+  superBadge: { backgroundColor: '#EF4444', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  superBadgeText: { color: '#FFF', fontSize: 8, fontWeight: '900', letterSpacing: 1 },
+  sub: { fontSize: 9, fontWeight: '700', letterSpacing: 1.5, marginTop: 2 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  card: { alignItems: 'center', padding: 8, borderRadius: 16, borderWidth: 1 },
-  iconBox: { width: 50, height: 50, borderRadius: 16, borderWidth: 1, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  card: { alignItems: 'center', padding: 8, borderRadius: 16, borderWidth: 1, position: 'relative' },
+  badgeBox: { position: 'absolute', top: -4, right: -4, paddingHorizontal: 4, paddingVertical: 1, borderRadius: 4, zIndex: 2 },
+  badgeText: { color: '#FFF', fontSize: 7, fontWeight: '900' },
+  iconBox: { width: 46, height: 46, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
   label: { fontSize: 9, fontWeight: '800', textAlign: 'center' }
 });

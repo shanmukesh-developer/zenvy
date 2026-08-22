@@ -5,7 +5,13 @@ import { API_URL } from '../constants/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BlurView } from 'expo-blur';
 import { useAuth } from '../context/AuthContext';
-import * as Notifications from 'expo-notifications';
+
+let Notifications: any = null;
+try {
+  Notifications = require('expo-notifications');
+} catch (e: any) {
+  console.warn('expo-notifications not available:', e.message);
+}
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -33,7 +39,7 @@ export default function GlobalAnnouncement() {
   const topOffset = Math.max(insets.top + 8, 16);
 
   useEffect(() => {
-    if (Platform.OS === 'web' || !user) return;
+    if (Platform.OS === 'web' || !user || !Notifications) return;
     
     const registerPushToken = async () => {
       try {
@@ -86,7 +92,7 @@ export default function GlobalAnnouncement() {
   }, [user]);
 
   useEffect(() => {
-    if (Platform.OS === 'web') return;
+    if (Platform.OS === 'web' || !Notifications) return;
     let responseSub: any;
     // Set notification handler at runtime (not module scope — avoids Android crash)
     try {

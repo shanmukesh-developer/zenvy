@@ -33,6 +33,7 @@ const { initRoomParticipantModel } = require('../models/RoomParticipant');
 const { initWallEventModel } = require('../models/WallEvent');
 const { initWallSubmissionModel } = require('../models/WallSubmission');
 const { initWallLikeModel } = require('../models/WallLike');
+const { initServiceBookingModel } = require('../models/ServiceBooking');
 
 const initializeAllModels = (instance) => {
   initUserModel(instance);
@@ -64,6 +65,7 @@ const initializeAllModels = (instance) => {
   initWallEventModel(instance);
   initWallSubmissionModel(instance);
   initWallLikeModel(instance);
+  initServiceBookingModel(instance);
 
   // Define Associations
   const Restaurant = instance.models.Restaurant;
@@ -199,6 +201,16 @@ const initializeAllModels = (instance) => {
   if (WallSubmission && WallLike) {
     WallSubmission.hasMany(WallLike, { foreignKey: 'submissionId', as: 'likes' });
     WallLike.belongsTo(WallSubmission, { foreignKey: 'submissionId', as: 'submission' });
+  }
+
+  const ServiceBooking = instance.models.ServiceBooking;
+  if (ServiceBooking && User) {
+    ServiceBooking.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+    User.hasMany(ServiceBooking, { foreignKey: 'userId', as: 'serviceBookings' });
+  }
+  if (ServiceBooking && DeliveryPartner) {
+    ServiceBooking.belongsTo(DeliveryPartner, { foreignKey: 'assignedPartnerId', as: 'assignedPartner' });
+    DeliveryPartner.hasMany(ServiceBooking, { foreignKey: 'assignedPartnerId', as: 'serviceBookings' });
   }
 };
 

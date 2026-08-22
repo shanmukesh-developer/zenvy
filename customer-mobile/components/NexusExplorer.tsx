@@ -1,10 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, Image, Dimensions, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, TouchableOpacity, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
 import { useCart } from '../context/CartContext';
 import DopaminePressable, { CardPressable, ActionPressable } from './DopaminePressable';
+import SafeImage from './SafeImage';
 
 const { width: SW } = Dimensions.get('window');
 const CARD_WIDTH = (SW - 44) / 2;
@@ -168,7 +169,7 @@ export default function NexusExplorer({ restaurants, activeCategory, onSelectIte
                 sound="click"
               >
                 <View style={s.imgContainer} pointerEvents="box-none">
-                  <Image source={{ uri: img }} style={s.img} />
+                  <SafeImage source={{ uri: img }} style={s.img} />
                   <DopaminePressable 
                     style={s.heartBtn} 
                     onPress={() => toggleFavorite(itemId)}

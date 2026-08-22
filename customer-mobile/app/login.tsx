@@ -6,12 +6,14 @@ import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { COLORS, SHADOWS } from '../constants/theme';
+import { useTheme } from '../context/ThemeContext';
 import { ENDPOINTS, API_URL } from '../constants/api';
 import { useAuth } from '../context/AuthContext';
 import { StaggeredSection, BounceIn } from '../components/AnimatedSection';
 import { setToken } from '../utils/auth';
 import DopaminePressable from '../components/DopaminePressable';
 import ServerWakeupOverlay from '../components/ServerWakeupOverlay';
+import CampusServicesMapModal from '../components/CampusServicesMapModal';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 
@@ -35,6 +37,7 @@ const IMAGES = [
 export default function LoginScreen() {
   const router = useRouter();
   const { user, isLoading, setUser } = useAuth();
+  const { isDark, colors } = useTheme();
   
   useEffect(() => {
     if (!isLoading && user) {
@@ -57,6 +60,7 @@ export default function LoginScreen() {
   // WebView Real-time Auth Gateway States
   const [authModalVisible, setAuthModalVisible] = useState(false);
   const [confirm, setConfirm] = useState<any>(null);
+  const [showServicesMap, setShowServicesMap] = useState(false);
 
   const handleNativeSendOtp = async () => {
     const digits = phone.replace(/\D/g, '').slice(-10);
@@ -64,52 +68,7 @@ export default function LoginScreen() {
     setError('');
     setLoading(true);
 
-    const generatedOtp = '123456';
-    setConfirm({
-      confirm: async (inputOtp: string) => {
-        setLoading(true);
-        try {
-          const res = await fetch(ENDPOINTS.login, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ phone: digits, otp: inputOtp, firebaseToken: 'E2E_MOCK_TOKEN' }),
-          });
-          const resData = await res.json();
-          if (res.ok && (resData.token || resData._id)) {
-            if (resData.token) await setToken(resData.token);
-            await setUser(resData.user || resData);
-            const { playSound } = require('../utils/sounds');
-            playSound('success');
-            router.replace('/(tabs)' as any);
-          } else {
-            await setUser({ id: 'user_' + digits, phone: digits, name: 'Zenvy Student' });
-            const { playSound } = require('../utils/sounds');
-            playSound('success');
-            router.replace('/(tabs)' as any);
-          }
-        } catch (e: any) {
-          await setUser({ id: 'user_' + digits, phone: digits, name: 'Zenvy Student' });
-          const { playSound } = require('../utils/sounds');
-          playSound('success');
-          router.replace('/(tabs)' as any);
-        } finally {
-          setLoading(false);
-        }
-      }
-    });
-    setCountdown(30);
-    setLoading(false);
-    const { playSound } = require('../utils/sounds');
-    playSound('success');
-
-    Alert.alert(
-      '📲 SMS Verification Sent',
-      `Verification code sent for +91 ${digits}.\n\nYour 6-digit OTP code is: ${generatedOtp}`,
-      [{ text: 'ENTER OTP', onPress: () => {} }]
-    );
-    return;
-
-    // Try native Firebase if initialized
+    // 1. Native Firebase Phone Auth if on Android/iOS build
     if (Platform.OS !== 'web') {
       try {
         const nativeAuthInstance = auth();
@@ -117,17 +76,17 @@ export default function LoginScreen() {
           const confirmation = await nativeAuthInstance.signInWithPhoneNumber('+91' + digits);
           if (confirmation) {
             setConfirm(confirmation);
-            setCountdown(30);
+            setCountdown(60);
             setLoading(false);
             return;
           }
         }
-      } catch (e) {
-        // Native Firebase uninitialized or web mode — silently use backend SMS API
+      } catch (e: any) {
+        console.log('[FIREBASE_PHONE_AUTH_NATIVE_FALLBACK]', e?.message);
       }
     }
 
-    // Universal Backend SMS & OTP Verification Fallback
+    // 2. Universal Real Backend SMS & OTP Gateway (/api/users/send-otp)
     try {
       const res = await fetch(`${API_URL}/api/users/send-otp`, {
         method: 'POST',
@@ -136,54 +95,55 @@ export default function LoginScreen() {
       });
       const data = await res.json();
       
+      if (!res.ok) {
+        throw new Error(data.message || 'Failed to dispatch verification SMS');
+      }
+
       setConfirm({
         confirm: async (inputOtp: string) => {
-          const verifyRes = await fetch(`${API_URL}/api/users/verify-otp`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ phone: digits, otp: inputOtp }),
-          });
-          const verifyData = await verifyRes.json();
-          if (verifyRes.ok) {
-            if (verifyData.token) await setToken(verifyData.token);
-            await setUser(verifyData.user || verifyData);
-            const { playSound } = require('../utils/sounds');
-            playSound('success');
-            router.replace('/(tabs)' as any);
-          } else {
-            throw new Error(verifyData.message || 'Invalid 6-digit OTP code');
+          setLoading(true);
+          try {
+            const verifyRes = await fetch(`${API_URL}/api/users/verify-otp`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ phone: digits, otp: inputOtp }),
+            });
+            const verifyData = await verifyRes.json();
+            if (verifyRes.ok && (verifyData.token || verifyData._id)) {
+              if (verifyData.token) await setToken(verifyData.token);
+              await setUser(verifyData.user || verifyData);
+              const { playSound } = require('../utils/sounds');
+              playSound('success');
+              router.replace('/(tabs)' as any);
+            } else {
+              throw new Error(verifyData.message || 'Invalid 6-digit OTP code');
+            }
+          } finally {
+            setLoading(false);
           }
         }
       });
-      setCountdown(30);
+
+      setCountdown(60);
       const { playSound } = require('../utils/sounds');
       playSound('success');
+
+      // If backend generated OTP (development or sandbox mode), notify the user
+      if (data.otp && !process.env.FAST2SMS_API_KEY) {
+        Alert.alert(
+          '📲 SMS Verification Sent',
+          `Verification code sent for +91 ${digits}.\n\nOTP Code: ${data.otp}`,
+          [{ text: 'ENTER OTP', onPress: () => {} }]
+        );
+      } else {
+        Alert.alert(
+          '📲 SMS Verification Dispatched',
+          `A 6-digit OTP verification code has been dispatched to +91 ${digits} via SMS.`,
+          [{ text: 'ENTER OTP', onPress: () => {} }]
+        );
+      }
     } catch (err: any) {
-      // Direct login fallback if server SMS endpoint is pending
-      setConfirm({
-        confirm: async (inputOtp: string) => {
-          const loginRes = await fetch(ENDPOINTS.login, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ phone: digits, otp: inputOtp }),
-          });
-          const loginData = await loginRes.json();
-          if (loginRes.ok) {
-            if (loginData.token) await setToken(loginData.token);
-            await setUser(loginData.user || loginData);
-            const { playSound } = require('../utils/sounds');
-            playSound('success');
-            router.replace('/(tabs)' as any);
-          } else {
-            // Instant Guest login
-            await setUser({ id: 'user_' + digits, phone: digits, name: 'Zenvy Campus User' });
-            const { playSound } = require('../utils/sounds');
-            playSound('success');
-            router.replace('/(tabs)' as any);
-          }
-        }
-      });
-      setCountdown(30);
+      setError(err.message || 'Failed to send SMS OTP');
     } finally {
       setLoading(false);
     }
@@ -443,12 +403,19 @@ export default function LoginScreen() {
         }
       } as any)}
     >
-      <ServerWakeupOverlay 
-        visible={showWakeup} 
-        onWakeupComplete={() => {
-          setShowWakeup(false);
-          handleLogin();
-        }} 
+      {/* Server Wakeup Overlay */}
+      {showWakeup && (
+        <ServerWakeupOverlay 
+          visible={showWakeup} 
+          onRetry={handleLogin}
+          onCancel={() => setShowWakeup(false)}
+        />
+      )}
+
+      {/* Campus Services Ecosystem Interactive Guide Modal */}
+      <CampusServicesMapModal 
+        visible={showServicesMap} 
+        onClose={() => setShowServicesMap(false)} 
       />
 
       {/* Background Slideshow with Parallax Shift */}
@@ -475,13 +442,13 @@ export default function LoginScreen() {
         />
       </View>
 
-      {/* ── INTERACTIVE SNEAK PEEK VAULT (REVEALED ON SLIDE) ── */}
+      {/* ── PREVIEW PERKS (REVEALED ON SLIDE) ── */}
       <Animated.View style={[s.peekContainer, { opacity: peekOpacity }]} pointerEvents={isPeeked ? "auto" : "none"}>
         <LinearGradient
           colors={['rgba(201,168,76,0.15)', 'transparent']}
           style={s.peekGradient}
         />
-        <Text style={s.peekTitle}>✨ ZENVY EXCLUSIVE VAULT</Text>
+        <Text style={s.peekTitle}>✨ WHAT’S INSIDE ZENVY</Text>
         <Text style={s.peekSubtitle}>Unlock the premium campus lifestyle</Text>
 
         <View style={s.peekCardRow}>
@@ -515,7 +482,7 @@ export default function LoginScreen() {
             </BounceIn>
             <StaggeredSection delay={400} direction="down">
               <Text style={s.brand}>ZENVY</Text>
-              <Text style={s.tagline}>PREMIUM CAMPUS DELIVERY</Text>
+              <Text style={s.tagline}>CAMPUS FOOD & MORE</Text>
             </StaggeredSection>
           </Animated.View>
 
@@ -523,6 +490,8 @@ export default function LoginScreen() {
           <Animated.View style={[
             s.card, 
             { 
+              backgroundColor: isDark ? 'rgba(26,26,28,0.94)' : 'rgba(255,255,255,0.97)',
+              borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0,0,0,0.08)',
               transform: [
                 { translateY: Animated.add(slideUp, Animated.multiply(pan.y, -0.4)) },
                 { translateX: Animated.multiply(pan.x, -0.4) }
@@ -530,20 +499,9 @@ export default function LoginScreen() {
             }
           ]}>
             
-            {/* Interactive Sneak Peek Trigger Pill */}
-            <TouchableOpacity 
-              style={[s.peekPill, isPeeked && { backgroundColor: 'rgba(239,79,95,0.12)', borderColor: 'rgba(239,79,95,0.4)' }]} 
-              onPress={toggleSneakPeek}
-              activeOpacity={0.8}
-            >
-              <Text style={[s.peekPillText, isPeeked && { color: COLORS.red }]}>
-                {isPeeked ? '👇 CLOSE VAULT PREVIEW' : '✨ SNEAK PEEK INSIDE VAULT'}
-              </Text>
-            </TouchableOpacity>
-
             <StaggeredSection delay={100} direction="up">
-              <Text style={s.cardTitle}>Welcome Back</Text>
-              <Text style={s.cardSubtitle}>Sign in to your premium campus account</Text>
+              <Text style={[s.cardTitle, { color: isDark ? '#fff' : '#1A1A2E' }]}>Welcome Back</Text>
+              <Text style={[s.cardSubtitle, { color: isDark ? COLORS.textSecondary : '#64748B' }]}>Sign in to your premium campus account</Text>
 
               {/* Login Method Tabs */}
               <View style={s.tabRow}>
@@ -563,24 +521,24 @@ export default function LoginScreen() {
 
               {loginMethod === 'password' ? (
                 <>
-                  <Text style={s.label}>PHONE NUMBER</Text>
+                  <Text style={[s.label, { color: isDark ? COLORS.textSecondary : '#475569' }]}>PHONE NUMBER</Text>
                   <TextInput 
-                    style={s.input} 
+                    style={[s.input, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#F8FAFC', borderColor: isDark ? COLORS.borderDark : '#E2E8F0', color: isDark ? '#fff' : '#1E293B' }]} 
                     value={phone} 
                     onChangeText={setPhone} 
                     placeholder="Enter mobile number" 
-                    placeholderTextColor={COLORS.textMuted} 
+                    placeholderTextColor={isDark ? COLORS.textMuted : '#94A3B8'} 
                     keyboardType="phone-pad" 
                     autoCapitalize="none" 
                   />
 
-                  <Text style={s.label}>PASSWORD</Text>
+                  <Text style={[s.label, { color: isDark ? COLORS.textSecondary : '#475569' }]}>PASSWORD</Text>
                   <TextInput 
-                    style={s.input} 
+                    style={[s.input, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#F8FAFC', borderColor: isDark ? COLORS.borderDark : '#E2E8F0', color: isDark ? '#fff' : '#1E293B' }]} 
                     value={password} 
                     onChangeText={setPassword} 
                     placeholder="Enter password" 
-                    placeholderTextColor={COLORS.textMuted} 
+                    placeholderTextColor={isDark ? COLORS.textMuted : '#94A3B8'} 
                     secureTextEntry 
                   />
                 </>
@@ -592,13 +550,22 @@ export default function LoginScreen() {
                   
                   {!confirm ? (
                     <>
-                      <Text style={s.label}>PHONE NUMBER</Text>
+                      <Text style={[s.label, { color: isDark ? COLORS.textSecondary : '#475569' }]}>PHONE NUMBER</Text>
                       <TextInput 
-                        style={s.input} 
+                        style={[
+                          s.input, 
+                          { 
+                            backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#F8FAFC', 
+                            borderColor: isDark ? COLORS.borderDark : '#CBD5E1', 
+                            color: isDark ? '#FFF' : '#0F172A',
+                            fontSize: 15,
+                            fontWeight: '700'
+                          }
+                        ]} 
                         value={phone} 
                         onChangeText={setPhone} 
                         placeholder="Enter mobile number" 
-                        placeholderTextColor={COLORS.textMuted} 
+                        placeholderTextColor={isDark ? COLORS.textMuted : '#94A3B8'} 
                         keyboardType="phone-pad" 
                         autoCapitalize="none" 
                       />
@@ -617,13 +584,24 @@ export default function LoginScreen() {
                     </>
                   ) : (
                     <>
-                      <Text style={s.label}>ENTER 6-DIGIT OTP</Text>
+                      <Text style={[s.label, { color: isDark ? COLORS.textSecondary : '#475569' }]}>ENTER 6-DIGIT OTP</Text>
                       <TextInput 
-                        style={[s.input, { letterSpacing: 8, textAlign: 'center', fontSize: 18 }]} 
+                        style={[
+                          s.input, 
+                          { 
+                            backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#F8FAFC', 
+                            borderColor: isDark ? COLORS.borderDark : '#CBD5E1', 
+                            color: isDark ? '#FFF' : '#0F172A',
+                            letterSpacing: 8, 
+                            textAlign: 'center', 
+                            fontSize: 20,
+                            fontWeight: '900'
+                          }
+                        ]} 
                         value={otp} 
                         onChangeText={setOtp} 
                         placeholder="••••••" 
-                        placeholderTextColor={COLORS.textMuted} 
+                        placeholderTextColor={isDark ? COLORS.textMuted : '#94A3B8'} 
                         keyboardType="number-pad" 
                         maxLength={6}
                       />
@@ -665,9 +643,9 @@ export default function LoginScreen() {
               )}
 
               <View style={s.orRow}>
-                <View style={s.line} />
-                <Text style={s.orText}>OR</Text>
-                <View style={s.line} />
+                <View style={[s.line, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }]} />
+                <Text style={[s.orText, { color: isDark ? COLORS.textMuted : '#94A3B8' }]}>OR</Text>
+                <View style={[s.line, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }]} />
               </View>
 
               <TouchableOpacity 
@@ -682,6 +660,29 @@ export default function LoginScreen() {
               <DopaminePressable onPress={() => router.push('/register' as any)} style={s.switchLink} sound="click">
                 <Text style={s.switchText}>Don't have an account? <Text style={{ color: COLORS.gold, fontWeight: '800' }}>REGISTER</Text></Text>
               </DopaminePressable>
+
+              <TouchableOpacity 
+                style={{ 
+                  marginTop: 14, 
+                  paddingVertical: 10, 
+                  paddingHorizontal: 14, 
+                  borderRadius: 14, 
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F8FAFC',
+                  borderWidth: 1,
+                  borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E2E8F0',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8
+                }}
+                onPress={() => setShowServicesMap(true)}
+                activeOpacity={0.8}
+              >
+                <Text style={{ fontSize: 13 }}>🗺️</Text>
+                <Text style={{ fontSize: 11, fontWeight: '800', color: isDark ? '#FFF' : '#334155' }}>
+                  First Time User? <Text style={{ color: '#3B82F6', fontWeight: '900' }}>Explore All Services & Access Guide ➔</Text>
+                </Text>
+              </TouchableOpacity>
             </StaggeredSection>
           </Animated.View>
 
@@ -725,12 +726,11 @@ export default function LoginScreen() {
           </View>
           
           {Platform.OS === 'web' ? (
-            <View style={{ flex: 1, backgroundColor: '#0A0A0B', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-              <Text style={{ color: COLORS.gold, fontSize: 14, fontWeight: '900', marginBottom: 8, letterSpacing: 2 }}>ZENVY SECURE AUTH</Text>
-              <Text style={{ color: COLORS.textSecondary, fontSize: 11, textAlign: 'center', marginBottom: 20 }}>
-                Use phone number & OTP above for fast web sign in.
-              </Text>
-            </View>
+            <iframe 
+              src={`${API_URL}/auth-helper?phone=${encodeURIComponent('+91' + phone.replace(/\D/g, '').slice(-10))}`}
+              style={{ flex: 1, width: '100%', height: '100%', border: 'none', backgroundColor: '#0A0A0B' }}
+              allow="camera; microphone; geolocation"
+            />
           ) : (
             <WebView
               source={{ uri: `${API_URL}/auth-helper?phone=${encodeURIComponent('+91' + phone.replace(/\D/g, '').slice(-10))}` }}
@@ -845,8 +845,8 @@ const s = StyleSheet.create({
   peekCardName: { fontSize: 9.5, fontWeight: '900', color: '#fff', marginTop: 8 },
   peekCardDesc: { fontSize: 7.5, color: COLORS.textSecondary, fontWeight: '600', marginTop: 2 },
 
-  label: { fontSize: 8, fontWeight: '800', color: COLORS.textSecondary, letterSpacing: 2.5, marginBottom: 6, marginTop: 12 },
-  input: { backgroundColor: 'rgba(255,255,255,0.03)', borderWidth: 1, borderColor: COLORS.borderDark, borderRadius: 14, padding: 14, fontSize: 13, color: '#fff', fontWeight: '600' },
+  label: { fontSize: 8.5, fontWeight: '800', letterSpacing: 2, marginBottom: 6, marginTop: 12 },
+  input: { borderWidth: 1, borderRadius: 14, padding: 14, fontSize: 15, fontWeight: '700' },
   error: { color: '#EF4444', fontSize: 11, fontWeight: '600', marginTop: 8 },
   forgotBtn: { alignSelf: 'flex-end', marginTop: 10, padding: 2 },
   forgotText: { fontSize: 8, fontWeight: '900', color: COLORS.gold, letterSpacing: 1.5 },

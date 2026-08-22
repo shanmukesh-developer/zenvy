@@ -9,7 +9,7 @@ import { ENDPOINTS } from '../constants/api';
 
 export default function SupportScreen() {
   const router = useRouter();
-  const { isDark } = useTheme();
+  const { isDark, colors } = useTheme();
   const { user } = useAuth();
 
   const [tickets, setTickets] = useState<any[]>([]);
@@ -73,12 +73,12 @@ export default function SupportScreen() {
     }
   };
 
-  const txt = isDark ? '#FFF' : '#111';
-  const txtSec = isDark ? '#AAA' : '#666';
-  const bg = isDark ? '#0A0A0C' : '#FAFAFA';
-  const cardBg = isDark ? '#141416' : '#FFF';
-  const border = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
-  const goldColor = isDark ? COLORS.gold : COLORS.red;
+  const txt = colors.text;
+  const txtSec = colors.textSecondary;
+  const bg = colors.bg;
+  const cardBg = colors.card;
+  const border = colors.border;
+  const goldColor = isDark ? COLORS.gold : colors.gold;
   const activeBgColor = isDark ? 'rgba(201,168,76,0.1)' : 'rgba(239,79,95,0.08)';
   const activeTextColor = isDark ? COLORS.gold : COLORS.red;
 

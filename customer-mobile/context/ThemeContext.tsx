@@ -1,14 +1,17 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { COLORS, SHADOWS } from '../constants/theme';
+import { COLORS, getThemeColors, DARK_THEME, LIGHT_THEME } from '../constants/theme';
 
 type Theme = 'dark' | 'light';
+
+export type ThemeColors = typeof DARK_THEME;
 
 interface ThemeContextType {
   theme: Theme;
   toggleTheme: () => void;
   isDark: boolean;
   activeColors: typeof COLORS;
+  colors: ThemeColors;
 }
 
 const ThemeContext = createContext<ThemeContextType>({
@@ -16,6 +19,7 @@ const ThemeContext = createContext<ThemeContextType>({
   toggleTheme: () => {},
   isDark: true,
   activeColors: COLORS,
+  colors: DARK_THEME,
 });
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
@@ -44,12 +48,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   };
 
   const isDark = theme === 'dark';
+  const colors = getThemeColors(isDark);
 
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme, isDark, activeColors: COLORS }}>
+    <ThemeContext.Provider value={{ theme, toggleTheme, isDark, activeColors: COLORS, colors }}>
       {children}
     </ThemeContext.Provider>
   );
 }
 
 export const useTheme = () => useContext(ThemeContext);
+
