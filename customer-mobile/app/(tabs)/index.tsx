@@ -14,6 +14,7 @@ import { apiFetch } from '../../utils/auth';
 import NexusExplorer from '../../components/NexusExplorer';
 import SearchOverlay from '../../components/SearchOverlay';
 import PromoCarousel from '../../components/PromoCarousel';
+import CampusLiveTicker from '../../components/CampusLiveTicker';
 import CampusBitesSection from '../../components/CampusBitesSection';
 import RecentlyViewed from '../../components/RecentlyViewed';
 import { useWorldTransition } from '../../context/WorldTransitionContext';
@@ -49,7 +50,6 @@ const VaultTimerBadge = ({ pulseAnim }: { pulseAnim: any }) => {
 };
 
 const { width: SW } = Dimensions.get('window');
-const CARD_W = (SW - 48) / 2;
 
 const FILTERS = [
   { key: 'all', label: '✨ ALL' },
@@ -791,7 +791,7 @@ export default function HomeScreen() {
                 key={id || i} 
                 delay={50 + (i % 6) * 60} 
                 direction="up"
-                style={{ width: CARD_W }}
+                style={{ width: '48.5%' }}
               >
               <CardPressable 
                 style={[s.rCard, { backgroundColor: cardBg, borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.06)', borderWidth: 1, width: '100%', marginHorizontal: 0 }]} 
@@ -1105,8 +1105,8 @@ const s = StyleSheet.create({
   filterText: { fontSize: 10, fontWeight: '800', color: COLORS.textSecondary, letterSpacing: 1 },
   filterTextActive: { color: '#fff' },
   // Grid
-  grid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, gap: 12 },
-  rCard: { width: CARD_W, borderRadius: 16, overflow: 'hidden', ...SHADOWS.card },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, justifyContent: 'space-between', rowGap: 12 },
+  rCard: { width: '100%', borderRadius: 16, overflow: 'hidden', ...SHADOWS.card },
   rImgWrap: { width: '100%', aspectRatio: 4/3, position: 'relative' },
   rImg: { width: '100%', height: '100%' },
   heartBtn: { position: 'absolute', top: 8, right: 8, width: 32, height: 32, borderRadius: 16, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', ...SHADOWS.card },

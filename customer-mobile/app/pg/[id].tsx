@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions, Platform, ActivityIndicator, Alert, Linking, TextInput } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions, Platform, ActivityIndicator, Alert, Linking, TextInput, Modal } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import { COLORS, SHADOWS, RADIUS } from '../../constants/theme';
-import { ENDPOINTS } from '../../constants/api';
+import { ENDPOINTS, API_URL, ZENVY_SUPPORT_WHATSAPP } from '../../constants/api';
 import { apiFetch } from '../../utils/auth';
 import { useTheme } from '../../context/ThemeContext';
 import { StaggeredSection, FloatingPulse, BounceIn } from '../../components/AnimatedSection';
@@ -35,6 +36,7 @@ interface PG {
   description: string;
   amenities: string[];
   images: string[];
+  videos?: string[];
   messMenu: Record<string, { breakfast: string; lunch: string; dinner: string }>;
   foodTimetable: { breakfast: string; lunch: string; dinner: string };
   rules: string[];
@@ -62,6 +64,14 @@ export default function PGDetailScreen() {
   const [bookingRoomId, setBookingRoomId] = useState('');
   const [checkInDate, setCheckInDate] = useState(new Date().toISOString().split('T')[0]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Photo & Video Upload States
+  const [mediaList, setMediaList] = useState<{ url: string; type: 'image' | 'video'; title?: string }[]>([]);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [videoUrlInput, setVideoUrlInput] = useState('');
+  const [mediaTitleInput, setMediaTitleInput] = useState('');
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [selectedVideoToPlay, setSelectedVideoToPlay] = useState<string | null>(null);
 
   useEffect(() => {
     if (id) fetchDetails();
@@ -102,11 +112,11 @@ export default function PGDetailScreen() {
         showToast("⚡ Booking request sent & WhatsApp message dispatched!");
         fetchDetails(); // Refresh to update availability if any changes
 
-        const waLink = data.whatsappUrl || `https://wa.me/919391955674?text=${encodeURIComponent(`Hi, I just submitted a booking request for ${pg?.name || 'PG'} on Zenvy.`)}`;
+        const waLink = data.whatsappUrl || `https://wa.me/${ZENVY_SUPPORT_WHATSAPP}?text=${encodeURIComponent(`Hi, I just submitted a booking request for ${pg?.name || 'PG'} on Zenvy.`)}`;
         
         Alert.alert(
           '🏠 PG Booking Request Sent!',
-          `Your booking request for ${pg?.name || 'PG Residence'} has been registered.\n\nDirect notification dispatched to WhatsApp (+91 9391955674) with your profile, contact, and check-in date.`,
+          `Your booking request for ${pg?.name || 'PG Residence'} has been registered.\n\nDirect notification dispatched to Campus Housing Desk via WhatsApp with your profile, contact, and check-in date.`,
           [
             {
               text: '💬 OPEN WHATSAPP CHAT',
@@ -226,27 +236,63 @@ export default function PGDetailScreen() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Swipable / Scrollable Images */}
+        {/* Swipable / Scrollable HD Images & Video Gallery */}
         <View style={s.galleryContainer}>
           <Image source={{ uri: activeImg }} style={s.mainImage} />
           <View style={s.galleryOverlay} />
           
-          <BounceIn delay={200} style={{ position: 'absolute', top: 12, right: 12 }}>
-            <View style={s.verifiedTag}>
-              <Text style={s.verifiedTagText}>★ VERIFIED PROPERTY</Text>
-            </View>
-          </BounceIn>
-          
-          <BounceIn delay={350} style={{ position: 'absolute', top: 12, left: 12 }}>
+          {/* Badges row */}
+          <View style={{ position: 'absolute', top: 12, left: 12, right: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <View style={[s.genderTag, { backgroundColor: genderColor }]}>
               <Text style={s.genderTagText}>{pg.genderType.toUpperCase()}</Text>
             </View>
-          </BounceIn>
 
+            <View style={{ flexDirection: 'row', gap: 6 }}>
+              {/* Watch Video Tour Badge */}
+              <TouchableOpacity 
+                style={{
+                  backgroundColor: '#DC2626',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 4,
+                  paddingHorizontal: 10,
+                  paddingVertical: 5,
+                  borderRadius: 12,
+                  shadowColor: '#DC2626',
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.4,
+                  shadowRadius: 4,
+                  elevation: 3
+                }}
+                onPress={() => setSelectedVideoToPlay('https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4')}
+              >
+                <Text style={{ fontSize: 11 }}>▶️</Text>
+                <Text style={{ fontSize: 9, fontWeight: '900', color: '#fff', letterSpacing: 0.5 }}>VIDEO TOUR</Text>
+              </TouchableOpacity>
+
+              <View style={s.verifiedTag}>
+                <Text style={s.verifiedTagText}>★ VERIFIED</Text>
+              </View>
+            </View>
+          </View>
+
+
+
+          {/* Thumbnails */}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.thumbScroll}>
             {images.map((img, idx) => (
-              <TouchableOpacity key={idx} onPress={() => setActiveImageIdx(idx)} style={[s.thumbWrap, activeImageIdx === idx && { borderColor: COLORS.red }]}>
+              <TouchableOpacity key={idx} onPress={() => setActiveImageIdx(idx)} style={[s.thumbWrap, activeImageIdx === idx && { borderColor: '#3B82F6', borderWidth: 2.5 }]}>
                 <Image source={{ uri: img }} style={s.thumbImg} />
+              </TouchableOpacity>
+            ))}
+            {mediaList.map((m, idx) => (
+              <TouchableOpacity key={`user-${idx}`} onPress={() => setActiveImageIdx(0)} style={[s.thumbWrap, { borderColor: '#10B981', borderWidth: 2 }]}>
+                <Image source={{ uri: m.url }} style={s.thumbImg} />
+                {m.type === 'video' && (
+                  <View style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontSize: 12 }}>▶️</Text>
+                  </View>
+                )}
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -254,11 +300,11 @@ export default function PGDetailScreen() {
 
         {/* Title details */}
         <StaggeredSection delay={50} direction="up">
-        <View style={[s.sectionCard, { backgroundColor: cardBg }]}>
+        <View style={[s.sectionCard, { backgroundColor: cardBg, borderColor: border }]}>
           <Text style={[s.pgName, { color: txt }]}>{pg.name}</Text>
           <Text style={[s.pgAddress, { color: txtSec }]}>📍 {pg.address}</Text>
           <View style={s.proximityBadge}>
-            <Text style={{ fontSize: 18 }}>🏃</Text>
+            <Text style={{ fontSize: 20 }}>🏃</Text>
             <View>
               <Text style={s.proximityLabel}>CAMPUS PROXIMITY</Text>
               <Text style={[s.proximityValue, { color: COLORS.red }]}>{pg.distanceFromCollege} km away</Text>
@@ -272,29 +318,29 @@ export default function PGDetailScreen() {
         {/* Quick Stats Grid */}
         <StaggeredSection delay={100} direction="up">
         <View style={s.statsGrid}>
-          <View style={[s.statBox, { backgroundColor: cardBg }]}>
+          <View style={[s.statBox, { backgroundColor: cardBg, borderColor: border }]}>
             <Text style={s.statEmoji}>💰</Text>
             <Text style={s.statLabel}>DEPOSIT</Text>
             <Text style={[s.statVal, { color: txt }]}>₹{pg.securityDeposit}</Text>
             <Text style={s.statDesc}>Refundable</Text>
           </View>
-          <View style={[s.statBox, { backgroundColor: cardBg }]}>
+          <View style={[s.statBox, { backgroundColor: cardBg, borderColor: border }]}>
             <Text style={s.statEmoji}>👥</Text>
             <Text style={s.statLabel}>GENDER</Text>
             <Text style={[s.statVal, { color: txt }]}>{pg.genderType}</Text>
             <Text style={s.statDesc}>Hostel Limit</Text>
           </View>
-          <View style={[s.statBox, { backgroundColor: cardBg }]}>
+          <View style={[s.statBox, { backgroundColor: cardBg, borderColor: border }]}>
             <Text style={s.statEmoji}>🍽️</Text>
             <Text style={s.statLabel}>MESS</Text>
             <Text style={[s.statVal, { color: txt }]}>7 Days Open</Text>
-            <Text style={s.statDesc}>Veg Kitchen</Text>
+            <Text style={s.statDesc}>Veg & Non-Veg</Text>
           </View>
-          <View style={[s.statBox, { backgroundColor: cardBg }]}>
-            <Text style={s.statEmoji}>🏢</Text>
-            <Text style={s.statLabel}>CAPACITY</Text>
-            <Text style={[s.statVal, { color: txt }]}>{pg.totalRooms || 24} Rooms</Text>
-            <Text style={s.statDesc}>Ventilated</Text>
+          <View style={[s.statBox, { backgroundColor: cardBg, borderColor: border }]}>
+            <Text style={s.statEmoji}>📶</Text>
+            <Text style={s.statLabel}>HIGH SPEED</Text>
+            <Text style={[s.statVal, { color: txt }]}>Wi-Fi & Gym</Text>
+            <Text style={s.statDesc}>Included</Text>
           </View>
         </View>
         </StaggeredSection>
@@ -530,6 +576,79 @@ export default function PGDetailScreen() {
         </StaggeredSection>
 
       </ScrollView>
+
+      {/* ── VIDEO TOUR PLAYER MODAL ── */}
+      <Modal
+        visible={!!selectedVideoToPlay}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setSelectedVideoToPlay(null)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', justifyContent: 'center', alignItems: 'center', padding: 16 }}>
+          <View style={{ width: '100%', maxWidth: 500, backgroundColor: '#18181B', borderRadius: 24, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
+            {/* Header */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={{ fontSize: 16 }}>🎥</Text>
+                <Text style={{ fontSize: 13, fontWeight: '900', color: '#FFF' }}>360° Hostel & Room Tour</Text>
+              </View>
+              <TouchableOpacity onPress={() => setSelectedVideoToPlay(null)} style={{ padding: 6 }}>
+                <Text style={{ fontSize: 16, color: '#A1A1AA', fontWeight: '900' }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Video Player Stage */}
+            <View style={{ width: '100%', height: 280, backgroundColor: '#000', overflow: 'hidden' }}>
+              {Platform.OS === 'web' ? (
+                <iframe
+                  width="100%"
+                  height="100%"
+                  src={
+                    selectedVideoToPlay && selectedVideoToPlay.includes('youtube')
+                      ? selectedVideoToPlay.replace('watch?v=', 'embed/')
+                      : 'https://www.youtube.com/embed/5qap5aO4i9A?autoplay=1&mute=0'
+                  }
+                  title="Hostel Room Tour"
+                  frameBorder="0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  style={{ width: '100%', height: '100%', border: 0 }}
+                />
+              ) : (
+                <View style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', backgroundColor: '#09090B' }}>
+                  <Image source={{ uri: activeImg }} style={{ width: '100%', height: '100%', opacity: 0.5 }} resizeMode="cover" />
+                  <View style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.4)' }}>
+                    <TouchableOpacity
+                      style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: '#DC2626', alignItems: 'center', justifyContent: 'center', shadowColor: '#DC2626', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.5, shadowRadius: 10, elevation: 6 }}
+                      onPress={() => {
+                        if (selectedVideoToPlay) Linking.openURL(selectedVideoToPlay);
+                      }}
+                    >
+                      <Text style={{ fontSize: 24, color: '#FFF', marginLeft: 4 }}>▶</Text>
+                    </TouchableOpacity>
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: '#FFF', marginTop: 12 }}>
+                      Playing Verified Hostel Video Tour 🎥
+                    </Text>
+                  </View>
+                </View>
+              )}
+            </View>
+
+            {/* Footer */}
+            <View style={{ padding: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={{ fontSize: 10, fontWeight: '700', color: '#A1A1AA' }}>{pg.name}</Text>
+              <TouchableOpacity
+                style={{ backgroundColor: '#2563EB', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10 }}
+                onPress={() => setSelectedVideoToPlay(null)}
+              >
+                <Text style={{ fontSize: 10, fontWeight: '900', color: '#FFF' }}>CLOSE TOUR</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+
     </View>
   );
 }

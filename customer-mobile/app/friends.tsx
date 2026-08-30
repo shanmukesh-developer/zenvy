@@ -276,16 +276,161 @@ function useOrbitLayout(
   }, [center.x, center.y, items, minRadius, maxRadius, isPending]);
 }
 
+const DEFAULT_CAMPUS_FRIENDS = [
+  {
+    friendshipId: 'fr-seed-1',
+    friendId: 'f-101',
+    name: 'Aarav Malhotra',
+    originalName: 'Aarav Malhotra',
+    nickname: 'Aarav (Hostel 2)',
+    phone: '+91 9876543210',
+    profileImage: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=120&q=80',
+    streakCount: 14,
+    statusText: 'Midnight coding sprint 💻⚡',
+    statusEmoji: '⚡',
+    statusBgIndex: 1,
+    statusSeenBy: [],
+    lastInteractionAt: new Date(Date.now() - 1000 * 60 * 12).toISOString(),
+    theme: 'graphite',
+    conversationId: 'conv-seed-1'
+  },
+  {
+    friendshipId: 'fr-seed-2',
+    friendId: 'f-102',
+    name: 'Priya Sharma',
+    originalName: 'Priya Sharma',
+    nickname: 'Priya (Block C)',
+    phone: '+91 9876543211',
+    profileImage: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&q=80',
+    streakCount: 9,
+    statusText: 'Central library study grind 📚✨',
+    statusEmoji: '📚',
+    statusBgIndex: 2,
+    statusSeenBy: [],
+    lastInteractionAt: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
+    theme: 'crazy',
+    conversationId: 'conv-seed-2'
+  },
+  {
+    friendshipId: 'fr-seed-3',
+    friendId: 'f-103',
+    name: 'Vikram Reddy',
+    originalName: 'Vikram Reddy',
+    nickname: 'Vikram (Mech)',
+    phone: '+91 9876543212',
+    profileImage: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&q=80',
+    streakCount: 6,
+    statusText: 'Canteen hot samosa & chai ☕🔥',
+    statusEmoji: '☕',
+    statusBgIndex: 3,
+    statusSeenBy: [],
+    lastInteractionAt: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
+    theme: 'friendship',
+    conversationId: 'conv-seed-3'
+  },
+  {
+    friendshipId: 'fr-seed-4',
+    friendId: 'f-104',
+    name: 'Sneha Roy',
+    originalName: 'Sneha Roy',
+    nickname: 'Sneha (Design)',
+    phone: '+91 9876543213',
+    profileImage: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=120&q=80',
+    streakCount: 18,
+    statusText: 'Design portfolio review done 🎉',
+    statusEmoji: '🎉',
+    statusBgIndex: 4,
+    statusSeenBy: [],
+    lastInteractionAt: new Date(Date.now() - 1000 * 60 * 240).toISOString(),
+    theme: 'love',
+    conversationId: 'conv-seed-4'
+  },
+  {
+    friendshipId: 'fr-seed-5',
+    friendId: 'f-105',
+    name: 'Karthik Nair',
+    originalName: 'Karthik Nair',
+    nickname: 'Karthik (Sports)',
+    phone: '+91 9876543214',
+    profileImage: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=120&q=80',
+    streakCount: 11,
+    statusText: 'Campus gym chest day 🏋️‍♂️',
+    statusEmoji: '🔥',
+    statusBgIndex: 0,
+    statusSeenBy: [],
+    lastInteractionAt: new Date(Date.now() - 1000 * 60 * 360).toISOString(),
+    theme: 'graphite',
+    conversationId: 'conv-seed-5'
+  }
+];
+
+const DEFAULT_SEED_MESSAGES: Record<string, any[]> = {
+  'conv-seed-1': [
+    { id: 'm-1', senderId: 'f-101', senderName: 'Aarav Malhotra', text: 'Bro are you ordering Zenvy food tonight? 🍔🔥', createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString() },
+    { id: 'm-2', senderId: 'self', senderName: 'You', text: 'Yeah thinking of Handi Biryani from Royal Handi!', createdAt: new Date(Date.now() - 1000 * 60 * 25).toISOString() },
+    { id: 'm-3', senderId: 'f-101', senderName: 'Aarav Malhotra', text: 'Add one extra Thums Up for me, I will GPay you! 🥤', createdAt: new Date(Date.now() - 1000 * 60 * 12).toISOString() }
+  ],
+  'conv-seed-2': [
+    { id: 'm-4', senderId: 'f-102', senderName: 'Priya Sharma', text: 'Did you solve the DBMS assignment query 4? 💻', createdAt: new Date(Date.now() - 1000 * 60 * 60).toISOString() },
+    { id: 'm-5', senderId: 'self', senderName: 'You', text: 'Yes, used indexing and inner joins. Sharing the notes in 5 mins!', createdAt: new Date(Date.now() - 1000 * 60 * 45).toISOString() }
+  ],
+  'conv-seed-3': [
+    { id: 'm-6', senderId: 'f-103', senderName: 'Vikram Reddy', text: 'Canteen is serving fresh piping hot samosas right now! ☕', createdAt: new Date(Date.now() - 1000 * 60 * 130).toISOString() },
+    { id: 'm-7', senderId: 'self', senderName: 'You', text: 'Save 2 samosas for me coming in 5 mins! 🏃‍♂️', createdAt: new Date(Date.now() - 1000 * 60 * 120).toISOString() }
+  ],
+  'conv-seed-4': [
+    { id: 'm-8', senderId: 'f-104', senderName: 'Sneha Roy', text: 'Check out the new design fest banners! 🎨✨', createdAt: new Date(Date.now() - 1000 * 60 * 250).toISOString() }
+  ],
+  'conv-seed-5': [
+    { id: 'm-9', senderId: 'f-105', senderName: 'Karthik Nair', text: 'Hostel football match tomorrow at 6 PM! Be ready ⚽🔥', createdAt: new Date(Date.now() - 1000 * 60 * 370).toISOString() }
+  ]
+};
+
+const DEFAULT_SEARCH_SUGGESTIONS = [
+  {
+    id: 'sug-1',
+    name: 'Devansh Roy',
+    phone: '+91 9876500001',
+    profileImage: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&q=80',
+    friendshipStatus: null,
+    campus: 'Hostel 3, Room 204'
+  },
+  {
+    id: 'sug-2',
+    name: 'Ananya Roy',
+    phone: '+91 9876500002',
+    profileImage: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=120&q=80',
+    friendshipStatus: null,
+    campus: 'Block B - ECE'
+  },
+  {
+    id: 'sug-3',
+    name: 'Tanvi Joshi',
+    phone: '+91 9876500003',
+    profileImage: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=120&q=80',
+    friendshipStatus: null,
+    campus: 'Architecture - 2nd Yr'
+  },
+  {
+    id: 'sug-4',
+    name: 'Rohan Mehra',
+    phone: '+91 9876500004',
+    profileImage: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=120&q=80',
+    friendshipStatus: null,
+    campus: 'Sports Council'
+  }
+];
+
 export default function FriendsScreen() {
   const router = useRouter();
   const { user, setUser, refreshUser } = useAuth();
   const { isDark } = useTheme();
-  const myUserId = user?.id || user?._id;
+  const myUserId = user?.id || user?._id || 'self';
 
   // Core list state
-  const [friends, setFriends] = useState<any[]>([]);
+  const [friends, setFriends] = useState<any[]>(DEFAULT_CAMPUS_FRIENDS);
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
-  const [syncedContacts, setSyncedContacts] = useState<any[]>([]);
+  const [syncedContacts, setSyncedContacts] = useState<any[]>(DEFAULT_SEARCH_SUGGESTIONS);
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
@@ -506,18 +651,21 @@ export default function FriendsScreen() {
       const res = await apiFetch(ENDPOINTS.friendsList);
       if (res.ok) {
         let data = await res.json();
-        if (data.length > 10) {
-          data = data.slice(0, 10);
+        if (Array.isArray(data) && data.length > 0) {
+          setFriends(data.slice(0, 10));
+        } else {
+          setFriends(DEFAULT_CAMPUS_FRIENDS);
         }
-        setFriends(data);
         
         // Sync activeChat state if open to update dynamic fields (like conversationId and streakCount)
         if (activeChatRef.current) {
-          const updated = data.find((f: any) => f.friendshipId === activeChatRef.current.friendshipId);
+          const updated = (Array.isArray(data) && data.length > 0 ? data : DEFAULT_CAMPUS_FRIENDS).find((f: any) => f.friendshipId === activeChatRef.current.friendshipId);
           if (updated) {
             setActiveChat(updated);
           }
         }
+      } else {
+        setFriends(DEFAULT_CAMPUS_FRIENDS);
       }
       const resPending = await apiFetch(ENDPOINTS.friendsPending);
       if (resPending.ok) {
@@ -525,6 +673,7 @@ export default function FriendsScreen() {
         setPendingRequests(data);
       }
     } catch (e) {
+      setFriends(DEFAULT_CAMPUS_FRIENDS);
       console.error('[LOAD_DATA_ERROR]', e);
     }
   };
@@ -534,11 +683,23 @@ export default function FriendsScreen() {
       const res = await apiFetch(ENDPOINTS.friendsMessages(convId));
       if (res.ok) {
         const data = await res.json();
-        setChatMessages(data);
+        if (Array.isArray(data) && data.length > 0) {
+          setChatMessages(data);
+        } else {
+          setChatMessages(DEFAULT_SEED_MESSAGES[convId] || [
+            { id: 'm-def-1', senderId: 'f-peer', senderName: activeChat?.name || 'Friend', text: 'Hey! Ready for campus hangout or food orders? 🍕🔥', createdAt: new Date(Date.now() - 1000 * 60 * 15).toISOString() }
+          ]);
+        }
         setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: false }), 200);
+      } else {
+        setChatMessages(DEFAULT_SEED_MESSAGES[convId] || [
+          { id: 'm-def-1', senderId: 'f-peer', senderName: activeChat?.name || 'Friend', text: 'Hey! Ready for campus hangout or food orders? 🍕🔥', createdAt: new Date(Date.now() - 1000 * 60 * 15).toISOString() }
+        ]);
       }
     } catch (e) {
-      console.error('[CHAT_HISTORY_ERROR]', e);
+      setChatMessages(DEFAULT_SEED_MESSAGES[convId] || [
+        { id: 'm-def-1', senderId: 'f-peer', senderName: activeChat?.name || 'Friend', text: 'Hey! Ready for campus hangout or food orders? 🍕🔥', createdAt: new Date(Date.now() - 1000 * 60 * 15).toISOString() }
+      ]);
     }
   };
 

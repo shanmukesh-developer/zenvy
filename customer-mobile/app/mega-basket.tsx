@@ -101,9 +101,10 @@ export default function MegaBasketScreen() {
     fetchBaskets();
   }, [user]);
 
-  // Socket Connection for selected basket
+  // Socket Connection for selected basket (keyed only on basket id to prevent reconnect thrashing)
+  const selectedBasketId = selectedBasket?.id;
   useEffect(() => {
-    if (!selectedBasket) {
+    if (!selectedBasketId) {
       if (socketRef.current) {
         socketRef.current.disconnect();
         socketRef.current = null;
@@ -111,7 +112,7 @@ export default function MegaBasketScreen() {
       return;
     }
 
-    const basketIdStr = selectedBasket.id.toString();
+    const basketIdStr = selectedBasketId.toString();
     const socket = io(API_URL, { transports: ['websocket', 'polling'] });
     socketRef.current = socket;
 
@@ -121,7 +122,7 @@ export default function MegaBasketScreen() {
     });
 
     socket.on('statusUpdated', (data: { id: string; status: MegaBasket['status']; actualTotal?: number }) => {
-      if (data.id === selectedBasket.id) {
+      if (String(data.id) === String(selectedBasketId)) {
         Alert.alert('Status Updated', `Basket status is now: ${data.status}!`);
         setSelectedBasket(prev => prev ? { ...prev, status: data.status, actualTotal: data.actualTotal ?? prev.actualTotal } : null);
         fetchBaskets();
@@ -141,7 +142,7 @@ export default function MegaBasketScreen() {
     return () => {
       socket.disconnect();
     };
-  }, [selectedBasket]);
+  }, [selectedBasketId]);
 
   const fetchBaskets = async () => {
     setLoadingBaskets(true);

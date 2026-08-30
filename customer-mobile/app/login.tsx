@@ -250,23 +250,8 @@ export default function LoginScreen() {
   };
 
   const handleSendOtp = () => {
-    const digits = phone.replace(/\D/g, '').slice(-10);
-    if (digits.length < 10) {
-      setError('Please enter a valid 10-digit phone number');
-      return;
-    }
-    setError('');
-    setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      setOtpSent(true);
-      setCountdown(60);
-      Alert.alert(
-        'OTP Sent Successfully',
-        `Verification code for ${digits === '9391955674' || digits === '919391955674' ? 'kunjamshanmukesh@gmail.com' : 'your phone number'} is: 000000`,
-        [{ text: 'OK' }]
-      );
-    }, 1000);
+    // Route all OTP requests through the real backend SMS gateway
+    handleNativeSendOtp();
   };
 
   const handleLogin = async () => {

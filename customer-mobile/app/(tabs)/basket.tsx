@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, TextInp
 import { useRouter } from 'expo-router';
 import { COLORS, SHADOWS } from '../../constants/theme';
 import { useCart } from '../../context/CartContext';
+import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { summarizeCustomizations } from '../../components/CustomizeDrawer';
 import AmbientBackground from '../../components/AmbientBackground';
@@ -12,10 +13,15 @@ import SafeImage from '../../components/SafeImage';
 
 export default function BasketScreen() {
   const { isDark, colors } = useTheme();
-  const { cart, removeFromCart, updateQuantity, totalPrice, totalItems, roomCode, isHosting, isJoined, handleHostRoom, handleJoinRoom, handleDisconnect } = useCart();
+  const { user } = useAuth();
+  const { cart, removeFromCart, updateQuantity, totalPrice, totalItems, deliveryFee: cartDeliveryFee, roomCode, isHosting, isJoined, handleHostRoom, handleJoinRoom, handleDisconnect } = useCart();
   const [isJoinOpen, setIsJoinOpen] = React.useState(false);
   const [inputCode, setInputCode] = React.useState('');
   const router = useRouter();
+
+  const isElite = user?.isElite || (user?.zenPoints && user.zenPoints >= 200);
+  const effectiveDeliveryFee = isElite ? 0 : (cartDeliveryFee ?? 30);
+  const grandTotal = totalPrice + effectiveDeliveryFee;
 
   const bg = colors.bg;
   const cardBg = colors.card;
@@ -157,11 +163,13 @@ export default function BasketScreen() {
                 </View>
                 <View style={s.billRow}>
                   <Text style={[s.billLabel, { color: txtSec }]}>DELIVERY FEE</Text>
-                  <Text style={[s.billVal, { color: txt }]}>₹30</Text>
+                  <Text style={[s.billVal, { color: effectiveDeliveryFee === 0 ? '#10B981' : txt, fontWeight: '900' }]}>
+                    {effectiveDeliveryFee === 0 ? 'FREE ✨' : `₹${effectiveDeliveryFee}`}
+                  </Text>
                 </View>
                 <View style={[s.billRow, { borderTopWidth: 1, borderTopColor: border, paddingTop: 12, marginTop: 4 }]}>
                   <Text style={[s.billLabel, { color: txt, fontSize: 13, fontWeight: '900' }]}>GRAND TOTAL</Text>
-                  <Text style={{ fontSize: 22, fontWeight: '900', color: goldColor }}>₹{totalPrice + 30}</Text>
+                  <Text style={{ fontSize: 22, fontWeight: '900', color: goldColor }}>₹{grandTotal}</Text>
                 </View>
               </View>
             </StaggeredSection>
@@ -178,7 +186,7 @@ export default function BasketScreen() {
             onPress={() => router.push('/checkout' as any)}
             sound="click"
           >
-            <Text style={s.checkoutText}>PROCEED TO CHECKOUT • ₹{totalPrice + 30}</Text>
+            <Text style={s.checkoutText}>PROCEED TO CHECKOUT • ₹{grandTotal}</Text>
           </ActionPressable>
         </FloatingPulse>
       )}

@@ -5,22 +5,30 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../../constants/theme';
 import { useWorldTransition } from '../../context/WorldTransitionContext';
 import { useTheme } from '../../context/ThemeContext';
+import { useCart } from '../../context/CartContext';
 import { Ionicons } from '@expo/vector-icons';
 import { playSound, resumeAudio } from '../../utils/sounds';
 
-function TabIcon({ name, focused, iconName, isDark }: { name: string; focused: boolean; iconName: any; isDark: boolean }) {
+function TabIcon({ name, focused, iconName, isDark, badgeCount }: { name: string; focused: boolean; iconName: any; isDark: boolean; badgeCount?: number }) {
   const inactiveColor = isDark ? '#71717A' : '#64748B';
   const labelColor = isDark ? '#A1A1AA' : '#64748B';
 
   return (
     <View style={styles.tabIconWrap}>
       {focused && <View style={styles.activeIndicator} />}
-      <Ionicons 
-        name={focused ? iconName : `${iconName}-outline`} 
-        size={22} 
-        color={focused ? COLORS.red : inactiveColor} 
-        style={focused ? styles.tabIconActive : styles.tabIcon}
-      />
+      <View style={{ position: 'relative' }}>
+        <Ionicons 
+          name={focused ? iconName : `${iconName}-outline`} 
+          size={22} 
+          color={focused ? COLORS.red : inactiveColor} 
+          style={focused ? styles.tabIconActive : styles.tabIcon}
+        />
+        {badgeCount !== undefined && badgeCount > 0 && (
+          <View style={styles.cartBadge}>
+            <Text style={styles.cartBadgeText}>{badgeCount > 99 ? '99+' : badgeCount}</Text>
+          </View>
+        )}
+      </View>
       <Text style={[styles.tabLabel, { color: focused ? COLORS.red : labelColor, fontWeight: focused ? '900' : '700' }]}>
         {name}
       </Text>
@@ -31,6 +39,7 @@ function TabIcon({ name, focused, iconName, isDark }: { name: string; focused: b
 export default function TabLayout() {
   const { triggerTransition } = useWorldTransition();
   const { isDark, colors } = useTheme();
+  const { totalItems } = useCart();
   const insets = useSafeAreaInsets();
 
   // Only Home and Others get the cinematic world transition.
@@ -107,7 +116,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="basket"
         options={{
-          tabBarIcon: ({ focused }) => <TabIcon name="Basket" focused={focused} iconName="cart" isDark={isDark} />,
+          tabBarIcon: ({ focused }) => <TabIcon name="Basket" focused={focused} iconName="cart" isDark={isDark} badgeCount={totalItems} />,
         }}
         listeners={{
           tabPress: () => {
@@ -160,5 +169,24 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     marginTop: 3,
     textTransform: 'uppercase',
+  },
+  cartBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -10,
+    backgroundColor: '#EF4444',
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+  },
+  cartBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 8,
+    fontWeight: '900',
   },
 });

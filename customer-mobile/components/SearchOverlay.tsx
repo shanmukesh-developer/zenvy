@@ -151,6 +151,45 @@ export default function SearchOverlay({ isOpen, onClose, searchMode = 'food' }: 
             </View>
           )}
 
+          {/* Popular Campus Searches when query is empty */}
+          {query.trim().length === 0 && results.restaurants.length === 0 && (
+            <View style={{ paddingVertical: 12, paddingHorizontal: 16 }}>
+              <Text style={{ fontSize: 11, fontWeight: '900', color: txtMuted, letterSpacing: 1.5, marginBottom: 12 }}>
+                POPULAR CAMPUS SEARCHES 🔥
+              </Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {[
+                  'Chicken Biryani',
+                  'Margherita Pizza',
+                  'Cold Coffee',
+                  'Cheese Maggi',
+                  'Zinger Burger',
+                  'Paneer Butter Masala',
+                  'Thums Up',
+                  'Steamed Momos'
+                ].map((item) => (
+                  <TouchableOpacity
+                    key={item}
+                    style={{
+                      paddingHorizontal: 14,
+                      paddingVertical: 8,
+                      borderRadius: 16,
+                      backgroundColor: cardBg,
+                      borderWidth: 1,
+                      borderColor: border,
+                    }}
+                    onPress={() => setQuery(item)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: txtColor }}>
+                      🔍 {item}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          )}
+
           {/* Empty state */}
           {results.restaurants.length === 0 && results.items.length === 0 && query.length > 1 && !loading && (
             <View style={s.emptyState}>

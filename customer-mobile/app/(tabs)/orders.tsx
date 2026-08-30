@@ -64,8 +64,18 @@ export default function OrdersScreen() {
 
   const handleReorder = (order: any) => {
     try {
-      const items = order.items || [];
-      if (items.length === 0) return;
+      let items = order.items || [];
+      if (typeof items === 'string') {
+        try {
+          items = JSON.parse(items);
+        } catch {
+          items = [];
+        }
+      }
+      if (!Array.isArray(items) || items.length === 0) {
+        Alert.alert('Reorder Unavailable', 'Could not retrieve items from this past order.');
+        return;
+      }
 
       const targetRestaurantId = order.restaurantId;
       const targetRestaurantName = order.restaurant || 'Zenvy Partner';
@@ -205,12 +215,19 @@ export default function OrdersScreen() {
         {orders.map((o, idx) => {
           const id = (o._id || o.id || '').slice(-6).toUpperCase();
           const isExpanded = expanded === (o._id || o.id);
+          let orderItems: any[] = [];
+          if (Array.isArray(o.items)) {
+            orderItems = o.items;
+          } else if (typeof o.items === 'string') {
+            try { orderItems = JSON.parse(o.items); } catch { orderItems = []; }
+          }
+
           return (
             <StaggeredSection key={o._id || o.id} delay={idx * 80} direction="up">
-            <ScalePressable 
-              style={[st.card, { backgroundColor: cardBg, borderColor: border }]} 
-              onPress={() => toggleExpand(o._id || o.id)}
-            >
+              <ScalePressable 
+                style={[st.card, { backgroundColor: cardBg, borderColor: border }]} 
+                onPress={() => toggleExpand(o._id || o.id)}
+              >
               <View style={st.cardHeader}>
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 10, color: txtSec, fontWeight: '700', letterSpacing: 1.5 }}>
@@ -218,7 +235,7 @@ export default function OrdersScreen() {
                     <Text style={{ color: goldColor, fontWeight: '800' }}>ORDER #{id}</Text>
                   </Text>
                   <Text style={[st.restaurantName, { color: txt }]}>{o.restaurant || 'Zenvy Partner'}</Text>
-                  <Text style={{ fontSize: 10, color: txtSec, fontWeight: '600' }}>{(o.items || []).length} item{(o.items||[]).length !== 1 ? 's' : ''} • {o.createdAt ? new Date(o.createdAt).toLocaleDateString() : ''}</Text>
+                  <Text style={{ fontSize: 10, color: txtSec, fontWeight: '600' }}>{orderItems.length} item{orderItems.length !== 1 ? 's' : ''} • {o.createdAt ? new Date(o.createdAt).toLocaleDateString() : ''}</Text>
                 </View>
                 <View style={{ alignItems: 'flex-end', justifyContent: 'center' }}>
                   <Text style={[st.statusBadge, { color: statusColor(o.status) }]}>{(o.status || 'PENDING').toUpperCase()}</Text>
@@ -237,7 +254,7 @@ export default function OrdersScreen() {
                       </View>
                     </View>
                   )}
-                  {(o.items || []).map((item: any, i: number) => (
+                  {orderItems.map((item: any, i: number) => (
                     <View key={i} style={st.itemRow}>
                       <Text style={{ fontSize: 11, color: txt, fontWeight: '600' }}>{item.quantity}x  {item.name}</Text>
                       <Text style={{ fontSize: 11, color: txt, fontWeight: '800' }}>₹{(item.price || 0) * (item.quantity || 1)}</Text>

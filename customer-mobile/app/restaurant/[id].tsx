@@ -16,9 +16,10 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, SHADOWS } from '../../constants/theme';
-import { API_URL } from '../../constants/api';
+import { API_URL, ZENVY_SUPPORT_WHATSAPP, ZENVY_SUPPORT_PHONE } from '../../constants/api';
 import { useCart } from '../../context/CartContext';
 import { useTheme } from '../../context/ThemeContext';
+import { useDietary } from '../../context/DietaryContext';
 import BrandTakeoverSplash from '../../components/BrandTakeoverSplash';
 import CustomizeDrawer from '../../components/CustomizeDrawer';
 import { saveRecentlyViewed } from '../../components/RecentlyViewed';
@@ -139,7 +140,7 @@ export default function RestaurantDetail() {
   const [isUserElite, setIsUserElite] = useState(false);
   const [addedId, setAddedId] = useState<string | null>(null);
   const [customizingItem, setCustomizingItem] = useState<any>(null);
-  const [dietMode, setDietMode] = useState<string>('all');
+  const { dietMode, isItemAllowed } = useDietary();
 
   const promoScrollRef = useRef<ScrollView>(null);
   const [promoScrollIdx, setPromoScrollIdx] = useState(0);
@@ -291,17 +292,7 @@ export default function RestaurantDetail() {
           const u = JSON.parse(userStr);
           setIsUserElite(u.isElite || false);
         }
-        const dietPrefsRaw = await AsyncStorage.getItem('zenvy_diet_prefs');
-        if (dietPrefsRaw) {
-          try {
-            const parsed = JSON.parse(dietPrefsRaw);
-            if (parsed && parsed.mode) {
-              setDietMode(parsed.mode);
-            }
-          } catch(e) {
-            console.error('[DIET_PREFS_PARSE_ERROR]', e);
-          }
-        }
+        // Diet preferences now handled by global DietaryContext
       } catch (e) { console.error(e); }
       finally { setLoading(false); }
     })();
@@ -341,7 +332,7 @@ export default function RestaurantDetail() {
   const cardBg = brand ? 'rgba(0,0,0,0.6)' : colors.card;
   const border = brand ? 'rgba(255,255,255,0.05)' : (isDark ? COLORS.borderDark : COLORS.borderLight);
   const rating = Number(restaurant.rating) || 4.0;
-  const menu = Array.isArray(restaurant.menu) ? restaurant.menu.filter(Boolean) : [];
+  const menu = Array.isArray(restaurant.menu) ? restaurant.menu.filter(Boolean).filter((item: any) => isItemAllowed(item)) : [];
   const heroImg = restaurant.imageUrl || restaurant.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600';
 
   const isLocalVendor = restaurant?.vendorType === 'LOCAL_VENDOR';
@@ -370,7 +361,7 @@ export default function RestaurantDetail() {
 
   function getWhatsAppLink(itemName?: string) {
     if (!restaurant) return '';
-    const phone = restaurant.whatsappNumber || '919391955674';
+    const phone = restaurant.whatsappNumber || ZENVY_SUPPORT_WHATSAPP;
     const campus = restaurant.campus || 'Campus';
     let msg = `Hi! I'd like to order from ${restaurant.name} via CampusBites (Zenvy). My campus: ${campus}.`;
     if (itemName) msg += `\n\nItem: ${itemName}`;
@@ -379,7 +370,7 @@ export default function RestaurantDetail() {
 
   function getCallLink() {
     if (!restaurant) return '';
-    const phone = restaurant.whatsappNumber || '919391955674';
+    const phone = restaurant.whatsappNumber || ZENVY_SUPPORT_PHONE;
     return `tel:+${phone}`;
   }
 
@@ -486,27 +477,7 @@ export default function RestaurantDetail() {
 
   const filteredMenu = menu.filter((item: any) => {
     if (!item) return false;
-
-    // Apply Diet Preference Mode Filter
-    if (dietMode === 'veg') {
-      const isVeg = item.isVegetarian === true || 
-                    String(item.isVegetarian).toLowerCase() === 'true' || 
-                    Number(item.isVegetarian) === 1 ||
-                    (Array.isArray(item.tags) ? item.tags.some((t: string) => String(t).toLowerCase().includes('veg')) : false);
-      if (!isVeg) return false;
-    } else if (dietMode === 'non-veg') {
-      const isVeg = item.isVegetarian === true || 
-                    String(item.isVegetarian).toLowerCase() === 'true' || 
-                    Number(item.isVegetarian) === 1 ||
-                    (Array.isArray(item.tags) ? item.tags.some((t: string) => String(t).toLowerCase().includes('veg')) : false);
-      if (isVeg) return false;
-    } else if (dietMode === 'egg') {
-      const isVegOrEgg = item.isVegetarian === true || 
-                         String(item.isVegetarian).toLowerCase() === 'true' || 
-                         Number(item.isVegetarian) === 1 ||
-                         (Array.isArray(item.tags) ? item.tags.some((t: string) => ['veg', 'egg'].includes(String(t).toLowerCase())) : false);
-      if (!isVegOrEgg) return false;
-    }
+    if (!isItemAllowed(item)) return false;
 
     // Apply Category Filter
     if (activeCategory === 'All') return true;

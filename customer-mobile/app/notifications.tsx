@@ -5,6 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS, SHADOWS, RADIUS } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { useDietary } from '../context/DietaryContext';
 import { StaggeredSection, BounceIn } from '../components/AnimatedSection';
 import DopaminePressable from '../components/DopaminePressable';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -16,6 +17,7 @@ interface NotificationItem {
   timestamp: string;
   type: 'info' | 'warning' | 'promo' | 'emergency' | 'friend_accepted' | 'chat_message';
   read: boolean;
+  isVeg?: boolean;
 }
 
 const DEFAULT_NOTIFICATIONS: NotificationItem[] = [
@@ -26,6 +28,7 @@ const DEFAULT_NOTIFICATIONS: NotificationItem[] = [
     timestamp: new Date(Date.now() - 3600000 * 2).toISOString(),
     type: 'promo',
     read: false,
+    isVeg: true,
   },
   {
     id: 'default-2',
@@ -34,6 +37,7 @@ const DEFAULT_NOTIFICATIONS: NotificationItem[] = [
     timestamp: new Date(Date.now() - 3600000 * 5).toISOString(),
     type: 'info',
     read: false,
+    isVeg: true,
   },
   {
     id: 'default-3',
@@ -42,6 +46,7 @@ const DEFAULT_NOTIFICATIONS: NotificationItem[] = [
     timestamp: new Date(Date.now() - 3600000 * 24).toISOString(),
     type: 'warning',
     read: true,
+    isVeg: true,
   }
 ];
 
@@ -49,6 +54,7 @@ export default function NotificationsScreen() {
   const router = useRouter();
   const { isDark, colors } = useTheme();
   const { user } = useAuth();
+  const { dietMode } = useDietary();
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -192,37 +198,40 @@ export default function NotificationsScreen() {
   const border = colors.border;
   const goldColor = isDark ? COLORS.gold : colors.gold;
 
+  const nonVegWords = ['chicken', 'mutton', 'meat', 'beef', 'pork', 'fish', 'prawn', 'wings', 'tandoori chicken', 'shawarma'];
+  const displayedNotifications = notifications.filter(n => {
+    if (dietMode === 'veg') {
+      const text = (n.title + ' ' + n.body).toLowerCase();
+      const hasNonVeg = nonVegWords.some(word => text.includes(word));
+      if (hasNonVeg) return false;
+    }
+    return true;
+  });
+
   return (
     <View style={[s.container, { backgroundColor: bg }]}>
       {/* Header */}
-      <View style={[s.header, { borderBottomColor: border, backgroundColor: bg }]}>
+      <View style={[s.header, { borderBottomColor: border, backgroundColor: cardBg }]}>
         <TouchableOpacity
-          style={[s.backBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}
-          onPress={() => {
-            if (router.canGoBack()) {
-              router.back();
-            } else {
-              router.replace('/(tabs)' as any);
-            }
-          }}
+          style={[s.backBtn, { borderColor: border, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F6' }]}
+          onPress={() => router.back()}
         >
-          <Text style={[s.backIcon, { color: txt }]}>‹</Text>
+          <Text style={{ fontSize: 16, color: txt }}>←</Text>
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={[s.subText, { color: goldColor }]}>CAMPUS BROADCASTS & ALERTS</Text>
+          <Text style={[s.subText, { color: goldColor }]}>
+            {displayedNotifications.filter(n => !n.read).length} UNREAD ALERTS
+          </Text>
           <Text style={[s.title, { color: txt }]}>Notifications</Text>
         </View>
-
-        {notifications.length > 0 && (
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <TouchableOpacity onPress={markAllAsRead} style={s.actionHeaderBtn}>
-              <Text style={[s.actionHeaderBtnText, { color: goldColor }]}>READ ALL</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={clearAllNotifications} style={s.actionHeaderBtn}>
-              <Text style={[s.actionHeaderBtnText, { color: '#EF4444' }]}>CLEAR ALL</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <TouchableOpacity onPress={markAllAsRead} style={s.actionHeaderBtn}>
+            <Text style={[s.actionHeaderBtnText, { color: goldColor }]}>MARK READ</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={clearAllNotifications} style={s.actionHeaderBtn}>
+            <Text style={[s.actionHeaderBtnText, { color: COLORS.red }]}>CLEAR</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Main Content */}
@@ -230,7 +239,7 @@ export default function NotificationsScreen() {
         <View style={s.center}>
           <ActivityIndicator size="large" color={goldColor} />
         </View>
-      ) : notifications.length === 0 ? (
+      ) : displayedNotifications.length === 0 ? (
         <ScrollView
           contentContainerStyle={[s.center, { flexGrow: 1 }]}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={goldColor} />}
@@ -254,7 +263,7 @@ export default function NotificationsScreen() {
         >
           <StaggeredSection delay={50} direction="up">
             <View style={s.list}>
-              {notifications.map((n, idx) => {
+              {displayedNotifications.map((n, idx) => {
                 const indicatorColor = getTypeColors(n.type)[0];
                 return (
                   <DopaminePressable

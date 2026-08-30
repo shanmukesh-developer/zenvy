@@ -5,10 +5,12 @@ import { COLORS } from '../constants/theme';
 
 interface ServerWakeupOverlayProps {
   visible: boolean;
-  onWakeupComplete: () => void;
+  onWakeupComplete?: () => void;
+  onRetry?: () => void;
+  onCancel?: () => void;
 }
 
-export default function ServerWakeupOverlay({ visible, onWakeupComplete }: ServerWakeupOverlayProps) {
+export default function ServerWakeupOverlay({ visible, onWakeupComplete, onRetry, onCancel }: ServerWakeupOverlayProps) {
   const [countdown, setCountdown] = useState(90);
   const pulseAnim = React.useRef(new Animated.Value(1)).current;
 
@@ -27,7 +29,8 @@ export default function ServerWakeupOverlay({ visible, onWakeupComplete }: Serve
         setCountdown((prev) => {
           if (prev <= 1) {
             clearInterval(timer);
-            onWakeupComplete();
+            if (onWakeupComplete) onWakeupComplete();
+            else if (onRetry) onRetry();
             return 0;
           }
           return prev - 1;
@@ -36,7 +39,7 @@ export default function ServerWakeupOverlay({ visible, onWakeupComplete }: Serve
 
       return () => clearInterval(timer);
     }
-  }, [visible, onWakeupComplete, pulseAnim]);
+  }, [visible, onWakeupComplete, onRetry, pulseAnim]);
 
   if (!visible) return null;
 

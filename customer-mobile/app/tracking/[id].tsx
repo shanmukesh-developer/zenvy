@@ -13,7 +13,8 @@ import {
   Share,
   Linking,
   Animated,
-  Image
+  Image,
+  AppState
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { COLORS, SHADOWS, RADIUS } from '../../constants/theme';
@@ -459,8 +460,23 @@ export default function TrackingScreen() {
     fetchOrder();
     const poll = setInterval(fetchOrder, 10000);
 
+    // AppState listener: reconnect socket & re-fetch when returning from background (e.g. UPI payment)
+    const appStateRef = { current: AppState.currentState };
+    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
+      if (appStateRef.current.match(/inactive|background/) && nextState === 'active') {
+        // App returned to foreground — force reconnect & sync
+        if (!socket.connected) {
+          socket.connect();
+        }
+        socket.emit('joinOrder', orderId);
+        fetchOrder();
+      }
+      appStateRef.current = nextState;
+    });
+
     return () => {
       clearInterval(poll);
+      appStateSubscription.remove();
       socket.off('connect', handleConnect);
       socket.off('disconnect', handleDisconnect);
       socket.off('statusUpdated');

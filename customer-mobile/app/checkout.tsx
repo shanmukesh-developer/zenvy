@@ -211,10 +211,25 @@ export default function CheckoutScreen() {
   const baseDeliveryFee = cartDeliveryFee || 30;
   const isElite = user?.isElite || false;
   const deliveryFee = isElite || zenPoints >= 200 ? 0 : baseDeliveryFee;
-  const couponDiscount = selectedCoupon?.type === 'FREEDEL' ? deliveryFee : 0;
+  const couponDiscount = selectedCoupon?.type === 'FREEDEL' 
+    ? deliveryFee 
+    : selectedCoupon?.type === 'DISCOUNT' 
+      ? Math.min(50, Math.round(totalPrice * 0.2)) 
+      : 0;
   const finalTotal = Math.max(0, totalPrice + deliveryFee - couponDiscount);
 
   const handlePlaceOrder = async () => {
+    if (!cart || cart.length === 0) {
+      Alert.alert('Empty Basket', 'Please add items to your basket before checking out.');
+      router.replace('/(tabs)' as any);
+      return;
+    }
+
+    if (!address || address.trim().length < 3) {
+      Alert.alert('Delivery Address Required', 'Please specify your Hostel Block & Room Number (e.g. GH-2, Room 304) so our delivery partner can reach you.');
+      return;
+    }
+
     if (paymentMethod === 'UPI' && (!upiUTR || !upiScreenshot)) {
       Alert.alert('Payment Details Required', 'Please enter your UPI transaction UTR code and attach the screenshot receipt.');
       return;
@@ -432,8 +447,13 @@ export default function CheckoutScreen() {
                     elevation: 2,
                   }}
                   onPress={() => {
-                    if (!isSelected) {
-                      setAddress(address ? `${block}, ${address}` : block);
+                    const roomMatch = address.match(/(?:room\s*#?\s*|#\s*)(\d+)/i) || address.match(/\b(\d{3,4})\b/);
+                    const roomPart = roomMatch ? `Room ${roomMatch[1]}` : '';
+
+                    if (isSelected) {
+                      setAddress(roomPart);
+                    } else {
+                      setAddress(roomPart ? `${block}, ${roomPart}` : `${block}`);
                     }
                   }}
                   sound="click"

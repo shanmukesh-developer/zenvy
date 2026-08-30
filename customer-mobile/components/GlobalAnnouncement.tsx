@@ -130,7 +130,7 @@ export default function GlobalAnnouncement() {
 
     // Response listener when notification clicked or button pressed
     try {
-      responseSub = Notifications.addNotificationResponseReceivedListener(async response => {
+      responseSub = Notifications.addNotificationResponseReceivedListener(async (response: any) => {
         try {
           const { actionIdentifier, notification } = response;
           const data = notification.request.content.data;
@@ -178,7 +178,7 @@ export default function GlobalAnnouncement() {
     // Add incoming notification listener (foreground) to save to history
     let notificationSub: any;
     try {
-      notificationSub = Notifications.addNotificationReceivedListener(async (notification) => {
+      notificationSub = Notifications.addNotificationReceivedListener(async (notification: any) => {
         try {
           const { title, body, data } = notification.request.content;
           if (data?.type === 'call') return;
@@ -221,7 +221,7 @@ export default function GlobalAnnouncement() {
         sound: 'default',
         enableVibrate: true,
         showBadge: true,
-      }).catch(e => console.warn('Failed to set channel:', e));
+      }).catch((e: any) => console.warn('Failed to set channel:', e));
     }
 
     const socket: Socket = io(API_URL, { transports: ['websocket', 'polling'] });

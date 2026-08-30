@@ -11,6 +11,10 @@ export const LOCAL_API_URL = 'http://10.1.170.72:8080';
 // Release standalone APK uses live Render cloud backend
 export const API_URL = PROD_API_URL;
 
+// Official Campus Support & WhatsApp Concierge
+export const ZENVY_SUPPORT_PHONE = '919391955674';
+export const ZENVY_SUPPORT_WHATSAPP = '919391955674';
+
 export const ENDPOINTS = {
   // System Health & Diagnostics
   health: `${API_URL}/api/health`,
@@ -29,6 +33,7 @@ export const ENDPOINTS = {
   restaurantMenu: (id: string) => `${API_URL}/api/restaurants/${id}/menu`,
   restaurantClick: (id: string) => `${API_URL}/api/restaurants/${id}/click`,
   localVendors: `${API_URL}/api/restaurants/local-vendors`,
+  productById: (id: string) => `${API_URL}/api/users/products/${id}`,
 
   // Orders
   placeOrder: `${API_URL}/api/orders`,

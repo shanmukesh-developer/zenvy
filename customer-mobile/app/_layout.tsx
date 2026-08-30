@@ -10,6 +10,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AuthProvider } from '../context/AuthContext';
 import { CartProvider } from '../context/CartContext';
 import { ThemeProvider, useTheme } from '../context/ThemeContext';
+import { DietaryProvider } from '../context/DietaryContext';
 import { WorldTransitionProvider } from '../context/WorldTransitionContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import WorldTransitionOverlay from '../components/WorldTransitionOverlay';
@@ -114,7 +115,9 @@ export default function RootLayout() {
   return (
     <ErrorBoundary>
       <ThemeProvider>
-        <AppContainer />
+        <DietaryProvider>
+          <AppContainer />
+        </DietaryProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );

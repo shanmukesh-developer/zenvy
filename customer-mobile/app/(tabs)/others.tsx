@@ -89,9 +89,9 @@ const DEPARTMENTS = [
 const TABS = [
   { key: 'food', label: 'Food & Basket', icon: '🧺' },
   { key: 'services', label: 'Tech & Repairs', icon: '🛠️' },
-  { key: 'pg', label: 'PG Homes', icon: '🏢' },
-  { key: 'coride', label: 'Co-Ride & Rapido', icon: '🏍️' },
-  { key: 'promos', label: 'Offers & Wheel', icon: '🎁' },
+  { key: 'pg', label: 'PG Stays', icon: '🏢' },
+  { key: 'coride', label: 'Co-Ride', icon: '🏍️' },
+  { key: 'promos', label: 'Deals & Spin', icon: '🎁' },
 ];
 
 const BB_CATEGORIES = [
@@ -323,29 +323,41 @@ const TOY_MANIA_CATEGORIES = [
   }
 ];
 
-const CATEGORY_PRODUCTS: Record<string, Array<{ id: string; name: string; price: number; originalPrice: number; weight: string; image: string; isVeg: boolean; discount?: string }>> = {
+const CATEGORY_PRODUCTS: Record<string, Array<{ id: string; name: string; price: number; originalPrice: number; weight: string; image: string; isVeg: boolean; discount?: string; brand?: string }>> = {
   'Vehicle toys': [
-    { id: 'toys-monster-truck', name: '4x4 Monster Truck For 3+ Years', price: 49, originalPrice: 499, weight: '1 pc', image: 'https://images.unsplash.com/photo-1594787318286-3d835c1d207f?w=400&q=80', isVeg: true, discount: '90% OFF' }
+    { id: 'toys-monster-truck', name: '4x4 Monster Truck For 3+ Years', price: 49, originalPrice: 499, weight: '1 pc', image: 'https://images.unsplash.com/photo-1594787318286-3d835c1d207f?w=400&q=80', isVeg: true, discount: '90% OFF', brand: 'KRIIDDAANK' },
+    { id: 'toys-racing-car', name: 'Remote Control Racing Car Turbo', price: 299, originalPrice: 699, weight: '1 pc', image: 'https://images.unsplash.com/photo-1581235720704-06d3acfcb36f?w=400&q=80', isVeg: true, discount: '57% OFF', brand: 'SPEEDSTER' },
+    { id: 'toys-excavator', name: 'Construction Excavator Truck Toy', price: 149, originalPrice: 399, weight: '1 pc', image: 'https://images.unsplash.com/photo-1596461404969-9ae70f2830c1?w=400&q=80', isVeg: true, discount: '63% OFF', brand: 'BUILDZONE' }
   ],
   'Learning & education': [
-    { id: 'toys-tablet', name: 'LCD Writing Tablet Board For Kids', price: 149, originalPrice: 699, weight: '1 pc', image: 'https://images.unsplash.com/photo-1516627145497-ae6968895b74?w=400&q=80', isVeg: true, discount: '78% OFF' }
+    { id: 'toys-tablet', name: 'LCD Writing Tablet Board For Kids', price: 149, originalPrice: 699, weight: '1 pc', image: 'https://images.unsplash.com/photo-1516627145497-ae6968895b74?w=400&q=80', isVeg: true, discount: '78% OFF', brand: 'SMARTKID' },
+    { id: 'toys-puzzle', name: 'World Map Jigsaw Puzzle 100 Pcs', price: 199, originalPrice: 450, weight: '1 box', image: 'https://images.unsplash.com/photo-1606503153255-59d5e417c4ed?w=400&q=80', isVeg: true, discount: '55% OFF', brand: 'BRAINBOX' },
+    { id: 'toys-abacus', name: 'Wooden Abacus Math Learning Toy', price: 129, originalPrice: 299, weight: '1 pc', image: 'https://images.unsplash.com/photo-1596464716127-f2a82984de30?w=400&q=80', isVeg: true, discount: '57% OFF', brand: 'EDUPLAY' }
   ],
   'Sports & games': [
-    { id: 'toys-cricket', name: 'Kids Cricket Bat and Ball Set', price: 199, originalPrice: 499, weight: 'Pack of 1', image: 'https://images.unsplash.com/photo-1531565637446-32307b194362?w=400&q=80', isVeg: true, discount: '60% OFF' }
+    { id: 'toys-cricket', name: 'Kids Cricket Bat and Ball Set', price: 199, originalPrice: 499, weight: 'Pack of 1', image: 'https://images.unsplash.com/photo-1531565637446-32307b194362?w=400&q=80', isVeg: true, discount: '60% OFF', brand: 'PLAYTIME' },
+    { id: 'toys-badminton', name: 'Badminton Racket Pair with Shuttle', price: 249, originalPrice: 550, weight: '1 set', image: 'https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=400&q=80', isVeg: true, discount: '55% OFF', brand: 'YONEX' },
+    { id: 'toys-football', name: 'FIFA Official Size Football', price: 349, originalPrice: 799, weight: '1 pc', image: 'https://images.unsplash.com/photo-1552318965-6e6be7484ada?w=400&q=80', isVeg: true, discount: '56% OFF', brand: 'NIVIA' }
   ],
   'Games & plushies': [
-    { id: 'toys-uno-card', name: 'Uno Original Card Game', price: 119, originalPrice: 149, weight: 'Pack of 1 - (108 pcs)', image: 'https://images.unsplash.com/photo-1606167668584-78701c57f13d?w=400&q=80', isVeg: true, discount: '20% OFF' }
+    { id: 'toys-uno-card', name: 'Uno Original Card Game', price: 119, originalPrice: 149, weight: 'Pack of 1 - (108 pcs)', image: 'https://images.unsplash.com/photo-1606167668584-78701c57f13d?w=400&q=80', isVeg: true, discount: '20% OFF', brand: 'MATTEL' },
+    { id: 'toys-chess', name: 'Magnetic Chess Board Travel Set', price: 179, originalPrice: 350, weight: '1 set', image: 'https://images.unsplash.com/photo-1529699211952-734e80c4d42b?w=400&q=80', isVeg: true, discount: '49% OFF', brand: 'CHESSGURU' },
+    { id: 'toys-teddy', name: 'Soft Plush Teddy Bear 2ft', price: 299, originalPrice: 599, weight: '1 pc', image: 'https://images.unsplash.com/photo-1559715541-5daf8a0296d0?w=400&q=80', isVeg: true, discount: '50% OFF', brand: 'CUDDLETOWN' }
   ],
   'Baby & toddler toys': [
-    { id: 'toys-stack-rings', name: 'Multicolor Stacking Rings Toy', price: 99, originalPrice: 249, weight: '1 pc', image: 'https://images.unsplash.com/photo-1555448248-2571daf6344b?w=400&q=80', isVeg: true, discount: '60% OFF' }
+    { id: 'toys-stack-rings', name: 'Multicolor Stacking Rings Toy', price: 99, originalPrice: 249, weight: '1 pc', image: 'https://images.unsplash.com/photo-1555448248-2571daf6344b?w=400&q=80', isVeg: true, discount: '60% OFF', brand: 'BABYJOY' },
+    { id: 'toys-blocks', name: 'Building Blocks Set 50 Pcs', price: 149, originalPrice: 349, weight: '1 box', image: 'https://images.unsplash.com/photo-1596461404969-9ae70f2830c1?w=400&q=80', isVeg: true, discount: '57% OFF', brand: 'BLOCKSTAR' },
+    { id: 'toys-rattle', name: 'Musical Rattle Set for Infants', price: 79, originalPrice: 199, weight: '3 pcs', image: 'https://images.unsplash.com/photo-1515488042361-ee00e0ddd4e4?w=400&q=80', isVeg: true, discount: '60% OFF', brand: 'TINYTUNES' }
   ],
   'Fitness ready': [
-    { id: 'toys-rope', name: 'Premium Skipping Rope Adjustable', price: 99, originalPrice: 199, weight: '1 pc', image: 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=400&q=80', isVeg: true, discount: '50% OFF' }
+    { id: 'toys-rope', name: 'Premium Skipping Rope Adjustable', price: 99, originalPrice: 199, weight: '1 pc', image: 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=400&q=80', isVeg: true, discount: '50% OFF', brand: 'FITGEAR' },
+    { id: 'fit-band', name: 'Resistance Band Set 5 Levels', price: 249, originalPrice: 499, weight: '5 pcs', image: 'https://images.unsplash.com/photo-1598289431512-b97b0917affc?w=400&q=80', isVeg: true, discount: '50% OFF', brand: 'FLEXFIT' },
+    { id: 'fit-yoga-mat', name: 'Anti-Slip Yoga Mat 6mm Premium', price: 399, originalPrice: 799, weight: '1 pc', image: 'https://images.unsplash.com/photo-1601925260368-ae2f83cf8b7f?w=400&q=80', isVeg: true, discount: '50% OFF', brand: 'ZENFLOW' }
   ],
   'Seeds': [
-    { id: 'seeds-tomato', name: 'Tomato Seeds', price: 40.80, originalPrice: 80, weight: '10 g', image: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=400&q=80', isVeg: true, discount: '49% OFF' },
-    { id: 'seeds-cucumber', name: 'Cucumber Khira Seeds', price: 59, originalPrice: 80, weight: '10 g', image: 'https://images.unsplash.com/photo-1604977042946-1eecc30f269e?w=400&q=80', isVeg: true, discount: '26% OFF' },
-    { id: 'seeds-chilli', name: 'Chilli Hot Pepper Seeds', price: 59, originalPrice: 80, weight: '10 g', image: 'https://images.unsplash.com/photo-1583119022894-919a68a3d0e3?w=400&q=80', isVeg: true, discount: '26% OFF' }
+    { id: 'seeds-tomato', name: 'Tomato Seeds', price: 40.80, originalPrice: 80, weight: '10 g', image: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=400&q=80', isVeg: true, discount: '49% OFF', brand: 'BOMBAY SEEDS' },
+    { id: 'seeds-cucumber', name: 'Cucumber Khira Seeds', price: 59, originalPrice: 80, weight: '10 g', image: 'https://images.unsplash.com/photo-1604977042946-1eecc30f269e?w=400&q=80', isVeg: true, discount: '26% OFF', brand: 'BOMBAY SEEDS' },
+    { id: 'seeds-chilli', name: 'Chilli Hot Pepper Seeds', price: 59, originalPrice: 80, weight: '10 g', image: 'https://images.unsplash.com/photo-1583119022894-919a68a3d0e3?w=400&q=80', isVeg: true, discount: '26% OFF', brand: 'BOMBAY SEEDS' }
   ],
   'Fresh': [
     { id: 'fruit-1', name: 'Fresh Royal Gala Apple Selection', price: 180, originalPrice: 220, weight: '4 pcs', image: 'https://images.unsplash.com/photo-1619566636858-adf3ef46400b?w=400&q=80', isVeg: true, discount: '18% OFF' },
@@ -360,15 +372,18 @@ const CATEGORY_PRODUCTS: Record<string, Array<{ id: string; name: string; price:
   ],
   'Organic': [
     { id: 'org-1', name: 'Organic Unpolished Chana Dal Split', price: 85, originalPrice: 99, weight: '500 g', image: 'https://images.unsplash.com/photo-1545114197-2f5a05b38b1f?w=400&q=80', isVeg: true, discount: '14% OFF' },
-    { id: 'org-2', name: 'Organic Cold Pressed Mustard Oil', price: 230, originalPrice: 260, weight: '1 L', image: 'https://images.unsplash.com/photo-1620706857370-e1b9770e8bb1?w=400&q=80', isVeg: true, discount: '11% OFF' }
+    { id: 'org-2', name: 'Organic Cold Pressed Mustard Oil', price: 230, originalPrice: 260, weight: '1 L', image: 'https://images.unsplash.com/photo-1620706857370-e1b9770e8bb1?w=400&q=80', isVeg: true, discount: '11% OFF' },
+    { id: 'org-3', name: 'Organic Whole Wheat Atta Chakki', price: 140, originalPrice: 160, weight: '2 kg', image: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=400&q=80', isVeg: true, discount: '12% OFF' }
   ],
   'Health': [
     { id: 'hyg-1', name: 'Dettol Liquid Handwash Refill Pouch', price: 99, originalPrice: 110, weight: '175 ml', image: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400&q=80', isVeg: true, discount: '10% OFF' },
-    { id: 'hyg-2', name: 'Savlon Antiseptic Disinfectant Liquid', price: 45, originalPrice: 50, weight: '100 ml', image: 'https://images.unsplash.com/photo-1584017911766-d451b3d0e843?w=400&q=80', isVeg: true, discount: '10% OFF' }
+    { id: 'hyg-2', name: 'Savlon Antiseptic Disinfectant Liquid', price: 45, originalPrice: 50, weight: '100 ml', image: 'https://images.unsplash.com/photo-1584017911766-d451b3d0e843?w=400&q=80', isVeg: true, discount: '10% OFF' },
+    { id: 'hyg-3', name: 'Lifebuoy Total Germ Protection Soap', price: 32, originalPrice: 35, weight: '125 g', image: 'https://images.unsplash.com/photo-1607006342411-9a3363b63b2f?w=400&q=80', isVeg: true, discount: '8% OFF' }
   ],
   'Electronics': [
     { id: 'elec-1', name: 'boAt Rockerz Bluetooth Headphones', price: 999, originalPrice: 1999, weight: '1 pc', image: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400&q=80', isVeg: true, discount: '50% OFF' },
-    { id: 'elec-2', name: 'Mi 10000mAh Power Bank 3i', price: 899, originalPrice: 1299, weight: '1 pc', image: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?w=400&q=80', isVeg: true, discount: '30% OFF' }
+    { id: 'elec-2', name: 'Mi 10000mAh Power Bank 3i', price: 899, originalPrice: 1299, weight: '1 pc', image: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?w=400&q=80', isVeg: true, discount: '30% OFF' },
+    { id: 'elec-3', name: 'Ambrane USB-C Fast Charging Cable', price: 149, originalPrice: 299, weight: '1 pc', image: 'https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?w=400&q=80', isVeg: true, discount: '50% OFF' }
   ]
 };
 
@@ -602,6 +617,23 @@ export default function OthersScreen() {
   useEffect(() => {
     scrollViewRef.current?.scrollTo({ y: 0, animated: false });
   }, [activeTab]);
+
+  // Synchronize active tab from navigation parameter (e.g. from Home category pills)
+  useEffect(() => {
+    if (tab) {
+      if (tab === 'rides' || tab === 'coride') {
+        setActiveTab('coride');
+      } else if (tab === 'services') {
+        setActiveTab('services');
+      } else if (tab === 'pg') {
+        setActiveTab('pg');
+      } else if (tab === 'promos' || tab === 'offers') {
+        setActiveTab('promos');
+      } else if (tab === 'food' || tab === 'basket') {
+        setActiveTab('food');
+      }
+    }
+  }, [tab]);
 
   const { cart, addToCart, updateQuantity } = useCart();
   const [showPromoPopup, setShowPromoPopup] = useState(false);
@@ -1150,21 +1182,36 @@ export default function OthersScreen() {
     return true;
   });
 
-  // Co-Ride actions
-  const handleJoinRide = async (rideId: string) => {
-    try {
-      const res = await apiFetch(ENDPOINTS.bikepoolJoin(rideId), { method: 'POST' });
-      const data = await res.json();
-      if (res.ok) {
-        Alert.alert('Joined Success', data.message || 'Joined successfully!');
-        fetchRides();
-        fetchMyRides();
-      } else {
-        Alert.alert('Failed', data.message || 'Unable to join ride.');
-      }
-    } catch (err) {
-      Alert.alert('Error', 'Network error joining ride.');
-    }
+  // Co-Ride actions with Confirmation UX
+  const handleJoinRide = (ride: any) => {
+    const timeStr = new Date(ride.departureTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const fare = ride.pricePerSeat || ride.splitAmount || 30;
+
+    Alert.alert(
+      '🚗 Join Campus Commute Pool?',
+      `Route: ${ride.origin || 'Hostel'} → ${ride.destination || 'Campus'}\nDeparture: ${timeStr}\nEstimated Split: ₹${fare} per seat\nHost: ${ride.creator?.name || 'Campus Peer'}`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Confirm & Join',
+          onPress: async () => {
+            try {
+              const res = await apiFetch(ENDPOINTS.bikepoolJoin(ride.id), { method: 'POST' });
+              const data = await res.json();
+              if (res.ok) {
+                Alert.alert('Ride Confirmed 🎉', data.message || 'You have joined the commute!');
+                fetchRides();
+                fetchMyRides();
+              } else {
+                Alert.alert('Could Not Join', data.message || 'Unable to join ride.');
+              }
+            } catch (err) {
+              Alert.alert('Error', 'Network error joining ride.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleCompleteRide = async (rideId: string) => {
@@ -1237,6 +1284,34 @@ export default function OthersScreen() {
       return;
     }
 
+    // Robust Date & Time parsing
+    let parsedDate = new Date(departureTime);
+    if (isNaN(parsedDate.getTime())) {
+      // Check if time-only format entered (e.g. "18:30" or "6:30 PM")
+      const timeMatch = departureTime.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+      if (timeMatch) {
+        let hours = parseInt(timeMatch[1], 10);
+        const minutes = parseInt(timeMatch[2], 10);
+        const meridiem = timeMatch[3]?.toUpperCase();
+        if (meridiem === 'PM' && hours < 12) hours += 12;
+        if (meridiem === 'AM' && hours === 12) hours = 0;
+        parsedDate = new Date();
+        parsedDate.setHours(hours, minutes, 0, 0);
+        // If the time already passed today, assume tomorrow
+        if (parsedDate.getTime() < Date.now()) {
+          parsedDate.setDate(parsedDate.getDate() + 1);
+        }
+      }
+    }
+
+    if (isNaN(parsedDate.getTime())) {
+      Alert.alert(
+        'Invalid Departure Time',
+        'Please enter a valid time or date (e.g. "18:30", "6:30 PM", or "2026-08-30 19:00").'
+      );
+      return;
+    }
+
     setSubmittingRide(true);
     try {
       const res = await apiFetch(ENDPOINTS.bikepoolPosts, {
@@ -1245,7 +1320,7 @@ export default function OthersScreen() {
           creatorRole,
           origin,
           destination,
-          departureTime: new Date(departureTime).toISOString(),
+          departureTime: parsedDate.toISOString(),
           vehicleType,
           availableSeats: parseInt(availableSeats, 10) || 1,
           rideVibe,
@@ -1407,7 +1482,7 @@ export default function OthersScreen() {
       type: 'SERVICES',
       price: 'Starts ₹60',
       rating: '4.9 (310+)',
-      badge: '🪡 ROOM PICKUP',
+      badge: '🪡 CAMPUS PICKUP',
       image: 'https://images.unsplash.com/photo-1528458909336-e7a0adfed0a5?w=600&q=80',
       targetRoute: '/category/tailoring',
     },
@@ -1777,7 +1852,10 @@ export default function OthersScreen() {
                       borderWidth: 1.5,
                       borderColor: brand.border,
                       overflow: 'hidden',
-                      position: 'relative'
+                      position: 'relative',
+                      backgroundColor: isDark ? '#1C1917' : '#F8FAFC',
+                      justifyContent: 'center',
+                      alignItems: 'center'
                     }}
                     onPress={() => setSelectedCategoryName(brand.name)}
                     activeScale={0.96}
@@ -1788,9 +1866,26 @@ export default function OthersScreen() {
                       style={{
                         width: '100%',
                         height: '100%',
-                        resizeMode: 'cover'
+                        resizeMode: 'cover',
+                        position: 'absolute'
                       }}
                     />
+                    {/* Brand overlay tag at bottom */}
+                    <View style={{
+                      position: 'absolute',
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      paddingVertical: 8,
+                      paddingHorizontal: 10,
+                      backgroundColor: 'rgba(0,0,0,0.65)',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between'
+                    }}>
+                      <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 11, letterSpacing: 0.5 }}>{brand.name}</Text>
+                      <Text style={{ color: '#F59E0B', fontWeight: '800', fontSize: 10 }}>EXPLORE →</Text>
+                    </View>
                   </DopaminePressable>
                 ))}
               </ScrollView>
@@ -2936,8 +3031,10 @@ export default function OthersScreen() {
                   Doorstep Campus Services 🛠️
                 </Text>
               </View>
-              <View style={{ backgroundColor: isDark ? 'rgba(59,130,246,0.15)' : '#EFF6FF', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, borderWidth: 1, borderColor: isDark ? 'rgba(59,130,246,0.3)' : '#BFDBFE' }}>
-                <Text style={{ fontSize: 9.5, fontWeight: '900', color: '#2563EB' }}>HOSTEL PICKUP</Text>
+              <View style={{ backgroundColor: isDark ? 'rgba(16,185,129,0.15)' : '#ECFDF5', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, borderWidth: 1, borderColor: isDark ? 'rgba(16,185,129,0.3)' : '#6EE7B7' }}>
+                <Text style={{ fontSize: 9.5, fontWeight: '900', color: '#059669' }}>
+                  Campus Essentials ⚡
+                </Text>
               </View>
             </View>
 
@@ -2956,7 +3053,7 @@ export default function OthersScreen() {
               {
                 id: 'TAILORING',
                 title: 'Campus Tailoring & Stitching',
-                tag: '🪡 ROOM FITTING',
+                tag: '🪡 CAMPUS FITTING',
                 desc: 'Jeans length shortening, shirt/kurti alterations, lab coat resizing & zipper replacement.',
                 icon: '✂️',
                 price: 'Starts ₹30',
@@ -2966,7 +3063,7 @@ export default function OthersScreen() {
               {
                 id: 'PRINTOUT',
                 title: '24/7 Laser Print & Project Binding',
-                tag: '🖨️ ROOM DELIVERY',
+                tag: '🖨️ HIGH SPEED',
                 desc: 'High-speed B&W / Color printouts, CAD schematics, and spiral/hardbound thesis binding.',
                 icon: '📄',
                 price: '₹2 / page',
@@ -3004,54 +3101,61 @@ export default function OthersScreen() {
                 image: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?w=600&q=80',
               },
             ].map((srv) => (
-              <TouchableOpacity
+              <ScalePressable
                 key={srv.id}
                 style={{
-                  borderRadius: 18,
-                  backgroundColor: cardBg,
+                  borderRadius: 20,
+                  backgroundColor: cardSurface,
                   borderWidth: 1,
                   borderColor: border,
                   marginBottom: 14,
                   overflow: 'hidden',
                   shadowColor: '#000',
-                  shadowOffset: { width: 0, height: 2 },
-                  shadowOpacity: 0.05,
-                  shadowRadius: 6,
-                  elevation: 2,
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: isDark ? 0.25 : 0.07,
+                  shadowRadius: 10,
+                  elevation: 4,
                 }}
                 onPress={() => router.push(`/category/${srv.cat}` as any)}
-                activeOpacity={0.85}
               >
                 <View style={{ flexDirection: 'row', padding: 14, gap: 14 }}>
-                  <Image source={{ uri: srv.image }} style={{ width: 80, height: 80, borderRadius: 14, backgroundColor: isDark ? '#27272A' : '#F1F5F9' }} />
+                  {/* Image with gradient overlay */}
+                  <View style={{ width: 90, height: 90, borderRadius: 16, overflow: 'hidden', position: 'relative' }}>
+                    <Image source={{ uri: srv.image }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                    <LinearGradient
+                      colors={['transparent', 'rgba(0,0,0,0.5)']}
+                      style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 40, justifyContent: 'flex-end', padding: 6 }}
+                    >
+                      <Text style={{ fontSize: 16 }}>{srv.icon}</Text>
+                    </LinearGradient>
+                  </View>
+
                   <View style={{ flex: 1, justifyContent: 'space-between' }}>
                     <View>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
-                        <Text style={{ fontSize: 8, fontWeight: '900', color: '#3B82F6', letterSpacing: 0.8 }}>
-                          {srv.tag}
-                        </Text>
-                        <Text style={{ fontSize: 12, fontWeight: '900', color: '#10B981' }}>
-                          {srv.price}
-                        </Text>
+                      {/* Tag + Price row */}
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
+                        <View style={{ backgroundColor: isDark ? 'rgba(59,130,246,0.15)' : '#EFF6FF', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8, borderWidth: 1, borderColor: isDark ? 'rgba(59,130,246,0.3)' : '#BFDBFE' }}>
+                          <Text style={{ fontSize: 7.5, fontWeight: '900', color: '#3B82F6', letterSpacing: 0.5 }}>{srv.tag}</Text>
+                        </View>
+                        <Text style={{ fontSize: 13, fontWeight: '900', color: '#10B981' }}>{srv.price}</Text>
                       </View>
-                      <Text style={{ fontSize: 13, fontWeight: '900', color: txt, lineHeight: 17 }}>
-                        {srv.title}
-                      </Text>
-                      <Text style={{ fontSize: 10, color: txtSec, lineHeight: 14, marginTop: 4 }} numberOfLines={2}>
-                        {srv.desc}
-                      </Text>
+
+                      <Text style={{ fontSize: 14, fontWeight: '900', color: txt, lineHeight: 18, letterSpacing: -0.2 }}>{srv.title}</Text>
+                      <Text style={{ fontSize: 10.5, color: txtSec, lineHeight: 15, marginTop: 5 }} numberOfLines={2}>{srv.desc}</Text>
                     </View>
 
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 8 }}>
-                      <View style={{ backgroundColor: isDark ? '#27272A' : '#F1F5F9', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: border }}>
-                        <Text style={{ fontSize: 9.5, fontWeight: '900', color: txt }}>
-                          BOOK SERVICE ➔
-                        </Text>
-                      </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 10 }}>
+                      <LinearGradient
+                        colors={isDark ? ['#3B82F6', '#2563EB'] : ['#1D4ED8', '#2563EB']}
+                        start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                        style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 10 }}
+                      >
+                        <Text style={{ fontSize: 10, fontWeight: '900', color: '#FFF', letterSpacing: 0.4 }}>BOOK NOW ➔</Text>
+                      </LinearGradient>
                     </View>
                   </View>
                 </View>
-              </TouchableOpacity>
+              </ScalePressable>
             ))}
           </View>
         )}
@@ -3258,7 +3362,7 @@ export default function OthersScreen() {
                     
                     return (
                       <StaggeredSection key={ride.id} delay={50 + (idx % 6) * 50} direction="up">
-                      <CardPressable style={[s.rideCard, { backgroundColor: cardBg, borderColor: border }]} onPress={() => handleJoinRide(ride.id)} sound="rideTransition" tilt={true}>
+                      <CardPressable style={[s.rideCard, { backgroundColor: cardBg, borderColor: border }]} onPress={() => handleJoinRide(ride)} sound="rideTransition" tilt={true}>
                         <View style={s.rideCardHeader}>
                           <View style={s.rideCreatorRow}>
                             <View style={[s.rideAvatar, { backgroundColor: goldMutedColor, borderColor: goldBorderColor }]}>
