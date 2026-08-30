@@ -16,6 +16,7 @@ import {
   Image,
   AppState
 } from 'react-native';
+import Clipboard from '@react-native-clipboard/clipboard';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { COLORS, SHADOWS, RADIUS } from '../../constants/theme';
 import { API_URL } from '../../constants/api';
@@ -356,9 +357,21 @@ export default function TrackingScreen() {
   // Copy PIN helper
   const copyPinToClipboard = () => {
     if (!orderInfo?.deliveryPin) return;
-    Share.share({
-      message: `My Zenvy Gate Verification PIN: ${orderInfo.deliveryPin}`,
-    });
+    Clipboard.setString(orderInfo.deliveryPin);
+    Alert.alert('🔑 PIN Copied!', `Delivery PIN ${orderInfo.deliveryPin} copied to clipboard. Show this to your rider upon delivery.`);
+  };
+
+  // Rich Live Tracking Share
+  const handleShareTracking = async () => {
+    try {
+      const stageText = status === 1 ? 'Order Placed ⏳' : status === 2 ? 'Accepted ✅' : status === 3 ? 'Preparing 🍳' : status === 4 ? `Out for Delivery (${currentCheckpoint}) 🛵` : status === 5 ? 'Arrived at Gate 🔔' : 'Delivered 🎉';
+      await Share.share({
+        message: `🛵 Track my Zenvy order live!\n\nStatus: ${stageText}\nOrder ID: #${(orderId || '').slice(-6).toUpperCase()}\n${orderInfo?.deliveryPin ? `Verification PIN: ${orderInfo.deliveryPin}\n` : ''}ETA: ${eta}\n\nTrack real-time GPS telemetry here:\nhttps://zenvy.in/tracking/${orderId}`,
+        title: 'Zenvy Live Order Mission'
+      });
+    } catch (e) {
+      console.log('Share tracking error:', e);
+    }
   };
 
   useEffect(() => {
@@ -915,7 +928,7 @@ export default function TrackingScreen() {
               <Text style={[s.actionBtnText, { color: txt }]}>CALL RIDER</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={[s.actionBtn, { backgroundColor: cardBg, borderColor: border }]} onPress={copyPinToClipboard}>
+            <TouchableOpacity style={[s.actionBtn, { backgroundColor: cardBg, borderColor: border }]} onPress={handleShareTracking}>
               <Text style={{ fontSize: 16 }}>🔗</Text>
               <Text style={[s.actionBtnText, { color: txt }]}>SHARE</Text>
             </TouchableOpacity>

@@ -219,6 +219,9 @@ export default function CheckoutScreen() {
   const finalTotal = Math.max(0, totalPrice + deliveryFee - couponDiscount);
 
   const handlePlaceOrder = async () => {
+    // Double-tap guard: reject if already submitting
+    if (loading) return;
+
     if (!cart || cart.length === 0) {
       Alert.alert('Empty Basket', 'Please add items to your basket before checking out.');
       router.replace('/(tabs)' as any);
@@ -230,10 +233,28 @@ export default function CheckoutScreen() {
       return;
     }
 
+    if (deliveryType === 'scheduled' && !scheduledTime) {
+      Alert.alert('Select Delivery Slot', 'You chose scheduled delivery but haven\'t picked a time slot. Please select Breakfast, Lunch, or Dinner.');
+      return;
+    }
+
     if (paymentMethod === 'UPI' && (!upiUTR || !upiScreenshot)) {
       Alert.alert('Payment Details Required', 'Please enter your UPI transaction UTR code and attach the screenshot receipt.');
       return;
     }
+
+    // Confirmation dialog before placing
+    Alert.alert(
+      '✅ Confirm Your Order',
+      `${cart.length} item${cart.length > 1 ? 's' : ''} • ₹${finalTotal}\n📍 ${address}\n💳 ${paymentMethod === 'UPI' ? 'UPI Instant' : paymentMethod === 'Card' ? 'Card on Delivery' : 'Cash on Delivery'}\n⏱ ${deliveryType === 'asap' ? 'ASAP (30-50 mins)' : scheduledTime}`,
+      [
+        { text: 'EDIT', style: 'cancel' },
+        { text: 'PLACE ORDER →', onPress: () => executeOrderPlacement() }
+      ]
+    );
+  };
+
+  const executeOrderPlacement = async () => {
 
     setLoading(true);
     try {
@@ -723,8 +744,15 @@ export default function CheckoutScreen() {
         </StaggeredSection>
 
         <FloatingPulse color={COLORS.red} style={s.placeBtnContainer}>
-          <ActionPressable style={[s.placeBtn, { width: '100%' }]} onPress={handlePlaceOrder} disabled={loading} sound="success">
-            {loading ? <ActivityIndicator color="#fff" /> : <Text style={s.placeText}>PLACE ORDER</Text>}
+          <ActionPressable style={[s.placeBtn, { width: '100%', opacity: loading ? 0.6 : 1 }]} onPress={handlePlaceOrder} disabled={loading} sound="success">
+            {loading ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <ActivityIndicator color="#fff" />
+                <Text style={[s.placeText, { fontSize: 11 }]}>PROCESSING ORDER...</Text>
+              </View>
+            ) : (
+              <Text style={s.placeText}>REVIEW & PLACE ORDER</Text>
+            )}
           </ActionPressable>
         </FloatingPulse>
       </ScrollView>
