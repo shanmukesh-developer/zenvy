@@ -257,8 +257,35 @@ export default function ProductDetailScreen() {
   const router = useRouter();
   const cleanId = (Array.isArray(id) ? id[0] : id || '').replace(/\/$/, '');
 
-  const { cart, addToCart, updateQuantity } = useCart();
+  const { cart, addToCart, updateQuantity, clearCart } = useCart();
   const { isDark, colors } = useTheme();
+
+  const handleSafeAddToCart = (itemPayload: any, successMsg?: string) => {
+    try {
+      addToCart(itemPayload);
+      if (successMsg) Alert.alert('Added 🛒', successMsg);
+    } catch (err: any) {
+      if (err.message === 'MULTIPLE_RESTAURANTS') {
+        Alert.alert(
+          'Clear Basket?',
+          'Your basket contains items from another store/restaurant. Clear it to add this item?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Clear & Add',
+              onPress: () => {
+                clearCart();
+                setTimeout(() => {
+                  addToCart(itemPayload);
+                  if (successMsg) Alert.alert('Added 🛒', successMsg);
+                }, 100);
+              }
+            }
+          ]
+        );
+      }
+    }
+  };
 
   const [product, setProduct] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -670,15 +697,14 @@ export default function ProductDetailScreen() {
                   <TouchableOpacity
                     style={sMiniPlusBtn}
                     onPress={() => {
-                      addToCart({
+                      handleSafeAddToCart({
                         id: rel.id,
                         name: rel.name,
                         price: rel.price,
                         image: rel.image,
                         restaurantId: product.restaurantId || 'market-hub',
                         restaurantName: product.restaurantName || 'Campus Mart',
-                      });
-                      Alert.alert('Added', `${rel.name} added to your basket!`);
+                      }, `${rel.name} added to your basket!`);
                     }}
                   >
                     <Text style={{ fontSize: 14, fontWeight: '900', color: '#FFF' }}>+</Text>
@@ -801,7 +827,7 @@ export default function ProductDetailScreen() {
           <TouchableOpacity
             style={styles.stepperBtn}
             onPress={() =>
-              addToCart({
+              handleSafeAddToCart({
                 id: product.id,
                 name: product.name,
                 price: currentPack.price,
@@ -821,7 +847,7 @@ export default function ProductDetailScreen() {
           activeOpacity={0.88}
           onPress={() => {
             if (qty === 0) {
-              addToCart({
+              handleSafeAddToCart({
                 id: product.id,
                 name: product.name,
                 price: currentPack.price,
