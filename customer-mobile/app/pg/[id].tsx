@@ -548,14 +548,37 @@ export default function PGDetailScreen() {
             </View>
           </View>
 
-          <TouchableOpacity 
-            style={[s.callBtn, { borderColor: border }]}
-            onPress={() => {
-              if (pg.contactInfo?.phone) Linking.openURL(`tel:${pg.contactInfo.phone}`);
-            }}
-          >
-            <Text style={[s.callBtnText, { color: txt }]}>DIAL WARDEN NOW 📞</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+            <TouchableOpacity 
+              style={{
+                flex: 1,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                paddingVertical: 12,
+                borderRadius: 14,
+                backgroundColor: '#25D366',
+              }}
+              onPress={() => {
+                const phone = (pg.contactInfo?.phone || ZENVY_SUPPORT_WHATSAPP).replace(/\D/g, '');
+                const msg = `Hi, I am interested in visiting/booking a room at ${pg.name} (${pg.genderType} PG) on Zenvy. Could you please share the current availability and visiting timings?`;
+                Linking.openURL(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`);
+              }}
+            >
+              <Text style={{ fontSize: 14 }}>💬</Text>
+              <Text style={{ color: '#fff', fontSize: 10, fontWeight: '900', letterSpacing: 1 }}>WHATSAPP CHAT</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[s.callBtn, { flex: 1, marginTop: 0, borderColor: border }]}
+              onPress={() => {
+                if (pg.contactInfo?.phone) Linking.openURL(`tel:${pg.contactInfo.phone}`);
+              }}
+            >
+              <Text style={[s.callBtnText, { color: txt }]}>DIAL WARDEN 📞</Text>
+            </TouchableOpacity>
+          </View>
         </View>
         </StaggeredSection>
 

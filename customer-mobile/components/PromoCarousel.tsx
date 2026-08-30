@@ -1,13 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Dimensions, TouchableOpacity, FlatList } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Animated, PanResponder } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
 import SafeImage from './SafeImage';
 import DopaminePressable, { ActionPressable } from './DopaminePressable';
-
-const { width: SW } = Dimensions.get('window');
-const SLIDE_WIDTH = SW - 32;
 
 export interface PromoOffer {
   id: string;
@@ -28,54 +25,95 @@ interface PromoCarouselProps {
 export default function PromoCarousel({ offers, containerStyle }: PromoCarouselProps) {
   const { isDark } = useTheme();
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [slideWidth, setSlideWidth] = useState(SLIDE_WIDTH);
-  const flatListRef = useRef<FlatList>(null);
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const slideAnim = useRef(new Animated.Value(0)).current;
+  const timerRef = useRef<any>(null);
 
-  const currentIndexRef = useRef(0);
-
-  useEffect(() => {
-    currentIndexRef.current = currentIndex;
-  }, [currentIndex]);
-
-  const handleLayout = (e: any) => {
-    const { width } = e.nativeEvent.layout;
-    if (width > 0 && Math.abs(width - slideWidth) > 1) {
-      setSlideWidth(width);
-    }
-  };
-
-  // Auto-scroll loop (6 seconds interval for smooth performance)
-  useEffect(() => {
-    if (offers.length <= 1) return;
-
-    const interval = setInterval(() => {
-      const nextIndex = (currentIndexRef.current + 1) % offers.length;
+  const goToSlide = (nextIndex: number, direction: 'left' | 'right' = 'right') => {
+    if (nextIndex === currentIndex || !offers || offers.length === 0) return;
+    
+    // Animate transition
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: direction === 'right' ? -15 : 15,
+        duration: 150,
+        useNativeDriver: true,
+      })
+    ]).start(() => {
       setCurrentIndex(nextIndex);
-      try {
-        flatListRef.current?.scrollToIndex({
-          index: nextIndex,
-          animated: true,
-        });
-      } catch (err) {}
-    }, 6000);
-
-    return () => clearInterval(interval);
-  }, [offers.length]);
-
-  const onMomentumScrollEnd = (e: any) => {
-    const contentOffset = e.nativeEvent.contentOffset.x;
-    const index = Math.round(contentOffset / (slideWidth || SLIDE_WIDTH));
-    if (index >= 0 && index < offers.length) {
-      setCurrentIndex(index);
-    }
+      slideAnim.setValue(direction === 'right' ? 15 : -15);
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+        Animated.spring(slideAnim, {
+          toValue: 0,
+          friction: 8,
+          tension: 40,
+          useNativeDriver: true,
+        })
+      ]).start();
+    });
   };
+
+  const nextSlide = () => {
+    if (!offers || offers.length <= 1) return;
+    const nextIdx = (currentIndex + 1) % offers.length;
+    goToSlide(nextIdx, 'right');
+  };
+
+  const prevSlide = () => {
+    if (!offers || offers.length <= 1) return;
+    const prevIdx = (currentIndex - 1 + offers.length) % offers.length;
+    goToSlide(prevIdx, 'left');
+  };
+
+  // Auto-scroll loop (5 seconds)
+  useEffect(() => {
+    if (!offers || offers.length <= 1) return;
+
+    timerRef.current = setInterval(() => {
+      setCurrentIndex((prev) => {
+        const next = (prev + 1) % offers.length;
+        goToSlide(next, 'right');
+        return prev;
+      });
+    }, 5000);
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [offers?.length, currentIndex]);
+
+  // Swipe gesture recognizer
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        return Math.abs(gestureState.dx) > 15 && Math.abs(gestureState.dy) < 20;
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dx < -30) {
+          nextSlide();
+        } else if (gestureState.dx > 30) {
+          prevSlide();
+        }
+      },
+    })
+  ).current;
+
+  if (!offers || offers.length === 0) return null;
+  const currentOffer = offers[currentIndex] || offers[0];
 
   const accent = isDark ? COLORS.gold : COLORS.red;
-  const overlayColors: [string, string, ...string[]] = isDark 
-    ? ['rgba(10, 10, 11, 0.98)', 'rgba(10, 10, 11, 0.70)', 'rgba(10, 10, 11, 0.20)']
-    : ['rgba(255, 255, 255, 0.98)', 'rgba(255, 255, 255, 0.75)', 'rgba(255, 255, 255, 0.25)'];
   const title1Color = isDark ? '#FFF' : '#111827';
-  const descColor = isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)';
+  const descColor = isDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.65)';
   const ctaBtnGradientColors: [string, string, ...string[]] = isDark 
     ? ['#D4AF37', '#F5DEB3', '#C9962C'] 
     : ['#EF4F5F', '#FF7E8B', '#E03546'];
@@ -84,64 +122,46 @@ export default function PromoCarousel({ offers, containerStyle }: PromoCarouselP
 
   return (
     <View 
-      onLayout={handleLayout}
+      {...panResponder.panHandlers}
       style={[s.container, { borderColor: border, borderWidth: isDark ? 1.5 : 1, backgroundColor: isDark ? '#0A0A0B' : '#FFF' }, containerStyle]}
     >
-      <FlatList
-        ref={flatListRef}
-        data={offers}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        snapToInterval={slideWidth}
-        decelerationRate="fast"
-        onMomentumScrollEnd={onMomentumScrollEnd}
-        keyExtractor={(item) => item.id}
-        getItemLayout={(data, index) => ({
-          length: slideWidth,
-          offset: slideWidth * index,
-          index,
-        })}
-        renderItem={({ item }) => (
-          <View style={{ width: slideWidth, height: 220, position: 'relative' }}>
-            {/* Background Image */}
-            <View style={StyleSheet.absoluteFill}>
-              <SafeImage source={{ uri: item.imageUrl }} style={s.bgImage} />
-              <LinearGradient 
-                colors={isDark 
-                  ? ['rgba(10, 10, 11, 0.95)', 'rgba(10, 10, 11, 0.75)', 'rgba(10, 10, 11, 0.25)'] 
-                  : ['rgba(255, 255, 255, 0.98)', 'rgba(255, 255, 255, 0.85)', 'rgba(255, 255, 255, 0.35)']} 
-                start={{ x: 0, y: 0 }} 
-                end={{ x: 1, y: 0 }} 
-                style={StyleSheet.absoluteFill} 
-              />
-            </View>
+      <Animated.View style={[StyleSheet.absoluteFill, { opacity: fadeAnim, transform: [{ translateX: slideAnim }] }]}>
+        {/* Background Image */}
+        <View style={StyleSheet.absoluteFill}>
+          <SafeImage source={{ uri: currentOffer.imageUrl }} style={s.bgImage} />
+          <LinearGradient 
+            colors={isDark 
+              ? ['rgba(10, 10, 11, 0.95)', 'rgba(10, 10, 11, 0.75)', 'rgba(10, 10, 11, 0.25)'] 
+              : ['rgba(255, 255, 255, 0.98)', 'rgba(255, 255, 255, 0.85)', 'rgba(255, 255, 255, 0.35)']} 
+            start={{ x: 0, y: 0 }} 
+            end={{ x: 1, y: 0 }} 
+            style={StyleSheet.absoluteFill} 
+          />
+        </View>
 
-            {/* Content wrapper */}
-            <View style={s.content}>
-              <Text style={[s.tagline, { color: accent }]}>{item.tagline.toUpperCase()}</Text>
-              <Text style={[s.title1, { color: title1Color }]}>{item.title1.toUpperCase()}</Text>
-              <Text style={[s.title2, { color: accent }]}>{item.title2.toUpperCase()}</Text>
-              <Text style={[s.desc, { color: descColor }]}>{item.description.toUpperCase()}</Text>
+        {/* Content wrapper */}
+        <View style={s.content}>
+          <Text style={[s.tagline, { color: accent }]}>{currentOffer.tagline?.toUpperCase()}</Text>
+          <Text style={[s.title1, { color: title1Color }]}>{currentOffer.title1?.toUpperCase()}</Text>
+          <Text style={[s.title2, { color: accent }]}>{currentOffer.title2?.toUpperCase()}</Text>
+          <Text style={[s.desc, { color: descColor }]}>{currentOffer.description?.toUpperCase()}</Text>
 
-              <ActionPressable 
-                style={[s.ctaBtnWrapper, !isDark && { shadowColor: COLORS.red }]} 
-                onPress={() => item.redirectAction && item.redirectAction()}
-                sound="click"
-              >
-                <LinearGradient
-                  colors={ctaBtnGradientColors}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={s.ctaBtnGradient}
-                >
-                  <Text style={[s.ctaText, { color: ctaTextColor }]}>{item.buttonText.toUpperCase()} →</Text>
-                </LinearGradient>
-              </ActionPressable>
-            </View>
-          </View>
-        )}
-      />
+          <ActionPressable 
+            style={[s.ctaBtnWrapper, !isDark && { shadowColor: COLORS.red }]} 
+            onPress={() => currentOffer.redirectAction && currentOffer.redirectAction()}
+            sound="click"
+          >
+            <LinearGradient
+              colors={ctaBtnGradientColors}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={s.ctaBtnGradient}
+            >
+              <Text style={[s.ctaText, { color: ctaTextColor }]}>{currentOffer.buttonText?.toUpperCase()} →</Text>
+            </LinearGradient>
+          </ActionPressable>
+        </View>
+      </Animated.View>
 
       {/* Elongated pill indicators */}
       {offers.length > 1 && (
@@ -149,10 +169,7 @@ export default function PromoCarousel({ offers, containerStyle }: PromoCarouselP
           {offers.map((_, idx) => (
             <TouchableOpacity 
               key={idx} 
-              onPress={() => {
-                setCurrentIndex(idx);
-                flatListRef.current?.scrollToIndex({ index: idx, animated: true });
-              }}
+              onPress={() => goToSlide(idx, idx > currentIndex ? 'right' : 'left')}
               style={[
                 s.dot, 
                 idx === currentIndex ? [s.dotActive, { backgroundColor: accent }] : null
