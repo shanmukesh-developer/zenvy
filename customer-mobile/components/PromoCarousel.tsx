@@ -26,53 +26,39 @@ export default function PromoCarousel({ offers, containerStyle }: PromoCarouselP
   const { isDark } = useTheme();
   const [currentIndex, setCurrentIndex] = useState(0);
   const fadeAnim = useRef(new Animated.Value(1)).current;
-  const slideAnim = useRef(new Animated.Value(0)).current;
   const timerRef = useRef<any>(null);
+  const currentIndexRef = useRef(0);
 
-  const goToSlide = (nextIndex: number, direction: 'left' | 'right' = 'right') => {
-    if (nextIndex === currentIndex || !offers || offers.length === 0) return;
+  useEffect(() => {
+    currentIndexRef.current = currentIndex;
+  }, [currentIndex]);
+
+  const goToSlide = (nextIndex: number) => {
+    if (nextIndex === currentIndexRef.current || !offers || offers.length === 0) return;
     
-    // Animate transition
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 150,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: direction === 'right' ? -15 : 15,
-        duration: 150,
-        useNativeDriver: true,
-      })
-    ]).start(() => {
+    // Pure crossfade — no translate so content never bleeds outside borders
+    Animated.timing(fadeAnim, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => {
       setCurrentIndex(nextIndex);
-      slideAnim.setValue(direction === 'right' ? 15 : -15);
-      Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 220,
-          useNativeDriver: true,
-        }),
-        Animated.spring(slideAnim, {
-          toValue: 0,
-          friction: 8,
-          tension: 40,
-          useNativeDriver: true,
-        })
-      ]).start();
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 250,
+        useNativeDriver: true,
+      }).start();
     });
   };
 
   const nextSlide = () => {
     if (!offers || offers.length <= 1) return;
-    const nextIdx = (currentIndex + 1) % offers.length;
-    goToSlide(nextIdx, 'right');
+    goToSlide((currentIndexRef.current + 1) % offers.length);
   };
 
   const prevSlide = () => {
     if (!offers || offers.length <= 1) return;
-    const prevIdx = (currentIndex - 1 + offers.length) % offers.length;
-    goToSlide(prevIdx, 'left');
+    goToSlide((currentIndexRef.current - 1 + offers.length) % offers.length);
   };
 
   // Auto-scroll loop (5 seconds)
@@ -80,17 +66,13 @@ export default function PromoCarousel({ offers, containerStyle }: PromoCarouselP
     if (!offers || offers.length <= 1) return;
 
     timerRef.current = setInterval(() => {
-      setCurrentIndex((prev) => {
-        const next = (prev + 1) % offers.length;
-        goToSlide(next, 'right');
-        return prev;
-      });
+      nextSlide();
     }, 5000);
 
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [offers?.length, currentIndex]);
+  }, [offers?.length]);
 
   // Swipe gesture recognizer
   const panResponder = useRef(
@@ -125,7 +107,7 @@ export default function PromoCarousel({ offers, containerStyle }: PromoCarouselP
       {...panResponder.panHandlers}
       style={[s.container, { borderColor: border, borderWidth: isDark ? 1.5 : 1, backgroundColor: isDark ? '#0A0A0B' : '#FFF' }, containerStyle]}
     >
-      <Animated.View style={[StyleSheet.absoluteFill, { opacity: fadeAnim, transform: [{ translateX: slideAnim }] }]}>
+      <Animated.View style={[StyleSheet.absoluteFill, { opacity: fadeAnim, overflow: 'hidden', borderRadius: 24 }]}>
         {/* Background Image */}
         <View style={StyleSheet.absoluteFill}>
           <SafeImage source={{ uri: currentOffer.imageUrl }} style={s.bgImage} />
@@ -169,7 +151,7 @@ export default function PromoCarousel({ offers, containerStyle }: PromoCarouselP
           {offers.map((_, idx) => (
             <TouchableOpacity 
               key={idx} 
-              onPress={() => goToSlide(idx, idx > currentIndex ? 'right' : 'left')}
+              onPress={() => goToSlide(idx)}
               style={[
                 s.dot, 
                 idx === currentIndex ? [s.dotActive, { backgroundColor: accent }] : null
