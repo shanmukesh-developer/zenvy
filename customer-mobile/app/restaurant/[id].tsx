@@ -455,19 +455,53 @@ export default function RestaurantDetail() {
 
   const handleCustomizeConfirm = (customizations: any, finalPrice: number) => {
     if (!customizingItem) return;
-    addToCart({
-      id: customizingItem.id || customizingItem._id,
-      name: customizingItem.name,
-      price: finalPrice,
-      basePrice: customizingItem.price,
-      image: customizingItem.image || customizingItem.imageUrl || '',
-      restaurantId: id,
-      restaurantName: restaurant.name,
-      customizations,
-    });
-    setAddedId(customizingItem.id || customizingItem._id);
-    setCustomizingItem(null);
-    setTimeout(() => setAddedId(null), 800);
+    try {
+      addToCart({
+        id: customizingItem.id || customizingItem._id,
+        name: customizingItem.name,
+        price: finalPrice,
+        basePrice: customizingItem.price,
+        image: customizingItem.image || customizingItem.imageUrl || '',
+        restaurantId: id,
+        restaurantName: restaurant.name,
+        customizations,
+      });
+      setAddedId(customizingItem.id || customizingItem._id);
+      setCustomizingItem(null);
+      setTimeout(() => setAddedId(null), 800);
+    } catch (err: any) {
+      if (err.message === 'MULTIPLE_RESTAURANTS') {
+        const itemToSave = customizingItem;
+        Alert.alert(
+          'Clear Basket?',
+          'Your basket contains items from another restaurant. Clear it to add this customized item?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Clear & Add',
+              onPress: () => {
+                clearCart();
+                setTimeout(() => {
+                  addToCart({
+                    id: itemToSave.id || itemToSave._id,
+                    name: itemToSave.name,
+                    price: finalPrice,
+                    basePrice: itemToSave.price,
+                    image: itemToSave.image || itemToSave.imageUrl || '',
+                    restaurantId: id,
+                    restaurantName: restaurant.name,
+                    customizations,
+                  });
+                  setAddedId(itemToSave.id || itemToSave._id);
+                  setCustomizingItem(null);
+                  setTimeout(() => setAddedId(null), 800);
+                }, 100);
+              }
+            }
+          ]
+        );
+      }
+    }
   };
 
   const categoriesList = Array.isArray(restaurant.categories) && restaurant.categories.length > 0
