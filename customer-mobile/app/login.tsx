@@ -601,9 +601,20 @@ export default function LoginScreen() {
                           <Text style={s.realtimeOtpBtnText}>VERIFY OTP</Text>
                         )}
                       </TouchableOpacity>
-                      <TouchableOpacity onPress={() => setConfirm(null)} style={{ marginTop: 12, alignItems: 'center' }}>
-                         <Text style={{ color: COLORS.textSecondary, fontSize: 10, fontWeight: '700' }}>Change Phone Number</Text>
-                      </TouchableOpacity>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 14 }}>
+                        <TouchableOpacity onPress={() => setConfirm(null)}>
+                           <Text style={{ color: COLORS.textSecondary, fontSize: 11, fontWeight: '700' }}>← Change Number</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity 
+                          onPress={handleNativeSendOtp} 
+                          disabled={countdown > 0 || loading}
+                        >
+                          <Text style={{ color: countdown > 0 ? (isDark ? COLORS.textMuted : '#94A3B8') : COLORS.gold, fontSize: 11, fontWeight: '800' }}>
+                            {countdown > 0 ? `Resend in ${countdown}s` : 'Resend OTP 🔁'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
                     </>
                   )}
                 </>

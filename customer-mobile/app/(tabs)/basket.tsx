@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, TextInput, Alert, Clipboard } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, TextInput, Alert } from 'react-native';
+import Clipboard from '@react-native-clipboard/clipboard';
 import { useRouter } from 'expo-router';
 import { COLORS, SHADOWS } from '../../constants/theme';
 import { useCart } from '../../context/CartContext';
