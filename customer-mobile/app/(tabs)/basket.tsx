@@ -177,24 +177,37 @@ export default function BasketScreen() {
                     )}
                     <Text style={{ fontSize: 16, fontWeight: '900', color: txt, marginTop: 4 }}>₹{item.price}</Text>
                   </View>
-                  <View style={[s.qtyWrap, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F1F4F8' }]}>
-                    <DopaminePressable 
-                      style={[s.qtyBtn, { backgroundColor: isDark ? '#27272A' : '#FFFFFF' }]} 
-                      onPress={() => updateQuantity(item.cartKey || item.id, Math.max(0, item.quantity - 1))}
-                      sound="click"
-                      activeScale={0.88}
+                  <View style={{ alignItems: 'flex-end', gap: 8 }}>
+                    <TouchableOpacity
+                      style={{ padding: 4, borderRadius: 8, backgroundColor: isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.08)' }}
+                      onPress={() =>
+                        Alert.alert('Remove Item', `Remove "${item.name}" from basket?`, [
+                          { text: 'Cancel', style: 'cancel' },
+                          { text: 'Remove', style: 'destructive', onPress: () => removeFromCart(item.cartKey || item.id) }
+                        ])
+                      }
                     >
-                      <Text style={[s.qtyText, { color: txt }]}>-</Text>
-                    </DopaminePressable>
-                    <Text style={[s.qtyNum, { color: txt }]}>{item.quantity}</Text>
-                    <DopaminePressable 
-                      style={[s.qtyBtn, { backgroundColor: isDark ? '#27272A' : '#FFFFFF' }]} 
-                      onPress={() => updateQuantity(item.cartKey || item.id, item.quantity + 1)}
-                      sound="click"
-                      activeScale={0.88}
-                    >
-                      <Text style={[s.qtyText, { color: txt }]}>+</Text>
-                    </DopaminePressable>
+                      <Text style={{ fontSize: 14 }}>🗑️</Text>
+                    </TouchableOpacity>
+                    <View style={[s.qtyWrap, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F1F4F8' }]}>
+                      <DopaminePressable 
+                        style={[s.qtyBtn, { backgroundColor: isDark ? '#27272A' : '#FFFFFF' }]} 
+                        onPress={() => updateQuantity(item.cartKey || item.id, Math.max(0, item.quantity - 1))}
+                        sound="click"
+                        activeScale={0.88}
+                      >
+                        <Text style={[s.qtyText, { color: txt }]}>-</Text>
+                      </DopaminePressable>
+                      <Text style={[s.qtyNum, { color: txt }]}>{item.quantity}</Text>
+                      <DopaminePressable 
+                        style={[s.qtyBtn, { backgroundColor: isDark ? '#27272A' : '#FFFFFF' }]} 
+                        onPress={() => updateQuantity(item.cartKey || item.id, item.quantity + 1)}
+                        sound="click"
+                        activeScale={0.88}
+                      >
+                        <Text style={[s.qtyText, { color: txt }]}>+</Text>
+                      </DopaminePressable>
+                    </View>
                   </View>
                 </View>
               </StaggeredSection>

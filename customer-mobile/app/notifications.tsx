@@ -66,12 +66,16 @@ export default function NotificationsScreen() {
   const loadNotifications = async () => {
     try {
       const stored = await AsyncStorage.getItem('zenvy_notifications');
+      let loaded: NotificationItem[];
       if (stored) {
-        setNotifications(JSON.parse(stored));
+        loaded = JSON.parse(stored);
       } else {
-        await AsyncStorage.setItem('zenvy_notifications', JSON.stringify(DEFAULT_NOTIFICATIONS));
-        setNotifications(DEFAULT_NOTIFICATIONS);
+        loaded = DEFAULT_NOTIFICATIONS;
       }
+      // Auto mark-all-read on screen open
+      const allRead = loaded.map(n => ({ ...n, read: true }));
+      setNotifications(allRead);
+      await AsyncStorage.setItem('zenvy_notifications', JSON.stringify(allRead));
     } catch (e) {
       console.error('Error loading notifications:', e);
     } finally {

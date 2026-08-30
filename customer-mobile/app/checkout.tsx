@@ -429,8 +429,8 @@ export default function CheckoutScreen() {
                   onPress={() => setLocationType(item.key as any)}
                 >
                   <Text style={{ fontSize: 18, marginBottom: 4 }}>{item.icon}</Text>
-                  <Text style={[s.campusLabelNew, isActive && { color: goldColor }]}>{item.label}</Text>
-                  <Text style={s.campusSubLabelNew} numberOfLines={1}>{item.sub}</Text>
+                  <Text style={[s.campusLabelNew, { color: isActive ? goldColor : txt }]}>{item.label}</Text>
+                  <Text style={[s.campusSubLabelNew, { color: txtSec }]} numberOfLines={1}>{item.sub}</Text>
                   {isActive && (
                     <View style={[s.activeCheckBadge, { backgroundColor: goldColor }]}>
                       <Text style={s.activeCheckText}>✓</Text>
@@ -769,7 +769,7 @@ const s = StyleSheet.create({
   sectionTitle: { fontSize: 10, fontWeight: '900', letterSpacing: 3, marginBottom: 12 },
   campusRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
   campusBtnNew: { flex: 1, paddingVertical: 12, paddingHorizontal: 6, borderRadius: 16, alignItems: 'center', borderWidth: 1.5, position: 'relative', overflow: 'hidden' },
-  campusLabelNew: { fontSize: 10, fontWeight: '900', color: COLORS.textSecondary, letterSpacing: 0.5 },
+  campusLabelNew: { fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
   campusSubLabelNew: { fontSize: 7, fontWeight: '600', color: COLORS.textMuted, marginTop: 2 },
   activeCheckBadge: { position: 'absolute', top: 0, right: 0, borderBottomLeftRadius: 8, width: 14, height: 14, alignItems: 'center', justifyContent: 'center' },
   activeCheckText: { color: '#000', fontSize: 8, fontWeight: '900' },

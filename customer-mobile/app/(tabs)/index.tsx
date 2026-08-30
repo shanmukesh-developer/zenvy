@@ -520,9 +520,11 @@ export default function HomeScreen() {
               <Text style={[s.greeting, { color: txtSec }]}>{getGreeting().toUpperCase()}</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <Text style={[s.userName, { color: txt }]}>{(user?.name || 'Zenvy').split(' ')[0].toUpperCase()}</Text>
-                <View style={[s.eliteBadge, { backgroundColor: '#D4AF7A', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 }]}>
-                  <Text style={{ fontSize: 7, fontWeight: '900', color: '#000', letterSpacing: 1.5 }}>✨ VIP GOLD</Text>
-                </View>
+                {(user?.isElite || (user?.zenPoints && user.zenPoints >= 200)) && (
+                  <View style={[s.eliteBadge, { backgroundColor: '#D4AF7A', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 }]}>
+                    <Text style={{ fontSize: 7, fontWeight: '900', color: '#000', letterSpacing: 1.5 }}>✨ VIP GOLD</Text>
+                  </View>
+                )}
               </View>
             </View>
           </TouchableOpacity>
@@ -778,6 +780,10 @@ export default function HomeScreen() {
             const time = `${deliveryMin}-${deliveryMax} min`;
             const img = r.imageUrl || r.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400';
             
+            // Open/Closed status — use backend field if available, else derive from hour (7 AM – 11 PM)
+            const nowHour = new Date().getHours();
+            const isOpen = r.isOpen !== undefined ? r.isOpen : (nowHour >= 7 && nowHour < 23);
+            
             // Stable pseudo-random offers & pricing to match web portal behaviour
             const priceForTwo = 150 + (nameSeed * 7) % 201;
             const offers = ["50% OFF up to ₹100", "Flat ₹75 OFF", "Free Delivery", "60% OFF up to ₹120", "Buy 1 Get 1 Free"];
@@ -819,6 +825,23 @@ export default function HomeScreen() {
                   )}
  
                   <View style={s.timeChip}><Text style={s.timeText}>{time}</Text></View>
+                  {/* Open/Closed status badge */}
+                  <View style={{
+                    position: 'absolute',
+                    top: 8,
+                    left: 8,
+                    backgroundColor: isOpen ? 'rgba(16,185,129,0.92)' : 'rgba(100,100,100,0.88)',
+                    paddingHorizontal: 6,
+                    paddingVertical: 2,
+                    borderRadius: 6,
+                  }}>
+                    <Text style={{ fontSize: 7, fontWeight: '900', color: '#fff', letterSpacing: 1 }}>
+                      {isOpen ? '● OPEN' : '● CLOSED'}
+                    </Text>
+                  </View>
+                  {!isOpen && (
+                    <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.38)', borderRadius: 16 }} />
+                  )}
                   {hasOffer && (
                     <View style={s.offerRibbon}>
                       <Text style={s.offerText}>
