@@ -3325,6 +3325,33 @@ export default function OthersScreen() {
               </TouchableOpacity>
             </View>
 
+            {/* Post a Commute Action Banner */}
+            <TouchableOpacity
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                paddingVertical: 12,
+                paddingHorizontal: 16,
+                borderRadius: 14,
+                backgroundColor: COLORS.red,
+                marginBottom: 12,
+                shadowColor: COLORS.red,
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.3,
+                shadowRadius: 6,
+                elevation: 4,
+              }}
+              onPress={() => setShowCreateModal(true)}
+              activeOpacity={0.85}
+            >
+              <Text style={{ fontSize: 16 }}>🛵</Text>
+              <Text style={{ color: '#fff', fontSize: 11, fontWeight: '900', letterSpacing: 1.5 }}>
+                + POST A CAMPUS COMMUTE (OFFER / REQUEST)
+              </Text>
+            </TouchableOpacity>
+
             {/* Commute Sub-Tabs */}
             <View style={s.corideSubTabs}>
               <DopaminePressable style={[s.corideSubTabBtn, corideTab === 'browse' && s.corideSubTabBtnActive, { flex: 1 }]} onPress={() => setCorideTab('browse')} sound="tabSwitch">
@@ -4703,6 +4730,210 @@ export default function OthersScreen() {
               </TouchableOpacity>
             </View>
           )}
+        </View>
+      </Modal>
+
+      {/* ── CO-RIDE / BIKEPOOL POST CREATION MODAL ── */}
+      <Modal visible={showCreateModal} transparent animationType="slide">
+        <View style={s.modalOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowCreateModal(false)} />
+          <View style={[s.modalCard, { backgroundColor: cardBg, maxHeight: '90%' }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <View>
+                <Text style={{ fontSize: 10, fontWeight: '900', color: goldColor, letterSpacing: 2 }}>CAMPUS CO-RIDE DISPATCH</Text>
+                <Text style={[s.modalTitle, { color: txt, marginTop: 2 }]}>Post a Commute</Text>
+              </View>
+              <TouchableOpacity 
+                style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#E5E7EB', alignItems: 'center', justifyContent: 'center' }} 
+                onPress={() => setShowCreateModal(false)}
+              >
+                <Text style={{ color: txt, fontSize: 12, fontWeight: '900' }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {/* Creator Role Toggle */}
+              <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec, letterSpacing: 1, marginBottom: 6 }}>YOUR ROLE</Text>
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+                <TouchableOpacity
+                  style={{
+                    flex: 1,
+                    paddingVertical: 10,
+                    borderRadius: 12,
+                    alignItems: 'center',
+                    backgroundColor: creatorRole === 'rider' ? COLORS.red : (isDark ? 'rgba(255,255,255,0.04)' : '#F3F4F6'),
+                    borderWidth: 1,
+                    borderColor: creatorRole === 'rider' ? COLORS.red : border
+                  }}
+                  onPress={() => setCreatorRole('rider')}
+                >
+                  <Text style={{ fontSize: 11, fontWeight: '900', color: creatorRole === 'rider' ? '#fff' : txt }}>🛵 I HAVE A VEHICLE (OFFERING)</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{
+                    flex: 1,
+                    paddingVertical: 10,
+                    borderRadius: 12,
+                    alignItems: 'center',
+                    backgroundColor: creatorRole === 'passenger' ? COLORS.red : (isDark ? 'rgba(255,255,255,0.04)' : '#F3F4F6'),
+                    borderWidth: 1,
+                    borderColor: creatorRole === 'passenger' ? COLORS.red : border
+                  }}
+                  onPress={() => setCreatorRole('passenger')}
+                >
+                  <Text style={{ fontSize: 11, fontWeight: '900', color: creatorRole === 'passenger' ? '#fff' : txt }}>🙋‍♂️ NEED A RIDE (PASSENGER)</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Origin */}
+              <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec, letterSpacing: 1, marginBottom: 4 }}>FROM (PICKUP POINT)</Text>
+              <TextInput
+                style={{ borderWidth: 1, borderColor: border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 12, color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#FAFAFA', marginBottom: 6 }}
+                placeholder="e.g. SRM AP Main Gate / GH-2"
+                placeholderTextColor={txtSec}
+                value={origin}
+                onChangeText={setOrigin}
+              />
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  {['SRM AP Gate', 'VIT AP Hostel', 'Amaravathi Center', 'Vijayawada Stn', 'Guntur Bus Stand'].map(chip => (
+                    <TouchableOpacity
+                      key={chip}
+                      style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#E5E7EB' }}
+                      onPress={() => setOrigin(chip)}
+                    >
+                      <Text style={{ fontSize: 9, fontWeight: '700', color: txt }}>{chip}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+
+              {/* Destination */}
+              <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec, letterSpacing: 1, marginBottom: 4 }}>TO (DESTINATION)</Text>
+              <TextInput
+                style={{ borderWidth: 1, borderColor: border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 12, color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#FAFAFA', marginBottom: 6 }}
+                placeholder="e.g. PVP Square Mall / Trendset / Airport"
+                placeholderTextColor={txtSec}
+                value={destination}
+                onChangeText={setDestination}
+              />
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  {['PVP Square Mall', 'Vijayawada Stn', 'Gannavaram Airport', 'Trendset Mall', 'Mangalagiri D-Mart', 'SRM Campus'].map(chip => (
+                    <TouchableOpacity
+                      key={chip}
+                      style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#E5E7EB' }}
+                      onPress={() => setDestination(chip)}
+                    >
+                      <Text style={{ fontSize: 9, fontWeight: '700', color: txt }}>{chip}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+
+              {/* Departure Time */}
+              <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec, letterSpacing: 1, marginBottom: 4 }}>DEPARTURE TIME</Text>
+              <TextInput
+                style={{ borderWidth: 1, borderColor: border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 12, color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#FAFAFA', marginBottom: 6 }}
+                placeholder="e.g. 18:30 or 6:30 PM"
+                placeholderTextColor={txtSec}
+                value={departureTime}
+                onChangeText={setDepartureTime}
+              />
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  {['In 15 Mins', 'In 1 Hour', 'Tonight 8:00 PM', 'Tomorrow 8:00 AM', 'Tomorrow 5:00 PM'].map(chip => (
+                    <TouchableOpacity
+                      key={chip}
+                      style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#E5E7EB' }}
+                      onPress={() => {
+                        const now = new Date();
+                        if (chip === 'In 15 Mins') now.setMinutes(now.getMinutes() + 15);
+                        else if (chip === 'In 1 Hour') now.setHours(now.getHours() + 1);
+                        else if (chip === 'Tonight 8:00 PM') { now.setHours(20, 0, 0, 0); }
+                        else if (chip === 'Tomorrow 8:00 AM') { now.setDate(now.getDate() + 1); now.setHours(8, 0, 0, 0); }
+                        else if (chip === 'Tomorrow 5:00 PM') { now.setDate(now.getDate() + 1); now.setHours(17, 0, 0, 0); }
+                        setDepartureTime(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+                      }}
+                    >
+                      <Text style={{ fontSize: 9, fontWeight: '700', color: txt }}>{chip}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+
+              {/* Vehicle Type & Seats */}
+              <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec, letterSpacing: 1, marginBottom: 4 }}>VEHICLE</Text>
+                  <View style={{ flexDirection: 'row', gap: 4 }}>
+                    {['Bike', 'Car', 'Auto'].map(v => (
+                      <TouchableOpacity
+                        key={v}
+                        style={{
+                          flex: 1,
+                          paddingVertical: 8,
+                          borderRadius: 8,
+                          alignItems: 'center',
+                          backgroundColor: vehicleType === v ? (isDark ? goldColor : COLORS.red) : (isDark ? 'rgba(255,255,255,0.04)' : '#F3F4F6'),
+                        }}
+                        onPress={() => setVehicleType(v)}
+                      >
+                        <Text style={{ fontSize: 10, fontWeight: '900', color: vehicleType === v ? '#fff' : txt }}>
+                          {v === 'Bike' ? '🛵' : v === 'Car' ? '🚗' : '🛺'} {v}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                <View style={{ width: 100 }}>
+                  <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec, letterSpacing: 1, marginBottom: 4 }}>SEATS</Text>
+                  <TextInput
+                    style={{ borderWidth: 1, borderColor: border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, fontSize: 12, color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#FAFAFA', textAlign: 'center' }}
+                    value={availableSeats}
+                    onChangeText={setAvailableSeats}
+                    keyboardType="numeric"
+                  />
+                </View>
+              </View>
+
+              {/* Estimated Fuel Cost */}
+              <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec, letterSpacing: 1, marginBottom: 4 }}>ESTIMATED SPLIT FUEL COST (₹)</Text>
+              <TextInput
+                style={{ borderWidth: 1, borderColor: border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#FAFAFA', marginBottom: 12, fontWeight: '700' }}
+                placeholder="e.g. 50 (or 0 if sharing friendly ride)"
+                placeholderTextColor={txtSec}
+                value={estimatedFuelCost}
+                onChangeText={setEstimatedFuelCost}
+                keyboardType="numeric"
+              />
+
+              {/* Notes */}
+              <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec, letterSpacing: 1, marginBottom: 4 }}>NOTES / TRIP VIBE (OPTIONAL)</Text>
+              <TextInput
+                style={{ borderWidth: 1, borderColor: border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 11, color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#FAFAFA', marginBottom: 16 }}
+                placeholder="e.g. Extra helmet available, leaving on time"
+                placeholderTextColor={txtSec}
+                value={notes}
+                onChangeText={setNotes}
+              />
+
+              {/* Submit Button */}
+              <TouchableOpacity
+                style={{ paddingVertical: 14, borderRadius: 14, backgroundColor: COLORS.red, alignItems: 'center', marginBottom: 10 }}
+                onPress={handleCreateRide}
+                disabled={submittingRide}
+                activeOpacity={0.85}
+              >
+                {submittingRide ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={{ color: '#fff', fontSize: 11, fontWeight: '900', letterSpacing: 2 }}>PUBLISH COMMUTE MISSION 🚀</Text>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
         </View>
       </Modal>
     </View>
