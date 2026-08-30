@@ -23,6 +23,7 @@ import { useCart } from '../../context/CartContext';
 import { API_URL, ENDPOINTS } from '../../constants/api';
 import { apiFetch } from '../../utils/auth';
 import DopaminePressable, { ActionPressable } from '../../components/DopaminePressable';
+import SafeImage from '../../components/SafeImage';
 
 const { width: SW } = Dimensions.get('window');
 
@@ -439,7 +440,7 @@ export default function CategoryDetailScreen() {
           renderItem={({ item }) => (
             <View style={[s.card, { backgroundColor: cardBg, borderColor: border }]}>
               <View style={s.imageBox}>
-                <Image source={{ uri: item.image }} style={s.cardImg} />
+                <SafeImage source={{ uri: item.image }} style={s.cardImg} />
                 {item.discount && (
                   <View style={s.discountBadge}>
                     <Text style={s.discountText}>{item.discount}</Text>

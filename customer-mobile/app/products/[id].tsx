@@ -506,7 +506,16 @@ export default function ProductDetailScreen() {
 
           {/* Floating Top Nav Actions */}
           <View style={styles.galleryTopNav}>
-            <TouchableOpacity style={styles.iconCircleBtn} onPress={() => router.back()}>
+            <TouchableOpacity 
+              style={styles.iconCircleBtn} 
+              onPress={() => {
+                if (router.canGoBack()) {
+                  router.back();
+                } else {
+                  router.replace('/(tabs)' as any);
+                }
+              }}
+            >
               <Text style={styles.iconCircleText}>‹</Text>
             </TouchableOpacity>
 

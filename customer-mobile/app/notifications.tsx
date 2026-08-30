@@ -214,7 +214,13 @@ export default function NotificationsScreen() {
       <View style={[s.header, { borderBottomColor: border, backgroundColor: cardBg }]}>
         <TouchableOpacity
           style={[s.backBtn, { borderColor: border, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F6' }]}
-          onPress={() => router.back()}
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace('/(tabs)' as any);
+            }
+          }}
         >
           <Text style={{ fontSize: 16, color: txt }}>←</Text>
         </TouchableOpacity>

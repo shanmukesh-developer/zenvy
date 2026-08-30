@@ -7,6 +7,7 @@ import { ENDPOINTS, API_URL, ZENVY_SUPPORT_WHATSAPP } from '../../constants/api'
 import { apiFetch } from '../../utils/auth';
 import { useTheme } from '../../context/ThemeContext';
 import { StaggeredSection, FloatingPulse, BounceIn } from '../../components/AnimatedSection';
+import SafeImage from '../../components/SafeImage';
 
 const { width: SW } = Dimensions.get('window');
 
@@ -238,7 +239,7 @@ export default function PGDetailScreen() {
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Swipable / Scrollable HD Images & Video Gallery */}
         <View style={s.galleryContainer}>
-          <Image source={{ uri: activeImg }} style={s.mainImage} />
+          <SafeImage source={{ uri: activeImg }} style={s.mainImage} />
           <View style={s.galleryOverlay} />
           
           {/* Badges row */}

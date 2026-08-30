@@ -196,10 +196,10 @@ export default function SupportScreen() {
                 <View style={s.ticketHeader}>
                   <View style={{ flexDirection: 'row', gap: 6 }}>
                     <View style={[s.statusBadge, ticket.status === 'Resolved' || ticket.status === 'Closed' ? s.statusResolved : { backgroundColor: activeBgColor }] as any}>
-                      <Text style={[s.statusText, { color: activeTextColor }, (ticket.status === 'Resolved' || ticket.status === 'Closed') && { color: '#22C55E' }]}>{ticket.status.toUpperCase()}</Text>
+                      <Text style={[s.statusText, { color: activeTextColor }, (ticket.status === 'Resolved' || ticket.status === 'Closed') && { color: '#22C55E' }]}>{(ticket.status || 'Pending').toUpperCase()}</Text>
                     </View>
                     <View style={[s.prioBadge, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
-                      <Text style={s.prioText}>{ticket.priority.toUpperCase()}</Text>
+                      <Text style={s.prioText}>{(ticket.priority || 'Medium').toUpperCase()}</Text>
                     </View>
                   </View>
                   <Text style={s.ticketId}>#{(ticket.id || ticket._id || '').slice(0, 8)}</Text>

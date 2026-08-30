@@ -470,9 +470,11 @@ export default function RestaurantDetail() {
     setTimeout(() => setAddedId(null), 800);
   };
 
-  const categoriesList = Array.isArray(restaurant.categories)
+  const categoriesList = Array.isArray(restaurant.categories) && restaurant.categories.length > 0
     ? restaurant.categories
-    : (Array.isArray(restaurant.tags) ? restaurant.tags : []);
+    : (Array.isArray(restaurant.tags) && restaurant.tags.length > 0 
+      ? restaurant.tags 
+      : Array.from(new Set(menu.map((m: any) => m.category).filter(Boolean))));
   const categories = ['All', ...categoriesList];
 
   const filteredMenu = menu.filter((item: any) => {
@@ -491,7 +493,7 @@ export default function RestaurantDetail() {
   });
 
   return (
-    <View style={st.container}>
+    <View style={[st.container, { backgroundColor: isDark ? '#0A0A0B' : '#F9FAFB' }]}>
       {brand ? (
         <LinearGradient
           colors={[brand.primaryColor || '#1A0000', brand.secondaryColor || '#111111']}

@@ -380,6 +380,28 @@ const toggleRestaurantOffline = async (req, res) => {
   }
 };
 
+// @desc    Get single menu item by ID
+// @route   GET /api/restaurants/menu/item/:itemId
+const getMenuItemById = async (req, res) => {
+  try {
+    const MenuItem = getMenuItemModel();
+    const Restaurant = getRestaurantModel();
+    const item = await MenuItem.findByPk(req.params.itemId);
+    if (!item) return res.status(404).json({ message: 'Menu item not found' });
+    let restaurantName = 'Campus Restaurant';
+    if (item.restaurantId) {
+      const rest = await Restaurant.findByPk(item.restaurantId);
+      if (rest) restaurantName = rest.name;
+    }
+    const itemData = item.toJSON ? item.toJSON() : item;
+    itemData.restaurantName = restaurantName;
+    res.json(itemData);
+  } catch (error) {
+    console.error('[GET_ITEM_BY_ID_ERROR]', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 module.exports = { 
   getRestaurants, 
   getRestaurantMenu, 
@@ -392,5 +414,6 @@ module.exports = {
   updateMenuItem,
   getLocalVendors,
   incrementClickCount,
-  toggleRestaurantOffline
+  toggleRestaurantOffline,
+  getMenuItemById
 };

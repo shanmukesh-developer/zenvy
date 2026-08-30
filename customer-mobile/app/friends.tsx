@@ -530,10 +530,10 @@ export default function FriendsScreen() {
   const friendNodes = useOrbitLayout(centerPoint, friends, MIN_RADIUS, MAX_RADIUS, false);
   const pendingNodes = useOrbitLayout(centerPoint, pendingRequests, MIN_RADIUS, MAX_RADIUS, true);
 
-  // Load friends and pending requests on load
+  // Load friends and pending requests on load (with 30s fallback poll alongside live WebSockets)
   useEffect(() => {
     loadFriendsData();
-    const interval = setInterval(loadFriendsData, 8000);
+    const interval = setInterval(loadFriendsData, 30000);
     return () => clearInterval(interval);
   }, []);
 

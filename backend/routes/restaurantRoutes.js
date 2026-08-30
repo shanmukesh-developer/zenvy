@@ -1,5 +1,5 @@
 const express = require('express');
-const { getRestaurants, getRestaurantMenu, createRestaurant, restaurantLogin, getRestaurantOrders, toggleMenuItemAvailability, updateMenuItemTags, createMenuItem, updateMenuItem, getLocalVendors, incrementClickCount, toggleRestaurantOffline } = require('../controllers/restaurantController');
+const { getRestaurants, getRestaurantMenu, createRestaurant, restaurantLogin, getRestaurantOrders, toggleMenuItemAvailability, updateMenuItemTags, createMenuItem, updateMenuItem, getLocalVendors, incrementClickCount, toggleRestaurantOffline, getMenuItemById } = require('../controllers/restaurantController');
 const { protect, admin, vendor } = require('../middleware/authMiddleware');
 const rateLimit = require('express-rate-limit');
 const router = express.Router();
@@ -16,6 +16,7 @@ const { accountLockout } = require('../middleware/lockoutMiddleware');
 // ── CampusBites: Local Vendor Public Routes (MUST be before /:id) ────
 router.get('/local-vendors', getLocalVendors);
 router.post('/:id/click', incrementClickCount);
+router.get('/menu/item/:itemId', getMenuItemById);
 
 router.get('/', getRestaurants);
 router.get('/:id/menu', getRestaurantMenu);

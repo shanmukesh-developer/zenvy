@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, TextInput, Alert, Clipboard } from 'react-native';
 import { useRouter } from 'expo-router';
 import { COLORS, SHADOWS } from '../../constants/theme';
 import { useCart } from '../../context/CartContext';
@@ -14,7 +14,7 @@ import SafeImage from '../../components/SafeImage';
 export default function BasketScreen() {
   const { isDark, colors } = useTheme();
   const { user } = useAuth();
-  const { cart, removeFromCart, updateQuantity, totalPrice, totalItems, deliveryFee: cartDeliveryFee, roomCode, isHosting, isJoined, handleHostRoom, handleJoinRoom, handleDisconnect } = useCart();
+  const { cart, removeFromCart, updateQuantity, clearCart, totalPrice, totalItems, deliveryFee: cartDeliveryFee, roomCode, isHosting, isJoined, handleHostRoom, handleJoinRoom, handleDisconnect } = useCart();
   const [isJoinOpen, setIsJoinOpen] = React.useState(false);
   const [inputCode, setInputCode] = React.useState('');
   const router = useRouter();
@@ -35,7 +35,30 @@ export default function BasketScreen() {
     <View style={[s.container, { backgroundColor: bg }]}>
       <AmbientBackground />
       <ScrollView showsVerticalScrollIndicator={false}>
-        <Text style={[s.pageTitle, { color: txt }]}>MY BASKET</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, marginBottom: 16 }}>
+          <Text style={[s.pageTitle, { color: txt, marginBottom: 0, paddingHorizontal: 0 }]}>MY BASKET</Text>
+          {cart.length > 0 && (
+            <TouchableOpacity
+              style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.08)' }}
+              onPress={() => {
+                Alert.alert(
+                  'Clear Basket?',
+                  'Are you sure you want to remove all items from your basket?',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Clear All',
+                      style: 'destructive',
+                      onPress: () => clearCart(),
+                    }
+                  ]
+                );
+              }}
+            >
+              <Text style={{ fontSize: 9, fontWeight: '900', color: '#EF4444', letterSpacing: 1 }}>EMPTY BASKET</Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
         {/* Group Cart */}
         <StaggeredSection delay={50} direction="up">
@@ -62,7 +85,17 @@ export default function BasketScreen() {
                       onChangeText={setInputCode}
                       autoCapitalize="characters"
                     />
-                    <TouchableOpacity style={[s.joinSubmit, { backgroundColor: goldColor }]} onPress={() => { handleJoinRoom(inputCode); setIsJoinOpen(false); }}>
+                    <TouchableOpacity 
+                      style={[s.joinSubmit, { backgroundColor: goldColor }]} 
+                      onPress={() => { 
+                        if (!inputCode || inputCode.trim().length < 3) {
+                          Alert.alert('Invalid Code', 'Please enter a valid room code.');
+                          return;
+                        }
+                        handleJoinRoom(inputCode.trim().toUpperCase()); 
+                        setIsJoinOpen(false); 
+                      }}
+                    >
                       <Text style={s.joinSubmitText}>CONNECT</Text>
                     </TouchableOpacity>
                   </View>
@@ -77,7 +110,18 @@ export default function BasketScreen() {
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                   <View>
                     <Text style={{ fontSize: 9, color: txtSec, fontWeight: '700', letterSpacing: 1, marginBottom: 2 }}>ROOM CODE</Text>
-                    <Text style={{ fontSize: 18, fontWeight: '900', color: goldColor }}>{roomCode}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Text style={{ fontSize: 18, fontWeight: '900', color: goldColor }}>{roomCode}</Text>
+                      <TouchableOpacity 
+                        style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB' }}
+                        onPress={() => {
+                          Clipboard.setString(roomCode);
+                          Alert.alert('Copied!', `Room code ${roomCode} copied to clipboard. Share with your roommates!`);
+                        }}
+                      >
+                        <Text style={{ fontSize: 10, fontWeight: '800', color: txt }}>📋 COPY</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                   <TouchableOpacity style={s.disconnectBtn} onPress={handleDisconnect}>
                     <Text style={s.disconnectText}>🚫 DISCONNECT</Text>

@@ -238,10 +238,40 @@ export default function OrdersScreen() {
                   <Text style={{ fontSize: 10, color: txtSec, fontWeight: '600' }}>{orderItems.length} item{orderItems.length !== 1 ? 's' : ''} • {o.createdAt ? new Date(o.createdAt).toLocaleDateString() : ''}</Text>
                 </View>
                 <View style={{ alignItems: 'flex-end', justifyContent: 'center' }}>
-                  <Text style={[st.statusBadge, { color: statusColor(o.status) }]}>{(o.status || 'PENDING').toUpperCase()}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 2 }}>
+                    {o.status !== 'Delivered' && o.status !== 'Cancelled' && (
+                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#10B981' }} />
+                    )}
+                    <Text style={[st.statusBadge, { color: statusColor(o.status) }]}>{(o.status || 'PENDING').toUpperCase()}</Text>
+                  </View>
                   <Text style={[st.price, { color: txt }]}>₹{o.totalPrice || 0}</Text>
                 </View>
               </View>
+
+              {/* Quick 1-Tap Track Strip on Active Orders */}
+              {o.status !== 'Delivered' && o.status !== 'Cancelled' && !isExpanded && (
+                <TouchableOpacity
+                  style={{
+                    marginTop: 10,
+                    paddingVertical: 8,
+                    paddingHorizontal: 12,
+                    borderRadius: 12,
+                    backgroundColor: isDark ? 'rgba(212,175,122,0.15)' : 'rgba(239,79,95,0.08)',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
+                  onPress={(e) => {
+                    e.stopPropagation?.();
+                    router.push(`/tracking/${o._id || o.id}` as any);
+                  }}
+                >
+                  <Text style={{ fontSize: 10, fontWeight: '900', color: isDark ? goldColor : COLORS.red, letterSpacing: 1 }}>
+                    📍 LIVE MISSION IN PROGRESS • TRACK NOW
+                  </Text>
+                  <Text style={{ fontSize: 11, fontWeight: '900', color: isDark ? goldColor : COLORS.red }}>→</Text>
+                </TouchableOpacity>
+              )}
 
               {isExpanded && (
                 <View style={[st.details, { borderTopColor: border }]}>
