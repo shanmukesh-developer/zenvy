@@ -127,6 +127,26 @@ export default function NotificationsScreen() {
     }
   };
 
+  const handleNotificationPress = async (n: NotificationItem) => {
+    // 1. Mark as read
+    const updated = notifications.map(item => item.id === n.id ? { ...item, read: true } : item);
+    setNotifications(updated);
+    try {
+      await AsyncStorage.setItem('zenvy_notifications', JSON.stringify(updated));
+    } catch (e) {
+      console.error(e);
+    }
+
+    // 2. Contextual navigation
+    if (n.orderId) {
+      router.push(`/tracking/${n.orderId}` as any);
+    } else if (n.type === 'ORDER_STATUS') {
+      router.push('/(tabs)/orders' as any);
+    } else if (n.type === 'PROMO' || n.type === 'SURGE') {
+      router.push('/(tabs)' as any);
+    }
+  };
+
   const toggleReadStatus = async (id: string) => {
     const updated = notifications.map(n => n.id === id ? { ...n, read: !n.read } : n);
     setNotifications(updated);
@@ -276,7 +296,7 @@ export default function NotificationsScreen() {
                     key={n.id || String(idx)}
                     activeScale={0.97}
                     sound="click"
-                    onPress={() => toggleReadStatus(n.id)}
+                    onPress={() => handleNotificationPress(n)}
                     style={[
                       s.card,
                       {

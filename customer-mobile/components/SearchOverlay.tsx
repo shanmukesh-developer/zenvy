@@ -124,10 +124,10 @@ export default function SearchOverlay({ isOpen, onClose, searchMode = 'food' }: 
       <View style={[s.container, { backgroundColor: isDark ? COLORS.bgDark : COLORS.bgLight }]}>
         {/* Header */}
         <View style={s.header}>
-          <TouchableOpacity onPress={onClose} style={[s.closeBtn, { borderColor: border }]}>
+          <TouchableOpacity onPress={onClose} style={[s.closeBtn, { borderColor: border, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F1F5F9' }]}>
             <Text style={[s.closeText, { color: txtColor }]}>✕</Text>
           </TouchableOpacity>
-          <View style={[s.inputWrap, { borderColor: searchMode === 'grocery' ? '#22C55E' : COLORS.gold }]}>
+          <View style={[s.inputWrap, { borderColor: searchMode === 'grocery' ? '#22C55E' : (isDark ? COLORS.gold : '#D97706'), backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F8FAFC' }]}>
             <TextInput
               ref={inputRef}
               style={[s.input, { color: txtColor }]}
@@ -137,7 +137,7 @@ export default function SearchOverlay({ isOpen, onClose, searchMode = 'food' }: 
               onChangeText={setQuery}
               autoCapitalize="none"
             />
-            {loading && <ActivityIndicator size="small" color={searchMode === 'grocery' ? '#22C55E' : COLORS.gold} style={s.spinner} />}
+            {loading && <ActivityIndicator size="small" color={searchMode === 'grocery' ? '#22C55E' : (isDark ? COLORS.gold : '#D97706')} style={s.spinner} />}
           </View>
         </View>
 
@@ -145,9 +145,9 @@ export default function SearchOverlay({ isOpen, onClose, searchMode = 'food' }: 
         <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent} keyboardShouldPersistTaps="handled">
           {/* City Pulse Trending Banner */}
           {results.isTrending && (
-            <View style={s.trendingBanner}>
-              <Text style={s.trendingTag}>CITY PULSE</Text>
-              <Text style={s.trendingTitle}>Trending in Amaravathi Central 🔥</Text>
+            <View style={[s.trendingBanner, { backgroundColor: isDark ? 'rgba(201,168,76,0.12)' : '#FEF3C7', borderLeftColor: isDark ? COLORS.gold : '#D97706' }]}>
+              <Text style={[s.trendingTag, { color: isDark ? COLORS.gold : '#B45309' }]}>CITY PULSE</Text>
+              <Text style={[s.trendingTitle, { color: isDark ? '#FFF' : '#1E293B' }]}>Trending in Amaravathi Central 🔥</Text>
             </View>
           )}
 
@@ -200,7 +200,7 @@ export default function SearchOverlay({ isOpen, onClose, searchMode = 'food' }: 
           {/* Restaurants section */}
           {results.restaurants.length > 0 && (
             <View style={s.section}>
-              <Text style={s.sectionTitle}>RESTAURANTS</Text>
+              <Text style={[s.sectionTitle, { color: isDark ? '#A1A1AA' : '#334155' }]}>RESTAURANTS</Text>
               <View style={s.gridContainer}>
                 {results.restaurants.map((res) => {
                   const img = res.imageUrl || res.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400';
@@ -213,7 +213,7 @@ export default function SearchOverlay({ isOpen, onClose, searchMode = 'food' }: 
                       <Image source={{ uri: img }} style={s.gridCardImg} />
                       <View style={s.gridCardInfo}>
                         <Text style={[s.gridCardName, { color: txtColor }]} numberOfLines={1}>{res.name}</Text>
-                        <Text style={s.gridCardMeta}>⭐ {res.rating || '4.0'} • {res.location || 'SRM'}</Text>
+                        <Text style={[s.gridCardMeta, { color: isDark ? COLORS.textSecondary : '#64748B' }]}>⭐ {res.rating || '4.0'} • {res.location || 'SRM'}</Text>
                       </View>
                     </TouchableOpacity>
                   );
@@ -225,7 +225,7 @@ export default function SearchOverlay({ isOpen, onClose, searchMode = 'food' }: 
           {/* Items / Dishes section */}
           {results.items.length > 0 && (
             <View style={s.section}>
-              <Text style={s.sectionTitle}>{searchMode === 'grocery' ? 'GROCERY ITEMS' : 'DISHES'}</Text>
+              <Text style={[s.sectionTitle, { color: isDark ? '#A1A1AA' : '#334155' }]}>{searchMode === 'grocery' ? 'GROCERY ITEMS' : 'DISHES'}</Text>
               <View style={s.gridContainer}>
                 {results.items.map((item) => {
                   const img = item.image || item.imageUrl || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400';

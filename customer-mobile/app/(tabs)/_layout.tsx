@@ -24,7 +24,7 @@ function TabIcon({ name, focused, iconName, isDark, badgeCount }: { name: string
           style={focused ? styles.tabIconActive : styles.tabIcon}
         />
         {badgeCount !== undefined && badgeCount > 0 && (
-          <View style={styles.cartBadge}>
+          <View style={[styles.cartBadge, { borderColor: isDark ? '#09090B' : '#FFFFFF' }]}>
             <Text style={styles.cartBadgeText}>{badgeCount > 99 ? '99+' : badgeCount}</Text>
           </View>
         )}

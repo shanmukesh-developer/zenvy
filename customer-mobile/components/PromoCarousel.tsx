@@ -28,6 +28,7 @@ interface PromoCarouselProps {
 export default function PromoCarousel({ offers, containerStyle }: PromoCarouselProps) {
   const { isDark } = useTheme();
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [slideWidth, setSlideWidth] = useState(SLIDE_WIDTH);
   const flatListRef = useRef<FlatList>(null);
 
   const currentIndexRef = useRef(0);
@@ -35,6 +36,13 @@ export default function PromoCarousel({ offers, containerStyle }: PromoCarouselP
   useEffect(() => {
     currentIndexRef.current = currentIndex;
   }, [currentIndex]);
+
+  const handleLayout = (e: any) => {
+    const { width } = e.nativeEvent.layout;
+    if (width > 0 && Math.abs(width - slideWidth) > 1) {
+      setSlideWidth(width);
+    }
+  };
 
   // Auto-scroll loop (6 seconds interval for smooth performance)
   useEffect(() => {
@@ -56,7 +64,7 @@ export default function PromoCarousel({ offers, containerStyle }: PromoCarouselP
 
   const onMomentumScrollEnd = (e: any) => {
     const contentOffset = e.nativeEvent.contentOffset.x;
-    const index = Math.round(contentOffset / SLIDE_WIDTH);
+    const index = Math.round(contentOffset / (slideWidth || SLIDE_WIDTH));
     if (index >= 0 && index < offers.length) {
       setCurrentIndex(index);
     }
@@ -75,24 +83,27 @@ export default function PromoCarousel({ offers, containerStyle }: PromoCarouselP
   const border = isDark ? 'rgba(212, 175, 122, 0.4)' : COLORS.borderLight;
 
   return (
-    <View style={[s.container, { borderColor: border, borderWidth: isDark ? 1.5 : 1, backgroundColor: isDark ? '#0A0A0B' : '#FFF' }, containerStyle]}>
+    <View 
+      onLayout={handleLayout}
+      style={[s.container, { borderColor: border, borderWidth: isDark ? 1.5 : 1, backgroundColor: isDark ? '#0A0A0B' : '#FFF' }, containerStyle]}
+    >
       <FlatList
         ref={flatListRef}
         data={offers}
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
-        snapToInterval={SLIDE_WIDTH}
+        snapToInterval={slideWidth}
         decelerationRate="fast"
         onMomentumScrollEnd={onMomentumScrollEnd}
         keyExtractor={(item) => item.id}
         getItemLayout={(data, index) => ({
-          length: SLIDE_WIDTH,
-          offset: SLIDE_WIDTH * index,
+          length: slideWidth,
+          offset: slideWidth * index,
           index,
         })}
         renderItem={({ item }) => (
-          <View style={{ width: SLIDE_WIDTH, height: 220, position: 'relative' }}>
+          <View style={{ width: slideWidth, height: 220, position: 'relative' }}>
             {/* Background Image */}
             <View style={StyleSheet.absoluteFill}>
               <SafeImage source={{ uri: item.imageUrl }} style={s.bgImage} />
