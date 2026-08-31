@@ -1117,8 +1117,8 @@ export default function ProfileScreen() {
       {/* ─── MODAL: QR IDENTITY ─── */}
       <Modal visible={showQR} animationType="slide" transparent={true} onRequestClose={() => setShowQR(false)}>
         <View style={s.modalOverlay}>
-          <View style={[s.modalContent, { backgroundColor: '#141416', borderColor: border }]}>
-            <Text style={s.modalTitle}>ZENVY ID</Text>
+          <View style={[s.modalContent, { backgroundColor: cardBg, borderColor: border }]}>
+            <Text style={[s.modalTitle, { color: txt }]}>ZENVY ID</Text>
             
             <View style={s.qrWrapper}>
               <View style={s.qrAvatarBox}>
@@ -1135,7 +1135,7 @@ export default function ProfileScreen() {
 
             <Text style={s.qrName}>{user?.name}</Text>
             <Text style={[s.qrCity, { color: goldColor }]}>ZENVY • {user?.city || 'AMARAVATHI'}</Text>
-            <Text style={s.qrSubText}>Show this QR at campus events</Text>
+            <Text style={[s.qrSubText, { color: txtSec }]}>Show this QR at campus events</Text>
 
             <TouchableOpacity style={[s.modalCloseBtn, { backgroundColor: goldColor }]} onPress={() => setShowQR(false)}>
               <Text style={s.modalCloseBtnText}>CLOSE</Text>
@@ -1148,11 +1148,11 @@ export default function ProfileScreen() {
       <Modal visible={isEditing} animationType="slide" transparent={true} onRequestClose={() => setIsEditing(false)}>
         <View style={s.modalOverlay}>
           <ScrollView contentContainerStyle={s.modalScroll} keyboardShouldPersistTaps="handled">
-            <View style={[s.modalContent, { backgroundColor: '#141416', borderColor: border }]}>
-              <Text style={s.modalTitle}>UPDATE PROFILE</Text>
+            <View style={[s.modalContent, { backgroundColor: cardBg, borderColor: border }]}>
+              <Text style={[s.modalTitle, { color: txt }]}>UPDATE PROFILE</Text>
 
               {/* Avatar pre-selectors */}
-              <Text style={s.inputLabel}>CHOOSE PREMIUM AVATAR</Text>
+              <Text style={[s.inputLabel, { color: txtSec }]}>CHOOSE PREMIUM AVATAR</Text>
               <View style={s.avatarSelectRow}>
                 {PREMIUM_AVATARS.map((url, i) => (
                   <TouchableOpacity
@@ -1169,13 +1169,13 @@ export default function ProfileScreen() {
               </View>
 
               {/* Custom Image URL */}
-              <Text style={s.inputLabel}>OR PASTE AVATAR IMAGE URL</Text>
+              <Text style={[s.inputLabel, { color: txtSec }]}>OR PASTE AVATAR IMAGE URL</Text>
               <TextInput
                 value={editProfileImage || ''}
                 onChangeText={setEditProfileImage}
                 placeholder="Paste direct HTTPS image link"
-                placeholderTextColor="#555"
-                style={s.modalInput}
+                placeholderTextColor={txtSec}
+                style={[s.modalInput, { color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', borderColor: border }]}
               />
 
               {/* Local Device Image Upload */}
@@ -1192,51 +1192,51 @@ export default function ProfileScreen() {
               </TouchableOpacity>
 
               {/* Name */}
-              <Text style={s.inputLabel}>FULL NAME</Text>
+              <Text style={[s.inputLabel, { color: txtSec }]}>FULL NAME</Text>
               <TextInput
                 value={editName}
                 onChangeText={setEditName}
                 placeholder="Name"
-                placeholderTextColor="#555"
-                style={s.modalInput}
+                placeholderTextColor={txtSec}
+                style={[s.modalInput, { color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', borderColor: border }]}
               />
 
               {/* Mobile Number */}
-              <Text style={s.inputLabel}>MOBILE NUMBER</Text>
+              <Text style={[s.inputLabel, { color: txtSec }]}>MOBILE NUMBER</Text>
               <TextInput
                 value={editPhone}
                 onChangeText={setEditPhone}
                 placeholder="Mobile number"
-                placeholderTextColor="#555"
+                placeholderTextColor={txtSec}
                 keyboardType="phone-pad"
-                style={s.modalInput}
+                style={[s.modalInput, { color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', borderColor: border }]}
               />
 
               {/* Email */}
-              <Text style={s.inputLabel}>EMAIL ADDRESS</Text>
+              <Text style={[s.inputLabel, { color: txtSec }]}>EMAIL ADDRESS</Text>
               <TextInput
                 value={editEmail}
                 onChangeText={setEditEmail}
                 placeholder="Email address"
-                placeholderTextColor="#555"
+                placeholderTextColor={txtSec}
                 keyboardType="email-address"
-                style={s.modalInput}
+                style={[s.modalInput, { color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', borderColor: border }]}
               />
 
               {/* Bio/About */}
-              <Text style={s.inputLabel}>ABOUT ME (BIO)</Text>
+              <Text style={[s.inputLabel, { color: txtSec }]}>ABOUT ME (BIO)</Text>
               <TextInput
                 value={editAbout}
                 onChangeText={setEditAbout}
                 placeholder="Write something about yourself..."
-                placeholderTextColor="#555"
+                placeholderTextColor={txtSec}
                 multiline
                 numberOfLines={3}
-                style={[s.modalInput, { height: 80, textAlignVertical: 'top', paddingTop: 10 }]}
+                style={[s.modalInput, { color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', borderColor: border, height: 80, textAlignVertical: 'top', paddingTop: 10 }]}
               />
 
               {/* Delivery Address Auto-complete */}
-              <Text style={s.inputLabel}>DELIVERY ADDRESS</Text>
+              <Text style={[s.inputLabel, { color: txtSec }]}>DELIVERY ADDRESS</Text>
               <View style={{ zIndex: 99 }}>
                 <TextInput
                   value={editAddress}
@@ -1245,19 +1245,19 @@ export default function ProfileScreen() {
                     fetchAddressSuggestions(text);
                   }}
                   placeholder="SRM Hostel room, block name..."
-                  placeholderTextColor="#555"
-                  style={s.modalInput}
+                  placeholderTextColor={txtSec}
+                  style={[s.modalInput, { color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', borderColor: border }]}
                 />
                 
                 {showSuggestions && suggestions.length > 0 && (
-                  <View style={s.suggestionsBox}>
+                  <View style={[s.suggestionsBox, { backgroundColor: cardBg, borderColor: border }]}>
                     {suggestions.map((item, i) => (
                       <TouchableOpacity
                         key={i}
                         onPress={() => handleSelectSuggestion(item)}
                         style={s.suggestionItem}
                       >
-                        <Text style={s.suggestionText} numberOfLines={2}>
+                        <Text style={[s.suggestionText, { color: txt }]} numberOfLines={2}>
                           📍 {item.name ? `${item.name}, ` : ''}{item.display_name}
                         </Text>
                       </TouchableOpacity>
@@ -1267,18 +1267,18 @@ export default function ProfileScreen() {
               </View>
 
               {/* City */}
-              <Text style={s.inputLabel}>CITY</Text>
+              <Text style={[s.inputLabel, { color: txtSec }]}>CITY</Text>
               <TextInput
                 value={editCity}
                 onChangeText={setEditCity}
                 placeholder="Amaravathi"
-                placeholderTextColor="#555"
-                style={s.modalInput}
+                placeholderTextColor={txtSec}
+                style={[s.modalInput, { color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', borderColor: border }]}
               />
 
               <View style={s.modalActionsRow}>
-                <TouchableOpacity style={s.modalCancelBtn} onPress={() => setIsEditing(false)}>
-                  <Text style={s.modalCancelBtnText}>CANCEL</Text>
+                <TouchableOpacity style={[s.modalCancelBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]} onPress={() => setIsEditing(false)}>
+                  <Text style={[s.modalCancelBtnText, { color: txt }]}>CANCEL</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[s.modalSaveBtn, { backgroundColor: goldColor }]} onPress={handleUpdateProfile}>
                   <Text style={s.modalSaveBtnText}>SAVE</Text>
@@ -1292,39 +1292,39 @@ export default function ProfileScreen() {
       {/* ─── MODAL: ADD ADDRESS ─── */}
       <Modal visible={addingAddress} animationType="slide" transparent={true} onRequestClose={() => setAddingAddress(false)}>
         <View style={s.modalOverlay}>
-          <View style={[s.modalContent, { backgroundColor: '#141416', borderColor: border }]}>
-            <Text style={s.modalTitle}>ADD NEW ADDRESS</Text>
+          <View style={[s.modalContent, { backgroundColor: cardBg, borderColor: border }]}>
+            <Text style={[s.modalTitle, { color: txt }]}>ADD NEW ADDRESS</Text>
 
-            <Text style={s.inputLabel}>LABEL (E.G. HOSTEL ROOM, GATE 2)</Text>
+            <Text style={[s.inputLabel, { color: txtSec }]}>LABEL (E.G. HOSTEL ROOM, GATE 2)</Text>
             <TextInput
               value={newAddr.label}
               onChangeText={(text) => setNewAddr({ ...newAddr, label: text })}
               placeholder="Hostel Room A-204"
-              placeholderTextColor="#555"
-              style={s.modalInput}
+              placeholderTextColor={txtSec}
+              style={[s.modalInput, { color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', borderColor: border }]}
             />
 
-            <Text style={s.inputLabel}>FULL ADDRESS</Text>
+            <Text style={[s.inputLabel, { color: txtSec }]}>FULL ADDRESS</Text>
             <TextInput
               value={newAddr.address}
               onChangeText={(text) => setNewAddr({ ...newAddr, address: text })}
               placeholder="SRM AP Campus Block, room details..."
-              placeholderTextColor="#555"
-              style={s.modalInput}
+              placeholderTextColor={txtSec}
+              style={[s.modalInput, { color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', borderColor: border }]}
             />
 
-            <Text style={s.inputLabel}>CITY</Text>
+            <Text style={[s.inputLabel, { color: txtSec }]}>CITY</Text>
             <TextInput
               value={newAddr.city}
               onChangeText={(text) => setNewAddr({ ...newAddr, city: text })}
               placeholder="Amaravathi"
-              placeholderTextColor="#555"
-              style={s.modalInput}
+              placeholderTextColor={txtSec}
+              style={[s.modalInput, { color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', borderColor: border }]}
             />
 
             <View style={s.modalActionsRow}>
-              <TouchableOpacity style={s.modalCancelBtn} onPress={() => setAddingAddress(false)}>
-                <Text style={s.modalCancelBtnText}>CANCEL</Text>
+              <TouchableOpacity style={[s.modalCancelBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]} onPress={() => setAddingAddress(false)}>
+                <Text style={[s.modalCancelBtnText, { color: txt }]}>CANCEL</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[s.modalSaveBtn, { backgroundColor: goldColor }]} onPress={handleAddAddress}>
                 <Text style={s.modalSaveBtnText}>SAVE</Text>
@@ -1337,14 +1337,14 @@ export default function ProfileScreen() {
       {/* ─── MODAL: ABOUT US ─── */}
       <Modal visible={showAbout} animationType="slide" transparent={true} onRequestClose={() => setShowAbout(false)}>
         <View style={s.modalOverlay}>
-          <View style={[s.modalContent, { backgroundColor: '#141416', borderColor: border }]}>
+          <View style={[s.modalContent, { backgroundColor: cardBg, borderColor: border }]}>
             <View style={s.aboutHeader}>
               <View style={[s.aboutLogo, { backgroundColor: goldColor }]}>
                 <Text style={{ fontSize: 24 }}>⚡</Text>
               </View>
               <View>
                 <Text style={[s.aboutTitle, { color: goldColor }]}>Project Zenvy</Text>
-                <Text style={s.aboutSub}>Mobile App</Text>
+                <Text style={[s.aboutSub, { color: txtSec }]}>Mobile App</Text>
               </View>
             </View>
 
