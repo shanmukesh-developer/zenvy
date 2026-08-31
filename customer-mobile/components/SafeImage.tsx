@@ -16,11 +16,20 @@ const LUXURY_FALLBACKS: Record<string, string> = {
 
 const DEFAULT_FALLBACK_URI = LUXURY_FALLBACKS.food;
 
+function optimizeUri(uriString?: string | null): string {
+  if (!uriString || typeof uriString !== 'string') return '';
+  if (uriString.includes('images.unsplash.com')) {
+    const base = uriString.split('?')[0];
+    return `${base}?auto=format&fit=crop&w=600&q=75`;
+  }
+  return uriString;
+}
+
 function getSmartFallback(uriString?: string | null): string {
   if (!uriString) return DEFAULT_FALLBACK_URI;
   const lower = uriString.toLowerCase();
   for (const [key, fallback] of Object.entries(LUXURY_FALLBACKS)) {
-    if (lower.includes(key)) return fallback;
+    if (lower.includes(key)) return optimizeUri(fallback);
   }
   return DEFAULT_FALLBACK_URI;
 }
@@ -66,7 +75,7 @@ export default function SafeImage({
       if (!source.uri || typeof source.uri !== 'string' || source.uri.trim() === '') {
         setImgSource({ uri: resolvedFallback });
       } else {
-        setImgSource({ uri: source.uri });
+        setImgSource({ uri: optimizeUri(source.uri) });
       }
     } else {
       setImgSource({ uri: resolvedFallback });

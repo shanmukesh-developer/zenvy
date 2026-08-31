@@ -23,8 +23,24 @@ import { useCart } from '../../context/CartContext';
 import { apiFetch } from '../../utils/auth';
 import { useTheme } from '../../context/ThemeContext';
 import AdSlot from '../../components/AdSlot';
+import SafeImage from '../../components/SafeImage';
 
 const { width: SW } = Dimensions.get('window');
+
+export function getFoodImage(name?: string, category?: string, currentUri?: string): string {
+  if (currentUri && typeof currentUri === 'string' && currentUri.startsWith('http')) {
+    return currentUri;
+  }
+  const n = (name || '').toLowerCase();
+  if (n.includes('biryani')) return 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=800&q=80';
+  if (n.includes('pizza')) return 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=800&q=80';
+  if (n.includes('burger')) return 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=800&q=80';
+  if (n.includes('paneer') || n.includes('tikka')) return 'https://images.unsplash.com/photo-1567188040759-fb8a883dc6d8?w=800&q=80';
+  if (n.includes('shake') || n.includes('coffee') || n.includes('drink')) return 'https://images.unsplash.com/photo-1572490122747-3968b75cc699?w=800&q=80';
+  if (n.includes('momo') || n.includes('roll')) return 'https://images.unsplash.com/photo-1626777552726-4a6b54c97e46?w=800&q=80';
+  if (n.includes('cake') || n.includes('dessert') || n.includes('sweet')) return 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=800&q=80';
+  return 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800&q=80';
+}
 
 // ── Smart Item-Specific Attributes Generator ─────────────────────────────────
 export function generateSmartAttributes(name: string, category?: string, restaurantName?: string, isVeg?: boolean) {
@@ -370,6 +386,7 @@ export default function ProductDetailScreen() {
             const smartAttrs = generateSmartAttributes(data.name, data.category, data.restaurantName, data.isVegetarian);
             const crossSells = generateSmartCrossSells(data.name, data.category);
 
+            const foodImg = getFoodImage(data.name, data.category, data.imageUrl || data.image);
             const resolved = {
               id: data.id || data._id || cleanId,
               name: data.name || 'Zenvy Specialty Dish',
@@ -377,7 +394,7 @@ export default function ProductDetailScreen() {
               originalPrice: data.originalPrice ?? data.price,
               discount,
               weight: data.weight || data.quantity || '1 Serving',
-              images: data.images || (data.imageUrl ? [data.imageUrl] : data.image ? [data.image] : ['https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800&q=80']),
+              images: (data.images && data.images.length > 0 && data.images[0]) ? data.images.map((im: string) => getFoodImage(data.name, data.category, im)) : [foodImg],
               description: data.description || 'Authentic campus favorite prepared fresh on order and delivered in sealed thermal packaging.',
               rating: data.rating ?? 4.8,
               ratingCount: data.ratingCount ?? 48,
@@ -398,6 +415,7 @@ export default function ProductDetailScreen() {
             const cleanName = cleanId.replace(/[-_]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
             const smartAttrs = generateSmartAttributes(cleanName);
             const crossSells = generateSmartCrossSells(cleanName);
+            const foodImg = getFoodImage(cleanName);
             setProduct({
               id: cleanId,
               name: cleanName,
@@ -405,7 +423,7 @@ export default function ProductDetailScreen() {
               originalPrice: 120,
               discount: '18% OFF',
               weight: '1 Serving',
-              images: ['https://images.unsplash.com/photo-1542838132-92c53300491e?w=800&q=80'],
+              images: [foodImg],
               description: 'Freshly prepared specialty dish delivered directly to your campus room.',
               rating: 4.7,
               ratingCount: 52,
@@ -527,7 +545,11 @@ export default function ProductDetailScreen() {
             }}
             keyExtractor={(_, index) => index.toString()}
             renderItem={({ item }) => (
-              <Image source={{ uri: item }} style={[styles.galleryImage, { width: imgWidth }]} />
+              <SafeImage
+                source={{ uri: item || getFoodImage(product?.name, product?.category) }}
+                fallbackUri={getFoodImage(product?.name, product?.category)}
+                style={[styles.galleryImage, { width: imgWidth || SW }]}
+              />
             )}
           />
 

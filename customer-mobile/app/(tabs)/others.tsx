@@ -15,6 +15,7 @@ import DopaminePressable, { CardPressable, ActionPressable } from '../../compone
 import { StaggeredSection, FloatingPulse, BounceIn } from '../../components/AnimatedSection';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import SafeImage from '../../components/SafeImage';
 
 // ── Self-contained countdown timer to prevent re-rendering the entire screen ──
 const FlashDealTimer = memo(() => {
@@ -1824,23 +1825,23 @@ export default function OthersScreen() {
                 {[
                   {
                     name: 'Amul',
-                    img: require('../../assets/amul_poster.png'),
+                    img: 'https://images.unsplash.com/photo-1550583724-b2692b85b150?w=600&q=80',
                     border: '#B45309'
                   },
                   {
                     name: 'Surf Excel',
-                    img: require('../../assets/surf_excel_poster.png'),
+                    img: 'https://images.unsplash.com/photo-1582735689369-4fe89db7114c?w=600&q=80',
                     border: '#2563EB'
                   },
                   {
                     name: 'Nescafe',
-                    img: require('../../assets/nescafe_poster.png'),
+                    img: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=600&q=80',
                     border: '#78350F'
                   },
                   {
                     name: 'Lays',
-                    img: require('../../assets/lays_poster.png'),
-                    border: '#374151'
+                    img: 'https://images.unsplash.com/photo-1566478989037-eec170784d0b?w=600&q=80',
+                    border: '#D97706'
                   }
                 ].map((brand, idx) => (
                   <DopaminePressable
@@ -1861,12 +1862,11 @@ export default function OthersScreen() {
                     activeScale={0.96}
                     sound="click"
                   >
-                    <Image
-                      source={brand.img}
+                    <SafeImage
+                      source={{ uri: brand.img }}
                       style={{
                         width: '100%',
                         height: '100%',
-                        resizeMode: 'cover',
                         position: 'absolute'
                       }}
                     />
