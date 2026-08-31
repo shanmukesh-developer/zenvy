@@ -261,7 +261,7 @@ const s = StyleSheet.create({
   hostBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1.5, alignItems: 'center' },
   hostBtnText: { fontSize: 10, fontWeight: '800', letterSpacing: 1 },
   joinBtn: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
-  joinBtnText: { fontSize: 10, fontWeight: '800', color: '#fff', letterSpacing: 1 },
+  joinBtnText: { fontSize: 10, fontWeight: '900', color: '#000', letterSpacing: 1 },
   empty: { padding: 60, alignItems: 'center' },
   emptyText: { fontSize: 13, fontWeight: '600' },
   emptyBox: { marginHorizontal: 16, marginTop: 24, padding: 32, borderRadius: 24, alignItems: 'center', borderWidth: 1, ...SHADOWS.card },
