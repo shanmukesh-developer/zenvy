@@ -840,7 +840,7 @@ export default function HomeScreen() {
                     </Text>
                   </View>
                   {!isOpen && (
-                    <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.38)', borderRadius: 16 }} />
+                    <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.38)', borderRadius: 16 }]} />
                   )}
                   {hasOffer && (
                     <View style={s.offerRibbon}>

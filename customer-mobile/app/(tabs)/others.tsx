@@ -5722,4 +5722,12 @@ const s = StyleSheet.create({
     borderRadius: 0,
     borderWidth: 0,
   },
+  modalCard: {
+    width: '100%',
+    maxWidth: 500,
+    borderRadius: 24,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
 });

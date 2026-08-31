@@ -15,9 +15,10 @@ interface NotificationItem {
   title: string;
   body: string;
   timestamp: string;
-  type: 'info' | 'warning' | 'promo' | 'emergency' | 'friend_accepted' | 'chat_message';
+  type: 'info' | 'warning' | 'promo' | 'emergency' | 'friend_accepted' | 'chat_message' | 'ORDER_STATUS' | 'PROMO' | 'SURGE' | string;
   read: boolean;
   isVeg?: boolean;
+  orderId?: string;
 }
 
 const DEFAULT_NOTIFICATIONS: NotificationItem[] = [

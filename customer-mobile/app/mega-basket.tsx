@@ -334,11 +334,7 @@ export default function MegaBasketScreen() {
     return labels[status] || status;
   };
 
-  const txt = isDark ? '#FFF' : '#111';
-  const txtSec = isDark ? '#AAA' : '#666';
-  const bg = isDark ? '#0A0A0C' : '#FAFAFA';
-  const cardBg = isDark ? '#141416' : '#FFF';
-  const border = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+
 
   return (
     <View style={[s.container, { backgroundColor: bg }]}>

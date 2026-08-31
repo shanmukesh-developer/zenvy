@@ -395,7 +395,7 @@ export default function ProductDetailScreen() {
           }
         } else {
           if (!cancelled) {
-            const cleanName = cleanId.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+            const cleanName = cleanId.replace(/[-_]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
             const smartAttrs = generateSmartAttributes(cleanName);
             const crossSells = generateSmartCrossSells(cleanName);
             setProduct({
@@ -763,7 +763,7 @@ export default function ProductDetailScreen() {
                     {b.star}★
                   </Text>
                   <View style={{ flex: 1, height: 6, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#E5E7EB', borderRadius: 3, overflow: 'hidden' }}>
-                    <View style={{ width: b.pct, height: '100%', backgroundColor: b.star >= 4 ? '#22C55E' : b.star === 3 ? '#F59E0B' : '#EF4444', borderRadius: 3 }} />
+                    <View style={{ width: (b.pct as any), height: '100%', backgroundColor: b.star >= 4 ? '#22C55E' : b.star === 3 ? '#F59E0B' : '#EF4444', borderRadius: 3 }} />
                   </View>
                   <Text style={{ fontSize: 8, color: isDark ? '#9CA3AF' : '#6B7280', width: 26, textAlign: 'right' }}>
                     {b.pct}
@@ -1378,7 +1378,7 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    ...SHADOWS.primaryBtn,
+    ...SHADOWS.redGlow,
   },
   primaryAddBasketBtnText: {
     fontSize: 13,
