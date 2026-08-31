@@ -691,7 +691,7 @@ export default function CheckoutScreen() {
               )}
 
               <TextInput
-                style={[s.input, { backgroundColor: bg, color: txt, marginTop: 12 }]}
+                style={[s.input, { backgroundColor: bg, color: txt, borderColor: border, marginTop: 12 }]}
                 placeholder="Enter 12-Digit Transaction UTR No."
                 placeholderTextColor={txtSec}
                 value={upiUTR}
