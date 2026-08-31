@@ -524,7 +524,7 @@ export default function CustomizeDrawer({ isOpen, onClose, onConfirm, itemName, 
                     value={selections[opt.key] || ''}
                     onChangeText={val => handleText(opt.key, val)}
                     placeholder={opt.placeholder}
-                    placeholderTextColor={isDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.25)'}
+                    placeholderTextColor={isDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.45)'}
                     maxLength={100}
                   />
                 )}
