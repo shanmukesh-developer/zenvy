@@ -690,14 +690,14 @@ export default function CategoryDetailScreen() {
                           flex: 1,
                           paddingVertical: 8,
                           borderRadius: 10,
-                          backgroundColor: printColor === 'bw' ? '#18181B' : (isDark ? '#18181B' : '#FFF'),
+                          backgroundColor: printColor === 'bw' ? (isDark ? 'rgba(59,130,246,0.18)' : '#EFF6FF') : (isDark ? '#18181B' : '#FFF'),
                           borderWidth: 1,
                           borderColor: printColor === 'bw' ? '#3B82F6' : border,
                           alignItems: 'center'
                         }}
                         onPress={() => setPrintColor('bw')}
                       >
-                        <Text style={{ fontSize: 10, fontWeight: '900', color: printColor === 'bw' ? (isDark ? '#38BDF8' : '#FFF') : txtSec }}>
+                        <Text style={{ fontSize: 10, fontWeight: '900', color: printColor === 'bw' ? (isDark ? '#38BDF8' : '#2563EB') : txtSec }}>
                           Black & White (₹2/page)
                         </Text>
                       </TouchableOpacity>
@@ -707,14 +707,14 @@ export default function CategoryDetailScreen() {
                           flex: 1,
                           paddingVertical: 8,
                           borderRadius: 10,
-                          backgroundColor: printColor === 'color' ? '#18181B' : (isDark ? '#18181B' : '#FFF'),
+                          backgroundColor: printColor === 'color' ? (isDark ? 'rgba(59,130,246,0.18)' : '#EFF6FF') : (isDark ? '#18181B' : '#FFF'),
                           borderWidth: 1,
                           borderColor: printColor === 'color' ? '#3B82F6' : border,
                           alignItems: 'center'
                         }}
                         onPress={() => setPrintColor('color')}
                       >
-                        <Text style={{ fontSize: 10, fontWeight: '900', color: printColor === 'color' ? (isDark ? '#38BDF8' : '#FFF') : txtSec }}>
+                        <Text style={{ fontSize: 10, fontWeight: '900', color: printColor === 'color' ? (isDark ? '#38BDF8' : '#2563EB') : txtSec }}>
                           🌈 Full Color (₹5/page)
                         </Text>
                       </TouchableOpacity>
