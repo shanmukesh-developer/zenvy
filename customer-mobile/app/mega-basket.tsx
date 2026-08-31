@@ -58,7 +58,13 @@ const QUICK_ITEMS = [
 export default function MegaBasketScreen() {
   const router = useRouter();
   const { user } = useAuth();
-  const { isDark } = useTheme();
+  const { isDark, colors } = useTheme();
+  const txt = colors.text;
+  const txtSec = colors.textSecondary;
+  const cardBg = colors.card;
+  const bg = colors.bg;
+  const border = colors.border;
+  const goldColor = isDark ? COLORS.gold : colors.gold;
   
   const [activeTab, setActiveTab] = useState<'new' | 'list'>('new');
   
@@ -754,9 +760,9 @@ export default function MegaBasketScreen() {
 
             <Text style={s.inputLabel}>12-Digit Transaction Reference (UTR)</Text>
             <TextInput 
-              style={s.utrInput}
+              style={[s.utrInput, { color: txt, borderColor: border, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }]}
               placeholder="e.g. 340590112345"
-              placeholderTextColor="#888"
+              placeholderTextColor={txtSec}
               keyboardType="numeric"
               value={upiUTR}
               onChangeText={setUpiUTR}

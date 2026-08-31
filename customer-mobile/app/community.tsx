@@ -1418,7 +1418,7 @@ export default function CommunityScreen() {
           <TextInput 
             style={[s.searchBar, { backgroundColor: cardBg, borderColor: border, color: txt }]} 
             placeholder="Search stories..." 
-            placeholderTextColor="#888" 
+            placeholderTextColor={txtSec} 
             value={search} 
             onChangeText={setSearch} 
           />
@@ -2232,7 +2232,7 @@ export default function CommunityScreen() {
                     <TextInput 
                       style={[s.composerInputName, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} 
                       placeholder="Display Name..." 
-                      placeholderTextColor="#888" 
+                      placeholderTextColor={txtSec} 
                       value={customAuthorName} 
                       onChangeText={setCustomAuthorName} 
                     />
@@ -2260,8 +2260,8 @@ export default function CommunityScreen() {
                             </DopaminePressable>
                           ))}
                         </View>
-                        <TextInput style={[s.reviewInputField, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="Restaurant Name" placeholderTextColor="#999" value={restaurantName} onChangeText={setRestaurantName} />
-                        <TextInput style={[s.reviewInputField, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="Dish Name" placeholderTextColor="#999" value={productName} onChangeText={setProductName} />
+                        <TextInput style={[s.reviewInputField, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="Restaurant Name" placeholderTextColor={txtSec} value={restaurantName} onChangeText={setRestaurantName} />
+                        <TextInput style={[s.reviewInputField, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="Dish Name" placeholderTextColor={txtSec} value={productName} onChangeText={setProductName} />
                       </View>
                     )}
 
@@ -2303,7 +2303,7 @@ export default function CommunityScreen() {
                     <TextInput 
                       style={[s.composerTextArea, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} 
                       placeholder={replyingTo ? 'Write a reply...' : 'Write something beautiful...'} 
-                      placeholderTextColor="#888" 
+                      placeholderTextColor={txtSec} 
                       multiline 
                       numberOfLines={4} 
                       value={draft} 
@@ -2462,7 +2462,7 @@ export default function CommunityScreen() {
                       <TextInput 
                         style={[s.bdayWishInput, { backgroundColor: isDark ? '#222' : '#fff', color: txt, borderColor: border }]}
                         placeholder="Write a custom blessing..."
-                        placeholderTextColor="#888"
+                        placeholderTextColor={txtSec}
                         value={birthdayWishMessage}
                         onChangeText={setBirthdayWishMessage}
                       />
@@ -2511,7 +2511,7 @@ export default function CommunityScreen() {
                 <TextInput 
                   style={[s.bdayWishInput, { backgroundColor: isDark ? '#222' : '#fff', color: txt, borderColor: border, width: '100%', marginBottom: 12 }]}
                   placeholder="Candidate Full Name"
-                  placeholderTextColor="#888"
+                  placeholderTextColor={txtSec}
                   value={newBirthdayName}
                   onChangeText={setNewBirthdayName}
                 />
@@ -2519,7 +2519,7 @@ export default function CommunityScreen() {
                 <TextInput 
                   style={[s.bdayWishInput, { backgroundColor: isDark ? '#222' : '#fff', color: txt, borderColor: border, width: '100%', marginBottom: 12 }]}
                   placeholder="Birthday Date (YYYY-MM-DD)"
-                  placeholderTextColor="#888"
+                  placeholderTextColor={txtSec}
                   value={newBirthdayDate}
                   onChangeText={setNewBirthdayDate}
                 />
@@ -2694,7 +2694,7 @@ export default function CommunityScreen() {
                   <TextInput
                     style={[s.reviewInputField, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt, marginBottom: 8 }]}
                     placeholder="Moving ticker announcement text..."
-                    placeholderTextColor="#888"
+                    placeholderTextColor={txtSec}
                     value={editBannerText}
                     onChangeText={setEditBannerText}
                   />
@@ -2724,11 +2724,11 @@ export default function CommunityScreen() {
                   <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: 9, fontWeight: '700', color: txtSec, marginBottom: 4 }}>Coupon Value (₹):</Text>
-                      <TextInput style={[s.reviewInputField, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="200" placeholderTextColor="#888" keyboardType="numeric" value={editCouponVal} onChangeText={setEditCouponVal} />
+                      <TextInput style={[s.reviewInputField, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="200" placeholderTextColor={txtSec} keyboardType="numeric" value={editCouponVal} onChangeText={setEditCouponVal} />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: 9, fontWeight: '700', color: txtSec, marginBottom: 4 }}>Coupon Code (Optional):</Text>
-                      <TextInput style={[s.reviewInputField, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="e.g. WALL-FOOD200" placeholderTextColor="#888" value={editCouponCode} onChangeText={setEditCouponCode} />
+                      <TextInput style={[s.reviewInputField, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="e.g. WALL-FOOD200" placeholderTextColor={txtSec} value={editCouponCode} onChangeText={setEditCouponCode} />
                     </View>
                   </View>
 
@@ -2745,9 +2745,9 @@ export default function CommunityScreen() {
               {/* Create Event Form */}
               <View style={{ padding: 12, borderRadius: 16, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', borderWidth: 1, borderColor: border, marginBottom: 16 }}>
                 <Text style={{ fontSize: 11, fontWeight: '900', color: isDark ? COLORS.gold : '#8b5a2b', marginBottom: 8 }}>+ CREATE NEW CONTEST & BANNER</Text>
-                <TextInput style={[s.reviewInputField, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="Event Title (e.g. Campus Sunset Food)" placeholderTextColor="#888" value={newWallTitle} onChangeText={setNewWallTitle} />
-                <TextInput style={[s.reviewInputField, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="Event Description..." placeholderTextColor="#888" value={newWallDesc} onChangeText={setNewWallDesc} />
-                <TextInput style={[s.reviewInputField, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="Moving Ticker Banner Text..." placeholderTextColor="#888" value={newWallBannerText} onChangeText={setNewWallBannerText} />
+                <TextInput style={[s.reviewInputField, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="Event Title (e.g. Campus Sunset Food)" placeholderTextColor={txtSec} value={newWallTitle} onChangeText={setNewWallTitle} />
+                <TextInput style={[s.reviewInputField, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="Event Description..." placeholderTextColor={txtSec} value={newWallDesc} onChangeText={setNewWallDesc} />
+                <TextInput style={[s.reviewInputField, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="Moving Ticker Banner Text..." placeholderTextColor={txtSec} value={newWallBannerText} onChangeText={setNewWallBannerText} />
 
                 <Text style={{ fontSize: 9, fontWeight: '700', color: txtSec, marginVertical: 4 }}>Banner Gradient Theme:</Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
@@ -2772,9 +2772,9 @@ export default function CommunityScreen() {
                 </View>
 
                 <View style={{ flexDirection: 'row', gap: 6, marginTop: 4 }}>
-                  <TextInput style={[s.reviewInputField, { flex: 1, backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="Duration (Hrs)" placeholderTextColor="#888" keyboardType="numeric" value={newWallHours} onChangeText={setNewWallHours} />
-                  <TextInput style={[s.reviewInputField, { flex: 1, backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="Coupon (₹)" placeholderTextColor="#888" keyboardType="numeric" value={newWallCouponVal} onChangeText={setNewWallCouponVal} />
-                  <TextInput style={[s.reviewInputField, { flex: 1, backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="Code (Opt)" placeholderTextColor="#888" value={newWallCouponCode} onChangeText={setNewWallCouponCode} />
+                  <TextInput style={[s.reviewInputField, { flex: 1, backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="Duration (Hrs)" placeholderTextColor={txtSec} keyboardType="numeric" value={newWallHours} onChangeText={setNewWallHours} />
+                  <TextInput style={[s.reviewInputField, { flex: 1, backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="Coupon (₹)" placeholderTextColor={txtSec} keyboardType="numeric" value={newWallCouponVal} onChangeText={setNewWallCouponVal} />
+                  <TextInput style={[s.reviewInputField, { flex: 1, backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="Code (Opt)" placeholderTextColor={txtSec} value={newWallCouponCode} onChangeText={setNewWallCouponCode} />
                 </View>
 
                 <TouchableOpacity style={{ marginTop: 8, backgroundColor: isDark ? COLORS.gold : '#8b5a2b', paddingVertical: 10, borderRadius: 10, alignItems: 'center' }} onPress={createWallEvent} disabled={submittingNewWallEvent}>
