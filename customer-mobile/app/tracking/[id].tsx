@@ -107,16 +107,15 @@ function TacticalRadarMap({ status, currentCheckpoint, isDark }: { status: numbe
             strokeLinejoin="round"
           />
 
-          {traveledPoints.length > 0 && (
+          {traveledPoints.length > 0 && riderIdx > 0 && (
             <Polyline
-              points={polylinePoints}
+              points={traveledPoints}
               fill="none"
               stroke="#D4AF37"
-              strokeWidth={4}
-              strokeDasharray="5,5"
+              strokeWidth={5}
               strokeLinecap="round"
               strokeLinejoin="round"
-              opacity={0.3}
+              opacity={0.85}
             />
           )}
 

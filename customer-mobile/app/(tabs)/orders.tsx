@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, RefreshControl, Animated, LayoutAnimation, UIManager, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, RefreshControl, Animated, LayoutAnimation, UIManager, Alert, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { COLORS, SHADOWS } from '../../constants/theme';
@@ -61,6 +61,7 @@ export default function OrdersScreen() {
   const [orders, setOrders] = useState<any[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const handleReorder = (order: any) => {
     try {
@@ -119,11 +120,14 @@ export default function OrdersScreen() {
   };
 
   const fetchOrders = async () => {
+    setLoading(true);
     try {
       const res = await apiFetch(ENDPOINTS.myOrders);
       const data = await res.json();
       if (Array.isArray(data)) setOrders(data);
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error(e); } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -195,7 +199,12 @@ export default function OrdersScreen() {
         <Text style={[st.pageTitle, { color: txt }]}>MY ORDERS</Text>
         <Text style={[st.pageSub, { color: txtSec }]}>LIVE TRACKING • ONE-TAP REORDER • OTP CODES</Text>
 
-        {orders.length === 0 && (
+        {loading ? (
+          <View style={{ paddingTop: 60, alignItems: 'center' }}>
+            <ActivityIndicator size="large" color={goldColor} />
+            <Text style={{ color: txtSec, fontSize: 10, fontWeight: '700', letterSpacing: 2, marginTop: 12 }}>LOADING YOUR ORDERS...</Text>
+          </View>
+        ) : orders.length === 0 ? (
           <View style={[st.emptyBox, { backgroundColor: cardBg, borderColor: border }]}>
             <Text style={{ fontSize: 44, marginBottom: 12 }}>🍱</Text>
             <Text style={[st.emptyTitle, { color: txt }]}>No Orders Found Yet</Text>
@@ -210,9 +219,9 @@ export default function OrdersScreen() {
               <Text style={st.browseBtnText}>EXPLORE CAMPUS EATS →</Text>
             </TouchableOpacity>
           </View>
-        )}
+        ) : null}
 
-        {orders.map((o, idx) => {
+        {!loading && orders.map((o, idx) => {
           const id = (o._id || o.id || '').slice(-6).toUpperCase();
           const isExpanded = expanded === (o._id || o.id);
           let orderItems: any[] = [];

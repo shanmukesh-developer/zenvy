@@ -118,7 +118,7 @@ export default function SupportScreen() {
             <Text style={[s.formTitle, { color: goldColor }]}>FILE A SUPPORT REQUEST</Text>
 
             {/* Subject */}
-            <Text style={s.label}>ISSUE SUBJECT</Text>
+            <Text style={[s.label, { color: txtSec }]}>ISSUE SUBJECT</Text>
             <TextInput 
               style={[s.input, { color: txt, borderColor: border, backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)' }]} 
               placeholder="E.g., Order Delayed, Payment Failed"
@@ -128,7 +128,7 @@ export default function SupportScreen() {
             />
 
             {/* Priority Selection */}
-            <Text style={s.label}>PRIORITY LEVEL</Text>
+            <Text style={[s.label, { color: txtSec }]}>PRIORITY LEVEL</Text>
             <View style={s.priorityRow}>
               {['Low', 'Medium', 'High', 'Critical'].map(level => {
                 const active = priority === level;
@@ -151,7 +151,7 @@ export default function SupportScreen() {
             </View>
 
             {/* Description */}
-            <Text style={s.label}>DETAILED DESCRIPTION</Text>
+            <Text style={[s.label, { color: txtSec }]}>DETAILED DESCRIPTION</Text>
             <TextInput 
               style={[s.input, s.textarea, { color: txt, borderColor: border, backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)' }]} 
               placeholder="Describe the issue in detail..."
@@ -223,7 +223,7 @@ export default function SupportScreen() {
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, paddingTop: Platform.OS === 'android' ? 40 : 50 },
+  container: { flex: 1, paddingTop: Platform.OS === 'android' ? 40 : 50, maxWidth: 600, width: '100%', alignSelf: 'center' },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 16, borderBottomWidth: 1 },
   backBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   backIcon: { fontSize: 32, fontWeight: '300' },
@@ -235,7 +235,7 @@ const s = StyleSheet.create({
   scrollContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 40 },
   formCard: { padding: 20, borderRadius: 24, borderWidth: 1, marginBottom: 20 },
   formTitle: { fontSize: 10, fontWeight: '900', letterSpacing: 2, marginBottom: 16 },
-  label: { fontSize: 8, fontWeight: '900', color: '#888', letterSpacing: 1, marginBottom: 6, marginLeft: 2 },
+  label: { fontSize: 8, fontWeight: '900', letterSpacing: 1, marginBottom: 6, marginLeft: 2 },
   input: { height: 48, borderRadius: 14, borderWidth: 1, paddingHorizontal: 16, fontSize: 13, marginBottom: 16 },
   textarea: { height: 100, paddingTop: 12, paddingBottom: 12, textAlignVertical: 'top' },
 
