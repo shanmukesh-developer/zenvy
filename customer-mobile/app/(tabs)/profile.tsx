@@ -408,7 +408,7 @@ export default function ProfileScreen() {
 
   const handleUpdateProfile = async () => {
     try {
-      const newImg = editProfileImage || user?.profileImage || null;
+      const newImg = editProfileImage !== undefined && editProfileImage !== null ? editProfileImage : (user?.profileImage || null);
       const localUpdated = {
         ...user,
         name: editName,
@@ -436,7 +436,7 @@ export default function ProfileScreen() {
 
       if (response.ok) {
         const updated = await response.json();
-        setUser({ ...localUpdated, ...updated, profileImage: updated.profileImage || newImg });
+        setUser({ ...localUpdated, ...updated, profileImage: newImg });
         setIsEditing(false);
         Alert.alert('Profile Updated', 'Your profile details and photo have been updated successfully.');
       } else {
@@ -521,7 +521,16 @@ export default function ProfileScreen() {
             
             {/* Top row: Avatar + Zenvy Badge / Streak */}
             <View style={s.profileCardHeader}>
-              <TouchableOpacity onPress={() => setIsEditing(true)}>
+              <TouchableOpacity onPress={() => {
+                setEditName(user?.name || '');
+                setEditPhone(user?.phone || '');
+                setEditEmail(user?.email || '');
+                setEditAbout(user?.about || '');
+                setEditAddress(user?.address || '');
+                setEditCity(user?.city || 'Amaravathi');
+                setEditProfileImage(user?.profileImage || null);
+                setIsEditing(true);
+              }}>
                 <View style={s.avatarOuterRing}>
                   <LinearGradient
                     colors={isDark ? [goldColor, '#FFF', '#C9962C'] : ['#EF4F5F', '#FF7E8B', '#E03546']}
@@ -1151,6 +1160,20 @@ export default function ProfileScreen() {
             <View style={[s.modalContent, { backgroundColor: cardBg, borderColor: border }]}>
               <Text style={[s.modalTitle, { color: txt }]}>UPDATE PROFILE</Text>
 
+              {/* Live Selected Avatar Preview */}
+              <View style={{ alignItems: 'center', marginVertical: 12 }}>
+                <View style={{ width: 80, height: 80, borderRadius: 40, overflow: 'hidden', borderWidth: 2.5, borderColor: goldColor, backgroundColor: isDark ? '#1C1917' : '#F1F5F9', alignItems: 'center', justifyContent: 'center' }}>
+                  {editProfileImage ? (
+                    <SafeImage source={{ uri: editProfileImage }} style={{ width: '100%', height: '100%' }} />
+                  ) : user?.profileImage ? (
+                    <SafeImage source={{ uri: user.profileImage }} style={{ width: '100%', height: '100%' }} />
+                  ) : (
+                    <Text style={{ fontSize: 24, fontWeight: '900', color: goldColor }}>{initials}</Text>
+                  )}
+                </View>
+                <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec, marginTop: 6, letterSpacing: 1 }}>CURRENT AVATAR</Text>
+              </View>
+
               {/* Avatar pre-selectors */}
               <Text style={[s.inputLabel, { color: txtSec }]}>CHOOSE PREMIUM AVATAR</Text>
               <View style={s.avatarSelectRow}>
@@ -1163,7 +1186,7 @@ export default function ProfileScreen() {
                       { borderColor: editProfileImage === url ? goldColor : 'transparent' },
                     ]}
                   >
-                    <Image source={{ uri: url }} style={s.avatarSelectImg} />
+                    <SafeImage source={{ uri: url }} style={s.avatarSelectImg} />
                   </TouchableOpacity>
                 ))}
               </View>
