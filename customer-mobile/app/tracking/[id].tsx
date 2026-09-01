@@ -465,7 +465,13 @@ export default function TrackingScreen() {
             orderId={orderId || 'ZV-8821'}
             deliveryPin={orderInfo?.deliveryPin || '4829'}
             riderInfo={orderInfo?.deliveryPartner}
-            onOpenChat={() => setShowChatModal(true)}
+            onOpenChat={() => {
+              if (orderInfo?.deliveryPartner?.phone) {
+                Linking.openURL(`tel:${orderInfo.deliveryPartner.phone}`).catch(() => {});
+              } else {
+                Alert.alert('Campus Delivery Captain', 'Your verified rider is currently en route to your hostel block.');
+              }
+            }}
           />
         </StaggeredSection>
 
