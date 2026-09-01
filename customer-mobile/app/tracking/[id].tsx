@@ -27,7 +27,7 @@ import { apiFetch } from '../../utils/auth';
 import { StaggeredSection, FloatingPulse, BounceIn } from '../../components/AnimatedSection';
 import ConfettiCannon from 'react-native-confetti-cannon';
 import Svg, { Polyline, Circle } from 'react-native-svg';
-import RealLiveDeliveryMap from '../../components/RealLiveDeliveryMap';
+import LiveOrderCockpit from '../../components/LiveOrderCockpit';
 
 const CHECKPOINTS = [
   { name: 'Mangalagiri Jn' },
@@ -454,15 +454,18 @@ export default function TrackingScreen() {
       </View>
 
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
-        {/* ── LIVE REAL-WORLD GPS RADAR MAP ── */}
+        {/* ── LIVE ORDER DISPATCH COCKPIT ── */}
         <StaggeredSection delay={30} direction="up">
-          <RealLiveDeliveryMap
+          <LiveOrderCockpit
             status={status}
             currentCheckpoint={currentCheckpoint}
             isDark={isDark}
             restaurantName={orderInfo?.restaurant?.name || 'Paradise Kitchen'}
             hostelAddress={orderInfo?.deliveryAddress || 'Hostel Block C'}
             orderId={orderId || 'ZV-8821'}
+            deliveryPin={orderInfo?.deliveryPin || '4829'}
+            riderInfo={orderInfo?.deliveryPartner}
+            onOpenChat={() => setShowChatModal(true)}
           />
         </StaggeredSection>
 
