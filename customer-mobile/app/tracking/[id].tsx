@@ -297,6 +297,10 @@ interface OrderInfo {
   billProofUrl?: string;
   billAmount?: number;
   isBillApproved?: boolean;
+  restaurant?: any;
+  restaurantName?: string;
+  deliveryAddress?: string;
+  address?: string;
   deliveryPartner?: {
     id: string;
     _id?: string;
