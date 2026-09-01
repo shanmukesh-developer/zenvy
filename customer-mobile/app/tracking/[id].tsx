@@ -27,6 +27,7 @@ import { apiFetch } from '../../utils/auth';
 import { StaggeredSection, FloatingPulse, BounceIn } from '../../components/AnimatedSection';
 import ConfettiCannon from 'react-native-confetti-cannon';
 import Svg, { Polyline, Circle } from 'react-native-svg';
+import RealLiveDeliveryMap from '../../components/RealLiveDeliveryMap';
 
 const CHECKPOINTS = [
   { name: 'Mangalagiri Jn' },
@@ -693,9 +694,16 @@ export default function TrackingScreen() {
       </View>
 
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
-        {/* ── LIVE TACTICAL RADAR MAP ── */}
+        {/* ── LIVE REAL-WORLD GPS RADAR MAP ── */}
         <StaggeredSection delay={30} direction="up">
-          <TacticalRadarMap status={status} currentCheckpoint={currentCheckpoint} isDark={isDark} />
+          <RealLiveDeliveryMap
+            status={status}
+            currentCheckpoint={currentCheckpoint}
+            isDark={isDark}
+            restaurantName={orderInfo?.restaurant?.name || 'Paradise Kitchen'}
+            hostelAddress={orderInfo?.deliveryAddress || 'Hostel Block C'}
+            orderId={orderId || 'ZV-8821'}
+          />
         </StaggeredSection>
 
         {/* ── CURRENT STAGE CARD ── */}
