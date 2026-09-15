@@ -20,6 +20,19 @@ const normalizeItems = (items) => {
   return Array.isArray(items) ? items : [];
 };
 
+const broadcastOrderStatus = (req, orderId, payload) => {
+  try {
+    const io = req.app.get('io');
+    if (!io) return;
+    const room = orderId.toString();
+    io.to(room).emit('statusUpdated', payload);
+    io.to('admin-room').emit('statusUpdated', payload);
+    io.emit('statusUpdated', payload);
+  } catch (err) {
+    console.warn('[SOCKET_BROADCAST_WARN]', err.message);
+  }
+};
+
 // @desc    Create a new order
 // @route   POST /api/orders
 const createOrder = async (req, res) => {
@@ -583,12 +596,11 @@ const restaurantAcceptOrder = async (req, res) => {
     }
     await order.save();
 
-    const io = req.app.get('io');
     const statusPayload = { 
       id: order.id, 
       status: 'Accepted' 
     };
-    io.to(order.id.toString()).emit('statusUpdated', statusPayload);
+    broadcastOrderStatus(req, order.id, statusPayload);
 
     // Fetch Restaurant to broadcast details to riders
     const Restaurant = getRestaurantModel();
@@ -892,9 +904,9 @@ const cancelOrder = async (req, res) => {
     }
 
     const io = req.app.get('io');
+    if (io) io.emit('orderCancelled', { orderId: order.id });
     const statusPayload = { id: order.id, status: 'Cancelled' };
-    io.emit('orderCancelled', { orderId: order.id });
-    io.to(order.id.toString()).emit('statusUpdated', statusPayload);
+    broadcastOrderStatus(req, order.id, statusPayload);
 
     res.json({ message: 'Order cancelled', orderId: order.id });
   } catch (error) {
@@ -947,13 +959,16 @@ const updateOrderStatus = async (req, res) => {
     order.status = status;
     await order.save();
 
-    const io = req.app.get('io');
     const statusPayload = { 
       id: order.id, 
       status,
       newBadges: status === 'Delivered' ? (order.newBadges || []) : []
     };
-    io.to(order.id.toString()).emit('statusUpdated', statusPayload);
+    broadcastOrderStatus(req, order.id, statusPayload);
+    if (status === 'Delivered') {
+      const io = req.app.get('io');
+      if (io) io.to('admin-room').emit('admin_delivery_complete', { orderId: order.id });
+    }
 
     // 🟢 Push Notification: Status Update to Customer
     try {
@@ -1129,9 +1144,8 @@ const verifyUPIPayment = async (req, res) => {
     
     await order.save();
     
-    const io = req.app.get('io');
     const statusPayload = { id: order.id, status: order.status };
-    io.to(order.id.toString()).emit('statusUpdated', statusPayload);
+    broadcastOrderStatus(req, order.id, statusPayload);
 
     res.json({ message: `Payment ${isVerified ? 'Verified' : 'Rejected'}`, orderId: order.id, status: order.status });
   } catch (error) {
@@ -1162,9 +1176,10 @@ const restaurantReadyOrder = async (req, res) => {
     order.status = 'ReadyForPickup';
     await order.save();
 
-    const io = req.app.get('io');
     const statusPayload = { id: order.id, status: 'ReadyForPickup' };
-    io.to(order.id.toString()).emit('statusUpdated', statusPayload);
+    broadcastOrderStatus(req, order.id, statusPayload);
+
+    const io = req.app.get('io');
 
     // Also notify the delivery partner if assigned
     if (order.deliveryPartnerId) {
@@ -1189,8 +1204,7 @@ const uploadItemPhoto = async (req, res) => {
     order.status = 'Shopping'; // Transition status to Shopping
     await order.save();
 
-    const io = req.app.get('io');
-    io.to(order.id.toString()).emit('statusUpdated', { 
+    broadcastOrderStatus(req, order.id, { 
       id: order.id, 
       status: 'Shopping',
       itemPhotoUrl,
@@ -1213,8 +1227,7 @@ const approvePurchase = async (req, res) => {
     order.isPurchasingApprovedByCustomer = true;
     await order.save();
 
-    const io = req.app.get('io');
-    io.to(order.id.toString()).emit('statusUpdated', { 
+    broadcastOrderStatus(req, order.id, { 
       id: order.id, 
       status: order.status,
       isPurchasingApprovedByCustomer: true 
@@ -1238,8 +1251,7 @@ const uploadBillProof = async (req, res) => {
     order.billAmount = billAmount;
     await order.save();
 
-    const io = req.app.get('io');
-    io.to(order.id.toString()).emit('statusUpdated', { 
+    broadcastOrderStatus(req, order.id, { 
       id: order.id, 
       status: order.status,
       billProofUrl,
@@ -1263,8 +1275,7 @@ const approveBill = async (req, res) => {
     order.isBillApproved = true;
     await order.save();
 
-    const io = req.app.get('io');
-    io.to(order.id.toString()).emit('statusUpdated', { 
+    broadcastOrderStatus(req, order.id, { 
       id: order.id, 
       status: order.status,
       isBillApproved: true 

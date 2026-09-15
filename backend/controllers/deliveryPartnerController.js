@@ -420,11 +420,19 @@ const updateOrderStatus = async (req, res) => {
     }
 
     const io = req.app.get('io');
-    io.to(order.id.toString()).emit('statusUpdated', { 
-      id: order.id,
-      status: status,
-      newBadges: status === 'Delivered' ? (order.newBadges || []) : [] 
-    });
+    if (io) {
+      const payload = { 
+        id: order.id,
+        status: status,
+        newBadges: status === 'Delivered' ? (order.newBadges || []) : [] 
+      };
+      io.to(order.id.toString()).emit('statusUpdated', payload);
+      io.to('admin-room').emit('statusUpdated', payload);
+      io.emit('statusUpdated', payload);
+      if (status === 'Delivered') {
+        io.to('admin-room').emit('admin_delivery_complete', { orderId: order.id });
+      }
+    }
     res.json({ ...order.toJSON(), _id: order.id });
 
     try {
@@ -470,12 +478,17 @@ const cancelOrderByRider = async (req, res) => {
     }
 
     const io = req.app.get('io');
-    // Notify customer tracking page
-    io.to(order.id.toString()).emit('statusUpdated', { id: order.id, status: 'Pending' });
-    // Notify admin
-    io.to('admin-room').emit('order_unassigned', { orderId: order.id, reason: 'Rider emergency cancel' });
-    // Re-broadcast as new pending so other riders can pick it up
-    io.emit('newOrder', { ...order.toJSON(), id: order.id, _id: order.id });
+    if (io) {
+      const payload = { id: order.id, status: 'Pending' };
+      // Notify customer tracking page
+      io.to(order.id.toString()).emit('statusUpdated', payload);
+      // Notify admin
+      io.to('admin-room').emit('statusUpdated', payload);
+      io.emit('statusUpdated', payload);
+      io.to('admin-room').emit('order_unassigned', { orderId: order.id, reason: 'Rider emergency cancel' });
+      // Re-broadcast as new pending so other riders can pick it up
+      io.emit('newOrder', { ...order.toJSON(), id: order.id, _id: order.id });
+    }
 
     res.json({ message: 'Order cancelled by rider. Reassigning...' });
   } catch (error) {
@@ -818,13 +831,18 @@ const notifyArrivalAtGate = async (req, res) => {
 
     // Emit socket event to the order room
     const io = req.app.get('io');
-    io.to(order.id.toString()).emit('driverAtGate', {
-      message: 'Your rider is waiting at the hostel gate!'
-    });
-    io.to(order.id.toString()).emit('statusUpdated', {
-      id: order.id,
-      status: 'ArrivedAtGate'
-    });
+    if (io) {
+      io.to(order.id.toString()).emit('driverAtGate', {
+        message: 'Your rider is waiting at the hostel gate!'
+      });
+      const gatePayload = {
+        id: order.id,
+        status: 'ArrivedAtGate'
+      };
+      io.to(order.id.toString()).emit('statusUpdated', gatePayload);
+      io.to('admin-room').emit('statusUpdated', gatePayload);
+      io.emit('statusUpdated', gatePayload);
+    }
 
     res.json({ message: 'Gate arrival notification sent successfully', status: 'ArrivedAtGate' });
   } catch (error) {

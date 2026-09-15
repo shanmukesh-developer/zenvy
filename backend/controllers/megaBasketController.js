@@ -4,6 +4,19 @@ const { getUserModel } = require('../models/User');
 const { getDeliveryPartnerModel } = require('../models/DeliveryPartner');
 const { Op } = require('sequelize');
 
+const broadcastBasketStatus = (req, basketId, payload) => {
+  try {
+    const io = req.app.get('io');
+    if (!io) return;
+    const room = basketId.toString();
+    io.to(room).emit('statusUpdated', payload);
+    io.to('admin-room').emit('statusUpdated', payload);
+    io.emit('statusUpdated', payload);
+  } catch (err) {
+    console.warn('[BASKET_SOCKET_BROADCAST_WARN]', err.message);
+  }
+};
+
 // @desc    Create a new Mega Basket
 // @route   POST /api/mega-basket
 const createBasket = async (req, res) => {
@@ -116,11 +129,7 @@ const payBasket = async (req, res) => {
     basket.status = 'PaidEstimate';
     await basket.save();
 
-    // Broadcast status update
-    const io = req.app.get('io');
-    if (io) {
-      io.to(basket.id.toString()).emit('statusUpdated', { id: basket.id, status: basket.status });
-    }
+    broadcastBasketStatus(req, basket.id, { id: basket.id, status: basket.status });
 
     res.json({ message: 'Payment reference submitted', basket });
   } catch (error) {
@@ -215,10 +224,7 @@ const claimBasket = async (req, res) => {
     basket.status = 'PartnerAssigned';
     await basket.save();
 
-    const io = req.app.get('io');
-    if (io) {
-      io.to(basket.id.toString()).emit('statusUpdated', { id: basket.id, status: basket.status });
-    }
+    broadcastBasketStatus(req, basket.id, { id: basket.id, status: basket.status });
 
     res.json({ message: 'Basket claimed successfully', basket });
   } catch (error) {
@@ -243,10 +249,7 @@ const startShopping = async (req, res) => {
     basket.status = 'Shopping';
     await basket.save();
 
-    const io = req.app.get('io');
-    if (io) {
-      io.to(basket.id.toString()).emit('statusUpdated', { id: basket.id, status: basket.status });
-    }
+    broadcastBasketStatus(req, basket.id, { id: basket.id, status: basket.status });
 
     res.json({ message: 'Shopping started', basket });
   } catch (error) {
@@ -325,9 +328,9 @@ const submitBill = async (req, res) => {
     basket.status = 'PriceApprovalPending';
     await basket.save();
 
+    broadcastBasketStatus(req, basket.id, { id: basket.id, status: basket.status, actualTotal });
     const io = req.app.get('io');
     if (io) {
-      io.to(basket.id.toString()).emit('statusUpdated', { id: basket.id, status: basket.status, actualTotal });
       io.to(basket.id.toString()).emit('price_approval_request', { actualTotal });
     }
 
@@ -358,10 +361,7 @@ const approvePrices = async (req, res) => {
     basket.status = 'Approved';
     await basket.save();
 
-    const io = req.app.get('io');
-    if (io) {
-      io.to(basket.id.toString()).emit('statusUpdated', { id: basket.id, status: basket.status });
-    }
+    broadcastBasketStatus(req, basket.id, { id: basket.id, status: basket.status });
 
     res.json({ message: 'Prices approved successfully', basket });
   } catch (error) {
@@ -386,10 +386,7 @@ const purchaseCompleted = async (req, res) => {
     basket.status = 'Purchased';
     await basket.save();
 
-    const io = req.app.get('io');
-    if (io) {
-      io.to(basket.id.toString()).emit('statusUpdated', { id: basket.id, status: basket.status });
-    }
+    broadcastBasketStatus(req, basket.id, { id: basket.id, status: basket.status });
 
     res.json({ message: 'Purchase marked as completed', basket });
   } catch (error) {
@@ -414,10 +411,7 @@ const startDelivery = async (req, res) => {
     basket.status = 'Delivering';
     await basket.save();
 
-    const io = req.app.get('io');
-    if (io) {
-      io.to(basket.id.toString()).emit('statusUpdated', { id: basket.id, status: basket.status });
-    }
+    broadcastBasketStatus(req, basket.id, { id: basket.id, status: basket.status });
 
     res.json({ message: 'Delivery run started', basket });
   } catch (error) {
@@ -452,10 +446,7 @@ const completeDelivery = async (req, res) => {
     basket.paymentStatus = 'Completed';
     await basket.save();
 
-    const io = req.app.get('io');
-    if (io) {
-      io.to(basket.id.toString()).emit('statusUpdated', { id: basket.id, status: basket.status });
-    }
+    broadcastBasketStatus(req, basket.id, { id: basket.id, status: basket.status });
 
     res.json({ message: 'Delivery completed successfully', basket });
   } catch (error) {
