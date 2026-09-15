@@ -143,7 +143,7 @@ export const ONBOARDING_SLIDES: SlideData[] = [
       },
       {
         arrow: '🏢',
-        pointerText: 'Explore inspected PGs with instant WhatsApp booking to 9391955674',
+        pointerText: 'Explore inspected student PGs with direct 1-tap WhatsApp booking',
         targetLocation: 'Others Tab ➔ PG Homes',
       }
     ],

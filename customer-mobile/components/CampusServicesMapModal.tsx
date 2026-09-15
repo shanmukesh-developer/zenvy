@@ -116,7 +116,7 @@ const CAMPUS_SERVICES_MAP: ServicePillar[] = [
     keyFeatures: [
       'Inspected WiFi, AC, Mess & Security Properties',
       'Detailed Room Tour, Distance to SRM & Food Menus',
-      'Instant WhatsApp Booking Dispatch to 9391955674'
+      'Instant WhatsApp Booking Dispatch with Campus Wardens'
     ],
     image: 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=600&q=80',
     accentColor: '#06B6D4',
