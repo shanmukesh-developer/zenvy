@@ -26,3 +26,4 @@
 | 2026-09-16 | Delivery App | Feature/UX | Added prominent `🔔 I HAVE ARRIVED AT HOSTEL GATE` action in `FleetOrderCard.tsx` |
 | 2026-09-16 | Restaurant Portal | Design Polish | Fixed dark mode receipt modal background on screen while preserving thermal print styling in `OrderDetailModal.tsx` |
 | 2026-09-16 | Admin Dashboard | Feature/UX | Upgraded `LiveRiderMap.tsx` with live telemetry HUD, custom SVG/CSS divIcons, and campus landmark hubs |
+| 2026-09-16 | Customer Mobile | UX & Support | Added campus helpline drawer, pull-to-refresh, unauthenticated state, and empty state CTA in `support.tsx` |

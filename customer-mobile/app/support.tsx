@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert, Platform, RefreshControl, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
 import { COLORS, SHADOWS, RADIUS } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
@@ -14,6 +14,7 @@ export default function SupportScreen() {
 
   const [tickets, setTickets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [showNewForm, setShowNewForm] = useState(false);
 
   // Form states
@@ -23,25 +24,50 @@ export default function SupportScreen() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    fetchTickets();
-  }, []);
+    if (user) {
+      fetchTickets();
+    } else {
+      setLoading(false);
+    }
+  }, [user]);
 
   const fetchTickets = async () => {
-    setLoading(true);
     try {
       const res = await apiFetch(ENDPOINTS.support);
       if (res.ok) {
         const data = await res.json();
-        setTickets(data);
+        setTickets(Array.isArray(data) ? data : []);
       }
     } catch (e) {
       console.error('Error fetching tickets:', e);
     } finally {
       setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    if (user) {
+      fetchTickets();
+    } else {
+      setRefreshing(false);
     }
   };
 
   const handleSubmit = async () => {
+    if (!user) {
+      Alert.alert(
+        'Sign In Required',
+        'Please sign in to register a support ticket so our team can link it to your account.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Sign In', onPress: () => router.push('/login' as any) }
+        ]
+      );
+      return;
+    }
+
     if (!subject.trim() || !description.trim()) {
       Alert.alert('Validation Error', 'Please enter both a subject and description.');
       return;
@@ -85,9 +111,9 @@ export default function SupportScreen() {
   return (
     <View style={[s.container, { backgroundColor: bg }]}>
       {/* Header */}
-      <View style={[s.header, { borderBottomColor: border, backgroundColor: bg }]}>
+      <View style={[s.header, { borderBottomColor: border, backgroundColor: cardBg }]}>
         <TouchableOpacity 
-          style={[s.backBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]} 
+          style={[s.backBtn, { borderColor: border, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F6' }]} 
           onPress={() => {
             if (router.canGoBack()) {
               router.back();
@@ -96,7 +122,7 @@ export default function SupportScreen() {
             }
           }}
         >
-          <Text style={[s.backIcon, { color: txt }]}>‹</Text>
+          <Text style={{ fontSize: 16, color: txt }}>←</Text>
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={[s.subText, { color: goldColor }]}>CUSTOMER HELP & SUPPORT</Text>
@@ -112,7 +138,81 @@ export default function SupportScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={s.scrollContent}>
+      <ScrollView 
+        style={{ flex: 1 }} 
+        showsVerticalScrollIndicator={false} 
+        contentContainerStyle={s.scrollContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={goldColor} />}
+      >
+        {/* Instant Campus Helpline Card */}
+        <View style={[s.formCard, { backgroundColor: cardBg, borderColor: border, marginBottom: 16 }]}>
+          <Text style={[s.subText, { color: goldColor, marginBottom: 4 }]}>CAMPUS DISPATCH HELPLINE</Text>
+          <Text style={{ fontSize: 13, fontWeight: '800', color: txt, marginBottom: 4 }}>Need urgent help with a live order?</Text>
+          <Text style={{ fontSize: 11, color: txtSec, lineHeight: 16, marginBottom: 14 }}>
+            For delayed orders or delivery rider gate coordination, reach out directly to campus dispatch.
+          </Text>
+
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <TouchableOpacity
+              style={{
+                flex: 1,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                backgroundColor: 'rgba(34,197,94,0.12)',
+                borderWidth: 1,
+                borderColor: 'rgba(34,197,94,0.3)',
+                paddingVertical: 10,
+                borderRadius: 12
+              }}
+              onPress={() => Linking.openURL('https://wa.me/919876543210?text=Hi%20Zenvy%20Campus%20Support%2C%20I%20need%20assistance')}
+            >
+              <Text style={{ fontSize: 14 }}>💬</Text>
+              <Text style={{ fontSize: 10, fontWeight: '900', color: '#22C55E', letterSpacing: 0.5 }}>WHATSAPP</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={{
+                flex: 1,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                backgroundColor: 'rgba(59,130,246,0.12)',
+                borderWidth: 1,
+                borderColor: 'rgba(59,130,246,0.3)',
+                paddingVertical: 10,
+                borderRadius: 12
+              }}
+              onPress={() => Linking.openURL('tel:+919876543210')}
+            >
+              <Text style={{ fontSize: 14 }}>📞</Text>
+              <Text style={{ fontSize: 10, fontWeight: '900', color: '#3B82F6', letterSpacing: 0.5 }}>CALL DESK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {!user && (
+          <View style={[s.formCard, { backgroundColor: 'rgba(201,168,76,0.06)', borderColor: 'rgba(201,168,76,0.3)', marginBottom: 20, alignItems: 'center' }]}>
+            <Text style={{ fontSize: 24, marginBottom: 6 }}>🔒</Text>
+            <Text style={{ fontSize: 12, fontWeight: '900', color: txt, letterSpacing: 1, marginBottom: 4 }}>
+              SIGN IN TO TRACK TICKETS
+            </Text>
+            <Text style={{ fontSize: 10, color: txtSec, textAlign: 'center', lineHeight: 15, marginBottom: 12 }}>
+              Log in with your student account to submit requests and receive real-time admin resolution updates.
+            </Text>
+            <TouchableOpacity
+              style={{ backgroundColor: goldColor, paddingHorizontal: 20, paddingVertical: 8, borderRadius: 10 }}
+              onPress={() => router.push('/login' as any)}
+            >
+              <Text style={{ color: isDark ? '#000' : '#fff', fontSize: 10, fontWeight: '900', letterSpacing: 1 }}>
+                SIGN IN NOW →
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {showNewForm && (
           <View style={[s.formCard, { backgroundColor: cardBg, borderColor: goldColor }]}>
             <Text style={[s.formTitle, { color: goldColor }]}>FILE A SUPPORT REQUEST</Text>
@@ -184,10 +284,21 @@ export default function SupportScreen() {
           </View>
         ) : tickets.length === 0 ? (
           <View style={[s.emptyCard, { backgroundColor: cardBg, borderColor: border }]}>
-            <Text style={{ fontSize: 32, marginBottom: 8 }}>🎫</Text>
-            <Text style={{ fontSize: 11, fontWeight: '900', color: txtSec, letterSpacing: 2 }}>
-              NO SUPPORT TICKETS FOUND
+            <Text style={{ fontSize: 36, marginBottom: 8 }}>🎫</Text>
+            <Text style={{ fontSize: 12, fontWeight: '900', color: txt, letterSpacing: 1.5, marginBottom: 4 }}>
+              NO ACTIVE TICKETS
             </Text>
+            <Text style={{ fontSize: 10, color: txtSec, textAlign: 'center', lineHeight: 15, maxWidth: 260, marginBottom: 16 }}>
+              Have an issue with your order, payment, or delivery? File a ticket and our campus team will resolve it swiftly.
+            </Text>
+            <TouchableOpacity
+              style={{ backgroundColor: goldColor, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 12 }}
+              onPress={() => setShowNewForm(true)}
+            >
+              <Text style={{ color: isDark ? '#000' : '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 1 }}>
+                + FILE NEW TICKET
+              </Text>
+            </TouchableOpacity>
           </View>
         ) : (
           <View style={s.ticketList}>
@@ -225,7 +336,7 @@ export default function SupportScreen() {
 const s = StyleSheet.create({
   container: { flex: 1, paddingTop: Platform.OS === 'android' ? 40 : 50, maxWidth: 600, width: '100%', alignSelf: 'center' },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 16, borderBottomWidth: 1 },
-  backBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  backBtn: { width: 38, height: 38, borderRadius: 19, borderWidth: 1, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   backIcon: { fontSize: 32, fontWeight: '300' },
   subText: { fontSize: 8, fontWeight: '900', letterSpacing: 2 },
   title: { fontSize: 18, fontWeight: '900' },
