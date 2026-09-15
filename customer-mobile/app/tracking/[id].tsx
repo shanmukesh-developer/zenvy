@@ -86,6 +86,8 @@ export default function TrackingScreen() {
 
   const [status, setStatus] = useState<number>(1);
   const [orderInfo, setOrderInfo] = useState<OrderInfo | null>(null);
+  const [loadingOrder, setLoadingOrder] = useState<boolean>(true);
+  const [orderError, setOrderError] = useState<string | null>(null);
   const [currentCheckpoint, setCurrentCheckpoint] = useState('Mangalagiri Jn');
   const [eta, setEta] = useState('Calculating...');
   const [isConnected, setIsConnected] = useState(false);
@@ -134,6 +136,48 @@ export default function TrackingScreen() {
     }
   };
 
+  const fetchOrder = async () => {
+    if (!orderId) return;
+    try {
+      setLoadingOrder(true);
+      setOrderError(null);
+      const res = await apiFetch(`${API_URL}/api/orders/${orderId}`);
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        setOrderError(errData.message || 'Order details not found or expired.');
+        return;
+      }
+      const data = await res.json();
+      
+      if (typeof data.items === 'string') {
+        try { data.items = JSON.parse(data.items); } catch { data.items = []; }
+      }
+      setOrderInfo(data);
+      
+      if (data.status === 'Pending') setStatus(1);
+      else if (data.status === 'Accepted') setStatus(2);
+      else if (data.status === 'Preparing' || data.status === 'ReadyForPickup') setStatus(3);
+      else if (data.status === 'PickedUp') setStatus(4);
+      else if (data.status === 'ArrivedAtGate') setStatus(5);
+      else if (data.status === 'Delivered') { 
+        setStatus(6); 
+        if (!data.rating) setShowRatingModal(true); 
+      }
+      else if (data.status === 'Cancelled') setStatus(-1);
+
+      if (data.status === 'Pending' && data.createdAt) {
+        const elapsed = (Date.now() - new Date(data.createdAt).getTime()) / 1000;
+        setCancelSecondsLeft(Math.max(0, 120 - Math.round(elapsed)));
+        if (elapsed < 30) setShowConfetti(true);
+      }
+    } catch (e) {
+      console.error('Fetch order error:', e);
+      setOrderError('Unable to connect to live tracking service. Please check your connection.');
+    } finally {
+      setLoadingOrder(false);
+    }
+  };
+
   useEffect(() => {
     if (!orderId) return;
 
@@ -158,37 +202,7 @@ export default function TrackingScreen() {
       setTimeout(() => setGateNotification(null), 10000);
     });
 
-    const fetchOrder = async () => {
-      try {
-        const res = await apiFetch(`${API_URL}/api/orders/${orderId}`);
-        if (!res.ok) return;
-        const data = await res.json();
-        
-        if (typeof data.items === 'string') {
-          try { data.items = JSON.parse(data.items); } catch { data.items = []; }
-        }
-        setOrderInfo(data);
-        
-        if (data.status === 'Pending') setStatus(1);
-        else if (data.status === 'Accepted') setStatus(2);
-        else if (data.status === 'Preparing' || data.status === 'ReadyForPickup') setStatus(3);
-        else if (data.status === 'PickedUp') setStatus(4);
-        else if (data.status === 'ArrivedAtGate') setStatus(5);
-        else if (data.status === 'Delivered') { 
-          setStatus(6); 
-          if (!data.rating) setShowRatingModal(true); 
-        }
-        else if (data.status === 'Cancelled') setStatus(-1);
-
-        if (data.status === 'Pending' && data.createdAt) {
-          const elapsed = (Date.now() - new Date(data.createdAt).getTime()) / 1000;
-          setCancelSecondsLeft(Math.max(0, 120 - Math.round(elapsed)));
-          if (elapsed < 30) setShowConfetti(true);
-        }
-      } catch (e) {
-        console.error('Fetch order error:', e);
-      }
-    };
+    fetchOrder();
 
     socket.on('statusUpdated', (data: { id?: string; orderId?: string; status: string } | string) => {
       let s = '';
@@ -393,6 +407,40 @@ export default function TrackingScreen() {
   const txtSec = isDark ? COLORS.textSecondary : COLORS.textDarkSecondary;
   const border = isDark ? COLORS.borderDark : COLORS.borderLight;
 
+  if (loadingOrder && !orderInfo) {
+    return (
+      <View style={[s.container, { backgroundColor: bg, justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
+        <ActivityIndicator size="large" color={COLORS.gold} />
+        <Text style={{ fontSize: 12, fontWeight: '900', color: txt, letterSpacing: 2, marginTop: 18 }}>
+          CONNECTING TO DISPATCH RADAR...
+        </Text>
+        <Text style={{ fontSize: 11, color: txtSec, marginTop: 6, textAlign: 'center' }}>
+          Retrieving live mission telemetry for order #{orderId ? orderId.slice(-6).toUpperCase() : ''}
+        </Text>
+      </View>
+    );
+  }
+
+  if (orderError && !orderInfo) {
+    return (
+      <View style={[s.container, { backgroundColor: bg, justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
+        <View style={[s.cancelledCircle, { borderColor: COLORS.goldBorder, backgroundColor: 'rgba(212,175,122,0.1)' }]}>
+          <Text style={{ fontSize: 32 }}>📡</Text>
+        </View>
+        <Text style={[s.cancelledTitle, { color: txt, marginTop: 16 }]}>Telemetry Offline</Text>
+        <Text style={[s.cancelledDesc, { color: txtSec, textAlign: 'center', marginTop: 8 }]}>
+          {orderError}
+        </Text>
+        <TouchableOpacity style={[s.returnBtn, { backgroundColor: COLORS.gold, marginTop: 24 }]} onPress={fetchOrder}>
+          <Text style={[s.returnBtnText, { color: '#000' }]}>RETRY RADAR</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={{ marginTop: 16 }} onPress={() => router.replace('/(tabs)/orders' as any)}>
+          <Text style={{ fontSize: 11, fontWeight: '800', color: txtSec, letterSpacing: 1 }}>VIEW ALL ORDERS</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   if (status === -1) {
     return (
       <View style={[s.container, { backgroundColor: bg, justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
@@ -460,10 +508,10 @@ export default function TrackingScreen() {
             status={status}
             currentCheckpoint={currentCheckpoint}
             isDark={isDark}
-            restaurantName={orderInfo?.restaurant?.name || 'Paradise Kitchen'}
-            hostelAddress={orderInfo?.deliveryAddress || 'Hostel Block C'}
-            orderId={orderId || 'ZV-8821'}
-            deliveryPin={orderInfo?.deliveryPin || '4829'}
+            restaurantName={orderInfo?.restaurant?.name || orderInfo?.restaurantName || (orderInfo?.category === 'Mega Basket' ? 'Campus Kirana Store' : 'Campus Kitchen')}
+            hostelAddress={orderInfo?.deliveryAddress || orderInfo?.address || 'Campus Hostel Drop'}
+            orderId={orderInfo?._id || orderId || 'ZENVY-ORDER'}
+            deliveryPin={orderInfo?.deliveryPin || '----'}
             riderInfo={orderInfo?.deliveryPartner}
             onOpenChat={() => {
               if (orderInfo?.deliveryPartner?.phone) {

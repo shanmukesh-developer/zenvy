@@ -332,14 +332,7 @@ export default function CheckoutScreen() {
     }
   };
 
-  const simulateSuccess = () => {
-    if (!__DEV__) return; // Security: Block in production builds
-    setUpiUTR('SIM-' + Math.random().toString(36).substring(7).toUpperCase());
-    setUpiScreenshot('https://picsum.photos/seed/payment/400/800');
-    Alert.alert('Dev Mode Payment Simulated', 'UTR Code and Screenshot attachment set.');
-  };
-
-  const attachMockScreenshot = async () => {
+  const attachPaymentReceiptScreenshot = async () => {
     try {
       const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (permissionResult.granted === false) {
@@ -683,12 +676,7 @@ export default function CheckoutScreen() {
                 </TouchableOpacity>
               </View>
 
-              {/* Dev Mode Simulator — only visible in development builds */}
-              {__DEV__ && (
-              <TouchableOpacity style={s.devSimBtn} onPress={simulateSuccess}>
-                <Text style={s.devSimText}>⚡ SIMULATE PAYMENT (DEV MODE)</Text>
-              </TouchableOpacity>
-              )}
+              {/* UTR Input */}
 
               <TextInput
                 style={[s.input, { backgroundColor: bg, color: txt, borderColor: border, marginTop: 12 }]}
@@ -699,8 +687,8 @@ export default function CheckoutScreen() {
                 keyboardType="numeric"
               />
 
-              {/* Simulated Screenshot Upload */}
-              <TouchableOpacity style={s.uploadBtn} onPress={attachMockScreenshot} disabled={isUploading}>
+              {/* Payment Screenshot Receipt Upload */}
+              <TouchableOpacity style={s.uploadBtn} onPress={attachPaymentReceiptScreenshot} disabled={isUploading}>
                 {isUploading ? (
                   <ActivityIndicator color={COLORS.gold} />
                 ) : (

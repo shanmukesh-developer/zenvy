@@ -241,7 +241,20 @@ export default function BasketScreen() {
         <FloatingPulse color={COLORS.red} style={s.checkoutBtnContainer}>
           <ActionPressable 
             style={[s.checkoutBtn, { backgroundColor: actionBtnBg, width: '100%' }]} 
-            onPress={() => router.push('/checkout' as any)}
+            onPress={() => {
+              if (!user) {
+                Alert.alert(
+                  'Sign In Required',
+                  'Please sign in to proceed with checkout and live order tracking.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Sign In', onPress: () => router.push('/login' as any) }
+                  ]
+                );
+                return;
+              }
+              router.push('/checkout' as any);
+            }}
             sound="click"
           >
             <Text style={s.checkoutText}>PROCEED TO CHECKOUT • ₹{grandTotal}</Text>

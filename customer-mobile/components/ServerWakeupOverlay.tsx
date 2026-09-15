@@ -53,10 +53,9 @@ export default function ServerWakeupOverlay({ visible, onWakeupComplete, onRetry
         
         <View style={styles.content}>
           <Animated.View style={[styles.glowCircle, { transform: [{ scale: pulseAnim }] }]} />
-          <Text style={{ fontSize: 48, marginBottom: 20 }}>🚀</Text>
-          <Text style={styles.title}>WAKING UP SERVERS</Text>
+          <Text style={styles.title}>CONNECTING TO DISPATCH</Text>
           <Text style={styles.subtitle}>
-            Zenvy's free cloud backend is currently booting up. This usually takes about 90 seconds. Please wait...
+            Synchronizing campus network and live kitchen radars. Establishing secure telemetry...
           </Text>
           
           <View style={styles.timerBox}>

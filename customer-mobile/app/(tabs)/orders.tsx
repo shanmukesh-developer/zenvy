@@ -62,6 +62,7 @@ export default function OrdersScreen() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleReorder = (order: any) => {
     try {
@@ -121,11 +122,22 @@ export default function OrdersScreen() {
 
   const fetchOrders = async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await apiFetch(ENDPOINTS.myOrders);
+      if (!res.ok) {
+        throw new Error(`Server returned status ${res.status}`);
+      }
       const data = await res.json();
-      if (Array.isArray(data)) setOrders(data);
-    } catch (e) { console.error(e); } finally {
+      if (Array.isArray(data)) {
+        setOrders(data);
+      } else {
+        setOrders([]);
+      }
+    } catch (e: any) {
+      console.error('Orders sync error:', e);
+      setError(e?.message || 'Network disruption while retrieving orders. Please pull to refresh.');
+    } finally {
       setLoading(false);
     }
   };
@@ -203,6 +215,21 @@ export default function OrdersScreen() {
           <View style={{ paddingTop: 60, alignItems: 'center' }}>
             <ActivityIndicator size="large" color={goldColor} />
             <Text style={{ color: txtSec, fontSize: 10, fontWeight: '700', letterSpacing: 2, marginTop: 12 }}>LOADING YOUR ORDERS...</Text>
+          </View>
+        ) : error && orders.length === 0 ? (
+          <View style={[st.emptyBox, { backgroundColor: cardBg, borderColor: border }]}>
+            <Text style={{ fontSize: 44, marginBottom: 12 }}>📡</Text>
+            <Text style={[st.emptyTitle, { color: txt }]}>Order Sync Unavailable</Text>
+            <Text style={[st.emptyDesc, { color: txtSec }]}>
+              {error}
+            </Text>
+            <TouchableOpacity 
+              style={[st.browseBtn, { backgroundColor: COLORS.gold || '#D4AF7A' }]}
+              activeOpacity={0.85}
+              onPress={fetchOrders}
+            >
+              <Text style={[st.browseBtnText, { color: '#000' }]}>RETRY RADAR SYNC 🔄</Text>
+            </TouchableOpacity>
           </View>
         ) : orders.length === 0 ? (
           <View style={[st.emptyBox, { backgroundColor: cardBg, borderColor: border }]}>

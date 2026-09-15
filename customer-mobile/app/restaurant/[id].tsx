@@ -298,8 +298,44 @@ export default function RestaurantDetail() {
     })();
   }, [id]);
 
-  if (loading) return <View style={[st.center, { backgroundColor: isDark ? COLORS.bgDark : COLORS.bgLight }]}><ActivityIndicator size="large" color={isDark ? COLORS.gold : COLORS.red} /></View>;
-  if (!restaurant) return <View style={[st.center, { backgroundColor: isDark ? COLORS.bgDark : COLORS.bgLight }]}><Text style={{ color: isDark ? '#fff' : COLORS.textDark }}>Restaurant not found</Text></View>;
+  if (loading) {
+    return (
+      <View style={[st.container, st.center, { backgroundColor: isDark ? '#08090C' : COLORS.bgLight, padding: 24 }]}>
+        <ActivityIndicator size="large" color={isDark ? COLORS.gold : COLORS.red} />
+        <Text style={{ color: isDark ? 'rgba(255,255,255,0.6)' : COLORS.textSecondary, fontSize: 10, fontWeight: '800', letterSpacing: 2, marginTop: 16 }}>
+          CONNECTING TO KITCHEN RADAR...
+        </Text>
+      </View>
+    );
+  }
+
+  if (!restaurant) {
+    return (
+      <View style={[st.container, { backgroundColor: isDark ? '#08090C' : COLORS.bgLight, paddingTop: Platform.OS === 'android' ? 40 : 50, paddingHorizontal: 20 }]}>
+        <TouchableOpacity
+          style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB', alignItems: 'center', justifyContent: 'center', marginBottom: 30 }}
+          onPress={() => router.back()}
+        >
+          <Text style={{ fontSize: 18, color: isDark ? '#FFF' : '#000' }}>←</Text>
+        </TouchableOpacity>
+        <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 40, paddingHorizontal: 20, borderRadius: 24, backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#FFFFFF', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E5E7EB', ...SHADOWS.card }}>
+          <Text style={{ fontSize: 48, marginBottom: 16 }}>🍽️</Text>
+          <Text style={{ fontSize: 18, fontWeight: '900', color: isDark ? '#FFF' : COLORS.textDark, letterSpacing: 2, textAlign: 'center', marginBottom: 8 }}>
+            KITCHEN UNAVAILABLE
+          </Text>
+          <Text style={{ fontSize: 12, color: isDark ? 'rgba(255,255,255,0.6)' : COLORS.textSecondary, textAlign: 'center', lineHeight: 18, marginBottom: 24 }}>
+            We couldn't connect to this restaurant or verify its active campus menu. It may be temporarily offline.
+          </Text>
+          <TouchableOpacity
+            style={{ backgroundColor: COLORS.red, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 16, ...SHADOWS.redGlow }}
+            onPress={() => router.replace('/(tabs)' as any)}
+          >
+            <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '900', letterSpacing: 2 }}>EXPLORE CAMPUS EATS →</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   const name = (restaurant.name || '').toLowerCase();
   const brandKey = Object.keys(BRAND_THEMES).find(k => name && typeof name?.includes === 'function' && name.includes(k));

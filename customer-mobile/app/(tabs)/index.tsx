@@ -285,12 +285,8 @@ export default function HomeScreen() {
         setRestaurants(cleaned);
       }
     } catch (e: any) { 
-      if (e.message && (e.message.includes('Network') || e.message.includes('Failed to fetch') || e.message.includes('JSON'))) {
-        setShowWakeup(true);
-      } else {
-        Alert.alert('Data Fetch Error', e.message || 'Could not fetch restaurants');
-      }
-      console.error(e); 
+      console.warn('[ZENVY_SYNC] Backend connection notice:', e?.message || e);
+      setShowWakeup(true);
     }
 
     try {
