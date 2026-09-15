@@ -223,7 +223,7 @@ export default function Dashboard() {
       setMenu(menu.map(item => item.id === itemId ? { ...item, isAvailable: res.data.isAvailable } : item));
     } catch (error) {
       console.error(error);
-      alert('Failed to update availability');
+      toast('Failed to update dish availability', 'error');
     }
   };
 
@@ -254,10 +254,10 @@ export default function Dashboard() {
       
       if (editingItem) {
         await api.put(`/restaurants/menu/${editingItem.id}`, payload);
-        toast('Asset updated successfully', 'success');
+        toast('Dish updated successfully', 'success');
       } else {
         await api.post('/restaurants/menu', payload);
-        toast('New asset deployed', 'success');
+        toast('New dish added to menu', 'success');
       }
 
       // Refresh menu
@@ -337,7 +337,7 @@ export default function Dashboard() {
              </button>
            )}
            <div className="hidden md:flex flex-col items-end mr-4">
-              <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Node Identity</span>
+              <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Partner ID</span>
               <span className="text-[11px] font-mono text-orange-500 font-bold">{restaurant?.id?.slice(0,13)}...</span>
            </div>
            <button 

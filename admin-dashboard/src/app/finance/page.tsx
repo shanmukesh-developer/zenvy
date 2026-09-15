@@ -66,7 +66,7 @@ export default function FinanceConsole() {
 
   const exportCSV = () => {
     if (!report) return;
-    const headers = ['Trace ID', 'Origin Partner', 'Total GMV', 'Admin Take', 'Date'];
+    const headers = ['Transaction ID', 'Restaurant Partner', 'Total GMV', 'Platform Fee', 'Date'];
     const rows = report.transactions.map(tx => [
       `TR-${tx.orderId.slice(-6).toUpperCase()}`,
       tx.restaurantName,
@@ -169,12 +169,12 @@ export default function FinanceConsole() {
     <div className="space-y-10 animate-fade-in relative pb-20">
       <header className="flex justify-between items-center bg-white/5 p-8 rounded-[40px] border border-white/5 glass">
         <div>
-          <h2 className="text-3xl font-black text-white tracking-tighter uppercase">Nexus <span className="text-emerald-500">Finance</span> Trace</h2>
-          <p className="text-gray-400 text-sm font-bold uppercase tracking-widest mt-1">Revenue Splitting & Tactical Income Tracing</p>
+          <h2 className="text-3xl font-black text-white tracking-tighter uppercase">Zenvy <span className="text-emerald-500">Finance</span> Ledger</h2>
+          <p className="text-gray-400 text-sm font-bold uppercase tracking-widest mt-1">Revenue Splitting, Partner Settlements & Ledger</p>
         </div>
         <div className="flex gap-4">
             <div className="glass px-10 py-4 rounded-3xl border border-white/10 flex flex-col">
-               <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest mb-1">Total Admin Take</span>
+               <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest mb-1">Total Admin Earnings</span>
                <span className="text-3xl font-black text-white tracking-tighter">₹{( (report?.totalCommission || 0) + (report?.totalDeliveryFees || 0) ).toLocaleString()}</span>
             </div>
         </div>
@@ -217,8 +217,8 @@ export default function FinanceConsole() {
               <h4 className="text-2xl font-black text-white">₹{report?.totalDeliveryFees.toLocaleString() || '0'}</h4>
             </div>
             <div className="glass-card p-8 bg-white/5">
-              <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest mb-2">Status</p>
-              <h4 className="text-2xl font-black text-white uppercase">Live Trace</h4>
+              <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest mb-2">System Status</p>
+              <h4 className="text-2xl font-black text-white uppercase">Live Connected</h4>
             </div>
           </div>
 
@@ -228,7 +228,7 @@ export default function FinanceConsole() {
               <div className="flex gap-4">
                   <input 
                     type="text" 
-                    placeholder="Search Trace ID or Partner..." 
+                    placeholder="Search Transaction ID or Partner..." 
                     className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white outline-none focus:border-blue-500/40"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
@@ -243,7 +243,7 @@ export default function FinanceConsole() {
                     onClick={() => fetchFinanceData(currentPage)}
                     className="nexus-badge bg-blue-500/10 border-blue-500/20 text-blue-400 px-6 py-2 hover:bg-blue-500/20 transition-all font-black"
                   >
-                    RE-SCAN FLOWS
+                    SYNC LEDGER
                   </button>
               </div>
             </div>
@@ -251,18 +251,18 @@ export default function FinanceConsole() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-white/[0.03]">
-                    <th className="px-8 py-4 text-[9px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5">Trace ID</th>
-                    <th className="px-8 py-4 text-[9px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5">Origin Partner</th>
+                    <th className="px-8 py-4 text-[9px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5">Transaction ID</th>
+                    <th className="px-8 py-4 text-[9px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5">Restaurant Partner</th>
                     <th className="px-8 py-4 text-[9px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5">Total GMV</th>
-                    <th className="px-8 py-4 text-[9px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5">Admin Take (Comm + Fee)</th>
+                    <th className="px-8 py-4 text-[9px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5">Platform Fee (Comm + Fee)</th>
                     <th className="px-8 py-4 text-[9px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5">Settled Date</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/[0.02]">
                   {loading ? (
-                    <tr><td colSpan={5} className="py-20 text-center text-gray-600 animate-pulse font-black uppercase tracking-widest">Tracing Monetary Flows...</td></tr>
+                    <tr><td colSpan={5} className="py-20 text-center text-gray-400 animate-pulse font-black uppercase tracking-widest">Loading Ledger Transactions...</td></tr>
                   ) : filteredTransactions.length === 0 ? (
-                    <tr><td colSpan={5} className="py-20 text-center text-gray-500 uppercase font-black text-xs tracking-widest">Zero Settled Flows Detected</td></tr>
+                    <tr><td colSpan={5} className="py-20 text-center text-gray-500 uppercase font-black text-xs tracking-widest">No Settled Transactions Found</td></tr>
                   ) : filteredTransactions.map((tx) => (
                     <TransactionRow key={tx._id} tx={tx} />
                   ))}
@@ -295,7 +295,7 @@ export default function FinanceConsole() {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-white/[0.03]">
-                  <th className="px-8 py-4 text-[9px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5">Restaurant Node</th>
+                  <th className="px-8 py-4 text-[9px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5">Restaurant Partner</th>
                   <th className="px-8 py-4 text-[9px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5">Total Orders</th>
                   <th className="px-8 py-4 text-[9px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5">Total GMV</th>
                   <th className="px-8 py-4 text-[9px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5">Zenvy Comm.</th>
@@ -344,7 +344,7 @@ export default function FinanceConsole() {
                   <p className="text-xs text-gray-500">{d.userId?.phone}</p>
                   <div className="mt-4 p-3 bg-red-500/5 rounded-lg border border-red-500/10">
                     <p className="text-[9px] text-red-400 font-black uppercase mb-1">Cancellation Reason</p>
-                    <p className="text-xs text-gray-300">{d.cancellationReason || 'No reason provided by node.'}</p>
+                    <p className="text-xs text-gray-300">{d.cancellationReason || 'No specific cancellation reason provided.'}</p>
                   </div>
                 </div>
                 <div className="mt-6 flex items-center justify-between pt-4 border-t border-white/5">

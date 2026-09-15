@@ -15,7 +15,7 @@ import SafeImage from '../../components/SafeImage';
 export default function BasketScreen() {
   const { isDark, colors } = useTheme();
   const { user } = useAuth();
-  const { cart, removeFromCart, updateQuantity, clearCart, totalPrice, totalItems, deliveryFee: cartDeliveryFee, roomCode, isHosting, isJoined, handleHostRoom, handleJoinRoom, handleDisconnect } = useCart();
+  const { cart, removeFromCart, updateQuantity, clearCart, totalPrice, totalItems, uniqueRestaurants, deliveryFee: cartDeliveryFee, roomCode, isHosting, isJoined, handleHostRoom, handleJoinRoom, handleDisconnect } = useCart();
   const [isJoinOpen, setIsJoinOpen] = React.useState(false);
   const [inputCode, setInputCode] = React.useState('');
   const router = useRouter();
@@ -152,6 +152,21 @@ export default function BasketScreen() {
           </StaggeredSection>
         ) : (
           <>
+            {uniqueRestaurants > 1 && (
+              <StaggeredSection delay={80} direction="up">
+                <View style={[s.multiRestBanner, { backgroundColor: isDark ? 'rgba(234, 179, 8, 0.08)' : 'rgba(234, 179, 8, 0.06)', borderColor: isDark ? 'rgba(234, 179, 8, 0.25)' : 'rgba(234, 179, 8, 0.15)' }]}>
+                  <Text style={{ fontSize: 16 }}>🛵</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[s.multiRestTitle, { color: isDark ? '#FBBF24' : '#B45309' }]}>
+                      MULTI-KITCHEN ORDER ({uniqueRestaurants} RESTAURANTS)
+                    </Text>
+                    <Text style={[s.multiRestSub, { color: txtSec }]}>
+                      Items will be collected from {uniqueRestaurants} separate campus spots to ensure each dish is cooked fresh to order.
+                    </Text>
+                  </View>
+                </View>
+              </StaggeredSection>
+            )}
             {cart.map((item: any, i: number) => (
               <StaggeredSection key={item.cartKey || item.id || i} delay={(i + 1) * 80} direction="up">
                 <View style={[s.itemCard, { backgroundColor: cardBg, borderColor: border }]}>
@@ -220,7 +235,9 @@ export default function BasketScreen() {
                   <Text style={[s.billVal, { color: txt }]}>₹{totalPrice}</Text>
                 </View>
                 <View style={s.billRow}>
-                  <Text style={[s.billLabel, { color: txtSec }]}>DELIVERY FEE</Text>
+                  <Text style={[s.billLabel, { color: txtSec }]}>
+                    DELIVERY FEE {uniqueRestaurants > 1 ? `(${uniqueRestaurants} KITCHENS)` : ''}
+                  </Text>
                   <Text style={[s.billVal, { color: effectiveDeliveryFee === 0 ? '#10B981' : txt, fontWeight: '900' }]}>
                     {effectiveDeliveryFee === 0 ? 'FREE ✨' : `₹${effectiveDeliveryFee}`}
                   </Text>
@@ -316,4 +333,25 @@ const s = StyleSheet.create({
     ...SHADOWS.redGlow,
   },
   checkoutText: { fontSize: 12, fontWeight: '900', color: '#fff', letterSpacing: 3 },
+  multiRestBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginHorizontal: 16,
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  multiRestTitle: {
+    fontSize: 9.5,
+    fontWeight: '900',
+    letterSpacing: 1,
+    marginBottom: 2,
+  },
+  multiRestSub: {
+    fontSize: 8.5,
+    fontWeight: '600',
+    lineHeight: 12,
+  },
 });

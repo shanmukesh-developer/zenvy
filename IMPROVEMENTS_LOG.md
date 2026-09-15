@@ -34,4 +34,9 @@
 | 2026-09-16 | Customer Mobile | Navigation/UX | Added safe `router.canGoBack()` fallback navigation in campus friends circle (`friends.tsx`) |
 | 2026-09-16 | Customer Mobile | UX & Error Handling | Humanized raw network & auth failure exceptions into actionable error guidance in `login.tsx` |
 | 2026-09-16 | Customer Mobile | UX & Error Handling | Sanitized OTP dispatch & registration error states against raw exception leakage in `register.tsx` |
-| 2026-09-16 | Customer Mobile | UX & Security | Added show/hide password toggle, step change navigation, and polished back button in `forgot-password.tsx` |
+| 2026-09-16 | Customer Mobile | UX & Loading | Added `RestaurantCardSkeleton` shimmer grid & luxury 1-tap filter reset empty state in `(tabs)/index.tsx` |
+| 2026-09-16 | Customer Mobile | UX & Transparency | Added multi-kitchen order awareness banner and per-restaurant dispatch fee breakdown in `(tabs)/basket.tsx` |
+| 2026-09-16 | Admin Dashboard | Professionalism | Replaced sci-fi copy (Tactical Income Tracing, Trace ID, Origin Partner) with financial accounting terms in `finance/page.tsx` |
+| 2026-09-16 | Admin Dashboard | Professionalism | Replaced AI jargon (Scarcity Asset, Initialize Node, Terminal) with product terminology in `vault/page.tsx` |
+| 2026-09-16 | Restaurant Portal | UX & Error Handling | Replaced raw browser alert with toast notification and sci-fi copy (Deploy Asset) with culinary phrasing in `dashboard/page.tsx` |
+

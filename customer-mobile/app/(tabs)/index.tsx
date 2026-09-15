@@ -409,16 +409,19 @@ export default function HomeScreen() {
   }, [fetchData]);
 
   const filtered = restaurants
-    .filter(r => { const t = (r.vendorType||'').toUpperCase(); return t === 'FOOD' || t === 'RESTAURANT'; })
+    .filter(r => { 
+      const t = (r.vendorType||'').toUpperCase(); 
+      return !t || t === 'FOOD' || t === 'RESTAURANT' || t === 'CAFE' || t === 'BAKERY' || t === 'SWEETS' || t === 'DRINKS' || t === 'MESS'; 
+    })
     .filter(r => {
-      if (filter === 'veg') return (r.menu||[]).some((i:any) => i.isVegetarian);
+      if (filter === 'veg') return r.isVeg || (r.cuisine||'').toLowerCase().includes('veg') || (r.menu||[]).some((i:any) => i.isVegetarian || i.isVeg);
       if (filter === 'under99') return (r.menu||[]).some((i:any) => i.price <= 99);
-      if (filter === 'topRated') return (r.rating || 4.5) >= 4.5;
-      if (filter === 'express') return (r.deliveryTime || '').includes('15') || (r.deliveryTime || '').includes('10');
-      if (filter === 'budget') return (r.menu||[]).some((i:any) => i.price < 150);
+      if (filter === 'topRated') return (Number(r.rating) || 4.5) >= 4.5;
+      if (filter === 'express') return (r.deliveryTime || '').includes('15') || (r.deliveryTime || '').includes('10') || (r.deliveryTime || '').includes('20');
+      if (filter === 'budget') return (r.menu||[]).some((i:any) => i.price < 150) || (r.priceForTwo && r.priceForTwo < 200);
       if (filter === 'premium') return r.subscriptionTier === 'premium' || r.isFeatured;
-      if (filter === 'jain') return (r.cuisine||'').toLowerCase().includes('jain');
-      if (filter === 'eggless') return (r.cuisine||'').toLowerCase().includes('eggless');
+      if (filter === 'jain') return (r.cuisine||'').toLowerCase().includes('jain') || (r.name||'').toLowerCase().includes('jain') || (r.menu||[]).some((i:any) => (i.name||'').toLowerCase().includes('jain') || i.isJain);
+      if (filter === 'eggless') return (r.cuisine||'').toLowerCase().includes('eggless') || (r.name||'').toLowerCase().includes('eggless') || (r.menu||[]).some((i:any) => (i.name||'').toLowerCase().includes('eggless') || i.isEggless);
       return true;
     })
     .filter(r => {
@@ -705,7 +708,7 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </View>
             <NexusExplorer
-              restaurants={restaurants.filter(r => { const t = (r.vendorType||'').toUpperCase(); return t === 'FOOD' || t === 'RESTAURANT'; })}
+              restaurants={restaurants.filter(r => { const t = (r.vendorType||'').toUpperCase(); return !t || t === 'FOOD' || t === 'RESTAURANT' || t === 'CAFE' || t === 'BAKERY' || t === 'SWEETS' || t === 'DRINKS' || t === 'MESS'; })}
               activeCategory={classicFilter}
               onSelectItem={(restaurantId) => router.push(`/restaurant/${restaurantId}` as any)}
             />
@@ -769,7 +772,34 @@ export default function HomeScreen() {
 
         {/* ── RESTAURANT GRID ── */}
         <View style={s.grid}>
-          {filtered.map((r, i) => {
+          {loading ? (
+            <>
+              <View style={{ width: '48.5%' }}><RestaurantCardSkeleton /></View>
+              <View style={{ width: '48.5%' }}><RestaurantCardSkeleton /></View>
+              <View style={{ width: '48.5%' }}><RestaurantCardSkeleton /></View>
+              <View style={{ width: '48.5%' }}><RestaurantCardSkeleton /></View>
+            </>
+          ) : filtered.length === 0 ? (
+            <View style={[s.emptyFilterBox, { backgroundColor: cardBg, borderColor: isDark ? goldBorderColor : COLORS.borderLight }]}>
+              <Text style={{ fontSize: 34, marginBottom: 8 }}>🍽️</Text>
+              <Text style={[s.emptyFilterTitle, { color: txt }]}>NO RESTAURANTS FOUND</Text>
+              <Text style={[s.emptyFilterSub, { color: txtSec }]}>
+                No dining spots match your active &quot;{filter.toUpperCase()}&quot; filter or search query. Reset filters to see all campus favorites.
+              </Text>
+              <TouchableOpacity 
+                style={[s.resetFilterBtn, { backgroundColor: goldColor }]}
+                onPress={() => {
+                  setFilter('all');
+                  setClassicFilter('');
+                  setSearch('');
+                }}
+                activeOpacity={0.85}
+              >
+                <Text style={[s.resetFilterBtnText, { color: isDark ? '#000' : '#fff' }]}>VIEW ALL RESTAURANTS</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            filtered.map((r, i) => {
             const id = r._id || r.id;
             const rating = Number(r.rating) || 4.0;
             const nameSeed = (r.name || '').length + (id || '').charCodeAt(0);
@@ -889,7 +919,8 @@ export default function HomeScreen() {
               </CardPressable>
               </StaggeredSection>
             );
-          })}
+          })
+        )}
         </View>
 
 
@@ -1239,6 +1270,42 @@ const s = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 1.2,
     textAlign: 'center',
+  },
+  // Empty Filter State
+  emptyFilterBox: {
+    width: '100%',
+    padding: 32,
+    borderRadius: 24,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 12,
+  },
+  emptyFilterTitle: {
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 2,
+    marginBottom: 6,
+  },
+  emptyFilterSub: {
+    fontSize: 9,
+    fontWeight: '600',
+    textAlign: 'center',
+    lineHeight: 14,
+    maxWidth: 260,
+    marginBottom: 16,
+  },
+  resetFilterBtn: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  resetFilterBtnText: {
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1.5,
   },
 });
 // BUST_CACHE_2026_07_19_00_42

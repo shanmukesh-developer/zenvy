@@ -101,14 +101,14 @@ export default function VaultTerminal() {
     <div className="space-y-10 animate-fade-in relative pb-20">
       <header className="flex justify-between items-center bg-white/5 p-8 rounded-[40px] border border-white/5 glass">
         <div>
-          <h2 className="text-3xl font-black text-white tracking-tighter uppercase">Nexus <span className="text-[#C9A84C]">Vault</span> Terminal</h2>
-          <p className="text-gray-400 text-sm font-bold uppercase tracking-widest mt-1">Daily Scarcity & FOMO Management</p>
+          <h2 className="text-3xl font-black text-white tracking-tighter uppercase">Zenvy <span className="text-[#C9A84C]">Vault</span> Drops</h2>
+          <p className="text-gray-400 text-sm font-bold uppercase tracking-widest mt-1">Daily Deals & Limited Drops Management</p>
         </div>
         <button 
           onClick={() => setIsAdding(!isAdding)}
           className="px-8 py-3 bg-[#C9A84C] text-black text-[10px] font-black uppercase tracking-widest rounded-2xl hover:scale-105 transition-all"
         >
-          {isAdding ? 'Close Terminal' : 'Initialize Item'}
+          {isAdding ? 'Close Drawer' : 'Add Vault Deal'}
         </button>
       </header>
 
@@ -116,7 +116,7 @@ export default function VaultTerminal() {
         <div className="glass-card p-10 border-[#C9A84C]/30 animate-in fade-in slide-in-from-top-4 duration-500">
           <h3 className="text-xl font-black text-white uppercase tracking-tight mb-8 flex items-center gap-3">
              <span className="w-8 h-8 bg-[#C9A84C]/20 rounded-lg flex items-center justify-center text-sm">📦</span>
-             Onboard New Scarcity Asset
+             Create New Vault Deal
           </h3>
           
           {/* Pre-fill from Existing Menu Item */}
@@ -151,16 +151,16 @@ export default function VaultTerminal() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="space-y-3">
-              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Asset Name</label>
+              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Deal Name</label>
               <input 
-                placeholder="e.g. Premium Coffee Origin" 
+                placeholder="e.g. Premium Cold Brew or Hyderabadi Dum Biryani" 
                 className="vault-input" 
                 value={newItem.name} 
                 onChange={(e) => setNewItem({...newItem, name: e.target.value})} 
               />
             </div>
             <div className="space-y-3">
-              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Asset Image</label>
+              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Deal Image</label>
               <div className="flex gap-4">
                 <input 
                   type="file" 
@@ -187,7 +187,7 @@ export default function VaultTerminal() {
                   htmlFor="vault-image-upload"
                   className="flex-1 bg-white/5 border border-white/10 rounded-2xl p-4 text-[10px] font-black uppercase tracking-widest text-center cursor-pointer hover:bg-white/10 transition-all flex items-center justify-center gap-3"
                 >
-                  {isUploading ? '📦 Syncing...' : imageFile ? `✅ ${imageFile.name.slice(0, 15)}...` : '📂 Upload'}
+                  {isUploading ? '📦 Uploading...' : imageFile ? `✅ ${imageFile.name.slice(0, 15)}...` : '📂 Upload Image'}
                 </label>
                 <input 
                   placeholder="Or paste URL" 
@@ -199,7 +199,7 @@ export default function VaultTerminal() {
             </div>
             <div className="grid grid-cols-4 gap-6 md:col-span-2">
                <div className="space-y-3">
-                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Live Price (₹)</label>
+                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Deal Price (₹)</label>
                  <input 
                    type="number" 
                    className="vault-input" 
@@ -208,7 +208,7 @@ export default function VaultTerminal() {
                  />
                </div>
                <div className="space-y-3">
-                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">MSRP (₹)</label>
+                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Original Price (₹)</label>
                  <input 
                    type="number" 
                    className="vault-input" 
@@ -217,7 +217,7 @@ export default function VaultTerminal() {
                  />
                </div>
                <div className="space-y-3">
-                 <label className="text-[10px] font-black uppercase tracking-widest text-[#C9A84C] ml-1">Stock</label>
+                 <label className="text-[10px] font-black uppercase tracking-widest text-[#C9A84C] ml-1">Stock Quantity</label>
                  <input 
                    type="number" 
                    className="vault-input border-[#C9A84C]/20 bg-[#C9A84C]/5 text-[#C9A84C]" 
@@ -226,7 +226,7 @@ export default function VaultTerminal() {
                  />
                </div>
                <div className="space-y-3">
-                 <label className="text-[10px] font-black uppercase tracking-widest text-yellow-500 ml-1">Streak Req</label>
+                 <label className="text-[10px] font-black uppercase tracking-widest text-yellow-500 ml-1">Daily Streak Req</label>
                  <input 
                    type="number" 
                    className="vault-input border-yellow-500/20 bg-yellow-500/5 text-yellow-500" 
@@ -249,7 +249,7 @@ export default function VaultTerminal() {
               disabled={isCreating || !newItem.name}
               className="flex-1 py-5 bg-[#C9A84C] text-black font-black uppercase tracking-[0.3em] rounded-3xl text-xs disabled:opacity-50"
             >
-              {isCreating ? 'Securing Asset...' : 'Initialize Node'}
+              {isCreating ? 'Publishing Deal...' : 'Publish Vault Deal'}
             </button>
             <button 
               onClick={() => setIsAdding(false)}
