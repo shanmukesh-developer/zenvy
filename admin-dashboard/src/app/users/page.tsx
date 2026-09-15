@@ -2,7 +2,7 @@
 import React, { useState, useEffect, memo } from 'react';
 import { useAdminAuth } from '@/utils/useAdminAuth';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-jwmt.onrender.com';
 
 interface User {
   _id: string;

@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useAdminAuth } from '@/utils/useAdminAuth';
 import api from '@/lib/api';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-jwmt.onrender.com';
 
 const getImageUrl = (url: string | null) => {
   if (!url) return '';

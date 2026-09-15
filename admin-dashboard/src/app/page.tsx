@@ -9,7 +9,7 @@ import Image from 'next/image';
 
 const LiveFleetMap = dynamic(() => import('@/components/LiveFleetMap'), { ssr: false });
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-jwmt.onrender.com';
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || API_URL;
 
 const CHECKPOINTS = [

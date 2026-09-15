@@ -3,7 +3,7 @@ import React, { useEffect, useState, createContext, useContext, useRef } from 'r
 import { io, Socket } from 'socket.io-client';
 import { usePathname } from 'next/navigation';
 
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
+const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-jwmt.onrender.com';
 
 interface SocketContextType {
   socket: Socket | null;

@@ -1,4 +1,5 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
+export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-jwmt.onrender.com';
+export const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-jwmt.onrender.com';
 
 const normalizeUrl = (url: string) => {
   const path = url.startsWith('/api/') ? url.substring(4) : url.startsWith('/api') ? url.substring(4) : url;

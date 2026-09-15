@@ -27,7 +27,7 @@ export default function AdminLoginPage() {
     setError('');
     
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-jwmt.onrender.com';
       const phone = '9999999999'; // Real admin phone
       const response = await fetch(`${API_URL}/api/users/login`, {
         method: 'POST',

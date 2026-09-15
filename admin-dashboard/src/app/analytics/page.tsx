@@ -24,7 +24,7 @@ export default function AnalyticsIntel() {
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState<Metric[]>([]);
   const [rewards, setRewards] = useState<RewardStats | null>(null);
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-jwmt.onrender.com';
 
    const [volume, setVolume] = useState<{ hour: string; count: number }[]>([]);
    const [health, setHealth] = useState<any>(null);

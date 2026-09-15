@@ -36,7 +36,7 @@ export function useAdminAuth() {
 
     const checkSession = async (attempt = 1): Promise<void> => {
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-jwmt.onrender.com';
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout
 

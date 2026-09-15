@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 
 const LiveRiderMap = dynamic(() => import('@/components/LiveRiderMap'), { ssr: false, loading: () => <div className="h-[600px] w-full rounded-[40px] bg-blue-900/10 animate-pulse border border-blue-500/20 flex items-center justify-center text-blue-500 font-black tracking-widest uppercase text-xl">Booting God-Mode Map...</div> });
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-jwmt.onrender.com';
 
 interface Rider {
   _id: string;

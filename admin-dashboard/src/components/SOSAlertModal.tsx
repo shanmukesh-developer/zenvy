@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
 
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5005';
+const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://hostelbites-backend-jwmt.onrender.com';
 
 interface SOSData {
   riderId: string;

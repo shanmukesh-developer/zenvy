@@ -3,7 +3,7 @@ import { useState, useEffect, memo } from 'react';
 import Image from 'next/image';
 import { useAdminAuth } from '@/utils/useAdminAuth';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-jwmt.onrender.com';
 
 const LEGACY_DATA = [
   {

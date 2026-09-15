@@ -12,3 +12,8 @@
 | 2026-09-16 | Customer Mobile | UX/Branding | Elevated `ServerWakeupOverlay.tsx` copy from dev leak to premium campus dispatch branding |
 | 2026-09-16 | Customer Mobile | UX/Reliability | Upgraded `restaurant/[id].tsx` from bare text to dedicated luxury offline screen with back navigation |
 | 2026-09-16 | Customer Mobile | Verification | Validated entire mobile codebase with `tsc --noEmit` (0 compile errors) |
+| 2026-09-16 | Admin Dashboard | Reliability | Eradicated localhost fallbacks across 21 pages/components to target deployed Render backend |
+| 2026-09-16 | Admin Dashboard | Build & Prerender | Verified Next.js Turbopack build (24 routes prerendered, 0 build errors) |
+| 2026-09-16 | Restaurant Portal | Reliability | Updated API & Socket fallbacks to deployed Render cloud backend |
+| 2026-09-16 | Restaurant Portal | Build & Prerender | Verified Next.js Turbopack build (all routes prerendered, 0 build errors) |
+| 2026-09-16 | Delivery App | Reliability | Eliminated localhost fallback in `src/constants/api.ts` to ensure remote connectivity |

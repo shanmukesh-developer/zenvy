@@ -4,7 +4,7 @@ export const STORAGE_PROFILE_KEY = '@zenvy_native_rider_profile';
 export const STORAGE_ONLINE_KEY = '@zenvy_native_rider_online';
 
 export const DEFAULT_API_URL = 'https://hostelbites-backend-jwmt.onrender.com/api';
-export const FALLBACK_API_URL = 'http://localhost:5005/api';
+export const FALLBACK_API_URL = 'https://hostelbites-backend-jwmt.onrender.com/api';
 
 export const EARNINGS_PER_DELIVERY = 30;
 export const POLL_INTERVAL_MS = 30000;

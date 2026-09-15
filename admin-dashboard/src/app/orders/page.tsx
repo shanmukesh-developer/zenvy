@@ -3,8 +3,8 @@ import React, { useState, useEffect, memo } from 'react';
 import { io } from 'socket.io-client';
 import { useAdminAuth } from '@/utils/useAdminAuth';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5005';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-jwmt.onrender.com';
+const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://hostelbites-backend-jwmt.onrender.com';
 
 interface OrderItem {
   name: string;

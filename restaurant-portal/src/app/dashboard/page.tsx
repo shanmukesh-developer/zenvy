@@ -113,7 +113,7 @@ export default function Dashboard() {
 
     // Connect socket WITH auth token so backend accepts the connection
     // (token is already declared above, reuse it here)
-    const s = io(process.env.NEXT_PUBLIC_SOCKET_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005', {
+    const s = io(process.env.NEXT_PUBLIC_SOCKET_URL || process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-jwmt.onrender.com', {
       transports: ['websocket', 'polling'],
       auth: { token, role: 'restaurant' },
       withCredentials: true,
