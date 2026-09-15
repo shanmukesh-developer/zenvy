@@ -40,6 +40,17 @@ import {
   DEFAULT_API_URL,
   FALLBACK_API_URL,
 } from './src/constants/api';
+import { COLORS, RADIUS, SPACING } from './src/constants/theme';
+import { ZenvyBadge } from './src/components/ZenvyBadge';
+import { RiderHeroCard } from './src/components/RiderHeroCard';
+import { SegmentedNav } from './src/components/SegmentedNav';
+import { FilterBar } from './src/components/FilterBar';
+import { RadarEmptyState } from './src/components/RadarEmptyState';
+import { FleetOrderCard } from './src/components/FleetOrderCard';
+import { FleetLeaderboard } from './src/components/FleetLeaderboard';
+import { FleetProfileView } from './src/components/FleetProfileView';
+import { TelemetryDock } from './src/components/TelemetryDock';
+import { FleetLoginScreen } from './src/components/FleetLoginScreen';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -762,6 +773,56 @@ export default function App() {
     }
   };
 
+  const handleCancelOrder = async (orderId: string) => {
+    Alert.alert(
+      'Emergency Unassign',
+      'Are you sure you need to unassign this delivery? It will be immediately re-routed to nearby campus riders.',
+      [
+        { text: 'Keep Order', style: 'cancel' },
+        {
+          text: 'Unassign Now',
+          style: 'destructive',
+          onPress: async () => {
+            setActionLoadingId(orderId);
+            try {
+              await apiFetch(`/delivery/orders/${orderId}/cancel`, { method: 'POST' });
+              setActiveOrders(prev => prev.filter(o => o.id !== orderId));
+              Alert.alert('Unassigned', 'Order has been returned to dispatch pool.');
+            } catch (err: any) {
+              Alert.alert('Notice', err.message || 'Unassign failed');
+            } finally {
+              setActionLoadingId(null);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleGenericStatusUpdate = async (orderId: string, status: string) => {
+    const targetOrder = activeOrders.find(o => o.id === orderId);
+    if (!targetOrder) return;
+
+    if (status === 'PickedUp') {
+      await handleConfirmPickup(targetOrder);
+    } else if (status === 'Delivered') {
+      await handleCompleteDelivery(targetOrder);
+    } else if (status === 'Picking') {
+      setActionLoadingId(orderId);
+      try {
+        await apiFetch(`/delivery/status/${orderId}`, {
+          method: 'PUT',
+          body: JSON.stringify({ status: 'Picking' })
+        });
+        setActiveOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'Picking' } : o));
+      } catch (e: any) {
+        console.warn('Status update error:', e.message);
+      } finally {
+        setActionLoadingId(null);
+      }
+    }
+  };
+
   // Filter orders by Category, Time Slot & Lifecycle Stage
   const filterOrders = (orders: Order[]) => {
     return orders.filter(o => {
@@ -800,81 +861,34 @@ export default function App() {
   // -------------------------------------------------------------
   if (!authToken) {
     return (
-      <KeyboardAvoidingView style={s.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <StatusBar barStyle="light-content" backgroundColor="#08080A" />
-        <LinearGradient colors={['#08080A', '#161622', '#08080A']} style={StyleSheet.absoluteFill} />
-        
-        <ScrollView contentContainerStyle={s.loginScroll} keyboardShouldPersistTaps="handled">
-          <View style={s.loginHeader}>
-            <View style={s.logoCircle}>
-              <Text style={s.logoText}>Z</Text>
-            </View>
-            <Text style={s.appTitle}>ZENVY RIDER</Text>
-            <Text style={s.appSub}>REAL-TIME CAMPUS LOGISTICS</Text>
-          </View>
-
-          <View style={s.cardBox}>
-            <Text style={s.cardHeaderTitle}>Rider Partner Portal</Text>
-            <Text style={s.cardHeaderSub}>Sign in to accept delivery requests and track live earnings.</Text>
-
-            <Text style={s.fieldLabel}>RIDER EMAIL / PHONE</Text>
-            <TextInput
-              style={s.textInput}
-              value={loginEmail}
-              onChangeText={setLoginEmail}
-              placeholder="delivery1@zenvy.com"
-              placeholderTextColor="#6B7280"
-              autoCapitalize="none"
-              keyboardType="email-address"
-            />
-
-            <Text style={s.fieldLabel}>PASSWORD</Text>
-            <TextInput
-              style={s.textInput}
-              value={loginPassword}
-              onChangeText={setLoginPassword}
-              placeholder="••••••••"
-              placeholderTextColor="#6B7280"
-              secureTextEntry
-            />
-
-            <TouchableOpacity style={s.primaryBtn} onPress={handleLogin} disabled={loginLoading}>
-              <LinearGradient colors={['#10B981', '#059669']} style={[StyleSheet.absoluteFill, { borderRadius: 10 }]} />
-              {loginLoading ? (
-                <ActivityIndicator color="#FFF" />
-              ) : (
-                <Text style={s.primaryBtnText}>SIGN IN TO DUTY</Text>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={s.demoBtn}
-              onPress={() => {
-                setLoginEmail('delivery1@zenvy.com');
-                setLoginPassword('pass123');
-                handleLogin();
-              }}
-            >
-              <Text style={s.demoBtnText}>⚡ QUICK DEMO AUTO-LOGIN</Text>
-            </TouchableOpacity>
-          </View>
-
-          <TouchableOpacity style={s.configLink} onPress={() => setShowConfigModal(true)}>
-            <Text style={s.configLinkText}>⚙️ Change Backend Host IP ({apiHost})</Text>
-          </TouchableOpacity>
-        </ScrollView>
+      <View style={{ flex: 1, backgroundColor: '#08090C' }}>
+        <FleetLoginScreen
+          email={loginEmail}
+          setEmail={setLoginEmail}
+          password={loginPassword}
+          setPassword={setLoginPassword}
+          isLoading={loginLoading}
+          onLogin={handleLogin}
+          onQuickDemo={() => {
+            setLoginEmail('8765432100');
+            setLoginPassword('rider123');
+            Vibration.vibrate(30);
+          }}
+          apiHost={apiHost}
+          onOpenConfig={() => setShowConfigModal(true)}
+        />
 
         {/* API Host Config Modal */}
         <Modal visible={showConfigModal} transparent animationType="fade">
           <View style={s.modalOverlay}>
             <View style={s.modalContent}>
               <Text style={s.modalTitle}>Backend API Host</Text>
-              <Text style={s.modalSub}>Enter your PC's local server address (port 5005):</Text>
+              <Text style={s.modalSub}>Server address currently targeted:</Text>
               <TextInput
                 style={s.textInput}
                 value={apiHost}
                 onChangeText={setApiHost}
-                placeholder="http://10.1.43.11:5005/api"
+                placeholder="https://hostelbites-backend-jwmt.onrender.com/api"
                 placeholderTextColor="#6B7280"
               />
               <View style={{ flexDirection: 'row', gap: 10, marginTop: 15 }}>
@@ -894,7 +908,7 @@ export default function App() {
             </View>
           </View>
         </Modal>
-      </KeyboardAvoidingView>
+      </View>
     );
   }
 
@@ -902,9 +916,9 @@ export default function App() {
   // RENDER PURE NATIVE RIDER DASHBOARD (AUTHENTICATED)
   // -------------------------------------------------------------
   return (
-    <View style={s.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#08080A" />
-      <LinearGradient colors={['#08080A', '#12121A', '#08080A']} style={StyleSheet.absoluteFill} />
+    <View style={{ flex: 1, backgroundColor: '#08090C' }}>
+      <StatusBar barStyle="light-content" backgroundColor="#08090C" />
+      <LinearGradient colors={['#08090C', '#0E1017', '#08090C']} style={StyleSheet.absoluteFill} />
 
       {/* OFFLINE QUEUE / DISCONNECTED WARNING BANNER */}
       {(!isConnected || offlineQueueCount > 0) && (
@@ -928,944 +942,171 @@ export default function App() {
         </View>
       )}
 
-      {/* TOP RIDER HEADER DECK */}
-      <View style={s.topHeader}>
-        <View style={s.userInfoRow}>
-          <View style={s.avatarBox}>
-            <Text style={s.avatarText}>{profile?.name ? profile.name[0] : 'R'}</Text>
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={s.riderName}>{profile?.name || 'Zenvy Fleet Rider'}</Text>
-            <View style={s.badgeRow}>
-              <Text style={s.ratingBadge}>★ {profile?.rating || '4.9'}</Text>
-              <Text style={s.vehicleText}>• {profile?.vehicleNumber || 'AP 16 Z 8821'}</Text>
-            </View>
-          </View>
-          <TouchableOpacity style={s.logoutIconButton} onPress={handleLogout}>
-            <Text style={{ fontSize: 18 }}>🚪</Text>
-          </TouchableOpacity>
-        </View>
+      {/* RIDER HERO CARD (Identity, Duty Switch, Live Metrics) */}
+      <RiderHeroCard
+        riderName={profile?.name || 'Vikram Singh'}
+        vehicleNumber={profile?.vehicleNumber || 'AP-07-AB-1234'}
+        rating={profile?.rating || 4.9}
+        totalEarnings={profile?.totalEarnings || 0}
+        completedCount={profile?.completedCount || 0}
+        isOnline={isOnline}
+        onToggleDuty={async (val) => {
+          Vibration.vibrate(50);
+          setIsOnline(val);
+          try {
+            if (authToken) {
+              await apiFetch('/delivery/online', {
+                method: 'PUT',
+                body: JSON.stringify({ isOnline: val })
+              });
+              console.log('[ONLINE_STATUS] Synced isOnline with server:', val);
+            }
+          } catch (e: any) {
+            console.warn('[ONLINE_STATUS] Failed to sync status:', e.message);
+          }
+        }}
+        onLogout={handleLogout}
+        onOpenSettings={() => setShowConfigModal(true)}
+      />
 
-        {/* DUTY TOGGLE & TODAY'S EARNINGS */}
-        <View style={s.statsCardRow}>
-          <View style={s.dutyToggleBox}>
-            <Text style={[s.dutyText, { color: isOnline ? '#10B981' : '#9CA3AF' }]}>
-              {isOnline ? '🟢 ON DUTY' : '🔴 OFF DUTY'}
-            </Text>
-            <Switch
-              value={isOnline}
-              onValueChange={async (val) => {
-                Vibration.vibrate(50);
-                setIsOnline(val);
-                try {
-                  if (authToken) {
-                    await apiFetch('/delivery/online', {
-                      method: 'PUT',
-                      body: JSON.stringify({ isOnline: val })
-                    });
-                    console.log('[ONLINE_STATUS] Synced isOnline with server:', val);
-                  }
-                } catch (e: any) {
-                  console.warn('[ONLINE_STATUS] Failed to sync status:', e.message);
-                }
-              }}
-              trackColor={{ false: '#374151', true: '#059669' }}
-              thumbColor={isOnline ? '#10B981' : '#D1D5DB'}
-            />
-          </View>
+      {/* SEGMENTED NAVIGATION CAPSULE */}
+      <SegmentedNav
+        activeTab={activeTab}
+        onChangeTab={setActiveTab}
+        activeCount={filteredActiveOrders.length}
+        availableCount={filteredPendingOrders.length}
+      />
 
-          <View style={s.earningsBox}>
-            <Text style={s.earningsLabel}>TODAY'S EARNINGS</Text>
-            <Text style={s.earningsVal}>₹{profile?.totalEarnings || 0}</Text>
-            <Text style={s.earningsSub}>{profile?.completedCount || 0} Orders Done</Text>
-          </View>
-        </View>
-
-        {/* NAVIGATION TABS */}
-        <View style={s.tabBar}>
-          <TouchableOpacity
-            style={[s.tabItem, activeTab === 'active' && s.tabActive]}
-            onPress={() => setActiveTab('active')}
-          >
-            <Text style={[s.tabText, activeTab === 'active' && s.tabTextActive]}>
-              ⚡ Active ({filteredActiveOrders.length})
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[s.tabItem, activeTab === 'available' && s.tabActive]}
-            onPress={() => setActiveTab('available')}
-          >
-            <Text style={[s.tabText, activeTab === 'available' && s.tabTextActive]}>
-              📋 Available ({filteredPendingOrders.length})
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[s.tabItem, activeTab === 'leaderboard' && s.tabActive]}
-            onPress={() => setActiveTab('leaderboard')}
-          >
-            <Text style={[s.tabText, activeTab === 'leaderboard' && s.tabTextActive]}>
-              🏆 Ranks
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[s.tabItem, activeTab === 'profile' && s.tabActive]}
-            onPress={() => setActiveTab('profile')}
-          >
-            <Text style={[s.tabText, activeTab === 'profile' && s.tabTextActive]}>
-              👤 Profile
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* CATEGORY FILTER SELECTOR BAR (For Active & Available Tabs) */}
-        {(activeTab === 'active' || activeTab === 'available') && (
-          <View style={s.filterBarContainer}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filterScroll}>
-              <Text style={s.filterBarLabel}>CATEGORIES:</Text>
-              {(['ALL', 'Food', 'Fruits', 'Groceries', 'Mega Basket'] as const).map((cat) => {
-                const icon = cat === 'Mega Basket' ? '🧺' : cat === 'Food' ? '🍔' : cat === 'Fruits' ? '🍎' : cat === 'Groceries' ? '🛒' : '✨';
-                const isSelected = selectedCategory === cat;
-                const sourceOrders = activeTab === 'active' ? activeOrders : pendingOrders;
-                const catCount = cat === 'ALL' ? sourceOrders.length : sourceOrders.filter(o => o.category === cat).length;
-                return (
-                  <TouchableOpacity
-                    key={cat}
-                    style={[s.filterPill, isSelected && s.filterPillSelected, cat === 'Mega Basket' && isSelected && { backgroundColor: '#F59E0B', borderColor: '#F59E0B' }]}
-                    onPress={() => {
-                      Vibration.vibrate(20);
-                      setSelectedCategory(cat);
-                    }}
-                  >
-                    <Text style={[s.filterPillText, isSelected && s.filterPillTextSelected, cat === 'Mega Basket' && isSelected && { color: '#000' }]}>
-                      {icon} {cat}
-                    </Text>
-                    {catCount > 0 && (
-                      <View style={[s.categoryCountBadge, isSelected && { backgroundColor: '#FFF' }]}>
-                        <Text style={[s.categoryCountText, isSelected && { color: '#10B981' }]}>{catCount}</Text>
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[s.filterScroll, { marginTop: 6 }]}>
-              <Text style={s.filterBarLabel}>TIME SLOTS:</Text>
-              {(['ALL', 'Before 7:30 PM', 'After 7:30 PM', '1:00 PM - 6:00 PM'] as const).map((slot) => {
-                const isSelected = selectedSlot === slot;
-                return (
-                  <TouchableOpacity
-                    key={slot}
-                    style={[s.slotPill, isSelected && s.slotPillSelected]}
-                    onPress={() => {
-                      Vibration.vibrate(20);
-                      setSelectedSlot(slot);
-                    }}
-                  >
-                    <Text style={[s.slotPillText, isSelected && s.slotPillTextSelected]}>
-                      ⏰ {slot}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[s.filterScroll, { marginTop: 6 }]}>
-              <Text style={s.filterBarLabel}>STAGES:</Text>
-              {(['ALL', 'Picking', 'PickedUp', 'ArrivedAtGate'] as const).map((stage) => {
-                const label = stage === 'Picking' ? '⏳ Picking (Checklist Pending)' : stage === 'PickedUp' ? '📦 Picked Up (In Transit)' : stage === 'ArrivedAtGate' ? '🔔 Arrived At Gate' : '✨ All Stages';
-                const isSelected = selectedStage === stage;
-                return (
-                  <TouchableOpacity
-                    key={stage}
-                    style={[s.slotPill, isSelected && { backgroundColor: '#8B5CF6', borderColor: '#8B5CF6' }]}
-                    onPress={() => {
-                      Vibration.vibrate(20);
-                      setSelectedStage(stage);
-                    }}
-                  >
-                    <Text style={[s.slotPillText, isSelected && { color: '#FFF' }]}>
-                      {label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
-        )}
-      </View>
+      {/* CATEGORY & TIME-SLOT FILTER BAR */}
+      {(activeTab === 'active' || activeTab === 'available') && (
+        <FilterBar
+          selectedCategory={selectedCategory}
+          onSelectCategory={setSelectedCategory}
+          selectedSlot={selectedSlot}
+          onSelectSlot={setSelectedSlot}
+        />
+      )}
 
       {/* MAIN CONTENT AREA */}
       <ScrollView
-        style={s.mainScroll}
-        contentContainerStyle={s.mainScrollContent}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: 100 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#10B981" />}
       >
-        {/* ======================================================= */}
-        {/* TAB 1: ACTIVE ORDERS WITH PRODUCT CHECKLIST MARKING     */}
-        {/* ======================================================= */}
+        {/* TAB 1: ACTIVE ORDERS */}
         {activeTab === 'active' && (
           <View>
             {filteredActiveOrders.length === 0 ? (
-              <View style={s.emptyBox}>
-                <Text style={s.emptyIcon}>🛵</Text>
-                <Text style={s.emptyTitle}>No Active Deliveries Right Now</Text>
-                <Text style={s.emptySub}>
-                  {selectedCategory !== 'ALL' || selectedSlot !== 'ALL'
-                    ? 'No active orders match your selected category/slot filter.'
-                    : 'Switch to "Available Orders" to claim new orders in your hostel area.'}
-                </Text>
-                <TouchableOpacity style={s.secondaryBtn} onPress={() => setActiveTab('available')}>
-                  <Text style={s.secondaryBtnText}>View Available Orders ({pendingOrders.length})</Text>
-                </TouchableOpacity>
-
-              </View>
+              <RadarEmptyState
+                type="active"
+                availableCount={filteredPendingOrders.length}
+                onSwitchToAvailable={() => setActiveTab('available')}
+                onRefresh={() => fetchDashboardData(false)}
+              />
             ) : (
               <View>
-                {/* Mass Campus Gate Bell Broadcast Banner */}
-                {filteredActiveOrders.length > 0 && (
-                  <View style={s.campusBellContainer}>
-                    <View style={s.campusBellHeader}>
-                      <Text style={s.campusBellIcon}>🔔</Text>
-                      <View style={{ flex: 1 }}>
-                        <Text style={s.campusBellTitle}>CAMPUS GATE ARRIVAL BELL</Text>
-                        <Text style={s.campusBellSub}>
-                          Arrived at campus / hostel gate? Ring bell to alert all {filteredActiveOrders.length} customer(s) to come down!
-                        </Text>
-                      </View>
-                    </View>
-
-                    <TouchableOpacity
-                      style={s.ringBellBtn}
-                      onPress={handleRingCampusGateBell}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={s.ringBellBtnText}>🔔 RING GATE BELL FOR ALL ({filteredActiveOrders.length}) CUSTOMERS</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-
-                {filteredActiveOrders.map((order) => {
-                const orderId = order.id;
-                const items = order.items || [];
-                const checks = checkedItemsMap[orderId] || {};
-                const totalItems = items.length;
-                const checkedCount = Object.values(checks).filter(Boolean).length;
-                const allItemsChecked = totalItems === 0 || checkedCount === totalItems;
-                const status = order.status || 'Accepted';
-                const isBulk = order.isBulk || (items.reduce((s, i) => s + (i.quantity || 1), 0) >= 5 || (order.totalPrice || 0) >= 500);
-                const isExpanded = expandedOrdersMap[orderId] ?? false; // default minimized
-
-                return (
-                  <View key={orderId} style={s.activeCard}>
-                    {/* Collapsible Card Header Button */}
-                    <TouchableOpacity
-                      onPress={() => toggleOrderExpanded(orderId)}
-                      activeOpacity={0.8}
-                    >
-                      <View style={s.cardHeader}>
-                        <View style={{ flex: 1, marginRight: 6 }}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                            <Text style={s.orderIdTag}>ORDER #{orderId}</Text>
-                            {order.category && (
-                              <View style={[s.categoryTag, order.category === 'Mega Basket' && { backgroundColor: 'rgba(245, 158, 11, 0.2)', borderColor: '#F59E0B' }]}>
-                                <Text style={[s.categoryTagText, order.category === 'Mega Basket' && { color: '#F59E0B' }]}>
-                                  {order.category === 'Mega Basket' ? '🧺 MEGA BASKET' : order.category === 'Fruits' ? '🍎 FRUITS' : order.category === 'Groceries' ? '🛒 GROCERIES' : '🍔 FOOD'}
-                                </Text>
-                              </View>
-                            )}
-                          </View>
-                          <Text style={s.restaurantTitle}>{order.restaurant}</Text>
-                          <Text style={s.restaurantSub}>📍 Drop: {order.drop}</Text>
-                        </View>
-
-                        <View style={{ alignItems: 'flex-end', gap: 6 }}>
-                          <View style={s.statusPill}>
-                            <Text style={s.statusPillText}>{status.toUpperCase()}</Text>
-                          </View>
-                          <View style={[s.expandPill, isExpanded && { backgroundColor: '#374151' }]}>
-                            <Text style={s.expandPillText}>
-                              {isExpanded ? '▲ COLLAPSE' : '▼ EXPAND'}
-                            </Text>
-                          </View>
-                        </View>
-                      </View>
-
-                      {/* Time Slot & Summary Badges */}
-                      <View style={s.badgeContainerRow}>
-                        {order.deliverySlot && (
-                          <View style={s.slotBadge}>
-                            <Text style={s.slotBadgeText}>⏰ {order.deliverySlot.toUpperCase()}</Text>
-                          </View>
-                        )}
-                        {order.isMultiRestaurant && (
-                          <View style={[s.slotBadge, { backgroundColor: 'rgba(139, 92, 246, 0.2)', borderColor: '#8B5CF6' }]}>
-                            <Text style={[s.slotBadgeText, { color: '#C4B5FD' }]}>🏬 {order.pickupStops?.length} STOPS</Text>
-                          </View>
-                        )}
-                        <View style={[s.slotBadge, { backgroundColor: allItemsChecked ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)', borderColor: allItemsChecked ? '#10B981' : '#F59E0B' }]}>
-                          <Text style={[s.slotBadgeText, { color: allItemsChecked ? '#34D399' : '#FBBF24' }]}>
-                            📦 {checkedCount}/{totalItems} VERIFIED
-                          </Text>
-                        </View>
-                        {isBulk && (
-                          <View style={s.bulkBadge}>
-                            <Text style={s.bulkBadgeText}>🔥 BULK ORDER</Text>
-                          </View>
-                        )}
-                      </View>
-
-                      {!isExpanded && (
-                        <View style={s.tapToExpandBar}>
-                          <Text style={s.tapToExpandText}>👇 Tap card to expand pickup stops, checklist & call controls</Text>
-                        </View>
-                      )}
-                    </TouchableOpacity>
-
-                    {/* EXPANDED DETAILS BODY */}
-                    {isExpanded && (
-                      <View>
-
-                    {/* Pickup Restaurant Location Box (Supports Multi-Restaurant Stops) */}
-                    {order.isMultiRestaurant && order.pickupStops && order.pickupStops.length > 1 ? (
-                      <View style={s.multiPickupContainer}>
-                        <Text style={s.multiPickupTitle}>
-                          🏬 MULTI-RESTAURANT PICKUP ({order.pickupStops.length} STOPS IN 1 ORDER)
-                        </Text>
-                        {order.pickupStops.map((stop, stopIdx) => (
-                          <View key={stopIdx} style={s.multiPickupStopCard}>
-                            <View style={s.stopHeaderRow}>
-                              <View style={s.stopBadgePill}>
-                                <Text style={s.stopBadgePillText}>STOP #{stopIdx + 1}</Text>
-                              </View>
-                              <Text style={s.stopRestaurantName}>{stop.restaurantName}</Text>
-                              <TouchableOpacity
-                                style={s.stopCallIconButton}
-                                onPress={() => Linking.openURL(`tel:${stop.phone}`)}
-                              >
-                                <Text style={{ fontSize: 11, color: '#FFF', fontWeight: '800' }}>📞 CALL</Text>
-                              </TouchableOpacity>
-                            </View>
-                            <Text style={s.stopAddressText}>📍 {stop.address}</Text>
-                            <Text style={s.stopItemsText}>
-                              Collect ({stop.items.length}): {stop.items.map(i => `${i.quantity}x ${i.name}`).join(', ')}
-                            </Text>
-                          </View>
-                        ))}
-                      </View>
-                    ) : (
-                      <View style={s.pickupBox}>
-                        <Text style={s.pickupIcon}>🏬</Text>
-                        <View style={{ flex: 1 }}>
-                          <Text style={s.pickupLabel}>PICKUP LOCATION (RESTAURANT / STORE)</Text>
-                          <Text style={s.restaurantNameText}>{order.restaurant}</Text>
-                          <Text style={s.pickupAddressText}>{order.restaurantAddress || 'Food Court Area, Block 3 (Main Campus)'}</Text>
-                        </View>
-                      </View>
-                    )}
-
-                    {/* Customer Drop Info */}
-                    <View style={s.dropBox}>
-                      <Text style={s.dropIcon}>📍</Text>
-                      <View style={{ flex: 1 }}>
-                        <Text style={s.dropLabel}>DROP LOCATION</Text>
-                        <Text style={s.customerNameText}>{order.customerName}</Text>
-                        <Text style={s.dropAddressText}>{order.drop}</Text>
-                      </View>
-                    </View>
-
-                    {/* Quick Call & Message Controls for Restaurant and Customer */}
-                    <View style={s.communicationSection}>
-                      <Text style={s.communicationSectionTitle}>💬 CALL & WHATSAPP CONTROLS</Text>
-                      <View style={s.callRow}>
-                        <TouchableOpacity
-                          style={s.callBtn}
-                          onPress={() => Linking.openURL(`tel:${order.restaurantPhone || '9876543210'}`)}
-                        >
-                          <Text style={s.callBtnText}>📞 Call Restaurant</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          style={[s.callBtn, { backgroundColor: '#059669' }]}
-                          onPress={() => {
-                            const clean = (order.restaurantPhone || '9876543210').replace(/[^0-9]/g, '');
-                            const msg = `Hi ${order.restaurant}, I am your Zenvy rider for Order #${order.id}. Checking on item pickup status!`;
-                            Linking.openURL(`https://wa.me/91${clean}?text=${encodeURIComponent(msg)}`);
-                          }}
-                        >
-                          <Text style={s.callBtnText}>💬 WhatsApp Store</Text>
-                        </TouchableOpacity>
-                      </View>
-
-                      <View style={[s.callRow, { marginTop: 6 }]}>
-                        <TouchableOpacity
-                          style={s.callBtn}
-                          onPress={() => Linking.openURL(`tel:${order.customerPhone || '9876543210'}`)}
-                        >
-                          <Text style={s.callBtnText}>📞 Call Customer</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          style={[s.callBtn, { backgroundColor: '#25D366' }]}
-                          onPress={() => {
-                            const clean = (order.customerPhone || '9876543210').replace(/[^0-9]/g, '');
-                            const msg = `Hi ${order.customerName}, I am your Zenvy rider for Order #${order.id}. I am picking up your items and will be at ${order.drop} shortly!`;
-                            Linking.openURL(`https://wa.me/91${clean}?text=${encodeURIComponent(msg)}`);
-                          }}
-                        >
-                          <Text style={[s.callBtnText, { color: '#000' }]}>💬 WhatsApp Customer</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-
-                    {/* ---------------------------------------------------------------- */}
-                    {/* MEGA BASKET: PRE-PURCHASE PHOTO & CUSTOMER AGREEMENT GATE        */}
-                    {/* ---------------------------------------------------------------- */}
-                    {order.category === 'Mega Basket' && (
-                      <View style={s.megaBasketBillContainer}>
-                        <View style={s.megaBasketBillHeader}>
-                          <Text style={s.megaBasketBillTitle}>📸 1. PRE-PURCHASE PHOTO & CUSTOMER AGREEMENT</Text>
-                          <View style={[
-                            s.billStatusBadge,
-                            {
-                              backgroundColor: purchaseApprovedMap[orderId]
-                                ? 'rgba(16, 185, 129, 0.2)'
-                                : itemPhotoUploadedMap[orderId]
-                                ? 'rgba(245, 158, 11, 0.2)'
-                                : 'rgba(239, 68, 68, 0.2)'
-                            }
-                          ]}>
-                            <Text style={[
-                              s.billStatusText,
-                              {
-                                color: purchaseApprovedMap[orderId]
-                                  ? '#34D399'
-                                  : itemPhotoUploadedMap[orderId]
-                                  ? '#FBBF24'
-                                  : '#FCA5A5'
-                              }
-                            ]}>
-                              {purchaseApprovedMap[orderId]
-                                ? '🟢 CUSTOMER AGREED & APPROVED'
-                                : itemPhotoUploadedMap[orderId]
-                                ? '⏳ AWAITING CUSTOMER AGREEMENT'
-                                : '⚠️ UPLOAD ITEM PHOTO FIRST'}
-                            </Text>
-                          </View>
-                        </View>
-
-                        <Text style={s.megaBasketInstructionText}>
-                          📌 Step 1 Workflow: 1) Go to local Kirana shop. 2) Take photo of items / bill estimate. 3) Upload photo below → Customer gets notified in their app. 4) If customer agrees, proceed with purchasing!
-                        </Text>
-
-                        {!itemPhotoUploadedMap[orderId] ? (
-                          <View style={s.uploadBillBox}>
-                            <Text style={s.uploadBillLabel}>1. TAKE PHOTO OF KIRANA STORE ITEMS / ESTIMATE:</Text>
-                            <TouchableOpacity
-                              style={s.uploadBillBtn}
-                              onPress={() => handleUploadStorePhoto(orderId)}
-                            >
-                              <Text style={s.uploadBillBtnText}>📸 UPLOAD ITEM PHOTO & NOTIFY CUSTOMER TO AGREE</Text>
-                            </TouchableOpacity>
-                          </View>
-                        ) : !purchaseApprovedMap[orderId] ? (
-                          <View style={s.awaitingPaymentBox}>
-                            <Text style={s.billProofSuccessText}>
-                              ✅ Item Photo Uploaded & Sent to Customer ({order.customerName})!
-                            </Text>
-                            <Text style={s.awaitingPaymentSub}>
-                              Customer App Notification Sent: "Rider uploaded Kirana store item photo. Please review and agree to proceed with purchasing."
-                            </Text>
-                            <TouchableOpacity
-                              style={s.simulatePayBtn}
-                              onPress={() => handleSimulateCustomerPurchaseAgree(orderId)}
-                            >
-                              <Text style={s.simulatePayBtnText}>⚡ SIMULATE CUSTOMER AGREE & APPROVE PURCHASE (DEMO)</Text>
-                            </TouchableOpacity>
-                          </View>
-                        ) : (
-                          <View style={s.billPaidSuccessBox}>
-                            <Text style={s.billPaidTitle}>🎉 CUSTOMER AGREED & APPROVED PURCHASE!</Text>
-                            <Text style={s.billPaidSub}>
-                              The customer reviewed the Kirana item photo and agreed in their app. Proceed with retail shop billing and reimbursement below!
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-                    )}
-
-                    {/* ---------------------------------------------------------------- */}
-                    {/* MEGA BASKET: KIRANA STORE BILL PROOF & CUSTOMER REIMBURSEMENT    */}
-                    {/* ---------------------------------------------------------------- */}
-                    {order.category === 'Mega Basket' && purchaseApprovedMap[orderId] && (
-                      <View style={[s.megaBasketBillContainer, { marginTop: 10 }]}>
-                        <View style={s.megaBasketBillHeader}>
-                          <Text style={s.megaBasketBillTitle}>🧾 2. KIRANA RETAIL BILL PROOF & REIMBURSEMENT</Text>
-                          <View style={[
-                            s.billStatusBadge,
-                            { backgroundColor: billApprovedMap[orderId] ? 'rgba(16, 185, 129, 0.2)' : billProofUploadedMap[orderId] ? 'rgba(245, 158, 11, 0.2)' : 'rgba(239, 68, 68, 0.2)' }
-                          ]}>
-                            <Text style={[
-                              s.billStatusText,
-                              { color: billApprovedMap[orderId] ? '#34D399' : billProofUploadedMap[orderId] ? '#FBBF24' : '#FCA5A5' }
-                            ]}>
-                              {billApprovedMap[orderId] ? '🟢 REIMBURSEMENT PAID' : billProofUploadedMap[orderId] ? '⏳ AWAITING REIMBURSEMENT' : '⚠️ UPLOAD RETAIL BILL FIRST'}
-                            </Text>
-                          </View>
-                        </View>
-
-                        {!billProofUploadedMap[orderId] ? (
-                          <View style={s.uploadBillBox}>
-                            <Text style={s.uploadBillLabel}>2. ENTER FINAL KIRANA RETAIL BILL TOTAL (₹):</Text>
-                            <TextInput
-                              style={s.billAmountInput}
-                              value={billAmountInputs[orderId] || String(order.totalPrice || '')}
-                              onChangeText={(val) => setBillAmountInputs(prev => ({ ...prev, [orderId]: val }))}
-                              placeholder="e.g. 1449"
-                              placeholderTextColor="#6B7280"
-                              keyboardType="numeric"
-                            />
-
-                            <TouchableOpacity
-                              style={s.uploadBillBtn}
-                              onPress={() => handleUploadStoreBill(orderId)}
-                            >
-                              <Text style={s.uploadBillBtnText}>🧾 UPLOAD STORE BILL RECEIPT & REQUEST REIMBURSEMENT</Text>
-                            </TouchableOpacity>
-                          </View>
-                        ) : !billApprovedMap[orderId] ? (
-                          <View style={s.awaitingPaymentBox}>
-                            <Text style={s.billProofSuccessText}>
-                              ✅ Kirana Store Bill Receipt Submitted! Total Billed: ₹{billAmountInputs[orderId] || order.totalPrice}
-                            </Text>
-                            <Text style={s.awaitingPaymentSub}>
-                              Bill proof sent to apartment resident ({order.customerName}). Awaiting customer reimbursement transfer...
-                            </Text>
-                            <TouchableOpacity
-                              style={s.simulatePayBtn}
-                              onPress={() => handleSimulateCustomerPayment(orderId)}
-                            >
-                              <Text style={s.simulatePayBtnText}>⚡ SIMULATE CUSTOMER TRANSFER REIMBURSEMENT (DEMO)</Text>
-                            </TouchableOpacity>
-                          </View>
-                        ) : (
-                          <View style={s.billPaidSuccessBox}>
-                            <Text style={s.billPaidTitle}>🎉 REIMBURSEMENT CONFIRMED BY APARTMENT RESIDENT!</Text>
-                            <Text style={s.billPaidSub}>
-                              Customer has transferred ₹{billAmountInputs[orderId] || order.totalPrice}. Item checklist unlocked! Collect items and proceed to apartment drop.
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-                    )}
-
-                    {/* ------------------------------------------------ */}
-                    {/* PRODUCT PICKUP CHECKLIST (MARKING SYSTEM)        */}
-                    {/* ------------------------------------------------ */}
-                    <View style={s.checklistCard}>
-                      <View style={s.checklistHeaderRow}>
-                        <Text style={s.checklistTitle}>📦 ITEM PICKUP CHECKLIST</Text>
-                        <Text style={[s.checklistBadge, { color: allItemsChecked ? '#10B981' : '#F59E0B' }]}>
-                          {checkedCount}/{totalItems} VERIFIED
-                        </Text>
-                      </View>
-
-                      {/* Progress Bar */}
-                      <View style={s.progressTrack}>
-                        <View
-                          style={[
-                            s.progressFill,
-                            {
-                              width: `${totalItems > 0 ? (checkedCount / totalItems) * 100 : 100}%`,
-                              backgroundColor: allItemsChecked ? '#10B981' : '#F59E0B'
-                            }
-                          ]}
-                        />
-                      </View>
-
-                      <Text style={s.checklistInstruction}>
-                        {allItemsChecked
-                          ? '✅ All items verified across all stops! You can now confirm pickup.'
-                          : '⚠️ Mark each item checked as you pick up from each restaurant:'}
+                {/* Campus Gate Bell Alert Banner */}
+                <TouchableOpacity
+                  style={{
+                    marginHorizontal: SPACING.md,
+                    marginBottom: SPACING.md,
+                    borderRadius: RADIUS.card,
+                    overflow: 'hidden',
+                    borderWidth: 1,
+                    borderColor: 'rgba(245, 158, 11, 0.4)',
+                  }}
+                  onPress={handleRingCampusGateBell}
+                  activeOpacity={0.85}
+                >
+                  <LinearGradient
+                    colors={['rgba(245, 158, 11, 0.2)', 'rgba(217, 119, 6, 0.1)']}
+                    style={{ padding: SPACING.md, flexDirection: 'row', alignItems: 'center', gap: 10 }}
+                  >
+                    <Text style={{ fontSize: 20 }}>🔔</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 12, fontWeight: '900', color: '#FBBF24', letterSpacing: 0.8 }}>
+                        ARRIVED AT HOSTEL GATE?
                       </Text>
-
-                      {(order.pickupStops || [{ restaurantName: order.restaurant, address: order.restaurantAddress || '', phone: '', items }]).map((stop, stopIdx) => (
-                        <View key={stopIdx} style={order.isMultiRestaurant ? s.checklistStopGroup : undefined}>
-                          {order.isMultiRestaurant && (
-                            <View style={s.checklistStopHeader}>
-                              <Text style={s.checklistStopHeaderText}>
-                                🏬 STOP #{stopIdx + 1}: {stop.restaurantName} ({stop.address})
-                              </Text>
-                            </View>
-                          )}
-                          {stop.items.map((item) => {
-                            const itemIdx = items.indexOf(item);
-                            const activeIdx = itemIdx >= 0 ? itemIdx : 0;
-                            const isChecked = !!checks[activeIdx];
-                            return (
-                              <TouchableOpacity
-                                key={activeIdx}
-                                style={[s.checkItemRow, isChecked && s.checkItemRowChecked]}
-                                onPress={() => toggleItemCheck(orderId, activeIdx)}
-                                activeOpacity={0.7}
-                              >
-                                <View style={[s.checkbox, isChecked && s.checkboxChecked]}>
-                                  {isChecked && <Text style={s.checkmark}>✓</Text>}
-                                </View>
-                                <View style={{ flex: 1 }}>
-                                  <Text style={[s.itemNameText, isChecked && s.itemNameTextChecked]}>
-                                    {item.quantity}x  {item.name}
-                                  </Text>
-                                  {order.isMultiRestaurant && item.restaurant && (
-                                    <Text style={s.itemRestaurantSubText}>Pick up at: {item.restaurant}</Text>
-                                  )}
-                                </View>
-                                {item.price ? <Text style={s.itemPriceText}>₹{item.price}</Text> : null}
-                              </TouchableOpacity>
-                            );
-                          })}
-                        </View>
-                      ))}
+                      <Text style={{ fontSize: 10, color: COLORS.textMuted, marginTop: 2 }}>
+                        Tap to ring arrival alert for all {filteredActiveOrders.length} customer(s) to come down
+                      </Text>
                     </View>
+                  </LinearGradient>
+                </TouchableOpacity>
 
-                    {/* ACTION STEP BUTTONS */}
-                    <View style={s.actionArea}>
-                      {/* Step 1: Confirm Pickup Button */}
-                      {(status === 'Accepted' || status === 'ReadyForPickup') && (
-                        <TouchableOpacity
-                          style={[
-                            s.actionBtn,
-                            (!allItemsChecked || (order.category === 'Mega Basket' && !billApprovedMap[orderId])) && s.actionBtnDisabled
-                          ]}
-                          disabled={!allItemsChecked || (order.category === 'Mega Basket' && !billApprovedMap[orderId]) || actionLoadingId === orderId}
-                          onPress={() => handleConfirmPickup(order)}
-                        >
-                          {actionLoadingId === orderId ? (
-                            <ActivityIndicator color="#FFF" />
-                          ) : (
-                            <Text style={s.actionBtnText}>
-                              {order.category === 'Mega Basket' && !billApprovedMap[orderId]
-                                ? '🔒 UPLOAD & APPROVE KIRANA BILL TO UNLOCK PICKUP'
-                                : allItemsChecked
-                                ? '✓ CONFIRM PICKUP & START APARTMENT RIDE'
-                                : '🔒 CHECK ALL ITEMS TO PICKUP'}
-                            </Text>
-                          )}
-                        </TouchableOpacity>
-                      )}
-
-                      {/* Step 2: Notify Gate Arrival */}
-                      {status === 'PickedUp' && (
-                        <TouchableOpacity
-                          style={[s.actionBtn, { backgroundColor: '#3B82F6' }]}
-                          disabled={actionLoadingId === orderId}
-                          onPress={() => handleArriveAtGate(orderId)}
-                        >
-                          {actionLoadingId === orderId ? (
-                            <ActivityIndicator color="#FFF" />
-                          ) : (
-                            <Text style={s.actionBtnText}>🔔 ARRIVED AT HOSTEL GATE</Text>
-                          )}
-                        </TouchableOpacity>
-                      )}
-
-                      {/* Step 3: Enter Delivery PIN & Complete */}
-                      {(status === 'PickedUp' || status === 'ArrivedAtGate') && (
-                        <View style={s.pinSection}>
-                          <Text style={s.pinLabel}>ENTER 4-DIGIT CUSTOMER DELIVERY PIN</Text>
-                          <View style={s.pinRow}>
-                            <TextInput
-                              style={s.pinInput}
-                              value={pinInputs[orderId] || ''}
-                              onChangeText={(val) => setPinInputs(prev => ({ ...prev, [orderId]: val }))}
-                              placeholder="e.g. 4921"
-                              placeholderTextColor="#6B7280"
-                              keyboardType="numeric"
-                              maxLength={4}
-                            />
-                            <TouchableOpacity
-                              style={s.completeBtn}
-                              disabled={actionLoadingId === orderId}
-                              onPress={() => handleCompleteDelivery(order)}
-                            >
-                              {actionLoadingId === orderId ? (
-                                <ActivityIndicator color="#FFF" />
-                              ) : (
-                                <Text style={s.completeBtnText}>COMPLETE DELIVERY</Text>
-                              )}
-                            </TouchableOpacity>
-                          </View>
-                        </View>
-                      )}
-                    </View>
-                  </View>
-                )}
+                {filteredActiveOrders.map((order) => (
+                  <FleetOrderCard
+                    key={order.id}
+                    order={order}
+                    onUpdateStatus={handleGenericStatusUpdate}
+                    onNotifyGateArrival={handleArriveAtGate}
+                    onCancelOrder={handleCancelOrder}
+                    onUploadItemPhoto={handleUploadStorePhoto}
+                    onUploadBillProof={handleUploadStoreBill}
+                    isActionLoading={actionLoadingId === order.id}
+                    pinInput={pinInputs[order.id] || ''}
+                    onPinChange={(val) => setPinInputs(prev => ({ ...prev, [order.id]: val }))}
+                    billAmountInput={billAmountInputs[order.id] || ''}
+                    onBillAmountChange={(val) => setBillAmountInputs(prev => ({ ...prev, [order.id]: val }))}
+                  />
+                ))}
               </View>
-            );
-          })}
-          </View>
-        )}
-        </View>
-        )}
-
-        {/* ======================================================= */}
-        {/* TAB 2: AVAILABLE PENDING ORDERS                         */}
-        {/* ======================================================= */}
-        {activeTab === 'available' && (
-          <View>
-            {filteredPendingOrders.length === 0 ? (
-              <View style={s.emptyBox}>
-                <Text style={s.emptyIcon}>📦</Text>
-                <Text style={s.emptyTitle}>No Orders Available to Claim</Text>
-                <Text style={s.emptySub}>
-                  {selectedCategory !== 'ALL' || selectedSlot !== 'ALL'
-                    ? 'No available orders match your current category/slot filter.'
-                    : 'Listening for new customer orders in your hostel area...'}
-                </Text>
-
-              </View>
-            ) : (
-              filteredPendingOrders.map((order) => {
-                const items = order.items || [];
-                const isBulk = order.isBulk || (items.reduce((s, i) => s + (i.quantity || 1), 0) >= 5 || (order.totalPrice || 0) >= 500);
-
-                return (
-                  <View key={order.id} style={s.pendingCard}>
-                    <View style={s.cardHeader}>
-                      <View>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                          <Text style={s.orderIdTag}>NEW ORDER #{order.id}</Text>
-                          {order.category && (
-                            <View style={[s.categoryTag, order.category === 'Mega Basket' && { backgroundColor: 'rgba(245, 158, 11, 0.2)', borderColor: '#F59E0B' }]}>
-                              <Text style={[s.categoryTagText, order.category === 'Mega Basket' && { color: '#F59E0B' }]}>
-                                {order.category === 'Mega Basket' ? '🧺 MEGA BASKET' : order.category === 'Fruits' ? '🍎 FRUITS' : order.category === 'Groceries' ? '🛒 GROCERIES' : '🍔 FOOD'}
-                              </Text>
-                            </View>
-                          )}
-                        </View>
-                        <Text style={s.restaurantTitle}>{order.restaurant}</Text>
-                      </View>
-                      <View style={s.earningBadge}>
-                        <Text style={s.earningBadgeText}>+₹40 EARNING</Text>
-                      </View>
-                    </View>
-
-                    {/* Time Slot & Bulk Order Badges */}
-                    <View style={s.badgeContainerRow}>
-                      {order.deliverySlot && (
-                        <View style={s.slotBadge}>
-                          <Text style={s.slotBadgeText}>⏰ SLOT: {order.deliverySlot.toUpperCase()}</Text>
-                        </View>
-                      )}
-                      {order.category === 'Mega Basket' && (
-                        <View style={s.megaBasketBadge}>
-                          <Text style={s.megaBasketBadgeText}>🧺 MEGA BASKET (APARTMENT DROP)</Text>
-                        </View>
-                      )}
-                      {isBulk && (
-                        <View style={s.bulkBadge}>
-                          <Text style={s.bulkBadgeText}>🔥 BULK ORDER</Text>
-                        </View>
-                      )}
-                    </View>
-
-                    {/* Pickup Location Box */}
-                    {order.isMultiRestaurant && order.pickupStops && order.pickupStops.length > 1 ? (
-                      <View style={s.multiPickupContainer}>
-                        <Text style={s.multiPickupTitle}>
-                          🏬 MULTI-RESTAURANT PICKUP ({order.pickupStops.length} STOPS)
-                        </Text>
-                        {order.pickupStops.map((stop, stopIdx) => (
-                          <View key={stopIdx} style={s.multiPickupStopCard}>
-                            <View style={s.stopHeaderRow}>
-                              <View style={s.stopBadgePill}>
-                                <Text style={s.stopBadgePillText}>STOP #{stopIdx + 1}</Text>
-                              </View>
-                              <Text style={s.stopRestaurantName}>{stop.restaurantName}</Text>
-                            </View>
-                            <Text style={s.stopAddressText}>📍 {stop.address}</Text>
-                          </View>
-                        ))}
-                      </View>
-                    ) : (
-                      <View style={s.pickupBox}>
-                        <Text style={s.pickupIcon}>🏬</Text>
-                        <View style={{ flex: 1 }}>
-                          <Text style={s.pickupLabel}>PICKUP FROM</Text>
-                          <Text style={s.restaurantNameText}>{order.restaurant}</Text>
-                          <Text style={s.pickupAddressText}>{order.restaurantAddress || 'Food Court Area, Block 3'}</Text>
-                        </View>
-                      </View>
-                    )}
-
-                    {/* Drop Location Box */}
-                    <View style={s.dropBox}>
-                      <Text style={s.dropIcon}>📍</Text>
-                      <View style={{ flex: 1 }}>
-                        <Text style={s.dropLabel}>DROP TO</Text>
-                        <Text style={s.customerNameText}>{order.customerName}</Text>
-                        <Text style={s.dropAddressText}>{order.drop}</Text>
-                      </View>
-                    </View>
-
-                    <Text style={s.itemsSummary}>
-                      Items: {items.map(i => `${i.quantity}x ${i.name}`).join(', ')}
-                    </Text>
-                    {order.totalPrice ? <Text style={s.totalPriceText}>Total Amount: ₹{order.totalPrice}</Text> : null}
-
-                    <TouchableOpacity
-                      style={s.acceptBtn}
-                      disabled={actionLoadingId === order.id}
-                      onPress={() => handleAcceptOrder(order.id)}
-                    >
-                      {actionLoadingId === order.id ? (
-                        <ActivityIndicator color="#FFF" />
-                      ) : (
-                        <Text style={s.acceptBtnText}>ACCEPT DELIVERY ORDER (+₹40)</Text>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                );
-              })
             )}
           </View>
         )}
 
-        {/* ======================================================= */}
-        {/* TAB 3: LEADERBOARD & RANKS                              */}
-        {/* ======================================================= */}
-        {activeTab === 'leaderboard' && (
-          <View style={s.leaderboardCard}>
-            <Text style={s.lbTitle}>🏆 TODAY'S TOP RIDERS</Text>
-            <Text style={s.lbSub}>Riders with most completed campus deliveries today</Text>
-
-            {[
-              { rank: 1, name: `${profile?.name || 'Shanmukh Rider'} (You)`, count: profile?.completedCount || 14, earnings: profile?.totalEarnings || 620, badge: '🥇 CHAMPION' },
-              { rank: 2, name: 'Vikram Singh', count: 12, earnings: 510, badge: '🥈 PRO' },
-              { rank: 3, name: 'Anish Verma', count: 10, earnings: 440, badge: '🥉 RIDER' },
-              { rank: 4, name: 'Karthik Raja', count: 8, earnings: 350, badge: '⚡ FAST' },
-            ].map((r, i) => (
-              <View key={i} style={[s.lbRow, r.rank === 1 && s.lbRowFirst]}>
-                <Text style={s.lbRank}>#{r.rank}</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.lbName}>{r.name}</Text>
-                  <Text style={s.lbBadge}>{r.badge}</Text>
-                </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={s.lbEarn}>₹{r.earnings}</Text>
-                  <Text style={s.lbCount}>{r.count} Orders</Text>
-                </View>
-              </View>
-            ))}
+        {/* TAB 2: AVAILABLE DISPATCH RADAR */}
+        {activeTab === 'available' && (
+          <View>
+            {filteredPendingOrders.length === 0 ? (
+              <RadarEmptyState
+                type="available"
+                onRefresh={() => fetchDashboardData(false)}
+              />
+            ) : (
+              filteredPendingOrders.map((order) => (
+                <FleetOrderCard
+                  key={order.id}
+                  order={order}
+                  isAvailableFeed
+                  onAcceptOrder={handleAcceptOrder}
+                  isActionLoading={actionLoadingId === order.id}
+                  pinInput=""
+                  onPinChange={() => {}}
+                  billAmountInput=""
+                  onBillAmountChange={() => {}}
+                />
+              ))
+            )}
           </View>
         )}
 
-        {/* ======================================================= */}
-        {/* TAB 4: RIDER PROFILE & DELIVERED ORDER HISTORY           */}
-        {/* ======================================================= */}
+        {/* TAB 3: LEADERBOARD */}
+        {activeTab === 'leaderboard' && (
+          <FleetLeaderboard
+            users={leaderboard}
+            currentUserId={profile?.id}
+          />
+        )}
+
+        {/* TAB 4: PROFILE */}
         {activeTab === 'profile' && (
-          <View>
-            {/* Rider Card */}
-            <View style={s.profileCard}>
-              <View style={s.profileHeaderRow}>
-                <View style={s.profileAvatar}>
-                  <Text style={s.profileAvatarText}>{profile?.name ? profile.name[0] : 'R'}</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.profileNameText}>{profile?.name || 'Zenvy Fleet Rider'}</Text>
-                  <Text style={s.profileSubText}>{profile?.email || 'delivery1@zenvy.com'}</Text>
-                  <Text style={s.profileSubText}>{profile?.phone || '+91 9876543210'}</Text>
-                </View>
-              </View>
-
-              <View style={s.profileStatsGrid}>
-                <View style={s.profileStatItem}>
-                  <Text style={s.profileStatLabel}>RATING</Text>
-                  <Text style={s.profileStatVal}>★ {profile?.rating || 4.95}</Text>
-                </View>
-                <View style={s.profileStatItem}>
-                  <Text style={s.profileStatLabel}>EARNINGS</Text>
-                  <Text style={s.profileStatVal}>₹{profile?.totalEarnings || 0}</Text>
-                </View>
-                <View style={s.profileStatItem}>
-                  <Text style={s.profileStatLabel}>DELIVERIES</Text>
-                  <Text style={s.profileStatVal}>{profile?.completedCount || 0}</Text>
-                </View>
-                <View style={s.profileStatItem}>
-                  <Text style={s.profileStatLabel}>ZEN POINTS</Text>
-                  <Text style={s.profileStatVal}>⚡ {profile?.zenPoints || 240}</Text>
-                </View>
-              </View>
-
-              <View style={s.infoRowGroup}>
-                <View style={s.infoRowItem}>
-                  <Text style={s.infoRowLabel}>Vehicle:</Text>
-                  <Text style={s.infoRowVal}>{profile?.vehicleType || 'EV Scooter'} ({profile?.vehicleNumber || 'AP 39 EV 9901'})</Text>
-                </View>
-                <View style={s.infoRowItem}>
-                  <Text style={s.infoRowLabel}>Emergency SOS Contact:</Text>
-                  <Text style={s.infoRowVal}>{profile?.emergencyContact || '+91 9123456789 (Security)'}</Text>
-                </View>
-                <View style={s.infoRowItem}>
-                  <Text style={s.infoRowLabel}>Offline Queue Status:</Text>
-                  <Text style={[s.infoRowVal, { color: offlineQueueCount > 0 ? '#F59E0B' : '#10B981' }]}>
-                    {offlineQueueCount > 0 ? `${offlineQueueCount} unsynced actions` : 'All Synced Clean ✅'}
-                  </Text>
-                </View>
-              </View>
-            </View>
-
-            {/* Delivered Order History Section */}
-            <View style={s.historyCardContainer}>
-              <Text style={s.historyHeaderTitle}>📜 RECENT COMPLETED DELIVERIES</Text>
-              {orderHistory.length === 0 ? (
-                <Text style={s.historyEmptyText}>No completed delivery history recorded yet today.</Text>
-              ) : (
-                orderHistory.map((item) => (
-                  <View key={item.id} style={s.historyRowItem}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.historyOrderId}>ORDER #{item.id} • {item.restaurant}</Text>
-                      <Text style={s.historyCustomerText}>Customer: {item.customerName}</Text>
-                      <Text style={s.historyTimeText}>Delivered: {item.deliveredAt || 'Today'}</Text>
-                    </View>
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={s.historyAmountText}>₹{item.totalPrice || 240}</Text>
-                      <View style={s.historyDonePill}>
-                        <Text style={s.historyDonePillText}>COMPLETED</Text>
-                      </View>
-                    </View>
-                  </View>
-                ))
-              )}
-            </View>
-          </View>
+          <FleetProfileView
+            profile={profile}
+            historyOrders={orderHistory}
+            onLogout={handleLogout}
+            onOpenSettings={() => setShowConfigModal(true)}
+          />
         )}
       </ScrollView>
 
-      {/* FOOTER LIVE TELEMETRY BAR */}
-      <View style={s.telemetryBar}>
-        <View style={s.telemetryItem}>
-          <Text style={s.telemetryLabel}>GPS LOCATION</Text>
-          <Text style={s.telemetryVal}>{coords.lat.toFixed(4)}, {coords.lng.toFixed(4)}</Text>
-        </View>
-
-        <View style={s.telemetryItem}>
-          <Text style={s.telemetryLabel}>NETWORK</Text>
-          <Text style={[s.telemetryVal, { color: isConnected ? '#10B981' : '#EF4444' }]}>
-            {isConnected ? 'ONLINE 5G' : 'OFFLINE'}
-          </Text>
-        </View>
-
-        <TouchableOpacity
-          style={s.sosBtn}
-          onPress={() => Alert.alert('🚨 SOS EMERGENCY BROADCAST', `Campus Security & ${profile?.emergencyContact || 'Warden'} Alerted! Live GPS sent.`)}
-        >
-          <Text style={s.sosBtnText}>🚨 SOS</Text>
-        </TouchableOpacity>
-      </View>
+      {/* FLOATING TELEMETRY DOCK */}
+      <TelemetryDock
+        coords={coords}
+        isConnected={isConnected}
+        isBatteryLow={isBatteryLow}
+        emergencyContact={profile?.emergencyContact}
+      />
     </View>
   );
 }

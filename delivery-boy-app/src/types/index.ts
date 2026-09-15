@@ -31,10 +31,18 @@ export interface Order {
   createdAt?: string;
   deliveredAt?: string;
   earnings?: string;
+  riderEarning?: number;
+  deliveryFee?: number;
   note?: string;
   deliverySlot?: string;
   category?: 'Food' | 'Fruits' | 'Groceries' | 'Mega Basket' | string;
   isBulk?: boolean;
+  isMegaBasket?: boolean;
+  user?: {
+    name?: string;
+    phone?: string;
+    [key: string]: any;
+  };
   megaBasketStep?: 'SHOPPING_AT_STORE' | 'BILL_UPLOADED' | 'PAYMENT_CONFIRMED' | 'DELIVERING_TO_APARTMENT';
   billProofUrl?: string;
   billAmount?: number;
