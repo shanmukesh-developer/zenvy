@@ -27,3 +27,5 @@
 | 2026-09-16 | Restaurant Portal | Design Polish | Fixed dark mode receipt modal background on screen while preserving thermal print styling in `OrderDetailModal.tsx` |
 | 2026-09-16 | Admin Dashboard | Feature/UX | Upgraded `LiveRiderMap.tsx` with live telemetry HUD, custom SVG/CSS divIcons, and campus landmark hubs |
 | 2026-09-16 | Customer Mobile | UX & Support | Added campus helpline drawer, pull-to-refresh, unauthenticated state, and empty state CTA in `support.tsx` |
+| 2026-09-16 | Admin Dashboard | Feature/UX | Added quick resolution reply templates and direct phone click-to-call in `tickets/page.tsx` |
+| 2026-09-16 | Restaurant Portal | Professionalism | Replaced AI sci-fi copy (Asset, Deploy New Asset, Processing Uplink) with culinary terms in `RestaurantForms.tsx` |

@@ -101,8 +101,12 @@ export default function SupportTickets() {
                 <div>
                   <h3 className="text-lg font-bold text-white">{ticket.subject}</h3>
                   <p className="text-sm text-zinc-400 mt-0.5">
-                    <span className="font-bold">{ticket.user?.name || 'Unknown'}</span>
-                    {ticket.user?.phone && <span className="text-zinc-600"> &middot; {ticket.user.phone}</span>}
+                    <span className="font-bold">{ticket.user?.name || 'Student'}</span>
+                    {ticket.user?.phone && (
+                      <a href={`tel:${ticket.user.phone}`} className="text-sky-400 hover:text-sky-300 ml-2 font-mono text-xs">
+                        📞 {ticket.user.phone}
+                      </a>
+                    )}
                     <span className="text-zinc-700 font-mono ml-2 text-[10px]">#{ticket.id.slice(0, 8)}</span>
                   </p>
                 </div>
@@ -125,12 +129,31 @@ export default function SupportTickets() {
 
               {/* Admin Reply Box */}
               <div className="bg-zinc-950/60 border border-blue-500/20 rounded-xl p-4 space-y-3">
-                <p className="text-[9px] font-black uppercase tracking-widest text-blue-400">Admin Reply (visible to customer)</p>
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-blue-400">Admin Reply (visible to customer)</p>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[8px] font-black uppercase text-zinc-500 tracking-wider">Quick Insert:</span>
+                    {[
+                      { label: '⚡ Expedited', text: 'We apologize for the delay. Your order has been marked urgent with our priority campus fleet.' },
+                      { label: '💰 UPI Settled', text: 'Your UPI transaction has been verified and settled. Please check your bank statement or wallet balance.' },
+                      { label: '📍 Gate Waiting', text: 'Our delivery partner is standing at the hostel gate ready for your 4-digit PIN verification.' },
+                    ].map((tpl, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => setReplies(prev => ({ ...prev, [ticket.id]: tpl.text }))}
+                        className="text-[9px] font-bold px-2 py-0.5 bg-white/5 hover:bg-white/10 text-zinc-300 rounded border border-white/10 transition-colors"
+                      >
+                        {tpl.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <textarea
                   rows={2}
                   value={replies[ticket.id] || ''}
                   onChange={e => setReplies(prev => ({ ...prev, [ticket.id]: e.target.value }))}
-                  placeholder="Type your response to the customer..."
+                  placeholder="Type your response to the customer or pick a quick insert template above..."
                   className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-sm text-white placeholder-zinc-600 outline-none focus:border-blue-500/60 resize-none transition-all"
                 />
                 <button
