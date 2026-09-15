@@ -63,7 +63,7 @@ export const FleetProfileView: React.FC<FleetProfileViewProps> = ({
 
             <View style={{ flex: 1, marginLeft: SPACING.md }}>
               <Text style={styles.riderFullName}>
-                {profile?.name || 'Vikram Singh'}
+                {profile?.name || 'Zenvy Fleet Pilot'}
               </Text>
               <Text style={styles.fleetTierText}>
                 SRM FLEET PILOT • SINCE 2026
@@ -90,7 +90,7 @@ export const FleetProfileView: React.FC<FleetProfileViewProps> = ({
             <View style={styles.statCol}>
               <Text style={styles.statColLabel}>FLEET SCORE</Text>
               <Text style={styles.statColValueEmerald}>
-                ★ {Number(profile?.rating || 4.9).toFixed(1)}
+                ★ {Number(profile?.rating || 5.0).toFixed(1)}
               </Text>
             </View>
           </View>
@@ -102,11 +102,11 @@ export const FleetProfileView: React.FC<FleetProfileViewProps> = ({
         <Text style={styles.sectionHeader}>VEHICLE & COMPLIANCE</Text>
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>Vehicle Number</Text>
-          <Text style={styles.infoValue}>{profile?.vehicleNumber || 'AP-07-AB-1234'}</Text>
+          <Text style={styles.infoValue}>{profile?.vehicleNumber || 'Registered on Gate Pass'}</Text>
         </View>
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>Registered Mobile</Text>
-          <Text style={styles.infoValue}>{profile?.phone || '+91 87654 32100'}</Text>
+          <Text style={styles.infoValue}>{profile?.phone || 'Verified via SMS'}</Text>
         </View>
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>Campus Base</Text>
@@ -114,7 +114,7 @@ export const FleetProfileView: React.FC<FleetProfileViewProps> = ({
         </View>
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>Emergency Contact</Text>
-          <Text style={styles.infoValue}>{profile?.emergencyContact || '+91 98765 43210'}</Text>
+          <Text style={styles.infoValue}>{profile?.emergencyContact || 'Campus Security Dispatch'}</Text>
         </View>
       </View>
 

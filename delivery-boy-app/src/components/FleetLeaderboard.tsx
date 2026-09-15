@@ -94,34 +94,47 @@ export const FleetLeaderboard: React.FC<FleetLeaderboardProps> = ({
         </View>
       )}
 
+      {/* Empty State */}
+      {users.length === 0 && (
+        <View style={styles.emptyStateBox}>
+          <Text style={{ fontSize: 36, marginBottom: 12 }}>🏆</Text>
+          <Text style={styles.emptyTitle}>NEW LEADERBOARD CYCLE</Text>
+          <Text style={styles.emptyDesc}>
+            Accept available dispatch runs and complete deliveries to climb the campus leaderboard!
+          </Text>
+        </View>
+      )}
+
       {/* Full Leaderboard List */}
-      <View style={styles.listContainer}>
-        {rest.map((user, idx) => {
-          const rank = idx + 4;
-          const isCurrentUser = user.id === currentUserId;
-          return (
-            <View
-              key={user.id || idx}
-              style={[
-                styles.listItem,
-                isCurrentUser && styles.listItemCurrent,
-              ]}
-            >
-              <View style={styles.listRankBox}>
-                <Text style={styles.listRankText}>#{rank}</Text>
+      {rest.length > 0 && (
+        <View style={styles.listContainer}>
+          {rest.map((user, idx) => {
+            const rank = idx + 4;
+            const isCurrentUser = user.id === currentUserId;
+            return (
+              <View
+                key={user.id || idx}
+                style={[
+                  styles.listItem,
+                  isCurrentUser && styles.listItemCurrent,
+                ]}
+              >
+                <View style={styles.listRankBox}>
+                  <Text style={styles.listRankText}>#{rank}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.listUserName}>{user.name}</Text>
+                  <Text style={styles.listUserSub}>★ {Number(user.rating).toFixed(1)} Rating</Text>
+                </View>
+                <View style={styles.listMetrics}>
+                  <Text style={styles.listRuns}>{user.deliveries} Runs</Text>
+                  <Text style={styles.listEarn}>₹{user.earnings}</Text>
+                </View>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.listUserName}>{user.name}</Text>
-                <Text style={styles.listUserSub}>★ {Number(user.rating).toFixed(1)} Rating</Text>
-              </View>
-              <View style={styles.listMetrics}>
-                <Text style={styles.listRuns}>{user.deliveries} Runs</Text>
-                <Text style={styles.listEarn}>₹{user.earnings}</Text>
-              </View>
-            </View>
-          );
-        })}
-      </View>
+            );
+          })}
+        </View>
+      )}
     </ScrollView>
   );
 };
@@ -130,6 +143,29 @@ const styles = StyleSheet.create({
   container: {
     paddingHorizontal: SPACING.md,
     paddingBottom: 80,
+  },
+  emptyStateBox: {
+    padding: SPACING.xl,
+    borderRadius: RADIUS.card,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: '#12141C',
+    alignItems: 'center',
+    marginVertical: SPACING.xl,
+  },
+  emptyTitle: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: 1.5,
+    marginBottom: 6,
+  },
+  emptyDesc: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+    textAlign: 'center',
+    lineHeight: 16,
+    maxWidth: 260,
   },
   headerDeck: {
     alignItems: 'center',

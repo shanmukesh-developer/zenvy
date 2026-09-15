@@ -29,3 +29,5 @@
 | 2026-09-16 | Customer Mobile | UX & Support | Added campus helpline drawer, pull-to-refresh, unauthenticated state, and empty state CTA in `support.tsx` |
 | 2026-09-16 | Admin Dashboard | Feature/UX | Added quick resolution reply templates and direct phone click-to-call in `tickets/page.tsx` |
 | 2026-09-16 | Restaurant Portal | Professionalism | Replaced AI sci-fi copy (Asset, Deploy New Asset, Processing Uplink) with culinary terms in `RestaurantForms.tsx` |
+| 2026-09-16 | Delivery App | Professionalism | Eradicated hardcoded mock rider names (`Vikram Singh`), fake number plates, and static phones in `FleetProfileView.tsx` |
+| 2026-09-16 | Delivery App | UX Polish | Added luxury cycle reset empty state in `FleetLeaderboard.tsx` |
