@@ -7,6 +7,13 @@ export interface OrderItem {
   restaurantPhone?: string;
 }
 
+export interface PickupStop {
+  restaurantName: string;
+  address: string;
+  phone: string;
+  items: OrderItem[];
+}
+
 export interface Order {
   id: string;
   _id?: string;
@@ -34,6 +41,8 @@ export interface Order {
   isBillApproved?: boolean;
   itemPhotoUrl?: string;
   isPurchasingApprovedByCustomer?: boolean;
+  pickupStops?: PickupStop[];
+  isMultiRestaurant?: boolean;
 }
 
 export interface TaskStep {

@@ -32,6 +32,14 @@ import {
   getOfflineQueue,
   OfflineAction,
 } from './src/services/offlineQueue';
+import { OrderItem, PickupStop, Order } from './src/types';
+import {
+  STORAGE_SERVER_KEY,
+  STORAGE_TOKEN_KEY,
+  STORAGE_PROFILE_KEY,
+  DEFAULT_API_URL,
+  FALLBACK_API_URL,
+} from './src/constants/api';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -46,59 +54,8 @@ Notifications.setNotificationHandler({
 
 const { width: SW, height: SH } = Dimensions.get('window');
 
-// Persistent Storage Keys
-const STORAGE_SERVER_KEY = '@zenvy_native_backend_url';
-const STORAGE_TOKEN_KEY = '@zenvy_native_rider_token';
-const STORAGE_PROFILE_KEY = '@zenvy_native_rider_profile';
-
-// Default API URLs (Production Render Backend)
-const DEFAULT_API_URL = 'https://hostelbites-backend-jwmt.onrender.com/api';
-const FALLBACK_API_URL = 'http://localhost:5005/api';
-
-interface OrderItem {
-  name: string;
-  quantity: number;
-  price?: number;
-  restaurant?: string;
-  restaurantAddress?: string;
-  restaurantPhone?: string;
-}
-
-interface PickupStop {
-  restaurantName: string;
-  address: string;
-  phone: string;
-  items: OrderItem[];
-}
-
-interface Order {
-  id: string;
-  _id?: string;
-  restaurant: string;
-  restaurantAddress?: string;
-  restaurantPhone?: string;
-  customerName: string;
-  customerPhone?: string;
-  drop: string;
-  items: OrderItem[];
-  totalPrice?: number;
-  finalPrice?: number;
-  megaBasketStep?: 'SHOPPING_AT_STORE' | 'BILL_UPLOADED' | 'PAYMENT_CONFIRMED' | 'DELIVERING_TO_APARTMENT';
-  billProofUrl?: string;
-  billAmount?: number;
-  isBillApproved?: boolean;
-  itemPhotoUrl?: string;
-  isPurchasingApprovedByCustomer?: boolean;
-  deliverySlot?: 'Before 7:30 PM' | 'After 7:30 PM' | '1:00 PM - 6:00 PM' | string;
-  category?: 'Food' | 'Fruits' | 'Groceries' | 'Mega Basket' | string;
-  isBulk?: boolean;
-  pickupStops?: PickupStop[];
-  isMultiRestaurant?: boolean;
-  status: 'Accepted' | 'ReadyForPickup' | 'PickedUp' | 'ArrivedAtGate' | 'Delivered' | string;
-  deliveryPin?: string;
-  createdAt?: string;
-  deliveredAt?: string;
-}
+// Types imported from ./src/types (OrderItem, PickupStop, Order)
+// Constants imported from ./src/constants/api
 
 interface RiderProfile {
   id: string;

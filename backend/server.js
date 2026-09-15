@@ -1293,7 +1293,9 @@ const startServer = async () => {
             let currentReactions = [];
             try {
               currentReactions = msg.reactions ? JSON.parse(msg.reactions) : [];
-            } catch(e) {}
+            } catch(e) {
+              console.warn('[SERVER_SOCKET] Failed to parse message reactions:', e.message);
+            }
             if (!Array.isArray(currentReactions)) currentReactions = [];
             
             // Remove existing reaction by this user

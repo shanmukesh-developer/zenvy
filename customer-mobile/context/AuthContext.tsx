@@ -68,7 +68,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await removeToken();
         await removeUser();
       }
-    } catch { }
+    } catch (err) {
+      console.warn('[AUTH_CONTEXT] Failed to restore session:', err);
+    }
     setIsLoading(false);
   };
 

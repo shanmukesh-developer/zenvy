@@ -77,7 +77,9 @@ const registerPartner = async (req, res) => {
             }
           }
         }
-      } catch (err) {}
+      } catch (err) {
+        console.warn('[DELIVERY_PARTNER_AUTH_CHECK_WARN] Token verify failed:', err.message);
+      }
     }
 
     if (!skipCookie) {
@@ -194,7 +196,12 @@ const acceptOrder = async (req, res) => {
     }
 
     const io = req.app.get('io');
-    io.to(updatedOrder.id.toString()).emit('statusUpdated', { id: updatedOrder.id, status: 'Accepted' });
+    if (io) {
+      io.to(updatedOrder.id.toString()).emit('statusUpdated', { id: updatedOrder.id, status: 'Accepted' });
+      io.to('admin-room').emit('statusUpdated', { id: updatedOrder.id, status: 'Accepted' });
+      io.emit('statusUpdated', { id: updatedOrder.id, status: 'Accepted' });
+      io.emit('admin_order_accepted', { orderId: updatedOrder.id, riderName: partner?.name || 'Rider' });
+    }
 
     try {
       const User = getUserModel();

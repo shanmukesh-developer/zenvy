@@ -192,9 +192,20 @@ export default function OrdersPage() {
   useEffect(() => {
     fetchOrders(1);
 
+    let token = null;
+    try {
+      const userData = localStorage.getItem('user');
+      if (userData) {
+        const u = JSON.parse(userData);
+        token = u.token || null;
+      }
+    } catch {}
+
     const socket = io(SOCKET_URL, {
-      transports: ['websocket', 'polling'], withCredentials: true
+      transports: ['websocket', 'polling'], withCredentials: true,
+      auth: { token }
     });
+    socket.emit('joinAdmin');
     
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     socket.on('admin_newOrder', (order: any) => { 

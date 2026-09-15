@@ -100,7 +100,9 @@ const registerUser = async (req, res) => {
             }
           }
         }
-      } catch (err) {}
+      } catch (err) {
+        console.warn('[USER_AUTH_CHECK_WARN] Token verify failed:', err.message);
+      }
     }
 
     if (!skipCookie) {

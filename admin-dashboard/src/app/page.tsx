@@ -324,6 +324,15 @@ export default function AdminHome() {
     fetchStats();
     fetchOrders();
 
+    let token = null;
+    try {
+      const userData = localStorage.getItem('user');
+      if (userData) {
+        const u = JSON.parse(userData);
+        token = u.token || null;
+      }
+    } catch {}
+
     const socket = io(SOCKET_URL.replace(/\/$/, ""), {
       transports: ['websocket', 'polling'],
       withCredentials: true,
@@ -331,6 +340,7 @@ export default function AdminHome() {
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
+      auth: { token }
     });
     socketRef.current = socket;
     socket.emit('joinAdmin');

@@ -113,7 +113,9 @@ function playTone(
     try {
       osc.disconnect();
       gain.disconnect();
-    } catch (e) {}
+    } catch {
+      // Intentionally suppressed: safe to ignore if audio nodes were already disconnected
+    }
   };
 
   osc.start(startTime);

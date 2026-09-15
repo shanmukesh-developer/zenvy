@@ -195,7 +195,9 @@ export default function HomeScreen() {
       let favs = [];
       try {
         favs = favsStr ? JSON.parse(favsStr) : [];
-      } catch(e) {}
+      } catch (e) {
+        console.warn('[FAVORITES] Failed to parse stored favorites:', e);
+      }
       if (!Array.isArray(favs)) favs = [];
       if ((Array.isArray(favs) ? favs.includes(id) : false)) {
         favs = favs.filter((f: string) => f !== id);

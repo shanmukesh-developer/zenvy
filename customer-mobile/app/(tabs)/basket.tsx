@@ -41,7 +41,7 @@ export default function BasketScreen() {
           {cart.length > 0 && (
             <TouchableOpacity
               style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.08)' }}
-              onPress={() => {
+              onPress= {() => {
                 Alert.alert(
                   'Clear Basket?',
                   'Are you sure you want to remove all items from your basket?',

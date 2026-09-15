@@ -90,15 +90,7 @@ export default function DopaminePressable({
       bounciness: springBounciness,
     }).start();
 
-    // Disabled expo-haptics on Android to prevent crashes when touching animated items
-    // if (Platform.OS !== 'web' && haptic !== 'none') {
-    //   try {
-    //     if (haptic === 'success') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    //     else if (haptic === 'heavy') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    //     else if (haptic === 'medium') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    //     else Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    //   } catch (e) {}
-    // }
+    // Note: expo-haptics disabled on Android to prevent crashes when touching animated items
 
     if (tilt) {
       handleTouch(e);
