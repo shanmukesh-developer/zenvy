@@ -280,7 +280,9 @@ export default function LoginScreen() {
       if (e.message && (e.message.includes('Network') || e.message.includes('Failed to fetch') || e.message.includes('JSON'))) {
         setShowWakeup(true);
       } else {
-        setError(`Network error: ${e.message || 'Server waking up. Try again.'}`);
+        setError(e.message && typeof e.message === 'string' && e.message.length < 80 && !e.message.includes('[object') 
+          ? e.message 
+          : 'Unable to connect to campus dispatch servers. Please check your connection and try again.');
       }
     }
     finally { setLoading(false); }
@@ -329,7 +331,9 @@ export default function LoginScreen() {
         }
       }
     } catch (e: any) {
-      setError(`Auth failed: ${e.message}`);
+      setError(e.message && typeof e.message === 'string' && e.message.length < 80 && !e.message.includes('[object')
+        ? e.message
+        : 'Authentication service encountered an issue. Please try mobile login.');
     } finally {
       setLoading(false);
     }

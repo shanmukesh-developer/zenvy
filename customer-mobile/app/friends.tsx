@@ -1156,7 +1156,16 @@ export default function FriendsScreen() {
 
       {/* Top Header Navigation */}
       <View style={s.topHeader}>
-        <TouchableOpacity style={s.backButton} onPress={() => router.back()}>
+        <TouchableOpacity 
+          style={s.backButton} 
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace('/(tabs)' as any);
+            }
+          }}
+        >
           <Text style={s.backText}>← CLOSE CIRCLE</Text>
         </TouchableOpacity>
         <TouchableOpacity style={s.syncButtonTrigger} onPress={() => setShowSyncModal(true)}>

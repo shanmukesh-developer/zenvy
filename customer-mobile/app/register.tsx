@@ -144,7 +144,9 @@ export default function RegisterScreen() {
       if (e.message && (e.message.includes('Network') || e.message.includes('Failed to fetch') || e.message.includes('JSON'))) {
         setShowWakeup(true);
       } else {
-        setError(`Could not send OTP: ${e.message || 'Server unavailable. Please try again.'}`);
+        setError(e.message && typeof e.message === 'string' && e.message.length < 80 && !e.message.includes('[object') 
+          ? e.message 
+          : 'Could not send verification SMS. Please check your network and try again.');
       }
     } finally {
       setLoading(false);
@@ -184,7 +186,9 @@ export default function RegisterScreen() {
       if (e.message && (e.message.includes('Network') || e.message.includes('Failed to fetch') || e.message.includes('JSON'))) {
         setShowWakeup(true);
       } else {
-        setError(`Network error: ${e.message || 'Server waking up. Try again.'}`); 
+        setError(e.message && typeof e.message === 'string' && e.message.length < 80 && !e.message.includes('[object')
+          ? e.message
+          : 'Registration failed due to a server error. Please try again.'); 
       }
     }
     finally { setLoading(false); }
