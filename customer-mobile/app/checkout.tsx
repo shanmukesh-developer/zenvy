@@ -321,12 +321,13 @@ export default function CheckoutScreen() {
           router.replace(`/tracking/${data._id || data.id}` as any);
         }
       } else {
-        const err = await res.json();
-        Alert.alert('Order Failed', err.message || 'Payment Rejected. Please try again.');
+        const err = await res.json().catch(() => ({}));
+        const msg = typeof err?.message === 'string' ? err.message : 'Unable to complete order dispatch. Please verify your details and retry.';
+        Alert.alert('Order Notice', msg);
       }
     } catch (e) {
       console.error(e);
-      Alert.alert('Network Error', 'Order failed to place. Check connection.');
+      Alert.alert('Connection Notice', 'Could not complete order dispatch. Please check your connection and retry.');
     } finally {
       setLoading(false);
     }
@@ -513,7 +514,7 @@ export default function CheckoutScreen() {
 
           {deliveryType === 'scheduled' && (
             <View style={s.scheduleSlotsContainer}>
-              <Text style={s.scheduleHelperText}>SELECT TOMORROW'S PRE-ORDER MISSION SLOT:</Text>
+              <Text style={s.scheduleHelperText}>SELECT PRE-ORDER MEAL SLOT:</Text>
               <View style={s.slotsGrid}>
                 {[
                   { label: '🌅 Breakfast', time: 'Tomorrow 08:00 AM' },
@@ -709,9 +710,9 @@ export default function CheckoutScreen() {
               <Text style={[s.billVal, { color: txt }]}>₹{totalPrice}</Text>
             </View>
             <View style={s.billRow}>
-              <Text style={[s.billLabel, { color: txt }]}>LOGISTICS FEE</Text>
+              <Text style={[s.billLabel, { color: txt }]}>DELIVERY FEE</Text>
               {isElite || zenPoints >= 200 ? (
-                <Text style={[s.billVal, { color: COLORS.gold }]}>FREE BYPASS</Text>
+                <Text style={[s.billVal, { color: COLORS.gold, fontWeight: '900' }]}>FREE (ELITE VIP) ✨</Text>
               ) : (
                 <Text style={[s.billVal, { color: txt }]}>₹{deliveryFee}</Text>
               )}

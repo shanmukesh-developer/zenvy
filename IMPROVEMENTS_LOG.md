@@ -41,4 +41,5 @@
 | 2026-09-16 | Restaurant Portal | UX & Error Handling | Replaced raw browser alert with toast notification and sci-fi copy (Deploy Asset) with culinary phrasing in `dashboard/page.tsx` |
 | 2026-09-16 | Customer Mobile | UX & Bug Fix | Preserved unread status highlight on open and cleared bell icon badge on unmount in `notifications.tsx` |
 | 2026-09-16 | Customer Mobile | Professionalism | Replaced raw phone number text with professional 1-tap WhatsApp booking copy in `onboarding.tsx` and `CampusServicesMapModal.tsx` |
+| 2026-09-16 | Customer Mobile | UX & Resilience | Sanitized order placement error handling and eliminated sci-fi jargon (mission slot, logistics fee, free bypass) in `checkout.tsx` |
 
