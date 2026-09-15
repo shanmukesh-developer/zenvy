@@ -62,6 +62,21 @@ export default function NotificationsScreen() {
 
   useEffect(() => {
     loadNotifications();
+
+    return () => {
+      // When leaving notification center, mark all as read so home screen bell badge is cleared
+      AsyncStorage.getItem('zenvy_notifications').then(stored => {
+        if (stored) {
+          try {
+            const list = JSON.parse(stored);
+            if (Array.isArray(list)) {
+              const allRead = list.map((n: any) => ({ ...n, read: true }));
+              AsyncStorage.setItem('zenvy_notifications', JSON.stringify(allRead));
+            }
+          } catch {}
+        }
+      });
+    };
   }, []);
 
   const loadNotifications = async () => {
@@ -72,11 +87,9 @@ export default function NotificationsScreen() {
         loaded = JSON.parse(stored);
       } else {
         loaded = DEFAULT_NOTIFICATIONS;
+        await AsyncStorage.setItem('zenvy_notifications', JSON.stringify(DEFAULT_NOTIFICATIONS));
       }
-      // Auto mark-all-read on screen open
-      const allRead = loaded.map(n => ({ ...n, read: true }));
-      setNotifications(allRead);
-      await AsyncStorage.setItem('zenvy_notifications', JSON.stringify(allRead));
+      setNotifications(loaded);
     } catch (e) {
       console.error('Error loading notifications:', e);
     } finally {
