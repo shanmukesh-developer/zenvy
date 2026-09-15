@@ -156,19 +156,8 @@ export const FleetProfileView: React.FC<FleetProfileViewProps> = ({
         )}
       </View>
 
-      {/* Host Configuration & Logout Buttons */}
+      {/* Logout Action Button */}
       <View style={styles.buttonGroup}>
-        {onOpenSettings && (
-          <TouchableOpacity
-            style={styles.secondaryOutlineBtn}
-            onPress={onOpenSettings}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.secondaryOutlineText}>
-              ⚙ CONFIGURE BACKEND API HOST
-            </Text>
-          </TouchableOpacity>
-        )}
 
         <TouchableOpacity
           style={styles.logoutBtn}

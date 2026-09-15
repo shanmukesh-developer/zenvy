@@ -22,9 +22,7 @@ interface FleetLoginScreenProps {
   setPassword: (val: string) => void;
   isLoading: boolean;
   onLogin: () => void;
-  onQuickDemo: () => void;
-  apiHost: string;
-  onOpenConfig: () => void;
+  onForgotPassword?: () => void;
 }
 
 export const FleetLoginScreen: React.FC<FleetLoginScreenProps> = ({
@@ -34,9 +32,7 @@ export const FleetLoginScreen: React.FC<FleetLoginScreenProps> = ({
   setPassword,
   isLoading,
   onLogin,
-  onQuickDemo,
-  apiHost,
-  onOpenConfig,
+  onForgotPassword,
 }) => {
   return (
     <KeyboardAvoidingView
@@ -90,7 +86,7 @@ export const FleetLoginScreen: React.FC<FleetLoginScreenProps> = ({
               style={styles.input}
               value={email}
               onChangeText={setEmail}
-              placeholder="8765432100 or rider@zenvy.com"
+              placeholder="Registered mobile or email"
               placeholderTextColor="#64748B"
               keyboardType="email-address"
               autoCapitalize="none"
@@ -102,10 +98,19 @@ export const FleetLoginScreen: React.FC<FleetLoginScreenProps> = ({
               style={styles.input}
               value={password}
               onChangeText={setPassword}
-              placeholder="••••••••"
+              placeholder="Enter your secure password"
               placeholderTextColor="#64748B"
               secureTextEntry
             />
+
+            {/* Forgot Password Row */}
+            <TouchableOpacity
+              style={styles.forgotBtn}
+              onPress={onForgotPassword}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.forgotText}>Forgot credentials? Contact Fleet Control</Text>
+            </TouchableOpacity>
 
             {/* Sign In Button */}
             <TouchableOpacity
@@ -127,30 +132,14 @@ export const FleetLoginScreen: React.FC<FleetLoginScreenProps> = ({
                 )}
               </LinearGradient>
             </TouchableOpacity>
-
-            {/* Quick Demo Login Pill */}
-            <TouchableOpacity
-              style={styles.demoPill}
-              onPress={onQuickDemo}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.demoPillText}>
-                ⚡ AUTO-FILL VIKRAM SINGH (TEST RIDER)
-              </Text>
-            </TouchableOpacity>
           </LinearGradient>
         </View>
 
-        {/* Config Host IP link */}
-        <TouchableOpacity
-          style={styles.configLink}
-          onPress={onOpenConfig}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.configLinkText}>
-            ⚙ Connected Server: {apiHost}
-          </Text>
-        </TouchableOpacity>
+        {/* Secure Campus Ops Footer */}
+        <View style={styles.footerContainer}>
+          <Text style={styles.footerBrand}>ZENVY LOGISTICS PLATFORM</Text>
+          <Text style={styles.footerSub}>SRM University AP • Campus Dispatch v1.0.0</Text>
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -267,26 +256,31 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     letterSpacing: 1,
   },
-  demoPill: {
-    paddingVertical: 10,
-    borderRadius: RADIUS.xs,
-    backgroundColor: 'rgba(212, 175, 122, 0.1)',
-    borderWidth: 1,
-    borderColor: COLORS.goldBorder,
+  forgotBtn: {
+    alignSelf: 'flex-end',
+    marginBottom: SPACING.lg,
+    paddingVertical: 4,
+  },
+  forgotText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.gold,
+  },
+  footerContainer: {
+    marginTop: SPACING.xxl,
     alignItems: 'center',
   },
-  demoPillText: {
+  footerBrand: {
     fontSize: 10,
     fontWeight: '800',
-    color: COLORS.goldLight,
-    letterSpacing: 0.6,
+    color: '#94A3B8',
+    letterSpacing: 1.2,
   },
-  configLink: {
-    marginTop: SPACING.xl,
-    alignItems: 'center',
-  },
-  configLinkText: {
-    fontSize: 11,
-    color: COLORS.textMuted,
+  footerSub: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: '#475569',
+    marginTop: 4,
+    letterSpacing: 0.5,
   },
 });

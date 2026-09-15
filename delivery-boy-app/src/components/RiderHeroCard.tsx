@@ -87,17 +87,8 @@ export const RiderHeroCard: React.FC<RiderHeroCardProps> = ({
             </View>
           </View>
 
-          {/* Action Buttons: Host Settings & Logout */}
+          {/* Action Button: Sign Out */}
           <View style={styles.actionButtonsCol}>
-            {onOpenSettings && (
-              <TouchableOpacity
-                style={styles.iconButton}
-                onPress={onOpenSettings}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.iconSymbol}>⚙</Text>
-              </TouchableOpacity>
-            )}
             <TouchableOpacity
               style={[styles.iconButton, styles.logoutButton]}
               onPress={onLogout}

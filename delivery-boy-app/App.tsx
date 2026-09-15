@@ -101,7 +101,6 @@ export default function App() {
   const [loginEmail, setLoginEmail] = useState<string>('');
   const [loginPassword, setLoginPassword] = useState<string>('');
   const [loginLoading, setLoginLoading] = useState<boolean>(false);
-  const [showConfigModal, setShowConfigModal] = useState<boolean>(false);
 
   // Navigation & Duty State
   const [isOnline, setIsOnline] = useState<boolean>(true);
@@ -869,45 +868,13 @@ export default function App() {
           setPassword={setLoginPassword}
           isLoading={loginLoading}
           onLogin={handleLogin}
-          onQuickDemo={() => {
-            setLoginEmail('8765432100');
-            setLoginPassword('rider123');
-            Vibration.vibrate(30);
+          onForgotPassword={() => {
+            Alert.alert(
+              'Fleet Operations Control',
+              'For password resets or driver credentials, contact SRM Campus Fleet Support at fleet-support@zenvy.com.'
+            );
           }}
-          apiHost={apiHost}
-          onOpenConfig={() => setShowConfigModal(true)}
         />
-
-        {/* API Host Config Modal */}
-        <Modal visible={showConfigModal} transparent animationType="fade">
-          <View style={s.modalOverlay}>
-            <View style={s.modalContent}>
-              <Text style={s.modalTitle}>Backend API Host</Text>
-              <Text style={s.modalSub}>Server address currently targeted:</Text>
-              <TextInput
-                style={s.textInput}
-                value={apiHost}
-                onChangeText={setApiHost}
-                placeholder="https://hostelbites-backend-jwmt.onrender.com/api"
-                placeholderTextColor="#6B7280"
-              />
-              <View style={{ flexDirection: 'row', gap: 10, marginTop: 15 }}>
-                <TouchableOpacity style={[s.modalBtn, { backgroundColor: '#374151' }]} onPress={() => setShowConfigModal(false)}>
-                  <Text style={s.modalBtnText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[s.modalBtn, { backgroundColor: '#10B981' }]}
-                  onPress={async () => {
-                    await AsyncStorage.setItem(STORAGE_SERVER_KEY, apiHost);
-                    setShowConfigModal(false);
-                  }}
-                >
-                  <Text style={s.modalBtnText}>Save Host</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </Modal>
       </View>
     );
   }
@@ -966,7 +933,6 @@ export default function App() {
           }
         }}
         onLogout={handleLogout}
-        onOpenSettings={() => setShowConfigModal(true)}
       />
 
       {/* SEGMENTED NAVIGATION CAPSULE */}
@@ -1095,7 +1061,6 @@ export default function App() {
             profile={profile}
             historyOrders={orderHistory}
             onLogout={handleLogout}
-            onOpenSettings={() => setShowConfigModal(true)}
           />
         )}
       </ScrollView>
