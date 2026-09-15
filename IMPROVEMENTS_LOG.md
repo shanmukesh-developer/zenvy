@@ -17,3 +17,6 @@
 | 2026-09-16 | Restaurant Portal | Reliability | Updated API & Socket fallbacks to deployed Render cloud backend |
 | 2026-09-16 | Restaurant Portal | Build & Prerender | Verified Next.js Turbopack build (all routes prerendered, 0 build errors) |
 | 2026-09-16 | Delivery App | Reliability | Eliminated localhost fallback in `src/constants/api.ts` to ensure remote connectivity |
+| 2026-09-16 | Delivery App (Web) | Build & Prerender | Verified Next.js 14 production build (6 static pages, 0 errors) |
+| 2026-09-16 | Customer Mobile | UX Polish | Dynamic user votes counter in campus community photo wall (`community.tsx`) |
+| 2026-09-16 | Customer Mobile | Professionalism | Cleaned UPI container naming & styles in bulk apartment grocery flow (`mega-basket.tsx`) |

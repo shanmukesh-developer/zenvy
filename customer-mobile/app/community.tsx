@@ -1684,10 +1684,10 @@ export default function CommunityScreen() {
                 </View>
               )}
 
-              {/* Bottom Votes Bar (Matching Mockup 1) */}
+              {/* Bottom Votes Bar */}
               <View style={{ paddingVertical: 12, alignItems: 'center', borderTopWidth: 1, borderTopColor: border, marginTop: 10 }}>
                 <Text style={{ fontSize: 10, fontWeight: '900', color: isDark ? COLORS.gold : '#8b5a2b' }}>
-                  Votes today: 3 of 5 used 🔥🔥
+                  Votes today: {Math.min(5, userLikedWallSubmissionIds.length)} of 5 used {userLikedWallSubmissionIds.length > 0 ? '🔥' : '✨'}
                 </Text>
               </View>
 

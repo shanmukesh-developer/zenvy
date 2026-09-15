@@ -745,8 +745,8 @@ export default function MegaBasketScreen() {
               Scan the campus UPI QR to transfer the estimated advance amount of ₹{grandTotal}.
             </Text>
 
-            {/* Gorgeous visual QR mockup */}
-            <View style={s.qrMockBox}>
+            {/* Visual Campus UPI QR */}
+            <View style={s.qrDisplayBox}>
               <View style={s.qrBorderSquare}>
                 <Text style={{ fontSize: 32 }}>📲</Text>
                 <Text style={s.qrScanText}>CAMPUS UPI MERCHANT</Text>
@@ -882,7 +882,7 @@ const s = StyleSheet.create({
   modalContent: { width: '100%', maxWidth: 340, backgroundColor: '#141416', borderRadius: 28, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', padding: 20 },
   modalTitle: { fontSize: 11, fontWeight: '900', color: COLORS.red, letterSpacing: 1.5, textAlign: 'center', marginBottom: 8 },
   modalDesc: { fontSize: 8, fontWeight: '700', color: '#888', textAlign: 'center', lineHeight: 12, marginBottom: 16 },
-  qrMockBox: { alignItems: 'center', marginBottom: 20 },
+  qrDisplayBox: { alignItems: 'center', marginBottom: 20 },
   qrBorderSquare: { width: 160, height: 160, borderRadius: 16, borderWidth: 2, borderColor: '#22c55e', backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center', gap: 6 },
   qrScanText: { fontSize: 8, fontWeight: '900', color: '#000' },
   qrUpiId: { fontSize: 8, fontWeight: '900', color: '#888' },
