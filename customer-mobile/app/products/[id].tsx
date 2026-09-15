@@ -12,10 +12,10 @@ import {
   Alert,
   FlatList,
   Animated,
-  Clipboard,
   Modal,
   TextInput,
 } from 'react-native';
+import Clipboard from '@react-native-clipboard/clipboard';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS, SHADOWS, RADIUS } from '../../constants/theme';
@@ -49,7 +49,7 @@ export function generateSmartAttributes(name: string, category?: string, restaur
 
   if (n.includes('biryani') || c.includes('biryani') || n.includes('pulao') || n.includes('rice') || n.includes('thali') || n.includes('meal')) {
     return [
-      { label: 'Kitchen', value: restaurantName || 'Paradise Biryani Express' },
+      { label: 'Kitchen', value: restaurantName || 'Campus Partner Kitchen' },
       { label: 'Portion', value: 'Serves 1–2 (approx 650g box)' },
       { label: 'Dietary', value: isVeg ? '🟢 100% Vegetarian' : '🔴 Fresh Chicken • Halal Certified' },
       { label: 'Spice Level', value: n.includes('special') || n.includes('spicy') ? '🌶️🌶️ High Spice' : '🌶️ Medium Spicy' },
@@ -62,7 +62,7 @@ export function generateSmartAttributes(name: string, category?: string, restaur
 
   if (n.includes('pizza') || c.includes('pizza') || n.includes('pasta') || n.includes('garlic bread')) {
     return [
-      { label: 'Kitchen', value: restaurantName || 'Artisanal Pizza Lab' },
+      { label: 'Kitchen', value: restaurantName || 'Campus Partner Kitchen' },
       { label: 'Size', value: '8 Inch (6 Slices • Serves 1–2)' },
       { label: 'Crust', value: 'Hand-Tossed Classic Fresh Dough' },
       { label: 'Cheese', value: '100% Pure Melted Mozzarella' },
@@ -74,7 +74,7 @@ export function generateSmartAttributes(name: string, category?: string, restaur
 
   if (n.includes('burger') || c.includes('burger') || n.includes('sandwich') || n.includes('wrap') || n.includes('roll')) {
     return [
-      { label: 'Kitchen', value: restaurantName || 'Burger Bunker' },
+      { label: 'Kitchen', value: restaurantName || 'Campus Partner Kitchen' },
       { label: 'Portion', value: '1 Jumbo Serving + House Dip' },
       { label: 'Patty / Filling', value: isVeg ? 'Crispy Spiced Paneer & Veg Patty' : 'Juicy Seasoned Chicken Patty' },
       { label: 'Bun', value: 'Toasted Sesame Brioche Bun' },
@@ -85,7 +85,7 @@ export function generateSmartAttributes(name: string, category?: string, restaur
 
   if (n.includes('momo') || n.includes('noodle') || n.includes('fried rice') || n.includes('manchurian') || c.includes('chinese')) {
     return [
-      { label: 'Kitchen', value: restaurantName || 'Mandarin Magic' },
+      { label: 'Kitchen', value: restaurantName || 'Campus Partner Kitchen' },
       { label: 'Portion', value: '6 Pcs / 1 Large Box (Serves 1)' },
       { label: 'Preparation', value: 'Pan-Fried / Steamed Fresh' },
       { label: 'Dietary', value: isVeg ? '🟢 Pure Veg' : '🔴 Non-Veg' },
@@ -96,7 +96,7 @@ export function generateSmartAttributes(name: string, category?: string, restaur
 
   if (n.includes('dosa') || n.includes('idli') || n.includes('vada') || c.includes('south indian')) {
     return [
-      { label: 'Kitchen', value: restaurantName || 'South Indian Soul' },
+      { label: 'Kitchen', value: restaurantName || 'Campus Partner Kitchen' },
       { label: 'Portion', value: 'Standard Meal Portion' },
       { label: 'Dietary', value: '🟢 100% Pure Vegetarian' },
       { label: 'Accompaniment', value: 'Hot Sambar + 2 Coconut/Tomato Chutneys' },
@@ -106,7 +106,7 @@ export function generateSmartAttributes(name: string, category?: string, restaur
 
   if (n.includes('juice') || n.includes('shake') || n.includes('cooler') || n.includes('smoothie') || n.includes('tea') || n.includes('coffee') || c.includes('drinks') || c.includes('beverage')) {
     return [
-      { label: 'Bar', value: restaurantName || 'Zenvy Juice Booth' },
+      { label: 'Bar', value: restaurantName || 'Campus Beverage Hub' },
       { label: 'Volume', value: '350 ml (Large Cup)' },
       { label: 'Serving', value: 'Served Ice-Cold 🧊' },
       { label: 'Ingredients', value: 'Real Fruit Puree • No Artificial Colors' },
@@ -501,13 +501,39 @@ export default function ProductDetailScreen() {
     }
   };
 
-  if (loading || !product) {
+  if (loading) {
     return (
       <View style={[styles.loadingBox, { backgroundColor: colors.bg }]}>
         <ActivityIndicator size="large" color={COLORS.red} />
         <Text style={{ marginTop: 12, fontSize: 11, fontWeight: '800', color: COLORS.inkMuted }}>
-          Loading fresh details...
+          SYNCHRONIZING DISH SPECS...
         </Text>
+      </View>
+    );
+  }
+
+  if (!product) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.bg, padding: 24, justifyContent: 'center', alignItems: 'center' }]}>
+        <TouchableOpacity
+          style={{ position: 'absolute', top: Platform.OS === 'android' ? 44 : 54, left: 20, width: 40, height: 40, borderRadius: 20, backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB', alignItems: 'center', justifyContent: 'center' }}
+          onPress={() => router.back()}
+        >
+          <Text style={{ fontSize: 18, color: isDark ? '#FFF' : '#000' }}>←</Text>
+        </TouchableOpacity>
+        <Text style={{ fontSize: 44, marginBottom: 16 }}>🍱</Text>
+        <Text style={{ fontSize: 18, fontWeight: '900', color: colors.text, letterSpacing: 2, textAlign: 'center', marginBottom: 8 }}>
+          DISH UNAVAILABLE
+        </Text>
+        <Text style={{ fontSize: 12, color: colors.textSecondary, textAlign: 'center', lineHeight: 18, marginBottom: 24, paddingHorizontal: 20 }}>
+          This item is currently out of stock or rotated off the active kitchen menu.
+        </Text>
+        <TouchableOpacity
+          style={{ backgroundColor: COLORS.red, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 16, ...SHADOWS.redGlow }}
+          onPress={() => router.replace('/(tabs)' as any)}
+        >
+          <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '900', letterSpacing: 2 }}>EXPLORE CAMPUS MENU →</Text>
+        </TouchableOpacity>
       </View>
     );
   }

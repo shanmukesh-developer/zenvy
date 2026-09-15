@@ -22,7 +22,7 @@ export function OrderDetailModal({ order, onClose }: { order: any; onClose: () =
           </button>
         </div>
         
-        <div id="printable-receipt" className="p-6 max-h-[60vh] overflow-y-auto space-y-6 bg-white text-black print:p-0 print:max-h-none print:bg-white print:text-black">
+        <div id="printable-receipt" className="p-6 max-h-[60vh] overflow-y-auto space-y-6 bg-zinc-950 text-white print:p-0 print:max-h-none print:bg-white print:text-black">
           <div className="space-y-4">
             <h4 className="text-[10px] font-black uppercase text-zinc-500 tracking-widest print:text-black">Order Items</h4>
             <div className="bg-zinc-950 rounded-xl p-4 border border-zinc-800/50 space-y-3 print:border-none print:p-0 print:bg-white">

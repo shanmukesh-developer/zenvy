@@ -393,6 +393,24 @@ export const FleetOrderCard: React.FC<FleetOrderCardProps> = ({
                 </TouchableOpacity>
               )}
 
+              {order.status === 'PickedUp' && onNotifyGateArrival && (
+                <TouchableOpacity
+                  style={[styles.primaryActionButton, { marginBottom: 10 }]}
+                  onPress={() => onNotifyGateArrival(order.id.toString())}
+                  disabled={isActionLoading}
+                  activeOpacity={0.85}
+                >
+                  <LinearGradient
+                    colors={['#F59E0B', '#D97706']}
+                    style={styles.btnGradient}
+                  >
+                    <Text style={styles.primaryActionBtnText}>
+                      🔔 I HAVE ARRIVED AT HOSTEL GATE
+                    </Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              )}
+
               {(order.status === 'PickedUp' || order.status === 'ArrivedAtGate') && (
                 <TouchableOpacity
                   style={styles.primaryActionButton}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Dimensions, Animated, Easing, Alert, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
+import Clipboard from '@react-native-clipboard/clipboard';
 import { COLORS, SHADOWS, RADIUS } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -41,6 +42,9 @@ export default function RewardsScreen() {
   // Backend Eligibility State
   const [eligibility, setEligibility] = useState<{ spinsAvailable: number, nextMilestoneIn: number, spinsUsed: number } | null>(null);
   const [loadingEligibility, setLoadingEligibility] = useState(true);
+  const [coupons, setCoupons] = useState<any[]>([]);
+  const [loadingCoupons, setLoadingCoupons] = useState(false);
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
   // Wheel State
   const [spinning, setSpinning] = useState(false);
@@ -52,19 +56,12 @@ export default function RewardsScreen() {
   const bulbPulse = useRef(new Animated.Value(0.3)).current;   // Perimeter Chase Lights
 
   useEffect(() => {
-    if (!user) {
-      Alert.alert(
-        'Authentication Required',
-        'Please sign in to access Elysian Rewards.',
-        [
-          { text: 'Cancel', onPress: () => router.replace('/(tabs)/profile' as any), style: 'cancel' },
-          { text: 'Sign In', onPress: () => router.push('/login' as any) }
-        ],
-        { cancelable: false }
-      );
-      return;
+    if (user) {
+      fetchEligibility();
+      fetchCoupons();
+    } else {
+      setLoadingEligibility(false);
     }
-    fetchEligibility();
   }, [user]);
 
   const fetchEligibility = async () => {
@@ -79,6 +76,27 @@ export default function RewardsScreen() {
     } finally {
       setLoadingEligibility(false);
     }
+  };
+
+  const fetchCoupons = async () => {
+    setLoadingCoupons(true);
+    try {
+      const res = await apiFetch(`${API_URL}/api/rewards/coupons`);
+      if (res.ok) {
+        const data = await res.json();
+        setCoupons(Array.isArray(data) ? data : []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch user coupons:', err);
+    } finally {
+      setLoadingCoupons(false);
+    }
+  };
+
+  const handleCopyCoupon = (code: string) => {
+    Clipboard.setString(code);
+    setCopiedCode(code);
+    setTimeout(() => setCopiedCode(null), 2500);
   };
 
   // Bulb pulsing loop
@@ -214,12 +232,84 @@ export default function RewardsScreen() {
     };
   });
 
+  if (!user) {
+    return (
+      <View style={[s.container, { backgroundColor: bg }]}>
+        <View style={[s.header, { borderBottomColor: border, backgroundColor: cardBg }]}>
+          <TouchableOpacity
+            style={[s.backBtn, { borderColor: border, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F6' }]}
+            onPress={() => {
+              if (router.canGoBack()) {
+                router.back();
+              } else {
+                router.replace('/(tabs)/profile' as any);
+              }
+            }}
+          >
+            <Text style={{ fontSize: 16, color: txt }}>←</Text>
+          </TouchableOpacity>
+          <View style={{ flex: 1 }}>
+            <Text style={s.subText}>ELYSIAN ACCESS</Text>
+            <Text style={[s.title, { color: txt }]}>Rewards & Streaks</Text>
+          </View>
+        </View>
+
+        <View style={[s.center, { flex: 1, padding: 24 }]}>
+          <Text style={{ fontSize: 52, marginBottom: 16 }}>👑</Text>
+          <Text style={{ fontSize: 18, fontWeight: '900', color: txt, letterSpacing: 2, textAlign: 'center', marginBottom: 8 }}>
+            ELYSIAN REWARDS
+          </Text>
+          <Text style={{ fontSize: 12, color: txtSec, textAlign: 'center', lineHeight: 18, marginBottom: 28, maxWidth: 280 }}>
+            Sign in to unlock daily prize spins, earn streak cashback, and access exclusive campus delivery passes.
+          </Text>
+
+          <TouchableOpacity
+            style={{
+              backgroundColor: '#C9A84C',
+              paddingHorizontal: 32,
+              paddingVertical: 14,
+              borderRadius: 16,
+              marginBottom: 14,
+              width: '100%',
+              maxWidth: 280,
+              alignItems: 'center',
+              ...SHADOWS.goldGlow
+            }}
+            onPress={() => router.push('/login' as any)}
+          >
+            <Text style={{ color: '#000', fontSize: 11, fontWeight: '900', letterSpacing: 2 }}>
+              SIGN IN TO UNLOCK →
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={{
+              paddingVertical: 12,
+              paddingHorizontal: 24,
+              borderRadius: 14,
+              borderWidth: 1,
+              borderColor: border,
+              width: '100%',
+              maxWidth: 280,
+              alignItems: 'center'
+            }}
+            onPress={() => router.replace('/(tabs)' as any)}
+          >
+            <Text style={{ color: txtSec, fontSize: 10, fontWeight: '800', letterSpacing: 1 }}>
+              EXPLORE MENUS FIRST
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={[s.container, { backgroundColor: bg }]}>
       {/* Header */}
-      <View style={[s.header, { borderBottomColor: border }]}>
+      <View style={[s.header, { borderBottomColor: border, backgroundColor: cardBg }]}>
         <TouchableOpacity 
-          style={s.backBtn} 
+          style={[s.backBtn, { borderColor: border, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F6' }]} 
           onPress={() => {
             if (router.canGoBack()) {
               router.back();
@@ -228,7 +318,7 @@ export default function RewardsScreen() {
             }
           }}
         >
-          <Text style={[s.backIcon, { color: txt }]}>‹</Text>
+          <Text style={{ fontSize: 16, color: txt }}>←</Text>
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={s.subText}>YOUR REWARDS</Text>
@@ -424,6 +514,50 @@ export default function RewardsScreen() {
             })}
           </View>
         </StaggeredSection>
+        {/* Active Won Vouchers / Coupons */}
+        {coupons.length > 0 && (
+          <StaggeredSection delay={280} direction="up">
+            <Text style={[s.sectionTitle, { color: txt, marginTop: 16 }]}>MY ACTIVE VOUCHERS</Text>
+            <View style={{ gap: 10, marginBottom: 16 }}>
+              {coupons.map((c, idx) => {
+                const isCopied = copiedCode === c.code;
+                return (
+                  <View
+                    key={c.id || c.code || idx}
+                    style={[s.rewardRow, { backgroundColor: cardBg, borderColor: border, justifyContent: 'space-between' }]}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
+                      <View style={[s.rewardIconWrap, { backgroundColor: 'rgba(201,168,76,0.1)' }]}>
+                        <Text style={{ fontSize: 20 }}>🎟️</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[s.rewardTitle, { color: txt, letterSpacing: 1 }]} numberOfLines={1}>
+                          {c.code}
+                        </Text>
+                        <Text style={[s.rewardDesc, { color: '#C9A84C' }]}>
+                          {c.type === 'FREEDEL' ? 'Free Delivery Pass' : 'Exclusive Discount'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <TouchableOpacity
+                      style={[
+                        s.statusBox,
+                        { backgroundColor: isCopied ? '#22c55e' : 'rgba(201,168,76,0.15)', borderWidth: 1, borderColor: isCopied ? '#22c55e' : '#C9A84C' }
+                      ]}
+                      onPress={() => handleCopyCoupon(c.code)}
+                    >
+                      <Text style={[s.statusBoxText, { color: isCopied ? '#FFF' : '#C9A84C', fontWeight: '900' }]}>
+                        {isCopied ? 'COPIED! ✓' : 'COPY CODE'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+            </View>
+          </StaggeredSection>
+        )}
+
         <View style={{ height: 60 }} />
       </ScrollView>
     </View>
@@ -432,9 +566,9 @@ export default function RewardsScreen() {
 
 const s = StyleSheet.create({
   container: { flex: 1, paddingTop: Platform.OS === 'android' ? 40 : 50 },
+  center: { alignItems: 'center', justifyContent: 'center' },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 16, borderBottomWidth: 1 },
-  backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  backIcon: { fontSize: 32, fontWeight: '300' },
+  backBtn: { width: 38, height: 38, borderRadius: 19, borderWidth: 1, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
   subText: { fontSize: 8, fontWeight: '900', color: '#C9A84C', letterSpacing: 2 },
   title: { fontSize: 18, fontWeight: '900' },
 

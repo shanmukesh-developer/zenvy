@@ -173,12 +173,13 @@ export default function ProfileScreen() {
           const totalOrd = user?.totalOrders || user?.completedOrders || 12;
           const avgOrd = Math.round(240 + (Math.random() * 40));
           const totalSpent = totalOrd * avgOrd;
+          const isVegUser = dietPrefs?.mode === 'veg' || user?.isVeg;
           
           setSpendStats({
             totalOrders: totalOrd,
             avgOrderValue: avgOrd,
             currentStreak: user?.streakCount || 3,
-            favoriteRestaurant: 'Royal Biryani Handi',
+            favoriteRestaurant: isVegUser ? 'Green Campus Kitchen' : 'Royal Biryani Handi',
             monthlySpend: [
               { month: 'Mar 2026', total: Math.round(totalSpent * 0.12) },
               { month: 'Apr 2026', total: Math.round(totalSpent * 0.15) },
@@ -188,18 +189,19 @@ export default function ProfileScreen() {
               { month: 'Aug 2026', total: Math.round(totalSpent * 0.19) },
             ],
             topItems: [
-              { name: 'Dum Mutton Biryani', count: Math.max(3, Math.round(totalOrd * 0.4)), spend: Math.round(totalOrd * 0.4 * 340) },
-              { name: 'Kolkata Chicken Biryani', count: Math.max(2, Math.round(totalOrd * 0.3)), spend: Math.round(totalOrd * 0.3 * 280) },
-              { name: 'Paneer Dum Biryani', count: Math.max(1, Math.round(totalOrd * 0.2)), spend: Math.round(totalOrd * 0.2 * 240) },
+              { name: isVegUser ? 'Paneer Butter Masala' : 'Dum Mutton Biryani', count: Math.max(3, Math.round(totalOrd * 0.4)), spend: Math.round(totalOrd * 0.4 * 340) },
+              { name: isVegUser ? 'Veg Schezwan Fried Rice' : 'Kolkata Chicken Biryani', count: Math.max(2, Math.round(totalOrd * 0.3)), spend: Math.round(totalOrd * 0.3 * 280) },
+              { name: isVegUser ? 'Paneer Dum Biryani' : 'Crispy Chicken 65', count: Math.max(1, Math.round(totalOrd * 0.2)), spend: Math.round(totalOrd * 0.2 * 240) },
             ]
           });
         }
       } catch (err) {
+        const isVegUser = dietPrefs?.mode === 'veg' || user?.isVeg;
         setSpendStats({
           totalOrders: 12,
           avgOrderValue: 260,
           currentStreak: 3,
-          favoriteRestaurant: 'Royal Biryani Handi',
+          favoriteRestaurant: isVegUser ? 'Green Campus Kitchen' : 'Royal Biryani Handi',
           monthlySpend: [
             { month: 'Mar 2026', total: 420 },
             { month: 'Apr 2026', total: 680 },
@@ -209,9 +211,9 @@ export default function ProfileScreen() {
             { month: 'Aug 2026', total: 1450 },
           ],
           topItems: [
-            { name: 'Dum Mutton Biryani', count: 5, spend: 1700 },
-            { name: 'Kolkata Chicken Biryani', count: 3, spend: 840 },
-            { name: 'Paneer Dum Biryani', count: 2, spend: 480 },
+            { name: isVegUser ? 'Paneer Butter Masala' : 'Dum Mutton Biryani', count: 5, spend: 1700 },
+            { name: isVegUser ? 'Veg Schezwan Fried Rice' : 'Kolkata Chicken Biryani', count: 3, spend: 840 },
+            { name: isVegUser ? 'Paneer Dum Biryani' : 'Crispy Chicken 65', count: 2, spend: 480 },
           ]
         });
       }

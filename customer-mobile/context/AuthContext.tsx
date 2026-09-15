@@ -29,6 +29,7 @@ interface User {
   friendCode?: string;
   createdAt?: string;
   role?: string;
+  isVeg?: boolean;
   statusText?: string | null;
   statusEmoji?: string | null;
   statusSeenBy?: string[] | null;
