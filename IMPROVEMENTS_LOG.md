@@ -34,3 +34,4 @@
 | 2026-09-16 | Customer Mobile | Navigation/UX | Added safe `router.canGoBack()` fallback navigation in campus friends circle (`friends.tsx`) |
 | 2026-09-16 | Customer Mobile | UX & Error Handling | Humanized raw network & auth failure exceptions into actionable error guidance in `login.tsx` |
 | 2026-09-16 | Customer Mobile | UX & Error Handling | Sanitized OTP dispatch & registration error states against raw exception leakage in `register.tsx` |
+| 2026-09-16 | Customer Mobile | UX & Security | Added show/hide password toggle, step change navigation, and polished back button in `forgot-password.tsx` |

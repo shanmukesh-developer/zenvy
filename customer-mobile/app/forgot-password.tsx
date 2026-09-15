@@ -97,7 +97,7 @@ export default function ForgotPasswordScreen() {
             }
           }}
         >
-          <Text style={s.backText}>‹ BACK</Text>
+          <Text style={s.backText}>← {step === 2 ? 'CHANGE NUMBER' : 'BACK TO SIGN IN'}</Text>
         </TouchableOpacity>
 
         <View style={s.logoWrap}>
@@ -112,7 +112,7 @@ export default function ForgotPasswordScreen() {
           </Text>
           <Text style={s.stepSub}>
             {step === 1
-              ? "Verify your mobile number using OTP to reset password."
+              ? "Verify your registered mobile number using OTP to reset your password."
               : 'Identity verified successfully! Enter your new password below.'}
           </Text>
 
@@ -147,14 +147,19 @@ export default function ForgotPasswordScreen() {
           {step === 2 && (
             <View style={{ marginTop: 20 }}>
               <Text style={s.label}>NEW PASSWORD</Text>
-              <TextInput 
-                style={s.input} 
-                secureTextEntry={!showPassword}
-                placeholder="Choose a new password"
-                placeholderTextColor={COLORS.textMuted}
-                value={newPassword}
-                onChangeText={setNewPassword}
-              />
+              <View style={[s.phoneInputWrap, { paddingRight: 14 }]}>
+                <TextInput 
+                  style={[s.phoneInput, { paddingHorizontal: 14 }]} 
+                  secureTextEntry={!showPassword}
+                  placeholder="At least 6 characters"
+                  placeholderTextColor={COLORS.textMuted}
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                />
+                <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                  <Text style={{ fontSize: 16 }}>{showPassword ? '👁️' : '🔒'}</Text>
+                </TouchableOpacity>
+              </View>
 
               <TouchableOpacity style={s.actionBtn} onPress={handleVerifyAndReset} disabled={loading}>
                 {loading ? (
