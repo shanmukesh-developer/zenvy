@@ -128,8 +128,8 @@ export default function TrackingScreen() {
     try {
       const stageText = status === 1 ? 'Order Placed ⏳' : status === 2 ? 'Accepted ✅' : status === 3 ? 'Preparing 🍳' : status === 4 ? `Out for Delivery (${currentCheckpoint}) 🛵` : status === 5 ? 'Arrived at Gate 🔔' : 'Delivered 🎉';
       await Share.share({
-        message: `🛵 Track my Zenvy order live!\n\nStatus: ${stageText}\nOrder ID: #${(orderId || '').slice(-6).toUpperCase()}\n${orderInfo?.deliveryPin ? `Verification PIN: ${orderInfo.deliveryPin}\n` : ''}ETA: ${eta}\n\nTrack real-time GPS telemetry here:\nhttps://zenvy.in/tracking/${orderId}`,
-        title: 'Zenvy Live Order Mission'
+        message: `🛵 Track my Zenvy order live!\n\nStatus: ${stageText}\nOrder ID: #${(orderId || '').slice(-6).toUpperCase()}\n${orderInfo?.deliveryPin ? `Verification PIN: ${orderInfo.deliveryPin}\n` : ''}ETA: ${eta}\n\nTrack real-time delivery here:\nhttps://zenvy.in/tracking/${orderId}`,
+        title: 'Zenvy Live Order Tracking'
       });
     } catch (e) {
       console.log('Share tracking error:', e);
@@ -412,10 +412,10 @@ export default function TrackingScreen() {
       <View style={[s.container, { backgroundColor: bg, justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
         <ActivityIndicator size="large" color={COLORS.gold} />
         <Text style={{ fontSize: 12, fontWeight: '900', color: txt, letterSpacing: 2, marginTop: 18 }}>
-          CONNECTING TO DISPATCH RADAR...
+          CONNECTING TO LIVE TRACKING...
         </Text>
         <Text style={{ fontSize: 11, color: txtSec, marginTop: 6, textAlign: 'center' }}>
-          Retrieving live mission telemetry for order #{orderId ? orderId.slice(-6).toUpperCase() : ''}
+          Retrieving live delivery status for order #{orderId ? orderId.slice(-6).toUpperCase() : ''}
         </Text>
       </View>
     );
@@ -427,12 +427,12 @@ export default function TrackingScreen() {
         <View style={[s.cancelledCircle, { borderColor: COLORS.goldBorder, backgroundColor: 'rgba(212,175,122,0.1)' }]}>
           <Text style={{ fontSize: 32 }}>📡</Text>
         </View>
-        <Text style={[s.cancelledTitle, { color: txt, marginTop: 16 }]}>Telemetry Offline</Text>
+        <Text style={[s.cancelledTitle, { color: txt, marginTop: 16 }]}>Tracking Offline</Text>
         <Text style={[s.cancelledDesc, { color: txtSec, textAlign: 'center', marginTop: 8 }]}>
           {orderError}
         </Text>
         <TouchableOpacity style={[s.returnBtn, { backgroundColor: COLORS.gold, marginTop: 24 }]} onPress={fetchOrder}>
-          <Text style={[s.returnBtnText, { color: '#000' }]}>RETRY RADAR</Text>
+          <Text style={[s.returnBtnText, { color: '#000' }]}>RETRY TRACKING</Text>
         </TouchableOpacity>
         <TouchableOpacity style={{ marginTop: 16 }} onPress={() => router.replace('/(tabs)/orders' as any)}>
           <Text style={{ fontSize: 11, fontWeight: '800', color: txtSec, letterSpacing: 1 }}>VIEW ALL ORDERS</Text>

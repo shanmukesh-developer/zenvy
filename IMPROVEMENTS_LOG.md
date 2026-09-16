@@ -50,5 +50,6 @@
 | 2026-09-16 | Admin Dashboard | Professionalism | Replaced Nexus Protocol and sci-fi override jargon in login, dashboard, and users audit log in `app/login/page.tsx`, `app/page.tsx`, `app/users/page.tsx` |
 | 2026-09-16 | Delivery Apps | Professionalism | Replaced sci-fi protocol headers with clear instructions and verified network access copy in `FleetOrderCard.tsx` & delivery-app `LoginForm.tsx` |
 | 2026-09-16 | Restaurant Portal | Professionalism | Polished brand copy and streamlined navigation CTAs in `app/login/page.tsx` |
+| 2026-09-16 | Customer Mobile | UX & Professionalism | Modernized live order tracking copy (eliminated radar/mission/telemetry jargon) and sanitized captain contact in `tracking/[id].tsx` & `LiveOrderCockpit.tsx` |
 
 

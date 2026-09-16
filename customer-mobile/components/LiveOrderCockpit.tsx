@@ -46,7 +46,7 @@ export default function LiveOrderCockpit({
   deliveryPin = '4829',
   riderInfo = {
     name: 'Ravi Kumar',
-    phone: '+919876543210',
+    phone: '+919391955674',
     vehicleNumber: 'AP 39 ZV 4022',
     vehicleType: 'Hero Splendor Plus',
     rating: 4.9,
