@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import LoginForm from '@/components/Auth/LoginForm';
 import DashboardContainer from '@/components/Dashboard/DashboardContainer';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5005';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-jwmt.onrender.com';
 
 interface Driver {
   _id: string;
