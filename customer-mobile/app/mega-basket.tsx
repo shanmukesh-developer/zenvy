@@ -186,7 +186,7 @@ export default function MegaBasketScreen() {
 
   const handleAddCustom = () => {
     if (!customName.trim()) {
-      Alert.alert('Error', 'Please enter an item name');
+      Alert.alert('Item Name Required', 'Please enter a grocery or essentials item name.');
       return;
     }
     const exists = items.find(i => i.name.toLowerCase() === customName.trim().toLowerCase());
@@ -220,11 +220,11 @@ export default function MegaBasketScreen() {
 
   const handlePlaceOrder = async () => {
     if (items.length === 0) {
-      Alert.alert('Error', 'Your basket is empty!');
+      Alert.alert('Basket Empty', 'Your custom essentials basket has no items. Add at least one item to proceed.');
       return;
     }
     if (!deliveryAddress.trim()) {
-      Alert.alert('Error', 'Delivery address is required!');
+      Alert.alert('Delivery Address Required', 'Please enter your hostel block and room number for delivery.');
       return;
     }
 
@@ -253,11 +253,11 @@ export default function MegaBasketScreen() {
           setActiveTab('list');
         }
       } else {
-        const err = await res.json();
-        Alert.alert('Error', err.message || 'Failed to place order');
+        const err = await res.json().catch(() => ({}));
+        Alert.alert('Order Notice', err.message || 'Unable to place custom basket order. Please try again.');
       }
     } catch (error) {
-      Alert.alert('Error', 'Network error placing order');
+      Alert.alert('Connection Notice', 'Network connection issue while placing order. Please check your connection and retry.');
     } finally {
       setPlacing(false);
     }
@@ -265,7 +265,7 @@ export default function MegaBasketScreen() {
 
   const handleUpiSubmit = async () => {
     if (!upiUTR.trim() || upiUTR.trim().length < 6) {
-      Alert.alert('Error', 'Enter a valid UPI Reference / UTR Number');
+      Alert.alert('UTR Required', 'Please enter a valid UPI Reference / UTR Number (minimum 6 digits).');
       return;
     }
     if (!createdBasketId) return;
@@ -287,10 +287,11 @@ export default function MegaBasketScreen() {
         setSelectedBasket(data.basket);
         setActiveTab('list');
       } else {
-        Alert.alert('Error', 'Submission failed');
+        const err = await res.json().catch(() => ({}));
+        Alert.alert('Payment Notice', err.message || 'Payment submission could not be processed. Please verify your UTR.');
       }
     } catch (err) {
-      Alert.alert('Error', 'Server error during payment submission');
+      Alert.alert('Connection Notice', 'Network issue during payment submission. Please check your connection and retry.');
     }
   };
 
@@ -305,10 +306,11 @@ export default function MegaBasketScreen() {
         Alert.alert('Success', 'Prices approved! Rider is purchasing now.');
         fetchBaskets();
       } else {
-        Alert.alert('Error', 'Approval failed');
+        const err = await res.json().catch(() => ({}));
+        Alert.alert('Approval Notice', err.message || 'Could not approve prices at this time. Please retry.');
       }
     } catch (err) {
-      Alert.alert('Error', 'Network error');
+      Alert.alert('Connection Notice', 'Network connection issue. Please check your connection and retry.');
     } finally {
       setApprovingPrice(false);
     }

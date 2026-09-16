@@ -369,7 +369,7 @@ export default function CheckoutScreen() {
   };
 
   const openUpiApp = () => {
-    const url = `upi://pay?pa=kesavakesava764@ybl&pn=ZenvyNexus&am=${finalTotal.toFixed(2)}&cu=INR`;
+    const url = `upi://pay?pa=kesavakesava764@ybl&pn=Zenvy&am=${finalTotal.toFixed(2)}&cu=INR`;
     Linking.openURL(url).catch(() => {
       Alert.alert('UPI App Not Found', 'Please scan the QR code below or copy the ID to pay.');
     });
@@ -669,7 +669,7 @@ export default function CheckoutScreen() {
               {/* QR Code image display */}
               <View style={s.qrWrapper}>
                 <Image
-                  source={{ uri: `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=upi://pay?pa=kesavakesava764@ybl&pn=ZenvyNexus&am=${finalTotal.toFixed(2)}&cu=INR` }}
+                  source={{ uri: `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=upi://pay?pa=kesavakesava764@ybl&pn=Zenvy&am=${finalTotal.toFixed(2)}&cu=INR` }}
                   style={s.qrImage}
                 />
                 <TouchableOpacity style={s.copyUpiBtn} onPress={copyUpiId}>

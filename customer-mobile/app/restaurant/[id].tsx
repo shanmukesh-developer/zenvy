@@ -303,7 +303,7 @@ export default function RestaurantDetail() {
       <View style={[st.container, st.center, { backgroundColor: isDark ? '#08090C' : COLORS.bgLight, padding: 24 }]}>
         <ActivityIndicator size="large" color={isDark ? COLORS.gold : COLORS.red} />
         <Text style={{ color: isDark ? 'rgba(255,255,255,0.6)' : COLORS.textSecondary, fontSize: 10, fontWeight: '800', letterSpacing: 2, marginTop: 16 }}>
-          CONNECTING TO KITCHEN RADAR...
+          LOADING RESTAURANT MENU...
         </Text>
       </View>
     );

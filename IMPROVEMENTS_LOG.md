@@ -51,5 +51,7 @@
 | 2026-09-16 | Delivery Apps | Professionalism | Replaced sci-fi protocol headers with clear instructions and verified network access copy in `FleetOrderCard.tsx` & delivery-app `LoginForm.tsx` |
 | 2026-09-16 | Restaurant Portal | Professionalism | Polished brand copy and streamlined navigation CTAs in `app/login/page.tsx` |
 | 2026-09-16 | Customer Mobile | UX & Professionalism | Modernized live order tracking copy (eliminated radar/mission/telemetry jargon) and sanitized captain contact in `tracking/[id].tsx` & `LiveOrderCockpit.tsx` |
+| 2026-09-16 | Customer Mobile | UX & Payments | Sanitized UPI deep link & QR code payee name from ZenvyNexus to Zenvy in `checkout.tsx` |
+| 2026-09-16 | Customer Mobile | UX & Error Handling | Replaced raw and generic error alerts with descriptive user feedback in `mega-basket.tsx` |
 
 
