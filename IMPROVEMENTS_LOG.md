@@ -43,5 +43,6 @@
 | 2026-09-16 | Customer Mobile | Professionalism | Replaced raw phone number text with professional 1-tap WhatsApp booking copy in `onboarding.tsx` and `CampusServicesMapModal.tsx` |
 | 2026-09-16 | Customer Mobile | UX & Resilience | Sanitized order placement error handling and eliminated sci-fi jargon (mission slot, logistics fee, free bypass) in `checkout.tsx` |
 | 2026-09-16 | Customer Mobile | UX & Empty States | Enhanced PG Stays, Co-Ride feed, and commute empty states with 1-tap action CTAs in `(tabs)/others.tsx` |
+| 2026-09-16 | Customer Mobile | UX & Support | Sanitized PG residence contact numbers, phone link formatting, and direct WhatsApp inquiry in `pg/[id].tsx` |
 
 

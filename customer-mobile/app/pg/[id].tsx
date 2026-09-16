@@ -113,7 +113,9 @@ export default function PGDetailScreen() {
         showToast("⚡ Booking request sent & WhatsApp message dispatched!");
         fetchDetails(); // Refresh to update availability if any changes
 
-        const waLink = data.whatsappUrl || `https://wa.me/${ZENVY_SUPPORT_WHATSAPP}?text=${encodeURIComponent(`Hi, I just submitted a booking request for ${pg?.name || 'PG'} on Zenvy.`)}`;
+        let waPhone = (pg?.contactInfo?.phone || ZENVY_SUPPORT_WHATSAPP).replace(/\D/g, '');
+        if (waPhone.length === 10) waPhone = `91${waPhone}`;
+        const waLink = data.whatsappUrl || `https://wa.me/${waPhone}?text=${encodeURIComponent(`Hi, I just submitted a booking request for ${pg?.name || 'PG'} on Zenvy. Check-in date: ${checkInDate}.`)}`;
         
         Alert.alert(
           '🏠 PG Booking Request Sent!',
@@ -179,7 +181,7 @@ export default function PGDetailScreen() {
             router.replace('/(tabs)/others' as any);
           }
         }}>
-          <Text style={s.backNavBtnText}>BACK TO ECOSYSTEM</Text>
+          <Text style={s.backNavBtnText}>BROWSE RESIDENCES</Text>
         </TouchableOpacity>
       </View>
     );
@@ -535,7 +537,7 @@ export default function PGDetailScreen() {
               <Text style={{ fontSize: 18 }}>📞</Text>
               <View>
                 <Text style={s.adminLabel}>CONTACT PHONE</Text>
-                <Text style={[s.adminVal, { color: txt }]}>{pg.contactInfo?.phone || '+91 9988776655'}</Text>
+                <Text style={[s.adminVal, { color: txt }]}>{pg.contactInfo?.phone || '+91 93919 55674'}</Text>
               </View>
             </View>
 
@@ -543,7 +545,7 @@ export default function PGDetailScreen() {
               <Text style={{ fontSize: 18 }}>🚨</Text>
               <View>
                 <Text style={s.adminLabel}>EMERGENCY HOTLINE</Text>
-                <Text style={[s.adminVal, { color: COLORS.red }]}>{pg.contactInfo?.emergencyContact || '+91 911002233'}</Text>
+                <Text style={[s.adminVal, { color: COLORS.red }]}>{pg.contactInfo?.emergencyContact || '+91 93919 55674'}</Text>
               </View>
             </View>
           </View>
@@ -561,7 +563,8 @@ export default function PGDetailScreen() {
                 backgroundColor: '#25D366',
               }}
               onPress={() => {
-                const phone = (pg.contactInfo?.phone || ZENVY_SUPPORT_WHATSAPP).replace(/\D/g, '');
+                let phone = (pg.contactInfo?.phone || ZENVY_SUPPORT_WHATSAPP).replace(/\D/g, '');
+                if (phone.length === 10) phone = `91${phone}`;
                 const msg = `Hi, I am interested in visiting/booking a room at ${pg.name} (${pg.genderType} PG) on Zenvy. Could you please share the current availability and visiting timings?`;
                 Linking.openURL(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`);
               }}
@@ -573,7 +576,8 @@ export default function PGDetailScreen() {
             <TouchableOpacity 
               style={[s.callBtn, { flex: 1, marginTop: 0, borderColor: border }]}
               onPress={() => {
-                if (pg.contactInfo?.phone) Linking.openURL(`tel:${pg.contactInfo.phone}`);
+                const phoneToDial = pg.contactInfo?.phone || '+919391955674';
+                Linking.openURL(`tel:${phoneToDial}`);
               }}
             >
               <Text style={[s.callBtnText, { color: txt }]}>DIAL WARDEN 📞</Text>
