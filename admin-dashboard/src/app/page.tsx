@@ -665,7 +665,7 @@ export default function AdminHome() {
             }}
             className="w-full mt-6 py-4 rounded-xl text-[13px] font-black uppercase tracking-widest bg-[#C9A84C] text-black hover:bg-yellow-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           >
-            {broadcasting ? 'Transmitting...' : 'Execute Broadcast'}
+            {broadcasting ? 'Broadcasting...' : 'Send Broadcast'}
           </button>
         </div>
 
@@ -679,15 +679,15 @@ export default function AdminHome() {
            <div className="flex items-center gap-3 mb-6">
               <span className="text-2xl">📡</span>
               <div>
-                <h3 className="text-xl font-black text-white uppercase tracking-widest text-blue-400">Comms Intercept</h3>
-                <p className="text-[11px] text-gray-500 font-mono tracking-tight">Monitoring all P2P Grid Communications</p>
+                <h3 className="text-xl font-black text-white uppercase tracking-widest text-blue-400">Live Order Chat Feed</h3>
+                <p className="text-[11px] text-gray-500 font-mono tracking-tight">Real-time customer & delivery communications</p>
               </div>
            </div>
            
            <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar flex flex-col-reverse">
              {interceptedChats.length === 0 ? (
                 <div className="flex-1 flex items-center justify-center">
-                   <p className="text-xs font-mono text-gray-600">Awaiting transmission...</p>
+                   <p className="text-xs font-mono text-gray-600">No live chat messages active...</p>
                 </div>
              ) : interceptedChats.map((chat, idx) => (
                <div key={idx} className="bg-white/5 border border-white/5 p-3 rounded-lg flex flex-col gap-1">

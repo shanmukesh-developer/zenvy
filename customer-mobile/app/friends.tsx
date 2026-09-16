@@ -741,7 +741,7 @@ export default function FriendsScreen() {
       });
       if (res.ok) {
         const data = await res.json();
-        Alert.alert('Nudge Transmitted! ⚡', `Streak maintained at ${data.streakCount} days!`);
+        Alert.alert('Nudge Sent! ⚡', `Streak maintained at ${data.streakCount} days!`);
         loadFriendsData();
       }
     } catch (e) {
@@ -1606,7 +1606,7 @@ export default function FriendsScreen() {
 
                 <TextInput
                   style={s.chatTextInputField}
-                  placeholder="Transmit encrypted message..."
+                  placeholder="Type a message..."
                   placeholderTextColor="rgba(255,255,255,0.3)"
                   value={draftMessage}
                   onChangeText={handleInputChange}
@@ -1888,7 +1888,7 @@ export default function FriendsScreen() {
                       />
                       <View>
                         <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 14 }}>{activeStatusView.name}</Text>
-                        <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 11 }}>TRANSMITTING LIVE</Text>
+                        <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 11 }}>CAMPUS STATUS</Text>
                       </View>
                     </View>
                     

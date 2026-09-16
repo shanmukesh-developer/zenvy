@@ -44,5 +44,8 @@
 | 2026-09-16 | Customer Mobile | UX & Resilience | Sanitized order placement error handling and eliminated sci-fi jargon (mission slot, logistics fee, free bypass) in `checkout.tsx` |
 | 2026-09-16 | Customer Mobile | UX & Empty States | Enhanced PG Stays, Co-Ride feed, and commute empty states with 1-tap action CTAs in `(tabs)/others.tsx` |
 | 2026-09-16 | Customer Mobile | UX & Support | Sanitized PG residence contact numbers, phone link formatting, and direct WhatsApp inquiry in `pg/[id].tsx` |
+| 2026-09-16 | Customer Mobile | Professionalism | Replaced sci-fi copy (Transmit encrypted message, Nudge Transmitted) with clean messaging in `friends.tsx` |
+| 2026-09-16 | Admin Dashboard | Professionalism | Replaced sci-fi broadcast & interception copy with clear admin operations terminology in `app/page.tsx` & `community/page.tsx` |
+| 2026-09-16 | Delivery Boy App | Safety & UX | Replaced fake emergency contact with verified dispatch support number and sanitized SOS copy in `TelemetryDock.tsx` |
 
 

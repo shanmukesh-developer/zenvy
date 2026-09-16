@@ -21,13 +21,13 @@ export const TelemetryDock: React.FC<TelemetryDockProps> = ({
   coords,
   isConnected,
   isBatteryLow,
-  emergencyContact = '+919876543210',
+  emergencyContact = '+919391955674',
 }) => {
   const handleSOS = () => {
     Vibration.vibrate([0, 100, 50, 100]);
     Alert.alert(
       '🚨 FLEET EMERGENCY SOS',
-      `Trigger emergency call to Zenvy Dispatch Support (${emergencyContact}) and transmit your current coordinates (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)})?`,
+      `Trigger emergency call to Zenvy Dispatch Support (${emergencyContact}) and share your current coordinates (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)})?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {

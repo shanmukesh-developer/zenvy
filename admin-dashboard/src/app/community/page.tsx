@@ -252,7 +252,7 @@ export default function CommunityAdmin() {
                 onClick={handleSendPush}
                 className="px-6 py-2.5 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-[11px] font-black uppercase tracking-widest rounded-xl transition-all"
               >
-                {pushSending ? 'Transmitting...' : 'Dispatch Push'}
+                {pushSending ? 'Sending...' : 'Send Push Notification'}
               </button>
             </div>
           </div>
