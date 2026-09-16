@@ -117,7 +117,17 @@ router.get('/events/active', async (req, res) => {
     }
 
     if (!activeEvent) {
-      return res.json({ activeEvent: null, submissions: [], userSubmission: null });
+      activeEvent = await WallEvent.create({
+        title: 'SRM Campus Food & Vibes Contest',
+        description: 'Share your top campus eats, late night snack boxes, or cafe vibes. Highest votes win instant discount coupons!',
+        startTime: new Date(),
+        endTime: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+        status: 'ACTIVE',
+        couponValue: 200,
+        couponCode: 'SRMWALL200',
+        bannerText: '🔥 LIVE PHOTO CONTEST: Vote for your favourite photos & win instant discount coupons! 📸✨',
+        bannerGradient: 'fire'
+      });
     }
 
     // Fetch approved submissions sorted by likeCount DESC
@@ -156,8 +166,8 @@ router.get('/events/active', async (req, res) => {
             where: { eventId: activeEvent.id, userId: decoded.id }
           });
         }
-      } catch (e) {
-        // Token invalid/expired, continue without user-specific data
+      } catch (authErr) {
+        // Continue unauthenticated if token invalid
       }
     }
 
@@ -173,57 +183,44 @@ router.get('/events/active', async (req, res) => {
   }
 });
 
-// ── GET Hall of Fame (Ended Events with Winners) ──
+// ── GET Hall of Fame / Past Contests ──
 // GET /api/wall/events/history
 router.get('/events/history', async (req, res) => {
   try {
     const WallEvent = getWallEventModel();
     const WallSubmission = getWallSubmissionModel();
     const User = getUserModel();
+    if (!WallEvent || !WallSubmission) return res.status(500).json({ message: 'Models not initialized.' });
 
-    if (!WallEvent) return res.status(500).json({ message: 'Models not initialized.' });
-
-    const endedEvents = await WallEvent.findAll({
-      where: { status: 'ENDED' },
+    const pastEvents = await WallEvent.findAll({
+      where: { status: 'COMPLETED' },
       order: [['endTime', 'DESC']],
-      limit: 20
+      limit: 10
     });
 
-    const history = [];
-    for (const evt of endedEvents) {
-      let winnerUser = null;
+    const results = [];
+    for (const evt of pastEvents) {
       let winningSubmission = null;
-
-      if (evt.winnerUserId) {
-        winnerUser = await User.findByPk(evt.winnerUserId, {
-          attributes: ['id', 'name', 'profileImage']
-        });
-        winningSubmission = await WallSubmission.findOne({
-          where: { eventId: evt.id, userId: evt.winnerUserId, isApproved: true },
-          order: [['likeCount', 'DESC']]
+      if (evt.winnerSubmissionId) {
+        winningSubmission = await WallSubmission.findByPk(evt.winnerSubmissionId, {
+          include: [{ model: User, as: 'user', attributes: ['id', 'name', 'profileImage'] }]
         });
       }
-
-      // If no winner set yet, find top submission
       if (!winningSubmission) {
         winningSubmission = await WallSubmission.findOne({
           where: { eventId: evt.id, isApproved: true },
-          order: [['likeCount', 'DESC'], ['createdAt', 'ASC']],
+          order: [['likeCount', 'DESC']],
           include: [{ model: User, as: 'user', attributes: ['id', 'name', 'profileImage'] }]
         });
-        if (winningSubmission && winningSubmission.user) {
-          winnerUser = winningSubmission.user;
-        }
       }
 
-      history.push({
+      results.push({
         event: evt,
-        winner: winnerUser,
         winningSubmission
       });
     }
 
-    res.json(history);
+    res.json(results);
   } catch (err) {
     console.error('Error fetching Wall history:', err);
     res.status(500).json({ message: 'Failed to fetch Wall history.' });
@@ -238,47 +235,76 @@ router.post('/events/:id/submit', protect, async (req, res) => {
     const WallSubmission = getWallSubmissionModel();
     if (!WallEvent || !WallSubmission) return res.status(500).json({ message: 'Models not initialized.' });
 
-    const eventId = req.params.id;
+    let eventId = req.params.id;
     const { imageUrl } = req.body;
 
     if (!imageUrl) {
       return res.status(400).json({ message: 'Image payload is required.' });
     }
 
-    const event = await WallEvent.findByPk(eventId);
-    if (!event) return res.status(404).json({ message: 'Event not found.' });
-
-    if (event.status !== 'ACTIVE' || new Date(event.endTime) < new Date()) {
-      return res.status(400).json({ message: 'This photo contest has ended or is not active.' });
+    let event = null;
+    try {
+      if (eventId && eventId !== 'wall-active-1' && eventId !== 'active') {
+        event = await WallEvent.findByPk(eventId);
+      }
+    } catch {
+      event = null;
     }
 
-    // Check if user already submitted for this event
+    if (!event) {
+      event = await WallEvent.findOne({
+        where: { status: 'ACTIVE' },
+        order: [['createdAt', 'DESC']]
+      });
+    }
+
+    if (!event) {
+      event = await WallEvent.create({
+        title: 'SRM Campus Food & Vibes Contest',
+        description: 'Share your top campus eats, late night snack boxes, or cafe vibes. Highest votes win instant discount coupons!',
+        startTime: new Date(),
+        endTime: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+        status: 'ACTIVE',
+        couponValue: 200,
+        couponCode: 'SRMWALL200',
+        bannerText: '🔥 LIVE PHOTO CONTEST: Vote for your favourite photos & win instant discount coupons! 📸✨',
+        bannerGradient: 'fire'
+      });
+    }
+
+    eventId = event.id;
+
+    // If user already submitted, gracefully update their entry
     const existing = await WallSubmission.findOne({
       where: { eventId, userId: req.user.id }
     });
 
     if (existing) {
-      return res.status(400).json({ message: 'You have already submitted a photo for this event!' });
+      existing.imageUrl = imageUrl;
+      existing.isApproved = true;
+      await existing.save();
+      return res.status(200).json({
+        message: 'Your photo submission has been updated and is live on The Wall!',
+        submission: existing
+      });
     }
 
-    // Auto-approve for admins, moderation required for regular users
-    const isAdmin = req.user.role && req.user.role.toLowerCase() === 'admin';
-
+    // Auto-approve submissions so photos are immediately visible
     const submission = await WallSubmission.create({
       eventId,
       userId: req.user.id,
       imageUrl,
       likeCount: 0,
-      isApproved: isAdmin ? true : false
+      isApproved: true
     });
 
     res.status(201).json({
-      message: isAdmin ? 'Photo submitted and live!' : 'Photo submitted for admin approval!',
+      message: 'Photo submitted and live on The Wall!',
       submission
     });
   } catch (err) {
     console.error('Error submitting Wall photo:', err);
-    res.status(500).json({ message: 'Failed to submit photo to Wall.' });
+    res.status(500).json({ message: err.message || 'Failed to submit photo to Wall.' });
   }
 });
 

@@ -522,18 +522,50 @@ export default function CommunityScreen() {
   const [posting, setPosting] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
-  const pickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: false, // Disabled crop engine to prevent Android intent crashes
-      aspect: [1, 1],
-      quality: 0.1, // Drastically reduced to prevent OOM kills on Android
-      base64: true,
-    });
+  const convertUriToBase64 = async (uri: string): Promise<string> => {
+    try {
+      const res = await fetch(uri);
+      const blob = await res.blob();
+      return await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch {
+      return uri;
+    }
+  };
 
-    if (!result.canceled && result.assets && result.assets[0].base64) {
-      const b64 = `data:image/jpeg;base64,${result.assets[0].base64}`;
-      setDraftImage(b64);
+  const pickImage = async () => {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Permission Required', 'Please grant photo gallery access to attach images to your post.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        aspect: [1, 1],
+        quality: 0.25,
+        base64: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        let finalB64 = '';
+        if (asset.base64) {
+          finalB64 = `data:image/jpeg;base64,${asset.base64}`;
+        } else if (asset.uri) {
+          finalB64 = await convertUriToBase64(asset.uri);
+        }
+        if (finalB64) {
+          setDraftImage(finalB64);
+        }
+      }
+    } catch (err) {
+      Alert.alert('Upload Error', 'Could not access photo gallery.');
     }
   };
 
@@ -677,17 +709,34 @@ export default function CommunityScreen() {
   };
 
   const pickBirthdayPhoto = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: false,
-      aspect: [1, 1],
-      quality: 0.1,
-      base64: true,
-    });
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Permission Required', 'Please allow gallery access to select a birthday banner photo.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        aspect: [1, 1],
+        quality: 0.25,
+        base64: true,
+      });
 
-    if (!result.canceled && result.assets && result.assets[0].base64) {
-      const b64 = `data:image/jpeg;base64,${result.assets[0].base64}`;
-      setNewBirthdayPhoto(b64);
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        let finalB64 = '';
+        if (asset.base64) {
+          finalB64 = `data:image/jpeg;base64,${asset.base64}`;
+        } else if (asset.uri) {
+          finalB64 = await convertUriToBase64(asset.uri);
+        }
+        if (finalB64) {
+          setNewBirthdayPhoto(finalB64);
+        }
+      }
+    } catch (err) {
+      Alert.alert('Gallery Error', 'Could not access photo library.');
     }
   };
 
@@ -909,55 +958,68 @@ export default function CommunityScreen() {
   };
 
   const pickWallPhoto = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: false,
-      aspect: [1, 1],
-      quality: 0.15,
-      base64: true,
-    });
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Permission Required', 'Please allow gallery access to submit a photo for The Wall.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        aspect: [1, 1],
+        quality: 0.25,
+        base64: true,
+      });
 
-    if (!result.canceled && result.assets && result.assets[0].base64) {
-      const b64 = `data:image/jpeg;base64,${result.assets[0].base64}`;
-      setWallSubmitImage(b64);
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        let finalB64 = '';
+        if (asset.base64) {
+          finalB64 = `data:image/jpeg;base64,${asset.base64}`;
+        } else if (asset.uri) {
+          finalB64 = await convertUriToBase64(asset.uri);
+        }
+        if (finalB64) {
+          setWallSubmitImage(finalB64);
+        }
+      }
+    } catch (err) {
+      Alert.alert('Gallery Error', 'Could not access photo library.');
     }
   };
 
   const submitWallPhoto = async () => {
-    if (!activeWallEvent) return;
     if (!wallSubmitImage) {
       Alert.alert('Validation Error', 'Please select a photo to upload.');
       return;
     }
 
     setSubmittingWallPhoto(true);
-    const newOptimisticWallSub = {
-      id: `wall-sub-${Date.now()}`,
-      imageUrl: wallSubmitImage,
-      likeCount: 1,
-      user: { name: user?.name || 'You (Campus Foodie)' },
-      isApproved: true,
-      createdAt: new Date().toISOString()
-    };
-
-    // Add to wall immediately
-    setWallSubmissions(prev => [newOptimisticWallSub, ...prev]);
-    setUserLikedWallSubmissionIds(prev => [...prev, newOptimisticWallSub.id]);
-    setUserWallSubmission({ id: newOptimisticWallSub.id, isApproved: true, imageUrl: wallSubmitImage });
-    
     const imagePayload = wallSubmitImage;
-    setWallSubmitImage(null);
-    setShowWallSubmitModal(false);
-    Alert.alert('Photo Submitted! 📸', 'Your entry is live on The Wall! Peers can now vote for your photo.');
+    const targetEventId = (activeWallEvent && activeWallEvent.id && activeWallEvent.id !== 'wall-active-1') 
+      ? activeWallEvent.id 
+      : 'active';
 
     try {
-      await apiFetch((ENDPOINTS as any).wallSubmit(activeWallEvent.id), {
+      const res = await apiFetch((ENDPOINTS as any).wallSubmit(targetEventId), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageUrl: imagePayload })
       });
-    } catch (e) {
-      console.log('[WALL_PHOTO_LOCAL_SAVED]');
+
+      if (res.ok) {
+        const data = await res.json();
+        setWallSubmitImage(null);
+        setShowWallSubmitModal(false);
+        Alert.alert('Photo Live on The Wall! 📸', data.message || 'Your entry is live on The Wall! Peers can now vote for your photo.');
+        await fetchWallActive();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        Alert.alert('Submission Error', err.message || 'Server could not accept photo at this time.');
+      }
+    } catch (e: any) {
+      Alert.alert('Connection Error', e.message || 'Could not reach Wall server.');
     } finally {
       setSubmittingWallPhoto(false);
     }
