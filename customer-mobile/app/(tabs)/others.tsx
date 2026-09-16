@@ -1,3 +1,4 @@
+import * as Haptics from 'expo-haptics';
 import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions, Platform, TextInput, ActivityIndicator, Alert, Modal, Linking, Animated, Vibration } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -1525,7 +1526,7 @@ export default function OthersScreen() {
   }, []);
 
   const toggleWishlistProduct = (product: any) => {
-    try { Vibration.vibrate(40); } catch (e) {}
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const pId = String(product.id || product._id || '');
     const isSaved = wishlistIds.includes(pId);
     let updatedIds: string[];

@@ -1,3 +1,4 @@
+import * as Haptics from 'expo-haptics';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, RefreshControl, Image, FlatList, Dimensions, Platform, Modal, ActivityIndicator, Alert, Animated, Linking, BackHandler, Vibration } from 'react-native';
 import { Socket } from 'socket.io-client';
@@ -1097,7 +1098,7 @@ export default function HomeScreen() {
                     }}
                     onPress={() => {
                       setFilter('all');
-                      try { Vibration.vibrate(30); } catch (e) {}
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                     }}
                   >
                     <Text style={{ fontSize: 10, fontWeight: '900', color: filter === 'all' ? (isDark ? '#000' : '#FFF') : txt }}>🍽️ ALL DISHES</Text>
@@ -1114,7 +1115,7 @@ export default function HomeScreen() {
                     }}
                     onPress={() => {
                       setFilter('veg');
-                      try { Vibration.vibrate(30); } catch (e) {}
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                     }}
                   >
                     <Text style={{ fontSize: 10, fontWeight: '900', color: filter === 'veg' ? '#FFF' : txt }}>🥦 PURE VEG ONLY</Text>
@@ -1143,7 +1144,7 @@ export default function HomeScreen() {
                       }}
                       onPress={() => {
                         setClassicFilter(isSelected ? '' : c.name);
-                        try { Vibration.vibrate(30); } catch (e) {}
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                         setShowCatPrefModal(false);
                         if (!isSelected && scrollRef.current) {
                           setTimeout(() => {

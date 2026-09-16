@@ -1,3 +1,4 @@
+import * as Haptics from 'expo-haptics';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -544,19 +545,19 @@ export default function FriendsScreen() {
     socket.emit('joinRoom', `user-${myUserId}`);
     
     const onIncomingRequest = (data: any) => {
-      Vibration.vibrate([0, 100, 50, 100]);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       triggerToast('⚡ FRIEND REQUEST', `${data.requester?.name || 'Someone'} requested to join your orbit!`);
       loadFriendsData();
     };
 
     const onRequestAccepted = (data: any) => {
-      Vibration.vibrate([0, 80, 40, 80]);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       triggerToast('🤝 ORBIT LINKED', `${data.friendName || 'A friend'} accepted your request!`);
       loadFriendsData();
     };
 
     const onNudge = (data: any) => {
-      Vibration.vibrate([0, 120, 60, 120]);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       triggerToast('⚡ ORBIT NUDGE', `${data.senderName || 'Your friend'} nudged your orbit flame! 🔥`);
       loadFriendsData();
     };
@@ -607,7 +608,7 @@ export default function FriendsScreen() {
         });
         setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 100);
         if (msg.senderId !== myUserId) {
-          Vibration.vibrate(80);
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         }
       }
     };
@@ -717,7 +718,7 @@ export default function FriendsScreen() {
         : f
     ));
     setIsEditingNickname(false);
-    Vibration.vibrate(50);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     try {
       await apiFetch(`${API_URL}/api/friends/${activeChat.friendshipId}/nickname`, {
@@ -732,7 +733,7 @@ export default function FriendsScreen() {
 
   const handleSendNudge = async () => {
     if (!activeChat) return;
-    Vibration.vibrate(100);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
       const res = await apiFetch(`${API_URL}/api/friends/nudge`, {
         method: 'POST',
@@ -853,7 +854,7 @@ export default function FriendsScreen() {
       return;
     }
     setPopoverPending(null);
-    Vibration.vibrate(100);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     // Optimistic state promote: remove from pending list and add to friends list
     const promotedRequester = nodeItem.requester;
@@ -891,7 +892,7 @@ export default function FriendsScreen() {
 
   const handleDeclineFriend = async (friendshipId: string) => {
     setPopoverPending(null);
-    Vibration.vibrate(50);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     // Optimistic removal
     setPendingRequests(prev => prev.filter(p => p.friendshipId !== friendshipId));
     try {
@@ -1068,7 +1069,7 @@ export default function FriendsScreen() {
         if (res.ok) {
           const matched = await res.json();
           setSyncedContacts(matched);
-          Vibration.vibrate([0, 80, 40, 80]);
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         } else {
           Alert.alert('Error', 'Failed to scan matching users from contacts.');
         }

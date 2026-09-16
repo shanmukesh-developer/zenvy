@@ -18,23 +18,18 @@ router.post('/referral/apply', protect, async (req, res) => {
     const { getUserModel } = require('../models/User');
     const User = getUserModel();
 
-    // Find the referrer by code
     const referrer = await User.findOne({ where: { referralCode } });
     if (!referrer) return res.status(404).json({ message: 'Invalid referral code' });
 
-    // Prevent self-referral
     if (referrer.id === req.user.id) {
       return res.status(400).json({ message: 'You cannot refer yourself' });
     }
 
-    // Check if user already used a referral
     const currentUser = await User.findByPk(req.user.id);
     if (!currentUser) return res.status(404).json({ message: 'User not found' });
     if (currentUser.referredBy) {
       return res.status(400).json({ message: 'You have already used a referral code' });
     }
-
-    // Award both users 50 ZenPoints
     currentUser.referredBy = referralCode;
     currentUser.referralRewardClaimed = true;
     currentUser.zenPoints = (currentUser.zenPoints || 0) + 50;
@@ -89,7 +84,6 @@ router.get('/challenges/active', async (req, res) => {
     const Order = getOrderModel();
     const User = getUserModel();
 
-    // Current week window
     const now = new Date();
     const startOfWeek = new Date(now);
     startOfWeek.setDate(now.getDate() - now.getDay());
@@ -98,8 +92,6 @@ router.get('/challenges/active', async (req, res) => {
     const orders = await Order.findAll({
       where: { status: 'Delivered', createdAt: { [Op.gte]: startOfWeek } }
     });
-
-    // Aggregate by hostel block
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const userIds = [...new Set(orders.map(o => o.userId))].filter(id => id && uuidRegex.test(id));
     let users = [];
@@ -170,14 +162,11 @@ router.get('/recommendations', protect, async (req, res) => {
       attributes: ['dietaryPreference', 'hostelBlock']
     });
 
-    // Get user's order history
     const pastOrders = await Order.findAll({
       where: { userId: req.user.id, status: 'Delivered' },
       order: [['createdAt', 'DESC']],
       limit: 30
     });
-
-    // Extract frequently ordered items and categories
     const itemFreq = {};
     const categoryFreq = {};
     const restaurantFreq = {};
@@ -199,13 +188,11 @@ router.get('/recommendations', protect, async (req, res) => {
       if (o.restaurantId) restaurantFreq[o.restaurantId] = (restaurantFreq[o.restaurantId] || 0) + 1;
     });
 
-    // Get all available menu items
     const allItems = await MenuItem.findAll({
       where: { isAvailable: true },
       limit: 200
     });
 
-    // Score each item
     const scored = allItems.map(item => {
       let score = 0;
       const itemData = item.toJSON();
@@ -218,13 +205,11 @@ router.get('/recommendations', protect, async (req, res) => {
       // Dietary preference matching
       if (user?.dietaryPreference === 'Veg' && itemData.isVegetarian) score += 5;
 
-      // Popularity boost (rating proxy)
-      score += Math.random() * 2; // Small random factor for variety
+      score += Math.random() * 2; 
 
       return { ...itemData, score };
     });
 
-    // Sort by score, return top 6
     const picks = scored
       .sort((a, b) => b.score - a.score)
       .slice(0, 6)
@@ -265,12 +250,10 @@ router.post('/gift', protect, async (req, res) => {
     let recipientName;
 
     await sequelize.transaction(async (t) => {
-      // Re-fetch sender with row lock (FOR UPDATE)
       const sender = await User.findByPk(req.user.id, { transaction: t, lock: true });
       if (!sender) throw new Error('Sender not found');
       if (!sender.isElite) throw new Error('Only Elite members can send gifts');
 
-      // Monthly gift limit (3/month)
       const now = new Date();
       if (sender.lastGiftResetDate) {
         const lastReset = new Date(sender.lastGiftResetDate);
@@ -286,17 +269,14 @@ router.post('/gift', protect, async (req, res) => {
         throw new Error('Monthly gift limit reached (3/month)');
       }
 
-      // Check wallet balance
       if ((sender.walletBalance || 0) < amount) {
         throw new Error('Insufficient wallet balance');
       }
 
-      // Find recipient with row lock to avoid concurrent balance collisions
       const recipient = await User.findOne({ where: { phone: recipientPhone }, transaction: t, lock: true });
       if (!recipient) throw new Error('Recipient not found on Zenvy');
       if (recipient.id === sender.id) throw new Error('Cannot gift yourself');
 
-      // Transfer
       sender.walletBalance = (sender.walletBalance || 0) - amount;
       sender.eliteGiftsUsedThisMonth = (sender.eliteGiftsUsedThisMonth || 0) + 1;
       await sender.save({ transaction: t });

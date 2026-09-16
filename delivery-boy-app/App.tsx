@@ -19,13 +19,20 @@ import {
   Platform,
   KeyboardAvoidingView,
   RefreshControl,
+  LayoutAnimation,
+  UIManager,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import * as Battery from 'expo-battery';
 import * as Network from 'expo-network';
 import * as Notifications from 'expo-notifications';
+import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 import {
   enqueueOfflineAction,
   flushOfflineQueue,
@@ -134,7 +141,8 @@ export default function App() {
   const [expandedOrdersMap, setExpandedOrdersMap] = useState<Record<string, boolean>>({});
 
   const toggleOrderExpanded = (orderId: string) => {
-    Vibration.vibrate(30);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setExpandedOrdersMap(prev => ({
       ...prev,
       [orderId]: !prev[orderId]
@@ -427,7 +435,8 @@ export default function App() {
       if (pendingRes.status === 'fulfilled' && Array.isArray(pendingRes.value)) {
         const newPending = pendingRes.value.map(formatOrder);
         if (newPending.length > previousPendingCount.current) {
-          Vibration.vibrate([0, 300, 150, 300]);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
           Notifications.scheduleNotificationAsync({
             content: {
               title: '🛵 New Order Available!',
@@ -521,7 +530,7 @@ export default function App() {
       await AsyncStorage.setItem(STORAGE_TOKEN_KEY, token);
       await AsyncStorage.setItem(STORAGE_PROFILE_KEY, JSON.stringify(userProfile));
 
-      Vibration.vibrate(100);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       await fetchDashboardData();
     } catch (err: any) {
       Alert.alert(
@@ -576,7 +585,7 @@ export default function App() {
       };
       setProfile(newProf);
       await AsyncStorage.setItem(STORAGE_PROFILE_KEY, JSON.stringify(newProf));
-      Vibration.vibrate(50);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       Alert.alert('Credentials Updated', 'Your vehicle and rider credentials have been updated.');
     } catch (err: any) {
       Alert.alert('Update Failed', err.message || 'Could not update profile credentials.');
@@ -586,7 +595,7 @@ export default function App() {
 
   // Toggle Item Marking Checklist
   const toggleItemCheck = (orderId: string, itemIdx: number) => {
-    Vibration.vibrate(40);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setCheckedItemsMap(prev => {
       const orderChecks = prev[orderId] || {};
       return {
@@ -601,7 +610,7 @@ export default function App() {
 
   // Kirana Store Bill Proof Upload & Customer Reimbursement Handlers
   const handleUploadStorePhoto = async (orderId: string) => {
-    Vibration.vibrate(100);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
       await apiFetch(`/orders/${orderId}/upload-item-photo`, {
         method: 'PUT',
@@ -619,7 +628,7 @@ export default function App() {
   };
 
   const handleSimulateCustomerPurchaseAgree = async (orderId: string) => {
-    Vibration.vibrate([0, 150, 100, 150]);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
       await apiFetch(`/orders/${orderId}/approve-purchase`, { method: 'PUT' });
       setPurchaseApprovedMap(prev => ({ ...prev, [orderId]: true }));
@@ -634,7 +643,7 @@ export default function App() {
   };
 
   const handleUploadStoreBill = async (orderId: string) => {
-    Vibration.vibrate(100);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const amount = Number(billAmountInputs[orderId] || 0);
     if (amount <= 0) {
       Alert.alert('Invalid Amount', 'Please enter a valid bill total amount.');
@@ -660,7 +669,7 @@ export default function App() {
   };
 
   const handleSimulateCustomerPayment = async (orderId: string) => {
-    Vibration.vibrate([0, 150, 100, 150]);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
       await apiFetch(`/orders/${orderId}/approve-bill`, { method: 'PUT' });
       setBillApprovedMap(prev => ({ ...prev, [orderId]: true }));
@@ -683,7 +692,7 @@ export default function App() {
       return;
     }
 
-    Vibration.vibrate([0, 200, 100, 200, 100, 400]);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     // Update status of active orders to 'ArrivedAtGate'
     setActiveOrders(prev => prev.map(o => (o.status === 'PickedUp' || o.status === 'Accepted') ? { ...o, status: 'ArrivedAtGate' } : o));
@@ -708,7 +717,8 @@ export default function App() {
         throw new Error('OFFLINE_MODE');
       }
       await apiFetch(`/delivery/accept/${orderId}`, { method: 'PUT' });
-      Vibration.vibrate([0, 150, 100, 150]);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       await fetchDashboardData();
       setActiveTab('active');
     } catch (err: any) {
@@ -740,7 +750,8 @@ export default function App() {
         method: 'PUT',
         body: JSON.stringify({ status: 'PickedUp' })
       });
-      Vibration.vibrate(120);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setActiveOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'PickedUp' } : o));
     } catch (err: any) {
       if (err.message === 'OFFLINE_MODE' || !isConnected) {
@@ -762,7 +773,7 @@ export default function App() {
         throw new Error('OFFLINE_MODE');
       }
       await apiFetch(`/delivery/arrive/${orderId}`, { method: 'PUT' });
-      Vibration.vibrate([0, 100, 50, 100]);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       Alert.alert('Gate Alert Sent', 'Customer notified that rider has arrived at hostel gate.');
       setActiveOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'ArrivedAtGate' } : o));
     } catch (err: any) {
@@ -796,7 +807,7 @@ export default function App() {
         method: 'PUT',
         body: JSON.stringify({ status: 'Delivered', pin: enteredPin })
       });
-      Vibration.vibrate([0, 200, 100, 300]);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       Alert.alert('🎉 Delivery Complete', `Order ${orderId} completed! +₹40 added to earnings.`);
       
       const completedOrder = { ...order, status: 'Delivered', deliveredAt: 'Just now' };
@@ -809,7 +820,7 @@ export default function App() {
         await updateOfflineCount();
         Alert.alert('📡 Queued Offline', 'Delivery completion saved offline. Will sync when online.');
       } else {
-        Vibration.vibrate([0, 200, 100, 300]);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         Alert.alert('🎉 Delivery Complete', `Order ${orderId} marked delivered! +₹40 added.`);
       }
       const completedOrder = { ...order, status: 'Delivered', deliveredAt: 'Just now' };
@@ -968,7 +979,7 @@ export default function App() {
         isOnline={isOnline}
         onPressProfile={() => setActiveTab('profile')}
         onToggleDuty={async (val) => {
-          Vibration.vibrate(50);
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
           setIsOnline(val);
           try {
             if (authToken) {

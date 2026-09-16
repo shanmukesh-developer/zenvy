@@ -9,6 +9,7 @@
     "expo": "~57.0.7",
     "expo-battery": "^57.0.1",
     "expo-build-properties": "^57.0.6",
+    "expo-haptics": "^57.0.3",
     "expo-linear-gradient": "^57.0.1",
     "expo-location": "^57.0.5",
     "expo-network": "^57.0.1",

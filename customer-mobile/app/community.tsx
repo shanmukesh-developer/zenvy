@@ -1,3 +1,4 @@
+import * as Haptics from 'expo-haptics';
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert, Modal, Dimensions, Platform, KeyboardAvoidingView, TouchableWithoutFeedback, Keyboard, Animated, Easing, Vibration } from 'react-native';
 import { Image } from 'expo-image';
@@ -449,7 +450,7 @@ export default function CommunityScreen() {
 
   const handleVotePoll = (optionId: string) => {
     if (campusPoll.userVotedOptionId) return;
-    Vibration.vibrate(50);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setCampusPoll(prev => ({
       ...prev,
       totalVotes: prev.totalVotes + 1,
@@ -461,7 +462,7 @@ export default function CommunityScreen() {
 
   const handleClaimCoupon = (code: string, value: number) => {
     setClaimedCoupon(code);
-    Vibration.vibrate([0, 80, 40, 80]);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     Alert.alert(
       '🎉 COUPON UNLOCKED!',
       `Discount Code "${code}" for ₹${value} OFF is ready! Apply it at checkout for instant savings.`,
