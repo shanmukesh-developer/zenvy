@@ -15,11 +15,25 @@ const IV_LENGTH = 16; // For AES-256-CBC
  */
 function encryptText(text) {
   if (!text) return '';
-  const iv = crypto.randomBytes(IV_LENGTH);
-  const cipher = crypto.createCipheriv('aes-256-cbc', ENCRYPTION_KEY, iv);
-  let encrypted = cipher.update(text, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-  return `${iv.toString('hex')}:${encrypted}`;
+  
+  // Prevent double-encryption by checking if it already matches our format
+  if (text.includes(':')) {
+    const parts = text.split(':');
+    if (parts[0].length === 32 && /^[0-9a-fA-F]+$/.test(parts[0])) {
+      return text;
+    }
+  }
+
+  try {
+    const iv = crypto.randomBytes(IV_LENGTH);
+    const cipher = crypto.createCipheriv('aes-256-cbc', ENCRYPTION_KEY, iv);
+    let encrypted = cipher.update(text, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+    return `${iv.toString('hex')}:${encrypted}`;
+  } catch (error) {
+    console.error('[CRYPTO_ENCRYPT_FAIL] Failed to encrypt message:', error.message);
+    return text; // Fallback to plain text on encryption failure
+  }
 }
 
 /**
@@ -40,6 +54,11 @@ function decryptText(cipherText) {
     if (ivHex.length !== 32 || !/^[0-9a-fA-F]+$/.test(ivHex)) {
       return cipherText;
     }
+    // Check if ciphertext part is valid hex
+    if (!/^[0-9a-fA-F]*$/.test(parts[1])) {
+      return cipherText;
+    }
+
     const iv = Buffer.from(ivHex, 'hex');
     const encryptedText = Buffer.from(parts[1], 'hex');
     const decipher = crypto.createDecipheriv('aes-256-cbc', ENCRYPTION_KEY, iv);

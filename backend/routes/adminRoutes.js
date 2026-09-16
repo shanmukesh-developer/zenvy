@@ -27,16 +27,26 @@ const {
   batchUpdateOrders,
   getAllCoupons,
   createCoupon,
-  deleteCoupon
+  deleteCoupon,
+  broadcastPushNotification,
+  updateRider,
+  resetRiderSos,
+  updateUserWallet,
+  getRestaurantPayouts,
+  settleRestaurantPayout,
+  settleRiderPayout,
+  getDisputedOrders,
+  processManualRefund,
+  toggleUserBan,
+  getRecentReviews,
+  deleteReview,
+  getRiderPayouts
 } = require('../controllers/adminController');
 const { getAllOrders } = require('../controllers/orderController');
 const { protect, admin } = require('../middleware/authMiddleware');
 
 // ─── Unprotected routes ──────────────────────────────────
-router.post('/broadcast-push', (req, res, next) => {
-  const { broadcastPushNotification } = require('../controllers/adminController');
-  broadcastPushNotification(req, res, next);
-});
+router.post('/broadcast-push', broadcastPushNotification);
 
 // ─── Protected Admin Routes ──────────────────────────────────
 router.use(protect);
@@ -61,26 +71,16 @@ router.delete('/restaurants/:id', deleteRestaurant);
 router.get('/riders', getAllRiders);
 router.put('/riders/:id/approve', approveRider);
 router.route('/riders/:id')
-  .post((req, res, next) => {
-    const { updateRider } = require('../controllers/adminController');
-    updateRider(req, res, next);
-  })
-  .put((req, res, next) => {
-    const { updateRider } = require('../controllers/adminController');
-    updateRider(req, res, next);
-  });
-router.post('/riders/:id/reset-sos', (req, res, next) => {
-  const { resetRiderSos } = require('../controllers/adminController');
-  resetRiderSos(req, res, next);
-});
+  .post(updateRider)
+  .put(updateRider);
+router.post('/riders/:id/reset-sos', resetRiderSos);
+router.get('/fleet/payouts', getRiderPayouts);
 
 // User Management
 router.get('/users', getAllUsers);
 router.put('/users/:userId/elite', setEliteStatus);
-router.post('/users/:userId/wallet', (req, res, next) => {
-  const { updateUserWallet } = require('../controllers/adminController');
-  updateUserWallet(req, res, next);
-});
+router.post('/users/:userId/wallet', updateUserWallet);
+router.put('/users/:userId/ban', toggleUserBan);
 
 // Coupon Management
 router.get('/coupons', getAllCoupons);
@@ -101,45 +101,15 @@ router.post('/seed', seedDatabase);
 
 // Finance & Payouts
 router.get('/finance', getFinanceReport);
-router.get('/finance/payouts', (req, res, next) => {
-  const { getRestaurantPayouts } = require('../controllers/adminController');
-  getRestaurantPayouts(req, res, next);
-});
-router.post('/finance/settle-restaurant', (req, res, next) => {
-  const { settleRestaurantPayout } = require('../controllers/adminController');
-  settleRestaurantPayout(req, res, next);
-});
-router.post('/finance/settle-rider', (req, res, next) => {
-  const { settleRiderPayout } = require('../controllers/adminController');
-  settleRiderPayout(req, res, next);
-});
-router.get('/finance/disputes', (req, res, next) => {
-  const { getDisputedOrders } = require('../controllers/adminController');
-  getDisputedOrders(req, res, next);
-});
-router.post('/finance/refund/:orderId', (req, res, next) => {
-  const { processManualRefund } = require('../controllers/adminController');
-  processManualRefund(req, res, next);
-});
+router.get('/finance/payouts', getRestaurantPayouts);
+router.post('/finance/settle-restaurant', settleRestaurantPayout);
+router.post('/finance/settle-rider', settleRiderPayout);
+router.get('/finance/disputes', getDisputedOrders);
+router.post('/finance/refund/:orderId', processManualRefund);
 
-// Advanced Admin Controls
-router.put('/users/:userId/ban', (req, res, next) => {
-  const { toggleUserBan } = require('../controllers/adminController');
-  toggleUserBan(req, res, next);
-});
-router.get('/reviews', (req, res, next) => {
-  const { getRecentReviews } = require('../controllers/adminController');
-  getRecentReviews(req, res, next);
-});
-router.delete('/reviews/:orderId', (req, res, next) => {
-  const { deleteReview } = require('../controllers/adminController');
-  deleteReview(req, res, next);
-});
-router.get('/fleet/payouts', (req, res, next) => {
-  const { getRiderPayouts } = require('../controllers/adminController');
-  getRiderPayouts(req, res, next);
-});
-
+// Reviews & Analytics
+router.get('/reviews', getRecentReviews);
+router.delete('/reviews/:orderId', deleteReview);
 router.get('/audit', getAuditLogs);
 router.get('/rewards-analytics', getRewardsAnalytics);
 router.get('/health', getSystemHealth);
