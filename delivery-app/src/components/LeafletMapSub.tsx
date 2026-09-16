@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Polyline } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Polyline, CircleMarker } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
@@ -8,9 +8,10 @@ interface LeafletMapSubProps {
   center: [number, number];
   markers: { position: [number, number]; label: string; type: 'rider' | 'store' | 'drop' }[];
   route?: [number, number][];
+  heatmapPoints?: [number, number, number][]; // lat, lng, intensity
 }
 
-export default function LeafletMapSub({ center, markers, route }: LeafletMapSubProps) {
+export default function LeafletMapSub({ center, markers, route, heatmapPoints = [] }: LeafletMapSubProps) {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -64,6 +65,14 @@ export default function LeafletMapSub({ center, markers, route }: LeafletMapSubP
       />
       {markers.map((m, i) => (
         <Marker key={i} position={m.position} icon={getIcon(m.type)} />
+      ))}
+      {heatmapPoints.map((pt, i) => (
+        <CircleMarker 
+          key={`heat-${i}`} 
+          center={[pt[0], pt[1]]} 
+          radius={pt[2] * 20} 
+          pathOptions={{ color: 'transparent', fillColor: '#ef4444', fillOpacity: 0.15 }} 
+        />
       ))}
       {route && <Polyline positions={route} color="#10b981" weight={4} opacity={0.6} dashArray="10, 10" />}
     </MapContainer>

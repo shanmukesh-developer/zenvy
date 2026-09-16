@@ -1,6 +1,7 @@
 "use client";
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import SwipeToAccept from './SwipeToAccept';
 
 export interface Order {
   id: string;
@@ -151,19 +152,16 @@ export function TaskCard({ order, sequence, onAccept, onDecline, onShowDetails }
          )}
       </div>
 
-      <div className="flex gap-4" onClick={(e) => e.stopPropagation()}>
+      <div className="flex gap-4 mt-2" onClick={(e) => e.stopPropagation()}>
         <button 
           onClick={() => onDecline(order.id)}
-          className="flex-1 py-4 rounded-xl text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:text-white transition-all border border-transparent hover:border-white/5"
+          className="w-14 h-14 flex items-center justify-center rounded-2xl text-[10px] font-bold text-slate-500 hover:bg-white/5 hover:text-white transition-all border border-transparent hover:border-white/5 shrink-0"
         >
-          Ignore
+          ✕
         </button>
-        <button 
-          onClick={() => onAccept(order.id)}
-          className="flex-[2] py-4 rounded-2xl text-[10px] font-bold uppercase tracking-widest bg-white text-black hover:bg-blue-600 hover:text-white transition-all shadow-sm font-black"
-        >
-          Accept Order
-        </button>
+        <div className="flex-1">
+          <SwipeToAccept onAccept={() => onAccept(order.id)} />
+        </div>
       </div>
     </motion.div>
   );

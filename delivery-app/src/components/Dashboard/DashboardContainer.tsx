@@ -1074,6 +1074,11 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
                                 .filter(o => (orderStatus[o.id] || o.status) === 'PickedUp')
                                 .map(o => ({ lat: 16.468, lng: 80.512, type: 'drop' as const }))
                             ]}
+                            heatmapPoints={availableOrders.length > 0 ? availableOrders.map((_, i) => [
+                              16.4632 + (Math.random() - 0.5) * 0.008, 
+                              80.5064 + (Math.random() - 0.5) * 0.008, 
+                              0.5 + Math.random() * 0.5
+                            ] as [number, number, number]) : undefined}
                           />
                           <div className="absolute bottom-3 left-3 z-[1000] bg-black/60 backdrop-blur-sm px-3 py-1.5 rounded-xl flex items-center gap-2">
                             <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
@@ -1121,6 +1126,26 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
                           />
                         ))}
                         <div className="gold-line !opacity-20" />
+                      </div>
+                    )}
+
+                    {/* Demand Heatmap (Shown when no active tasks) */}
+                    {activeOrders.length === 0 && (
+                      <div className="relative w-full h-48 rounded-[24px] overflow-hidden border border-white/5 shadow-2xl mb-6">
+                        <RiderMap 
+                          riderPos={riderPos}
+                          heatmapPoints={availableOrders.length > 0 ? availableOrders.map((_, i) => [
+                            16.4632 + (Math.random() - 0.5) * 0.008, 
+                            80.5064 + (Math.random() - 0.5) * 0.008, 
+                            0.5 + Math.random() * 0.5
+                          ] as [number, number, number]) : [
+                            [16.4632, 80.5064, 0.2]
+                          ]}
+                        />
+                        <div className="absolute top-3 left-3 z-[1000] bg-black/60 backdrop-blur-sm px-3 py-1.5 rounded-xl flex items-center gap-2 border border-white/10">
+                          <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse shadow-[0_0_10px_#ef4444]" />
+                          <span className="text-[9px] font-black text-white uppercase tracking-widest">Demand Heatmap</span>
+                        </div>
                       </div>
                     )}
 

@@ -16,9 +16,10 @@ interface RiderMapProps {
   riderPos?: [number, number];
   destinationPos?: [number, number];
   orders?: { lat: number, lng: number, type: 'store' | 'drop' }[];
+  heatmapPoints?: [number, number, number][];
 }
 
-export default function RiderMap({ riderPos, destinationPos, orders = [] }: RiderMapProps) {
+export default function RiderMap({ riderPos, destinationPos, orders = [], heatmapPoints = [] }: RiderMapProps) {
   const [center, setCenter] = useState<[number, number]>([16.4632, 80.5064]);
 
   useEffect(() => {
@@ -40,6 +41,7 @@ export default function RiderMap({ riderPos, destinationPos, orders = [] }: Ride
         center={center} 
         markers={markers}
         route={riderPos && destinationPos ? [riderPos, destinationPos] : undefined}
+        heatmapPoints={heatmapPoints}
       />
       
       {/* HUD Overlay */}
