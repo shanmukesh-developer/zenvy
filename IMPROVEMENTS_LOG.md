@@ -2,6 +2,7 @@
 
 | Date (IST) | Portal / Component | Type | Description |
 |---|---|---|---|
+| 2026-09-16 | Backend | Bug Fix & Syntax Audit | Restored missing WhatsApp notification error handler, order status response, and `getSurgeStatus` endpoint in `orderController.js`; validated all portals and backend (0 syntax and compile errors) |
 | 2026-09-16 | Delivery App | Refactor | Luxury obsidian & champagne gold redesign matching customer mobile design language |
 | 2026-09-16 | Delivery App | Security/UX | Eradicated AI dev artifacts (auto-fill test rider button, backend URL leak, host modal) |
 | 2026-09-16 | Delivery App | Verification | Clean release APK compiled (`app-release.apk`) and validated on Android emulator |

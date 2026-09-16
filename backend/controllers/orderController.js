@@ -1008,6 +1008,27 @@ const updateOrderStatus = async (req, res) => {
     try {
       const User = getUserModel();
       const user = await User.findByPk(order.userId);
+      if (user && user.phone) {
+        const orderWithRest = await Order.findByPk(order.id, { 
+          include: [{ model: getRestaurantModel(), as: 'restaurant', attributes: ['name'] }] 
+        });
+        const msg = formatOrderMessage(orderWithRest, 'STATUS_UPDATE');
+        await sendWhatsAppMessage(user.phone, msg, 'STATUS_UPDATE');
+      }
+    } catch (waStatusErr) {
+      console.error('[WHATSAPP_ERROR] Status update alert failed:', waStatusErr.message);
+    }
+
+    res.json({ message: 'Order status updated', orderId: order.id, status });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+const getSurgeStatus = async (req, res) => {
+  const { isSurgeActive, SURGE_MULTIPLIER } = require('../server');
+  res.json({ isSurge: isSurgeActive(), multiplier: SURGE_MULTIPLIER });
+};
     // @desc    Get spending stats for logged-in user (F12 - Spending Dashboard)
 // @route   GET /api/orders/stats
 const getOrderStats = async (req, res) => {
