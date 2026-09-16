@@ -43,55 +43,68 @@ const sendPushToTokens = async (tokens, title, body, data = {}, extraFCMOptions 
   if (!tokenList || !Array.isArray(tokenList) || tokenList.length === 0) return;
 
   const validTokens = tokenList.map(t => typeof t === 'string' ? t : t.token).filter(Boolean);
-  if (validTokens.length === 0) return;
+  if (validTokens.length === 0) return { successCount: 0, failureCount: 0, staleTokens: [] };
 
-  const message = {
-    notification: { title, body },
-    tokens: validTokens,
-    ...buildMessage(data, extraFCMOptions)
-  };
+  const MAX_BATCH_SIZE = 500;
+  let totalSuccess = 0;
+  let totalFailure = 0;
+  const allStaleTokens = [];
 
-  const attemptSend = async (attempt = 1) => {
-    try {
-      const response = await getMessaging().sendEachForMulticast(message);
-      const successCount = response.successCount || 0;
-      const failureCount = response.failureCount || 0;
-      console.log(`[FCM_SEND] Multicast: ${successCount} sent, ${failureCount} failed (attempt ${attempt})`);
+  for (let i = 0; i < validTokens.length; i += MAX_BATCH_SIZE) {
+    const batchTokens = validTokens.slice(i, i + MAX_BATCH_SIZE);
+    const message = {
+      notification: { title, body },
+      tokens: batchTokens,
+      ...buildMessage(data, extraFCMOptions)
+    };
 
-      // Clean up stale/invalid tokens
-      if (response.responses) {
-        const staleTokens = [];
-        response.responses.forEach((resp, idx) => {
-          if (resp.error) {
-            const code = resp.error.code || '';
-            if (code === 'messaging/registration-token-not-registered' ||
-                code === 'messaging/invalid-registration-token') {
-              staleTokens.push(validTokens[idx]);
+    const attemptSend = async (attempt = 1) => {
+      try {
+        const response = await getMessaging().sendEachForMulticast(message);
+        const successCount = response.successCount || 0;
+        const failureCount = response.failureCount || 0;
+        console.log(`[FCM_SEND] Multicast Batch ${i / MAX_BATCH_SIZE + 1}: ${successCount} sent, ${failureCount} failed (attempt ${attempt})`);
+
+        // Clean up stale/invalid tokens
+        if (response.responses) {
+          const staleTokens = [];
+          response.responses.forEach((resp, idx) => {
+            if (resp.error) {
+              const code = resp.error.code || '';
+              if (code === 'messaging/registration-token-not-registered' ||
+                  code === 'messaging/invalid-registration-token') {
+                staleTokens.push(batchTokens[idx]);
+              }
             }
+          });
+          if (staleTokens.length > 0) {
+            allStaleTokens.push(...staleTokens);
+            console.log(`[FCM_SEND] ${staleTokens.length} stale token(s) detected in batch.`);
           }
-        });
-        if (staleTokens.length > 0) {
-          console.log(`[FCM_SEND] ${staleTokens.length} stale token(s) detected — should be pruned from user records`);
         }
+
+        totalSuccess += successCount;
+        totalFailure += failureCount;
+        return response;
+      } catch (error) {
+        const statusCode = error?.httpResponse?.status || error?.code || '';
+        const isTransient = typeof statusCode === 'number'
+          ? statusCode >= 500
+          : String(statusCode).includes('unavailable') || String(statusCode).includes('internal');
+
+        if (isTransient && attempt < 3) {
+          console.warn(`[FCM_SEND] Transient error (${statusCode}) on batch, retrying in 2s...`);
+          await sleep(2000 * attempt);
+          return attemptSend(attempt + 1);
+        }
+        console.error(`[FCM_SEND] Failed batch after ${attempt} attempt(s):`, error.message || error);
       }
+    };
 
-      return response;
-    } catch (error) {
-      const statusCode = error?.httpResponse?.status || error?.code || '';
-      const isTransient = typeof statusCode === 'number'
-        ? statusCode >= 500
-        : String(statusCode).includes('unavailable') || String(statusCode).includes('internal');
+    await attemptSend();
+  }
 
-      if (isTransient && attempt < 2) {
-        console.warn(`[FCM_SEND] Transient error (${statusCode}), retrying in 2s...`);
-        await sleep(2000);
-        return attemptSend(attempt + 1);
-      }
-      console.error(`[FCM_SEND] Failed after ${attempt} attempt(s):`, error.message || error);
-    }
-  };
-
-  await attemptSend();
+  return { successCount: totalSuccess, failureCount: totalFailure, staleTokens: allStaleTokens };
 };
 
 // ── Topic Push ──────────────────────────────────────────────────────────
