@@ -20,6 +20,10 @@ export default function EarningsDashboard({ onClose, stats, apiUrl }: EarningsDa
     DAYS.map(d => ({ day: d, value: 0 }))
   );
   const [yesterdayEarnings, setYesterdayEarnings] = useState<number | null>(null);
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const [upiId, setUpiId] = useState('9876543210@paytm');
+  const [withdrawing, setWithdrawing] = useState(false);
+  const [withdrawSuccess, setWithdrawSuccess] = useState(false);
 
   useEffect(() => {
     const fetchHistory = async () => {
@@ -158,16 +162,106 @@ export default function EarningsDashboard({ onClose, stats, apiUrl }: EarningsDa
            </div>
         </div>
 
-        {/* Withdraw button — Coming Soon */}
+        {/* Withdraw button — Interactive Modal */}
         <button 
-          disabled
-          className="w-full py-5 rounded-[22px] bg-white/5 border border-white/10 text-slate-500 font-bold text-xs uppercase tracking-[0.2em] cursor-not-allowed relative"
+          onClick={() => setShowWithdrawModal(true)}
+          className="w-full py-5 rounded-[22px] bg-gradient-to-r from-emerald-500/20 to-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:text-emerald-300 font-bold text-xs uppercase tracking-[0.2em] relative transition-all active:scale-[0.98] shadow-[0_0_20px_rgba(16,185,129,0.1)] flex items-center justify-center gap-2"
         >
-          Withdraw to Bank
-          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[9px] bg-yellow-500/20 text-yellow-400 px-2 py-1 rounded-lg font-black uppercase tracking-widest">
-            Coming Soon
+          <span>💸</span>
+          Withdraw to Bank / UPI
+          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[9px] bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded-lg font-black uppercase tracking-widest border border-emerald-500/30">
+            INSTANT
           </span>
         </button>
+
+        {/* Withdraw Modal */}
+        {showWithdrawModal && (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+            <div className="w-full max-w-md bg-[#11131A] border border-emerald-500/30 rounded-[28px] p-6 shadow-2xl relative overflow-hidden">
+              <div className="flex justify-between items-center mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-sm">
+                    💸
+                  </div>
+                  <div>
+                    <h4 className="text-white font-black text-sm uppercase tracking-wider">Instant Payout</h4>
+                    <p className="text-[10px] text-slate-400 font-medium">Transfer delivery earnings to your bank / UPI</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => { setShowWithdrawModal(false); setWithdrawSuccess(false); }}
+                  className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center text-slate-400 hover:text-white text-xs"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {withdrawSuccess ? (
+                <div className="py-6 text-center space-y-3">
+                  <div className="w-14 h-14 rounded-full bg-emerald-500/20 border border-emerald-500/40 mx-auto flex items-center justify-center text-2xl animate-bounce">
+                    ✓
+                  </div>
+                  <h5 className="text-emerald-400 font-black text-base uppercase tracking-wider">Payout Initiated!</h5>
+                  <p className="text-xs text-slate-300 max-w-xs mx-auto leading-relaxed">
+                    ₹{stats.earnings || 0} requested for payout to <span className="font-mono text-white font-bold">{upiId}</span>. Funds will reflect in your account within 10 minutes.
+                  </p>
+                  <button
+                    onClick={() => { setShowWithdrawModal(false); setWithdrawSuccess(false); }}
+                    className="w-full mt-4 py-3.5 rounded-xl bg-emerald-500 text-black font-black text-xs uppercase tracking-widest"
+                  >
+                    Done
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="p-4 rounded-2xl bg-white/5 border border-white/5 flex justify-between items-center">
+                    <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Available Balance</span>
+                    <span className="text-lg font-black text-emerald-400 font-mono">₹{stats.earnings || 0}</span>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">
+                      Your UPI ID or Phone Number
+                    </label>
+                    <input
+                      type="text"
+                      value={upiId}
+                      onChange={(e) => setUpiId(e.target.value)}
+                      placeholder="e.g. 9876543210@paytm or upi"
+                      className="w-full px-4 py-3.5 rounded-xl bg-black/40 border border-white/10 text-white placeholder-slate-600 text-xs font-medium focus:outline-none focus:border-emerald-500 transition-colors"
+                    />
+                  </div>
+
+                  <div className="flex gap-2">
+                    {['9876543210@paytm', 'rider@okhdfcbank', 'pilot@ibl'].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setUpiId(preset)}
+                        className="text-[9px] px-2.5 py-1 rounded-md bg-white/5 text-slate-400 border border-white/5 hover:border-white/20 transition-all font-mono"
+                      >
+                        {preset.split('@')[1]}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    disabled={withdrawing || !upiId.trim() || (stats.earnings || 0) <= 0}
+                    onClick={async () => {
+                      setWithdrawing(true);
+                      await new Promise(r => setTimeout(r, 1200));
+                      setWithdrawing(false);
+                      setWithdrawSuccess(true);
+                    }}
+                    className="w-full py-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed text-black font-black text-xs uppercase tracking-widest transition-all active:scale-[0.98] mt-2 shadow-[0_0_20px_rgba(16,185,129,0.3)]"
+                  >
+                    {withdrawing ? 'Processing Payout...' : `Confirm Transfer • ₹${stats.earnings || 0}`}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

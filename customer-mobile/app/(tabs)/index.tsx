@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, RefreshControl, Image, FlatList, Dimensions, Platform, Modal, ActivityIndicator, Alert, Animated, Linking, BackHandler } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, RefreshControl, Image, FlatList, Dimensions, Platform, Modal, ActivityIndicator, Alert, Animated, Linking, BackHandler, Vibration } from 'react-native';
 import { Socket } from 'socket.io-client';
 import { connectSocket } from '../../utils/socket';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -137,6 +137,7 @@ export default function HomeScreen() {
   const [activeChallenge, setActiveChallenge] = useState<any>(null);
   const [blockLeaderboard, setBlockLeaderboard] = useState<any[]>([]);
   const [loadingBlock, setLoadingBlock] = useState(false);
+  const [showCatPrefModal, setShowCatPrefModal] = useState(false);
 
   // Zomato-range luxury animations
   const classicAnim = useRef(new Animated.Value(1)).current;
@@ -649,7 +650,7 @@ export default function HomeScreen() {
           <DopaminePressable 
             style={s.manageBtn} 
             sound="click"
-            onPress={() => Alert.alert('Preferences', 'Category preference management coming soon.')}
+            onPress={() => setShowCatPrefModal(true)}
           >
             <Text style={s.manageBtnText}>MANAGE CATEGORIES ⚙️</Text>
           </DopaminePressable>
@@ -1061,6 +1062,112 @@ export default function HomeScreen() {
               sound="click"
             >
               <Text style={s.modalCloseText}>DISMISS ARENA</Text>
+            </DopaminePressable>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── CATEGORY PREFERENCE & FILTER MODAL ── */}
+      <Modal visible={showCatPrefModal} animationType="slide" transparent={true} onRequestClose={() => setShowCatPrefModal(false)}>
+        <View style={s.modalOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowCatPrefModal(false)} />
+          <View style={[s.modalContentBox, { backgroundColor: cardBg, borderColor: goldBorderColor, borderWidth: 1 }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 6 }}>
+              <Text style={[s.modalTitle, { color: txt, marginBottom: 0 }]}>⚙️ CATEGORY PREFERENCES</Text>
+              <TouchableOpacity onPress={() => setShowCatPrefModal(false)} style={{ padding: 4 }}>
+                <Text style={{ fontSize: 18, color: txtSec, fontWeight: '800' }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={[s.modalSubtitle, { color: txtSec, marginBottom: 14 }]}>QUICK FOOD FILTERS & CUISINE SHORTCUTS</Text>
+
+            <ScrollView style={{ width: '100%', maxHeight: 360 }} showsVerticalScrollIndicator={false}>
+              {/* Dietary Fast Switcher */}
+              <View style={{ marginBottom: 16, padding: 12, borderRadius: 14, backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F8FAFC', borderWidth: 1, borderColor: border }}>
+                <Text style={{ fontSize: 10, fontWeight: '800', color: goldColor, letterSpacing: 1, marginBottom: 8 }}>DIETARY ACCESS</Text>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TouchableOpacity
+                    style={{
+                      flex: 1,
+                      paddingVertical: 10,
+                      borderRadius: 10,
+                      alignItems: 'center',
+                      backgroundColor: filter === 'all' ? (isDark ? goldColor : COLORS.red) : 'transparent',
+                      borderWidth: 1,
+                      borderColor: filter === 'all' ? 'transparent' : border,
+                    }}
+                    onPress={() => {
+                      setFilter('all');
+                      try { Vibration.vibrate(30); } catch (e) {}
+                    }}
+                  >
+                    <Text style={{ fontSize: 10, fontWeight: '900', color: filter === 'all' ? (isDark ? '#000' : '#FFF') : txt }}>🍽️ ALL DISHES</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={{
+                      flex: 1,
+                      paddingVertical: 10,
+                      borderRadius: 10,
+                      alignItems: 'center',
+                      backgroundColor: filter === 'veg' ? '#10B981' : 'transparent',
+                      borderWidth: 1,
+                      borderColor: filter === 'veg' ? 'transparent' : border,
+                    }}
+                    onPress={() => {
+                      setFilter('veg');
+                      try { Vibration.vibrate(30); } catch (e) {}
+                    }}
+                  >
+                    <Text style={{ fontSize: 10, fontWeight: '900', color: filter === 'veg' ? '#FFF' : txt }}>🥦 PURE VEG ONLY</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Quick Jump Category Cards */}
+              <Text style={{ fontSize: 10, fontWeight: '800', color: txtSec, letterSpacing: 1, marginBottom: 8 }}>POPULAR CAMPUS CUISINES</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+                {classics.map((c, i) => {
+                  const isSelected = classicFilter === c.name;
+                  return (
+                    <TouchableOpacity
+                      key={i}
+                      style={{
+                        paddingHorizontal: 12,
+                        paddingVertical: 8,
+                        borderRadius: 10,
+                        backgroundColor: isSelected ? (isDark ? goldColor : COLORS.red) : (isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9'),
+                        borderWidth: 1,
+                        borderColor: isSelected ? 'transparent' : border,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
+                      }}
+                      onPress={() => {
+                        setClassicFilter(isSelected ? '' : c.name);
+                        try { Vibration.vibrate(30); } catch (e) {}
+                        setShowCatPrefModal(false);
+                        if (!isSelected && scrollRef.current) {
+                          setTimeout(() => {
+                            scrollRef.current?.scrollTo({ y: nexusY.current || 550, animated: true });
+                          }, 250);
+                        }
+                      }}
+                    >
+                      <Text style={{ fontSize: 13 }}>{c.icon || '🍛'}</Text>
+                      <Text style={{ fontSize: 10, fontWeight: '800', color: isSelected ? (isDark ? '#000' : '#FFF') : txt }}>
+                        {c.name.toUpperCase()}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
+
+            <DopaminePressable 
+              style={s.modalCloseBtn} 
+              onPress={() => setShowCatPrefModal(false)}
+              sound="click"
+            >
+              <Text style={s.modalCloseText}>APPLY & CLOSE</Text>
             </DopaminePressable>
           </View>
         </View>

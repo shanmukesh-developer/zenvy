@@ -158,6 +158,7 @@ export function PulseGlow({ size, color = '#EF4F5F', children, style }: PulseGlo
   return (
     <View style={[{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }, style]}>
       <Animated.View
+        pointerEvents="none"
         style={{
           position: 'absolute',
           width: size,
@@ -206,6 +207,7 @@ export function FloatingPulse({ children, color = '#EF4F5F', style }: FloatingPu
   return (
     <View style={[{ position: 'relative' }, style]}>
       <Animated.View
+        pointerEvents="none"
         style={{
           ...StyleSheet.absoluteFill,
           borderRadius: 999,

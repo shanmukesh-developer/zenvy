@@ -136,15 +136,18 @@ export default function SOSPanel({ riderName, riderId, socket }: SOSPanelProps) 
         <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-4 flex items-center justify-between shadow-lg">
           <p className="text-red-500 font-bold text-xs uppercase tracking-widest">Hold for {sosCountdown}s...</p>
           <button
+            type="button"
+            onClick={handleSosCancel}
             onPointerUp={handleSosCancel}
             onPointerLeave={handleSosCancel}
-            className="text-[10px] font-black uppercase tracking-widest text-slate-400 bg-white/5 px-4 py-2 rounded-xl border border-white/5"
+            className="text-[10px] font-black uppercase tracking-widest text-slate-400 bg-white/5 px-4 py-2 rounded-xl border border-white/5 hover:text-white transition-colors"
           >
             Cancel
           </button>
         </div>
       ) : (
         <button
+          type="button"
           onPointerDown={handleSosStart}
           onPointerUp={handleSosCancel}
           onPointerLeave={handleSosCancel}

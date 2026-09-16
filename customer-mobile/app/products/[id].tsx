@@ -312,6 +312,35 @@ export default function ProductDetailScreen() {
   const [descExpanded, setDescExpanded] = useState(false);
   const [imgWidth, setImgWidth] = useState(SW);
 
+  useEffect(() => {
+    AsyncStorage.getItem('zenvy_wishlist').then(stored => {
+      if (stored) {
+        try {
+          const ids = JSON.parse(stored);
+          if (Array.isArray(ids) && ids.includes(cleanId)) {
+            setIsWishlisted(true);
+          }
+        } catch (e) {}
+      }
+    });
+  }, [cleanId]);
+
+  const handleToggleWishlist = async () => {
+    const nextState = !isWishlisted;
+    setIsWishlisted(nextState);
+    try {
+      const stored = await AsyncStorage.getItem('zenvy_wishlist');
+      let list: string[] = stored ? JSON.parse(stored) : [];
+      if (!Array.isArray(list)) list = [];
+      if (nextState) {
+        if (!list.includes(cleanId)) list.push(cleanId);
+      } else {
+        list = list.filter(id => id !== cleanId);
+      }
+      await AsyncStorage.setItem('zenvy_wishlist', JSON.stringify(list));
+    } catch (e) {}
+  };
+
   // Reviews state
   const [reviewsList, setReviewsList] = useState<any[]>([]);
   const [calculatedRating, setCalculatedRating] = useState<number>(4.8);
@@ -594,7 +623,7 @@ export default function ProductDetailScreen() {
               <Text style={styles.iconCircleText}>‹</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.iconCircleBtn} onPress={() => setIsWishlisted(!isWishlisted)}>
+            <TouchableOpacity style={styles.iconCircleBtn} onPress={handleToggleWishlist}>
               <Text style={{ fontSize: 16 }}>{isWishlisted ? '❤️' : '🤍'}</Text>
             </TouchableOpacity>
           </View>

@@ -965,11 +965,16 @@ export default function TrackingScreen() {
       </Modal>
 
       {/* ── RATING MODAL ── */}
-      <Modal visible={showRatingModal} transparent animationType="slide">
+      <Modal visible={showRatingModal} transparent animationType="slide" onRequestClose={() => setShowRatingModal(false)}>
         <View style={s.modalOverlay}>
-          <TouchableOpacity style={StyleSheet.absoluteFill} />
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowRatingModal(false)} />
           <View style={[s.ratingModalBox, { backgroundColor: cardBg }]}>
-            <Text style={[s.ratingModalTitle, { color: txt }]}>Rate Your Experience</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 4 }}>
+              <Text style={[s.ratingModalTitle, { color: txt, marginBottom: 0 }]}>Rate Your Experience</Text>
+              <TouchableOpacity onPress={() => setShowRatingModal(false)} style={{ padding: 4 }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Text style={{ fontSize: 18, color: txtSec, fontWeight: '800' }}>✕</Text>
+              </TouchableOpacity>
+            </View>
             <Text style={[s.ratingModalDesc, { color: txtSec }]}>
               How was the delivery by {orderInfo?.deliveryPartner?.name || 'Zenvy Captain'}?
             </Text>
@@ -1012,6 +1017,14 @@ export default function TrackingScreen() {
               ) : (
                 <Text style={s.submitRatingText}>SUBMIT RATING</Text>
               )}
+            </TouchableOpacity>
+
+            {/* Maybe Later Skip Button */}
+            <TouchableOpacity 
+              style={{ marginTop: 10, paddingVertical: 8, alignItems: 'center', width: '100%' }} 
+              onPress={() => setShowRatingModal(false)}
+            >
+              <Text style={{ fontSize: 10, fontWeight: '800', color: txtSec, letterSpacing: 1.2 }}>MAYBE LATER</Text>
             </TouchableOpacity>
           </View>
         </View>

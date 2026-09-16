@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions, Platform, TextInput, ActivityIndicator, Alert, Modal, Linking, Animated } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions, Platform, TextInput, ActivityIndicator, Alert, Modal, Linking, Animated, Vibration } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { COLORS, SHADOWS, RADIUS } from '../../constants/theme';
@@ -1511,6 +1511,46 @@ export default function OthersScreen() {
     },
   ]);
 
+  const [wishlistIds, setWishlistIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    AsyncStorage.getItem('zenvy_wishlist').then(stored => {
+      if (stored) {
+        try {
+          const ids = JSON.parse(stored);
+          if (Array.isArray(ids)) setWishlistIds(ids);
+        } catch (e) {}
+      }
+    });
+  }, []);
+
+  const toggleWishlistProduct = (product: any) => {
+    try { Vibration.vibrate(40); } catch (e) {}
+    const pId = String(product.id || product._id || '');
+    const isSaved = wishlistIds.includes(pId);
+    let updatedIds: string[];
+    if (isSaved) {
+      updatedIds = wishlistIds.filter(id => id !== pId);
+      setSavedFavoritesList(prev => prev.filter(f => f.id !== pId));
+    } else {
+      updatedIds = [...wishlistIds, pId];
+      const newFav = {
+        id: pId,
+        title: product.name || product.title || 'Campus Quick Bite',
+        subtitle: product.unit || product.category || 'Quick Grocery',
+        type: 'GROCERY',
+        price: `₹${product.price}`,
+        rating: '4.8 (100+)',
+        badge: '⭐ SAVED',
+        image: product.image || 'https://images.unsplash.com/photo-1550583724-b2692b85b150?w=600&q=80',
+        targetRoute: `/products/${pId}`,
+      };
+      setSavedFavoritesList(prev => [newFav, ...prev]);
+    }
+    setWishlistIds(updatedIds);
+    AsyncStorage.setItem('zenvy_wishlist', JSON.stringify(updatedIds)).catch(() => {});
+  };
+
   const cardBg = isDark ? 'rgba(255, 255, 255, 0.08)' : colors.card;
   const cardSurface = isDark ? '#1D1D20' : colors.card;
   const txt = colors.text;
@@ -1936,8 +1976,14 @@ export default function OthersScreen() {
                           </View>
                         )}
                         
-                        <TouchableOpacity style={s.bbWishlistBtn}>
-                          <Text style={{ fontSize: 13, color: '#999' }}>⭐</Text>
+                        <TouchableOpacity 
+                          style={s.bbWishlistBtn} 
+                          onPress={() => toggleWishlistProduct(product)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={{ fontSize: 13, color: wishlistIds.includes(String(product.id)) ? '#F59E0B' : '#999' }}>
+                            {wishlistIds.includes(String(product.id)) ? '★' : '☆'}
+                          </Text>
                         </TouchableOpacity>
 
                         <View style={s.bbAddBtnOverlapping}>
@@ -2127,8 +2173,14 @@ export default function OthersScreen() {
                           </View>
                         )}
                         
-                        <TouchableOpacity style={s.bbWishlistBtn}>
-                          <Text style={{ fontSize: 13, color: '#999' }}>⭐</Text>
+                        <TouchableOpacity 
+                          style={s.bbWishlistBtn} 
+                          onPress={() => toggleWishlistProduct(product)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={{ fontSize: 13, color: wishlistIds.includes(String(product.id)) ? '#F59E0B' : '#999' }}>
+                            {wishlistIds.includes(String(product.id)) ? '★' : '☆'}
+                          </Text>
                         </TouchableOpacity>
 
                         <View style={s.bbAddBtnOverlapping}>
@@ -2366,8 +2418,14 @@ export default function OthersScreen() {
                       </TouchableOpacity>
                       
                       {/* Heart outline badge */}
-                      <TouchableOpacity style={s.bbWishlistBtn}>
-                        <Text style={{ fontSize: 13, color: '#999' }}>⭐</Text>
+                      <TouchableOpacity 
+                        style={s.bbWishlistBtn} 
+                        onPress={() => toggleWishlistProduct(product)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={{ fontSize: 13, color: wishlistIds.includes(String(product.id)) ? '#F59E0B' : '#999' }}>
+                          {wishlistIds.includes(String(product.id)) ? '★' : '☆'}
+                        </Text>
                       </TouchableOpacity>
 
                       {/* Overlapping green square + button */}
