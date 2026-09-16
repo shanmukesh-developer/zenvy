@@ -178,11 +178,11 @@ export default function AdminHome() {
   const [interceptedChats, setInterceptedChats] = useState<{orderId: string, sender: string, senderRole: string, message: string, timestamp: Date}[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Megaphone
   const [megaMsg, setMegaMsg] = useState('');
   const [megaType, setMegaType] = useState<'info' | 'warning' | 'promo' | 'emergency'>('info');
   const [broadcasting, setBroadcasting] = useState(false);
   const [selectedUPIOrder, setSelectedUPIOrder] = useState<LiveOrder | null>(null);
+  const [stormMode, setStormMode] = useState(false);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -656,12 +656,19 @@ export default function AdminHome() {
           <div className="flex gap-4 print:hidden">
             <button 
               onClick={() => {
-                if (!confirm("Activate STORM MODE? This will globally enable Surge Pricing and alert all active users.")) return;
-                if (socket) socket.emit('admin_broadcast', { message: "⚠️ SEVERE WEATHER: Deliveries may be delayed. Surge pricing active.", type: "emergency" });
+                const nextState = !stormMode;
+                if (nextState) {
+                   if (!confirm("Activate STORM MODE? This will globally enable Surge Pricing and alert all active users.")) return;
+                   if (socket) socket.emit('admin_broadcast', { message: "⚠️ SEVERE WEATHER: Deliveries may be delayed. Surge pricing active.", type: "emergency" });
+                } else {
+                   if (!confirm("Deactivate STORM MODE?")) return;
+                   if (socket) socket.emit('admin_broadcast', { message: "✅ Weather clear. Normal operations resumed.", type: "info" });
+                }
+                setStormMode(nextState);
               }}
-              className="px-8 py-4 bg-red-600 shadow-[0_0_30px_rgba(220,38,38,0.3)] rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] text-white hover:scale-105 transition-all animate-pulse"
+              className={`px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:scale-105 transition-all ${stormMode ? 'bg-red-600 text-white shadow-[0_0_30px_rgba(220,38,38,0.3)] animate-pulse' : 'bg-red-900/40 text-red-400 border border-red-500/30'}`}
             >
-               🚨 STORM MODE OVERRIDE
+               {stormMode ? '🚨 STORM MODE ACTIVE' : '☁️ ACTIVATE STORM MODE'}
             </button>
             <button 
               onClick={handleOverrideGlobalBatch}
