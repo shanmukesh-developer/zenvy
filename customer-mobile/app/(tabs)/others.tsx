@@ -3248,7 +3248,21 @@ export default function OthersScreen() {
               ) : (
                 <View style={s.emptyState}>
                   <Text style={{ fontSize: 32, marginBottom: 8 }}>🏢</Text>
-                  <Text style={{ color: txtSec, fontSize: 11, fontWeight: '700' }}>No residences matching filters.</Text>
+                  <Text style={{ color: txt, fontSize: 12, fontWeight: '900', letterSpacing: 1, marginBottom: 4 }}>NO RESIDENCES MATCHING FILTERS</Text>
+                  <Text style={{ color: txtSec, fontSize: 10, fontWeight: '600', textAlign: 'center', marginBottom: 14 }}>
+                    Try expanding your budget, distance from campus, or gender preference.
+                  </Text>
+                  <TouchableOpacity
+                    style={[s.resetBtn, { backgroundColor: goldColor }]}
+                    onPress={() => {
+                      setGenderFilter('All');
+                      setBudgetFilter('All');
+                      setDistanceFilter('All');
+                      setSearchQuery('');
+                    }}
+                  >
+                    <Text style={[s.resetBtnText, { color: isDark ? '#000' : '#fff' }]}>RESET PG FILTERS</Text>
+                  </TouchableOpacity>
                 </View>
               )}
             </View>
@@ -3450,7 +3464,16 @@ export default function OthersScreen() {
                 ) : (
                   <View style={s.emptyState}>
                     <Text style={{ fontSize: 32, marginBottom: 8 }}>🚗</Text>
-                    <Text style={{ color: txtSec, fontSize: 11, fontWeight: '700' }}>No commutes active. Post yours now!</Text>
+                    <Text style={{ color: txt, fontSize: 12, fontWeight: '900', letterSpacing: 1, marginBottom: 4 }}>NO COMMUTES ACTIVE</Text>
+                    <Text style={{ color: txtSec, fontSize: 10, fontWeight: '600', textAlign: 'center', marginBottom: 14 }}>
+                      Be the first to create a fuel-split pool or travel together with campus peers.
+                    </Text>
+                    <TouchableOpacity
+                      style={[s.resetBtn, { backgroundColor: COLORS.red }]}
+                      onPress={() => setShowCreateModal(true)}
+                    >
+                      <Text style={[s.resetBtnText, { color: '#fff' }]}>+ POST A COMMUTE</Text>
+                    </TouchableOpacity>
                   </View>
                 )}
               </View>
@@ -3626,8 +3649,17 @@ export default function OthersScreen() {
                   })
                 ) : (
                   <View style={s.emptyState}>
-                    <Text style={{ fontSize: 32, marginBottom: 8 }}>🏢</Text>
-                    <Text style={{ color: txtSec, fontSize: 11, fontWeight: '700' }}>No commute records found.</Text>
+                    <Text style={{ fontSize: 32, marginBottom: 8 }}>🚗</Text>
+                    <Text style={{ color: txt, fontSize: 12, fontWeight: '900', letterSpacing: 1, marginBottom: 4 }}>NO COMMUTE RECORDS FOUND</Text>
+                    <Text style={{ color: txtSec, fontSize: 10, fontWeight: '600', textAlign: 'center', marginBottom: 14 }}>
+                      You have not created or joined any peer ride-sharing pools yet.
+                    </Text>
+                    <TouchableOpacity
+                      style={[s.resetBtn, { backgroundColor: goldColor }]}
+                      onPress={() => setCorideTab('browse')}
+                    >
+                      <Text style={[s.resetBtnText, { color: isDark ? '#000' : '#fff' }]}>FIND A COMMUTE</Text>
+                    </TouchableOpacity>
                   </View>
                 )}
               </View>
@@ -5285,6 +5317,8 @@ const s = StyleSheet.create({
   pgCardBookBtn: { backgroundColor: '#fff', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
   pgCardBookText: { fontSize: 8, fontWeight: '900', color: '#000', letterSpacing: 1 },
   emptyState: { padding: 48, alignItems: 'center', justifyContent: 'center' },
+  resetBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  resetBtnText: { fontSize: 9, fontWeight: '900', letterSpacing: 1.5 },
 
   // Co-Ride styling
   karmaBanner: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderRadius: 20, borderWidth: 1, marginBottom: 16 },
