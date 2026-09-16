@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { io } from 'socket.io-client';
 import api from '@/lib/api';
@@ -81,6 +81,13 @@ export default function Dashboard() {
   const [rejectPromptId, setRejectPromptId] = useState<string | null>(null);
   const [acceptPromptId, setAcceptPromptId] = useState<string | null>(null);
   const [isOnline, setIsOnline] = useState(typeof window !== 'undefined' ? navigator.onLine : true);
+  const [autoAccept, setAutoAccept] = useState(false);
+  const autoAcceptRef = useRef(false);
+  
+  useEffect(() => {
+    autoAcceptRef.current = autoAccept;
+  }, [autoAccept]);
+
   const router = useRouter();
   const { toast } = useToast();
 
@@ -140,7 +147,16 @@ export default function Dashboard() {
 
     s.on('restaurant_newOrder', () => {
       alertChime.play().catch(e => console.error("Audio play failed:", e));
-      api.get(`/restaurants/${restaurantId}/orders`).then(res => setOrders(res.data.map((o: any) => ({ ...o, id: o.id || o._id }))));
+      api.get(`/restaurants/${restaurantId}/orders`).then(res => {
+        const fetched = res.data.map((o: any) => ({ ...o, id: o.id || o._id }));
+        setOrders(fetched);
+        if (autoAcceptRef.current) {
+          const pending = fetched.filter((o: any) => o.status === 'Pending');
+          pending.forEach((o: any) => {
+             api.put(`/orders/${o.id}/restaurant-accept`, { estDuration: 15 }).catch(console.error);
+          });
+        }
+      });
     });
 
     s.on('statusUpdated', () => {
@@ -327,6 +343,16 @@ export default function Dashboard() {
         </div>
         
         <div className="flex items-center gap-4">
+           {/* Auto-Accept Toggle */}
+           <div className="hidden lg:flex items-center gap-2 bg-zinc-900 border border-zinc-800 px-3 py-2 rounded-xl">
+              <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Auto-Accept</span>
+              <button 
+                onClick={() => setAutoAccept(!autoAccept)}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${autoAccept ? 'bg-orange-500 shadow-[0_0_10px_#f97316]' : 'bg-zinc-700'}`}
+              >
+                <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${autoAccept ? 'translate-x-5' : 'translate-x-1'}`} />
+              </button>
+           </div>
            {restaurant && (
              <button
                onClick={toggleStoreOffline}
@@ -377,9 +403,10 @@ export default function Dashboard() {
               <Clock className="text-orange-500" /> Live Feed
             </h2>
             
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
             <AnimatePresence mode="popLayout">
               {activeOrders.length === 0 ? (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-zinc-500 italic p-12 rounded-2xl border border-zinc-900 border-dashed text-center bg-zinc-900/20">
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="col-span-full text-zinc-500 italic p-12 rounded-2xl border border-zinc-900 border-dashed text-center bg-zinc-900/20">
                   Waiting for new orders...
                 </motion.div>
               ) : (
@@ -389,9 +416,13 @@ export default function Dashboard() {
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.95 }}
-                    className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-xl relative overflow-hidden"
+                    className={`border-2 rounded-2xl p-5 shadow-xl relative overflow-hidden flex flex-col ${
+                      order.status === 'Pending' ? 'bg-amber-950/40 border-amber-500/50' : 
+                      order.status === 'Accepted' ? 'bg-blue-950/40 border-blue-500/50' :
+                      'bg-emerald-950/40 border-emerald-500/50'
+                    }`}
                   >
-                    <div className="flex justify-between items-start mb-6">
+                    <div className="flex justify-between items-start mb-4">
                       <div>
                         <div className="flex items-center gap-3 mb-1">
                            <span className="text-[10px] font-black bg-white/5 border border-white/10 px-2 py-0.5 rounded-md text-[#C9A84C] font-mono tracking-widest">#{String(order.id || order._id).slice(-6).toUpperCase()}</span>
@@ -467,7 +498,7 @@ export default function Dashboard() {
                        )}
                     </div>
 
-                    <div className="space-y-3 mb-8 bg-zinc-950/50 p-4 rounded-xl border border-zinc-800/50">
+                    <div className="flex-1 space-y-2 mb-6 bg-black/40 p-4 rounded-xl border border-white/5">
                       {order.items.map((item, i: number) => (
                         <div key={i} className="flex justify-between text-sm items-center">
                           <span className="text-zinc-300 font-medium">
@@ -521,9 +552,9 @@ export default function Dashboard() {
                     {order.status === 'Accepted' && (
                       <button 
                         onClick={() => handleReady(order.id)}
-                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-3 transition-all active:scale-[0.98] shadow-lg shadow-blue-600/20"
+                        className="w-full bg-blue-500 hover:bg-blue-400 text-black font-black text-xs uppercase tracking-widest py-4 rounded-xl flex items-center justify-center gap-3 transition-all active:scale-[0.98] shadow-[0_0_20px_rgba(59,130,246,0.3)] mt-auto"
                       >
-                         <Package size={20} /> Dispatch / Food Ready
+                         <Package size={20} /> Mark Food Ready
                       </button>
                     )}
                     {order.status === 'ReadyForPickup' && (
@@ -536,6 +567,7 @@ export default function Dashboard() {
                 ))
               )}
             </AnimatePresence>
+            </div>
           </div>
 
           {/* Sidebar / Past Orders & Analytics */}
@@ -602,55 +634,16 @@ export default function Dashboard() {
                     <Edit2 size={18} />
                   </button>
                   <div className="relative">
+                    {/* 1-Tap 86 (Out of Stock) */}
                     <button 
-                      onClick={() => {
-                         if (item.isAvailable) {
-                            if (openToggleMenu === item.id) setOpenToggleMenu(null);
-                            else setOpenToggleMenu(item.id);
-                         } else {
-                            toggleAvailability(item.id);
-                         }
-                      }}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${item.isAvailable ? 'bg-orange-500' : 'bg-zinc-800'}`}
+                      onClick={() => toggleAvailability(item.id)}
+                      className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors focus:outline-none shadow-inner ${item.isAvailable ? 'bg-orange-500' : 'bg-zinc-800'}`}
                     >
-                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${item.isAvailable ? 'translate-x-6' : 'translate-x-1'}`} />
+                      <span className={`inline-block h-6 w-6 transform rounded-full bg-white transition-transform ${item.isAvailable ? 'translate-x-7' : 'translate-x-1'}`} />
                     </button>
                     
                     <AnimatePresence>
-                      {openToggleMenu === item.id && (
-                        <>
-                          <div className="fixed inset-0 z-40" onClick={() => setOpenToggleMenu(null)} />
-                          <motion.div 
-                            initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                            className="absolute right-0 top-8 z-50 w-48 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl overflow-hidden"
-                          >
-                            <button
-                              onClick={() => {
-                                 setOpenToggleMenu(null);
-                                 const endOfDay = new Date();
-                                 endOfDay.setHours(23, 59, 59, 999);
-                                 api.put(`/restaurants/menu/${item.id}/toggle`, { outOfStockUntil: endOfDay.toISOString() })
-                                  .then(res => setMenu(menu.map(m => m.id === item.id ? { ...m, isAvailable: res.data.isAvailable } : m)))
-                                  .catch(() => alert('Failed to update'));
-                              }}
-                              className="w-full text-left px-4 py-3 text-sm text-zinc-300 hover:bg-white/5 hover:text-white transition-colors border-b border-zinc-800/50"
-                            >
-                              Disable until end of day
-                            </button>
-                            <button
-                              onClick={() => {
-                                 setOpenToggleMenu(null);
-                                 toggleAvailability(item.id);
-                              }}
-                              className="w-full text-left px-4 py-3 text-sm text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors"
-                            >
-                              Disable indefinitely
-                            </button>
-                          </motion.div>
-                        </>
-                      )}
+                      {/* Removed contextual menu for strict 1-Tap 86 pattern */}
                     </AnimatePresence>
                   </div>
                 </div>
