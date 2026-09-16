@@ -223,7 +223,7 @@ export default function UserManagement() {
               <thead>
                 <tr className="bg-white/[0.03] border-b border-white/5">
                   <th className="px-8 py-5 text-[9px] font-black text-gray-500 uppercase tracking-widest">Timestamp</th>
-                  <th className="px-8 py-5 text-[9px] font-black text-gray-500 uppercase tracking-widest">Protocol</th>
+                  <th className="px-8 py-5 text-[9px] font-black text-gray-500 uppercase tracking-widest">Action Type</th>
                   <th className="px-8 py-5 text-[9px] font-black text-gray-500 uppercase tracking-widest">Operational Detail</th>
                 </tr>
               </thead>
@@ -241,10 +241,10 @@ export default function UserManagement() {
            {/* Audit Pagination */}
            {logPages > 1 && (
              <div className="p-6 bg-white/[0.03] border-t border-white/5 flex items-center justify-between">
-               <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Protocol Audit - Page {logPage} / {logPages} ({totalLogs} entries)</span>
+               <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Security Audit Log - Page {logPage} / {logPages} ({totalLogs} entries)</span>
                <div className="flex gap-2">
-                  <button disabled={logPage === 1} onClick={() => fetchLogs(logPage - 1)} className="px-5 py-2 bg-black/40 border border-white/10 rounded-xl text-[10px] font-black uppercase text-gray-400 hover:text-white disabled:opacity-30">Back</button>
-                  <button disabled={logPage === logPages} onClick={() => fetchLogs(logPage + 1)} className="px-5 py-2 bg-black/40 border border-white/10 rounded-xl text-[10px] font-black uppercase text-gray-400 hover:text-white disabled:opacity-30">Ahead</button>
+                  <button disabled={logPage === 1} onClick={() => fetchLogs(logPage - 1)} className="px-5 py-2 bg-black/40 border border-white/10 rounded-xl text-[10px] font-black uppercase text-gray-400 hover:text-white disabled:opacity-30">Previous</button>
+                  <button disabled={logPage === logPages} onClick={() => fetchLogs(logPage + 1)} className="px-5 py-2 bg-black/40 border border-white/10 rounded-xl text-[10px] font-black uppercase text-gray-400 hover:text-white disabled:opacity-30">Next</button>
                </div>
              </div>
            )}

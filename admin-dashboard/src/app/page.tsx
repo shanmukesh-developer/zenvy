@@ -292,7 +292,7 @@ export default function AdminHome() {
   };
 
   const handleOverrideGlobalBatch = async () => {
-    if (!confirm('OVERRIDE PROTOCOL: Force-accept all pending orders?')) return;
+    if (!confirm('Are you sure you want to batch-accept all pending orders?')) return;
     try {
       const userData = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') || '{}') : {};
       const token = userData.token || '';

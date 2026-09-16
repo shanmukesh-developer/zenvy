@@ -257,7 +257,7 @@ export const FleetOrderCard: React.FC<FleetOrderCardProps> = ({
         {/* Mega Basket: Kirana Photo & Bill Approval Proof Cards */}
         {!isAvailableFeed && order.isMegaBasket && (
           <View style={styles.kiranaCard}>
-            <Text style={styles.kiranaHeader}>KIRANA REIMBURSEMENT PROTOCOL</Text>
+            <Text style={styles.kiranaHeader}>KIRANA REIMBURSEMENT INSTRUCTIONS</Text>
             
             {/* Step 1: Item Photo */}
             <View style={styles.kiranaStepRow}>

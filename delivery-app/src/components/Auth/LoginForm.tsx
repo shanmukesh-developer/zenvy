@@ -142,7 +142,7 @@ export default function LoginForm({ onLogin, apiUrl }: LoginFormProps) {
            </a>
         </div>
 
-        <p className="mt-12 text-center text-[9px] text-slate-600 font-medium uppercase tracking-[0.2em]">Logistics Protocol v2.5.0 // Secured via Nexus</p>
+        <p className="mt-12 text-center text-[9px] text-slate-500 font-medium uppercase tracking-[0.2em]">Zenvy Delivery Partner Network // Verified Access</p>
       </motion.div>
     </main>
   );

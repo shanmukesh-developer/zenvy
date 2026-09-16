@@ -110,8 +110,8 @@ export default function AdminLoginPage() {
         </AnimatePresence>
       </motion.div>
 
-      <div className="absolute bottom-10 text-[9px] font-black text-gray-700 uppercase tracking-[0.8em]">
-        Nexus Protocol v4.0.5 // encrypted_stream
+      <div className="absolute bottom-10 text-[9px] font-bold text-gray-500 uppercase tracking-[0.3em]">
+        Zenvy Operations Management Portal
       </div>
     </main>
   );
