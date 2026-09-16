@@ -619,6 +619,83 @@ exports.removeFriend = async (req, res) => {
   }
 };
 
+// 9b. Decline a pending friend request
+exports.declineFriendRequest = async (req, res) => {
+  try {
+    const { friendshipId } = req.body;
+    if (!friendshipId) return res.status(400).json({ message: 'friendshipId is required.' });
+
+    const Friendship = getFriendshipModel();
+    if (!Friendship) return res.status(500).json({ message: 'Model not loaded' });
+
+    const friendship = await Friendship.findByPk(friendshipId);
+    if (!friendship) return res.status(404).json({ message: 'Friend request not found.' });
+
+    if (friendship.recipientId !== req.user.id) {
+      return res.status(403).json({ message: 'Only the recipient can decline a friend request.' });
+    }
+    if (friendship.status !== 'pending') {
+      return res.status(400).json({ message: `Cannot decline — request status is already '${friendship.status}'.` });
+    }
+
+    await friendship.destroy();
+
+    // Notify the requester via socket
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user-${friendship.requesterId}`).emit('friend_request_declined', {
+        friendshipId,
+        declinedBy: { id: req.user.id, name: req.user.name }
+      });
+    }
+
+    res.json({ message: 'Friend request declined.' });
+  } catch (error) {
+    console.error('[DECLINE_FRIEND_REQUEST_ERROR]', error);
+    res.status(500).json({ message: 'Server error declining request.' });
+  }
+};
+
+// 9c. Block a user
+exports.blockUser = async (req, res) => {
+  try {
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ message: 'userId is required.' });
+    if (userId === req.user.id) return res.status(400).json({ message: 'You cannot block yourself.' });
+
+    const Friendship = getFriendshipModel();
+    if (!Friendship) return res.status(500).json({ message: 'Model not loaded' });
+
+    // Check for existing friendship/request
+    let friendship = await Friendship.findOne({
+      where: {
+        [Op.or]: [
+          { requesterId: req.user.id, recipientId: userId },
+          { requesterId: userId, recipientId: req.user.id }
+        ]
+      }
+    });
+
+    if (friendship) {
+      friendship.status = 'blocked';
+      friendship.blockedBy = req.user.id;
+      await friendship.save();
+    } else {
+      friendship = await Friendship.create({
+        requesterId: req.user.id,
+        recipientId: userId,
+        status: 'blocked',
+        blockedBy: req.user.id
+      });
+    }
+
+    res.json({ message: 'User blocked successfully.', friendshipId: friendship.id });
+  } catch (error) {
+    console.error('[BLOCK_USER_ERROR]', error);
+    res.status(500).json({ message: 'Server error blocking user.' });
+  }
+};
+
 // 10. Send Orbit Nudge
 exports.sendFriendNudge = async (req, res) => {
   try {
@@ -663,7 +740,8 @@ exports.updateUserStatus = async (req, res) => {
   try {
     const { statusText, statusEmoji } = req.body;
     const User = getUserModel();
-    if (!User) return res.status(500).json({ message: 'Model not loaded' });
+    const Friendship = getFriendshipModel();
+    if (!User || !Friendship) return res.status(500).json({ message: 'Models not loaded' });
 
     const user = await User.findByPk(req.user.id);
     if (!user) return res.status(404).json({ message: 'User not found' });
@@ -673,13 +751,28 @@ exports.updateUserStatus = async (req, res) => {
     user.statusSeenBy = [];
     await user.save();
 
-    // Broadcast status change to all friends list via socket
+    // Broadcast status change ONLY to accepted friends (scoped, not global)
     const io = req.app.get('io');
     if (io) {
-      io.emit('friend_status_updated', {
+      const friendships = await Friendship.findAll({
+        where: {
+          status: 'accepted',
+          [Op.or]: [
+            { requesterId: req.user.id },
+            { recipientId: req.user.id }
+          ]
+        }
+      });
+      const friendIds = friendships.map(fs =>
+        fs.requesterId === req.user.id ? fs.recipientId : fs.requesterId
+      );
+      const payload = {
         userId: req.user.id,
         statusText: user.statusText,
         statusEmoji: user.statusEmoji
+      };
+      friendIds.forEach(friendId => {
+        io.to(`user-${friendId}`).emit('friend_status_updated', payload);
       });
     }
 
@@ -715,7 +808,7 @@ exports.markStatusAsSeen = async (req, res) => {
     }
 
     // Find all accepted friends of the friend to see if everyone has seen it
-    const { Op } = require('sequelize');
+    // Op already imported at top of file
     const friendships = await Friendship.findAll({
       where: {
         status: 'accepted',

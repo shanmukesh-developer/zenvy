@@ -4,6 +4,7 @@ const {
   searchContacts,
   sendFriendRequest,
   acceptFriendRequest,
+  declineFriendRequest,
   getFriends,
   getPendingRequests,
   updateFriendshipTheme,
@@ -12,6 +13,7 @@ const {
   updateFriendshipNickname,
   sendFriendNudge,
   removeFriend,
+  blockUser,
   updateUserStatus,
   markStatusAsSeen
 } = require('../controllers/friendController');
@@ -23,6 +25,8 @@ router.use(protect); // Ensure all friends endpoints are authenticated
 router.post('/contacts', searchContacts);
 router.post('/request', sendFriendRequest);
 router.post('/accept', acceptFriendRequest);
+router.post('/decline', declineFriendRequest);
+router.post('/block', blockUser);
 router.get('/', getFriends);
 router.get('/pending', getPendingRequests);
 router.put('/status', updateUserStatus);
@@ -35,3 +39,4 @@ router.post('/message', sendFriendMessage);
 router.get('/messages/:conversationId', getFriendMessages);
 
 module.exports = router;
+

@@ -10,6 +10,9 @@ const { sendWhatsAppMessage } = require('../utils/whatsappUtil');
 
 const { normalizePhone } = require('../utils/phoneUtils');
 
+// ── Constants ────────────────────────────────────────────────────────────
+const BASE_DELIVERY_FEE = 30; // Flat ₹30 per delivery
+
 const normalizeItems = (items) => {
   if (typeof items === 'string') {
     try {
@@ -490,6 +493,22 @@ const cancelOrderByRider = async (req, res) => {
       io.emit('newOrder', { ...order.toJSON(), id: order.id, _id: order.id });
     }
 
+    // Push notify the customer about reassignment
+    try {
+      const User = getUserModel();
+      const customer = await User.findByPk(order.userId);
+      if (customer?.fcmTokens?.length > 0) {
+        await sendPushToTokens(
+          customer.fcmTokens,
+          'Rider Reassigning 🔄',
+          'Your previous rider had to cancel. We\'re assigning a new rider shortly.',
+          { orderId: order.id, type: 'ORDER_UPDATE' }
+        );
+      }
+    } catch (pushErr) {
+      console.warn('[PUSH_NOTIFY_WARN] Failed to notify customer on rider cancel:', pushErr.message);
+    }
+
     res.json({ message: 'Order cancelled by rider. Reassigning...' });
   } catch (error) {
     console.error('[RIDER_CANCEL_ERROR]', error);
@@ -578,7 +597,7 @@ const getActiveOrders = async (req, res) => {
       const customer = userMap[order.userId];
       return {
         id: order.id,
-        restaurant: restaurant?.name || 'Nexus Hub',
+        restaurant: restaurant?.name || 'Restaurant',
         restaurantAddress: restaurant?.location || 'Amaravathi Hub',
         restaurantPhone: restaurant?.whatsappNumber || '',
         customerName: customer?.name || 'Verified Customer',
@@ -882,7 +901,9 @@ const createTestOrder = async (req, res) => {
       ],
       totalAmount: 620,
       totalPrice: 620,
-      finalPrice: 620,
+      deliveryFee: BASE_DELIVERY_FEE,
+      finalPrice: 620 + BASE_DELIVERY_FEE,
+      paymentMethod: 'COD',
       status: 'Accepted',
       deliveryAddress: 'Ganga Hostel, Block C - Room 314',
       deliveryPin: pin,

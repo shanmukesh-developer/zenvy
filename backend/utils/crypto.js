@@ -35,7 +35,12 @@ function decryptText(cipherText) {
       // Fallback if message wasn't encrypted (e.g. legacy/system messages)
       return cipherText;
     }
-    const iv = Buffer.from(parts[0], 'hex');
+    const ivHex = parts[0];
+    // IV must be exactly 16 bytes = 32 hex chars; otherwise treat as unencrypted
+    if (ivHex.length !== 32 || !/^[0-9a-fA-F]+$/.test(ivHex)) {
+      return cipherText;
+    }
+    const iv = Buffer.from(ivHex, 'hex');
     const encryptedText = Buffer.from(parts[1], 'hex');
     const decipher = crypto.createDecipheriv('aes-256-cbc', ENCRYPTION_KEY, iv);
     let decrypted = decipher.update(encryptedText, 'hex', 'utf8');

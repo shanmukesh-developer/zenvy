@@ -99,7 +99,7 @@ router.delete('/vault/:id', deleteVaultItem);
 // Database Seeding Engine
 router.post('/seed', seedDatabase);
 
-// Nexus Intelligence
+// Finance & Payouts
 router.get('/finance', getFinanceReport);
 router.get('/finance/payouts', (req, res, next) => {
   const { getRestaurantPayouts } = require('../controllers/adminController');
@@ -122,7 +122,7 @@ router.post('/finance/refund/:orderId', (req, res, next) => {
   processManualRefund(req, res, next);
 });
 
-// Advanced God-Tier
+// Advanced Admin Controls
 router.put('/users/:userId/ban', (req, res, next) => {
   const { toggleUserBan } = require('../controllers/adminController');
   toggleUserBan(req, res, next);

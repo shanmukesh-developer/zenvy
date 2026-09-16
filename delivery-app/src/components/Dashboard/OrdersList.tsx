@@ -64,10 +64,10 @@ const getOrderTimeSlot = (order: Order): 'Before 7:30 PM' | 'After 7:30 PM' | '1
     const minutes = date.getMinutes();
     const decimalTime = hours + minutes / 60;
     
-    if (decimalTime < 19.5) {
-      return 'Before 7:30 PM';
-    } else if (decimalTime >= 13 && decimalTime <= 18) {
+    if (decimalTime >= 13 && decimalTime <= 18) {
       return '1:00 PM to 6:00 PM';
+    } else if (decimalTime < 19.5) {
+      return 'Before 7:30 PM';
     } else {
       return 'After 7:30 PM';
     }
