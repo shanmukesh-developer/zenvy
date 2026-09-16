@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,9 +12,10 @@ import {
   Switch,
   Alert,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import QRCode from 'react-native-qrcode-svg';
@@ -128,6 +129,14 @@ export default function ProfileScreen() {
     }
   }, [user?.id]);
 
+  useFocusEffect(
+    useCallback(() => {
+      if (user) {
+        fetchData();
+      }
+    }, [user?.id])
+  );
+
   const loadLocalPreferences = async () => {
     try {
       const savedAddrRaw = await AsyncStorage.getItem('zenvy_saved_addresses');
@@ -162,60 +171,47 @@ export default function ProfileScreen() {
         }
       }
 
-      // 2. Spending Stats with smart telemetry tracking
+      // 2. Spending Stats with genuine order telemetry & marked favorite resolution
       try {
+        let markedFavName: string | null = null;
+        try {
+          const favsStr = await AsyncStorage.getItem('zenvy_favorites');
+          const favIds = favsStr ? JSON.parse(favsStr) : [];
+          if (Array.isArray(favIds) && favIds.length > 0) {
+            const restRes = await apiFetch(ENDPOINTS.restaurants);
+            if (restRes.ok) {
+              const rests = await restRes.json();
+              const matched = rests.find((r: any) => favIds.includes(r.id) || favIds.includes(r._id));
+              if (matched) {
+                markedFavName = matched.name;
+              }
+            }
+          }
+        } catch (favErr) {
+          console.warn('Favorite resolution error:', favErr);
+        }
+
         const statsRes = await apiFetch(`${API_URL}/api/orders/stats`);
         if (statsRes.ok) {
           const data = await statsRes.json();
-          setSpendStats(data);
-        } else {
-          // Generate active telemetry data from current user orders / activity
-          const totalOrd = user?.totalOrders || user?.completedOrders || 12;
-          const avgOrd = Math.round(240 + (Math.random() * 40));
-          const totalSpent = totalOrd * avgOrd;
-          const isVegUser = dietPrefs?.mode === 'veg' || user?.isVeg;
-          
           setSpendStats({
-            totalOrders: totalOrd,
-            avgOrderValue: avgOrd,
-            currentStreak: user?.streakCount || 3,
-            favoriteRestaurant: isVegUser ? 'Green Campus Kitchen' : 'Royal Biryani Handi',
-            monthlySpend: [
-              { month: 'Mar 2026', total: Math.round(totalSpent * 0.12) },
-              { month: 'Apr 2026', total: Math.round(totalSpent * 0.15) },
-              { month: 'May 2026', total: Math.round(totalSpent * 0.18) },
-              { month: 'Jun 2026', total: Math.round(totalSpent * 0.22) },
-              { month: 'Jul 2026', total: Math.round(totalSpent * 0.14) },
-              { month: 'Aug 2026', total: Math.round(totalSpent * 0.19) },
-            ],
-            topItems: [
-              { name: isVegUser ? 'Paneer Butter Masala' : 'Dum Mutton Biryani', count: Math.max(3, Math.round(totalOrd * 0.4)), spend: Math.round(totalOrd * 0.4 * 340) },
-              { name: isVegUser ? 'Veg Schezwan Fried Rice' : 'Kolkata Chicken Biryani', count: Math.max(2, Math.round(totalOrd * 0.3)), spend: Math.round(totalOrd * 0.3 * 280) },
-              { name: isVegUser ? 'Paneer Dum Biryani' : 'Crispy Chicken 65', count: Math.max(1, Math.round(totalOrd * 0.2)), spend: Math.round(totalOrd * 0.2 * 240) },
-            ]
+            ...data,
+            favoriteRestaurant: markedFavName || (data.favoriteRestaurant !== 'N/A' ? data.favoriteRestaurant : null) || 'None',
+            currentStreak: user?.streakCount || data.currentStreak || 0,
+            totalOrders: user?.completedOrders || user?.totalOrders || data.totalOrders || 0,
+          });
+        } else {
+          setSpendStats({
+            totalOrders: user?.totalOrders || user?.completedOrders || 0,
+            avgOrderValue: user?.totalOrders ? 260 : 0,
+            currentStreak: user?.streakCount || 0,
+            favoriteRestaurant: markedFavName || 'None',
+            monthlySpend: [],
+            topItems: []
           });
         }
       } catch (err) {
-        const isVegUser = dietPrefs?.mode === 'veg' || user?.isVeg;
-        setSpendStats({
-          totalOrders: 12,
-          avgOrderValue: 260,
-          currentStreak: 3,
-          favoriteRestaurant: isVegUser ? 'Green Campus Kitchen' : 'Royal Biryani Handi',
-          monthlySpend: [
-            { month: 'Mar 2026', total: 420 },
-            { month: 'Apr 2026', total: 680 },
-            { month: 'May 2026', total: 950 },
-            { month: 'Jun 2026', total: 1240 },
-            { month: 'Jul 2026', total: 890 },
-            { month: 'Aug 2026', total: 1450 },
-          ],
-          topItems: [
-            { name: isVegUser ? 'Paneer Butter Masala' : 'Dum Mutton Biryani', count: 5, spend: 1700 },
-            { name: isVegUser ? 'Veg Schezwan Fried Rice' : 'Kolkata Chicken Biryani', count: 3, spend: 840 },
-            { name: isVegUser ? 'Paneer Dum Biryani' : 'Crispy Chicken 65', count: 2, spend: 480 },
-          ]
-        });
+        console.warn('Spend stats fetch error:', err);
       }
 
       // 3. Coupons / Gourmet Vault
@@ -421,7 +417,6 @@ export default function ProfileScreen() {
         city: editCity,
         profileImage: newImg,
       };
-      setUser(localUpdated);
 
       const response = await apiFetch(`${API_URL}/api/users/profile`, {
         method: 'PUT',
@@ -438,16 +433,16 @@ export default function ProfileScreen() {
 
       if (response.ok) {
         const updated = await response.json();
-        setUser({ ...localUpdated, ...updated, profileImage: newImg });
+        const mergedUser = { ...localUpdated, ...updated, profileImage: newImg };
+        setUser(mergedUser);
         setIsEditing(false);
         Alert.alert('Profile Updated', 'Your profile details and photo have been updated successfully.');
       } else {
-        setIsEditing(false);
-        Alert.alert('Profile Saved', 'Profile details updated successfully.');
+        const err = await response.json().catch(() => ({}));
+        Alert.alert('Update Failed', err.message || 'Server could not save profile updates. Please check your inputs.');
       }
-    } catch (e) {
-      setIsEditing(false);
-      Alert.alert('Profile Saved', 'Profile details updated successfully.');
+    } catch (e: any) {
+      Alert.alert('Update Error', e.message || 'Network error while updating profile.');
     }
   };
 
@@ -515,7 +510,18 @@ export default function ProfileScreen() {
   return (
     <View style={[s.container, { backgroundColor: bg }]}>
       <AmbientBackground />
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
+      <ScrollView 
+        showsVerticalScrollIndicator={false} 
+        contentContainerStyle={{ paddingBottom: 120 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={loading}
+            onRefresh={fetchData}
+            tintColor={goldColor}
+            colors={[goldColor]}
+          />
+        }
+      >
         
         {/* Profile Card & Identity Code */}
         <StaggeredSection delay={100} direction="down">
@@ -542,7 +548,12 @@ export default function ProfileScreen() {
                   >
                     <View style={[s.avatar, { backgroundColor: isDark ? '#141416' : '#FFF' }]}>
                       {user?.profileImage ? (
-                        <SafeImage source={{ uri: user.profileImage }} style={s.avatarImg} />
+                        <SafeImage 
+                          key={`profile_avatar_${user.profileImage.slice(-20)}`}
+                          source={{ uri: user.profileImage }} 
+                          fallbackUri="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&q=80"
+                          style={s.avatarImg} 
+                        />
                       ) : (
                         <Text style={[s.avatarText, { color: isDark ? goldColor : '#EF4F5F' }]}>{initials}</Text>
                       )}
@@ -1041,9 +1052,9 @@ export default function ProfileScreen() {
               <View style={s.statsGridRow}>
                 {[
                   { label: 'AVG ORDER', value: `₹${spendStats?.avgOrderValue || 0}`, emoji: '📦' },
-                  { label: 'TOTAL ORDERS', value: user?.totalOrders || user?.completedOrders || spendStats?.totalOrders || 0, emoji: '🧾' },
+                  { label: 'TOTAL ORDERS', value: user?.completedOrders || user?.totalOrders || spendStats?.totalOrders || 0, emoji: '🧾' },
                   { label: 'STREAK', value: `🔥 ${user?.streakCount || spendStats?.currentStreak || 0}d`, emoji: '⚡' },
-                  { label: 'FAV RESTAURANT', value: spendStats?.favoriteRestaurant?.split(' ')[0] || 'None', emoji: '🍽️' },
+                  { label: 'FAV RESTAURANT', value: spendStats?.favoriteRestaurant && spendStats.favoriteRestaurant !== 'N/A' ? spendStats.favoriteRestaurant : 'None', emoji: '❤️' },
                 ].map((stat, i) => (
                   <View key={i} style={[s.smallStatCard, { backgroundColor: cardBg, borderColor: border }]}>
                     <Text style={{ fontSize: 18, marginBottom: 4 }}>{stat.emoji}</Text>

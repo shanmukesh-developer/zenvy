@@ -692,13 +692,28 @@ export default function TrackingScreen() {
 
         {/* ── RIDER PROFILE CARD ── */}
         <StaggeredSection delay={230} direction="up">
-          <View style={[s.riderCard, { backgroundColor: cardBg, borderColor: border }]}>
-            <Text style={{ fontSize: 9, fontWeight: '900', color: COLORS.gold, letterSpacing: 2, marginBottom: 12 }}>
-              DELIVERY RIDER DETAILS
-            </Text>
+          <TouchableOpacity 
+            activeOpacity={0.85} 
+            onPress={() => setIsProfileOpen(true)}
+            style={[s.riderCard, { backgroundColor: cardBg, borderColor: border }]}
+          >
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={{ fontSize: 9, fontWeight: '900', color: COLORS.gold, letterSpacing: 2 }}>
+                DELIVERY RIDER DETAILS
+              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: isDark ? 'rgba(212,175,55,0.15)' : '#FEF3C7', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 }}>
+                <Text style={{ fontSize: 9, fontWeight: '800', color: COLORS.gold }}>VIEW PROFILE</Text>
+                <Text style={{ fontSize: 10, color: COLORS.gold }}>➔</Text>
+              </View>
+            </View>
+
             <View style={s.riderRow}>
               <View style={s.riderAvatarWrap}>
-                <Text style={{ fontSize: 24 }}>🛵</Text>
+                {orderInfo?.deliveryPartner?.photoUrl ? (
+                  <Image source={{ uri: orderInfo.deliveryPartner.photoUrl }} style={{ width: 44, height: 44, borderRadius: 22 }} />
+                ) : (
+                  <Text style={{ fontSize: 24 }}>🛵</Text>
+                )}
               </View>
               <View style={{ flex: 1 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -732,7 +747,7 @@ export default function TrackingScreen() {
                 ]}
               />
             </View>
-          </View>
+          </TouchableOpacity>
         </StaggeredSection>
 
         {/* ── QUICK ACTION BUTTONS ── */}
@@ -998,6 +1013,120 @@ export default function TrackingScreen() {
                 <Text style={s.submitRatingText}>SUBMIT RATING</Text>
               )}
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── DRIVER PROFILE MODAL ── */}
+      <Modal visible={isProfileOpen} transparent animationType="slide" onRequestClose={() => setIsProfileOpen(false)}>
+        <View style={s.modalOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setIsProfileOpen(false)} />
+          <View style={[s.driverModalBox, { backgroundColor: cardBg, borderColor: border }]}>
+            {/* Drag handle */}
+            <View style={s.modalDragHandle} />
+
+            {/* Close button */}
+            <TouchableOpacity style={s.driverModalCloseBtn} onPress={() => setIsProfileOpen(false)}>
+              <Text style={{ fontSize: 16, color: txtSec, fontWeight: '700' }}>✕</Text>
+            </TouchableOpacity>
+
+            {/* Avatar & Badges */}
+            <View style={{ alignItems: 'center', marginTop: 8, marginBottom: 16 }}>
+              <View style={s.driverModalAvatarRing}>
+                {orderInfo?.deliveryPartner?.photoUrl ? (
+                  <Image 
+                    source={{ uri: orderInfo.deliveryPartner.photoUrl }} 
+                    style={s.driverModalAvatarImg} 
+                  />
+                ) : (
+                  <View style={[s.driverModalAvatarImg, { backgroundColor: isDark ? '#262626' : '#E2E8F0', alignItems: 'center', justifyContent: 'center' }]}>
+                    <Text style={{ fontSize: 36 }}>🛵</Text>
+                  </View>
+                )}
+                <View style={s.driverVerifiedBadge}>
+                  <Text style={{ fontSize: 10, color: '#fff', fontWeight: '900' }}>✓</Text>
+                </View>
+              </View>
+
+              <Text style={[s.driverModalName, { color: txt }]}>
+                {orderInfo?.deliveryPartner?.name || 'Zenvy Delivery Captain'}
+              </Text>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                <View style={s.driverRatingPill}>
+                  <Text style={{ fontSize: 12, color: COLORS.gold, fontWeight: '900' }}>
+                    ⭐ {orderInfo?.deliveryPartner?.averageRating || '5.0'}
+                  </Text>
+                  <Text style={{ fontSize: 10, color: txtSec }}>
+                    ({orderInfo?.deliveryPartner?.totalRatings || 48}+ deliveries)
+                  </Text>
+                </View>
+                <View style={[s.driverTagPill, { backgroundColor: isDark ? 'rgba(34,197,94,0.15)' : '#DCFCE7' }]}>
+                  <Text style={{ fontSize: 10, fontWeight: '800', color: '#16A34A' }}>SRM VERIFIED</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Details Grid */}
+            <View style={[s.driverInfoGrid, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', borderColor: border }]}>
+              <View style={s.driverInfoItem}>
+                <Text style={[s.driverInfoLabel, { color: txtSec }]}>VEHICLE TYPE</Text>
+                <Text style={[s.driverInfoValue, { color: txt }]}>
+                  {orderInfo?.deliveryPartner?.vehicleType || 'Electric Scooter'}
+                </Text>
+              </View>
+              <View style={[s.driverInfoItem, { borderLeftWidth: 1, borderLeftColor: border }]}>
+                <Text style={[s.driverInfoLabel, { color: txtSec }]}>REG NUMBER</Text>
+                <Text style={[s.driverInfoValue, { color: txt }]}>
+                  {orderInfo?.deliveryPartner?.vehicleNumber || 'AP 39 ZV 2026'}
+                </Text>
+              </View>
+            </View>
+
+            {/* Safety Badges */}
+            <View style={{ marginVertical: 14 }}>
+              <Text style={{ fontSize: 9, fontWeight: '900', color: txtSec, letterSpacing: 1.5, marginBottom: 8 }}>
+                CAMPUS SAFETY & HYGIENE CHECKS
+              </Text>
+              <View style={{ gap: 6 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={{ color: '#16A34A', fontSize: 14 }}>✓</Text>
+                  <Text style={{ fontSize: 12, color: txt }}>Insulated & Sanitized Delivery Bag</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={{ color: '#16A34A', fontSize: 14 }}>✓</Text>
+                  <Text style={{ fontSize: 12, color: txt }}>SRM Gate ID & Verified Captain License</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={{ color: '#16A34A', fontSize: 14 }}>✓</Text>
+                  <Text style={{ fontSize: 12, color: txt }}>Contactless Hostel Drop Protocol</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Direct Action Buttons */}
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 6 }}>
+              {orderInfo?.deliveryPartner?.phone && (
+                <TouchableOpacity
+                  style={[s.driverActionCallBtn, { backgroundColor: '#16A34A' }]}
+                  onPress={() => Linking.openURL(`tel:${orderInfo?.deliveryPartner?.phone}`)}
+                >
+                  <Text style={{ fontSize: 16 }}>📞</Text>
+                  <Text style={{ color: '#fff', fontWeight: '900', fontSize: 12, letterSpacing: 0.5 }}>CALL DRIVER</Text>
+                </TouchableOpacity>
+              )}
+
+              <TouchableOpacity
+                style={[s.driverActionChatBtn, { backgroundColor: cardBg, borderColor: COLORS.gold, flex: orderInfo?.deliveryPartner?.phone ? 1 : 2 }]}
+                onPress={() => {
+                  setIsProfileOpen(false);
+                  setIsChatOpen(true);
+                }}
+              >
+                <Text style={{ fontSize: 16 }}>💬</Text>
+                <Text style={{ color: COLORS.gold, fontWeight: '900', fontSize: 12, letterSpacing: 0.5 }}>CHAT</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -1392,5 +1521,124 @@ const s = StyleSheet.create({
     marginTop: 20,
     ...SHADOWS.goldGlow
   },
-  submitRatingText: { fontSize: 10, fontWeight: '900', color: '#000', letterSpacing: 2 }
+  submitRatingText: { fontSize: 10, fontWeight: '900', color: '#000', letterSpacing: 2 },
+
+  // Driver Profile Modal Styles
+  driverModalBox: {
+    width: '92%',
+    maxWidth: 440,
+    padding: 20,
+    borderRadius: 24,
+    borderWidth: 1,
+    position: 'relative',
+    ...SHADOWS.card
+  },
+  modalDragHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: 'rgba(128,128,128,0.3)',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 8
+  },
+  driverModalCloseBtn: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(128,128,128,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10
+  },
+  driverModalAvatarRing: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    borderWidth: 2.5,
+    borderColor: COLORS.gold,
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8
+  },
+  driverModalAvatarImg: {
+    width: 68,
+    height: 68,
+    borderRadius: 34
+  },
+  driverVerifiedBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#16A34A',
+    borderWidth: 2,
+    borderColor: '#000',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  driverModalName: {
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 0.5
+  },
+  driverRatingPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(212,175,55,0.12)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12
+  },
+  driverTagPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12
+  },
+  driverInfoGrid: {
+    flexDirection: 'row',
+    borderRadius: 14,
+    borderWidth: 1,
+    marginVertical: 4
+  },
+  driverInfoItem: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    alignItems: 'center'
+  },
+  driverInfoLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1,
+    marginBottom: 4
+  },
+  driverInfoValue: {
+    fontSize: 12,
+    fontWeight: '900'
+  },
+  driverActionCallBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 13,
+    borderRadius: 14
+  },
+  driverActionChatBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 13,
+    borderRadius: 14,
+    borderWidth: 1.5
+  }
 });

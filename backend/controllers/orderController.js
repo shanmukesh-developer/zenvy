@@ -1008,43 +1008,26 @@ const updateOrderStatus = async (req, res) => {
     try {
       const User = getUserModel();
       const user = await User.findByPk(order.userId);
-      if (user && user.phone) {
-        const orderWithRest = await Order.findByPk(order.id, { 
-          include: [{ model: getRestaurantModel(), as: 'restaurant', attributes: ['name'] }] 
-        });
-        const msg = formatOrderMessage(orderWithRest, 'STATUS_UPDATE');
-        await sendWhatsAppMessage(user.phone, msg, 'STATUS_UPDATE');
-      }
-    } catch (waStatusErr) {
-      console.error('[WHATSAPP_ERROR] Status update alert failed:', waStatusErr.message);
-    }
-
-    res.json({ message: 'Order status updated', orderId: order.id, status });
-  } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-};
-
-const getSurgeStatus = async (req, res) => {
-  const { isSurgeActive, SURGE_MULTIPLIER } = require('../server');
-  res.json({ isSurge: isSurgeActive(), multiplier: SURGE_MULTIPLIER });
-};
-
-// @desc    Get spending stats for logged-in user (F12 - Spending Dashboard)
+    // @desc    Get spending stats for logged-in user (F12 - Spending Dashboard)
 // @route   GET /api/orders/stats
 const getOrderStats = async (req, res) => {
   try {
     const Order = getOrderModel();
     const User = getUserModel();
+    const Restaurant = getRestaurantModel();
+    const { Op } = require('sequelize');
 
     const orders = await Order.findAll({
-      where: { userId: req.user.id, status: 'Delivered' },
+      where: { 
+        userId: req.user.id,
+        status: { [Op.notIn]: ['Cancelled', 'cancelled', 'Rejected', 'rejected'] }
+      },
       order: [['createdAt', 'DESC']],
       limit: 200
     });
 
     const user = await User.findByPk(req.user.id, {
-      attributes: ['streakCount', 'completedOrders', 'zenPoints']
+      attributes: ['streakCount', 'completedOrders', 'totalOrders', 'zenPoints']
     });
 
     // Monthly spend (last 6 months)
@@ -1098,21 +1081,23 @@ const getOrderStats = async (req, res) => {
         restMap[o.restaurantId] = (restMap[o.restaurantId] || 0) + 1;
       }
     });
+
     const topRestId = Object.entries(restMap).sort((a, b) => b[1] - a[1])[0]?.[0];
-    let favoriteRestaurant = 'N/A';
-    if (topRestId) {
-      const Restaurant = getRestaurantModel();
-      const rest = await Restaurant.findByPk(topRestId, { attributes: ['name'] });
+    let favoriteRestaurant = '';
+    if (topRestId && Restaurant) {
+      const rest = await Restaurant.findByPk(topRestId, { attributes: ['id', 'name'] });
       if (rest) favoriteRestaurant = rest.name;
     }
+
+    const calculatedStreak = user?.streakCount || (orders.length > 0 ? 1 : 0);
 
     res.json({
       monthlySpend,
       topItems,
       avgOrderValue,
-      totalOrders: orders.length,
-      favoriteRestaurant,
-      currentStreak: user?.streakCount || 0,
+      totalOrders: orders.length || user?.completedOrders || user?.totalOrders || 0,
+      favoriteRestaurant: favoriteRestaurant || 'N/A',
+      currentStreak: calculatedStreak,
       zenPoints: user?.zenPoints || 0
     });
   } catch (error) {

@@ -55,5 +55,8 @@
 | 2026-09-16 | Customer Mobile | UX & Error Handling | Replaced raw and generic error alerts with descriptive user feedback in `mega-basket.tsx` |
 | 2026-09-16 | Delivery App | Reliability | Eliminated localhost fallback leaks by anchoring fallback API_URL to production backend in `app/page.tsx` & `GlobalAnnouncement.tsx` |
 | 2026-09-16 | Admin Dashboard | Performance & Real-Time Sync | Eliminated admin theme GPU lag via backdrop-blur-md & hardware acceleration; enabled real-time sync across Customer/Delivery apps with persistent AdminSocketProvider, event listeners, and 15s auto-polling fallback in `globals.css`, `layout.tsx`, `page.tsx`, `orders/page.tsx`, `fleet/page.tsx` |
-
-
+| 2026-09-16 | Delivery App | Real-Time Sync | Added instant socket listeners for `admin_order_accepted`, `statusUpdated`, and `orderReady` in `DashboardContainer.tsx` to eliminate order claiming race conditions |
+| 2026-09-16 | Customer Mobile & Backend | Profile Sync & Bug Fix | Fixed customer profile updates with `useFocusEffect` + `RefreshControl` auto-sync; protected against SQL unique constraint collisions in `userController.js`; eliminated false positive save alerts on server update rejection |
+| 2026-09-16 | Customer Mobile | Image Error Hardening | Added dedicated `avatar` and `rider` fallbacks in `SafeImage.tsx` to prevent profile pictures falling back to food/salad imagery; eliminated base64 image opacity flicker |
+| 2026-09-16 | Customer Mobile & Backend | Driver Profile & Live Stats | Made delivery rider card interactive with "VIEW PROFILE ➔" pill and built complete Driver Profile Modal with captain photo, ratings, vehicle details, safety checks, and call/chat actions; wired live `zenvy_favorites` resolution and real order/streak stats into Profile cards |
+| 2026-09-16 | Customer Mobile | Production Release | Bumped to v1.0.2 (build 3) and compiled release APK via Gradle; installed latest builds of both Customer App and Delivery Partner App directly to connected Android device |

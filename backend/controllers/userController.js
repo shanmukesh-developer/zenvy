@@ -345,22 +345,43 @@ const updateUserProfile = async (req, res) => {
     const User = getUserModel();
     const user = await User.findByPk(req.user.id);
     if (user) {
-      if (req.body.name) user.name = req.body.name;
-      if (req.body.phone) user.phone = req.body.phone;
-      if (req.body.email) user.email = req.body.email;
+      if (req.body.name && typeof req.body.name === 'string') {
+        user.name = req.body.name.trim();
+      }
+      if (req.body.phone && typeof req.body.phone === 'string') {
+        const cleanPhone = normalizePhone(req.body.phone);
+        if (cleanPhone && cleanPhone !== user.phone) {
+          const existing = await User.findOne({ where: { phone: cleanPhone } });
+          if (existing && existing.id !== user.id) {
+            return res.status(400).json({ message: 'This phone number is already registered to another user.' });
+          }
+          user.phone = cleanPhone;
+        }
+      }
+      if (req.body.email !== undefined) {
+        const cleanEmail = req.body.email && typeof req.body.email === 'string' ? req.body.email.trim().toLowerCase() : null;
+        if (cleanEmail !== user.email) {
+          if (cleanEmail) {
+            const existing = await User.findOne({ where: { email: cleanEmail } });
+            if (existing && existing.id !== user.id) {
+              return res.status(400).json({ message: 'This email address is already registered to another user.' });
+            }
+          }
+          user.email = cleanEmail;
+        }
+      }
       if (req.body.statusText !== undefined) user.statusText = req.body.statusText;
       if (req.body.statusEmoji !== undefined) user.statusEmoji = req.body.statusEmoji;
       if (req.body.about !== undefined) user.about = req.body.about;
-      if (req.body.hostelBlock) user.hostelBlock = req.body.hostelBlock;
-      if (req.body.roomNumber) user.roomNumber = req.body.roomNumber;
-      if (req.body.address) user.address = req.body.address;
-      if (req.body.city) user.city = req.body.city;
-      if (req.body.profileImage !== undefined) user.profileImage = req.body.profileImage;
+      if (req.body.hostelBlock !== undefined) user.hostelBlock = req.body.hostelBlock;
+      if (req.body.roomNumber !== undefined) user.roomNumber = req.body.roomNumber;
+      if (req.body.address !== undefined) user.address = req.body.address;
+      if (req.body.city !== undefined) user.city = req.body.city;
+      if (req.body.profileImage !== undefined) {
+        user.profileImage = req.body.profileImage || null;
+      }
       if (req.body.gender !== undefined) user.gender = req.body.gender;
       if (req.body.genderPreference !== undefined) user.genderPreference = req.body.genderPreference;
-      
-      // CRITICAL FIX: Removed insecure req.body.isElite assignment
-      // Elite status must only be updated by a verified payment webhook or admin route.
       
       await user.save();
       res.json({
@@ -394,7 +415,8 @@ const updateUserProfile = async (req, res) => {
     }
   } catch (error) {
     console.error('[UPDATE_PROFILE_ERROR]', error);
-    res.status(500).json({ message: 'Internal Server Error' });
+    const msg = error.errors?.[0]?.message || error.message || 'Internal Server Error';
+    res.status(500).json({ message: msg });
   }
 };
 

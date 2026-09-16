@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Image, ImageProps, ImageSourcePropType, View, Animated, StyleSheet } from 'react-native';
 
 const LUXURY_FALLBACKS: Record<string, string> = {
+  avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=600&q=75',
+  rider: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=600&q=75',
   food: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800&q=85',
   biryani: 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=800&q=85',
   burger: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=800&q=85',
@@ -18,6 +20,7 @@ const DEFAULT_FALLBACK_URI = LUXURY_FALLBACKS.food;
 
 function optimizeUri(uriString?: string | null): string {
   if (!uriString || typeof uriString !== 'string') return '';
+  if (uriString.startsWith('data:')) return uriString;
   if (uriString.includes('images.unsplash.com')) {
     const base = uriString.split('?')[0];
     return `${base}?auto=format&fit=crop&w=600&q=75`;
@@ -27,7 +30,14 @@ function optimizeUri(uriString?: string | null): string {
 
 function getSmartFallback(uriString?: string | null): string {
   if (!uriString) return DEFAULT_FALLBACK_URI;
+  if (uriString.startsWith('data:image')) return LUXURY_FALLBACKS.avatar;
   const lower = uriString.toLowerCase();
+  if (lower.includes('avatar') || lower.includes('profile') || lower.includes('user')) {
+    return LUXURY_FALLBACKS.avatar;
+  }
+  if (lower.includes('rider') || lower.includes('driver') || lower.includes('captain')) {
+    return LUXURY_FALLBACKS.rider;
+  }
   for (const [key, fallback] of Object.entries(LUXURY_FALLBACKS)) {
     if (lower.includes(key)) return optimizeUri(fallback);
   }
@@ -53,32 +63,53 @@ export default function SafeImage({
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   const rawUri = typeof source === 'object' && source && 'uri' in source ? (source.uri || '') : '';
+  const isBase64OrLocal = typeof source === 'number' || rawUri.startsWith('data:');
   const resolvedFallback = fallbackUri || getSmartFallback(rawUri);
 
-  const [imgSource, setImgSource] = useState<ImageSourcePropType>({ uri: resolvedFallback });
+  const [imgSource, setImgSource] = useState<ImageSourcePropType>(() => {
+    if (typeof source === 'number') return source;
+    if (rawUri) return { uri: optimizeUri(rawUri) };
+    return { uri: resolvedFallback };
+  });
 
-  const uriKey = typeof source === 'number' ? source : rawUri;
+  const uriKey = typeof source === 'number' 
+    ? String(source) 
+    : (rawUri.startsWith('data:') ? `base64_${rawUri.slice(0, 40)}_${rawUri.length}` : rawUri);
 
   useEffect(() => {
     setHasError(false);
-    setIsLoaded(false);
-    fadeAnim.setValue(0);
 
     if (!source) {
       setImgSource({ uri: resolvedFallback });
+      setIsLoaded(false);
+      fadeAnim.setValue(0);
       return;
     }
 
     if (typeof source === 'number') {
       setImgSource(source);
+      setIsLoaded(true);
+      fadeAnim.setValue(1);
     } else if (typeof source === 'object' && 'uri' in source) {
       if (!source.uri || typeof source.uri !== 'string' || source.uri.trim() === '') {
         setImgSource({ uri: resolvedFallback });
+        setIsLoaded(false);
+        fadeAnim.setValue(0);
       } else {
-        setImgSource({ uri: optimizeUri(source.uri) });
+        const optimized = optimizeUri(source.uri);
+        setImgSource({ uri: optimized });
+        if (source.uri.startsWith('data:')) {
+          setIsLoaded(true);
+          fadeAnim.setValue(1);
+        } else {
+          setIsLoaded(false);
+          fadeAnim.setValue(0);
+        }
       }
     } else {
       setImgSource({ uri: resolvedFallback });
+      setIsLoaded(false);
+      fadeAnim.setValue(0);
     }
   }, [uriKey, resolvedFallback]);
 
@@ -86,7 +117,7 @@ export default function SafeImage({
     setIsLoaded(true);
     Animated.timing(fadeAnim, {
       toValue: 1,
-      duration: fadeInDuration,
+      duration: isBase64OrLocal ? 0 : fadeInDuration,
       useNativeDriver: true,
     }).start();
   };

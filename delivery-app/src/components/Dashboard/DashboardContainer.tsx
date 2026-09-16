@@ -516,6 +516,30 @@ export default function DashboardContainer({ driver, onLogout, apiUrl }: Dashboa
       setActiveOrders(prev => prev.filter(o => o.id !== String(orderId)));
     });
 
+    socket.on('admin_order_accepted', (data: { orderId: string, riderName: string }) => {
+      const orderId = String(data?.orderId);
+      setAvailableOrders(prev => prev.filter(o => o.id !== orderId));
+    });
+
+    socket.on('statusUpdated', (data: any) => {
+      const orderId = String(data?.id || data?.orderId || '');
+      if (!orderId) return;
+      if (data.status === 'Accepted' || data.status === 'Delivered' || data.status === 'Cancelled') {
+        setAvailableOrders(prev => prev.filter(o => o.id !== orderId));
+      }
+      setActiveOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: data.status } : o));
+      fetchActiveOrders();
+    });
+
+    socket.on('orderReady', (data: { orderId: string }) => {
+      const orderId = String(data?.orderId);
+      toast(`🍳 Order #${orderId.slice(-6)} is ready for pickup!`, 'success');
+      playNotificationSound();
+      addNotification('order', 'Order Ready For Pickup', `Order #${orderId.slice(-6)} is ready at the kitchen!`);
+      triggerNativeNotification('Order Ready For Pickup 🍳', `Order #${orderId.slice(-6)} is ready at the kitchen!`);
+      fetchActiveOrders();
+    });
+
     socket.on('issue_alert', (data: { issueType: string; details: string; senderRole: string }) => {
       addNotification('issue', 'Issue Reported', `${data.issueType}: ${data.details}`);
       triggerNativeNotification('Issue Reported ⚠️', `${data.issueType}: ${data.details}`);
