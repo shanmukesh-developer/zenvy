@@ -35,8 +35,8 @@ export default function Login() {
         animate={{ opacity: 1, y: 0 }}
         className="max-w-md w-full bg-zinc-900 border border-zinc-800 p-8 rounded-2xl shadow-xl"
       >
-        <h1 className="text-3xl font-bold bg-gradient-to-r from-orange-400 to-red-500 bg-clip-text text-transparent mb-2">Zenvy Partners</h1>
-        <p className="text-zinc-400 mb-8">Login to manage your restaurant orders.</p>
+        <h1 className="text-3xl font-bold bg-gradient-to-r from-orange-400 to-red-500 bg-clip-text text-transparent mb-2">Zenvy Restaurant Partners</h1>
+        <p className="text-zinc-400 mb-8">Sign in to manage kitchen orders, menus, and operating hours.</p>
         
         {error && <div className="bg-red-500/10 border border-red-500/50 text-red-500 p-3 rounded-lg mb-6">{error}</div>}
 
@@ -67,12 +67,12 @@ export default function Login() {
             type="submit"
             className="w-full bg-orange-500 hover:bg-orange-600 text-white font-medium p-3 rounded-lg transition-colors"
           >
-            Access Portal
+            Sign In to Partner Portal
           </button>
 
           <div className="text-center mt-6">
             <a href="https://hostelbites-customer.onrender.com" className="text-xs text-zinc-500 hover:text-orange-400 transition-colors uppercase tracking-widest font-bold">
-              ← Back to Zenvy Main
+              ← Back to Zenvy Customer Portal
             </a>
           </div>
         </form>
