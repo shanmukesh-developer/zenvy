@@ -14,6 +14,8 @@ const {
   sendFriendNudge,
   removeFriend,
   blockUser,
+  unblockUser,
+  getBlockedUsers,
   updateUserStatus,
   markStatusAsSeen
 } = require('../controllers/friendController');
@@ -27,6 +29,8 @@ router.post('/request', sendFriendRequest);
 router.post('/accept', acceptFriendRequest);
 router.post('/decline', declineFriendRequest);
 router.post('/block', blockUser);
+router.post('/unblock', unblockUser);
+router.get('/blocked', getBlockedUsers);
 router.get('/', getFriends);
 router.get('/pending', getPendingRequests);
 router.put('/status', updateUserStatus);

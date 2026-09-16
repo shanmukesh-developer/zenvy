@@ -551,6 +551,7 @@ exports.sendFriendMessage = async (req, res) => {
 exports.getFriendMessages = async (req, res) => {
   try {
     const { conversationId } = req.params;
+    const { limit = 50, offset = 0 } = req.query; // Added pagination support
     const Conversation = getConversationModel();
     const Message = getMessageModel();
     if (!Conversation || !Message) return res.status(500).json({ message: 'Models not loaded' });
@@ -564,13 +565,15 @@ exports.getFriendMessages = async (req, res) => {
 
     const messages = await Message.findAll({
       where: { conversationId },
-      order: [['createdAt', 'ASC']]
+      order: [['createdAt', 'DESC']], // Fetch latest first for pagination
+      limit: parseInt(limit, 10),
+      offset: parseInt(offset, 10)
     });
 
     const decrypted = messages.map(m => ({
       ...m.toJSON(),
       text: decryptText(m.text)
-    }));
+    })).reverse(); // Reverse back to ASC for the client UI
 
     res.json(decrypted);
   } catch (error) {
@@ -693,6 +696,74 @@ exports.blockUser = async (req, res) => {
   } catch (error) {
     console.error('[BLOCK_USER_ERROR]', error);
     res.status(500).json({ message: 'Server error blocking user.' });
+  }
+};
+
+// 9d. Unblock a user
+exports.unblockUser = async (req, res) => {
+  try {
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ message: 'userId is required.' });
+
+    const Friendship = getFriendshipModel();
+    if (!Friendship) return res.status(500).json({ message: 'Model not loaded' });
+
+    const friendship = await Friendship.findOne({
+      where: {
+        status: 'blocked',
+        blockedBy: req.user.id,
+        [Op.or]: [
+          { requesterId: req.user.id, recipientId: userId },
+          { requesterId: userId, recipientId: req.user.id }
+        ]
+      }
+    });
+
+    if (!friendship) {
+      return res.status(404).json({ message: 'Blocked user not found in your block list.' });
+    }
+
+    await friendship.destroy();
+
+    res.json({ message: 'User unblocked successfully.' });
+  } catch (error) {
+    console.error('[UNBLOCK_USER_ERROR]', error);
+    res.status(500).json({ message: 'Server error unblocking user.' });
+  }
+};
+
+// 9e. Get blocked users
+exports.getBlockedUsers = async (req, res) => {
+  try {
+    const Friendship = getFriendshipModel();
+    const User = getUserModel();
+    if (!Friendship || !User) return res.status(500).json({ message: 'Models not loaded' });
+
+    const blocked = await Friendship.findAll({
+      where: {
+        status: 'blocked',
+        blockedBy: req.user.id
+      }
+    });
+
+    const list = [];
+    for (const b of blocked) {
+      const blockedUserId = b.requesterId === req.user.id ? b.recipientId : b.requesterId;
+      const user = await User.findByPk(blockedUserId, {
+        attributes: ['id', 'name', 'phone', 'profileImage']
+      });
+      if (user) {
+        list.push({
+          friendshipId: b.id,
+          user
+        });
+      }
+    }
+
+    res.json(list);
+  } catch (error) {
+    console.error('[GET_BLOCKED_ERROR]', error);
+    res.status(500).json({ message: 'Server error fetching blocked users.' });
   }
 };
 
