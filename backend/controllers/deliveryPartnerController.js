@@ -660,15 +660,27 @@ const getLeaderboard = async (req, res) => {
   }
 };
 
-// @desc    Get rider's own profile
 const getRiderProfile = async (req, res) => {
   try {
     const DeliveryPartner = getDeliveryPartnerModel();
+    const Order = getOrderModel();
     const partner = await DeliveryPartner.findByPk(req.user.id, {
       attributes: { exclude: ['password', 'fcmTokens'] }
     });
-    if (!partner) return res.status(401).json({ message: 'Rider account not found (Nexus Session Expired)' });
-    res.json({ ...partner.toJSON(), _id: partner.id });
+    if (!partner) return res.status(401).json({ message: 'Rider account not found (Session Expired)' });
+
+    const completedCount = Order ? await Order.count({
+      where: { deliveryPartnerId: req.user.id, status: 'Delivered' }
+    }).catch(() => 0) : 0;
+
+    res.json({ 
+      ...partner.toJSON(), 
+      _id: partner.id,
+      completedCount,
+      completedDeliveries: completedCount,
+      rating: partner.averageRating || 5.0,
+      totalEarnings: partner.totalEarnings || 0
+    });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
@@ -706,7 +718,7 @@ const updateRiderProfile = async (req, res) => {
     const { name, vehicleType, vehicleNumber, bio, emergencyContact, photoUrl } = req.body;
     const DeliveryPartner = getDeliveryPartnerModel();
     const partner = await DeliveryPartner.findByPk(req.user.id);
-    if (!partner) return res.status(401).json({ message: 'Rider account not found (Nexus Session Expired)' });
+    if (!partner) return res.status(401).json({ message: 'Rider account not found (Session Expired)' });
 
     if (name) partner.name = name;
     if (vehicleType !== undefined) partner.vehicleType = vehicleType;

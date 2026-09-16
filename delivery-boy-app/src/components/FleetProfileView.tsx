@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,10 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  Modal,
+  TextInput,
+  ActivityIndicator,
+  Vibration,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, RADIUS, SPACING, SHADOWS } from '../constants/theme';
@@ -31,6 +35,7 @@ interface FleetProfileViewProps {
   historyOrders: Order[];
   onLogout: () => void;
   onOpenSettings?: () => void;
+  onUpdateProfile?: (data: Partial<RiderProfile>) => Promise<void>;
 }
 
 export const FleetProfileView: React.FC<FleetProfileViewProps> = ({
@@ -38,9 +43,68 @@ export const FleetProfileView: React.FC<FleetProfileViewProps> = ({
   historyOrders,
   onLogout,
   onOpenSettings,
+  onUpdateProfile,
 }) => {
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editVehicleNumber, setEditVehicleNumber] = useState('');
+  const [editVehicleType, setEditVehicleType] = useState('');
+  const [editEmergencyContact, setEditEmergencyContact] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (profile) {
+      setEditName(profile.name || '');
+      setEditVehicleNumber(
+        !profile.vehicleNumber || profile.vehicleNumber === 'Not Registered' || profile.vehicleNumber === 'AP-07-AB-1234'
+          ? ''
+          : profile.vehicleNumber
+      );
+      setEditVehicleType(
+        !profile.vehicleType || profile.vehicleType === 'Not Registered'
+          ? ''
+          : profile.vehicleType
+      );
+      setEditEmergencyContact(
+        !profile.emergencyContact || profile.emergencyContact === 'Not Registered'
+          ? ''
+          : profile.emergencyContact
+      );
+    }
+  }, [profile]);
+
   const initial = profile?.name ? profile.name.charAt(0).toUpperCase() : 'V';
   const fleetId = profile?.id ? `ZNV-RD${profile.id.slice(-4).toUpperCase()}` : 'ZNV-RD9102';
+  const isVehicleUnset =
+    !profile?.vehicleNumber ||
+    profile.vehicleNumber === 'Not Registered' ||
+    profile.vehicleNumber === 'AP-07-AB-1234';
+
+  const handleSave = async () => {
+    if (!editVehicleNumber.trim()) {
+      Alert.alert(
+        'Vehicle Number Required',
+        'Please enter your vehicle plate number (or Bicycle / Walk) for campus hostel gate clearance.'
+      );
+      return;
+    }
+    if (!onUpdateProfile) return;
+    setIsSaving(true);
+    try {
+      await onUpdateProfile({
+        name: editName.trim() || profile?.name,
+        vehicleNumber: editVehicleNumber.trim().toUpperCase(),
+        vehicleType: editVehicleType.trim() || 'Two-Wheeler',
+        emergencyContact: editEmergencyContact.trim() || profile?.emergencyContact || '',
+      });
+      Vibration.vibrate(50);
+      setIsEditOpen(false);
+    } catch (e: any) {
+      Alert.alert('Update Failed', e.message || 'Could not save profile details.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -99,10 +163,52 @@ export const FleetProfileView: React.FC<FleetProfileViewProps> = ({
 
       {/* Fleet Verification Credentials */}
       <View style={styles.sectionBox}>
-        <Text style={styles.sectionHeader}>VEHICLE & COMPLIANCE</Text>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionHeader}>VEHICLE & COMPLIANCE</Text>
+          <TouchableOpacity
+            style={styles.editPillBtn}
+            onPress={() => setIsEditOpen(true)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.editPillText}>✎ EDIT DETAILS</Text>
+          </TouchableOpacity>
+        </View>
+
+        {isVehicleUnset && (
+          <TouchableOpacity
+            style={styles.unregisteredBanner}
+            onPress={() => setIsEditOpen(true)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.unregisteredBannerIcon}>⚠️</Text>
+            <View style={{ flex: 1, marginLeft: SPACING.sm }}>
+              <Text style={styles.unregisteredBannerTitle}>Vehicle Not Registered</Text>
+              <Text style={styles.unregisteredBannerSub}>
+                Tap to register your vehicle plate & model for hostel gate security passes.
+              </Text>
+            </View>
+            <Text style={styles.unregisteredBannerArrow}>➔</Text>
+          </TouchableOpacity>
+        )}
+
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>Vehicle Number</Text>
-          <Text style={styles.infoValue}>{profile?.vehicleNumber || 'Registered on Gate Pass'}</Text>
+          <Text
+            style={[
+              styles.infoValue,
+              isVehicleUnset && styles.infoValueMissing,
+            ]}
+          >
+            {isVehicleUnset ? 'Tap to Register' : profile?.vehicleNumber}
+          </Text>
+        </View>
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Vehicle Type</Text>
+          <Text style={styles.infoValue}>
+            {profile?.vehicleType && profile.vehicleType !== 'Not Registered'
+              ? profile.vehicleType
+              : 'Two-Wheeler'}
+          </Text>
         </View>
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>Registered Mobile</Text>
@@ -114,7 +220,11 @@ export const FleetProfileView: React.FC<FleetProfileViewProps> = ({
         </View>
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>Emergency Contact</Text>
-          <Text style={styles.infoValue}>{profile?.emergencyContact || 'Campus Security Dispatch'}</Text>
+          <Text style={styles.infoValue}>
+            {profile?.emergencyContact && profile.emergencyContact !== 'Not Registered'
+              ? profile.emergencyContact
+              : '9391955674'}
+          </Text>
         </View>
       </View>
 
@@ -158,7 +268,6 @@ export const FleetProfileView: React.FC<FleetProfileViewProps> = ({
 
       {/* Logout Action Button */}
       <View style={styles.buttonGroup}>
-
         <TouchableOpacity
           style={styles.logoutBtn}
           onPress={onLogout}
@@ -167,6 +276,81 @@ export const FleetProfileView: React.FC<FleetProfileViewProps> = ({
           <Text style={styles.logoutBtnText}>LOG OUT OF FLEET DUTY</Text>
         </TouchableOpacity>
       </View>
+
+      {/* EDIT PROFILE MODAL */}
+      <Modal
+        visible={isEditOpen}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setIsEditOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Update Rider Credentials</Text>
+              <TouchableOpacity onPress={() => setIsEditOpen(false)} style={styles.closeBtn}>
+                <Text style={styles.closeBtnText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.inputLabel}>FULL NAME</Text>
+            <TextInput
+              style={styles.textInput}
+              value={editName}
+              onChangeText={setEditName}
+              placeholder="Your Full Name"
+              placeholderTextColor="#71717A"
+            />
+
+            <Text style={styles.inputLabel}>VEHICLE PLATE NUMBER</Text>
+            <TextInput
+              style={styles.textInput}
+              value={editVehicleNumber}
+              onChangeText={setEditVehicleNumber}
+              placeholder="e.g. AP 07 AB 1234 or Bicycle"
+              placeholderTextColor="#71717A"
+              autoCapitalize="characters"
+            />
+
+            <Text style={styles.inputLabel}>VEHICLE TYPE</Text>
+            <TextInput
+              style={styles.textInput}
+              value={editVehicleType}
+              onChangeText={setEditVehicleType}
+              placeholder="e.g. Electric Scooter / Activa / Bike"
+              placeholderTextColor="#71717A"
+            />
+
+            <Text style={styles.inputLabel}>EMERGENCY CONTACT NUMBER</Text>
+            <TextInput
+              style={styles.textInput}
+              value={editEmergencyContact}
+              onChangeText={setEditEmergencyContact}
+              placeholder="e.g. 9876543210"
+              placeholderTextColor="#71717A"
+              keyboardType="phone-pad"
+            />
+
+            <TouchableOpacity
+              style={styles.saveBtn}
+              onPress={handleSave}
+              disabled={isSaving}
+              activeOpacity={0.8}
+            >
+              <LinearGradient
+                colors={['#D4AF7A', '#99733E']}
+                style={styles.saveBtnGradient}
+              >
+                {isSaving ? (
+                  <ActivityIndicator color="#000000" />
+                ) : (
+                  <Text style={styles.saveBtnText}>SAVE & UPDATE CREDENTIALS</Text>
+                )}
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 };
@@ -218,11 +402,10 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '900',
     color: '#FFFFFF',
-    letterSpacing: 0.5,
   },
   fleetTierText: {
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: '700',
     color: COLORS.gold,
     letterSpacing: 1.2,
     marginTop: 2,
@@ -230,31 +413,30 @@ const styles = StyleSheet.create({
   barcodeChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
     paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingVertical: 2,
     borderRadius: RADIUS.xs,
     marginTop: 6,
     alignSelf: 'flex-start',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   barcodeLines: {
     fontSize: 9,
-    color: COLORS.goldLight,
+    color: COLORS.textMuted,
     letterSpacing: -1,
   },
   barcodeText: {
     fontSize: 10,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: 1.5,
+    color: COLORS.textSecondary,
+    fontFamily: 'monospace',
+    fontWeight: '700',
   },
   profileStatsBar: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-    borderRadius: RADIUS.md,
-    paddingVertical: SPACING.sm + 2,
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    borderRadius: RADIUS.sm,
+    paddingVertical: SPACING.sm,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.05)',
   },
@@ -262,59 +444,105 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
   },
-  statDivider: {
-    width: 1,
-    height: 28,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-  },
   statColLabel: {
-    fontSize: 8,
-    fontWeight: '800',
+    fontSize: 9,
+    fontWeight: '700',
     color: COLORS.textMuted,
-    letterSpacing: 0.8,
+    letterSpacing: 0.5,
+    marginBottom: 2,
   },
   statColValue: {
     fontSize: 15,
     fontWeight: '900',
     color: '#FFFFFF',
-    marginTop: 2,
   },
   statColValueGold: {
     fontSize: 15,
     fontWeight: '900',
-    color: COLORS.goldLight,
-    marginTop: 2,
+    color: COLORS.gold,
   },
   statColValueEmerald: {
     fontSize: 15,
     fontWeight: '900',
     color: COLORS.emeraldLight,
-    marginTop: 2,
+  },
+  statDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
   },
   sectionBox: {
-    backgroundColor: '#11131C',
+    backgroundColor: '#10121A',
     borderRadius: RADIUS.card,
-    padding: SPACING.lg,
-    marginBottom: SPACING.md,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.06)',
+    padding: SPACING.md,
+    marginBottom: SPACING.md,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.sm,
+  },
+  sectionHeader: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: COLORS.textMuted,
+    letterSpacing: 1.2,
+  },
+  editPillBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: RADIUS.pill,
+    backgroundColor: 'rgba(212, 175, 122, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(212, 175, 122, 0.3)',
+  },
+  editPillText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: COLORS.gold,
+    letterSpacing: 0.5,
+  },
+  unregisteredBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(212, 175, 122, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(212, 175, 122, 0.4)',
+    borderRadius: RADIUS.sm,
+    padding: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  unregisteredBannerIcon: {
+    fontSize: 18,
+  },
+  unregisteredBannerTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: COLORS.gold,
+  },
+  unregisteredBannerSub: {
+    fontSize: 10,
+    color: COLORS.textSecondary,
+    marginTop: 1,
+  },
+  unregisteredBannerArrow: {
+    fontSize: 14,
+    color: COLORS.gold,
+    marginLeft: 6,
   },
   historyHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: SPACING.md,
-  },
-  sectionHeader: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: COLORS.goldLight,
-    letterSpacing: 1,
     marginBottom: SPACING.sm,
   },
   infoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
     paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255, 255, 255, 0.04)',
@@ -328,6 +556,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#FFFFFF',
     fontWeight: '700',
+  },
+  infoValueMissing: {
+    color: COLORS.gold,
+    fontStyle: 'italic',
   },
   emptyHistoryText: {
     fontSize: 12,
@@ -363,20 +595,6 @@ const styles = StyleSheet.create({
     gap: 10,
     marginTop: SPACING.sm,
   },
-  secondaryOutlineBtn: {
-    paddingVertical: 12,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-  },
-  secondaryOutlineText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: COLORS.textSecondary,
-    letterSpacing: 0.8,
-  },
   logoutBtn: {
     paddingVertical: 12,
     borderRadius: RADIUS.md,
@@ -389,6 +607,74 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '900',
     color: COLORS.coral,
+    letterSpacing: 1,
+  },
+  // Modal Styles
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#11131A',
+    borderTopLeftRadius: RADIUS.lg,
+    borderTopRightRadius: RADIUS.lg,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(212, 175, 122, 0.25)',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
+  },
+  closeBtn: {
+    padding: 6,
+  },
+  closeBtnText: {
+    fontSize: 16,
+    color: COLORS.textMuted,
+    fontWeight: '800',
+  },
+  inputLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: COLORS.gold,
+    letterSpacing: 1,
+    marginTop: SPACING.sm,
+    marginBottom: 4,
+  },
+  textInput: {
+    backgroundColor: '#08090C',
+    borderRadius: RADIUS.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    color: '#FFFFFF',
+    fontSize: 13,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 10,
+  },
+  saveBtn: {
+    marginTop: SPACING.lg,
+    borderRadius: RADIUS.md,
+    overflow: 'hidden',
+  },
+  saveBtnGradient: {
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveBtnText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#000000',
     letterSpacing: 1,
   },
 });

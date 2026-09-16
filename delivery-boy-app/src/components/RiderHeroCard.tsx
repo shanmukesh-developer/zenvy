@@ -21,6 +21,7 @@ interface RiderHeroCardProps {
   onToggleDuty: (val: boolean) => void;
   onLogout: () => void;
   onOpenSettings?: () => void;
+  onPressProfile?: () => void;
 }
 
 export const RiderHeroCard: React.FC<RiderHeroCardProps> = ({
@@ -33,8 +34,10 @@ export const RiderHeroCard: React.FC<RiderHeroCardProps> = ({
   onToggleDuty,
   onLogout,
   onOpenSettings,
+  onPressProfile,
 }) => {
   const initial = riderName ? riderName.charAt(0).toUpperCase() : 'R';
+  const isVehicleMissing = !vehicleNumber || vehicleNumber === 'Not Registered' || vehicleNumber === 'AP-07-AB-1234';
 
   return (
     <View style={styles.container}>
@@ -76,15 +79,21 @@ export const RiderHeroCard: React.FC<RiderHeroCardProps> = ({
               />
             </View>
 
-            <View style={styles.subInfoRow}>
-              <View style={styles.vehicleChip}>
-                <Text style={styles.vehicleText}>{vehicleNumber}</Text>
+            <TouchableOpacity 
+              style={styles.subInfoRow}
+              onPress={onPressProfile}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.vehicleChip, isVehicleMissing && styles.vehicleChipWarning]}>
+                <Text style={[styles.vehicleText, isVehicleMissing && styles.vehicleTextWarning]}>
+                  {isVehicleMissing ? '✎ SET VEHICLE' : vehicleNumber}
+                </Text>
               </View>
               <View style={styles.scoreChip}>
                 <Text style={styles.starText}>★</Text>
                 <Text style={styles.ratingText}>{Number(rating).toFixed(1)}</Text>
               </View>
-            </View>
+            </TouchableOpacity>
           </View>
 
           {/* Action Button: Sign Out */}
@@ -271,11 +280,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.08)',
   },
+  vehicleChipWarning: {
+    backgroundColor: 'rgba(212, 175, 122, 0.15)',
+    borderColor: 'rgba(212, 175, 122, 0.5)',
+  },
   vehicleText: {
     fontSize: 10,
     fontWeight: '700',
     color: COLORS.textSecondary,
     letterSpacing: 0.8,
+  },
+  vehicleTextWarning: {
+    color: COLORS.gold,
+    fontWeight: '800',
   },
   scoreChip: {
     flexDirection: 'row',

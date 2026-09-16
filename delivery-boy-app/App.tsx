@@ -389,10 +389,12 @@ export default function App() {
   const fetchDashboardData = async (silent: boolean = false) => {
     if (!authToken) return;
     try {
-      const [activeRes, pendingRes, statsRes] = await Promise.allSettled([
+      const [activeRes, pendingRes, statsRes, profileRes, historyRes] = await Promise.allSettled([
         apiFetch('/delivery/orders/active'),
         apiFetch('/delivery/orders/pending'),
-        apiFetch('/delivery/stats/today')
+        apiFetch('/delivery/stats/today'),
+        apiFetch('/delivery/profile'),
+        apiFetch('/delivery/orders/history')
       ]);
 
       if (activeRes.status === 'fulfilled') {
@@ -443,9 +445,31 @@ export default function App() {
       if (statsRes.status === 'fulfilled' && statsRes.value) {
         setProfile(prev => ({
           ...prev!,
-          totalEarnings: statsRes.value.earnings || prev?.totalEarnings || 0,
-          completedCount: statsRes.value.completedCount || prev?.completedCount || 0,
+          totalEarnings: statsRes.value.earnings !== undefined ? statsRes.value.earnings : (prev?.totalEarnings || 0),
+          completedCount: statsRes.value.completedCount !== undefined ? statsRes.value.completedCount : (prev?.completedCount || 0),
         }));
+      }
+      if (profileRes.status === 'fulfilled' && profileRes.value) {
+        const p = profileRes.value;
+        const freshProfile: RiderProfile = {
+          id: p._id || p.id || profile?.id || '',
+          name: p.name || profile?.name || 'Zenvy Pilot',
+          email: p.email || profile?.email || `${p.phone || ''}@zenvy.com`,
+          phone: p.phone || profile?.phone || '',
+          rating: p.averageRating !== undefined ? p.averageRating : (p.rating !== undefined ? p.rating : (profile?.rating || 5.0)),
+          totalEarnings: p.totalEarnings !== undefined ? p.totalEarnings : (p.walletBalance || profile?.totalEarnings || 0),
+          completedCount: p.completedCount !== undefined ? p.completedCount : (p.completedDeliveries || profile?.completedCount || 0),
+          vehicleNumber: p.vehicleNumber || '',
+          vehicleType: p.vehicleType || '',
+          zenPoints: p.zenPoints || profile?.zenPoints || 0,
+          emergencyContact: p.emergencyContact || '',
+        };
+        setProfile(freshProfile);
+        AsyncStorage.setItem(STORAGE_PROFILE_KEY, JSON.stringify(freshProfile)).catch(() => {});
+      }
+      if (historyRes.status === 'fulfilled' && Array.isArray(historyRes.value)) {
+        const formattedHistory = historyRes.value.map(formatOrder);
+        setOrderHistory(formattedHistory);
       }
     } catch (err: any) {
       if (!silent) {
@@ -533,6 +557,31 @@ export default function App() {
         }
       }
     ]);
+  };
+
+  const handleUpdateProfile = async (updatedData: Partial<RiderProfile>) => {
+    try {
+      const res = await apiFetch('/delivery/profile', {
+        method: 'PUT',
+        body: JSON.stringify(updatedData),
+      });
+      const p = res?.partner || res || {};
+      const newProf: RiderProfile = {
+        ...profile!,
+        ...updatedData,
+        name: p.name || updatedData.name || profile?.name || 'Zenvy Pilot',
+        vehicleType: p.vehicleType !== undefined ? p.vehicleType : (updatedData.vehicleType || profile?.vehicleType),
+        vehicleNumber: p.vehicleNumber !== undefined ? p.vehicleNumber : (updatedData.vehicleNumber || profile?.vehicleNumber),
+        emergencyContact: p.emergencyContact !== undefined ? p.emergencyContact : (updatedData.emergencyContact || profile?.emergencyContact),
+      };
+      setProfile(newProf);
+      await AsyncStorage.setItem(STORAGE_PROFILE_KEY, JSON.stringify(newProf));
+      Vibration.vibrate(50);
+      Alert.alert('Credentials Updated', 'Your vehicle and rider credentials have been updated.');
+    } catch (err: any) {
+      Alert.alert('Update Failed', err.message || 'Could not update profile credentials.');
+      throw err;
+    }
   };
 
   // Toggle Item Marking Checklist
@@ -911,12 +960,13 @@ export default function App() {
 
       {/* RIDER HERO CARD (Identity, Duty Switch, Live Metrics) */}
       <RiderHeroCard
-        riderName={profile?.name || 'Vikram Singh'}
-        vehicleNumber={profile?.vehicleNumber || 'AP-07-AB-1234'}
-        rating={profile?.rating || 4.9}
+        riderName={profile?.name || 'Zenvy Pilot'}
+        vehicleNumber={profile?.vehicleNumber || ''}
+        rating={profile?.rating || 5.0}
         totalEarnings={profile?.totalEarnings || 0}
         completedCount={profile?.completedCount || 0}
         isOnline={isOnline}
+        onPressProfile={() => setActiveTab('profile')}
         onToggleDuty={async (val) => {
           Vibration.vibrate(50);
           setIsOnline(val);
@@ -1061,6 +1111,7 @@ export default function App() {
             profile={profile}
             historyOrders={orderHistory}
             onLogout={handleLogout}
+            onUpdateProfile={handleUpdateProfile}
           />
         )}
       </ScrollView>
