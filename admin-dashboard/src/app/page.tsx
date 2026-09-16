@@ -389,14 +389,22 @@ export default function AdminHome() {
       setLiveOrders(prev => prev.map(o => String(o.id) === targetId ? { ...o, status: 'Cancelled' } : o));
     };
 
+    let pendingRidersUpdate: Record<string, any> = {};
+    let riderUpdateTimeout: NodeJS.Timeout | null = null;
+
     const handleRiderLocation = (data: RiderPosition) => {
-      setRiders(prev => ({
-        ...prev,
-        [data.riderId]: {
-          ...data,
-          timestamp: new Date()
-        }
-      }));
+      pendingRidersUpdate[data.riderId] = {
+        ...data,
+        timestamp: new Date()
+      };
+      
+      if (!riderUpdateTimeout) {
+        riderUpdateTimeout = setTimeout(() => {
+          setRiders(prev => ({ ...prev, ...pendingRidersUpdate }));
+          pendingRidersUpdate = {};
+          riderUpdateTimeout = null;
+        }, 1500); // 1.5s throttle to fix UI lag
+      }
     };
 
     const handleRiderOnline = (data: { riderId: string, name: string }) => {
@@ -534,6 +542,7 @@ export default function AdminHome() {
       socket.off('sos_received', handleSosReceived);
       socket.off('admin_issue_reported', handleIssueReported);
       socket.off('admin_intercept_chat', handleInterceptChat);
+      if (riderUpdateTimeout) clearTimeout(riderUpdateTimeout);
     };
   }, [socket, fetchStats, fetchOrders, router, throttledFetchStats]);
 

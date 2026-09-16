@@ -74,11 +74,24 @@ export default function AdminSocketProvider({ children }: { children: React.Reac
     });
 
     socketRef.current = socket;
+
+    // Anti-sleep heartbeat ping to keep Render server awake
+    const keepAliveInterval = setInterval(() => {
+      fetch(`${SOCKET_URL}/api/health`, { cache: 'no-store' }).catch(() => {});
+      if (socket.connected) {
+         socket.emit('admin_ping', { timestamp: Date.now() });
+      }
+    }, 10 * 60 * 1000); // 10 minutes
+
+    return () => {
+       clearInterval(keepAliveInterval);
+    };
   }, []);
 
   useEffect(() => {
-    initSocket();
+    const cleanupInterval = initSocket();
     return () => {
+      if (typeof cleanupInterval === 'function') cleanupInterval();
       if (socketRef.current) {
         socketRef.current.disconnect();
         socketRef.current = null;
