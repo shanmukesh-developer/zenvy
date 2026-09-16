@@ -54,5 +54,6 @@
 | 2026-09-16 | Customer Mobile | UX & Payments | Sanitized UPI deep link & QR code payee name from ZenvyNexus to Zenvy in `checkout.tsx` |
 | 2026-09-16 | Customer Mobile | UX & Error Handling | Replaced raw and generic error alerts with descriptive user feedback in `mega-basket.tsx` |
 | 2026-09-16 | Delivery App | Reliability | Eliminated localhost fallback leaks by anchoring fallback API_URL to production backend in `app/page.tsx` & `GlobalAnnouncement.tsx` |
+| 2026-09-16 | Admin Dashboard | Performance & Real-Time Sync | Eliminated admin theme GPU lag via backdrop-blur-md & hardware acceleration; enabled real-time sync across Customer/Delivery apps with persistent AdminSocketProvider, event listeners, and 15s auto-polling fallback in `globals.css`, `layout.tsx`, `page.tsx`, `orders/page.tsx`, `fleet/page.tsx` |
 
 

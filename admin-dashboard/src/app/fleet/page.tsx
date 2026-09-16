@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, memo } from 'react';
 import { useAdminAuth } from '@/utils/useAdminAuth';
+import { useAdminSocket } from '@/components/AdminSocketProvider';
 import dynamic from 'next/dynamic';
 
 const LiveRiderMap = dynamic(() => import('@/components/LiveRiderMap'), { ssr: false, loading: () => <div className="h-[600px] w-full rounded-[40px] bg-blue-900/10 animate-pulse border border-blue-500/20 flex items-center justify-center text-blue-500 font-black tracking-widest uppercase text-xl">Booting God-Mode Map...</div> });
@@ -81,6 +82,7 @@ RiderRow.displayName = 'RiderRow';
 
 export default function FleetManagement() {
   const isAuthed = useAdminAuth();
+  const { socket } = useAdminSocket();
   
   const [activeTab, setActiveTab] = useState<'roster' | 'payouts' | 'map'>('roster');
 
@@ -98,14 +100,9 @@ export default function FleetManagement() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useEffect(() => {
-    fetchRiders(1);
-    fetchPayouts();
-  }, []);
-
-  const fetchRiders = async (page = 1) => {
+  const fetchRiders = async (page = 1, showSkeleton = true) => {
     try {
-      setLoading(true);
+      if (showSkeleton) setLoading(true);
       const res = await fetch(`${API_URL}/api/admin/riders?page=${page}&t=${Date.now()}`, { credentials: 'include', cache: 'no-store' });
       const data = await res.json();
       if (res.ok) {
@@ -114,7 +111,7 @@ export default function FleetManagement() {
         setTotalPages(data.pages || 1);
         setCurrentPage(page);
       }
-    } catch (err) { console.error('[FLEET_FETCH_ERROR]', err); } finally { setLoading(false); }
+    } catch (err) { console.error('[FLEET_FETCH_ERROR]', err); } finally { if (showSkeleton) setLoading(false); }
   };
 
   const fetchPayouts = async () => {
@@ -123,6 +120,64 @@ export default function FleetManagement() {
       if (res.ok) setPayouts(await res.json());
     } catch (err) { console.error(err); }
   };
+
+  useEffect(() => {
+    fetchRiders(1, true);
+    fetchPayouts();
+  }, []);
+
+  // 20-second self-healing polling fallback
+  useEffect(() => {
+    const timer = setInterval(() => {
+      fetchRiders(currentPage, false);
+      fetchPayouts();
+    }, 20000);
+    return () => clearInterval(timer);
+  }, [currentPage]);
+
+  // Real-time fleet socket events
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleRiderOnline = (data: { riderId: string }) => {
+      const riderId = String(data.riderId);
+      setRiders(prev => prev.map(r => String(r._id) === riderId ? { ...r, isOnline: true } : r));
+    };
+
+    const handleRiderOffline = (data: { riderId: string }) => {
+      const riderId = String(data.riderId);
+      setRiders(prev => prev.map(r => String(r._id) === riderId ? { ...r, isOnline: false } : r));
+    };
+
+    const handleRiderStatus = (data: { riderId: string, isOnline: boolean }) => {
+      const riderId = String(data.riderId);
+      setRiders(prev => prev.map(r => String(r._id) === riderId ? { ...r, isOnline: data.isOnline } : r));
+    };
+
+    const handleSos = (data: { riderId: string }) => {
+      const riderId = String(data.riderId);
+      setRiders(prev => prev.map(r => String(r._id) === riderId ? { ...r, isSosActive: true } : r));
+    };
+
+    const handleDeliveryComplete = () => {
+      fetchRiders(currentPage, false);
+      fetchPayouts();
+    };
+
+    socket.on('admin_rider_online', handleRiderOnline);
+    socket.on('admin_rider_offline', handleRiderOffline);
+    socket.on('admin_rider_status', handleRiderStatus);
+    socket.on('sos_received', handleSos);
+    socket.on('admin_delivery_complete', handleDeliveryComplete);
+
+    return () => {
+      socket.off('admin_rider_online', handleRiderOnline);
+      socket.off('admin_rider_offline', handleRiderOffline);
+      socket.off('admin_rider_status', handleRiderStatus);
+      socket.off('sos_received', handleSos);
+      socket.off('admin_delivery_complete', handleDeliveryComplete);
+    };
+  }, [socket, currentPage]);
 
   const handleMarkSettled = async (riderId: string, riderName: string) => {
     if (!confirm(`Are you sure you want to mark rider ${riderName}'s payout as settled?`)) return;

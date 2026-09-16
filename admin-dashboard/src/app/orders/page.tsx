@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, memo } from 'react';
-import { io } from 'socket.io-client';
+import { useAdminSocket } from '@/components/AdminSocketProvider';
 import { useAdminAuth } from '@/utils/useAdminAuth';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-jwmt.onrender.com';
@@ -132,6 +132,7 @@ OrderRow.displayName = 'OrderRow';
 
 export default function OrdersPage() {
   const isAuthed = useAdminAuth();
+  const { socket, isConnected } = useAdminSocket();
   const [orders, setOrders] = useState<Order[]>([]);
   const [totalOrders, setTotalOrders] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -144,13 +145,18 @@ export default function OrdersPage() {
   const updateOrderStatus = async (orderId: string, status: string) => {
     try {
       setActionLoading(orderId + status);
-      const token = 'cookie-managed';
       const res = await fetch(`${API_URL}/api/orders/${orderId}/status`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status })
       });
-      if (res.ok) await fetchOrders();
+      if (res.ok) {
+        setOrders(prev => prev.map(o => String(o._id || o.id) === String(orderId) ? { ...o, status } : o));
+        if (selectedOrder && String(selectedOrder._id || selectedOrder.id) === String(orderId)) {
+          setSelectedOrder(prev => prev ? { ...prev, status } : null);
+        }
+        await fetchOrders(currentPage, false);
+      }
     } catch (err) {
       console.error('[ORDER_UPDATE_ERROR]', err);
     } finally {
@@ -158,12 +164,12 @@ export default function OrdersPage() {
     }
   };
 
-  const fetchOrders = async (page = 1) => {
+  const fetchOrders = async (page = 1, showSkeleton = true) => {
     try {
-      setLoading(true);
-      const token = 'cookie-managed';
-      const res = await fetch(`${API_URL}/api/admin/orders?page=${page}&status=${filterStatus}`, {
-        });
+      if (showSkeleton) setLoading(true);
+      const res = await fetch(`${API_URL}/api/admin/orders?page=${page}&status=${filterStatus}&t=${Date.now()}`, {
+        cache: 'no-store'
+      });
       const data = await res.json();
       if (res.ok) {
          setOrders(data.orders || []);
@@ -174,56 +180,126 @@ export default function OrdersPage() {
     } catch (err) {
       console.error('[ORDERS_FETCH_ERROR]', err);
     } finally {
-      setLoading(false);
+      if (showSkeleton) setLoading(false);
     }
   };
 
   const handleAcceptOrder = async (orderId: string) => {
     try {
       setActionLoading(orderId + 'Accept');
-      const token = 'cookie-managed';
       const res = await fetch(`${API_URL}/api/orders/${orderId}/restaurant-accept`, {
         method: 'PUT',
-        });
-      if (res.ok) await fetchOrders();
+      });
+      if (res.ok) {
+        setOrders(prev => prev.map(o => String(o._id || o.id) === String(orderId) ? { ...o, status: 'Accepted' } : o));
+        await fetchOrders(currentPage, false);
+      }
     } catch { } finally { setActionLoading(null); }
   };
 
   useEffect(() => {
-    fetchOrders(1);
-
-    let token = null;
-    try {
-      const userData = localStorage.getItem('user');
-      if (userData) {
-        const u = JSON.parse(userData);
-        token = u.token || null;
-      }
-    } catch {}
-
-    const socket = io(SOCKET_URL, {
-      transports: ['websocket', 'polling'], withCredentials: true,
-      auth: { token }
-    });
-    socket.emit('joinAdmin');
-    
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    socket.on('admin_newOrder', (order: any) => { 
-       setOrders(prev => [{
-          ...order,
-          _id: order.id,
-          createdAt: new Date().toISOString()
-       }, ...prev].slice(0, 50)); 
-    });
-    socket.on('statusUpdated', (data: { id: string, status: string }) => { 
-       setOrders(prev => prev.map(o => o._id === data.id ? { ...o, status: data.status } : o));
-    });
-    socket.on('orderCancelled', ({ orderId }: { orderId: string }) => { 
-       setOrders(prev => prev.map(o => o._id === orderId ? { ...o, status: 'Cancelled' } : o));
-    });
-
-    return () => { socket.disconnect(); };
+    fetchOrders(1, true);
   }, [filterStatus]);
+
+  // 15-second background auto-polling fallback
+  useEffect(() => {
+    const timer = setInterval(() => {
+      fetchOrders(currentPage, false);
+    }, 15000);
+    return () => clearInterval(timer);
+  }, [currentPage, filterStatus]);
+
+  // Real-time socket event listeners via unified AdminSocketProvider
+  useEffect(() => {
+    if (!socket) return;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const handleNewOrder = (order: any) => { 
+      const orderId = order.id || order._id;
+      if (!orderId) return;
+      setOrders(prev => {
+        if (prev.some(o => String(o._id || o.id) === String(orderId))) return prev;
+        return [{
+          ...order,
+          _id: orderId,
+          id: orderId,
+          createdAt: order.createdAt || new Date().toISOString()
+        }, ...prev].slice(0, 50);
+      });
+      setTotalOrders(prev => prev + 1);
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const handleNewMegaBasket = (basket: any) => {
+      const basketId = basket.id || basket._id;
+      if (!basketId) return;
+      setOrders(prev => {
+        if (prev.some(o => String(o._id || o.id) === String(basketId))) return prev;
+        return [{
+          ...basket,
+          _id: basketId,
+          id: basketId,
+          items: basket.items || [],
+          totalPrice: basket.totalPrice || basket.finalPrice || 0,
+          createdAt: basket.createdAt || new Date().toISOString()
+        }, ...prev].slice(0, 50);
+      });
+      setTotalOrders(prev => prev + 1);
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const handleStatusUpdated = (data: any) => { 
+      const targetId = String(data?.id || data?.orderId || '');
+      if (!targetId) return;
+      setOrders(prev => prev.map(o => String(o._id || o.id) === targetId ? { ...o, status: data.status } : o));
+      setSelectedOrder(prev => {
+        if (prev && String(prev._id || prev.id) === targetId) {
+          return { ...prev, status: data.status };
+        }
+        return prev;
+      });
+    };
+
+    const handleOrderAccepted = (data: { orderId: string, riderName: string }) => {
+      const targetId = String(data.orderId);
+      setOrders(prev => prev.map(o => String(o._id || o.id) === targetId ? { ...o, status: 'Accepted' } : o));
+    };
+
+    const handleDeliveryComplete = (data: { orderId: string }) => {
+      const targetId = String(data.orderId);
+      setOrders(prev => prev.map(o => String(o._id || o.id) === targetId ? { ...o, status: 'Delivered' } : o));
+    };
+
+    const handleOrderUnassigned = (data: { orderId: string }) => {
+      const targetId = String(data.orderId);
+      setOrders(prev => prev.map(o => String(o._id || o.id) === targetId ? { ...o, status: 'Pending' } : o));
+    };
+
+    const handleOrderCancelled = ({ orderId }: { orderId: string }) => { 
+      const targetId = String(orderId);
+      setOrders(prev => prev.map(o => String(o._id || o.id) === targetId ? { ...o, status: 'Cancelled' } : o));
+    };
+
+    socket.on('admin_newOrder', handleNewOrder);
+    socket.on('newOrder', handleNewOrder);
+    socket.on('admin_newMegaBasket', handleNewMegaBasket);
+    socket.on('statusUpdated', handleStatusUpdated);
+    socket.on('admin_order_accepted', handleOrderAccepted);
+    socket.on('admin_delivery_complete', handleDeliveryComplete);
+    socket.on('order_unassigned', handleOrderUnassigned);
+    socket.on('orderCancelled', handleOrderCancelled);
+
+    return () => {
+      socket.off('admin_newOrder', handleNewOrder);
+      socket.off('newOrder', handleNewOrder);
+      socket.off('admin_newMegaBasket', handleNewMegaBasket);
+      socket.off('statusUpdated', handleStatusUpdated);
+      socket.off('admin_order_accepted', handleOrderAccepted);
+      socket.off('admin_delivery_complete', handleDeliveryComplete);
+      socket.off('order_unassigned', handleOrderUnassigned);
+      socket.off('orderCancelled', handleOrderCancelled);
+    };
+  }, [socket]);
 
   const getStatusStyle = (status: string) => {
     switch (status) {
@@ -392,16 +468,45 @@ export default function OrdersPage() {
                </div>
             </div>
 
-            <div className="flex gap-4 pt-4">
-               <button onClick={() => setSelectedOrder(null)} className="flex-1 py-4 bg-white/5 border border-white/10 rounded-2xl text-[10px] font-black uppercase text-gray-500 hover:text-white transition-all">Close Trace</button>
-               {selectedOrder.status === 'Pending' && (
-                 <button 
-                   onClick={() => { updateOrderStatus(selectedOrder._id, 'Accepted'); setSelectedOrder(null); }}
-                   className="flex-[2] py-4 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-[0_0_20px_rgba(37,99,235,0.4)]"
+            <div className="space-y-4 pt-4 border-t border-white/5">
+               <div className="flex items-center justify-between">
+                 <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Control Room Status Override</span>
+                 <span className="text-[9px] text-blue-400 font-mono">Syncs to Customer & Delivery App</span>
+               </div>
+               <div className="grid grid-cols-4 gap-2">
+                 <button
+                   disabled={selectedOrder.status === 'Accepted' || actionLoading === selectedOrder._id + 'Accepted'}
+                   onClick={() => updateOrderStatus(selectedOrder._id, 'Accepted')}
+                   className="py-2.5 px-2 bg-sky-500/10 text-sky-400 border border-sky-500/20 rounded-xl text-[9px] font-black uppercase tracking-wider hover:bg-sky-500/20 disabled:opacity-30 transition-all"
                  >
-                   Authorize Dispatch
+                   ▶ Accept
                  </button>
-               )}
+                 <button
+                   disabled={selectedOrder.status === 'PickedUp' || actionLoading === selectedOrder._id + 'PickedUp'}
+                   onClick={() => updateOrderStatus(selectedOrder._id, 'PickedUp')}
+                   className="py-2.5 px-2 bg-orange-500/10 text-orange-400 border border-orange-500/20 rounded-xl text-[9px] font-black uppercase tracking-wider hover:bg-orange-500/20 disabled:opacity-30 transition-all"
+                 >
+                   🛵 Picked Up
+                 </button>
+                 <button
+                   disabled={selectedOrder.status === 'Delivered' || actionLoading === selectedOrder._id + 'Delivered'}
+                   onClick={() => updateOrderStatus(selectedOrder._id, 'Delivered')}
+                   className="py-2.5 px-2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-xl text-[9px] font-black uppercase tracking-wider hover:bg-emerald-500/20 disabled:opacity-30 transition-all"
+                 >
+                   ✓ Delivered
+                 </button>
+                 <button
+                   disabled={selectedOrder.status === 'Cancelled' || actionLoading === selectedOrder._id + 'Cancelled'}
+                   onClick={() => updateOrderStatus(selectedOrder._id, 'Cancelled')}
+                   className="py-2.5 px-2 bg-red-500/10 text-red-400 border border-red-500/20 rounded-xl text-[9px] font-black uppercase tracking-wider hover:bg-red-500/20 disabled:opacity-30 transition-all"
+                 >
+                   ✕ Cancel
+                 </button>
+               </div>
+            </div>
+
+            <div className="flex gap-4 pt-2">
+               <button onClick={() => setSelectedOrder(null)} className="w-full py-4 bg-white/5 border border-white/10 rounded-2xl text-[10px] font-black uppercase text-gray-400 hover:text-white transition-all">Close Trace</button>
             </div>
           </div>
         </div>

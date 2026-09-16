@@ -1,55 +1,93 @@
 "use client";
-import React, { useEffect, useState, createContext, useContext, useRef } from 'react';
+import React, { useEffect, useState, createContext, useContext, useRef, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { usePathname } from 'next/navigation';
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-jwmt.onrender.com';
 
 interface SocketContextType {
   socket: Socket | null;
+  isConnected: boolean;
+  refreshSocket: () => void;
 }
 
-const SocketContext = createContext<SocketContextType>({ socket: null });
+const SocketContext = createContext<SocketContextType>({
+  socket: null,
+  isConnected: false,
+  refreshSocket: () => {}
+});
 
 export const useAdminSocket = () => useContext(SocketContext);
 
 export default function AdminSocketProvider({ children }: { children: React.ReactNode }) {
   const socketRef = useRef<Socket | null>(null);
-  const [ready, setReady] = useState(false);
-  const pathname = usePathname();
+  const [isConnected, setIsConnected] = useState(false);
 
-  useEffect(() => {
-    // Check if user is admin before connecting
-    let token = null;
+  const initSocket = useCallback(() => {
+    let token: string | null = null;
     try {
-      const userData = localStorage.getItem('user');
-      if (!userData) return;
-      const user = JSON.parse(userData);
-      if (user.role !== 'admin') return;
-      token = user.token || null;
-    } catch { return; }
+      const userData = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
+      if (userData) {
+        const user = JSON.parse(userData);
+        token = user.token || null;
+      }
+    } catch {}
+
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+      socketRef.current = null;
+    }
 
     const socket = io(SOCKET_URL.replace(/\/$/, ""), {
       transports: ['websocket', 'polling'],
       withCredentials: true,
       autoConnect: true,
       reconnection: true,
-      reconnectionAttempts: 10,
-      reconnectionDelay: 2000,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
       auth: { token }
     });
-    socketRef.current = socket;
-    socket.emit('joinAdmin');
-    setReady(true);
 
-    return () => {
-      socket.disconnect();
-      socketRef.current = null;
+    const joinAdminRoom = () => {
+      console.log('[ADMIN_SOCKET] Connected with socket ID:', socket.id, 'Joining admin-room...');
+      socket.emit('joinAdmin');
     };
-  }, [pathname]);
+
+    socket.on('connect', () => {
+      setIsConnected(true);
+      joinAdminRoom();
+    });
+
+    socket.on('reconnect', () => {
+      console.log('[ADMIN_SOCKET] Reconnected. Re-joining admin-room...');
+      setIsConnected(true);
+      joinAdminRoom();
+    });
+
+    socket.on('disconnect', (reason) => {
+      console.warn('[ADMIN_SOCKET] Disconnected:', reason);
+      setIsConnected(false);
+    });
+
+    socket.on('connect_error', (err) => {
+      console.warn('[ADMIN_SOCKET] Connection error:', err.message);
+    });
+
+    socketRef.current = socket;
+  }, []);
+
+  useEffect(() => {
+    initSocket();
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+    };
+  }, [initSocket]);
 
   return (
-    <SocketContext.Provider value={{ socket: socketRef.current }}>
+    <SocketContext.Provider value={{ socket: socketRef.current, isConnected, refreshSocket: initSocket }}>
       {children}
     </SocketContext.Provider>
   );

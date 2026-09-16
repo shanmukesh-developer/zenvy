@@ -1,8 +1,6 @@
 "use client";
 import React, { useEffect, useState } from 'react';
-import { io } from 'socket.io-client';
-
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://hostelbites-backend-jwmt.onrender.com';
+import { useAdminSocket } from '@/components/AdminSocketProvider';
 
 interface SOSData {
   riderId: string;
@@ -12,21 +10,24 @@ interface SOSData {
 
 export default function SOSAlertModal() {
   const [sosEvent, setSosEvent] = useState<SOSData | null>(null);
+  const { socket } = useAdminSocket();
 
   useEffect(() => {
-    const socket = io(SOCKET_URL, {
-      transports: ['websocket', 'polling'], withCredentials: true
-    });
-    socket.on('sos_received', (data: SOSData) => {
+    if (!socket) return;
+    const handleSos = (data: SOSData) => {
       setSosEvent(data);
       // Attempt to play a siren
       try {
         const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/996/996-preview.mp3');
         audio.play().catch(() => {}); // catch browser autoplay blocks
       } catch {}
-    });
-    return () => { socket.disconnect(); };
-  }, []);
+    };
+
+    socket.on('sos_received', handleSos);
+    return () => {
+      socket.off('sos_received', handleSos);
+    };
+  }, [socket]);
 
   if (!sosEvent) return null;
 

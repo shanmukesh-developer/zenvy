@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, useCallback, memo } from 'react';
-import { io } from 'socket.io-client';
+import { useAdminSocket } from '@/components/AdminSocketProvider';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useAdminAuth } from '@/utils/useAdminAuth';
@@ -163,6 +163,7 @@ EventItem.displayName = 'EventItem';
 export default function AdminHome() {
   const router = useRouter();
   const isAuthed = useAdminAuth();
+  const { socket, isConnected } = useAdminSocket();
 
   const [stats, setStats] = useState<AdminStat[]>([
     { label: 'Platform Revenue', value: '₹0', growth: '+0%', trend: 'neutral' },
@@ -182,7 +183,6 @@ export default function AdminHome() {
   const [megaType, setMegaType] = useState<'info' | 'warning' | 'promo' | 'emergency'>('info');
   const [broadcasting, setBroadcasting] = useState(false);
   const [selectedUPIOrder, setSelectedUPIOrder] = useState<LiveOrder | null>(null);
-  const socketRef = useRef<ReturnType<typeof io> | null>(null);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -324,53 +324,72 @@ export default function AdminHome() {
     fetchStats();
     fetchOrders();
 
-    let token = null;
-    try {
-      const userData = localStorage.getItem('user');
-      if (userData) {
-        const u = JSON.parse(userData);
-        token = u.token || null;
-      }
-    } catch {}
+    // 15-second self-healing polling fallback to guarantee dashboard never desyncs
+    const pollInterval = setInterval(() => {
+      fetchOrders();
+      throttledFetchStats();
+    }, 15000);
 
-    const socket = io(SOCKET_URL.replace(/\/$/, ""), {
-      transports: ['websocket', 'polling'],
-      withCredentials: true,
-      autoConnect: true,
-      reconnection: true,
-      reconnectionAttempts: Infinity,
-      reconnectionDelay: 1000,
-      auth: { token }
-    });
-    socketRef.current = socket;
-    socket.emit('joinAdmin');
-    
+    if (!socket) {
+      return () => clearInterval(pollInterval);
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    socket.on('admin_newOrder', (order: any) => {
+    const handleIncomingOrder = (order: any) => {
       throttledFetchStats();
-      setLiveOrders(prev => [{
-        id: order.id,
-        customer: order.customer || 'Student',
-        location: order.drop || 'Unknown',
-        status: 'Pending',
-        price: order.finalPrice || order.totalPrice,
-        restaurant: order.restaurant || 'Zenvy Elite',
-        timestamp: new Date(),
-        paymentMethod: order.paymentMethod || 'COD',
-        upiStatus: order.upiStatus || (order.paymentMethod === 'UPI' ? 'Pending' : 'Verified')
-      }, ...prev].slice(0, 20));
-    });
+      const orderId = order.id || order._id;
+      if (!orderId) return;
+      setLiveOrders(prev => {
+        if (prev.some(o => o.id === orderId)) return prev;
+        return [{
+          id: orderId,
+          customer: order.customer || order.user?.name || 'Student Resident',
+          location: order.drop || (order.hostelGateDelivery ? 'Gate Delivery' : 'Room Entry') || 'Campus',
+          status: order.status || 'Pending',
+          price: order.finalPrice || order.totalPrice || 0,
+          restaurant: order.restaurant?.name || order.restaurant || 'Zenvy Kitchen',
+          timestamp: new Date(),
+          paymentMethod: order.paymentMethod || 'COD',
+          upiStatus: order.upiStatus || (order.paymentMethod === 'UPI' ? 'Pending' : 'Verified')
+        }, ...prev].slice(0, 25);
+      });
+    };
 
-    socket.on('statusUpdated', (data: { id: string, status: string }) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const handleIncomingMegaBasket = (basket: any) => {
       throttledFetchStats();
-      setLiveOrders(prev => prev.map(o => o.id === data.id ? { ...o, status: data.status } : o));
-    });
+      const basketId = basket.id || basket._id;
+      if (!basketId) return;
+      setLiveOrders(prev => {
+        if (prev.some(o => o.id === basketId)) return prev;
+        return [{
+          id: basketId,
+          customer: basket.user?.name || 'Student Resident',
+          location: basket.drop || 'Hostel Delivery',
+          status: basket.status || 'Pending',
+          price: basket.finalPrice || basket.totalPrice || 0,
+          restaurant: 'Mega Basket Multi-Stop',
+          timestamp: new Date(),
+          paymentMethod: basket.paymentMethod || 'UPI',
+          upiStatus: 'Verified'
+        }, ...prev].slice(0, 25);
+      });
+    };
 
-    socket.on('orderCancelled', ({ orderId }: { orderId: string }) => {
-      setLiveOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'Cancelled' } : o));
-    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const handleStatusUpdated = (data: any) => {
+      throttledFetchStats();
+      const targetId = String(data?.id || data?.orderId || '');
+      if (!targetId) return;
+      setLiveOrders(prev => prev.map(o => String(o.id) === targetId ? { ...o, status: data.status } : o));
+    };
 
-    socket.on('admin_rider_location', (data: RiderPosition) => {
+    const handleOrderCancelled = ({ orderId }: { orderId: string }) => {
+      const targetId = String(orderId);
+      setLiveOrders(prev => prev.map(o => String(o.id) === targetId ? { ...o, status: 'Cancelled' } : o));
+    };
+
+    const handleRiderLocation = (data: RiderPosition) => {
       setRiders(prev => ({
         ...prev,
         [data.riderId]: {
@@ -378,9 +397,9 @@ export default function AdminHome() {
           timestamp: new Date()
         }
       }));
-    });
+    };
 
-    socket.on('admin_rider_online', (data: { riderId: string, name: string }) => {
+    const handleRiderOnline = (data: { riderId: string, name: string }) => {
       setRiders(prev => ({
         ...prev,
         [data.riderId]: {
@@ -391,17 +410,17 @@ export default function AdminHome() {
           activeOrderCount: 0
         }
       }));
-    });
+    };
 
-    socket.on('admin_rider_offline', (data: { riderId: string }) => {
+    const handleRiderOffline = (data: { riderId: string }) => {
       setRiders(prev => {
         const next = { ...prev };
         if (next[data.riderId]) next[data.riderId].isOnline = false;
         return next;
       });
-    });
-    
-    socket.on('admin_rider_status', (data: { riderId: string, isOnline: boolean, name: string }) => {
+    };
+
+    const handleRiderStatus = (data: { riderId: string, isOnline: boolean, name: string }) => {
       setRiders(prev => ({
         ...prev,
         [data.riderId]: {
@@ -411,24 +430,27 @@ export default function AdminHome() {
           isOnline: data.isOnline
         }
       }));
-    });
+    };
 
-    socket.on('admin_order_accepted', (data: { orderId: string, riderName: string }) => {
-      setLiveOrders(prev => prev.map(o => o.id === data.orderId ? { ...o, status: 'Accepted', deliveryPartnerName: data.riderName } : o));
-    });
+    const handleOrderAccepted = (data: { orderId: string, riderName: string }) => {
+      const targetId = String(data.orderId);
+      setLiveOrders(prev => prev.map(o => String(o.id) === targetId ? { ...o, status: 'Accepted', deliveryPartnerName: data.riderName } : o));
+    };
 
-    socket.on('admin_delivery_complete', (data: { orderId: string }) => {
+    const handleDeliveryComplete = (data: { orderId: string }) => {
       throttledFetchStats();
-      setLiveOrders(prev => prev.map(o => o.id === data.orderId ? { ...o, status: 'Delivered' } : o));
-    });
+      const targetId = String(data.orderId);
+      setLiveOrders(prev => prev.map(o => String(o.id) === targetId ? { ...o, status: 'Delivered' } : o));
+    };
 
-    socket.on('order_unassigned', (data: { orderId: string }) => {
-      setLiveOrders(prev => prev.map(o => o.id === data.orderId ? { ...o, status: 'Pending', deliveryPartnerName: undefined } : o));
-    });
+    const handleOrderUnassigned = (data: { orderId: string }) => {
+      const targetId = String(data.orderId);
+      setLiveOrders(prev => prev.map(o => String(o.id) === targetId ? { ...o, status: 'Pending', deliveryPartnerName: undefined } : o));
+    };
 
-    socket.on('rider_profile_updated', (data: Record<string, unknown>) => {
+    const handleRiderProfileUpdated = (data: Record<string, unknown>) => {
+      const riderId = String(data.riderId);
       setRiders(prev => {
-        const riderId = String(data.riderId);
         if (prev[riderId]) {
           return {
             ...prev,
@@ -441,9 +463,9 @@ export default function AdminHome() {
         }
         return prev;
       });
-    });
+    };
 
-    socket.on('sos_received', (data: Record<string, unknown>) => {
+    const handleSosReceived = (data: Record<string, unknown>) => {
       setOperationalEvents(prev => [{
         id: `sos-${Date.now()}`,
         type: 'SOS' as const,
@@ -452,9 +474,9 @@ export default function AdminHome() {
         details: 'CRITICAL EMERGENCY: SOS Triggered',
         timestamp: new Date()
       }, ...prev].slice(0, 10));
-    });
+    };
 
-    socket.on('admin_issue_reported', (data: Record<string, unknown>) => {
+    const handleIssueReported = (data: Record<string, unknown>) => {
       setOperationalEvents(prev => [{
         id: `issue-${Date.now()}`,
         type: 'ISSUE' as const,
@@ -464,9 +486,10 @@ export default function AdminHome() {
         orderId: String(data.orderId),
         timestamp: new Date()
       }, ...prev].slice(0, 10));
-    });
+    };
 
-    socket.on('admin_intercept_chat', (data: any) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const handleInterceptChat = (data: any) => {
       setInterceptedChats(prev => [{
         orderId: data.orderId,
         sender: data.sender,
@@ -474,10 +497,45 @@ export default function AdminHome() {
         message: data.message,
         timestamp: new Date(data.timestamp)
       }, ...prev].slice(0, 30));
-    });
+    };
 
-    return () => { socket.disconnect(); };
-  }, [fetchStats, fetchOrders, router, throttledFetchStats]);
+    socket.on('admin_newOrder', handleIncomingOrder);
+    socket.on('newOrder', handleIncomingOrder);
+    socket.on('admin_newMegaBasket', handleIncomingMegaBasket);
+    socket.on('statusUpdated', handleStatusUpdated);
+    socket.on('orderCancelled', handleOrderCancelled);
+    socket.on('admin_rider_location', handleRiderLocation);
+    socket.on('admin_rider_online', handleRiderOnline);
+    socket.on('admin_rider_offline', handleRiderOffline);
+    socket.on('admin_rider_status', handleRiderStatus);
+    socket.on('admin_order_accepted', handleOrderAccepted);
+    socket.on('admin_delivery_complete', handleDeliveryComplete);
+    socket.on('order_unassigned', handleOrderUnassigned);
+    socket.on('rider_profile_updated', handleRiderProfileUpdated);
+    socket.on('sos_received', handleSosReceived);
+    socket.on('admin_issue_reported', handleIssueReported);
+    socket.on('admin_intercept_chat', handleInterceptChat);
+
+    return () => {
+      clearInterval(pollInterval);
+      socket.off('admin_newOrder', handleIncomingOrder);
+      socket.off('newOrder', handleIncomingOrder);
+      socket.off('admin_newMegaBasket', handleIncomingMegaBasket);
+      socket.off('statusUpdated', handleStatusUpdated);
+      socket.off('orderCancelled', handleOrderCancelled);
+      socket.off('admin_rider_location', handleRiderLocation);
+      socket.off('admin_rider_online', handleRiderOnline);
+      socket.off('admin_rider_offline', handleRiderOffline);
+      socket.off('admin_rider_status', handleRiderStatus);
+      socket.off('admin_order_accepted', handleOrderAccepted);
+      socket.off('admin_delivery_complete', handleDeliveryComplete);
+      socket.off('order_unassigned', handleOrderUnassigned);
+      socket.off('rider_profile_updated', handleRiderProfileUpdated);
+      socket.off('sos_received', handleSosReceived);
+      socket.off('admin_issue_reported', handleIssueReported);
+      socket.off('admin_intercept_chat', handleInterceptChat);
+    };
+  }, [socket, fetchStats, fetchOrders, router, throttledFetchStats]);
 
   if (!isAuthed) {
     return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Authenticating Command Terminal...</div>;
@@ -599,7 +657,7 @@ export default function AdminHome() {
             <button 
               onClick={() => {
                 if (!confirm("Activate STORM MODE? This will globally enable Surge Pricing and alert all active users.")) return;
-                if (socketRef.current) socketRef.current.emit('admin_broadcast', { message: "⚠️ SEVERE WEATHER: Deliveries may be delayed. Surge pricing active.", type: "emergency" });
+                if (socket) socket.emit('admin_broadcast', { message: "⚠️ SEVERE WEATHER: Deliveries may be delayed. Surge pricing active.", type: "emergency" });
               }}
               className="px-8 py-4 bg-red-600 shadow-[0_0_30px_rgba(220,38,38,0.3)] rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] text-white hover:scale-105 transition-all animate-pulse"
             >
@@ -658,9 +716,9 @@ export default function AdminHome() {
           <button
             disabled={!megaMsg.trim() || broadcasting}
             onClick={() => {
-              if (!socketRef.current || !megaMsg.trim()) return;
+              if (!socket || !megaMsg.trim()) return;
               setBroadcasting(true);
-              socketRef.current.emit('admin_broadcast', { message: megaMsg.trim(), type: megaType });
+              socket.emit('admin_broadcast', { message: megaMsg.trim(), type: megaType });
               setTimeout(() => { setMegaMsg(''); setBroadcasting(false); }, 1500);
             }}
             className="w-full mt-6 py-4 rounded-xl text-[13px] font-black uppercase tracking-widest bg-[#C9A84C] text-black hover:bg-yellow-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all"

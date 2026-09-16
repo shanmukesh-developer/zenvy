@@ -27,11 +27,14 @@ body {
 
 @layer components {
   .glass {
-    @apply bg-white/[0.02] backdrop-blur-2xl border border-white/5;
+    @apply bg-white/[0.02] backdrop-blur-md border border-white/5;
+    -webkit-backdrop-filter: blur(12px);
+    transform: translateZ(0);
+    will-change: transform;
   }
   
   .glass-card {
-    @apply glass rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.3)] transition-all duration-700 hover:border-white/10 hover:bg-white/[0.04];
+    @apply glass rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.3)] transition-colors duration-200 hover:border-white/10 hover:bg-white/[0.04];
   }
 
   .neon-border-blue {
@@ -84,6 +87,9 @@ body {
 
 .animate-pulse-soft {
   animation: pulse-soft 3s ease-in-out infinite;
+  will-change: transform, opacity;
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
 }
 
 /* Fade In Animation */
