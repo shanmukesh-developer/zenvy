@@ -468,9 +468,10 @@ const cancelOrderByRider = async (req, res) => {
       return res.status(400).json({ message: 'Cannot cancel at this stage' });
     }
 
-    // Unassign rider & reset order to Pending so another rider can claim it
+    // Unassign rider & reset order to Pending/ReadyForPickup so another rider can claim it
+    const previousStatus = order.status;
     order.deliveryPartnerId = null;
-    order.status = 'Pending';
+    order.status = order.status === 'PickedUp' ? 'ReadyForPickup' : 'Pending';
     await order.save();
 
     // Clear rider's current task
@@ -482,7 +483,7 @@ const cancelOrderByRider = async (req, res) => {
 
     const io = req.app.get('io');
     if (io) {
-      const payload = { id: order.id, status: 'Pending' };
+      const payload = { id: order.id, status: order.status };
       // Notify customer tracking page
       io.to(order.id.toString()).emit('statusUpdated', payload);
       // Notify admin
