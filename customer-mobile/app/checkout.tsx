@@ -413,7 +413,7 @@ export default function CheckoutScreen() {
             ].map(item => {
               const isActive = locationType === item.key;
               return (
-                <TouchableOpacity
+                <DopaminePressable
                   key={item.key}
                   style={[
                     s.campusBtnNew,
@@ -421,16 +421,20 @@ export default function CheckoutScreen() {
                     isActive && { borderColor: goldColor, backgroundColor: isDark ? 'rgba(201,168,76,0.08)' : 'rgba(239,79,95,0.05)' }
                   ]}
                   onPress={() => setLocationType(item.key as any)}
+                  sound="click"
+                  activeScale={0.95}
                 >
                   <Text style={{ fontSize: 18, marginBottom: 4 }}>{item.icon}</Text>
                   <Text style={[s.campusLabelNew, { color: isActive ? goldColor : txt }]}>{item.label}</Text>
                   <Text style={[s.campusSubLabelNew, { color: txtSec }]} numberOfLines={1}>{item.sub}</Text>
                   {isActive && (
-                    <View style={[s.activeCheckBadge, { backgroundColor: goldColor }]}>
-                      <Text style={s.activeCheckText}>✓</Text>
-                    </View>
+                    <BounceIn delay={0}>
+                      <View style={[s.activeCheckBadge, { backgroundColor: goldColor }]}>
+                        <Text style={s.activeCheckText}>✓</Text>
+                      </View>
+                    </BounceIn>
                   )}
-                </TouchableOpacity>
+                </DopaminePressable>
               );
             })}
           </View>
@@ -494,22 +498,26 @@ export default function CheckoutScreen() {
         <StaggeredSection delay={130} direction="up">
           <Text style={[s.sectionTitle, { color: txt, marginTop: 18 }]}>DELIVERY SCHEDULE</Text>
           <View style={s.timeRow}>
-            <TouchableOpacity
+            <DopaminePressable
               style={[s.timeTypeBtn, deliveryType === 'asap' && s.timeTypeBtnActive, { backgroundColor: cardBg }]}
               onPress={() => setDeliveryType('asap')}
+              sound="click"
+              activeScale={0.95}
             >
               <Text style={{ fontSize: 18 }}>⚡</Text>
               <Text style={[s.timeTypeLabel, deliveryType === 'asap' && s.timeTypeLabelActive]}>ASAP</Text>
               <Text style={s.timeTypeSub}>30-50 Mins</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
+            </DopaminePressable>
+            <DopaminePressable
               style={[s.timeTypeBtn, deliveryType === 'scheduled' && s.timeTypeBtnActive, { backgroundColor: cardBg }]}
               onPress={() => setDeliveryType('scheduled')}
+              sound="click"
+              activeScale={0.95}
             >
               <Text style={{ fontSize: 18 }}>🗓️</Text>
               <Text style={[s.timeTypeLabel, deliveryType === 'scheduled' && s.timeTypeLabelActive]}>SCHEDULE</Text>
               <Text style={s.timeTypeSub}>Pre-order Slots</Text>
-            </TouchableOpacity>
+            </DopaminePressable>
           </View>
 
           {deliveryType === 'scheduled' && (
@@ -521,14 +529,16 @@ export default function CheckoutScreen() {
                   { label: '☀️ Lunch', time: 'Tomorrow 12:00 PM' },
                   { label: '🌙 Dinner', time: 'Tomorrow 07:00 PM' },
                 ].map(slot => (
-                  <TouchableOpacity
+                  <DopaminePressable
                     key={slot.label}
                     style={[s.slotBtn, scheduledTime === slot.time && s.slotBtnActive, { backgroundColor: cardBg }]}
                     onPress={() => setScheduledTime(slot.time)}
+                    sound="click"
+                    activeScale={0.95}
                   >
                     <Text style={[s.slotEmojiLabel, { color: txt }]}>{slot.label}</Text>
                     <Text style={s.slotTimeLabel}>{slot.time.split(' ')[1] + ' ' + slot.time.split(' ')[2]}</Text>
-                  </TouchableOpacity>
+                  </DopaminePressable>
                 ))}
               </View>
             </View>
@@ -618,7 +628,7 @@ export default function CheckoutScreen() {
             ].map(item => {
               const isActive = paymentMethod === item.key;
               return (
-                <TouchableOpacity
+                <DopaminePressable
                   key={item.key}
                   style={[
                     s.payCardNew,
@@ -626,6 +636,8 @@ export default function CheckoutScreen() {
                     isActive && { borderColor: COLORS.red, backgroundColor: isDark ? 'rgba(239,79,95,0.06)' : 'rgba(239,79,95,0.03)' }
                   ]}
                   onPress={() => setPaymentMethod(item.key as any)}
+                  sound="click"
+                  activeScale={0.97}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', justifyContent: 'space-between' }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
@@ -636,10 +648,14 @@ export default function CheckoutScreen() {
                       </View>
                     </View>
                     <View style={[s.radioOuter, { borderColor: isActive ? COLORS.red : border }]}>
-                      {isActive && <View style={[s.radioInner, { backgroundColor: COLORS.red }]} />}
+                      {isActive && (
+                        <BounceIn delay={0}>
+                          <View style={[s.radioInner, { backgroundColor: COLORS.red }]} />
+                        </BounceIn>
+                      )}
                     </View>
                   </View>
-                </TouchableOpacity>
+                </DopaminePressable>
               );
             })}
           </View>

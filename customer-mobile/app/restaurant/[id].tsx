@@ -130,7 +130,7 @@ const seenTakeovers = new Set<string>();
 export default function RestaurantDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { addToCart, totalItems, clearCart } = useCart();
+  const { addToCart, totalItems, clearCart, cart, updateQuantity, removeFromCart, totalPrice } = useCart();
   const { isDark, colors } = useTheme();
   const [restaurant, setRestaurant] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -766,25 +766,58 @@ export default function RestaurantDetail() {
                       >
                         <Text style={[st.menuAddBtnText, { color: '#fff' }]}>ORDER</Text>
                       </ActionPressable>
-                    ) : (
-                      <CartPressable
-                        style={[
-                          st.menuAddBtn,
-                          isAdded 
-                            ? { backgroundColor: '#EF4F5F', borderColor: '#EF4F5F' }
-                            : { backgroundColor: '#FFF5F6', borderColor: '#EF4F5F' }
-                        ]}
-                        onPress={() => handleAddToCart(item)}
-                        sound="addToCart"
-                      >
-                        <Text style={[
-                          st.menuAddBtnText, 
-                          isAdded ? { color: '#fff' } : { color: '#EF4F5F' }
-                        ]}>
-                          {isAdded ? '✓ ADDED' : 'ADD'}
-                        </Text>
-                      </CartPressable>
-                    )}
+                    ) : (() => {
+                      const itemInCart = cart.find((c: any) => c.id === itemId || c.id === item._id || c.id === item.id);
+                      const currentQty = itemInCart ? itemInCart.quantity : 0;
+
+                      if (itemInCart && currentQty > 0) {
+                        return (
+                          <View style={[st.stepperWrap, { backgroundColor: brand ? accent : '#EF4F5F', borderColor: brand ? accent : '#EF4F5F' }]}>
+                            <TouchableOpacity
+                              style={st.stepperActionBtn}
+                              onPress={() => {
+                                if (currentQty <= 1) {
+                                  removeFromCart(itemInCart.cartKey || itemInCart.id || itemId);
+                                } else {
+                                  updateQuantity(itemInCart.cartKey || itemInCart.id || itemId, currentQty - 1);
+                                }
+                              }}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            >
+                              <Text style={st.stepperActionText}>−</Text>
+                            </TouchableOpacity>
+                            <Text style={st.stepperCountText}>{currentQty}</Text>
+                            <TouchableOpacity
+                              style={st.stepperActionBtn}
+                              onPress={() => handleAddToCart(item)}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            >
+                              <Text style={st.stepperActionText}>+</Text>
+                            </TouchableOpacity>
+                          </View>
+                        );
+                      }
+
+                      return (
+                        <CartPressable
+                          style={[
+                            st.menuAddBtn,
+                            isAdded 
+                              ? { backgroundColor: '#EF4F5F', borderColor: '#EF4F5F' }
+                              : { backgroundColor: '#FFF5F6', borderColor: '#EF4F5F' }
+                          ]}
+                          onPress={() => handleAddToCart(item)}
+                          sound="addToCart"
+                        >
+                          <Text style={[
+                            st.menuAddBtnText, 
+                            isAdded ? { color: '#fff' } : { color: '#EF4F5F' }
+                          ]}>
+                            {isAdded ? '✓ ADDED' : 'ADD +'}
+                          </Text>
+                        </CartPressable>
+                      );
+                    })()}
                   </View>
                 </View>
               </CardPressable>
@@ -805,11 +838,17 @@ export default function RestaurantDetail() {
             activeScale={0.95}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', justifyContent: 'space-between', paddingHorizontal: 4 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <View style={st.badgeContainer}><Text style={st.badgeText}>{totalItems}</Text></View>
-                <Text style={[st.floatingCartText, { color: '#fff' }]}>VIEW BASKET</Text>
+                <View>
+                  <Text style={[st.floatingCartText, { color: '#fff' }]}>VIEW BASKET</Text>
+                  <Text style={{ fontSize: 9, fontWeight: '800', color: 'rgba(255,255,255,0.85)' }}>₹{totalPrice} SUBTOTAL</Text>
+                </View>
               </View>
-              <Text style={[st.proceedText, { color: '#fff' }]}>Proceed →</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={[st.proceedText, { color: '#fff' }]}>Checkout</Text>
+                <Text style={{ fontSize: 16, color: '#fff', fontWeight: '900' }}>➔</Text>
+              </View>
             </View>
           </DopaminePressable>
         </FloatingPulse>
@@ -881,6 +920,36 @@ const st = StyleSheet.create({
   floatingAddWrap: { position: 'absolute', bottom: -8, zIndex: 10, width: '100%', alignItems: 'center' },
   menuAddBtn: { width: 72, paddingVertical: 6, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center', ...SHADOWS.card },
   menuAddBtnText: { fontSize: 8, fontWeight: '900', letterSpacing: 1 },
+
+  // Interactive stepper styles
+  stepperWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: 76,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    borderRadius: 12,
+    borderWidth: 1,
+    ...SHADOWS.card,
+    elevation: 4,
+  },
+  stepperActionBtn: {
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepperActionText: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    lineHeight: 16,
+  },
+  stepperCountText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#FFFFFF',
+  },
 
   // Promo Codes Styles
   promoTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, marginTop: 12 },

@@ -109,7 +109,7 @@ function getGreeting() {
 export default function HomeScreen() {
   const router = useRouter();
   const { user, refreshUser } = useAuth();
-  const { totalItems } = useCart();
+  const { totalItems, totalPrice } = useCart();
   const { isDark, toggleTheme, colors } = useTheme();
   const { triggerTransition } = useWorldTransition();
   const scrollRef = useRef<ScrollView>(null);
@@ -1176,6 +1176,35 @@ export default function HomeScreen() {
       {/* ── SEARCH OVERLAY DRAWER ── */}
       <SearchOverlay isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
 
+      {/* ── FLOATING BOTTOM BASKET BAR ── */}
+      {totalItems > 0 && (
+        <View style={s.floatingCartWrap} pointerEvents="box-none">
+          <TouchableOpacity
+            activeOpacity={0.92}
+            style={[s.floatingCartBar, { backgroundColor: isDark ? '#1C1917' : '#FFFFFF', borderColor: isDark ? COLORS.gold : COLORS.red }]}
+            onPress={() => router.push('/(tabs)/basket' as any)}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+              <View style={[s.floatingCartBadge, { backgroundColor: isDark ? COLORS.gold : COLORS.red }]}>
+                <Text style={{ fontSize: 11, fontWeight: '900', color: isDark ? '#000' : '#FFF' }}>{totalItems}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.floatingCartLabel, { color: txt }]} numberOfLines={1}>
+                  {totalItems} {totalItems === 1 ? 'ITEM' : 'ITEMS'} ADDED
+                </Text>
+                <Text style={[s.floatingCartSub, { color: isDark ? COLORS.gold : COLORS.red }]}>
+                  ₹{totalPrice} SUBTOTAL
+                </Text>
+              </View>
+            </View>
+            <View style={[s.floatingCartCta, { backgroundColor: isDark ? COLORS.gold : COLORS.red }]}>
+              <Text style={[s.floatingCartCtaText, { color: isDark ? '#000' : '#FFF' }]}>VIEW BASKET</Text>
+              <Text style={{ fontSize: 12, color: isDark ? '#000' : '#FFF', fontWeight: '900' }}>➔</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* ── FLOATING COMMUNITY FAB ── */}
       <FloatingPulse color={COLORS.red} style={s.fabBtnWrap}>
         <DopaminePressable 
@@ -1413,6 +1442,55 @@ const s = StyleSheet.create({
     fontSize: 9,
     fontWeight: '900',
     letterSpacing: 1.5,
+  },
+
+  // Floating Bottom Cart Bar
+  floatingCartWrap: {
+    position: 'absolute',
+    bottom: 24,
+    left: 16,
+    right: 76,
+    zIndex: 95,
+  },
+  floatingCartBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    ...SHADOWS.card,
+    elevation: 8,
+  },
+  floatingCartBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  floatingCartLabel: {
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  floatingCartSub: {
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  floatingCartCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  floatingCartCtaText: {
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1,
   },
 });
 // BUST_CACHE_2026_07_19_00_42

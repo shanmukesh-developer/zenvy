@@ -63,6 +63,7 @@ export default function OrdersScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<'ALL' | 'ACTIVE' | 'PAST'>('ALL');
 
   const handleReorder = (order: any) => {
     try {
@@ -211,6 +212,32 @@ export default function OrdersScreen() {
         <Text style={[st.pageTitle, { color: txt }]}>MY ORDERS</Text>
         <Text style={[st.pageSub, { color: txtSec }]}>LIVE TRACKING • ONE-TAP REORDER • OTP CODES</Text>
 
+        <View style={st.filterRow}>
+          {['ALL', 'ACTIVE', 'PAST'].map((f) => {
+            const isActive = filter === f;
+            return (
+              <TouchableOpacity
+                key={f}
+                style={[
+                  st.filterBtn,
+                  { 
+                    backgroundColor: isActive ? (isDark ? goldColor : COLORS.red) : (isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F6'),
+                    borderColor: isActive ? 'transparent' : border
+                  }
+                ]}
+                onPress={() => setFilter(f as any)}
+              >
+                <Text style={[
+                  st.filterBtnText, 
+                  { color: isActive ? (isDark ? '#000' : '#FFF') : txtSec }
+                ]}>
+                  {f}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
         {loading ? (
           <View style={{ paddingTop: 60, alignItems: 'center' }}>
             <ActivityIndicator size="large" color={goldColor} />
@@ -233,7 +260,9 @@ export default function OrdersScreen() {
           </View>
         ) : orders.length === 0 ? (
           <View style={[st.emptyBox, { backgroundColor: cardBg, borderColor: border }]}>
-            <Text style={{ fontSize: 44, marginBottom: 12 }}>🍱</Text>
+            <FloatingPulse>
+              <Text style={{ fontSize: 50, marginBottom: 16 }}>🍱</Text>
+            </FloatingPulse>
             <Text style={[st.emptyTitle, { color: txt }]}>No Orders Found Yet</Text>
             <Text style={[st.emptyDesc, { color: txtSec }]}>
               Explore our wide variety of campus bites, bulk hostel grocery baskets, and fresh student meals.
@@ -248,7 +277,11 @@ export default function OrdersScreen() {
           </View>
         ) : null}
 
-        {!loading && orders.map((o, idx) => {
+        {!loading && orders.filter(o => {
+          if (filter === 'ACTIVE') return o.status !== 'Delivered' && o.status !== 'Cancelled';
+          if (filter === 'PAST') return o.status === 'Delivered' || o.status === 'Cancelled';
+          return true;
+        }).map((o, idx) => {
           const id = (o._id || o.id || '').slice(-6).toUpperCase();
           const isExpanded = expanded === (o._id || o.id);
           let orderItems: any[] = [];
@@ -372,6 +405,9 @@ const st = StyleSheet.create({
   emptyDesc: { fontSize: 13, textAlign: 'center', lineHeight: 20, marginBottom: 24, paddingHorizontal: 12 },
   browseBtn: { paddingHorizontal: 24, paddingVertical: 14, borderRadius: 16, ...SHADOWS.redGlow },
   browseBtnText: { color: '#FFFFFF', fontSize: 11, fontWeight: '900', letterSpacing: 1.5 },
+  filterRow: { flexDirection: 'row', paddingHorizontal: 16, marginBottom: 20, gap: 10 },
+  filterBtn: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, borderWidth: 1 },
+  filterBtnText: { fontSize: 11, fontWeight: '800', letterSpacing: 1 },
   card: { marginHorizontal: 16, marginBottom: 12, borderRadius: 20, padding: 16, borderWidth: 1, ...SHADOWS.card },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between' },
   restaurantName: { fontSize: 15, fontWeight: '900', marginVertical: 3, letterSpacing: -0.2 },

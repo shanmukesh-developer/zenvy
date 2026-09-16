@@ -494,18 +494,20 @@ export default function LoginScreen() {
 
               {/* Login Method Tabs */}
               <View style={s.tabRow}>
-                <TouchableOpacity 
+                <DopaminePressable 
                   style={[s.tabBtn, loginMethod === 'password' && s.tabBtnActive]} 
                   onPress={() => { setLoginMethod('password'); setError(''); }}
+                  sound="click"
                 >
                   <Text style={[s.tabText, loginMethod === 'password' && s.tabTextActive]}>PASSWORD LOGIN</Text>
-                </TouchableOpacity>
-                <TouchableOpacity 
+                </DopaminePressable>
+                <DopaminePressable 
                   style={[s.tabBtn, loginMethod === 'otp' && s.tabBtnActive]} 
                   onPress={() => { setLoginMethod('otp'); setError(''); }}
+                  sound="click"
                 >
                   <Text style={[s.tabText, loginMethod === 'otp' && s.tabTextActive]}>OTP LOGIN</Text>
-                </TouchableOpacity>
+                </DopaminePressable>
               </View>
 
               {loginMethod === 'password' ? (
@@ -559,17 +561,18 @@ export default function LoginScreen() {
                         autoCapitalize="none" 
                       />
 
-                      <TouchableOpacity 
+                      <ActionPressable 
                         style={s.realtimeOtpBtn} 
                         onPress={handleNativeSendOtp}
                         disabled={loading}
+                        sound="success"
                       >
                         {loading ? (
                           <ActivityIndicator color="#000" size="small" />
                         ) : (
                           <Text style={s.realtimeOtpBtnText}>START REAL-TIME SMS LOGIN</Text>
                         )}
-                      </TouchableOpacity>
+                      </ActionPressable>
                     </>
                   ) : (
                     <>
@@ -594,17 +597,18 @@ export default function LoginScreen() {
                         keyboardType="number-pad" 
                         maxLength={6}
                       />
-                      <TouchableOpacity 
+                      <ActionPressable 
                         style={s.realtimeOtpBtn} 
                         onPress={handleNativeVerifyOtp}
                         disabled={loading}
+                        sound="success"
                       >
                         {loading ? (
                           <ActivityIndicator color="#000" size="small" />
                         ) : (
                           <Text style={s.realtimeOtpBtnText}>VERIFY OTP</Text>
                         )}
-                      </TouchableOpacity>
+                      </ActionPressable>
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 14 }}>
                         <TouchableOpacity onPress={() => setConfirm(null)}>
                            <Text style={{ color: COLORS.textSecondary, fontSize: 11, fontWeight: '700' }}>← Change Number</Text>
@@ -632,13 +636,13 @@ export default function LoginScreen() {
                     <Text style={s.forgotText}>FORGOT PASSWORD?</Text>
                   </TouchableOpacity>
 
-                  <TouchableOpacity style={s.loginBtn} onPress={handleLogin} disabled={loading}>
+                  <ActionPressable style={s.loginBtn} onPress={handleLogin} disabled={loading} sound="success">
                     {loading ? (
                       <ActivityIndicator color="#000" size="small" />
                     ) : (
                       <Text style={s.loginBtnText}>SIGN IN</Text>
                     )}
-                  </TouchableOpacity>
+                  </ActionPressable>
                 </>
               )}
 
@@ -648,14 +652,15 @@ export default function LoginScreen() {
                 <View style={[s.line, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }]} />
               </View>
 
-              <TouchableOpacity 
+              <DopaminePressable 
                 style={s.googleBtn} 
                 onPress={handleGoogleLogin} 
                 disabled={loading}
+                sound="click"
               >
                 <Text style={s.googleIconG}>G</Text>
                 <Text style={s.googleText}>Continue with Google</Text>
-              </TouchableOpacity>
+              </DopaminePressable>
 
               <DopaminePressable onPress={() => router.push('/register' as any)} style={s.switchLink} sound="click">
                 <Text style={s.switchText}>Don't have an account? <Text style={{ color: COLORS.gold, fontWeight: '800' }}>REGISTER</Text></Text>

@@ -6,6 +6,7 @@ import { COLORS, SHADOWS, RADIUS } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { StaggeredSection, FloatingPulse, BounceIn } from '../components/AnimatedSection';
+import DopaminePressable, { ActionPressable } from '../components/DopaminePressable';
 import { LinearGradient } from 'expo-linear-gradient';
 import { apiFetch } from '../utils/auth';
 import { API_URL, ENDPOINTS } from '../constants/api';
@@ -263,7 +264,7 @@ export default function RewardsScreen() {
             Sign in to unlock daily prize spins, earn streak cashback, and access exclusive campus delivery passes.
           </Text>
 
-          <TouchableOpacity
+          <DopaminePressable
             style={{
               backgroundColor: '#C9A84C',
               paddingHorizontal: 32,
@@ -276,13 +277,15 @@ export default function RewardsScreen() {
               ...SHADOWS.goldGlow
             }}
             onPress={() => router.push('/login' as any)}
+            sound="click"
+            activeScale={0.95}
           >
             <Text style={{ color: '#000', fontSize: 11, fontWeight: '900', letterSpacing: 2 }}>
               SIGN IN TO UNLOCK →
             </Text>
-          </TouchableOpacity>
+          </DopaminePressable>
 
-          <TouchableOpacity
+          <DopaminePressable
             style={{
               paddingVertical: 12,
               paddingHorizontal: 24,
@@ -294,11 +297,13 @@ export default function RewardsScreen() {
               alignItems: 'center'
             }}
             onPress={() => router.replace('/(tabs)' as any)}
+            sound="click"
+            activeScale={0.95}
           >
             <Text style={{ color: txtSec, fontSize: 10, fontWeight: '800', letterSpacing: 1 }}>
               EXPLORE MENUS FIRST
             </Text>
-          </TouchableOpacity>
+          </DopaminePressable>
         </View>
       </View>
     );
@@ -445,23 +450,26 @@ export default function RewardsScreen() {
             </View>
 
             {/* Initialize Trigger Button */}
-            <TouchableOpacity 
-              style={[
-                s.spinBtn, 
-                (spinning || !eligibility || eligibility.spinsAvailable <= 0) && s.spinBtnDisabled
-              ]} 
-              onPress={startSpin}
-              disabled={spinning || !eligibility || eligibility.spinsAvailable <= 0}
-            >
-              <Text style={s.spinBtnText}>
-                {spinning 
-                  ? 'SPINNING...' 
-                  : (eligibility && eligibility.spinsAvailable <= 0) 
-                    ? 'NO SPINS LEFT' 
-                    : 'SPIN THE WHEEL'
-                }
-              </Text>
-            </TouchableOpacity>
+            <FloatingPulse>
+              <ActionPressable 
+                style={[
+                  s.spinBtn, 
+                  (spinning || !eligibility || eligibility.spinsAvailable <= 0) && s.spinBtnDisabled
+                ]} 
+                onPress={startSpin}
+                disabled={spinning || !eligibility || eligibility.spinsAvailable <= 0}
+                sound="success"
+              >
+                <Text style={s.spinBtnText}>
+                  {spinning 
+                    ? 'SPINNING...' 
+                    : (eligibility && eligibility.spinsAvailable <= 0) 
+                      ? 'NO SPINS LEFT' 
+                      : 'SPIN THE WHEEL'
+                  }
+                </Text>
+              </ActionPressable>
+            </FloatingPulse>
 
             {selectedPrize && (
               <View style={s.resultBox}>
@@ -540,17 +548,19 @@ export default function RewardsScreen() {
                       </View>
                     </View>
 
-                    <TouchableOpacity
+                    <DopaminePressable
                       style={[
                         s.statusBox,
                         { backgroundColor: isCopied ? '#22c55e' : 'rgba(201,168,76,0.15)', borderWidth: 1, borderColor: isCopied ? '#22c55e' : '#C9A84C' }
                       ]}
                       onPress={() => handleCopyCoupon(c.code)}
+                      sound="click"
+                      activeScale={0.9}
                     >
                       <Text style={[s.statusBoxText, { color: isCopied ? '#FFF' : '#C9A84C', fontWeight: '900' }]}>
                         {isCopied ? 'COPIED! ✓' : 'COPY CODE'}
                       </Text>
-                    </TouchableOpacity>
+                    </DopaminePressable>
                   </View>
                 );
               })}

@@ -7,7 +7,7 @@ import { ENDPOINTS } from '../constants/api';
 import { useAuth } from '../context/AuthContext';
 import { StaggeredSection, BounceIn } from '../components/AnimatedSection';
 import { setToken } from '../utils/auth';
-import DopaminePressable from '../components/DopaminePressable';
+import DopaminePressable, { ActionPressable } from '../components/DopaminePressable';
 import ServerWakeupOverlay from '../components/ServerWakeupOverlay';
 
 import { useTheme } from '../context/ThemeContext';
@@ -387,21 +387,21 @@ export default function RegisterScreen() {
               {error ? <Text style={s.error}>{error}</Text> : null}
 
               {!isOtpSent ? (
-                <TouchableOpacity style={s.regBtn} onPress={handleSendOtp} disabled={loading}>
+                <ActionPressable style={s.regBtn} onPress={handleSendOtp} disabled={loading} sound="success">
                   {loading ? (
                     <ActivityIndicator color="#000" size="small" />
                   ) : (
                     <Text style={s.regBtnText}>VERIFY PHONE & CONTINUE</Text>
                   )}
-                </TouchableOpacity>
+                </ActionPressable>
               ) : (
-                <TouchableOpacity style={s.regBtn} onPress={handleRegister} disabled={loading}>
+                <ActionPressable style={s.regBtn} onPress={handleRegister} disabled={loading} sound="success">
                   {loading ? (
                     <ActivityIndicator color="#000" size="small" />
                   ) : (
                     <Text style={s.regBtnText}>VERIFY OTP & CREATE ACCOUNT</Text>
                   )}
-                </TouchableOpacity>
+                </ActionPressable>
               )}
 
               <DopaminePressable onPress={() => router.push('/login' as any)} style={s.switchLink} sound="click">

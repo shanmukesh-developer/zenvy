@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, TextInput, Alert } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Clipboard from '@react-native-clipboard/clipboard';
 import { useRouter } from 'expo-router';
 import { COLORS, SHADOWS } from '../../constants/theme';
@@ -16,9 +17,32 @@ export default function BasketScreen() {
   const { isDark, colors } = useTheme();
   const { user } = useAuth();
   const { cart, removeFromCart, updateQuantity, clearCart, totalPrice, totalItems, uniqueRestaurants, deliveryFee: cartDeliveryFee, roomCode, isHosting, isJoined, handleHostRoom, handleJoinRoom, handleDisconnect } = useCart();
-  const [isJoinOpen, setIsJoinOpen] = React.useState(false);
-  const [inputCode, setInputCode] = React.useState('');
+  const [isJoinOpen, setIsJoinOpen] = useState(false);
+  const [inputCode, setInputCode] = useState('');
+  const [selectedInstructions, setSelectedInstructions] = useState<string[]>([]);
   const router = useRouter();
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const stored = await AsyncStorage.getItem('zenvy_delivery_instruction');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) setSelectedInstructions(parsed);
+        }
+      } catch (e) {}
+    })();
+  }, []);
+
+  const toggleInstruction = async (id: string) => {
+    const updated = selectedInstructions.includes(id)
+      ? selectedInstructions.filter(item => item !== id)
+      : [...selectedInstructions, id];
+    setSelectedInstructions(updated);
+    try {
+      await AsyncStorage.setItem('zenvy_delivery_instruction', JSON.stringify(updated));
+    } catch (e) {}
+  };
 
   const isElite = user?.isElite || (user?.zenPoints && user.zenPoints >= 200);
   const effectiveDeliveryFee = isElite ? 0 : (cartDeliveryFee ?? 30);
@@ -152,6 +176,47 @@ export default function BasketScreen() {
           </StaggeredSection>
         ) : (
           <>
+            {/* Free Delivery Tracker */}
+            <StaggeredSection delay={60} direction="up">
+              <View style={[s.deliveryTrackerCard, { backgroundColor: cardBg, borderColor: border }]}>
+                {effectiveDeliveryFee === 0 ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <Text style={{ fontSize: 20 }}>🎉</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 11, fontWeight: '900', color: '#10B981', letterSpacing: 1 }}>
+                        {isElite ? 'VIP ELITE FREE DELIVERY UNLOCKED' : 'FREE CAMPUS DELIVERY UNLOCKED'}
+                      </Text>
+                      <Text style={{ fontSize: 9, color: txtSec, fontWeight: '600', marginTop: 2 }}>
+                        You are saving ₹30 delivery fee on this order!
+                      </Text>
+                    </View>
+                  </View>
+                ) : (
+                  <View>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <Text style={{ fontSize: 10, fontWeight: '900', color: txt, letterSpacing: 0.5 }}>
+                        🛵 ADD ₹{Math.max(0, 199 - totalPrice)} MORE FOR FREE DELIVERY
+                      </Text>
+                      <Text style={{ fontSize: 9, fontWeight: '900', color: goldColor }}>
+                        {Math.min(100, Math.round((totalPrice / 199) * 100))}%
+                      </Text>
+                    </View>
+                    <View style={[s.progressBarOuter, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0' }]}>
+                      <View 
+                        style={[
+                          s.progressBarInner, 
+                          { 
+                            width: `${Math.min(100, Math.round((totalPrice / 199) * 100))}%`,
+                            backgroundColor: isDark ? COLORS.gold : COLORS.red
+                          }
+                        ]} 
+                      />
+                    </View>
+                  </View>
+                )}
+              </View>
+            </StaggeredSection>
+
             {uniqueRestaurants > 1 && (
               <StaggeredSection delay={80} direction="up">
                 <View style={[s.multiRestBanner, { backgroundColor: isDark ? 'rgba(234, 179, 8, 0.08)' : 'rgba(234, 179, 8, 0.06)', borderColor: isDark ? 'rgba(234, 179, 8, 0.25)' : 'rgba(234, 179, 8, 0.15)' }]}>
@@ -245,6 +310,43 @@ export default function BasketScreen() {
                 <View style={[s.billRow, { borderTopWidth: 1, borderTopColor: border, paddingTop: 12, marginTop: 4 }]}>
                   <Text style={[s.billLabel, { color: txt, fontSize: 13, fontWeight: '900' }]}>GRAND TOTAL</Text>
                   <Text style={{ fontSize: 22, fontWeight: '900', color: goldColor }}>₹{grandTotal}</Text>
+                </View>
+              </View>
+            </StaggeredSection>
+
+            {/* Campus Delivery Instructions */}
+            <StaggeredSection delay={(cart.length + 2) * 80} direction="up">
+              <View style={[s.instructionsCard, { backgroundColor: cardBg, borderColor: border, borderWidth: 1 }]}>
+                <Text style={{ fontSize: 10, fontWeight: '900', color: goldColor, letterSpacing: 1.5, marginBottom: 8 }}>
+                  CAMPUS DELIVERY INSTRUCTIONS
+                </Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  {[
+                    { id: 'no_cutlery', label: '🌱 No Plastic Cutlery' },
+                    { id: 'call_arrival', label: '📞 Call Upon Arrival' },
+                    { id: 'guard_desk', label: '🛡️ Leave at Hostel Guard' },
+                    { id: 'quiet_knock', label: '🚪 Knock Gently' },
+                  ].map(pref => {
+                    const isSelected = selectedInstructions.includes(pref.id);
+                    return (
+                      <TouchableOpacity
+                        key={pref.id}
+                        style={[
+                          s.instructionChip,
+                          {
+                            backgroundColor: isSelected ? (isDark ? goldColor : COLORS.red) : (isDark ? 'rgba(255,255,255,0.04)' : '#F1F5F9'),
+                            borderColor: isSelected ? 'transparent' : border,
+                          }
+                        ]}
+                        onPress={() => toggleInstruction(pref.id)}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={{ fontSize: 9.5, fontWeight: '800', color: isSelected ? (isDark ? '#000' : '#FFF') : txt }}>
+                          {pref.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
               </View>
             </StaggeredSection>
@@ -353,5 +455,38 @@ const s = StyleSheet.create({
     fontSize: 8.5,
     fontWeight: '600',
     lineHeight: 12,
+  },
+  deliveryTrackerCard: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    ...SHADOWS.card,
+  },
+  progressBarOuter: {
+    height: 6,
+    borderRadius: 3,
+    width: '100%',
+    overflow: 'hidden',
+    marginTop: 2,
+  },
+  progressBarInner: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  instructionsCard: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 12,
+    padding: 14,
+    borderRadius: 16,
+    ...SHADOWS.card,
+  },
+  instructionChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
   },
 });
