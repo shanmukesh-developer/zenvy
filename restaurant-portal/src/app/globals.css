@@ -1,10 +1,11 @@
 @import "tailwindcss";
 
 :root {
-  --background: #0a0a0b;
+  --background: #09090B;
   --foreground: #ededed;
-  --zenvy-gold: #C9A84C;
-  --nexus-orange: #f97316;
+  --zenvy-gold: #D4AF7A;
+  --zenvy-emerald: #10B981;
+  --zenvy-coral: #EF4F5F;
 }
 
 html {

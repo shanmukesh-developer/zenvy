@@ -59,7 +59,7 @@ export const ZenvyBadge: React.FC<ZenvyBadgeProps> = ({
       case 'coral':
         return COLORS.coral;
       case 'blue':
-        return '#60A5FA';
+        return COLORS.blue;
       case 'neutral':
       default:
         return COLORS.textSecondary;

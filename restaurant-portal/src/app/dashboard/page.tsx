@@ -425,7 +425,7 @@ export default function Dashboard() {
                     <div className="flex justify-between items-start mb-4">
                       <div>
                         <div className="flex items-center gap-3 mb-1">
-                           <span className="text-[10px] font-black bg-white/5 border border-white/10 px-2 py-0.5 rounded-md text-[#C9A84C] font-mono tracking-widest">#{String(order.id || order._id).slice(-6).toUpperCase()}</span>
+                           <span className="text-[10px] font-black bg-white/5 border border-white/10 px-2 py-0.5 rounded-md text-[var(--zenvy-gold)] font-mono tracking-widest">#{String(order.id || order._id).slice(-6).toUpperCase()}</span>
                            {order.status === 'Pending' && <span className="animate-ping w-1.5 h-1.5 rounded-full bg-orange-500" />}
                         </div>
                         <div className="flex items-center gap-3">
@@ -581,7 +581,7 @@ export default function Dashboard() {
               {pastOrders.slice(0, 8).map(order => (
                 <div key={order.id} className="bg-zinc-900/50 border border-zinc-800/50 rounded-2xl p-5 hover:bg-zinc-900 transition-colors">
                   <div className="flex justify-between items-center mb-3">
-                     <span className="text-[11px] font-black text-[#C9A84C]/50 font-mono uppercase tracking-widest">#{String(order.id || order._id).slice(-6).toUpperCase()}</span>
+                      <span className="text-[11px] font-black text-[var(--zenvy-gold)]/60 font-mono uppercase tracking-widest">#{String(order.id || order._id).slice(-6).toUpperCase()}</span>
                     <span className="text-[12px] text-zinc-600">{new Date(order.createdAt).toLocaleDateString()}</span>
                   </div>
                   <div className="flex justify-between items-center">

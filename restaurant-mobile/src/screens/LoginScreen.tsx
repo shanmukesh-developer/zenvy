@@ -3,6 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityInd
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
+import { COLORS } from '../constants/theme';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://hostelbites-backend-jwmt.onrender.com';
 
@@ -49,7 +50,7 @@ export default function LoginScreen() {
           <TextInput
             style={styles.input}
             placeholder="Restaurant ID / Email"
-            placeholderTextColor="#6B7280"
+            placeholderTextColor={COLORS.textDisabled}
             value={email}
             onChangeText={setEmail}
             autoCapitalize="none"
@@ -57,7 +58,7 @@ export default function LoginScreen() {
           <TextInput
             style={styles.input}
             placeholder="Password"
-            placeholderTextColor="#6B7280"
+            placeholderTextColor={COLORS.textDisabled}
             secureTextEntry
             value={password}
             onChangeText={setPassword}
@@ -69,7 +70,7 @@ export default function LoginScreen() {
           onPress={handleLogin}
           disabled={loading}
         >
-          {loading ? <ActivityIndicator color="#000" /> : <Text style={styles.btnText}>ACCESS KDS</Text>}
+          {loading ? <ActivityIndicator color={COLORS.bgDark} /> : <Text style={styles.btnText}>ACCESS KDS</Text>}
         </TouchableOpacity>
       </View>
     </View>
@@ -77,13 +78,13 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0B0B14', justifyContent: 'center', padding: 24 },
-  headerGlow: { position: 'absolute', top: -100, left: -50, width: 300, height: 300, backgroundColor: '#10B981', opacity: 0.1, borderRadius: 150, blurRadius: 50 },
+  container: { flex: 1, backgroundColor: COLORS.bgDark, justifyContent: 'center', padding: 24 },
+  headerGlow: { position: 'absolute', top: -100, left: -50, width: 300, height: 300, backgroundColor: COLORS.emerald, opacity: 0.1, borderRadius: 150 },
   content: { zIndex: 1 },
-  title: { fontSize: 42, fontWeight: '900', color: '#FFF', letterSpacing: 2, textAlign: 'center' },
-  subtitle: { fontSize: 12, fontWeight: '800', color: '#10B981', letterSpacing: 4, textAlign: 'center', marginBottom: 48 },
+  title: { fontSize: 42, fontWeight: '900', color: COLORS.textPrimary, letterSpacing: 2, textAlign: 'center' },
+  subtitle: { fontSize: 12, fontWeight: '800', color: COLORS.emerald, letterSpacing: 4, textAlign: 'center', marginBottom: 48 },
   inputContainer: { gap: 16, marginBottom: 32 },
-  input: { backgroundColor: '#12121A', borderWidth: 1, borderColor: '#1F2937', borderRadius: 12, padding: 16, color: '#FFF', fontSize: 16, fontWeight: '600' },
-  loginBtn: { backgroundColor: '#10B981', padding: 18, borderRadius: 12, alignItems: 'center', shadowColor: '#10B981', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 5 },
-  btnText: { color: '#000', fontSize: 16, fontWeight: '900', letterSpacing: 1 }
+  input: { backgroundColor: COLORS.bgCard, borderWidth: 1, borderColor: COLORS.borderStandard, borderRadius: 12, padding: 16, color: COLORS.textPrimary, fontSize: 16, fontWeight: '600' },
+  loginBtn: { backgroundColor: COLORS.emerald, padding: 18, borderRadius: 12, alignItems: 'center', shadowColor: COLORS.emerald, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 5 },
+  btnText: { color: COLORS.bgDark, fontSize: 16, fontWeight: '900', letterSpacing: 1 }
 });

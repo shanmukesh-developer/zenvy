@@ -30,7 +30,7 @@ export const RadarEmptyState: React.FC<RadarEmptyStateProps> = ({
         <View style={styles.radarMiddleRing}>
           <View style={styles.radarInnerRing}>
             <LinearGradient
-              colors={['#10B981', '#059669']}
+              colors={[COLORS.emerald, COLORS.emeraldDark]}
               style={styles.radarCenterCore}
             >
               <View style={styles.radarPing} />
@@ -78,7 +78,7 @@ export const RadarEmptyState: React.FC<RadarEmptyStateProps> = ({
             activeOpacity={0.85}
           >
             <LinearGradient
-              colors={['#D4AF7A', '#B58D52']}
+              colors={[COLORS.gold, COLORS.goldLight]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
               style={styles.btnGradient}
@@ -115,10 +115,10 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.xxl + 10,
     marginHorizontal: SPACING.md,
     marginTop: SPACING.sm,
-    backgroundColor: '#0F1118',
+    backgroundColor: COLORS.bgSubtle,
     borderRadius: RADIUS.card,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.06)',
+    borderColor: COLORS.borderSubtle,
     ...SHADOWS.card,
   },
   radarOuterRing: {
@@ -126,7 +126,7 @@ const styles = StyleSheet.create({
     height: 140,
     borderRadius: 70,
     borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.15)',
+    borderColor: COLORS.emeraldMuted,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: SPACING.lg,
@@ -161,7 +161,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: COLORS.textPrimary,
   },
   badgeRow: {
     flexDirection: 'row',
@@ -171,7 +171,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: COLORS.textPrimary,
     letterSpacing: 0.8,
     textAlign: 'center',
     marginBottom: SPACING.xs,
@@ -203,7 +203,7 @@ const styles = StyleSheet.create({
   primaryBtnText: {
     fontSize: 12,
     fontWeight: '900',
-    color: '#13151D',
+    color: COLORS.bgCard,
     letterSpacing: 0.8,
   },
   refreshActionBtn: {

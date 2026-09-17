@@ -130,13 +130,13 @@ export const SegmentedNav: React.FC<SegmentedNavProps> = ({
 const styles = StyleSheet.create({
   navContainer: {
     flexDirection: 'row',
-    backgroundColor: '#0F1118',
+    backgroundColor: COLORS.bgSubtle,
     borderRadius: RADIUS.pill,
     padding: 4,
     marginHorizontal: SPACING.md,
     marginBottom: SPACING.sm,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: COLORS.borderMedium,
   },
   tabButton: {
     flex: 1,
@@ -150,7 +150,7 @@ const styles = StyleSheet.create({
   tabButtonActive: {
     backgroundColor: COLORS.bgCardElevated,
     borderWidth: 1,
-    borderColor: 'rgba(212, 175, 122, 0.35)',
+    borderColor: COLORS.goldBorder,
   },
   tabText: {
     fontSize: 11,
@@ -159,7 +159,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   tabTextActive: {
-    color: '#FFFFFF',
+    color: COLORS.textPrimary,
     fontWeight: '900',
   },
   badgeChip: {
@@ -182,6 +182,6 @@ const styles = StyleSheet.create({
   badgeText: {
     fontSize: 9,
     fontWeight: '900',
-    color: '#FFFFFF',
+    color: COLORS.textPrimary,
   },
 });
