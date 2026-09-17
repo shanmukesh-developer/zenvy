@@ -918,8 +918,9 @@ const cancelOrder = async (req, res) => {
 // @route   PUT /api/orders/:id/status
 const updateOrderStatus = async (req, res) => {
   try {
-    const { status } = req.body;
-    const allowedStatuses = ['Pending', 'Accepted', 'PickedUp', 'Delivered', 'Cancelled'];
+    let { status } = req.body;
+    if (status === 'Ready for Pickup') status = 'ReadyForPickup';
+    const allowedStatuses = ['Pending', 'Accepted', 'Preparing', 'ReadyForPickup', 'Picking', 'PickedUp', 'ArrivedAtGate', 'Delivered', 'Cancelled'];
     if (!allowedStatuses.includes(status)) {
       return res.status(400).json({ message: `Invalid status. Must be one of: ${allowedStatuses.join(', ')}` });
     }
