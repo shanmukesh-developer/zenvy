@@ -260,13 +260,14 @@ export default function LoginScreen() {
       return;
     }
 
-    if (!phone || !password) { setError('Please fill in all fields'); return; }
+    const cleanPhone = phone.trim();
+    if (!cleanPhone || !password) { setError('Please fill in all fields'); return; }
     setLoading(true); setError('');
     try {
       const res = await fetch(ENDPOINTS.login, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, password }),
+        body: JSON.stringify({ phone: cleanPhone, password }),
       });
       const data = await res.json();
       if (res.ok && data.token) {

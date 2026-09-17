@@ -98,12 +98,13 @@ const registerPartner = async (req, res) => {
 
 // @desc    Auth partner & get token
 const authPartner = async (req, res) => {
-  const { phone, password } = req.body;
+  const rawInput = req.body.phone || req.body.email || '';
+  const { password } = req.body;
 
   try {
     const DeliveryPartner = getDeliveryPartnerModel();
-    const cleanPhone = normalizePhone(phone);
-    console.log(`[AUTH_PATH] Attempting login for phone: "${phone}" -> cleaned: "${cleanPhone}"`);
+    const cleanPhone = normalizePhone(rawInput);
+    console.log(`[AUTH_PATH] Attempting login for identifier: "${rawInput}" -> cleaned: "${cleanPhone}"`);
 
     const partner = await DeliveryPartner.findOne({ where: { phone: cleanPhone } });
     if (!partner) {
