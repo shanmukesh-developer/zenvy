@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,9 @@ import {
   TextInput,
   ActivityIndicator,
   Vibration,
+  KeyboardAvoidingView,
+  Platform,
+  Keyboard,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, RADIUS, SPACING, SHADOWS } from '../constants/theme';
@@ -51,6 +54,11 @@ export const FleetProfileView: React.FC<FleetProfileViewProps> = ({
   const [editVehicleType, setEditVehicleType] = useState('');
   const [editEmergencyContact, setEditEmergencyContact] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const modalScrollRef = useRef<ScrollView>(null);
+  const [modalFocusedField, setModalFocusedField] = useState<string | null>(null);
+  const vehiclePlateRef = useRef<TextInput>(null);
+  const vehicleTypeRef = useRef<TextInput>(null);
+  const emergencyRef = useRef<TextInput>(null);
 
   useEffect(() => {
     if (profile) {
@@ -282,74 +290,145 @@ export const FleetProfileView: React.FC<FleetProfileViewProps> = ({
         visible={isEditOpen}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => setIsEditOpen(false)}
+        onRequestClose={() => {
+          Keyboard.dismiss();
+          setIsEditOpen(false);
+        }}
       >
-        <View style={styles.modalBackdrop}>
+        <KeyboardAvoidingView
+          style={styles.modalBackdrop}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => {
+              Keyboard.dismiss();
+              setIsEditOpen(false);
+            }}
+          />
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Update Rider Credentials</Text>
-              <TouchableOpacity onPress={() => setIsEditOpen(false)} style={styles.closeBtn}>
+              <TouchableOpacity
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setIsEditOpen(false);
+                }}
+                style={styles.closeBtn}
+              >
                 <Text style={styles.closeBtnText}>✕</Text>
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.inputLabel}>FULL NAME</Text>
-            <TextInput
-              style={styles.textInput}
-              value={editName}
-              onChangeText={setEditName}
-              placeholder="Your Full Name"
-              placeholderTextColor={COLORS.textMuted}
-            />
-
-            <Text style={styles.inputLabel}>VEHICLE PLATE NUMBER</Text>
-            <TextInput
-              style={styles.textInput}
-              value={editVehicleNumber}
-              onChangeText={setEditVehicleNumber}
-              placeholder="e.g. AP 07 AB 1234 or Bicycle"
-              placeholderTextColor={COLORS.textMuted}
-              autoCapitalize="characters"
-            />
-
-            <Text style={styles.inputLabel}>VEHICLE TYPE</Text>
-            <TextInput
-              style={styles.textInput}
-              value={editVehicleType}
-              onChangeText={setEditVehicleType}
-              placeholder="e.g. Electric Scooter / Activa / Bike"
-              placeholderTextColor={COLORS.textMuted}
-            />
-
-            <Text style={styles.inputLabel}>EMERGENCY CONTACT NUMBER</Text>
-            <TextInput
-              style={styles.textInput}
-              value={editEmergencyContact}
-              onChangeText={setEditEmergencyContact}
-              placeholder="e.g. 9876543210"
-              placeholderTextColor={COLORS.textMuted}
-              keyboardType="phone-pad"
-            />
-
-            <TouchableOpacity
-              style={styles.saveBtn}
-              onPress={handleSave}
-              disabled={isSaving}
-              activeOpacity={0.8}
+            <ScrollView
+              ref={modalScrollRef}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              automaticallyAdjustKeyboardInsets={true}
+              contentContainerStyle={{ paddingBottom: 24 }}
             >
-              <LinearGradient
-                colors={['#D4AF7A', '#99733E']}
-                style={styles.saveBtnGradient}
+              <Text style={styles.inputLabel}>FULL NAME</Text>
+              <TextInput
+                style={[
+                  styles.textInput,
+                  modalFocusedField === 'name' && styles.textInputFocused,
+                ]}
+                value={editName}
+                onChangeText={setEditName}
+                placeholder="Your Full Name"
+                placeholderTextColor={COLORS.textMuted}
+                returnKeyType="next"
+                onSubmitEditing={() => vehiclePlateRef.current?.focus()}
+                onFocus={() => {
+                  setModalFocusedField('name');
+                  modalScrollRef.current?.scrollTo({ y: 0, animated: true });
+                }}
+                onBlur={() => setModalFocusedField(null)}
+              />
+
+              <Text style={styles.inputLabel}>VEHICLE PLATE NUMBER</Text>
+              <TextInput
+                ref={vehiclePlateRef}
+                style={[
+                  styles.textInput,
+                  modalFocusedField === 'vehicleNumber' && styles.textInputFocused,
+                ]}
+                value={editVehicleNumber}
+                onChangeText={setEditVehicleNumber}
+                placeholder="e.g. AP 07 AB 1234 or Bicycle"
+                placeholderTextColor={COLORS.textMuted}
+                autoCapitalize="characters"
+                returnKeyType="next"
+                onSubmitEditing={() => vehicleTypeRef.current?.focus()}
+                onFocus={() => {
+                  setModalFocusedField('vehicleNumber');
+                  modalScrollRef.current?.scrollTo({ y: 50, animated: true });
+                }}
+                onBlur={() => setModalFocusedField(null)}
+              />
+
+              <Text style={styles.inputLabel}>VEHICLE TYPE</Text>
+              <TextInput
+                ref={vehicleTypeRef}
+                style={[
+                  styles.textInput,
+                  modalFocusedField === 'vehicleType' && styles.textInputFocused,
+                ]}
+                value={editVehicleType}
+                onChangeText={setEditVehicleType}
+                placeholder="e.g. Electric Scooter / Activa / Bike"
+                placeholderTextColor={COLORS.textMuted}
+                returnKeyType="next"
+                onSubmitEditing={() => emergencyRef.current?.focus()}
+                onFocus={() => {
+                  setModalFocusedField('vehicleType');
+                  modalScrollRef.current?.scrollTo({ y: 120, animated: true });
+                }}
+                onBlur={() => setModalFocusedField(null)}
+              />
+
+              <Text style={styles.inputLabel}>EMERGENCY CONTACT NUMBER</Text>
+              <TextInput
+                ref={emergencyRef}
+                style={[
+                  styles.textInput,
+                  modalFocusedField === 'emergency' && styles.textInputFocused,
+                ]}
+                value={editEmergencyContact}
+                onChangeText={setEditEmergencyContact}
+                placeholder="e.g. 9876543210"
+                placeholderTextColor={COLORS.textMuted}
+                keyboardType="phone-pad"
+                returnKeyType="done"
+                onSubmitEditing={handleSave}
+                onFocus={() => {
+                  setModalFocusedField('emergency');
+                  modalScrollRef.current?.scrollToEnd({ animated: true });
+                }}
+                onBlur={() => setModalFocusedField(null)}
+              />
+
+              <TouchableOpacity
+                style={styles.saveBtn}
+                onPress={handleSave}
+                disabled={isSaving}
+                activeOpacity={0.8}
               >
-                {isSaving ? (
-                  <ActivityIndicator color="#000000" />
-                ) : (
-                  <Text style={styles.saveBtnText}>SAVE & UPDATE CREDENTIALS</Text>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
+                <LinearGradient
+                  colors={['#D4AF7A', '#99733E']}
+                  style={styles.saveBtnGradient}
+                >
+                  {isSaving ? (
+                    <ActivityIndicator color="#000000" />
+                  ) : (
+                    <Text style={styles.saveBtnText}>SAVE & UPDATE CREDENTIALS</Text>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
+            </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </ScrollView>
   );
@@ -619,9 +698,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#11131A',
     borderTopLeftRadius: RADIUS.lg,
     borderTopRightRadius: RADIUS.lg,
-    padding: SPACING.lg,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.lg,
     borderWidth: 1,
     borderColor: 'rgba(212, 175, 122, 0.25)',
+    maxHeight: '84%',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -660,6 +741,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     paddingHorizontal: SPACING.md,
     paddingVertical: 10,
+  },
+  textInputFocused: {
+    borderColor: '#D4AF7A',
+    backgroundColor: 'rgba(212, 175, 122, 0.08)',
   },
   saveBtn: {
     marginTop: SPACING.lg,

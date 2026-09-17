@@ -21,6 +21,7 @@ import {
   RefreshControl,
   LayoutAnimation,
   UIManager,
+  Keyboard,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
@@ -155,6 +156,38 @@ export default function App() {
   const [isConnected, setIsConnected] = useState<boolean>(true);
   const [offlineQueueCount, setOfflineQueueCount] = useState<number>(0);
   const previousPendingCount = useRef<number>(0);
+
+  // Keyboard Adaptation & Auto-Scroll
+  const mainScrollRef = useRef<ScrollView>(null);
+  const [keyboardHeight, setKeyboardHeight] = useState<number>(0);
+  const [keyboardVisible, setKeyboardVisible] = useState<boolean>(false);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => {
+        setKeyboardVisible(true);
+        setKeyboardHeight(e.endCoordinates.height);
+      }
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        setKeyboardVisible(false);
+        setKeyboardHeight(0);
+      }
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  const handleCardInputFocus = (index: number) => {
+    setTimeout(() => {
+      mainScrollRef.current?.scrollTo({ y: Math.max(0, index * 260 + 100), animated: true });
+    }, 150);
+  };
 
   // 1. Initial Load & Setup
   useEffect(() => {
@@ -944,7 +977,10 @@ export default function App() {
   // RENDER PURE NATIVE RIDER DASHBOARD (AUTHENTICATED)
   // -------------------------------------------------------------
   return (
-    <View style={{ flex: 1, backgroundColor: '#08090C' }}>
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: '#08090C' }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       <StatusBar barStyle="light-content" backgroundColor="#08090C" />
       <LinearGradient colors={['#08090C', '#0E1017', '#08090C']} style={StyleSheet.absoluteFill} />
 
@@ -1017,8 +1053,14 @@ export default function App() {
 
       {/* MAIN CONTENT AREA */}
       <ScrollView
+        ref={mainScrollRef}
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: 100 }}
+        contentContainerStyle={{
+          paddingBottom: keyboardHeight > 0 ? keyboardHeight + 80 : 120,
+        }}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        automaticallyAdjustKeyboardInsets={true}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#10B981" />}
       >
         {/* TAB 1: ACTIVE ORDERS */}
@@ -1062,7 +1104,7 @@ export default function App() {
                   </LinearGradient>
                 </TouchableOpacity>
 
-                {filteredActiveOrders.map((order) => (
+                {filteredActiveOrders.map((order, index) => (
                   <FleetOrderCard
                     key={order.id}
                     order={order}
@@ -1076,6 +1118,7 @@ export default function App() {
                     onPinChange={(val) => setPinInputs(prev => ({ ...prev, [order.id]: val }))}
                     billAmountInput={billAmountInputs[order.id] || ''}
                     onBillAmountChange={(val) => setBillAmountInputs(prev => ({ ...prev, [order.id]: val }))}
+                    onInputFocus={() => handleCardInputFocus(index)}
                   />
                 ))}
               </View>
@@ -1129,13 +1172,15 @@ export default function App() {
       </ScrollView>
 
       {/* FLOATING TELEMETRY DOCK */}
-      <TelemetryDock
-        coords={coords}
-        isConnected={isConnected}
-        isBatteryLow={isBatteryLow}
-        emergencyContact={profile?.emergencyContact}
-      />
-    </View>
+      {!keyboardVisible && (
+        <TelemetryDock
+          coords={coords}
+          isConnected={isConnected}
+          isBatteryLow={isBatteryLow}
+          emergencyContact={profile?.emergencyContact}
+        />
+      )}
+    </KeyboardAvoidingView>
   );
 }
 

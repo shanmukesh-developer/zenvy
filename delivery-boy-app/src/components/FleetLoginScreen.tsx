@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import {
   Platform,
   ScrollView,
   StatusBar,
+  Keyboard,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, RADIUS, SPACING, SHADOWS } from '../constants/theme';
@@ -34,10 +36,50 @@ export const FleetLoginScreen: React.FC<FleetLoginScreenProps> = ({
   onLogin,
   onForgotPassword,
 }) => {
+  const scrollViewRef = useRef<ScrollView>(null);
+  const passwordInputRef = useRef<TextInput>(null);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [focusedField, setFocusedField] = useState<'email' | 'password' | null>(null);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => {
+        setKeyboardVisible(true);
+        setKeyboardHeight(e.endCoordinates.height);
+      }
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        setKeyboardVisible(false);
+        setKeyboardHeight(0);
+        setFocusedField(null);
+      }
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  const handleInputFocus = (field: 'email' | 'password') => {
+    setFocusedField(field);
+    setTimeout(() => {
+      if (field === 'password') {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      } else {
+        scrollViewRef.current?.scrollTo({ y: 80, animated: true });
+      }
+    }, 150);
+  };
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
     >
       <StatusBar barStyle="light-content" backgroundColor="#08090C" />
       <LinearGradient
@@ -45,102 +87,136 @@ export const FleetLoginScreen: React.FC<FleetLoginScreenProps> = ({
         style={StyleSheet.absoluteFill}
       />
 
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-      >
-        {/* Brand Emblem */}
-        <View style={styles.brandHeader}>
-          <View style={styles.emblemRing}>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+        <ScrollView
+          ref={scrollViewRef}
+          contentContainerStyle={[
+            styles.scrollContent,
+            keyboardVisible && {
+              justifyContent: 'flex-start',
+              paddingTop: 24,
+              paddingBottom: keyboardHeight > 0 ? keyboardHeight + 40 : 120,
+            },
+          ]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          automaticallyAdjustKeyboardInsets={true}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Brand Emblem */}
+          <View style={[styles.brandHeader, keyboardVisible && styles.brandHeaderCompact]}>
+            <View style={[styles.emblemRing, keyboardVisible && styles.emblemRingCompact]}>
+              <LinearGradient
+                colors={['#D4AF7A', '#8F662F']}
+                style={styles.emblemCore}
+              >
+                <Text style={[styles.emblemLetter, keyboardVisible && styles.emblemLetterCompact]}>Z</Text>
+              </LinearGradient>
+            </View>
+            <Text style={[styles.brandTitle, keyboardVisible && styles.brandTitleCompact]}>ZENVY FLEET</Text>
+            {!keyboardVisible && (
+              <>
+                <Text style={styles.brandSub}>CAMPUS DISPATCH & LOGISTICS</Text>
+                <ZenvyBadge
+                  label="SRM AP RIDER PORTAL"
+                  variant="gold"
+                  size="sm"
+                  style={{ marginTop: 8 }}
+                />
+              </>
+            )}
+          </View>
+
+          {/* Login Card */}
+          <View style={styles.loginCard}>
             <LinearGradient
-              colors={['#D4AF7A', '#8F662F']}
-              style={styles.emblemCore}
+              colors={['#141622', '#0F1118']}
+              style={styles.cardGradient}
             >
-              <Text style={styles.emblemLetter}>Z</Text>
+              <Text style={styles.cardTitle}>Rider Authentication</Text>
+              <Text style={styles.cardSub}>
+                Sign in with your verified driver credentials to accept campus orders.
+              </Text>
+
+              {/* Email / Mobile Field */}
+              <Text style={styles.fieldLabel}>DRIVER MOBILE OR EMAIL</Text>
+              <TextInput
+                style={[
+                  styles.input,
+                  focusedField === 'email' && styles.inputFocused,
+                ]}
+                value={email}
+                onChangeText={setEmail}
+                placeholder="Registered mobile or email"
+                placeholderTextColor={COLORS.textMuted}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                returnKeyType="next"
+                onSubmitEditing={() => passwordInputRef.current?.focus()}
+                onFocus={() => handleInputFocus('email')}
+                onBlur={() => setFocusedField(null)}
+              />
+
+              {/* Password Field */}
+              <Text style={styles.fieldLabel}>PASSWORD</Text>
+              <TextInput
+                ref={passwordInputRef}
+                style={[
+                  styles.input,
+                  focusedField === 'password' && styles.inputFocused,
+                ]}
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Enter your secure password"
+                placeholderTextColor={COLORS.textMuted}
+                secureTextEntry
+                returnKeyType="go"
+                onSubmitEditing={onLogin}
+                onFocus={() => handleInputFocus('password')}
+                onBlur={() => setFocusedField(null)}
+              />
+
+              {/* Forgot Password Row */}
+              <TouchableOpacity
+                style={styles.forgotBtn}
+                onPress={onForgotPassword}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.forgotText}>Forgot credentials? Contact Fleet Control</Text>
+              </TouchableOpacity>
+
+              {/* Sign In Button */}
+              <TouchableOpacity
+                style={styles.submitBtn}
+                onPress={onLogin}
+                disabled={isLoading}
+                activeOpacity={0.85}
+              >
+                <LinearGradient
+                  colors={['#10B981', '#059669']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.btnGradient}
+                >
+                  {isLoading ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.submitBtnText}>ENTER FLEET DUTY</Text>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
             </LinearGradient>
           </View>
-          <Text style={styles.brandTitle}>ZENVY FLEET</Text>
-          <Text style={styles.brandSub}>CAMPUS DISPATCH & LOGISTICS</Text>
-          <ZenvyBadge
-            label="SRM AP RIDER PORTAL"
-            variant="gold"
-            size="sm"
-            style={{ marginTop: 8 }}
-          />
-        </View>
 
-        {/* Login Card */}
-        <View style={styles.loginCard}>
-          <LinearGradient
-            colors={['#141622', '#0F1118']}
-            style={styles.cardGradient}
-          >
-            <Text style={styles.cardTitle}>Rider Authentication</Text>
-            <Text style={styles.cardSub}>
-              Sign in with your verified driver credentials to accept campus orders.
-            </Text>
-
-            {/* Email / Mobile Field */}
-            <Text style={styles.fieldLabel}>DRIVER MOBILE OR EMAIL</Text>
-            <TextInput
-              style={styles.input}
-              value={email}
-              onChangeText={setEmail}
-              placeholder="Registered mobile or email"
-              placeholderTextColor={COLORS.textMuted}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-
-            {/* Password Field */}
-            <Text style={styles.fieldLabel}>PASSWORD</Text>
-            <TextInput
-              style={styles.input}
-              value={password}
-              onChangeText={setPassword}
-              placeholder="Enter your secure password"
-              placeholderTextColor={COLORS.textMuted}
-              secureTextEntry
-            />
-
-            {/* Forgot Password Row */}
-            <TouchableOpacity
-              style={styles.forgotBtn}
-              onPress={onForgotPassword}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.forgotText}>Forgot credentials? Contact Fleet Control</Text>
-            </TouchableOpacity>
-
-            {/* Sign In Button */}
-            <TouchableOpacity
-              style={styles.submitBtn}
-              onPress={onLogin}
-              disabled={isLoading}
-              activeOpacity={0.85}
-            >
-              <LinearGradient
-                colors={['#10B981', '#059669']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.btnGradient}
-              >
-                {isLoading ? (
-                  <ActivityIndicator color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.submitBtnText}>ENTER FLEET DUTY</Text>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
-          </LinearGradient>
-        </View>
-
-        {/* Secure Campus Ops Footer */}
-        <View style={styles.footerContainer}>
-          <Text style={styles.footerBrand}>ZENVY LOGISTICS PLATFORM</Text>
-          <Text style={styles.footerSub}>SRM University AP • Campus Dispatch v1.0.0</Text>
-        </View>
-      </ScrollView>
+          {/* Secure Campus Ops Footer */}
+          {!keyboardVisible && (
+            <View style={styles.footerContainer}>
+              <Text style={styles.footerBrand}>ZENVY LOGISTICS PLATFORM</Text>
+              <Text style={styles.footerSub}>SRM University AP • Campus Dispatch v1.0.0</Text>
+            </View>
+          )}
+        </ScrollView>
+      </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
   );
 };
@@ -160,6 +236,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: SPACING.xl,
   },
+  brandHeaderCompact: {
+    marginBottom: SPACING.sm,
+  },
   emblemRing: {
     width: 64,
     height: 64,
@@ -171,6 +250,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: SPACING.sm,
     ...SHADOWS.goldGlow,
+  },
+  emblemRingCompact: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    marginBottom: 4,
   },
   emblemCore: {
     width: '100%',
@@ -184,11 +269,18 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: '#000000',
   },
+  emblemLetterCompact: {
+    fontSize: 18,
+  },
   brandTitle: {
     fontSize: 22,
     fontWeight: '900',
     color: '#FFFFFF',
     letterSpacing: 1.5,
+  },
+  brandTitleCompact: {
+    fontSize: 16,
+    letterSpacing: 1,
   },
   brandSub: {
     fontSize: 10,
@@ -237,6 +329,10 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 13,
     marginBottom: SPACING.md,
+  },
+  inputFocused: {
+    borderColor: '#D4AF7A',
+    backgroundColor: 'rgba(212, 175, 122, 0.08)',
   },
   submitBtn: {
     borderRadius: RADIUS.md,

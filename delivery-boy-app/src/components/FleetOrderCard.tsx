@@ -10,6 +10,7 @@ import {
   Alert,
   Vibration,
   ActivityIndicator,
+  Keyboard,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, RADIUS, SPACING, SHADOWS } from '../constants/theme';
@@ -28,8 +29,9 @@ interface FleetOrderCardProps {
   isActionLoading?: boolean;
   pinInput: string;
   onPinChange: (val: string) => void;
-  billAmountInput: string;
-  onBillAmountChange: (val: string) => void;
+  billAmountInput?: string;
+  onBillAmountChange?: (val: string) => void;
+  onInputFocus?: () => void;
 }
 
 export const FleetOrderCard: React.FC<FleetOrderCardProps> = ({
@@ -46,9 +48,12 @@ export const FleetOrderCard: React.FC<FleetOrderCardProps> = ({
   onPinChange,
   billAmountInput,
   onBillAmountChange,
+  onInputFocus,
 }) => {
   const [expanded, setExpanded] = useState<boolean>(!isAvailableFeed);
   const [checkedItems, setCheckedItems] = useState<Record<number, boolean>>({});
+  const [isBillFocused, setIsBillFocused] = useState<boolean>(false);
+  const [isPinFocused, setIsPinFocused] = useState<boolean>(false);
 
   const ordAny = order as any;
   const orderIdShort = String(order.id).slice(-6).toUpperCase();
@@ -290,12 +295,19 @@ export const FleetOrderCard: React.FC<FleetOrderCardProps> = ({
               <View style={{ flex: 1 }}>
                 <Text style={styles.stepTitle}>Final Store Bill</Text>
                 <TextInput
-                  style={styles.billInput}
+                  style={[styles.billInput, isBillFocused && styles.billInputFocused]}
                   placeholder="Bill Amount (₹)"
                   placeholderTextColor="#6B7280"
                   keyboardType="numeric"
                   value={billAmountInput}
                   onChangeText={onBillAmountChange}
+                  onFocus={() => {
+                    setIsBillFocused(true);
+                    onInputFocus?.();
+                  }}
+                  onBlur={() => setIsBillFocused(false)}
+                  returnKeyType="done"
+                  onSubmitEditing={Keyboard.dismiss}
                 />
               </View>
               {onUploadBillProof && (
@@ -312,19 +324,26 @@ export const FleetOrderCard: React.FC<FleetOrderCardProps> = ({
 
         {/* 4-Digit Delivery PIN Verification Box */}
         {!isAvailableFeed && (order.status === 'ArrivedAtGate' || order.status === 'PickedUp') && (
-          <View style={styles.pinVerificationBox}>
+          <View style={[styles.pinVerificationBox, isPinFocused && styles.pinVerificationBoxFocused]}>
             <Text style={styles.pinBoxTitle}>ENTER 4-DIGIT DELIVERY PIN</Text>
             <Text style={styles.pinBoxSub}>
               Ask {customerName} for their secret completion PIN
             </Text>
             <TextInput
-              style={styles.pinInput}
+              style={[styles.pinInput, isPinFocused && styles.pinInputFocused]}
               value={pinInput}
               onChangeText={onPinChange}
               placeholder="••••"
               placeholderTextColor="#6B7280"
               keyboardType="number-pad"
               maxLength={4}
+              onFocus={() => {
+                setIsPinFocused(true);
+                onInputFocus?.();
+              }}
+              onBlur={() => setIsPinFocused(false)}
+              returnKeyType="done"
+              onSubmitEditing={Keyboard.dismiss}
             />
           </View>
         )}
@@ -708,10 +727,16 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.08)',
     borderRadius: RADIUS.xs,
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingVertical: 6,
     color: '#FFFFFF',
-    fontSize: 11,
+    fontSize: 12,
     marginTop: 4,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  billInputFocused: {
+    borderColor: COLORS.gold,
+    backgroundColor: 'rgba(212, 175, 122, 0.15)',
   },
   kiranaUploadBtn: {
     backgroundColor: 'rgba(212, 175, 122, 0.2)',
@@ -734,6 +759,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.emeraldBorder,
     alignItems: 'center',
+  },
+  pinVerificationBoxFocused: {
+    borderColor: '#10B981',
+    backgroundColor: 'rgba(16, 185, 129, 0.14)',
   },
   pinBoxTitle: {
     fontSize: 10,
@@ -759,6 +788,11 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: '#FFFFFF',
     letterSpacing: 8,
+  },
+  pinInputFocused: {
+    borderColor: '#34D399',
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    borderWidth: 2,
   },
   actionFooterRow: {
     marginTop: SPACING.xs,
