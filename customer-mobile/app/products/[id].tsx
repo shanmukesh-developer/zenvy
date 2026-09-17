@@ -24,6 +24,8 @@ import { apiFetch } from '../../utils/auth';
 import { useTheme } from '../../context/ThemeContext';
 import AdSlot from '../../components/AdSlot';
 import SafeImage from '../../components/SafeImage';
+import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
 
 const { width: SW } = Dimensions.get('window');
 
@@ -132,6 +134,65 @@ export function generateSmartAttributes(name: string, category?: string, restaur
     { label: 'Shelf Life', value: 'Standard Retail Freshness' },
     { label: 'Delivery Guarantee', value: '8-Minute Campus Express Delivery' },
   ];
+}
+
+// ── Parse Attributes into Quick Highlights Matrix & Remaining Specs ──────────
+export function parseProductHighlights(attributes: any[], isVeg?: boolean) {
+  if (!attributes || attributes.length === 0) {
+    return { highlights: [], remaining: [] };
+  }
+
+  const portion = attributes.find(a => a.label === 'Portion' || a.label === 'Size' || a.label === 'Weight' || a.label === 'Volume');
+  const dietary = attributes.find(a => a.label === 'Dietary');
+  const spice = attributes.find(a => a.label === 'Spice Level' || a.label === 'Sauce');
+  const freshness = attributes.find(a => a.label === 'Freshness' || a.label === 'Shelf Life' || a.label === 'Quality');
+
+  const highlights = [
+    {
+      icon: '🍽️',
+      label: portion?.label || 'PORTION',
+      value: portion?.value || 'Standard Meal',
+      desc: 'Optimal for 1–2 persons'
+    },
+    {
+      icon: (isVeg ?? true) ? '🌿' : '🍗',
+      label: 'DIETARY',
+      value: dietary?.value?.replace(/^[🟢🔴]\s*/, '') || (isVeg ? '100% Pure Veg' : 'Non-Vegetarian'),
+      isVeg: isVeg ?? true,
+      desc: 'FSSAI Certified'
+    },
+    {
+      icon: spice?.label === 'Spice Level' ? '🌶️' : '✨',
+      label: spice?.label || 'SPICE LEVEL',
+      value: spice?.value?.replace(/^🌶️+\s*/, '') || 'Balanced Flavor',
+      desc: 'Aromatic & Fresh'
+    },
+    {
+      icon: '⏱️',
+      label: freshness?.label || 'FRESHNESS',
+      value: freshness?.value || 'Cooked to Order',
+      desc: 'Delivered in 8 mins'
+    },
+  ];
+
+  const remaining = attributes.filter(a =>
+    !['Portion', 'Size', 'Weight', 'Volume', 'Dietary', 'Spice Level'].includes(a.label)
+  );
+
+  return { highlights, remaining };
+}
+
+export function getAttrIcon(label: string): string {
+  const l = (label || '').toLowerCase();
+  if (l.includes('prep') || l.includes('cook')) return '👨‍🍳';
+  if (l.includes('accompaniment') || l.includes('dip') || l.includes('side')) return '🥣';
+  if (l.includes('fresh') || l.includes('shelf')) return '⏱️';
+  if (l.includes('pack') || l.includes('contain')) return '🛡️';
+  if (l.includes('storage') || l.includes('chill')) return '❄️';
+  if (l.includes('source') || l.includes('origin')) return '🌱';
+  if (l.includes('kitchen') || l.includes('brand') || l.includes('bar')) return '🏪';
+  if (l.includes('crust') || l.includes('cheese') || l.includes('patty') || l.includes('bun')) return '🍕';
+  return '📌';
 }
 
 // ── Smart Context-Aware Cross-Sells (Often Bought Together) ──────────────────
@@ -570,6 +631,7 @@ export default function ProductDetailScreen() {
   const currentCartItem = cart.find((i: any) => i.id === product.id || i.menuItemId === product.id);
   const qty = currentCartItem ? currentCartItem.quantity : 0;
   const currentPack = product.packSizes ? product.packSizes[selectedPackIndex] || product : product;
+  const { highlights, remaining } = parseProductHighlights(product.attributes || [], product.isVegetarian);
 
   const handleShare = () => {
     Clipboard.setString(`Check out ${product.name} on Zenvy: https://zenvy.com/products/${product.id}`);
@@ -577,7 +639,7 @@ export default function ProductDetailScreen() {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.bg }]}>
+    <View style={[styles.container, { backgroundColor: isDark ? '#0B0C10' : '#F8FAFC' }]}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
         {/* ═════════════════════════════════════════════════════════════════════ */}
         {/* ZONE 1 — IMAGE GALLERY                                                */}
@@ -646,31 +708,63 @@ export default function ProductDetailScreen() {
         </View>
 
         {/* ═════════════════════════════════════════════════════════════════════ */}
-        {/* ZONE 2 — CORE INFO SHEET                                              */}
+        {/* ZONE 2 — CORE INFO SHEET (Swiggy / Zepto standard)                   */}
         {/* ═════════════════════════════════════════════════════════════════════ */}
-        <View style={[styles.coreInfoSheet, { backgroundColor: isDark ? '#141416' : '#FFF' }]}>
-          {/* Delivery estimate row */}
-          <View style={styles.deliveryEstimateRow}>
-            <View style={styles.arrivesPill}>
-              <Text style={styles.arrivesPillText}>⏱ Arrives in 8 mins</Text>
+        <View style={[styles.coreInfoSheet, { backgroundColor: isDark ? '#141418' : '#FFFFFF' }]}>
+          {/* Top Badges Row: Swiggy/Zepto Express Delivery, FSSAI Veg/Non-Veg, Rating */}
+          <View style={styles.topBadgesRow}>
+            {/* Express Delivery Badge */}
+            <View style={styles.expressBadge}>
+              <Text style={styles.expressBolt}>⚡</Text>
+              <Text style={styles.expressText}>8 MINS DELIVERY</Text>
             </View>
-            <View style={[styles.vegNonVegBadge, { borderColor: product.isVegetarian ? '#22C55E' : '#EF4444' }]}>
-              <View style={[styles.vegInnerDot, { backgroundColor: product.isVegetarian ? '#22C55E' : '#EF4444' }]} />
-              <Text style={[styles.vegBadgeText, { color: product.isVegetarian ? '#22C55E' : '#EF4444' }]}>
+
+            {/* Authentic FSSAI Veg / Non-Veg Badge */}
+            <View style={[
+              styles.fssaiBadge,
+              product.isVegetarian ? styles.fssaiVegBadge : styles.fssaiNonVegBadge
+            ]}>
+              <View style={[
+                styles.fssaiSquare,
+                { borderColor: product.isVegetarian ? '#16A34A' : '#DC2626' }
+              ]}>
+                <View style={[
+                  styles.fssaiCircle,
+                  { backgroundColor: product.isVegetarian ? '#16A34A' : '#DC2626' }
+                ]} />
+              </View>
+              <Text style={[
+                styles.fssaiText,
+                { color: product.isVegetarian ? '#15803D' : '#B91C1C' }
+              ]}>
                 {product.isVegetarian ? 'PURE VEG' : 'NON-VEG'}
               </Text>
             </View>
+
+            {/* Gold Rating Pill */}
+            <View style={styles.topRatingPill}>
+              <Text style={styles.topRatingStar}>★</Text>
+              <Text style={styles.topRatingScore}>{calculatedRating.toFixed(1)}</Text>
+              <Text style={styles.topRatingCount}>({totalRatingCount}+)</Text>
+            </View>
           </View>
 
-          {/* Title */}
-          <Text style={[styles.productNameTitle, { color: isDark ? '#FFF' : COLORS.ink }]}>{product.name}</Text>
-
-          {/* Restaurant / Brand subtitle */}
-          <Text style={{ fontSize: 11, fontWeight: '700', color: isDark ? '#9CA3AF' : '#6B7280', marginBottom: 12 }}>
-            By {product.restaurantName || 'Zenvy Kitchen'}
+          {/* Product Title */}
+          <Text style={[styles.productNameTitle, { color: isDark ? '#FFF' : '#0F172A' }]}>
+            {product.name}
           </Text>
 
-          {/* Unit selector pills */}
+          {/* Kitchen / Restaurant Brand Pill */}
+          <View style={styles.kitchenStoreRow}>
+            <Text style={{ fontSize: 13, marginRight: 4 }}>🏪</Text>
+            <Text style={[styles.kitchenStoreName, { color: isDark ? '#CBD5E1' : '#334155' }]}>
+              {product.restaurantName || 'Campus Central Kitchen'}
+            </Text>
+            <View style={styles.kitchenDot} />
+            <Text style={styles.kitchenVerifiedText}>✓ FSSAI Verified</Text>
+          </View>
+
+          {/* Unit / Pack Size Selector */}
           {product.packSizes && product.packSizes.length > 1 && (
             <View style={styles.unitSelectorRow}>
               {product.packSizes.map((pack: any, index: number) => {
@@ -678,7 +772,11 @@ export default function ProductDetailScreen() {
                 return (
                   <TouchableOpacity
                     key={index}
-                    style={[styles.unitPill, isSelected && styles.unitPillActive]}
+                    style={[
+                      styles.unitPill,
+                      isDark ? styles.unitPillDark : styles.unitPillLight,
+                      isSelected && styles.unitPillActive,
+                    ]}
                     onPress={() => setSelectedPackIndex(index)}
                   >
                     <Text style={[styles.unitPillText, isSelected && styles.unitPillTextActive]}>
@@ -690,11 +788,15 @@ export default function ProductDetailScreen() {
             </View>
           )}
 
-          {/* Price row */}
+          {/* Pricing Row */}
           <View style={styles.priceContainerRow}>
-            <Text style={[styles.priceCurrentBig, { color: isDark ? '#FFF' : COLORS.ink }]}>₹{currentPack.price}</Text>
+            <Text style={[styles.priceCurrentBig, { color: isDark ? '#FFF' : '#0F172A' }]}>
+              ₹{currentPack.price}
+            </Text>
             {currentPack.originalPrice && currentPack.originalPrice > currentPack.price && (
-              <Text style={styles.priceOriginalStrikethrough}>₹{currentPack.originalPrice}</Text>
+              <Text style={styles.priceOriginalStrikethrough}>
+                ₹{currentPack.originalPrice}
+              </Text>
             )}
             {currentPack.discount && (
               <View style={styles.priceDiscountChip}>
@@ -703,40 +805,122 @@ export default function ProductDetailScreen() {
             )}
           </View>
 
-          {/* Verified Price Green Chip */}
+          {/* Lowest Price Guarantee Trust Banner (BigBasket & Blinkit style) */}
           <TouchableOpacity
-            style={styles.verifiedPriceChip}
+            style={[
+              styles.priceGuaranteeCard,
+              {
+                backgroundColor: isDark ? 'rgba(16, 185, 129, 0.08)' : '#F0FDF4',
+                borderColor: isDark ? 'rgba(16, 185, 129, 0.25)' : '#BBF7D0',
+              },
+            ]}
             activeOpacity={0.8}
             onPress={() => setShowShopsModal(true)}
           >
-            <Text style={styles.verifiedPriceChipText}>
-              ✓ Verified price — matched across campus kitchens & stores
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+              <View style={styles.shieldIconPill}>
+                <Text style={{ fontSize: 14 }}>🛡️</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.priceGuaranteeTitle}>Campus Lowest Price Guarantee</Text>
+                <Text style={styles.priceGuaranteeSub}>Price matched across all SRM kitchens & stores</Text>
+              </View>
+            </View>
+            <Text style={styles.priceGuaranteeCompareLink}>Compare ›</Text>
           </TouchableOpacity>
         </View>
 
         {/* ═════════════════════════════════════════════════════════════════════ */}
-        {/* ZONE 4 — ITEM SPECIFICATIONS & ABOUT THIS PRODUCT                    */}
+        {/* ZONE 4 — HIGHLIGHTS MATRIX & CULINARY SPECS (Swiggy/Zepto/BigBasket) */}
         {/* ═════════════════════════════════════════════════════════════════════ */}
-        <View style={[styles.pdpSectionBox, { backgroundColor: isDark ? '#141416' : '#FFF' }]}>
-          <Text style={[styles.pdpSectionTitle, { color: isDark ? '#FFF' : COLORS.ink }]}>About this product</Text>
+        <View style={[styles.pdpSectionBox, { backgroundColor: isDark ? '#141418' : '#FFFFFF' }]}>
+          <View style={styles.sectionHeaderRow}>
+            <View>
+              <Text style={[styles.pdpSectionTitle, { color: isDark ? '#FFF' : '#0F172A' }]}>
+                Product Information
+              </Text>
+              <Text style={styles.sectionSub}>Authentic culinary preparation & nutrition</Text>
+            </View>
+            <View style={styles.chefHatPill}>
+              <Text style={styles.chefHatPillText}>👨‍🍳 Kitchen Fresh</Text>
+            </View>
+          </View>
+
+          {/* Description with comfortable typography */}
           <Text
-            style={[styles.pdpDescriptionText, { color: isDark ? '#9CA3AF' : COLORS.inkMuted }]}
+            style={[styles.pdpDescriptionText, { color: isDark ? '#94A3B8' : '#475569' }]}
             numberOfLines={descExpanded ? undefined : 3}
           >
             {product.description}
           </Text>
-          <TouchableOpacity onPress={() => setDescExpanded(!descExpanded)}>
-            <Text style={styles.readMoreLink}>{descExpanded ? 'Show less' : 'Read more'}</Text>
+          <TouchableOpacity onPress={() => setDescExpanded(!descExpanded)} style={styles.readMoreTouch}>
+            <Text style={styles.readMoreLink}>
+              {descExpanded ? 'Show less ▴' : 'Read full culinary notes ▾'}
+            </Text>
           </TouchableOpacity>
 
-          {/* Attributes Table */}
-          {product.attributes && product.attributes.length > 0 && (
-            <View style={[styles.attributesTable, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : COLORS.primarySoft }]}>
-              {product.attributes.map((attr: any, idx: number) => (
-                <View key={idx} style={styles.attributeRow}>
-                  <Text style={[styles.attrLabel, { color: isDark ? '#9CA3AF' : COLORS.inkMuted }]}>{attr.label}</Text>
-                  <Text style={[styles.attrVal, { color: isDark ? '#FFF' : COLORS.ink }]}>{attr.value}</Text>
+          {/* 4-Card Highlights Matrix (Zepto & Swiggy standard) */}
+          <View style={styles.highlightsGrid}>
+            {highlights.map((h: any, i: number) => (
+              <View
+                key={i}
+                style={[
+                  styles.highlightCard,
+                  {
+                    backgroundColor: isDark ? '#1A1D24' : '#F8FAFC',
+                    borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
+                  },
+                ]}
+              >
+                <View style={styles.highlightIconCircle}>
+                  <Text style={{ fontSize: 16 }}>{h.icon}</Text>
+                </View>
+                <Text style={styles.highlightLabel}>{h.label}</Text>
+                <Text
+                  style={[styles.highlightValue, { color: isDark ? '#FFF' : '#0F172A' }]}
+                  numberOfLines={1}
+                >
+                  {h.value}
+                </Text>
+                <Text style={styles.highlightDesc} numberOfLines={1}>
+                  {h.desc}
+                </Text>
+              </View>
+            ))}
+          </View>
+
+          {/* Detailed Culinary Specs Card (Zomato & BigBasket standard) */}
+          {remaining.length > 0 && (
+            <View
+              style={[
+                styles.specsCard,
+                {
+                  backgroundColor: isDark ? '#1A1D24' : '#FAFAFA',
+                  borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
+                },
+              ]}
+            >
+              <Text style={[styles.specsCardTitle, { color: isDark ? '#CBD5E1' : '#334155' }]}>
+                CULINARY & PACKAGING DETAILS
+              </Text>
+              {remaining.map((attr: any, idx: number) => (
+                <View
+                  key={idx}
+                  style={[
+                    styles.specItemRow,
+                    idx < remaining.length - 1 && styles.specItemBorder,
+                    { borderBottomColor: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0' },
+                  ]}
+                >
+                  <View style={styles.specIconBadge}>
+                    <Text style={{ fontSize: 13 }}>{getAttrIcon(attr.label)}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.specLabel}>{attr.label}</Text>
+                    <Text style={[styles.specValue, { color: isDark ? '#F1F5F9' : '#1E293B' }]}>
+                      {attr.value}
+                    </Text>
+                  </View>
                 </View>
               ))}
             </View>
@@ -744,51 +928,111 @@ export default function ProductDetailScreen() {
         </View>
 
         {/* ═════════════════════════════════════════════════════════════════════ */}
-        {/* ZONE 5 — OFTEN BOUGHT TOGETHER (CROSS-SELL)                          */}
+        {/* ZONE 5 — OFTEN BOUGHT TOGETHER (Swiggy Cross-Sell Cards)             */}
         {/* ═════════════════════════════════════════════════════════════════════ */}
-        <View style={[styles.pdpSectionBox, { backgroundColor: isDark ? '#141416' : '#FFF' }]}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <Text style={[styles.pdpSectionTitle, { color: isDark ? '#FFF' : COLORS.ink, marginBottom: 0 }]}>
-              Often bought together
-            </Text>
-            <Text style={{ fontSize: 10, fontWeight: '800', color: COLORS.primary }}>
-              POPULAR PAIRINGS
-            </Text>
+        <View style={[styles.pdpSectionBox, { backgroundColor: isDark ? '#141418' : '#FFFFFF' }]}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+            <View>
+              <Text style={[styles.pdpSectionTitle, { color: isDark ? '#FFF' : '#0F172A', marginBottom: 2 }]}>
+                Often bought together
+              </Text>
+              <Text style={styles.sectionSub}>Pairs perfectly with this dish</Text>
+            </View>
+            <View style={styles.popularBadge}>
+              <Text style={styles.popularBadgeText}>🔥 TOP PAIRINGS</Text>
+            </View>
           </View>
 
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
-            {(product.crossSells || []).map((rel: any) => (
-              <View
-                key={rel.id}
-                style={[styles.relatedMiniCard, { backgroundColor: isDark ? '#1A1A1E' : '#FFF', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(20, 19, 31, 0.06)' }]}
-              >
-                <Image source={{ uri: rel.image }} style={styles.relatedImg} />
-                <View style={{ position: 'absolute', top: 12, left: 12, backgroundColor: 'rgba(0,0,0,0.7)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                  <Text style={{ fontSize: 7, fontWeight: '900', color: '#FFF' }}>{rel.tag || 'PAIR'}</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingVertical: 4 }}>
+            {(product.crossSells || []).map((rel: any) => {
+              const inCart = cart.find((i: any) => i.id === rel.id || i.menuItemId === rel.id);
+              const relQty = inCart ? inCart.quantity : 0;
+              return (
+                <View
+                  key={rel.id}
+                  style={[
+                    styles.pairingCard,
+                    {
+                      backgroundColor: isDark ? '#1A1D24' : '#FFFFFF',
+                      borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
+                    },
+                  ]}
+                >
+                  <View style={styles.pairingImgContainer}>
+                    <Image source={{ uri: rel.image }} style={styles.pairingImg} />
+                    <View style={styles.pairingTagBadge}>
+                      <Text style={styles.pairingTagText}>
+                        {rel.tag === 'Beverage' ? '🥤 DRINK' : rel.tag === 'Starter' ? '🍗 STARTER' : rel.tag === 'Dessert' ? '🍮 SWEET' : '🥗 SIDE'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.pairingContent}>
+                    <Text
+                      style={[styles.pairingTitle, { color: isDark ? '#FFF' : '#0F172A' }]}
+                      numberOfLines={2}
+                    >
+                      {rel.name}
+                    </Text>
+
+                    <View style={styles.pairingFooterRow}>
+                      <Text style={[styles.pairingPrice, { color: isDark ? '#FFF' : '#0F172A' }]}>
+                        ₹{rel.price}
+                      </Text>
+
+                      {relQty === 0 ? (
+                        <TouchableOpacity
+                          style={styles.pairingAddBtn}
+                          activeOpacity={0.8}
+                          onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            handleSafeAddToCart({
+                              id: rel.id,
+                              name: rel.name,
+                              price: rel.price,
+                              image: rel.image,
+                              restaurantId: product.restaurantId || 'market-hub',
+                              restaurantName: product.restaurantName || 'Campus Mart',
+                            }, `${rel.name} added!`);
+                          }}
+                        >
+                          <Text style={styles.pairingAddBtnText}>ADD +</Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <View style={styles.pairingMiniStepper}>
+                          <TouchableOpacity
+                            style={styles.pairingMiniStepBtn}
+                            onPress={() => {
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                              updateQuantity(rel.id, relQty - 1);
+                            }}
+                          >
+                            <Text style={styles.pairingMiniStepText}>–</Text>
+                          </TouchableOpacity>
+                          <Text style={styles.pairingMiniStepVal}>{relQty}</Text>
+                          <TouchableOpacity
+                            style={styles.pairingMiniStepBtn}
+                            onPress={() => {
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                              handleSafeAddToCart({
+                                id: rel.id,
+                                name: rel.name,
+                                price: rel.price,
+                                image: rel.image,
+                                restaurantId: product.restaurantId || 'market-hub',
+                                restaurantName: product.restaurantName || 'Campus Mart',
+                              });
+                            }}
+                          >
+                            <Text style={styles.pairingMiniStepText}>+</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
+                  </View>
                 </View>
-                <Text style={[styles.relatedTitle, { color: isDark ? '#FFF' : COLORS.ink }]} numberOfLines={1}>
-                  {rel.name}
-                </Text>
-                <View style={styles.relatedPriceRow}>
-                  <Text style={[styles.relatedPrice, { color: isDark ? '#FFF' : COLORS.ink }]}>₹{rel.price}</Text>
-                  <TouchableOpacity
-                    style={sMiniPlusBtn}
-                    onPress={() => {
-                      handleSafeAddToCart({
-                        id: rel.id,
-                        name: rel.name,
-                        price: rel.price,
-                        image: rel.image,
-                        restaurantId: product.restaurantId || 'market-hub',
-                        restaurantName: product.restaurantName || 'Campus Mart',
-                      }, `${rel.name} added to your basket!`);
-                    }}
-                  >
-                    <Text style={{ fontSize: 14, fontWeight: '900', color: '#FFF' }}>+</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
+              );
+            })}
           </ScrollView>
         </View>
 
@@ -883,64 +1127,129 @@ export default function ProductDetailScreen() {
       </ScrollView>
 
       {/* ═════════════════════════════════════════════════════════════════════ */}
-      {/* ZONE 3 — STICKY BOTTOM ACTION BAR                                     */}
+      {/* ZONE 3 — STICKY BOTTOM ACTION BAR (Zepto & Swiggy Standard)            */}
       {/* ═════════════════════════════════════════════════════════════════════ */}
-      <View style={[styles.stickyBottomBar, { backgroundColor: isDark ? '#141416' : '#FFF', borderTopColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(20, 19, 31, 0.08)' }]}>
-        {/* Quantity Stepper */}
-        <View style={styles.stepperContainer}>
-          <TouchableOpacity
-            style={styles.stepperBtn}
-            onPress={() => {
-              if (qty > 1) {
-                updateQuantity(product.id, qty - 1);
-              } else if (qty === 1) {
-                updateQuantity(product.id, 0);
-              }
-            }}
-          >
-            <Text style={styles.stepperBtnText}>–</Text>
-          </TouchableOpacity>
-          <Text style={styles.stepperValText}>{qty}</Text>
-          <TouchableOpacity
-            style={styles.stepperBtn}
-            onPress={() =>
-              handleSafeAddToCart({
-                id: product.id,
-                name: product.name,
-                price: currentPack.price,
-                image: product.image || product.images?.[0] || '',
-                restaurantId: product.restaurantId || 'market-hub',
-                restaurantName: product.verifiedShops?.[0] || product.restaurantName || 'Campus Mart',
-              })
-            }
-          >
-            <Text style={styles.stepperBtnText}>+</Text>
-          </TouchableOpacity>
-        </View>
+      <View
+        style={[
+          styles.stickyBottomBar,
+          {
+            backgroundColor: isDark ? '#111317' : '#FFFFFF',
+            borderTopColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+          },
+        ]}
+      >
+        {qty === 0 ? (
+          <>
+            {/* Left Price Breakdown */}
+            <View style={styles.bottomPriceCol}>
+              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+                <Text style={[styles.bottomPriceBig, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
+                  ₹{currentPack.price}
+                </Text>
+                {currentPack.originalPrice && (
+                  <Text style={styles.bottomPriceStrikethrough}>₹{currentPack.originalPrice}</Text>
+                )}
+              </View>
+              <Text style={styles.bottomPriceSub}>Inclusive of taxes & pack</Text>
+            </View>
 
-        {/* Primary Violet Add to Basket Button */}
-        <TouchableOpacity
-          style={styles.primaryAddBasketBtn}
-          activeOpacity={0.88}
-          onPress={() => {
-            if (qty === 0) {
-              handleSafeAddToCart({
-                id: product.id,
-                name: product.name,
-                price: currentPack.price,
-                image: product.image || product.images?.[0] || '',
-                restaurantId: product.restaurantId || 'market-hub',
-                restaurantName: product.verifiedShops?.[0] || product.restaurantName || 'Campus Mart',
-              });
-            } else {
-              router.push('/(tabs)/basket' as any);
-            }
-          }}
-        >
-          <Text style={styles.primaryAddBasketBtnText}>
-            {qty > 0 ? 'Go to Basket' : 'Add to Basket'}
-          </Text>
-        </TouchableOpacity>
+            {/* Right Emerald Gradient Add CTA */}
+            <TouchableOpacity
+              activeOpacity={0.86}
+              style={styles.bottomAddCtaBtn}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                handleSafeAddToCart({
+                  id: product.id,
+                  name: product.name,
+                  price: currentPack.price,
+                  image: product.image || product.images?.[0] || '',
+                  restaurantId: product.restaurantId || 'market-hub',
+                  restaurantName: product.verifiedShops?.[0] || product.restaurantName || 'Campus Mart',
+                });
+              }}
+            >
+              <LinearGradient
+                colors={['#10B981', '#059669']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.bottomCtaGradient}
+              >
+                <Text style={styles.bottomAddCtaText}>ADD TO BASKET</Text>
+                <Text style={styles.bottomAddPlusText}>+</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <>
+            {/* Active Stepper on Left */}
+            <View
+              style={[
+                styles.activeStepperPill,
+                {
+                  backgroundColor: isDark ? '#1E232B' : '#F1F5F9',
+                  borderColor: isDark ? 'rgba(16, 185, 129, 0.3)' : '#10B981',
+                },
+              ]}
+            >
+              <TouchableOpacity
+                style={styles.activeStepperBtn}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  if (qty > 1) {
+                    updateQuantity(product.id, qty - 1);
+                  } else {
+                    updateQuantity(product.id, 0);
+                  }
+                }}
+              >
+                <Text style={styles.activeStepperBtnText}>–</Text>
+              </TouchableOpacity>
+              <Text style={[styles.activeStepperCountText, { color: isDark ? '#FFF' : '#0F172A' }]}>
+                {qty}
+              </Text>
+              <TouchableOpacity
+                style={styles.activeStepperBtn}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  handleSafeAddToCart({
+                    id: product.id,
+                    name: product.name,
+                    price: currentPack.price,
+                    image: product.image || product.images?.[0] || '',
+                    restaurantId: product.restaurantId || 'market-hub',
+                    restaurantName: product.verifiedShops?.[0] || product.restaurantName || 'Campus Mart',
+                  });
+                }}
+              >
+                <Text style={styles.activeStepperBtnText}>+</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* View Basket Button with Live Subtotal */}
+            <TouchableOpacity
+              activeOpacity={0.88}
+              style={styles.bottomViewCartBtn}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                router.push('/(tabs)/basket' as any);
+              }}
+            >
+              <LinearGradient
+                colors={['#10B981', '#059669']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.bottomCtaGradient}
+              >
+                <View>
+                  <Text style={styles.bottomCartTotalLabel}>{qty} ITEM{qty > 1 ? 'S' : ''}</Text>
+                  <Text style={styles.bottomCartTotalVal}>₹{qty * currentPack.price}</Text>
+                </View>
+                <Text style={styles.bottomViewCartText}>View Basket ›</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </>
+        )}
       </View>
 
       {/* ── Interactive Rate & Review Modal ── */}
@@ -1036,14 +1345,7 @@ export default function ProductDetailScreen() {
   );
 }
 
-const sMiniPlusBtn = {
-  width: 26,
-  height: 26,
-  borderRadius: 13,
-  backgroundColor: COLORS.primary,
-  alignItems: 'center' as const,
-  justifyContent: 'center' as const,
-};
+
 
 const styles = StyleSheet.create({
   container: {
@@ -1137,49 +1439,118 @@ const styles = StyleSheet.create({
     padding: 20,
     ...SHADOWS.cardElevated,
   },
-  deliveryEstimateRow: {
+  // ZONE 2: TOP BADGES & CORE INFO
+  topBadgesRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
+    gap: 8,
+    marginBottom: 12,
+    flexWrap: 'wrap',
   },
-  arrivesPill: {
-    backgroundColor: COLORS.ink,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: RADIUS.pill,
-    alignSelf: 'flex-start',
-  },
-  arrivesPillText: {
-    fontSize: 9,
-    fontWeight: '900',
-    color: COLORS.accent,
-  },
-  vegNonVegBadge: {
+  expressBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    backgroundColor: '#FEF3C7',
     paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingVertical: 4,
     borderRadius: 6,
-    borderWidth: 1,
+    gap: 4,
   },
-  vegInnerDot: {
-    width: 6,
-    height: 6,
+  expressBolt: {
+    fontSize: 10,
+    color: '#B45309',
+  },
+  expressText: {
+    fontSize: 9.5,
+    fontWeight: '900',
+    color: '#92400E',
+    letterSpacing: 0.3,
+  },
+  fssaiBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 7,
+    paddingVertical: 3.5,
+    borderRadius: 5,
+    borderWidth: 1,
+    gap: 5,
+  },
+  fssaiVegBadge: {
+    backgroundColor: 'rgba(34, 197, 94, 0.08)',
+    borderColor: '#22C55E',
+  },
+  fssaiNonVegBadge: {
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+    borderColor: '#EF4444',
+  },
+  fssaiSquare: {
+    width: 13,
+    height: 13,
+    borderWidth: 1.5,
+    borderRadius: 2.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fssaiCircle: {
+    width: 5.5,
+    height: 5.5,
     borderRadius: 3,
   },
-  vegBadgeText: {
-    fontSize: 8,
+  fssaiText: {
+    fontSize: 9,
     fontWeight: '900',
     letterSpacing: 0.5,
   },
-  productNameTitle: {
-    fontSize: 20,
+  topRatingPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+    paddingHorizontal: 7,
+    paddingVertical: 3.5,
+    borderRadius: 6,
+    gap: 4,
+  },
+  topRatingStar: {
+    fontSize: 10,
+  },
+  topRatingScore: {
+    fontSize: 10,
     fontWeight: '900',
-    color: COLORS.ink,
-    lineHeight: 24,
+    color: '#D97706',
+  },
+  topRatingCount: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#B45309',
+  },
+  productNameTitle: {
+    fontSize: 22,
+    fontWeight: '900',
+    letterSpacing: -0.3,
+    lineHeight: 28,
     marginBottom: 4,
+  },
+  kitchenStoreRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 12,
+  },
+  kitchenStoreName: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  kitchenDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#94A3B8',
+  },
+  kitchenVerifiedText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#10B981',
   },
   unitSelectorRow: {
     flexDirection: 'row',
@@ -1187,143 +1558,328 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   unitPill: {
-    backgroundColor: COLORS.primarySoft,
     paddingHorizontal: 14,
-    paddingVertical: 6,
+    paddingVertical: 7,
     borderRadius: RADIUS.pill,
+    borderWidth: 1,
+  },
+  unitPillLight: {
+    backgroundColor: '#F1F5F9',
+    borderColor: '#E2E8F0',
+  },
+  unitPillDark: {
+    backgroundColor: '#1E232B',
+    borderColor: 'rgba(255,255,255,0.1)',
   },
   unitPillActive: {
-    backgroundColor: COLORS.primary,
+    backgroundColor: '#0F172A',
+    borderColor: '#0F172A',
   },
   unitPillText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '800',
-    color: COLORS.primary,
+    color: '#475569',
   },
   unitPillTextActive: {
-    color: '#FFF',
+    color: '#FFFFFF',
   },
   priceContainerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
     marginBottom: 12,
   },
   priceCurrentBig: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: '900',
-    color: COLORS.ink,
     fontVariant: ['tabular-nums'],
+    letterSpacing: -0.5,
   },
   priceOriginalStrikethrough: {
-    fontSize: 14,
-    color: COLORS.inkMuted,
+    fontSize: 15,
+    color: '#94A3B8',
     textDecorationLine: 'line-through',
     fontVariant: ['tabular-nums'],
   },
   priceDiscountChip: {
-    backgroundColor: 'rgba(239, 79, 95, 0.1)',
+    backgroundColor: '#FEE2E2',
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: RADIUS.sm,
+    borderRadius: 6,
   },
   priceDiscountChipText: {
     fontSize: 10,
     fontWeight: '900',
-    color: COLORS.red,
+    color: '#DC2626',
+    letterSpacing: 0.2,
   },
-  verifiedPriceChip: {
-    backgroundColor: 'rgba(34, 197, 94, 0.12)',
+  priceGuaranteeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: RADIUS.md,
+    paddingVertical: 9,
+    borderRadius: 10,
+    borderWidth: 1,
     marginTop: 4,
   },
-  verifiedPriceChipText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#15803D',
+  shieldIconPill: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  priceGuaranteeTitle: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#047857',
+    letterSpacing: 0.1,
+  },
+  priceGuaranteeSub: {
+    fontSize: 9.5,
+    fontWeight: '600',
+    color: '#065F46',
+    marginTop: 1,
+  },
+  priceGuaranteeCompareLink: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#059669',
   },
 
-  // ZONE 4: DETAILS & ATTRIBUTES
+  // ZONE 4: DETAILS, HIGHLIGHTS MATRIX & CULINARY SPECS
   pdpSectionBox: {
-    marginTop: 12,
-    backgroundColor: '#FFF',
-    padding: 20,
+    marginTop: 10,
+    padding: 18,
+    borderRadius: 16,
     ...SHADOWS.cardElevated,
   },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
   pdpSectionTitle: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '900',
-    color: COLORS.ink,
-    marginBottom: 8,
+    letterSpacing: -0.2,
+  },
+  sectionSub: {
+    fontSize: 10.5,
+    color: '#64748B',
+    fontWeight: '600',
+    marginTop: 1,
+  },
+  chefHatPill: {
+    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  chefHatPillText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#B45309',
   },
   pdpDescriptionText: {
-    fontSize: 12,
-    color: COLORS.inkMuted,
-    lineHeight: 18,
+    fontSize: 12.5,
+    lineHeight: 19,
+    letterSpacing: 0.1,
+  },
+  readMoreTouch: {
+    marginTop: 4,
+    marginBottom: 14,
   },
   readMoreLink: {
     fontSize: 11,
     fontWeight: '800',
-    color: COLORS.primary,
-    marginTop: 4,
+    color: '#2563EB',
   },
-  attributesTable: {
-    marginTop: 14,
-    backgroundColor: COLORS.primarySoft,
-    borderRadius: RADIUS.md,
-    padding: 12,
-    gap: 8,
-  },
-  attributeRow: {
+  highlightsGrid: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 2,
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 14,
   },
-  attrLabel: {
-    fontSize: 11,
-    color: COLORS.inkMuted,
-  },
-  attrVal: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: COLORS.ink,
-  },
-
-  // OFTEN BOUGHT TOGETHER
-  relatedMiniCard: {
-    width: 130,
-    backgroundColor: '#FFF',
-    borderRadius: RADIUS.lg,
-    padding: 8,
+  highlightCard: {
+    width: '48.5%',
+    padding: 12,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(20, 19, 31, 0.06)',
-    ...SHADOWS.cardElevated,
   },
-  relatedImg: {
-    width: '100%',
-    height: 85,
-    borderRadius: RADIUS.md,
+  highlightIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.04)',
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 6,
   },
-  relatedTitle: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: COLORS.ink,
-    marginBottom: 4,
+  highlightLabel: {
+    fontSize: 9.5,
+    fontWeight: '700',
+    color: '#64748B',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  relatedPriceRow: {
+  highlightValue: {
+    fontSize: 12.5,
+    fontWeight: '900',
+    marginTop: 2,
+  },
+  highlightDesc: {
+    fontSize: 10,
+    color: '#94A3B8',
+    marginTop: 2,
+  },
+  specsCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 14,
+  },
+  specsCardTitle: {
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+    marginBottom: 10,
+  },
+  specItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 8,
+  },
+  specItemBorder: {
+    borderBottomWidth: 1,
+  },
+  specIconBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0,0,0,0.04)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  specLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#64748B',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  specValue: {
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 1,
+  },
+
+  // ZONE 5: OFTEN BOUGHT TOGETHER (SWIGGY PAIRING CARDS)
+  popularBadge: {
+    backgroundColor: '#FEF2F2',
+    paddingHorizontal: 8,
+    paddingVertical: 3.5,
+    borderRadius: 6,
+  },
+  popularBadgeText: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: '#DC2626',
+    letterSpacing: 0.4,
+  },
+  pairingCard: {
+    width: 142,
+    borderRadius: 14,
+    borderWidth: 1,
+    overflow: 'hidden',
+    ...SHADOWS.cardElevated,
+  },
+  pairingImgContainer: {
+    position: 'relative',
+    width: '100%',
+    height: 96,
+  },
+  pairingImg: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  pairingTagBadge: {
+    position: 'absolute',
+    bottom: 6,
+    left: 6,
+    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  pairingTagText: {
+    fontSize: 8,
+    fontWeight: '900',
+    color: '#FFF',
+    letterSpacing: 0.3,
+  },
+  pairingContent: {
+    padding: 10,
+  },
+  pairingTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    lineHeight: 15,
+    minHeight: 30,
+    marginBottom: 6,
+  },
+  pairingFooterRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 2,
   },
-  relatedPrice: {
-    fontSize: 12,
+  pairingPrice: {
+    fontSize: 13,
     fontWeight: '900',
-    color: COLORS.ink,
+    fontVariant: ['tabular-nums'],
+  },
+  pairingAddBtn: {
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#10B981',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  pairingAddBtnText: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#059669',
+    letterSpacing: 0.3,
+  },
+  pairingMiniStepper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#10B981',
+    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 3,
+    gap: 6,
+  },
+  pairingMiniStepBtn: {
+    width: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pairingMiniStepText: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#FFF',
+  },
+  pairingMiniStepVal: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#FFF',
     fontVariant: ['tabular-nums'],
   },
 
@@ -1399,7 +1955,7 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
 
-  // STICKY BOTTOM BAR
+  // STICKY BOTTOM BAR (ZEPTO & SWIGGY STANDARD)
   stickyBottomBar: {
     position: 'absolute',
     bottom: 0,
@@ -1408,60 +1964,111 @@ const styles = StyleSheet.create({
     maxWidth: 600,
     alignSelf: 'center',
     width: '100%',
-    backgroundColor: '#FFF',
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: Platform.OS === 'ios' ? 28 : 16,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === 'ios' ? 28 : 14,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(20, 19, 31, 0.08)',
     ...SHADOWS.cardElevated,
     zIndex: 100,
   },
-  stepperContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.primarySoft,
-    borderRadius: RADIUS.pill,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  stepperBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#FFF',
-    alignItems: 'center',
+  bottomPriceCol: {
     justifyContent: 'center',
   },
-  stepperBtnText: {
-    fontSize: 18,
+  bottomPriceBig: {
+    fontSize: 22,
     fontWeight: '900',
-    color: COLORS.primary,
+    fontVariant: ['tabular-nums'],
+    letterSpacing: -0.3,
   },
-  stepperValText: {
-    fontSize: 14,
-    fontWeight: '900',
-    color: COLORS.primary,
-    marginHorizontal: 12,
+  bottomPriceStrikethrough: {
+    fontSize: 13,
+    color: '#94A3B8',
+    textDecorationLine: 'line-through',
     fontVariant: ['tabular-nums'],
   },
-  primaryAddBasketBtn: {
+  bottomPriceSub: {
+    fontSize: 10,
+    color: '#64748B',
+    fontWeight: '600',
+    marginTop: 1,
+  },
+  bottomAddCtaBtn: {
     flex: 1,
-    backgroundColor: COLORS.primary,
+    borderRadius: 14,
+    overflow: 'hidden',
+    ...SHADOWS.cardElevated,
+  },
+  bottomCtaGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingVertical: 14,
-    borderRadius: RADIUS.pill,
+    paddingHorizontal: 18,
+  },
+  bottomAddCtaText: {
+    fontSize: 13.5,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
+  },
+  bottomAddPlusText: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#FFFFFF',
+  },
+  activeStepperPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: 1.5,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    gap: 12,
+  },
+  activeStepperBtn: {
+    width: 28,
+    height: 28,
     alignItems: 'center',
     justifyContent: 'center',
-    ...SHADOWS.redGlow,
   },
-  primaryAddBasketBtnText: {
+  activeStepperBtnText: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#10B981',
+  },
+  activeStepperCountText: {
+    fontSize: 15,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+    minWidth: 18,
+    textAlign: 'center',
+  },
+  bottomViewCartBtn: {
+    flex: 1,
+    borderRadius: 14,
+    overflow: 'hidden',
+    ...SHADOWS.cardElevated,
+  },
+  bottomCartTotalLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: 'rgba(255,255,255,0.85)',
+    letterSpacing: 0.5,
+  },
+  bottomCartTotalVal: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    fontVariant: ['tabular-nums'],
+  },
+  bottomViewCartText: {
     fontSize: 13,
     fontWeight: '900',
-    color: '#FFF',
-    letterSpacing: 0.5,
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
   },
 
   // MODALS
