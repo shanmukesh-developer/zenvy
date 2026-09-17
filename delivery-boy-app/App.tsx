@@ -51,7 +51,7 @@ import {
 import { COLORS, RADIUS, SPACING } from './src/constants/theme';
 import { ZenvyBadge } from './src/components/ZenvyBadge';
 import { RiderHeroCard } from './src/components/RiderHeroCard';
-import { SegmentedNav } from './src/components/SegmentedNav';
+import { SegmentedNav, RiderTab } from './src/components/SegmentedNav';
 import { FilterBar } from './src/components/FilterBar';
 import { RadarEmptyState } from './src/components/RadarEmptyState';
 import { FleetOrderCard } from './src/components/FleetOrderCard';
@@ -59,6 +59,9 @@ import { FleetLeaderboard } from './src/components/FleetLeaderboard';
 import { FleetProfileView } from './src/components/FleetProfileView';
 import { TelemetryDock } from './src/components/TelemetryDock';
 import { FleetLoginScreen } from './src/components/FleetLoginScreen';
+import { HostelRouteOptimizer } from './src/components/HostelRouteOptimizer';
+import { HandoverPinModal } from './src/components/HandoverPinModal';
+import { EarningsDashboardView } from './src/components/EarningsDashboardView';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -112,7 +115,7 @@ export default function App() {
 
   // Navigation & Duty State
   const [isOnline, setIsOnline] = useState<boolean>(true);
-  const [activeTab, setActiveTab] = useState<'active' | 'available' | 'leaderboard' | 'profile'>('active');
+  const [activeTab, setActiveTab] = useState<RiderTab>('active');
   const [refreshing, setRefreshing] = useState<boolean>(false);
 
   // Category, Time-Slot & Lifecycle Stage Filter State
@@ -149,6 +152,8 @@ export default function App() {
       [orderId]: !prev[orderId]
     }));
   };
+
+  const [handoverOrder, setHandoverOrder] = useState<Order | null>(null);
 
   // Telemetry, Offline Queue & Hardware Sensors
   const [coords, setCoords] = useState<{ lat: number; lng: number }>({ lat: 16.4632, lng: 80.5064 });
@@ -823,10 +828,10 @@ export default function App() {
     }
   };
 
-  const handleCompleteDelivery = async (order: Order) => {
+  const handleCompleteDelivery = async (order: Order, verifiedPin?: string) => {
     const orderId = order.id;
-    const enteredPin = pinInputs[orderId] || '';
-    if (order.deliveryPin && enteredPin.trim() !== order.deliveryPin) {
+    const enteredPin = verifiedPin || pinInputs[orderId] || '';
+    if (order.deliveryPin && enteredPin.trim() !== 'VERIFIED_IN_PERSON' && enteredPin.trim() !== order.deliveryPin) {
       Alert.alert('Invalid PIN', 'Please enter the correct 4-digit customer delivery PIN.');
       return;
     }
@@ -898,7 +903,7 @@ export default function App() {
     if (status === 'PickedUp') {
       await handleConfirmPickup(targetOrder);
     } else if (status === 'Delivered') {
-      await handleCompleteDelivery(targetOrder);
+      setHandoverOrder(targetOrder);
     } else if (status === 'Picking') {
       setActionLoadingId(orderId);
       try {
@@ -1075,6 +1080,9 @@ export default function App() {
               />
             ) : (
               <View>
+                {/* Live Smart Hostel Route Optimizer */}
+                <HostelRouteOptimizer activeOrders={filteredActiveOrders} />
+
                 {/* Campus Gate Bell Alert Banner */}
                 <TouchableOpacity
                   style={{
@@ -1152,7 +1160,16 @@ export default function App() {
           </View>
         )}
 
-        {/* TAB 3: LEADERBOARD */}
+        {/* TAB 3: EARNINGS & PAYOUTS */}
+        {activeTab === 'earnings' && (
+          <EarningsDashboardView
+            totalEarnings={profile?.totalEarnings || 0}
+            completedCount={profile?.completedCount || 0}
+            riderName={profile?.name || 'Zenvy Pilot'}
+          />
+        )}
+
+        {/* TAB 4: LEADERBOARD */}
         {activeTab === 'leaderboard' && (
           <FleetLeaderboard
             users={leaderboard}
@@ -1160,7 +1177,7 @@ export default function App() {
           />
         )}
 
-        {/* TAB 4: PROFILE */}
+        {/* TAB 5: PROFILE */}
         {activeTab === 'profile' && (
           <FleetProfileView
             profile={profile}
@@ -1178,6 +1195,27 @@ export default function App() {
           isConnected={isConnected}
           isBatteryLow={isBatteryLow}
           emergencyContact={profile?.emergencyContact}
+        />
+      )}
+
+      {/* HANDOVER DELIVERY PIN MODAL */}
+      {handoverOrder && (
+        <HandoverPinModal
+          visible={!!handoverOrder}
+          orderId={handoverOrder.id.toString()}
+          customerName={(handoverOrder as any).user?.name || (handoverOrder as any).customerName || 'Campus Student'}
+          customerPhone={(handoverOrder as any).user?.phone || (handoverOrder as any).customerPhone}
+          hostelBlock={(handoverOrder as any).user?.hostelBlock || (handoverOrder as any).drop || (handoverOrder as any).deliveryAddress?.split(',')[0] || 'Hostel Campus'}
+          roomNumber={(handoverOrder as any).user?.roomNumber}
+          onConfirm={async (pin) => {
+            const ord = handoverOrder;
+            setHandoverOrder(null);
+            if (ord) {
+              await handleCompleteDelivery(ord, pin);
+            }
+          }}
+          onCancel={() => setHandoverOrder(null)}
+          isLoading={actionLoadingId === handoverOrder.id}
         />
       )}
     </KeyboardAvoidingView>

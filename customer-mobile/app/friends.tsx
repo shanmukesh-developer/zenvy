@@ -23,6 +23,8 @@ import {
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Polyline } from 'react-native-svg';
+import { PanResponder } from 'react-native';
 import * as Contacts from 'expo-contacts';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { ENDPOINTS, API_URL } from '../constants/api';
@@ -369,7 +371,9 @@ const DEFAULT_SEED_MESSAGES: Record<string, any[]> = {
   'conv-seed-1': [
     { id: 'm-1', senderId: 'f-101', senderName: 'Aarav Malhotra', text: 'Bro are you ordering Zenvy food tonight? 🍔🔥', createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString() },
     { id: 'm-2', senderId: 'self', senderName: 'You', text: 'Yeah thinking of Handi Biryani from Royal Handi!', createdAt: new Date(Date.now() - 1000 * 60 * 25).toISOString() },
-    { id: 'm-3', senderId: 'f-101', senderName: 'Aarav Malhotra', text: 'Add one extra Thums Up for me, I will GPay you! 🥤', createdAt: new Date(Date.now() - 1000 * 60 * 12).toISOString() }
+    { id: 'm-3', senderId: 'f-101', senderName: 'Aarav Malhotra', text: 'Add one extra Thums Up for me, I will GPay you! 🥤', createdAt: new Date(Date.now() - 1000 * 60 * 12).toISOString() },
+    { id: 'm-3-1', senderId: 'f-101', senderName: 'Aarav Malhotra', text: '[SHARED_ORDER] Handi Chicken Biryani + 2 Thums Up', createdAt: new Date(Date.now() - 1000 * 60 * 11).toISOString() },
+    { id: 'm-3-2', senderId: 'f-101', senderName: 'Aarav Malhotra', text: '[WHISPER] Don\'t tell the warden we ordered this late! 🤫', createdAt: new Date(Date.now() - 1000 * 60 * 10).toISOString() }
   ],
   'conv-seed-2': [
     { id: 'm-4', senderId: 'f-102', senderName: 'Priya Sharma', text: 'Did you solve the DBMS assignment query 4? 💻', createdAt: new Date(Date.now() - 1000 * 60 * 60).toISOString() },
@@ -422,6 +426,96 @@ const DEFAULT_SEARCH_SUGGESTIONS = [
   }
 ];
 
+
+
+// Whisper Message Component (Self-Destructing)
+const WhisperMessage = ({ text, isMe, themeAccent }: { text: string, isMe: boolean, themeAccent: string }) => {
+  const [revealed, setRevealed] = useState(false);
+  const [exploded, setExploded] = useState(false);
+  const pressTimer = useRef<any>(null);
+
+  const handlePressIn = () => {
+    if (exploded) return;
+    setRevealed(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    pressTimer.current = setTimeout(() => {
+      setExploded(true);
+      setRevealed(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }, 10000); // 10 seconds to read
+  };
+
+  const handlePressOut = () => {
+    if (exploded) return;
+    setRevealed(false);
+    if (pressTimer.current) clearTimeout(pressTimer.current);
+  };
+
+  if (exploded) {
+    return (
+      <View style={[s.msgBubble, { backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', borderStyle: 'dashed' }]}>
+        <Text style={{ color: 'rgba(255,255,255,0.3)', fontStyle: 'italic', fontSize: 12 }}>💨 Whisper vanished into thin air</Text>
+      </View>
+    );
+  }
+
+  return (
+    <TouchableWithoutFeedback onPressIn={handlePressIn} onPressOut={handlePressOut}>
+      <View style={[s.msgBubble, isMe ? [s.msgBubbleMe, { backgroundColor: themeAccent }] : s.msgBubbleThem, { minHeight: 40, justifyContent: 'center' }]}>
+        {revealed ? (
+          <Text style={[s.msgBodyText, isMe ? s.msgBodyTextMe : s.msgBodyTextThem]}>
+            {text}
+          </Text>
+        ) : (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={{ fontSize: 16 }}>👻</Text>
+            <Text style={{ color: isMe ? '#FFF' : '#8A94A6', fontStyle: 'italic', fontWeight: '800', opacity: 0.8 }}>Hold to reveal whisper</Text>
+          </View>
+        )}
+      </View>
+    </TouchableWithoutFeedback>
+  );
+};
+
+
+// Shared Order Card Component
+const SharedOrderCard = ({ text, isMe, themeAccent }: { text: string, isMe: boolean, themeAccent: string }) => {
+  const [syncing, setSyncing] = useState(false);
+  const [synced, setSynced] = useState(false);
+
+  const handleSync = () => {
+    setSyncing(true);
+    setTimeout(() => {
+      setSyncing(false);
+      setSynced(true);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert('Order Synced! 🛒', 'Added items to your cart.');
+    }, 1200);
+  };
+
+  return (
+    <View style={[s.msgBubble, { backgroundColor: '#2D1B36', padding: 14, borderRadius: 16, borderBottomRightRadius: isMe ? 2 : 16, borderBottomLeftRadius: isMe ? 16 : 2, width: 220 }]}>
+      <Text style={{ color: '#FF7A59', fontSize: 10, fontWeight: '900', letterSpacing: 1, marginBottom: 8 }}>🍔 ZENVY FOOD SYNC</Text>
+      <Text style={{ color: '#FFF', fontSize: 14, fontWeight: '700', marginBottom: 12 }}>{text}</Text>
+      {!isMe && (
+        <TouchableOpacity
+          style={{ backgroundColor: synced ? '#4CAF50' : '#FF7A59', paddingVertical: 10, borderRadius: 12, alignItems: 'center' }}
+          onPress={handleSync}
+          disabled={synced || syncing}
+        >
+          {syncing ? (
+            <ActivityIndicator size="small" color="#FFF" />
+          ) : (
+            <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '800' }}>
+              {synced ? 'SYNCED ✓' : 'SYNC TO MY CART 🛒'}
+            </Text>
+          )}
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+};
+
 export default function FriendsScreen() {
   const router = useRouter();
   const { user, setUser, refreshUser } = useAuth();
@@ -447,6 +541,29 @@ export default function FriendsScreen() {
   const [sendingMessage, setSendingMessage] = useState(false);
   const [showStickers, setShowStickers] = useState(false);
   const [showGames, setShowGames] = useState(false);
+  const [isWhisperMode, setIsWhisperMode] = useState(false);
+  const [isDoodleMode, setIsDoodleMode] = useState(false);
+  const [doodlePaths, setDoodlePaths] = useState<{id: string, color: string, points: string}[]>([]);
+  const [currentPath, setCurrentPath] = useState<string>('');
+  
+  const doodlePanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (evt) => {
+        const { locationX, locationY } = evt.nativeEvent;
+        setCurrentPath(`${locationX},${locationY}`);
+      },
+      onPanResponderMove: (evt) => {
+        const { locationX, locationY } = evt.nativeEvent;
+        setCurrentPath(prev => `${prev} ${locationX},${locationY}`);
+      },
+      onPanResponderRelease: () => {
+        setDoodlePaths(prev => [...prev, { id: Date.now().toString(), color: '#00FFCC', points: currentPath }]);
+        setCurrentPath('');
+      }
+    })
+  ).current;
   const [usedTruths, setUsedTruths] = useState<number[]>([]);
   const [usedDares, setUsedDares] = useState<number[]>([]);
   
@@ -1603,6 +1720,24 @@ export default function FriendsScreen() {
                   }}
                 >
                   <Text style={{ fontSize: 20 }}>🎮</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[s.stickerTriggerButton, isWhisperMode && s.stickerTriggerButtonActive]}
+                  onPress={() => {
+                    setIsWhisperMode(!isWhisperMode);
+                  }}
+                >
+                  <Text style={{ fontSize: 20 }}>👻</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[s.stickerTriggerButton, isDoodleMode && s.stickerTriggerButtonActive]}
+                  onPress={() => {
+                    setIsDoodleMode(!isDoodleMode);
+                  }}
+                >
+                  <Text style={{ fontSize: 20 }}>🖌️</Text>
                 </TouchableOpacity>
 
                 <TextInput

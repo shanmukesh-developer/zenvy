@@ -122,7 +122,11 @@ export default function NexusExplorer({ restaurants, activeCategory, onSelectIte
       ? collectedFromRestaurants 
       : (CURATED_CATEGORY_ITEMS[catKey] || CURATED_CATEGORY_ITEMS.biryani);
 
-    return itemsSource.filter(item => {
+    const uniqueMap = new Map();
+    itemsSource.forEach(item => uniqueMap.set(item._id || item.id, item));
+    const dedupedItems = Array.from(uniqueMap.values());
+
+    return dedupedItems.filter(item => {
       const matchesFilter = activeFilter === 'all' || (activeFilter === 'veg' && item.isVegetarian);
       const matchesDiet = isItemAllowed(item);
       return matchesFilter && matchesDiet;

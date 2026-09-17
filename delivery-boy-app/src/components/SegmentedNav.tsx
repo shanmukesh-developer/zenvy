@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { COLORS, RADIUS, SPACING } from '../constants/theme';
 
-export type RiderTab = 'active' | 'available' | 'leaderboard' | 'profile';
+export type RiderTab = 'active' | 'available' | 'earnings' | 'leaderboard' | 'profile';
 
 interface SegmentedNavProps {
   activeTab: RiderTab;
@@ -86,7 +86,26 @@ export const SegmentedNav: React.FC<SegmentedNavProps> = ({
         )}
       </TouchableOpacity>
 
-      {/* Tab 3: Leaderboard */}
+      {/* Tab 3: Earnings */}
+      <TouchableOpacity
+        style={[
+          styles.tabButton,
+          activeTab === 'earnings' && styles.tabButtonActive,
+        ]}
+        onPress={() => handlePress('earnings')}
+        activeOpacity={0.8}
+      >
+        <Text
+          style={[
+            styles.tabText,
+            activeTab === 'earnings' && styles.tabTextActive,
+          ]}
+        >
+          PAYOUTS
+        </Text>
+      </TouchableOpacity>
+
+      {/* Tab 4: Leaderboard */}
       <TouchableOpacity
         style={[
           styles.tabButton,
@@ -105,7 +124,7 @@ export const SegmentedNav: React.FC<SegmentedNavProps> = ({
         </Text>
       </TouchableOpacity>
 
-      {/* Tab 4: Profile */}
+      {/* Tab 5: Profile */}
       <TouchableOpacity
         style={[
           styles.tabButton,

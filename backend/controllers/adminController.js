@@ -1132,12 +1132,16 @@ exports.toggleUserBan = async (req, res) => {
 
 exports.broadcastPushNotification = async (req, res) => {
   try {
-    const { title, body } = req.body;
+    const { title, body, targetBlock, category } = req.body;
     if (!title || !body) return res.status(400).json({ message: 'Title and body required' });
     
     const { getUserModel } = require('../models/User');
     const User = getUserModel();
-    const activeUsers = await User.findAll({ where: { isActive: true } });
+    let whereClause = { isActive: true };
+    if (targetBlock && targetBlock !== 'All Campus Blocks') {
+      whereClause.hostelBlock = targetBlock;
+    }
+    const activeUsers = await User.findAll({ where: whereClause });
     
     let allTokens = [];
     activeUsers.forEach(user => {
@@ -1164,19 +1168,23 @@ exports.broadcastPushNotification = async (req, res) => {
 
     if (allTokens.length > 0) {
       const { sendPushToTokens } = require('../utils/push');
-      await sendPushToTokens(allTokens, title, body, { type: 'global_broadcast' });
+      await sendPushToTokens(allTokens, title, body, { type: 'global_broadcast', targetBlock: targetBlock || 'all', category: category || 'announcement' });
     }
     
     // Fallback: Always broadcast to 'all' topic as well
     const { sendPushToTopic } = require('../utils/push');
-    await sendPushToTopic('all', title, body, { type: 'global_broadcast' });
+    await sendPushToTopic('all', title, body, { type: 'global_broadcast', targetBlock: targetBlock || 'all', category: category || 'announcement' });
 
     // Broadcast via Socket.io so active users get live toast & save to notification history
     try {
       const io = req.app.get('io');
       if (io) {
         io.emit('global_announcement', {
+          title,
+          body,
           message: `${title}: ${body}`,
+          targetBlock: targetBlock || 'All Campus Blocks',
+          category: category || 'announcement',
           type: 'info'
         });
       }

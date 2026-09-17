@@ -14,6 +14,7 @@ import {
   Modal,
   Alert,
   ActivityIndicator,
+  Vibration,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSocket } from '../services/socket';
@@ -327,6 +328,22 @@ export default function DashboardScreen() {
     const handleNewOrder = (order: any) => {
       if (audioAlerts) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Vibration.vibrate([0, 300, 150, 300, 150, 500]);
+        if (Platform.OS === 'web' && typeof window !== 'undefined' && ((window as any).AudioContext || (window as any).webkitAudioContext)) {
+          try {
+            const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
+            const ctx = new AudioContextClass();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.frequency.setValueAtTime(880, ctx.currentTime);
+            gain.gain.setValueAtTime(0.3, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start();
+            osc.stop(ctx.currentTime + 0.8);
+          } catch (e) {}
+        }
       }
 
       if (autoAccept) {
