@@ -1280,7 +1280,7 @@ export default function ProfileScreen() {
                     setEditAddress(text);
                     fetchAddressSuggestions(text);
                   }}
-                  placeholder="SRM Hostel room, block name..."
+                  placeholder="Hostel room, block name..."
                   placeholderTextColor={txtSec}
                   style={[s.modalInput, { color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', borderColor: border }]}
                 />
@@ -1344,7 +1344,7 @@ export default function ProfileScreen() {
             <TextInput
               value={newAddr.address}
               onChangeText={(text) => setNewAddr({ ...newAddr, address: text })}
-              placeholder="SRM AP Campus Block, room details..."
+              placeholder="Campus Block, room details..."
               placeholderTextColor={txtSec}
               style={[s.modalInput, { color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', borderColor: border }]}
             />

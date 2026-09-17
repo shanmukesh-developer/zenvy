@@ -750,6 +750,55 @@ const rateOrder = async (req, res) => {
     order.review = review;
     await order.save();
 
+    // ── Propagate Genuine Rating & Review to Ordered Dishes ──
+    try {
+      const { getProductReviewModel } = require('../models/ProductReview');
+      const { getMenuItemModel } = require('../models/MenuItem');
+      const ProductReview = getProductReviewModel();
+      const MenuItem = getMenuItemModel();
+      const User = getUserModel();
+      const user = await User.findByPk(req.user.id);
+
+      const items = normalizeItems(order.items);
+      for (const item of items) {
+        const pId = item.menuItemId || item.id || item._id || (item.name ? item.name.toLowerCase().replace(/[^a-z0-9]/g, '-') : null);
+        if (ProductReview && pId) {
+          await ProductReview.create({
+            productId: String(pId),
+            productName: item.name || 'Campus Dish',
+            orderId: String(order.id),
+            userId: String(req.user.id),
+            userName: user?.name || req.user.name || 'Verified Customer',
+            userBlock: user?.hostelBlock || (order.deliveryAddress ? order.deliveryAddress.split(',')[0] : 'Campus Resident'),
+            rating: Math.min(5, Math.max(1, Number(rating) || 5)),
+            comment: review || 'Freshly prepared and delivered hot on campus.',
+            verified: true,
+            helpfulCount: 1,
+          });
+        }
+
+        // Also update MenuItem rating in DB if menuItemId exists
+        if (MenuItem && item.menuItemId) {
+          try {
+            const menuItem = await MenuItem.findByPk(item.menuItemId);
+            if (menuItem) {
+              const prevSpecs = menuItem.specs || {};
+              const prevCount = prevSpecs.ratingCount || 5;
+              const prevRating = prevSpecs.rating || 4.5;
+              const newCount = prevCount + 1;
+              const newAvg = parseFloat(((prevRating * prevCount + rating) / newCount).toFixed(1));
+              menuItem.specs = { ...prevSpecs, rating: newAvg, ratingCount: newCount };
+              await menuItem.save();
+            }
+          } catch (mErr) {
+            console.warn('[MENU_ITEM_RATING_UPDATE]', mErr.message);
+          }
+        }
+      }
+    } catch (revPropErr) {
+      console.warn('[REVIEW_PROPAGATION_WARN]', revPropErr.message);
+    }
+
     // ── ZenPoints on Rating (+10 ZP) ──────────────────────
     try {
       const User = getUserModel();

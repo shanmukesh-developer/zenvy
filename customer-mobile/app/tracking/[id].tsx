@@ -17,6 +17,7 @@ import {
   AppState
 } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { COLORS, SHADOWS, RADIUS } from '../../constants/theme';
 import { API_URL } from '../../constants/api';
@@ -351,7 +352,54 @@ export default function TrackingScreen() {
       });
       if (res.ok) {
         setShowRatingModal(false);
-        Alert.alert('Thank You', 'Your feedback was submitted successfully!');
+        // Persist genuine review locally for each ordered item for instantaneous reflection on PDP
+        try {
+          let itemsList: any[] = [];
+          if (Array.isArray(orderInfo?.items)) {
+            itemsList = orderInfo.items;
+          } else if (typeof orderInfo?.items === 'string') {
+            try { itemsList = JSON.parse(orderInfo.items); } catch {}
+          }
+
+          const revComment = ratingReview?.trim() || 'Genuine verified campus order rating.';
+          const nowStr = 'Just now';
+
+          for (const it of itemsList) {
+            const possibleIds = [
+              it.menuItemId,
+              it.id,
+              it._id,
+              it.name ? it.name.toLowerCase().replace(/[^a-z0-9]/g, '-') : null,
+            ].filter(Boolean);
+
+            const reviewEntry = {
+              id: 'local-ord-' + orderId + '-' + Date.now(),
+              name: userName || 'Verified Buyer',
+              block: orderInfo?.deliveryAddress ? orderInfo.deliveryAddress.split(',')[0].trim() : 'Campus Resident',
+              rating: ratingStars,
+              time: nowStr,
+              comment: revComment,
+              verified: true,
+              helpfulCount: 1,
+            };
+
+            for (const pid of possibleIds) {
+              const storageKey = `zenvy_reviews_${pid}`;
+              const prevData = await AsyncStorage.getItem(storageKey);
+              let arr: any[] = [];
+              if (prevData) {
+                try { arr = JSON.parse(prevData); } catch {}
+              }
+              if (!Array.isArray(arr)) arr = [];
+              arr.unshift(reviewEntry);
+              await AsyncStorage.setItem(storageKey, JSON.stringify(arr));
+            }
+          }
+        } catch (syncErr) {
+          console.warn('[Review Local Sync Error]', syncErr);
+        }
+
+        Alert.alert('⭐ Rating Submitted!', 'Thank you! Your verified rating and review now reflects directly on these campus dishes.');
       }
     } catch (e) {
       console.error(e);

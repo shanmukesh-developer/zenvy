@@ -132,12 +132,12 @@ const PROMOS_SERVICES = [
 
 const PROMOS_PG = [
   { id: 'p1', tagline: 'VERIFIED ACCOMMODATIONS 🏢', title: 'STUDENT RESIDENCES', subtitle: 'NEAR CAMPUS', desc: 'Inspected private PGs with high-speed WiFi, power backup, hygienic mess and 24/7 security.', btn: 'BROWSE STAYS →', img: 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=1200&q=80' },
-  { id: 'p2', tagline: 'FLATSHARE & ROOMMATES 🤝', title: 'SHARED APARTMENTS', subtitle: 'FLATMATES', desc: 'Find verified SRM batchmates looking for 2BHK/3BHK flat sharing near Amaravathi.', btn: 'FIND ROOMMATES →', img: 'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=1200&q=80' },
+  { id: 'p2', tagline: 'FLATSHARE & ROOMMATES 🤝', title: 'SHARED APARTMENTS', subtitle: 'FLATMATES', desc: 'Find verified campus batchmates looking for 2BHK/3BHK flat sharing near Amaravathi.', btn: 'FIND ROOMMATES →', img: 'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=1200&q=80' },
   { id: 'p3', tagline: 'ZERO BROKERAGE 🏷️', title: 'DIRECT OWNER', subtitle: 'LISTINGS', desc: 'Direct landlord contact with transparent security deposit terms & verified rental agreements.', btn: 'VIEW LISTINGS →', img: 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=1200&q=80' },
 ];
 
 const PROMOS_CORIDE = [
-  { id: 'c1', tagline: 'STUDENT COMMUTE NETWORK 🏍️', title: 'PEER CO-RIDE', subtitle: 'FUEL SPLIT', desc: 'Share daily rides between SRM AP, Vijayawada & Guntur. Verified university ID matching.', btn: 'FIND OR POST RIDE →', img: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=1200&q=80' },
+  { id: 'c1', tagline: 'STUDENT COMMUTE NETWORK 🏍️', title: 'PEER CO-RIDE', subtitle: 'FUEL SPLIT', desc: 'Share daily rides between Campus, Vijayawada & Guntur. Verified student ID matching.', btn: 'FIND OR POST RIDE →', img: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=1200&q=80' },
   { id: 'c2', tagline: 'INSTANT TWO-WHEELER 🛵', title: 'RAPIDO CAMPUS', subtitle: 'CONNECT', desc: 'Quick bike-taxi booking to Neerukonda, Mangalagiri station, and local transit points.', btn: 'LAUNCH RAPIDO →', img: 'https://images.unsplash.com/photo-1558980394-0a06c4631733?w=1200&q=80' },
   { id: 'c3', tagline: 'STATION & AIRPORT CABS 🚖', title: 'CAMPUS SHUTTLES', subtitle: '& OUTSTATION CABS', desc: 'Fixed fare group cabs to Gannavaram Airport (VGA) & Vijayawada Junction (BZA).', btn: 'DISPATCH CAB →', img: 'https://images.unsplash.com/photo-1449965408869-ebd13bc9e5a8?w=1200&q=80' },
 ];
@@ -660,7 +660,7 @@ export default function OthersScreen() {
   const scratchOpacity3 = useRef(new Animated.Value(1)).current;
   
   const [scratchCardsState, setScratchCardsState] = useState([
-    { id: 1, title: 'SRM Special 🎁', reward: '₹49 Dry Wash!', code: 'LAUNDRY49', scratched: false, anim: scratchOpacity1 },
+    { id: 1, title: 'Campus Special 🎁', reward: '₹49 Dry Wash!', code: 'LAUNDRY49', scratched: false, anim: scratchOpacity1 },
     { id: 2, title: 'Midnight Snack 🎁', reward: 'Free Lemon Juice!', code: 'FREEDRINK', scratched: false, anim: scratchOpacity2 },
     { id: 3, title: 'PG Discount 🏠', reward: '₹100 Off Deposit!', code: 'PGESCAPE', scratched: false, anim: scratchOpacity3 }
   ]);
@@ -1458,7 +1458,7 @@ export default function OthersScreen() {
     {
       id: 'fav-1',
       title: 'Special Paneer Tikka Kathi Roll',
-      subtitle: 'SRM Campus Night Canteen • Ground Floor',
+      subtitle: 'Campus Night Canteen • Ground Floor',
       type: 'MEALS',
       price: '₹120',
       rating: '4.8 (280+)',
@@ -1565,7 +1565,7 @@ export default function OthersScreen() {
   const goldGlowShadow = isDark ? SHADOWS.goldGlow : SHADOWS.redGlow;
   const accentGradient: [string, string] = isDark ? [COLORS.gold, COLORS.goldLight] : ['#EF4F5F', '#D43F4F'];
 
-  const userLocation = (user?.hostelBlock ? `${user.hostelBlock}${user?.roomNumber || user?.roomNo ? `, Room ${user.roomNumber || user.roomNo}` : ''}` : null) || user?.defaultAddress || user?.address || 'SRM University AP';
+  const userLocation = (user?.hostelBlock ? `${user.hostelBlock}${user?.roomNumber || user?.roomNo ? `, Room ${user.roomNumber || user.roomNo}` : ''}` : null) || user?.defaultAddress || user?.address || 'Campus Resident';
 
   const currentTabPromos = TAB_PROMOS[activeTab] || PROMOS_FOOD;
   const carouselOffers = currentTabPromos.map(p => ({
@@ -4225,7 +4225,7 @@ export default function OthersScreen() {
               </View>
 
               <Text style={[s.formLabel, { color: txt }]}>START LOCATION (ORIGIN)</Text>
-              <TextInput style={[s.formInput, { color: txt, borderColor: border }]} placeholder="e.g. SRM AP Main Gate" placeholderTextColor={txtSec} value={origin} onChangeText={setOrigin} />
+              <TextInput style={[s.formInput, { color: txt, borderColor: border }]} placeholder="e.g. Campus Main Gate" placeholderTextColor={txtSec} value={origin} onChangeText={setOrigin} />
 
               <Text style={[s.formLabel, { color: txt }]}>DESTINATION</Text>
               <TextInput style={[s.formInput, { color: txt, borderColor: border }]} placeholder="e.g. Vijayawada Station" placeholderTextColor={txtSec} value={destination} onChangeText={setDestination} />
@@ -4880,14 +4880,14 @@ export default function OthersScreen() {
               <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec, letterSpacing: 1, marginBottom: 4 }}>FROM (PICKUP POINT)</Text>
               <TextInput
                 style={{ borderWidth: 1, borderColor: border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 12, color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#FAFAFA', marginBottom: 6 }}
-                placeholder="e.g. SRM AP Main Gate / GH-2"
+                placeholder="e.g. Campus Main Gate / Sector-2"
                 placeholderTextColor={txtSec}
                 value={origin}
                 onChangeText={setOrigin}
               />
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
                 <View style={{ flexDirection: 'row', gap: 6 }}>
-                  {['SRM AP Gate', 'VIT AP Hostel', 'Amaravathi Center', 'Vijayawada Stn', 'Guntur Bus Stand'].map(chip => (
+                  {['Campus Gate', 'Hostel Sector', 'Amaravathi Center', 'Vijayawada Stn', 'Guntur Bus Stand'].map(chip => (
                     <TouchableOpacity
                       key={chip}
                       style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#E5E7EB' }}
@@ -4910,7 +4910,7 @@ export default function OthersScreen() {
               />
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
                 <View style={{ flexDirection: 'row', gap: 6 }}>
-                  {['PVP Square Mall', 'Vijayawada Stn', 'Gannavaram Airport', 'Trendset Mall', 'Mangalagiri D-Mart', 'SRM Campus'].map(chip => (
+                  {['PVP Square Mall', 'Vijayawada Stn', 'Gannavaram Airport', 'Trendset Mall', 'Mangalagiri D-Mart', 'Main Campus'].map(chip => (
                     <TouchableOpacity
                       key={chip}
                       style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#E5E7EB' }}

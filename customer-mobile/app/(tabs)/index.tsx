@@ -82,7 +82,7 @@ const PROMOS = [
   { id: 'biryani', tagline: 'SPECIAL CAMPUS CRAVING', title: 'HYDERABADI DUM', subtitle: 'ROYAL BIRYANI', desc: 'Aromatic basmati rice & succulent spiced chicken.', btn: 'ORDER NOW', img: 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?q=80&w=1200' },
   { id: 'kfc', tagline: 'KFC TAKEOVER LIVE', title: 'CRISPY JUICY', subtitle: 'CRUNCHY BUCKET', desc: 'Golden fried chicken buckets delivered hot to your hostel.', btn: 'ORDER KFC', img: 'https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?q=80&w=1200' },
   { id: 'ride', tagline: 'ZENVY CO-RIDE 🏍️', title: 'SPLIT THE', subtitle: 'RIDE', desc: 'Connect with campus peers for instant bike pooling.', btn: 'FIND A RIDE', img: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?q=80&w=1200' },
-  { id: 'stays', tagline: 'VERIFIED CAMPUS STAYS', title: 'YOUR NEXT', subtitle: 'LUXURY HOME', desc: 'Discover verified hostels and PG accommodations near SRM.', btn: 'EXPLORE STAYS', img: 'https://images.unsplash.com/photo-1555854877-bab0e564b8d5?q=80&w=1200' },
+  { id: 'stays', tagline: 'VERIFIED CAMPUS STAYS', title: 'YOUR NEXT', subtitle: 'LUXURY HOME', desc: 'Discover verified hostels and PG accommodations near campus.', btn: 'EXPLORE STAYS', img: 'https://images.unsplash.com/photo-1555854877-bab0e564b8d5?q=80&w=1200' },
   { id: 'elite', tagline: 'ZENVY ELITE PASS ✨', title: 'UNLIMITED', subtitle: 'FREE DELIVERY', desc: 'Zero delivery fee & VIP priority dispatch on every order.', btn: 'CLAIM ELITE', img: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=1200' },
 ];
 
@@ -626,31 +626,6 @@ export default function HomeScreen() {
             pointerEvents="none"
           />
         </TouchableOpacity>
-        </StaggeredSection>
-
-        {/* ── HOSTEL CHALLENGE ── */}
-        <StaggeredSection delay={450} direction="right">
-        <CardPressable 
-          style={[s.blockwarsBanner, { backgroundColor: cardBg, borderColor: goldBorderColor }]} 
-          onPress={() => {
-            fetchBlockChallenges();
-            setShowBlockModal(true);
-          }}
-          sound="click"
-        >
-          <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', justifyContent: 'space-between' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <PulseGlow size={44} color={goldColor}>
-                <View style={[s.blockwarsIcon, { backgroundColor: goldMutedColor, borderColor: goldBorderColor }]}><Text style={{ fontSize: 22 }}>🏆</Text></View>
-              </PulseGlow>
-              <View>
-                <Text style={[s.blockwarsTitle, { color: txt }]}>HOSTEL CHALLENGE</Text>
-                <Text style={[s.blockwarsSub, { color: txtSec }]}>WEEKLY CAMPUS COMPETITIONS</Text>
-              </View>
-            </View>
-            <Text style={{ color: goldColor, fontSize: 16 }}>›</Text>
-          </View>
-        </CardPressable>
         </StaggeredSection>
 
         {/* ── CLASSICS ── */}

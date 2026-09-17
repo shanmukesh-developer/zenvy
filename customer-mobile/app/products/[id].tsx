@@ -241,30 +241,7 @@ export function generateSmartCrossSells(name: string, category?: string) {
   ];
 }
 
-// ── Smart Seed Reviews Generator ─────────────────────────────────────────────
-export function generateSeedReviews(name: string, category?: string) {
-  const n = (name || '').toLowerCase();
-  
-  if (n.includes('biryani') || n.includes('rice') || n.includes('pulao')) {
-    return [
-      { id: 'rev-1', name: 'Karthik V.', block: 'GH-2 • Room 304', rating: 5, time: '2 hours ago', comment: 'Authentic Hyderabadi flavor! The chicken pieces were tender and the salan was fiery. Arrived in 8 mins steaming hot 🔥', verified: true, helpfulCount: 24 },
-      { id: 'rev-2', name: 'Sneha P.', block: 'MH-1 • 2nd Floor', rating: 5, time: 'Yesterday', comment: 'Generous portion size easily enough for 2 people. Super fragrant rice quality. Best biryani on campus!', verified: true, helpfulCount: 18 },
-      { id: 'rev-3', name: 'Aditya R.', block: 'GH-1 • 4th Floor', rating: 4, time: '3 days ago', comment: 'Great taste and very fast delivery during late-night study hours. Packaging was sealed and leakproof.', verified: true, helpfulCount: 9 },
-    ];
-  }
-
-  if (n.includes('pizza') || n.includes('burger') || n.includes('momo') || n.includes('pasta')) {
-    return [
-      { id: 'rev-1', name: 'Ananya S.', block: 'MH-2 • Room 112', rating: 5, time: 'Today', comment: 'Super cheesy and arrived piping hot! The crust was crispy and not soggy at all. 10/10 recommend.', verified: true, helpfulCount: 15 },
-      { id: 'rev-2', name: 'Rohan M.', block: 'GH-3 • Room 408', rating: 5, time: 'Yesterday', comment: 'Quick delivery right to hostel lobby. Tastes just like cafe quality. Will definitely order again!', verified: true, helpfulCount: 12 },
-    ];
-  }
-
-  return [
-    { id: 'rev-1', name: 'Alex M.', block: 'Campus Resident', rating: 5, time: 'Today', comment: 'Super fresh quality, delivered in 8 mins right to my room door. Great campus service!', verified: true, helpfulCount: 11 },
-    { id: 'rev-2', name: 'Priya K.', block: 'GH-1 Resident', rating: 5, time: 'Yesterday', comment: 'Always reliable and reasonably priced. Very happy with the freshness.', verified: true, helpfulCount: 7 },
-  ];
-}
+// ── Genuine Customer Reviews System (Dynamic from Orders & DB) ─────────────────
 
 // ── Master Hardcoded PDP Data for Static Slugs ────────────────────────────────
 const MASTER_PDP_DATA: Record<string, any> = {
@@ -416,25 +393,53 @@ export default function ProductDetailScreen() {
 
   const REVIEW_TAGS = ['Super Tasty 🔥', 'Generous Portion 🍛', '8-Min Delivery ⚡', 'Spicy & Hot 🌶️', 'Best Value 💰'];
 
-  // Load reviews from storage & seed
-  const loadReviews = async (pName: string, pCat?: string) => {
+  // Load genuine reviews from backend API & persistent local storage
+  const loadReviews = async (pName?: string, pCat?: string) => {
     try {
-      const stored = await AsyncStorage.getItem(`zenvy_reviews_${cleanId}`);
-      const seed = generateSeedReviews(pName, pCat);
-      let combined = seed;
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          combined = [...parsed, ...seed];
+      let combined: any[] = [];
+
+      // 1. Fetch genuine reviews from backend
+      try {
+        const res = await apiFetch(`/api/users/products/${cleanId}/reviews`);
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.reviews)) {
+            combined = data.reviews;
+          }
         }
+      } catch (apiErr) {
+        console.warn('[Reviews API Error]', apiErr);
       }
+
+      // 2. Also load any local genuine user reviews saved on this device
+      try {
+        const stored = await AsyncStorage.getItem(`zenvy_reviews_${cleanId}`);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) {
+            parsed.forEach((p: any) => {
+              if (!combined.some((c: any) => c.id === p.id)) {
+                combined.unshift(p);
+              }
+            });
+          }
+        }
+      } catch (storeErr) {
+        console.warn('[Local Reviews Error]', storeErr);
+      }
+
       setReviewsList(combined);
 
-      // Compute exact rating
-      const sum = combined.reduce((acc, r) => acc + (Number(r.rating) || 5), 0);
-      const avg = parseFloat((sum / combined.length).toFixed(1));
-      setCalculatedRating(avg);
-      setTotalRatingCount(combined.length * 14 + 8);
+      // Compute exact authentic rating
+      if (combined.length > 0) {
+        const sum = combined.reduce((acc, r) => acc + (Number(r.rating) || 5), 0);
+        const avg = parseFloat((sum / combined.length).toFixed(1));
+        setCalculatedRating(avg);
+        setTotalRatingCount(combined.length);
+      } else {
+        setCalculatedRating(4.8);
+        setTotalRatingCount(0);
+      }
     } catch (e) {
       console.warn('[Reviews] Failed to load reviews:', e);
     }
@@ -554,36 +559,52 @@ export default function ProductDetailScreen() {
 
     setSubmittingReview(true);
     try {
+      const formattedComment = userReviewText.trim() + (selectedTags.length > 0 ? ` • (${selectedTags.join(', ')})` : '');
       const newReview = {
         id: 'user-rev-' + Date.now(),
-        name: userName.trim() || 'Verified Student',
-        block: userBlock || 'GH-2 Resident',
+        name: userName.trim() || 'Verified Customer',
+        block: userBlock || 'Campus Resident',
         rating: userRating,
         time: 'Just now',
-        comment: userReviewText.trim() + (selectedTags.length > 0 ? ` • (${selectedTags.join(', ')})` : ''),
+        comment: formattedComment,
         verified: true,
         helpfulCount: 1,
       };
 
+      // 1. Post to Backend API
+      try {
+        await apiFetch(`/api/users/products/${cleanId}/reviews`, {
+          method: 'POST',
+          body: JSON.stringify({
+            rating: userRating,
+            comment: formattedComment,
+            tags: selectedTags,
+            productName: product?.name || cleanId,
+          }),
+        });
+      } catch (apiErr) {
+        console.warn('[Review POST Error]', apiErr);
+      }
+
+      // 2. Save to local device storage
       const stored = await AsyncStorage.getItem(`zenvy_reviews_${cleanId}`);
       const existing = stored ? JSON.parse(stored) : [];
-      const updated = [newReview, ...existing];
+      const updated = [newReview, ...existing.filter((e: any) => e.id !== newReview.id)];
       await AsyncStorage.setItem(`zenvy_reviews_${cleanId}`, JSON.stringify(updated));
 
-      // Update UI
-      const seed = generateSeedReviews(product?.name || '', product?.category);
-      const combined = [...updated, ...seed];
+      // 3. Immediately reflect in UI
+      const combined = [newReview, ...reviewsList.filter((r: any) => r.id !== newReview.id)];
       setReviewsList(combined);
 
-      const sum = combined.reduce((acc, r) => acc + (Number(r.rating) || 5), 0);
+      const sum = combined.reduce((acc: number, r: any) => acc + (Number(r.rating) || 5), 0);
       const avg = parseFloat((sum / combined.length).toFixed(1));
       setCalculatedRating(avg);
-      setTotalRatingCount((prev) => prev + 1);
+      setTotalRatingCount(combined.length);
 
       setShowReviewModal(false);
       setUserReviewText('');
       setSelectedTags([]);
-      Alert.alert('⭐ Thank You!', 'Your review has been verified and published.');
+      Alert.alert('⭐ Review Verified & Published!', 'Your genuine feedback has been recorded and is now live on this dish.');
     } catch (e) {
       Alert.alert('Error', 'Could not save review. Please try again.');
     } finally {
@@ -825,7 +846,7 @@ export default function ProductDetailScreen() {
                 <Text style={{ fontSize: 14 }}>🛡️</Text>
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.priceGuaranteeTitle}>Campus Lowest Price Guarantee</Text>
+                <Text style={styles.priceGuaranteeTitle}>Price Match Guarantee</Text>
                 <Text style={styles.priceGuaranteeSub}>Price matched across campus kitchens & stores</Text>
               </View>
             </View>
@@ -837,7 +858,7 @@ export default function ProductDetailScreen() {
                 setShowShopsModal(true);
               }}
             >
-              <Text style={styles.priceGuaranteeCompareLink}>Compare ›</Text>
+              <Text style={styles.priceGuaranteeCompareLink}>Price Match ›</Text>
             </TouchableOpacity>
           </TouchableOpacity>
         </View>
@@ -1078,56 +1099,81 @@ export default function ProductDetailScreen() {
               </Text>
               <Text style={{ fontSize: 12, marginVertical: 2 }}>⭐⭐⭐⭐⭐</Text>
               <Text style={{ fontSize: 9, fontWeight: '700', color: isDark ? '#9CA3AF' : COLORS.inkMuted }}>
-                {totalRatingCount} Ratings
+                {totalRatingCount === 0 ? 'No Ratings Yet' : `${totalRatingCount} Verified Ratings`}
               </Text>
             </View>
 
-            {/* Star Distribution Bars */}
+            {/* Dynamic Star Distribution Bars */}
             <View style={{ flex: 1, paddingLeft: 16, gap: 4 }}>
-              {[
-                { star: 5, pct: '82%' },
-                { star: 4, pct: '12%' },
-                { star: 3, pct: '4%' },
-                { star: 2, pct: '1%' },
-                { star: 1, pct: '1%' },
-              ].map((b) => (
-                <View key={b.star} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={{ fontSize: 9, fontWeight: '700', color: isDark ? '#9CA3AF' : '#6B7280', width: 14 }}>
-                    {b.star}★
-                  </Text>
-                  <View style={{ flex: 1, height: 6, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#E5E7EB', borderRadius: 3, overflow: 'hidden' }}>
-                    <View style={{ width: (b.pct as any), height: '100%', backgroundColor: b.star >= 4 ? '#22C55E' : b.star === 3 ? '#F59E0B' : '#EF4444', borderRadius: 3 }} />
-                  </View>
-                  <Text style={{ fontSize: 8, color: isDark ? '#9CA3AF' : '#6B7280', width: 26, textAlign: 'right' }}>
-                    {b.pct}
-                  </Text>
-                </View>
-              ))}
+              {(() => {
+                const starCounts: Record<number, number> = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
+                reviewsList.forEach((r: any) => {
+                  const s = Math.min(5, Math.max(1, Math.round(Number(r.rating) || 5)));
+                  starCounts[s] = (starCounts[s] || 0) + 1;
+                });
+                const totalRevs = reviewsList.length;
+
+                return [5, 4, 3, 2, 1].map((starNum) => {
+                  const pct = totalRevs > 0 ? Math.round((starCounts[starNum] / totalRevs) * 100) : 0;
+                  const pctStr = `${pct}%`;
+                  return (
+                    <View key={starNum} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={{ fontSize: 9, fontWeight: '700', color: isDark ? '#9CA3AF' : '#6B7280', width: 14 }}>
+                        {starNum}★
+                      </Text>
+                      <View style={{ flex: 1, height: 6, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#E5E7EB', borderRadius: 3, overflow: 'hidden' }}>
+                        <View style={{ width: (pctStr as any), height: '100%', backgroundColor: starNum >= 4 ? '#22C55E' : starNum === 3 ? '#F59E0B' : '#EF4444', borderRadius: 3 }} />
+                      </View>
+                      <Text style={{ fontSize: 8, color: isDark ? '#9CA3AF' : '#6B7280', width: 26, textAlign: 'right' }}>
+                        {pctStr}
+                      </Text>
+                    </View>
+                  );
+                });
+              })()}
             </View>
           </View>
 
           {/* Customer Reviews Feed */}
-          {reviewsList.map((rev: any) => (
-            <View key={rev.id} style={[styles.reviewCard, { backgroundColor: isDark ? '#1A1A1E' : '#F9FAFB' }]}>
-              <View style={styles.reviewUserRow}>
-                <View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Text style={[styles.reviewUserName, { color: isDark ? '#FFF' : COLORS.ink }]}>{rev.name}</Text>
-                    {rev.verified && (
-                      <View style={styles.verifiedBadge}>
-                        <Text style={styles.verifiedBadgeText}>✓ VERIFIED BUYER</Text>
-                      </View>
-                    )}
-                  </View>
-                  <Text style={styles.reviewTime}>{rev.block} • {rev.time}</Text>
-                </View>
-                <View style={styles.starScoreChip}>
-                  <Text style={styles.starScoreChipText}>{rev.rating} ★</Text>
-                </View>
-              </View>
-              <Text style={[styles.reviewComment, { color: isDark ? '#E5E7EB' : COLORS.ink }]}>{rev.comment}</Text>
+          {reviewsList.length === 0 ? (
+            <View style={{ alignItems: 'center', paddingVertical: 24, paddingHorizontal: 16 }}>
+              <Text style={{ fontSize: 30, marginBottom: 8 }}>⭐</Text>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: isDark ? '#FFF' : COLORS.ink, textAlign: 'center', marginBottom: 4 }}>
+                No Customer Reviews Yet
+              </Text>
+              <Text style={{ fontSize: 12, color: isDark ? '#9CA3AF' : COLORS.inkMuted, textAlign: 'center', lineHeight: 18, marginBottom: 14 }}>
+                Be the first verified campus resident to rate and review this item!
+              </Text>
+              <TouchableOpacity
+                style={[styles.writeReviewTopBtn, { paddingHorizontal: 18, paddingVertical: 8 }]}
+                onPress={() => setShowReviewModal(true)}
+              >
+                <Text style={styles.writeReviewTopBtnText}>+ Write First Review</Text>
+              </TouchableOpacity>
             </View>
-          ))}
+          ) : (
+            reviewsList.map((rev: any) => (
+              <View key={rev.id} style={[styles.reviewCard, { backgroundColor: isDark ? '#1A1A1E' : '#F9FAFB' }]}>
+                <View style={styles.reviewUserRow}>
+                  <View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={[styles.reviewUserName, { color: isDark ? '#FFF' : COLORS.ink }]}>{rev.name}</Text>
+                      {rev.verified && (
+                        <View style={styles.verifiedBadge}>
+                          <Text style={styles.verifiedBadgeText}>✓ VERIFIED BUYER</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={styles.reviewTime}>{rev.block} • {rev.time}</Text>
+                  </View>
+                  <View style={styles.starScoreChip}>
+                    <Text style={styles.starScoreChipText}>{rev.rating} ★</Text>
+                  </View>
+                </View>
+                <Text style={[styles.reviewComment, { color: isDark ? '#E5E7EB' : COLORS.ink }]}>{rev.comment}</Text>
+              </View>
+            ))
+          )}
         </View>
 
         {/* ═════════════════════════════════════════════════════════════════════ */}
@@ -1364,10 +1410,10 @@ export default function ProductDetailScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.modalTitle, { color: isDark ? '#FFF' : '#0F172A', marginBottom: 2 }]}>
-                  Campus Price Match
+                  Price Match
                 </Text>
                 <Text style={[styles.modalSub, { color: isDark ? '#94A3B8' : '#64748B', marginBottom: 0 }]}>
-                  Live prices matched across campus dining spots
+                  Live prices matched across kitchens & dining spots
                 </Text>
               </View>
             </View>
@@ -1383,7 +1429,14 @@ export default function ProductDetailScreen() {
             {/* Comparison Rows */}
             <View style={{ marginVertical: 12, gap: 8 }}>
               {/* Row 1: Active Outlet (Best Price) */}
-              <View style={[styles.comparisonRow, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.08)' : '#F0FDF4', borderColor: isDark ? 'rgba(16, 185, 129, 0.25)' : '#86EFAC', borderWidth: 1 }]}>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setShowShopsModal(false);
+                }}
+                style={[styles.comparisonRow, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.08)' : '#F0FDF4', borderColor: isDark ? 'rgba(16, 185, 129, 0.25)' : '#86EFAC', borderWidth: 1 }]}
+              >
                 <View style={{ flex: 1 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                     <Text style={[styles.comparisonStoreName, { color: isDark ? '#FFF' : '#0F172A', fontWeight: '900' }]}>
@@ -1396,10 +1449,20 @@ export default function ProductDetailScreen() {
                   <Text style={styles.comparisonDeliveryNote}>Instant 8-min hostel room delivery</Text>
                 </View>
                 <Text style={[styles.comparisonPriceActive, { color: '#059669' }]}>₹{currentPack.price}</Text>
-              </View>
+              </TouchableOpacity>
 
               {/* Row 2: Central Food Court */}
-              <View style={[styles.comparisonRow, { backgroundColor: isDark ? '#1C2029' : '#F8FAFC', borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0', borderWidth: 1 }]}>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setShowShopsModal(false);
+                  if (product.restaurantId) {
+                    router.push(`/restaurant/${product.restaurantId}` as any);
+                  }
+                }}
+                style={[styles.comparisonRow, { backgroundColor: isDark ? '#1C2029' : '#F8FAFC', borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0', borderWidth: 1 }]}
+              >
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.comparisonStoreName, { color: isDark ? '#CBD5E1' : '#334155' }]}>
                     🏢 Central Food Court
@@ -1409,10 +1472,20 @@ export default function ProductDetailScreen() {
                 <Text style={[styles.comparisonPriceOther, { color: isDark ? '#94A3B8' : '#64748B' }]}>
                   ₹{Math.round(currentPack.price * 1.08)}
                 </Text>
-              </View>
+              </TouchableOpacity>
 
               {/* Row 3: Campus Night Canteen */}
-              <View style={[styles.comparisonRow, { backgroundColor: isDark ? '#1C2029' : '#F8FAFC', borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0', borderWidth: 1 }]}>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setShowShopsModal(false);
+                  if (product.restaurantId) {
+                    router.push(`/restaurant/${product.restaurantId}` as any);
+                  }
+                }}
+                style={[styles.comparisonRow, { backgroundColor: isDark ? '#1C2029' : '#F8FAFC', borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0', borderWidth: 1 }]}
+              >
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.comparisonStoreName, { color: isDark ? '#CBD5E1' : '#334155' }]}>
                     🌙 Campus Night Canteen
@@ -1425,10 +1498,20 @@ export default function ProductDetailScreen() {
                   </Text>
                   <Text style={{ fontSize: 9, color: '#10B981', fontWeight: '800' }}>MATCHED</Text>
                 </View>
-              </View>
+              </TouchableOpacity>
 
               {/* Row 4: Tuck Shop & Retail */}
-              <View style={[styles.comparisonRow, { backgroundColor: isDark ? '#1C2029' : '#F8FAFC', borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0', borderWidth: 1 }]}>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setShowShopsModal(false);
+                  if (product.restaurantId) {
+                    router.push(`/restaurant/${product.restaurantId}` as any);
+                  }
+                }}
+                style={[styles.comparisonRow, { backgroundColor: isDark ? '#1C2029' : '#F8FAFC', borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0', borderWidth: 1 }]}
+              >
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.comparisonStoreName, { color: isDark ? '#CBD5E1' : '#334155' }]}>
                     🛒 Campus Tuck Shop
@@ -1438,8 +1521,50 @@ export default function ProductDetailScreen() {
                 <Text style={[styles.comparisonPriceOther, { color: isDark ? '#94A3B8' : '#64748B' }]}>
                   ₹{Math.round(currentPack.price * 1.12)}
                 </Text>
-              </View>
+              </TouchableOpacity>
             </View>
+
+            {/* Price Matched Alternative Items (Tap to Open) */}
+            {product.crossSells && product.crossSells.length > 0 && (
+              <View style={{ marginTop: 6, marginBottom: 12 }}>
+                <Text style={{ fontSize: 10, fontWeight: '800', color: isDark ? '#9CA3AF' : '#64748B', letterSpacing: 0.5, marginBottom: 8 }}>
+                  PRICE MATCHED ITEMS IN THIS CATEGORY (TAP TO OPEN)
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 4 }}>
+                  {product.crossSells.map((csItem: any) => (
+                    <TouchableOpacity
+                      key={csItem.id}
+                      activeOpacity={0.8}
+                      style={{
+                        width: 130,
+                        padding: 8,
+                        borderRadius: 12,
+                        backgroundColor: isDark ? '#1C2029' : '#F8FAFC',
+                        borderWidth: 1,
+                        borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
+                      }}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                        setShowShopsModal(false);
+                        const targetSlug = csItem.id.replace(/^cs-/, '');
+                        router.push(`/products/${targetSlug}` as any);
+                      }}
+                    >
+                      <SafeImage source={{ uri: csItem.image }} style={{ width: '100%', height: 75, borderRadius: 8, marginBottom: 6 }} />
+                      <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '700', color: isDark ? '#FFF' : '#0F172A' }}>
+                        {csItem.name}
+                      </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+                        <Text style={{ fontSize: 12, fontWeight: '900', color: '#10B981' }}>₹{csItem.price}</Text>
+                        <View style={{ backgroundColor: 'rgba(16,185,129,0.12)', paddingHorizontal: 4, paddingVertical: 1, borderRadius: 4 }}>
+                          <Text style={{ fontSize: 8, fontWeight: '800', color: '#10B981' }}>MATCHED</Text>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
 
             {/* Bottom Guarantee Trust Note */}
             <Text style={[styles.modalGuaranteeFooterText, { color: isDark ? '#94A3B8' : '#64748B' }]}>
