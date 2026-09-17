@@ -1787,14 +1787,14 @@ export default function CommunityScreen() {
               {/* Header Title */}
               <View style={{ alignItems: 'center', marginBottom: 24 }}>
                 <Text style={{ fontSize: 22, fontWeight: '900', color: '#FFD700', letterSpacing: 1 }}>HALL OF FAME ⭐</Text>
-                <Text style={{ fontSize: 8, fontWeight: '900', color: '#94A3B8', letterSpacing: 2, marginTop: 2 }}>PAST CHAMPIONS OF THE WALL</Text>
+                <Text style={{ fontSize: 8, fontWeight: '900', color: COLORS.textMuted, letterSpacing: 2, marginTop: 2 }}>PAST CHAMPIONS OF THE WALL</Text>
               </View>
 
               {wallHistory.length === 0 ? (
                 <View style={s.emptyState}>
                   <Text style={{ fontSize: 40, marginBottom: 8 }}>🏛️</Text>
                   <Text style={[s.emptyTitle, { color: '#FFD700' }]}>HALL OF FAME EMPTY</Text>
-                  <Text style={[s.emptySubtitle, { color: '#94A3B8' }]}>Past contest winners will be archived here once active events finish.</Text>
+                  <Text style={[s.emptySubtitle, { color: COLORS.textMuted }]}>Past contest winners will be archived here once active events finish.</Text>
                 </View>
               ) : (
                 <View style={{ position: 'relative', width: '100%', paddingVertical: 10 }}>
@@ -1853,7 +1853,7 @@ export default function CommunityScreen() {
                               {item.winner?.name || 'Champion'}
                             </Text>
 
-                            <Text style={{ fontSize: 8, color: '#94A3B8', marginTop: 2 }}>
+                            <Text style={{ fontSize: 8, color: COLORS.textMuted, marginTop: 2 }}>
                               ❤️ {item.winningSubmission?.likeCount || 0} Votes
                             </Text>
 

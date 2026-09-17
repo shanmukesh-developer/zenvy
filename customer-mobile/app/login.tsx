@@ -11,7 +11,7 @@ import { ENDPOINTS, API_URL } from '../constants/api';
 import { useAuth } from '../context/AuthContext';
 import { StaggeredSection, BounceIn } from '../components/AnimatedSection';
 import { setToken } from '../utils/auth';
-import DopaminePressable from '../components/DopaminePressable';
+import DopaminePressable, { ActionPressable } from '../components/DopaminePressable';
 import ServerWakeupOverlay from '../components/ServerWakeupOverlay';
 import CampusServicesMapModal from '../components/CampusServicesMapModal';
 
@@ -490,7 +490,7 @@ export default function LoginScreen() {
             
             <StaggeredSection delay={100} direction="up">
               <Text style={[s.cardTitle, { color: isDark ? '#fff' : '#1A1A2E' }]}>Welcome Back</Text>
-              <Text style={[s.cardSubtitle, { color: isDark ? COLORS.textSecondary : '#64748B' }]}>Sign in to your premium campus account</Text>
+              <Text style={[s.cardSubtitle, { color: isDark ? COLORS.textSecondary : '#617088' }]}>Sign in to your premium campus account</Text>
 
               {/* Login Method Tabs */}
               <View style={s.tabRow}>
@@ -518,7 +518,7 @@ export default function LoginScreen() {
                     value={phone} 
                     onChangeText={setPhone} 
                     placeholder="Enter mobile number" 
-                    placeholderTextColor={isDark ? COLORS.textMuted : '#94A3B8'} 
+                    placeholderTextColor={isDark ? COLORS.textMuted : '#617088'} 
                     keyboardType="phone-pad" 
                     autoCapitalize="none" 
                   />
@@ -529,7 +529,7 @@ export default function LoginScreen() {
                     value={password} 
                     onChangeText={setPassword} 
                     placeholder="Enter password" 
-                    placeholderTextColor={isDark ? COLORS.textMuted : '#94A3B8'} 
+                    placeholderTextColor={isDark ? COLORS.textMuted : '#617088'} 
                     secureTextEntry 
                   />
                 </>
@@ -556,7 +556,7 @@ export default function LoginScreen() {
                         value={phone} 
                         onChangeText={setPhone} 
                         placeholder="Enter mobile number" 
-                        placeholderTextColor={isDark ? COLORS.textMuted : '#94A3B8'} 
+                        placeholderTextColor={isDark ? COLORS.textMuted : '#617088'} 
                         keyboardType="phone-pad" 
                         autoCapitalize="none" 
                       />
@@ -593,7 +593,7 @@ export default function LoginScreen() {
                         value={otp} 
                         onChangeText={setOtp} 
                         placeholder="••••••" 
-                        placeholderTextColor={isDark ? COLORS.textMuted : '#94A3B8'} 
+                        placeholderTextColor={isDark ? COLORS.textMuted : '#617088'} 
                         keyboardType="number-pad" 
                         maxLength={6}
                       />
@@ -618,7 +618,7 @@ export default function LoginScreen() {
                           onPress={handleNativeSendOtp} 
                           disabled={countdown > 0 || loading}
                         >
-                          <Text style={{ color: countdown > 0 ? (isDark ? COLORS.textMuted : '#94A3B8') : COLORS.gold, fontSize: 11, fontWeight: '800' }}>
+                          <Text style={{ color: countdown > 0 ? (isDark ? COLORS.textMuted : '#617088') : COLORS.gold, fontSize: 11, fontWeight: '800' }}>
                             {countdown > 0 ? `Resend in ${countdown}s` : 'Resend OTP 🔁'}
                           </Text>
                         </TouchableOpacity>
@@ -648,7 +648,7 @@ export default function LoginScreen() {
 
               <View style={s.orRow}>
                 <View style={[s.line, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }]} />
-                <Text style={[s.orText, { color: isDark ? COLORS.textMuted : '#94A3B8' }]}>OR</Text>
+                <Text style={[s.orText, { color: isDark ? COLORS.textMuted : '#617088' }]}>OR</Text>
                 <View style={[s.line, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }]} />
               </View>
 

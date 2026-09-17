@@ -33,7 +33,7 @@ export const COLORS = {
   // Typography
   textPrimary: '#FFFFFF',
   textSecondary: '#A1A1AA',
-  textMuted: '#71717A',
+  textMuted: '#8B8B93',
   textDisabled: '#52525B',
 
   // Borders

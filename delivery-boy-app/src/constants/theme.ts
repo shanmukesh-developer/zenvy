@@ -35,7 +35,7 @@ export const COLORS = {
   // Typography
   textPrimary: '#FFFFFF',
   textSecondary: '#94A3B8',
-  textMuted: '#64748B',
+  textMuted: '#8B8B93',
   textDisabled: '#475569',
   textGold: '#D4AF7A',
   textEmerald: '#34D399',

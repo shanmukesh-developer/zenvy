@@ -107,7 +107,7 @@
         "text": {
           "primary": { "value": "#FFFFFF", "type": "color", "description": "Primary high-contrast text" },
           "secondary": { "value": "#A1A1AA", "type": "color", "description": "Secondary supporting text" },
-          "muted": { "value": "#71717A", "type": "color", "description": "Muted captions and labels" },
+          "muted": { "value": "#8B8B93", "type": "color", "description": "Muted captions and labels (WCAG 4.63:1 on cardElevated)" },
           "disabled": { "value": "#52525B", "type": "color", "description": "Disabled interactive text" }
         },
         "border": {
@@ -130,7 +130,7 @@
         "text": {
           "primary": { "value": "#0F172A", "type": "color", "description": "Primary high-contrast text" },
           "secondary": { "value": "#475569", "type": "color", "description": "Secondary supporting text" },
-          "muted": { "value": "#94A3B8", "type": "color", "description": "Muted captions and labels" },
+          "muted": { "value": "#617088", "type": "color", "description": "Muted captions and labels (WCAG 4.76:1 on canvas)" },
           "disabled": { "value": "#CBD5E1", "type": "color", "description": "Disabled interactive text" }
         },
         "border": {

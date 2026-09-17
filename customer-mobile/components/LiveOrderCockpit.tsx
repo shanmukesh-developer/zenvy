@@ -99,7 +99,7 @@ export default function LiveOrderCockpit({
   const cardBg = isDark ? '#141416' : '#FFFFFF';
   const border = isDark ? 'rgba(212, 175, 55, 0.25)' : 'rgba(0, 0, 0, 0.08)';
   const txt = isDark ? '#FFFFFF' : '#0F172A';
-  const txtSec = isDark ? '#94A3B8' : '#64748B';
+  const txtSec = isDark ? COLORS.textSecondary : '#617088';
 
   return (
     <View style={[styles.cockpitCard, { backgroundColor: cardBg, borderColor: border }]}>

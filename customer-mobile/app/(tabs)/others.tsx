@@ -4096,7 +4096,7 @@ export default function OthersScreen() {
                   <View style={{ alignItems: 'center' }}>
                     <Text style={{ fontSize: 28, marginBottom: 4 }}>🎉</Text>
                     <Text style={{ fontSize: 10, fontWeight: '900', color: '#34D399', letterSpacing: 1 }}>REWARD UNLOCKED SUCCESSFULLY!</Text>
-                    <Text style={{ fontSize: 8, color: '#94A3B8', marginTop: 2 }}>Claim code "ADBONUS" at grocery checkout for FREE Delivery.</Text>
+                    <Text style={{ fontSize: 8, color: COLORS.textMuted, marginTop: 2 }}>Claim code "ADBONUS" at grocery checkout for FREE Delivery.</Text>
                     
                     <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
                       <TouchableOpacity
@@ -5206,7 +5206,7 @@ const s = StyleSheet.create({
   },
   bbProductCardOrigPrice: {
     fontSize: 10,
-    color: '#94A3B8',
+    color: '#8B8B93',
     textDecorationLine: 'line-through',
   },
   bbDiscountTag: {
@@ -5231,7 +5231,7 @@ const s = StyleSheet.create({
   },
   bbProductCardWeight: {
     fontSize: 9,
-    color: '#64748B',
+    color: '#617088',
     fontWeight: '600',
   },
 
@@ -5618,7 +5618,7 @@ const s = StyleSheet.create({
   },
   flashDealTimerLabel: {
     fontSize: 10,
-    color: '#64748B',
+    color: '#617088',
     marginTop: 1,
   },
   flashDealCta: {
@@ -5675,7 +5675,7 @@ const s = StyleSheet.create({
     backgroundColor: '#EF4444',
   },
   adLiveText: {
-    color: '#94A3B8',
+    color: '#8B8B93',
     fontSize: 8,
     fontWeight: '900',
     letterSpacing: 1,
@@ -5706,7 +5706,7 @@ const s = StyleSheet.create({
     marginTop: 2,
   },
   adVideoDesc: {
-    color: '#94A3B8',
+    color: '#8B8B93',
     fontSize: 10,
     lineHeight: 14,
     marginTop: 4,

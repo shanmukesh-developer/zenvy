@@ -26,7 +26,7 @@ export const COLORS = {
   // Text
   textPrimary: '#FFFFFF',
   textSecondary: '#A1A1AA',
-  textMuted: '#71717A',
+  textMuted: '#8B8B93',
   textDark: '#111827',
   textDarkSecondary: '#4B5563',
 
@@ -61,7 +61,7 @@ export const LIGHT_THEME = {
   cardHover: '#F1F3F9',
   text: '#0F172A',
   textSecondary: '#475569',
-  textMuted: '#94A3B8',
+  textMuted: '#617088',
   border: 'rgba(0, 0, 0, 0.08)',
   borderSubtle: 'rgba(0, 0, 0, 0.04)',
   borderGold: 'rgba(201, 151, 46, 0.45)',
@@ -87,7 +87,7 @@ export const DARK_THEME = {
   cardHover: '#27272A',
   text: '#FFFFFF',
   textSecondary: '#A1A1AA',
-  textMuted: '#71717A',
+  textMuted: '#8B8B93',
   border: 'rgba(255, 255, 255, 0.08)',
   borderSubtle: 'rgba(255, 255, 255, 0.04)',
   borderGold: 'rgba(201, 168, 76, 0.4)',

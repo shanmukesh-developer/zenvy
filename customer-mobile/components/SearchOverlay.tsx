@@ -213,7 +213,7 @@ export default function SearchOverlay({ isOpen, onClose, searchMode = 'food' }: 
                       <Image source={{ uri: img }} style={s.gridCardImg} />
                       <View style={s.gridCardInfo}>
                         <Text style={[s.gridCardName, { color: txtColor }]} numberOfLines={1}>{res.name}</Text>
-                        <Text style={[s.gridCardMeta, { color: isDark ? COLORS.textSecondary : '#64748B' }]}>⭐ {res.rating || '4.0'} • {res.location || 'SRM'}</Text>
+                        <Text style={[s.gridCardMeta, { color: isDark ? COLORS.textSecondary : '#617088' }]}>⭐ {res.rating || '4.0'} • {res.location || 'SRM'}</Text>
                       </View>
                     </TouchableOpacity>
                   );

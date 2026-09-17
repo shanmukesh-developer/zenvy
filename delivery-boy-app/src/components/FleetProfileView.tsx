@@ -299,7 +299,7 @@ export const FleetProfileView: React.FC<FleetProfileViewProps> = ({
               value={editName}
               onChangeText={setEditName}
               placeholder="Your Full Name"
-              placeholderTextColor="#71717A"
+              placeholderTextColor={COLORS.textMuted}
             />
 
             <Text style={styles.inputLabel}>VEHICLE PLATE NUMBER</Text>
@@ -308,7 +308,7 @@ export const FleetProfileView: React.FC<FleetProfileViewProps> = ({
               value={editVehicleNumber}
               onChangeText={setEditVehicleNumber}
               placeholder="e.g. AP 07 AB 1234 or Bicycle"
-              placeholderTextColor="#71717A"
+              placeholderTextColor={COLORS.textMuted}
               autoCapitalize="characters"
             />
 
@@ -318,7 +318,7 @@ export const FleetProfileView: React.FC<FleetProfileViewProps> = ({
               value={editVehicleType}
               onChangeText={setEditVehicleType}
               placeholder="e.g. Electric Scooter / Activa / Bike"
-              placeholderTextColor="#71717A"
+              placeholderTextColor={COLORS.textMuted}
             />
 
             <Text style={styles.inputLabel}>EMERGENCY CONTACT NUMBER</Text>
@@ -327,7 +327,7 @@ export const FleetProfileView: React.FC<FleetProfileViewProps> = ({
               value={editEmergencyContact}
               onChangeText={setEditEmergencyContact}
               placeholder="e.g. 9876543210"
-              placeholderTextColor="#71717A"
+              placeholderTextColor={COLORS.textMuted}
               keyboardType="phone-pad"
             />
 

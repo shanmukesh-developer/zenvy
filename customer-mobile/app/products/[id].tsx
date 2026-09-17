@@ -981,7 +981,7 @@ export default function ProductDetailScreen() {
             <TextInput
               style={[styles.reviewTextInput, { color: isDark ? '#FFF' : COLORS.ink, borderColor: isDark ? 'rgba(255,255,255,0.15)' : '#E5E7EB' }]}
               placeholder="What did you like or dislike? (Taste, freshness, portion size...)"
-              placeholderTextColor={isDark ? '#71717A' : '#9CA3AF'}
+              placeholderTextColor={isDark ? COLORS.textMuted : '#9CA3AF'}
               multiline
               numberOfLines={3}
               value={userReviewText}

@@ -87,7 +87,7 @@ export const FleetLoginScreen: React.FC<FleetLoginScreenProps> = ({
               value={email}
               onChangeText={setEmail}
               placeholder="Registered mobile or email"
-              placeholderTextColor="#64748B"
+              placeholderTextColor={COLORS.textMuted}
               keyboardType="email-address"
               autoCapitalize="none"
             />
@@ -99,7 +99,7 @@ export const FleetLoginScreen: React.FC<FleetLoginScreenProps> = ({
               value={password}
               onChangeText={setPassword}
               placeholder="Enter your secure password"
-              placeholderTextColor="#64748B"
+              placeholderTextColor={COLORS.textMuted}
               secureTextEntry
             />
 

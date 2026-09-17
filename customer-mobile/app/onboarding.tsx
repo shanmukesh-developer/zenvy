@@ -413,7 +413,7 @@ const s = StyleSheet.create({
     letterSpacing: 2,
   },
   brandSubtitle: {
-    color: '#94A3B8',
+    color: COLORS.textMuted,
     fontSize: 7.5,
     fontWeight: '800',
     letterSpacing: 1.5,
@@ -432,7 +432,7 @@ const s = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.12)',
   },
   stepCounterText: {
-    color: '#94A3B8',
+    color: COLORS.textMuted,
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 1,
@@ -520,7 +520,7 @@ const s = StyleSheet.create({
     marginBottom: 4,
   },
   subheadline: {
-    color: '#94A3B8',
+    color: COLORS.textMuted,
     fontSize: 12,
     lineHeight: 17,
     fontWeight: '500',
@@ -557,7 +557,7 @@ const s = StyleSheet.create({
     marginTop: 2,
   },
   locationLabel: {
-    color: '#64748B',
+    color: '#617088',
     fontSize: 8,
     fontWeight: '900',
     letterSpacing: 0.8,

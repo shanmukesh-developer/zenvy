@@ -10,8 +10,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { playSound, resumeAudio } from '../../utils/sounds';
 
 function TabIcon({ name, focused, iconName, isDark, badgeCount }: { name: string; focused: boolean; iconName: any; isDark: boolean; badgeCount?: number }) {
-  const inactiveColor = isDark ? '#71717A' : '#64748B';
-  const labelColor = isDark ? '#A1A1AA' : '#64748B';
+  const inactiveColor = isDark ? COLORS.textMuted : '#617088';
+  const labelColor = isDark ? COLORS.textSecondary : '#617088';
 
   return (
     <View style={styles.tabIconWrap}>
