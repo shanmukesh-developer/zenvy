@@ -121,8 +121,8 @@ const injectionGuard = (req, res, next) => {
   const scanObject = (obj, location) => {
     if (!obj || typeof obj !== 'object') return false;
     for (const [key, value] of Object.entries(obj)) {
-      // Skip scanning passwords/tokens/verification codes as they contain arbitrary special characters
-      if (['password', 'oldPassword', 'newPassword', 'confirmPassword', 'token', 'accessToken', 'refreshToken', 'firebaseToken', 'idToken', 'code'].includes(key)) {
+      // Skip scanning passwords/tokens/verification codes/images as they contain arbitrary special characters
+      if (['password', 'oldPassword', 'newPassword', 'confirmPassword', 'token', 'accessToken', 'refreshToken', 'firebaseToken', 'idToken', 'code', 'profileImage'].includes(key)) {
         continue;
       }
       if (typeof value === 'string') {

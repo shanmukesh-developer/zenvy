@@ -549,7 +549,7 @@ export default function ProfileScreen() {
                     <View style={[s.avatar, { backgroundColor: isDark ? '#141416' : '#FFF' }]}>
                       {user?.profileImage ? (
                         <SafeImage 
-                          key={`profile_avatar_${user.profileImage.slice(-20)}`}
+                          key={`profile_avatar_${user.profileImage}`}
                           source={{ uri: user.profileImage }} 
                           fallbackUri="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&q=80"
                           style={s.avatarImg} 

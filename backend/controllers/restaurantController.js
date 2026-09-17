@@ -6,7 +6,14 @@ const jwt = require('jsonwebtoken');
 // @desc    Restaurant Login
 // @route   POST /api/restaurants/login
 const restaurantLogin = async (req, res) => {
-  const { id, password } = req.body;
+  const rawId = req.body.id || req.body.email || req.body.name || req.body.identifier;
+  const id = rawId ? rawId.toString().trim() : '';
+  const { password } = req.body;
+
+  if (!id || !password) {
+    return res.status(400).json({ message: 'Restaurant ID / Email and password are required' });
+  }
+
   try {
     // UUID basic validation
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

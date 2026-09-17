@@ -1257,7 +1257,7 @@ export default function CommunityScreen() {
       parentId: replyingTo ? replyingTo.id : null,
       userId: user?.id || user?._id || 'u-local',
       userName: customAuthorName || user?.name || 'Campus Foodie',
-      userAvatar: user?.avatar || null,
+      userAvatar: user?.profileImage || user?.avatar || null,
       content: draft,
       imageUrl: draftImage,
       likes: 1,

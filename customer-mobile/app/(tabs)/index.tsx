@@ -516,8 +516,16 @@ export default function HomeScreen() {
             activeOpacity={0.8}
             onPress={() => router.push('/(tabs)/profile')}
           >
-            <View style={[s.avatar, { backgroundColor: cardBg, borderColor: goldBorderColor }, user?.isElite && [s.avatarElite, { borderColor: goldColor }, goldGlowShadow]]}>
-              <Text style={[s.avatarText, { color: goldColor }]}>{(user?.name||'Z').substring(0,2).toUpperCase()}</Text>
+            <View style={[s.avatar, { backgroundColor: cardBg, borderColor: goldBorderColor, overflow: 'hidden' }, user?.isElite && [s.avatarElite, { borderColor: goldColor }, goldGlowShadow]]}>
+              {user?.profileImage ? (
+                <SafeImage
+                  source={{ uri: user.profileImage }}
+                  fallbackUri="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&q=80"
+                  style={{ width: '100%', height: '100%' }}
+                />
+              ) : (
+                <Text style={[s.avatarText, { color: goldColor }]}>{(user?.name||'Z').substring(0,2).toUpperCase()}</Text>
+              )}
             </View>
             <View>
               <Text style={[s.greeting, { color: txtSec }]}>{getGreeting().toUpperCase()}</Text>

@@ -338,7 +338,7 @@ const getOrderHistory = async (req, res) => {
 const updateOrderStatus = async (req, res) => {
   try {
     const { status } = req.body;
-    const validStatuses = ['PickedUp', 'ArrivedAtGate', 'Delivered'];
+    const validStatuses = ['Picking', 'PickedUp', 'ArrivedAtGate', 'Delivered'];
     if (!validStatuses.includes(status)) return res.status(400).json({ message: 'Invalid status' });
 
     const Order = getOrderModel();
@@ -346,8 +346,11 @@ const updateOrderStatus = async (req, res) => {
     if (!order) return res.status(404).json({ message: 'Order not found' });
     if (order.deliveryPartnerId !== req.user.id) return res.status(403).json({ message: 'Unauthorized' });
 
-    if (status === 'PickedUp' && !['Pending', 'Accepted', 'Preparing', 'ReadyForPickup'].includes(order.status)) {
+    if (status === 'Picking' && !['Pending', 'Accepted', 'Preparing', 'ReadyForPickup'].includes(order.status)) {
       return res.status(400).json({ message: 'Order must be Accepted or Ready by restaurant first' });
+    }
+    if (status === 'PickedUp' && !['Pending', 'Accepted', 'Preparing', 'ReadyForPickup', 'Picking'].includes(order.status)) {
+      return res.status(400).json({ message: 'Order must be in Picking, Accepted, or Ready stage first' });
     }
     if (status === 'Delivered' && !['PickedUp', 'ArrivedAtGate'].includes(order.status)) {
       return res.status(400).json({ message: 'Must be PickedUp or ArrivedAtGate first' });
@@ -442,9 +445,21 @@ const updateOrderStatus = async (req, res) => {
       const User = getUserModel();
       const customer = await User.findByPk(order.userId);
       if (customer?.fcmTokens?.length > 0) {
-        const titles = { PickedUp: 'Order Picked Up! 🛵', Delivered: 'Order Delivered! 🎉' };
-        const bodies = { PickedUp: 'Rider is on the way!', Delivered: 'Enjoy your meal!' };
-        await sendPushToTokens(customer.fcmTokens, titles[status], bodies[status], { orderId: order.id, type: 'ORDER_UPDATE' });
+        const titles = {
+          Picking: 'Rider Arrived at Store 🏪',
+          PickedUp: 'Order Picked Up! 🛵',
+          ArrivedAtGate: 'Rider Arrived at Gate 🚪',
+          Delivered: 'Order Delivered! 🎉'
+        };
+        const bodies = {
+          Picking: 'Your rider is at the store picking up your items.',
+          PickedUp: 'Rider is on the way!',
+          ArrivedAtGate: 'Rider is waiting at your gate.',
+          Delivered: 'Enjoy your meal!'
+        };
+        if (titles[status]) {
+          await sendPushToTokens(customer.fcmTokens, titles[status], bodies[status], { orderId: order.id, type: 'ORDER_UPDATE' });
+        }
       }
     } catch (e) {
       console.warn('[PUSH_NOTIFY_WARN] Failed to send update:', e.message);

@@ -876,6 +876,7 @@ export default function App() {
         setActiveOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'Picking' } : o));
       } catch (e: any) {
         console.warn('Status update error:', e.message);
+        Alert.alert('Status Update Failed', e.message || 'Could not update order status to Picking. Please try again.');
       } finally {
         setActionLoadingId(null);
       }

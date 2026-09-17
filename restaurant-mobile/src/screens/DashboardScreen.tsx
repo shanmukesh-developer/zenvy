@@ -90,7 +90,13 @@ export default function DashboardScreen() {
 
   const fetchOrders = async (restId: string) => {
     try {
-      const res = await fetch(`${API_URL}/api/restaurant/${restId}/orders`);
+      const token = await AsyncStorage.getItem('restaurant_token');
+      const res = await fetch(`${API_URL}/api/restaurants/${restId}/orders`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        }
+      });
       if (res.ok) {
         const data = await res.json();
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -118,9 +124,10 @@ export default function DashboardScreen() {
   };
 
   useEffect(() => {
-    if (!socket || !restaurantData._id) return;
+    const effectiveRestId = restaurantData.id || restaurantData._id;
+    if (!socket || !effectiveRestId) return;
 
-    socket.emit('joinRestaurant', restaurantData._id);
+    socket.emit('joinRestaurant', effectiveRestId);
 
     const handleNewOrder = (order: any) => {
       if (autoAccept) {

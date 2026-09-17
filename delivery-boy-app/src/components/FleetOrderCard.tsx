@@ -357,7 +357,7 @@ export const FleetOrderCard: React.FC<FleetOrderCardProps> = ({
 
           {!isAvailableFeed && onUpdateStatus && (
             <View style={styles.activeActionsCol}>
-              {order.status === 'Accepted' && (
+              {(order.status === 'Accepted' || order.status === 'Preparing' || order.status === 'ReadyForPickup') && (
                 <TouchableOpacity
                   style={styles.primaryActionButton}
                   onPress={() => onUpdateStatus(order.id.toString(), 'Picking')}

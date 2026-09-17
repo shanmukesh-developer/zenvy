@@ -309,7 +309,8 @@ app.use(morgan(':method :url :status :res[content-length] - :response-time ms'))
 // Layer 6: Compression & Parsing
 app.use(compression({ level: 6, threshold: 512 })); // Compress responses > 512 bytes
 app.use(cookieParser());
-app.use(express.json({ limit: '5mb' }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // Layer 7: HTTP Parameter Pollution Prevention
 app.use(hppProtection);
@@ -372,7 +373,7 @@ app.use((req, res, next) => {
 // ── Response Caching for Static Data (Menu, Restaurants) ──────────────────────
 app.use((req, res, next) => {
   // Cache GET requests for restaurant listings and menus (reduces DB load under 500+ users)
-  if (req.method === 'GET' && (req.path.startsWith('/api/restaurants') || req.path.startsWith('/api/search'))) {
+  if (req.method === 'GET' && (req.path.startsWith('/api/restaurants') || req.path.startsWith('/api/restaurant') || req.path.startsWith('/api/search'))) {
     res.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=60'); // 30s fresh, 60s stale OK
   }
   next();
@@ -874,6 +875,7 @@ const startServer = async () => {
     const systemRoutes = require('./routes/systemRoutes');
     const appConfigRoutes = require('./routes/appConfigRoutes');
     app.use('/api/restaurants', require('./routes/restaurantRoutes'));
+    app.use('/api/restaurant', require('./routes/restaurantRoutes'));
     app.use('/api/orders', require('./routes/orderRoutes'));
     app.use('/api/delivery', require('./routes/deliveryPartnerRoutes'));
     app.use('/api/search', require('./routes/searchRoutes'));

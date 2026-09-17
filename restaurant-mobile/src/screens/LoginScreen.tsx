@@ -14,24 +14,29 @@ export default function LoginScreen() {
   const navigation = useNavigation<any>();
 
   const handleLogin = async () => {
-    if (!email || !password) return Alert.alert('Error', 'Fill all fields');
+    const cleanIdentifier = email.trim();
+    if (!cleanIdentifier || !password) return Alert.alert('Error', 'Please enter your Restaurant ID/Email and password');
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/restaurant/login`, {
+      const res = await fetch(`${API_URL}/api/restaurants/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ 
+          id: cleanIdentifier, 
+          email: cleanIdentifier, 
+          password 
+        })
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (res.ok && data.token) {
         await AsyncStorage.setItem('restaurant_token', data.token);
         await AsyncStorage.setItem('restaurant_data', JSON.stringify(data.restaurant || {}));
         navigation.replace('Dashboard');
       } else {
-        Alert.alert('Login Failed', data.message || 'Invalid credentials');
+        Alert.alert('Login Failed', data.message || 'Invalid credentials. Please check your Restaurant ID and password.');
       }
-    } catch (e) {
-      Alert.alert('Error', 'Network error');
+    } catch (e: any) {
+      Alert.alert('Connection Error', e.message || 'Network request failed. Please check your internet connection.');
     } finally {
       setLoading(false);
     }

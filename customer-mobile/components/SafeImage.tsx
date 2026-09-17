@@ -59,8 +59,8 @@ export default function SafeImage({
   ...props
 }: SafeImageProps) {
   const [hasError, setHasError] = useState(false);
-  const [isLoaded, setIsLoaded] = useState(false);
-  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const [isLoaded, setIsLoaded] = useState(true);
+  const fadeAnim = useRef(new Animated.Value(1)).current;
 
   const rawUri = typeof source === 'object' && source && 'uri' in source ? (source.uri || '') : '';
   const isBase64OrLocal = typeof source === 'number' || rawUri.startsWith('data:');
@@ -81,8 +81,8 @@ export default function SafeImage({
 
     if (!source) {
       setImgSource({ uri: resolvedFallback });
-      setIsLoaded(false);
-      fadeAnim.setValue(0);
+      setIsLoaded(true);
+      fadeAnim.setValue(1);
       return;
     }
 
@@ -93,44 +93,32 @@ export default function SafeImage({
     } else if (typeof source === 'object' && 'uri' in source) {
       if (!source.uri || typeof source.uri !== 'string' || source.uri.trim() === '') {
         setImgSource({ uri: resolvedFallback });
-        setIsLoaded(false);
-        fadeAnim.setValue(0);
+        setIsLoaded(true);
+        fadeAnim.setValue(1);
       } else {
         const optimized = optimizeUri(source.uri);
         setImgSource({ uri: optimized });
-        if (source.uri.startsWith('data:')) {
-          setIsLoaded(true);
-          fadeAnim.setValue(1);
-        } else {
-          setIsLoaded(false);
-          fadeAnim.setValue(0);
-        }
+        setIsLoaded(true);
+        fadeAnim.setValue(1);
       }
     } else {
       setImgSource({ uri: resolvedFallback });
-      setIsLoaded(false);
-      fadeAnim.setValue(0);
+      setIsLoaded(true);
+      fadeAnim.setValue(1);
     }
   }, [uriKey, resolvedFallback]);
 
   const handleLoad = () => {
     setIsLoaded(true);
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: isBase64OrLocal ? 0 : fadeInDuration,
-      useNativeDriver: true,
-    }).start();
+    fadeAnim.setValue(1);
   };
 
   const handleError = (e: any) => {
     if (!hasError) {
       setHasError(true);
       setImgSource({ uri: resolvedFallback });
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: fadeInDuration,
-        useNativeDriver: true,
-      }).start();
+      setIsLoaded(true);
+      fadeAnim.setValue(1);
     }
     if (onError) {
       onError(e);
