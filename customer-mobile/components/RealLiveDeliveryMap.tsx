@@ -12,12 +12,12 @@ import { COLORS, SHADOWS } from '../constants/theme';
 
 const { width: SW } = Dimensions.get('window');
 
-// Real Geographic Coordinates around SRM University AP, Mangalagiri & Neerukonda
+// Real Geographic Coordinates around Campus & Surrounding Area
 export const REAL_WAYPOINTS = [
   { id: 'kitchen', name: 'Kitchen (Paradise Handi)', lat: 16.4365, lng: 80.5582, icon: '🍳' },
   { id: 'mangalagiri', name: 'Mangalagiri Jn Bypass', lat: 16.4430, lng: 80.5480, icon: '📍' },
   { id: 'neerukonda', name: 'Neerukonda Main Road', lat: 16.4510, lng: 80.5310, icon: '📍' },
-  { id: 'maingate', name: 'SRM AP University Main Gate', lat: 16.4618, lng: 80.5090, icon: '🛡️' },
+  { id: 'maingate', name: 'Campus Main Gate', lat: 16.4618, lng: 80.5090, icon: '🛡️' },
   { id: 'academic', name: 'Academic Block Quad', lat: 16.4635, lng: 80.5075, icon: '🏫' },
   { id: 'hostel', name: 'Hostel Block Tower C', lat: 16.4652, lng: 80.5060, icon: '🏠' },
 ];
@@ -336,7 +336,7 @@ export default function RealLiveDeliveryMap({
 
           <View style={[styles.telemetryBadge, { backgroundColor: isDark ? 'rgba(0,0,0,0.75)' : 'rgba(255,255,255,0.9)' }]}>
             <Text style={styles.telemetryLabel}>CORRIDOR</Text>
-            <Text style={[styles.telemetryValue, { color: isDark ? '#FFF' : '#111' }]}>SRM–Amaravathi</Text>
+            <Text style={[styles.telemetryValue, { color: isDark ? '#FFF' : '#111' }]}>Campus Express</Text>
           </View>
         </View>
       </View>

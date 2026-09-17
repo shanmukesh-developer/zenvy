@@ -32,7 +32,7 @@ import LiveOrderCockpit from '../../components/LiveOrderCockpit';
 const CHECKPOINTS = [
   { name: 'Mangalagiri Jn' },
   { name: 'Neerukonda' },
-  { name: 'SRM Main Gate' },
+  { name: 'Campus Main Gate' },
   { name: 'Academic Block' },
   { name: 'Hostel Sector' },
 ];
@@ -1075,7 +1075,7 @@ export default function TrackingScreen() {
                   </Text>
                 </View>
                 <View style={[s.driverTagPill, { backgroundColor: isDark ? 'rgba(34,197,94,0.15)' : '#DCFCE7' }]}>
-                  <Text style={{ fontSize: 10, fontWeight: '800', color: '#16A34A' }}>SRM VERIFIED</Text>
+                  <Text style={{ fontSize: 10, fontWeight: '800', color: '#16A34A' }}>CAMPUS VERIFIED</Text>
                 </View>
               </View>
             </View>
@@ -1108,7 +1108,7 @@ export default function TrackingScreen() {
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <Text style={{ color: '#16A34A', fontSize: 14 }}>✓</Text>
-                  <Text style={{ fontSize: 12, color: txt }}>SRM Gate ID & Verified Captain License</Text>
+                  <Text style={{ fontSize: 12, color: txt }}>Campus Gate ID & Verified Captain License</Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <Text style={{ color: '#16A34A', fontSize: 14 }}>✓</Text>

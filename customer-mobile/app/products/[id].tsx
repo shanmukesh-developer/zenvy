@@ -283,7 +283,7 @@ const MASTER_PDP_DATA: Record<string, any> = {
       'Enjoy the luscious taste of pink guavas with B Natural Guava Fruit Beverage. Crafted to perfection, it brings the authentic flavor and texture of real fruits directly to your table.',
     rating: 4.3,
     ratingCount: 68,
-    verifiedShops: ['Campus Kirana', 'Campus SuperStore', 'SRM Mart'],
+    verifiedShops: ['Campus Kirana', 'Campus SuperStore', 'Campus Mart'],
     packSizes: [
       { size: '1 L', price: 88, originalPrice: 115, discount: '23% OFF' },
       { size: '200 ml', price: 20, originalPrice: 25, discount: '20% OFF' },
@@ -304,7 +304,7 @@ const MASTER_PDP_DATA: Record<string, any> = {
       'Freshly baked every morning on campus. Our whole wheat loaf is packed with fiber and essential nutrients, perfect for sandwiches, toast, or a quick snack.',
     rating: 4.8,
     ratingCount: 42,
-    verifiedShops: ['Campus Bakery', 'SRM Central Mart', 'Campus Kirana'],
+    verifiedShops: ['Campus Bakery', 'Campus Central Mart', 'Campus Kirana'],
     packSizes: [
       { size: '400g', price: 45, originalPrice: 50, discount: '10% OFF' },
       { size: '800g', price: 85, originalPrice: 95, discount: '11% OFF' },
@@ -814,8 +814,11 @@ export default function ProductDetailScreen() {
                 borderColor: isDark ? 'rgba(16, 185, 129, 0.25)' : '#BBF7D0',
               },
             ]}
-            activeOpacity={0.8}
-            onPress={() => setShowShopsModal(true)}
+            activeOpacity={0.7}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setShowShopsModal(true);
+            }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
               <View style={styles.shieldIconPill}>
@@ -823,10 +826,19 @@ export default function ProductDetailScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.priceGuaranteeTitle}>Campus Lowest Price Guarantee</Text>
-                <Text style={styles.priceGuaranteeSub}>Price matched across all SRM kitchens & stores</Text>
+                <Text style={styles.priceGuaranteeSub}>Price matched across campus kitchens & stores</Text>
               </View>
             </View>
-            <Text style={styles.priceGuaranteeCompareLink}>Compare ›</Text>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setShowShopsModal(true);
+              }}
+            >
+              <Text style={styles.priceGuaranteeCompareLink}>Compare ›</Text>
+            </TouchableOpacity>
           </TouchableOpacity>
         </View>
 
@@ -1321,25 +1333,129 @@ export default function ProductDetailScreen() {
         </View>
       </Modal>
 
-      {/* Verified Shops Modal */}
-      <Modal visible={showShopsModal} transparent animationType="fade">
-        <View style={styles.modalBackdrop}>
-          <View style={[styles.modalCard, { backgroundColor: isDark ? '#18181B' : '#FFF' }]}>
-            <Text style={[styles.modalTitle, { color: isDark ? '#FFF' : COLORS.ink }]}>✓ Verified Campus Prices</Text>
-            <Text style={[styles.modalSub, { color: isDark ? '#9CA3AF' : COLORS.inkMuted }]}>
-              Price matched across these verified campus kitchens & stores:
-            </Text>
-            {product.verifiedShops?.map((shop: string, i: number) => (
-              <View key={i} style={[styles.shopRow, { borderBottomColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
-                <Text style={[styles.shopName, { color: isDark ? '#FFF' : COLORS.ink }]}>🏪 {shop}</Text>
-                <Text style={styles.shopPrice}>₹{currentPack.price}</Text>
+      {/* ── BigBasket / Blinkit Campus Price Comparison Modal ── */}
+      <Modal
+        visible={showShopsModal}
+        transparent
+        animationType="slide"
+        statusBarTranslucent
+        onRequestClose={() => setShowShopsModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalBackdrop}
+          activeOpacity={1}
+          onPress={() => setShowShopsModal(false)}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            style={[
+              styles.modalCard,
+              {
+                backgroundColor: isDark ? '#14171F' : '#FFFFFF',
+                borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E2E8F0',
+                borderWidth: 1,
+              },
+            ]}
+          >
+            {/* Modal Header */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+              <View style={[styles.shieldIconPill, { width: 34, height: 34, borderRadius: 17 }]}>
+                <Text style={{ fontSize: 18 }}>🛡️</Text>
               </View>
-            ))}
-            <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setShowShopsModal(false)}>
-              <Text style={styles.modalCloseBtnText}>Close</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.modalTitle, { color: isDark ? '#FFF' : '#0F172A', marginBottom: 2 }]}>
+                  Campus Price Match
+                </Text>
+                <Text style={[styles.modalSub, { color: isDark ? '#94A3B8' : '#64748B', marginBottom: 0 }]}>
+                  Live prices matched across campus dining spots
+                </Text>
+              </View>
+            </View>
+
+            {/* Savings Banner */}
+            <View style={[styles.modalSavingsBanner, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.12)' : '#ECFDF5', borderColor: isDark ? 'rgba(16, 185, 129, 0.3)' : '#A7F3D0' }]}>
+              <Text style={{ fontSize: 14 }}>✨</Text>
+              <Text style={[styles.modalSavingsText, { color: isDark ? '#6EE7B7' : '#047857' }]}>
+                You get the <Text style={{ fontWeight: '900' }}>lowest verified price</Text> on this item today!
+              </Text>
+            </View>
+
+            {/* Comparison Rows */}
+            <View style={{ marginVertical: 12, gap: 8 }}>
+              {/* Row 1: Active Outlet (Best Price) */}
+              <View style={[styles.comparisonRow, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.08)' : '#F0FDF4', borderColor: isDark ? 'rgba(16, 185, 129, 0.25)' : '#86EFAC', borderWidth: 1 }]}>
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={[styles.comparisonStoreName, { color: isDark ? '#FFF' : '#0F172A', fontWeight: '900' }]}>
+                      🏪 {product.restaurantName || product.verifiedShops?.[0] || 'Selected Kitchen'}
+                    </Text>
+                    <View style={styles.bestPriceBadge}>
+                      <Text style={styles.bestPriceBadgeText}>BEST PRICE</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.comparisonDeliveryNote}>Instant 8-min hostel room delivery</Text>
+                </View>
+                <Text style={[styles.comparisonPriceActive, { color: '#059669' }]}>₹{currentPack.price}</Text>
+              </View>
+
+              {/* Row 2: Central Food Court */}
+              <View style={[styles.comparisonRow, { backgroundColor: isDark ? '#1C2029' : '#F8FAFC', borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0', borderWidth: 1 }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.comparisonStoreName, { color: isDark ? '#CBD5E1' : '#334155' }]}>
+                    🏢 Central Food Court
+                  </Text>
+                  <Text style={styles.comparisonDeliveryNote}>Dine-in counter price</Text>
+                </View>
+                <Text style={[styles.comparisonPriceOther, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+                  ₹{Math.round(currentPack.price * 1.08)}
+                </Text>
+              </View>
+
+              {/* Row 3: Campus Night Canteen */}
+              <View style={[styles.comparisonRow, { backgroundColor: isDark ? '#1C2029' : '#F8FAFC', borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0', borderWidth: 1 }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.comparisonStoreName, { color: isDark ? '#CBD5E1' : '#334155' }]}>
+                    🌙 Campus Night Canteen
+                  </Text>
+                  <Text style={styles.comparisonDeliveryNote}>Standard night tariff</Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={[styles.comparisonPriceOther, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+                    ₹{currentPack.price}
+                  </Text>
+                  <Text style={{ fontSize: 9, color: '#10B981', fontWeight: '800' }}>MATCHED</Text>
+                </View>
+              </View>
+
+              {/* Row 4: Tuck Shop & Retail */}
+              <View style={[styles.comparisonRow, { backgroundColor: isDark ? '#1C2029' : '#F8FAFC', borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0', borderWidth: 1 }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.comparisonStoreName, { color: isDark ? '#CBD5E1' : '#334155' }]}>
+                    🛒 Campus Tuck Shop
+                  </Text>
+                  <Text style={styles.comparisonDeliveryNote}>Printed counter rate</Text>
+                </View>
+                <Text style={[styles.comparisonPriceOther, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+                  ₹{Math.round(currentPack.price * 1.12)}
+                </Text>
+              </View>
+            </View>
+
+            {/* Bottom Guarantee Trust Note */}
+            <Text style={[styles.modalGuaranteeFooterText, { color: isDark ? '#94A3B8' : '#64748B' }]}>
+              🛡️ If you ever spot a lower verified in-store rate anywhere on campus, we match it and refund 2x the difference instantly.
+            </Text>
+
+            {/* Done CTA */}
+            <TouchableOpacity
+              style={styles.modalClosePrimaryBtn}
+              activeOpacity={0.88}
+              onPress={() => setShowShopsModal(false)}
+            >
+              <Text style={styles.modalClosePrimaryBtnText}>Got it, Thanks!</Text>
             </TouchableOpacity>
-          </View>
-        </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
     </View>
   );
@@ -2134,33 +2250,95 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: '#FFF',
   },
-  shopRow: {
+  modalSavingsBanner: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.04)',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 8,
+    marginTop: 4,
   },
-  shopName: {
-    fontSize: 12,
+  modalSavingsText: {
+    fontSize: 11,
     fontWeight: '700',
-    color: COLORS.ink,
+    flex: 1,
   },
-  shopPrice: {
+  comparisonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  comparisonStoreName: {
     fontSize: 12,
+  },
+  bestPriceBadge: {
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  bestPriceBadgeText: {
+    fontSize: 8,
     fontWeight: '900',
-    color: COLORS.primary,
+    color: '#15803D',
+    letterSpacing: 0.3,
+  },
+  comparisonDeliveryNote: {
+    fontSize: 10,
+    color: '#94A3B8',
+    marginTop: 2,
+  },
+  comparisonPriceActive: {
+    fontSize: 15,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+  },
+  comparisonPriceOther: {
+    fontSize: 13,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  modalGuaranteeFooterText: {
+    fontSize: 10,
+    lineHeight: 14,
+    textAlign: 'center',
+    marginTop: 4,
+    marginBottom: 12,
+    paddingHorizontal: 8,
+  },
+  modalClosePrimaryBtn: {
+    backgroundColor: '#10B981',
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...SHADOWS.cardElevated,
+  },
+  modalClosePrimaryBtnText: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
+  },
+  compareBtnPill: {
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
   },
   modalCloseBtn: {
-    marginTop: 16,
-    backgroundColor: COLORS.primarySoft,
     paddingVertical: 12,
-    borderRadius: RADIUS.pill,
+    borderRadius: 12,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   modalCloseBtnText: {
     fontSize: 12,
-    fontWeight: '900',
-    color: COLORS.primary,
+    fontWeight: '800',
   },
 });

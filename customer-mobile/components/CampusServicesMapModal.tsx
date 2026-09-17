@@ -39,7 +39,7 @@ const CAMPUS_SERVICES_MAP: ServicePillar[] = [
     tagline: '15-Minute Doorstep Delivery to Hostel Rooms',
     howToAccess: 'Home Tab ➔ Browse campus food outlets, roadside stalls & late night canteens.',
     keyFeatures: [
-      'SRM Canteen & Local Food Stalls',
+      'Campus Canteen & Local Food Stalls',
       'Late-Night Delivery until 3:00 AM',
       'Live GPS Rider Tracking & OTP Delivery'
     ],
@@ -58,53 +58,53 @@ const CAMPUS_SERVICES_MAP: ServicePillar[] = [
       'Lab Stationery, Engineering Tools & Notebooks',
       'Hostel Cleaning & Personal Hygiene Kits'
     ],
-    image: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=600&q=80',
+    image: 'https://images.unsplash.com/photo-1578916171728-46686eac8d58?w=600&q=80',
     accentColor: '#10B981',
   },
   {
-    id: 'repairs',
-    icon: '💻',
-    title: 'Doorstep Laptop & Phone Fix',
-    category: 'TECH & HARDWARE',
-    tagline: 'Certified Hardware Diagnostic & Overhaul',
-    howToAccess: 'Others Tab ➔ "Tech & Repairs" ➔ Select Hardware Service.',
+    id: 'laundry',
+    icon: '🧺',
+    title: 'Hostel Smart Laundry Wash & Iron',
+    category: 'HOUSEKEEPING',
+    tagline: 'Per-Kilo Doorstep Laundry with 24-Hr Return',
+    howToAccess: 'Others Tab ➔ "Smart Laundry" ➔ Schedule Bag Pickup.',
     keyFeatures: [
-      'Thermal Paste Overhaul & Fan De-dusting',
-      'Laptop Screen, Hinge & Keyboard Replacement',
-      'SSD & RAM Upgrades with 4-Hour SLA'
+      'Antiseptic Wash, Steam Press & Fold',
+      'Weight-Based Transparent Billing (₹49/kg)',
+      'Direct Delivery back to your Hostel Room'
     ],
-    image: 'https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?w=600&q=80',
+    image: 'https://images.unsplash.com/photo-1517677208171-0bc6725a3e60?w=600&q=80',
     accentColor: '#3B82F6',
-  },
-  {
-    id: 'tailoring',
-    icon: '🪡',
-    title: 'Campus Tailoring & Alterations',
-    category: 'CLOTHING & REPAIRS',
-    tagline: 'Room Pickup for Uniforms, Lab Coats & Fitting',
-    howToAccess: 'Others Tab ➔ "Tech & Repairs" ➔ "Campus Tailoring".',
-    keyFeatures: [
-      'Jeans & Trouser Length Shortening (Starts ₹60)',
-      'Lab Coat & Blazer Fitting Adjustments',
-      'Preferred Pickup Slot & Doorstep Room Pickup'
-    ],
-    image: 'https://images.unsplash.com/photo-1528458909336-e7a0adfed0a5?w=600&q=80',
-    accentColor: '#F97316',
   },
   {
     id: 'print',
     icon: '🖨️',
-    title: '24/7 Laser Print & Thesis Binding',
-    category: 'DOCUMENT SERVICES',
-    tagline: 'High-Res Assignment Prints Delivered to Room',
-    howToAccess: 'Others Tab ➔ "Tech & Repairs" ➔ "24/7 Printout".',
+    title: 'PrintOuts & Project Spiral Binding',
+    category: 'ACADEMICS & STATIONERY',
+    tagline: 'Upload PDF & Collect at Campus Gate or Doorstep',
+    howToAccess: 'Others Tab ➔ "PrintOuts & Xerox" ➔ Upload File.',
     keyFeatures: [
-      'B&W (₹2/page) & Full Color (₹8/page) Laser Prints',
-      'Spiral & Hardbound Project Thesis Binding',
-      'CAD / Architecture Large Sheet Printing'
+      'Color & B/W Printing from ₹2/page',
+      'Spiral Binding, Record Hard-Binding & Charts',
+      'Doorstep Delivery or 5-Min Gate Pickup'
     ],
-    image: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?w=600&q=80',
+    image: 'https://images.unsplash.com/photo-1562654501-a0ccc0fc3fb1?w=600&q=80',
     accentColor: '#8B5CF6',
+  },
+  {
+    id: 'pharmacy',
+    icon: '💊',
+    title: 'SOS Campus Pharmacy & First-Aid',
+    category: 'HEALTHCARE',
+    tagline: 'Prescription Meds, Pain Relievers & ORS in 15 Mins',
+    howToAccess: 'Others Tab ➔ "Campus Pharmacy" ➔ Emergency Order.',
+    keyFeatures: [
+      'Paracetamol, Bandages, Inhalers & Pain Sprays',
+      'Night-time Urgent Room Drop for Sick Students',
+      'Verified Licensed Campus Chemist Dispense'
+    ],
+    image: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=600&q=80',
+    accentColor: '#EC4899',
   },
   {
     id: 'pg',
@@ -115,7 +115,7 @@ const CAMPUS_SERVICES_MAP: ServicePillar[] = [
     howToAccess: 'Others Tab ➔ "PG Homes" ➔ Filter by Gender & Distance.',
     keyFeatures: [
       'Inspected WiFi, AC, Mess & Security Properties',
-      'Detailed Room Tour, Distance to SRM & Food Menus',
+      'Detailed Room Tour, Distance to Campus & Food Menus',
       'Instant WhatsApp Booking Dispatch with Campus Wardens'
     ],
     image: 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=600&q=80',
@@ -129,7 +129,7 @@ const CAMPUS_SERVICES_MAP: ServicePillar[] = [
     tagline: 'Student Fuel-Split Commute & Station Cabs',
     howToAccess: 'Others Tab ➔ "Co-Ride & Rapido" ➔ Post or Join Ride.',
     keyFeatures: [
-      'Peer Fuel Split between SRM, Vijayawada & Guntur',
+      'Peer Fuel Split between Campus, Vijayawada & Guntur',
       'Verified University Student ID Validation',
       'Fixed-Fare Airport & Railway Station Cabs'
     ],
@@ -195,7 +195,7 @@ export default function CampusServicesMapModal({ visible, onClose }: Props) {
                 </View>
               </View>
               <Text style={{ fontSize: 11, color: txtSec, fontWeight: '600', marginTop: 2 }}>
-                Everything you need for effortless SRM AP campus life
+                Everything you need for effortless campus life
               </Text>
             </View>
             <TouchableOpacity style={[s.closeBtn, { backgroundColor: isDark ? '#2A2A2E' : '#F1F5F9' }]} onPress={onClose}>
@@ -244,7 +244,7 @@ export default function CampusServicesMapModal({ visible, onClose }: Props) {
                   </Text>
                   <View style={{ backgroundColor: `${activePillar.accentColor}20`, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
                     <Text style={{ color: activePillar.accentColor, fontSize: 9, fontWeight: '900' }}>
-                      SRM AP 24/7
+                      CAMPUS 24/7
                     </Text>
                   </View>
                 </View>

@@ -7,9 +7,9 @@ import { API_URL } from '../constants/api';
 
 const CAMPUSES = [
   { code: 'ALL', label: 'All Campuses', emoji: '🌐' },
-  { code: 'SRM', label: 'SRM University', emoji: '🏛️' },
-  { code: 'VIT', label: 'VIT Vellore', emoji: '🎓' },
-  { code: 'AMRITA', label: 'Amrita Vishwa Vidyapeetham', emoji: '📚' },
+  { code: 'SRM', label: 'Main Campus', emoji: '🏛️' },
+  { code: 'VIT', label: 'North Campus', emoji: '🏢' },
+  { code: 'ALL', label: 'All Stalls', emoji: '📍' },
 ];
 
 interface CampusBitesSectionProps {
@@ -19,7 +19,7 @@ interface CampusBitesSectionProps {
 const DEFAULT_STALLS = [
   {
     _id: 'srm-tea-stall',
-    name: 'SRM Tea Stall & Tiffin Center',
+    name: 'Campus Tea Stall & Tiffin Center',
     vendorType: 'LOCAL_VENDOR',
     campus: 'SRM',
     imageUrl: 'https://images.unsplash.com/photo-1541832676-9b763b0239ab?w=400',
@@ -68,7 +68,7 @@ const DEFAULT_STALLS = [
   },
   {
     _id: 'fresh-juice-corner',
-    name: 'SRM Fresh Juice Corner',
+    name: 'Campus Fresh Juice Corner',
     vendorType: 'LOCAL_VENDOR',
     campus: 'SRM',
     imageUrl: 'https://images.unsplash.com/photo-1572490122747-3968b75cc699?w=400',

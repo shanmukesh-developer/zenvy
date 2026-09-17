@@ -45,7 +45,7 @@ const DEFAULT_LOCAL_STALLS = [
   {
     _id: 'srm-tea-stall',
     id: 'srm-tea-stall',
-    name: 'SRM Tea Stall & Tiffin Center',
+    name: 'Campus Tea Stall & Tiffin Center',
     vendorType: 'LOCAL_VENDOR',
     campus: 'SRM',
     imageUrl: 'https://images.unsplash.com/photo-1541832676-9b763b0239ab?w=600',
@@ -54,7 +54,7 @@ const DEFAULT_LOCAL_STALLS = [
     rating: 4.6,
     isLocalVendor: true,
     deliveryTime: '10-15 min',
-    location: 'SRM Campus Gate 2',
+    location: 'Campus Gate 2',
     menu: [
       { id: 'item-tea-1', name: 'Special Ginger Tea', price: 15, isVegetarian: true, category: 'Hot Beverages', description: 'Freshly brewed ginger infused milk tea' },
       { id: 'item-tea-2', name: 'South Indian Filter Coffee', price: 20, isVegetarian: true, category: 'Hot Beverages', description: 'Authentic aromatic filter coffee' },
@@ -95,7 +95,7 @@ const DEFAULT_LOCAL_STALLS = [
     rating: 4.7,
     isLocalVendor: true,
     deliveryTime: '10-15 min',
-    location: 'SRM Night Food Court',
+    location: 'Campus Night Food Court',
     menu: [
       { id: 'item-ac-1', name: 'Cheese Butter Maggi', price: 50, isVegetarian: true, category: 'Maggi Special', description: 'Loaded with melted cheese and butter' },
       { id: 'item-ac-2', name: 'Double Egg Omelette', price: 40, isVegetarian: false, category: 'Egg Corner', description: 'With onions, green chilies, and toast' },
@@ -106,7 +106,7 @@ const DEFAULT_LOCAL_STALLS = [
   {
     _id: 'fresh-juice-corner',
     id: 'fresh-juice-corner',
-    name: 'SRM Fresh Juice Corner',
+    name: 'Campus Fresh Juice Corner',
     vendorType: 'LOCAL_VENDOR',
     campus: 'SRM',
     imageUrl: 'https://images.unsplash.com/photo-1572490122747-3968b75cc699?w=600',
@@ -227,7 +227,7 @@ export default function RestaurantDetail() {
                 _id: id,
                 id: id,
                 name: id.replace(/[-_]/g, ' ').toUpperCase(),
-                location: 'SRM AP Campus',
+                location: 'Central Campus',
                 rating: 4.8,
                 deliveryTime: '15-20 min',
                 imageUrl: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=600',

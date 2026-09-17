@@ -161,7 +161,7 @@ export default function LiveOrderCockpit({
           <Text style={[styles.vehicleText, { color: txtSec }]}>
             {riderInfo.vehicleType || 'Hero Splendor'} • <Text style={{ fontWeight: '800', color: txt }}>{riderInfo.vehicleNumber || 'AP 39 ZV 4022'}</Text>
           </Text>
-          <Text style={styles.securityTag}>🛡️ SRM Campus Background Verified</Text>
+          <Text style={styles.securityTag}>🛡️ Campus Background Verified</Text>
         </View>
 
         {/* Quick Contact Action Buttons */}
