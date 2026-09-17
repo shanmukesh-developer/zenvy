@@ -101,27 +101,27 @@ export default function VaultTerminal() {
     <div className="space-y-10 animate-fade-in relative pb-20">
       <header className="flex justify-between items-center bg-white/5 p-8 rounded-[40px] border border-white/5 glass">
         <div>
-          <h2 className="text-3xl font-black text-white tracking-tighter uppercase">Zenvy <span className="text-[#C9A84C]">Vault</span> Drops</h2>
+          <h2 className="text-3xl font-black text-white tracking-tighter uppercase">Zenvy <span className="text-[var(--zenvy-gold)]">Vault</span> Drops</h2>
           <p className="text-gray-400 text-sm font-bold uppercase tracking-widest mt-1">Daily Deals & Limited Drops Management</p>
         </div>
         <button 
           onClick={() => setIsAdding(!isAdding)}
-          className="px-8 py-3 bg-[#C9A84C] text-black text-[10px] font-black uppercase tracking-widest rounded-2xl hover:scale-105 transition-all"
+          className="px-8 py-3 bg-[var(--zenvy-gold)] text-black text-[10px] font-black uppercase tracking-widest rounded-2xl hover:scale-105 transition-all"
         >
           {isAdding ? 'Close Drawer' : 'Add Vault Deal'}
         </button>
       </header>
 
       {isAdding && (
-        <div className="glass-card p-10 border-[#C9A84C]/30 animate-in fade-in slide-in-from-top-4 duration-500">
+        <div className="glass-card p-10 border-[var(--zenvy-gold)]/30 animate-in fade-in slide-in-from-top-4 duration-500">
           <h3 className="text-xl font-black text-white uppercase tracking-tight mb-8 flex items-center gap-3">
-             <span className="w-8 h-8 bg-[#C9A84C]/20 rounded-lg flex items-center justify-center text-sm">📦</span>
+             <span className="w-8 h-8 bg-[var(--zenvy-gold)]/20 rounded-lg flex items-center justify-center text-sm">📦</span>
              Create New Vault Deal
           </h3>
           
           {/* Pre-fill from Existing Menu Item */}
           <div className="mb-8 space-y-3">
-            <label className="text-[10px] font-black uppercase tracking-widest text-[#C9A84C] ml-1">Pre-fill from Existing Menu Item</label>
+            <label className="text-[10px] font-black uppercase tracking-widest text-[var(--zenvy-gold)] ml-1">Pre-fill from Existing Menu Item</label>
             <select
               className="vault-input"
               onChange={(e) => {
@@ -217,10 +217,10 @@ export default function VaultTerminal() {
                  />
                </div>
                <div className="space-y-3">
-                 <label className="text-[10px] font-black uppercase tracking-widest text-[#C9A84C] ml-1">Stock Quantity</label>
+                 <label className="text-[10px] font-black uppercase tracking-widest text-[var(--zenvy-gold)] ml-1">Stock Quantity</label>
                  <input 
                    type="number" 
-                   className="vault-input border-[#C9A84C]/20 bg-[#C9A84C]/5 text-[#C9A84C]" 
+                   className="vault-input border-[var(--zenvy-gold)]/20 bg-[var(--zenvy-gold)]/5 text-[var(--zenvy-gold)]" 
                    value={newItem.remainingCount} 
                    onChange={(e) => setNewItem({...newItem, remainingCount: Number(e.target.value)})} 
                  />
@@ -247,7 +247,7 @@ export default function VaultTerminal() {
                 setNewItem({ name: '', price: 0, originalPrice: 0, remainingCount: 1, imageUrl: '', streakRequirement: 0 });
               }}
               disabled={isCreating || !newItem.name}
-              className="flex-1 py-5 bg-[#C9A84C] text-black font-black uppercase tracking-[0.3em] rounded-3xl text-xs disabled:opacity-50"
+              className="flex-1 py-5 bg-[var(--zenvy-gold)] text-black font-black uppercase tracking-[0.3em] rounded-3xl text-xs disabled:opacity-50"
             >
               {isCreating ? 'Publishing Deal...' : 'Publish Vault Deal'}
             </button>
@@ -274,7 +274,7 @@ export default function VaultTerminal() {
         ))}
       </div>
 
-      <div className="glass-card p-10 flex items-center justify-between border-[#C9A84C]/20 bg-[#C9A84C]/[0.02]">
+      <div className="glass-card p-10 flex items-center justify-between border-[var(--zenvy-gold)]/20 bg-[var(--zenvy-gold)]/[0.02]">
          <div className="flex items-center gap-6">
             <span className="text-3xl">🕯️</span>
             <div>
@@ -296,8 +296,8 @@ export default function VaultTerminal() {
           transition: all 0.3s ease;
         }
         .vault-input:focus { 
-          border-color: rgba(201, 168, 76, 0.4); 
-          background: rgba(201, 168, 76, 0.02);
+          border-color: rgba(212, 175, 122, 0.4); 
+          background: rgba(212, 175, 122, 0.02);
         }
       `}</style>
     </div>
@@ -307,7 +307,7 @@ export default function VaultTerminal() {
 // ─── Optimized Sub-Components ─────────────────────────────────
 
 const VaultItemComponent = memo(({ item, onUpdate, onDelete }: { item: VaultItem, onUpdate: (i: Partial<VaultItem>) => void, onDelete: (id: string) => void }) => (
-  <div className="glass-card p-8 group relative overflow-hidden flex flex-col justify-between h-full border-white/5 hover:border-[#C9A84C]/20 transition-all duration-500">
+  <div className="glass-card p-8 group relative overflow-hidden flex flex-col justify-between h-full border-white/5 hover:border-[var(--zenvy-gold)]/20 transition-all duration-500">
     <div className="flex gap-8 relative z-10">
       <div className="w-32 h-32 rounded-3xl overflow-hidden border border-white/10 shrink-0 relative bg-slate-900 pointer-events-none">
         <Image 
@@ -325,7 +325,7 @@ const VaultItemComponent = memo(({ item, onUpdate, onDelete }: { item: VaultItem
             <input 
               type="text" 
               defaultValue={item.name}
-              className="w-full bg-white/5 border border-white/10 rounded-xl p-2 text-sm text-white font-black focus:border-[#C9A84C]/40 outline-none"
+              className="w-full bg-white/5 border border-white/10 rounded-xl p-2 text-sm text-white font-black focus:border-[var(--zenvy-gold)]/40 outline-none"
               onBlur={(e) => onUpdate({ ...item, name: e.target.value })}
             />
           </div>
@@ -337,7 +337,7 @@ const VaultItemComponent = memo(({ item, onUpdate, onDelete }: { item: VaultItem
           <input 
             type="text" 
             defaultValue={item.imageUrl}
-            className="w-full bg-white/5 border border-white/10 rounded-xl p-2 text-xs text-white font-mono focus:border-[#C9A84C]/40 outline-none"
+            className="w-full bg-white/5 border border-white/10 rounded-xl p-2 text-xs text-white font-mono focus:border-[var(--zenvy-gold)]/40 outline-none"
             onBlur={(e) => onUpdate({ ...item, imageUrl: e.target.value })}
           />
         </div>
@@ -348,7 +348,7 @@ const VaultItemComponent = memo(({ item, onUpdate, onDelete }: { item: VaultItem
             <input 
               type="number" 
               defaultValue={item.price}
-              className="w-full bg-white/5 border border-white/10 rounded-xl p-2 text-xs text-white font-black focus:border-[#C9A84C]/40 outline-none"
+              className="w-full bg-white/5 border border-white/10 rounded-xl p-2 text-xs text-white font-black focus:border-[var(--zenvy-gold)]/40 outline-none"
               onBlur={(e) => onUpdate({ ...item, price: Number(e.target.value) })}
             />
           </div>
@@ -357,16 +357,16 @@ const VaultItemComponent = memo(({ item, onUpdate, onDelete }: { item: VaultItem
             <input 
               type="number" 
               defaultValue={item.originalPrice}
-              className="w-full bg-white/5 border border-white/10 rounded-xl p-2 text-xs text-gray-400 font-bold focus:border-[#C9A84C]/40 outline-none"
+              className="w-full bg-white/5 border border-white/10 rounded-xl p-2 text-xs text-gray-400 font-bold focus:border-[var(--zenvy-gold)]/40 outline-none"
               onBlur={(e) => onUpdate({ ...item, originalPrice: Number(e.target.value) })}
             />
           </div>
           <div>
-            <label className="text-[8px] font-black text-[#C9A84C] uppercase tracking-widest block mb-1">Remaining</label>
+            <label className="text-[8px] font-black text-[var(--zenvy-gold)] uppercase tracking-widest block mb-1">Remaining</label>
             <input 
               type="number" 
               defaultValue={item.remainingCount}
-              className="w-full bg-[#C9A84C]/10 border border-[#C9A84C]/20 rounded-xl p-2 text-xs text-[#C9A84C] font-black focus:border-[#C9A84C]/60 outline-none"
+              className="w-full bg-[var(--zenvy-gold)]/10 border border-[var(--zenvy-gold)]/20 rounded-xl p-2 text-xs text-[var(--zenvy-gold)] font-black focus:border-[var(--zenvy-gold)]/60 outline-none"
               onBlur={(e) => onUpdate({ ...item, remainingCount: Number(e.target.value) })}
             />
           </div>
@@ -375,7 +375,7 @@ const VaultItemComponent = memo(({ item, onUpdate, onDelete }: { item: VaultItem
             <input 
               type="number" 
               defaultValue={item.streakRequirement || 0}
-              className="w-full bg-white/5 border border-white/10 rounded-xl p-2 text-xs text-white font-black focus:border-[#C9A84C]/40 outline-none"
+              className="w-full bg-white/5 border border-white/10 rounded-xl p-2 text-xs text-white font-black focus:border-[var(--zenvy-gold)]/40 outline-none"
               onBlur={(e) => onUpdate({ ...item, streakRequirement: Number(e.target.value) })}
             />
           </div>
@@ -401,7 +401,7 @@ const VaultItemComponent = memo(({ item, onUpdate, onDelete }: { item: VaultItem
         </div>
       </div>
     </div>
-    <div className="absolute bottom-0 left-0 h-0.5 bg-[#C9A84C]/30 transition-all duration-1000" style={{ width: `${Math.min(100, (item.remainingCount / 10) * 100)}%` }} />
+    <div className="absolute bottom-0 left-0 h-0.5 bg-[var(--zenvy-gold)]/30 transition-all duration-1000" style={{ width: `${Math.min(100, (item.remainingCount / 10) * 100)}%` }} />
     <style jsx>{`
        input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
     `}</style>

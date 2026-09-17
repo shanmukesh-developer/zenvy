@@ -100,7 +100,7 @@ export default function ConfigTerminal() {
         {/* Elite Program Configuration */}
         <div className="glass-card p-10 space-y-8">
            <div className="flex items-center gap-4 mb-2">
-              <div className="w-10 h-10 bg-[#C9A84C]/20 rounded-xl flex items-center justify-center text-xl">💎</div>
+              <div className="w-10 h-10 bg-[var(--zenvy-gold)]/20 rounded-xl flex items-center justify-center text-xl">💎</div>
               <div>
                  <h4 className="text-lg font-black text-white uppercase tracking-tight">Elite Thresholds</h4>
                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Criteria for automated elite status</p>
@@ -187,14 +187,14 @@ export default function ConfigTerminal() {
               <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-4">
                  <div className="flex justify-between items-center">
                     <h5 className="text-xs font-black text-white uppercase tracking-wider">Minimum Order Value</h5>
-                    <span className="text-[10px] font-black text-[#C9A84C]">₹{configs.find(c => c.key === 'min_order_value')?.value || 0}</span>
+                    <span className="text-[10px] font-black text-[var(--zenvy-gold)]">₹{configs.find(c => c.key === 'min_order_value')?.value || 0}</span>
                  </div>
                  <input 
                    type="range" 
                    min="0" 
                    max="500" 
                    step="10"
-                   className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-[#C9A84C]"
+                   className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-[var(--zenvy-gold)]"
                    defaultValue={Number(configs.find(c => c.key === 'min_order_value')?.value || 0)}
                    onMouseUp={(e) => handleUpdateConfig('min_order_value', Number((e.target as HTMLInputElement).value))}
                  />

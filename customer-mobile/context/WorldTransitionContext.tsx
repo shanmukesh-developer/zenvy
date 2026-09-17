@@ -15,7 +15,7 @@ export const WORLD_THEMES: Record<WorldType, WorldTheme> = {
   bikepool: { label: 'ZENVY CO-RIDE', colors: ['#10B981', '#059669'] },
   others: { label: 'ZENVY OTHERS', colors: ['#8B5CF6', '#EC4899'] },
   comms: { label: 'ZENVY COMMS', colors: ['#F43F5E', '#FB923C'] },
-  'mega-basket': { label: 'MEGA BASKET', colors: ['#10B981', '#C9A84C'] }
+  'mega-basket': { label: 'MEGA BASKET', colors: ['#10B981', '#D4AF7A'] }
 };
 
 interface WorldTransitionContextType {

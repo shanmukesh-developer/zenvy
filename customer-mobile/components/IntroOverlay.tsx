@@ -270,7 +270,7 @@ const styles = StyleSheet.create({
   blobGold: {
     top: SH * 0.1,
     left: -SW * 0.4,
-    backgroundColor: 'rgba(201, 168, 76, 0.08)',
+    backgroundColor: 'rgba(212, 175, 122, 0.08)',
   },
   blobCrimson: {
     bottom: SH * 0.15,

@@ -30,14 +30,14 @@ const UserCard = memo(({ user, onToggleElite, onToggleBan, onAddWallet }: {
   const [amount, setAmount] = useState<string>('500');
   
   return (
-  <div className="glass-card p-8 group relative overflow-hidden border-white/5 group hover:border-[#C9A84C]/30 transition-all">
+  <div className="glass-card p-8 group relative overflow-hidden border-white/5 group hover:border-[var(--zenvy-gold)]/30 transition-all">
     <div className="flex items-start justify-between mb-8">
        <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-xl font-black text-white relative">
          {user.name[0]}
          {!user.isActive && <div className="absolute -top-2 -right-2 w-4 h-4 bg-red-500 rounded-full border-2 border-zinc-900 shadow-[0_0_10px_rgba(239,68,68,0.5)]" />}
        </div>
        <div className="flex flex-col gap-2 items-end">
-         <button onClick={() => onToggleElite(user._id, user.isElite)} className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border transition-all ${user.isElite ? 'bg-[#C9A84C]/20 text-[#C9A84C] border-[#C9A84C]/30' : 'bg-white/5 text-gray-500 border-white/10'}`}>
+         <button onClick={() => onToggleElite(user._id, user.isElite)} className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border transition-all ${user.isElite ? 'bg-[var(--zenvy-gold)]/20 text-[var(--zenvy-gold)] border-[var(--zenvy-gold)]/30' : 'bg-white/5 text-gray-500 border-white/10'}`}>
            {user.isElite ? 'Elite Mode' : 'Standard'}
          </button>
          <button onClick={() => onToggleBan(user._id, user.isActive)} className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border transition-all ${!user.isActive ? 'bg-red-500/20 text-red-500 border-red-500/30' : 'bg-white/5 text-gray-500 border-white/10 hover:border-red-500/30 hover:text-red-400'}`}>
@@ -178,12 +178,12 @@ export default function UserManagement() {
     <div className="space-y-10 animate-fade-in relative pb-20">
       <header className="flex justify-between items-center bg-white/5 p-8 rounded-[40px] border border-white/5 glass">
         <div>
-          <h2 className="text-3xl font-black text-white tracking-tighter uppercase">Nexus <span className="text-[#C9A84C]">Residents</span></h2>
+          <h2 className="text-3xl font-black text-white tracking-tighter uppercase">Nexus <span className="text-[var(--zenvy-gold)]">Residents</span></h2>
           <p className="text-gray-400 text-sm font-bold uppercase tracking-widest mt-1">Campus Tiering & Absolute Student Governance</p>
         </div>
         <div className="flex gap-2 bg-black/40 p-1.5 rounded-2xl border border-white/5">
-           <button onClick={() => setActiveTab('roster')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'roster' ? 'bg-[#C9A84C] text-black shadow-[0_0_20px_rgba(201,168,76,0.3)]' : 'text-gray-500 hover:text-white'}`}>Active Roster</button>
-           <button onClick={() => setActiveTab('audit')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'audit' ? 'bg-[#C9A84C] text-black shadow-[0_0_20px_rgba(201,168,76,0.3)]' : 'text-gray-500 hover:text-white'}`}>Audit Intel</button>
+           <button onClick={() => setActiveTab('roster')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'roster' ? 'bg-[var(--zenvy-gold)] text-black shadow-[0_0_20px_rgba(212,175,122,0.3)]' : 'text-gray-500 hover:text-white'}`}>Active Roster</button>
+           <button onClick={() => setActiveTab('audit')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'audit' ? 'bg-[var(--zenvy-gold)] text-black shadow-[0_0_20px_rgba(212,175,122,0.3)]' : 'text-gray-500 hover:text-white'}`}>Audit Intel</button>
         </div>
       </header>
 

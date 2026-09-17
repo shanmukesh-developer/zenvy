@@ -883,7 +883,7 @@ export default function ZenvyAfterDarkLounge() {
 
                       <View style={[s.messageWrap, isMe ? s.msgMe : s.msgOther]}>
                         {/* Sender name above bubble (always shown) */}
-                        <Text style={[s.msgSender, isMe ? { textAlign: 'right', color: '#C9A84C' } : { color: '#8B5CF6' }]}>
+                        <Text style={[s.msgSender, isMe ? { textAlign: 'right', color: '#D4AF7A' } : { color: '#8B5CF6' }]}>
                           {isMe ? `YOU (${(user?.name || 'SHANMUKH').toUpperCase()})` : (msg.senderName || 'FRIEND').toUpperCase()}
                         </Text>
 
@@ -899,7 +899,7 @@ export default function ZenvyAfterDarkLounge() {
                           {/* Replied-To / Quoted Quote Display */}
                           {replyData && (
                             <View style={[s.replyBubbleHeader, { borderLeftColor: isMe ? '#FFF' : '#8B5CF6' }]}>
-                              <Text style={[s.replyBubbleSender, { color: isMe ? '#C9A84C' : '#8B5CF6' }]}>
+                              <Text style={[s.replyBubbleSender, { color: isMe ? '#D4AF7A' : '#8B5CF6' }]}>
                                 {replyData.senderName?.toUpperCase()}
                               </Text>
                               <Text style={{ fontSize: 11, color: isMe ? 'rgba(255,255,255,0.8)' : txtSec }} numberOfLines={2}>

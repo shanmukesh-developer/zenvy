@@ -227,13 +227,13 @@ const AmbientBackground = React.memo(function AmbientBackground({ isStatic = Pla
   // Base64 transparent 1x1 image that allows high-performance native blurRadius on both platforms
   const blurDotSource = { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=' };
 
-  const orb1Color = isDark ? 'rgba(201, 168, 76, 0.11)' : 'rgba(255, 230, 180, 0.45)';
+  const orb1Color = isDark ? 'rgba(212, 175, 122, 0.11)' : 'rgba(255, 230, 180, 0.45)';
   const orb2Color = isDark ? 'rgba(239, 79, 95, 0.08)' : 'rgba(255, 200, 200, 0.35)';
   const orb3Color = isDark ? 'rgba(99, 102, 241, 0.07)' : 'rgba(200, 210, 255, 0.35)';
-  const dustColor = isDark ? 'rgba(201, 168, 76, 0.5)' : 'rgba(239, 79, 95, 0.3)';
-  const meshColor = isDark ? 'rgba(201, 168, 76, 0.07)' : 'rgba(239, 79, 95, 0.04)';
+  const dustColor = isDark ? 'rgba(212, 175, 122, 0.5)' : 'rgba(239, 79, 95, 0.3)';
+  const meshColor = isDark ? 'rgba(212, 175, 122, 0.07)' : 'rgba(239, 79, 95, 0.04)';
 
-  const meteorColor = isDark ? '#C9A84C' : '#EF4F5F';
+  const meteorColor = isDark ? '#D4AF7A' : '#EF4F5F';
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">

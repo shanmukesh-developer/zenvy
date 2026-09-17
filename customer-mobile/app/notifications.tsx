@@ -212,7 +212,7 @@ export default function NotificationsScreen() {
       switch (type) {
         case 'emergency': return ['#EF4F5F', '#EF4F5F'];
         case 'warning': return ['#F59E0B', '#F59E0B'];
-        case 'promo': return ['#C9A84C', '#C9A84C'];
+        case 'promo': return ['#D4AF7A', '#D4AF7A'];
         case 'friend_accepted': return ['#10B981', '#10B981'];
         case 'chat_message': return ['#3B82F6', '#3B82F6'];
         default: return ['#3B82F6', '#3B82F6'];

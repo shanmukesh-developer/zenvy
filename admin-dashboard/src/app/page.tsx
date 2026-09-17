@@ -142,7 +142,7 @@ const EventItem = memo(({ event, onResolve }: { event: OperationalEvent, onResol
     <div className="flex-1">
       <p className="text-[12px] font-black uppercase text-white tracking-widest">{event.type} Alert: {event.senderRole}</p>
       <p className="text-xs font-black text-white">{event.issueType || event.details}</p>
-      {event.orderId && <p className="text-[10px] text-white/50 font-black uppercase mt-1 tracking-tighter">Order ID: <span className="text-[#C9A84C]">#{event.orderId.slice(-6).toUpperCase()}</span></p>}
+      {event.orderId && <p className="text-[10px] text-white/50 font-black uppercase mt-1 tracking-tighter">Order ID: <span className="text-[var(--zenvy-gold)]">#{event.orderId.slice(-6).toUpperCase()}</span></p>}
     </div>
     <div className="flex flex-col items-end gap-2">
       <span className="text-[10px] font-black text-white opacity-40">
@@ -608,7 +608,7 @@ export default function AdminHome() {
 
         {/* ─── Gourmet Feed (Recent Activity) ─── */}
         <div className="space-y-6">
-           <h3 className="text-xl font-black tracking-tighter uppercase text-white">Tactical <span className="text-[#C9A84C]">Ops Stream</span></h3>
+           <h3 className="text-xl font-black tracking-tighter uppercase text-white">Tactical <span className="text-[var(--zenvy-gold)]">Ops Stream</span></h3>
            <div className="glass-card h-[450px] overflow-y-auto p-6 space-y-4 scrollbar-hide border-white/10">
               
               {/* Critical Alerts Priority */}
@@ -681,7 +681,7 @@ export default function AdminHome() {
             </button>
             <button 
               onClick={handleOverrideGlobalBatch}
-              className="px-8 py-4 bg-[#C9A84C] shadow-[0_0_30px_rgba(201,168,76,0.3)] rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] text-black hover:scale-105 transition-all"
+              className="px-8 py-4 bg-[var(--zenvy-gold)] shadow-[0_0_30px_rgba(212,175,122,0.3)] rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] text-black hover:scale-105 transition-all"
             >
                Override Global Batch
             </button>
@@ -737,7 +737,7 @@ export default function AdminHome() {
               socket.emit('admin_broadcast', { message: megaMsg.trim(), type: megaType });
               setTimeout(() => { setMegaMsg(''); setBroadcasting(false); }, 1500);
             }}
-            className="w-full mt-6 py-4 rounded-xl text-[13px] font-black uppercase tracking-widest bg-[#C9A84C] text-black hover:bg-yellow-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            className="w-full mt-6 py-4 rounded-xl text-[13px] font-black uppercase tracking-widest bg-[var(--zenvy-gold)] text-black hover:bg-yellow-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           >
             {broadcasting ? 'Broadcasting...' : 'Send Broadcast'}
           </button>

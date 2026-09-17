@@ -212,8 +212,8 @@ export default function FinanceConsole() {
               <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest mb-2">Active Commission</p>
               <h4 className="text-2xl font-black text-white">₹{report?.totalCommission.toLocaleString() || '0'}</h4>
             </div>
-            <div className="glass-card p-8 bg-[#C9A84C]/5">
-              <p className="text-[9px] font-black text-[#C9A84C] uppercase tracking-widest mb-2">Delivery Fees</p>
+            <div className="glass-card p-8 bg-[var(--zenvy-gold)]/5">
+              <p className="text-[9px] font-black text-[var(--zenvy-gold)] uppercase tracking-widest mb-2">Delivery Fees</p>
               <h4 className="text-2xl font-black text-white">₹{report?.totalDeliveryFees.toLocaleString() || '0'}</h4>
             </div>
             <div className="glass-card p-8 bg-white/5">

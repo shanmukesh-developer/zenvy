@@ -803,7 +803,7 @@ export function AddMenuItemForm({ onCancel, onSubmit, vendorType, initialData, i
               onClick={() => setFormData({...formData, isEliteOnly: !formData.isEliteOnly})}
               className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${
                 formData.isEliteOnly 
-                  ? 'bg-[#C9A84C]/10 border-[#C9A84C]/30 text-[#C9A84C]' 
+                  ? 'bg-[var(--zenvy-gold)]/10 border-[var(--zenvy-gold)]/30 text-[var(--zenvy-gold)]' 
                   : 'bg-white/5 border-white/10 text-gray-500 hover:border-white/20'
               }`}
             >

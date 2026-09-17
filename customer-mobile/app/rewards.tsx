@@ -266,7 +266,7 @@ export default function RewardsScreen() {
 
           <DopaminePressable
             style={{
-              backgroundColor: '#C9A84C',
+              backgroundColor: '#D4AF7A',
               paddingHorizontal: 32,
               paddingVertical: 14,
               borderRadius: 16,
@@ -363,7 +363,7 @@ export default function RewardsScreen() {
           
           <View style={[s.wheelCard, { backgroundColor: cardBg, borderColor: border }]}>
             {loadingEligibility ? (
-              <ActivityIndicator size="small" color="#C9A84C" style={{ marginBottom: 20 }} />
+              <ActivityIndicator size="small" color="#D4AF7A" style={{ marginBottom: 20 }} />
             ) : (
               <Text style={s.wheelSub}>
                 {eligibility && eligibility.spinsAvailable > 0 
@@ -495,7 +495,7 @@ export default function RewardsScreen() {
                   key={idx} 
                   style={[
                     s.rewardRow, 
-                    { backgroundColor: cardBg, borderColor: unlocked ? '#C9A84C' : border }
+                    { backgroundColor: cardBg, borderColor: unlocked ? '#D4AF7A' : border }
                   ]}
                 >
                   <View style={[s.rewardIconWrap, { backgroundColor: isDark ? '#1F1E24' : '#F0F0F3' }]}>
@@ -535,14 +535,14 @@ export default function RewardsScreen() {
                     style={[s.rewardRow, { backgroundColor: cardBg, borderColor: border, justifyContent: 'space-between' }]}
                   >
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
-                      <View style={[s.rewardIconWrap, { backgroundColor: 'rgba(201,168,76,0.1)' }]}>
+                      <View style={[s.rewardIconWrap, { backgroundColor: 'rgba(212,175,122,0.1)' }]}>
                         <Text style={{ fontSize: 20 }}>🎟️</Text>
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text style={[s.rewardTitle, { color: txt, letterSpacing: 1 }]} numberOfLines={1}>
                           {c.code}
                         </Text>
-                        <Text style={[s.rewardDesc, { color: '#C9A84C' }]}>
+                        <Text style={[s.rewardDesc, { color: '#D4AF7A' }]}>
                           {c.type === 'FREEDEL' ? 'Free Delivery Pass' : 'Exclusive Discount'}
                         </Text>
                       </View>
@@ -551,13 +551,13 @@ export default function RewardsScreen() {
                     <DopaminePressable
                       style={[
                         s.statusBox,
-                        { backgroundColor: isCopied ? '#22c55e' : 'rgba(201,168,76,0.15)', borderWidth: 1, borderColor: isCopied ? '#22c55e' : '#C9A84C' }
+                        { backgroundColor: isCopied ? '#22c55e' : 'rgba(212,175,122,0.15)', borderWidth: 1, borderColor: isCopied ? '#22c55e' : '#D4AF7A' }
                       ]}
                       onPress={() => handleCopyCoupon(c.code)}
                       sound="click"
                       activeScale={0.9}
                     >
-                      <Text style={[s.statusBoxText, { color: isCopied ? '#FFF' : '#C9A84C', fontWeight: '900' }]}>
+                      <Text style={[s.statusBoxText, { color: isCopied ? '#FFF' : '#D4AF7A', fontWeight: '900' }]}>
                         {isCopied ? 'COPIED! ✓' : 'COPY CODE'}
                       </Text>
                     </DopaminePressable>
@@ -579,7 +579,7 @@ const s = StyleSheet.create({
   center: { alignItems: 'center', justifyContent: 'center' },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 16, borderBottomWidth: 1 },
   backBtn: { width: 38, height: 38, borderRadius: 19, borderWidth: 1, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-  subText: { fontSize: 8, fontWeight: '900', color: '#C9A84C', letterSpacing: 2 },
+  subText: { fontSize: 8, fontWeight: '900', color: '#D4AF7A', letterSpacing: 2 },
   title: { fontSize: 18, fontWeight: '900' },
 
   scrollContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 40 },
@@ -587,11 +587,11 @@ const s = StyleSheet.create({
   streakHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
   cardLabel: { fontSize: 8, fontWeight: '900', color: '#888', letterSpacing: 1 },
   streakVal: { fontSize: 24, fontWeight: '900', marginTop: 2 },
-  tierBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, backgroundColor: 'rgba(201,168,76,0.15)', borderWidth: 1, borderColor: '#C9A84C' },
-  tierBadgeText: { fontSize: 8, fontWeight: '900', color: '#C9A84C', letterSpacing: 0.5 },
+  tierBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, backgroundColor: 'rgba(212,175,122,0.15)', borderWidth: 1, borderColor: '#D4AF7A' },
+  tierBadgeText: { fontSize: 8, fontWeight: '900', color: '#D4AF7A', letterSpacing: 0.5 },
 
   progressContainer: { height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.05)', overflow: 'hidden', marginBottom: 12 },
-  progressBar: { height: '100%', borderRadius: 3, backgroundColor: '#C9A84C' },
+  progressBar: { height: '100%', borderRadius: 3, backgroundColor: '#D4AF7A' },
   cardDesc: { fontSize: 9, fontWeight: '700', lineHeight: 14 },
 
   sectionTitle: { fontSize: 10, fontWeight: '900', letterSpacing: 2, marginBottom: 12, marginLeft: 4 },
@@ -600,25 +600,25 @@ const s = StyleSheet.create({
 
   // Tactile Pointer
   pointerContainer: { zIndex: 50, marginBottom: -12, transformOrigin: 'top center' },
-  pointerIcon: { fontSize: 24, color: '#C9A84C', textShadowColor: 'rgba(201,168,76,0.5)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 6 },
+  pointerIcon: { fontSize: 24, color: '#D4AF7A', textShadowColor: 'rgba(212,175,122,0.5)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 6 },
   
   // Wheel Frame
   wheelFrame: { width: 240, height: 240, position: 'relative', justifyContent: 'center', alignItems: 'center', marginBottom: 24 },
-  chaseBulb: { position: 'absolute', width: 8, height: 8, borderRadius: 4, backgroundColor: '#C9A84C', zIndex: 40, shadowColor: '#C9A84C', shadowOpacity: 0.8, shadowRadius: 6 },
+  chaseBulb: { position: 'absolute', width: 8, height: 8, borderRadius: 4, backgroundColor: '#D4AF7A', zIndex: 40, shadowColor: '#D4AF7A', shadowOpacity: 0.8, shadowRadius: 6 },
   
   // Wheel Body
-  wheelBody: { width: 220, height: 220, borderRadius: 110, borderWidth: 4, borderColor: '#C9A84C', backgroundColor: '#0B0A0C', overflow: 'hidden', justifyContent: 'center', alignItems: 'center', position: 'relative', shadowColor: '#C9A84C', shadowOpacity: 0.25, shadowRadius: 15, elevation: 8 },
-  wheelDividerLine: { position: 'absolute', top: 0, bottom: 0, left: 107.5, width: 1.5, backgroundColor: 'rgba(201,168,76,0.22)' },
+  wheelBody: { width: 220, height: 220, borderRadius: 110, borderWidth: 4, borderColor: '#D4AF7A', backgroundColor: '#0B0A0C', overflow: 'hidden', justifyContent: 'center', alignItems: 'center', position: 'relative', shadowColor: '#D4AF7A', shadowOpacity: 0.25, shadowRadius: 15, elevation: 8 },
+  wheelDividerLine: { position: 'absolute', top: 0, bottom: 0, left: 107.5, width: 1.5, backgroundColor: 'rgba(212,175,122,0.22)' },
   
   // Text segments
   sliceTextWrap: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, justifyContent: 'flex-start', alignItems: 'center', paddingTop: 20 },
   sliceText: { fontSize: 7, fontWeight: '900', color: '#EBE3CE', letterSpacing: 0.5, textTransform: 'uppercase', textShadowColor: '#000', textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 2 },
   
   // Core center badge
-  coreBadge: { position: 'absolute', width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(11,10,12,0.95)', borderWidth: 2, borderColor: '#C9A84C', justifyContent: 'center', alignItems: 'center', zIndex: 30, shadowColor: '#C9A84C', shadowOpacity: 0.4, shadowRadius: 6 },
+  coreBadge: { position: 'absolute', width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(11,10,12,0.95)', borderWidth: 2, borderColor: '#D4AF7A', justifyContent: 'center', alignItems: 'center', zIndex: 30, shadowColor: '#D4AF7A', shadowOpacity: 0.4, shadowRadius: 6 },
 
-  spinBtn: { width: '100%', height: 46, backgroundColor: '#C9A84C', borderRadius: 14, alignItems: 'center', justifyContent: 'center', ...SHADOWS.goldGlow },
-  spinBtnDisabled: { backgroundColor: 'rgba(201,168,76,0.45)' },
+  spinBtn: { width: '100%', height: 46, backgroundColor: '#D4AF7A', borderRadius: 14, alignItems: 'center', justifyContent: 'center', ...SHADOWS.goldGlow },
+  spinBtnDisabled: { backgroundColor: 'rgba(212,175,122,0.45)' },
   spinBtnText: { fontSize: 10, fontWeight: '900', color: '#000', letterSpacing: 1.5 },
 
   resultBox: { width: '100%', padding: 14, borderRadius: 16, backgroundColor: 'rgba(34,197,94,0.06)', borderWidth: 1.5, borderColor: 'rgba(34,197,94,0.18)', marginTop: 18, alignItems: 'center' },

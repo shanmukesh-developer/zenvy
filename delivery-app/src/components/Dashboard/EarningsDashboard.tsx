@@ -123,8 +123,8 @@ export default function EarningsDashboard({ onClose, stats, apiUrl }: EarningsDa
             </div>
             <div className="w-px h-8 bg-white/10" />
             <div>
-              <p className="text-[10px] text-[#C9A84C] uppercase tracking-widest font-bold">ZenPoints</p>
-              <p className="text-xl font-black text-[#C9A84C]">{stats.zenPoints}</p>
+              <p className="text-[10px] text-[#D4AF7A] uppercase tracking-widest font-bold">ZenPoints</p>
+              <p className="text-xl font-black text-[#D4AF7A]">{stats.zenPoints}</p>
             </div>
           </div>
         </div>

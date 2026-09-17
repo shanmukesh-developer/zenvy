@@ -458,8 +458,8 @@ const startServer = async () => {
     .logo-container {
       width: 64px;
       height: 64px;
-      background: rgba(201, 168, 76, 0.1);
-      border: 1px solid rgba(201, 168, 76, 0.3);
+      background: rgba(212, 175, 122, 0.1);
+      border: 1px solid rgba(212, 175, 122, 0.3);
       border-radius: 16px;
       display: flex;
       align-items: center;
@@ -476,7 +476,7 @@ const startServer = async () => {
       margin-bottom: 8px;
     }
     h1 span {
-      color: #C9A84C;
+      color: #D4AF7A;
     }
     p.subtitle {
       font-size: 12px;
@@ -486,7 +486,7 @@ const startServer = async () => {
     .spinner {
       border: 3px solid rgba(255, 255, 255, 0.1);
       border-radius: 50%;
-      border-top: 3px solid #C9A84C;
+      border-top: 3px solid #D4AF7A;
       width: 40px;
       height: 40px;
       animation: spin 1s linear infinite;
@@ -539,7 +539,7 @@ const startServer = async () => {
     .input-label {
       font-size: 10px;
       font-weight: 900;
-      color: #C9A84C;
+      color: #D4AF7A;
       text-transform: uppercase;
       letter-spacing: 1.5px;
       margin-bottom: 8px;
@@ -571,11 +571,11 @@ const startServer = async () => {
       transition: border-color 0.2s;
     }
     input:focus {
-      border-color: rgba(201, 168, 76, 0.4);
+      border-color: rgba(212, 175, 122, 0.4);
     }
     .btn-submit {
       width: 100%;
-      background-color: #C9A84C;
+      background-color: #D4AF7A;
       color: #000000;
       border: none;
       padding: 16px;
@@ -585,11 +585,11 @@ const startServer = async () => {
       text-transform: uppercase;
       letter-spacing: 1.5px;
       cursor: pointer;
-      box-shadow: 0 4px 14px rgba(201, 168, 76, 0.2);
+      box-shadow: 0 4px 14px rgba(212, 175, 122, 0.2);
       transition: background 0.2s;
     }
     .btn-submit:hover {
-      background-color: #E4C875;
+      background-color: #F0D9A8;
     }
     .btn-back {
       width: 100%;

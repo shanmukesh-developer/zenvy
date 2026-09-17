@@ -74,10 +74,10 @@ export default function ThemedAlert() {
 
   if (!visible) return null;
 
-  const activeBg = isDark ? '#141416' : '#FFFFFF';
-  const activeText = isDark ? '#FFFFFF' : '#111827';
-  const activeSubText = isDark ? '#9CA3AF' : '#6B7280';
-  const activeBorder = isDark ? 'rgba(201, 168, 76, 0.3)' : 'rgba(0, 0, 0, 0.08)';
+  const activeBg = isDark ? COLORS.bgCard : COLORS.bgLightCard;
+  const activeText = isDark ? COLORS.textPrimary : COLORS.textDark;
+  const activeSubText = isDark ? COLORS.textSecondary : COLORS.textDarkSecondary;
+  const activeBorder = isDark ? COLORS.borderGold : COLORS.borderLight;
 
   return (
     <Modal visible={visible} transparent={true} animationType="none" onRequestClose={() => handlePress()}>

@@ -12,8 +12,8 @@ export const COLORS = {
   // Primary Accents
   gold: '#D4AF7A',
   goldLight: '#F0D9A8',
-  goldMuted: 'rgba(201, 168, 76, 0.15)',
-  goldBorder: 'rgba(201, 168, 76, 0.4)',
+  goldMuted: 'rgba(212, 175, 122, 0.15)',
+  goldBorder: 'rgba(212, 175, 122, 0.4)',
   red: '#EF4F5F',
   redDark: '#D43F4F',
 
@@ -33,7 +33,7 @@ export const COLORS = {
   // Borders
   borderDark: 'rgba(255, 255, 255, 0.08)',
   borderLight: 'rgba(0, 0, 0, 0.08)',
-  borderGold: 'rgba(201, 168, 76, 0.3)',
+  borderGold: 'rgba(212, 175, 122, 0.3)',
 
   // Overlays
   overlayDark: 'rgba(0, 0, 0, 0.6)',
@@ -90,9 +90,9 @@ export const DARK_THEME = {
   textMuted: '#8B8B93',
   border: 'rgba(255, 255, 255, 0.08)',
   borderSubtle: 'rgba(255, 255, 255, 0.04)',
-  borderGold: 'rgba(201, 168, 76, 0.4)',
+  borderGold: 'rgba(212, 175, 122, 0.4)',
   gold: '#D4AF7A',
-  goldMuted: 'rgba(201, 168, 76, 0.15)',
+  goldMuted: 'rgba(212, 175, 122, 0.15)',
   red: '#EF4F5F',
   redMuted: 'rgba(239, 79, 95, 0.15)',
   inputBg: 'rgba(255, 255, 255, 0.05)',

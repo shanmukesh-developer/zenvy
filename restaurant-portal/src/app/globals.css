@@ -14,7 +14,7 @@ html {
 
 body {
   background: radial-gradient(circle at top right, rgba(249, 115, 22, 0.03), transparent 600px),
-              radial-gradient(circle at bottom left, rgba(201, 168, 76, 0.02), transparent 600px),
+              radial-gradient(circle at bottom left, rgba(212, 175, 122, 0.02), transparent 600px),
               #050506;
   color: var(--foreground);
   font-family: 'Inter', system-ui, sans-serif;

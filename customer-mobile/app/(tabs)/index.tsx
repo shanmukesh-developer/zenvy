@@ -487,7 +487,7 @@ export default function HomeScreen() {
   const cardBg = isDark ? 'rgba(255, 255, 255, 0.08)' : colors.card;
   const txt = colors.text;
   const txtSec = colors.textSecondary;
-  const border = isDark ? 'rgba(201, 168, 76, 0.25)' : colors.border;
+  const border = isDark ? COLORS.borderGold : colors.border;
   const bg = colors.bg;
 
   const goldColor = isDark ? COLORS.gold : colors.gold;

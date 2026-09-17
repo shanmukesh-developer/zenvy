@@ -647,11 +647,11 @@ const MenuItemCard = memo(({ item, onToggleElite, onToggleAvailability, onEdit, 
   onEdit: (i: MenuItem) => void,
   onDelete: (id: string) => void 
 }) => (
-  <div className={`glass-card p-6 group transition-all duration-300 ${!item.isAvailable ? 'opacity-60 grayscale-[0.5]' : ''} ${item.isEliteOnly ? 'border-[#C9A84C]/30 bg-[#C9A84C]/[0.02]' : 'border-white/5'}`}>
+  <div className={`glass-card p-6 group transition-all duration-300 ${!item.isAvailable ? 'opacity-60 grayscale-[0.5]' : ''} ${item.isEliteOnly ? 'border-[var(--zenvy-gold)]/30 bg-[var(--zenvy-gold)]/[0.02]' : 'border-white/5'}`}>
      <div className="flex gap-6">
         <div className="w-20 h-20 rounded-2xl overflow-hidden border border-white/10 shrink-0 relative bg-slate-900">
            <Image src={item.imageUrl || item.image || "/assets/placeholder.png"} fill style={{ objectFit: 'cover' }} alt={item.name} />
-           {item.isEliteOnly && <div className="absolute top-1 left-1 bg-[#C9A84C] text-black text-[7px] font-black px-1 rounded">ELITE</div>}
+           {item.isEliteOnly && <div className="absolute top-1 left-1 bg-[var(--zenvy-gold)] text-black text-[7px] font-black px-1 rounded">ELITE</div>}
            {!item.isAvailable && <div className="absolute inset-0 bg-red-900/40 flex items-center justify-center"><span className="text-[8px] font-black text-white bg-red-600 px-1.5 py-0.5 rounded uppercase">Out of Stock</span></div>}
         </div>
         <div className="flex-1 min-w-0 flex flex-col justify-between py-1">
@@ -688,7 +688,7 @@ const MenuItemCard = memo(({ item, onToggleElite, onToggleAvailability, onEdit, 
                  </button>
                  <button 
                    onClick={() => onToggleElite(item)}
-                   className={`p-1.5 rounded-lg border transition-all ${item.isEliteOnly ? 'bg-[#C9A84C] border-[#C9A84C] text-black' : 'bg-white/5 border-white/10 text-gray-500 hover:border-white/20'}`}
+                   className={`p-1.5 rounded-lg border transition-all ${item.isEliteOnly ? 'bg-[var(--zenvy-gold)] border-[var(--zenvy-gold)] text-black' : 'bg-white/5 border-white/10 text-gray-500 hover:border-white/20'}`}
                  >
                    <span className="text-[8px] font-black uppercase">{item.isEliteOnly ? '★ Elite' : '☆ Standard'}</span>
                  </button>

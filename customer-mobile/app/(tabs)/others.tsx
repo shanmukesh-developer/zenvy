@@ -1563,7 +1563,7 @@ export default function OthersScreen() {
   const goldBorderColor = isDark ? COLORS.goldBorder : 'rgba(239, 79, 95, 0.4)';
   const goldMutedColor = isDark ? COLORS.goldMuted : 'rgba(239, 79, 95, 0.15)';
   const goldGlowShadow = isDark ? SHADOWS.goldGlow : SHADOWS.redGlow;
-  const accentGradient: [string, string] = isDark ? ['#C9A84C', '#E4C875'] : ['#EF4F5F', '#D43F4F'];
+  const accentGradient: [string, string] = isDark ? [COLORS.gold, COLORS.goldLight] : ['#EF4F5F', '#D43F4F'];
 
   const userLocation = (user?.hostelBlock ? `${user.hostelBlock}${user?.roomNumber || user?.roomNo ? `, Room ${user.roomNumber || user.roomNo}` : ''}` : null) || user?.defaultAddress || user?.address || 'SRM University AP';
 
@@ -3785,7 +3785,7 @@ export default function OthersScreen() {
               {/* Spin Wheel Visual Element */}
               <View style={{ width: 260, height: 260, justifyContent: 'center', alignItems: 'center', marginVertical: 12, position: 'relative' }}>
                 {/* Pointer ▼ with bounce */}
-                <Animated.Text style={{ fontSize: 26, color: '#C9A84C', position: 'absolute', top: -16, zIndex: 15, textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 4, transform: [{ translateY: pointerBounce }] }}>▼</Animated.Text>
+                <Animated.Text style={{ fontSize: 26, color: '#D4AF7A', position: 'absolute', top: -16, zIndex: 15, textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 4, transform: [{ translateY: pointerBounce }] }}>▼</Animated.Text>
                 
                 {/* Outer Rim */}
                 <View style={{
@@ -3793,11 +3793,11 @@ export default function OthersScreen() {
                   height: 250,
                   borderRadius: 125,
                   borderWidth: 6,
-                  borderColor: '#C9A84C',
+                  borderColor: '#D4AF7A',
                   backgroundColor: '#0B0B0D',
                   justifyContent: 'center',
                   alignItems: 'center',
-                  shadowColor: '#C9A84C',
+                  shadowColor: '#D4AF7A',
                   shadowOffset: { width: 0, height: 4 },
                   shadowOpacity: 0.25,
                   shadowRadius: 8,
@@ -3826,7 +3826,7 @@ export default function OthersScreen() {
                           position: 'absolute',
                           width: 1.5,
                           height: 119,
-                          backgroundColor: 'rgba(201, 168, 76, 0.25)',
+                          backgroundColor: 'rgba(212, 175, 122, 0.25)',
                           top: 0,
                           left: 118,
                           transform: [
@@ -3900,10 +3900,10 @@ export default function OthersScreen() {
                       width: 58,
                       height: 58,
                       borderRadius: 29,
-                      backgroundColor: '#C9A84C',
+                      backgroundColor: '#D4AF7A',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      shadowColor: '#C9A84C',
+                      shadowColor: '#D4AF7A',
                       shadowOffset: { width: 0, height: 4 },
                       shadowOpacity: 0.6,
                       shadowRadius: 6,

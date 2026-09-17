@@ -28,7 +28,7 @@ export default function RootLayout({
           {/* Cinematic Backdrop with Hardware Acceleration */}
           <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden" style={{ transform: 'translate3d(0,0,0)' }}>
             <div className="absolute top-[-10%] right-[-10%] w-[450px] h-[450px] bg-blue-600/10 blur-[70px] rounded-full animate-pulse-soft" />
-            <div className="absolute bottom-[-10%] left-[-10%] w-[350px] h-[350px] bg-[#C9A84C]/5 blur-[70px] rounded-full animate-pulse-soft" />
+            <div className="absolute bottom-[-10%] left-[-10%] w-[350px] h-[350px] bg-[var(--zenvy-gold)]/5 blur-[70px] rounded-full animate-pulse-soft" />
             <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-[0.03] mix-blend-overlay" />
           </div>
 

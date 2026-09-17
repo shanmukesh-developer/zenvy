@@ -6,7 +6,7 @@
   --foreground-rgb: 226, 232, 240;
   --background-start-rgb: 10, 10, 18;
   --background-end-rgb: 2, 2, 5;
-  --zenvy-gold: #C9A84C;
+  --zenvy-gold: #D4AF7A;
   --nexus-blue: #2563EB;
   --nexus-emerald: #10B981;
 }
@@ -18,7 +18,7 @@ html {
 body {
   color: rgb(var(--foreground-rgb));
   background: radial-gradient(circle at top right, rgba(37, 99, 235, 0.05), transparent 400px),
-              radial-gradient(circle at bottom left, rgba(201, 168, 76, 0.03), transparent 400px),
+              radial-gradient(circle at bottom left, rgba(212, 175, 122, 0.03), transparent 400px),
               rgb(var(--background-start-rgb));
   min-height: 100vh;
   font-family: 'Outfit', 'Inter', sans-serif;
@@ -42,7 +42,7 @@ body {
   }
 
   .neon-border-gold {
-    @apply border border-[#C9A84C]/20 shadow-[0_0_30px_rgba(201,168,76,0.1)];
+    @apply border border-[#D4AF7A]/20 shadow-[0_0_30px_rgba(212,175,122,0.1)];
   }
 
   .sidebar-link {
@@ -125,7 +125,7 @@ body {
 .bg-mesh {
   background-image: 
     radial-gradient(at 0% 0%, rgba(37, 99, 235, 0.1) 0px, transparent 50%),
-    radial-gradient(at 100% 0%, rgba(201, 168, 76, 0.05) 0px, transparent 50%);
+    radial-gradient(at 100% 0%, rgba(212, 175, 122, 0.05) 0px, transparent 50%);
 }
 
 /* Nexus Form Inputs */

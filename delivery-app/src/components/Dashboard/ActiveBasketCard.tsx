@@ -160,7 +160,7 @@ export default function ActiveBasketCard({ basket, apiUrl, onRefresh }: ActiveBa
           <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mt-0.5">
             Room: {basket.user?.roomNumber || 'N/A'}, Block: {basket.user?.hostelBlock || 'N/A'}
           </p>
-          <p className="text-[9px] font-bold text-[#C9A84C]/80 uppercase tracking-widest mt-1">
+          <p className="text-[9px] font-bold text-[#D4AF7A]/80 uppercase tracking-widest mt-1">
             Order #{basket.id.slice(-6).toUpperCase()}
           </p>
         </div>
@@ -324,14 +324,14 @@ export default function ActiveBasketCard({ basket, apiUrl, onRefresh }: ActiveBa
                   placeholder="e.g. 1234"
                   value={pinValue}
                   onChange={(e) => setPinValue(e.target.value.replace(/\D/g, ''))}
-                  className="w-full bg-black/60 border border-[#C9A84C]/30 rounded-xl py-3 text-sm text-center font-black tracking-[0.4em] text-white focus:outline-none focus:border-[#C9A84C]"
+                  className="w-full bg-black/60 border border-[#D4AF7A]/30 rounded-xl py-3 text-sm text-center font-black tracking-[0.4em] text-white focus:outline-none focus:border-[#D4AF7A]"
                 />
               </div>
 
               <button
                 type="submit"
                 disabled={submittingPin || pinValue.length !== 4}
-                className="w-full py-4 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] bg-[#C9A84C] text-black hover:bg-[#d4b96a] transition-all disabled:opacity-40"
+                className="w-full py-4 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] bg-[#D4AF7A] text-black hover:bg-[#d4b96a] transition-all disabled:opacity-40"
               >
                 {submittingPin ? 'Verifying PIN...' : 'Verify PIN & Deliver'}
               </button>

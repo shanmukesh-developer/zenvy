@@ -111,7 +111,7 @@ export default function NexusLayoutClient({
               <p className="text-xs font-black text-white">SRM Admin</p>
               <p className="text-[11px] text-emerald-500 font-bold uppercase tracking-wider">Root Access Active</p>
             </div>
-            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#C9A84C] to-[#E5C973] p-[1px]">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[var(--zenvy-gold)] to-[#F0D9A8] p-[1px]">
               <div className="w-full h-full rounded-full bg-[#0A0A0F] flex items-center justify-center text-lg">
                 👤
               </div>
