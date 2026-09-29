@@ -141,7 +141,9 @@ export default function SupportScreen() {
       <ScrollView 
         style={{ flex: 1 }} 
         showsVerticalScrollIndicator={false} 
-        contentContainerStyle={s.scrollContent}
+        contentContainerStyle={[s.scrollContent, { paddingBottom: 240 }]}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={goldColor} />}
       >
         {/* Instant Campus Helpline Card */}

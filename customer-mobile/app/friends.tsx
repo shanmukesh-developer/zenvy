@@ -1,5 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import React, { useState, useEffect, useRef } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as LocalAuthentication from 'expo-local-authentication';
 import {
   View,
   Text,
@@ -18,14 +20,17 @@ import {
   Animated,
   Vibration,
   SafeAreaView,
-  StatusBar
+  StatusBar,
+  Share
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Polyline } from 'react-native-svg';
-import { PanResponder } from 'react-native';
 import * as Contacts from 'expo-contacts';
+import { Ionicons } from '@expo/vector-icons';
+import Svg, { Line, Circle } from 'react-native-svg';
+import QRCode from 'react-native-qrcode-svg';
+import Clipboard from '@react-native-clipboard/clipboard';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { ENDPOINTS, API_URL } from '../constants/api';
 import { apiFetch } from '../utils/auth';
@@ -34,16 +39,50 @@ import { useTheme } from '../context/ThemeContext';
 import { connectSocket } from '../utils/socket';
 import { FloatingPulse } from '../components/AnimatedSection';
 import DopaminePressable from '../components/DopaminePressable';
+import GroveScreen from '../components/grove/GroveScreen';
+import { mapFriends, type BackendFriend } from '../components/grove/mapFriendData';
+
+// Helpers for Grove UI
+const getInitials = (name: string) => {
+  if (!name) return '??';
+  const parts = name.split(' ');
+  return parts.length > 1 ? `${parts[0][0]}${parts[1][0]}`.toUpperCase() : name.substring(0,2).toUpperCase();
+};
+const getFirstName = (name: string) => {
+  return name ? name.split(' ')[0] : 'Unknown';
+};
+const getThemeColorForNode = (node: any) => {
+  if (!node) return '#FF1493'; // Fallback for "YOU"
+  const theme = CHAT_THEMES.find(t => t.name === node.theme);
+  return theme ? theme.accent : '#3b82f6';
+};
 
 const { width: SW, height: SH } = Dimensions.get('window');
 
 // Visual styling constants
-const GRAPHITE_BG = '#0E1116';
+
+export const VIBE_OPTIONS = [
+  { id: 'Roomie', label: 'Roomie', emoji: '⚡', color: '#6E5BFF', desc: 'Squad up for late night food runs & mess escapes' },
+  { id: 'Midnight Foodie', label: 'Foodie', emoji: '🍕', color: '#FF7A59', desc: 'Chai, Maggi, treat sharing & split bills' },
+  { id: 'Snack Partner', label: 'Partner', emoji: '🎯', color: '#00F2FE', desc: 'Canteen buddy & craving companion' },
+  { id: 'Study Gang', label: 'Study', emoji: '📚', color: '#F7971E', desc: 'Exam night fuel & caffeine alarms' },
+  { id: 'Secret Nibbler', label: 'Nibbler', emoji: '🤫', color: '#FF1493', desc: 'Mystery snack drops & anonymous gifting' },
+];
+
+export const ICEBREAKER_PROMPTS = [
+  'Chai & Maggi sponsor? ☕🍜',
+  'Midnight cravings squad 🚨🍕',
+  'Hostel block neighbour linkup 🏢⚡',
+  'Next canteen treat on you? 😋🎁',
+  'Roommate emergency snack backup 🍫🚀',
+];
+
+const GRAPHITE_BG = '#04050d';
 const VIOLET_ACCENT = '#6E5BFF';
 const EMBER_ORANGE = '#FF7A59';
 
 const ZENVY_STICKERS = [
-  '⚡', '🔥', '🏆', '🎁', '🚀', '🤫', '💖', '💀', '🎉', '🍔', '🍕', '🍦'
+  '🍃', '🌿', '🌱', '🌸', '🌳', '🌰', '🍄', '✨', '⚡', '🔥', '🏆', '🎁', '🚀', '🤫', '💖', '💀', '🎉'
 ];
 
 const CAMPUS_TRUTHS = [
@@ -193,10 +232,10 @@ const CAMPUS_DARES = [
 ];
 
 const CHAT_THEMES = [
-  { name: 'friendship', colors: ['#140D07', '#25170B', '#160E08'], accent: '#FF7A59' },
-  { name: 'crazy', colors: ['#0F0C20', '#1C0B36', '#09151B'], accent: '#a855f7' },
-  { name: 'love', colors: ['#1F080F', '#350A19', '#1C060E'], accent: '#ec4899' },
-  { name: 'graphite', colors: ['#0E1116', '#171B22', '#0E1116'], accent: '#6E5BFF' }
+  { name: 'grove', label: 'Enchanted Grove', colors: ['#071610', '#0f2b1f', '#06130d'], accent: '#10B981' },
+  { name: 'autumn', label: 'Oak & Amber', colors: ['#1a1007', '#2b1b0e', '#130a04'], accent: '#F59E0B' },
+  { name: 'blossom', label: 'Cherry Blossom', colors: ['#1a0c16', '#2d1425', '#12070e'], accent: '#F472B6' },
+  { name: 'nightfall', label: 'Starry Canopy', colors: ['#080f1e', '#121e38', '#060a14'], accent: '#818CF8' }
 ];
 
 const STATUS_GRADIENTS: readonly (readonly [string, string])[] = [
@@ -238,283 +277,9 @@ const getAvatarUrl = (profileImage: string | null, id: string) => {
   return placeholders[index];
 };
 
-// Reusable hook for orbit calculations in polar coordinates
-function useOrbitLayout(
-  center: { x: number; y: number },
-  items: any[],
-  minRadius: number,
-  maxRadius: number,
-  isPending: boolean = false
-) {
-  return React.useMemo(() => {
-    if (!items || items.length === 0) return [];
-    
-    return items.map((item, idx) => {
-      // Offset starting angle to make it look organic
-      const baseAngle = -Math.PI / 2;
-      const angle = baseAngle + (idx * 2 * Math.PI) / items.length;
-      
-      let radius = maxRadius;
-      if (!isPending) {
-        // Higher streaks = closer to center (smaller radius)
-        const streak = item.streakCount || 0;
-        const streakWeight = Math.min(streak / 20, 1);
-        radius = maxRadius - (maxRadius - minRadius) * streakWeight;
-      } else {
-        // Pending items populate the outer orbit
-        radius = maxRadius + 45;
-      }
-      
-      const x = center.x + radius * Math.cos(angle);
-      const y = center.y + radius * Math.sin(angle);
-      
-      return {
-        ...item,
-        x,
-        y,
-        angle,
-        radius,
-      };
-    });
-  }, [center.x, center.y, items, minRadius, maxRadius, isPending]);
-}
 
-const DEFAULT_CAMPUS_FRIENDS = [
-  {
-    friendshipId: 'fr-seed-1',
-    friendId: 'f-101',
-    name: 'Aarav Malhotra',
-    originalName: 'Aarav Malhotra',
-    nickname: 'Aarav (Hostel 2)',
-    phone: '+91 9876543210',
-    profileImage: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=120&q=80',
-    streakCount: 14,
-    statusText: 'Midnight coding sprint 💻⚡',
-    statusEmoji: '⚡',
-    statusBgIndex: 1,
-    statusSeenBy: [],
-    lastInteractionAt: new Date(Date.now() - 1000 * 60 * 12).toISOString(),
-    theme: 'graphite',
-    conversationId: 'conv-seed-1'
-  },
-  {
-    friendshipId: 'fr-seed-2',
-    friendId: 'f-102',
-    name: 'Priya Sharma',
-    originalName: 'Priya Sharma',
-    nickname: 'Priya (Block C)',
-    phone: '+91 9876543211',
-    profileImage: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&q=80',
-    streakCount: 9,
-    statusText: 'Central library study grind 📚✨',
-    statusEmoji: '📚',
-    statusBgIndex: 2,
-    statusSeenBy: [],
-    lastInteractionAt: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
-    theme: 'crazy',
-    conversationId: 'conv-seed-2'
-  },
-  {
-    friendshipId: 'fr-seed-3',
-    friendId: 'f-103',
-    name: 'Vikram Reddy',
-    originalName: 'Vikram Reddy',
-    nickname: 'Vikram (Mech)',
-    phone: '+91 9876543212',
-    profileImage: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&q=80',
-    streakCount: 6,
-    statusText: 'Canteen hot samosa & chai ☕🔥',
-    statusEmoji: '☕',
-    statusBgIndex: 3,
-    statusSeenBy: [],
-    lastInteractionAt: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
-    theme: 'friendship',
-    conversationId: 'conv-seed-3'
-  },
-  {
-    friendshipId: 'fr-seed-4',
-    friendId: 'f-104',
-    name: 'Sneha Roy',
-    originalName: 'Sneha Roy',
-    nickname: 'Sneha (Design)',
-    phone: '+91 9876543213',
-    profileImage: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=120&q=80',
-    streakCount: 18,
-    statusText: 'Design portfolio review done 🎉',
-    statusEmoji: '🎉',
-    statusBgIndex: 4,
-    statusSeenBy: [],
-    lastInteractionAt: new Date(Date.now() - 1000 * 60 * 240).toISOString(),
-    theme: 'love',
-    conversationId: 'conv-seed-4'
-  },
-  {
-    friendshipId: 'fr-seed-5',
-    friendId: 'f-105',
-    name: 'Karthik Nair',
-    originalName: 'Karthik Nair',
-    nickname: 'Karthik (Sports)',
-    phone: '+91 9876543214',
-    profileImage: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=120&q=80',
-    streakCount: 11,
-    statusText: 'Campus gym chest day 🏋️‍♂️',
-    statusEmoji: '🔥',
-    statusBgIndex: 0,
-    statusSeenBy: [],
-    lastInteractionAt: new Date(Date.now() - 1000 * 60 * 360).toISOString(),
-    theme: 'graphite',
-    conversationId: 'conv-seed-5'
-  }
-];
-
-const DEFAULT_SEED_MESSAGES: Record<string, any[]> = {
-  'conv-seed-1': [
-    { id: 'm-1', senderId: 'f-101', senderName: 'Aarav Malhotra', text: 'Bro are you ordering Zenvy food tonight? 🍔🔥', createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString() },
-    { id: 'm-2', senderId: 'self', senderName: 'You', text: 'Yeah thinking of Handi Biryani from Royal Handi!', createdAt: new Date(Date.now() - 1000 * 60 * 25).toISOString() },
-    { id: 'm-3', senderId: 'f-101', senderName: 'Aarav Malhotra', text: 'Add one extra Thums Up for me, I will GPay you! 🥤', createdAt: new Date(Date.now() - 1000 * 60 * 12).toISOString() },
-    { id: 'm-3-1', senderId: 'f-101', senderName: 'Aarav Malhotra', text: '[SHARED_ORDER] Handi Chicken Biryani + 2 Thums Up', createdAt: new Date(Date.now() - 1000 * 60 * 11).toISOString() },
-    { id: 'm-3-2', senderId: 'f-101', senderName: 'Aarav Malhotra', text: '[WHISPER] Don\'t tell the warden we ordered this late! 🤫', createdAt: new Date(Date.now() - 1000 * 60 * 10).toISOString() }
-  ],
-  'conv-seed-2': [
-    { id: 'm-4', senderId: 'f-102', senderName: 'Priya Sharma', text: 'Did you solve the DBMS assignment query 4? 💻', createdAt: new Date(Date.now() - 1000 * 60 * 60).toISOString() },
-    { id: 'm-5', senderId: 'self', senderName: 'You', text: 'Yes, used indexing and inner joins. Sharing the notes in 5 mins!', createdAt: new Date(Date.now() - 1000 * 60 * 45).toISOString() }
-  ],
-  'conv-seed-3': [
-    { id: 'm-6', senderId: 'f-103', senderName: 'Vikram Reddy', text: 'Canteen is serving fresh piping hot samosas right now! ☕', createdAt: new Date(Date.now() - 1000 * 60 * 130).toISOString() },
-    { id: 'm-7', senderId: 'self', senderName: 'You', text: 'Save 2 samosas for me coming in 5 mins! 🏃‍♂️', createdAt: new Date(Date.now() - 1000 * 60 * 120).toISOString() }
-  ],
-  'conv-seed-4': [
-    { id: 'm-8', senderId: 'f-104', senderName: 'Sneha Roy', text: 'Check out the new design fest banners! 🎨✨', createdAt: new Date(Date.now() - 1000 * 60 * 250).toISOString() }
-  ],
-  'conv-seed-5': [
-    { id: 'm-9', senderId: 'f-105', senderName: 'Karthik Nair', text: 'Hostel football match tomorrow at 6 PM! Be ready ⚽🔥', createdAt: new Date(Date.now() - 1000 * 60 * 370).toISOString() }
-  ]
-};
-
-const DEFAULT_SEARCH_SUGGESTIONS = [
-  {
-    id: 'sug-1',
-    name: 'Devansh Roy',
-    phone: '+91 9876500001',
-    profileImage: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=120&q=80',
-    friendshipStatus: null,
-    campus: 'Hostel 3, Room 204'
-  },
-  {
-    id: 'sug-2',
-    name: 'Ananya Roy',
-    phone: '+91 9876500002',
-    profileImage: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=120&q=80',
-    friendshipStatus: null,
-    campus: 'Block B - ECE'
-  },
-  {
-    id: 'sug-3',
-    name: 'Tanvi Joshi',
-    phone: '+91 9876500003',
-    profileImage: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=120&q=80',
-    friendshipStatus: null,
-    campus: 'Architecture - 2nd Yr'
-  },
-  {
-    id: 'sug-4',
-    name: 'Rohan Mehra',
-    phone: '+91 9876500004',
-    profileImage: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=120&q=80',
-    friendshipStatus: null,
-    campus: 'Sports Council'
-  }
-];
-
-
-
-// Whisper Message Component (Self-Destructing)
-const WhisperMessage = ({ text, isMe, themeAccent }: { text: string, isMe: boolean, themeAccent: string }) => {
-  const [revealed, setRevealed] = useState(false);
-  const [exploded, setExploded] = useState(false);
-  const pressTimer = useRef<any>(null);
-
-  const handlePressIn = () => {
-    if (exploded) return;
-    setRevealed(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    pressTimer.current = setTimeout(() => {
-      setExploded(true);
-      setRevealed(false);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }, 10000); // 10 seconds to read
-  };
-
-  const handlePressOut = () => {
-    if (exploded) return;
-    setRevealed(false);
-    if (pressTimer.current) clearTimeout(pressTimer.current);
-  };
-
-  if (exploded) {
-    return (
-      <View style={[s.msgBubble, { backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', borderStyle: 'dashed' }]}>
-        <Text style={{ color: 'rgba(255,255,255,0.3)', fontStyle: 'italic', fontSize: 12 }}>💨 Whisper vanished into thin air</Text>
-      </View>
-    );
-  }
-
-  return (
-    <TouchableWithoutFeedback onPressIn={handlePressIn} onPressOut={handlePressOut}>
-      <View style={[s.msgBubble, isMe ? [s.msgBubbleMe, { backgroundColor: themeAccent }] : s.msgBubbleThem, { minHeight: 40, justifyContent: 'center' }]}>
-        {revealed ? (
-          <Text style={[s.msgBodyText, isMe ? s.msgBodyTextMe : s.msgBodyTextThem]}>
-            {text}
-          </Text>
-        ) : (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Text style={{ fontSize: 16 }}>👻</Text>
-            <Text style={{ color: isMe ? '#FFF' : '#8A94A6', fontStyle: 'italic', fontWeight: '800', opacity: 0.8 }}>Hold to reveal whisper</Text>
-          </View>
-        )}
-      </View>
-    </TouchableWithoutFeedback>
-  );
-};
-
-
-// Shared Order Card Component
-const SharedOrderCard = ({ text, isMe, themeAccent }: { text: string, isMe: boolean, themeAccent: string }) => {
-  const [syncing, setSyncing] = useState(false);
-  const [synced, setSynced] = useState(false);
-
-  const handleSync = () => {
-    setSyncing(true);
-    setTimeout(() => {
-      setSyncing(false);
-      setSynced(true);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert('Order Synced! 🛒', 'Added items to your cart.');
-    }, 1200);
-  };
-
-  return (
-    <View style={[s.msgBubble, { backgroundColor: '#2D1B36', padding: 14, borderRadius: 16, borderBottomRightRadius: isMe ? 2 : 16, borderBottomLeftRadius: isMe ? 16 : 2, width: 220 }]}>
-      <Text style={{ color: '#FF7A59', fontSize: 10, fontWeight: '900', letterSpacing: 1, marginBottom: 8 }}>🍔 ZENVY FOOD SYNC</Text>
-      <Text style={{ color: '#FFF', fontSize: 14, fontWeight: '700', marginBottom: 12 }}>{text}</Text>
-      {!isMe && (
-        <TouchableOpacity
-          style={{ backgroundColor: synced ? '#4CAF50' : '#FF7A59', paddingVertical: 10, borderRadius: 12, alignItems: 'center' }}
-          onPress={handleSync}
-          disabled={synced || syncing}
-        >
-          {syncing ? (
-            <ActivityIndicator size="small" color="#FFF" />
-          ) : (
-            <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '800' }}>
-              {synced ? 'SYNCED ✓' : 'SYNC TO MY CART 🛒'}
-            </Text>
-          )}
-        </TouchableOpacity>
-      )}
-    </View>
-  );
-};
+// All friend data, messages, and search suggestions are fetched from backend APIs.
+// No hardcoded mock/seed data — everything is real database-backed.
 
 export default function FriendsScreen() {
   const router = useRouter();
@@ -522,14 +287,99 @@ export default function FriendsScreen() {
   const { isDark } = useTheme();
   const myUserId = user?.id || user?._id || 'self';
 
-  // Core list state
-  const [friends, setFriends] = useState<any[]>(DEFAULT_CAMPUS_FRIENDS);
+  // Chat Locks State
+  const [lockedChats, setLockedChats] = useState<string[]>([]);
+
+  useEffect(() => {
+    const loadLockedChats = async () => {
+      try {
+        const stored = await AsyncStorage.getItem('zenvy_locked_chats');
+        if (stored) {
+          setLockedChats(JSON.parse(stored));
+        }
+      } catch (e) {
+        console.warn("Failed to load locked chats", e);
+      }
+    };
+    loadLockedChats();
+  }, []);
+
+  const toggleChatLock = async (friendId: string) => {
+    const isCurrentlyLocked = lockedChats.includes(friendId);
+    
+    // Require authentication to toggle lock status
+    let authSuccess = false;
+    if (Platform.OS === 'web') {
+      authSuccess = window.confirm(isCurrentlyLocked ? 'Authenticate to unlock chat' : 'Authenticate to lock chat');
+    } else {
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: isCurrentlyLocked ? 'Authenticate to unlock chat' : 'Authenticate to lock chat',
+        fallbackLabel: 'Use Passcode',
+      });
+      authSuccess = result.success;
+    }
+
+    if (authSuccess) {
+      const newLockedChats = isCurrentlyLocked 
+        ? lockedChats.filter(id => id !== friendId) 
+        : [...lockedChats, friendId];
+      
+      setLockedChats(newLockedChats);
+      AsyncStorage.setItem('zenvy_locked_chats', JSON.stringify(newLockedChats));
+      
+      if (isCurrentlyLocked) {
+        Alert.alert('Chat Unlocked', 'This chat is now visible without authentication.');
+      } else {
+        Alert.alert('Chat Locked', 'This chat will now require authentication to open.');
+      }
+    }
+  };
+
+  // Core list state (real backend data only)
+  const [friends, setFriends] = useState<any[]>([]);
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
-  const [syncedContacts, setSyncedContacts] = useState<any[]>(DEFAULT_SEARCH_SUGGESTIONS);
+  const [syncedContacts, setSyncedContacts] = useState<any[]>([]);
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
+
+  // QR & Code Connection States
+  const [activeSyncTab, setActiveSyncTab] = useState<'scanner' | 'my_qr' | 'code'>('scanner');
+  const [friendCodeInput, setFriendCodeInput] = useState('');
+  const [selectedVibe, setSelectedVibe] = useState('Roomie');
+  const [selectedIcebreaker, setSelectedIcebreaker] = useState('Chai & Maggi sponsor? ☕🍜');
+  const [customIcebreaker, setCustomIcebreaker] = useState('');
+  const [torchActive, setTorchActive] = useState(false);
+  const [connectingViaCode, setConnectingViaCode] = useState(false);
+  const [showGiftModal, setShowGiftModal] = useState(false);
+  const [giftAmount, setGiftAmount] = useState<number>(20);
+  const [giftingLoading, setGiftingLoading] = useState(false);
+  const [vanishMode, setVanishMode] = useState(false);
+
+  // Laser scanner animation
+  const laserAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (showSyncModal && activeSyncTab === 'scanner') {
+      const loop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(laserAnim, {
+            toValue: 1,
+            duration: 1800,
+            useNativeDriver: true,
+          }),
+          Animated.timing(laserAnim, {
+            toValue: 0,
+            duration: 1800,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      loop.start();
+      return () => loop.stop();
+    }
+  }, [showSyncModal, activeSyncTab]);
+
   
   // Interactive nodes state
   const [activeChat, setActiveChat] = useState<any | null>(null);
@@ -541,29 +391,6 @@ export default function FriendsScreen() {
   const [sendingMessage, setSendingMessage] = useState(false);
   const [showStickers, setShowStickers] = useState(false);
   const [showGames, setShowGames] = useState(false);
-  const [isWhisperMode, setIsWhisperMode] = useState(false);
-  const [isDoodleMode, setIsDoodleMode] = useState(false);
-  const [doodlePaths, setDoodlePaths] = useState<{id: string, color: string, points: string}[]>([]);
-  const [currentPath, setCurrentPath] = useState<string>('');
-  
-  const doodlePanResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (evt) => {
-        const { locationX, locationY } = evt.nativeEvent;
-        setCurrentPath(`${locationX},${locationY}`);
-      },
-      onPanResponderMove: (evt) => {
-        const { locationX, locationY } = evt.nativeEvent;
-        setCurrentPath(prev => `${prev} ${locationX},${locationY}`);
-      },
-      onPanResponderRelease: () => {
-        setDoodlePaths(prev => [...prev, { id: Date.now().toString(), color: '#00FFCC', points: currentPath }]);
-        setCurrentPath('');
-      }
-    })
-  ).current;
   const [usedTruths, setUsedTruths] = useState<number[]>([]);
   const [usedDares, setUsedDares] = useState<number[]>([]);
   
@@ -636,17 +463,13 @@ export default function FriendsScreen() {
   };
   
   // Theme state updates instantly
-  const [chatTheme, setChatTheme] = useState<string>('graphite');
+  const [chatTheme, setChatTheme] = useState<string>('grove');
   const chatScrollRef = useRef<ScrollView>(null);
 
   // Orbit Center position configuration
   const centerPoint = { x: SW / 2, y: 220 };
   const MIN_RADIUS = 75;
   const MAX_RADIUS = 135;
-
-  // Compute orbits using hook
-  const friendNodes = useOrbitLayout(centerPoint, friends, MIN_RADIUS, MAX_RADIUS, false);
-  const pendingNodes = useOrbitLayout(centerPoint, pendingRequests, MIN_RADIUS, MAX_RADIUS, true);
 
   // Load friends and pending requests on load (with 30s fallback poll alongside live WebSockets)
   useEffect(() => {
@@ -772,26 +595,26 @@ export default function FriendsScreen() {
         if (Array.isArray(data) && data.length > 0) {
           setFriends(data.slice(0, 10));
         } else {
-          setFriends(DEFAULT_CAMPUS_FRIENDS);
+          setFriends([]);
         }
         
         // Sync activeChat state if open to update dynamic fields (like conversationId and streakCount)
         if (activeChatRef.current) {
-          const updated = (Array.isArray(data) && data.length > 0 ? data : DEFAULT_CAMPUS_FRIENDS).find((f: any) => f.friendshipId === activeChatRef.current.friendshipId);
+          const updated = (Array.isArray(data) && data.length > 0 ? data : []).find((f: any) => f.friendshipId === activeChatRef.current.friendshipId);
           if (updated) {
             setActiveChat(updated);
           }
         }
       } else {
-        setFriends(DEFAULT_CAMPUS_FRIENDS);
+        setFriends([]);
       }
       const resPending = await apiFetch(ENDPOINTS.friendsPending);
       if (resPending.ok) {
         const data = await resPending.json();
-        setPendingRequests(data);
+        setPendingRequests(Array.isArray(data) ? data : []);
       }
     } catch (e) {
-      setFriends(DEFAULT_CAMPUS_FRIENDS);
+      setFriends([]);
       console.error('[LOAD_DATA_ERROR]', e);
     }
   };
@@ -801,23 +624,17 @@ export default function FriendsScreen() {
       const res = await apiFetch(ENDPOINTS.friendsMessages(convId));
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(data)) {
           setChatMessages(data);
         } else {
-          setChatMessages(DEFAULT_SEED_MESSAGES[convId] || [
-            { id: 'm-def-1', senderId: 'f-peer', senderName: activeChat?.name || 'Friend', text: 'Hey! Ready for campus hangout or food orders? 🍕🔥', createdAt: new Date(Date.now() - 1000 * 60 * 15).toISOString() }
-          ]);
+          setChatMessages([]);
         }
         setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: false }), 200);
       } else {
-        setChatMessages(DEFAULT_SEED_MESSAGES[convId] || [
-          { id: 'm-def-1', senderId: 'f-peer', senderName: activeChat?.name || 'Friend', text: 'Hey! Ready for campus hangout or food orders? 🍕🔥', createdAt: new Date(Date.now() - 1000 * 60 * 15).toISOString() }
-        ]);
+        setChatMessages([]);
       }
     } catch (e) {
-      setChatMessages(DEFAULT_SEED_MESSAGES[convId] || [
-        { id: 'm-def-1', senderId: 'f-peer', senderName: activeChat?.name || 'Friend', text: 'Hey! Ready for campus hangout or food orders? 🍕🔥', createdAt: new Date(Date.now() - 1000 * 60 * 15).toISOString() }
-      ]);
+      setChatMessages([]);
     }
   };
 
@@ -867,6 +684,57 @@ export default function FriendsScreen() {
     }
   };
 
+  // Grove callbacks: nudge/water/open-chat by friend ID (doesn't require chat to be open)
+  const handleGroveNudge = async (friendId: string) => {
+    const friend = friends.find((f: any) => f.friendId === friendId);
+    if (!friend) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      const res = await apiFetch(`${API_URL}/api/friends/nudge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ friendshipId: friend.friendshipId })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        Alert.alert('Nudge Sent! ⚡', `Streak maintained at ${data.streakCount} days!`);
+        loadFriendsData();
+      }
+    } catch (e) {
+      console.error('[GROVE_NUDGE_ERROR]', e);
+    }
+  };
+
+  const handleGroveWater = async (friendId: string) => {
+    // "Watering" a branch is the same as nudging — it maintains the streak
+    await handleGroveNudge(friendId);
+  };
+
+  const handleGroveOpenChat = async (friendId: string) => {
+    const friend = friends.find((f: any) => f.friendId === friendId);
+    if (!friend) return;
+    if (lockedChats.includes(friendId)) {
+      let authSuccess = false;
+      if (Platform.OS === 'web') {
+        authSuccess = window.confirm('Authenticate to unlock chat');
+      } else {
+        const result = await LocalAuthentication.authenticateAsync({
+          promptMessage: 'Unlock Chat',
+          fallbackLabel: 'Use Passcode',
+        });
+        authSuccess = result.success;
+      }
+      if (!authSuccess) return;
+    }
+    setActiveChat(friend);
+    setChatTheme(friend.theme || 'graphite');
+  };
+
+  // Map backend friends to grove's Friend type for the tree
+  const groveFriends = React.useMemo(() => {
+    return mapFriends(friends as BackendFriend[], myUserId).treeFriends;
+  }, [friends, myUserId]);
+
   const handleRemoveFriend = async () => {
     if (!activeChat) return;
     Alert.alert(
@@ -904,61 +772,82 @@ export default function FriendsScreen() {
     loadFriendsData();
   };
 
+  // Daily-seeded shuffle: uses today's date as a seed so the pool rotates every day
+  const dailySeed = (() => {
+    const d = new Date();
+    const dateStr = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+    let h = 0;
+    for (let i = 0; i < dateStr.length; i++) {
+      h = ((h << 5) - h + dateStr.charCodeAt(i)) | 0;
+    }
+    return Math.abs(h);
+  })();
+
+  const seededShuffle = <T,>(arr: T[], seed: number): T[] => {
+    const copy = [...arr];
+    let s = seed;
+    for (let i = copy.length - 1; i > 0; i--) {
+      s = ((s * 1103515245 + 12345) & 0x7fffffff);
+      const j = s % (i + 1);
+      [copy[i], copy[j]] = [copy[j], copy[i]];
+    }
+    return copy;
+  };
+
   const getUniqueQuestion = (type: 'truth' | 'dare') => {
-    const pool = type === 'truth' ? CAMPUS_TRUTHS : CAMPUS_DARES;
+    // Shuffle the pool using today's date seed — different order every day
+    const rawPool = type === 'truth' ? CAMPUS_TRUTHS : CAMPUS_DARES;
+    const pool = seededShuffle(rawPool, dailySeed + (type === 'truth' ? 0 : 7919));
     const used = type === 'truth' ? usedTruths : usedDares;
     const setUsed = type === 'truth' ? setUsedTruths : setUsedDares;
 
-    // Filter out indices that were used recently
+    // Filter out indices that were used in this session
     let availableIndices = pool.map((_, i) => i).filter(i => !used.includes(i));
     
-    // If we've run out of unique questions, reset the used history
+    // If we've exhausted today's shuffled pool, reset
     if (availableIndices.length === 0) {
       availableIndices = pool.map((_, i) => i);
       setUsed([]);
     }
 
-    const randomIndex = availableIndices[Math.floor(Math.random() * availableIndices.length)];
-    
-    // Add to used list
+    // Pick the first available (deterministic daily order, session-unique)
+    const randomIndex = availableIndices[0];
     setUsed(prev => [...prev, randomIndex]);
 
     let question = pool[randomIndex];
 
-    // Dynamic variable substitutions
+    // NLP-style dynamic variable substitutions using seeded randomness
+    const seededRandom = (max: number, offset: number) => {
+      const s = ((dailySeed + offset + randomIndex) * 1103515245 + 12345) & 0x7fffffff;
+      return s % max;
+    };
+
     if (question.includes('{friendName}')) {
       const friendPool = friends.map(f => f.name).filter(Boolean);
-      const randomFriend = friendPool.length > 0 ? friendPool[Math.floor(Math.random() * friendPool.length)] : 'your roommate';
+      const randomFriend = friendPool.length > 0 ? friendPool[seededRandom(friendPool.length, 1)] : 'your roommate';
       question = question.replace(/{friendName}/g, randomFriend);
     }
     if (question.includes('{blockName}')) {
       const blocks = ['A', 'B', 'C', 'D', 'LH', 'MH'];
-      const randomBlock = blocks[Math.floor(Math.random() * blocks.length)];
-      question = question.replace(/{blockName}/g, randomBlock);
+      question = question.replace(/{blockName}/g, blocks[seededRandom(blocks.length, 2)]);
     }
     if (question.includes('{roomNumber}')) {
-      const randomRoom = Math.floor(Math.random() * 400 + 100).toString();
-      question = question.replace(/{roomNumber}/g, randomRoom);
+      question = question.replace(/{roomNumber}/g, (seededRandom(400, 3) + 100).toString());
     }
     if (question.includes('{canteenFood}')) {
-      const randomFood = CANTEEN_FOODS[Math.floor(Math.random() * CANTEEN_FOODS.length)];
-      question = question.replace(/{canteenFood}/g, randomFood);
+      question = question.replace(/{canteenFood}/g, CANTEEN_FOODS[seededRandom(CANTEEN_FOODS.length, 4)]);
     }
     if (question.includes('{subjectName}')) {
-      const randomSubject = SUBJECTS[Math.floor(Math.random() * SUBJECTS.length)];
-      question = question.replace(/{subjectName}/g, randomSubject);
+      question = question.replace(/{subjectName}/g, SUBJECTS[seededRandom(SUBJECTS.length, 5)]);
     }
     if (question.includes('{professorRole}')) {
-      const randomProf = PROFESSOR_ROLES[Math.floor(Math.random() * PROFESSOR_ROLES.length)];
-      question = question.replace(/{professorRole}/g, randomProf);
+      question = question.replace(/{professorRole}/g, PROFESSOR_ROLES[seededRandom(PROFESSOR_ROLES.length, 6)]);
     }
     if (question.includes('{locationName}')) {
-      const randomLoc = LOCATIONS[Math.floor(Math.random() * LOCATIONS.length)];
-      question = question.replace(/{locationName}/g, randomLoc);
+      question = question.replace(/{locationName}/g, LOCATIONS[seededRandom(LOCATIONS.length, 7)]);
     }
     if (question.includes('{itemName}')) {
-      const randomItem = ITEMS[Math.floor(Math.random() * ITEMS.length)];
-      question = question.replace(/{itemName}/g, randomItem);
+      question = question.replace(/{itemName}/g, ITEMS[seededRandom(ITEMS.length, 8)]);
     }
 
     return question;
@@ -1225,7 +1114,116 @@ export default function FriendsScreen() {
     }
   };
 
-  const handleAddFriend = async (friendId: string) => {
+  
+  const handleConnectByCode = async (codeOverride?: string) => {
+    const rawCode = (codeOverride || friendCodeInput).trim().toUpperCase();
+    if (!rawCode) {
+      Alert.alert('Orbit Code Required', 'Please enter or scan a valid Orbit Code (e.g. ZNV-8K92F).');
+      return;
+    }
+    setConnectingViaCode(true);
+    try {
+      const finalIcebreaker = customIcebreaker.trim() || selectedIcebreaker;
+      const res = await apiFetch(ENDPOINTS.friendsRequest, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          friendCode: rawCode,
+          vibe: selectedVibe,
+          icebreaker: finalIcebreaker
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert('Orbit Linked! 🚀', `Request sent with "${selectedVibe}" vibe! When accepted, your greeting will be delivered.`);
+        setFriendCodeInput('');
+        setCustomIcebreaker('');
+        setShowSyncModal(false);
+        loadFriendsData();
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        Alert.alert('Notice', data.message || 'Failed to send Orbit request.');
+      }
+    } catch (err: any) {
+      Alert.alert('Network Error', err.message || 'Could not connect to Zenvy Orbit.');
+    } finally {
+      setConnectingViaCode(false);
+    }
+  };
+
+  const handlePasteAndScan = async () => {
+    try {
+      const clipText = await Clipboard.getString();
+      if (!clipText || !clipText.trim()) {
+        Alert.alert('Clipboard Empty', 'Copy a friend’s Orbit Code or QR link (e.g. ZNV-XXXXX) first!');
+        return;
+      }
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      let extracted = clipText.trim();
+      if (extracted.includes('code=')) {
+        const match = extracted.match(/code=([A-Za-z0-9_-]+)/i);
+        if (match) extracted = match[1];
+      }
+      setFriendCodeInput(extracted.toUpperCase());
+      setActiveSyncTab('code');
+      Alert.alert('Code Detected! 🎯', `Found Orbit Code: "${extracted.toUpperCase()}". Select your connection vibe and click Connect!`);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleSharePass = async () => {
+    const myCode = user?.friendCode || 'ZNV-ORBIT';
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      await Share.share({
+        message: `⚡ Add me on Zenvy Orbit! My Friend Code is ${myCode}. Scan my QR or enter my code in the app to join my late-night food circle! 🍕🚀`,
+        title: 'Join my Zenvy Orbit'
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleCopyMyCode = () => {
+    const myCode = user?.friendCode || 'ZNV-ORBIT';
+    Clipboard.setString(myCode);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Alert.alert('Copied! 📋', `Your Orbit Code "${myCode}" copied to clipboard. Share it with your campus buddies!`);
+  };
+
+  const handleSendGift = async () => {
+    if (!activeChat) return;
+    setGiftingLoading(true);
+    try {
+      const res = await apiFetch(`${API_URL}/api/features/gift`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recipientId: activeChat.friendId,
+          amount: giftAmount,
+          message: `🎁 Snack treat from ${user?.name || 'your buddy'}!`
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert('Gift Sent! 🎁', `₹${giftAmount} snack treat sent to ${activeChat.name}!`);
+        setShowGiftModal(false);
+        handleSendMessage(`🎁 [TREAT GIFT] Sent ₹${giftAmount} snack treat! Enjoy! 🍕✨`);
+        refreshUser();
+      } else {
+        Alert.alert('Gifting Notice', data.message || 'Could not send gift.');
+      }
+    } catch (e: any) {
+      Alert.alert('Error', e.message || 'Gift transaction failed.');
+    } finally {
+      setGiftingLoading(false);
+    }
+  };
+
+  const handleAddFriend = async (friendId: string, vibeTag?: string) => {
     if (friends.length >= 10) {
       Alert.alert('Circle Limit Reached', 'Your orbit is full (10 friends max). Remove someone before adding new friends.');
       return;
@@ -1291,198 +1289,22 @@ export default function FriendsScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Dynamic Instagram-style Stories (Status) Row */}
-      <View style={s.storiesWrapper}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.storiesScrollContent}>
-          {/* YOU Avatar */}
-          <TouchableOpacity
-            style={s.storyItem}
-            onPress={() => {
-              if (user?.statusText || user?.statusEmoji) {
-                setActiveStatusView({
-                  name: 'Your Status',
-                  profileImage: user?.profileImage,
-                  statusText: user?.statusText,
-                  statusEmoji: user?.statusEmoji,
-                  isSelf: true
-                });
-              } else {
-                setStatusText('');
-                setStatusEmoji('');
-                setShowStatusModal(true);
-              }
-            }}
-          >
-            {user?.statusText || user?.statusEmoji ? (
-              <View>
-                <LinearGradient
-                  colors={['#6E5BFF', '#FF7A59', '#FF1493']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={s.storyAvatarOutline}
-                >
-                  <Image
-                    source={{ uri: getAvatarUrl(user?.profileImage || null, myUserId || 'self') }}
-                    style={[s.storyAvatar, { borderWidth: 2, borderColor: '#07090C' }]}
-                  />
-                </LinearGradient>
-                {user?.statusEmoji && (
-                  <View style={s.storyEmojiBadge}>
-                    <Text style={s.storyEmojiBadgeText}>{user.statusEmoji}</Text>
-                  </View>
-                )}
-              </View>
-            ) : (
-              <View style={[s.storyAvatarOutline, s.storyUserOutline]}>
-                <Image
-                  source={{ uri: getAvatarUrl(user?.profileImage || null, myUserId || 'self') }}
-                  style={s.storyAvatar}
-                />
-                <View style={s.storyUserAddBadge}>
-                  <Text style={s.storyUserAddText}>+</Text>
-                </View>
-              </View>
-            )}
-            <Text style={s.storyName} numberOfLines={1}>Your Status</Text>
-          </TouchableOpacity>
+      {/* SKIA GROVE TREE — procedural friend tree */}
+      <GroveScreen
+        friends={groveFriends}
+        currentUserId={myUserId}
+        onMessage={handleGroveOpenChat}
+        onNudge={handleGroveNudge}
+        onWater={handleGroveWater}
+      />
 
-          {/* Friends Avatars */}
-          {friends.map((friend) => {
-            const hasStatus = !!(friend.statusText || friend.statusEmoji);
-            const isSeen = friend.statusSeenBy && friend.statusSeenBy.includes(myUserId);
+      {/* Pending requests badge (floating) */}
+      {pendingRequests.length > 0 && (
+        <TouchableOpacity style={[s.pendingBannerBadge, { position: 'absolute', top: 110, right: 20, zIndex: 100 }]} onPress={() => setShowSyncModal(true)}>
+          <Text style={s.pendingBannerBadgeText}>{pendingRequests.length} INCOMING</Text>
+        </TouchableOpacity>
+      )}
 
-            return (
-              <TouchableOpacity
-                key={friend.friendshipId}
-                style={s.storyItem}
-                onPress={() => {
-                  if (hasStatus) {
-                    setActiveStatusView(friend);
-                  } else {
-                    setActiveChat(friend);
-                    setChatTheme(friend.theme || 'graphite');
-                  }
-                }}
-              >
-                {hasStatus ? (
-                  <LinearGradient
-                    colors={isSeen ? ['#444752', '#2E323A'] : ['#6E5BFF', '#FF7A59', '#FF1493']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={s.storyAvatarOutline}
-                  >
-                    <Image
-                      source={{ uri: getAvatarUrl(friend.profileImage, friend.friendId) }}
-                      style={[s.storyAvatar, { borderWidth: 2, borderColor: '#07090C' }]}
-                    />
-                  </LinearGradient>
-                ) : (
-                  <View style={[s.storyAvatarOutline, { padding: 0 }]}>
-                    <Image
-                      source={{ uri: getAvatarUrl(friend.profileImage, friend.friendId) }}
-                      style={s.storyAvatar}
-                    />
-                  </View>
-                )}
-                {friend.statusEmoji && hasStatus && (
-                  <View style={s.storyEmojiBadge}>
-                    <Text style={s.storyEmojiBadgeText}>{friend.statusEmoji}</Text>
-                  </View>
-                )}
-                <Text style={s.storyName} numberOfLines={1}>{friend.name}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
-
-      {/* WhatsApp/Insta Direct Chat List */}
-      <View style={s.chatListWrapper}>
-        <View style={s.chatListHeader}>
-          <Text style={s.chatListTitle}>CHATS</Text>
-          {pendingRequests.length > 0 && (
-            <TouchableOpacity style={s.pendingBannerBadge} onPress={() => setShowSyncModal(true)}>
-              <Text style={s.pendingBannerBadgeText}>{pendingRequests.length} INCOMING</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
-          {friends.length === 0 ? (
-            <View style={s.emptyChatListContainer}>
-              <Text style={{ fontSize: 48, marginBottom: 16 }}>🛸</Text>
-              <Text style={s.emptyChatListTitle}>Your Orbit is Empty</Text>
-              <Text style={s.emptyChatListSub}>Connect with campus friends to start secure messaging and sharing statuses!</Text>
-              <TouchableOpacity
-                style={{
-                  marginTop: 24,
-                  backgroundColor: '#6E5BFF',
-                  paddingVertical: 14,
-                  paddingHorizontal: 28,
-                  borderRadius: 30,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  shadowColor: '#6E5BFF',
-                  shadowOffset: { width: 0, height: 4 },
-                  shadowOpacity: 0.3,
-                  shadowRadius: 8,
-                }}
-                onPress={() => setShowSyncModal(true)}
-              >
-                <Text style={{ color: '#FFF', fontSize: 16, fontWeight: '800', letterSpacing: 0.5 }}>
-                  🔍 FIND FRIENDS
-                </Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            friends.map((friend) => (
-              <TouchableOpacity
-                key={friend.friendshipId}
-                style={s.chatListItem}
-                activeOpacity={0.7}
-                onPress={() => {
-                  setActiveChat(friend);
-                  setChatTheme(friend.theme || 'graphite');
-                }}
-              >
-                {/* Left side: Avatar */}
-                <View style={s.chatListAvatarContainer}>
-                  <Image
-                    source={{ uri: getAvatarUrl(friend.profileImage, friend.friendId) }}
-                    style={s.chatListAvatar}
-                  />
-                  {friend.statusEmoji && (
-                    <View style={s.chatListEmojiBadge}>
-                      <Text style={{ fontSize: 10 }}>{friend.statusEmoji}</Text>
-                    </View>
-                  )}
-                </View>
-
-                {/* Center side: Names and Status */}
-                <View style={s.chatListMiddle}>
-                  <View style={s.chatListNameRow}>
-                    <Text style={s.chatListFriendName} numberOfLines={1}>{friend.name}</Text>
-                    {friend.streakCount > 0 && (
-                      <Text style={s.chatListStreakText}>🔥 {friend.streakCount}</Text>
-                    )}
-                  </View>
-                  <Text style={s.chatListStatusText} numberOfLines={1}>
-                    {friend.statusText ? `💬 ${friend.statusText}` : 'Tap to start chatting...'}
-                  </Text>
-                </View>
-
-                {/* Right side: Time/Arrow */}
-                <View style={s.chatListRight}>
-                  <Text style={s.chatListTimeText}>
-                    {friend.lastInteractionAt ? new Date(friend.lastInteractionAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
-                  </Text>
-                  <View style={[s.themeDotIndicator, { backgroundColor: CHAT_THEMES.find(t => t.name === (friend.theme || 'graphite'))?.accent || '#6E5BFF' }]} />
-                </View>
-              </TouchableOpacity>
-            ))
-          )}
-        </ScrollView>
-      </View>
 
       {/* SLIDE-UP BOTTOM SHEET FOR SECURE CHATS */}
       {activeChat && (
@@ -1496,39 +1318,76 @@ export default function FriendsScreen() {
                 <View style={s.bottomSheetDimmer} />
               </TouchableWithoutFeedback>
               
-              <View style={[s.bottomSheetContent, { backgroundColor: getActiveThemeColors()[0] }]}>
-                {/* Top Grab Handle decor */}
-                <View style={s.bottomSheetGrabHandle} />
+              <View style={[s.bottomSheetContent, {
+                backgroundColor: '#071610',
+                borderWidth: 1.5,
+                borderColor: getActiveThemeAccent() + '55',
+                shadowColor: getActiveThemeAccent(),
+                shadowOffset: { width: 0, height: -10 },
+                shadowOpacity: 0.35,
+                shadowRadius: 24,
+                position: 'relative',
+              }]}>
+                {/* Enchanted Grove Canopy Gradient & Ambient Botanical Glow */}
+                <LinearGradient
+                  colors={getActiveThemeColors() as unknown as readonly [string, string, ...string[]]}
+                  style={StyleSheet.absoluteFill}
+                  start={{ x: 0.1, y: 0 }}
+                  end={{ x: 0.4, y: 1 }}
+                />
+                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: 0.15, overflow: 'hidden', pointerEvents: 'none' }}>
+                   <View style={{ position: 'absolute', top: -50, right: -40, width: 220, height: 220, borderRadius: 110, backgroundColor: getActiveThemeAccent(), opacity: 0.25 }} />
+                   <View style={{ position: 'absolute', top: 120, left: -60, width: 200, height: 200, borderRadius: 100, backgroundColor: '#34D399', opacity: 0.15 }} />
+                   <View style={{ position: 'absolute', bottom: 100, right: -20, width: 180, height: 180, borderRadius: 90, backgroundColor: '#F59E0B', opacity: 0.1 }} />
+                </View>
+
+                {/* Top Grab Handle - Organic Botanical Leaf Pill */}
+                <View style={{ alignItems: 'center', marginBottom: 8, marginTop: 2 }}>
+                  <View style={[s.bottomSheetGrabHandle, { backgroundColor: getActiveThemeAccent(), width: 44, height: 5, borderRadius: 3, shadowColor: getActiveThemeAccent(), shadowOpacity: 0.8, shadowRadius: 6 }]} />
+                </View>
 
                 {/* Header Row: Navigation & Actions */}
-                <View style={s.chatHeaderRow}>
-                  <TouchableOpacity style={s.chatCloseBtn} onPress={handleCloseChat}>
-                    <Text style={s.chatCloseText}>✕ CLOSE</Text>
+                <View style={[s.chatHeaderRow, { borderBottomColor: 'rgba(52, 211, 153, 0.12)', paddingBottom: 10 }]}>
+                  <TouchableOpacity style={[s.chatCloseBtn, { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.06)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }]} onPress={handleCloseChat}>
+                    <Ionicons name="close" size={16} color="#A7F3D0" />
+                    <Text style={[s.chatCloseText, { color: '#A7F3D0' }]}>CLOSE</Text>
                   </TouchableOpacity>
 
-                  <View style={s.chatHeaderActions}>
-                    <TouchableOpacity style={s.nudgeActionBtn} onPress={handleSendNudge}>
-                      <Text style={s.nudgeActionText}>⚡ NUDGE</Text>
+                  <View style={[s.chatHeaderActions, { gap: 10, alignItems: 'center' }]}>
+                    {/* Lock Chat Toggle */}
+                    <TouchableOpacity 
+                      style={{ padding: 7, borderRadius: 14, backgroundColor: lockedChats.includes(activeChat.friendId) ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: lockedChats.includes(activeChat.friendId) ? '#EF4444' : 'rgba(255,255,255,0.12)' }} 
+                      onPress={() => toggleChatLock(activeChat.friendId)}
+                    >
+                      <Ionicons name={lockedChats.includes(activeChat.friendId) ? "lock-closed" : "lock-open-outline"} size={16} color={lockedChats.includes(activeChat.friendId) ? "#EF4444" : "#A7F3D0"} />
                     </TouchableOpacity>
-                    <TouchableOpacity style={s.removeActionBtn} onPress={handleRemoveFriend}>
-                      <Text style={s.removeActionText}>🗑️</Text>
+                    
+                    {/* Botanical Nudge / Nourish */}
+                    <TouchableOpacity style={[s.nudgeActionBtn, { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(16, 185, 129, 0.16)', borderWidth: 1, borderColor: '#10B981', borderRadius: 14, paddingVertical: 6, paddingHorizontal: 12 }]} onPress={handleSendNudge}>
+                      <Text style={{ fontSize: 13 }}>🌿</Text>
+                      <Text style={[s.nudgeActionText, { color: '#34D399', fontWeight: '900' }]}>NUDGE</Text>
+                    </TouchableOpacity>
+
+                    {/* Trash */}
+                    <TouchableOpacity style={{ padding: 6 }} onPress={handleRemoveFriend}>
+                      <Ionicons name="trash-outline" size={17} color="rgba(255,255,255,0.45)" />
                     </TouchableOpacity>
                   </View>
                 </View>
 
                 {/* Friend Display Profile Section */}
-                <View style={s.friendProfileSection}>
+                <View style={[s.friendProfileSection, { borderBottomColor: 'rgba(52, 211, 153, 0.12)', backgroundColor: 'rgba(0, 0, 0, 0.18)', paddingVertical: 12 }]}>
                   {isEditingNickname ? (
                     <View style={s.nameEditRowInline}>
                       <TextInput
-                        style={s.nicknameInputField}
+                        style={[s.nicknameInputField, { borderColor: getActiveThemeAccent(), borderWidth: 1 }]}
                         value={nicknameInput}
                         onChangeText={setNicknameInput}
                         placeholder="Set nickname..."
                         placeholderTextColor="rgba(255,255,255,0.4)"
                         autoFocus
                       />
-                      <TouchableOpacity style={s.nicknameSaveBtn} onPress={handleSaveNickname}>
+                      <TouchableOpacity style={[s.nicknameSaveBtn, { backgroundColor: getActiveThemeAccent() }]} onPress={handleSaveNickname}>
                         <Text style={s.nicknameSaveBtnText}>Save</Text>
                       </TouchableOpacity>
                       <TouchableOpacity style={s.nicknameCancelBtn} onPress={() => setIsEditingNickname(false)}>
@@ -1544,16 +1403,17 @@ export default function FriendsScreen() {
                           setIsEditingNickname(true);
                         }}
                       >
-                        <Text style={s.chatHeaderTitle} numberOfLines={1}>{activeChat?.name}</Text>
+                        <Text style={{ fontSize: 16, marginRight: 6 }}>🍃</Text>
+                        <Text style={[s.chatHeaderTitle, { letterSpacing: 0.4 }]} numberOfLines={1}>{activeChat?.name}</Text>
                         <Text style={{ fontSize: 10, marginLeft: 6 }}>✏️</Text>
                       </TouchableOpacity>
-                      <Text style={s.chatHeaderSubtitle}>
-                        {activeChat?.nickname ? `REAL: ${activeChat?.originalName || activeChat?.name}` : 'SECURE END-TO-END LINK'}
+                      <Text style={[s.chatHeaderSubtitle, { color: '#6EE7B7' }]}>
+                        {activeChat?.nickname ? `🌱 REAL: ${activeChat?.originalName || activeChat?.name}` : '🌿 GROVE BRANCH COMPANION'}
                       </Text>
                     </View>
                   )}
 
-                  {/* Active Chat theme selector */}
+                  {/* Active Tree Theme selector dots */}
                   <View style={s.themeDotsRow}>
                     {CHAT_THEMES.map(themeItem => (
                       <TouchableOpacity
@@ -1561,7 +1421,7 @@ export default function FriendsScreen() {
                         style={[
                           s.themeDot,
                           { backgroundColor: themeItem.accent },
-                          chatTheme === themeItem.name && s.activeThemeDot
+                          chatTheme === themeItem.name && [s.activeThemeDot, { borderColor: '#A7F3D0', shadowColor: themeItem.accent, shadowOpacity: 0.8, shadowRadius: 4 }]
                         ]}
                         onPress={() => handleThemeDotPress(themeItem.name)}
                       />
@@ -1569,12 +1429,18 @@ export default function FriendsScreen() {
                   </View>
                 </View>
 
-              {/* Streak Banner */}
-              <View style={[s.streakBanner, { borderBottomColor: 'rgba(255,255,255,0.06)' }]}>
-                <Text style={s.streakBannerText}>
-                  STREAK COUNT: <Text style={s.monoText}>🔥{activeChat?.streakCount || 0}</Text>
-                </Text>
-                <Text style={s.streakBannerSub}>🔒 Private Chat</Text>
+              {/* Botanical Branch Streak Banner */}
+              <View style={[s.streakBanner, { borderBottomColor: 'rgba(52, 211, 153, 0.12)', backgroundColor: 'rgba(6, 78, 59, 0.25)', paddingVertical: 10 }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={{ fontSize: 14 }}>🌳</Text>
+                  <Text style={[s.streakBannerText, { color: '#FBBF24' }]}>
+                    BRANCH STRENGTH: <Text style={s.monoText}>🔥{activeChat?.streakCount || 0}d roots</Text>
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(16, 185, 129, 0.15)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(52, 211, 153, 0.2)' }}>
+                  <Text style={{ fontSize: 10 }}>🍃</Text>
+                  <Text style={[s.streakBannerSub, { color: '#34D399', fontSize: 10.5 }]}>Whispering Leaves</Text>
+                </View>
               </View>
 
               {/* Message scroll views */}
@@ -1586,8 +1452,8 @@ export default function FriendsScreen() {
               >
                 {chatMessages.length === 0 ? (
                   <View style={s.messagesEmptyContainer}>
-                    <Text style={s.emptySymbol}>🤫</Text>
-                    <Text style={s.emptyInstruction}>No chats yet. Make the first move.</Text>
+                    <Text style={s.emptySymbol}>🌱</Text>
+                    <Text style={[s.emptyInstruction, { color: '#A7F3D0' }]}>Branch is quiet. Send a leaf whisper.</Text>
                   </View>
                 ) : (
                   chatMessages.map((msg, index) => {
@@ -1595,6 +1461,9 @@ export default function FriendsScreen() {
                     const isSticker = ZENVY_STICKERS.includes(msg.text);
                     const isTruth = msg.text.startsWith('[TRUTH]');
                     const isDare = msg.text.startsWith('[DARE]');
+                    const isSpin = msg.text.startsWith('[SPIN]');
+                    const isVibe = msg.text.startsWith('[VIBE]');
+                    const isWhisper = msg.text.startsWith('[WHISPER]');
 
                     return (
                       <View key={msg.id || index} style={[s.msgRow, isMe ? s.msgRowMe : s.msgRowThem]}>
@@ -1610,26 +1479,38 @@ export default function FriendsScreen() {
                             <Text style={s.stickerMessageChar}>{msg.text}</Text>
                           </View>
                         ) : isTruth ? (
-                          <View style={[s.gameCard, { backgroundColor: '#8E2DE2', borderBottomRightRadius: isMe ? 2 : 16, borderBottomLeftRadius: isMe ? 16 : 2 }]}>
+                          <LinearGradient colors={['#8E2DE2', '#4A00E0']} style={[s.gameCard, { borderBottomRightRadius: isMe ? 2 : 16, borderBottomLeftRadius: isMe ? 16 : 2, borderWidth: 1, borderColor: '#00F2FE' }]}>
                             <Text style={s.gameCardTag}>💡 CAMPUS TRUTH</Text>
                             <Text style={s.gameCardQuestion}>"{msg.text.replace('[TRUTH]', '').trim()}"</Text>
-                          </View>
+                          </LinearGradient>
                         ) : isDare ? (
-                          <View style={[s.gameCard, { backgroundColor: '#DD2476', borderBottomRightRadius: isMe ? 2 : 16, borderBottomLeftRadius: isMe ? 16 : 2 }]}>
+                          <LinearGradient colors={['#DD2476', '#FF512F']} style={[s.gameCard, { borderBottomRightRadius: isMe ? 2 : 16, borderBottomLeftRadius: isMe ? 16 : 2, borderWidth: 1, borderColor: '#FF1493' }]}>
                             <Text style={s.gameCardTag}>😈 CAMPUS DARE</Text>
                             <Text style={s.gameCardQuestion}>"{msg.text.replace('[DARE]', '').trim()}"</Text>
-                          </View>
+                          </LinearGradient>
+                        ) : isSpin ? (
+                          <LinearGradient colors={['#11998e', '#38ef7d']} style={[s.gameCard, { borderBottomRightRadius: isMe ? 2 : 16, borderBottomLeftRadius: isMe ? 16 : 2, borderWidth: 1, borderColor: '#00FF00' }]}>
+                            <Text style={s.gameCardTag}>🍾 SPIN THE BOTTLE</Text>
+                            <Text style={s.gameCardQuestion}>{msg.text.replace('[SPIN]', '').trim()}</Text>
+                          </LinearGradient>
+                        ) : isVibe ? (
+                          <LinearGradient colors={['#00B4DB', '#0083B0']} style={[s.gameCard, { borderBottomRightRadius: isMe ? 2 : 16, borderBottomLeftRadius: isMe ? 16 : 2, borderWidth: 1, borderColor: '#00F2FE' }]}>
+                            <Text style={s.gameCardTag}>🎯 VIBE CHECK</Text>
+                            <Text style={s.gameCardQuestion}>{msg.text.replace('[VIBE]', '').trim()}</Text>
+                          </LinearGradient>
                         ) : (
-                          <View
+                          <LinearGradient
+                            colors={isMe ? [getActiveThemeAccent(), getActiveThemeAccent() + '99'] : ['rgba(255,255,255,0.05)', 'rgba(255,255,255,0.02)']}
                             style={[
                               s.msgBubble,
-                              isMe ? [s.msgBubbleMe, { backgroundColor: getActiveThemeAccent() }] : s.msgBubbleThem
+                              isMe ? s.msgBubbleMe : s.msgBubbleThem,
+                              { borderWidth: 1, borderColor: isMe ? getActiveThemeAccent() : 'rgba(255,255,255,0.1)' }
                             ]}
                           >
-                            <Text style={[s.msgBodyText, isMe ? s.msgBodyTextMe : s.msgBodyTextThem]}>
-                              {msg.text}
+                            <Text style={[s.msgBodyText, isMe ? s.msgBodyTextMe : s.msgBodyTextThem, isWhisper && { fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', letterSpacing: 2, opacity: 0.8 }]}>
+                              {isWhisper ? msg.text.replace('[WHISPER]', '⚠️ ENCRYPTED:\n') : msg.text}
                             </Text>
-                          </View>
+                          </LinearGradient>
                         )}
                       </View>
                     );
@@ -1654,12 +1535,12 @@ export default function FriendsScreen() {
                 </View>
               )}
 
-              {/* Expressive games drawer */}
+              {/* Sci-Fi Mini-Game Holo-Deck */}
               {showGames && (
-                <View style={s.stickerSelectionPanel}>
+                <View style={[s.stickerSelectionPanel, { backgroundColor: 'rgba(0,0,0,0.8)', borderTopWidth: 1, borderTopColor: '#00F2FE' }]}>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.stickerHorizontalScroll}>
                     <TouchableOpacity
-                      style={[s.stickerBubbleBtn, { width: 110, backgroundColor: '#8E2DE2', flexDirection: 'row', gap: 6, paddingHorizontal: 12, height: 44, borderRadius: 22 }]}
+                      style={[s.stickerBubbleBtn, { width: 110, backgroundColor: 'rgba(142, 45, 226, 0.3)', borderWidth: 1, borderColor: '#8E2DE2', flexDirection: 'row', gap: 6, paddingHorizontal: 12, height: 44, borderRadius: 22 }]}
                       onPress={() => {
                         const uniqueTruth = getUniqueQuestion('truth');
                         handleSendMessage(`[TRUTH] ${uniqueTruth}`);
@@ -1670,7 +1551,7 @@ export default function FriendsScreen() {
                     </TouchableOpacity>
 
                     <TouchableOpacity
-                      style={[s.stickerBubbleBtn, { width: 110, backgroundColor: '#DD2476', flexDirection: 'row', gap: 6, paddingHorizontal: 12, height: 44, borderRadius: 22 }]}
+                      style={[s.stickerBubbleBtn, { width: 110, backgroundColor: 'rgba(221, 36, 118, 0.3)', borderWidth: 1, borderColor: '#DD2476', flexDirection: 'row', gap: 6, paddingHorizontal: 12, height: 44, borderRadius: 22 }]}
                       onPress={() => {
                         const uniqueDare = getUniqueQuestion('dare');
                         handleSendMessage(`[DARE] ${uniqueDare}`);
@@ -1679,20 +1560,58 @@ export default function FriendsScreen() {
                       <Text style={{ fontSize: 20 }}>😈</Text>
                       <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '900' }}>DARE</Text>
                     </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[s.stickerBubbleBtn, { width: 140, backgroundColor: 'rgba(17, 153, 142, 0.3)', borderWidth: 1, borderColor: '#11998e', flexDirection: 'row', gap: 6, paddingHorizontal: 12, height: 44, borderRadius: 22 }]}
+                      onPress={() => {
+                        const outcomes = [
+                          "You have to pay for the next Canteen trip! 💸",
+                          "You must wear your shirt backwards for an hour. 👕",
+                          "You owe me a plate of Midnight Maggi! 🍜",
+                          "You have to proxy my attendance tomorrow. 📝"
+                        ];
+                        const randomOutcome = outcomes[Math.floor(Math.random() * outcomes.length)];
+                        handleSendMessage(`[SPIN] The bottle landed on YOU!\nOutcome: ${randomOutcome}`);
+                      }}
+                    >
+                      <Text style={{ fontSize: 20 }}>🍾</Text>
+                      <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '900' }}>SPIN BOTTLE</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[s.stickerBubbleBtn, { width: 130, backgroundColor: 'rgba(0, 180, 219, 0.3)', borderWidth: 1, borderColor: '#00B4DB', flexDirection: 'row', gap: 6, paddingHorizontal: 12, height: 44, borderRadius: 22 }]}
+                      onPress={() => {
+                        const matchPct = Math.floor(Math.random() * 50) + 50;
+                        handleSendMessage(`[VIBE] Vibe Match: ${matchPct}%\nWe both crave midnight snacks! 🍕`);
+                      }}
+                    >
+                      <Text style={{ fontSize: 20 }}>🎯</Text>
+                      <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '900' }}>VIBE CHECK</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[s.stickerBubbleBtn, { width: 120, backgroundColor: 'rgba(255, 0, 0, 0.3)', borderWidth: 1, borderColor: '#FF0000', flexDirection: 'row', gap: 6, paddingHorizontal: 12, height: 44, borderRadius: 22 }]}
+                      onPress={() => {
+                        handleSendMessage(`[WHISPER] What happens in hostel stays in hostel...`);
+                      }}
+                    >
+                      <Text style={{ fontSize: 20 }}>🤫</Text>
+                      <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '900' }}>WHISPER</Text>
+                    </TouchableOpacity>
                   </ScrollView>
                 </View>
               )}
 
               {/* Quick reactions & typing status overlay */}
-              <View style={s.chatInputTopAccessory}>
+              <View style={[s.chatInputTopAccessory, { borderTopColor: 'rgba(52, 211, 153, 0.1)' }]}>
                 {isFriendTyping ? (
                   <View style={s.typingIndicatorWrap}>
-                    <Text style={s.typingIndicatorText}>{activeChat?.nickname || activeChat?.name} is typing...</Text>
+                    <Text style={[s.typingIndicatorText, { color: '#6EE7B7' }]}>🌱 {activeChat?.nickname || activeChat?.name} is typing a whisper...</Text>
                   </View>
                 ) : (
                   <View style={s.quickReactionsRow}>
-                    {['❤️', '🔥', '😂', '😮', '😢', '👍'].map((emoji) => (
-                      <TouchableOpacity key={emoji} onPress={() => handleSendMessage(emoji)} style={s.quickReactionBtn}>
+                    {['🍃', '🌿', '❤️', '🔥', '😂', '✨', '👍'].map((emoji) => (
+                      <TouchableOpacity key={emoji} onPress={() => handleSendMessage(emoji)} style={[s.quickReactionBtn, { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 16, padding: 5, marginHorizontal: 2 }]}>
                         <Text style={s.quickReactionEmoji}>{emoji}</Text>
                       </TouchableOpacity>
                     ))}
@@ -1701,49 +1620,41 @@ export default function FriendsScreen() {
               </View>
 
               {/* Chat Input controls */}
-              <View style={s.chatInputContainer}>
+              <View style={[s.chatInputContainer, { borderTopColor: 'rgba(52, 211, 153, 0.15)', backgroundColor: 'rgba(4, 18, 12, 0.75)' }]}>
                 <TouchableOpacity
-                  style={[s.stickerTriggerButton, showStickers && s.stickerTriggerButtonActive]}
+                  style={[s.stickerTriggerButton, { backgroundColor: 'rgba(16, 185, 129, 0.12)', borderColor: 'rgba(52, 211, 153, 0.25)', borderWidth: 1 }, showStickers && s.stickerTriggerButtonActive]}
                   onPress={() => {
                     setShowStickers(!showStickers);
                     setShowGames(false);
                   }}
                 >
-                  <Text style={{ fontSize: 20 }}>🎭</Text>
+                  <Text style={{ fontSize: 18 }}>🍃</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[s.stickerTriggerButton, showGames && s.stickerTriggerButtonActive]}
+                  style={[s.stickerTriggerButton, { backgroundColor: 'rgba(245, 158, 11, 0.12)', borderColor: 'rgba(245, 158, 11, 0.25)', borderWidth: 1 }]}
+                  onPress={() => {
+                    setShowGiftModal(true);
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  }}
+                >
+                  <Text style={{ fontSize: 18 }}>🎁</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[s.stickerTriggerButton, { backgroundColor: 'rgba(129, 140, 248, 0.12)', borderColor: 'rgba(129, 140, 248, 0.25)', borderWidth: 1 }, showGames && s.stickerTriggerButtonActive]}
                   onPress={() => {
                     setShowGames(!showGames);
                     setShowStickers(false);
                   }}
                 >
-                  <Text style={{ fontSize: 20 }}>🎮</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[s.stickerTriggerButton, isWhisperMode && s.stickerTriggerButtonActive]}
-                  onPress={() => {
-                    setIsWhisperMode(!isWhisperMode);
-                  }}
-                >
-                  <Text style={{ fontSize: 20 }}>👻</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[s.stickerTriggerButton, isDoodleMode && s.stickerTriggerButtonActive]}
-                  onPress={() => {
-                    setIsDoodleMode(!isDoodleMode);
-                  }}
-                >
-                  <Text style={{ fontSize: 20 }}>🖌️</Text>
+                  <Text style={{ fontSize: 18 }}>🎲</Text>
                 </TouchableOpacity>
 
                 <TextInput
-                  style={s.chatTextInputField}
-                  placeholder="Type a message..."
-                  placeholderTextColor="rgba(255,255,255,0.3)"
+                  style={[s.chatTextInputField, { backgroundColor: 'rgba(255, 255, 255, 0.06)', borderWidth: 1, borderColor: 'rgba(52, 211, 153, 0.25)', borderRadius: 16 }]}
+                  placeholder="Whisper to branch..."
+                  placeholderTextColor="rgba(167, 243, 208, 0.45)"
                   value={draftMessage}
                   onChangeText={handleInputChange}
                   onSubmitEditing={() => handleSendMessage()}
@@ -1751,13 +1662,22 @@ export default function FriendsScreen() {
 
                 <TouchableOpacity
                   disabled={sendingMessage || !draftMessage.trim()}
-                  style={[s.sendMessageBtn, { backgroundColor: getActiveThemeAccent() }]}
+                  style={[
+                    s.sendMessageBtn,
+                    {
+                      backgroundColor: draftMessage.trim() ? getActiveThemeAccent() : 'rgba(255,255,255,0.08)',
+                      borderRadius: 16,
+                      shadowColor: getActiveThemeAccent(),
+                      shadowOpacity: draftMessage.trim() ? 0.7 : 0,
+                      shadowRadius: 10
+                    }
+                  ]}
                   onPress={() => handleSendMessage()}
                 >
                   {sendingMessage ? (
-                    <ActivityIndicator size="small" color="#000" />
+                    <ActivityIndicator size="small" color="#FFF" />
                   ) : (
-                    <Text style={s.sendMessageBtnText}>SEND</Text>
+                    <Text style={[s.sendMessageBtnText, { color: draftMessage.trim() ? '#04160e' : 'rgba(255,255,255,0.3)', fontWeight: '900' }]}>SEND</Text>
                   )}
                 </TouchableOpacity>
               </View>
@@ -1767,57 +1687,298 @@ export default function FriendsScreen() {
       </Modal>
       )}
 
-      {/* SYNC CONTACTS AND ADD FRIENDS DRAWER / MODAL */}
+      
+      {/* SYNC CONTACTS, QR SCANNER AND ORBIT PASS MODAL */}
       <Modal visible={showSyncModal} animationType="slide" transparent={false} onRequestClose={() => setShowSyncModal(false)}>
         <SafeAreaView style={[s.syncModalContainer, { backgroundColor: GRAPHITE_BG }]}>
+          {/* Header */}
           <View style={s.syncModalHeader}>
-            <Text style={s.syncModalTitle}>FIND & ADD FRIENDS</Text>
+            <View>
+              <Text style={s.syncModalTitle}>ORBIT RADAR & FRIENDS</Text>
+              <Text style={{ color: '#8A94A6', fontSize: 11, fontWeight: '700', marginTop: 2 }}>QR Scan • Personal Pass • Variable Vibes</Text>
+            </View>
             <TouchableOpacity style={s.syncModalCloseBtn} onPress={() => { setShowSyncModal(false); setSearchQuery(''); setSyncedContacts([]); }}>
               <Text style={s.syncModalCloseText}>✕ CLOSE</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Interactive Search Bar */}
-          <View style={s.searchBarContainer}>
-            <TextInput
-              style={s.searchBarInput}
-              placeholder="Search by name or phone..."
-              placeholderTextColor="rgba(255,255,255,0.3)"
-              value={searchQuery}
-              onChangeText={handleSearchUsers}
-            />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => handleSearchUsers('')} style={s.searchClearBtn}>
-                <Text style={s.searchClearText}>✕</Text>
-              </TouchableOpacity>
-            )}
+          {/* 3-Way Segmented Tabs */}
+          <View style={s.tabSegmentContainer}>
+            <TouchableOpacity
+              style={[s.tabSegmentBtn, activeSyncTab === 'scanner' && s.tabSegmentBtnActive]}
+              onPress={() => { setActiveSyncTab('scanner'); Haptics.selectionAsync(); }}
+            >
+              <Text style={[s.tabSegmentText, activeSyncTab === 'scanner' && s.tabSegmentTextActive]}>⚡ SCAN QR</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.tabSegmentBtn, activeSyncTab === 'my_qr' && s.tabSegmentBtnActive]}
+              onPress={() => { setActiveSyncTab('my_qr'); Haptics.selectionAsync(); }}
+            >
+              <Text style={[s.tabSegmentText, activeSyncTab === 'my_qr' && s.tabSegmentTextActive]}>🪪 MY QR PASS</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.tabSegmentBtn, activeSyncTab === 'code' && s.tabSegmentBtnActive]}
+              onPress={() => { setActiveSyncTab('code'); Haptics.selectionAsync(); }}
+            >
+              <Text style={[s.tabSegmentText, activeSyncTab === 'code' && s.tabSegmentTextActive]}>🎯 CODE & VIBES</Text>
+            </TouchableOpacity>
           </View>
 
-          {/* Fallback to bulk contact sync if not searching */}
-          {searchQuery.trim().length === 0 && (
-            <View style={s.syncPromptBox}>
-              <Text style={s.syncPromptText}>
-                Or quickly scan registered campus buddies matching your local phone contacts list!
-              </Text>
-              <TouchableOpacity
-                disabled={syncing}
-                style={[s.primarySyncBtn, { backgroundColor: VIOLET_ACCENT }]}
-                onPress={handleContactsSync}
-              >
-                {syncing ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={s.primarySyncBtnText}>🔄 SCAN REGISTERED CONTACTS</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          )}
+          <ScrollView 
+            style={{ flex: 1 }} 
+            contentContainerStyle={{ padding: 16, paddingBottom: 240 }}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+          >
+            {/* TAB 0: SCANNER */}
+            {activeSyncTab === 'scanner' && (
+              <View style={s.scannerViewContainer}>
+                {/* Viewfinder frame */}
+                <View style={s.viewfinderFrame}>
+                  {/* Glowing Corner Brackets */}
+                  <View style={[s.cornerBracket, s.cornerTL]} />
+                  <View style={[s.cornerBracket, s.cornerTR]} />
+                  <View style={[s.cornerBracket, s.cornerBL]} />
+                  <View style={[s.cornerBracket, s.cornerBR]} />
 
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }}>
-            {/* INCOMING REQUESTS PANEL */}
-            {pendingRequests.length > 0 && searchQuery.trim().length === 0 && (
-              <View style={{ marginBottom: 24 }}>
-                <Text style={s.syncedContactsTitle}>INCOMING REQUESTS ({pendingRequests.length})</Text>
+                  {/* Animated Laser Beam */}
+                  <Animated.View
+                    style={[
+                      s.laserBeam,
+                      {
+                        transform: [
+                          {
+                            translateY: laserAnim.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [10, 210],
+                            }),
+                          },
+                        ],
+                      },
+                    ]}
+                  />
+
+                  {/* Center Target Reticle */}
+                  <View style={s.reticleCenter}>
+                    <Text style={{ fontSize: 32, opacity: 0.8 }}>⚡</Text>
+                    <Text style={s.reticleText}>ALIGN QR INSIDE FRAME</Text>
+                  </View>
+                </View>
+
+                {/* Scanner Controls Row */}
+                <View style={s.scannerControlsRow}>
+                  <TouchableOpacity
+                    style={[s.scannerToolBtn, torchActive && { borderColor: '#FFD700', backgroundColor: 'rgba(255, 215, 0, 0.15)' }]}
+                    onPress={() => { setTorchActive(!torchActive); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                  >
+                    <Text style={{ fontSize: 18 }}>{torchActive ? '🔦 ON' : '💡 TORCH'}</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[s.scannerToolBtn, { backgroundColor: 'rgba(110, 91, 255, 0.15)', borderColor: '#6E5BFF' }]}
+                    onPress={handlePasteAndScan}
+                  >
+                    <Text style={{ color: '#6E5BFF', fontWeight: '900', fontSize: 12 }}>📋 PASTE QR / CODE</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            {/* TAB 1: MY QR PASS */}
+            {activeSyncTab === 'my_qr' && (
+              <View style={s.myQrContainer}>
+                {/* Holographic Student Pass Card */}
+                <LinearGradient
+                  colors={['#1F2430', '#13161C', '#1B1528']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={s.hologramCard}
+                >
+                  <View style={s.hologramCardHeader}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      <Image
+                        source={{ uri: getAvatarUrl(user?.profileImage || null, myUserId || 'self') }}
+                        style={s.hologramAvatar}
+                      />
+                      <View>
+                        <Text style={s.hologramName}>{user?.name || 'Zenvy Student'}</Text>
+                        <Text style={s.hologramSubtitle}>{user?.hostelBlock ? `Block ${user.hostelBlock}` : 'Campus Member'} • {user?.roomNumber ? `Rm ${user.roomNumber}` : 'Amaravathi'}</Text>
+                      </View>
+                    </View>
+                    <View style={s.hologramBadge}>
+                      <Text style={s.hologramBadgeText}>OFFICIAL PASS</Text>
+                    </View>
+                  </View>
+
+                  {/* QR Code Container */}
+                  <View style={s.qrWrapper}>
+                    <View style={s.qrInnerBorder}>
+                      <QRCode
+                        value={`zenvy://orbit?code=${user?.friendCode || 'ZNV-ORBIT'}&id=${myUserId || 'u1'}`}
+                        size={170}
+                        color="#000000"
+                        backgroundColor="#FFFFFF"
+                      />
+                    </View>
+                  </View>
+
+                  {/* Friend Code Display */}
+                  <View style={s.codeDisplayBox}>
+                    <Text style={s.codeDisplayLabel}>YOUR PERSONAL ORBIT CODE</Text>
+                    <Text style={s.codeDisplayText}>{user?.friendCode || 'ZNV-ORBIT'}</Text>
+                  </View>
+
+                  {/* Action Buttons Row */}
+                  <View style={s.hologramActionsRow}>
+                    <TouchableOpacity style={s.hologramActionBtn} onPress={handleCopyMyCode}>
+                      <Text style={s.hologramActionBtnText}>📋 COPY CODE</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[s.hologramActionBtn, { backgroundColor: VIOLET_ACCENT }]} onPress={handleSharePass}>
+                      <Text style={[s.hologramActionBtnText, { color: '#FFF' }]}>📤 SHARE PASS</Text>
+                    </TouchableOpacity>
+                  </View>
+                </LinearGradient>
+              </View>
+            )}
+
+            {/* TAB 2: ENTER CODE & VARIABLE VIBES */}
+            {activeSyncTab === 'code' && (
+              <View>
+                {/* Code Input Box */}
+                <View style={s.codeInputBox}>
+                  <Text style={s.sectionHeaderTitle}>ENTER 6-DIGIT ORBIT CODE</Text>
+                  <View style={s.codeFieldWrapper}>
+                    <TextInput
+                      style={s.codeTextInput}
+                      placeholder="e.g. ZNV-8K92F"
+                      placeholderTextColor="rgba(255,255,255,0.3)"
+                      autoCapitalize="characters"
+                      value={friendCodeInput}
+                      onChangeText={setFriendCodeInput}
+                    />
+                    <TouchableOpacity style={s.codePasteBtn} onPress={handlePasteAndScan}>
+                      <Text style={s.codePasteBtnText}>PASTE</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Variable Connection Options: VIBE ARCHETYPES */}
+                <View style={{ marginTop: 20 }}>
+                  <Text style={s.sectionHeaderTitle}>CHOOSE CONNECTION VIBE</Text>
+                  <Text style={{ color: '#8A94A6', fontSize: 11, marginBottom: 10 }}>Select your relationship type for tailored perks & notifications:</Text>
+                  <View style={s.vibeChipsContainer}>
+                    {VIBE_OPTIONS.map(v => {
+                      const isSelected = selectedVibe === v.id;
+                      return (
+                        <TouchableOpacity
+                          key={v.id}
+                          style={[s.vibeChip, isSelected && { borderColor: v.color, backgroundColor: 'rgba(255,255,255,0.08)' }]}
+                          onPress={() => { setSelectedVibe(v.id); Haptics.selectionAsync(); }}
+                        >
+                          <Text style={{ fontSize: 16 }}>{v.emoji}</Text>
+                          <View style={{ flex: 1 }}>
+                            <Text style={[s.vibeChipLabel, isSelected && { color: v.color, fontWeight: '900' }]}>{v.label}</Text>
+                            <Text style={s.vibeChipDesc} numberOfLines={1}>{v.desc}</Text>
+                          </View>
+                          {isSelected && <Text style={{ color: v.color, fontWeight: '900' }}>✓</Text>}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                {/* Variable Icebreaker Prompts */}
+                <View style={{ marginTop: 20 }}>
+                  <Text style={s.sectionHeaderTitle}>SELECT INITIAL ICEBREAKER GREETING</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 6 }}>
+                    {ICEBREAKER_PROMPTS.map(prompt => {
+                      const isSelected = selectedIcebreaker === prompt && !customIcebreaker;
+                      return (
+                        <TouchableOpacity
+                          key={prompt}
+                          style={[s.icebreakerChip, isSelected && s.icebreakerChipActive]}
+                          onPress={() => {
+                            setSelectedIcebreaker(prompt);
+                            setCustomIcebreaker('');
+                            Haptics.selectionAsync();
+                          }}
+                        >
+                          <Text style={[s.icebreakerChipText, isSelected && { color: '#FFF', fontWeight: '800' }]}>{prompt}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+
+                  {/* Custom Note input */}
+                  <TextInput
+                    style={s.customIcebreakerInput}
+                    placeholder="Or type a custom greeting note..."
+                    placeholderTextColor="rgba(255,255,255,0.3)"
+                    value={customIcebreaker}
+                    onChangeText={setCustomIcebreaker}
+                  />
+                </View>
+
+                {/* Connect Action Button */}
+                <TouchableOpacity
+                  style={[s.connectActionButton, connectingViaCode && { opacity: 0.6 }]}
+                  disabled={connectingViaCode}
+                  onPress={() => handleConnectByCode()}
+                >
+                  {connectingViaCode ? (
+                    <ActivityIndicator size="small" color="#FFF" />
+                  ) : (
+                    <LinearGradient
+                      colors={['#6E5BFF', '#8E2DE2', '#FF7A59']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      style={s.connectActionGradient}
+                    >
+                      <Text style={s.connectActionText}>🚀 LINK ORBIT NOW</Text>
+                    </LinearGradient>
+                  )}
+                </TouchableOpacity>
+
+                {/* Interactive Search Bar Divider */}
+                <View style={{ marginTop: 30, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.06)', paddingTop: 20 }}>
+                  <Text style={s.sectionHeaderTitle}>OR SEARCH BY NAME / PHONE</Text>
+                  <View style={s.searchBarContainer}>
+                    <TextInput
+                      style={s.searchBarInput}
+                      placeholder="Search registered students..."
+                      placeholderTextColor="rgba(255,255,255,0.3)"
+                      value={searchQuery}
+                      onChangeText={handleSearchUsers}
+                    />
+                    {searchQuery.length > 0 && (
+                      <TouchableOpacity onPress={() => handleSearchUsers('')} style={s.searchClearBtn}>
+                        <Text style={s.searchClearText}>✕</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  {/* Contact Sync fallback */}
+                  {searchQuery.trim().length === 0 && (
+                    <TouchableOpacity
+                      disabled={syncing}
+                      style={[s.primarySyncBtn, { backgroundColor: 'rgba(110, 91, 255, 0.15)', borderWidth: 1, borderColor: '#6E5BFF', marginTop: 10 }]}
+                      onPress={handleContactsSync}
+                    >
+                      {syncing ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Text style={[s.primarySyncBtnText, { color: '#6E5BFF' }]}>🔄 SCAN MATCHING CONTACTS</Text>
+                      )}
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            )}
+
+            {/* INCOMING REQUESTS PANEL (Shown across tabs if any) */}
+            {pendingRequests.length > 0 && (
+              <View style={{ marginTop: 24 }}>
+                <Text style={s.syncedContactsTitle}>INCOMING ORBIT REQUESTS ({pendingRequests.length})</Text>
                 {pendingRequests.map(r => {
                   const reqNode = { requester: r.requester };
                   return (
@@ -1828,8 +1989,19 @@ export default function FriendsScreen() {
                         </Text>
                       </View>
                       <View style={{ flex: 1, marginLeft: 12 }}>
-                        <Text style={s.contactItemName}>{r.requester?.name || 'Buddy'}</Text>
-                        <Text style={s.contactItemPhone}>{r.requester?.phone || ''}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={s.contactItemName}>{r.requester?.name || 'Buddy'}</Text>
+                          {r.vibe && (
+                            <View style={s.vibeBadgeSmall}>
+                              <Text style={s.vibeBadgeSmallText}>{r.vibe}</Text>
+                            </View>
+                          )}
+                        </View>
+                        {r.icebreaker ? (
+                          <Text style={{ color: '#FF7A59', fontSize: 11, fontStyle: 'italic', marginTop: 2 }}>"{r.icebreaker}"</Text>
+                        ) : (
+                          <Text style={s.contactItemPhone}>{r.requester?.friendCode || r.requester?.phone || ''}</Text>
+                        )}
                       </View>
                       <View style={{ flexDirection: 'row', gap: 6 }}>
                         <TouchableOpacity
@@ -1851,8 +2023,9 @@ export default function FriendsScreen() {
               </View>
             )}
 
-            {syncedContacts.length > 0 && (
-              <View>
+            {/* SEARCH RESULTS LIST */}
+            {syncedContacts.length > 0 && activeSyncTab === 'code' && (
+              <View style={{ marginTop: 20 }}>
                 <Text style={s.syncedContactsTitle}>
                   {searchQuery.trim().length > 0 ? 'SEARCH RESULTS' : 'SYNCED USERS FOUND'}
                 </Text>
@@ -1863,7 +2036,7 @@ export default function FriendsScreen() {
                     </View>
                     <View style={{ flex: 1, marginLeft: 12 }}>
                       <Text style={s.contactItemName}>{c.name}</Text>
-                      <Text style={s.contactItemPhone}>{c.phone}</Text>
+                      <Text style={s.contactItemPhone}>{c.friendCode || c.phone}</Text>
                     </View>
                     {c.friendshipStatus === 'none' && (
                       <TouchableOpacity style={s.contactAddBtn} onPress={() => handleAddFriend(c.id)}>
@@ -1880,15 +2053,48 @@ export default function FriendsScreen() {
                 ))}
               </View>
             )}
-
-            {searchQuery.trim().length > 0 && syncedContacts.length === 0 && !syncing && (
-              <View style={{ alignItems: 'center', marginTop: 40 }}>
-                <Text style={{ color: '#8A94A6', fontSize: 13 }}>No users match "{searchQuery}"</Text>
-              </View>
-            )}
           </ScrollView>
         </SafeAreaView>
       </Modal>
+
+      {/* INSTANT SNACK GIFTING MODAL */}
+      <Modal visible={showGiftModal} transparent animationType="fade" onRequestClose={() => setShowGiftModal(false)}>
+        <View style={s.giftModalOverlay}>
+          <View style={s.giftModalBox}>
+            <Text style={s.giftModalTitle}>🎁 SEND SNACK TREAT</Text>
+            <Text style={s.giftModalSub}>Treat {activeChat?.name || 'your buddy'} with wallet credits for snacks!</Text>
+
+            <View style={s.giftAmountRow}>
+              {[10, 20, 50, 100].map(amt => (
+                <TouchableOpacity
+                  key={amt}
+                  style={[s.giftAmtBtn, giftAmount === amt && s.giftAmtBtnActive]}
+                  onPress={() => { setGiftAmount(amt); Haptics.selectionAsync(); }}
+                >
+                  <Text style={[s.giftAmtText, giftAmount === amt && s.giftAmtTextActive]}>₹{amt}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TouchableOpacity
+              style={s.confirmGiftBtn}
+              disabled={giftingLoading}
+              onPress={handleSendGift}
+            >
+              {giftingLoading ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <Text style={s.confirmGiftBtnText}>SEND ₹{giftAmount} TREAT 🚀</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity style={{ marginTop: 12, alignItems: 'center' }} onPress={() => setShowGiftModal(false)}>
+              <Text style={{ color: '#8A94A6', fontSize: 13, fontWeight: '700' }}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
 
       {/* Innovative Full-Screen Status Creator */}
       <Modal visible={showStatusModal} animationType="slide" transparent={false} onRequestClose={() => setShowStatusModal(false)}>
@@ -2131,6 +2337,7 @@ export default function FriendsScreen() {
 
 // Custom StatusBarBackground to handle spacing on Android/iOS
 function StatusBarBackground() {
+  if (Platform.OS === 'web') return null;
   return (
     <View style={{ height: Platform.OS === 'ios' ? 44 : (StatusBar.currentHeight || 24), backgroundColor: GRAPHITE_BG }} />
   );
@@ -2146,10 +2353,9 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'ios' ? 12 : 38,
-    paddingBottom: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.05)'
+    paddingTop: Platform.OS === 'web' ? 8 : (Platform.OS === 'ios' ? 8 : 16),
+    paddingBottom: 6,
+    backgroundColor: '#04050d',
   },
   backButton: {
     paddingVertical: 6,
@@ -2994,5 +3200,631 @@ const s = StyleSheet.create({
     fontWeight: '800',
     lineHeight: 18,
     fontStyle: 'italic'
+  },
+  tabSegmentContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    gap: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: '#12151B'
+  },
+  tabSegmentBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.03)'
+  },
+  tabSegmentBtnActive: {
+    backgroundColor: '#6E5BFF'
+  },
+  tabSegmentText: {
+    color: '#8A94A6',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5
+  },
+  tabSegmentTextActive: {
+    color: '#FFF',
+    fontWeight: '900'
+  },
+  scannerViewContainer: {
+    alignItems: 'center',
+    paddingVertical: 20
+  },
+  viewfinderFrame: {
+    width: 240,
+    height: 240,
+    backgroundColor: 'rgba(10, 14, 20, 0.85)',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(110, 91, 255, 0.3)',
+    position: 'relative',
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  cornerBracket: {
+    position: 'absolute',
+    width: 24,
+    height: 24,
+    borderColor: '#00F2FE'
+  },
+  cornerTL: {
+    top: 10,
+    left: 10,
+    borderTopWidth: 3,
+    borderLeftWidth: 3,
+    borderTopLeftRadius: 6
+  },
+  cornerTR: {
+    top: 10,
+    right: 10,
+    borderTopWidth: 3,
+    borderRightWidth: 3,
+    borderTopRightRadius: 6
+  },
+  cornerBL: {
+    bottom: 10,
+    left: 10,
+    borderBottomWidth: 3,
+    borderLeftWidth: 3,
+    borderBottomLeftRadius: 6
+  },
+  cornerBR: {
+    bottom: 10,
+    right: 10,
+    borderBottomWidth: 3,
+    borderRightWidth: 3,
+    borderBottomRightRadius: 6
+  },
+  laserBeam: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    height: 2,
+    backgroundColor: '#00F2FE',
+    shadowColor: '#00F2FE',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 8,
+    elevation: 6
+  },
+  reticleCenter: {
+    alignItems: 'center'
+  },
+  reticleText: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1,
+    marginTop: 8
+  },
+  scannerControlsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 20,
+    width: '100%'
+  },
+  scannerToolBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  demoScanBox: {
+    marginTop: 24,
+    width: '100%',
+    padding: 16,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)'
+  },
+  demoScanTitle: {
+    color: '#8A94A6',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1
+  },
+  demoCodeChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(110, 91, 255, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(110, 91, 255, 0.3)'
+  },
+  demoCodeChipText: {
+    color: '#6E5BFF',
+    fontSize: 12,
+    fontWeight: '800'
+  },
+  myQrContainer: {
+    paddingVertical: 10,
+    alignItems: 'center'
+  },
+  hologramCard: {
+    width: '100%',
+    borderRadius: 24,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center'
+  },
+  hologramCardHeader: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20
+  },
+  hologramAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 2,
+    borderColor: '#6E5BFF'
+  },
+  hologramName: {
+    color: '#FFF',
+    fontSize: 15,
+    fontWeight: '800'
+  },
+  hologramSubtitle: {
+    color: '#8A94A6',
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 1
+  },
+  hologramBadge: {
+    backgroundColor: 'rgba(110, 91, 255, 0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#6E5BFF'
+  },
+  hologramBadgeText: {
+    color: '#6E5BFF',
+    fontSize: 9,
+    fontWeight: '900'
+  },
+  qrWrapper: {
+    padding: 12,
+    backgroundColor: '#FFF',
+    borderRadius: 20,
+    shadowColor: '#6E5BFF',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 8
+  },
+  qrInnerBorder: {
+    borderRadius: 8,
+    overflow: 'hidden'
+  },
+  codeDisplayBox: {
+    marginTop: 20,
+    alignItems: 'center'
+  },
+  codeDisplayLabel: {
+    color: '#8A94A6',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1
+  },
+  codeDisplayText: {
+    color: '#FFF',
+    fontSize: 26,
+    fontWeight: '900',
+    letterSpacing: 3,
+    marginTop: 4,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace'
+  },
+  hologramActionsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 20,
+    width: '100%'
+  },
+  hologramActionBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  hologramActionBtnText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.5
+  },
+  codeInputBox: {
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)'
+  },
+  sectionHeaderTitle: {
+    color: '#FFF',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 1,
+    marginBottom: 8
+  },
+  codeFieldWrapper: {
+    flexDirection: 'row',
+    gap: 8
+  },
+  codeTextInput: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 1.5,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace'
+  },
+  codePasteBtn: {
+    backgroundColor: 'rgba(110, 91, 255, 0.2)',
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#6E5BFF'
+  },
+  codePasteBtnText: {
+    color: '#6E5BFF',
+    fontSize: 12,
+    fontWeight: '900'
+  },
+  vibeChipsContainer: {
+    gap: 8
+  },
+  vibeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)'
+  },
+  vibeChipLabel: {
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: '800'
+  },
+  vibeChipDesc: {
+    color: '#8A94A6',
+    fontSize: 10.5,
+    marginTop: 2
+  },
+  icebreakerChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)'
+  },
+  icebreakerChipActive: {
+    backgroundColor: '#6E5BFF',
+    borderColor: '#6E5BFF'
+  },
+  icebreakerChipText: {
+    color: '#8A94A6',
+    fontSize: 12,
+    fontWeight: '700'
+  },
+  customIcebreakerInput: {
+    marginTop: 10,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    color: '#FFF',
+    fontSize: 13
+  },
+  connectActionButton: {
+    marginTop: 24,
+    borderRadius: 16,
+    overflow: 'hidden'
+  },
+  connectActionGradient: {
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  connectActionText: {
+    color: '#FFF',
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 1
+  },
+  vibeBadgeSmall: {
+    backgroundColor: 'rgba(110, 91, 255, 0.2)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 0.5,
+    borderColor: '#6E5BFF'
+  },
+  vibeBadgeSmallText: {
+    color: '#6E5BFF',
+    fontSize: 9,
+    fontWeight: '900'
+  },
+  giftModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24
+  },
+  giftModalBox: {
+    width: '100%',
+    backgroundColor: '#171B22',
+    borderRadius: 24,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)'
+  },
+  giftModalTitle: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: 0.5
+  },
+  giftModalSub: {
+    color: '#8A94A6',
+    fontSize: 13,
+    marginTop: 6,
+    marginBottom: 20
+  },
+  giftAmountRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 20
+  },
+  giftAmtBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center'
+  },
+  giftAmtBtnActive: {
+    backgroundColor: '#6E5BFF',
+    borderColor: '#6E5BFF'
+  },
+  giftAmtText: {
+    color: '#FFF',
+    fontSize: 15,
+    fontWeight: '900'
+  },
+  giftAmtTextActive: {
+    color: '#FFF'
+  },
+  confirmGiftBtn: {
+    backgroundColor: '#FF7A59',
+    paddingVertical: 16,
+    borderRadius: 14,
+    alignItems: 'center'
+  },
+  confirmGiftBtnText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 1
+  },
+  orbitContainer: {
+    flex: 1,
+    backgroundColor: '#07090C',
+    overflow: 'hidden',
+    position: 'relative'
+  },
+  radarPulseRing1: {
+    position: 'absolute',
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    borderWidth: 1,
+    borderColor: '#00F2FE',
+    left: SW/2 - 80,
+    top: (SH*0.4) - 80,
+    opacity: 0.3,
+    shadowColor: '#00F2FE',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 10
+  },
+  radarPulseRing2: {
+    position: 'absolute',
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    borderWidth: 1,
+    borderColor: '#FF7A59',
+    left: SW/2 - 130,
+    top: (SH*0.4) - 130,
+    opacity: 0.15,
+    borderStyle: 'dashed'
+  },
+  radarPulseRing3: {
+    position: 'absolute',
+    width: 380,
+    height: 380,
+    borderRadius: 190,
+    borderWidth: 1,
+    borderColor: '#6E5BFF',
+    left: SW/2 - 190,
+    top: (SH*0.4) - 190,
+    opacity: 0.08
+  },
+  emptyOrbitContainer: {
+    position: 'absolute',
+    top: '50%',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    transform: [{ translateY: -100 }]
+  },
+  orbitFindBtn: {
+    marginTop: 24,
+    backgroundColor: '#6E5BFF',
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    borderRadius: 30,
+    shadowColor: '#6E5BFF',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  orbitFindBtnText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 1
+  },
+  orbitNode: {
+    position: 'absolute',
+    width: 60,
+    height: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10
+  },
+  polaroidCard: {
+    backgroundColor: '#FAF9F6', // Off-white photo paper
+    padding: 6,
+    paddingBottom: 20,
+    borderRadius: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    alignItems: 'center',
+    width: 60,
+  },
+  polaroidImage: {
+    width: 48,
+    height: 48,
+    backgroundColor: '#3b82f6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.1)'
+  },
+  polaroidInitials: {
+    color: '#FFF',
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: 1
+  },
+  polaroidName: {
+    color: '#333',
+    fontSize: 10,
+    fontWeight: '800',
+    marginTop: 6,
+    textTransform: 'uppercase'
+  },
+  orbitEmojiBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    backgroundColor: '#FFF',
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    zIndex: 12
+  },
+  orbitStreakBadge: {
+    position: 'absolute',
+    bottom: -32,
+    backgroundColor: 'rgba(255,122,89,0.2)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#FF7A59'
+  },
+  orbitStreakText: {
+    color: '#FF7A59',
+    fontSize: 8,
+    fontWeight: '900'
+  },
+  centerNode: {
+    position: 'absolute',
+    width: 80,
+    height: 80,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 20
+  },
+  centerAvatarOutline: {
+    padding: 3,
+    borderRadius: 40,
+    shadowColor: '#6E5BFF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 15
+  },
+  centerAvatar: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    borderWidth: 2,
+    borderColor: '#07090C'
+  },
+  centerNodePulse: {
+    position: 'absolute',
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    borderWidth: 2,
+    borderColor: '#FF1493',
+    opacity: 0.5,
+    zIndex: -1
+  },
+  centerNodeLabel: {
+    position: 'absolute',
+    bottom: -15,
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+    overflow: 'hidden'
   }
 });

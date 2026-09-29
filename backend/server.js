@@ -976,6 +976,7 @@ const startServer = async () => {
     app.use('/api/chat', require('./routes/chatRoutes'));
     app.use('/api/friends', require('./routes/friendRoutes'));
     app.use('/api/rooms', require('./routes/roomRoutes'));
+    app.use('/api/daily-content', require('./routes/dailyContent'));
 
     // ── Hourly Cleanup: Delete expired community posts and mark expired birthdays ──────────────────────
     const runExpiryCleanup = async () => {

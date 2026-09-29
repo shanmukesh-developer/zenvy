@@ -13,6 +13,7 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
+  KeyboardAvoidingView,
 } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -1168,9 +1169,19 @@ export default function ProfileScreen() {
 
       {/* ─── MODAL: EDIT PROFILE ─── */}
       <Modal visible={isEditing} animationType="slide" transparent={true} onRequestClose={() => setIsEditing(false)}>
-        <View style={s.modalOverlay}>
-          <ScrollView contentContainerStyle={s.modalScroll} keyboardShouldPersistTaps="handled">
-            <View style={[s.modalContent, { backgroundColor: cardBg, borderColor: border }]}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 20}
+        >
+          <View style={s.modalOverlay}>
+            <ScrollView
+              contentContainerStyle={[s.modalScroll, { paddingBottom: 120 }]}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              bounces={true}
+            >
+              <View style={[s.modalContent, { backgroundColor: cardBg, borderColor: border }]}>
               <Text style={[s.modalTitle, { color: txt }]}>UPDATE PROFILE</Text>
 
               {/* Live Selected Avatar Preview */}
@@ -1323,51 +1334,65 @@ export default function ProfileScreen() {
             </View>
           </ScrollView>
         </View>
+      </KeyboardAvoidingView>
       </Modal>
 
       {/* ─── MODAL: ADD ADDRESS ─── */}
       <Modal visible={addingAddress} animationType="slide" transparent={true} onRequestClose={() => setAddingAddress(false)}>
-        <View style={s.modalOverlay}>
-          <View style={[s.modalContent, { backgroundColor: cardBg, borderColor: border }]}>
-            <Text style={[s.modalTitle, { color: txt }]}>ADD NEW ADDRESS</Text>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 0}
+        >
+          <View style={s.modalOverlay}>
+            <ScrollView
+              contentContainerStyle={s.modalScroll}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              bounces={true}
+            >
+              <View style={[s.modalContent, { backgroundColor: cardBg, borderColor: border }]}>
+                <Text style={[s.modalTitle, { color: txt }]}>ADD NEW ADDRESS</Text>
 
-            <Text style={[s.inputLabel, { color: txtSec }]}>LABEL (E.G. HOSTEL ROOM, GATE 2)</Text>
-            <TextInput
-              value={newAddr.label}
-              onChangeText={(text) => setNewAddr({ ...newAddr, label: text })}
-              placeholder="Hostel Room A-204"
-              placeholderTextColor={txtSec}
-              style={[s.modalInput, { color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', borderColor: border }]}
-            />
+                <Text style={[s.inputLabel, { color: txtSec }]}>LABEL (E.G. HOSTEL ROOM, GATE 2)</Text>
+                <TextInput
+                  value={newAddr.label}
+                  onChangeText={(text) => setNewAddr({ ...newAddr, label: text })}
+                  placeholder="Hostel Room A-204"
+                  placeholderTextColor={txtSec}
+                  style={[s.modalInput, { color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', borderColor: border }]}
+                />
 
-            <Text style={[s.inputLabel, { color: txtSec }]}>FULL ADDRESS</Text>
-            <TextInput
-              value={newAddr.address}
-              onChangeText={(text) => setNewAddr({ ...newAddr, address: text })}
-              placeholder="Campus Block, room details..."
-              placeholderTextColor={txtSec}
-              style={[s.modalInput, { color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', borderColor: border }]}
-            />
+                <Text style={[s.inputLabel, { color: txtSec }]}>FULL ADDRESS</Text>
+                <TextInput
+                  value={newAddr.address}
+                  onChangeText={(text) => setNewAddr({ ...newAddr, address: text })}
+                  placeholder="Campus Block, room details..."
+                  placeholderTextColor={txtSec}
+                  style={[s.modalInput, { color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', borderColor: border }]}
+                />
 
-            <Text style={[s.inputLabel, { color: txtSec }]}>CITY</Text>
-            <TextInput
-              value={newAddr.city}
-              onChangeText={(text) => setNewAddr({ ...newAddr, city: text })}
-              placeholder="Amaravathi"
-              placeholderTextColor={txtSec}
-              style={[s.modalInput, { color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', borderColor: border }]}
-            />
+                <Text style={[s.inputLabel, { color: txtSec }]}>CITY</Text>
+                <TextInput
+                  value={newAddr.city}
+                  onChangeText={(text) => setNewAddr({ ...newAddr, city: text })}
+                  placeholder="Amaravathi"
+                  placeholderTextColor={txtSec}
+                  style={[s.modalInput, { color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', borderColor: border }]}
+                />
 
-            <View style={s.modalActionsRow}>
-              <TouchableOpacity style={[s.modalCancelBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]} onPress={() => setAddingAddress(false)}>
-                <Text style={[s.modalCancelBtnText, { color: txt }]}>CANCEL</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[s.modalSaveBtn, { backgroundColor: goldColor }]} onPress={handleAddAddress}>
-                <Text style={s.modalSaveBtnText}>SAVE</Text>
-              </TouchableOpacity>
-            </View>
+                <View style={s.modalActionsRow}>
+                  <TouchableOpacity style={[s.modalCancelBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]} onPress={() => setAddingAddress(false)}>
+                    <Text style={[s.modalCancelBtnText, { color: txt }]}>CANCEL</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[s.modalSaveBtn, { backgroundColor: goldColor }]} onPress={handleAddAddress}>
+                    <Text style={s.modalSaveBtnText}>SAVE</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ─── MODAL: ABOUT US ─── */}
@@ -2212,13 +2237,13 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.85)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    paddingHorizontal: 16,
   },
   modalScroll: {
     flexGrow: 1,
-    justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 40,
+    paddingTop: 40,
+    paddingBottom: 280, // Ample clearance to scroll any field/button above keyboard
     width: '100%',
   },
   modalContent: {

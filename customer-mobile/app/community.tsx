@@ -2282,6 +2282,7 @@ export default function CommunityScreen() {
                     showsVerticalScrollIndicator={false} 
                     keyboardShouldPersistTaps="handled"
                     bounces={false}
+                    contentContainerStyle={{ paddingBottom: 240 }}
                   >
                     {replyingTo && (
                       <View style={[s.replyBanner, { backgroundColor: isDark ? '#1C1B1F' : 'rgba(139,90,43,0.05)', borderColor: border }]}>

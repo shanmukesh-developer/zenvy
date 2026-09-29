@@ -58,6 +58,15 @@ export default function LiveOrderCockpit({
   const [etaMinutes, setEtaMinutes] = useState<number>(status >= 5 ? 1 : status === 4 ? 11 : 18);
   const [copiedPin, setCopiedPin] = useState(false);
 
+  const effectiveRider = riderInfo || {
+    name: 'Assigning Campus Captain...',
+    phone: '',
+    vehicleNumber: 'Assigned on Pickup',
+    vehicleType: 'Campus Fleet',
+    rating: 4.9,
+    photoUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&q=80',
+  };
+
   useEffect(() => {
     if (status === 4) {
       const interval = setInterval(() => {
@@ -68,9 +77,9 @@ export default function LiveOrderCockpit({
   }, [status]);
 
   const handleCallRider = () => {
-    if (riderInfo.phone) {
-      Linking.openURL(`tel:${riderInfo.phone}`).catch(() => {
-        Alert.alert('Calling Rider', `Rider contact: ${riderInfo.phone}`);
+    if (effectiveRider?.phone) {
+      Linking.openURL(`tel:${effectiveRider.phone}`).catch(() => {
+        Alert.alert('Calling Rider', `Rider contact: ${effectiveRider.phone}`);
       });
     } else {
       Alert.alert('Rider Assigned', 'Your delivery captain will contact you upon arriving at the campus gate.');
@@ -142,7 +151,7 @@ export default function LiveOrderCockpit({
       <View style={[styles.riderSection, { borderBottomColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }]}>
         <View style={styles.riderAvatarWrapper}>
           <SafeImage
-            source={{ uri: riderInfo.photoUrl }}
+            source={{ uri: effectiveRider?.photoUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&q=80' }}
             fallbackUri="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&q=80"
             style={styles.riderPhoto}
           />
@@ -153,13 +162,13 @@ export default function LiveOrderCockpit({
 
         <View style={{ flex: 1, paddingHorizontal: 12 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Text style={[styles.riderName, { color: txt }]}>{riderInfo.name || 'Campus Delivery Captain'}</Text>
+            <Text style={[styles.riderName, { color: txt }]}>{effectiveRider?.name || 'Campus Delivery Captain'}</Text>
             <View style={styles.ratingPill}>
-              <Text style={styles.ratingText}>⭐ {riderInfo.rating || 4.9}</Text>
+              <Text style={styles.ratingText}>⭐ {effectiveRider?.rating || 4.9}</Text>
             </View>
           </View>
           <Text style={[styles.vehicleText, { color: txtSec }]}>
-            {riderInfo.vehicleType || 'Hero Splendor'} • <Text style={{ fontWeight: '800', color: txt }}>{riderInfo.vehicleNumber || 'AP 39 ZV 4022'}</Text>
+            {effectiveRider?.vehicleType || 'Campus Fleet'} • <Text style={{ fontWeight: '800', color: txt }}>{effectiveRider?.vehicleNumber || 'Assigned on Pickup'}</Text>
           </Text>
           <Text style={styles.securityTag}>🛡️ Campus Background Verified</Text>
         </View>

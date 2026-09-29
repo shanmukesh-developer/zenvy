@@ -38,6 +38,14 @@ const initFriendshipModel = (sequelize) => {
     nickname: {
       type: DataTypes.STRING,
       allowNull: true
+    },
+    vibe: {
+      type: DataTypes.STRING,
+      defaultValue: 'Roomie'
+    },
+    icebreaker: {
+      type: DataTypes.TEXT,
+      allowNull: true
     }
   }, {
     timestamps: true,

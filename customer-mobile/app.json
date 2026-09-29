@@ -2,7 +2,7 @@
   "expo": {
     "name": "Zenvy – Food Delivery",
     "slug": "zenvy-customer",
-    "version": "1.0.3",
+    "version": "1.0.5",
     "runtimeVersion": {
       "policy": "appVersion"
     },
@@ -21,7 +21,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.srm.hostelbites",
-      "buildNumber": "4"
+      "buildNumber": "6"
     },
     "android": {
       "adaptiveIcon": {
@@ -30,7 +30,7 @@
       },
       "package": "com.srm.hostelbites",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 4,
+      "versionCode": 6,
       "compileSdkVersion": 36,
       "targetSdkVersion": 35,
       "minSdkVersion": 24,

@@ -24,6 +24,7 @@ import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../constants/theme';
+import { announceNewOrder, announceStatusUpdate, testVoiceAlert, startKitchenForegroundService } from '../services/voiceAlert';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -286,6 +287,7 @@ export default function DashboardScreen() {
   const [menuLoading, setMenuLoading] = useState(false);
 
   useEffect(() => {
+    startKitchenForegroundService().catch(() => {});
     AsyncStorage.getItem('restaurant_data').then((data) => {
       if (data) {
         const parsed = JSON.parse(data);
@@ -329,21 +331,7 @@ export default function DashboardScreen() {
       if (audioAlerts) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         Vibration.vibrate([0, 300, 150, 300, 150, 500]);
-        if (Platform.OS === 'web' && typeof window !== 'undefined' && ((window as any).AudioContext || (window as any).webkitAudioContext)) {
-          try {
-            const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
-            const ctx = new AudioContextClass();
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.frequency.setValueAtTime(880, ctx.currentTime);
-            gain.gain.setValueAtTime(0.3, ctx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.start();
-            osc.stop(ctx.currentTime + 0.8);
-          } catch (e) {}
-        }
+        announceNewOrder(order);
       }
 
       if (autoAccept) {
@@ -383,6 +371,10 @@ export default function DashboardScreen() {
     setOrders((prev) =>
       prev.map((o) => ((o.id || o._id) === orderId ? { ...o, status: normalizedStatus } : o))
     );
+
+    if (audioAlerts) {
+      announceStatusUpdate(normalizedStatus, orderId);
+    }
 
     try {
       if (socket) {
@@ -512,7 +504,7 @@ export default function DashboardScreen() {
         </View>
 
         <View style={styles.headerRightControls}>
-          {/* Audio Chime Toggle */}
+          {/* Audio Announce Toggle */}
           <TouchableOpacity
             style={[styles.iconControlBtn, audioAlerts && styles.iconControlBtnActive]}
             onPress={() => {
@@ -525,6 +517,17 @@ export default function DashboardScreen() {
               size={18}
               color={audioAlerts ? COLORS.emerald : COLORS.textDisabled}
             />
+          </TouchableOpacity>
+
+          {/* Test Voice Announcement Button */}
+          <TouchableOpacity
+            style={styles.iconControlBtn}
+            onPress={() => {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              testVoiceAlert();
+            }}
+          >
+            <Ionicons name="mic-outline" size={18} color={COLORS.gold} />
           </TouchableOpacity>
 
           {/* 86 Dishes Menu Drawer */}

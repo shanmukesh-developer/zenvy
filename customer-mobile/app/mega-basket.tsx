@@ -394,7 +394,12 @@ export default function MegaBasketScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={{ flex: 1 }} 
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+      >
         {activeTab === 'new' ? (
           <View style={s.scrollContent}>
             {/* Apartment & Hostel Group Buying Hero Card */}
@@ -795,7 +800,7 @@ const s = StyleSheet.create({
   tabLabel: { fontSize: 9, fontWeight: '900', color: '#888', letterSpacing: 1 },
   tabLabelActive: { color: '#FFF' },
 
-  scrollContent: { paddingHorizontal: 16, paddingBottom: 40 },
+  scrollContent: { paddingHorizontal: 16, paddingBottom: 220 },
   card: { padding: 16, borderRadius: 24, borderWidth: 1, marginBottom: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 1 },
   cardTitle: { fontSize: 10, fontWeight: '900', color: COLORS.red, letterSpacing: 1.5, marginBottom: 12 },
 

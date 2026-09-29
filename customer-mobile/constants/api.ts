@@ -6,10 +6,31 @@ export const PROD_API_URL = 'https://hostelbites-backend-jwmt.onrender.com';
 
 // Local / Development Port 8080 API URL
 export const DEV_PORT = 8080;
-export const LOCAL_API_URL = 'http://10.1.170.72:8080';
+export const LOCAL_API_URL = 'http://localhost:8080';
 
-// Release standalone APK uses live Render cloud backend
-export const API_URL = PROD_API_URL;
+// In local development, connect directly to local backend for zero-latency, real database testing
+const getApiUrl = () => {
+  if (Platform.OS === 'web') {
+    if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+      return LOCAL_API_URL;
+    }
+    return PROD_API_URL;
+  }
+  // On mobile device in dev mode:
+  if (__DEV__) {
+    const hostUri = Constants.expoConfig?.hostUri || (Constants as any).manifest?.debuggerHost;
+    if (hostUri) {
+      const ip = hostUri.split(':')[0];
+      if (ip && ip !== 'localhost' && ip !== '127.0.0.1') {
+        return `http://${ip}:${DEV_PORT}`;
+      }
+    }
+    return LOCAL_API_URL; // Works seamlessly with adb reverse tcp:8080 tcp:8080
+  }
+  return PROD_API_URL;
+};
+
+export const API_URL = getApiUrl();
 
 // Official Campus Support & WhatsApp Concierge
 export const ZENVY_SUPPORT_PHONE = '919391955674';
@@ -102,6 +123,7 @@ export const ENDPOINTS = {
   friendsTheme: (id: string) => `${API_URL}/api/friends/${id}/theme`,
   friendsSendMessage: `${API_URL}/api/friends/message`,
   friendsMessages: (convId: string) => `${API_URL}/api/friends/messages/${convId}`,
+  dailyTruthDare: `${API_URL}/api/daily-content/truth-dare`,
 
   // The Wall Photo Contest
   wallActive: `${API_URL}/api/wall/events/active`,

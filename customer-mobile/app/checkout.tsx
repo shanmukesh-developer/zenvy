@@ -152,6 +152,7 @@ export default function CheckoutScreen() {
 
   const [loading, setLoading] = useState(false);
   const [addedExtras, setAddedExtras] = useState<Set<string>>(new Set());
+  const [hasSkippedCouponPrompt, setHasSkippedCouponPrompt] = useState(false);
 
   useEffect(() => {
     if (!user) {
@@ -400,7 +401,12 @@ export default function CheckoutScreen() {
         <Text style={[s.title, { color: goldColor }]}>CHECKOUT & DELIVERY</Text>
       </View>
 
-      <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        contentContainerStyle={[s.scroll, { paddingBottom: 220 }]} 
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        showsVerticalScrollIndicator={false}
+      >
         {/* Campus Selection */}
         <StaggeredSection delay={50} direction="up">
           <Text style={[s.sectionTitle, { color: txt }]}>DELIVERY CAMPUS LOCATION</Text>

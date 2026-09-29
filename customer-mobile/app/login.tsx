@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, Animated, Dimensions, ActivityIndicator, Alert, Modal } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, Animated, Dimensions, ActivityIndicator, Alert, Modal, Keyboard } from 'react-native';
 import { WebView } from 'react-native-webview';
 import auth from '@react-native-firebase/auth';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
@@ -38,6 +38,22 @@ export default function LoginScreen() {
   const router = useRouter();
   const { user, isLoading, setUser } = useAuth();
   const { isDark, colors } = useTheme();
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => setKeyboardHeight(e.endCoordinates.height)
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setKeyboardHeight(0)
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
   
   useEffect(() => {
     if (!isLoading && user) {
@@ -68,7 +84,7 @@ export default function LoginScreen() {
     setError('');
     setLoading(true);
 
-    // 1. Native Firebase Phone Auth if on Android/iOS build
+    // 1. Try Native Firebase Phone Auth first (real SMS OTP)
     if (Platform.OS !== 'web') {
       try {
         const nativeAuthInstance = auth();
@@ -77,16 +93,25 @@ export default function LoginScreen() {
           if (confirmation) {
             setConfirm(confirmation);
             setCountdown(60);
+            setOtpSent(true);
             setLoading(false);
+            const { playSound } = require('../utils/sounds');
+            playSound('success');
+            Alert.alert(
+              '📲 OTP Sent via SMS',
+              `A 6-digit verification code has been sent to +91 ${digits}. Check your messages!`,
+              [{ text: 'ENTER OTP' }]
+            );
             return;
           }
         }
       } catch (e: any) {
-        console.log('[FIREBASE_PHONE_AUTH_NATIVE_FALLBACK]', e?.message);
+        console.warn('[FIREBASE_PHONE_AUTH]', e?.code, e?.message);
+        // Silently fall through to backend OTP
       }
     }
 
-    // 2. Universal Real Backend SMS & OTP Gateway (/api/users/send-otp)
+    // 2. Fallback to backend SMS & OTP Gateway
     try {
       const res = await fetch(`${API_URL}/api/users/send-otp`, {
         method: 'POST',
@@ -94,12 +119,13 @@ export default function LoginScreen() {
         body: JSON.stringify({ phone: digits }),
       });
       const data = await res.json();
-      
+
       if (!res.ok) {
         throw new Error(data.message || 'Failed to dispatch verification SMS');
       }
 
       setConfirm({
+        isBackend: true,
         confirm: async (inputOtp: string) => {
           setLoading(true);
           try {
@@ -115,6 +141,7 @@ export default function LoginScreen() {
               const { playSound } = require('../utils/sounds');
               playSound('success');
               router.replace('/(tabs)' as any);
+              return true;
             } else {
               throw new Error(verifyData.message || 'Invalid 6-digit OTP code');
             }
@@ -125,25 +152,32 @@ export default function LoginScreen() {
       });
 
       setCountdown(60);
+      setOtpSent(true);
       const { playSound } = require('../utils/sounds');
       playSound('success');
 
-      // If backend generated OTP (development or sandbox mode), notify the user
-      if (data.otp && !process.env.FAST2SMS_API_KEY) {
+      // In development mode the backend returns the OTP for easy testing
+      if (data.otp) {
+        setOtp(data.otp);
         Alert.alert(
-          '📲 SMS Verification Sent',
-          `Verification code sent for +91 ${digits}.\n\nOTP Code: ${data.otp}`,
-          [{ text: 'ENTER OTP', onPress: () => {} }]
+          '📲 OTP Generated',
+          `Your verification code is: ${data.otp}\n\nIt has been auto-filled for you.`,
+          [{ text: 'OK' }]
         );
       } else {
         Alert.alert(
-          '📲 SMS Verification Dispatched',
-          `A 6-digit OTP verification code has been dispatched to +91 ${digits} via SMS.`,
-          [{ text: 'ENTER OTP', onPress: () => {} }]
+          '📲 OTP Sent to Your Phone',
+          `A 6-digit verification code has been sent via SMS to +91 ${digits}.\n\nPlease check your Messages inbox and enter the code below.`,
+          [{ text: 'OK' }]
         );
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to send SMS OTP');
+      const msg = err.message || 'Failed to send SMS OTP';
+      if (msg.includes('Network') || msg.includes('Failed to fetch')) {
+        setError('Cannot reach server. Please check your internet connection.');
+      } else {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -152,29 +186,66 @@ export default function LoginScreen() {
   const handleNativeVerifyOtp = async () => {
     if (!otp || otp.length < 6) { setError('Enter a valid 6-digit OTP'); return; }
     setLoading(true);
+    setError('');
+    const cleanOtp = otp.trim();
+    const digits = phone.replace(/\D/g, '').slice(-10);
+
     try {
-      await confirm.confirm(otp);
-      const idToken = await auth().currentUser?.getIdToken();
-      if (idToken) {
-         const digits = phone.replace(/\D/g, '').slice(-10);
-         const res = await fetch(ENDPOINTS.login, {
-           method: 'POST',
-           headers: { 'Content-Type': 'application/json' },
-           body: JSON.stringify({ phone: digits, firebaseToken: idToken }),
-         });
-         const resData = await res.json();
-         if (res.ok && resData.token) {
-           await setToken(resData.token);
-           await setUser(resData.user || resData);
-           const { playSound } = require('../utils/sounds');
-           playSound('success');
-           router.replace('/(tabs)' as any);
-         } else {
-           setError(resData.message || 'OTP verification failed on server');
-         }
+      // If using backend confirmation
+      if (confirm?.isBackend) {
+        await confirm.confirm(cleanOtp);
+        return;
+      }
+
+      // If using Firebase native confirmation
+      if (confirm && typeof confirm.confirm === 'function') {
+        try {
+          await confirm.confirm(cleanOtp);
+          let idToken: string | undefined;
+          try {
+            const { default: auth } = require('@react-native-firebase/auth');
+            idToken = await auth().currentUser?.getIdToken();
+          } catch {}
+
+          if (idToken) {
+            const res = await fetch(ENDPOINTS.login, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ phone: digits, firebaseToken: idToken }),
+            });
+            const resData = await res.json();
+            if (res.ok && resData.token) {
+              await setToken(resData.token);
+              await setUser(resData.user || resData);
+              const { playSound } = require('../utils/sounds');
+              playSound('success');
+              router.replace('/(tabs)' as any);
+              return;
+            }
+          }
+        } catch (fbErr: any) {
+          console.warn('[FIREBASE_VERIFY_ERR]', fbErr.message);
+        }
+      }
+
+      // Fallback: Verify directly with backend
+      const verifyRes = await fetch(`${API_URL}/api/users/verify-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: digits, otp: cleanOtp }),
+      });
+      const verifyData = await verifyRes.json();
+      if (verifyRes.ok && (verifyData.token || verifyData._id)) {
+        if (verifyData.token) await setToken(verifyData.token);
+        await setUser(verifyData.user || verifyData);
+        const { playSound } = require('../utils/sounds');
+        playSound('success');
+        router.replace('/(tabs)' as any);
+      } else {
+        throw new Error(verifyData.message || 'Invalid 6-digit OTP code');
       }
     } catch (e: any) {
-      setError(`Invalid OTP: ${e.message}`);
+      setError(e.message || 'OTP verification failed');
     } finally {
       setLoading(false);
     }
@@ -460,8 +531,19 @@ export default function LoginScreen() {
         </View>
       </Animated.View>
 
-      <KeyboardAvoidingView style={{ flex: 1, zIndex: 10 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView 
+        style={{ flex: 1, zIndex: 10 }} 
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView 
+          contentContainerStyle={[
+            s.scroll, 
+            { paddingBottom: Math.max(120, keyboardHeight + 80) }
+          ]} 
+          keyboardShouldPersistTaps="handled" 
+          keyboardDismissMode="interactive"
+          showsVerticalScrollIndicator={false}
+        >
           
           {/* Logo & Brand Section with Parallax Effect */}
           <Animated.View style={[s.logoWrap, { transform: [{ translateX: Animated.multiply(pan.x, -0.3) }, { translateY: Animated.multiply(pan.y, -0.3) }] }]}>
@@ -763,10 +845,10 @@ const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bgDark },
   scroll: { 
     flexGrow: 1, 
-    justifyContent: 'flex-end',
     width: '100%',
     maxWidth: 520,
     alignSelf: 'center',
+    paddingTop: Platform.OS === 'web' ? 20 : 10,
   },
   
   logoWrap: { 

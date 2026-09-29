@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { View, Text, StyleSheet, Dimensions, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
 import { useCart } from '../context/CartContext';
@@ -19,13 +20,14 @@ interface NexusExplorerProps {
 export default function NexusExplorer({ restaurants, activeCategory, onSelectItem }: NexusExplorerProps) {
   const router = useRouter();
   const { isDark } = useTheme();
-  const { addToCart } = useCart();
+  const { addToCart, clearCart } = useCart();
   const { dietMode, isItemAllowed } = useDietary();
   const [activeFilter, setActiveFilter] = useState<'all' | 'veg'>('all');
   const [activeSort, setActiveSort] = useState<'recommended' | 'rating' | 'fastest'>('recommended');
   const [sortValue, setSortValue] = useState<'default' | 'low' | 'high'>('default');
   const [favorites, setFavorites] = useState<string[]>([]);
   const [showAll, setShowAll] = useState(false);
+  const [addedIds, setAddedIds] = useState<Record<string, boolean>>({});
 
   // Sync local filter with global dietary mode
   useEffect(() => {
@@ -81,20 +83,86 @@ export default function NexusExplorer({ restaurants, activeCategory, onSelectIte
     ],
   };
 
+  const handleAddToCart = (item: any, e?: any) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    const itemId = item.id || item._id;
+    try {
+      addToCart({
+        id: itemId,
+        name: item.cleanName || item.name,
+        price: Number(item.price) || 0,
+        image: item.image || item.imageUrl || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=300',
+        restaurantId: item.restaurantId || 'campus-kitchen',
+        restaurantName: item.restaurantName || 'Campus Partner Kitchen',
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      setAddedIds(prev => ({ ...prev, [itemId]: true }));
+      setTimeout(() => {
+        setAddedIds(prev => ({ ...prev, [itemId]: false }));
+      }, 1800);
+    } catch (err: any) {
+      if (err.message === 'MULTIPLE_RESTAURANTS') {
+        Alert.alert(
+          'Start New Basket?',
+          'Your basket contains items from another restaurant. Clear basket to add this dish?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Clear & Add',
+              style: 'destructive',
+              onPress: () => {
+                clearCart();
+                setTimeout(() => {
+                  addToCart({
+                    id: itemId,
+                    name: item.cleanName || item.name,
+                    price: Number(item.price) || 0,
+                    image: item.image || item.imageUrl || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=300',
+                    restaurantId: item.restaurantId || 'campus-kitchen',
+                    restaurantName: item.restaurantName || 'Campus Partner Kitchen',
+                  });
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+                  setAddedIds(prev => ({ ...prev, [itemId]: true }));
+                  setTimeout(() => setAddedIds(prev => ({ ...prev, [itemId]: false })), 1800);
+                }, 100);
+              }
+            }
+          ]
+        );
+      }
+    }
+  };
+
   const filteredItems = useMemo(() => {
     const catKey = (activeCategory || 'biryani').toLowerCase();
     
-    // Collect matching items from restaurants
-    const collectedFromRestaurants = restaurants.flatMap(res => 
-      (res.menu || []).map((item: any) => {
+    // 1. Filter out non-food establishments (laundry, pharmacy, rentals)
+    const foodRestaurants = (restaurants || []).filter(r => {
+      const name = (r.name || '').toLowerCase();
+      const vt = (r.vendorType || '').toUpperCase();
+      if (name.includes('laundry') || name.includes('pharmacy') || name.includes('rental') || name.includes('fleet') || name.includes('clean')) return false;
+      if (vt === 'LAUNDRY' || vt === 'PHARMACY' || vt === 'RENTAL' || vt === 'SERVICES') return false;
+      return true;
+    });
+
+    // 2. Collect matching dishes
+    const collectedFromRestaurants = foodRestaurants.flatMap(res => 
+      (res.menu || []).map((item: any, idx: number) => {
         const isVeg = item.isVegetarian === true || 
                       String(item.isVegetarian).toLowerCase() === 'true' || 
                       Number(item.isVegetarian) === 1 || 
                       (item.tags || []).includes('veg') || 
                       (item.tags || []).includes('fruits');
 
+        const cleanName = (item.name || '').replace(/\s*\([^)]*\)\s*$/, '').trim();
+        const safeId = item._id || item.id || `${res._id || res.id || 'res'}-${idx}-${cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+
         return {
           ...item,
+          id: safeId,
+          _id: safeId,
+          name: cleanName,
+          cleanName,
           isVegetarian: isVeg,
           restaurantName: res.name,
           restaurantId: res._id || res.id,
@@ -103,7 +171,7 @@ export default function NexusExplorer({ restaurants, activeCategory, onSelectIte
       })
     ).filter(item => {
       const itemCat = (item.category || '').toLowerCase();
-      const itemName = (item.name || '').toLowerCase();
+      const itemName = (item.cleanName || item.name || '').toLowerCase();
       const itemTags = (item.tags || []).map((t: string) => t.toLowerCase());
 
       // Strict category matching
@@ -122,9 +190,21 @@ export default function NexusExplorer({ restaurants, activeCategory, onSelectIte
       ? collectedFromRestaurants 
       : (CURATED_CATEGORY_ITEMS[catKey] || CURATED_CATEGORY_ITEMS.biryani);
 
-    const uniqueMap = new Map();
-    itemsSource.forEach(item => uniqueMap.set(item._id || item.id, item));
-    const dedupedItems = Array.from(uniqueMap.values());
+    // Deduplicate by clean dish name so that no fake dummy duplicates across vendors flood the catalog
+    const uniqueByName = new Map<string, any>();
+    itemsSource.forEach(item => {
+      const key = (item.cleanName || item.name || '').toLowerCase().trim();
+      if (!key) return;
+      if (!uniqueByName.has(key)) {
+        uniqueByName.set(key, item);
+      } else {
+        const existing = uniqueByName.get(key);
+        if ((item.rating || 0) > (existing.rating || 0)) {
+          uniqueByName.set(key, item);
+        }
+      }
+    });
+    const dedupedItems = Array.from(uniqueByName.values());
 
     return dedupedItems.filter(item => {
       const matchesFilter = activeFilter === 'all' || (activeFilter === 'veg' && item.isVegetarian);
@@ -297,6 +377,7 @@ export default function NexusExplorer({ restaurants, activeCategory, onSelectIte
             {(showAll ? filteredItems : filteredItems.slice(0, 6)).map((item, idx) => {
               const itemId = item._id || item.id || idx.toString();
               const isFav = favorites.includes(itemId);
+              const isAdded = !!addedIds[itemId];
               const img = item.image || item.imageUrl || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=300';
               return (
                 <CardPressable 
@@ -325,17 +406,31 @@ export default function NexusExplorer({ restaurants, activeCategory, onSelectIte
 
                   <View style={s.info}>
                     <View style={s.titleRow}>
-                      <Text style={[s.name, { color: txt }]} numberOfLines={1}>{item.name}</Text>
+                      <Text style={[s.name, { color: txt }]} numberOfLines={1}>{item.cleanName || item.name}</Text>
                       <Text style={s.price}>₹{item.price}</Text>
                     </View>
-                    <Text style={[s.restaurantName, { color: txtSec }]} numberOfLines={1}>{item.restaurantName}</Text>
+                    <TouchableOpacity 
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        if (item.restaurantId && onSelectItem) {
+                          onSelectItem(item.restaurantId);
+                        }
+                      }}
+                    >
+                      <Text style={[s.restaurantName, { color: txtSec }]} numberOfLines={1}>{item.restaurantName}</Text>
+                    </TouchableOpacity>
                     
                     <ActionPressable 
-                      style={[s.addBtn, { backgroundColor: '#C8A265' }]}
-                      onPress={() => router.push(`/products/${itemId}` as any)}
-                      sound="click"
+                      style={[
+                        s.addBtn, 
+                        { backgroundColor: isAdded ? '#10B981' : '#C8A265' }
+                      ]}
+                      onPress={() => handleAddToCart(item)}
+                      sound="tabSwitch"
                     >
-                      <Text style={[s.addBtnText, { color: '#000000', fontWeight: '900' }]}>ADD +</Text>
+                      <Text style={[s.addBtnText, { color: isAdded ? '#FFFFFF' : '#000000', fontWeight: '900' }]}>
+                        {isAdded ? 'ADDED ✓' : 'ADD +'}
+                      </Text>
                     </ActionPressable>
                   </View>
                 </CardPressable>

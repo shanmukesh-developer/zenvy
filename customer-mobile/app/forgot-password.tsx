@@ -83,7 +83,11 @@ export default function ForgotPasswordScreen() {
 
   return (
     <KeyboardAvoidingView style={s.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
+      <ScrollView 
+        contentContainerStyle={[s.scroll, { paddingBottom: 220 }]} 
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+      >
         {/* Back Link */}
         <TouchableOpacity 
           style={s.backLink} 
@@ -240,7 +244,7 @@ export default function ForgotPasswordScreen() {
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bgDark },
-  scroll: { flexGrow: 1, justifyContent: 'center', padding: 24, maxWidth: 520, width: '100%', alignSelf: 'center' },
+  scroll: { flexGrow: 1, paddingTop: 40, padding: 24, maxWidth: 520, width: '100%', alignSelf: 'center' },
   backLink: { position: 'absolute', top: Platform.OS === 'ios' ? 60 : 40, left: 24, padding: 8 },
   backText: { color: COLORS.gold, fontSize: 10, fontWeight: '900', letterSpacing: 2 },
   logoWrap: { alignItems: 'center', marginBottom: 30, marginTop: 40 },

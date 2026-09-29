@@ -77,10 +77,11 @@ exports.searchContacts = async (req, res) => {
           id: { [Op.ne]: req.user.id }, // Exclude self
           [Op.or]: [
             { name: { [matchOp]: `%${searchStr}%` } },
-            { phone: { [Op.like]: `%${searchStr}%` } }
+            { phone: { [Op.like]: `%${searchStr}%` } },
+            { friendCode: { [matchOp]: `%${searchStr}%` } }
           ]
         },
-        attributes: ['id', 'name', 'phone', 'profileImage'],
+        attributes: ['id', 'name', 'phone', 'profileImage', 'friendCode'],
         limit: 15
       });
     } else if (Array.isArray(contacts)) {
@@ -96,7 +97,7 @@ exports.searchContacts = async (req, res) => {
           phone: { [Op.in]: cleanNumbers },
           id: { [Op.ne]: req.user.id } // Exclude self
         },
-        attributes: ['id', 'name', 'phone', 'profileImage']
+        attributes: ['id', 'name', 'phone', 'profileImage', 'friendCode']
       });
     } else {
       return res.status(400).json({ message: 'Either contacts array or query string is required.' });
@@ -118,6 +119,7 @@ exports.searchContacts = async (req, res) => {
         id: matchedUser.id,
         name: matchedUser.name,
         phone: matchedUser.phone,
+        friendCode: matchedUser.friendCode,
         profileImage: matchedUser.profileImage,
         friendshipStatus: friendship ? friendship.status : 'none',
         friendshipId: friendship ? friendship.id : null
@@ -131,14 +133,40 @@ exports.searchContacts = async (req, res) => {
   }
 };
 
-// 2. Send Friend Request
+// 2. Send Friend Request (Supports direct recipientId, Friend Code, QR Code, and Variable Vibe Options)
 exports.sendFriendRequest = async (req, res) => {
   try {
-    const { recipientId } = req.body;
-    if (!recipientId) return res.status(400).json({ message: 'recipientId is required.' });
+    let { recipientId, friendCode, vibe, icebreaker } = req.body;
 
+    const User = getUserModel();
     const Friendship = getFriendshipModel();
-    if (!Friendship) return res.status(500).json({ message: 'Model not loaded' });
+    if (!User || !Friendship) return res.status(500).json({ message: 'Model not loaded' });
+
+    // Support connecting via friendCode or raw QR payload (e.g. zenvy://orbit?code=ZNV-XXXXX or ZNV-XXXXX)
+    if (!recipientId && friendCode) {
+      let codeToFind = friendCode.trim();
+      if (codeToFind.toUpperCase().includes('CODE=')) {
+        const match = codeToFind.match(/code=([A-Za-z0-9_-]+)/i);
+        if (match) codeToFind = match[1];
+      }
+      const isPostgres = User.sequelize.options.dialect === 'postgres';
+      const matchOp = isPostgres ? Op.iLike : Op.like;
+      const targetUser = await User.findOne({
+        where: {
+          friendCode: { [matchOp]: codeToFind }
+        }
+      });
+      if (!targetUser) {
+        return res.status(404).json({ message: `No student found with Orbit Code: ${codeToFind}` });
+      }
+      recipientId = targetUser.id;
+    }
+
+    if (!recipientId) return res.status(400).json({ message: 'recipientId or valid friendCode is required.' });
+
+    if (recipientId === req.user.id) {
+      return res.status(400).json({ message: 'You cannot connect with your own Orbit Pass.' });
+    }
 
     // Check existing
     const existing = await Friendship.findOne({
@@ -171,7 +199,9 @@ exports.sendFriendRequest = async (req, res) => {
     const friendship = await Friendship.create({
       requesterId: req.user.id,
       recipientId,
-      status: 'pending'
+      status: 'pending',
+      vibe: vibe || 'Roomie',
+      icebreaker: icebreaker ? icebreaker.trim() : null
     });
 
     // Socket emission & push notification to recipient
@@ -179,18 +209,21 @@ exports.sendFriendRequest = async (req, res) => {
     if (io) {
       io.to(`user-${recipientId}`).emit('incoming_friend_request', {
         friendshipId: friendship.id,
+        vibe: friendship.vibe,
+        icebreaker: friendship.icebreaker,
         requester: {
           id: req.user.id,
           name: req.user.name,
-          profileImage: req.user.profileImage
+          profileImage: req.user.profileImage,
+          friendCode: req.user.friendCode
         }
       });
     }
 
     await sendPushToUser(
       recipientId,
-      '🎉 Friend Request',
-      `${req.user.name} wants to connect on Zenvy Secure!`,
+      `🎉 Orbit Link Request [${friendship.vibe || 'Roomie'}]`,
+      `${req.user.name} wants to connect with vibe "${friendship.vibe || 'Roomie'}"!`,
       { type: 'FRIEND_REQUEST', requesterId: req.user.id }
     );
 
@@ -275,12 +308,30 @@ exports.acceptFriendRequest = async (req, res) => {
       });
     }
 
+    // Auto-deliver initial icebreaker note if provided during QR/code connection
+    if (friendship.icebreaker) {
+      try {
+        const Message = getMessageModel();
+        if (Message) {
+          const encrypted = encryptText(`⚡ [Orbit Link • ${friendship.vibe || 'Roomie'}] ${friendship.icebreaker}`);
+          await Message.create({
+            conversationId: conversation.id,
+            senderId: friendship.requesterId,
+            text: encrypted
+          });
+        }
+      } catch (err) {
+        console.error('[AUTO_ICEBREAKER_ERROR]', err.message);
+      }
+    }
+
     // Trigger alerts to requester
     const io = req.app.get('io');
     if (io) {
       io.to(`user-${friendship.requesterId}`).emit('friend_request_accepted', {
         friendshipId: friendship.id,
         friendName: req.user.name,
+        vibe: friendship.vibe,
         conversationId: conversation.id
       });
     }
@@ -288,7 +339,7 @@ exports.acceptFriendRequest = async (req, res) => {
     await sendPushToUser(
       friendship.requesterId,
       '🤝 Friend Request Accepted',
-      `${req.user.name} accepted your friend request!`,
+      `${req.user.name} accepted your Orbit request [${friendship.vibe || 'Roomie'}]!`,
       { type: 'FRIEND_ACCEPTED', friendId: req.user.id }
     );
 
@@ -321,7 +372,7 @@ exports.getFriends = async (req, res) => {
     for (const fs of friendships) {
       const friendId = fs.requesterId === req.user.id ? fs.recipientId : fs.requesterId;
       const friend = await User.findByPk(friendId, {
-        attributes: ['id', 'name', 'phone', 'profileImage', 'statusText', 'statusEmoji', 'statusSeenBy']
+        attributes: ['id', 'name', 'phone', 'friendCode', 'profileImage', 'statusText', 'statusEmoji', 'statusSeenBy']
       });
 
       if (!friend) continue;
@@ -348,6 +399,9 @@ exports.getFriends = async (req, res) => {
         name: fs.nickname || friend.name,
         originalName: friend.name,
         nickname: fs.nickname || null,
+        vibe: fs.vibe || 'Roomie',
+        icebreaker: fs.icebreaker || null,
+        friendCode: friend.friendCode || null,
         phone: friend.phone,
         profileImage: friend.profileImage,
         streakCount: fs.streakCount || 0,
@@ -384,17 +438,20 @@ exports.getPendingRequests = async (req, res) => {
     const list = [];
     for (const p of pending) {
       const requester = await User.findByPk(p.requesterId, {
-        attributes: ['id', 'name', 'phone', 'profileImage']
+        attributes: ['id', 'name', 'phone', 'friendCode', 'profileImage']
       });
       if (requester) {
         list.push({
           friendshipId: p.id,
+          vibe: p.vibe || 'Roomie',
+          icebreaker: p.icebreaker || null,
+          createdAt: p.createdAt,
           requester
         });
       }
     }
 
-    res.json(list);
+    return res.json(list);
   } catch (error) {
     console.error('[GET_PENDING_ERROR]', error);
     res.status(500).json({ message: 'Server error fetching requests.' });
@@ -407,7 +464,7 @@ exports.updateFriendshipTheme = async (req, res) => {
     const { id } = req.params;
     const { theme } = req.body;
 
-    const VALID_THEMES = ['friendship', 'crazy', 'love'];
+    const VALID_THEMES = ['friendship', 'crazy', 'love', 'graphite', 'grove', 'autumn', 'blossom', 'nightfall'];
     if (!VALID_THEMES.includes(theme)) {
       return res.status(400).json({ message: 'Invalid theme selected.' });
     }

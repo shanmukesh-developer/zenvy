@@ -22,6 +22,14 @@
           }
         },
         {
+          "client_id": "785490473159-sikgl4ikhac8lsakflf5ilobe5nesliv.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.srm.hostelbites",
+            "certificate_hash": "c2e9d3d7d857c060a2e9bbaa4abe0441be999b76"
+          }
+        },
+        {
           "client_id": "785490473159-8u6m41d2u27icc02719pbdluouukru3t.apps.googleusercontent.com",
           "client_type": 3
         }

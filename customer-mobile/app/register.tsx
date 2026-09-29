@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, Animated, Dimensions, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, Animated, Dimensions, ActivityIndicator, Alert, Keyboard } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { COLORS, SHADOWS } from '../constants/theme';
@@ -9,6 +9,7 @@ import { StaggeredSection, BounceIn } from '../components/AnimatedSection';
 import { setToken } from '../utils/auth';
 import DopaminePressable, { ActionPressable } from '../components/DopaminePressable';
 import ServerWakeupOverlay from '../components/ServerWakeupOverlay';
+import auth from '@react-native-firebase/auth';
 
 import { useTheme } from '../context/ThemeContext';
 
@@ -34,6 +35,23 @@ export default function RegisterScreen() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showWakeup, setShowWakeup] = useState(false);
+  const [confirmResult, setConfirmResult] = useState<any>(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => setKeyboardHeight(e.endCoordinates.height)
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setKeyboardHeight(0)
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   // Background Slideshow Animation State
   const [imgIndex, setImgIndex] = useState(1); // offset starting image
@@ -113,39 +131,75 @@ export default function RegisterScreen() {
     if (!validateForm()) return;
     setLoading(true);
     setError('');
+    const cleanedPhone = phone.replace(/\D/g, '').slice(-10);
+
+    // 1. Try Native Firebase Phone Auth first (real SMS OTP)
+    if (Platform.OS !== 'web') {
+      try {
+        const nativeAuth = auth();
+        if (nativeAuth && nativeAuth.signInWithPhoneNumber) {
+          const confirmation = await nativeAuth.signInWithPhoneNumber('+91' + cleanedPhone);
+          if (confirmation) {
+            setConfirmResult(confirmation);
+            setIsOtpSent(true);
+            setCountdown(60);
+            setLoading(false);
+            const { playSound } = require('../utils/sounds');
+            playSound('success');
+            Alert.alert(
+              '📲 OTP Sent via SMS',
+              `A 6-digit verification code has been sent to +91 ${cleanedPhone}. Check your messages!`,
+              [{ text: 'ENTER OTP' }]
+            );
+            return;
+          }
+        }
+      } catch (fbErr: any) {
+        console.warn('[REGISTER_FIREBASE_PHONE]', fbErr?.code, fbErr?.message);
+        // Silently fall through to backend OTP
+      }
+    }
+
+    // 2. Fallback to backend SMS endpoint
     try {
-      const cleanedPhone = phone.replace(/\D/g, '').slice(-10);
       const res = await fetch(ENDPOINTS.sendOtp, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: cleanedPhone }),
       });
       const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.message || 'Failed to send OTP');
+      }
       
       setIsOtpSent(true);
-      setCountdown(30);
+      setCountdown(60);
       const { playSound } = require('../utils/sounds');
       playSound('success');
 
+      // In development mode the backend returns the OTP for easy testing
       if (data.otp) {
+        setOtp(data.otp);
         Alert.alert(
-          '📲 OTP Verification Code Sent',
-          `Verification SMS sent for +91 ${cleanedPhone}.\n\nYour 6-digit verification code is: ${data.otp}`,
-          [{ text: 'ENTER OTP', onPress: () => {} }]
+          '📲 OTP Generated',
+          `Your verification code is: ${data.otp}\n\nIt has been auto-filled for you.`,
+          [{ text: 'OK' }]
         );
       } else {
         Alert.alert(
-          '📲 SMS Sent',
-          `We sent a 6-digit OTP code to +91 ${cleanedPhone}. Please enter it below.`,
+          '📲 OTP Sent to Your Phone',
+          `A 6-digit verification code has been sent via SMS to +91 ${cleanedPhone}.\n\nPlease check your Messages inbox and enter the code below.`,
           [{ text: 'OK' }]
         );
       }
     } catch (e: any) {
-      if (e.message && (e.message.includes('Network') || e.message.includes('Failed to fetch') || e.message.includes('JSON'))) {
+      const msg = e.message || '';
+      if (msg.includes('Network') || msg.includes('Failed to fetch') || msg.includes('JSON')) {
         setShowWakeup(true);
       } else {
-        setError(e.message && typeof e.message === 'string' && e.message.length < 80 && !e.message.includes('[object') 
-          ? e.message 
+        setError(typeof msg === 'string' && msg.length < 80 && !msg.includes('[object') 
+          ? msg 
           : 'Could not send verification SMS. Please check your network and try again.');
       }
     } finally {
@@ -162,7 +216,13 @@ export default function RegisterScreen() {
     setError('');
     try {
       const cleanedPhone = phone.replace(/\D/g, '').slice(-10);
-      const payload: any = { name: name.trim(), phone: cleanedPhone, password, otp: otp.trim() };
+
+      const payload: any = { 
+        name: name.trim(), 
+        phone: cleanedPhone, 
+        password, 
+        otp: otp.trim(),
+      };
       if (email.trim()) payload.email = email.trim().toLowerCase();
 
       const res = await fetch(ENDPOINTS.register, {
@@ -248,7 +308,15 @@ export default function RegisterScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
       >
-        <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
+        <ScrollView 
+          contentContainerStyle={[
+            s.scroll, 
+            { paddingBottom: Math.max(120, keyboardHeight + 80) }
+          ]} 
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          showsVerticalScrollIndicator={false}
+        >
           
           {/* Header Branding */}
           <Animated.View style={[s.logoWrap, { transform: [{ translateX: pan.x }, { translateY: pan.y }] }]}>
@@ -422,10 +490,10 @@ const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bgDark },
   scroll: { 
     flexGrow: 1, 
-    justifyContent: 'flex-end',
     width: '100%',
     maxWidth: 520,
     alignSelf: 'center',
+    paddingTop: Platform.OS === 'web' ? 20 : 10,
   },
   
   logoWrap: { 

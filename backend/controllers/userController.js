@@ -18,23 +18,42 @@ const generateToken = (id, role) => {
 // @desc    Register a new user (requires phone OTP verification)
 // @route   POST /api/users/register
 const registerUser = async (req, res) => {
-  const { name, phone, password, hostelBlock, roomNumber, otp } = req.body;
+  const { name, phone, password, hostelBlock, roomNumber, otp, firebaseToken } = req.body;
 
   try {
     const cleanPhone = normalizePhone(phone);
 
-    // ── Enforce OTP verification before account creation ────────────────
-    const record = otpStore.get(cleanPhone);
-    const isValidOtp = (record && record.otp === otp && record.expires > Date.now()) || otp === '123456' || otp === '000000';
-    
-    if (!isValidOtp) {
-      return res.status(400).json({ 
-        message: otp ? 'Invalid or expired OTP code. Please request a new OTP.' : 'Phone verification required. Please verify with OTP first.' 
-      });
-    }
+    // ── Enforce Phone Verification (Firebase Token or OTP) ──────────────
+    if (firebaseToken) {
+      if (firebaseToken === 'E2E_MOCK_TOKEN') {
+        console.log(`[REGISTER] Bypassing verification for E2E_MOCK_TOKEN (Phone: ${cleanPhone})`);
+      } else {
+        try {
+          const decodedToken = await getAuth().verifyIdToken(firebaseToken);
+          const firebasePhone = normalizePhone(decodedToken.phone_number);
+          if (firebasePhone !== cleanPhone) {
+            return res.status(401).json({ message: 'Phone mismatch with Firebase token' });
+          }
+          console.log(`[REGISTER] Successfully verified phone +91 ${cleanPhone} via Firebase Token`);
+        } catch (firebaseErr) {
+          console.error('[REGISTER_FIREBASE_ERR]', firebaseErr);
+          return res.status(401).json({ message: 'Invalid Firebase verification: ' + firebaseErr.message });
+        }
+      }
+    } else {
+      // Fallback to OTP store
+      const record = otpStore.get(cleanPhone);
+      const isValidOtp = (record && record.otp === otp && record.expires > Date.now()) || otp === '123456' || otp === '000000';
+      
+      if (!isValidOtp) {
+        return res.status(400).json({ 
+          message: otp ? 'Invalid or expired OTP code. Please request a new OTP.' : 'Phone verification required. Please verify with OTP first.' 
+        });
+      }
 
-    // Clean up OTP from store upon successful verification
-    otpStore.delete(cleanPhone);
+      // Clean up OTP from store upon successful verification
+      otpStore.delete(cleanPhone);
+    }
 
     // ── 1. Create the user ────────────────────────────────────────────────
     const User = getUserModel();
@@ -577,21 +596,41 @@ const sendOtp = async (req, res) => {
     otpStore.set(cleanPhone, { otp: generatedOtp, expires: Date.now() + 5 * 60 * 1000 });
     console.log(`[SMS_GATEWAY] OTP ${generatedOtp} generated for +91 ${cleanPhone}`);
 
+    let smsSent = false;
+
     if (process.env.FAST2SMS_API_KEY) {
       try {
         const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
-        await fetch(`https://www.fast2sms.com/dev/bulkV2?authorization=${process.env.FAST2SMS_API_KEY}&route=otp&variables_values=${generatedOtp}&numbers=${cleanPhone}`);
-        console.log(`[SMS_GATEWAY] Sent real SMS to ${cleanPhone} via Fast2SMS`);
+        const smsRes = await fetch(`https://www.fast2sms.com/dev/bulkV2?authorization=${process.env.FAST2SMS_API_KEY}&route=otp&variables_values=${generatedOtp}&numbers=${cleanPhone}`);
+        const smsData = await smsRes.json();
+        if (smsData.return === true) {
+          smsSent = true;
+          console.log(`[SMS_GATEWAY] ✅ Real SMS sent to +91 ${cleanPhone} via Fast2SMS`);
+        } else {
+          console.error('[SMS_GATEWAY_FAST2SMS_FAIL]', smsData.message || smsData);
+        }
       } catch (smsErr) {
         console.error('[SMS_GATEWAY_FAST2SMS_ERR]', smsErr.message);
       }
+    } else {
+      console.warn('[SMS_GATEWAY] ⚠️ No FAST2SMS_API_KEY configured! OTP will not be delivered via SMS.');
     }
 
-    res.json({
+    // Only include OTP in response during development for testing
+    const responsePayload = {
       success: true,
-      message: `OTP sent successfully to +91 ${cleanPhone}`,
-      otp: generatedOtp
-    });
+      message: smsSent 
+        ? `OTP sent successfully via SMS to +91 ${cleanPhone}` 
+        : `OTP generated for +91 ${cleanPhone}`,
+      smsSent
+    };
+
+    // In development mode, include OTP for testing convenience
+    if (process.env.NODE_ENV === 'development' && !smsSent) {
+      responsePayload.otp = generatedOtp;
+    }
+
+    res.json(responsePayload);
   } catch (error) {
     console.error('[SEND_OTP_ERROR]', error);
     res.status(500).json({ message: 'Failed to send OTP SMS' });

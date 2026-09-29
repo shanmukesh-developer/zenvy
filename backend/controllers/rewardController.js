@@ -142,4 +142,36 @@ const getUserCoupons = async (req, res) => {
   }
 };
 
-module.exports = { checkSpinEntry, useSpin, getLeaderboard, getUserCoupons };
+const validateCoupon = async (req, res) => {
+  try {
+    const { code } = req.body;
+    if (!code) {
+      return res.status(400).json({ message: 'Coupon code is required' });
+    }
+    const { getCouponModel } = require('../models/Coupon');
+    const Coupon = getCouponModel();
+    const coupon = await Coupon.findOne({
+      where: { code, userId: req.user.id, isUsed: false }
+    });
+
+    if (!coupon) {
+      return res.status(404).json({ message: 'Invalid or already used coupon' });
+    }
+
+    if (new Date() > new Date(coupon.expiryDate)) {
+      return res.status(400).json({ message: 'Coupon has expired' });
+    }
+
+    res.json({ valid: true, coupon });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+module.exports = {
+  checkSpinEntry,
+  useSpin,
+  getLeaderboard,
+  getUserCoupons,
+  validateCoupon
+};

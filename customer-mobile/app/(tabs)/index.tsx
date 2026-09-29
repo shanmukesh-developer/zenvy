@@ -908,6 +908,8 @@ export default function HomeScreen() {
         )}
         </View>
 
+        {/* ── SECTION BREATHING SPACE ── */}
+        <View style={{ height: 20 }} />
 
         {/* ── CAMPUSBITES: LOCAL VENDORS ── */}
         <CampusBitesSection restaurants={restaurants} />

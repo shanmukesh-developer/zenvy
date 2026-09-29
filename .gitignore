@@ -115,3 +115,11 @@ test_toggle_bug.js
 backend/test_direct_push.js
 backend/test_rider_push.js
 backend/scripts/inspect_tokens.js
+backend/check_shanmukh.js
+backend/test_get_friends.js
+scratch/
+*.patch
+bundle.js
+*.png
+!frontend/public/assets/*.png
+!customer-mobile/assets/**/*.png

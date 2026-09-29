@@ -9,7 +9,6 @@ const CAMPUSES = [
   { code: 'ALL', label: 'All Campuses', emoji: '🌐' },
   { code: 'SRM', label: 'Main Campus', emoji: '🏛️' },
   { code: 'VIT', label: 'North Campus', emoji: '🏢' },
-  { code: 'ALL', label: 'All Stalls', emoji: '📍' },
 ];
 
 interface CampusBitesSectionProps {
@@ -369,7 +368,7 @@ export default function CampusBitesSection({ restaurants }: CampusBitesSectionPr
 }
 
 const s = StyleSheet.create({
-  section: { paddingHorizontal: 16, marginBottom: 24 },
+  section: { paddingHorizontal: 16, marginTop: 32, marginBottom: 28 },
   headerRow: { marginBottom: 12 },
   headerLeft: {},
   badgeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },

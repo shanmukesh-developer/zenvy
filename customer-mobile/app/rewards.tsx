@@ -548,19 +548,35 @@ export default function RewardsScreen() {
                       </View>
                     </View>
 
-                    <DopaminePressable
-                      style={[
-                        s.statusBox,
-                        { backgroundColor: isCopied ? '#22c55e' : 'rgba(212,175,122,0.15)', borderWidth: 1, borderColor: isCopied ? '#22c55e' : '#D4AF7A' }
-                      ]}
-                      onPress={() => handleCopyCoupon(c.code)}
-                      sound="click"
-                      activeScale={0.9}
-                    >
-                      <Text style={[s.statusBoxText, { color: isCopied ? '#FFF' : '#D4AF7A', fontWeight: '900' }]}>
-                        {isCopied ? 'COPIED! ✓' : 'COPY CODE'}
-                      </Text>
-                    </DopaminePressable>
+                    <View style={{ flexDirection: 'row', gap: 6 }}>
+                      <DopaminePressable
+                        style={[
+                          s.statusBox,
+                          { backgroundColor: isCopied ? '#22c55e' : 'rgba(212,175,122,0.15)', borderWidth: 1, borderColor: isCopied ? '#22c55e' : '#D4AF7A' }
+                        ]}
+                        onPress={() => handleCopyCoupon(c.code)}
+                        sound="click"
+                        activeScale={0.9}
+                      >
+                        <Text style={[s.statusBoxText, { color: isCopied ? '#FFF' : '#D4AF7A', fontWeight: '900' }]}>
+                          {isCopied ? 'COPIED!' : 'COPY'}
+                        </Text>
+                      </DopaminePressable>
+
+                      <DopaminePressable
+                        style={[
+                          s.statusBox,
+                          { backgroundColor: '#D4AF7A', borderWidth: 1, borderColor: '#D4AF7A' }
+                        ]}
+                        onPress={() => require('expo-router').router.push('/checkout')}
+                        sound="click"
+                        activeScale={0.9}
+                      >
+                        <Text style={[s.statusBoxText, { color: '#000', fontWeight: '900' }]}>
+                          USE NOW
+                        </Text>
+                      </DopaminePressable>
+                    </View>
                   </View>
                 );
               })}

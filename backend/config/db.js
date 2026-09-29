@@ -35,6 +35,7 @@ const { initWallSubmissionModel } = require('../models/WallSubmission');
 const { initWallLikeModel } = require('../models/WallLike');
 const { initServiceBookingModel } = require('../models/ServiceBooking');
 const { initProductReviewModel } = require('../models/ProductReview');
+const { initDailyContentModel } = require('../models/DailyContent');
 
 const initializeAllModels = (instance) => {
   initUserModel(instance);
@@ -68,6 +69,7 @@ const initializeAllModels = (instance) => {
   initWallLikeModel(instance);
   initServiceBookingModel(instance);
   initProductReviewModel(instance);
+  initDailyContentModel(instance);
 
   // Define Associations
   const Restaurant = instance.models.Restaurant;

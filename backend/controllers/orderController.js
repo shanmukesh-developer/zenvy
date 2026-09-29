@@ -322,6 +322,8 @@ const createOrder = async (req, res) => {
       appliedCoupon = await Coupon.findOne({ where: { code: couponCode, userId: req.user.id } });
       if (appliedCoupon.type === 'FREEDEL') {
         couponDiscount = calculatedFee; // 100% Delivery discount
+      } else if (appliedCoupon.type === 'DISCOUNT') {
+        couponDiscount = Math.min(50, Math.round(backendTotalPrice * 0.2)); // 20% off up to 50
       }
     }
 
