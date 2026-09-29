@@ -797,12 +797,14 @@ const startServer = async () => {
       
       showLoading("Initiating security check...");
       try {
-        if (!window.recaptchaVerifier) {
-          window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
-            'size': 'normal',
-            'callback': (response) => {}
-          });
+        if (window.recaptchaVerifier) {
+          try { window.recaptchaVerifier.clear(); } catch (e) {}
+          window.recaptchaVerifier = null;
         }
+        window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+          'size': 'invisible',
+          'callback': (response) => {}
+        });
         
         const fullPhone = "+91" + phoneInput.slice(-10);
         const result = await signInWithPhoneNumber(auth, fullPhone, window.recaptchaVerifier);
@@ -814,6 +816,11 @@ const startServer = async () => {
         document.getElementById('subtitle').innerText = "Enter verification code sent to " + fullPhone;
         hideError();
       } catch (err) {
+        console.error('sendOtp error:', err);
+        if (window.recaptchaVerifier) {
+          try { window.recaptchaVerifier.clear(); } catch (e) {}
+          window.recaptchaVerifier = null;
+        }
         showError(err.message);
         showOptions();
       }
