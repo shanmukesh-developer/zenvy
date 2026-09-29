@@ -103,7 +103,9 @@ const securityHeaders = (req, res, next) => {
   // Prevent MIME type sniffing
   res.setHeader('X-Content-Type-Options', 'nosniff');
   // Prevent clickjacking
-  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  if (req.path !== '/auth-helper') {
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  }
   // Referrer Policy — don't leak full URL to third parties
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   // Permissions Policy — disable sensitive browser APIs we don't use

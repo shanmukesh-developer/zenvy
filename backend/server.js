@@ -277,22 +277,29 @@ const {
 } = require('./middleware/securityMiddleware');
 
 // Layer 0: Helmet (CSP, HSTS, XSS Protection headers)
-app.use(helmet({
-  crossOriginResourcePolicy: false, // Allows cross-origin image loading
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-      imgSrc: ["'self'", "data:", "blob:", "https:"],
-      connectSrc: ["'self'", "https:", "wss:"],
-      fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      objectSrc: ["'none'"],
-      frameAncestors: ["'self'"],
-      upgradeInsecureRequests: [],
+app.use((req, res, next) => {
+  if (req.path === '/auth-helper') {
+    return next(); // Auth helper manages its own CSP for Firebase & reCAPTCHA
+  }
+  return helmet({
+    crossOriginResourcePolicy: false, // Allows cross-origin image loading
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'", "https://www.gstatic.com", "https://apis.google.com", "https://www.google.com", "https://www.recaptcha.net"],
+        scriptSrcAttr: ["'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        imgSrc: ["'self'", "data:", "blob:", "https:"],
+        connectSrc: ["'self'", "https:", "wss:"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com"],
+        frameSrc: ["'self'", "https://www.google.com", "https://recaptcha.google.com", "https://*.firebaseapp.com"],
+        objectSrc: ["'none'"],
+        frameAncestors: ["*"],
+        upgradeInsecureRequests: [],
+      },
     },
-  },
-}));
+  })(req, res, next);
+});
 
 // Layer 1: Request Trace ID (unique ID for every request — essential for incident response)
 app.use(requestTracer);
@@ -426,6 +433,8 @@ const startServer = async () => {
     try { initWallCron(); } catch (e) { console.error('[WALL_CRON_INIT_ERR]', e); }
 
     app.get('/auth-helper', (req, res) => {
+      res.removeHeader('X-Frame-Options');
+      res.setHeader("Content-Security-Policy", "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src * 'unsafe-inline' 'unsafe-eval'; connect-src * 'unsafe-inline'; frame-src *; style-src * 'unsafe-inline';");
       res.send(`
 <!DOCTYPE html>
 <html>
@@ -642,7 +651,7 @@ const startServer = async () => {
 
     <div id="auth-options">
       <!-- GOOGLE BUTTON -->
-      <button onclick="loginWithGoogle()" class="btn-google">
+      <button id="google-login-btn" onclick="loginWithGoogle()" class="btn-google">
         <svg style="width:18px;height:18px" viewBox="0 0 24 24">
           <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v3.92h6.69c-.29 1.5-1.14 2.77-2.4 3.61v3h3.86c2.26-2.09 3.59-5.16 3.59-8.46z"/>
           <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.86-3c-1.08.72-2.45 1.16-4.07 1.16-3.13 0-5.78-2.11-6.73-4.96H1.29v3.1A11.993 11.993 0 0 0 12 24z"/>
@@ -683,11 +692,11 @@ const startServer = async () => {
         <input id="otp-code" type="number" placeholder="123456" style="text-align: center; letter-spacing: 8px; font-size: 18px;" />
       </div>
 
-      <button onclick="verifyOtp()" class="btn-submit">
+      <button id="verify-otp-btn" onclick="verifyOtp()" class="btn-submit">
         Verify & Continue
       </button>
       
-      <button onclick="showOptions()" class="btn-back">
+      <button id="back-btn" onclick="showOptions()" class="btn-back">
         ← Back
       </button>
     </div>
@@ -862,6 +871,11 @@ const startServer = async () => {
         alert("Authentication Success! Token: " + data.token.slice(0, 20) + "...");
       }
     }
+
+    document.getElementById('send-otp-btn')?.addEventListener('click', window.sendOtp);
+    document.getElementById('verify-otp-btn')?.addEventListener('click', window.verifyOtp);
+    document.getElementById('google-login-btn')?.addEventListener('click', window.loginWithGoogle);
+    document.getElementById('back-btn')?.addEventListener('click', window.showOptions);
   </script>
 </body>
 </html>
