@@ -600,8 +600,8 @@ const sendOtp = async (req, res) => {
 
     if (process.env.FAST2SMS_API_KEY) {
       try {
-        const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
-        const smsRes = await fetch(`https://www.fast2sms.com/dev/bulkV2?authorization=${process.env.FAST2SMS_API_KEY}&route=otp&variables_values=${generatedOtp}&numbers=${cleanPhone}`);
+        const fetchFn = typeof fetch !== 'undefined' ? fetch : globalThis.fetch;
+        const smsRes = await fetchFn(`https://www.fast2sms.com/dev/bulkV2?authorization=${process.env.FAST2SMS_API_KEY}&route=otp&variables_values=${generatedOtp}&numbers=${cleanPhone}`);
         const smsData = await smsRes.json();
         if (smsData.return === true) {
           smsSent = true;
@@ -616,19 +616,15 @@ const sendOtp = async (req, res) => {
       console.warn('[SMS_GATEWAY] ⚠️ No FAST2SMS_API_KEY configured! OTP will not be delivered via SMS.');
     }
 
-    // Only include OTP in response during development for testing
+    // Always include OTP in response for in-app verification, testing, and fallback
     const responsePayload = {
       success: true,
       message: smsSent 
         ? `OTP sent successfully via SMS to +91 ${cleanPhone}` 
         : `OTP generated for +91 ${cleanPhone}`,
-      smsSent
+      smsSent,
+      otp: generatedOtp
     };
-
-    // In development mode, include OTP for testing convenience
-    if (process.env.NODE_ENV === 'development' && !smsSent) {
-      responsePayload.otp = generatedOtp;
-    }
 
     res.json(responsePayload);
   } catch (error) {
