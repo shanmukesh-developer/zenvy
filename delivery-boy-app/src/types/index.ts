@@ -1,3 +1,103 @@
+// ── Rider app domain types ─────────────────────────────────────────────────
+
+export type OrderStatus =
+  | 'Pending'
+  | 'Accepted'
+  | 'Preparing'
+  | 'ReadyForPickup'
+  | 'Picking'
+  | 'PickedUp'
+  | 'ArrivedAtGate'
+  | 'Delivered'
+  | 'Cancelled';
+
+export type PaymentMethod = 'COD' | 'Wallet' | 'UPI' | 'Card';
+
+export interface RiderOrderItem {
+  name: string;
+  quantity: number;
+  price: number | null;
+}
+
+/** One order as the rider app uses it. Unknown values are null, never invented. */
+export interface RiderOrder {
+  id: string;
+  shortId: string;
+  status: OrderStatus;
+  restaurantName: string | null;
+  restaurantAddress: string | null;
+  restaurantPhone: string | null;
+  pickupCoords: { lat: number; lng: number } | null;
+  customerName: string | null;
+  customerPhone: string | null;
+  dropAddress: string | null;
+  instructions: string[];
+  items: RiderOrderItem[];
+  finalPrice: number | null;
+  paymentMethod: PaymentMethod | null;
+  paymentStatus: string | null;
+  amountToCollect: number | null;
+  earning: number | null;
+  distanceKm: number | null;
+  createdAt: string | null;
+  deliveredAt: string | null;
+  deliverySlot: string | null;
+  hasDeliveryPin: boolean;
+  pinLocked: boolean;
+}
+
+export interface RiderProfile {
+  id: string;
+  name: string;
+  phone: string;
+  vehicleType: string | null;
+  vehicleNumber: string | null;
+  emergencyContact: string | null;
+  photoUrl: string | null;
+  isApproved: boolean;
+  isOnline: boolean;
+  averageRating: number | null;
+  totalRatings: number;
+  totalEarnings: number | null;
+  completedCount: number | null;
+  walletBalance: number | null;
+}
+
+export interface TodayStats {
+  earnings: number;
+  orders: number;
+  zenPoints?: number;
+  streak?: number;
+  /** Cash collected at the door today (only from servers that send it). */
+  codCollected?: number;
+}
+
+export interface WeekDay {
+  date: string; // YYYY-MM-DD (IST)
+  earnings: number;
+  orders: number;
+  codCollected?: number;
+}
+
+export interface WeekStats {
+  days: WeekDay[];
+  totalEarnings: number;
+  totalOrders: number;
+  /** 'server' = GET /delivery/stats/week, 'history' = computed from the last 100 deliveries */
+  source: 'server' | 'history';
+}
+
+export interface SupportTicket {
+  id: string;
+  subject: string;
+  description: string;
+  status: string;
+  adminResponse: string | null;
+  createdAt: string;
+}
+
+// ── Legacy types (only used by the old, no longer imported src/components/*) ──
+
 export interface OrderItem {
   name: string;
   quantity: number;
@@ -14,6 +114,7 @@ export interface PickupStop {
   items: OrderItem[];
 }
 
+/** @deprecated legacy shape used by the old components; the app uses RiderOrder. */
 export interface Order {
   id: string;
   _id?: string;
@@ -27,7 +128,8 @@ export interface Order {
   totalPrice?: number;
   finalPrice?: number;
   status: string;
-  deliveryPin?: string;
+  /** The server never sends the PIN to riders. */
+  hasDeliveryPin?: boolean;
   createdAt?: string;
   deliveredAt?: string;
   earnings?: string;
@@ -35,14 +137,10 @@ export interface Order {
   deliveryFee?: number;
   note?: string;
   deliverySlot?: string;
-  category?: 'Food' | 'Fruits' | 'Groceries' | 'Mega Basket' | string;
+  category?: string;
   isBulk?: boolean;
   isMegaBasket?: boolean;
-  user?: {
-    name?: string;
-    phone?: string;
-    [key: string]: any;
-  };
+  user?: { name?: string; phone?: string; [key: string]: any };
   megaBasketStep?: 'SHOPPING_AT_STORE' | 'BILL_UPLOADED' | 'PAYMENT_CONFIRMED' | 'DELIVERING_TO_APARTMENT';
   billProofUrl?: string;
   billAmount?: number;
@@ -51,58 +149,5 @@ export interface Order {
   isPurchasingApprovedByCustomer?: boolean;
   pickupStops?: PickupStop[];
   isMultiRestaurant?: boolean;
-}
-
-export interface TaskStep {
-  type: 'PICKUP' | 'DELIVERY';
-  orderId: string;
-  location: string;
-  address: string;
-}
-
-export interface RiderProfile {
-  id: string;
-  _id?: string;
-  name: string;
-  email?: string;
-  phone: string;
-  rating: number;
-  totalEarnings: number;
-  completedCount: number;
-  completedDeliveries?: number;
-  vehicleNumber?: string;
-  vehicleType?: string;
-  bio?: string;
-  emergencyContact?: string;
-  photoUrl?: string;
-  zenPoints?: number;
-  loginStreak?: number;
-  isApproved?: boolean;
-  isOnline?: boolean;
-  token?: string;
-}
-
-export interface TodayStats {
-  earnings: number;
-  orders: number;
-  zenPoints: number;
-  streak: number;
-}
-
-export interface LeaderboardEntry {
-  id: string;
-  name: string;
-  deliveries?: number;
-  orders?: number;
-  earnings: number;
-  rating?: number;
-  isMe?: boolean;
-}
-
-export interface AppNotification {
-  id: string;
-  type: 'order' | 'warning' | 'info' | 'sos';
-  title: string;
-  message: string;
-  timestamp: number;
+  paymentMethod?: string;
 }

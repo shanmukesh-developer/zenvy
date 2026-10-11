@@ -1,163 +1,156 @@
-import { apiFetch } from './apiClient';
-import type { Order, RiderProfile, TodayStats, LeaderboardEntry, TaskStep } from '../types';
+// One function per rider endpoint (base: /api). No invented defaults: missing values stay null.
+import { ApiError, apiFetch } from './apiClient';
+import { normalizeOrder, normalizeOrders, toNumber } from './orderModel';
+import { APP_PUSH_VERSION } from '../constants/api';
+import type { RiderOrder, RiderProfile, SupportTicket, TodayStats, WeekStats } from '../types';
 
-export interface LoginResponse {
-  _id: string;
-  name: string;
-  phone: string;
-  token: string;
-  rating?: number;
-  vehicleType?: string;
-  vehicleNumber?: string;
-  isApproved?: boolean;
-  isAvailable?: boolean;
-  zenPoints?: number;
-  completedDeliveries?: number;
-  loginStreak?: number;
+export function toProfile(raw: any, prev?: RiderProfile | null): RiderProfile {
+  const str = (v: unknown) => {
+    const s = v === null || v === undefined ? '' : String(v).trim();
+    return s && s.toLowerCase() !== 'not registered' ? s : null;
+  };
+  return {
+    id: String(raw?._id ?? raw?.id ?? prev?.id ?? ''),
+    name: str(raw?.name) ?? prev?.name ?? '',
+    phone: str(raw?.phone) ?? prev?.phone ?? '',
+    vehicleType: raw && 'vehicleType' in raw ? str(raw.vehicleType) : prev?.vehicleType ?? null,
+    vehicleNumber: raw && 'vehicleNumber' in raw ? str(raw.vehicleNumber) : prev?.vehicleNumber ?? null,
+    emergencyContact: raw && 'emergencyContact' in raw ? str(raw.emergencyContact) : prev?.emergencyContact ?? null,
+    photoUrl: raw && 'photoUrl' in raw ? str(raw.photoUrl) : prev?.photoUrl ?? null,
+    isApproved: typeof raw?.isApproved === 'boolean' ? raw.isApproved : prev?.isApproved ?? false,
+    isOnline: typeof raw?.isOnline === 'boolean' ? raw.isOnline : prev?.isOnline ?? false,
+    // averageRating only (the old `rating` field fell back to an invented 5.0)
+    averageRating: raw && 'averageRating' in raw ? toNumber(raw.averageRating) : prev?.averageRating ?? null,
+    totalRatings: toNumber(raw?.totalRatings) ?? prev?.totalRatings ?? 0,
+    totalEarnings: toNumber(raw?.totalEarnings) ?? prev?.totalEarnings ?? null,
+    completedCount: toNumber(raw?.completedCount ?? raw?.completedDeliveries) ?? prev?.completedCount ?? null,
+    walletBalance: toNumber(raw?.walletBalance) ?? prev?.walletBalance ?? null,
+  };
 }
 
-export async function login(phone: string, password: string): Promise<LoginResponse> {
-  return apiFetch<LoginResponse>('/delivery/login', {
-    method: 'POST',
-    body: JSON.stringify({ phone, password }),
-  });
+export async function login(phone: string, password: string): Promise<{ token: string; profile: RiderProfile }> {
+  const data = await apiFetch<any>('/delivery/login', { method: 'POST', body: { phone, password }, auth: false });
+  if (!data?.token) throw new ApiError(500, 'Login failed. Please try again.', data);
+  const profile = toProfile({ ...data, averageRating: null, isOnline: false });
+  return { token: String(data.token), profile };
 }
 
-export async function fetchActiveOrders(): Promise<{ orders: Order[]; taskSequence: TaskStep[] }> {
-  const data = await apiFetch<{ orders?: Order[]; taskSequence?: TaskStep[] } | Order[]>('/delivery/orders/active');
-  if (Array.isArray(data)) {
-    return { orders: normalizeOrders(data), taskSequence: [] };
+export async function fetchProfile(prev?: RiderProfile | null): Promise<RiderProfile> {
+  return toProfile(await apiFetch<any>('/delivery/profile'), prev);
+}
+
+export async function setOnline(isOnline: boolean): Promise<boolean> {
+  const data = await apiFetch<{ isOnline?: boolean }>('/delivery/online', { method: 'PUT', body: { isOnline } });
+  return typeof data?.isOnline === 'boolean' ? data.isOnline : isOnline;
+}
+
+export async function saveFcmToken(fcmToken: string): Promise<void> {
+  await apiFetch('/delivery/fcm-token', { method: 'POST', body: { fcmToken, appVersion: APP_PUSH_VERSION } });
+}
+
+export async function fetchPending(): Promise<RiderOrder[]> {
+  return normalizeOrders(await apiFetch<any[]>('/delivery/orders/pending'));
+}
+
+export async function fetchActive(): Promise<RiderOrder[]> {
+  const data = await apiFetch<any>('/delivery/orders/active');
+  return normalizeOrders(Array.isArray(data) ? data : data?.orders);
+}
+
+export async function fetchHistory(): Promise<RiderOrder[]> {
+  return normalizeOrders(await apiFetch<any[]>('/delivery/orders/history'));
+}
+
+export async function fetchToday(): Promise<TodayStats> {
+  const d = await apiFetch<any>('/delivery/stats/today');
+  return {
+    earnings: toNumber(d?.earnings) ?? 0,
+    orders: toNumber(d?.orders) ?? 0,
+    zenPoints: toNumber(d?.zenPoints) ?? undefined,
+    streak: toNumber(d?.streak) ?? undefined,
+    codCollected: toNumber(d?.codCollected) ?? undefined,
+  };
+}
+
+/** GET /delivery/stats/week (newer servers). Returns null when the server does not have it yet. */
+export async function fetchWeek(): Promise<WeekStats | null> {
+  try {
+    const d = await apiFetch<any>('/delivery/stats/week');
+    if (!d || !Array.isArray(d.days)) return null;
+    return {
+      days: d.days.map((x: any) => ({
+        date: String(x.date),
+        earnings: toNumber(x.earnings) ?? 0,
+        orders: toNumber(x.orders) ?? 0,
+        codCollected: toNumber(x.codCollected) ?? undefined,
+      })),
+      totalEarnings: toNumber(d.totalEarnings) ?? 0,
+      totalOrders: toNumber(d.totalOrders) ?? 0,
+      source: 'server',
+    };
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) return null;
+    throw e;
   }
-  return {
-    orders: normalizeOrders(data.orders || []),
-    taskSequence: data.taskSequence || [],
-  };
 }
 
-export async function fetchPendingOrders(): Promise<Order[]> {
-  const data = await apiFetch<Order[]>('/delivery/orders/pending');
-  return normalizeOrders(Array.isArray(data) ? data : []);
+export async function acceptOrder(orderId: string): Promise<RiderOrder | null> {
+  const data = await apiFetch<any>(`/delivery/accept/${orderId}`, { method: 'PUT' });
+  return data && data.id ? normalizeOrder(data) : null;
 }
 
-export async function fetchOrderHistory(): Promise<Order[]> {
-  const data = await apiFetch<Order[]>('/delivery/orders/history');
-  return normalizeOrders(Array.isArray(data) ? data : []);
+export async function markAtStore(orderId: string): Promise<void> {
+  await apiFetch(`/delivery/status/${orderId}`, { method: 'PUT', body: { status: 'Picking' } });
 }
 
-export async function fetchTodayStats(): Promise<TodayStats> {
-  return apiFetch<TodayStats>('/delivery/stats/today');
+export async function markPickedUp(orderId: string): Promise<void> {
+  await apiFetch(`/delivery/status/${orderId}`, { method: 'PUT', body: { status: 'PickedUp' } });
 }
 
-export async function fetchLeaderboard(): Promise<LeaderboardEntry[]> {
-  const data = await apiFetch<LeaderboardEntry[]>('/delivery/leaderboard');
-  return Array.isArray(data) ? data : [];
-}
-
-export async function fetchProfile(): Promise<RiderProfile> {
-  const data = await apiFetch<RiderProfile & { _id?: string }>('/delivery/profile');
-  return {
-    ...data,
-    id: data._id || data.id,
-    rating: data.rating ?? 4.9,
-    totalEarnings: data.totalEarnings ?? 0,
-    completedCount: data.completedCount ?? data.completedDeliveries ?? 0,
-  };
-}
-
-export async function updateProfile(payload: Partial<RiderProfile>): Promise<RiderProfile> {
-  return apiFetch<RiderProfile>('/delivery/profile', {
-    method: 'PUT',
-    body: JSON.stringify(payload),
-  });
-}
-
-export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
-  await apiFetch('/delivery/profile/password', {
-    method: 'PUT',
-    body: JSON.stringify({ currentPassword, newPassword }),
-  });
-}
-
-export async function toggleOnline(isOnline: boolean): Promise<{ isOnline: boolean }> {
-  return apiFetch('/delivery/online', {
-    method: 'PUT',
-    body: JSON.stringify({ isOnline }),
-  });
-}
-
-export async function acceptOrder(orderId: string): Promise<Order> {
-  return apiFetch<Order>(`/delivery/accept/${orderId}`, { method: 'PUT' });
-}
-
-export async function updateOrderStatus(orderId: string, status: string, pin?: string): Promise<void> {
-  await apiFetch(`/delivery/status/${orderId}`, {
-    method: 'PUT',
-    body: JSON.stringify({ status, ...(pin !== undefined ? { pin } : {}) }),
-  });
-}
-
-export async function arriveAtGate(orderId: string): Promise<void> {
+export async function markArrived(orderId: string): Promise<void> {
   await apiFetch(`/delivery/arrive/${orderId}`, { method: 'PUT' });
 }
 
-export async function cancelOrder(orderId: string): Promise<void> {
-  await apiFetch(`/delivery/cancel/${orderId}`, { method: 'PUT' });
+export async function markDelivered(orderId: string, pin: string): Promise<{ earning: number | null }> {
+  const d = await apiFetch<any>(`/delivery/status/${orderId}`, { method: 'PUT', body: { status: 'Delivered', pin } });
+  return { earning: toNumber(d?.riderEarning) };
 }
 
-export async function saveFcmToken(fcmToken: string, appVersion = '1.0.0'): Promise<void> {
-  await apiFetch('/delivery/fcm-token', {
-    method: 'POST',
-    body: JSON.stringify({ fcmToken, appVersion }),
-  });
+export async function unassignOrder(orderId: string): Promise<string | null> {
+  const d = await apiFetch<any>(`/delivery/orders/${orderId}/cancel`, { method: 'POST' });
+  return typeof d?.message === 'string' ? d.message : null;
 }
 
-function normalizeOrders(orders: Order[]): Order[] {
-  return orders.map((o) => {
-    const items = Array.isArray(o.items) ? o.items : [];
-    const totalQty = items.reduce((acc, item) => acc + (item.quantity || 1), 0);
-    const totalPrice = o.totalPrice || o.finalPrice || items.reduce((acc, item) => acc + ((item.price || 0) * (item.quantity || 1)), 0);
-    const isBulk = o.isBulk !== undefined ? o.isBulk : (totalQty >= 5 || totalPrice >= 500);
-
-    let category = o.category;
-    if (!category) {
-      const text = `${o.restaurant} ${items.map(i => i.name).join(' ')}`.toLowerCase();
-      if (text.includes('fruit') || text.includes('apple') || text.includes('mango') || text.includes('juice')) {
-        category = 'Fruits';
-      } else if (text.includes('grocery') || text.includes('soap') || text.includes('snack') || text.includes('biscuit') || text.includes('surf')) {
-        category = 'Groceries';
-      } else {
-        category = 'Food';
-      }
-    }
-
-    return {
-      ...o,
-      id: String(o._id || o.id),
-      customerName: o.customerName || 'Customer',
-      restaurant: o.restaurant || 'Restaurant',
-      drop: o.drop || 'Delivery',
-      items,
-      status: o.status || 'Accepted',
-      totalPrice,
-      category,
-      isBulk,
-      deliverySlot: o.deliverySlot || 'Standard',
-    };
-  });
+export async function updateProfile(payload: {
+  name?: string;
+  vehicleType?: string;
+  vehicleNumber?: string;
+  emergencyContact?: string;
+}): Promise<any> {
+  return apiFetch('/delivery/profile', { method: 'PUT', body: payload });
 }
 
-export function loginResponseToProfile(data: LoginResponse): RiderProfile {
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  await apiFetch('/delivery/profile/password', { method: 'PUT', body: { currentPassword, newPassword } });
+}
+
+function toTicket(t: any): SupportTicket {
   return {
-    id: data._id,
-    name: data.name,
-    phone: data.phone,
-    rating: data.rating ?? 4.9,
-    totalEarnings: 0,
-    completedCount: data.completedDeliveries ?? 0,
-    vehicleType: data.vehicleType,
-    zenPoints: data.zenPoints,
-    loginStreak: data.loginStreak,
-    isApproved: data.isApproved,
-    token: data.token,
+    id: String(t?.id ?? t?._id ?? ''),
+    subject: String(t?.subject ?? ''),
+    description: String(t?.description ?? ''),
+    status: String(t?.status ?? 'Open'),
+    adminResponse: t?.adminResponse ? String(t.adminResponse) : null,
+    createdAt: String(t?.createdAt ?? ''),
   };
+}
+
+/** Rider tickets: POST /delivery/support (riders are not customer accounts, so /api/tickets cannot store them). */
+export async function createTicket(subject: string, description: string, priority: 'Medium' | 'High'): Promise<SupportTicket> {
+  return toTicket(await apiFetch<any>('/delivery/support', { method: 'POST', body: { subject, description, priority } }));
+}
+
+export async function fetchTickets(): Promise<SupportTicket[]> {
+  const list = await apiFetch<any[]>('/delivery/support');
+  return Array.isArray(list) ? list.map(toTicket) : [];
 }

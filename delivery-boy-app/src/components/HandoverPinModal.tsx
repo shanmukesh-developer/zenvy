@@ -61,14 +61,6 @@ export const HandoverPinModal: React.FC<HandoverPinModalProps> = ({
     onConfirm(pin);
   };
 
-  const handleBypass = () => {
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    }
-    // Bypass verification with standard tag
-    onConfirm('VERIFIED_IN_PERSON');
-  };
-
   const callCustomer = () => {
     if (customerPhone) {
       Linking.openURL(`tel:${customerPhone}`);
@@ -181,15 +173,7 @@ export const HandoverPinModal: React.FC<HandoverPinModalProps> = ({
               </LinearGradient>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.bypassBtn}
-              onPress={handleBypass}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.bypassBtnText}>
-                Handed Over in Person (Bypass PIN)
-              </Text>
-            </TouchableOpacity>
+            {/* No PIN bypass: the server only completes a delivery with the customer's PIN. */}
 
             <TouchableOpacity
               style={styles.cancelBtn}

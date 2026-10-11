@@ -421,8 +421,12 @@ const updateOrderStatus = async (req, res) => {
     if (status === 'ArrivedAtGate' && !['PickedUp', 'ArrivedAtGate'].includes(order.status)) {
       return res.status(400).json({ message: 'Pick up the order before marking that you have arrived.' });
     }
+    if (status === 'Delivered' && order.status === 'Delivered') {
+      // Double tap / retry after a lost response: tell the app it is already done.
+      return res.status(409).json({ code: 'ALREADY_DELIVERED', message: 'This order is already marked delivered.' });
+    }
     if (status === 'Delivered' && !['PickedUp', 'ArrivedAtGate'].includes(order.status)) {
-      return res.status(400).json({ message: 'Must be PickedUp or ArrivedAtGate first' });
+      return res.status(400).json({ message: order.status === 'Cancelled' ? 'This order was cancelled.' : 'Must be PickedUp or ArrivedAtGate first' });
     }
 
     // ── Delivery PIN Validation ──────────────────────
@@ -468,7 +472,11 @@ const updateOrderStatus = async (req, res) => {
         { status: 'Delivered', deliveredAt: new Date(), ...(order.paymentMethod === 'COD' ? { paymentStatus: 'Completed' } : {}) },
         { where: { id: order.id, deliveryPartnerId: req.user.id, status: { [Op.in]: ['PickedUp', 'ArrivedAtGate'] } } }
       );
-      if (flipped === 0) return res.status(409).json({ message: 'This order is already marked delivered.' });
+      if (flipped === 0) {
+        const now = await Order.findByPk(order.id, { attributes: ['status'] });
+        if (now && now.status === 'Delivered') return res.status(409).json({ code: 'ALREADY_DELIVERED', message: 'This order is already marked delivered.' });
+        return res.status(409).json({ code: 'ORDER_CHANGED', message: 'This order was just cancelled or updated. Please refresh.' });
+      }
       order.status = 'Delivered';
     } else {
       // Conditional flip: never resurrect an order the customer cancelled (and was refunded for)
@@ -678,6 +686,21 @@ const saveFcmToken = async (req, res) => {
       partner.fcmTokens = tokens;
       partner.changed('fcmTokens', true);
       await partner.save();
+      // A shared / handed-over phone: detach this device token from every other rider account,
+      // so the previous rider's order alerts stop ringing on this phone.
+      try {
+        const others = await DeliveryPartner.findAll({
+          where: { id: { [Op.ne]: partner.id }, fcmTokens: { [Op.like]: `%${fcmToken}%` } },
+          attributes: ['id', 'fcmTokens']
+        });
+        for (const other of others) {
+          other.fcmTokens = (Array.isArray(other.fcmTokens) ? other.fcmTokens : []).filter(t => (typeof t === 'string' ? t : t?.token) !== fcmToken);
+          other.changed('fcmTokens', true);
+          await other.save();
+        }
+      } catch (dedupeErr) {
+        console.warn('[RIDER_FCM_DEDUPE_WARN]', dedupeErr.message);
+      }
       res.json({ message: 'FCM Token saved' });
     } else {
       res.status(404).json({ message: 'Partner not found' });
