@@ -10,6 +10,7 @@ import { StaggeredSection, BounceIn } from '../components/AnimatedSection';
 import DopaminePressable from '../components/DopaminePressable';
 import { LinearGradient } from 'expo-linear-gradient';
 import { apiFetch } from '../utils/auth';
+import { useLiveSync } from '../utils/useLiveSync';
 
 interface NotificationItem {
   id: string;
@@ -135,6 +136,12 @@ export default function NotificationsScreen() {
     setRefreshing(true);
     loadNotifications();
   };
+
+  // Live sync: admin broadcasts / announcements land in the list without a pull-to-refresh
+  useLiveSync({
+    types: ['announcement'],
+    onChange: () => { loadNotifications(); },
+  });
 
   const saveLocal = (list: NotificationItem[]) => {
     if (signedIn) return;

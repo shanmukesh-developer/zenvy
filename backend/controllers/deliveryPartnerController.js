@@ -989,6 +989,7 @@ const createRiderTicket = async (req, res) => {
       ticketId: ticket.id, senderRole: 'Rider', senderId: req.user.id,
       issueType: subject, details: description.slice(0, 200), timestamp: new Date()
     });
+    require('../utils/realtime').notifyAdmin('ticket', 'created', ticket.id, { scope: 'rider' });
     res.status(201).json(ticket);
   } catch (error) {
     serverError(res, '[RIDER_TICKET_CREATE_ERROR]', error);

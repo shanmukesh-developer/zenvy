@@ -414,10 +414,11 @@ export default function ZenvyAfterDarkLounge() {
 
   const fetchFriends = async () => {
     try {
-      const res = await apiFetch('/api/friends/list');
+      // GET /api/friends returns a plain array of { friendshipId, friendId, name, friendCode, conversationId, ... }
+      const res = await apiFetch('/api/friends');
       if (res.ok) {
         const data = await res.json();
-        setFriends(data.friends || []);
+        setFriends(Array.isArray(data) ? data : []);
       }
     } catch (e) { console.error(e); }
   };
@@ -426,18 +427,21 @@ export default function ZenvyAfterDarkLounge() {
     try {
       const res = await apiFetch('/api/friends/pending');
       if (res.ok) {
+        // GET /api/friends/pending returns [{ friendshipId, vibe, createdAt, requester: { id, name, friendCode, ... } }]
         const data = await res.json();
-        setPendingRequests(data.requests || []);
+        const list = Array.isArray(data) ? data : [];
+        setPendingRequests(list.map((r: any) => ({ ...r, name: r?.requester?.name, friendCode: r?.requester?.friendCode })));
       }
     } catch (e) { console.error(e); }
   };
 
   const handleHandleRequest = async (requestId: string, action: 'accept' | 'reject') => {
     try {
-      const res = await apiFetch('/api/friends/handle', {
+      // The server has separate accept / decline routes keyed by friendshipId.
+      const res = await apiFetch(action === 'accept' ? '/api/friends/accept' : '/api/friends/decline', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requestId, action })
+        body: JSON.stringify({ friendshipId: requestId })
       });
       const data = await res.json();
       if (res.ok) {
@@ -752,7 +756,7 @@ export default function ZenvyAfterDarkLounge() {
                       </View>
                     ) : (
                       friends.map(f => (
-                        <TouchableOpacity key={f.id} style={[s.listItem, { borderColor: border, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#FFF' }]} onPress={() => openChat(f, 'friend')}>
+                        <TouchableOpacity key={f.friendshipId} style={[s.listItem, { borderColor: border, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#FFF' }]} onPress={() => openChat(f, 'friend')}>
                           <View style={s.avatarWrap}><Text style={{ fontSize: 20 }}>👤</Text></View>
                           <Text style={[s.listName, { color: txt }]}>{f.name}</Text>
                         </TouchableOpacity>

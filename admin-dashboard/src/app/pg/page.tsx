@@ -1,8 +1,9 @@
 "use client";
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAdminAuth } from '@/utils/useAdminAuth';
 import { useAdminSocket } from '@/components/AdminSocketProvider';
 import { PGHostel, normalizeGender, pgRequest } from './pgApi';
+import { useLiveSync, useFreshIds, liveLabel, FRESH_ROW_CLASS } from '@/lib/useLiveSync';
 import { PgForm } from './PgForm';
 import { RoomsPanel } from './RoomsPanel';
 import { BookingsPanel } from './BookingsPanel';
@@ -22,16 +23,22 @@ export default function PGAdminPage() {
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [pendingCount, setPendingCount] = useState<number | null>(null);
 
-  const loadPgs = useCallback(async () => {
-    setLoading(true);
-    setLoadError('');
+  const loadPgs = useCallback(async (quiet = false) => {
+    if (!quiet) {
+      setLoading(true);
+      setLoadError('');
+    }
     try {
       const data = await pgRequest<PGHostel[]>('/api/pg/admin/admin-all');
-      setPgs(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : [];
+      setPgs(list);
+      if (quiet) setLoadError('');
+      // Keep an open "manage" dialog pointing at the latest row (the details form keeps its own draft).
+      setManaging(cur => (cur ? list.find(p => p.id === cur.id) || cur : cur));
     } catch (e) {
-      setLoadError(e instanceof Error ? e.message : 'Could not load PG listings.');
+      if (!quiet) setLoadError(e instanceof Error ? e.message : 'Could not load PG listings.');
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, []);
 
@@ -50,7 +57,32 @@ export default function PGAdminPage() {
     loadPendingCount();
   }, [isAuthed, loadPgs, loadPendingCount]);
 
-  const { socket } = useAdminSocket();
+  const { socket, notifyLive } = useAdminSocket();
+  const { mark: markFresh, isFresh } = useFreshIds();
+  const [roomsTick, setRoomsTick] = useState(0);
+  const [bookingsTick, setBookingsTick] = useState(0);
+  const managingIdRef = useRef<string | null>(null);
+  managingIdRef.current = managing?.id ?? null;
+
+  // Realtime sync: listings / rooms edited in another tab, and booking requests from the app.
+  useLiveSync(['pg', 'pg_booking'], (events, { reconnect }) => {
+    const pgEvents = events.filter(e => e.type === 'pg');
+    const bookingEvents = events.filter(e => e.type === 'pg_booking');
+    if (reconnect || pgEvents.length) {
+      loadPgs(true);
+      const openId = managingIdRef.current;
+      if (reconnect || pgEvents.some(e => e.id === null || String(e.id) === openId)) setRoomsTick(t => t + 1);
+    }
+    if (reconnect || bookingEvents.length || pgEvents.some(e => e.scope === 'availability')) {
+      loadPendingCount();
+      setBookingsTick(t => t + 1);
+    }
+    if (reconnect) return;
+    markFresh(pgEvents.filter(e => e.action !== 'deleted' && e.scope !== 'availability').map(e => e.id));
+    markFresh(bookingEvents.map(e => e.id));
+    const label = liveLabel(bookingEvents.filter(e => e.action === 'created'), 'PG booking request');
+    if (label) notifyLive(label);
+  }, { enabled: isAuthed });
 
   // A new PG booking request updates the pending badge.
   useEffect(() => {
@@ -127,7 +159,7 @@ export default function PGAdminPage() {
         </div>
         {view === 'listings' && (
           <div className="flex items-center gap-3">
-            <button type="button" disabled={loading} onClick={loadPgs} className="rounded-lg border border-white/10 px-4 py-2 text-sm font-semibold text-gray-300 hover:text-white disabled:opacity-50">{loading ? 'Loading…' : 'Refresh'}</button>
+            <button type="button" disabled={loading} onClick={() => loadPgs()} className="rounded-lg border border-white/10 px-4 py-2 text-sm font-semibold text-gray-300 hover:text-white disabled:opacity-50">{loading ? 'Loading…' : 'Refresh'}</button>
             <button type="button" onClick={() => setCreating(true)} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-500">Add PG</button>
           </div>
         )}
@@ -147,12 +179,12 @@ export default function PGAdminPage() {
       )}
 
       {view === 'bookings' ? (
-        <BookingsPanel onPendingCount={onPendingCount} />
+        <BookingsPanel onPendingCount={onPendingCount} liveTick={bookingsTick} isFresh={isFresh} />
       ) : (
         <>
           {loadError && (
             <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
-              {loadError}<button type="button" onClick={loadPgs} className="font-bold underline">Retry</button>
+              {loadError}<button type="button" onClick={() => loadPgs()} className="font-bold underline">Retry</button>
             </div>
           )}
           {loading ? (
@@ -165,7 +197,7 @@ export default function PGAdminPage() {
           ) : (
             <section className="grid gap-4 md:grid-cols-2" aria-label="PG listings">
               {pgs.map(pg => (
-                <article key={pg.id} className={`flex flex-col justify-between rounded-xl border p-5 ${pg.isActive ? 'border-white/10' : 'border-white/5 bg-white/[0.015]'}`}>
+                <article key={pg.id} className={`flex flex-col justify-between rounded-xl border p-5 ${pg.isActive ? 'border-white/10' : 'border-white/5 bg-white/[0.015]'} ${isFresh(pg.id) ? FRESH_ROW_CLASS : ''}`}>
                   <div>
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -214,7 +246,7 @@ export default function PGAdminPage() {
             ) : managing && manageTab === 'details' ? (
               <PgForm key={managing.id} initial={managing} onCancel={() => setManaging(null)} onSave={updatePg} />
             ) : managing ? (
-              <RoomsPanel pgId={managing.id} />
+              <RoomsPanel pgId={managing.id} liveTick={roomsTick} />
             ) : null}
           </div>
         </div>

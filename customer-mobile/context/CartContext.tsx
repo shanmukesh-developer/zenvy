@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { io, Socket } from 'socket.io-client';
 import { API_URL } from '../constants/api';
 import { apiFetch, getToken } from '../utils/auth';
+import { useLiveSync, affectsAny } from '../utils/useLiveSync';
 import { useAuth } from './AuthContext';
 
 export interface Customizations {
@@ -572,6 +573,25 @@ export function useBasketQuote(couponCode: string | null | undefined, enabled: b
   const [error, setError] = useState<QuoteError | null>(null);
   const [nonce, setNonce] = useState(0);
   const refresh = useCallback(() => setNonce((n) => n + 1), []);
+  // Live-sync refreshes run silently: the current bill stays on screen (no "Calculating…" flash)
+  const silentRef = useRef(false);
+
+  // Live sync: an admin / store edit to a basket item's price or stock, or its store's status,
+  // re-quotes the bill so the customer never checks out against a stale price.
+  const linesRef = useRef(orderLines);
+  linesRef.current = orderLines;
+  useLiveSync({
+    types: ['store', 'product'],
+    enabled: enabled && orderLines.length > 0,
+    onChange: (events) => {
+      const lines = linesRef.current;
+      if (!lines.length) return;
+      if (affectsAny(events, lines.map((l) => l.id), lines.map((l) => l.restaurantId).filter(Boolean))) {
+        silentRef.current = true;
+        setNonce((n) => n + 1);
+      }
+    },
+  });
 
   useEffect(() => {
     if (!enabled || orderLines.length === 0) {
@@ -582,7 +602,9 @@ export function useBasketQuote(couponCode: string | null | undefined, enabled: b
     }
     let cancelled = false;
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-    setLoading(true);
+    const silent = silentRef.current;
+    silentRef.current = false;
+    if (!silent) setLoading(true);
     // The quote has its own abort signal, so apiFetch's default timeout does not apply: add one here
     // (a Render cold start must end in "try again", not an endless "Calculating your bill…").
     let timedOut = false;
@@ -610,6 +632,7 @@ export function useBasketQuote(couponCode: string | null | undefined, enabled: b
         }
       } catch (e: any) {
         if (cancelled || (e?.name === 'AbortError' && !timedOut)) return;
+        if (silent) return; // background re-quote hit a network blip: keep the bill we have
         setQuote(null);
         setError({ message: friendlyNetworkMessage, network: true });
       } finally {

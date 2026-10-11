@@ -114,7 +114,7 @@ const isAllowedOrigin = (origin) => {
   if (!origin) return true;
   if (ALLOWED_ORIGINS.includes(origin)) return true;
   // Strict match for local dev / mobile schemes to prevent domain spoofing
-  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
+  if (/^https?:\/\/(localhost|127\.0\.0\.1|[a-z0-9-]+\.localhost)(:\d+)?$/.test(origin)) return true;
   if (origin.startsWith('capacitor://') || origin.startsWith('exp://')) return true;
   // Allow project-specific Render subdomains
   if (/^https:\/\/[a-z0-9-]+\.onrender\.com$/.test(origin)) {
@@ -224,6 +224,21 @@ const io = new Server(server, {
 });
 
 app.set('io', io);
+// Realtime sync layer (data:changed to everyone, admin:changed to admin-room). See utils/realtime.js.
+require('./utils/realtime').init(io);
+
+// ── Startup readiness ──────────────────────
+// The HTTP server listens immediately (Render needs an open port within seconds); the database
+// connect/sync/migrations/imports run afterwards. Until they finish, /api/* answers 503 and new
+// sockets are refused (socket.io clients retry on their own).
+let dbReady = false;
+const STARTUP_RETRY_AFTER_SECONDS = 10;
+io.use((socket, next) => {
+  if (dbReady) return next();
+  const err = new Error('Server is starting, please retry in a moment');
+  err.data = { code: 'SERVER_STARTING', retryAfter: STARTUP_RETRY_AFTER_SECONDS };
+  next(err);
+});
 
 // 🛡️ Socket.io JWT Authentication Middleware
 const jwt = require('jsonwebtoken');
@@ -394,12 +409,18 @@ app.use((req, res, next) => {
 app.use((req, res, next) => {
   // Cache GET requests for restaurant listings and menus (reduces DB load under 500+ users)
   if (req.method === 'GET' && (req.path.startsWith('/api/restaurants') || req.path.startsWith('/api/restaurant') || req.path.startsWith('/api/search'))) {
-    res.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=60'); // 30s fresh, 60s stale OK
+    // Revalidate every time: clients refetch on realtime `data:changed` events and must see fresh data.
+    // The server keeps its own in-memory listing cache (cleared on every store/product write).
+    res.set('Cache-Control', 'no-cache');
   }
   next();
 });
 
 app.get('/api/health', async (req, res) => {
+  if (!dbReady) {
+    res.set('Retry-After', String(STARTUP_RETRY_AFTER_SECONDS));
+    return res.status(503).json({ status: 'starting', timestamp: new Date(), uptime: process.uptime() });
+  }
   const { getSequelize } = require('./config/db');
   const instance = getSequelize();
   let dbStatus = 'disconnected';
@@ -439,8 +460,15 @@ app.get(['/api/ping', '/ping'], (req, res) => {
 });
 // Static uploads served once below after DB init
 
-// Connect to PostgreSQL, then initialize routes
-const startServer = async () => {
+// Every other /api route waits for the database (health and ping above answer on their own).
+app.use('/api', (req, res, next) => {
+  if (dbReady) return next();
+  res.set('Retry-After', String(STARTUP_RETRY_AFTER_SECONDS));
+  res.status(503).json({ message: 'Server is starting, please retry in a moment', code: 'SERVER_STARTING', retryAfter: STARTUP_RETRY_AFTER_SECONDS });
+});
+
+// Connect to PostgreSQL, then initialize routes. Runs AFTER the port is open (see startServer).
+const initializeApp = async () => {
   try {
     await connectDB();
     try { initWallCron(); } catch (e) { console.error('[WALL_CRON_INIT_ERR]', e); }
@@ -1367,6 +1395,7 @@ const startServer = async () => {
         if (socket.user && socket.user.role && socket.user.role.toLowerCase() === 'admin') {
           log(`[MEGAPHONE] Admin broadcast: "${data.message}" (type: ${data.type})`);
           io.emit('global_announcement', data);
+          require('./utils/realtime').publish('announcement', 'created', null, { scope: 'broadcast' });
         } else {
           console.warn(`[SOCKET_BROADCAST_DENIED] Unauthorized broadcast by ${socket.user?.id}`);
         }
@@ -1983,18 +2012,12 @@ const startServer = async () => {
       });
     });
 
-    const PORT = process.env.PORT || 8080;
-    
-    server.on('error', (e) => {
-      if (e.code === 'EADDRINUSE') {
-        console.error(`❌ Port ${PORT} is in use. Process probably hasn't exited yet. Shutting down...`);
-        process.exit(1); 
-      }
-    });
+    // Everything is registered: open the gates for /api and sockets.
+    dbReady = true;
+    console.log(`✅ [STARTUP] Database ready — API accepting requests (${Math.round(process.uptime())}s after boot)`);
 
-    server.listen(PORT, '0.0.0.0', async () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-
+    // Background, post-ready maintenance (never blocks requests).
+    (async () => {
       // Auto-backfill missing friendCodes on startup (especially for Render PostgreSQL DB)
       try {
         const { getUserModel } = require('./models/User');
@@ -2018,47 +2041,7 @@ const startServer = async () => {
       } catch (err) {
         console.error('[BOOT_ERROR] FriendCode backfill failed:', err.message);
       }
-
-      // ── Self-Ping Keep-Alive (Prevents Render Free Tier Sleep) ──
-      if (isProductionEnv()) {
-        const KEEP_ALIVE_INTERVAL = 14 * 60 * 1000; // 14 minutes (Render sleeps at 15 min)
-        const selfUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
-        setInterval(async () => {
-          try {
-            const https = require('https');
-            const httpModule = require('http');
-            const mod = selfUrl.startsWith('https') ? https : httpModule;
-            mod.get(`${selfUrl}/api/health`, (res) => {
-              console.log(`[KEEP_ALIVE] Ping OK (${res.statusCode})`);
-            }).on('error', (err) => {
-              console.warn('[KEEP_ALIVE] Ping failed:', err.message);
-            });
-          } catch (err) {
-            console.warn('[KEEP_ALIVE] Error:', err.message);
-          }
-        }, KEEP_ALIVE_INTERVAL);
-        console.log(`🏓 Keep-alive enabled: pinging every ${KEEP_ALIVE_INTERVAL / 60000} minutes`);
-      }
-    });
-
-    // ── Graceful Shutdown (Prevents 500+ user connection drops) ──────────────────────
-    const gracefulShutdown = (signal) => {
-      console.log(`\n🛑 [SHUTDOWN] ${signal} received. Closing server gracefully...`);
-      server.close(() => {
-        console.log('✅ [SHUTDOWN] HTTP server closed. Cleaning up...');
-        io.close(() => {
-          console.log('✅ [SHUTDOWN] Socket.io closed.');
-          process.exit(0);
-        });
-      });
-      // Force kill after 10 seconds if graceful shutdown hangs
-      setTimeout(() => {
-        console.error('💀 [SHUTDOWN] Forced exit after 10s timeout');
-        process.exit(1);
-      }, 10000);
-    };
-    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+    })();
 
   } catch (error) {
     console.error('❌ Server failed to start. CRITICAL ERROR:');
@@ -2066,6 +2049,67 @@ const startServer = async () => {
     if (error.stack) console.error(error.stack);
     process.exit(1);
   }
+};
+
+// Open the port first, then initialize the database. Guarded so nothing can start twice.
+let serverStarted = false;
+const PORT = process.env.PORT || 8080;
+const startServer = () => {
+  if (serverStarted) return;
+  serverStarted = true;
+
+  server.on('error', (e) => {
+    if (e.code === 'EADDRINUSE') {
+      console.error(`❌ Port ${PORT} is in use. Process probably hasn't exited yet. Shutting down...`);
+      process.exit(1);
+    }
+  });
+
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Server listening on port ${PORT} — initializing database in the background...`);
+
+    // ── Self-Ping Keep-Alive (Prevents Render Free Tier Sleep) ──
+    if (isProductionEnv()) {
+      const KEEP_ALIVE_INTERVAL = 14 * 60 * 1000; // 14 minutes (Render sleeps at 15 min)
+      const selfUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
+      setInterval(async () => {
+        try {
+          const https = require('https');
+          const httpModule = require('http');
+          const mod = selfUrl.startsWith('https') ? https : httpModule;
+          mod.get(`${selfUrl}/api/health`, (res) => {
+            console.log(`[KEEP_ALIVE] Ping OK (${res.statusCode})`);
+          }).on('error', (err) => {
+            console.warn('[KEEP_ALIVE] Ping failed:', err.message);
+          });
+        } catch (err) {
+          console.warn('[KEEP_ALIVE] Error:', err.message);
+        }
+      }, KEEP_ALIVE_INTERVAL);
+      console.log(`🏓 Keep-alive enabled: pinging every ${KEEP_ALIVE_INTERVAL / 60000} minutes`);
+    }
+  });
+
+  // ── Graceful Shutdown (Prevents 500+ user connection drops) ──────────────────────
+  const gracefulShutdown = (signal) => {
+    console.log(`\n🛑 [SHUTDOWN] ${signal} received. Closing server gracefully...`);
+    server.close(() => {
+      console.log('✅ [SHUTDOWN] HTTP server closed. Cleaning up...');
+      io.close(() => {
+        console.log('✅ [SHUTDOWN] Socket.io closed.');
+        process.exit(0);
+      });
+    });
+    // Force kill after 10 seconds if graceful shutdown hangs
+    setTimeout(() => {
+      console.error('💀 [SHUTDOWN] Forced exit after 10s timeout');
+      process.exit(1);
+    }, 10000);
+  };
+  process.once('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.once('SIGINT', () => gracefulShutdown('SIGINT'));
+
+  initializeApp();
 };
 
 startServer();
@@ -2089,6 +2133,7 @@ try {
 
 // ── Restaurant out-of-stock auto-restore periodic check ──
 setInterval(async () => {
+  if (!dbReady) return;
   try {
     const { getMenuItemModel } = require('./models/MenuItem');
     const MenuItem = getMenuItemModel();
@@ -2113,7 +2158,8 @@ setInterval(async () => {
         await item.save();
 
         // Broadcast to clients via Socket.io
-        io.emit('inventory_updated', { itemId: item.id, isAvailable: true });
+        io.emit('inventory_updated', { itemId: item.id, restaurantId: item.restaurantId, isAvailable: true });
+        require('./utils/realtime').publish('product', 'updated', item.id, { storeId: item.restaurantId, scope: 'stock' });
         console.log(`[AUTO-RESTORE] Restored item: ${item.name} (${item.id})`);
       }
     }

@@ -98,6 +98,7 @@ const processExpiredWallEvents = async () => {
     event.winnerUserId = winnerUserId;
     event.couponCode = couponCode;
     await event.save();
+    require('../utils/realtime').publish('wall', 'updated', event.id, { scope: 'event' });
 
     console.log(`🏆 [WALL EVENT ENDED] Event "${event.title}" finalized. Winner: ${winnerName} (${winnerUserId})`);
 

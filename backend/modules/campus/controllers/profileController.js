@@ -2,6 +2,7 @@ const { getCampusModel } = require('../models/Campus');
 const { getCampusProfileModel } = require('../models/CampusProfile');
 const { getVerificationModel } = require('../models/Verification');
 const { getUserModel } = require('../../../models/User');
+const realtime = require('../../../utils/realtime');
 
 // Helper to seed default campuses if none exist
 const ensureDefaultCampuses = async () => {
@@ -299,6 +300,7 @@ const confirmEmailOtp = async (req, res) => {
       buddyPoints: (profile.buddyPoints || 0) + (alreadyVerified ? 0 : 150)
     });
 
+    realtime.notifyAdmin('verification', 'updated', record.id, { scope: 'email' });
     res.json({
       message: 'Campus verification successful! Welcome to Campus Buddy.',
       verificationStatus: 'verified',
@@ -320,7 +322,7 @@ const submitIdCard = async (req, res) => {
     }
 
     const Verification = getVerificationModel();
-    await Verification.create({
+    const verification = await Verification.create({
       userId: req.user.id,
       campusId,
       type: 'id_card',
@@ -341,6 +343,7 @@ const submitIdCard = async (req, res) => {
       verificationStatus: 'pending'
     });
 
+    realtime.notifyAdmin('verification', 'created', verification.id);
     res.json({
       message: 'ID card submitted for verification. Admin review usually takes 2-4 hours.',
       verificationStatus: 'pending'
@@ -440,6 +443,7 @@ const reviewVerification = async (req, res) => {
       await profile.update({ verificationStatus: 'rejected' });
     }
 
+    realtime.notifyAdmin('verification', 'updated', record.id);
     res.json({
       message: action === 'approve' ? 'Student verified' : 'Verification rejected',
       verificationStatus: profile.verificationStatus,

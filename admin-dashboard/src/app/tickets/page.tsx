@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAdminAuth } from '@/utils/useAdminAuth';
 import { API_URL } from '@/lib/config';
+import { useAdminSocket } from '@/components/AdminSocketProvider';
+import { useLiveSync, useFreshIds, liveLabel, FRESH_ROW_CLASS } from '@/lib/useLiveSync';
 
 type TicketStatus = 'Open' | 'In Progress' | 'Resolved' | 'Closed';
 
@@ -52,15 +54,20 @@ export default function SupportTickets() {
   const [filter, setFilter] = useState<Filter>('active');
   const [, setNow] = useState(0);
 
-  const fetchTickets = useCallback(async () => {
-    setLoadError(null);
+  const { notifyLive } = useAdminSocket();
+  const { mark: markFresh, isFresh } = useFreshIds();
+
+  const fetchTickets = useCallback(async (quiet = false) => {
+    if (!quiet) setLoadError(null);
     try {
       const res = await fetch(`${API_URL}/api/tickets/admin`, { cache: 'no-store' });
       if (!res.ok) throw new Error(await readError(res, 'Could not load support tickets.'));
       const data = await res.json();
       setTickets(Array.isArray(data) ? data : []);
+      if (quiet) setLoadError(null);
     } catch (err) {
-      setLoadError(errorText(err, 'Could not load support tickets.'));
+      // A background (live) refresh keeps the last good list.
+      if (!quiet) setLoadError(errorText(err, 'Could not load support tickets.'));
     } finally {
       setLoading(false);
     }
@@ -70,6 +77,15 @@ export default function SupportTickets() {
     if (!isAuthed) return;
     fetchTickets();
   }, [isAuthed, fetchTickets]);
+
+  // Realtime sync: new / updated tickets (customer, rider, or another admin tab) appear without a reload.
+  useLiveSync(['ticket'], (events, { reconnect }) => {
+    fetchTickets(true);
+    if (reconnect) return;
+    markFresh(events.map(e => e.id));
+    const label = liveLabel(events.filter(e => e.action === 'created'), 'ticket');
+    if (label) notifyLive(label);
+  }, { enabled: isAuthed });
 
   // Re-render every minute so SLA countdowns stay accurate.
   useEffect(() => {
@@ -176,7 +192,7 @@ export default function SupportTickets() {
           const saving = savingId === ticket.id;
           const draft = replies[ticket.id] ?? '';
           return (
-            <div key={ticket.id} className="bg-zinc-900 border border-zinc-800 p-6 rounded-2xl flex flex-col gap-4 hover:border-zinc-700 transition-colors">
+            <div key={ticket.id} className={`bg-zinc-900 border border-zinc-800 p-6 rounded-2xl flex flex-col gap-4 hover:border-zinc-700 transition-colors ${isFresh(ticket.id) ? FRESH_ROW_CLASS : ''}`}>
               <div className="flex flex-wrap gap-3 justify-between items-start">
                 <div className="min-w-0">
                   <h3 className="text-lg font-bold text-white break-words">{ticket.subject}</h3>

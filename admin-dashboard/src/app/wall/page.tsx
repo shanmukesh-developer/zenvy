@@ -4,6 +4,8 @@ import React, { useState, useEffect } from 'react';
 import { useAdminAuth } from '@/utils/useAdminAuth';
 import { API_URL } from '@/lib/config';
 import { adminRequest as apiRequest } from '@/lib/api';
+import { useAdminSocket } from '@/components/AdminSocketProvider';
+import { useLiveSync, useFreshIds, liveLabel, FRESH_ROW_CLASS } from '@/lib/useLiveSync';
 
 /** fetch against the one backend; throws an Error carrying the server's friendly `message`. */
 const errMsg = (err: unknown, fallback: string) => (err instanceof Error && err.message ? err.message : fallback);
@@ -112,41 +114,63 @@ export default function WallAdmin() {
     }
   }, [isAuthed]);
 
-  const fetchEvents = async () => {
-    setLoadingEvents(true);
+  // quiet = background refresh from a realtime event: no spinner, keep the last good list on errors.
+  const fetchEvents = async (quiet = false) => {
+    if (!quiet) setLoadingEvents(true);
     try {
       const data = await apiRequest<WallEvent[]>('/api/wall/admin/events');
       setEvents(Array.isArray(data) ? data : []);
     } catch (err) {
-      setPageError(errMsg(err, 'Could not load Wall events.'));
+      if (!quiet) setPageError(errMsg(err, 'Could not load Wall events.'));
     } finally {
-      setLoadingEvents(false);
+      if (!quiet) setLoadingEvents(false);
     }
   };
 
-  const fetchPending = async () => {
-    setLoadingPending(true);
+  // quiet = background refresh from a realtime event: no spinner, keep the last good list on errors.
+  const fetchPending = async (quiet = false) => {
+    if (!quiet) setLoadingPending(true);
     try {
       const data = await apiRequest<WallSubmission[]>('/api/wall/admin/pending');
       setPendingSubmissions(Array.isArray(data) ? data : []);
     } catch (err) {
-      setPageError(errMsg(err, 'Could not load the moderation queue.'));
+      if (!quiet) setPageError(errMsg(err, 'Could not load the moderation queue.'));
     } finally {
-      setLoadingPending(false);
+      if (!quiet) setLoadingPending(false);
     }
   };
 
-  const fetchHistory = async () => {
-    setLoadingHistory(true);
+  // quiet = background refresh from a realtime event: no spinner, keep the last good list on errors.
+  const fetchHistory = async (quiet = false) => {
+    if (!quiet) setLoadingHistory(true);
     try {
       const data = await apiRequest<HistoryEntry[]>('/api/wall/events/history');
       setHistory(Array.isArray(data) ? data : []);
     } catch (err) {
-      setPageError(errMsg(err, 'Could not load the Hall of Fame.'));
+      if (!quiet) setPageError(errMsg(err, 'Could not load the Hall of Fame.'));
     } finally {
-      setLoadingHistory(false);
+      if (!quiet) setLoadingHistory(false);
     }
   };
+
+  // Realtime sync: new photo submissions and event changes (another admin tab, the wall cron) show up live.
+  const { notifyLive } = useAdminSocket();
+  const { mark: markFresh, isFresh } = useFreshIds();
+  useLiveSync(['wall', 'wall_submission'], (evts, { reconnect }) => {
+    const wallEvents = evts.filter(e => e.type === 'wall');
+    const submissionEvents = evts.filter(e => e.type === 'wall_submission');
+    if (reconnect || wallEvents.length) {
+      fetchEvents(true);
+      // Ending an event (or a moderation decision) changes the Hall of Fame / submission counts.
+      fetchHistory(true);
+    }
+    if (reconnect || submissionEvents.length || wallEvents.some(e => e.scope === 'submissions')) fetchPending(true);
+    if (reconnect) return;
+    markFresh(wallEvents.filter(e => e.scope !== 'submissions').map(e => e.id));
+    markFresh(submissionEvents.filter(e => e.action !== 'deleted').map(e => e.id));
+    const label = liveLabel(submissionEvents.filter(e => e.action === 'created'), 'photo submission');
+    if (label) notifyLive(label);
+  }, { enabled: isAuthed });
 
   // ── Create Event ──
   const handleCreateEvent = async (e: React.FormEvent) => {
@@ -396,7 +420,7 @@ export default function WallAdmin() {
                 return (
                   <div
                     key={evt.id}
-                    className={`glass-card p-6 space-y-4 border ${
+                    className={`glass-card p-6 space-y-4 border ${isFresh(evt.id) ? FRESH_ROW_CLASS : ''} ${
                       isLive ? 'border-amber-500/30 bg-amber-500/5' : isEnded ? 'border-white/5 opacity-70' : 'border-white/10'
                     }`}
                   >
@@ -498,7 +522,7 @@ export default function WallAdmin() {
               <span>🖼️</span> Pending Photo Submissions ({pendingSubmissions.length})
             </h3>
             <button
-              onClick={fetchPending}
+              onClick={() => fetchPending()}
               className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-gray-400 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all"
             >
               🔄 Refresh
@@ -518,7 +542,7 @@ export default function WallAdmin() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {pendingSubmissions.map(sub => (
-                <div key={sub.id} className="glass-card border border-amber-500/15 overflow-hidden">
+                <div key={sub.id} className={`glass-card border border-amber-500/15 overflow-hidden ${isFresh(sub.id) ? FRESH_ROW_CLASS : ''}`}>
                   {/* Photo Preview */}
                   <div className="relative aspect-square bg-neutral-900">
                     <img

@@ -9,19 +9,49 @@ interface SocketContextType {
   socket: Socket | null;
   isConnected: boolean;
   refreshSocket: () => void;
+  /** Small "live update" toast at the bottom-right (used by realtime sync). */
+  notifyLive: (text: string) => void;
 }
 
 const SocketContext = createContext<SocketContextType>({
   socket: null,
   isConnected: false,
-  refreshSocket: () => {}
+  refreshSocket: () => {},
+  notifyLive: () => {}
 });
+
+interface LiveToast { id: number; text: string }
 
 export const useAdminSocket = () => useContext(SocketContext);
 
 export default function AdminSocketProvider({ children }: { children: React.ReactNode }) {
   const socketRef = useRef<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  // Mirrors socketRef so consumers re-subscribe when the socket is replaced (sign-in / refresh).
+  const [socketState, setSocketState] = useState<Socket | null>(null);
+  const [toasts, setToasts] = useState<LiveToast[]>([]);
+  const toastSeq = useRef(0);
+  const toastTimers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+
+  const notifyLive = useCallback((text: string) => {
+    if (!text) return;
+    const id = ++toastSeq.current;
+    setToasts(prev => {
+      // Same message already showing: don't stack duplicates.
+      if (prev.some(t => t.text === text)) return prev;
+      return [...prev.slice(-2), { id, text }];
+    });
+    const timer = setTimeout(() => {
+      toastTimers.current.delete(timer);
+      setToasts(prev => prev.filter(t => t.id !== id && t.text !== text));
+    }, 3500);
+    toastTimers.current.add(timer);
+  }, []);
+
+  useEffect(() => {
+    const timers = toastTimers.current;
+    return () => { timers.forEach(clearTimeout); timers.clear(); };
+  }, []);
 
   const initSocket = useCallback(() => {
     const token = getToken();
@@ -68,13 +98,11 @@ export default function AdminSocketProvider({ children }: { children: React.Reac
     });
 
     socketRef.current = socket;
+    setSocketState(socket);
 
     // Anti-sleep heartbeat ping to keep Render server awake
     const keepAliveInterval = setInterval(() => {
       fetch(`${SOCKET_URL}/api/health`, { cache: 'no-store' }).catch(() => {});
-      if (socket.connected) {
-         socket.emit('admin_ping', { timestamp: Date.now() });
-      }
     }, 10 * 60 * 1000); // 10 minutes
 
     return () => {
@@ -99,12 +127,24 @@ export default function AdminSocketProvider({ children }: { children: React.Reac
         socketRef.current.disconnect();
         socketRef.current = null;
       }
+      setSocketState(null);
+      setIsConnected(false);
     };
   }, [initSocket, sessionToken]);
 
   return (
-    <SocketContext.Provider value={{ socket: socketRef.current, isConnected, refreshSocket: initSocket }}>
+    <SocketContext.Provider value={{ socket: socketState, isConnected, refreshSocket: initSocket, notifyLive }}>
       {children}
+      {toasts.length > 0 && (
+        <div className="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none" role="status" aria-live="polite">
+          {toasts.map(t => (
+            <div key={t.id} className="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-black/85 px-4 py-2.5 text-xs font-bold text-emerald-300 shadow-lg backdrop-blur">
+              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+              {t.text}
+            </div>
+          ))}
+        </div>
+      )}
     </SocketContext.Provider>
   );
 }

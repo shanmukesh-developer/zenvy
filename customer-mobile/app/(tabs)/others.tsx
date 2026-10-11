@@ -19,6 +19,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Clipboard from '@react-native-clipboard/clipboard';
 import SafeImage from '../../components/SafeImage';
 import ShimmerLoader from '../../components/ShimmerLoader';
+import { useLiveSync, hasType } from '../../utils/useLiveSync';
 
 const { width: SW, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SH = SCREEN_HEIGHT;
@@ -915,8 +916,10 @@ export default function OthersScreen() {
   }, []);
 
   // Load PG lists
-  const fetchPGs = useCallback(async () => {
-    setLoadingPgs(true);
+  // silent = live-sync background refresh: keep the current list, no skeleton, no error card
+  const fetchPGs = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = !!opts?.silent;
+    if (!silent) setLoadingPgs(true);
     try {
       const res = await apiFetch(ENDPOINTS.pgList);
       const data = await readJson(res);
@@ -924,13 +927,13 @@ export default function OthersScreen() {
       if (res.ok) {
         setPgs(Array.isArray(data) ? data : []);
         setPgError(null);
-      } else {
+      } else if (!silent) {
         setPgError(friendlyError(res, data, 'We could not load PG stays right now.'));
       }
     } catch {
-      if (isMountedRef.current) setPgError(NETWORK_ERROR_MESSAGE);
+      if (isMountedRef.current && !silent) setPgError(NETWORK_ERROR_MESSAGE);
     } finally {
-      if (isMountedRef.current) setLoadingPgs(false);
+      if (isMountedRef.current && !silent) setLoadingPgs(false);
     }
   }, []);
 
@@ -990,6 +993,20 @@ export default function OthersScreen() {
       loadActiveTab();
     }, [loadActiveTab])
   );
+
+  // Live sync: admin / store edits refresh the visible tab in place. fetchCatalogue / fetchRewards
+  // keep the shown data while they reload, fetchPGs runs silent; nothing flashes a skeleton.
+  useLiveSync({
+    types: ['store', 'product', 'pg', 'coupon'],
+    onChange: (events) => {
+      const catalogueChanged = hasType(events, 'store', 'product');
+      if (catalogueChanged) fetchServiceability();
+      if (activeTab === 'food' && catalogueChanged) fetchCatalogue();
+      else if (activeTab === 'services' && catalogueChanged) { fetchServicePrices(); fetchCatalogue(); }
+      else if (activeTab === 'pg' && hasType(events, 'pg')) fetchPGs({ silent: true });
+      else if (activeTab === 'promos' && hasType(events, 'coupon')) fetchRewards();
+    },
+  });
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -2317,7 +2334,7 @@ export default function OthersScreen() {
               {loadingPgs && pgs.length === 0 ? (
                 renderListSkeleton(200)
               ) : pgError && pgs.length === 0 ? (
-                renderLoadError(pgError, fetchPGs)
+                renderLoadError(pgError, () => fetchPGs())
               ) : filteredPGs.length > 0 ? (
                 filteredPGs.map((pg, idx) => {
                   const pgImg = Array.isArray(pg.images) && pg.images.length > 0 ? pg.images[0] : 'https://images.unsplash.com/photo-1555854877-bab0e564b8d5?w=400';

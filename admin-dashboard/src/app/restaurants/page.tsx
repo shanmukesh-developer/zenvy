@@ -1,6 +1,8 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAdminAuth } from '@/utils/useAdminAuth';
+import { useAdminSocket } from '@/components/AdminSocketProvider';
+import { useLiveSync, useFreshIds, FRESH_ROW_CLASS, LiveEvent } from '@/lib/useLiveSync';
 import {
   Product, Store, adminRequest, formatTime, formatWhatsapp, readSpecs, storeId, vendorLabel,
 } from './catalogue';
@@ -62,21 +64,56 @@ export default function StoresPage() {
   const { notice, show, clear } = useNotice();
 
   const loadStores = useCallback(async (quiet = false) => {
-    if (!quiet) setLoading(true);
-    setLoadError('');
+    if (!quiet) {
+      setLoading(true);
+      setLoadError('');
+    }
     try {
       const data = await adminRequest<Store[]>('/api/admin/restaurants');
-      setStores(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : [];
+      setStores(list);
+      setLoadError('');
+      // Keep the open products view showing the latest store row (name, active flag, image…).
+      setSelected(prev => (prev ? list.find(s => storeId(s) === storeId(prev)) || prev : prev));
     } catch (e) {
-      setLoadError(e instanceof Error ? e.message : 'Could not load stores.');
+      // A background (live) refresh keeps the last good list.
+      if (!quiet) setLoadError(e instanceof Error ? e.message : 'Could not load stores.');
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     if (isAuthed) loadStores();
   }, [isAuthed, loadStores]);
+
+  // Realtime sync: stores / products changed in another admin tab, the restaurant partner app or the
+  // auto-restock job. Product events also change the per-store product count, so both refetch the list.
+  const { notifyLive } = useAdminSocket();
+  const { mark: markFresh, isFresh } = useFreshIds();
+  const selectedIdRef = useRef<string | null>(null);
+  selectedIdRef.current = selected ? storeId(selected) : null;
+  const formStoreIdRef = useRef<string | null>(null);
+  formStoreIdRef.current = formStore && formStore !== 'new' ? storeId(formStore) : null;
+
+  useLiveSync(['store', 'product'], (events, { reconnect }) => {
+    loadStores(true);
+    if (reconnect) return;
+    const storeEvents = events.filter(e => e.type === 'store');
+    markFresh(storeEvents.filter(e => e.action !== 'deleted').map(e => e.id));
+    const removed = storeEvents.filter(e => e.action === 'deleted').map(e => String(e.id));
+    const openId = selectedIdRef.current;
+    if (openId && removed.includes(openId)) {
+      setSelected(null);
+      show('error', 'The store you were viewing was deleted in another session.');
+    }
+    const editingId = formStoreIdRef.current;
+    if (editingId && storeEvents.some(e => String(e.id) === editingId && e.action === 'updated' && e.scope !== 'status')) {
+      show('error', 'This store was just changed somewhere else. Saving now overwrites those changes; close and reopen the form to see them.');
+    }
+    const created = storeEvents.filter(e => e.action === 'created').length;
+    if (created) notifyLive(created > 1 ? `${created} new stores` : 'New store added');
+  }, { enabled: isAuthed });
 
   const typeCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -263,7 +300,7 @@ export default function StoresPage() {
             const isLocal = (store.vendorType || '').toUpperCase() === 'LOCAL_VENDOR';
             const hours = store.operatingHours?.start && store.operatingHours?.end ? `${formatTime(store.operatingHours.start)} – ${formatTime(store.operatingHours.end)}` : 'No hours set';
             return (
-              <article key={id} className={`flex flex-wrap items-center gap-4 p-4 ${store.isActive ? '' : 'bg-white/[0.015]'}`}>
+              <article key={id} className={`flex flex-wrap items-center gap-4 p-4 ${store.isActive ? '' : 'bg-white/[0.015]'} ${isFresh(id) ? FRESH_ROW_CLASS : ''}`}>
                 <Thumb src={store.imageUrl} alt={store.name} />
                 <div className="min-w-[220px] flex-1">
                   <div className="flex flex-wrap items-center gap-2">
@@ -333,20 +370,45 @@ function ProductsPanel({ store, onBack, onToggleActive, storeBusy }: {
   const { notice, show, clear } = useNotice();
   const isLocal = (store.vendorType || '').toUpperCase() === 'LOCAL_VENDOR';
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setLoadError('');
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) {
+      setLoading(true);
+      setLoadError('');
+    }
     try {
       const data = await adminRequest<Product[]>(`/api/admin/menu-items?restaurantId=${encodeURIComponent(id)}`);
       setProducts(Array.isArray(data) ? data : []);
+      setLoadError('');
     } catch (e) {
-      setLoadError(e instanceof Error ? e.message : 'Could not load products.');
+      if (!quiet) setLoadError(e instanceof Error ? e.message : 'Could not load products.');
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Realtime sync: products of THIS store changed elsewhere (another admin tab, partner app, auto-restock).
+  const { mark: markFresh, isFresh } = useFreshIds();
+  const editingIdRef = useRef<string | null>(null);
+  editingIdRef.current = editing && editing !== 'new' ? editing._id : null;
+  const forThisStore = (e: LiveEvent) =>
+    e.type === 'product' && (e.storeId !== undefined ? String(e.storeId) === id : e.id === null);
+
+  useLiveSync(['product', 'store'], (events, { reconnect }) => {
+    const mine = events.filter(forThisStore);
+    const storeWide = events.some(e => e.type === 'store' && (e.id === null || String(e.id) === id));
+    if (!reconnect && !mine.length && !storeWide) return;
+    load(true);
+    if (reconnect) return;
+    markFresh(mine.filter(e => e.action !== 'deleted').map(e => e.id));
+    const editingId = editingIdRef.current;
+    if (editingId && mine.some(e => String(e.id) === editingId && e.scope !== 'stock')) {
+      show('error', mine.some(e => String(e.id) === editingId && e.action === 'deleted')
+        ? 'This product was deleted somewhere else. Saving will fail; close the form.'
+        : 'This product was just changed somewhere else. Saving now overwrites those changes.');
+    }
+  });
 
   const categories = useMemo(
     () => Array.from(new Set(products.map(p => p.category).filter((c): c is string => !!c))).sort(),
@@ -443,7 +505,7 @@ function ProductsPanel({ store, onBack, onToggleActive, storeBusy }: {
       {loadError && (
         <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
           {loadError}
-          <button type="button" onClick={load} className="font-bold underline">Retry</button>
+          <button type="button" onClick={() => load()} className="font-bold underline">Retry</button>
         </div>
       )}
 
@@ -472,7 +534,7 @@ function ProductsPanel({ store, onBack, onToggleActive, storeBusy }: {
                 const specs = readSpecs(p.specs);
                 const mrp = Number(specs.originalPrice);
                 return (
-                  <tr key={p._id} className={p.isAvailable ? '' : 'text-gray-500'}>
+                  <tr key={p._id} className={`${p.isAvailable ? '' : 'text-gray-500'} ${isFresh(p._id) ? FRESH_ROW_CLASS : ''}`}>
                     <td className="p-3">
                       <div className="flex items-center gap-3">
                         <Thumb src={p.imageUrl || p.image} alt={p.name} />

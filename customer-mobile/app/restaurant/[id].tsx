@@ -25,6 +25,7 @@ import DopaminePressable, { CartPressable, ActionPressable, CardPressable } from
 import { StaggeredSection, FloatingPulse } from '../../components/AnimatedSection';
 import SafeImage from '../../components/SafeImage';
 import { isLocalVendor as isLocalVendorStore, vendorCallNumber, vendorWhatsappNumber, callVendor, whatsappVendor, DIRECT_ORDER_COPY } from '../../utils/localVendor';
+import { useLiveSync, affectsStore } from '../../utils/useLiveSync';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const LOAD_TIMEOUT_MS = 20000;
@@ -73,7 +74,7 @@ export default function RestaurantDetail() {
 
   const isUserElite = !!(user as any)?.isElite;
 
-  const loadRestaurant = useCallback(async (mode: 'initial' | 'refresh' = 'initial') => {
+  const loadRestaurant = useCallback(async (mode: 'initial' | 'refresh' | 'silent' = 'initial') => {
     if (!UUID_RE.test(id)) {
       setRestaurant(null);
       setLoadError({ notFound: true, message: "We couldn't find this kitchen. It may have moved or closed." });
@@ -99,16 +100,16 @@ export default function RestaurantDetail() {
       } else if (res.status === 404) {
         setRestaurant(null);
         setLoadError({ notFound: true, message: "We couldn't find this kitchen. It may have moved or closed." });
-      } else {
+      } else if (mode !== 'silent') {
         setLoadError({ notFound: false, message: 'We could not load this menu right now. Please try again.' });
       }
     } catch {
-      if (mountedRef.current) {
+      if (mountedRef.current && mode !== 'silent') {
         setLoadError({ notFound: false, message: "Can't reach Zenvy right now. Check your internet and try again." });
       }
     } finally {
       clearTimeout(timer);
-      if (mountedRef.current) {
+      if (mountedRef.current && mode !== 'silent') {
         setLoading(false);
         setRefreshing(false);
       }
@@ -118,6 +119,13 @@ export default function RestaurantDetail() {
   useEffect(() => {
     loadRestaurant('initial');
   }, [loadRestaurant]);
+
+  // Live sync: menu price / stock / store status edits for THIS store refresh the menu in place
+  // (no spinner; the ScrollView keeps its position because the tree stays mounted).
+  useLiveSync({
+    types: ['store', 'product'],
+    onChange: (events) => { if (affectsStore(events, id)) loadRestaurant('silent'); },
+  });
 
   useEffect(() => {
     let cancelled = false;

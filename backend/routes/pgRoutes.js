@@ -25,10 +25,12 @@ const viewerIsAdmin = (req) => {
 };
 
 // Push + live alert to admins about a booking (real channels; WhatsApp only if a provider is set up).
+const realtime = require('../utils/realtime');
 const notifyAdminsOfBooking = async (req, text, data) => {
   try {
     const io = req.app.get('io');
     if (io) io.to('admin-room').emit('admin_pg_booking', data);
+    realtime.notifyAdmin('pg_booking', 'created', data.id);
     const admins = await getUserModel().findAll({ where: { role: 'admin', isActive: true }, attributes: ['id', 'fcmTokens'] });
     const tokens = admins.flatMap((a) => (Array.isArray(a.fcmTokens) ? a.fcmTokens : []));
     if (admins.length) {
@@ -203,6 +205,8 @@ router.put('/bookings/:bookingId/cancel', protect, async (req, res) => {
   try {
     const result = await changeBookingStatus(req.params.bookingId, 'Cancelled', (b) => b.userId === req.user.id);
     if (result.error) return res.status(result.status).json({ message: result.error });
+    realtime.notifyAdmin('pg_booking', 'updated', result.booking.id);
+    realtime.publish('pg', 'updated', result.booking.hostelId, { scope: 'availability' });
     res.json({ message: 'Booking request cancelled.', booking: result.booking });
   } catch (err) {
     console.error('[PG_CANCEL_ERROR]', err);
@@ -240,6 +244,8 @@ router.put('/admin/bookings/:bookingId/status', protect, admin, async (req, res)
     if (!['Confirmed', 'Cancelled'].includes(status)) return res.status(400).json({ message: "status must be 'Confirmed' or 'Cancelled'" });
     const result = await changeBookingStatus(req.params.bookingId, status, () => true);
     if (result.error) return res.status(result.status).json({ message: result.error });
+    realtime.notifyAdmin('pg_booking', 'updated', result.booking.id);
+    realtime.publish('pg', 'updated', result.booking.hostelId, { scope: 'availability' });
     try {
       const student = await getUserModel().findByPk(result.booking.userId, { attributes: ['id', 'fcmTokens'] });
       if (student) {
@@ -298,6 +304,7 @@ router.post('/', protect, admin, async (req, res) => {
       name, address, distanceFromCollege, genderType, baseRent, securityDeposit,
       amenities, images, description, messMenu, foodTimetable, rules, contactInfo, isActive: isActive ?? true
     });
+    realtime.publish('pg', 'created', pg.id);
     res.status(201).json(pg);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -332,6 +339,7 @@ router.put('/:id', protect, admin, async (req, res) => {
       name, address, distanceFromCollege, genderType, baseRent, securityDeposit,
       amenities, images, description, messMenu, foodTimetable, rules, contactInfo, isActive
     });
+    realtime.publish('pg', 'updated', pg.id);
     res.json(pg);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -345,6 +353,7 @@ router.delete('/:id', protect, admin, async (req, res) => {
     const pg = await PGHostel.findByPk(req.params.id);
     if (!pg) return res.status(404).json({ message: 'PG not found.' });
     await pg.destroy();
+    realtime.publish('pg', 'deleted', req.params.id);
     res.json({ message: 'PG deleted successfully.' });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -373,6 +382,7 @@ router.post('/:id/rooms', protect, admin, async (req, res) => {
       hostelId: req.params.id,
       roomNumber, sharingType, pricePerBed, totalBeds, availableBeds, floorNumber, hasAttachedBathroom, hasAC, hasBalcony, furnishing, isActive: isActive ?? true
     });
+    realtime.publish('pg', 'updated', req.params.id, { scope: 'room' });
     res.status(201).json(room);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -392,6 +402,7 @@ router.put('/:id/rooms/:roomId', protect, admin, async (req, res) => {
     await room.update({
       roomNumber, sharingType, pricePerBed, totalBeds, availableBeds, floorNumber, hasAttachedBathroom, hasAC, hasBalcony, furnishing, isActive
     });
+    realtime.publish('pg', 'updated', req.params.id, { scope: 'room' });
     res.json(room);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -407,6 +418,7 @@ router.delete('/:id/rooms/:roomId', protect, admin, async (req, res) => {
     });
     if (!room) return res.status(404).json({ message: 'Room not found.' });
     await room.destroy();
+    realtime.publish('pg', 'updated', req.params.id, { scope: 'room' });
     res.json({ message: 'Room deleted successfully.' });
   } catch (err) {
     res.status(500).json({ message: err.message });

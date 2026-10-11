@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { API_URL } from '@/lib/config';
 import { useAdminAuth } from '@/utils/useAdminAuth';
+import { useAdminSocket } from '@/components/AdminSocketProvider';
+import { useLiveSync, useFreshIds, liveLabel, FRESH_ROW_CLASS } from '@/lib/useLiveSync';
 
 type VerificationStatus = 'pending' | 'approved' | 'rejected';
 
@@ -41,13 +43,31 @@ export default function StudentVerificationPage() {
   const [actingId, setActingId] = useState<string | null>(null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [reviewNotes, setReviewNotes] = useState('');
+  // Bumped by realtime events; such reloads keep the current list on screen (no spinner, no error banner).
+  const [liveTick, setLiveTick] = useState(0);
+  const quietReload = useRef(false);
+  const { notifyLive } = useAdminSocket();
+  const { mark: markFresh, isFresh } = useFreshIds();
+
+  useLiveSync(['verification'], (events, { reconnect }) => {
+    quietReload.current = true;
+    setLiveTick(t => t + 1);
+    if (reconnect) return;
+    markFresh(events.map(e => e.id));
+    const label = liveLabel(events.filter(e => e.action === 'created'), 'verification request');
+    if (label) notifyLive(label);
+  }, { enabled: isAuthed });
 
   useEffect(() => {
     if (!isAuthed) return;
     let active = true;
+    const quiet = quietReload.current;
+    quietReload.current = false;
     const loadRequests = async () => {
-      setLoading(true);
-      setError('');
+      if (!quiet) {
+        setLoading(true);
+        setError('');
+      }
       try {
         const response = await fetch(`${API_URL}/api/campus/verify/requests?status=${status}`, {
           credentials: 'include',
@@ -61,7 +81,7 @@ export default function StudentVerificationPage() {
         }
         if (active) setRequests(Array.isArray(data.requests) ? data.requests : []);
       } catch (loadError) {
-        if (active) setError(loadError instanceof TypeError ? 'Could not reach the server. Check your connection.' : loadError instanceof Error ? loadError.message : 'Could not load verification requests.');
+        if (active && !quiet) setError(loadError instanceof TypeError ? 'Could not reach the server. Check your connection.' : loadError instanceof Error ? loadError.message : 'Could not load verification requests.');
       } finally {
         if (active) setLoading(false);
       }
@@ -69,7 +89,7 @@ export default function StudentVerificationPage() {
 
     loadRequests();
     return () => { active = false; };
-  }, [status, retryCount, isAuthed]);
+  }, [status, retryCount, isAuthed, liveTick]);
 
   const reviewRequest = async (request: VerificationRequest, action: 'approve' | 'reject') => {
     if (action === 'approve' && !window.confirm(`Approve student verification for ${request.userName}?`)) return;
@@ -150,7 +170,7 @@ export default function StudentVerificationPage() {
             const cardUrl = imageUrl(request.idCardImageUrl);
             const busy = actingId === request.id;
             return (
-              <article key={request.id} className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1fr)_220px]">
+              <article key={request.id} className={`grid gap-5 p-5 lg:grid-cols-[minmax(0,1fr)_220px] ${isFresh(request.id) ? FRESH_ROW_CLASS : ''}`}>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                     <h2 className="text-lg font-bold">{request.userName || 'Unknown student'}</h2>

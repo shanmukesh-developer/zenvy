@@ -64,6 +64,10 @@ exports.updateConfig = async (req, res) => {
     if (req.app.get('io')) {
       req.app.get('io').emit('config_updated', config);
     }
+    require('../utils/realtime').publish('config', 'updated', config.id, { scope: 'app' });
+    if (updates.globalAnnouncement !== undefined) {
+      require('../utils/realtime').publish('announcement', 'updated', config.id, { scope: 'app_config' });
+    }
 
     res.status(200).json({
       success: true,

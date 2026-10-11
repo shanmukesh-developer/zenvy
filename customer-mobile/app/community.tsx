@@ -13,6 +13,7 @@ import { StaggeredSection, FloatingPulse, BounceIn, PulseGlow } from '../compone
 import DopaminePressable, { CardPressable, ActionPressable } from '../components/DopaminePressable';
 import { LinearGradient } from 'expo-linear-gradient';
 import { connectSocket } from '../utils/socket';
+import { useLiveSync } from '../utils/useLiveSync';
 import ShimmerLoader from '../components/ShimmerLoader';
 
 const { width: SW, height: SH } = Dimensions.get('window');
@@ -561,9 +562,11 @@ export default function CommunityScreen() {
     }
   };
 
-  const fetchWallActive = async () => {
+  // silent = live-sync background refresh: keep the wall on screen, no spinner, no error card
+  const fetchWallActive = async (opts?: { silent?: boolean }) => {
+    const silent = !!opts?.silent;
     try {
-      setLoadingWall(true);
+      if (!silent) setLoadingWall(true);
       const res = await apiFetch((ENDPOINTS as any).wallActive);
       if (!mountedRef.current) return;
       if (res.ok) {
@@ -574,16 +577,22 @@ export default function CommunityScreen() {
         setUserLikedWallSubmissionIds(Array.isArray(data.userLikedSubmissionIds) ? data.userLikedSubmissionIds : []);
         setUserWallSubmission(data.userSubmission || null);
         setWallError(false);
-      } else {
+      } else if (!silent) {
         setWallError(true);
       }
     } catch (e) {
       console.log('[FETCH_WALL_ERR]', e);
-      if (mountedRef.current) setWallError(true);
+      if (mountedRef.current && !silent) setWallError(true);
     } finally {
-      if (mountedRef.current) setLoadingWall(false);
+      if (mountedRef.current && !silent) setLoadingWall(false);
     }
   };
+
+  // Live sync: wall events started / ended and submissions approved by admin appear in place
+  useLiveSync({
+    types: ['wall'],
+    onChange: () => { fetchWallActive({ silent: true }); fetchWallHistory(); },
+  });
 
   const fetchWallHistory = async () => {
     try {
@@ -1169,7 +1178,7 @@ export default function CommunityScreen() {
                   <Text style={{ fontSize: 40, marginBottom: 8 }}>📡</Text>
                   <Text style={[s.emptyTitle, { color: isDark ? COLORS.gold : '#8b5a2b' }]}>COULDN'T LOAD THE WALL</Text>
                   <Text style={[s.emptySubtitle, { color: txtSec, textAlign: 'center' }]}>Check your connection and try again.</Text>
-                  <TouchableOpacity onPress={fetchWallActive} style={[s.retryBtn, { backgroundColor: isDark ? COLORS.gold : '#8b5a2b' }]}>
+                  <TouchableOpacity onPress={() => fetchWallActive()} style={[s.retryBtn, { backgroundColor: isDark ? COLORS.gold : '#8b5a2b' }]}>
                     <Text style={[s.retryText, { color: isDark ? '#000' : '#fff' }]}>RETRY</Text>
                   </TouchableOpacity>
                 </View>

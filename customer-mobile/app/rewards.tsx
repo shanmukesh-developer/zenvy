@@ -9,6 +9,7 @@ import { StaggeredSection, FloatingPulse, BounceIn } from '../components/Animate
 import DopaminePressable, { ActionPressable } from '../components/DopaminePressable';
 import { LinearGradient } from 'expo-linear-gradient';
 import { apiFetch, readJson } from '../utils/auth';
+import { useLiveSync } from '../utils/useLiveSync';
 import { API_URL } from '../constants/api';
 import { useCart } from '../context/CartContext';
 
@@ -103,8 +104,10 @@ export default function RewardsScreen() {
     }
   }, []);
 
-  const fetchCoupons = useCallback(async () => {
-    setLoadingCoupons(true);
+  // silent = live-sync background refresh: keep the list, no spinner, no error card
+  const fetchCoupons = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = !!opts?.silent;
+    if (!silent) setLoadingCoupons(true);
     try {
       const res = await apiFetch(`${API_URL}/api/rewards/coupons`);
       const data = await readJson(res);
@@ -112,16 +115,23 @@ export default function RewardsScreen() {
       if (res.ok) {
         setCoupons(Array.isArray(data) ? data : []);
         setCouponsError(false);
-      } else {
+      } else if (!silent) {
         setCouponsError(true);
       }
     } catch (err) {
       console.error('Failed to fetch user coupons:', err);
-      if (mountedRef.current) setCouponsError(true);
+      if (mountedRef.current && !silent) setCouponsError(true);
     } finally {
-      if (mountedRef.current) setLoadingCoupons(false);
+      if (mountedRef.current && !silent) setLoadingCoupons(false);
     }
   }, []);
+
+  // Live sync: coupon / vault edits from admin show up without leaving the screen
+  useLiveSync({
+    types: ['coupon'],
+    enabled: !!user,
+    onChange: () => { fetchCoupons({ silent: true }); },
+  });
 
   useEffect(() => {
     if (user) {
@@ -540,7 +550,7 @@ export default function RewardsScreen() {
 
         {/* Active Won Vouchers / Coupons */}
         {couponsError && coupons.length === 0 && !loadingCoupons && (
-          <TouchableOpacity onPress={fetchCoupons} style={{ paddingVertical: 12, alignItems: 'center' }}>
+          <TouchableOpacity onPress={() => fetchCoupons()} style={{ paddingVertical: 12, alignItems: 'center' }}>
             <Text style={{ fontSize: 11, fontWeight: '700', color: '#EF4444' }}>Couldn't load your vouchers. Tap to try again.</Text>
           </TouchableOpacity>
         )}

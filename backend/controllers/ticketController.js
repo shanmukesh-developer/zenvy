@@ -1,6 +1,7 @@
 const { getTicketModel } = require('../models/Ticket');
 const { getOrderModel } = require('../models/Order');
 const { getUserModel } = require('../models/User');
+const realtime = require('../utils/realtime');
 
 // @desc    Create a new support ticket
 // @route   POST /api/tickets
@@ -44,6 +45,7 @@ const createTicket = async (req, res) => {
       slaBreachAt: breachTime
     });
 
+    realtime.notifyAdmin('ticket', 'created', ticket.id);
     res.status(201).json(ticket);
   } catch (error) {
     console.error('[CREATE_TICKET_ERROR]', error);
@@ -122,6 +124,7 @@ const updateTicket = async (req, res) => {
     if (adminResponse) ticket.adminResponse = adminResponse;
 
     await ticket.save();
+    realtime.notifyAdmin('ticket', 'updated', ticket.id);
     res.json(ticket);
 
     // Tell the customer (push + live) when support replies or changes the status.

@@ -6,6 +6,19 @@ import { useAdminAuth } from '@/utils/useAdminAuth';
 import PaymentVerificationModal from '@/components/PaymentVerificationModal';
 import { API_URL } from '@/lib/config';
 import { adminRequest as apiRequest } from '@/lib/api';
+import Link from 'next/link';
+import { useLiveSync, useFreshIds, liveLabel, FRESH_ROW_CLASS } from '@/lib/useLiveSync';
+
+// "Needs attention" counters on the overview, kept live by realtime events.
+type InboxKey = 'tickets' | 'verifications' | 'pgBookings' | 'wallPending';
+type Inbox = Record<InboxKey, number | null>;
+const INBOX_ITEMS: { key: InboxKey; label: string; href: string; liveType: string }[] = [
+  { key: 'tickets', label: 'Open tickets', href: '/tickets', liveType: 'ticket' },
+  { key: 'verifications', label: 'Student IDs to review', href: '/student-verification', liveType: 'verification' },
+  { key: 'pgBookings', label: 'PG booking requests', href: '/pg', liveType: 'pg_booking' },
+  { key: 'wallPending', label: 'Wall photos to moderate', href: '/wall', liveType: 'wall_submission' },
+];
+const LIVE_HOME_TYPES = ['order', 'rider', 'store', 'ticket', 'verification', 'pg_booking', 'wall_submission', 'wall'] as const;
 
 const LiveFleetMap = dynamic(() => import('@/components/LiveFleetMap'), { ssr: false });
 
@@ -126,12 +139,12 @@ const needsUpiCheck = (o: LiveOrder) => o.kind === 'order' && o.paymentMethod ==
 const shortId = (id?: string) => (id ? `#${String(id).slice(-6).toUpperCase()}` : '');
 
 // ─── Memoized Components for Performance ───────────────────
-const OrderItem = memo(({ order, onVerify }: { order: LiveOrder, onVerify: (o: LiveOrder) => void }) => {
+const OrderItem = memo(({ order, onVerify, fresh }: { order: LiveOrder, onVerify: (o: LiveOrder) => void, fresh?: boolean }) => {
   const upi = needsUpiCheck(order);
   return (
     <div
       onClick={() => { if (upi) onVerify(order); }}
-      className={`group p-4 rounded-3xl bg-white/[0.015] border border-white/5 hover:border-white/10 transition-all duration-300 ${upi ? 'cursor-pointer hover:bg-amber-500/5' : ''}`}
+      className={`group p-4 rounded-3xl bg-white/[0.015] border border-white/5 hover:border-white/10 transition-all duration-300 ${upi ? 'cursor-pointer hover:bg-amber-500/5' : ''} ${fresh ? FRESH_ROW_CLASS : ''}`}
     >
       <div className="flex justify-between items-start mb-2 gap-2">
         <div className="min-w-0">
@@ -232,7 +245,10 @@ EventItem.displayName = 'EventItem';
 
 export default function AdminHome() {
   const { isAuthed } = useAdminAuth();
-  const { socket, isConnected } = useAdminSocket();
+  const { socket, isConnected, notifyLive } = useAdminSocket();
+  const { mark: markFresh, isFresh } = useFreshIds();
+  const [inbox, setInbox] = useState<Inbox>({ tickets: null, verifications: null, pgBookings: null, wallPending: null });
+  const [freshInbox, setFreshInbox] = useState<Partial<Record<InboxKey, boolean>>>({});
 
   const [stats, setStats] = useState<AdminStat[] | null>(null);
   const [statsError, setStatsError] = useState<string | null>(null);
@@ -313,6 +329,34 @@ export default function AdminHome() {
       // Non-critical: the live socket events still populate riders.
     }
   }, []);
+
+  // Counts for the "Needs attention" strip. Each one fails independently (shown as "–").
+  const fetchInbox = useCallback(async (only?: InboxKey[]) => {
+    const want = (k: InboxKey) => !only || only.includes(k);
+    const count = (v: unknown) => (Array.isArray(v) ? v.length : null);
+    const jobs: Partial<Record<InboxKey, Promise<number | null>>> = {};
+    if (want('tickets')) jobs.tickets = apiRequest<any[]>('/api/tickets/admin')
+      .then(list => (Array.isArray(list) ? list.filter(t => t?.status === 'Open' || t?.status === 'In Progress').length : null));
+    if (want('verifications')) jobs.verifications = apiRequest<{ requests?: unknown[] }>('/api/campus/verify/requests?status=pending')
+      .then(d => count(d?.requests));
+    if (want('pgBookings')) jobs.pgBookings = apiRequest<unknown[]>('/api/pg/admin/bookings?status=Pending').then(count);
+    if (want('wallPending')) jobs.wallPending = apiRequest<unknown[]>('/api/wall/admin/pending').then(count);
+    const keys = Object.keys(jobs) as InboxKey[];
+    const results = await Promise.allSettled(keys.map(k => jobs[k]!));
+    setInbox(prev => {
+      const next = { ...prev };
+      keys.forEach((k, i) => {
+        const r = results[i];
+        // Keep the last known number if a background refresh fails.
+        if (r.status === 'fulfilled') next[k] = r.value;
+        else if (prev[k] === null) next[k] = null;
+      });
+      return next;
+    });
+  }, []);
+
+  const inboxFreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (inboxFreshTimer.current) clearTimeout(inboxFreshTimer.current); }, []);
 
   const lastStatsUpdate = useRef(0);
   const throttledFetchStats = useCallback(() => {
@@ -613,6 +657,42 @@ export default function AdminHome() {
     };
   }, [isAuthed, socket, fetchStats, fetchOrders, fetchRiders, throttledFetchStats]);
 
+  useEffect(() => {
+    if (isAuthed) fetchInbox();
+  }, [isAuthed, fetchInbox]);
+
+  // Realtime sync (`admin:changed` / `data:changed`, ids only): refetch just the widgets that changed.
+  useLiveSync(LIVE_HOME_TYPES, (events, { reconnect }) => {
+    const has = (t: string) => reconnect || events.some(e => e.type === t);
+    if (has('order')) {
+      fetchOrders();
+      // Stats are heavier; refresh them at most every 10 s.
+      throttledFetchStats();
+      if (!reconnect) markFresh(events.filter(e => e.type === 'order').map(e => e.id));
+    }
+    if (has('rider')) { fetchRiders(); throttledFetchStats(); }
+    if (has('store') && !has('order')) throttledFetchStats();
+    const inboxKeys = INBOX_ITEMS
+      .filter(i => has(i.liveType) || (i.key === 'wallPending' && events.some(e => e.type === 'wall' && e.scope === 'submissions')))
+      .map(i => i.key);
+    if (inboxKeys.length) {
+      fetchInbox(inboxKeys);
+      if (!reconnect) {
+        setFreshInbox(prev => ({ ...prev, ...Object.fromEntries(inboxKeys.map(k => [k, true])) }));
+        if (inboxFreshTimer.current) clearTimeout(inboxFreshTimer.current);
+        inboxFreshTimer.current = setTimeout(() => setFreshInbox({}), 6000);
+      }
+    }
+    if (reconnect) return;
+    const newOrders = events.filter(e => e.type === 'order' && e.action === 'created');
+    const label = liveLabel(newOrders, 'order');
+    if (label) notifyLive(label);
+    for (const [type, noun] of [['ticket', 'support ticket'], ['verification', 'verification request'], ['pg_booking', 'PG booking request'], ['wall_submission', 'wall photo']] as const) {
+      const l = liveLabel(events.filter(e => e.type === type && e.action === 'created'), noun);
+      if (l) notifyLive(l);
+    }
+  }, { enabled: isAuthed });
+
   if (!isAuthed) return null; // NexusLayoutClient shows the auth loader / redirect
 
   const riderList = Object.values(riders);
@@ -665,6 +745,19 @@ export default function AdminHome() {
           ))}
         </div>
       )}
+
+      {/* ─── Needs attention (live) ─── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" aria-label="Needs attention">
+        {INBOX_ITEMS.map(item => {
+          const value = inbox[item.key];
+          return (
+            <Link key={item.key} href={item.href} className={`glass-card p-5 flex items-center justify-between gap-3 border border-white/5 hover:border-white/15 transition-colors ${freshInbox[item.key] ? FRESH_ROW_CLASS : ''}`}>
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">{item.label}</span>
+              <span className={`text-2xl font-black ${value ? 'text-amber-300' : 'text-white'}`}>{value === null ? '–' : value}</span>
+            </Link>
+          );
+        })}
+      </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-10 items-start">
         {/* ─── Fleet map ─── */}
@@ -724,7 +817,7 @@ export default function AdminHome() {
               <p className="text-center py-10 text-gray-600 text-xs italic tracking-wide">No orders yet.</p>
             ) : (
               liveOrders.map((order) => (
-                <OrderItem key={`${order.kind}-${order.id}`} order={order} onVerify={handleVerifyRequest} />
+                <OrderItem key={`${order.kind}-${order.id}`} order={order} onVerify={handleVerifyRequest} fresh={order.kind === 'order' && isFresh(order.id)} />
               ))
             )}
           </div>

@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { FIELD, LABEL, PGRoom, pgRequest } from './pgApi';
 
 type RoomDraft = {
@@ -75,6 +75,16 @@ function RoomRow({ pgId, room, onSaved, onDeleted }: { pgId: string; room: PGRoo
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const dirty = JSON.stringify(draft) !== JSON.stringify(toDraft(room));
 
+  // Live refresh: when the room changes elsewhere (another admin tab, a booking taking a bed), follow it
+  // unless this row has unsaved edits.
+  const prevRoom = useRef(room);
+  useEffect(() => {
+    const before = prevRoom.current;
+    prevRoom.current = room;
+    if (before === room) return;
+    setDraft(cur => (JSON.stringify(cur) === JSON.stringify(toDraft(before)) ? toDraft(room) : cur));
+  }, [room]);
+
   const save = async () => {
     if (busy) return;
     const { payload, error } = toPayload(draft);
@@ -118,7 +128,7 @@ function RoomRow({ pgId, room, onSaved, onDeleted }: { pgId: string; room: PGRoo
   );
 }
 
-export function RoomsPanel({ pgId }: { pgId: string }) {
+export function RoomsPanel({ pgId, liveTick = 0 }: { pgId: string; /** bumped by realtime `pg` events */ liveTick?: number }) {
   const [rooms, setRooms] = useState<PGRoom[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -127,20 +137,24 @@ export function RoomsPanel({ pgId }: { pgId: string }) {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError('');
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) {
+      setLoading(true);
+      setError('');
+    }
     try {
       const data = await pgRequest<PGRoom[]>(`/api/pg/${pgId}/rooms-all`);
       setRooms(Array.isArray(data) ? [...data].sort((a, b) => String(a.roomNumber).localeCompare(String(b.roomNumber), undefined, { numeric: true })) : []);
+      if (quiet) setError('');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not load rooms.');
+      if (!quiet) setError(e instanceof Error ? e.message : 'Could not load rooms.');
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, [pgId]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (liveTick > 0) load(true); }, [liveTick, load]);
 
   const create = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -180,7 +194,7 @@ export function RoomsPanel({ pgId }: { pgId: string }) {
 
       {error && (
         <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
-          {error}<button type="button" onClick={load} className="font-bold underline">Retry</button>
+          {error}<button type="button" onClick={() => load()} className="font-bold underline">Retry</button>
         </div>
       )}
       {loading ? (

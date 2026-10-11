@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const realtime = require('../utils/realtime');
 const { Op } = require('sequelize');
 const { getWallEventModel } = require('../models/WallEvent');
 const { getWallSubmissionModel } = require('../models/WallSubmission');
@@ -81,6 +82,7 @@ router.post('/events', protect, admin, async (req, res) => {
       console.error('[WALL_PUSH_ERR]', e);
     }
 
+    realtime.publish('wall', 'created', event.id, { scope: 'event' });
     res.status(201).json(event);
   } catch (err) {
     console.error('Error creating Wall event:', err);
@@ -108,6 +110,7 @@ router.put('/events/:id', protect, admin, async (req, res) => {
     if (endTime !== undefined) event.endTime = new Date(endTime);
 
     await event.save();
+    realtime.publish('wall', 'updated', event.id, { scope: 'event' });
     res.json({ message: 'Event and moving banner updated successfully!', event });
   } catch (err) {
     console.error('Error updating Wall event:', err);
@@ -291,6 +294,8 @@ router.post('/events/:id/submit', protect, async (req, res) => {
       existing.imageUrl = imageUrl;
       existing.isApproved = false;
       await existing.save();
+      realtime.notifyAdmin('wall_submission', 'updated', existing.id);
+      realtime.publish('wall', 'updated', eventId, { scope: 'submissions' }); // it left the public wall until re-approved
       return res.status(200).json({
         message: 'Photo updated! It will appear on The Wall once our team approves it.',
         submission: existing
@@ -306,6 +311,7 @@ router.post('/events/:id/submit', protect, async (req, res) => {
       isApproved: false
     });
 
+    realtime.notifyAdmin('wall_submission', 'created', submission.id);
     res.status(201).json({
       message: 'Photo submitted! It will appear on The Wall once our team approves it.',
       submission
@@ -418,6 +424,7 @@ router.put('/events/:id/end', protect, admin, async (req, res) => {
     const { processExpiredWallEvents } = require('../cron/wallCron');
     await processExpiredWallEvents();
     await event.reload();
+    realtime.publish('wall', 'updated', event.id, { scope: 'event' });
 
     const topSubmission = event.winnerUserId
       ? await WallSubmission.findOne({
@@ -506,6 +513,8 @@ router.put('/admin/submissions/:id/approve', protect, admin, async (req, res) =>
 
     submission.isApproved = true;
     await submission.save();
+    realtime.publish('wall', 'updated', submission.eventId, { scope: 'submissions' });
+    realtime.notifyAdmin('wall_submission', 'updated', submission.id);
 
     res.json({ message: 'Submission approved and live on The Wall!', submission });
   } catch (err) {
@@ -523,6 +532,8 @@ router.put('/admin/submissions/:id/reject', protect, admin, async (req, res) => 
     if (!submission) return res.status(404).json({ message: 'Submission not found.' });
 
     await submission.destroy();
+    realtime.publish('wall', 'updated', submission.eventId, { scope: 'submissions' });
+    realtime.notifyAdmin('wall_submission', 'deleted', submission.id);
 
     res.json({ message: 'Submission rejected and removed.' });
   } catch (err) {

@@ -23,9 +23,31 @@ exports.clearRestaurantsCache = clearRestaurantsCache;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+const realtime = require('../utils/realtime');
+
+// `systemUpdate` used to go to EVERY socket with full rows (rider rows with password hashes, wallet
+// balances, coupons). Catalogue/config types still reach everyone (the customer home listens for them)
+// but with IDs only; everything else goes to the admin room only, with secrets stripped.
+const PUBLIC_SYSTEM_UPDATE_TYPES = new Set([
+  'RESTAURANT_CREATED', 'RESTAURANT_UPDATED', 'RESTAURANT_DELETED', 'MENU_UPDATED', 'MENU_ITEM_DELETED',
+  'GLOBAL_CONFIG_UPDATED', 'DATABASE_SEEDED', 'VAULT_UPDATED', 'VAULT_DELETED'
+]);
+const SECRET_KEYS = ['password', 'otp', 'otpHash', 'token', 'fcmToken', 'pushToken', 'resetToken', 'deliveryPin', 'pin'];
+const stripSecrets = (data) => {
+  if (!data || typeof data !== 'object') return data;
+  const plain = typeof data.toJSON === 'function' ? data.toJSON() : { ...data };
+  for (const k of SECRET_KEYS) delete plain[k];
+  return plain;
+};
 const broadcastSystemUpdate = (req, type, data) => {
   const io = req.app.get('io');
-  if (io) io.emit('systemUpdate', { type, data });
+  if (!io) return;
+  if (PUBLIC_SYSTEM_UPDATE_TYPES.has(type)) {
+    const d = data || {};
+    io.emit('systemUpdate', { type, data: { id: d.id ?? null, restaurantId: d.restaurantId ?? null } });
+  } else {
+    io.to('admin-room').emit('systemUpdate', { type, data: stripSecrets(data) });
+  }
 };
 
 exports.getSystemHealth = async (req, res) => {
@@ -470,6 +492,7 @@ exports.createRestaurant = async (req, res) => {
     const restaurant = await Restaurant.create(data);
     clearRestaurantsCache();
     broadcastSystemUpdate(req, 'RESTAURANT_CREATED', publicRestaurant(restaurant));
+    realtime.publish('store', 'created', restaurant.id, { storeId: restaurant.id });
     await logAuditAction(req, restaurant.id, 'CREATE_RESTAURANT', { name: restaurant.name });
     res.status(201).json(publicRestaurant(restaurant));
   } catch (error) {
@@ -491,6 +514,7 @@ exports.updateRestaurant = async (req, res) => {
     await restaurant.update(updateData);
     clearRestaurantsCache();
     broadcastSystemUpdate(req, 'RESTAURANT_UPDATED', publicRestaurant(restaurant));
+    realtime.publish('store', 'updated', restaurant.id, { storeId: restaurant.id });
     await logAuditAction(req, restaurant.id, 'UPDATE_RESTAURANT', { name: restaurant.name, fields: Object.keys(updateData).filter(k => k !== 'password') });
     res.json(publicRestaurant(restaurant));
   } catch (error) {
@@ -517,6 +541,7 @@ exports.upsertMenuItem = async (req, res) => {
       menuItem = await MenuItem.create({ ...pickMenuItemFields(req.body), restaurantId });
     }
     clearRestaurantsCache();
+    realtime.publish('product', id && id !== 'new' ? 'updated' : 'created', menuItem.id, { storeId: menuItem.restaurantId });
     broadcastSystemUpdate(req, 'MENU_UPDATED', { id: menuItem.id, restaurantId: menuItem.restaurantId });
     const io = req.app.get('io');
     if (io) {
@@ -538,6 +563,7 @@ exports.deleteMenuItem = async (req, res) => {
     await item.destroy();
     clearRestaurantsCache();
     broadcastSystemUpdate(req, 'MENU_ITEM_DELETED', { id: req.params.id, restaurantId: item.restaurantId });
+    realtime.publish('product', 'deleted', req.params.id, { storeId: item.restaurantId });
     await logAuditAction(req, req.params.id, 'DELETE_MENU_ITEM', { id: req.params.id, name: item.name });
     res.json({ message: 'Product deleted.' });
   } catch (error) {
@@ -577,6 +603,7 @@ exports.approveRider = async (req, res) => {
     if (!rider) return res.status(404).json({ message: 'Rider not found' });
     await rider.update({ isApproved: req.body.isApproved });
     broadcastSystemUpdate(req, 'RIDER_STATUS_CHANGED', { id: req.params.id, isApproved: req.body.isApproved });
+    realtime.notifyAdmin('rider', 'updated', rider.id);
     res.json({ ...rider.toJSON(), _id: rider.id });
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -618,6 +645,7 @@ exports.updateRider = async (req, res) => {
     }
     await rider.update(updateData);
     broadcastSystemUpdate(req, 'RIDER_UPDATED', rider);
+    realtime.notifyAdmin('rider', 'updated', rider.id);
     const riderData = rider.toJSON();
     delete riderData.password;
     res.json({ ...riderData, _id: rider.id });
@@ -677,6 +705,7 @@ exports.setEliteStatus = async (req, res) => {
     if (!user) return res.status(404).json({ message: 'User not found' });
     await user.update({ isElite: req.body.isElite });
     broadcastSystemUpdate(req, 'USER_ELITE_STATUS', { userId: req.params.userId, isElite: req.body.isElite });
+    realtime.notifyAdmin('user', 'updated', user.id);
     await logAuditAction(req, user.id, 'ELITE_STATUS_CHANGE', { email: user.email, isElite: req.body.isElite });
     res.json({ ...user.toJSON(), _id: user.id });
   } catch (error) {
@@ -704,6 +733,7 @@ exports.updateUserWallet = async (req, res) => {
     
     await logAuditAction(req, user.id, 'WALLET_UPDATE', { email: user.email, added: amount, newBalance });
     broadcastSystemUpdate(req, 'USER_UPDATED', { userId: user.id, walletBalance: newBalance });
+    realtime.notifyAdmin('user', 'updated', user.id);
     
     res.json({ message: 'Wallet updated', walletBalance: newBalance });
   } catch (error) {
@@ -740,6 +770,7 @@ exports.updateGlobalConfig = async (req, res) => {
     const { key, value, description } = req.body;
     const [_config, created] = await GlobalConfig.upsert({ key, value, description });
     broadcastSystemUpdate(req, 'GLOBAL_CONFIG_UPDATED', { key, value });
+    realtime.publish('config', 'updated', key, { scope: 'global' });
     res.json({ key, value, description, created });
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -950,6 +981,8 @@ exports.seedDatabase = async (req, res) => {
     }
 
     broadcastSystemUpdate(req, 'DATABASE_SEEDED', { count: restaurants.length });
+    realtime.publish('store', 'updated', null); // id null = refetch the whole catalogue
+    realtime.publish('product', 'updated', null);
     res.json({ message: `Successfully synchronized ${restaurants.length} restaurants.` });
   } catch (error) {
     console.error('[SEED_ERROR]', error);
@@ -1011,6 +1044,7 @@ exports.upsertVaultItem = async (req, res) => {
       item = await VaultItem.create(pickVaultFields(req.body));
     }
     broadcastSystemUpdate(req, 'VAULT_UPDATED', item);
+    realtime.publish('coupon', id && id !== 'new' ? 'updated' : 'created', item.id, { scope: 'vault' });
     await logAuditAction(req, item.id, 'UPSERT_VAULT_ITEM', { name: item.name, price: item.price, remainingCount: item.remainingCount });
     res.json({ ...item.toJSON(), _id: item.id });
   } catch (error) {
@@ -1025,6 +1059,7 @@ exports.deleteVaultItem = async (req, res) => {
     const removed = await VaultItem.destroy({ where: { id: req.params.id } });
     if (!removed) return res.status(404).json({ message: 'Deal not found.' });
     broadcastSystemUpdate(req, 'VAULT_DELETED', { id: req.params.id });
+    realtime.publish('coupon', 'deleted', req.params.id, { scope: 'vault' });
     await logAuditAction(req, req.params.id, 'DELETE_VAULT_ITEM', { id: req.params.id });
     res.json({ message: 'Deal deleted.' });
   } catch (error) {
@@ -1140,6 +1175,7 @@ exports.deleteRestaurant = async (req, res) => {
     clearRestaurantsCache();
     
     broadcastSystemUpdate(req, 'RESTAURANT_DELETED', { id });
+    realtime.publish('store', 'deleted', id, { storeId: id });
     logAuditAction(req, id, 'RESTAURANT_DELETE', `Deleted restaurant "${restaurant.name}"`);
     
     res.json({ message: 'Store deleted.' });
@@ -1281,6 +1317,7 @@ exports.createCoupon = async (req, res) => {
 
     await logAuditAction(req, coupon.id, 'CREATE_COUPON', { code: coupon.code, userId });
     broadcastSystemUpdate(req, 'COUPON_CREATED', coupon);
+    realtime.publish('coupon', 'created', coupon.id, { scope: 'coupon' });
 
     res.status(201).json({ ...coupon.toJSON(), _id: coupon.id });
   } catch (error) {
@@ -1298,6 +1335,7 @@ exports.deleteCoupon = async (req, res) => {
     await coupon.destroy();
     await logAuditAction(req, req.params.id, 'DELETE_COUPON', { code: coupon.code });
     broadcastSystemUpdate(req, 'COUPON_DELETED', { id: req.params.id });
+    realtime.publish('coupon', 'deleted', req.params.id, { scope: 'coupon' });
     
     res.json({ message: 'Coupon successfully removed/revoked' });
   } catch (error) {
@@ -1436,6 +1474,7 @@ exports.toggleUserBan = async (req, res) => {
     
     const action = user.isActive ? 'USER_UNBANNED' : 'USER_BANNED';
     await logAuditAction(req, user.id, action, { userId: user.id });
+    realtime.notifyAdmin('user', 'updated', user.id);
 
     res.json({ message: `User account ${user.isActive ? 'reactivated' : 'suspended'}`, user });
   } catch (error) {
@@ -1508,6 +1547,7 @@ exports.broadcastPushNotification = async (req, res) => {
     }
 
     await logAuditAction(req, null, 'GLOBAL_PUSH_SENT', { title, body, userCount: activeUsers.length });
+    realtime.publish('announcement', 'created', null, { scope: 'broadcast' });
     
     res.json({ message: `Push notification broadcasted successfully to approximately ${activeUsers.length} active devices.` });
   } catch (error) {
@@ -1562,6 +1602,7 @@ exports.deleteReview = async (req, res) => {
     await order.save();
     
     await logAuditAction(req, order.id, 'REVIEW_DELETED', { orderId: order.id });
+    if (order.restaurantId) realtime.publish('store', 'updated', order.restaurantId, { storeId: order.restaurantId, scope: 'reviews' });
     res.json({ message: 'Review successfully removed from the ecosystem.' });
   } catch (error) {
     res.status(500).json({ message: error.message });

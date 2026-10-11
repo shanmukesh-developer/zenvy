@@ -1,8 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, RefreshControl, Image, FlatList, Dimensions, Platform, Modal, ActivityIndicator, Alert, Animated, Linking, BackHandler, Vibration } from 'react-native';
-import { Socket } from 'socket.io-client';
-import { connectSocket } from '../../utils/socket';
+import { useLiveSync, hasType } from '../../utils/useLiveSync';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, usePathname, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -251,6 +250,7 @@ export default function HomeScreen() {
   // Favorites state and logic
   const [favorites, setFavorites] = useState<string[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [unreadNonce, setUnreadNonce] = useState(0);
 
   useEffect(() => {
     const pulseLoop = Animated.loop(
@@ -348,23 +348,27 @@ export default function HomeScreen() {
     }
   };
 
-  const fetchVaultItems = async () => {
-    setLoadingVault(true);
-    setVaultError(false);
-    setVaultItems([]);
+  const fetchVaultItems = async (opts?: { silent?: boolean }) => {
+    const silent = !!opts?.silent;
+    if (!silent) {
+      setLoadingVault(true);
+      setVaultError(false);
+      setVaultItems([]);
+    }
     try {
       const res = await apiFetch(ENDPOINTS.vaultList);
       if (res.ok) {
         const data = await res.json();
         setVaultItems(Array.isArray(data) ? data : []);
-      } else {
+        setVaultError(false);
+      } else if (!silent) {
         setVaultError(true);
       }
     } catch (e) {
       console.error(e);
-      setVaultError(true);
+      if (!silent) setVaultError(true);
     } finally {
-      setLoadingVault(false);
+      if (!silent) setLoadingVault(false);
     }
   };
 
@@ -503,7 +507,7 @@ export default function HomeScreen() {
       };
       checkUnread();
       return () => { active = false; };
-    }, [user])
+    }, [user, unreadNonce])
   );
 
   const pathname = usePathname();
@@ -539,22 +543,18 @@ export default function HomeScreen() {
     return () => backHandler.remove();
   }, [pathname]);
 
-  useEffect(() => {
-    const socket = connectSocket();
-
-    const handleSystemUpdate = (payload: { type: string; data: any }) => {
-      console.log('[SOCKET_MOBILE_SYNC] Received system update:', payload.type);
-      if (['RESTAURANT_CREATED', 'RESTAURANT_UPDATED', 'MENU_UPDATED', 'MENU_ITEM_DELETED', 'GLOBAL_CONFIG_UPDATED', 'DATABASE_SEEDED'].includes(payload.type)) {
-        fetchData();
-      }
-    };
-
-    socket.on('systemUpdate', handleSystemUpdate);
-
-    return () => {
-      socket.off('systemUpdate', handleSystemUpdate);
-    };
-  }, [fetchData]);
+  // Live sync: admin / partner edits to stores, menus and config refresh the home feed in place
+  // (silent refetch: the list stays on screen, no skeletons, scroll position untouched).
+  const showVaultModalRef = useRef(showVaultModal);
+  showVaultModalRef.current = showVaultModal;
+  useLiveSync({
+    types: ['store', 'product', 'config', 'coupon', 'announcement'],
+    onChange: (events) => {
+      if (hasType(events, 'store', 'product', 'config')) fetchData();
+      if (hasType(events, 'announcement')) setUnreadNonce((n) => n + 1);
+      if (showVaultModalRef.current && hasType(events, 'coupon')) fetchVaultItems({ silent: true });
+    },
+  });
 
   const filtered = restaurants
     .filter(isHomeFoodVendor)
@@ -1197,7 +1197,7 @@ export default function HomeScreen() {
             {loadingVault ? (
               <ActivityIndicator size="large" color={goldColor} style={{ marginVertical: 32 }} />
             ) : vaultError ? (
-              <TouchableOpacity onPress={fetchVaultItems} style={{ padding: 32, alignItems: 'center' }} activeOpacity={0.8}>
+              <TouchableOpacity onPress={() => fetchVaultItems()} style={{ padding: 32, alignItems: 'center' }} activeOpacity={0.8}>
                 <Text style={{ fontSize: 32, marginBottom: 12 }}>⚠️</Text>
                 <Text style={{ color: txtSec, fontSize: 11, fontWeight: '700', textAlign: 'center' }}>Couldn't load today's deals. Tap to retry.</Text>
               </TouchableOpacity>

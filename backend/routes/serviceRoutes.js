@@ -169,6 +169,7 @@ router.post('/book', protect, async (req, res) => {
         roomNumber: booking.roomNumber,
       });
     }
+    require('../utils/realtime').notifyAdmin('service_booking', 'created', booking.id);
 
     return res.status(201).json({
       success: true,

@@ -23,6 +23,7 @@ import { useCart } from '../../context/CartContext';
 import { useAuth } from '../../context/AuthContext';
 import CustomizeDrawer, { isCustomizable } from '../../components/CustomizeDrawer';
 import { apiFetch } from '../../utils/auth';
+import { useLiveSync, affectsProduct, affectsStore } from '../../utils/useLiveSync';
 import { isLocalVendorType, vendorCallNumber, vendorWhatsappNumber, callVendor, whatsappVendor, DIRECT_ORDER_COPY } from '../../utils/localVendor';
 import { useTheme } from '../../context/ThemeContext';
 import AdSlot from '../../components/AdSlot';
@@ -197,9 +198,13 @@ export default function ProductDetailScreen() {
     }
   }, []);
 
-  const loadProduct = useCallback(async () => {
-    setLoadState('loading');
-    setLoadMessage('');
+  // silent = live-sync background refresh: keep the page on screen, no spinner, no error screen
+  const loadProduct = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = !!opts?.silent;
+    if (!silent) {
+      setLoadState('loading');
+      setLoadMessage('');
+    }
     if (!cleanId || !UUID_RE.test(cleanId)) {
       setProduct(null);
       setLoadState('notfound');
@@ -216,6 +221,7 @@ export default function ProductDetailScreen() {
         return;
       }
       if (!res.ok || !data) {
+        if (silent) return;
         setLoadMessage(data?.message || '');
         setLoadState('error');
         return;
@@ -257,13 +263,14 @@ export default function ProductDetailScreen() {
         isEliteOnly: !!data.isEliteOnly,
       };
       setProduct(resolved);
-      setActiveImgIndex(0);
+      if (silent) setActiveImgIndex((i) => (i < images.length ? i : 0));
+      else setActiveImgIndex(0);
       setLoadState('ready');
-      loadReviews(resolved.id);
+      if (!silent) loadReviews(resolved.id);
       if (resolved.restaurantId) loadStoreAndMore(resolved.restaurantId, resolved.id);
     } catch (err) {
       console.warn('[ProductDetail] load failed:', err);
-      if (mountedRef.current) setLoadState('error');
+      if (mountedRef.current && !silent) setLoadState('error');
     }
   }, [cleanId, loadReviews, loadStoreAndMore]);
 
@@ -276,6 +283,16 @@ export default function ProductDetailScreen() {
     setDistribution({});
     loadProduct();
   }, [loadProduct]);
+
+  // Live sync: price / stock / image edits to this item (or its store going offline) update in place
+  const liveStoreId = product?.restaurantId || null;
+  useLiveSync({
+    types: ['store', 'product'],
+    onChange: (events) => {
+      if (affectsProduct(events, cleanId, liveStoreId)) loadProduct({ silent: true });
+      else if (liveStoreId && affectsStore(events, liveStoreId)) loadStoreAndMore(liveStoreId, cleanId);
+    },
+  });
 
   const goBack = () => {
     if (router.canGoBack()) router.back();

@@ -35,6 +35,7 @@ exports.createContent = async (req, res) => {
       expiresAt,
       isPublished
     });
+    require('../utils/realtime').publish('announcement', 'created', content.id, { scope: 'daily_content' });
     res.status(201).json({ success: true, data: content });
   } catch (error) {
     console.error('Error creating content:', error);

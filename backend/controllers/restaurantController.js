@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const { getStoreOpenState } = require('../utils/storeHours');
 
 // Customers' restaurant listing is cached in adminController; any vendor change must clear it.
+const realtime = require('../utils/realtime');
 const clearPublicRestaurantsCache = () => {
   try { require('./adminController').clearRestaurantsCache(); } catch (e) { console.error('[CACHE_CLEAR_ERROR]', e.message); }
 };
@@ -191,6 +192,7 @@ const createRestaurant = async (req, res) => {
     const Restaurant = getRestaurantModel();
     const restaurant = await Restaurant.create({ name, location, imageUrl, deliveryTime, commissionRate, isOffline, password });
     clearPublicRestaurantsCache();
+    realtime.publish('store', 'created', restaurant.id, { storeId: restaurant.id });
     const json = restaurant.toJSON();
     delete json.password;
     res.status(201).json(json);
@@ -239,6 +241,7 @@ const toggleMenuItemAvailability = async (req, res) => {
     clearPublicRestaurantsCache();
     const io = req.app.get('io');
     if (io) io.emit('inventory_updated', { itemId: item.id, restaurantId: item.restaurantId, isAvailable: item.isAvailable });
+    realtime.publish('product', 'updated', item.id, { storeId: item.restaurantId, scope: 'stock' });
 
     res.json({ message: 'Item availability updated', _id: item.id, id: item.id, isAvailable: item.isAvailable, outOfStockUntil: item.outOfStockUntil || null });
   } catch (error) {
@@ -267,6 +270,7 @@ const updateMenuItemTags = async (req, res) => {
     item.tags = tags;
     await item.save();
     clearPublicRestaurantsCache();
+    realtime.publish('product', 'updated', item.id, { storeId: item.restaurantId });
 
     res.json({ message: 'Item tags updated', _id: item.id, tags: item.tags });
   } catch {
@@ -304,6 +308,7 @@ const createMenuItem = async (req, res) => {
     });
 
     clearPublicRestaurantsCache();
+    realtime.publish('product', 'created', newItem.id, { storeId: newItem.restaurantId });
     res.status(201).json(newItem);
   } catch (error) {
     console.error('[CREATE_MENU_ITEM_ERROR]', error);
@@ -343,6 +348,7 @@ const updateMenuItem = async (req, res) => {
 
     await item.update(updateData);
     clearPublicRestaurantsCache();
+    realtime.publish('product', 'updated', item.id, { storeId: item.restaurantId });
     res.json(item);
   } catch {
     res.status(500).json({ message: 'Server error' });
@@ -430,6 +436,7 @@ const toggleRestaurantOffline = async (req, res) => {
     // Broadcast to riders/customers that the store state changed
     const io = req.app.get('io');
     if (io) io.emit('store_status_changed', { restaurantId: restaurant.id, isOffline: restaurant.isOffline });
+    realtime.publish('store', 'updated', restaurant.id, { storeId: restaurant.id, scope: 'status' });
 
     res.json({ message: 'Store status updated', isOffline: restaurant.isOffline });
   } catch (error) {
@@ -471,6 +478,7 @@ const setRestaurantOpen = async (req, res) => {
       io.to(`restaurant_${restaurant.id}`).emit('store_status_changed', payload);
       io.emit('store_status_changed', { restaurantId: restaurant.id, isOpen: state.isOpen });
     }
+    realtime.publish('store', 'updated', restaurant.id, { storeId: restaurant.id, scope: 'status' });
     res.json(payload);
   } catch (error) {
     console.error('[SET_OPEN_ERROR]', error);

@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from 'react';
 import { FIELD, PGBooking, formatDate, pgRequest } from './pgApi';
+import { FRESH_ROW_CLASS } from '@/lib/useLiveSync';
 
 const STATUS_STYLE: Record<string, string> = {
   Pending: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
@@ -9,7 +10,12 @@ const STATUS_STYLE: Record<string, string> = {
 };
 
 /** Booking requests from the app (GET /api/pg/admin/bookings). Confirming takes a bed; cancelling a confirmed one frees it. */
-export function BookingsPanel({ onPendingCount }: { onPendingCount: (n: number) => void }) {
+export function BookingsPanel({ onPendingCount, liveTick = 0, isFresh }: {
+  onPendingCount: (n: number) => void;
+  /** bumped by realtime `pg_booking` / `pg` events: quiet reload */
+  liveTick?: number;
+  isFresh?: (id: string) => boolean;
+}) {
   const [status, setStatus] = useState('Pending');
   const [bookings, setBookings] = useState<PGBooking[]>([]);
   const [loading, setLoading] = useState(true);
@@ -17,23 +23,27 @@ export function BookingsPanel({ onPendingCount }: { onPendingCount: (n: number) 
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError('');
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) {
+      setLoading(true);
+      setError('');
+    }
     try {
       const query = status === 'All' ? '' : `?status=${encodeURIComponent(status)}`;
       const data = await pgRequest<PGBooking[]>(`/api/pg/admin/bookings${query}`);
       const list = Array.isArray(data) ? data : [];
       setBookings(list);
+      if (quiet) setError('');
       if (status === 'Pending') onPendingCount(list.length);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not load booking requests.');
+      if (!quiet) setError(e instanceof Error ? e.message : 'Could not load booking requests.');
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, [status, onPendingCount]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (liveTick > 0) load(true); }, [liveTick, load]);
 
   const changeStatus = async (booking: PGBooking, next: 'Confirmed' | 'Cancelled') => {
     if (busy[booking.id]) return;
@@ -68,7 +78,7 @@ export function BookingsPanel({ onPendingCount }: { onPendingCount: (n: number) 
           <option value="Cancelled">Cancelled</option>
           <option value="All">All</option>
         </select>
-        <button type="button" disabled={loading} onClick={load} className="rounded-lg border border-white/10 px-4 py-2 text-sm font-semibold text-gray-300 hover:text-white disabled:opacity-50">{loading ? 'Loading…' : 'Refresh'}</button>
+        <button type="button" disabled={loading} onClick={() => load()} className="rounded-lg border border-white/10 px-4 py-2 text-sm font-semibold text-gray-300 hover:text-white disabled:opacity-50">{loading ? 'Loading…' : 'Refresh'}</button>
         <p className="text-xs text-gray-500">Students also get a WhatsApp link to the housing desk when they request. Confirm here once you have spoken to them.</p>
       </div>
 
@@ -80,7 +90,7 @@ export function BookingsPanel({ onPendingCount }: { onPendingCount: (n: number) 
       )}
       {error && (
         <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
-          {error}<button type="button" onClick={load} className="font-bold underline">Retry</button>
+          {error}<button type="button" onClick={() => load()} className="font-bold underline">Retry</button>
         </div>
       )}
 
@@ -99,7 +109,7 @@ export function BookingsPanel({ onPendingCount }: { onPendingCount: (n: number) 
             </thead>
             <tbody className="divide-y divide-white/5">
               {bookings.map(b => (
-                <tr key={b.id}>
+                <tr key={b.id} className={isFresh?.(b.id) ? FRESH_ROW_CLASS : undefined}>
                   <td className="p-3">
                     <p className="font-semibold text-white">{b.user?.name || 'Unknown student'}</p>
                     <p className="text-xs text-gray-500">{b.user?.phone || 'No phone'}{b.user?.email ? ` · ${b.user.email}` : ''}</p>

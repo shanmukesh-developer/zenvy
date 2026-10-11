@@ -207,6 +207,7 @@ router.put('/:id/approve', protect, admin, async (req, res) => {
       console.error('Failed to emit birthday socket announcement:', sockErr);
     }
 
+    require('../utils/realtime').publish('announcement', 'created', celebration.id, { scope: 'birthday' });
     res.json({ message: 'Birthday approved successfully.', celebration });
   } catch (err) {
     console.error('Error approving birthday:', err);
@@ -227,6 +228,7 @@ router.put('/:id/reject', protect, admin, async (req, res) => {
       status: 'rejected'
     });
 
+    require('../utils/realtime').notifyAdmin('announcement', 'updated', celebration.id, { scope: 'birthday' });
     res.json({ message: 'Birthday request rejected.', celebration });
   } catch (err) {
     console.error('Error rejecting birthday:', err);

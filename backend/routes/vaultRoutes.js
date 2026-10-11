@@ -88,6 +88,7 @@ router.post('/claim/:id', protect, async (req, res) => {
       };
     });
 
+    if (securedItem) require('../utils/realtime').publish('coupon', 'updated', securedItem.id, { scope: 'vault' });
     res.json({
       message: coupon.type === 'FREEDEL'
         ? `Deal claimed! Use code ${coupon.code} today for free delivery.`

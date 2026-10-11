@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
 import { useAdminSocket } from '@/components/AdminSocketProvider';
 import { useAdminAuth } from '@/utils/useAdminAuth';
 import { API_URL } from '@/lib/config';
+import { useLiveSync, useFreshIds, liveLabel, FRESH_ROW_CLASS } from '@/lib/useLiveSync';
 
 // ─── Types (shape of GET /api/admin/orders) ───────────────────
 interface OrderItem {
@@ -129,17 +130,19 @@ const PaymentBadge = ({ order }: { order: Order }) => {
   );
 };
 
-const OrderRow = memo(({ order, busy, onSelect }: {
+const OrderRow = memo(({ order, busy, fresh, onSelect }: {
   order: Order;
   busy: boolean;
+  fresh?: boolean;
   onSelect: (o: Order) => void;
 }) => {
   const id = orderId(order);
   const pinLocked = (order.deliveryPinAttempts || 0) >= PIN_LOCK_ATTEMPTS && !TERMINAL.includes(order.status);
   return (
-    <tr className="hover:bg-white/[0.02] transition-colors cursor-pointer" onClick={() => onSelect(order)}>
+    <tr className={`hover:bg-white/[0.02] transition-colors cursor-pointer ${fresh ? FRESH_ROW_CLASS : ''}`} onClick={() => onSelect(order)}>
       <td className="p-4">
         <span className="font-mono text-[10px] text-gray-400">{shortId(id)}</span>
+        {fresh && <span className="ml-2 text-[8px] font-black uppercase tracking-wider text-emerald-400">new</span>}
       </td>
       <td className="p-4">
         <p className="text-xs font-bold text-white">{order.user?.name || 'Customer'}</p>
@@ -183,7 +186,8 @@ OrderRow.displayName = 'OrderRow';
 
 export default function OrdersPage() {
   const { isAuthed } = useAdminAuth();
-  const { socket } = useAdminSocket();
+  const { socket, notifyLive } = useAdminSocket();
+  const { mark: markFresh, isFresh } = useFreshIds();
   const [orders, setOrders] = useState<Order[]>([]);
   const [totalOrders, setTotalOrders] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -287,6 +291,17 @@ export default function OrdersPage() {
       socket.off('orderCancelled', handleOrderCancelled);
     };
   }, [socket, scheduleRefresh]);
+
+  // Realtime sync: `admin:changed` { type: 'order' } (ids only) → quiet refetch + highlight.
+  useLiveSync(['order'], (events, { reconnect }) => {
+    if (!isAuthed) return;
+    // Shares the legacy events' coalescing timer, so statusUpdated + admin:changed for one write = one refetch.
+    scheduleRefresh();
+    if (reconnect) return;
+    markFresh(events.map(e => e.id));
+    const created = events.filter(e => e.action === 'created');
+    if (created.length) notifyLive(liveLabel(created, 'order') || 'New order');
+  }, { enabled: isAuthed });
 
   /** Runs one order action at a time (guards against double clicks). */
   const runAction = async (order: Order, label: string, url: string, body: Record<string, unknown> | undefined, optimisticStatus?: string) => {
@@ -432,6 +447,7 @@ export default function OrdersPage() {
                     key={orderId(order)}
                     order={order}
                     busy={busyId === orderId(order)}
+                    fresh={isFresh(orderId(order))}
                     onSelect={(o) => setSelectedId(orderId(o))}
                   />
                 ))

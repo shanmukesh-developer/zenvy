@@ -52,7 +52,6 @@ export const ENDPOINTS = {
   myOrders: `${API_URL}/api/orders/myorders`,
   cancelOrder: (id: string) => `${API_URL}/api/orders/${id}/cancel`,
   rateOrder: (id: string) => `${API_URL}/api/orders/${id}/rate`,
-  trackOrder: (id: string) => `${API_URL}/api/orders/${id}/track`,
 
   // Config
   config: `${API_URL}/api/users/config`,

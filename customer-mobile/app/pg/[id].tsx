@@ -5,6 +5,7 @@ import * as Haptics from 'expo-haptics';
 import { COLORS, SHADOWS, RADIUS } from '../../constants/theme';
 import { API_URL, ENDPOINTS, ZENVY_SUPPORT_WHATSAPP } from '../../constants/api';
 import { apiFetch } from '../../utils/auth';
+import { useLiveSync } from '../../utils/useLiveSync';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { StaggeredSection } from '../../components/AnimatedSection';
@@ -204,6 +205,13 @@ export default function PGDetailScreen() {
   useEffect(() => {
     fetchDetails('initial');
   }, [fetchDetails]);
+
+  // Live sync: room / price / bed-availability edits for this stay refresh it in place
+  useLiveSync({
+    types: ['pg'],
+    filter: (e) => e.id == null || String(e.id) === String(pgId),
+    onChange: () => { fetchDetails('silent'); },
+  });
 
   // Signing in (or out) from this screen changes whose request banner we show
   const userKey = (user as any)?.id || (user as any)?._id || null;

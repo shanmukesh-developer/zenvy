@@ -1,6 +1,7 @@
 // Admin write paths for "Today on Campus" (mess menu, events) and "The 9 PM Question".
 // Read endpoints live in pulseController.js; these let the team publish real content.
 const { getDailyQuestionModel, getCampusEventModel, getMessMenuModel } = require('../models');
+const realtime = require('../../../utils/realtime');
 
 const MEALS = ['breakfast', 'lunch', 'snacks', 'dinner'];
 const EVENT_CATEGORIES = ['sports', 'cultural', 'academic', 'general'];
@@ -27,6 +28,7 @@ const upsertMessMenu = async (req, res) => {
     const row = existing
       ? await existing.update({ items: text.slice(0, 255) })
       : await MessMenu.create({ menuDate, meal: cleanMeal, items: text.slice(0, 255) });
+    realtime.publish('campus', existing ? 'updated' : 'created', row.id, { scope: 'mess_menu' });
     res.status(existing ? 200 : 201).json({ message: 'Mess menu saved', menu: row });
   } catch (err) {
     console.error('[PULSE_ADMIN_MENU_ERR]', err);
@@ -39,6 +41,7 @@ const deleteMessMenu = async (req, res) => {
   try {
     const removed = await getMessMenuModel().destroy({ where: { id: req.params.id } });
     if (!removed) return res.status(404).json({ message: 'Menu entry not found' });
+    realtime.publish('campus', 'deleted', req.params.id, { scope: 'mess_menu' });
     res.json({ message: 'Menu entry removed' });
   } catch (err) {
     console.error('[PULSE_ADMIN_MENU_DEL_ERR]', err);
@@ -85,6 +88,7 @@ const createEvent = async (req, res) => {
     let fields;
     try { fields = eventFields(req.body || {}, false); } catch (e) { return res.status(400).json({ message: e.message }); }
     const row = await getCampusEventModel().create(fields);
+    realtime.publish('campus', 'created', row.id, { scope: 'event' });
     res.status(201).json({ message: 'Event published', event: row });
   } catch (err) {
     console.error('[PULSE_ADMIN_EVENT_CREATE_ERR]', err);
@@ -100,6 +104,7 @@ const updateEvent = async (req, res) => {
     let fields;
     try { fields = eventFields(req.body || {}, true); } catch (e) { return res.status(400).json({ message: e.message }); }
     await row.update(fields);
+    realtime.publish('campus', 'updated', row.id, { scope: 'event' });
     res.json({ message: 'Event updated', event: row });
   } catch (err) {
     console.error('[PULSE_ADMIN_EVENT_UPDATE_ERR]', err);
@@ -112,6 +117,7 @@ const deleteEvent = async (req, res) => {
   try {
     const removed = await getCampusEventModel().destroy({ where: { id: req.params.id } });
     if (!removed) return res.status(404).json({ message: 'Event not found' });
+    realtime.publish('campus', 'deleted', req.params.id, { scope: 'event' });
     res.json({ message: 'Event removed' });
   } catch (err) {
     console.error('[PULSE_ADMIN_EVENT_DEL_ERR]', err);
@@ -136,6 +142,7 @@ const upsertDailyQuestion = async (req, res) => {
     };
     const existing = await DailyQuestion.findOne({ where: { promptDate } });
     const row = existing ? await existing.update(fields) : await DailyQuestion.create({ promptDate, ...fields });
+    realtime.publish('campus', existing ? 'updated' : 'created', row.id, { scope: 'daily_question' });
     res.status(existing ? 200 : 201).json({ message: 'Question scheduled', question: row });
   } catch (err) {
     console.error('[PULSE_ADMIN_QUESTION_ERR]', err);

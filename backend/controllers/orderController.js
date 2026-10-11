@@ -31,6 +31,7 @@ const broadcastOrderStatus = (req, orderOrId, payload) => {
     const room = String(isObj ? orderOrId.id : orderOrId);
     io.to(room).emit('statusUpdated', payload);
     io.to('admin-room').emit('statusUpdated', payload);
+    require('../utils/realtime').notifyAdmin('order', 'updated', room);
     // The restaurant portal joins `restaurant_<id>`; no global broadcast of other people's orders.
     if (isObj && orderOrId.restaurantId) io.to(`restaurant_${orderOrId.restaurantId}`).emit('statusUpdated', payload);
   } catch (err) {
@@ -322,6 +323,7 @@ const createOrder = async (req, res) => {
       paymentStatus: createdOrder.paymentStatus,
       createdAt: createdOrder.createdAt
     });
+    require('../utils/realtime').notifyAdmin('order', 'created', createdOrder.id, { storeId: createdOrder.restaurantId });
 
     if (restaurant.isOffline || createdOrder.status === 'Accepted') {
       // Shops without a vendor app go straight to riders.

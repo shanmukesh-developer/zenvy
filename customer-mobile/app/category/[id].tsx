@@ -24,6 +24,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useCart, MAX_ITEM_QTY } from '../../context/CartContext';
 import { API_URL } from '../../constants/api';
 import { apiFetch } from '../../utils/auth';
+import { useLiveSync } from '../../utils/useLiveSync';
 import SafeImage from '../../components/SafeImage';
 import { ShimmerCard } from '../../components/ShimmerLoader';
 
@@ -218,7 +219,8 @@ export default function CategoryDetailScreen() {
     if (u?.phone) setContactPhone((prev) => prev || u.phone);
   }, [user]);
 
-  const fetchCategoryItems = useCallback(async (mode: 'initial' | 'refresh' = 'initial') => {
+  // 'silent' = live-sync background refresh: keep what is on screen, no spinner, no error screen
+  const fetchCategoryItems = useCallback(async (mode: 'initial' | 'refresh' | 'silent' = 'initial') => {
     if (!CATEGORY_META[categoryId]) {
       setItems([]);
       setLoading(false);
@@ -230,7 +232,7 @@ export default function CategoryDetailScreen() {
       const data = await res.json().catch(() => null);
       if (!mountedRef.current) return;
       if (!res.ok || !data || !Array.isArray(data.items)) {
-        setLoadError((data && typeof data.message === 'string' && data.message) || 'We could not load this store right now.');
+        if (mode !== 'silent') setLoadError((data && typeof data.message === 'string' && data.message) || 'We could not load this store right now.');
         return;
       }
       const storeMap: Record<string, StoreInfo> = {};
@@ -268,9 +270,9 @@ export default function CategoryDetailScreen() {
       }));
       setLoadError(null);
     } catch {
-      if (mountedRef.current) setLoadError("Can't reach Zenvy right now. Check your internet and try again.");
+      if (mountedRef.current && mode !== 'silent') setLoadError("Can't reach Zenvy right now. Check your internet and try again.");
     } finally {
-      if (mountedRef.current) {
+      if (mountedRef.current && mode !== 'silent') {
         setLoading(false);
         setRefreshing(false);
       }
@@ -280,6 +282,12 @@ export default function CategoryDetailScreen() {
   useEffect(() => {
     fetchCategoryItems('initial');
   }, [fetchCategoryItems]);
+
+  // Live sync: price / stock / store-hours edits from admin or the store partner update this shelf in place
+  useLiveSync({
+    types: ['store', 'product'],
+    onChange: () => { fetchCategoryItems('silent'); },
+  });
 
   const onRefresh = () => {
     setRefreshing(true);

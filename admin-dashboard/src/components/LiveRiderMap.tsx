@@ -3,8 +3,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import io from 'socket.io-client';
-import { API_URL } from '@/lib/config';
+import { useAdminSocket } from '@/components/AdminSocketProvider';
 
 
 const CAMPUS_HUBS = [
@@ -16,40 +15,41 @@ const CAMPUS_HUBS = [
 
 export default function LiveRiderMap() {
   const [riders, setRiders] = useState<Record<string, { lat: number; lon: number; name?: string; updatedAt: number }>>({});
-  const [isConnected, setIsConnected] = useState(false);
+
+  // Uses the dashboard's authenticated admin socket (already in admin-room). The server streams
+  // rider positions to admin-room as `admin_rider_location`; a pin is drawn only when the event
+  // carries real coordinates (lat/lng), never an invented position.
+  const { socket, isConnected } = useAdminSocket();
 
   useEffect(() => {
-    const socket = io(API_URL, {
-      transports: ['websocket', 'polling'],
-      reconnectionAttempts: 5,
-    });
-
-    socket.on('connect', () => {
-      setIsConnected(true);
-      socket.emit('joinRoom', 'admin_room');
-    });
-
-    socket.on('disconnect', () => {
-      setIsConnected(false);
-    });
-
-    socket.on('RIDER_LOCATION_UPDATE', (data: { riderId: string; lat: number; lon: number; name?: string }) => {
-      if (!data.riderId || typeof data.lat !== 'number' || typeof data.lon !== 'number') return;
+    if (!socket) return;
+    const onLocation = (data: { riderId?: string; riderName?: string; lat?: number; lng?: number; latitude?: number; longitude?: number; isOnline?: boolean }) => {
+      const riderId = data?.riderId;
+      const lat = Number(data?.lat ?? data?.latitude);
+      const lon = Number(data?.lng ?? data?.longitude);
+      if (!riderId || !Number.isFinite(lat) || !Number.isFinite(lon) || (lat === 0 && lon === 0)) return;
       setRiders((prev) => ({
         ...prev,
-        [data.riderId]: {
-          lat: data.lat,
-          lon: data.lon,
-          name: data.name || data.riderId,
-          updatedAt: Date.now()
-        }
+        [riderId]: { lat, lon, name: data.riderName || prev[riderId]?.name || riderId, updatedAt: Date.now() },
       }));
-    });
-
-    return () => {
-      socket.disconnect();
     };
-  }, []);
+    const onOffline = (data: { riderId?: string }) => {
+      const riderId = data?.riderId;
+      if (!riderId) return;
+      setRiders((prev) => {
+        if (!prev[riderId]) return prev;
+        const next = { ...prev };
+        delete next[riderId];
+        return next;
+      });
+    };
+    socket.on('admin_rider_location', onLocation);
+    socket.on('admin_rider_offline', onOffline);
+    return () => {
+      socket.off('admin_rider_location', onLocation);
+      socket.off('admin_rider_offline', onOffline);
+    };
+  }, [socket]);
 
   // Custom DivIcon for Riders
   const createRiderIcon = (id: string) => {
