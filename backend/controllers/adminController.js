@@ -174,7 +174,8 @@ exports.getRestaurantById = async (req, res) => {
       })
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('[GET_RESTAURANT_BY_ID_ERROR]', error);
+    res.status(500).json({ message: 'Server error' });
   }
 };
 

@@ -354,7 +354,18 @@ const createOrder = async (req, res) => {
         id: createdOrder.id,
         items: normalizeItems(createdOrder.items),
         totalPrice: createdOrder.totalPrice,
-        address: createdOrder.deliveryAddress
+        address: createdOrder.deliveryAddress,
+        // Same field names as GET /api/restaurants/:id/orders so the kitchen can render the card at once.
+        _id: createdOrder.id,
+        status: createdOrder.status,
+        createdAt: createdOrder.createdAt,
+        finalPrice: createdOrder.finalPrice,
+        deliveryFee: createdOrder.deliveryFee,
+        paymentMethod: createdOrder.paymentMethod,
+        paymentStatus: createdOrder.paymentStatus,
+        deliveryAddress: createdOrder.deliveryAddress,
+        deliveryInstructions: createdOrder.deliveryInstructions || null,
+        estDuration: createdOrder.estDuration || null,
       });
     }
   } catch (error) {
@@ -386,7 +397,7 @@ const restaurantAcceptOrder = async (req, res) => {
     if (order.status !== 'Pending') return res.status(400).json({ message: 'Order is not pending' });
 
     const est = parseInt((req.body || {}).estDuration, 10);
-    const acceptFields = { status: 'Accepted', ...(Number.isFinite(est) && est > 0 && est <= 240 ? { estDuration: est } : {}) };
+    const acceptFields = { status: 'Accepted', acceptedAt: new Date(), ...(Number.isFinite(est) && est > 0 && est <= 240 ? { estDuration: est } : {}) };
     // Conditional flip: a customer cancel (with Wallet refund) or the auto-cancel job may have
     // won the race since we read the order; never resurrect a cancelled order.
     const [accepted] = await Order.update(acceptFields, { where: { id: order.id, status: 'Pending' } });
@@ -465,7 +476,8 @@ const restaurantAcceptOrder = async (req, res) => {
 
     res.json({ message: 'Order picked up/accepted by restaurant', orderId: order.id });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('[RESTAURANT_ACCEPT_ERROR]', error);
+    res.status(500).json({ message: 'Server error' });
   }
 };
 
@@ -1210,12 +1222,21 @@ const restaurantReadyOrder = async (req, res) => {
       return res.status(403).json({ message: 'Not authorized to update this order' });
     }
 
+    // B7: a rider may already be at the counter ('Picking') while the kitchen is still cooking.
+    // Record the ready time and ping the rider, but keep the rider's step.
+    if (order.status === 'Picking') {
+      if (!order.readyAt) await Order.update({ readyAt: new Date() }, { where: { id: order.id, status: 'Picking' } });
+      const pio = req.app.get('io');
+      if (pio && order.deliveryPartnerId) pio.to(`rider_${order.deliveryPartnerId}`).emit('orderReady', { orderId: order.id });
+      return res.json({ message: 'Rider notified that the food is packed', orderId: order.id, status: 'Picking' });
+    }
+
     if (order.status !== 'Accepted' && order.status !== 'Preparing') {
        return res.status(400).json({ message: 'Order must be Accepted or Preparing to mark as Ready' });
     }
 
     // Conditional flip so a concurrent customer cancel is never overwritten.
-    const [ready] = await Order.update({ status: 'ReadyForPickup' }, { where: { id: order.id, status: { [Op.in]: ['Accepted', 'Preparing'] } } });
+    const [ready] = await Order.update({ status: 'ReadyForPickup', readyAt: new Date() }, { where: { id: order.id, status: { [Op.in]: ['Accepted', 'Preparing'] } } });
     if (ready === 0) return res.status(400).json({ message: 'This order was just cancelled or updated. Please refresh.' });
     order.status = 'ReadyForPickup';
 
@@ -1231,7 +1252,8 @@ const restaurantReadyOrder = async (req, res) => {
 
     res.json({ message: 'Order marked as Ready for Pickup', orderId: order.id });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('[RESTAURANT_READY_ERROR]', error);
+    res.status(500).json({ message: 'Server error' });
   }
 };
 

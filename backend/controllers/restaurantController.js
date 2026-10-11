@@ -9,6 +9,20 @@ const clearPublicRestaurantsCache = () => {
   try { require('./adminController').clearRestaurantsCache(); } catch (e) { console.error('[CACHE_CLEAR_ERROR]', e.message); }
 };
 
+// Restaurant row as the partner app may see it (no password hash) + the live open state.
+const publicStoreJson = (restaurant) => {
+  const json = restaurant.toJSON();
+  delete json.password;
+  const state = getStoreOpenState(restaurant);
+  return {
+    ...json,
+    _id: json.id,
+    isOpen: state.isOpen,
+    opensAt: state.opensAt || null,
+    closedReason: state.isOpen ? null : (state.message || null),
+  };
+};
+
 const validPrice = (price) => {
   const n = Number(price);
   return Number.isFinite(n) && n > 0 && n <= 100000;
@@ -61,7 +75,8 @@ const restaurantLogin = async (req, res) => {
     }
     const token = jwt.sign({ id: restaurant.id, role: 'restaurant' }, secret, { expiresIn: '30d' });
     res.cookie('token', token, { httpOnly: true, secure: true, sameSite: 'none', maxAge: 30 * 24 * 60 * 60 * 1000 });
-    res.json({ restaurant, token });
+    // Never send the password hash; include the live open/closed state for the partner app header.
+    res.json({ restaurant: publicStoreJson(restaurant), token });
   } catch (error) {
     console.error('[RESTAURANT_LOGIN_ERROR]', error);
     res.status(500).json({ message: 'Server error' });
@@ -191,7 +206,7 @@ const toggleMenuItemAvailability = async (req, res) => {
   try {
     const MenuItem = getMenuItemModel();
     const item = await MenuItem.findByPk(req.params.itemId);
-    if (!item) return res.status(401).json({ message: 'Menu data missing or session stale (Nexus Sync Required)' });
+    if (!item) return res.status(404).json({ message: 'This menu item no longer exists. Pull to refresh your menu.' });
 
     // Security: Only the restaurant that owns the item or an admin can toggle it
     const isOwner = item.restaurantId === req.user.id;
@@ -202,10 +217,14 @@ const toggleMenuItemAvailability = async (req, res) => {
     }
 
     if (req.body.outOfStockUntil) {
+      const until = new Date(req.body.outOfStockUntil);
+      if (Number.isNaN(until.getTime()) || until.getTime() <= Date.now()) {
+        return res.status(400).json({ message: 'Please choose a time in the future for the item to come back.' });
+      }
       item.isAvailable = false;
-      item.outOfStockUntil = new Date(req.body.outOfStockUntil);
+      item.outOfStockUntil = until;
     } else if (req.body.isAvailable !== undefined) {
-      item.isAvailable = req.body.isAvailable;
+      item.isAvailable = req.body.isAvailable === true || req.body.isAvailable === 'true';
       if (item.isAvailable) {
         item.outOfStockUntil = null;
       }
@@ -221,10 +240,10 @@ const toggleMenuItemAvailability = async (req, res) => {
     const io = req.app.get('io');
     if (io) io.emit('inventory_updated', { itemId: item.id, restaurantId: item.restaurantId, isAvailable: item.isAvailable });
 
-    res.json({ message: 'Item availability updated', _id: item.id, isAvailable: item.isAvailable });
+    res.json({ message: 'Item availability updated', _id: item.id, id: item.id, isAvailable: item.isAvailable, outOfStockUntil: item.outOfStockUntil || null });
   } catch (error) {
     console.error('[TOGGLE_MENU_ERROR]', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    res.status(500).json({ message: 'Server error' });
   }
 };
 
@@ -235,7 +254,7 @@ const updateMenuItemTags = async (req, res) => {
   try {
     const MenuItem = getMenuItemModel();
     const item = await MenuItem.findByPk(req.params.itemId);
-    if (!item) return res.status(401).json({ message: 'Menu data missing or session stale (Nexus Sync Required)' });
+    if (!item) return res.status(404).json({ message: 'This menu item no longer exists. Pull to refresh your menu.' });
 
     // Security check
     const isOwner = item.restaurantId === req.user.id;
@@ -419,6 +438,46 @@ const toggleRestaurantOffline = async (req, res) => {
   }
 };
 
+// @desc    Store opens / closes for new orders (partner app header switch). This is NOT the
+//          isOffline flag (which means "no phone at the shop" and sends orders straight to riders).
+// @route   PUT /api/restaurants/:id/open  { isOpenNow: boolean }
+const setRestaurantOpen = async (req, res) => {
+  try {
+    const isOwner = req.user.id === req.params.id;
+    const isAdmin = req.user.role?.toLowerCase() === 'admin';
+    if (!isOwner && !isAdmin) return res.status(403).json({ message: 'Not authorized to change store status' });
+    const raw = (req.body || {}).isOpenNow;
+    if (typeof raw !== 'boolean') return res.status(400).json({ message: 'isOpenNow must be true or false' });
+
+    const Restaurant = getRestaurantModel();
+    const restaurant = await Restaurant.findByPk(req.params.id);
+    if (!restaurant) return res.status(404).json({ message: 'Restaurant not found' });
+
+    restaurant.isOpenNow = raw;
+    await restaurant.save();
+    clearPublicRestaurantsCache();
+
+    const state = getStoreOpenState(restaurant);
+    const payload = {
+      restaurantId: restaurant.id,
+      isOpenNow: restaurant.isOpenNow,
+      isOpen: state.isOpen,
+      opensAt: state.opensAt || null,
+      closedReason: state.isOpen ? null : (state.message || null),
+      operatingHours: restaurant.operatingHours || null,
+    };
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`restaurant_${restaurant.id}`).emit('store_status_changed', payload);
+      io.emit('store_status_changed', { restaurantId: restaurant.id, isOpen: state.isOpen });
+    }
+    res.json(payload);
+  } catch (error) {
+    console.error('[SET_OPEN_ERROR]', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 // @desc    Get single menu item by ID
 // @route   GET /api/restaurants/menu/item/:itemId
 const getMenuItemById = async (req, res) => {
@@ -454,5 +513,6 @@ module.exports = {
   getLocalVendors,
   incrementClickCount,
   toggleRestaurantOffline,
+  setRestaurantOpen,
   getMenuItemById
 };

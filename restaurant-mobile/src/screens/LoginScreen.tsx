@@ -1,290 +1,177 @@
-import React, { useState, useEffect } from 'react';
+// Real restaurant login (POST /api/restaurants/login). No presets or pre-filled passwords.
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  Switch,
-  Linking,
+  ActivityIndicator, Image, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useNavigation } from '@react-navigation/native';
-import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import * as Haptics from 'expo-haptics';
-import { COLORS } from '../constants/theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SUPPORT_PHONE } from '../constants/api';
+import { Button } from '../components/ui';
+import { ApiError, NetworkError } from '../services/apiClient';
+import { health, login } from '../services/restaurantApi';
+import { loadSavedId, setSavedId } from '../services/session';
+import { useSession } from '../state/SessionProvider';
+import { color, radius, space, touch, type } from '../theme/tokens';
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://hostelbites-backend-jwmt.onrender.com';
-
-const PRESET_OUTLETS = [
-  { label: '🍔 HotSpot Fast Food', id: 'HotSpot Fast Food' },
-  { label: '🥘 Southern Spice', id: 'Southern Spice' },
-  { label: '🍕 Midnight Pantry', id: 'Midnight Pantry' },
-  { label: '🥤 Juice Corner', id: 'Juice Corner' },
-  { label: '🍛 SRM Food Court', id: 'Campus Food Court' },
-];
+type ServerState = 'checking' | 'up' | 'waking';
 
 export default function LoginScreen() {
-  const [email, setEmail] = useState('');
+  const insets = useSafeAreaInsets();
+  const { signIn, notice, clearNotice } = useSession();
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [rememberId, setRememberId] = useState(true);
-  const [loading, setLoading] = useState(false);
-  const [serverStatus, setServerStatus] = useState<'checking' | 'online' | 'offline'>('checking');
-  const navigation = useNavigation<any>();
+  const [showPw, setShowPw] = useState(false);
+  const [remember, setRemember] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [lockedUntil, setLockedUntil] = useState(0);
+  const [, force] = useState(0);
+  const [server, setServer] = useState<ServerState>('checking');
+  const pwRef = useRef<TextInput>(null);
 
-  // Check server health on load and restore saved ID
   useEffect(() => {
-    AsyncStorage.getItem('kds_saved_identifier').then((saved) => {
-      if (saved) setEmail(saved);
-    });
-
-    const pingServer = async () => {
-      try {
-        const res = await fetch(`${API_URL}/api/health`, { method: 'GET' });
-        if (res.ok) {
-          setServerStatus('online');
-        } else {
-          setServerStatus('offline');
-        }
-      } catch {
-        setServerStatus('offline');
-      }
-    };
-    pingServer();
+    loadSavedId().then((v) => { if (v) setIdentifier(v); });
+    let alive = true;
+    health().then((ok) => { if (alive) setServer(ok ? 'up' : 'waking'); });
+    return () => { alive = false; };
   }, []);
 
-  const handleLogin = async () => {
-    const cleanIdentifier = email.trim();
-    if (!cleanIdentifier || !password) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-      return Alert.alert('Credentials Required', 'Please enter your Restaurant ID/Name and password.');
+  // Re-render each second while locked so the button re-enables on time.
+  useEffect(() => {
+    if (lockedUntil <= Date.now()) return;
+    const t = setInterval(() => {
+      force((n) => n + 1);
+      if (Date.now() >= lockedUntil) clearInterval(t);
+    }, 1000);
+    return () => clearInterval(t);
+  }, [lockedUntil]);
+  const locked = lockedUntil > Date.now();
+
+  const submit = async () => {
+    const id = identifier.trim();
+    if (!id || !password) {
+      setError('Enter your restaurant ID (or registered name) and password.');
+      return;
     }
-
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setLoading(true);
-
+    setSubmitting(true);
+    setError(null);
+    clearNotice();
     try {
-      const res = await fetch(`${API_URL}/api/restaurants/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: cleanIdentifier,
-          email: cleanIdentifier,
-          password,
-        }),
-      });
-
-      const data = await res.json().catch(() => ({}));
-
-      if (res.ok && data.token) {
-        if (rememberId) {
-          await AsyncStorage.setItem('kds_saved_identifier', cleanIdentifier);
-        } else {
-          await AsyncStorage.removeItem('kds_saved_identifier');
-        }
-
-        await AsyncStorage.setItem('restaurant_token', data.token);
-        await AsyncStorage.setItem('restaurant_data', JSON.stringify(data.restaurant || {}));
-
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        navigation.replace('Dashboard');
+      const data = await login(id, password);
+      if (!data?.token || !data?.restaurant) throw new Error('bad response');
+      await setSavedId(remember ? id : null);
+      await signIn(data.token, data.restaurant);
+    } catch (e) {
+      if (e instanceof ApiError) {
+        setError(e.message);
+        if (e.status === 429) setLockedUntil(Date.now() + 60000);
+      } else if (e instanceof NetworkError) {
+        setError(server === 'waking' ? 'Zenvy is still waking up. Please try again in a few seconds.' : 'No internet connection. Check your Wi-Fi or mobile data.');
       } else {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        Alert.alert('Authentication Failed', data.message || 'Invalid credentials. Please verify your Restaurant ID and password.');
+        setError('Something went wrong. Please try again.');
       }
-    } catch (e: any) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert('Connection Error', e.message || 'Unable to connect to Zenvy Cloud Dispatch. Please check your internet connection.');
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
-  const handlePresetSelect = (outletId: string) => {
-    Haptics.selectionAsync();
-    setEmail(outletId);
-  };
-
-  const handleContactOperations = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    Linking.openURL('tel:+919391955674').catch(() => {
-      Alert.alert('Fleet Control', 'Contact campus merchant operations at +91 9391955674');
-    });
-  };
+  const call = () => Linking.openURL(`tel:+${SUPPORT_PHONE}`).catch(() => {});
+  const wa = () => Linking.openURL(`https://wa.me/${SUPPORT_PHONE}?text=${encodeURIComponent('Hi Zenvy, I need help logging in to the restaurant partner app.')}`).catch(() => {});
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <StatusBar style="light" />
-      <LinearGradient
-        colors={['#09090B', '#111318', '#09090B']}
-        style={StyleSheet.absoluteFill}
-      />
-      <View style={styles.headerGlow} />
-
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        {/* Top Status Bar */}
-        <View style={styles.statusRow}>
-          <View style={styles.statusBadge}>
-            <View
-              style={[
-                styles.statusDot,
-                {
-                  backgroundColor:
-                    serverStatus === 'online'
-                      ? COLORS.emerald
-                      : serverStatus === 'checking'
-                      ? COLORS.amber
-                      : COLORS.coral,
-                },
-              ]}
-            />
-            <Text style={styles.statusText}>
-              {serverStatus === 'online'
-                ? 'CLOUD DISPATCH ONLINE'
-                : serverStatus === 'checking'
-                ? 'CONNECTING TO DISPATCH...'
-                : 'OFFLINE / SERVER WAKING'}
-            </Text>
-          </View>
-
-          <TouchableOpacity style={styles.helpBtn} onPress={handleContactOperations}>
-            <Ionicons name="call-outline" size={14} color={COLORS.gold} />
-            <Text style={styles.helpBtnText}>STORE OPS</Text>
-          </TouchableOpacity>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: color.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView
+        contentContainerStyle={[styles.wrap, { paddingTop: insets.top + space.xxl, paddingBottom: insets.bottom + space.xl }]}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.brand}>
+          <Image source={require('../../assets/icon.png')} style={styles.logo} accessibilityIgnoresInvertColors />
+          <Text style={[type.title1, { color: color.text }]}>Zenvy Partner</Text>
+          <Text style={[type.body, { color: color.textSecondary }]}>Restaurant login</Text>
         </View>
 
-        {/* Brand Emblem Header */}
-        <View style={styles.brandHeader}>
-          <View style={styles.emblemBorder}>
-            <LinearGradient colors={['#D4AF7A', '#8F662F']} style={styles.emblemCore}>
-              <Ionicons name="restaurant" size={28} color="#09090B" />
-            </LinearGradient>
+        {notice ? (
+          <View style={[styles.msg, { backgroundColor: color.warningTint }]}>
+            <Ionicons name="time-outline" size={20} color={color.warning} />
+            <Text style={[type.body, { color: color.warning, flex: 1 }]}>{notice}</Text>
           </View>
-          <Text style={styles.title}>ZENVY</Text>
-          <Text style={styles.subtitle}>KITCHEN DISPLAY SYSTEM (KDS)</Text>
-          <Text style={styles.caption}>
-            High-speed campus kitchen portal for live order dispatch & prep tracking
+        ) : null}
+
+        <View style={styles.card}>
+          <Text style={styles.label}>Restaurant ID or registered name</Text>
+          <TextInput
+            value={identifier}
+            onChangeText={(t) => { setIdentifier(t); setError(null); }}
+            placeholder="e.g. your restaurant name"
+            placeholderTextColor={color.textMuted}
+            autoCapitalize="none"
+            autoCorrect={false}
+            editable={!submitting}
+            returnKeyType="next"
+            onSubmitEditing={() => pwRef.current?.focus()}
+            style={styles.input}
+            accessibilityLabel="Restaurant ID or registered name"
+          />
+
+          <Text style={[styles.label, { marginTop: space.md }]}>Password</Text>
+          <View style={styles.pwRow}>
+            <TextInput
+              ref={pwRef}
+              value={password}
+              onChangeText={(t) => { setPassword(t); setError(null); }}
+              placeholder="Password"
+              placeholderTextColor={color.textMuted}
+              secureTextEntry={!showPw}
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!submitting}
+              returnKeyType="go"
+              onSubmitEditing={submit}
+              style={[styles.input, { flex: 1, borderWidth: 0 }]}
+              accessibilityLabel="Password"
+            />
+            <Pressable onPress={() => setShowPw((v) => !v)} accessibilityRole="button" accessibilityLabel={showPw ? 'Hide password' : 'Show password'} style={styles.eye}>
+              <Ionicons name={showPw ? 'eye-off' : 'eye'} size={22} color={color.textSecondary} />
+            </Pressable>
+          </View>
+
+          <View style={styles.rememberRow}>
+            <Text style={[type.body, { color: color.text, flex: 1 }]}>Remember restaurant ID</Text>
+            <Switch value={remember} onValueChange={setRemember} trackColor={{ true: color.open, false: color.border }} thumbColor={color.surface} accessibilityLabel="Remember restaurant ID" />
+          </View>
+
+          {error ? (
+            <View style={[styles.msg, { backgroundColor: color.alertTint, marginTop: space.sm }]} accessibilityLiveRegion="polite">
+              <Ionicons name="alert-circle" size={20} color={color.alert} />
+              <Text style={[type.body, { color: color.alertDark, flex: 1 }]}>{error}</Text>
+            </View>
+          ) : null}
+
+          <Button
+            label={locked ? `Try again in ${Math.ceil((lockedUntil - Date.now()) / 1000)} s` : 'Log in'}
+            onPress={submit}
+            loading={submitting}
+            disabled={locked}
+            variant="primary"
+            style={{ marginTop: space.md, minHeight: 56 }}
+          />
+        </View>
+
+        <View style={styles.server}>
+          {server === 'checking' ? <ActivityIndicator size="small" color={color.textMuted} /> : (
+            <View style={[styles.dot, { backgroundColor: server === 'up' ? color.open : color.warning }]} />
+          )}
+          <Text style={[type.bodySm, { color: color.textMuted }]}>
+            {server === 'checking' ? 'Checking Zenvy server…' : server === 'up' ? 'Zenvy server is online' : 'Server waking up — first login may take ~30 s'}
           </Text>
         </View>
 
-        {/* Quick Outlet Selector Chips */}
-        <Text style={styles.sectionLabel}>QUICK OUTLET SELECTOR</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsRow}>
-          {PRESET_OUTLETS.map((outlet, i) => (
-            <TouchableOpacity
-              key={i}
-              style={[
-                styles.chip,
-                email === outlet.id && styles.chipActive,
-              ]}
-              onPress={() => handlePresetSelect(outlet.id)}
-              activeOpacity={0.7}
-            >
-              <Text
-                style={[
-                  styles.chipText,
-                  email === outlet.id && styles.chipTextActive,
-                ]}
-              >
-                {outlet.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        {/* Login Form Box */}
-        <View style={styles.card}>
-          <Text style={styles.fieldLabel}>RESTAURANT ID OR NAME</Text>
-          <View style={styles.inputWrapper}>
-            <Ionicons name="storefront-outline" size={18} color={COLORS.textSecondary} style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. HotSpot Fast Food / UUID"
-              placeholderTextColor={COLORS.textDisabled}
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
+        <View style={styles.help}>
+          <Text style={[type.body, { color: color.textSecondary, textAlign: 'center' }]}>Forgot password or new partner?</Text>
+          <View style={{ flexDirection: 'row', gap: space.sm }}>
+            <Button label="Call Zenvy" icon="call" variant="secondary" size="secondary" onPress={call} style={{ flex: 1 }} />
+            <Button label="WhatsApp" icon="logo-whatsapp" variant="secondary" size="secondary" onPress={wa} style={{ flex: 1 }} />
           </View>
-
-          <Text style={styles.fieldLabel}>KITCHEN PIN / PASSWORD</Text>
-          <View style={styles.inputWrapper}>
-            <Ionicons name="lock-closed-outline" size={18} color={COLORS.textSecondary} style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="Enter kitchen access password"
-              placeholderTextColor={COLORS.textDisabled}
-              secureTextEntry={!showPassword}
-              value={password}
-              onChangeText={setPassword}
-              autoCapitalize="none"
-            />
-            <TouchableOpacity
-              style={styles.eyeBtn}
-              onPress={() => setShowPassword(!showPassword)}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Ionicons
-                name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                size={20}
-                color={COLORS.textSecondary}
-              />
-            </TouchableOpacity>
-          </View>
-
-          {/* Remember Me Row */}
-          <View style={styles.rememberRow}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Switch
-                value={rememberId}
-                onValueChange={setRememberId}
-                trackColor={{ false: '#27272A', true: COLORS.emeraldDark }}
-                thumbColor={rememberId ? COLORS.emerald : '#71717A'}
-              />
-              <Text style={styles.rememberText}>Remember Restaurant on this Device</Text>
-            </View>
-          </View>
-
-          {/* Submit Button */}
-          <TouchableOpacity
-            style={styles.loginBtn}
-            onPress={handleLogin}
-            disabled={loading}
-            activeOpacity={0.85}
-          >
-            <LinearGradient
-              colors={['#10B981', '#059669']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.loginBtnGradient}
-            >
-              {loading ? (
-                <ActivityIndicator color="#09090B" />
-              ) : (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Ionicons name="flash" size={18} color="#09090B" />
-                  <Text style={styles.btnText}>OPEN KITCHEN TERMINAL</Text>
-                </View>
-              )}
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-
-        {/* Footer */}
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>SRM AP • AUTOMATED LIVE DISPATCH GATEWAY</Text>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -292,159 +179,20 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.bgDark },
-  headerGlow: {
-    position: 'absolute',
-    top: -80,
-    alignSelf: 'center',
-    width: 320,
-    height: 320,
-    backgroundColor: COLORS.emerald,
-    opacity: 0.08,
-    borderRadius: 160,
-  },
-  scroll: {
-    paddingHorizontal: 20,
-    paddingTop: 50,
-    paddingBottom: 40,
-    justifyContent: 'center',
-  },
-  statusRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  statusDot: { width: 6, height: 6, borderRadius: 3 },
-  statusText: { fontSize: 9, fontWeight: '800', color: COLORS.textSecondary, letterSpacing: 0.8 },
-  helpBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(212, 175, 122, 0.12)',
-    borderWidth: 1,
-    borderColor: COLORS.goldBorder,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  helpBtnText: { fontSize: 9, fontWeight: '900', color: COLORS.gold, letterSpacing: 1 },
-  brandHeader: { alignItems: 'center', marginBottom: 24 },
-  emblemBorder: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
-    padding: 2,
-    borderWidth: 1.5,
-    borderColor: COLORS.goldBorder,
-    marginBottom: 12,
-    backgroundColor: '#18181B',
-  },
-  emblemCore: {
-    flex: 1,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: { fontSize: 36, fontWeight: '900', color: COLORS.textPrimary, letterSpacing: 3, textAlign: 'center' },
-  subtitle: { fontSize: 11, fontWeight: '900', color: COLORS.emerald, letterSpacing: 3, textAlign: 'center', marginTop: 2 },
-  caption: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    textAlign: 'center',
-    marginTop: 6,
-    maxWidth: 280,
-    lineHeight: 16,
-  },
-  sectionLabel: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: COLORS.textSecondary,
-    letterSpacing: 1.5,
-    marginBottom: 10,
-  },
-  chipsRow: { flexDirection: 'row', marginBottom: 20 },
-  chip: {
-    backgroundColor: '#18181B',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginRight: 8,
-  },
-  chipActive: {
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-    borderColor: COLORS.emerald,
-  },
-  chipText: { fontSize: 12, fontWeight: '700', color: COLORS.textSecondary },
-  chipTextActive: { color: COLORS.emeraldLight, fontWeight: '800' },
-  card: {
-    backgroundColor: '#141417',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    borderRadius: 20,
-    padding: 20,
-  },
-  fieldLabel: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: COLORS.textSecondary,
-    letterSpacing: 1.2,
-    marginBottom: 6,
-  },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#09090B',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    marginBottom: 16,
-  },
-  inputIcon: { marginRight: 8 },
+  wrap: { paddingHorizontal: space.md, gap: space.lg, flexGrow: 1, maxWidth: 520, width: '100%', alignSelf: 'center' },
+  brand: { alignItems: 'center', gap: space.xxs },
+  logo: { width: 72, height: 72, borderRadius: radius.lg, marginBottom: space.xs },
+  card: { backgroundColor: color.surface, borderRadius: radius.lg, padding: space.md, borderWidth: 1, borderColor: color.border },
+  label: { ...type.label, color: color.textSecondary, marginBottom: space.xxs },
   input: {
-    flex: 1,
-    paddingVertical: 14,
-    color: COLORS.textPrimary,
-    fontSize: 15,
-    fontWeight: '600',
+    minHeight: touch.secondary + 4, borderWidth: 1, borderColor: color.border, borderRadius: radius.md, paddingHorizontal: space.sm,
+    ...type.body, color: color.text, backgroundColor: color.surface,
   },
-  eyeBtn: { padding: 4 },
-  rememberRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  rememberText: { fontSize: 12, color: COLORS.textSecondary, fontWeight: '600' },
-  loginBtn: {
-    borderRadius: 14,
-    overflow: 'hidden',
-    shadowColor: COLORS.emerald,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 6,
-  },
-  loginBtnGradient: {
-    paddingVertical: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  btnText: { color: '#09090B', fontSize: 14, fontWeight: '900', letterSpacing: 1.2 },
-  footer: { marginTop: 28, alignItems: 'center' },
-  footerText: { fontSize: 10, fontWeight: '800', color: COLORS.textDisabled, letterSpacing: 1 },
+  pwRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: color.border, borderRadius: radius.md },
+  eye: { width: touch.icon, height: touch.icon, alignItems: 'center', justifyContent: 'center' },
+  rememberRow: { flexDirection: 'row', alignItems: 'center', minHeight: touch.minHit, marginTop: space.sm },
+  msg: { flexDirection: 'row', alignItems: 'center', gap: space.xs, borderRadius: radius.md, padding: space.sm },
+  server: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.xs },
+  dot: { width: 10, height: 10, borderRadius: 5 },
+  help: { gap: space.sm, marginTop: 'auto' },
 });

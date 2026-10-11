@@ -53,6 +53,9 @@ const initOrderModel = (sequelize) => {
     // When the order was actually handed over (set by the Delivered flip). Older rows: null, readers fall back to updatedAt.
     deliveredAt: { type: DataTypes.DATE, allowNull: true },
     estDuration: { type: DataTypes.INTEGER },
+    // Kitchen timestamps (restaurant partner app: real prep time + "ready by"). Null on older rows.
+    acceptedAt: { type: DataTypes.DATE, allowNull: true },
+    readyAt: { type: DataTypes.DATE, allowNull: true },
     isSurge: { type: DataTypes.BOOLEAN, defaultValue: false },
     hostelGateDelivery: { type: DataTypes.BOOLEAN, defaultValue: false },
     rating: { type: DataTypes.FLOAT },

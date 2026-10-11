@@ -513,7 +513,9 @@ const connectDB = async () => {
           { name: 'isBillApproved', type: 'BOOLEAN DEFAULT 0' },
           { name: 'category', type: "VARCHAR(255) DEFAULT 'Food'" },
           { name: 'isMultiRestaurant', type: 'BOOLEAN DEFAULT 0' },
-          { name: 'pickupStops', type: "TEXT DEFAULT '[]'" }
+          { name: 'pickupStops', type: "TEXT DEFAULT '[]'" },
+          { name: 'acceptedAt', type: 'DATETIME' },
+          { name: 'readyAt', type: 'DATETIME' }
         ];
         for (const col of orderCols) {
           try {
@@ -587,6 +589,15 @@ const connectDB = async () => {
           console.warn('⚠️ [DB_EMPTY] No restaurants found in PostgreSQL. Please use the Admin Portal to seed data or POST /api/seed.');
         } else {
           console.log(`✅ [DB_STATUS] Found ${count} restaurants in PostgreSQL. Persistence confirmed.`);
+        }
+      }
+
+      // Kitchen timestamps for the restaurant partner app (idempotent; covers a failed alter sync).
+      for (const col of ['acceptedAt', 'readyAt']) {
+        try {
+          await sequelize.query(`ALTER TABLE "Orders" ADD COLUMN IF NOT EXISTS "${col}" TIMESTAMP WITH TIME ZONE;`);
+        } catch (err) {
+          console.warn(`⚠️ [DB_MIGRATION_WARN] Orders.${col}:`, err.message);
         }
       }
 

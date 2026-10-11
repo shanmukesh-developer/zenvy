@@ -1,5 +1,5 @@
 const express = require('express');
-const { getRestaurants, getRestaurantMenu, createRestaurant, restaurantLogin, getRestaurantOrders, toggleMenuItemAvailability, updateMenuItemTags, createMenuItem, updateMenuItem, getLocalVendors, incrementClickCount, toggleRestaurantOffline, getMenuItemById } = require('../controllers/restaurantController');
+const { getRestaurants, getRestaurantMenu, createRestaurant, restaurantLogin, getRestaurantOrders, toggleMenuItemAvailability, updateMenuItemTags, createMenuItem, updateMenuItem, getLocalVendors, incrementClickCount, toggleRestaurantOffline, setRestaurantOpen, getMenuItemById } = require('../controllers/restaurantController');
 const { protect, admin, vendor } = require('../middleware/authMiddleware');
 const rateLimit = require('express-rate-limit');
 const router = express.Router();
@@ -23,6 +23,7 @@ router.get('/:id/menu', getRestaurantMenu);
 router.post('/login', authLimiter, accountLockout, restaurantLogin);
 router.get('/:id/orders', protect, vendor, getRestaurantOrders); 
 router.put('/:id/offline', protect, vendor, toggleRestaurantOffline);
+router.put('/:id/open', protect, vendor, setRestaurantOpen);
 router.post('/menu', protect, vendor, createMenuItem);
 router.put('/menu/:itemId', protect, vendor, updateMenuItem);
 router.put('/menu/:itemId/toggle', protect, vendor, toggleMenuItemAvailability);
