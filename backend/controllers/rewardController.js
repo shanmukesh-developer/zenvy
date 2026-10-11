@@ -14,83 +14,88 @@ const checkSpinEntry = async (req, res) => {
       completedOrders: user.completedOrders || 0,
       spinsUsed: user.spinsUsed || 0,
       spinsAvailable,
-      nextMilestoneIn: 2 - ((user.completedOrders || 0) % 2)
+      nextMilestoneIn: 2 - ((user.completedOrders || 0) % 2),
+      prizes: SPIN_PRIZES
     });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
-// @desc    Use a spin and record prize
+// ── Lucky Spin: the prize table lives on the server and the server picks the prize ──
+// Same 8 sectors (and order) as the wheel in the app, so the app can animate to prizeIndex.
+const SPIN_PRIZES = [
+  { label: 'FREE DEL', value: 'FREEDEL', type: 'coupon', display: 'Free Delivery 🚚' },
+  { label: '10 ZEN', value: 10, type: 'points', display: '10 ZenPoints 💎' },
+  { label: '20 ZEN', value: 20, type: 'points', display: '20 ZenPoints 💎' },
+  { label: '5 ZEN', value: 5, type: 'points', display: '5 ZenPoints 💎' },
+  { label: '50 ZEN', value: 50, type: 'points', display: '50 ZenPoints 💎' },
+  { label: '100 ZEN', value: 100, type: 'points', display: '100 ZenPoints 💎' },
+  { label: '5 ZEN', value: 5, type: 'points', display: '5 ZenPoints 💎' },
+  { label: '2 ZEN', value: 2, type: 'points', display: '2 ZenPoints 💎' },
+];
+const FREE_DELIVERY_EVERY = 15; // every 15th spin is Free Delivery
+const SPIN_COUPON_DAYS = 7;
+
+// @desc    Use a spin. Body is ignored: the prize is chosen here, never by the client.
+// @route   POST /api/rewards/use-spin
 const useSpin = async (req, res) => {
   try {
-    const { prizeType, prizeValue } = req.body;
     const User = getUserModel();
-
-    // Server-side validation of the claimed prize to prevent client parameter manipulation
-    if (prizeType === 'points') {
-      const val = Number(prizeValue);
-      if (isNaN(val) || val <= 0 || val > 100) {
-        return res.status(400).json({ message: 'Invalid prize value. Maximum allowed points is 100.' });
-      }
-    } else if (prizeType === 'coupon') {
-      if (prizeValue !== 'FREEDEL' && prizeValue !== 'DISCOUNT') {
-        return res.status(400).json({ message: 'Invalid coupon prize value.' });
-      }
-    } else {
-      return res.status(400).json({ message: 'Invalid prize type.' });
-    }
-
+    const crypto = require('crypto');
     const { getSequelize } = require('../config/db');
     const sequelize = getSequelize();
-    
+
     let updatedUser;
     let awardedCoupon = null;
+    let prizeIndex = 0;
 
     await sequelize.transaction(async (t) => {
       const user = await User.findByPk(req.user.id, { transaction: t, lock: true });
-      if (!user) {
-        throw new Error('User not found');
-      }
+      if (!user) throw Object.assign(new Error('Your session has expired. Please log in again.'), { status: 401 });
 
       const spinsEarned = Math.floor((user.completedOrders || 0) / 2);
       const spinsAvailable = spinsEarned - (user.spinsUsed || 0);
-
       if (spinsAvailable <= 0) {
-        throw new Error('No spins available. Complete more orders!');
+        throw Object.assign(new Error('No spins left — every 2 delivered orders earn you a new spin!'), { status: 400 });
       }
 
-      user.spinsUsed = (user.spinsUsed || 0) + 1;
+      const spinNumber = (user.spinsUsed || 0) + 1;
+      prizeIndex = spinNumber % FREE_DELIVERY_EVERY === 0 ? 0 : crypto.randomInt(1, SPIN_PRIZES.length);
+      const prize = SPIN_PRIZES[prizeIndex];
 
-      if (prizeType === 'points') {
-        user.zenPoints = (user.zenPoints || 0) + Number(prizeValue);
-      }
-
-      if (prizeType === 'coupon') {
+      user.spinsUsed = spinNumber;
+      if (prize.type === 'points') user.zenPoints = (user.zenPoints || 0) + Number(prize.value);
+      if (prize.type === 'coupon') {
         const { getCouponModel } = require('../models/Coupon');
         const Coupon = getCouponModel();
-        const code = `ZF-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
         awardedCoupon = await Coupon.create({
-          code,
-          type: prizeValue === 'FREEDEL' ? 'FREEDEL' : 'DISCOUNT',
+          code: `ZF-${crypto.randomBytes(4).toString('hex').toUpperCase()}`,
+          type: 'FREEDEL',
+          value: 0,
           userId: user.id,
           isUsed: false,
-          expiryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+          expiryDate: new Date(Date.now() + SPIN_COUPON_DAYS * 24 * 60 * 60 * 1000)
         }, { transaction: t });
       }
-
       await user.save({ transaction: t });
       updatedUser = user;
     });
 
+    const prize = SPIN_PRIZES[prizeIndex];
     res.json({
-      message: 'Spin recorded successfully',
+      message: `You won ${prize.display}!`,
+      prizeIndex,
+      prize,
       spinsUsed: updatedUser.spinsUsed,
+      spinsAvailable: Math.max(0, Math.floor((updatedUser.completedOrders || 0) / 2) - updatedUser.spinsUsed),
       zenPoints: updatedUser.zenPoints,
-      coupon: awardedCoupon ? { code: awardedCoupon.code, type: awardedCoupon.type } : null
+      coupon: awardedCoupon ? { code: awardedCoupon.code, type: awardedCoupon.type, expiryDate: awardedCoupon.expiryDate } : null
     });
   } catch (error) {
-    res.status(400).json({ message: error.message || 'Spin failed.' });
+    if (error.status) return res.status(error.status).json({ message: error.message });
+    console.error('[SPIN_ERROR]', error);
+    res.status(500).json({ message: 'The wheel got stuck. Please try again.' });
   }
 };
 
@@ -132,11 +137,20 @@ const getUserCoupons = async (req, res) => {
   try {
     const { getCouponModel } = require('../models/Coupon');
     const Coupon = getCouponModel();
+    const { Op } = require('sequelize');
     const coupons = await Coupon.findAll({
-      where: { userId: req.user.id, isUsed: false },
-      order: [['createdAt', 'DESC']]
+      where: { userId: req.user.id, isUsed: false, [Op.or]: [{ expiryDate: null }, { expiryDate: { [Op.gt]: new Date() } }] },
+      order: [['expiryDate', 'ASC'], ['createdAt', 'DESC']]
     });
-    res.json(coupons);
+    res.json(coupons.map(c => {
+      const json = c.toJSON();
+      const value = Number(json.value) || 0;
+      return {
+        ...json,
+        label: json.type === 'FREEDEL' ? 'Free delivery' : (value > 0 ? `₹${value} off` : '20% off (up to ₹50)'),
+        expiresInDays: json.expiryDate ? Math.max(0, Math.ceil((new Date(json.expiryDate) - Date.now()) / 86400000)) : null
+      };
+    }));
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
@@ -151,15 +165,15 @@ const validateCoupon = async (req, res) => {
     const { getCouponModel } = require('../models/Coupon');
     const Coupon = getCouponModel();
     const coupon = await Coupon.findOne({
-      where: { code, userId: req.user.id, isUsed: false }
+      where: { code: String(code).trim(), userId: req.user.id, isUsed: false }
     });
 
     if (!coupon) {
-      return res.status(404).json({ message: 'Invalid or already used coupon' });
+      return res.status(404).json({ message: 'That code is not valid or has already been used.' });
     }
 
-    if (new Date() > new Date(coupon.expiryDate)) {
-      return res.status(400).json({ message: 'Coupon has expired' });
+    if (coupon.expiryDate && new Date() > new Date(coupon.expiryDate)) {
+      return res.status(400).json({ message: 'This coupon has expired.' });
     }
 
     res.json({ valid: true, coupon });

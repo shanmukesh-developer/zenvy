@@ -30,6 +30,8 @@ export function AddRestaurantForm({ onCancel, onSubmit, isCreating, initialData 
     campus: initialData?.campus || '',
     whatsappNumber: initialData?.whatsappNumber || '',
     promoOffer: initialData?.promoOffer || '',
+    isFeatured: initialData?.isFeatured ?? false,
+    featuredBadge: initialData?.featuredBadge || 'PROMOTED',
     subscriptionTier: initialData?.subscriptionTier || 'free',
     stallDescription: initialData?.stallDescription || '',
     // Brand Theme settings
@@ -345,6 +347,51 @@ export function AddRestaurantForm({ onCancel, onSubmit, isCreating, initialData 
                   className="nexus-input h-20 resize-none"
                   value={formData.stallDescription}
                   onChange={(e) => setFormData({...formData, stallDescription: e.target.value})}
+                />
+              </div>
+            </>
+          )}
+
+          {/* 🚀 Promotional Campaign & Sponsored Ads */}
+          <div className="col-span-full mt-4 mb-1">
+            <div className="flex items-center gap-2">
+              <div className="h-px flex-1 bg-amber-500/20" />
+              <span className="text-[9px] font-black text-amber-400 uppercase tracking-[0.3em]">🚀 Promotional Campaign & Sponsored Ads</span>
+              <div className="h-px flex-1 bg-amber-500/20" />
+            </div>
+          </div>
+
+          <div className="col-span-full flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="isFeaturedToggle"
+              className="w-4 h-4 rounded border-white/10 bg-white/5 text-amber-500 accent-amber-500 cursor-pointer"
+              checked={formData.isFeatured}
+              onChange={(e) => setFormData({...formData, isFeatured: e.target.checked})}
+            />
+            <label htmlFor="isFeaturedToggle" className="text-[10px] font-black uppercase tracking-widest text-amber-300 cursor-pointer select-none">
+              ⭐ Promote on Mobile Feed & Highlight (Sponsored Partner)
+            </label>
+          </div>
+
+          {formData.isFeatured && (
+            <>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-amber-400 ml-1">Featured Badge Text</label>
+                <input
+                  placeholder="e.g. PROMOTED, SPONSORED, CHEF'S PICK"
+                  className="nexus-input text-amber-300"
+                  value={formData.featuredBadge}
+                  onChange={(e) => setFormData({...formData, featuredBadge: e.target.value})}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-emerald-400 ml-1">Promotional Deal / Offer</label>
+                <input
+                  placeholder="e.g. Flat 30% OFF, Buy 1 Get 1 Free"
+                  className="nexus-input text-emerald-300"
+                  value={formData.promoOffer}
+                  onChange={(e) => setFormData({...formData, promoOffer: e.target.value})}
                 />
               </div>
             </>

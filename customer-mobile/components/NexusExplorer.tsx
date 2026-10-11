@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { View, Text, StyleSheet, Dimensions, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -20,7 +21,7 @@ interface NexusExplorerProps {
 export default function NexusExplorer({ restaurants, activeCategory, onSelectItem }: NexusExplorerProps) {
   const router = useRouter();
   const { isDark } = useTheme();
-  const { addToCart, clearCart } = useCart();
+  const { addToCart } = useCart();
   const { dietMode, isItemAllowed } = useDietary();
   const [activeFilter, setActiveFilter] = useState<'all' | 'veg'>('all');
   const [activeSort, setActiveSort] = useState<'recommended' | 'rating' | 'fastest'>('recommended');
@@ -38,98 +39,58 @@ export default function NexusExplorer({ restaurants, activeCategory, onSelectIte
     }
   }, [dietMode]);
 
+  // Dish hearts persist under their own key ('zenvy_favorites' holds restaurant favourites)
+  useEffect(() => {
+    let alive = true;
+    AsyncStorage.getItem('zenvy_fav_dishes').then(v => {
+      if (!alive || !v) return;
+      try { const arr = JSON.parse(v); if (Array.isArray(arr)) setFavorites(arr); } catch {}
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  // A new Classic starts collapsed again
+  useEffect(() => { setShowAll(false); }, [activeCategory]);
+
+  // Track "ADDED ✓" reset timers so none fire after unmount
+  const addedTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  useEffect(() => () => { addedTimers.current.forEach(clearTimeout); addedTimers.current = []; }, []);
+
   const toggleFavorite = (id: string) => {
-    setFavorites(prev => 
-      prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id]
-    );
+    setFavorites(prev => {
+      const next = prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id];
+      AsyncStorage.setItem('zenvy_fav_dishes', JSON.stringify(next)).catch(() => {});
+      return next;
+    });
   };
 
-  const CURATED_CATEGORY_ITEMS: Record<string, any[]> = {
-    biryani: [
-      { id: 'cur-bir-1', name: 'Dum Mutton Biryani', price: 340, isVegetarian: false, category: 'Biryani', restaurantName: 'Royal Biryani Handi', restaurantId: 'royal-biryani', rating: 4.8, image: 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=600&q=80', imageUrl: 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=600&q=80' },
-      { id: 'cur-bir-2', name: 'Kolkata Chicken Biryani', price: 280, isVegetarian: false, category: 'Biryani', restaurantName: 'Royal Biryani Handi', restaurantId: 'royal-biryani', rating: 4.7, image: 'https://images.unsplash.com/photo-1633945274405-b6c8069047b0?w=600&q=80', imageUrl: 'https://images.unsplash.com/photo-1633945274405-b6c8069047b0?w=600&q=80' },
-      { id: 'cur-bir-3', name: 'Paneer Dum Biryani', price: 240, isVegetarian: true, category: 'Biryani', restaurantName: 'Royal Biryani Handi', restaurantId: 'royal-biryani', rating: 4.6, image: 'https://images.unsplash.com/photo-1642821373181-696a54913e93?w=600&q=80', imageUrl: 'https://images.unsplash.com/photo-1642821373181-696a54913e93?w=600&q=80' },
-      { id: 'cur-bir-4', name: 'Special Hyderabadi Dum Biryani', price: 320, isVegetarian: false, category: 'Biryani', restaurantName: 'Royal Biryani Handi', restaurantId: 'royal-biryani', rating: 4.9, image: 'https://images.unsplash.com/photo-1589302168068-964664d93dc0?w=600&q=80', imageUrl: 'https://images.unsplash.com/photo-1589302168068-964664d93dc0?w=600&q=80' },
-    ],
-    pizza: [
-      { id: 'cur-piz-1', name: 'Italian Buffalo Margherita', price: 320, isVegetarian: true, category: 'Pizza', restaurantName: 'Artisanal Pizza Lab', restaurantId: 'pizza-lab', rating: 4.7, image: 'https://images.unsplash.com/photo-1604382354936-07c5d9983bd3?w=600&q=80', imageUrl: 'https://images.unsplash.com/photo-1604382354936-07c5d9983bd3?w=600&q=80' },
-      { id: 'cur-piz-2', name: 'Truffle Mushroom Pizza', price: 450, isVegetarian: true, category: 'Pizza', restaurantName: 'Artisanal Pizza Lab', restaurantId: 'pizza-lab', rating: 4.8, image: 'https://images.unsplash.com/photo-1571407970349-bc81e7e96d47?w=600&q=80', imageUrl: 'https://images.unsplash.com/photo-1571407970349-bc81e7e96d47?w=600&q=80' },
-      { id: 'cur-piz-3', name: 'Spicy Chicken Pepperoni', price: 420, isVegetarian: false, category: 'Pizza', restaurantName: 'Artisanal Pizza Lab', restaurantId: 'pizza-lab', rating: 4.9, image: 'https://images.unsplash.com/photo-1534308983496-4fabb1a015ee?w=600&q=80', imageUrl: 'https://images.unsplash.com/photo-1534308983496-4fabb1a015ee?w=600&q=80' },
-      { id: 'cur-piz-4', name: 'Farmhouse Garden Veggie', price: 360, isVegetarian: true, category: 'Pizza', restaurantName: 'Artisanal Pizza Lab', restaurantId: 'pizza-lab', rating: 4.6, image: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=600&q=80', imageUrl: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=600&q=80' },
-    ],
-    burgers: [
-      { id: 'cur-brg-1', name: 'Double Angus Jalapeño Burger', price: 380, isVegetarian: false, category: 'Burgers', restaurantName: 'Burger Bunker', restaurantId: 'burger-bunker', rating: 4.9, image: 'https://images.unsplash.com/photo-1550317138-10000687ad32?w=600&q=80', imageUrl: 'https://images.unsplash.com/photo-1550317138-10000687ad32?w=600&q=80' },
-      { id: 'cur-brg-2', name: 'Classic Cheese Melt Burger', price: 290, isVegetarian: true, category: 'Burgers', restaurantName: 'Burger Bunker', restaurantId: 'burger-bunker', rating: 4.6, image: 'https://images.unsplash.com/photo-1571091718767-18b5b1457add?w=600&q=80', imageUrl: 'https://images.unsplash.com/photo-1571091718767-18b5b1457add?w=600&q=80' },
-      { id: 'cur-brg-3', name: 'Crispy Fried Chicken Zinger', price: 260, isVegetarian: false, category: 'Burgers', restaurantName: 'Burger Bunker', restaurantId: 'burger-bunker', rating: 4.8, image: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=600&q=80', imageUrl: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=600&q=80' },
-      { id: 'cur-brg-4', name: 'Smoky BBQ Paneer Burger', price: 280, isVegetarian: true, category: 'Burgers', restaurantName: 'Burger Bunker', restaurantId: 'burger-bunker', rating: 4.7, image: 'https://images.unsplash.com/photo-1586190848861-99aa4a171e90?w=600&q=80', imageUrl: 'https://images.unsplash.com/photo-1586190848861-99aa4a171e90?w=600&q=80' },
-    ],
-    'south indian': [
-      { id: 'cur-si-1', name: 'Ghee Roast Masala Dosa', price: 120, isVegetarian: true, category: 'South Indian', restaurantName: 'South Indian Soul', restaurantId: 'south-soul', rating: 4.8, image: 'https://images.unsplash.com/photo-1589301760014-d929f3979dbc?w=600&q=80', imageUrl: 'https://images.unsplash.com/photo-1589301760014-d929f3979dbc?w=600&q=80' },
-      { id: 'cur-si-2', name: 'Steamed Button Ghee Idli (4 Pcs)', price: 90, isVegetarian: true, category: 'South Indian', restaurantName: 'South Indian Soul', restaurantId: 'south-soul', rating: 4.7, image: 'https://images.unsplash.com/photo-1610192244261-3f33de3f55e4?w=600&q=80', imageUrl: 'https://images.unsplash.com/photo-1610192244261-3f33de3f55e4?w=600&q=80' },
-      { id: 'cur-si-3', name: 'Crispy Medu Vada Sambar', price: 80, isVegetarian: true, category: 'South Indian', restaurantName: 'South Indian Soul', restaurantId: 'south-soul', rating: 4.6, image: 'https://images.unsplash.com/photo-1626074353765-517a681e40be?w=600&q=80', imageUrl: 'https://images.unsplash.com/photo-1626074353765-517a681e40be?w=600&q=80' },
-      { id: 'cur-si-4', name: 'Butter Onion Rava Dosa', price: 140, isVegetarian: true, category: 'South Indian', restaurantName: 'South Indian Soul', restaurantId: 'south-soul', rating: 4.9, image: 'https://images.unsplash.com/photo-1541832676-9b763b0239ab?w=600&q=80', imageUrl: 'https://images.unsplash.com/photo-1541832676-9b763b0239ab?w=600&q=80' },
-    ],
-    drinks: [
-      { id: 'cur-drk-1', name: 'Dragon Fruit Mint Cooler', price: 180, isVegetarian: true, category: 'Drinks', restaurantName: 'Zenvy Juice Booth', restaurantId: 'juice-booth', rating: 4.7, image: 'https://images.unsplash.com/photo-1525385133512-2f3bdd039054?w=600&q=80', imageUrl: 'https://images.unsplash.com/photo-1525385133512-2f3bdd039054?w=600&q=80' },
-      { id: 'cur-drk-2', name: 'Cold Brew Signature Frappe', price: 220, isVegetarian: true, category: 'Drinks', restaurantName: 'Zenvy Juice Booth', restaurantId: 'juice-booth', rating: 4.8, image: 'https://images.unsplash.com/photo-1517701604599-bb29b565090c?w=600&q=80', imageUrl: 'https://images.unsplash.com/photo-1517701604599-bb29b565090c?w=600&q=80' },
-      { id: 'cur-drk-3', name: 'Fresh Mint Lemon Mojito', price: 140, isVegetarian: true, category: 'Drinks', restaurantName: 'Zenvy Juice Booth', restaurantId: 'juice-booth', rating: 4.6, image: 'https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=600&q=80', imageUrl: 'https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=600&q=80' },
-      { id: 'cur-drk-4', name: 'Belgian Dark Chocolate Shake', price: 190, isVegetarian: true, category: 'Drinks', restaurantName: 'Zenvy Juice Booth', restaurantId: 'juice-booth', rating: 4.9, image: 'https://images.unsplash.com/photo-1572490122747-3968b75cc699?w=600&q=80', imageUrl: 'https://images.unsplash.com/photo-1572490122747-3968b75cc699?w=600&q=80' },
-    ],
-    chinese: [
-      { id: 'cur-chn-1', name: 'Hakka Noodles (Special Wok)', price: 220, isVegetarian: true, category: 'Chinese', restaurantName: 'Mandarin Magic', restaurantId: 'mandarin-magic', rating: 4.8, image: 'https://images.unsplash.com/photo-1526318896980-cf78c088247c?w=600&q=80', imageUrl: 'https://images.unsplash.com/photo-1526318896980-cf78c088247c?w=600&q=80' },
-      { id: 'cur-chn-2', name: 'Chili Garlic Crispy Chicken', price: 280, isVegetarian: false, category: 'Chinese', restaurantName: 'Mandarin Magic', restaurantId: 'mandarin-magic', rating: 4.9, image: 'https://images.unsplash.com/photo-1623341214825-9f4f963727da?w=600&q=80', imageUrl: 'https://images.unsplash.com/photo-1623341214825-9f4f963727da?w=600&q=80' },
-      { id: 'cur-chn-3', name: 'Schezwan Veggie Fried Rice', price: 200, isVegetarian: true, category: 'Chinese', restaurantName: 'Mandarin Magic', restaurantId: 'mandarin-magic', rating: 4.7, image: 'https://images.unsplash.com/photo-1603133872878-684f208fb84b?w=600&q=80', imageUrl: 'https://images.unsplash.com/photo-1603133872878-684f208fb84b?w=600&q=80' },
-      { id: 'cur-chn-4', name: 'Steamed Classic Veg Momos', price: 150, isVegetarian: true, category: 'Chinese', restaurantName: 'Mandarin Magic', restaurantId: 'mandarin-magic', rating: 4.6, image: 'https://images.unsplash.com/photo-1626777552726-4a6b54c97e46?w=600&q=80', imageUrl: 'https://images.unsplash.com/photo-1626777552726-4a6b54c97e46?w=600&q=80' },
-    ],
-  };
-
-  const handleAddToCart = (item: any, e?: any) => {
+  const handleAddToCart = async (item: any, e?: any) => {
     if (e && e.stopPropagation) e.stopPropagation();
     const itemId = item.id || item._id;
+    if (!item.storeOpen) {
+      Alert.alert('Kitchen closed', `${item.restaurantName || 'This kitchen'} isn't taking orders right now. Please check back later.`);
+      return;
+    }
     try {
-      addToCart({
+      const added = await addToCart({
         id: itemId,
         name: item.cleanName || item.name,
         price: Number(item.price) || 0,
         image: item.image || item.imageUrl || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=300',
-        restaurantId: item.restaurantId || 'campus-kitchen',
-        restaurantName: item.restaurantName || 'Campus Partner Kitchen',
+        restaurantId: item.restaurantId,
+        restaurantName: item.restaurantName,
       });
+      // The cart may ask "Replace basket?" or hit the per-item limit; only confirm a real add
+      if (added === false) return;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       setAddedIds(prev => ({ ...prev, [itemId]: true }));
-      setTimeout(() => {
+      addedTimers.current.push(setTimeout(() => {
         setAddedIds(prev => ({ ...prev, [itemId]: false }));
-      }, 1800);
+      }, 1800));
     } catch (err: any) {
-      if (err.message === 'MULTIPLE_RESTAURANTS') {
-        Alert.alert(
-          'Start New Basket?',
-          'Your basket contains items from another restaurant. Clear basket to add this dish?',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Clear & Add',
-              style: 'destructive',
-              onPress: () => {
-                clearCart();
-                setTimeout(() => {
-                  addToCart({
-                    id: itemId,
-                    name: item.cleanName || item.name,
-                    price: Number(item.price) || 0,
-                    image: item.image || item.imageUrl || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=300',
-                    restaurantId: item.restaurantId || 'campus-kitchen',
-                    restaurantName: item.restaurantName || 'Campus Partner Kitchen',
-                  });
-                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-                  setAddedIds(prev => ({ ...prev, [itemId]: true }));
-                  setTimeout(() => setAddedIds(prev => ({ ...prev, [itemId]: false })), 1800);
-                }, 100);
-              }
-            }
-          ]
-        );
-      }
+      Alert.alert("Couldn't add item", err?.message && err.message !== 'MULTIPLE_RESTAURANTS'
+        ? err.message
+        : 'Please try again in a moment.');
     }
   };
 
@@ -147,12 +108,11 @@ export default function NexusExplorer({ restaurants, activeCategory, onSelectIte
 
     // 2. Collect matching dishes
     const collectedFromRestaurants = foodRestaurants.flatMap(res => 
-      (res.menu || []).map((item: any, idx: number) => {
+      (res.menu || []).filter((item: any) => item && item.isAvailable !== false && (item._id || item.id)).map((item: any, idx: number) => {
         const isVeg = item.isVegetarian === true || 
                       String(item.isVegetarian).toLowerCase() === 'true' || 
                       Number(item.isVegetarian) === 1 || 
-                      (item.tags || []).includes('veg') || 
-                      (item.tags || []).includes('fruits');
+                      (Array.isArray(item.tags) && (item.tags.includes('veg') || item.tags.includes('fruits')));
 
         const cleanName = (item.name || '').replace(/\s*\([^)]*\)\s*$/, '').trim();
         const safeId = item._id || item.id || `${res._id || res.id || 'res'}-${idx}-${cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
@@ -166,13 +126,15 @@ export default function NexusExplorer({ restaurants, activeCategory, onSelectIte
           isVegetarian: isVeg,
           restaurantName: res.name,
           restaurantId: res._id || res.id,
-          rating: Number(res.rating) || 4.2,
+          rating: Number(res.rating) || 0,
+          deliveryTime: item.deliveryTime ?? res.deliveryTime,
+          storeOpen: res.isOpen !== false,
         };
       })
     ).filter(item => {
       const itemCat = (item.category || '').toLowerCase();
       const itemName = (item.cleanName || item.name || '').toLowerCase();
-      const itemTags = (item.tags || []).map((t: string) => t.toLowerCase());
+      const itemTags = (Array.isArray(item.tags) ? item.tags : []).map((t: any) => String(t || '').toLowerCase());
 
       // Strict category matching
       if (catKey === 'biryani') return itemCat.includes('biryani') || itemName.includes('biryani') || itemTags.includes('biryani');
@@ -181,20 +143,24 @@ export default function NexusExplorer({ restaurants, activeCategory, onSelectIte
       if (catKey === 'south indian') return itemCat.includes('south') || itemName.includes('dosa') || itemName.includes('idli') || itemName.includes('vada') || itemTags.includes('south-indian');
       if (catKey === 'drinks') return itemCat.includes('drink') || itemCat.includes('juice') || itemName.includes('cooler') || itemName.includes('brew') || itemName.includes('mojito') || itemName.includes('shake');
       if (catKey === 'chinese') return itemCat.includes('chinese') || itemName.includes('noodles') || itemName.includes('rice') || itemName.includes('momos') || itemName.includes('manchurian');
+      const matchAny = (kws: string[]) => kws.some(k => itemCat.includes(k) || itemName.includes(k) || itemTags.includes(k));
+      if (catKey === 'momos & rolls') return matchAny(['momo', 'roll', 'frankie', 'wrap']);
+      if (catKey === 'shakes') return matchAny(['shake', 'milkshake', 'smoothie', 'frappe']);
+      if (catKey === 'bakery') return matchAny(['bakery', 'cake', 'pastry', 'bread', 'puff', 'cookie', 'muffin', 'brownie']);
+      if (catKey === 'gym fuel') return matchAny(['protein', 'oats', 'salad', 'sprout', 'healthy', 'egg white', 'gym']);
 
       return itemCat.includes(catKey) || itemName.includes(catKey);
     });
 
-    // Use collected items or fallback to curated list for this category
-    const itemsSource = collectedFromRestaurants.length > 0 
-      ? collectedFromRestaurants 
-      : (CURATED_CATEGORY_ITEMS[catKey] || CURATED_CATEGORY_ITEMS.biryani);
+    // Only real dishes from real restaurants — an empty result shows the empty state
+    const itemsSource = collectedFromRestaurants;
 
-    // Deduplicate by clean dish name so that no fake dummy duplicates across vendors flood the catalog
+    // Deduplicate repeated dishes within one kitchen only: the same dish from two kitchens is two real choices
     const uniqueByName = new Map<string, any>();
     itemsSource.forEach(item => {
-      const key = (item.cleanName || item.name || '').toLowerCase().trim();
-      if (!key) return;
+      const dishName = (item.cleanName || item.name || '').toLowerCase().trim();
+      if (!dishName) return;
+      const key = `${item.restaurantId}|${dishName}`;
       if (!uniqueByName.has(key)) {
         uniqueByName.set(key, item);
       } else {
@@ -216,6 +182,9 @@ export default function NexusExplorer({ restaurants, activeCategory, onSelectIte
       
       if (activeSort === 'rating') {
         return (Number(b.rating) || 0) - (Number(a.rating) || 0);
+      }
+      if (activeSort === 'fastest') {
+        return (Number(a.deliveryTime) || 999) - (Number(b.deliveryTime) || 999);
       }
       return 0;
     });
@@ -369,7 +338,7 @@ export default function NexusExplorer({ restaurants, activeCategory, onSelectIte
       {/* Grid */}
       {filteredItems.length === 0 ? (
         <View style={s.empty}>
-          <Text style={[s.emptyText, { color: txtSec }]}>No items found in this category.</Text>
+          <Text style={[s.emptyText, { color: txtSec }]}>No {activeCategory ? activeCategory.toLowerCase() : 'matching'} dishes on campus menus right now. Browse all restaurants below.</Text>
         </View>
       ) : (
         <>
@@ -423,13 +392,13 @@ export default function NexusExplorer({ restaurants, activeCategory, onSelectIte
                     <ActionPressable 
                       style={[
                         s.addBtn, 
-                        { backgroundColor: isAdded ? '#10B981' : '#C8A265' }
+                        { backgroundColor: isAdded ? '#10B981' : (item.storeOpen ? '#C8A265' : (isDark ? '#3F3F46' : '#E5E7EB')) }
                       ]}
                       onPress={() => handleAddToCart(item)}
                       sound="tabSwitch"
                     >
-                      <Text style={[s.addBtnText, { color: isAdded ? '#FFFFFF' : '#000000', fontWeight: '900' }]}>
-                        {isAdded ? 'ADDED ✓' : 'ADD +'}
+                      <Text style={[s.addBtnText, { color: isAdded ? '#FFFFFF' : (item.storeOpen ? '#000000' : txtSec), fontWeight: '900' }]}>
+                        {isAdded ? 'ADDED ✓' : (item.storeOpen ? 'ADD +' : 'CLOSED')}
                       </Text>
                     </ActionPressable>
                   </View>
@@ -547,5 +516,5 @@ const s = StyleSheet.create({
   },
   addBtnText: { fontSize: 10, fontWeight: '900', letterSpacing: 0.8 },
   empty: { padding: 32, alignItems: 'center' },
-  emptyText: { fontSize: 12, fontWeight: '600' },
+  emptyText: { fontSize: 12, fontWeight: '600', textAlign: 'center', lineHeight: 18 },
 });

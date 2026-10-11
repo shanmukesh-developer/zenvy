@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,660 +11,465 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Animated,
   Modal,
   TextInput,
+  Share,
+  KeyboardAvoidingView,
 } from 'react-native';
-import Clipboard from '@react-native-clipboard/clipboard';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS, SHADOWS, RADIUS } from '../../constants/theme';
 import { useCart } from '../../context/CartContext';
+import { useAuth } from '../../context/AuthContext';
+import CustomizeDrawer, { isCustomizable } from '../../components/CustomizeDrawer';
 import { apiFetch } from '../../utils/auth';
+import { isLocalVendorType, vendorCallNumber, vendorWhatsappNumber, callVendor, whatsappVendor, DIRECT_ORDER_COPY } from '../../utils/localVendor';
 import { useTheme } from '../../context/ThemeContext';
 import AdSlot from '../../components/AdSlot';
-import SafeImage from '../../components/SafeImage';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 
 const { width: SW } = Dimensions.get('window');
 
-export function getFoodImage(name?: string, category?: string, currentUri?: string): string {
-  if (currentUri && typeof currentUri === 'string' && currentUri.startsWith('http')) {
-    return currentUri;
-  }
-  const n = (name || '').toLowerCase();
-  if (n.includes('biryani')) return 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=800&q=80';
-  if (n.includes('pizza')) return 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=800&q=80';
-  if (n.includes('burger')) return 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=800&q=80';
-  if (n.includes('paneer') || n.includes('tikka')) return 'https://images.unsplash.com/photo-1567188040759-fb8a883dc6d8?w=800&q=80';
-  if (n.includes('shake') || n.includes('coffee') || n.includes('drink')) return 'https://images.unsplash.com/photo-1572490122747-3968b75cc699?w=800&q=80';
-  if (n.includes('momo') || n.includes('roll')) return 'https://images.unsplash.com/photo-1626777552726-4a6b54c97e46?w=800&q=80';
-  if (n.includes('cake') || n.includes('dessert') || n.includes('sweet')) return 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=800&q=80';
-  return 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800&q=80';
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const REVIEW_MAX = 500;
+const REVIEW_TAGS = ['Super Tasty 🔥', 'Generous Portion 🍛', 'Fresh & Hot ♨️', 'Spicy 🌶️', 'Best Value 💰'];
+
+// Vendor types where a veg / non-veg mark makes no sense.
+const NON_FOOD_TYPES = ['ELECTRONICS', 'HOME_ESSENTIALS', 'STATIONERY', 'STATIONARY', 'TOYS', 'SEEDS', 'RENTALS', 'RENTAL', 'REPAIRS', 'PRINT', 'LAUNDRY', 'TAILORING', 'PHARMACY'];
+
+// specs keys that are internal bookkeeping (or rendered elsewhere) and must not be listed as product details.
+const HIDDEN_SPEC_KEYS = ['catalogueKey', 'originalPrice', 'rating', 'ratingCount', 'bookingOnly', 'extraFor', 'emoji', 'legacyIds', 'variants'];
+
+/** Only real images: http(s) URLs and uploaded data:image URIs. Anything else -> no image (neutral placeholder). */
+export function getRealImageUri(uri?: string | null): string | null {
+  if (!uri || typeof uri !== 'string') return null;
+  const u = uri.trim();
+  if (u.startsWith('http://') || u.startsWith('https://') || u.startsWith('data:image/')) return u;
+  return null;
 }
 
-// ── Smart Item-Specific Attributes Generator ─────────────────────────────────
-export function generateSmartAttributes(name: string, category?: string, restaurantName?: string, isVeg?: boolean) {
-  const n = (name || '').toLowerCase();
-  const c = (category || '').toLowerCase();
-
-  if (n.includes('biryani') || c.includes('biryani') || n.includes('pulao') || n.includes('rice') || n.includes('thali') || n.includes('meal')) {
-    return [
-      { label: 'Kitchen', value: restaurantName || 'Campus Partner Kitchen' },
-      { label: 'Portion', value: 'Serves 1–2 (approx 650g box)' },
-      { label: 'Dietary', value: isVeg ? '🟢 100% Vegetarian' : '🔴 Fresh Chicken • Halal Certified' },
-      { label: 'Spice Level', value: n.includes('special') || n.includes('spicy') ? '🌶️🌶️ High Spice' : '🌶️ Medium Spicy' },
-      { label: 'Preparation', value: 'Dum-cooked with aged Basmati & whole spices' },
-      { label: 'Accompaniment', value: 'Served with authentic Mirchi Salan & Raita' },
-      { label: 'Freshness', value: 'Cooked fresh on order • Best within 3 hrs' },
-      { label: 'Packaging', value: 'Sealed Food-Grade Thermal Safe Container' },
-    ];
-  }
-
-  if (n.includes('pizza') || c.includes('pizza') || n.includes('pasta') || n.includes('garlic bread')) {
-    return [
-      { label: 'Kitchen', value: restaurantName || 'Campus Partner Kitchen' },
-      { label: 'Size', value: '8 Inch (6 Slices • Serves 1–2)' },
-      { label: 'Crust', value: 'Hand-Tossed Classic Fresh Dough' },
-      { label: 'Cheese', value: '100% Pure Melted Mozzarella' },
-      { label: 'Dietary', value: isVeg ? '🟢 Pure Vegetarian' : '🔴 Non-Vegetarian' },
-      { label: 'Freshness', value: 'Baked Fresh to Order • Delivered Hot' },
-      { label: 'Accompaniment', value: 'Includes Oregano & Chilli Flakes Sachets' },
-    ];
-  }
-
-  if (n.includes('burger') || c.includes('burger') || n.includes('sandwich') || n.includes('wrap') || n.includes('roll')) {
-    return [
-      { label: 'Kitchen', value: restaurantName || 'Campus Partner Kitchen' },
-      { label: 'Portion', value: '1 Jumbo Serving + House Dip' },
-      { label: 'Patty / Filling', value: isVeg ? 'Crispy Spiced Paneer & Veg Patty' : 'Juicy Seasoned Chicken Patty' },
-      { label: 'Bun', value: 'Toasted Sesame Brioche Bun' },
-      { label: 'Dietary', value: isVeg ? '🟢 Pure Veg' : '🔴 Non-Veg' },
-      { label: 'Freshness', value: 'Freshly Grilled on Order' },
-    ];
-  }
-
-  if (n.includes('momo') || n.includes('noodle') || n.includes('fried rice') || n.includes('manchurian') || c.includes('chinese')) {
-    return [
-      { label: 'Kitchen', value: restaurantName || 'Campus Partner Kitchen' },
-      { label: 'Portion', value: '6 Pcs / 1 Large Box (Serves 1)' },
-      { label: 'Preparation', value: 'Pan-Fried / Steamed Fresh' },
-      { label: 'Dietary', value: isVeg ? '🟢 Pure Veg' : '🔴 Non-Veg' },
-      { label: 'Sauce', value: 'Signature Spicy Schezwan Dip & Mayo' },
-      { label: 'Freshness', value: 'Prepared Fresh in Wok' },
-    ];
-  }
-
-  if (n.includes('dosa') || n.includes('idli') || n.includes('vada') || c.includes('south indian')) {
-    return [
-      { label: 'Kitchen', value: restaurantName || 'Campus Partner Kitchen' },
-      { label: 'Portion', value: 'Standard Meal Portion' },
-      { label: 'Dietary', value: '🟢 100% Pure Vegetarian' },
-      { label: 'Accompaniment', value: 'Hot Sambar + 2 Coconut/Tomato Chutneys' },
-      { label: 'Freshness', value: 'Made fresh on Tawa • Crisp & Hot' },
-    ];
-  }
-
-  if (n.includes('juice') || n.includes('shake') || n.includes('cooler') || n.includes('smoothie') || n.includes('tea') || n.includes('coffee') || c.includes('drinks') || c.includes('beverage')) {
-    return [
-      { label: 'Bar', value: restaurantName || 'Campus Beverage Hub' },
-      { label: 'Volume', value: '350 ml (Large Cup)' },
-      { label: 'Serving', value: 'Served Ice-Cold 🧊' },
-      { label: 'Ingredients', value: 'Real Fruit Puree • No Artificial Colors' },
-      { label: 'Freshness', value: 'Freshly Blended & Sealed Spill-Proof' },
-    ];
-  }
-
-  if (c.includes('fruits') || c.includes('vegetables') || n.includes('apple') || n.includes('banana') || n.includes('mango') || n.includes('carrot') || n.includes('grapes')) {
-    return [
-      { label: 'Source', value: 'Campus Organic Farm Hub' },
-      { label: 'Quality', value: 'Grade A Hand-Selected Daily' },
-      { label: 'Weight', value: 'Standard Fresh Pack' },
-      { label: 'Storage', value: 'Refrigerate below 8°C for best crispness' },
-      { label: 'Shelf Life', value: '3–5 Days' },
-      { label: 'Quality Guarantee', value: '100% Quality Checked at Doorstep' },
-    ];
-  }
-
-  return [
-    { label: 'Brand', value: restaurantName || 'Zenvy Verified Store' },
-    { label: 'Item Type', value: 'Daily Campus Essential' },
-    { label: 'Quality', value: '100% Original & Sealed' },
-    { label: 'Shelf Life', value: 'Standard Retail Freshness' },
-    { label: 'Delivery Guarantee', value: '8-Minute Campus Express Delivery' },
-  ];
+function humanizeKey(key: string): string {
+  return key
+    .replace(/[_-]+/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-// ── Parse Attributes into Quick Highlights Matrix & Remaining Specs ──────────
-export function parseProductHighlights(attributes: any[], isVeg?: boolean) {
-  if (!attributes || attributes.length === 0) {
-    return { highlights: [], remaining: [] };
-  }
-
-  const portion = attributes.find(a => a.label === 'Portion' || a.label === 'Size' || a.label === 'Weight' || a.label === 'Volume');
-  const dietary = attributes.find(a => a.label === 'Dietary');
-  const spice = attributes.find(a => a.label === 'Spice Level' || a.label === 'Sauce');
-  const freshness = attributes.find(a => a.label === 'Freshness' || a.label === 'Shelf Life' || a.label === 'Quality');
-
-  const highlights = [
-    {
-      icon: '🍽️',
-      label: portion?.label || 'PORTION',
-      value: portion?.value || 'Standard Meal',
-      desc: 'Optimal for 1–2 persons'
-    },
-    {
-      icon: (isVeg ?? true) ? '🌿' : '🍗',
-      label: 'DIETARY',
-      value: dietary?.value?.replace(/^[🟢🔴]\s*/, '') || (isVeg ? '100% Pure Veg' : 'Non-Vegetarian'),
-      isVeg: isVeg ?? true,
-      desc: 'FSSAI Certified'
-    },
-    {
-      icon: spice?.label === 'Spice Level' ? '🌶️' : '✨',
-      label: spice?.label || 'SPICE LEVEL',
-      value: spice?.value?.replace(/^🌶️+\s*/, '') || 'Balanced Flavor',
-      desc: 'Aromatic & Fresh'
-    },
-    {
-      icon: '⏱️',
-      label: freshness?.label || 'FRESHNESS',
-      value: freshness?.value || 'Cooked to Order',
-      desc: 'Delivered in 8 mins'
-    },
-  ];
-
-  const remaining = attributes.filter(a =>
-    !['Portion', 'Size', 'Weight', 'Volume', 'Dietary', 'Spice Level'].includes(a.label)
-  );
-
-  return { highlights, remaining };
-}
-
-export function getAttrIcon(label: string): string {
-  const l = (label || '').toLowerCase();
-  if (l.includes('prep') || l.includes('cook')) return '👨‍🍳';
-  if (l.includes('accompaniment') || l.includes('dip') || l.includes('side')) return '🥣';
-  if (l.includes('fresh') || l.includes('shelf')) return '⏱️';
-  if (l.includes('pack') || l.includes('contain')) return '🛡️';
-  if (l.includes('storage') || l.includes('chill')) return '❄️';
-  if (l.includes('source') || l.includes('origin')) return '🌱';
-  if (l.includes('kitchen') || l.includes('brand') || l.includes('bar')) return '🏪';
-  if (l.includes('crust') || l.includes('cheese') || l.includes('patty') || l.includes('bun')) return '🍕';
+function specIcon(label: string): string {
+  const l = label.toLowerCase();
+  if (l.includes('weight') || l.includes('pack') || l.includes('size') || l.includes('portion') || l.includes('serve')) return '📦';
+  if (l.includes('brand')) return '🏷️';
+  if (l.includes('spice')) return '🌶️';
+  if (l.includes('allergen')) return '⚠️';
+  if (l.includes('ingredient')) return '🥣';
+  if (l.includes('shelf') || l.includes('fresh') || l.includes('expiry')) return '⏱️';
+  if (l.includes('storage')) return '❄️';
   return '📌';
 }
 
-// ── Smart Context-Aware Cross-Sells (Often Bought Together) ──────────────────
-export function generateSmartCrossSells(name: string, category?: string) {
-  const n = (name || '').toLowerCase();
-  const c = (category || '').toLowerCase();
-
-  if (n.includes('biryani') || c.includes('biryani') || n.includes('pulao') || n.includes('rice') || n.includes('thali')) {
-    return [
-      { id: 'cs-coke', name: 'Chilled Thums Up (300ml)', price: 40, image: 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=300&q=80', tag: 'Beverage' },
-      { id: 'cs-chk65', name: 'Crispy Chicken 65', price: 140, image: 'https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?w=300&q=80', tag: 'Starter' },
-      { id: 'cs-gulab', name: 'Hot Gulab Jamun (2 Pcs)', price: 50, image: 'https://images.unsplash.com/photo-1601050690597-df0568f70950?w=300&q=80', tag: 'Dessert' },
-      { id: 'cs-raita', name: 'Extra Mint Raita & Salan', price: 25, image: 'https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=300&q=80', tag: 'Side' },
-    ];
-  }
-
-  if (n.includes('pizza') || c.includes('pizza') || n.includes('pasta')) {
-    return [
-      { id: 'cs-garlic', name: 'Cheesy Garlic Bread', price: 99, image: 'https://images.unsplash.com/photo-1573140247632-f8fd74997d5c?w=300&q=80', tag: 'Side' },
-      { id: 'cs-dip', name: 'Creamy Jalapeño Dip', price: 25, image: 'https://images.unsplash.com/photo-1589301760014-d929f3979dbc?w=300&q=80', tag: 'Dip' },
-      { id: 'cs-lava', name: 'Molten Choco Lava Cake', price: 89, image: 'https://images.unsplash.com/photo-1606313564200-e75d5e30476c?w=300&q=80', tag: 'Dessert' },
-      { id: 'cs-pepsi', name: 'Chilled Pepsi (500ml)', price: 40, image: 'https://images.unsplash.com/photo-1629203851122-3726ecdf080e?w=300&q=80', tag: 'Beverage' },
-    ];
-  }
-
-  if (n.includes('burger') || c.includes('burger') || n.includes('sandwich') || n.includes('wrap')) {
-    return [
-      { id: 'cs-fries', name: 'Peri Peri French Fries', price: 79, image: 'https://images.unsplash.com/photo-1576107232684-1279f3908594?w=300&q=80', tag: 'Side' },
-      { id: 'cs-shake', name: 'Belgian Chocolate Shake', price: 120, image: 'https://images.unsplash.com/photo-1572490122747-3968b75cc699?w=300&q=80', tag: 'Shake' },
-      { id: 'cs-cheese', name: 'Extra Melted Cheese Slice', price: 20, image: 'https://images.unsplash.com/photo-1628088062854-d1870b4553da?w=300&q=80', tag: 'Add-on' },
-    ];
-  }
-
-  if (n.includes('momo') || n.includes('noodle') || c.includes('chinese')) {
-    return [
-      { id: 'cs-spring', name: 'Crispy Veg Spring Rolls', price: 90, image: 'https://images.unsplash.com/photo-1544025162-d76694265947?w=300&q=80', tag: 'Starter' },
-      { id: 'cs-mojito', name: 'Fresh Lemon Mint Mojito', price: 60, image: 'https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=300&q=80', tag: 'Beverage' },
-      { id: 'cs-schez', name: 'Extra Hot Schezwan Dip', price: 20, image: 'https://images.unsplash.com/photo-1596797038530-2c107229654b?w=300&q=80', tag: 'Dip' },
-    ];
-  }
-
-  return [
-    { id: 'cs-milk', name: 'Amul Taaza Milk (500ml)', price: 27, image: 'https://images.unsplash.com/photo-1563636619-e9143da7973b?w=300&q=80', tag: 'Daily' },
-    { id: 'cs-bread', name: 'Fresh Whole Wheat Bread', price: 45, image: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=300&q=80', tag: 'Daily' },
-    { id: 'cs-snack', name: 'Lays Magic Masala Chips', price: 20, image: 'https://images.unsplash.com/photo-1566478989037-eec170784d0b?w=300&q=80', tag: 'Snack' },
-  ];
+/** Turns MenuItem.specs into displayable rows. Only real, admin/restaurant-entered values are shown. */
+function buildSpecRows(specs: any): { label: string; value: string }[] {
+  if (!specs || typeof specs !== 'object') return [];
+  const rows: { label: string; value: string }[] = [];
+  Object.entries(specs).forEach(([key, raw]) => {
+    if (HIDDEN_SPEC_KEYS.includes(key)) return;
+    let value: string | null = null;
+    if (typeof raw === 'string') value = raw.trim();
+    else if (typeof raw === 'number' && Number.isFinite(raw)) value = String(raw);
+    else if (typeof raw === 'boolean') value = raw ? 'Yes' : 'No';
+    else if (Array.isArray(raw)) value = raw.filter((x) => typeof x === 'string' || typeof x === 'number').join(', ');
+    if (!value) return;
+    rows.push({ label: key === 'weight' ? 'Pack Size' : humanizeKey(key), value });
+  });
+  return rows;
 }
 
-// ── Genuine Customer Reviews System (Dynamic from Orders & DB) ─────────────────
+function starsFor(avg: number): string {
+  const full = Math.round(avg);
+  return '★'.repeat(Math.max(0, Math.min(5, full))) + '☆'.repeat(Math.max(0, 5 - Math.min(5, full)));
+}
 
-// ── Master Hardcoded PDP Data for Static Slugs ────────────────────────────────
-const MASTER_PDP_DATA: Record<string, any> = {
-  'brand-guava': {
-    id: 'brand-guava',
-    name: 'B Natural Guava Fruit Beverage',
-    price: 88,
-    originalPrice: 115,
-    discount: '23% OFF',
-    weight: '1 L',
-    images: [
-      'https://images.unsplash.com/photo-1534531173927-aeb928d54385?w=800&q=80',
-      'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800&q=80',
-    ],
-    description:
-      'Enjoy the luscious taste of pink guavas with B Natural Guava Fruit Beverage. Crafted to perfection, it brings the authentic flavor and texture of real fruits directly to your table.',
-    rating: 4.3,
-    ratingCount: 68,
-    verifiedShops: ['Campus Kirana', 'Campus SuperStore', 'Campus Mart'],
-    packSizes: [
-      { size: '1 L', price: 88, originalPrice: 115, discount: '23% OFF' },
-      { size: '200 ml', price: 20, originalPrice: 25, discount: '20% OFF' },
-    ],
-  },
-  'bread-wholewheat': {
-    id: 'bread-wholewheat',
-    name: 'Campus Bakery Whole Wheat Bread',
-    price: 45,
-    originalPrice: 50,
-    discount: '10% OFF',
-    weight: '400g',
-    images: [
-      'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=800&q=80',
-      'https://images.unsplash.com/photo-1549931319-a545dcf3bc73?w=800&q=80',
-    ],
-    description:
-      'Freshly baked every morning on campus. Our whole wheat loaf is packed with fiber and essential nutrients, perfect for sandwiches, toast, or a quick snack.',
-    rating: 4.8,
-    ratingCount: 42,
-    verifiedShops: ['Campus Bakery', 'Campus Central Mart', 'Campus Kirana'],
-    packSizes: [
-      { size: '400g', price: 45, originalPrice: 50, discount: '10% OFF' },
-      { size: '800g', price: 85, originalPrice: 95, discount: '11% OFF' },
-    ],
-  },
-  'fruit-apple': {
-    id: 'fruit-apple',
-    name: 'Royal Gala Apple',
-    price: 149,
-    originalPrice: 199,
-    discount: '25% OFF',
-    weight: '1 kg (4-5 pcs)',
-    images: ['https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=800&q=80'],
-    description: 'Crisp, sweet, and juicy Royal Gala apples imported fresh daily. High in dietary fiber and vitamin C.',
-    rating: 4.8,
-    ratingCount: 312,
-    verifiedShops: ['Fresho Fruit Hub', 'Campus Organic Store'],
-    packSizes: [
-      { size: '1 kg', price: 149, originalPrice: 199, discount: '25% OFF' },
-      { size: '500 g', price: 79, originalPrice: 105, discount: '24% OFF' },
-    ],
-  },
+/** Real photo, or a neutral (non-photographic) placeholder when there is none or it fails to load. */
+function ProductPhoto({ uri, style, emoji, isDark }: { uri: string | null; style: any; emoji?: string; isDark: boolean }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { setFailed(false); }, [uri]);
+  if (!uri || failed) {
+    return (
+      <View style={[style, { alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#1A1D24' : '#F1F5F9' }]}>
+        <Text style={{ fontSize: 44, opacity: 0.8 }}>{emoji || '🛍️'}</Text>
+      </View>
+    );
+  }
+  return <Image source={{ uri }} style={style} resizeMode="cover" onError={() => setFailed(true)} />;
+}
+
+type LoadState = 'loading' | 'ready' | 'notfound' | 'error';
+
+// Booking-only services (backend utils/vendorTypes.js) open their booking page
+const SERVICE_CATEGORY_BY_VENDOR: Record<string, string> = {
+  REPAIRS: 'repairs',
+  PRINT: 'print',
+  LAUNDRY: 'laundry',
+  TAILORING: 'tailoring',
 };
 
 export default function ProductDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const cleanId = (Array.isArray(id) ? id[0] : id || '').replace(/\/$/, '');
+  const cleanId = (Array.isArray(id) ? id[0] : id || '').replace(/\/$/, '').trim();
 
-  const { cart, addToCart, updateQuantity, clearCart } = useCart();
+  const { cart, addToCart, updateQuantity } = useCart();
+  const { user } = useAuth();
   const { isDark, colors } = useTheme();
+  const [customizing, setCustomizing] = useState(false);
 
-  const handleSafeAddToCart = (itemPayload: any, successMsg?: string) => {
-    try {
-      addToCart(itemPayload);
-      if (successMsg) Alert.alert('Added 🛒', successMsg);
-    } catch (err: any) {
-      if (err.message === 'MULTIPLE_RESTAURANTS') {
-        Alert.alert(
-          'Clear Basket?',
-          'Your basket contains items from another store/restaurant. Clear it to add this item?',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Clear & Add',
-              onPress: () => {
-                clearCart();
-                setTimeout(() => {
-                  addToCart(itemPayload);
-                  if (successMsg) Alert.alert('Added 🛒', successMsg);
-                }, 100);
-              }
-            }
-          ]
-        );
-      }
-    }
-  };
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const [product, setProduct] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [selectedPackIndex, setSelectedPackIndex] = useState(0);
-  const [showShopsModal, setShowShopsModal] = useState(false);
-  const [isWishlisted, setIsWishlisted] = useState(false);
+  const [loadState, setLoadState] = useState<LoadState>('loading');
+  const [loadMessage, setLoadMessage] = useState('');
   const [activeImgIndex, setActiveImgIndex] = useState(0);
   const [descExpanded, setDescExpanded] = useState(false);
   const [imgWidth, setImgWidth] = useState(SW);
-
+  const [store, setStore] = useState<any>(null);
+  const [moreItems, setMoreItems] = useState<any[]>([]);
+  // Saved items live on this device (same 'zenvy_wishlist' list the Others tab shows).
+  const [isSaved, setIsSaved] = useState(false);
   useEffect(() => {
-    AsyncStorage.getItem('zenvy_wishlist').then(stored => {
-      if (stored) {
-        try {
-          const ids = JSON.parse(stored);
-          if (Array.isArray(ids) && ids.includes(cleanId)) {
-            setIsWishlisted(true);
-          }
-        } catch (e) {}
-      }
-    });
+    if (!cleanId) return;
+    AsyncStorage.getItem('zenvy_wishlist').then((raw) => {
+      if (!mountedRef.current || !raw) return;
+      try {
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) setIsSaved(list.some((f: any) => (typeof f === 'string' ? f : f?.id) === cleanId));
+      } catch {}
+    }).catch(() => {});
   }, [cleanId]);
 
-  const handleToggleWishlist = async () => {
-    const nextState = !isWishlisted;
-    setIsWishlisted(nextState);
-    try {
-      const stored = await AsyncStorage.getItem('zenvy_wishlist');
-      let list: string[] = stored ? JSON.parse(stored) : [];
-      if (!Array.isArray(list)) list = [];
-      if (nextState) {
-        if (!list.includes(cleanId)) list.push(cleanId);
-      } else {
-        list = list.filter(id => id !== cleanId);
-      }
-      await AsyncStorage.setItem('zenvy_wishlist', JSON.stringify(list));
-    } catch (e) {}
-  };
-
-  // Reviews state
+  // Reviews (server is the single source of truth)
   const [reviewsList, setReviewsList] = useState<any[]>([]);
-  const [calculatedRating, setCalculatedRating] = useState<number>(4.8);
-  const [totalRatingCount, setTotalRatingCount] = useState<number>(42);
+  const [averageRating, setAverageRating] = useState(0);
+  const [totalRatingCount, setTotalRatingCount] = useState(0);
+  const [distribution, setDistribution] = useState<Record<string, number>>({});
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [userRating, setUserRating] = useState(5);
   const [userReviewText, setUserReviewText] = useState('');
-  const [userName, setUserName] = useState('');
-  const [userBlock, setUserBlock] = useState('GH-2 Block');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [submittingReview, setSubmittingReview] = useState(false);
+  const submittingRef = useRef(false);
 
-  const REVIEW_TAGS = ['Super Tasty 🔥', 'Generous Portion 🍛', '8-Min Delivery ⚡', 'Spicy & Hot 🌶️', 'Best Value 💰'];
-
-  // Load genuine reviews from backend API & persistent local storage
-  const loadReviews = async (pName?: string, pCat?: string) => {
+  const loadReviews = useCallback(async (productId: string) => {
     try {
-      let combined: any[] = [];
-
-      // 1. Fetch genuine reviews from backend
-      try {
-        const res = await apiFetch(`/api/users/products/${cleanId}/reviews`);
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data.reviews)) {
-            combined = data.reviews;
-          }
-        }
-      } catch (apiErr) {
-        console.warn('[Reviews API Error]', apiErr);
-      }
-
-      // 2. Also load any local genuine user reviews saved on this device
-      try {
-        const stored = await AsyncStorage.getItem(`zenvy_reviews_${cleanId}`);
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed)) {
-            parsed.forEach((p: any) => {
-              if (!combined.some((c: any) => c.id === p.id)) {
-                combined.unshift(p);
-              }
-            });
-          }
-        }
-      } catch (storeErr) {
-        console.warn('[Local Reviews Error]', storeErr);
-      }
-
-      setReviewsList(combined);
-
-      // Compute exact authentic rating
-      if (combined.length > 0) {
-        const sum = combined.reduce((acc, r) => acc + (Number(r.rating) || 5), 0);
-        const avg = parseFloat((sum / combined.length).toFixed(1));
-        setCalculatedRating(avg);
-        setTotalRatingCount(combined.length);
-      } else {
-        setCalculatedRating(4.8);
-        setTotalRatingCount(0);
-      }
+      const res = await apiFetch(`/api/users/products/${encodeURIComponent(productId)}/reviews`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!mountedRef.current) return;
+      const list = Array.isArray(data?.reviews) ? data.reviews : [];
+      setReviewsList(list);
+      setTotalRatingCount(Number(data?.totalCount) || list.length);
+      setAverageRating(Number(data?.averageRating) || 0);
+      setDistribution(data?.distribution && typeof data.distribution === 'object' ? data.distribution : {});
     } catch (e) {
       console.warn('[Reviews] Failed to load reviews:', e);
     }
-  };
+  }, []);
 
-  useEffect(() => {
-    let cancelled = false;
+  const loadStoreAndMore = useCallback(async (restaurantId: string, productId: string) => {
+    try {
+      const res = await apiFetch(`/api/users/restaurants/${encodeURIComponent(restaurantId)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!mountedRef.current) return;
+      setStore(data);
+      const menu = Array.isArray(data?.menu) ? data.menu : [];
+      setMoreItems(
+        menu
+          .filter((m: any) => m && (m.id || m._id) && (m.id || m._id) !== productId && m.isAvailable !== false)
+          .slice(0, 10)
+      );
+    } catch (e) {
+      console.warn('[ProductDetail] store load failed:', e);
+    }
+  }, []);
 
-    const loadProduct = async () => {
-      setLoading(true);
-
-      // 1. Try local hardcoded data first
-      const local = MASTER_PDP_DATA[cleanId];
-      if (local) {
-        const smartAttrs = generateSmartAttributes(local.name, local.category, local.restaurantName, local.isVegetarian);
-        const crossSells = generateSmartCrossSells(local.name, local.category);
-        setProduct({
-          ...local,
-          attributes: smartAttrs,
-          crossSells,
-        });
-        await loadReviews(local.name, local.category);
-        setLoading(false);
+  const loadProduct = useCallback(async () => {
+    setLoadState('loading');
+    setLoadMessage('');
+    if (!cleanId || !UUID_RE.test(cleanId)) {
+      setProduct(null);
+      setLoadState('notfound');
+      return;
+    }
+    try {
+      const res = await apiFetch(`/api/users/products/${encodeURIComponent(cleanId)}`);
+      const data = await res.json().catch(() => null);
+      if (!mountedRef.current) return;
+      if (res.status === 404) {
+        setProduct(null);
+        setLoadMessage(data?.message || '');
+        setLoadState('notfound');
         return;
       }
-
-      // 2. Fetch from API for dynamic items
-      try {
-        const res = await apiFetch(`/api/users/products/${cleanId}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (!cancelled) {
-            let discount: string | undefined;
-            if (data.originalPrice && data.originalPrice > data.price) {
-              const pct = Math.round(((data.originalPrice - data.price) / data.originalPrice) * 100);
-              discount = `${pct}% OFF`;
-            }
-
-            const smartAttrs = generateSmartAttributes(data.name, data.category, data.restaurantName, data.isVegetarian);
-            const crossSells = generateSmartCrossSells(data.name, data.category);
-
-            const foodImg = getFoodImage(data.name, data.category, data.imageUrl || data.image);
-            const resolved = {
-              id: data.id || data._id || cleanId,
-              name: data.name || 'Zenvy Specialty Dish',
-              price: data.price ?? 99,
-              originalPrice: data.originalPrice ?? data.price,
-              discount,
-              weight: data.weight || data.quantity || '1 Serving',
-              images: (data.images && data.images.length > 0 && data.images[0]) ? data.images.map((im: string) => getFoodImage(data.name, data.category, im)) : [foodImg],
-              description: data.description || 'Authentic campus favorite prepared fresh on order and delivered in sealed thermal packaging.',
-              rating: data.rating ?? 4.8,
-              ratingCount: data.ratingCount ?? 48,
-              verifiedShops: data.verifiedShops || [data.restaurantName || 'Campus Central Kitchen'],
-              packSizes: data.packSizes || [{ size: data.weight || 'Standard Portion', price: data.price, originalPrice: data.originalPrice, discount }],
-              attributes: smartAttrs,
-              crossSells,
-              isVegetarian: data.isVegetarian,
-              category: data.category,
-              restaurantName: data.restaurantName,
-              restaurantId: data.restaurantId,
-            };
-            setProduct(resolved);
-            await loadReviews(resolved.name, resolved.category);
-          }
-        } else {
-          if (!cancelled) {
-            const cleanName = cleanId.replace(/[-_]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
-            const smartAttrs = generateSmartAttributes(cleanName);
-            const crossSells = generateSmartCrossSells(cleanName);
-            const foodImg = getFoodImage(cleanName);
-            setProduct({
-              id: cleanId,
-              name: cleanName,
-              price: 99,
-              originalPrice: 120,
-              discount: '18% OFF',
-              weight: '1 Serving',
-              images: [foodImg],
-              description: 'Freshly prepared specialty dish delivered directly to your campus room.',
-              rating: 4.7,
-              ratingCount: 52,
-              verifiedShops: ['Campus Central Mart'],
-              packSizes: [{ size: '1 Serving', price: 99, originalPrice: 120, discount: '18% OFF' }],
-              attributes: smartAttrs,
-              crossSells,
-            });
-            await loadReviews(cleanName);
-          }
-        }
-      } catch (err) {
-        console.warn('[ProductDetail] API fetch failed, fallback used:', err);
-      } finally {
-        if (!cancelled) setLoading(false);
+      if (!res.ok || !data) {
+        setLoadMessage(data?.message || '');
+        setLoadState('error');
+        return;
       }
-    };
+      const price = Number(data.price);
+      const originalPrice = Number(data.originalPrice) > price ? Number(data.originalPrice) : null;
+      const discountPercent = originalPrice ? Math.round((1 - price / originalPrice) * 100) : null;
+      const images = [data.imageUrl, data.image, ...(Array.isArray(data.images) ? data.images : [])]
+        .map(getRealImageUri)
+        .filter((u, i, arr): u is string => !!u && arr.indexOf(u) === i);
+      let specs = data.specs;
+      if (typeof specs === 'string') { try { specs = JSON.parse(specs); } catch { specs = {}; } }
+      const resolved = {
+        id: data.id || data._id,
+        name: data.name || '',
+        price,
+        originalPrice,
+        discountPercent: discountPercent && discountPercent > 0 ? discountPercent : null,
+        weight: data.weight || null,
+        images,
+        emoji: specs?.emoji || null,
+        description: (data.description || '').trim(),
+        isVegetarian: data.isVegetarian,
+        category: data.category,
+        restaurantName: data.restaurantName || null,
+        restaurantId: data.restaurantId || null,
+        vendorType: data.vendorType || null,
+        isAvailable: data.isAvailable !== false,
+        orderable: data.orderable !== false && !!data.restaurantId && !data.directOrderOnly && !isLocalVendorType(data.vendorType),
+        bookingOnly: !!data.bookingOnly,
+        // CampusBites stall item: display-only, ordered directly from the vendor
+        directOrderOnly: !!data.directOrderOnly || isLocalVendorType(data.vendorType),
+        isVaultItem: !!data.isVaultItem,
+        storeIsOpen: data.storeIsOpen !== false,
+        storeClosedReason: data.storeClosedReason || null,
+        specRows: buildSpecRows(specs),
+        specs: specs && typeof specs === 'object' ? specs : null,
+        tags: Array.isArray(data.tags) ? data.tags.filter((t: any) => typeof t === 'string') : [],
+        isEliteOnly: !!data.isEliteOnly,
+      };
+      setProduct(resolved);
+      setActiveImgIndex(0);
+      setLoadState('ready');
+      loadReviews(resolved.id);
+      if (resolved.restaurantId) loadStoreAndMore(resolved.restaurantId, resolved.id);
+    } catch (err) {
+      console.warn('[ProductDetail] load failed:', err);
+      if (mountedRef.current) setLoadState('error');
+    }
+  }, [cleanId, loadReviews, loadStoreAndMore]);
 
+  useEffect(() => {
+    setStore(null);
+    setMoreItems([]);
+    setReviewsList([]);
+    setTotalRatingCount(0);
+    setAverageRating(0);
+    setDistribution({});
     loadProduct();
-    return () => {
-      cancelled = true;
-    };
-  }, [cleanId]);
+  }, [loadProduct]);
+
+  const goBack = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/(tabs)' as any);
+  };
+
+  /**
+   * Swiggy-style single-store basket. CartContext.addToCart owns the "Replace basket?" prompt
+   * (it keeps Mega Basket custom requests and queues rapid taps), so we only flag add-ons here.
+   */
+  const addWithStoreCheck = (payload: any) => {
+    const isAddOn = String(product?.vendorType || '').toUpperCase() === 'EXTRAS';
+    addToCart(isAddOn ? { ...payload, isAddOn: true } : payload);
+  };
 
   const handleToggleTag = (tag: string) => {
-    if (selectedTags.includes(tag)) {
-      setSelectedTags(selectedTags.filter((t) => t !== tag));
-    } else {
-      setSelectedTags([...selectedTags, tag]);
-    }
+    setSelectedTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]));
+  };
+
+  const closeReviewModal = () => {
+    if (submittingRef.current) return;
+    setShowReviewModal(false);
   };
 
   const handleSaveReview = async () => {
-    if (!userReviewText.trim()) {
-      Alert.alert('Review Required', 'Please write a brief comment about your experience.');
-      return;
-    }
-
+    if (submittingRef.current || !product) return;
+    submittingRef.current = true;
     setSubmittingReview(true);
     try {
-      const formattedComment = userReviewText.trim() + (selectedTags.length > 0 ? ` • (${selectedTags.join(', ')})` : '');
-      const newReview = {
-        id: 'user-rev-' + Date.now(),
-        name: userName.trim() || 'Verified Customer',
-        block: userBlock || 'Campus Resident',
-        rating: userRating,
-        time: 'Just now',
-        comment: formattedComment,
-        verified: true,
-        helpfulCount: 1,
-      };
-
-      // 1. Post to Backend API
-      try {
-        await apiFetch(`/api/users/products/${cleanId}/reviews`, {
-          method: 'POST',
-          body: JSON.stringify({
-            rating: userRating,
-            comment: formattedComment,
-            tags: selectedTags,
-            productName: product?.name || cleanId,
-          }),
-        });
-      } catch (apiErr) {
-        console.warn('[Review POST Error]', apiErr);
+      const res = await apiFetch(`/api/users/products/${encodeURIComponent(product.id)}/reviews`, {
+        method: 'POST',
+        body: JSON.stringify({
+          rating: userRating,
+          comment: userReviewText.trim(),
+          tags: selectedTags,
+          productName: product.name,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!mountedRef.current) return;
+      if (res.status === 401) {
+        Alert.alert('Please log in', 'Log in to share your review.', [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'Log in', onPress: () => { setShowReviewModal(false); router.push('/login' as any); } },
+        ]);
+        return;
       }
-
-      // 2. Save to local device storage
-      const stored = await AsyncStorage.getItem(`zenvy_reviews_${cleanId}`);
-      const existing = stored ? JSON.parse(stored) : [];
-      const updated = [newReview, ...existing.filter((e: any) => e.id !== newReview.id)];
-      await AsyncStorage.setItem(`zenvy_reviews_${cleanId}`, JSON.stringify(updated));
-
-      // 3. Immediately reflect in UI
-      const combined = [newReview, ...reviewsList.filter((r: any) => r.id !== newReview.id)];
-      setReviewsList(combined);
-
-      const sum = combined.reduce((acc: number, r: any) => acc + (Number(r.rating) || 5), 0);
-      const avg = parseFloat((sum / combined.length).toFixed(1));
-      setCalculatedRating(avg);
-      setTotalRatingCount(combined.length);
-
+      if (!res.ok) {
+        Alert.alert('Could not post review', data?.message || 'Something went wrong. Please try again.');
+        return;
+      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       setShowReviewModal(false);
       setUserReviewText('');
       setSelectedTags([]);
-      Alert.alert('⭐ Review Verified & Published!', 'Your genuine feedback has been recorded and is now live on this dish.');
+      setUserRating(5);
+      Alert.alert('Thanks for your review! ⭐', data?.message || 'Your review is now live.');
+      loadReviews(product.id);
     } catch (e) {
-      Alert.alert('Error', 'Could not save review. Please try again.');
+      if (mountedRef.current) Alert.alert('No connection', 'Could not reach Zenvy. Check your internet and try again.');
     } finally {
-      setSubmittingReview(false);
+      submittingRef.current = false;
+      if (mountedRef.current) setSubmittingReview(false);
     }
   };
 
-  if (loading) {
+  if (loadState === 'loading') {
     return (
       <View style={[styles.loadingBox, { backgroundColor: colors.bg }]}>
         <ActivityIndicator size="large" color={COLORS.red} />
         <Text style={{ marginTop: 12, fontSize: 11, fontWeight: '800', color: COLORS.inkMuted }}>
-          SYNCHRONIZING DISH SPECS...
+          LOADING PRODUCT...
         </Text>
       </View>
     );
   }
 
-  if (!product) {
+  if (loadState !== 'ready' || !product) {
+    const isError = loadState === 'error';
     return (
       <View style={[styles.container, { backgroundColor: colors.bg, padding: 24, justifyContent: 'center', alignItems: 'center' }]}>
         <TouchableOpacity
           style={{ position: 'absolute', top: Platform.OS === 'android' ? 44 : 54, left: 20, width: 40, height: 40, borderRadius: 20, backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB', alignItems: 'center', justifyContent: 'center' }}
-          onPress={() => router.back()}
+          onPress={goBack}
+          accessibilityLabel="Go back"
         >
           <Text style={{ fontSize: 18, color: isDark ? '#FFF' : '#000' }}>←</Text>
         </TouchableOpacity>
-        <Text style={{ fontSize: 44, marginBottom: 16 }}>🍱</Text>
-        <Text style={{ fontSize: 18, fontWeight: '900', color: colors.text, letterSpacing: 2, textAlign: 'center', marginBottom: 8 }}>
-          DISH UNAVAILABLE
+        <Text style={{ fontSize: 44, marginBottom: 16 }}>{isError ? '📡' : '🍱'}</Text>
+        <Text style={{ fontSize: 18, fontWeight: '900', color: colors.text, letterSpacing: 1, textAlign: 'center', marginBottom: 8 }}>
+          {isError ? "Couldn't load this item" : 'Item not available'}
         </Text>
         <Text style={{ fontSize: 12, color: colors.textSecondary, textAlign: 'center', lineHeight: 18, marginBottom: 24, paddingHorizontal: 20 }}>
-          This item is currently out of stock or rotated off the active kitchen menu.
+          {isError
+            ? (loadMessage || 'Check your internet connection and try again.')
+            : (loadMessage || 'This item is no longer on the menu. Explore what else is available near you.')}
         </Text>
-        <TouchableOpacity
-          style={{ backgroundColor: COLORS.red, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 16, ...SHADOWS.redGlow }}
-          onPress={() => router.replace('/(tabs)' as any)}
-        >
-          <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '900', letterSpacing: 2 }}>EXPLORE CAMPUS MENU →</Text>
-        </TouchableOpacity>
+        {isError ? (
+          <TouchableOpacity
+            style={{ backgroundColor: COLORS.red, paddingHorizontal: 28, paddingVertical: 14, borderRadius: 16, ...SHADOWS.redGlow }}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+              loadProduct();
+            }}
+          >
+            <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '900', letterSpacing: 1.5 }}>RETRY</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={{ backgroundColor: COLORS.red, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 16, ...SHADOWS.redGlow }}
+            onPress={() => router.replace('/(tabs)' as any)}
+          >
+            <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '900', letterSpacing: 2 }}>EXPLORE MENU →</Text>
+          </TouchableOpacity>
+        )}
       </View>
     );
   }
 
-  const currentCartItem = cart.find((i: any) => i.id === product.id || i.menuItemId === product.id);
-  const qty = currentCartItem ? currentCartItem.quantity : 0;
-  const currentPack = product.packSizes ? product.packSizes[selectedPackIndex] || product : product;
-  const { highlights, remaining } = parseProductHighlights(product.attributes || [], product.isVegetarian);
+  // The stepper edits the plain (no-customization) basket line, whose cartKey is the item id.
+  const qty = cart.find((i: any) => i.cartKey === product.id)?.quantity || 0;
+  const showDietMark = typeof product.isVegetarian === 'boolean' && !NON_FOOD_TYPES.includes(String(product.vendorType || '').toUpperCase());
+  const storeEta: string | null = store?.time || null;
+  const eliteLocked = product.isEliteOnly && !(user as any)?.isElite;
+  const canAdd = product.orderable && !!product.restaurantId && !eliteLocked && !product.directOrderOnly;
+  const directOrder = !!product.directOrderOnly;
+  const stallWa = directOrder ? vendorWhatsappNumber(store) : null;
+  const stallCall = directOrder ? vendorCallNumber(store) : null;
+  const customizable = isCustomizable({ specs: product.specs });
+  const unavailableReason: string = directOrder
+    ? DIRECT_ORDER_COPY
+    : product.isVaultItem
+    ? 'Daily deal — claim it from Home'
+    : eliteLocked
+      ? 'For Zenvy Elite members only'
+      : product.bookingOnly
+      ? 'This is a doorstep service — book a pickup instead'
+      : !product.isAvailable
+        ? 'Sold out right now'
+        : !product.storeIsOpen
+          ? (product.storeClosedReason || 'Store is closed right now')
+          : 'Not available to order right now';
+  const images: (string | null)[] = product.images.length > 0 ? product.images : [null];
 
-  const handleShare = () => {
-    Clipboard.setString(`Check out ${product.name} on Zenvy: https://zenvy.com/products/${product.id}`);
-    Alert.alert('Link Copied', 'Product link copied to clipboard!');
+  const productPayload = () => ({
+    id: product.id,
+    name: product.name,
+    price: product.price,
+    image: product.images[0] || '',
+    restaurantId: product.restaurantId,
+    restaurantName: product.restaurantName || store?.name || '',
+  });
+
+  const handleToggleSaved = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    const next = !isSaved;
+    setIsSaved(next);
+    try {
+      const raw = await AsyncStorage.getItem('zenvy_wishlist');
+      let list: any[] = [];
+      try { list = raw ? JSON.parse(raw) : []; } catch { list = []; }
+      if (!Array.isArray(list)) list = [];
+      list = list.filter((f: any) => (typeof f === 'string' ? f : f?.id) !== product.id);
+      if (next) {
+        list.push({
+          id: product.id,
+          title: product.name,
+          subtitle: [product.restaurantName, product.weight].filter(Boolean).join(' • ') || 'Campus store',
+          price: `₹${product.price}`,
+          image: product.images[0] || '',
+          targetRoute: `/products/${product.id}`,
+        });
+      }
+      await AsyncStorage.setItem('zenvy_wishlist', JSON.stringify(list));
+    } catch {
+      if (mountedRef.current) setIsSaved(!next);
+    }
+  };
+
+  const handleShare = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    try {
+      await Share.share({
+        message: `Check out ${product.name}${product.restaurantName ? ` from ${product.restaurantName}` : ''} on Zenvy: zenvy://products/${product.id}`,
+      });
+    } catch (e) {
+      // user dismissed the share sheet
+    }
   };
 
   return (
     <View style={[styles.container, { backgroundColor: isDark ? '#0B0C10' : '#F8FAFC' }]}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
-        {/* ═════════════════════════════════════════════════════════════════════ */}
-        {/* ZONE 1 — IMAGE GALLERY                                                */}
-        {/* ═════════════════════════════════════════════════════════════════════ */}
+        {/* ZONE 1 — IMAGE GALLERY */}
         <View
           style={styles.imageGalleryContainer}
           onLayout={(e) => {
@@ -673,7 +478,7 @@ export default function ProductDetailScreen() {
           }}
         >
           <FlatList
-            data={product.images || [product.image]}
+            data={images}
             horizontal
             pagingEnabled
             showsHorizontalScrollIndicator={false}
@@ -683,9 +488,10 @@ export default function ProductDetailScreen() {
             }}
             keyExtractor={(_, index) => index.toString()}
             renderItem={({ item }) => (
-              <SafeImage
-                source={{ uri: item || getFoodImage(product?.name, product?.category) }}
-                fallbackUri={getFoodImage(product?.name, product?.category)}
+              <ProductPhoto
+                uri={item}
+                emoji={product.emoji}
+                isDark={isDark}
                 style={[styles.galleryImage, { width: imgWidth || SW }]}
               />
             )}
@@ -693,428 +499,308 @@ export default function ProductDetailScreen() {
 
           {/* Floating Top Nav Actions */}
           <View style={styles.galleryTopNav}>
-            <TouchableOpacity 
-              style={styles.iconCircleBtn} 
-              onPress={() => {
-                if (router.canGoBack()) {
-                  router.back();
-                } else {
-                  router.replace('/(tabs)' as any);
-                }
-              }}
-            >
+            <TouchableOpacity style={styles.iconCircleBtn} onPress={goBack} accessibilityLabel="Go back">
               <Text style={styles.iconCircleText}>‹</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.iconCircleBtn} onPress={handleToggleWishlist}>
-              <Text style={{ fontSize: 16 }}>{isWishlisted ? '❤️' : '🤍'}</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity style={styles.iconCircleBtn} onPress={handleToggleSaved} accessibilityLabel={isSaved ? 'Remove from saved' : 'Save item'}>
+                <Text style={{ fontSize: 16 }}>{isSaved ? '❤️' : '🤍'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.iconCircleBtn} onPress={handleShare} accessibilityLabel="Share">
+                <Text style={{ fontSize: 15 }}>📤</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
-          {/* Discount Ribbon top-left over image */}
-          {currentPack.discount && (
+          {product.discountPercent ? (
             <View style={styles.galleryDiscountRibbon}>
-              <Text style={styles.galleryDiscountText}>{currentPack.discount}</Text>
+              <Text style={styles.galleryDiscountText}>{product.discountPercent}% OFF</Text>
             </View>
-          )}
+          ) : null}
 
-          {/* Carousel Dot Indicators */}
-          {product.images?.length > 1 && (
+          {images.length > 1 && (
             <View style={styles.dotRow}>
-              {product.images.map((_: any, i: number) => (
+              {images.map((_: any, i: number) => (
                 <View key={i} style={[styles.dot, i === activeImgIndex && styles.dotActive]} />
               ))}
             </View>
           )}
         </View>
 
-        {/* ═════════════════════════════════════════════════════════════════════ */}
-        {/* ZONE 2 — CORE INFO SHEET (Swiggy / Zepto standard)                   */}
-        {/* ═════════════════════════════════════════════════════════════════════ */}
+        {/* ZONE 2 — CORE INFO SHEET */}
         <View style={[styles.coreInfoSheet, { backgroundColor: isDark ? '#141418' : '#FFFFFF' }]}>
-          {/* Top Badges Row: Swiggy/Zepto Express Delivery, FSSAI Veg/Non-Veg, Rating */}
           <View style={styles.topBadgesRow}>
-            {/* Express Delivery Badge */}
-            <View style={styles.expressBadge}>
-              <Text style={styles.expressBolt}>⚡</Text>
-              <Text style={styles.expressText}>8 MINS DELIVERY</Text>
-            </View>
-
-            {/* Authentic FSSAI Veg / Non-Veg Badge */}
-            <View style={[
-              styles.fssaiBadge,
-              product.isVegetarian ? styles.fssaiVegBadge : styles.fssaiNonVegBadge
-            ]}>
-              <View style={[
-                styles.fssaiSquare,
-                { borderColor: product.isVegetarian ? '#16A34A' : '#DC2626' }
-              ]}>
-                <View style={[
-                  styles.fssaiCircle,
-                  { backgroundColor: product.isVegetarian ? '#16A34A' : '#DC2626' }
-                ]} />
+            {storeEta ? (
+              <View style={styles.expressBadge}>
+                <Text style={styles.expressBolt}>⏱</Text>
+                <Text style={styles.expressText}>{String(storeEta).toUpperCase()}</Text>
               </View>
-              <Text style={[
-                styles.fssaiText,
-                { color: product.isVegetarian ? '#15803D' : '#B91C1C' }
-              ]}>
-                {product.isVegetarian ? 'PURE VEG' : 'NON-VEG'}
-              </Text>
-            </View>
+            ) : null}
 
-            {/* Gold Rating Pill */}
+            {showDietMark && (
+              <View style={[styles.fssaiBadge, product.isVegetarian ? styles.fssaiVegBadge : styles.fssaiNonVegBadge]}>
+                <View style={[styles.fssaiSquare, { borderColor: product.isVegetarian ? '#16A34A' : '#DC2626' }]}>
+                  <View style={[styles.fssaiCircle, { backgroundColor: product.isVegetarian ? '#16A34A' : '#DC2626' }]} />
+                </View>
+                <Text style={[styles.fssaiText, { color: product.isVegetarian ? '#15803D' : '#B91C1C' }]}>
+                  {product.isVegetarian ? 'VEG' : 'NON-VEG'}
+                </Text>
+              </View>
+            )}
+
             <View style={styles.topRatingPill}>
               <Text style={styles.topRatingStar}>★</Text>
-              <Text style={styles.topRatingScore}>{calculatedRating.toFixed(1)}</Text>
-              <Text style={styles.topRatingCount}>({totalRatingCount}+)</Text>
+              {totalRatingCount > 0 ? (
+                <>
+                  <Text style={styles.topRatingScore}>{averageRating.toFixed(1)}</Text>
+                  <Text style={styles.topRatingCount}>({totalRatingCount})</Text>
+                </>
+              ) : (
+                <Text style={styles.topRatingScore}>New</Text>
+              )}
             </View>
           </View>
 
-          {/* Product Title */}
           <Text style={[styles.productNameTitle, { color: isDark ? '#FFF' : '#0F172A' }]}>
             {product.name}
           </Text>
 
-          {/* Kitchen / Restaurant Brand Pill */}
-          <View style={styles.kitchenStoreRow}>
-            <Text style={{ fontSize: 13, marginRight: 4 }}>🏪</Text>
-            <Text style={[styles.kitchenStoreName, { color: isDark ? '#CBD5E1' : '#334155' }]}>
-              {product.restaurantName || 'Campus Central Kitchen'}
+          {product.restaurantName ? (
+            <TouchableOpacity
+              style={styles.kitchenStoreRow}
+              activeOpacity={0.7}
+              disabled={!product.restaurantId}
+              onPress={() => router.push(`/restaurant/${product.restaurantId}` as any)}
+            >
+              <Text style={{ fontSize: 13, marginRight: 4 }}>🏪</Text>
+              <Text style={[styles.kitchenStoreName, { color: isDark ? '#CBD5E1' : '#334155' }]}>
+                {product.restaurantName}
+              </Text>
+              {product.weight ? (
+                <>
+                  <View style={styles.kitchenDot} />
+                  <Text style={[styles.kitchenStoreName, { color: isDark ? '#94A3B8' : '#64748B' }]}>{product.weight}</Text>
+                </>
+              ) : null}
+            </TouchableOpacity>
+          ) : null}
+
+          <View style={styles.priceContainerRow}>
+            <Text style={[styles.priceCurrentBig, { color: isDark ? '#FFF' : '#0F172A' }]}>
+              ₹{product.price}
             </Text>
-            <View style={styles.kitchenDot} />
-            <Text style={styles.kitchenVerifiedText}>✓ FSSAI Verified</Text>
+            {product.originalPrice ? (
+              <Text style={styles.priceOriginalStrikethrough}>₹{product.originalPrice}</Text>
+            ) : null}
+            {product.discountPercent ? (
+              <View style={styles.priceDiscountChip}>
+                <Text style={styles.priceDiscountChipText}>{product.discountPercent}% OFF</Text>
+              </View>
+            ) : null}
           </View>
 
-          {/* Unit / Pack Size Selector */}
-          {product.packSizes && product.packSizes.length > 1 && (
-            <View style={styles.unitSelectorRow}>
-              {product.packSizes.map((pack: any, index: number) => {
-                const isSelected = selectedPackIndex === index;
+          {!canAdd && (
+            <View style={[styles.priceGuaranteeCard, { backgroundColor: isDark ? 'rgba(239,68,68,0.08)' : '#FEF2F2', borderColor: isDark ? 'rgba(239,68,68,0.25)' : '#FECACA' }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                <Text style={{ fontSize: 16 }}>{directOrder ? '🏪' : product.isVaultItem ? '🎁' : '⏸️'}</Text>
+                <Text style={[styles.priceGuaranteeSub, { color: isDark ? '#FCA5A5' : '#B91C1C', flex: 1 }]}>{unavailableReason}</Text>
+              </View>
+            </View>
+          )}
+        </View>
+
+        {/* ZONE 4 — PRODUCT DETAILS (only real data) */}
+        {(product.description || product.specRows.length > 0) ? (
+          <View style={[styles.pdpSectionBox, { backgroundColor: isDark ? '#141418' : '#FFFFFF' }]}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={[styles.pdpSectionTitle, { color: isDark ? '#FFF' : '#0F172A' }]}>
+                Product details
+              </Text>
+            </View>
+
+            {product.description ? (
+              <>
+                <Text
+                  style={[styles.pdpDescriptionText, { color: isDark ? '#94A3B8' : '#475569' }]}
+                  numberOfLines={descExpanded ? undefined : 3}
+                >
+                  {product.description}
+                </Text>
+                {product.description.length > 140 && (
+                  <TouchableOpacity onPress={() => setDescExpanded(!descExpanded)} style={styles.readMoreTouch}>
+                    <Text style={styles.readMoreLink}>{descExpanded ? 'Show less ▴' : 'Read more ▾'}</Text>
+                  </TouchableOpacity>
+                )}
+              </>
+            ) : null}
+
+            {product.specRows.length > 0 && (
+              <View
+                style={[
+                  styles.specsCard,
+                  { backgroundColor: isDark ? '#1A1D24' : '#FAFAFA', borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0' },
+                ]}
+              >
+                {product.specRows.map((attr: any, idx: number) => (
+                  <View
+                    key={attr.label}
+                    style={[
+                      styles.specItemRow,
+                      idx < product.specRows.length - 1 && styles.specItemBorder,
+                      { borderBottomColor: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0' },
+                    ]}
+                  >
+                    <View style={styles.specIconBadge}>
+                      <Text style={{ fontSize: 13 }}>{specIcon(attr.label)}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.specLabel}>{attr.label}</Text>
+                      <Text style={[styles.specValue, { color: isDark ? '#F1F5F9' : '#1E293B' }]}>{attr.value}</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        ) : null}
+
+        {/* ZONE 5 — MORE FROM THIS STORE (real menu items, same store) */}
+        {moreItems.length > 0 && (
+          <View style={[styles.pdpSectionBox, { backgroundColor: isDark ? '#141418' : '#FFFFFF' }]}>
+            <View style={{ marginBottom: 14 }}>
+              <Text style={[styles.pdpSectionTitle, { color: isDark ? '#FFF' : '#0F172A', marginBottom: 2 }]}>
+                More from {store?.name || product.restaurantName}
+              </Text>
+              <Text style={styles.sectionSub}>{directOrder ? 'Order directly from the stall' : 'Add to the same order'}</Text>
+            </View>
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingVertical: 4 }}>
+              {moreItems.map((rel: any) => {
+                const relId = rel.id || rel._id;
+                const relQty = cart.find((i: any) => i.cartKey === relId)?.quantity || 0;
+                const relImg = getRealImageUri(rel.imageUrl || rel.image);
+                // The related dish's own availability (this product being sold out must not block its neighbours)
+                const relCanAdd = !!product.restaurantId && !product.isVaultItem && !directOrder && rel.orderable !== false && store?.isOpen !== false && !(rel.isEliteOnly && !(user as any)?.isElite);
+                const relPayload = {
+                  id: relId,
+                  name: rel.name,
+                  price: Number(rel.price),
+                  image: relImg || '',
+                  restaurantId: product.restaurantId,
+                  restaurantName: store?.name || product.restaurantName || '',
+                };
                 return (
                   <TouchableOpacity
-                    key={index}
+                    key={relId}
+                    activeOpacity={0.85}
+                    onPress={() => router.push(`/products/${relId}` as any)}
                     style={[
-                      styles.unitPill,
-                      isDark ? styles.unitPillDark : styles.unitPillLight,
-                      isSelected && styles.unitPillActive,
+                      styles.pairingCard,
+                      { backgroundColor: isDark ? '#1A1D24' : '#FFFFFF', borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0' },
                     ]}
-                    onPress={() => setSelectedPackIndex(index)}
                   >
-                    <Text style={[styles.unitPillText, isSelected && styles.unitPillTextActive]}>
-                      {pack.size}
-                    </Text>
+                    <View style={styles.pairingImgContainer}>
+                      <ProductPhoto uri={relImg} isDark={isDark} style={styles.pairingImg} />
+                    </View>
+
+                    <View style={styles.pairingContent}>
+                      <Text style={[styles.pairingTitle, { color: isDark ? '#FFF' : '#0F172A' }]} numberOfLines={2}>
+                        {rel.name}
+                      </Text>
+
+                      <View style={styles.pairingFooterRow}>
+                        <Text style={[styles.pairingPrice, { color: isDark ? '#FFF' : '#0F172A' }]}>₹{rel.price}</Text>
+
+                        {!relCanAdd ? null : relQty === 0 ? (
+                          <TouchableOpacity
+                            style={styles.pairingAddBtn}
+                            activeOpacity={0.8}
+                            onPress={() => {
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                              addWithStoreCheck(relPayload);
+                            }}
+                          >
+                            <Text style={styles.pairingAddBtnText}>ADD +</Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <View style={styles.pairingMiniStepper}>
+                            <TouchableOpacity
+                              style={styles.pairingMiniStepBtn}
+                              onPress={() => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                                updateQuantity(relId, relQty - 1);
+                              }}
+                            >
+                              <Text style={styles.pairingMiniStepText}>–</Text>
+                            </TouchableOpacity>
+                            <Text style={styles.pairingMiniStepVal}>{relQty}</Text>
+                            <TouchableOpacity
+                              style={styles.pairingMiniStepBtn}
+                              disabled={relQty >= 20}
+                              onPress={() => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                                updateQuantity(relId, relQty + 1);
+                              }}
+                            >
+                              <Text style={styles.pairingMiniStepText}>+</Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
+                      </View>
+                    </View>
                   </TouchableOpacity>
                 );
               })}
-            </View>
-          )}
-
-          {/* Pricing Row */}
-          <View style={styles.priceContainerRow}>
-            <Text style={[styles.priceCurrentBig, { color: isDark ? '#FFF' : '#0F172A' }]}>
-              ₹{currentPack.price}
-            </Text>
-            {currentPack.originalPrice && currentPack.originalPrice > currentPack.price && (
-              <Text style={styles.priceOriginalStrikethrough}>
-                ₹{currentPack.originalPrice}
-              </Text>
-            )}
-            {currentPack.discount && (
-              <View style={styles.priceDiscountChip}>
-                <Text style={styles.priceDiscountChipText}>{currentPack.discount}</Text>
-              </View>
-            )}
+            </ScrollView>
           </View>
+        )}
 
-          {/* Lowest Price Guarantee Trust Banner (BigBasket & Blinkit style) */}
-          <TouchableOpacity
-            style={[
-              styles.priceGuaranteeCard,
-              {
-                backgroundColor: isDark ? 'rgba(16, 185, 129, 0.08)' : '#F0FDF4',
-                borderColor: isDark ? 'rgba(16, 185, 129, 0.25)' : '#BBF7D0',
-              },
-            ]}
-            activeOpacity={0.7}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              setShowShopsModal(true);
-            }}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
-              <View style={styles.shieldIconPill}>
-                <Text style={{ fontSize: 14 }}>🛡️</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.priceGuaranteeTitle}>Price Match Guarantee</Text>
-                <Text style={styles.priceGuaranteeSub}>Price matched across campus kitchens & stores</Text>
-              </View>
-            </View>
-            <TouchableOpacity
-              activeOpacity={0.7}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setShowShopsModal(true);
-              }}
-            >
-              <Text style={styles.priceGuaranteeCompareLink}>Price Match ›</Text>
-            </TouchableOpacity>
-          </TouchableOpacity>
-        </View>
-
-        {/* ═════════════════════════════════════════════════════════════════════ */}
-        {/* ZONE 4 — HIGHLIGHTS MATRIX & CULINARY SPECS (Swiggy/Zepto/BigBasket) */}
-        {/* ═════════════════════════════════════════════════════════════════════ */}
-        <View style={[styles.pdpSectionBox, { backgroundColor: isDark ? '#141418' : '#FFFFFF' }]}>
-          <View style={styles.sectionHeaderRow}>
-            <View>
-              <Text style={[styles.pdpSectionTitle, { color: isDark ? '#FFF' : '#0F172A' }]}>
-                Product Information
-              </Text>
-              <Text style={styles.sectionSub}>Authentic culinary preparation & nutrition</Text>
-            </View>
-            <View style={styles.chefHatPill}>
-              <Text style={styles.chefHatPillText}>👨‍🍳 Kitchen Fresh</Text>
-            </View>
-          </View>
-
-          {/* Description with comfortable typography */}
-          <Text
-            style={[styles.pdpDescriptionText, { color: isDark ? '#94A3B8' : '#475569' }]}
-            numberOfLines={descExpanded ? undefined : 3}
-          >
-            {product.description}
-          </Text>
-          <TouchableOpacity onPress={() => setDescExpanded(!descExpanded)} style={styles.readMoreTouch}>
-            <Text style={styles.readMoreLink}>
-              {descExpanded ? 'Show less ▴' : 'Read full culinary notes ▾'}
-            </Text>
-          </TouchableOpacity>
-
-          {/* 4-Card Highlights Matrix (Zepto & Swiggy standard) */}
-          <View style={styles.highlightsGrid}>
-            {highlights.map((h: any, i: number) => (
-              <View
-                key={i}
-                style={[
-                  styles.highlightCard,
-                  {
-                    backgroundColor: isDark ? '#1A1D24' : '#F8FAFC',
-                    borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
-                  },
-                ]}
-              >
-                <View style={styles.highlightIconCircle}>
-                  <Text style={{ fontSize: 16 }}>{h.icon}</Text>
-                </View>
-                <Text style={styles.highlightLabel}>{h.label}</Text>
-                <Text
-                  style={[styles.highlightValue, { color: isDark ? '#FFF' : '#0F172A' }]}
-                  numberOfLines={1}
-                >
-                  {h.value}
-                </Text>
-                <Text style={styles.highlightDesc} numberOfLines={1}>
-                  {h.desc}
-                </Text>
-              </View>
-            ))}
-          </View>
-
-          {/* Detailed Culinary Specs Card (Zomato & BigBasket standard) */}
-          {remaining.length > 0 && (
-            <View
-              style={[
-                styles.specsCard,
-                {
-                  backgroundColor: isDark ? '#1A1D24' : '#FAFAFA',
-                  borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
-                },
-              ]}
-            >
-              <Text style={[styles.specsCardTitle, { color: isDark ? '#CBD5E1' : '#334155' }]}>
-                CULINARY & PACKAGING DETAILS
-              </Text>
-              {remaining.map((attr: any, idx: number) => (
-                <View
-                  key={idx}
-                  style={[
-                    styles.specItemRow,
-                    idx < remaining.length - 1 && styles.specItemBorder,
-                    { borderBottomColor: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0' },
-                  ]}
-                >
-                  <View style={styles.specIconBadge}>
-                    <Text style={{ fontSize: 13 }}>{getAttrIcon(attr.label)}</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.specLabel}>{attr.label}</Text>
-                    <Text style={[styles.specValue, { color: isDark ? '#F1F5F9' : '#1E293B' }]}>
-                      {attr.value}
-                    </Text>
-                  </View>
-                </View>
-              ))}
-            </View>
-          )}
-        </View>
-
-        {/* ═════════════════════════════════════════════════════════════════════ */}
-        {/* ZONE 5 — OFTEN BOUGHT TOGETHER (Swiggy Cross-Sell Cards)             */}
-        {/* ═════════════════════════════════════════════════════════════════════ */}
-        <View style={[styles.pdpSectionBox, { backgroundColor: isDark ? '#141418' : '#FFFFFF' }]}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-            <View>
-              <Text style={[styles.pdpSectionTitle, { color: isDark ? '#FFF' : '#0F172A', marginBottom: 2 }]}>
-                Often bought together
-              </Text>
-              <Text style={styles.sectionSub}>Pairs perfectly with this dish</Text>
-            </View>
-            <View style={styles.popularBadge}>
-              <Text style={styles.popularBadgeText}>🔥 TOP PAIRINGS</Text>
-            </View>
-          </View>
-
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingVertical: 4 }}>
-            {(product.crossSells || []).map((rel: any) => {
-              const inCart = cart.find((i: any) => i.id === rel.id || i.menuItemId === rel.id);
-              const relQty = inCart ? inCart.quantity : 0;
-              return (
-                <View
-                  key={rel.id}
-                  style={[
-                    styles.pairingCard,
-                    {
-                      backgroundColor: isDark ? '#1A1D24' : '#FFFFFF',
-                      borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
-                    },
-                  ]}
-                >
-                  <View style={styles.pairingImgContainer}>
-                    <Image source={{ uri: rel.image }} style={styles.pairingImg} />
-                    <View style={styles.pairingTagBadge}>
-                      <Text style={styles.pairingTagText}>
-                        {rel.tag === 'Beverage' ? '🥤 DRINK' : rel.tag === 'Starter' ? '🍗 STARTER' : rel.tag === 'Dessert' ? '🍮 SWEET' : '🥗 SIDE'}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.pairingContent}>
-                    <Text
-                      style={[styles.pairingTitle, { color: isDark ? '#FFF' : '#0F172A' }]}
-                      numberOfLines={2}
-                    >
-                      {rel.name}
-                    </Text>
-
-                    <View style={styles.pairingFooterRow}>
-                      <Text style={[styles.pairingPrice, { color: isDark ? '#FFF' : '#0F172A' }]}>
-                        ₹{rel.price}
-                      </Text>
-
-                      {relQty === 0 ? (
-                        <TouchableOpacity
-                          style={styles.pairingAddBtn}
-                          activeOpacity={0.8}
-                          onPress={() => {
-                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                            handleSafeAddToCart({
-                              id: rel.id,
-                              name: rel.name,
-                              price: rel.price,
-                              image: rel.image,
-                              restaurantId: product.restaurantId || 'market-hub',
-                              restaurantName: product.restaurantName || 'Campus Mart',
-                            }, `${rel.name} added!`);
-                          }}
-                        >
-                          <Text style={styles.pairingAddBtnText}>ADD +</Text>
-                        </TouchableOpacity>
-                      ) : (
-                        <View style={styles.pairingMiniStepper}>
-                          <TouchableOpacity
-                            style={styles.pairingMiniStepBtn}
-                            onPress={() => {
-                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                              updateQuantity(rel.id, relQty - 1);
-                            }}
-                          >
-                            <Text style={styles.pairingMiniStepText}>–</Text>
-                          </TouchableOpacity>
-                          <Text style={styles.pairingMiniStepVal}>{relQty}</Text>
-                          <TouchableOpacity
-                            style={styles.pairingMiniStepBtn}
-                            onPress={() => {
-                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                              handleSafeAddToCart({
-                                id: rel.id,
-                                name: rel.name,
-                                price: rel.price,
-                                image: rel.image,
-                                restaurantId: product.restaurantId || 'market-hub',
-                                restaurantName: product.restaurantName || 'Campus Mart',
-                              });
-                            }}
-                          >
-                            <Text style={styles.pairingMiniStepText}>+</Text>
-                          </TouchableOpacity>
-                        </View>
-                      )}
-                    </View>
-                  </View>
-                </View>
-              );
-            })}
-          </ScrollView>
-        </View>
-
-        {/* ═════════════════════════════════════════════════════════════════════ */}
-        {/* ZONE 6 — GENUINE RATINGS & CUSTOMER REVIEWS                          */}
-        {/* ═════════════════════════════════════════════════════════════════════ */}
+        {/* ZONE 6 — RATINGS & REVIEWS (server data only) */}
         <View style={[styles.pdpSectionBox, { backgroundColor: isDark ? '#141416' : '#FFF' }]}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
-            <View>
+            <View style={{ flex: 1, paddingRight: 8 }}>
               <Text style={[styles.pdpSectionTitle, { color: isDark ? '#FFF' : COLORS.ink, marginBottom: 2 }]}>
-                Customer Reviews & Ratings
+                Ratings & Reviews
               </Text>
               <Text style={{ fontSize: 10, color: isDark ? '#9CA3AF' : COLORS.inkMuted }}>
-                100% Genuine Verified Campus Orders
+                From customers who ordered this item
               </Text>
             </View>
 
             <TouchableOpacity
               style={styles.writeReviewTopBtn}
-              onPress={() => setShowReviewModal(true)}
+              onPress={() => {
+                if (!user) {
+                  Alert.alert('Please log in', 'Log in to rate items you have ordered.', [
+                    { text: 'Not now', style: 'cancel' },
+                    { text: 'Log in', onPress: () => router.push('/login' as any) },
+                  ]);
+                  return;
+                }
+                setShowReviewModal(true);
+              }}
             >
               <Text style={styles.writeReviewTopBtnText}>+ Rate Item</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Rating Summary Card */}
-          <View style={[styles.ratingOverviewBox, { backgroundColor: isDark ? '#1C1C20' : '#F9FAFB' }]}>
-            <View style={{ alignItems: 'center', width: 90 }}>
-              <Text style={[styles.bigRatingScore, { color: isDark ? '#FFF' : COLORS.ink }]}>
-                {calculatedRating.toFixed(1)}
-              </Text>
-              <Text style={{ fontSize: 12, marginVertical: 2 }}>⭐⭐⭐⭐⭐</Text>
-              <Text style={{ fontSize: 9, fontWeight: '700', color: isDark ? '#9CA3AF' : COLORS.inkMuted }}>
-                {totalRatingCount === 0 ? 'No Ratings Yet' : `${totalRatingCount} Verified Ratings`}
-              </Text>
-            </View>
+          {totalRatingCount > 0 && (
+            <View style={[styles.ratingOverviewBox, { backgroundColor: isDark ? '#1C1C20' : '#F9FAFB' }]}>
+              <View style={{ alignItems: 'center', width: 90 }}>
+                <Text style={[styles.bigRatingScore, { color: isDark ? '#FFF' : COLORS.ink }]}>
+                  {averageRating.toFixed(1)}
+                </Text>
+                <Text style={{ fontSize: 13, marginVertical: 2, color: '#F59E0B', letterSpacing: 1 }}>{starsFor(averageRating)}</Text>
+                <Text style={{ fontSize: 9, fontWeight: '700', color: isDark ? '#9CA3AF' : COLORS.inkMuted }}>
+                  {totalRatingCount} rating{totalRatingCount === 1 ? '' : 's'}
+                </Text>
+              </View>
 
-            {/* Dynamic Star Distribution Bars */}
-            <View style={{ flex: 1, paddingLeft: 16, gap: 4 }}>
-              {(() => {
-                const starCounts: Record<number, number> = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
-                reviewsList.forEach((r: any) => {
-                  const s = Math.min(5, Math.max(1, Math.round(Number(r.rating) || 5)));
-                  starCounts[s] = (starCounts[s] || 0) + 1;
-                });
-                const totalRevs = reviewsList.length;
-
-                return [5, 4, 3, 2, 1].map((starNum) => {
-                  const pct = totalRevs > 0 ? Math.round((starCounts[starNum] / totalRevs) * 100) : 0;
+              <View style={{ flex: 1, paddingLeft: 16, gap: 4 }}>
+                {[5, 4, 3, 2, 1].map((starNum) => {
+                  const count = Number(distribution?.[starNum]) || 0;
+                  const pct = totalRatingCount > 0 ? Math.round((count / totalRatingCount) * 100) : 0;
                   const pctStr = `${pct}%`;
                   return (
                     <View key={starNum} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -1129,64 +815,58 @@ export default function ProductDetailScreen() {
                       </Text>
                     </View>
                   );
-                });
-              })()}
+                })}
+              </View>
             </View>
-          </View>
+          )}
 
-          {/* Customer Reviews Feed */}
           {reviewsList.length === 0 ? (
             <View style={{ alignItems: 'center', paddingVertical: 24, paddingHorizontal: 16 }}>
               <Text style={{ fontSize: 30, marginBottom: 8 }}>⭐</Text>
               <Text style={{ fontSize: 14, fontWeight: '700', color: isDark ? '#FFF' : COLORS.ink, textAlign: 'center', marginBottom: 4 }}>
-                No Customer Reviews Yet
+                No reviews yet
               </Text>
-              <Text style={{ fontSize: 12, color: isDark ? '#9CA3AF' : COLORS.inkMuted, textAlign: 'center', lineHeight: 18, marginBottom: 14 }}>
-                Be the first verified campus resident to rate and review this item!
+              <Text style={{ fontSize: 12, color: isDark ? '#9CA3AF' : COLORS.inkMuted, textAlign: 'center', lineHeight: 18 }}>
+                Ordered this before? Be the first to rate it.
               </Text>
-              <TouchableOpacity
-                style={[styles.writeReviewTopBtn, { paddingHorizontal: 18, paddingVertical: 8 }]}
-                onPress={() => setShowReviewModal(true)}
-              >
-                <Text style={styles.writeReviewTopBtnText}>+ Write First Review</Text>
-              </TouchableOpacity>
             </View>
           ) : (
             reviewsList.map((rev: any) => (
               <View key={rev.id} style={[styles.reviewCard, { backgroundColor: isDark ? '#1A1A1E' : '#F9FAFB' }]}>
                 <View style={styles.reviewUserRow}>
-                  <View>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Text style={[styles.reviewUserName, { color: isDark ? '#FFF' : COLORS.ink }]}>{rev.name}</Text>
-                      {rev.verified && (
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <Text style={[styles.reviewUserName, { color: isDark ? '#FFF' : COLORS.ink }]}>{rev.name || 'Zenvy customer'}</Text>
+                      {rev.verified ? (
                         <View style={styles.verifiedBadge}>
-                          <Text style={styles.verifiedBadgeText}>✓ VERIFIED BUYER</Text>
+                          <Text style={styles.verifiedBadgeText}>✓ ORDERED</Text>
                         </View>
-                      )}
+                      ) : null}
                     </View>
-                    <Text style={styles.reviewTime}>{rev.block} • {rev.time}</Text>
+                    {rev.time ? <Text style={styles.reviewTime}>{rev.time}</Text> : null}
                   </View>
                   <View style={styles.starScoreChip}>
                     <Text style={styles.starScoreChipText}>{rev.rating} ★</Text>
                   </View>
                 </View>
-                <Text style={[styles.reviewComment, { color: isDark ? '#E5E7EB' : COLORS.ink }]}>{rev.comment}</Text>
+                {rev.comment ? (
+                  <Text style={[styles.reviewComment, { color: isDark ? '#E5E7EB' : COLORS.ink }]}>{rev.comment}</Text>
+                ) : null}
+                {Array.isArray(rev.tags) && rev.tags.length > 0 ? (
+                  <Text style={[styles.reviewTime, { marginTop: 6 }]}>{rev.tags.join(' • ')}</Text>
+                ) : null}
               </View>
             ))
           )}
         </View>
 
-        {/* ═════════════════════════════════════════════════════════════════════ */}
-        {/* ZONE 7 — SPONSORED AD SLOT                                            */}
-        {/* ═════════════════════════════════════════════════════════════════════ */}
+        {/* ZONE 7 — SPONSORED AD SLOT */}
         <View style={{ paddingHorizontal: 16 }}>
           <AdSlot placement="pdp_footer" />
         </View>
       </ScrollView>
 
-      {/* ═════════════════════════════════════════════════════════════════════ */}
-      {/* ZONE 3 — STICKY BOTTOM ACTION BAR (Zepto & Swiggy Standard)            */}
-      {/* ═════════════════════════════════════════════════════════════════════ */}
+      {/* ZONE 3 — STICKY BOTTOM ACTION BAR */}
       <View
         style={[
           styles.stickyBottomBar,
@@ -1196,112 +876,118 @@ export default function ProductDetailScreen() {
           },
         ]}
       >
-        {qty === 0 ? (
+        {qty === 0 || !canAdd ? (
           <>
-            {/* Left Price Breakdown */}
             <View style={styles.bottomPriceCol}>
               <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
                 <Text style={[styles.bottomPriceBig, { color: isDark ? '#FFFFFF' : '#0F172A' }]}>
-                  ₹{currentPack.price}
+                  ₹{product.price}
                 </Text>
-                {currentPack.originalPrice && (
-                  <Text style={styles.bottomPriceStrikethrough}>₹{currentPack.originalPrice}</Text>
-                )}
+                {product.originalPrice ? (
+                  <Text style={styles.bottomPriceStrikethrough}>₹{product.originalPrice}</Text>
+                ) : null}
               </View>
-              <Text style={styles.bottomPriceSub}>Inclusive of taxes & pack</Text>
+              <Text style={styles.bottomPriceSub}>{directOrder ? 'Price listed by the stall' : 'Final bill at checkout'}</Text>
             </View>
 
-            {/* Right Emerald Gradient Add CTA */}
-            <TouchableOpacity
-              activeOpacity={0.86}
-              style={styles.bottomAddCtaBtn}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                handleSafeAddToCart({
-                  id: product.id,
-                  name: product.name,
-                  price: currentPack.price,
-                  image: product.image || product.images?.[0] || '',
-                  restaurantId: product.restaurantId || 'market-hub',
-                  restaurantName: product.verifiedShops?.[0] || product.restaurantName || 'Campus Mart',
-                });
-              }}
-            >
-              <LinearGradient
-                colors={['#10B981', '#059669']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.bottomCtaGradient}
+            {canAdd ? (
+              <TouchableOpacity
+                activeOpacity={0.86}
+                style={styles.bottomAddCtaBtn}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+                  if (customizable) setCustomizing(true);
+                  else addWithStoreCheck(productPayload());
+                }}
               >
-                <Text style={styles.bottomAddCtaText}>ADD TO BASKET</Text>
-                <Text style={styles.bottomAddPlusText}>+</Text>
-              </LinearGradient>
-            </TouchableOpacity>
+                <LinearGradient colors={['#10B981', '#059669']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.bottomCtaGradient}>
+                  <Text style={styles.bottomAddCtaText}>{customizable ? 'CUSTOMISE & ADD' : 'ADD TO BASKET'}</Text>
+                  <Text style={styles.bottomAddPlusText}>+</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            ) : directOrder && (stallWa || stallCall) ? (
+              <TouchableOpacity
+                activeOpacity={0.86}
+                style={styles.bottomAddCtaBtn}
+                accessibilityLabel={`Order ${product.name} directly from ${store?.name || 'the stall'}`}
+                onPress={() => (stallWa ? whatsappVendor(store, product.name) : callVendor(store))}
+              >
+                <LinearGradient colors={stallWa ? ['#10B981', '#059669'] : ['#3B82F6', '#2563EB']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.bottomCtaGradient}>
+                  <Text style={styles.bottomAddCtaText}>{stallWa ? '💬 ORDER ON WHATSAPP' : '📞 CALL THE STALL'}</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            ) : directOrder && product.restaurantId ? (
+              <TouchableOpacity activeOpacity={0.86} style={styles.bottomAddCtaBtn} onPress={() => router.push(`/restaurant/${product.restaurantId}` as any)}>
+                <LinearGradient colors={['#F97316', '#EA580C']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.bottomCtaGradient}>
+                  <Text style={styles.bottomAddCtaText}>VIEW STALL</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            ) : product.bookingOnly && SERVICE_CATEGORY_BY_VENDOR[String(product.vendorType || '').toUpperCase()] ? (
+              <TouchableOpacity
+                activeOpacity={0.86}
+                style={styles.bottomAddCtaBtn}
+                onPress={() => router.push(`/category/${SERVICE_CATEGORY_BY_VENDOR[String(product.vendorType || '').toUpperCase()]}` as any)}
+              >
+                <LinearGradient colors={['#3B82F6', '#2563EB']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.bottomCtaGradient}>
+                  <Text style={styles.bottomAddCtaText}>BOOK THIS SERVICE</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            ) : product.isVaultItem ? (
+              <TouchableOpacity activeOpacity={0.86} style={styles.bottomAddCtaBtn} onPress={() => router.replace('/(tabs)' as any)}>
+                <LinearGradient colors={['#F59E0B', '#D97706']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.bottomCtaGradient}>
+                  <Text style={styles.bottomAddCtaText}>GO TO DAILY DEALS</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            ) : (
+              <View style={[styles.bottomAddCtaBtn, { opacity: 0.55 }]}>
+                <LinearGradient colors={['#9CA3AF', '#6B7280']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.bottomCtaGradient}>
+                  <Text style={styles.bottomAddCtaText}>{!product.isAvailable ? 'SOLD OUT' : 'UNAVAILABLE'}</Text>
+                </LinearGradient>
+              </View>
+            )}
           </>
         ) : (
           <>
-            {/* Active Stepper on Left */}
             <View
               style={[
                 styles.activeStepperPill,
-                {
-                  backgroundColor: isDark ? '#1E232B' : '#F1F5F9',
-                  borderColor: isDark ? 'rgba(16, 185, 129, 0.3)' : '#10B981',
-                },
+                { backgroundColor: isDark ? '#1E232B' : '#F1F5F9', borderColor: isDark ? 'rgba(16, 185, 129, 0.3)' : '#10B981' },
               ]}
             >
               <TouchableOpacity
                 style={styles.activeStepperBtn}
                 onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  if (qty > 1) {
-                    updateQuantity(product.id, qty - 1);
-                  } else {
-                    updateQuantity(product.id, 0);
-                  }
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                  updateQuantity(product.id, qty - 1);
                 }}
               >
                 <Text style={styles.activeStepperBtnText}>–</Text>
               </TouchableOpacity>
-              <Text style={[styles.activeStepperCountText, { color: isDark ? '#FFF' : '#0F172A' }]}>
-                {qty}
-              </Text>
+              <Text style={[styles.activeStepperCountText, { color: isDark ? '#FFF' : '#0F172A' }]}>{qty}</Text>
               <TouchableOpacity
-                style={styles.activeStepperBtn}
+                style={[styles.activeStepperBtn, qty >= 20 && { opacity: 0.4 }]}
+                disabled={qty >= 20}
                 onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  handleSafeAddToCart({
-                    id: product.id,
-                    name: product.name,
-                    price: currentPack.price,
-                    image: product.image || product.images?.[0] || '',
-                    restaurantId: product.restaurantId || 'market-hub',
-                    restaurantName: product.verifiedShops?.[0] || product.restaurantName || 'Campus Mart',
-                  });
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                  updateQuantity(product.id, qty + 1);
                 }}
               >
                 <Text style={styles.activeStepperBtnText}>+</Text>
               </TouchableOpacity>
             </View>
 
-            {/* View Basket Button with Live Subtotal */}
             <TouchableOpacity
               activeOpacity={0.88}
               style={styles.bottomViewCartBtn}
               onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
                 router.push('/(tabs)/basket' as any);
               }}
             >
-              <LinearGradient
-                colors={['#10B981', '#059669']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.bottomCtaGradient}
-              >
+              <LinearGradient colors={['#10B981', '#059669']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.bottomCtaGradient}>
                 <View>
                   <Text style={styles.bottomCartTotalLabel}>{qty} ITEM{qty > 1 ? 'S' : ''}</Text>
-                  <Text style={styles.bottomCartTotalVal}>₹{qty * currentPack.price}</Text>
+                  <Text style={styles.bottomCartTotalVal}>₹{qty * product.price}</Text>
                 </View>
                 <Text style={styles.bottomViewCartText}>View Basket ›</Text>
               </LinearGradient>
@@ -1310,277 +996,105 @@ export default function ProductDetailScreen() {
         )}
       </View>
 
-      {/* ── Interactive Rate & Review Modal ── */}
-      <Modal visible={showReviewModal} transparent animationType="slide">
-        <View style={styles.modalBackdrop}>
-          <View style={[styles.modalCard, { backgroundColor: isDark ? '#18181B' : '#FFF' }]}>
-            <Text style={[styles.modalTitle, { color: isDark ? '#FFF' : COLORS.ink }]}>⭐ Rate & Review Item</Text>
-            <Text style={{ fontSize: 11, color: isDark ? '#9CA3AF' : COLORS.inkMuted, marginBottom: 16 }}>
-              Share your genuine feedback for {product.name}
-            </Text>
+      {customizing && (
+        <CustomizeDrawer
+          isOpen={customizing}
+          onClose={() => setCustomizing(false)}
+          onConfirm={(customizations, finalPrice) => {
+            setCustomizing(false);
+            addWithStoreCheck({ ...productPayload(), price: finalPrice, basePrice: product.price, customizations });
+          }}
+          itemName={product.name}
+          basePrice={Number(product.price) || 0}
+          tags={product.tags}
+          category={product.category}
+          isVegetarian={product.isVegetarian !== false}
+        />
+      )}
 
-            {/* Star Picker */}
-            <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 12, marginBottom: 18 }}>
-              {[1, 2, 3, 4, 5].map((star) => (
-                <TouchableOpacity key={star} onPress={() => setUserRating(star)}>
-                  <Text style={{ fontSize: 32 }}>{star <= userRating ? '⭐' : '☆'}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            {/* Quick Tags */}
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
-              {REVIEW_TAGS.map((tag) => {
-                const isSelected = selectedTags.includes(tag);
-                return (
-                  <TouchableOpacity
-                    key={tag}
-                    style={[styles.tagPill, isSelected && styles.tagPillActive]}
-                    onPress={() => handleToggleTag(tag)}
-                  >
-                    <Text style={[styles.tagPillText, isSelected && { color: '#FFF' }]}>{tag}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            {/* Review Comment Text Input */}
-            <TextInput
-              style={[styles.reviewTextInput, { color: isDark ? '#FFF' : COLORS.ink, borderColor: isDark ? 'rgba(255,255,255,0.15)' : '#E5E7EB' }]}
-              placeholder="What did you like or dislike? (Taste, freshness, portion size...)"
-              placeholderTextColor={isDark ? COLORS.textMuted : '#9CA3AF'}
-              multiline
-              numberOfLines={3}
-              value={userReviewText}
-              onChangeText={setUserReviewText}
-            />
-
-            {/* Submit Actions */}
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
-              <TouchableOpacity
-                style={[styles.modalCloseBtn, { flex: 1, backgroundColor: isDark ? '#27272A' : '#F3F4F6' }]}
-                onPress={() => setShowReviewModal(false)}
-              >
-                <Text style={[styles.modalCloseBtnText, { color: isDark ? '#FFF' : '#374151' }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.submitReviewBtn, { flex: 1.5 }]}
-                onPress={handleSaveReview}
-                disabled={submittingReview}
-              >
-                {submittingReview ? (
-                  <ActivityIndicator color="#FFF" size="small" />
-                ) : (
-                  <Text style={styles.submitReviewBtnText}>Submit Review</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* ── BigBasket / Blinkit Campus Price Comparison Modal ── */}
-      <Modal
-        visible={showShopsModal}
-        transparent
-        animationType="slide"
-        statusBarTranslucent
-        onRequestClose={() => setShowShopsModal(false)}
-      >
-        <TouchableOpacity
-          style={styles.modalBackdrop}
-          activeOpacity={1}
-          onPress={() => setShowShopsModal(false)}
-        >
-          <TouchableOpacity
-            activeOpacity={1}
-            style={[
-              styles.modalCard,
-              {
-                backgroundColor: isDark ? '#14171F' : '#FFFFFF',
-                borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E2E8F0',
-                borderWidth: 1,
-              },
-            ]}
-          >
-            {/* Modal Header */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-              <View style={[styles.shieldIconPill, { width: 34, height: 34, borderRadius: 17 }]}>
-                <Text style={{ fontSize: 18 }}>🛡️</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.modalTitle, { color: isDark ? '#FFF' : '#0F172A', marginBottom: 2 }]}>
-                  Price Match
+      {/* ── Rate & Review Modal ── */}
+      <Modal visible={showReviewModal} transparent animationType="slide" onRequestClose={closeReviewModal}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View style={styles.modalBackdrop}>
+            <ScrollView
+              style={{ width: '100%', maxWidth: 420 }}
+              contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
+              keyboardShouldPersistTaps="handled"
+            >
+              <View style={[styles.modalCard, { backgroundColor: isDark ? '#18181B' : '#FFF' }]}>
+                <Text style={[styles.modalTitle, { color: isDark ? '#FFF' : COLORS.ink }]}>⭐ Rate this item</Text>
+                <Text style={{ fontSize: 11, color: isDark ? '#9CA3AF' : COLORS.inkMuted, marginBottom: 16 }}>
+                  How was {product.name}? Reviews are open to customers who received this item.
                 </Text>
-                <Text style={[styles.modalSub, { color: isDark ? '#94A3B8' : '#64748B', marginBottom: 0 }]}>
-                  Live prices matched across kitchens & dining spots
-                </Text>
-              </View>
-            </View>
 
-            {/* Savings Banner */}
-            <View style={[styles.modalSavingsBanner, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.12)' : '#ECFDF5', borderColor: isDark ? 'rgba(16, 185, 129, 0.3)' : '#A7F3D0' }]}>
-              <Text style={{ fontSize: 14 }}>✨</Text>
-              <Text style={[styles.modalSavingsText, { color: isDark ? '#6EE7B7' : '#047857' }]}>
-                You get the <Text style={{ fontWeight: '900' }}>lowest verified price</Text> on this item today!
-              </Text>
-            </View>
-
-            {/* Comparison Rows */}
-            <View style={{ marginVertical: 12, gap: 8 }}>
-              {/* Row 1: Active Outlet (Best Price) */}
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setShowShopsModal(false);
-                }}
-                style={[styles.comparisonRow, { backgroundColor: isDark ? 'rgba(16, 185, 129, 0.08)' : '#F0FDF4', borderColor: isDark ? 'rgba(16, 185, 129, 0.25)' : '#86EFAC', borderWidth: 1 }]}
-              >
-                <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Text style={[styles.comparisonStoreName, { color: isDark ? '#FFF' : '#0F172A', fontWeight: '900' }]}>
-                      🏪 {product.restaurantName || product.verifiedShops?.[0] || 'Selected Kitchen'}
-                    </Text>
-                    <View style={styles.bestPriceBadge}>
-                      <Text style={styles.bestPriceBadgeText}>BEST PRICE</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.comparisonDeliveryNote}>Instant 8-min hostel room delivery</Text>
-                </View>
-                <Text style={[styles.comparisonPriceActive, { color: '#059669' }]}>₹{currentPack.price}</Text>
-              </TouchableOpacity>
-
-              {/* Row 2: Central Food Court */}
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setShowShopsModal(false);
-                  if (product.restaurantId) {
-                    router.push(`/restaurant/${product.restaurantId}` as any);
-                  }
-                }}
-                style={[styles.comparisonRow, { backgroundColor: isDark ? '#1C2029' : '#F8FAFC', borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0', borderWidth: 1 }]}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.comparisonStoreName, { color: isDark ? '#CBD5E1' : '#334155' }]}>
-                    🏢 Central Food Court
-                  </Text>
-                  <Text style={styles.comparisonDeliveryNote}>Dine-in counter price</Text>
-                </View>
-                <Text style={[styles.comparisonPriceOther, { color: isDark ? '#94A3B8' : '#64748B' }]}>
-                  ₹{Math.round(currentPack.price * 1.08)}
-                </Text>
-              </TouchableOpacity>
-
-              {/* Row 3: Campus Night Canteen */}
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setShowShopsModal(false);
-                  if (product.restaurantId) {
-                    router.push(`/restaurant/${product.restaurantId}` as any);
-                  }
-                }}
-                style={[styles.comparisonRow, { backgroundColor: isDark ? '#1C2029' : '#F8FAFC', borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0', borderWidth: 1 }]}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.comparisonStoreName, { color: isDark ? '#CBD5E1' : '#334155' }]}>
-                    🌙 Campus Night Canteen
-                  </Text>
-                  <Text style={styles.comparisonDeliveryNote}>Standard night tariff</Text>
-                </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={[styles.comparisonPriceOther, { color: isDark ? '#94A3B8' : '#64748B' }]}>
-                    ₹{currentPack.price}
-                  </Text>
-                  <Text style={{ fontSize: 9, color: '#10B981', fontWeight: '800' }}>MATCHED</Text>
-                </View>
-              </TouchableOpacity>
-
-              {/* Row 4: Tuck Shop & Retail */}
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setShowShopsModal(false);
-                  if (product.restaurantId) {
-                    router.push(`/restaurant/${product.restaurantId}` as any);
-                  }
-                }}
-                style={[styles.comparisonRow, { backgroundColor: isDark ? '#1C2029' : '#F8FAFC', borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0', borderWidth: 1 }]}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.comparisonStoreName, { color: isDark ? '#CBD5E1' : '#334155' }]}>
-                    🛒 Campus Tuck Shop
-                  </Text>
-                  <Text style={styles.comparisonDeliveryNote}>Printed counter rate</Text>
-                </View>
-                <Text style={[styles.comparisonPriceOther, { color: isDark ? '#94A3B8' : '#64748B' }]}>
-                  ₹{Math.round(currentPack.price * 1.12)}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Price Matched Alternative Items (Tap to Open) */}
-            {product.crossSells && product.crossSells.length > 0 && (
-              <View style={{ marginTop: 6, marginBottom: 12 }}>
-                <Text style={{ fontSize: 10, fontWeight: '800', color: isDark ? '#9CA3AF' : '#64748B', letterSpacing: 0.5, marginBottom: 8 }}>
-                  PRICE MATCHED ITEMS IN THIS CATEGORY (TAP TO OPEN)
-                </Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 4 }}>
-                  {product.crossSells.map((csItem: any) => (
+                <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 12, marginBottom: 18 }}>
+                  {[1, 2, 3, 4, 5].map((star) => (
                     <TouchableOpacity
-                      key={csItem.id}
-                      activeOpacity={0.8}
-                      style={{
-                        width: 130,
-                        padding: 8,
-                        borderRadius: 12,
-                        backgroundColor: isDark ? '#1C2029' : '#F8FAFC',
-                        borderWidth: 1,
-                        borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
-                      }}
+                      key={star}
                       onPress={() => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                        setShowShopsModal(false);
-                        const targetSlug = csItem.id.replace(/^cs-/, '');
-                        router.push(`/products/${targetSlug}` as any);
+                        Haptics.selectionAsync().catch(() => {});
+                        setUserRating(star);
                       }}
+                      accessibilityLabel={`${star} star${star > 1 ? 's' : ''}`}
                     >
-                      <SafeImage source={{ uri: csItem.image }} style={{ width: '100%', height: 75, borderRadius: 8, marginBottom: 6 }} />
-                      <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '700', color: isDark ? '#FFF' : '#0F172A' }}>
-                        {csItem.name}
-                      </Text>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
-                        <Text style={{ fontSize: 12, fontWeight: '900', color: '#10B981' }}>₹{csItem.price}</Text>
-                        <View style={{ backgroundColor: 'rgba(16,185,129,0.12)', paddingHorizontal: 4, paddingVertical: 1, borderRadius: 4 }}>
-                          <Text style={{ fontSize: 8, fontWeight: '800', color: '#10B981' }}>MATCHED</Text>
-                        </View>
-                      </View>
+                      <Text style={{ fontSize: 32 }}>{star <= userRating ? '⭐' : '☆'}</Text>
                     </TouchableOpacity>
                   ))}
-                </ScrollView>
+                </View>
+
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
+                  {REVIEW_TAGS.map((tag) => {
+                    const isSelected = selectedTags.includes(tag);
+                    return (
+                      <TouchableOpacity
+                        key={tag}
+                        style={[styles.tagPill, isSelected && styles.tagPillActive]}
+                        onPress={() => handleToggleTag(tag)}
+                      >
+                        <Text style={[styles.tagPillText, isSelected && { color: '#FFF' }]}>{tag}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <TextInput
+                  style={[styles.reviewTextInput, { color: isDark ? '#FFF' : COLORS.ink, borderColor: isDark ? 'rgba(255,255,255,0.15)' : '#E5E7EB' }]}
+                  placeholder="What did you like or dislike? (optional)"
+                  placeholderTextColor={isDark ? COLORS.textMuted : '#9CA3AF'}
+                  multiline
+                  numberOfLines={3}
+                  maxLength={REVIEW_MAX}
+                  value={userReviewText}
+                  onChangeText={setUserReviewText}
+                />
+                <Text style={{ fontSize: 9, color: isDark ? '#9CA3AF' : '#9CA3AF', textAlign: 'right', marginTop: 4 }}>
+                  {userReviewText.length}/{REVIEW_MAX}
+                </Text>
+
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+                  <TouchableOpacity
+                    style={[styles.modalCloseBtn, { flex: 1, backgroundColor: isDark ? '#27272A' : '#F3F4F6' }]}
+                    onPress={closeReviewModal}
+                    disabled={submittingReview}
+                  >
+                    <Text style={[styles.modalCloseBtnText, { color: isDark ? '#FFF' : '#374151' }]}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.submitReviewBtn, { flex: 1.5 }, submittingReview && { opacity: 0.7 }]}
+                    onPress={handleSaveReview}
+                    disabled={submittingReview}
+                  >
+                    {submittingReview ? (
+                      <ActivityIndicator color="#FFF" size="small" />
+                    ) : (
+                      <Text style={styles.submitReviewBtnText}>Submit Review</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
               </View>
-            )}
-
-            {/* Bottom Guarantee Trust Note */}
-            <Text style={[styles.modalGuaranteeFooterText, { color: isDark ? '#94A3B8' : '#64748B' }]}>
-              🛡️ If you ever spot a lower verified in-store rate anywhere on campus, we match it and refund 2x the difference instantly.
-            </Text>
-
-            {/* Done CTA */}
-            <TouchableOpacity
-              style={styles.modalClosePrimaryBtn}
-              activeOpacity={0.88}
-              onPress={() => setShowShopsModal(false)}
-            >
-              <Text style={styles.modalClosePrimaryBtnText}>Got it, Thanks!</Text>
-            </TouchableOpacity>
-          </TouchableOpacity>
-        </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );

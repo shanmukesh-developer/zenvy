@@ -84,8 +84,18 @@ const protect = async (req, res, next) => {
       const dbUser = await User.findByPk(decoded.id);
       if (!dbUser) return res.status(401).json({ message: 'User not found' });
       if (dbUser.isActive === false) return res.status(403).json({ message: 'Account suspended. Please contact support.' });
-      req.user = dbUser;
-      setCachedUser(decoded.id, dbUser);
+      const userPayload = {
+        id: dbUser.id,
+        role: dbUser.role || 'student',
+        name: dbUser.name,
+        phone: dbUser.phone,
+        email: dbUser.email,
+        hostelBlock: dbUser.hostelBlock,
+        roomNumber: dbUser.roomNumber,
+        isActive: dbUser.isActive
+      };
+      req.user = userPayload;
+      setCachedUser(decoded.id, userPayload);
     } else {
       req.user = decoded;
     }

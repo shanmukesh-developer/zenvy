@@ -1,56 +1,93 @@
 "use client";
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { RecaptchaVerifier, ConfirmationResult } from 'firebase/auth';
 import { motion, AnimatePresence } from 'framer-motion';
+import { API_URL } from '@/lib/config';
+import { getAuthState, startSession } from '@/lib/session';
 
-declare global {
-  interface Window {
-    recaptchaVerifier?: RecaptchaVerifier;
-    confirmationResult?: ConfirmationResult;
-  }
-}
+/** Only allow same-site relative redirects after login. */
+const safeNext = () => {
+  try {
+    const next = new URLSearchParams(window.location.search).get('next');
+    if (next && next.startsWith('/') && !next.startsWith('//') && !next.startsWith('/login')) return next;
+  } catch { /* ignore */ }
+  return '/';
+};
+
+const normalizePhone = (value: string) => value.replace(/\D/g, '').slice(-10);
 
 export default function AdminLoginPage() {
   const router = useRouter();
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  // Explain why the admin landed here (expired session, non-admin account, ...).
+  useEffect(() => {
+    const reason = getAuthState().message;
+    if (reason) setError(reason);
+  }, []);
+
   const handleLogin = async () => {
+    const digits = normalizePhone(phone);
+    if (!/^[6-9]\d{9}$/.test(digits)) {
+      setError('Enter the 10-digit mobile number of your admin account.');
+      return;
+    }
     if (!password) {
-      setError('Administrative key required.');
+      setError('Enter your password.');
       return;
     }
 
     setLoading(true);
     setError('');
-    
+
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-jwmt.onrender.com';
-      const phone = '9999999999'; // Real admin phone
       const response = await fetch(`${API_URL}/api/users/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, password }),
+        body: JSON.stringify({ phone: digits, password }),
       });
-      
-      const data = await response.json();
-      if (response.ok) {
-        if (data.role !== 'admin') {
-          setError('Node Violation: Unauthorized clearance level.');
-          setLoading(false);
+
+      let data: any = {};
+      try { data = await response.json(); } catch { /* non-JSON error page */ }
+
+      if (response.ok && data.token) {
+        if (String(data.role || '').toLowerCase() !== 'admin') {
+          setError('This account does not have admin access.');
           return;
         }
-        
-        localStorage.setItem('user', JSON.stringify({ id: data._id, name: data.name, role: data.role, token: data.token }));
-        router.push('/');
-      } else {
-        setError(data.message || 'Authentication failed.');
+        startSession(data.token, {
+          id: String(data.id ?? data._id ?? ''),
+          name: data.name || 'Admin',
+          phone: data.phone ?? digits,
+          email: data.email || null,
+          role: data.role,
+        });
+        setPassword('');
+        router.replace(safeNext());
+        return;
       }
-    } catch (err) {
-      console.error('Login Error:', err);
-      setError('System Error: Unable to reach authentication server.');
+
+      if (response.ok) {
+        // e.g. { isNewUser: true } — not a usable admin login
+        setError('No admin account uses this number.');
+      } else if (response.status === 429) {
+        setError(data.message || 'Too many attempts. Please wait 15 minutes and try again.');
+      } else if (response.status === 401 && data.code === 'ACCOUNT_NOT_FOUND') {
+        setError('No account uses this number.');
+      } else if (response.status === 401) {
+        setError('Wrong phone number or password.');
+      } else if (response.status === 403) {
+        setError(data.message || 'This account is suspended.');
+      } else if (response.status >= 500) {
+        setError('The server had a problem signing you in. Please try again.');
+      } else {
+        setError(data.message || data.errors?.[0]?.msg || 'Sign in failed. Please try again.');
+      }
+    } catch {
+      setError('Could not reach the Zenvy server. Check your connection and try again.');
     } finally {
       setLoading(false);
     }
@@ -77,8 +114,25 @@ export default function AdminLoginPage() {
 
         <div className="space-y-6">
           <div className="space-y-2">
-            <label className="text-[10px] font-black text-blue-500 uppercase tracking-widest ml-1">Administrative Entry Password</label>
+            <label htmlFor="admin-phone" className="text-[10px] font-black text-blue-500 uppercase tracking-widest ml-1">Admin mobile number</label>
             <input
+              id="admin-phone"
+              type="tel"
+              inputMode="numeric"
+              autoComplete="username"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+              placeholder="10-digit mobile number"
+              maxLength={16}
+              className="w-full bg-white/[0.02] border border-white/5 rounded-2xl py-4 px-6 text-white font-bold outline-none focus:border-blue-500/40 transition-all text-center tracking-[0.2em]"
+            />
+          </div>
+          <div className="space-y-2">
+            <label htmlFor="admin-password" className="text-[10px] font-black text-blue-500 uppercase tracking-widest ml-1">Password</label>
+            <input
+              id="admin-password"
+              autoComplete="current-password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -92,7 +146,7 @@ export default function AdminLoginPage() {
             disabled={loading}
             className="w-full bg-white text-black py-5 rounded-2xl font-black text-[11px] uppercase tracking-[0.3em] hover:bg-gray-200 transition-all shadow-xl shadow-blue-500/5 disabled:opacity-50"
           >
-            {loading ? 'Decrypting Access...' : 'Initiate Terminal Session'}
+            {loading ? 'Signing in...' : 'Sign in'}
           </button>
         </div>
 
@@ -102,7 +156,8 @@ export default function AdminLoginPage() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
-              className="mt-8 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-500 text-[10px] font-bold uppercase tracking-wider text-center"
+              role="alert"
+              className="mt-8 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-400 text-xs font-semibold text-center"
             >
               {error}
             </motion.div>

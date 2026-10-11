@@ -45,12 +45,20 @@ const {
 const { getAllOrders } = require('../controllers/orderController');
 const { protect, admin } = require('../middleware/authMiddleware');
 
-// ─── Unprotected routes ──────────────────────────────────
-router.post('/broadcast-push', broadcastPushNotification);
-
 // ─── Protected Admin Routes ──────────────────────────────────
 router.use(protect);
 router.use(admin);
+
+// Admin session check for the dashboard: 200 only for a valid admin token
+// (protect -> 401 without/with a bad token, admin -> 403 for non-admins).
+router.get('/me', (req, res) => {
+  const { id, name, phone, email, role } = req.user;
+  res.set('Cache-Control', 'no-store');
+  res.json({ id, name: name || 'Admin', phone: phone || null, email: email || null, role });
+});
+
+// Admin Broadcast Push
+router.post('/broadcast-push', broadcastPushNotification);
 
 // Live Orders Intelligence
 router.get('/orders', getAllOrders);

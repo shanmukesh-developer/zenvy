@@ -3,11 +3,14 @@ const { getUserModel } = require('../models/User');
 const { getRestaurantModel } = require('../models/Restaurant');
 const { getDeliveryPartnerModel } = require('../models/DeliveryPartner');
 const { sendPushToTokens } = require('../utils/push');
-const { updateStreak, calculateBadgePerks } = require('../middleware/rewardEngine');
+const { updateStreak } = require('../middleware/rewardEngine');
 const { getMenuItemModel } = require('../models/MenuItem');
 const { sendWhatsAppMessage, formatOrderMessage } = require('../utils/whatsappUtil');
-const { calculateCustomizationCost } = require('../utils/pricingSchema');
 const { Op } = require('sequelize');
+const crypto = require('crypto');
+const { computeOrderQuote, PricingError, activeCouponWhere, normalizePaymentMethod, PAYMENT_UNAVAILABLE_MESSAGE, money } = require('../utils/orderPricing');
+const { getCampusServiceability } = require('../utils/storeHours');
+const { getHaversineDistance } = require('../utils/distance');
 
 const normalizeItems = (items) => {
   if (typeof items === 'string') {
@@ -20,388 +23,249 @@ const normalizeItems = (items) => {
   return Array.isArray(items) ? items : [];
 };
 
-const broadcastOrderStatus = (req, orderId, payload) => {
+const broadcastOrderStatus = (req, orderOrId, payload) => {
   try {
     const io = req.app.get('io');
     if (!io) return;
-    const room = orderId.toString();
+    const isObj = orderOrId && typeof orderOrId === 'object';
+    const room = String(isObj ? orderOrId.id : orderOrId);
     io.to(room).emit('statusUpdated', payload);
     io.to('admin-room').emit('statusUpdated', payload);
-    io.emit('statusUpdated', payload);
+    // The restaurant portal joins `restaurant_<id>`; no global broadcast of other people's orders.
+    if (isObj && orderOrId.restaurantId) io.to(`restaurant_${orderOrId.restaurantId}`).emit('statusUpdated', payload);
   } catch (err) {
     console.warn('[SOCKET_BROADCAST_WARN]', err.message);
   }
 };
 
+const isAdminUser = (user) => !!(user && user.role && String(user.role).toLowerCase() === 'admin');
+
+// ── Campus / address resolution ─────────────────────────────────
+const CAMPUS_KEYS = { srmap: 'SRM AP', srm: 'SRM AP', vitap: 'VIT AP', vit: 'VIT AP', amrita: 'Amrita' };
+const resolveCampus = (campus, address) => {
+  const key = String(campus || '').toLowerCase().replace(/[^a-z]/g, '');
+  if (CAMPUS_KEYS[key]) return CAMPUS_KEYS[key];
+  const a = String(address || '').toLowerCase();
+  if (a.includes('srm ap') || a.startsWith('srm')) return 'SRM AP';
+  if (a.includes('vit ap') || a.startsWith('vit')) return 'VIT AP';
+  if (a.includes('amrita')) return 'Amrita';
+  return null;
+};
+const HUB = { lat: 16.4632, lng: 80.5064 }; // SRM AP central hub
+const MAX_RADIUS_KM = 40;
+
+// ── Double-tap protection (per user + client idempotency key, 2 minutes) ──
+const IDEMPOTENCY_TTL_MS = 2 * 60 * 1000;
+const recentOrderKeys = new Map(); // `${userId}:${key}` -> { at, orderId }
+const sweepIdempotencyKeys = () => {
+  const now = Date.now();
+  for (const [k, v] of recentOrderKeys) if (now - v.at > IDEMPOTENCY_TTL_MS) recentOrderKeys.delete(k);
+};
+
+const sendPricingError = (res, err) => res.status(err.status || 400).json(err.toBody());
+
+// @desc    Price a basket without placing it (the bill the customer sees = the bill we charge)
+// @route   POST /api/orders/quote
+const quoteOrder = async (req, res) => {
+  try {
+    const User = getUserModel();
+    const user = await User.findByPk(req.user.id);
+    if (!user) return res.status(401).json({ message: 'Your session has expired. Please log in again.', code: 'ACCOUNT_NOT_FOUND' });
+    const quote = await computeOrderQuote({ user, items: (req.body || {}).items, couponCode: (req.body || {}).couponCode });
+    const walletBalance = money(user.walletBalance);
+    res.json({
+      ...quote,
+      serviceability: getCampusServiceability(),
+      paymentMethods: ['COD', 'Wallet'],
+      walletBalance,
+      canPayWithWallet: walletBalance >= quote.finalPrice
+    });
+  } catch (err) {
+    if (err instanceof PricingError) return sendPricingError(res, err);
+    console.error('[ORDER_QUOTE_ERROR]', err);
+    res.status(500).json({ message: 'We could not calculate your bill right now. Please try again.' });
+  }
+};
+
+// @desc    Is campus ordering open right now?
+// @route   GET /api/orders/serviceability
+const getServiceability = async (req, res) => {
+  res.json({ ...getCampusServiceability(), paymentMethods: ['COD', 'Wallet'] });
+};
+
 // @desc    Create a new order
 // @route   POST /api/orders
 const createOrder = async (req, res) => {
-  const { restaurantId, items, totalPrice: _totalPrice, deliverySlot, deliveryAddress, coordinates, paymentMethod, upiUTR, upiScreenshot } = req.body;
-
-  if (!items || items.length === 0) {
-    return res.status(400).json({ message: 'No order items' });
-  }
-
-  // --- Time Restriction: No orders after 9 PM ---
-  // Ensure we check in IST timezone since the server might be in UTC
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Kolkata',
-    hour: 'numeric',
-    hour12: false
-  });
-  const currentIstHour = parseInt(formatter.format(new Date()), 10);
-
-  // Block orders from 9:00 PM (21) to 6:00 AM (6) (only in production)
-  const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
-  if (isProduction && (currentIstHour >= 21 || currentIstHour < 6)) {
-    return res.status(403).json({ 
-      message: 'Campus ordering is closed for the night! 🌙 We will be back at 6 AM.' 
-    });
-  }
-
-  // --- Geo-Fencing Validation (40 KM Radius) ---
-  const isStandardCampus = deliveryAddress && (
-    deliveryAddress.includes('SRM AP') || 
-    deliveryAddress.includes('VIT AP') || 
-    deliveryAddress.includes('Amrita')
-  );
-
-  if (!isStandardCampus && (!coordinates || !coordinates.lat || !coordinates.lng)) {
-    return res.status(400).json({ 
-      message: 'DELIVERY REJECTED: Coordinates are required for custom locations.' 
-    });
-  }
-
-  if (coordinates && coordinates.lat && coordinates.lng) {
-    const toRad = (value) => (value * Math.PI) / 180;
-    const baseLat = 16.4632; // Central Hub Latitude (SRM AP)
-    const baseLng = 80.5064; // Central Hub Longitude (SRM AP)
-    const R = 6371; // Earth's radius in km
-    
-    const dLat = toRad(coordinates.lat - baseLat);
-    const dLon = toRad(coordinates.lng - baseLng);
-    
-    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-              Math.cos(toRad(baseLat)) * Math.cos(toRad(coordinates.lat)) * 
-              Math.sin(dLon / 2) * Math.sin(dLon / 2);
-              
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    const calculatedDistanceKm = R * c;
-    
-    if (calculatedDistanceKm > 40) {
-      return res.status(400).json({ 
-        message: `DELIVERY REJECTED: Location is ${calculatedDistanceKm.toFixed(1)} km away. Maximum allowed range is 40 km.` 
-      });
-    }
-  }
+  const body = req.body || {};
+  const { items, deliverySlot, deliveryAddress, coordinates, couponCode } = body;
+  const rawKey = req.get('Idempotency-Key') || body.idempotencyKey;
+  const idemKey = rawKey ? `${req.user.id}:${String(rawKey).slice(0, 100)}` : null;
+  let idemClaimed = false;
 
   try {
-    const Restaurant = getRestaurantModel();
-    let targetRid = typeof restaurantId === 'object' ? (restaurantId._id || restaurantId.id) : restaurantId;
-    
-    // Intercept 'mock-vendor' or 'mega-basket-vendor' from frontend mock data and map to an actual restaurant
-    // This prevents PostgreSQL UUID crash for non-UUID vendor IDs from category/grocery cart flows
-    if (targetRid === 'mock-vendor' || targetRid === 'mega-basket-vendor' || targetRid === 'unknown-vendor') {
-      const fallbackRest = await Restaurant.findOne({ where: { isActive: true } });
-      if (fallbackRest) {
-        targetRid = fallbackRest.id;
-        // Also update all items to use the fallback restaurant ID to pass backend validation
-        items.forEach(i => i.restaurantId = fallbackRest.id);
-      } else {
-        return res.status(404).json({ message: 'No restaurants available to process this order' });
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ message: 'Your basket is empty. Add something tasty first!', code: 'EMPTY_BASKET' });
+    }
+
+    // ── Payment: Cash on Delivery or Wallet only ──
+    if (body.paymentMethod === undefined || body.paymentMethod === null || body.paymentMethod === '') {
+      return res.status(400).json({ message: 'Please choose Cash on Delivery or Wallet to pay.', code: 'PAYMENT_METHOD_REQUIRED' });
+    }
+    const paymentMethod = normalizePaymentMethod(body.paymentMethod);
+    if (!paymentMethod) {
+      return res.status(400).json({ message: PAYMENT_UNAVAILABLE_MESSAGE, code: 'PAYMENT_METHOD_UNAVAILABLE', allowed: ['COD', 'Wallet'] });
+    }
+
+    // ── Campus ordering hours (9 PM – 6 AM IST closed) ──
+    const serviceability = getCampusServiceability();
+    if (!serviceability.open) {
+      return res.status(403).json({ message: serviceability.message, code: 'ORDERING_CLOSED', reopensAt: serviceability.reopensAt });
+    }
+
+    // ── Delivery location ──
+    const address = String(deliveryAddress || '').replace(/[<>]/g, '').trim().slice(0, 500);
+    if (address.length < 3) {
+      return res.status(400).json({ message: 'Please add your delivery address (hostel block and room) so the rider can find you.', code: 'ADDRESS_REQUIRED' });
+    }
+    const campus = resolveCampus(body.campus, address);
+    // Structured delivery notes: up to 6 short strings.
+    const deliveryInstructions = (Array.isArray(body.deliveryInstructions) ? body.deliveryInstructions : [])
+      .filter((n) => typeof n === 'string')
+      .map((n) => n.replace(/[<>]/g, '').trim().slice(0, 80))
+      .filter(Boolean)
+      .slice(0, 6);
+    const lat = coordinates ? Number(coordinates.lat) : NaN;
+    const lng = coordinates ? Number(coordinates.lng) : NaN;
+    const hasCoords = Number.isFinite(lat) && Number.isFinite(lng) && !(lat === 0 && lng === 0);
+    if (!campus && !hasCoords) {
+      return res.status(400).json({ message: 'We need your location pin to deliver outside campus. Please allow location access, or pick your campus.', code: 'LOCATION_REQUIRED' });
+    }
+    if (hasCoords) {
+      const km = getHaversineDistance(HUB.lat, HUB.lng, lat, lng);
+      if (km > MAX_RADIUS_KM) {
+        return res.status(400).json({ message: `Sorry, that location is ${km.toFixed(1)} km away — we deliver within ${MAX_RADIUS_KM} km of campus.`, code: 'OUT_OF_RANGE' });
       }
     }
 
-    // Ensure it's a valid UUID
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(targetRid)) {
-      return res.status(400).json({ message: 'Invalid restaurant ID format' });
+    // ── Double tap → same order, never two ──
+    if (idemKey) {
+      sweepIdempotencyKeys();
+      const seen = recentOrderKeys.get(idemKey);
+      if (seen && seen.orderId) {
+        const Order = getOrderModel();
+        const existing = await Order.findByPk(seen.orderId);
+        if (existing) return res.status(200).json({ ...existing.toJSON(), _id: existing.id, duplicate: true });
+      } else if (seen) {
+        return res.status(409).json({ message: 'Your order is already being placed — hang tight!', code: 'ORDER_IN_PROGRESS' });
+      }
+      recentOrderKeys.set(idemKey, { at: Date.now(), orderId: null });
+      idemClaimed = true;
     }
 
-    const restaurant = await Restaurant.findByPk(targetRid);
-    if (!restaurant) {
-      return res.status(404).json({ message: 'Restaurant not found' });
+    const User = getUserModel();
+    const Order = getOrderModel();
+    const currentUser = await User.findByPk(req.user.id);
+    if (!currentUser) {
+      if (idemClaimed) recentOrderKeys.delete(idemKey);
+      return res.status(401).json({ message: 'Your session has expired. Please log in again.', code: 'ACCOUNT_NOT_FOUND' });
     }
 
-    // ── Dynamic Delivery Fee Calculation ──────────────────────
+    // ── Server prices everything from the DB ──
+    let quote;
+    try {
+      quote = await computeOrderQuote({ user: currentUser, items, couponCode });
+    } catch (err) {
+      if (idemClaimed) recentOrderKeys.delete(idemKey);
+      if (err instanceof PricingError) return sendPricingError(res, err);
+      throw err;
+    }
+
+    const Restaurant = getRestaurantModel();
+    const restaurant = await Restaurant.findByPk(quote.store.id);
+
     let isSurge = false;
     try {
       const serverModule = require('../server');
-      if (typeof serverModule.isSurgeActive === 'function') {
-        isSurge = serverModule.isSurgeActive(restaurant.zone);
-      }
+      if (typeof serverModule.isSurgeActive === 'function') isSurge = !!serverModule.isSurgeActive(restaurant.zone);
     } catch { /* server module not ready — skip surge */ }
 
-    // ── Dynamic Delivery Fee Calculation ──────────────────────
-    const distanceKm = 0;
-    const estDuration = 30;
-    
-    // Delivery fee logic: ₹50 flat for room orders, else ₹30 per unique restaurant
-    const isRoomOrder = req.body.isRoomOrder || false;
-    const uniqueRestaurantIds = [...new Set(items.map(i => i.restaurantId || restaurantId))];
-    const calculatedFee = isRoomOrder ? 50 : (uniqueRestaurantIds.length * 30);
-
-    // ── Multi-Order Batching (Efficiency Engine) ──────────
-    const User = getUserModel();
-    let currentUser = null;
-    try {
-      currentUser = await User.findByPk(req.user.id);
-    } catch (dbErr) {
-      console.error('dbErr on User.findByPk:', dbErr.message);
+    // Real distance only when both ends have real coordinates; never a simulated number.
+    let distanceKm = null;
+    if (hasCoords && restaurant.lat != null && restaurant.lon != null) {
+      distanceKm = Number(getHaversineDistance(Number(restaurant.lat), Number(restaurant.lon), lat, lng).toFixed(2));
     }
 
-    // Guard: user must exist in DB (may have been lost after DB reset)
-    if (!currentUser) {
-      console.warn(`[ORDER_GUARD] Account ID ${req.user.id} not found in database. Stale token detected.`);
-      return res.status(401).json({ message: 'Account not found. Please logout and re-register.' });
-    }
-    const Order = getOrderModel();
-    
-    // Find active orders from same restaurant to same hostel block
-    const batchableOrder = await Order.findOne({
-      where: {
-        restaurantId,
-        status: ['Pending', 'Accepted', 'Preparing']
-      },
-      include: [{
-        model: User,
-        as: 'user', 
-        where: { hostelBlock: currentUser?.hostelBlock || 'Unknown' }
-      }]
-    }).catch(() => null);
-
-    let batchDiscount = 0;
-    if (batchableOrder) {
-      batchDiscount = Math.round(calculatedFee * 0.2); // 20% Batching Discount
-      console.log(`[BATCH_ENGINE] Found stackable order ${batchableOrder.id}. Applying ₹${batchDiscount} discount.`);
-    }
-
-    // ── Badge Perks Engine (Gourmet Benefits) ──────────
-    const perks = calculateBadgePerks(currentUser);
-    let perkDiscount = 0;
-    
-    // Delivery Discount (based on percentage of fee)
-    if (perks.deliveryDiscount > 0) {
-      perkDiscount += Math.round(calculatedFee * perks.deliveryDiscount);
-    }
-    
-    // Direct Order Discount (Flat)
-    if (perks.orderDiscount > 0) {
-      perkDiscount += perks.orderDiscount;
-    }
-
-    if (perkDiscount > 0) {
-      console.log(`[PERKS_ENGINE] Applying ₹${perkDiscount} discount for status: ${perks.status}`);
-    }
-
-    // ── Backend Price Validation (Security Guard) ────────────
-    const MenuItem = getMenuItemModel();
-    
-    const mockPrefixes = ['stat-', 'sw-', 'dr-', 'gym-', 'ren-', 'fr-', 'phar-', 'laun-', 'seas-'];
-    const dbItemIds = items
-      .map(i => i.menuItemId || i.id || i._id)
-      .filter(id => {
-        if (typeof id !== 'string') return true;
-        if (id.startsWith('extra-')) return false;
-        if (mockPrefixes.some(prefix => id.startsWith(prefix))) return false;
-        return true;
-      });
-      
-    const dbItems = await MenuItem.findAll({ where: { id: dbItemIds } });
-    const itemMap = Object.fromEntries(dbItems.map(i => [i.id, i]));
-    
-    const EXTRA_PRICES = {
-      'candles': 15, 'knife': 10, 'gift-wrap': 30, 'plates': 15, 'icecream': 30, 'forks': 10,
-      'garlic-bread': 60, 'coke': 40, 'dip-cheese': 20, 'fries': 50, 'chili-flakes': 5, 'napkins': 10,
-      'raita': 25, 'salan': 30, 'boiled-egg': 20, 'buttermilk': 25, 'thumbsup': 40, 'onion-salad': 15,
-      'cookie': 20, 'muffin': 40, 'sandwich': 60, 'straw': 5, 'gift-box': 50, 'dry-fruits': 80,
-      'saffron-milk': 35, 'coleslaw': 25, 'ketchup': 10, 'onion-rings': 45, 'chocolate-sauce': 15,
-      'wafer': 20, 'nuts': 20, 'coffee': 30, 'naan': 40, 'salad': 20, 'lemon': 5, 'spring-roll': 50,
-      'sweet-corn': 35, 'chili-sauce': 10, 'sambar': 15, 'chutney': 10, 'filter-coffee': 25,
-      'curd': 15, 'water': 20, 'lassi': 35
-    };
-
-    let backendTotalPrice = 0;
-    const validatedItems = [];
-    
-    for (const i of items) {
-      const id = i.menuItemId || i.id || i._id;
-      const qty = Math.min(20, Math.max(1, i.quantity || 1));
-      
-      if (typeof id === 'string' && id.startsWith('extra-')) {
-         const extraKey = id.replace('extra-', '');
-         const secureExtraPrice = EXTRA_PRICES[extraKey];
-         
-         if (secureExtraPrice === undefined) {
-           return res.status(400).json({ message: `Invalid extra item: ${i.name || 'Unknown'}` });
-         }
-         
-         backendTotalPrice += secureExtraPrice * qty;
-         validatedItems.push({
-           ...i,
-           quantity: qty,
-           price: secureExtraPrice,
-           basePrice: secureExtraPrice,
-           customizations: null,
-           name: i.name,
-           image: ''
-         });
-         continue;
-      }
-
-      // Intercept mock items from the frontend category pages
-      const mockPrefixes = ['stat-', 'sw-', 'dr-', 'gym-', 'ren-', 'fr-', 'phar-', 'laun-', 'seas-'];
-      if (typeof id === 'string' && mockPrefixes.some(prefix => id.startsWith(prefix))) {
-         const mockPrice = i.priceAtOrder || i.price || 100;
-         backendTotalPrice += mockPrice * qty;
-         validatedItems.push({
-           ...i,
-           quantity: qty,
-           price: mockPrice,
-           basePrice: mockPrice,
-           customizations: null,
-           name: i.name || 'Mock Item',
-           image: i.image || i.imageUrl || ''
-         });
-         continue;
-      }
-
-      const dbItem = itemMap[id];
-      if (!dbItem) {
-        return res.status(400).json({ message: `Invalid menu item: ${i.name || 'Unknown'}` });
-      }
-
-      if (!dbItem.isAvailable) {
-        return res.status(400).json({ message: `Item just went out of stock: ${dbItem.name}` });
-      }
-      
-      const basePrice = dbItem.price;
-      const addOnPrice = calculateCustomizationCost(basePrice, dbItem, i.customizations);
-      
-      // Server-Side Verification: Calculate the true cost
-      const secureItemPrice = basePrice + addOnPrice;
-      
-      // Prevent frontend from sending forged lower prices
-      const frontendPrice = i.priceAtOrder || i.price || basePrice;
-      if (frontendPrice < secureItemPrice) {
-         console.warn(`[SECURITY_WARN] Forged price detected for ${dbItem.name}. Expected: ${secureItemPrice}, Got: ${frontendPrice}`);
-         // Force the secure price to prevent revenue loss
-      }
-
-      backendTotalPrice += secureItemPrice * qty;
-      validatedItems.push({
-        ...i,
-        quantity: qty,
-        price: secureItemPrice,
-        basePrice: basePrice,
-        customizations: i.customizations,
-        name: dbItem.name,
-        image: dbItem.image || dbItem.imageUrl
-      });
-    }
-
-    // ── Coupon Engine (One-Time Rewards) ──────────
-    const { couponCode } = req.body;
-    let couponDiscount = 0;
-    let appliedCoupon = null;
-
-    if (couponCode) {
-      const { getCouponModel } = require('../models/Coupon');
-      const Coupon = getCouponModel();
-      
-      // Atomic Coupon Claim to prevent concurrent use
-      const [updatedRows] = await Coupon.update(
-        { isUsed: true },
-        { where: { code: couponCode, userId: req.user.id, isUsed: false } }
-      );
-      
-      if (updatedRows === 0) {
-        return res.status(400).json({ message: 'Invalid or already used reward code.' });
-      }
-      
-      appliedCoupon = await Coupon.findOne({ where: { code: couponCode, userId: req.user.id } });
-      if (appliedCoupon.type === 'FREEDEL') {
-        couponDiscount = calculatedFee; // 100% Delivery discount
-      } else if (appliedCoupon.type === 'DISCOUNT') {
-        couponDiscount = Math.min(50, Math.round(backendTotalPrice * 0.2)); // 20% off up to 50
-      }
-    }
-
-    const finalPrice = Math.max(0, backendTotalPrice + (calculatedFee - couponDiscount) - batchDiscount - perkDiscount);
-
-    // ── Wallet Payment Engine (Atomic Deduction) ──────────
-    if (paymentMethod === 'Wallet') {
-      const User = getUserModel();
-      const { getSequelize } = require('../config/db');
-      
-      // Atomic Update: Prevents negative balances and race conditions
-      const [updatedRows] = await User.update(
-        { walletBalance: getSequelize().literal(`walletBalance - ${finalPrice}`) },
-        { 
-          where: { 
-            id: req.user.id, 
-            walletBalance: { [Op.gte]: finalPrice } 
-          } 
-        }
-      );
-
-      if (updatedRows === 0) {
-        // Rollback coupon if wallet fails
-        if (appliedCoupon) {
-          await appliedCoupon.update({ isUsed: false });
-        }
-        return res.status(400).json({ 
-          message: `Insufficient Wallet Balance. Needed: ₹${finalPrice}.` 
-        });
-      }
-      console.log(`[WALLET_ENGINE] User ${req.user.id} balance deducted securely by ₹${finalPrice}.`);
-    }
-
+    // ── Coupon claim + wallet debit + order row: all or nothing ──
+    const { getSequelize } = require('../config/db');
+    const sequelize = getSequelize();
     let createdOrder;
     try {
-      createdOrder = await Order.create({
-        userId: req.user.id,
-        restaurantId: targetRid,
-        items: validatedItems,
-        totalPrice: backendTotalPrice,
-        deliveryFee: calculatedFee,
-        distance: distanceKm,
-        estDuration,
-        batchDiscount,
-        gateDiscount: perkDiscount, // Reusing gateDiscount for Badge Perks
-        finalPrice,
-        deliverySlot: (deliverySlot || 'ASAP').replace(/[<>]/g, ''), // Basic XSS Sanitization
-        deliveryAddress: (deliveryAddress || 'Amaravathi Center').replace(/[<>]/g, ''), // Sanitize Address
-        hostelGateDelivery: false,
-        isSurge: isSurge,
-        paymentMethod,
-        upiUTR: paymentMethod === 'UPI' ? upiUTR : null,
-        upiScreenshot: paymentMethod === 'UPI' ? upiScreenshot : null,
-        upiStatus: paymentMethod === 'UPI' ? 'Pending' : 'Verified', // Default to Verified for COD/Card for now
-        status: restaurant.isOffline ? 'Accepted' : 'Pending',
-        deliveryPin: Math.floor(1000 + Math.random() * 9000).toString()
+      createdOrder = await sequelize.transaction(async (t) => {
+        if (quote.coupon) {
+          const { getCouponModel } = require('../models/Coupon');
+          const Coupon = getCouponModel();
+          const [claimed] = await Coupon.update({ isUsed: true }, { where: activeCouponWhere(quote.coupon.code, currentUser.id), transaction: t });
+          if (claimed === 0) throw new PricingError(400, 'COUPON_INVALID', 'That coupon was just used or has expired. Remove it to continue.');
+        }
+        if (paymentMethod === 'Wallet' && quote.finalPrice > 0) {
+          const amount = Number(quote.finalPrice);
+          const [debited] = await User.update(
+            { walletBalance: sequelize.literal(`"walletBalance" - ${amount}`) },
+            { where: { id: currentUser.id, walletBalance: { [Op.gte]: amount } }, transaction: t }
+          );
+          if (debited === 0) {
+            throw new PricingError(400, 'INSUFFICIENT_WALLET',
+              `Not enough Wallet balance — this order needs ₹${amount} and you have ₹${money(currentUser.walletBalance)}. Choose Cash on Delivery or add money to your Wallet.`,
+              { needed: amount, walletBalance: money(currentUser.walletBalance) });
+          }
+        }
+        return Order.create({
+          userId: currentUser.id,
+          restaurantId: quote.store.id,
+          items: quote.lines,
+          totalPrice: quote.subtotal,
+          deliveryFee: quote.deliveryFee,
+          batchDiscount: quote.batchDiscount,
+          gateDiscount: quote.perkDiscount, // badge / ZenPoints perks
+          finalPrice: quote.finalPrice,
+          priceBreakdown: {
+            subtotal: quote.subtotal,
+            deliveryFee: quote.deliveryFee,
+            packagingFee: quote.packagingFee,
+            taxes: quote.taxes,
+            discounts: quote.discounts,
+            totalDiscount: quote.totalDiscount,
+            finalPrice: quote.finalPrice,
+            couponCode: quote.coupon ? quote.coupon.code : null
+          },
+          distance: distanceKm,
+          estDuration: null, // set by the restaurant when it accepts
+          deliverySlot: String(deliverySlot || 'ASAP').replace(/[<>]/g, '').slice(0, 80),
+          deliveryAddress: address,
+          deliveryInstructions: deliveryInstructions.length ? deliveryInstructions : null,
+          hostelGateDelivery: false,
+          isSurge,
+          paymentMethod,
+          // Wallet money is taken above inside this transaction; cash is collected at the door.
+          paymentStatus: paymentMethod === 'Wallet' ? 'Completed' : 'Pending',
+          upiUTR: null,
+          upiScreenshot: null,
+          upiStatus: null,
+          category: (restaurant.vendorType || 'RESTAURANT').toUpperCase() === 'RESTAURANT' ? 'Food' : restaurant.vendorType,
+          status: restaurant.isOffline ? 'Accepted' : 'Pending',
+          deliveryPin: String(crypto.randomInt(1000, 10000))
+        }, { transaction: t });
       });
-    } catch (orderCreateErr) {
-      // ── Manual Rollback if Order fails ──────────────────────
-      console.error('[ORDER_CREATE_ERROR] Rolling back deductions...', orderCreateErr);
-      if (paymentMethod === 'Wallet') {
-        const User = getUserModel();
-        await User.increment('walletBalance', { by: finalPrice, where: { id: req.user.id } });
-      }
-      if (appliedCoupon) {
-        await appliedCoupon.update({ isUsed: false });
-      }
-      return res.status(500).json({ message: 'Failed to create order. Deductions rolled back.' });
+    } catch (err) {
+      if (idemClaimed) recentOrderKeys.delete(idemKey);
+      if (err instanceof PricingError) return sendPricingError(res, err);
+      throw err;
     }
+    if (idemClaimed) recentOrderKeys.set(idemKey, { at: Date.now(), orderId: createdOrder.id });
 
     try {
-      await updateStreak(req.user.id);
-      const User = getUserModel();
-      const user = await User.findByPk(req.user.id);
-      if (user) {
-        user.totalOrders = (user.totalOrders || 0) + 1;
-        await user.save();
-      }
+      await updateStreak(currentUser.id);
+      await User.increment('totalOrders', { by: 1, where: { id: currentUser.id } });
     } catch (statsErr) {
       console.warn('[ORDER_STATS] stats update skipped:', statsErr.message);
     }
@@ -409,86 +273,31 @@ const createOrder = async (req, res) => {
     const io = req.app.get('io');
     try {
       const { checkSurgeState } = require('../server');
-      if (typeof checkSurgeState === 'function') {
-        checkSurgeState(io, restaurant.zone || 'Amaravathi_Central');
-      }
+      if (typeof checkSurgeState === 'function') checkSurgeState(io, restaurant.zone || 'Amaravathi_Central');
     } catch { /* surge check not critical */ }
 
-    // Emit block order pulse for map UI
     try {
-      if (currentUser && currentUser.hostelBlock) {
-        io.emit('blockOrderPulse', { blockName: currentUser.hostelBlock });
-      }
+      if (io && currentUser.hostelBlock) io.emit('blockOrderPulse', { blockName: currentUser.hostelBlock });
     } catch (e) {
       console.warn('[BLOCK_PULSE_WARN] Socket emit failed:', e.message);
     }
 
-    res.status(201).json({ ...createdOrder.toJSON(), _id: createdOrder.id });
+    res.status(201).json({ ...createdOrder.toJSON(), _id: createdOrder.id, bill: quote });
 
-    // ── Universal Dispatch Logic ──────────────────────
-    console.log(`[DISPATCH] Broadcasting newOrder event for Order ID: ${createdOrder.id}`);
-    
-    // 🟢 WhatsApp Integration: Send Confirmation to Customer
+    // ── After the response: notifications & dispatch (never affect the order) ──
     try {
-      if (currentUser && currentUser.phone) {
-        const orderForMsg = await Order.findByPk(createdOrder.id, { 
-          include: [{ model: getRestaurantModel(), as: 'restaurant', attributes: ['name'] }] 
+      if (currentUser.phone) {
+        const orderForMsg = await Order.findByPk(createdOrder.id, {
+          include: [{ model: Restaurant, as: 'restaurant', attributes: ['name'] }]
         });
-        const msg = formatOrderMessage(orderForMsg, 'CUSTOMER_CONFIRMATION');
-        await sendWhatsAppMessage(currentUser.phone, msg, 'CONFIRMATION');
+        await sendWhatsAppMessage(currentUser.phone, formatOrderMessage(orderForMsg, 'CUSTOMER_CONFIRMATION'), 'CONFIRMATION');
       }
     } catch (waErr) {
       console.error('[WHATSAPP_ERROR] Customer alert failed:', waErr.message);
     }
 
-    // (Rider notification has been moved to restaurantAcceptOrder to enforce sequential lifecycle)
-    if (createdOrder.status === 'Accepted' || restaurant.isOffline) {
-      try {
-        const { getCoordsForAddress, getHaversineDistance } = require('../utils/distance');
-        const DeliveryPartner = getDeliveryPartnerModel();
-        const onlineRiders = await DeliveryPartner.findAll({ where: { isOnline: true } });
-        
-        const restCoords = getCoordsForAddress(restaurant ? restaurant.location : '');
-        const ridersWithDist = onlineRiders.map(rider => {
-          const riderCoords = rider.lastLocation || { lat: 16.5062, lon: 80.6480 };
-          const dist = getHaversineDistance(restCoords.lat, restCoords.lon, riderCoords.lat, riderCoords.lon);
-          return { rider, dist };
-        }).sort((a, b) => a.dist - b.dist);
-
-        const targetRiders = ridersWithDist.slice(0, 5);
-        const riderTokens = [];
-        targetRiders.forEach(({ rider }) => {
-          if (rider.fcmTokens) riderTokens.push(...rider.fcmTokens.map(t => t.token));
-        });
-
-        if (riderTokens.length > 0) {
-          await sendPushToTokens(
-            riderTokens, 
-            '🛵 New Order Ready!', 
-            `${restaurant?.name || 'Restaurant'} is ready for pickup. Closest to you!`, 
-            { orderId: createdOrder.id.toString(), distance: (createdOrder.distance || 0).toString(), type: 'NEW_ORDER' }
-          );
-        }
-      } catch (dispatchErr) {
-        console.error('[AUTO_DISPATCH_ERROR]', dispatchErr.message);
-      }
-    }
-    
-    // 3. Notify Admin Command Terminal
-    io.to('admin-room').emit('admin_newOrder', {
-      id: createdOrder.id.toString(),
-      restaurant: restaurant.name,
-      customer: currentUser?.name || 'Customer',
-      drop: createdOrder.deliveryAddress,
-      totalPrice: createdOrder.totalPrice,
-      finalPrice: createdOrder.finalPrice,
-      paymentMethod: createdOrder.paymentMethod,
-      upiStatus: createdOrder.upiStatus,
-      createdAt: createdOrder.createdAt
-    });
-
-    // 🟢 Real-time dispatch to all online riders immediately
-    io.emit('newOrder', {
+    if (!io) return;
+    const riderPayload = {
       id: createdOrder.id,
       restaurant: restaurant.name,
       restaurantAddress: restaurant.location,
@@ -496,65 +305,51 @@ const createOrder = async (req, res) => {
       items: normalizeItems(createdOrder.items),
       totalPrice: createdOrder.totalPrice,
       finalPrice: createdOrder.finalPrice,
+      paymentMethod: createdOrder.paymentMethod,
       earnings: `₹${createdOrder.deliveryFee}`,
       distance: createdOrder.distance,
       createdAt: createdOrder.createdAt,
       deliverySlot: createdOrder.deliverySlot
+    };
+    io.to('admin-room').emit('admin_newOrder', {
+      id: createdOrder.id.toString(),
+      restaurant: restaurant.name,
+      customer: currentUser.name || 'Customer',
+      drop: createdOrder.deliveryAddress,
+      totalPrice: createdOrder.totalPrice,
+      finalPrice: createdOrder.finalPrice,
+      paymentMethod: createdOrder.paymentMethod,
+      paymentStatus: createdOrder.paymentStatus,
+      createdAt: createdOrder.createdAt
     });
 
-    // 2. Smart Proximity Dispatch (Targeted Push to Closest Riders)
-    try {
-      const { getCoordsForAddress, getHaversineDistance } = require('../utils/distance');
-      const DeliveryPartner = getDeliveryPartnerModel();
-      const onlineRiders = await DeliveryPartner.findAll({ where: { isOnline: true } });
-      
-      const restaurantCoords = getCoordsForAddress(restaurant.location);
-      
-      // Calculate distances and sort
-      const ridersWithDistance = onlineRiders.map(rider => {
-          const riderCoords = rider.lastLocation || { lat: 16.5062, lon: 80.6480 }; // Fallback to center
-          const dist = getHaversineDistance(restaurantCoords.lat, restaurantCoords.lon, riderCoords.lat, riderCoords.lon);
-          return { rider, dist };
-      }).sort((a, b) => a.dist - b.dist);
-
-      // Targeted Push Notifications (Top 5 closest)
-      const targetRiders = ridersWithDistance.slice(0, 5);
-      const riderTokens = [];
-      targetRiders.forEach(({ rider }) => {
-        if (rider.fcmTokens) riderTokens.push(...rider.fcmTokens.map(t => t.token));
-      });
-
-      if (riderTokens.length > 0) {
-        const title = restaurant.isOffline ? '🛒 Offline Shop Order!' : '🛵 New Pending Order!';
-        const body = restaurant.isOffline 
-          ? `Go buy/pickup at ${restaurant.name} (Closest to you!)`
-          : `New order from ${restaurant.name} is waiting for acceptance!`;
-
-        await sendPushToTokens(
-          riderTokens, 
-          title, 
-          body, 
-          { orderId: createdOrder.id, distance: createdOrder.distance, type: 'NEW_ORDER' }
-        );
-
-        // 🟢 WhatsApp Integration: Targeted Alert to Rider
-        try {
-          const topRider = targetRiders[0]?.rider;
-          if (topRider && topRider.phone) {
-             const riderMsg = formatOrderMessage(createdOrder, 'RIDER_ALERT');
-             await sendWhatsAppMessage(topRider.phone, riderMsg, 'RIDER_ALERT');
-          }
-        } catch (waRiderErr) {
-          console.error('[WHATSAPP_ERROR] Rider alert failed:', waRiderErr.message);
+    if (restaurant.isOffline || createdOrder.status === 'Accepted') {
+      // Shops without a vendor app go straight to riders.
+      io.to('admin-room').emit('newOrder', riderPayload);
+      try {
+        const DeliveryPartner = getDeliveryPartnerModel();
+        const onlineRiders = await DeliveryPartner.findAll({ where: { isOnline: true, isApproved: true } });
+        const riderTokens = [];
+        onlineRiders.slice(0, 20).forEach((rider) => {
+          const tokens = Array.isArray(rider.fcmTokens) ? rider.fcmTokens : [];
+          tokens.forEach(tk => {
+            const tokenStr = typeof tk === 'string' ? tk : tk?.token;
+            if (tokenStr) riderTokens.push(tokenStr);
+          });
+        });
+        if (riderTokens.length > 0) {
+          await sendPushToTokens(
+            riderTokens,
+            restaurant.isOffline ? '🛒 New pickup order!' : '🛵 New order ready!',
+            restaurant.isOffline ? `Pick up and deliver an order from ${restaurant.name}.` : `New order from ${restaurant.name} is ready for pickup!`,
+            { orderId: createdOrder.id.toString(), type: 'NEW_ORDER' },
+            { persist: false }
+          );
         }
+      } catch (dispatchErr) {
+        console.error('[DISPATCH_ERROR]', dispatchErr.message);
       }
-    } catch (dispatchErr) {
-      console.error('[DISPATCH_ERROR]', dispatchErr.message);
-    }
-
-    // 3. Optional Restaurant/Admin Portal Updates
-    if (!restaurant.isOffline) {
-      // Online Shop: Emit to Restaurant Portal
+    } else {
       io.to(`restaurant_${restaurant.id}`).emit('restaurant_newOrder', {
         id: createdOrder.id,
         items: normalizeItems(createdOrder.items),
@@ -562,14 +357,13 @@ const createOrder = async (req, res) => {
         address: createdOrder.deliveryAddress
       });
     }
-
   } catch (error) {
-    console.error('[ORDER_CREATE_ERROR]', error.stack || error);
-    const fs = require('fs');
-    const path = require('path');
-    const logPath = path.join(__dirname, '..', 'socket_debug.txt');
-    fs.appendFileSync(logPath, `[${new Date().toISOString()}] [ORDER_CREATE_ERROR] Full Error: ${error.stack || error}\n`);
-    res.status(400).json({ message: error.message || 'Invalid order data', error: error.message });
+    // Once the order row exists the key must keep pointing at it (a retry returns the same order).
+    if (idemClaimed && !(recentOrderKeys.get(idemKey) || {}).orderId) recentOrderKeys.delete(idemKey);
+    console.error('[ORDER_CREATE_ERROR]', error && (error.stack || error));
+    if (!res.headersSent) {
+      res.status(500).json({ message: "We couldn't place your order right now. Nothing was charged — please try again in a moment.", code: 'ORDER_FAILED' });
+    }
   }
 };
 
@@ -591,18 +385,19 @@ const restaurantAcceptOrder = async (req, res) => {
 
     if (order.status !== 'Pending') return res.status(400).json({ message: 'Order is not pending' });
 
-    const { estDuration } = req.body;
-    order.status = 'Accepted';
-    if (estDuration) {
-      order.estDuration = parseInt(estDuration, 10);
-    }
-    await order.save();
+    const est = parseInt((req.body || {}).estDuration, 10);
+    const acceptFields = { status: 'Accepted', ...(Number.isFinite(est) && est > 0 && est <= 240 ? { estDuration: est } : {}) };
+    // Conditional flip: a customer cancel (with Wallet refund) or the auto-cancel job may have
+    // won the race since we read the order; never resurrect a cancelled order.
+    const [accepted] = await Order.update(acceptFields, { where: { id: order.id, status: 'Pending' } });
+    if (accepted === 0) return res.status(400).json({ message: 'This order is no longer pending (it may have been cancelled by the customer).' });
+    Object.assign(order, acceptFields);
 
     const statusPayload = { 
       id: order.id, 
       status: 'Accepted' 
     };
-    broadcastOrderStatus(req, order.id, statusPayload);
+    broadcastOrderStatus(req, order, statusPayload);
 
     // Fetch Restaurant to broadcast details to riders
     const Restaurant = getRestaurantModel();
@@ -612,33 +407,47 @@ const restaurantAcceptOrder = async (req, res) => {
     try {
       const { getCoordsForAddress, getHaversineDistance } = require('../utils/distance');
       const DeliveryPartner = getDeliveryPartnerModel();
-      const onlineRiders = await DeliveryPartner.findAll({ where: { isOnline: true } });
+      const onlineRiders = await DeliveryPartner.findAll({ where: { isOnline: true, isApproved: true } });
       
       const restCoords = getCoordsForAddress(restaurant ? restaurant.location : '');
       const ridersWithDist = onlineRiders.map(rider => {
-        const riderCoords = rider.lastLocation || { lat: 16.5062, lon: 80.6480 };
-        const dist = getHaversineDistance(restCoords.lat, restCoords.lon, riderCoords.lat, riderCoords.lon);
+        const loc = rider.liveLocation || rider.lastLocation || {};
+        const riderLat = loc.lat != null ? Number(loc.lat) : NaN;
+        const riderLon = loc.lng != null ? Number(loc.lng) : (loc.lon != null ? Number(loc.lon) : NaN);
+        // Riders without a known position are ranked last instead of being placed at a made-up spot.
+        const dist = Number.isFinite(riderLat) && Number.isFinite(riderLon)
+          ? getHaversineDistance(restCoords.lat, restCoords.lon, riderLat, riderLon)
+          : Infinity;
         return { rider, dist };
       }).sort((a, b) => a.dist - b.dist);
 
       // Notify ALL via socket for real-time race
-      io.emit('newOrder', {
-        id: order.id,
-        restaurant: restaurant ? restaurant.name : 'Unknown',
-        restaurantAddress: restaurant ? restaurant.location : '',
-        drop: order.deliveryAddress,
-        items: normalizeItems(order.items),
-        totalPrice: order.totalPrice,
-        finalPrice: order.finalPrice,
-        earnings: `₹${order.deliveryFee}`,
-        distance: order.distance
-      });
+      const io = req.app.get('io');
+      if (io) {
+        io.to('admin-room').emit('newOrder', {
+          id: order.id,
+          restaurant: restaurant ? restaurant.name : 'Unknown',
+          restaurantAddress: restaurant ? restaurant.location : '',
+          drop: order.deliveryAddress,
+          items: normalizeItems(order.items),
+          totalPrice: order.totalPrice,
+          finalPrice: order.finalPrice,
+          earnings: `₹${order.deliveryFee || 30}`,
+          distance: order.distance
+        });
+      }
 
       // Target closest 5 for Push Notifications
       const targetRiders = ridersWithDist.slice(0, 5);
       const riderTokens = [];
       targetRiders.forEach(({ rider }) => {
-        if (rider.fcmTokens) riderTokens.push(...rider.fcmTokens.map(t => t.token));
+        if (rider.fcmTokens) {
+          const tokens = Array.isArray(rider.fcmTokens) ? rider.fcmTokens : [];
+          tokens.forEach(t => {
+            const tokenStr = typeof t === 'string' ? t : t?.token;
+            if (tokenStr) riderTokens.push(tokenStr);
+          });
+        }
       });
 
       if (riderTokens.length > 0) {
@@ -646,7 +455,8 @@ const restaurantAcceptOrder = async (req, res) => {
           riderTokens, 
           '🛵 New Order Ready!', 
           `${restaurant?.name || 'Restaurant'} is ready for pickup. Closest to you!`, 
-          { orderId: order.id, distance: order.distance, type: 'NEW_ORDER' }
+          { orderId: order.id, distance: order.distance, type: 'NEW_ORDER' },
+          { persist: false }
         );
       }
     } catch (dispatchErr) {
@@ -661,6 +471,14 @@ const restaurantAcceptOrder = async (req, res) => {
 
 
 // @desc    Get order by ID
+// Rider-facing order payloads never carry the customer's delivery PIN.
+const withoutPin = (order) => {
+  const json = order && typeof order.toJSON === 'function' ? order.toJSON() : { ...order };
+  delete json.deliveryPin;
+  delete json.deliveryPinAttempts;
+  return json;
+};
+
 const getOrderById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -682,7 +500,7 @@ const getOrderById = async (req, res) => {
         { 
           model: DeliveryPartner, 
           as: 'deliveryPartner', 
-          attributes: ['id', 'name', 'phone', 'photoUrl', 'averageRating', 'totalRatings', 'vehicleType', 'vehicleNumber', 'bio'] 
+          attributes: ['id', 'name', 'phone', 'photoUrl', 'averageRating', 'totalRatings', 'vehicleType', 'vehicleNumber', 'bio', 'isApproved'] 
         }
       ]
     });
@@ -700,9 +518,17 @@ const getOrderById = async (req, res) => {
     }
 
     const orderData = order.toJSON();
+    delete orderData.deliveryPinAttempts;
+    // The delivery PIN is the customer's secret: the rider asks for it at the door.
+    if (!isOwner && !isAdmin) delete orderData.deliveryPin;
     // Map associations for legacy frontend compatibility (+ _id)
     if (orderData.deliveryPartner) {
         orderData.deliveryPartner._id = orderData.deliveryPartner.id;
+        // Real track record only: no rating until someone has rated this rider.
+        if (!(Number(orderData.deliveryPartner.totalRatings) > 0)) orderData.deliveryPartner.averageRating = null;
+        orderData.deliveryPartner.completedDeliveries = await Order.count({
+          where: { deliveryPartnerId: order.deliveryPartnerId, status: 'Delivered' }
+        });
     }
 
     
@@ -720,7 +546,8 @@ const getOrderById = async (req, res) => {
 
     res.json({ ...orderData, _id: order.id });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('[GET_ORDER_ERROR]', error);
+    res.status(500).json({ message: 'We could not load this order right now. Please try again.' });
   }
 };
 
@@ -728,72 +555,102 @@ const getOrderById = async (req, res) => {
 const getMyOrders = async (req, res) => {
   try {
     const Order = getOrderModel();
+    const Restaurant = getRestaurantModel();
     const orders = await Order.findAll({
       where: { userId: req.user.id },
+      include: [{ model: Restaurant, as: 'restaurant', attributes: ['id', 'name', 'imageUrl', 'vendorType'] }],
       order: [['createdAt', 'DESC']],
       limit: 50
     });
-    res.json(orders.map(o => ({ ...o.toJSON(), _id: o.id })));
+    res.json(orders.map(o => {
+      const json = o.toJSON();
+      return {
+        ...json,
+        _id: o.id,
+        restaurantName: json.restaurant ? json.restaurant.name : null,
+        restaurantImage: json.restaurant ? json.restaurant.imageUrl : null
+      };
+    }));
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('[MY_ORDERS_ERROR]', error);
+    res.status(500).json({ message: 'We could not load your orders right now. Please pull to refresh.' });
   }
 };
 
-// @desc    Rate an order
+const MAX_TIP = 500;
+
+// @desc    Rate an order (once), optionally tip the rider from the Wallet
+// @route   PUT /api/orders/:id/rate
 const rateOrder = async (req, res) => {
-  const { rating, review, tipAmount } = req.body;
+  const { rating: rawRating, review: rawReview, tipAmount } = req.body || {};
   try {
+    const rating = Number(rawRating);
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+      return res.status(400).json({ message: 'Please pick a rating from 1 to 5 stars.', code: 'INVALID_RATING' });
+    }
+    const tip = tipAmount === undefined || tipAmount === null || tipAmount === '' ? 0 : Number(tipAmount);
+    if (!Number.isFinite(tip) || tip < 0 || tip > MAX_TIP) {
+      return res.status(400).json({ message: `Tips can be from ₹0 to ₹${MAX_TIP}.`, code: 'INVALID_TIP' });
+    }
+    const review = typeof rawReview === 'string' && rawReview.trim() ? rawReview.trim().replace(/[<>]/g, '').slice(0, 1000) : null;
+
     const Order = getOrderModel();
     const order = await Order.findByPk(req.params.id);
     if (!order) return res.status(404).json({ message: 'Order not found' });
     if (order.userId !== req.user.id) return res.status(403).json({ message: 'Not authorized' });
+    if (order.status !== 'Delivered') return res.status(400).json({ message: 'You can rate an order once it has been delivered.', code: 'NOT_DELIVERED' });
 
-    order.rating = rating;
-    order.review = review;
-    await order.save();
+    // Rate exactly once: only the request that flips rating from NULL wins (no points farming).
+    const [rated] = await Order.update(
+      { rating, review },
+      { where: { id: order.id, userId: req.user.id, status: 'Delivered', rating: null } }
+    );
+    if (rated === 0) {
+      return res.status(409).json({ message: 'You have already rated this order. Thank you!', code: 'ALREADY_RATED' });
+    }
 
-    // ── Propagate Genuine Rating & Review to Ordered Dishes ──
+    const User = getUserModel();
+    const user = await User.findByPk(req.user.id);
+
+    // ── Reviews for the ordered items (real text only; nothing invented) ──
     try {
       const { getProductReviewModel } = require('../models/ProductReview');
-      const { getMenuItemModel } = require('../models/MenuItem');
       const ProductReview = getProductReviewModel();
       const MenuItem = getMenuItemModel();
-      const User = getUserModel();
-      const user = await User.findByPk(req.user.id);
-
-      const items = normalizeItems(order.items);
-      for (const item of items) {
-        const pId = item.menuItemId || item.id || item._id || (item.name ? item.name.toLowerCase().replace(/[^a-z0-9]/g, '-') : null);
-        if (ProductReview && pId) {
-          await ProductReview.create({
-            productId: String(pId),
-            productName: item.name || 'Campus Dish',
-            orderId: String(order.id),
-            userId: String(req.user.id),
-            userName: user?.name || req.user.name || 'Verified Customer',
-            userBlock: user?.hostelBlock || (order.deliveryAddress ? order.deliveryAddress.split(',')[0] : 'Campus Resident'),
-            rating: Math.min(5, Math.max(1, Number(rating) || 5)),
-            comment: review || 'Freshly prepared and delivered hot on campus.',
-            verified: true,
-            helpfulCount: 1,
-          });
-        }
-
-        // Also update MenuItem rating in DB if menuItemId exists
-        if (MenuItem && item.menuItemId) {
-          try {
-            const menuItem = await MenuItem.findByPk(item.menuItemId);
-            if (menuItem) {
-              const prevSpecs = menuItem.specs || {};
-              const prevCount = prevSpecs.ratingCount || 5;
-              const prevRating = prevSpecs.rating || 4.5;
-              const newCount = prevCount + 1;
-              const newAvg = parseFloat(((prevRating * prevCount + rating) / newCount).toFixed(1));
-              menuItem.specs = { ...prevSpecs, rating: newAvg, ratingCount: newCount };
-              await menuItem.save();
-            }
-          } catch (mErr) {
-            console.warn('[MENU_ITEM_RATING_UPDATE]', mErr.message);
+      const firstName = user && user.name ? String(user.name).trim().split(/\s+/)[0] : 'Zenvy customer';
+      const seen = new Set();
+      for (const item of normalizeItems(order.items)) {
+        const pId = item.menuItemId || item.id || item._id;
+        if (!pId || seen.has(String(pId)) || item.isAddOn) continue;
+        seen.add(String(pId));
+        await ProductReview.create({
+          productId: String(pId),
+          productName: item.name || null,
+          orderId: String(order.id),
+          userId: String(req.user.id),
+          userName: firstName,
+          userBlock: null,
+          rating,
+          comment: review,
+          verified: true, // tied to this delivered order
+          helpfulCount: 0
+        });
+        // Item rating = average of its real reviews.
+        if (MenuItem && /^[0-9a-f-]{36}$/i.test(String(pId))) {
+          const menuItem = await MenuItem.findByPk(String(pId));
+          if (menuItem) {
+            const [agg] = await ProductReview.findAll({
+              where: { productId: String(pId) },
+              attributes: [
+                [ProductReview.sequelize.fn('AVG', ProductReview.sequelize.col('rating')), 'avg'],
+                [ProductReview.sequelize.fn('COUNT', ProductReview.sequelize.col('id')), 'count']
+              ],
+              raw: true
+            });
+            const count = Number(agg && agg.count) || 0;
+            const avg = count ? parseFloat(Number(agg.avg).toFixed(1)) : null;
+            menuItem.specs = { ...(menuItem.specs || {}), rating: avg, ratingCount: count };
+            await menuItem.save();
           }
         }
       }
@@ -801,63 +658,74 @@ const rateOrder = async (req, res) => {
       console.warn('[REVIEW_PROPAGATION_WARN]', revPropErr.message);
     }
 
-    // ── ZenPoints on Rating (+10 ZP) ──────────────────────
+    // ── +10 ZenPoints for rating (once per order, guaranteed by the update above) ──
     try {
-      const User = getUserModel();
-      const user = await User.findByPk(req.user.id);
-      if (user) {
-        user.zenPoints = (user.zenPoints || 0) + 10;
-        await user.save();
-      }
+      await User.increment('zenPoints', { by: 10, where: { id: req.user.id } });
     } catch (zpErr) {
       console.warn('[RATING_ZP] ZenPoints award skipped:', zpErr.message);
     }
 
-    // ── Rider Rating Update ──────────────────────
+    // ── Rider rating + optional tip ──
+    let tipApplied = false;
+    let tipError = null;
     if (order.deliveryPartnerId) {
       const DeliveryPartner = getDeliveryPartnerModel();
       const partner = await DeliveryPartner.findByPk(order.deliveryPartnerId);
       if (partner) {
-        const total = (partner.averageRating || 5) * (partner.totalRatings || 0) + rating;
-        const count = (partner.totalRatings || 0) + 1;
-        partner.averageRating = parseFloat((total / count).toFixed(1));
-        partner.totalRatings = count;
+        const prevCount = partner.totalRatings || 0;
+        const prevAvg = prevCount > 0 ? (partner.averageRating || 0) : 0;
+        partner.totalRatings = prevCount + 1;
+        partner.averageRating = parseFloat(((prevAvg * prevCount + rating) / (prevCount + 1)).toFixed(1));
+        await partner.save();
 
-        // ── Rider Tip (F4) ──────────────────────
-        const tip = parseFloat(tipAmount) || 0;
-        if (tip > 0 && order.deliveryPartnerId) {
+        if (tip > 0) {
           try {
-            const User = getUserModel();
-            const user = await User.findByPk(req.user.id);
-            if (user && (user.walletBalance || 0) >= tip) {
-              user.walletBalance = (user.walletBalance || 0) - tip;
-              await user.save();
-              partner.walletBalance = (partner.walletBalance || 0) + tip;
-              console.log(`[TIP] ₹${tip} tipped to rider ${partner.id} from user ${req.user.id}`);
-              // Notify rider via socket
-              const io = req.app.get('io');
-              if (io) {
-                io.to(`rider_${partner.id}`).emit('rider_tip_received', {
-                  amount: tip,
-                  from: user.name || 'A customer',
-                  orderId: order.id
-                });
+            const { getSequelize } = require('../config/db');
+            const sequelize = getSequelize();
+            await sequelize.transaction(async (t) => {
+              const [debited] = await User.update(
+                { walletBalance: sequelize.literal(`"walletBalance" - ${Number(tip)}`) },
+                { where: { id: req.user.id, walletBalance: { [Op.gte]: tip } }, transaction: t }
+              );
+              if (debited === 0) {
+                const err = new Error(`Not enough Wallet balance for a ₹${tip} tip.`);
+                err.userFacing = true;
+                throw err;
               }
+              await DeliveryPartner.increment('walletBalance', { by: tip, where: { id: partner.id }, transaction: t });
+            });
+            tipApplied = true;
+            const io = req.app.get('io');
+            if (io) {
+              io.to(`rider_${partner.id}`).emit('rider_tip_received', {
+                amount: tip,
+                from: user && user.name ? String(user.name).split(' ')[0] : 'A customer',
+                orderId: order.id
+              });
             }
           } catch (tipErr) {
-            console.warn('[TIP_ERROR] Tip transfer failed:', tipErr.message);
+            tipError = tipErr.userFacing ? tipErr.message : 'Your tip could not be sent. You were not charged.';
+            console.warn('[TIP_ERROR]', tipErr.message);
           }
         }
-
-        await partner.save();
       }
+    } else if (tip > 0) {
+      tipError = 'No rider was assigned to this order, so no tip was sent.';
     }
-    res.json({ message: 'Rating submitted', rating });
+
+    res.json({
+      message: tipApplied ? `Thanks for rating! Your ₹${tip} tip is on its way to your rider.` : 'Thanks for rating!',
+      rating,
+      zenPointsEarned: 10,
+      tipApplied,
+      tipAmount: tipApplied ? tip : 0,
+      tipError
+    });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('[RATE_ORDER_ERROR]', error);
+    res.status(500).json({ message: 'We could not save your rating. Please try again.' });
   }
 };
-
 
 // @desc    Get all orders (Admin)
 const getAllOrders = async (req, res) => {
@@ -873,6 +741,7 @@ const getAllOrders = async (req, res) => {
 
     const { count, rows: orders } = await Order.findAndCountAll({ 
       where,
+      attributes: { exclude: ['deliveryPin'] }, // the customer's handover PIN is never shown to admins
       order: [['createdAt', 'DESC']], 
       limit: parseInt(limit),
       offset: parseInt(offset),
@@ -888,7 +757,8 @@ const getAllOrders = async (req, res) => {
         return { 
           ...oJson, 
           _id: o.id, 
-          userId: oJson.user 
+          userId: oJson.userId || oJson.user?.id || oJson.user,
+          user: oJson.user
         };
       }),
       total: count,
@@ -900,68 +770,158 @@ const getAllOrders = async (req, res) => {
 };
 
 // @desc    Cancel an order
+// @route   PUT /api/orders/:id/cancel
+// Cancels an order and refunds it exactly once (Wallet amount back, coupon restored).
+// `onlyFromStatuses` limits the cancel to orders still in one of those statuses (used by the auto-cancel job).
+// Returns { cancelled, refunded }.
+const cancelAndRefund = async (order, { reason = null, onlyFromStatuses = null } = {}) => {
+  const Order = getOrderModel();
+  const { getSequelize } = require('../config/db');
+  const sequelize = getSequelize();
+  let refunded = 0;
+
+  // Status flip + refund in one transaction. The conditional update means two parallel
+  // cancels can never both pass, so the Wallet is refunded exactly once.
+  const cancelled = await sequelize.transaction(async (t) => {
+    const statusWhere = Array.isArray(onlyFromStatuses)
+      ? { [Op.in]: onlyFromStatuses }
+      : { [Op.notIn]: ['Cancelled', 'Delivered'] };
+    const [n] = await Order.update(
+      { status: 'Cancelled', ...(reason ? { cancellationReason: reason } : {}) },
+      { where: { id: order.id, status: statusWhere }, transaction: t }
+    );
+    if (n === 0) return false;
+    if (order.paymentMethod === 'Wallet') {
+      const amount = money(order.finalPrice != null ? order.finalPrice : order.totalPrice);
+      if (amount > 0) {
+        const User = getUserModel();
+        await User.increment('walletBalance', { by: amount, where: { id: order.userId }, transaction: t });
+        refunded = amount;
+      }
+    }
+    // Give back a coupon that was used on this order (if it has not expired).
+    let breakdown = order.priceBreakdown;
+    if (typeof breakdown === 'string') { try { breakdown = JSON.parse(breakdown); } catch { breakdown = null; } }
+    if (breakdown && breakdown.couponCode) {
+      const { getCouponModel } = require('../models/Coupon');
+      await getCouponModel().update(
+        { isUsed: false },
+        { where: { code: breakdown.couponCode, userId: order.userId, isUsed: true, [Op.or]: [{ expiryDate: null }, { expiryDate: { [Op.gt]: new Date() } }] }, transaction: t }
+      );
+    }
+    return true;
+  });
+  if (cancelled && refunded > 0) console.log(`[REFUND] ₹${refunded} refunded to wallet for user ${order.userId} (order ${order.id})`);
+  return { cancelled, refunded };
+};
+
+// Orders the store never accepted are cancelled automatically, so a customer is never left waiting
+// (orders-n12). Runs from server.js every 2 minutes. Only 'Pending' orders with no rider are touched.
+const PENDING_TIMEOUT_MINUTES = Math.max(5, parseInt(process.env.PENDING_ORDER_TIMEOUT_MINUTES, 10) || 15);
+const autoCancelStalePendingOrders = async (io) => {
+  const Order = getOrderModel();
+  const cutoff = new Date(Date.now() - PENDING_TIMEOUT_MINUTES * 60 * 1000);
+  const stale = await Order.findAll({
+    where: { status: 'Pending', deliveryPartnerId: null, createdAt: { [Op.lt]: cutoff } },
+    order: [['createdAt', 'ASC']],
+    limit: 50,
+  });
+  let count = 0;
+  for (const order of stale) {
+    try {
+      const { cancelled, refunded } = await cancelAndRefund(order, {
+        reason: 'The store did not accept the order in time',
+        onlyFromStatuses: ['Pending'],
+      });
+      if (!cancelled) continue;
+      count++;
+      const payload = { id: order.id, status: 'Cancelled', reason: 'STORE_TIMEOUT', refundedToWallet: refunded };
+      if (io) {
+        io.to(String(order.id)).emit('statusUpdated', payload);
+        io.to('admin-room').emit('statusUpdated', payload);
+        if (order.restaurantId) io.to(`restaurant_${order.restaurantId}`).emit('statusUpdated', payload);
+        io.to(String(order.id)).emit('orderCancelled', { orderId: order.id, reason: 'STORE_TIMEOUT' });
+        io.to('admin-room').emit('orderCancelled', { orderId: order.id, reason: 'STORE_TIMEOUT' });
+      }
+      try {
+        const customer = await getUserModel().findByPk(order.userId, { attributes: ['id', 'fcmTokens'] });
+        if (customer) {
+          await sendPushToTokens(
+            customer.fcmTokens,
+            'Order cancelled',
+            refunded > 0
+              ? `The store did not accept your order in time. ₹${refunded} is back in your Wallet.`
+              : 'The store did not accept your order in time. You have not been charged.',
+            { orderId: order.id, type: 'ORDER_UPDATE' },
+            { recipients: [customer.id] }
+          );
+        }
+      } catch (pushErr) {
+        console.warn('[AUTO_CANCEL_PUSH_WARN]', pushErr.message);
+      }
+    } catch (e) {
+      console.error('[AUTO_CANCEL_ERROR]', order.id, e.message);
+    }
+  }
+  if (count) console.log(`[AUTO_CANCEL] Cancelled ${count} order(s) not accepted within ${PENDING_TIMEOUT_MINUTES} min`);
+  return count;
+};
+
 const cancelOrder = async (req, res) => {
   try {
     const Order = getOrderModel();
     const order = await Order.findByPk(req.params.id);
     if (!order) return res.status(404).json({ message: 'Order not found' });
 
-    // ── Global Sabotage (BOLA/IDOR) Patch ──────────────────────
     const isOwner = order.userId === req.user.id;
-    const isAdmin = req.user.role && req.user.role.toLowerCase() === 'admin';
-    const isStillPending = order.status === 'Pending';
-    
-    // Only Owners and Admins can cancel orders. 
-    // And Owners can ONLY cancel if it is still Pending (or within 120 seconds).
+    const isAdmin = isAdminUser(req.user);
     if (!isOwner && !isAdmin) {
       console.warn(`[SECURITY_WARN] User ${req.user.id} attempted to cancel Order ${order.id} owned by ${order.userId}`);
       return res.status(403).json({ message: 'Not authorized to cancel this order' });
     }
-
-    // Customer cancellation window: 120 seconds after placement (unless still Pending)
-    if (isOwner && !isAdmin && !isStillPending) {
+    if (order.status === 'Cancelled') {
+      return res.status(400).json({ message: 'This order is already cancelled.', code: 'ALREADY_CANCELLED' });
+    }
+    if (order.status === 'Delivered') {
+      return res.status(400).json({ message: 'This order has already been delivered. Need help? Contact support from the order page.', code: 'ALREADY_DELIVERED' });
+    }
+    // Customers can cancel while the order is Pending, or within 2 minutes of placing it.
+    if (isOwner && !isAdmin && order.status !== 'Pending') {
       const elapsed = (Date.now() - new Date(order.createdAt).getTime()) / 1000;
       if (elapsed > 120) {
-        return res.status(400).json({ message: 'Cancellation window closed' });
+        return res.status(400).json({ message: 'The store has already started on this order, so it can no longer be cancelled. Need help? Contact support from the order page.', code: 'CANCEL_WINDOW_CLOSED' });
       }
     }
 
-    // ── Infinite Refund Exploit Patch ──────────────────────
-    if (order.status === 'Cancelled') {
-      console.warn(`[SECURITY_WARN] User ${req.user.id} attempted double-cancel on Order ${order.id}`);
-      return res.status(400).json({ message: 'Order is already cancelled' });
-    }
+    const reason = typeof (req.body || {}).reason === 'string' ? req.body.reason.replace(/[<>]/g, '').slice(0, 250) : null;
+    const { cancelled, refunded } = await cancelAndRefund(order, { reason });
 
-    const { reason } = req.body;
-    order.status = 'Cancelled';
-    if (reason) {
-      order.cancellationReason = reason;
+    if (!cancelled) {
+      return res.status(400).json({ message: 'This order is already cancelled.', code: 'ALREADY_CANCELLED' });
     }
-    await order.save();
-
-    // ── Refund Logic (Only for Wallet payments) ──────────────────────
-    try {
-      if (order.paymentMethod === 'Wallet') {
-        const User = getUserModel();
-        const user = await User.findByPk(order.userId);
-        if (user) {
-          user.walletBalance = (user.walletBalance || 0) + (order.finalPrice || order.totalPrice);
-          await user.save();
-          console.log(`[REFUND] ₹${order.finalPrice} refunded to wallet for user ${user.id}`);
-        }
-      }
-    } catch (refundErr) {
-      console.error('[REFUND_ERROR]', refundErr.message);
-    }
-
-    const io = req.app.get('io');
-    if (io) io.emit('orderCancelled', { orderId: order.id });
     const statusPayload = { id: order.id, status: 'Cancelled' };
-    broadcastOrderStatus(req, order.id, statusPayload);
+    broadcastOrderStatus(req, order, statusPayload);
+    const io = req.app.get('io');
+    if (io) {
+      io.to(String(order.id)).emit('orderCancelled', { orderId: order.id });
+      io.to('admin-room').emit('orderCancelled', { orderId: order.id });
+      // The assigned rider must stop (they may not be in the order room right now).
+      if (order.deliveryPartnerId) io.to(`rider_${order.deliveryPartnerId}`).emit('orderCancelled', { orderId: order.id });
+    }
+    if (order.deliveryPartnerId) {
+      try {
+        await getDeliveryPartnerModel().update({ currentOrderId: null }, { where: { id: order.deliveryPartnerId, currentOrderId: order.id } });
+      } catch (riderErr) { console.warn('[CANCEL_RIDER_RELEASE_WARN]', riderErr.message); }
+    }
 
-    res.json({ message: 'Order cancelled', orderId: order.id });
+    res.json({
+      message: refunded > 0 ? `Order cancelled. ₹${refunded} is back in your Wallet.` : 'Order cancelled.',
+      orderId: order.id,
+      refundedToWallet: refunded
+    });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('[CANCEL_ORDER_ERROR]', error);
+    res.status(500).json({ message: 'We could not cancel the order right now. Please try again.' });
   }
 };
 
@@ -976,47 +936,61 @@ const updateOrderStatus = async (req, res) => {
       return res.status(400).json({ message: `Invalid status. Must be one of: ${allowedStatuses.join(', ')}` });
     }
 
+    // Cancelling goes through the same path as a customer cancel (exactly-once Wallet refund).
+    if (status === 'Cancelled') return cancelOrder(req, res);
+
     const Order = getOrderModel();
     const order = await Order.findByPk(req.params.id);
     if (!order) return res.status(404).json({ message: 'Order not found' });
 
-    if (status === 'Delivered' && order.status !== 'Delivered') {
-      const { evaluateBadges } = require('../services/BadgeService');
-      const User = getUserModel();
-      const user = await User.findByPk(order.userId);
-      if (user) {
-        // Award Points (10 pts per 100 spent)
-        const pts = Math.floor((order.finalPrice || order.totalPrice) / 100) * 10;
-        user.zenPoints = (user.zenPoints || 0) + pts;
-        user.completedOrders = (user.completedOrders || 0) + 1;
+    if (order.status === 'Cancelled') {
+      return res.status(400).json({ message: 'This order was cancelled (and refunded if paid by Wallet). It cannot be reopened — ask the customer to order again.' });
+    }
 
-        // Achievements Logic
-        const hour = new Date().getHours();
-        if (hour >= 22 || hour < 4) {
-          user.lateNightOrders = (user.lateNightOrders || 0) + 1;
+    let justDelivered = false;
+    if (status === 'Delivered') {
+      // Only the request that actually flips the order to Delivered awards points (no double credit).
+      const [n] = await Order.update(
+        { status: 'Delivered', deliveredAt: new Date(), ...(order.paymentMethod === 'COD' ? { paymentStatus: 'Completed' } : {}) },
+        { where: { id: order.id, status: { [Op.notIn]: ['Delivered', 'Cancelled'] } } }
+      );
+      justDelivered = n === 1;
+      if (!justDelivered) {
+        // Lost the race: either already delivered (no second push / credit) or cancelled meanwhile.
+        const fresh = await Order.findByPk(order.id, { attributes: ['id', 'status'] });
+        if (fresh && fresh.status === 'Cancelled') {
+          return res.status(400).json({ message: 'This order was cancelled and cannot be marked delivered.' });
         }
-
-        const newBadges = evaluateBadges(user);
-        if (newBadges.length > 0) {
-          const currentBadges = Array.isArray(user.badges) ? [...user.badges] : [];
-          user.badges = [...currentBadges, ...newBadges];
-        }
-        await user.save();
-
-        // Pass new badges to status update event
-        order.newBadges = newBadges;
+        return res.json({ message: 'Order is already delivered', orderId: order.id, status: 'Delivered' });
       }
     }
 
-    order.status = status;
-    await order.save();
+    if (justDelivered) {
+      // Atomic increments (a stale read-modify-save here used to overwrite concurrent spin/redeem points).
+      const { creditCustomerForDelivery } = require('../services/BadgeService');
+      try {
+        const { newBadges } = await creditCustomerForDelivery(getUserModel(), order);
+        order.newBadges = newBadges;
+      } catch (creditErr) {
+        console.error('[DELIVERY_CREDIT_ERROR]', order.id, creditErr.message);
+      }
+    }
+
+    if (status !== 'Delivered') {
+      // Conditional write: never overwrite a cancel (and its refund) that landed after we read the order.
+      const [n] = await Order.update({ status }, { where: { id: order.id, status: { [Op.notIn]: ['Cancelled'] } } });
+      if (n === 0) return res.status(400).json({ message: 'This order was cancelled and cannot be updated.' });
+      order.status = status;
+    } else {
+      order.status = 'Delivered';
+    }
 
     const statusPayload = { 
       id: order.id, 
       status,
       newBadges: status === 'Delivered' ? (order.newBadges || []) : []
     };
-    broadcastOrderStatus(req, order.id, statusPayload);
+    broadcastOrderStatus(req, order, statusPayload);
     if (status === 'Delivered') {
       const io = req.app.get('io');
       if (io) io.to('admin-room').emit('admin_delivery_complete', { orderId: order.id });
@@ -1026,7 +1000,7 @@ const updateOrderStatus = async (req, res) => {
     try {
       const User = getUserModel();
       const customer = await User.findByPk(order.userId);
-      if (customer && customer.fcmTokens && customer.fcmTokens.length > 0) {
+      if (customer) {
         const titles = {
           'Accepted': 'Order Confirmed! 👍',
           'Preparing': 'Kitchen is cooking! 🍳',
@@ -1048,7 +1022,8 @@ const updateOrderStatus = async (req, res) => {
             customer.fcmTokens,
             titles[status],
             bodies[status],
-            { orderId: order.id, type: 'ORDER_UPDATE' }
+            { orderId: order.id, type: 'ORDER_UPDATE' },
+            { recipients: [customer.id] }
           );
         }
       }
@@ -1078,8 +1053,13 @@ const updateOrderStatus = async (req, res) => {
 };
 
 const getSurgeStatus = async (req, res) => {
-  const { isSurgeActive, SURGE_MULTIPLIER } = require('../server');
-  res.json({ isSurge: isSurgeActive(), multiplier: SURGE_MULTIPLIER });
+  try {
+    const { isSurgeActive, SURGE_MULTIPLIER } = require('../server');
+    const zone = typeof req.query.zone === 'string' && req.query.zone ? req.query.zone : 'Amaravathi_Central';
+    res.json({ isSurge: typeof isSurgeActive === 'function' ? !!isSurgeActive(zone) : false, zone, multiplier: SURGE_MULTIPLIER });
+  } catch {
+    res.json({ isSurge: false });
+  }
 };
     // @desc    Get spending stats for logged-in user (F12 - Spending Dashboard)
 // @route   GET /api/orders/stats
@@ -1180,6 +1160,8 @@ const getOrderStats = async (req, res) => {
 };
 
 
+// @desc    LEGACY ONLY: resolve UPI orders placed before online payments were switched off.
+//          New orders can only be COD or Wallet (createOrder rejects UPI), so nothing new reaches this.
 const verifyUPIPayment = async (req, res) => {
   const { isVerified } = req.body; // boolean
   try {
@@ -1187,6 +1169,7 @@ const verifyUPIPayment = async (req, res) => {
     const order = await Order.findByPk(req.params.id);
     if (!order) return res.status(404).json({ message: 'Order not found' });
     if (order.paymentMethod !== 'UPI') return res.status(400).json({ message: 'Not a UPI order' });
+    if (order.upiStatus !== 'Pending') return res.status(400).json({ message: `This UPI payment is already ${String(order.upiStatus || 'resolved').toLowerCase()}.` });
 
     if (isVerified) {
       order.upiStatus = 'Verified';
@@ -1203,7 +1186,7 @@ const verifyUPIPayment = async (req, res) => {
     await order.save();
     
     const statusPayload = { id: order.id, status: order.status };
-    broadcastOrderStatus(req, order.id, statusPayload);
+    broadcastOrderStatus(req, order, statusPayload);
 
     res.json({ message: `Payment ${isVerified ? 'Verified' : 'Rejected'}`, orderId: order.id, status: order.status });
   } catch (error) {
@@ -1231,16 +1214,18 @@ const restaurantReadyOrder = async (req, res) => {
        return res.status(400).json({ message: 'Order must be Accepted or Preparing to mark as Ready' });
     }
 
+    // Conditional flip so a concurrent customer cancel is never overwritten.
+    const [ready] = await Order.update({ status: 'ReadyForPickup' }, { where: { id: order.id, status: { [Op.in]: ['Accepted', 'Preparing'] } } });
+    if (ready === 0) return res.status(400).json({ message: 'This order was just cancelled or updated. Please refresh.' });
     order.status = 'ReadyForPickup';
-    await order.save();
 
     const statusPayload = { id: order.id, status: 'ReadyForPickup' };
-    broadcastOrderStatus(req, order.id, statusPayload);
+    broadcastOrderStatus(req, order, statusPayload);
 
     const io = req.app.get('io');
 
     // Also notify the delivery partner if assigned
-    if (order.deliveryPartnerId) {
+    if (io && order.deliveryPartnerId) {
       io.to(`rider_${order.deliveryPartnerId}`).emit('orderReady', { orderId: order.id });
     }
 
@@ -1250,99 +1235,203 @@ const restaurantReadyOrder = async (req, res) => {
   }
 };
 
-// @desc    Rider uploads pre-purchase item photo / estimate for Mega Basket
-const uploadItemPhoto = async (req, res) => {
-  const { itemPhotoUrl } = req.body;
+// @desc    Status changes sent by the restaurant partner app to PUT /api/orders/:id/status.
+//          Admins keep the full updateOrderStatus; a restaurant may only move ITS OWN orders
+//          through the kitchen steps (accept → preparing → ready) or decline a new order.
+const restaurantUpdateOrderStatus = async (req, res) => {
+  let status = String((req.body || {}).status || '');
+  if (status === 'Ready for Pickup' || status === 'Ready') status = 'ReadyForPickup';
+  if (status === 'Rejected' || status === 'Declined') status = 'Cancelled';
+  if (status === 'Accepted') return restaurantAcceptOrder(req, res);
+  if (status === 'ReadyForPickup') return restaurantReadyOrder(req, res);
   try {
+    if (!['Preparing', 'Cancelled'].includes(status)) {
+      return res.status(400).json({ message: 'A store can accept, start preparing, mark ready or decline an order.' });
+    }
     const Order = getOrderModel();
     const order = await Order.findByPk(req.params.id);
     if (!order) return res.status(404).json({ message: 'Order not found' });
+    if (order.restaurantId !== req.user.id) return res.status(403).json({ message: 'Not authorized to update this order' });
 
-    order.itemPhotoUrl = itemPhotoUrl;
-    order.status = 'Shopping'; // Transition status to Shopping
-    await order.save();
+    if (status === 'Preparing') {
+      const [n] = await Order.update({ status: 'Preparing' }, { where: { id: order.id, status: { [Op.in]: ['Pending', 'Accepted'] } } });
+      if (n === 0) return res.status(400).json({ message: 'This order was just cancelled or updated. Please refresh.' });
+      order.status = 'Preparing';
+      broadcastOrderStatus(req, order, { id: order.id, status: 'Preparing' });
+      try {
+        const customer = await getUserModel().findByPk(order.userId, { attributes: ['id', 'fcmTokens'] });
+        if (customer) {
+          await sendPushToTokens(customer.fcmTokens, 'Kitchen is cooking! 🍳', 'Your order is being prepared.', { orderId: order.id, type: 'ORDER_UPDATE' }, { recipients: [customer.id] });
+        }
+      } catch (pushErr) { console.warn('[REST_STATUS_PUSH_WARN]', pushErr.message); }
+      return res.json({ message: 'Order marked as Preparing', orderId: order.id, status: 'Preparing' });
+    }
 
-    broadcastOrderStatus(req, order.id, { 
-      id: order.id, 
-      status: 'Shopping',
-      itemPhotoUrl,
-      isPurchasingApprovedByCustomer: order.isPurchasingApprovedByCustomer 
-    });
-
-    res.json({ message: 'Item photo uploaded successfully', order });
+    // Decline: only before a rider has picked it up; refunds the Wallet exactly once.
+    const reason = typeof (req.body || {}).reason === 'string' && req.body.reason.trim()
+      ? req.body.reason.replace(/[<>]/g, '').trim().slice(0, 250)
+      : 'The store could not take this order';
+    const { cancelled, refunded } = await cancelAndRefund(order, { reason, onlyFromStatuses: ['Pending', 'Accepted', 'Preparing'] });
+    if (!cancelled) return res.status(400).json({ message: 'This order can no longer be declined (it is already cancelled or out for delivery).' });
+    const payload = { id: order.id, status: 'Cancelled', reason: 'STORE_DECLINED', refundedToWallet: refunded };
+    broadcastOrderStatus(req, order, payload);
+    const io = req.app.get('io');
+    if (io) {
+      io.to(String(order.id)).emit('orderCancelled', { orderId: order.id, reason: 'STORE_DECLINED' });
+      io.to('admin-room').emit('orderCancelled', { orderId: order.id, reason: 'STORE_DECLINED' });
+      if (order.deliveryPartnerId) io.to(`rider_${order.deliveryPartnerId}`).emit('orderCancelled', { orderId: order.id, reason: 'STORE_DECLINED' });
+    }
+    if (order.deliveryPartnerId) {
+      try { await getDeliveryPartnerModel().update({ currentOrderId: null }, { where: { id: order.deliveryPartnerId, currentOrderId: order.id } }); } catch { /* best effort */ }
+    }
+    try {
+      const customer = await getUserModel().findByPk(order.userId, { attributes: ['id', 'fcmTokens'] });
+      if (customer) {
+        await sendPushToTokens(customer.fcmTokens, 'Order cancelled',
+          refunded > 0 ? `The store could not take your order. ₹${refunded} is back in your Wallet.` : 'The store could not take your order. You have not been charged.',
+          { orderId: order.id, type: 'ORDER_UPDATE' }, { recipients: [customer.id] });
+      }
+    } catch (pushErr) { console.warn('[REST_DECLINE_PUSH_WARN]', pushErr.message); }
+    return res.json({ message: 'Order declined', orderId: order.id, status: 'Cancelled', refundedToWallet: refunded });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('[REST_STATUS_ERROR]', error);
+    res.status(500).json({ message: 'Could not update the order right now. Please try again.' });
+  }
+};
+
+// ── Kirana pre-purchase / bill approval on an Order ────────────────
+// Upload endpoints: the assigned rider (or admin). Approve endpoints: the customer who owns it.
+const loadOrderFor = async (req, res, who) => {
+  const Order = getOrderModel();
+  const order = await Order.findByPk(req.params.id);
+  if (!order) { res.status(404).json({ message: 'Order not found' }); return null; }
+  const isAdmin = isAdminUser(req.user);
+  const allowed = who === 'rider'
+    ? (isAdmin || (order.deliveryPartnerId && order.deliveryPartnerId === req.user.id))
+    : (isAdmin || order.userId === req.user.id);
+  if (!allowed) { res.status(403).json({ message: 'Not authorized for this order' }); return null; }
+  if (['Cancelled', 'Delivered'].includes(order.status)) {
+    res.status(400).json({ message: `This order is already ${order.status.toLowerCase()}.` });
+    return null;
+  }
+  return order;
+};
+
+// @desc    Rider uploads pre-purchase item photo / estimate for Mega Basket
+const uploadItemPhoto = async (req, res) => {
+  try {
+    const { itemPhotoUrl } = req.body || {};
+    if (!itemPhotoUrl || typeof itemPhotoUrl !== 'string') return res.status(400).json({ message: 'Please attach the item photo.' });
+    const order = await loadOrderFor(req, res, 'rider');
+    if (!order) return;
+    order.itemPhotoUrl = itemPhotoUrl;
+    await order.save(); // status is unchanged ('Shopping' is not an order status)
+
+    broadcastOrderStatus(req, order, {
+      id: order.id,
+      status: order.status,
+      itemPhotoUrl,
+      isPurchasingApprovedByCustomer: order.isPurchasingApprovedByCustomer
+    });
+    res.json({ message: 'Item photo uploaded successfully', order: withoutPin(order) });
+  } catch (error) {
+    console.error('[UPLOAD_ITEM_PHOTO_ERROR]', error);
+    res.status(500).json({ message: 'Could not upload the photo. Please try again.' });
   }
 };
 
 // @desc    Customer approves pre-purchase photo & estimate to proceed with purchasing
 const approvePurchase = async (req, res) => {
   try {
-    const Order = getOrderModel();
-    const order = await Order.findByPk(req.params.id);
-    if (!order) return res.status(404).json({ message: 'Order not found' });
-
+    const order = await loadOrderFor(req, res, 'customer');
+    if (!order) return;
     order.isPurchasingApprovedByCustomer = true;
     await order.save();
-
-    broadcastOrderStatus(req, order.id, { 
-      id: order.id, 
-      status: order.status,
-      isPurchasingApprovedByCustomer: true 
-    });
-
-    res.json({ message: 'Purchase approved by customer', order });
+    broadcastOrderStatus(req, order, { id: order.id, status: order.status, isPurchasingApprovedByCustomer: true });
+    res.json({ message: 'Purchase approved', order });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('[APPROVE_PURCHASE_ERROR]', error);
+    res.status(500).json({ message: 'Could not approve right now. Please try again.' });
   }
 };
 
 // @desc    Rider uploads final store bill receipt & bill amount
 const uploadBillProof = async (req, res) => {
-  const { billProofUrl, billAmount } = req.body;
   try {
-    const Order = getOrderModel();
-    const order = await Order.findByPk(req.params.id);
-    if (!order) return res.status(404).json({ message: 'Order not found' });
-
+    const { billProofUrl } = req.body || {};
+    const billAmount = Number((req.body || {}).billAmount);
+    if (!billProofUrl || typeof billProofUrl !== 'string') return res.status(400).json({ message: 'Please attach a photo of the bill.' });
+    if (!Number.isFinite(billAmount) || billAmount <= 0 || billAmount > 100000) return res.status(400).json({ message: 'Please enter the bill amount.' });
+    const order = await loadOrderFor(req, res, 'rider');
+    if (!order) return;
+    if (order.isBillApproved) return res.status(400).json({ message: 'The customer has already approved this bill.' });
     order.billProofUrl = billProofUrl;
-    order.billAmount = billAmount;
+    order.billAmount = money(billAmount);
     await order.save();
 
-    broadcastOrderStatus(req, order.id, { 
-      id: order.id, 
+    broadcastOrderStatus(req, order, {
+      id: order.id,
       status: order.status,
       billProofUrl,
-      billAmount,
+      billAmount: order.billAmount,
       isBillApproved: order.isBillApproved
     });
-
-    res.json({ message: 'Bill proof uploaded successfully', order });
+    res.json({ message: 'Bill proof uploaded successfully', order: withoutPin(order) });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('[UPLOAD_BILL_ERROR]', error);
+    res.status(500).json({ message: 'Could not upload the bill. Please try again.' });
   }
 };
 
-// @desc    Customer approves final store bill and confirms reimbursement
+// @desc    Customer approves the final store bill; the order total becomes bill + delivery.
+//          Wallet orders are charged/refunded the difference atomically; COD collects it at the door.
 const approveBill = async (req, res) => {
   try {
+    const order = await loadOrderFor(req, res, 'customer');
+    if (!order) return;
+    if (!(Number(order.billAmount) > 0)) return res.status(400).json({ message: 'The rider has not uploaded the bill yet.' });
+    if (order.isBillApproved) return res.json({ message: 'Bill already approved', order, amountPayable: order.finalPrice });
+
+    const newFinal = money(Math.max(0, Number(order.billAmount) + Number(order.deliveryFee || 0) - Number(order.batchDiscount || 0) - Number(order.gateDiscount || 0)));
+    const diff = money(newFinal - Number(order.finalPrice || 0));
     const Order = getOrderModel();
-    const order = await Order.findByPk(req.params.id);
-    if (!order) return res.status(404).json({ message: 'Order not found' });
+    const User = getUserModel();
+    const { getSequelize } = require('../config/db');
+    const sequelize = getSequelize();
+
+    try {
+      await sequelize.transaction(async (t) => {
+        const [n] = await Order.update(
+          { isBillApproved: true, finalPrice: newFinal },
+          { where: { id: order.id, isBillApproved: { [Op.not]: true } }, transaction: t } // older rows may hold NULL
+        );
+        if (n === 0) throw new PricingError(409, 'ALREADY_APPROVED', 'Bill already approved.');
+        if (order.paymentMethod === 'Wallet' && diff > 0) {
+          const [debited] = await User.update(
+            { walletBalance: sequelize.literal(`"walletBalance" - ${Number(diff)}`) },
+            { where: { id: order.userId, walletBalance: { [Op.gte]: diff } }, transaction: t }
+          );
+          if (debited === 0) throw new PricingError(400, 'INSUFFICIENT_WALLET', `The bill is ₹${diff} more than you paid and your Wallet doesn't have enough. Please add money to your Wallet and approve again.`, { needed: diff });
+        } else if (order.paymentMethod === 'Wallet' && diff < 0) {
+          await User.increment('walletBalance', { by: -diff, where: { id: order.userId }, transaction: t });
+        }
+      });
+    } catch (err) {
+      if (err instanceof PricingError) return sendPricingError(res, err);
+      throw err;
+    }
 
     order.isBillApproved = true;
-    await order.save();
-
-    broadcastOrderStatus(req, order.id, { 
-      id: order.id, 
-      status: order.status,
-      isBillApproved: true 
-    });
-
-    res.json({ message: 'Bill reimbursement approved by customer', order });
+    order.finalPrice = newFinal;
+    broadcastOrderStatus(req, order, { id: order.id, status: order.status, isBillApproved: true, finalPrice: newFinal });
+    const msg = order.paymentMethod === 'Wallet'
+      ? (diff > 0 ? `Bill approved. ₹${diff} was taken from your Wallet.` : diff < 0 ? `Bill approved. ₹${-diff} was returned to your Wallet.` : 'Bill approved.')
+      : `Bill approved. Pay ₹${newFinal} in cash when your order arrives.`;
+    res.json({ message: msg, order, amountPayable: newFinal });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('[APPROVE_BILL_ERROR]', error);
+    res.status(500).json({ message: 'Could not approve the bill right now. Please try again.' });
   }
 };
 
-module.exports = { createOrder, getOrderById, getMyOrders, rateOrder, getAllOrders, cancelOrder, updateOrderStatus, getSurgeStatus, restaurantAcceptOrder, verifyUPIPayment, restaurantReadyOrder, getOrderStats, uploadItemPhoto, approvePurchase, uploadBillProof, approveBill };
+module.exports = { restaurantUpdateOrderStatus, autoCancelStalePendingOrders, cancelAndRefund, createOrder, quoteOrder, getServiceability, getOrderById, getMyOrders, rateOrder, getAllOrders, cancelOrder, updateOrderStatus, getSurgeStatus, restaurantAcceptOrder, verifyUPIPayment, restaurantReadyOrder, getOrderStats, uploadItemPhoto, approvePurchase, uploadBillProof, approveBill };

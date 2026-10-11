@@ -21,7 +21,7 @@ export const getSocket = (): Socket => {
       reconnectionDelay: 2000,
       timeout: 45000,
       auth: (cb) => {
-        getToken().then(token => cb({ token }));
+        getToken().then(token => cb({ token })).catch(() => cb({}));
       }
     });
   }
@@ -37,6 +37,19 @@ export const connectSocket = (): Socket => {
 export const refreshSocketAuth = () => {
   const s = getSocket();
   s.disconnect().connect();
+};
+
+/**
+ * The server fixes a socket's identity at the handshake. After login/logout, re-handshake
+ * a socket that is in use so it carries the new token (the auth callback re-reads it).
+ * Screens' listeners stay attached; room joins should be re-emitted on 'connect'.
+ */
+export const reconnectSocketWithFreshAuth = () => {
+  if (!_socket) return;
+  if (_socket.connected || _socket.active) {
+    _socket.disconnect();
+    _socket.connect();
+  }
 };
 
 // Legacy default export — returns a lazy socket (not auto-connected)

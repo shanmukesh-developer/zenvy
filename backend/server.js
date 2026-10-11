@@ -14,26 +14,25 @@ const morgan = require('morgan');
 const { initEphemeralPurge } = require('./cron/ephemeralPurge');
 const { initStreakNudge } = require('./cron/streakNudge');
 const { initWallCron } = require('./cron/wallCron');
+const { isProduction: isProductionEnv } = require('./utils/env'); // single production check (RENDER / NODE_ENV)
 // xss-clean removed due to Express 5 query getter incompatibility; custom safeXssMiddleware used instead.
 
 // ── Global Bulletproof Shield (Prevents any Node.js Crash in Dev, Restarts in Prod) ──────────────
 process.on('uncaughtException', (err) => {
   console.error('🔥 [CRITICAL] Uncaught Exception:', err.message);
   console.error(err.stack);
-  const isProd = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
+  const isProd = isProductionEnv();
   if (isProd) {
     console.error('🔥 Exiting process due to uncaught exception in production...');
     process.exit(1);
   }
 });
 
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('🔥 [CRITICAL] Unhandled Promise Rejection:', reason);
-  const isProd = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
-  if (isProd) {
-    console.error('🔥 Exiting process due to unhandled promise rejection in production...');
-    process.exit(1);
-  }
+// A stray rejected promise (e.g. a fire-and-forget push or socket handler) is logged, not fatal:
+// exiting here dropped every live socket, the in-memory idempotency keys and in-flight orders
+// for all students at once. Truly broken state still surfaces via uncaughtException above.
+process.on('unhandledRejection', (reason) => {
+  console.error('🔥 [CRITICAL] Unhandled Promise Rejection:', reason && reason.stack ? reason.stack : reason);
 });
 
 // ── Async Buffered Logger (Non-Blocking) ──────────────────────
@@ -114,10 +113,13 @@ const ALLOWED_ORIGINS = [
 const isAllowedOrigin = (origin) => {
   if (!origin) return true;
   if (ALLOWED_ORIGINS.includes(origin)) return true;
-  if (origin.includes('localhost') || origin.includes('127.0.0.1') || origin.startsWith('capacitor://')) return true;
-  // Allow any Render subdomain for this specific project
-  if (origin.includes('hostelbites') && origin.endsWith('.onrender.com')) return true;
-  if (origin.includes('zenvy') && origin.endsWith('.onrender.com')) return true;
+  // Strict match for local dev / mobile schemes to prevent domain spoofing
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
+  if (origin.startsWith('capacitor://') || origin.startsWith('exp://')) return true;
+  // Allow project-specific Render subdomains
+  if (/^https:\/\/[a-z0-9-]+\.onrender\.com$/.test(origin)) {
+    if (origin.includes('hostelbites') || origin.includes('zenvy')) return true;
+  }
   return false;
 };
 
@@ -145,7 +147,7 @@ const rateLimit = require('express-rate-limit');
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 2000, // 2000 requests per IP per 15 min — generous for shared campus Wi-Fi
-  skip: (req, res) => process.env.NODE_ENV !== 'production' && process.env.RENDER !== 'true',
+  skip: (req, res) => !isProductionEnv(),
   message: { message: 'Too many requests from this IP, please try again after 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -154,9 +156,18 @@ const globalLimiter = rateLimit({
 // ── Order Spam Shield (Per-User via JWT, not just IP) ─────────────────────────────────────────
 const orderRateLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: 10, // Max 10 order submissions per minute per IP
-  skip: (req, res) => process.env.NODE_ENV !== 'production' && process.env.RENDER !== 'true',
-  message: { message: 'Too many orders placed. Please wait a minute.' },
+  max: 5, // 5 order submissions per minute per signed-in user (IP only when signed out)
+  keyGenerator: (req) => {
+    try {
+      const auth = req.headers.authorization || '';
+      const token = auth.startsWith('Bearer ') ? auth.slice(7) : (req.cookies && req.cookies.token);
+      const decoded = token ? jwt.decode(token) : null;
+      if (decoded && decoded.id) return `user:${decoded.id}`;
+    } catch { /* fall back to IP */ }
+    return rateLimit.ipKeyGenerator ? rateLimit.ipKeyGenerator(req.ip) : req.ip;
+  },
+  skip: (req, res) => !isProductionEnv(),
+  message: { message: 'Too many orders in a minute. Please wait a moment and try again.', code: 'TOO_MANY_ORDERS' },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -165,7 +176,7 @@ const orderRateLimiter = rateLimit({
 const authRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 50, // 50 auth attempts per IP per 15 min — prevents brute force but allows shared WiFi retries
-  skip: (req, res) => process.env.NODE_ENV !== 'production' && process.env.RENDER !== 'true',
+  skip: (req, res) => !isProductionEnv(),
   message: { message: 'Too many authentication attempts, please try again after 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -259,8 +270,7 @@ io.use((socket, next) => {
   }
 });
 
-// Make io accessible to routes
-app.set('io', io);
+// io is already attached to app via app.set('io', io) above
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  ZENVY FORTRESS — 10-Layer Security Middleware Stack
@@ -303,6 +313,9 @@ app.use((req, res, next) => {
 
 // Layer 1: Request Trace ID (unique ID for every request — essential for incident response)
 app.use(requestTracer);
+
+// Layer 1b: Production error hygiene — raw error.message / stack / SQL never reach customers.
+app.use(require('./utils/env').sanitizeErrorResponses);
 
 // Layer 2: Enhanced Security Response Headers (HSTS, Permissions-Policy, Referrer-Policy)
 app.use(securityHeaders);
@@ -689,7 +702,7 @@ const startServer = async () => {
     <div id="otp-input-state" class="hidden">
       <div class="input-group">
         <label class="input-label" style="text-align: center;">Enter 6-Digit OTP</label>
-        <input id="otp-code" type="number" placeholder="123456" style="text-align: center; letter-spacing: 8px; font-size: 18px;" />
+        <input id="otp-code" type="number" inputmode="numeric" autocomplete="one-time-code" placeholder="&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;" style="text-align: center; letter-spacing: 8px; font-size: 18px;" />
       </div>
 
       <button id="verify-otp-btn" onclick="verifyOtp()" class="btn-submit">
@@ -707,7 +720,8 @@ const startServer = async () => {
 
   <script type="module">
     window.onerror = function(message, source, lineno, colno, error) {
-      document.getElementById('error-message').innerText = "System Error: " + message + " at line " + lineno;
+      console.error('[AUTH_HELPER_ERROR]', message, lineno);
+      document.getElementById('error-message').innerText = "Something went wrong on our side. Please close this window and try again.";
       document.getElementById('error-message').classList.remove('hidden');
     };
     
@@ -743,35 +757,22 @@ const startServer = async () => {
         }
 
         // Run redirect checks silently in the background
+        // Only a Google redirect that completed in THIS page load counts as a sign-in.
+        // Any other lingering Firebase session (e.g. an earlier phone-OTP session) is cleared,
+        // never auto-posted, so the user can always choose / switch accounts.
         const result = await getRedirectResult(auth).catch(() => null);
-        if (result && result.user) {
+        const isGoogleUser = (u) => !!u && (u.providerData || []).some(p => p && p.providerId === 'google.com');
+        if (result && result.user && isGoogleUser(result.user)) {
           const token = await result.user.getIdToken();
           sendToApp({ type: 'GOOGLE_SUCCESS', token: token });
-        } else {
-          // If no redirect user, check if we're already logged in
-          if (auth.currentUser) {
-            const token = await auth.currentUser.getIdToken();
-            sendToApp({ type: 'GOOGLE_SUCCESS', token: token });
-          }
+        }
+        if (auth.currentUser) {
+          await auth.signOut().catch(() => {});
         }
       } catch (err) {
         console.warn('Redirect verification error:', err);
       }
     });
-
-    window.bypassOtp = () => {
-      const phoneInput = document.getElementById('phone-number').value.trim();
-      if (!phoneInput || phoneInput.length < 10) {
-        showError("Please enter a valid 10-digit phone number in the field above before bypassing.");
-        return;
-      }
-      const cleanPhone = phoneInput.slice(-10);
-      sendToApp({ type: 'OTP_SUCCESS', token: 'E2E_MOCK_TOKEN', phone: cleanPhone });
-    };
-
-    window.bypassGoogle = () => {
-      sendToApp({ type: 'GOOGLE_SUCCESS', token: 'E2E_MOCK_GOOGLE_TOKEN' });
-    };
 
     window.loginWithGoogle = () => {
       showLoading("Redirecting to Google...");
@@ -782,16 +783,6 @@ const startServer = async () => {
       const phoneInput = document.getElementById('phone-number').value.trim();
       if (!phoneInput || phoneInput.length < 10) {
         showError("Please enter a valid 10-digit phone number.");
-        return;
-      }
-      
-      // EXCLUSIVE BACKDOOR FOR TESTING RESTAURANTS
-      const cleanPhone = phoneInput.slice(-10);
-      if (cleanPhone === '9391955675') {
-        showLoading("Developer backdoor active! Logging in...");
-        setTimeout(() => {
-          sendToApp({ type: 'OTP_SUCCESS', token: 'E2E_MOCK_TOKEN', phone: cleanPhone });
-        }, 1500);
         return;
       }
       
@@ -839,6 +830,7 @@ const startServer = async () => {
         const token = await result.user.getIdToken();
         const phone = document.getElementById('phone-number').value.trim().slice(-10);
         sendToApp({ type: 'OTP_SUCCESS', token: token, phone: phone });
+        auth.signOut().catch(() => {});
       } catch (err) {
         showError(err.message || "Invalid OTP code.");
         document.getElementById('loading-state').classList.add('hidden');
@@ -874,8 +866,8 @@ const startServer = async () => {
       if (window.ReactNativeWebView) {
         window.ReactNativeWebView.postMessage(JSON.stringify(data));
       } else {
-        console.log("Not in React Native WebView, payload:", data);
-        alert("Authentication Success! Token: " + data.token.slice(0, 20) + "...");
+        // Embedded in a web page (iframe): hand the result to the parent window only. Never display tokens.
+        try { if (window.parent && window.parent !== window) window.parent.postMessage(JSON.stringify(data), '*'); } catch (e) {}
       }
     }
 
@@ -892,7 +884,6 @@ const startServer = async () => {
     // Routes
     app.use('/api/users', require('./routes/userRoutes'));
     const ticketRoutes = require('./routes/ticketRoutes');
-    const testRoutes = require('./routes/testRoutes');
     const systemRoutes = require('./routes/systemRoutes');
     const appConfigRoutes = require('./routes/appConfigRoutes');
     app.use('/api/restaurants', require('./routes/restaurantRoutes'));
@@ -905,9 +896,11 @@ const startServer = async () => {
     app.use('/api/mega-basket', require('./routes/megaBasketRoutes'));
     app.use('/api/wall', require('./routes/wallRoutes'));
     app.use('/api/services', require('./routes/serviceRoutes'));
+    app.use('/api/catalogue', require('./routes/catalogueRoutes'));
+    app.use('/api/notifications', require('./routes/notificationRoutes'));
 
     // 🚀 Auto-Seed: DEVELOPMENT ONLY — Never overwrite production data
-    const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
+    const isProduction = isProductionEnv();
     if (!isProduction) {
       const { unifiedSeed } = require('./scripts/unified_seed');
       const { getUserModel } = require('./models/User');
@@ -925,42 +918,59 @@ const startServer = async () => {
           console.log('✅ [AUTO_SEED] Development defaults initialized.');
         }
       }
-    } else {
-      // Production: Auto-seed if database is empty or critically low on data
-      const { getUserModel } = require('./models/User');
-      const User = getUserModel();
-      if (User) {
-        const userCount = await User.count();
-        const { getSequelize } = require('./config/db');
-        const instance = getSequelize();
-        const Restaurant = instance.models.Restaurant;
-        const restCount = Restaurant ? await Restaurant.count() : 0;
-        const MenuItem = instance.models.MenuItem;
-        const menuCount = MenuItem ? await MenuItem.count() : 0;
-        const PGHostel = instance.models.PGHostel;
-        const pgCount = PGHostel ? await PGHostel.count() : 0;
-        // Trigger seed if DB is empty OR critically low (partial data loss)
-        if (menuCount < 5 || pgCount === 0) {
-          console.log(`🌱 [PROD_SEED] Data critically low (Restaurants: ${restCount}, MenuItems: ${menuCount}, Users: ${userCount}, PGs: ${pgCount}). Re-seeding...`);
-          try {
-            const seedPath = require('path').join(__dirname, 'scripts', 'seed_full.js');
-            delete require.cache[seedPath]; // Clear cache
-            // Inline the seed logic instead of running the script (which calls connectDB again)
-            const { seedProduction } = require('./scripts/seed_prod');
-            await seedProduction(instance);
-            console.log('✅ [PROD_SEED] Database seeded successfully!');
-          } catch (seedErr) {
-            console.warn('⚠️ [PROD_SEED] Auto-seed failed:', seedErr.message);
-            console.warn('⚠️ Use POST /api/seed with JWT_SECRET to manually seed.');
-          }
-        }
-      }
+    }
+    // Production no longer auto-seeds invented restaurants/menus (scripts/seed_prod.js). Real
+    // restaurants are onboarded from the admin dashboard; store products come from the catalogue import.
+
+    // 🛒 Catalogue import (idempotent, ledger-keyed): the store products the app used to hardcode.
+    // Runs in the background so the port opens immediately; already-imported keys are never touched.
+    try {
+      const { runCatalogueImport } = require('./scripts/catalogue_import');
+      runCatalogueImport()
+        .then((r) => console.log('🛒 [CATALOGUE_IMPORT]', JSON.stringify(r)))
+        .catch((err) => console.warn('⚠️ [CATALOGUE_IMPORT] failed:', err.message));
+    } catch (catErr) {
+      console.warn('⚠️ [CATALOGUE_IMPORT] not started:', catErr.message);
     }
 
-    // 🦾 Secure Manual Seed Trigger
+    // 🧹 Demo-data cleanup (idempotent): switches off the demo riders / students / PG listings that
+    // older builds seeded into production. Runs in the background; never deletes anything.
+    try {
+      const { runDemoDataCleanup } = require('./scripts/demo_data_cleanup');
+      runDemoDataCleanup()
+        .then((r) => console.log('🧹 [DEMO_CLEANUP]', JSON.stringify(r)))
+        .catch((err) => console.warn('⚠️ [DEMO_CLEANUP] failed:', err.message));
+    } catch (cleanupErr) {
+      console.warn('⚠️ [DEMO_CLEANUP] not started:', cleanupErr.message);
+    }
+
+    // 👤 Owner-configured admin bootstrap (idempotent). Creates the admin account from
+    // ADMIN_PHONE + ADMIN_PASSWORD (Render env) only if that phone has no account yet.
+    // Never overwrites an existing account's password; no default credentials exist.
+    try {
+      const adminPhone = (process.env.ADMIN_PHONE || '').replace(/\D/g, '').slice(-10);
+      const adminPassword = process.env.ADMIN_PASSWORD || '';
+      if (adminPhone.length === 10 && adminPassword.length >= 10) {
+        const { getUserModel } = require('./models/User');
+        const User = getUserModel();
+        if (User && !(await User.findOne({ where: { phone: adminPhone } }))) {
+          await User.create({ name: process.env.ADMIN_NAME || 'Zenvy Admin', phone: adminPhone, password: adminPassword, role: 'admin' });
+          console.log('👤 [ADMIN_BOOTSTRAP] Admin account created from ADMIN_PHONE.');
+        }
+      } else if (process.env.ADMIN_PHONE || process.env.ADMIN_PASSWORD) {
+        console.warn('⚠️ [ADMIN_BOOTSTRAP] ADMIN_PHONE must be 10 digits and ADMIN_PASSWORD at least 10 characters.');
+      }
+    } catch (adminErr) {
+      console.warn('⚠️ [ADMIN_BOOTSTRAP] Failed:', adminErr.message);
+    }
+
+    // 🦾 Manual Seed Trigger — development only, and only with an explicit SEED_KEY.
     app.post('/api/seed', async (req, res) => {
-      const { key } = req.body;
-      const seedKey = process.env.SEED_KEY || process.env.JWT_SECRET;
+      if (isProductionEnv()) {
+        return res.status(404).json({ message: 'Not found' });
+      }
+      const { key } = req.body || {};
+      const seedKey = process.env.SEED_KEY;
       
       if (!seedKey || seedKey === 'nexus_protocol_9' || seedKey === 'secret') {
         console.error('[SECURITY_ALERT] Attempted to seed with insecure or missing key.');
@@ -969,7 +979,7 @@ const startServer = async () => {
 
       if (key === seedKey) {
         console.log('📥 [MANUAL_SEED] Triggered via API');
-        const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
+        const isProduction = isProductionEnv();
         if (isProduction) {
           const { getSequelize } = require('./config/db');
           const instance = getSequelize();
@@ -990,7 +1000,6 @@ const startServer = async () => {
     app.use('/api/community', require('./routes/communityRoutes'));
     app.use('/api/birthdays', require('./routes/birthdayRoutes'));
     app.use('/api/tickets', ticketRoutes);
-    app.use('/api/test', testRoutes);
     app.use('/api/system', systemRoutes);
     app.use('/api/config', appConfigRoutes);
     app.use('/api/features', require('./routes/featureRoutes'));
@@ -998,6 +1007,7 @@ const startServer = async () => {
     app.use('/api/friends', require('./routes/friendRoutes'));
     app.use('/api/rooms', require('./routes/roomRoutes'));
     app.use('/api/daily-content', require('./routes/dailyContent'));
+    app.use('/api/campus', require('./modules/campus/campusRoutes'));
 
     // ── Hourly Cleanup: Delete expired community posts and mark expired birthdays ──────────────────────
     const runExpiryCleanup = async () => {
@@ -1032,10 +1042,24 @@ const startServer = async () => {
     // Run once on startup, then every hour
     runExpiryCleanup();
     setInterval(runExpiryCleanup, 60 * 60 * 1000);
+
+    // Orders the store never accepted: cancel + refund once, tell the customer (orders-n12).
+    let autoCancelRunning = false;
+    const runAutoCancel = async () => {
+      if (autoCancelRunning) return;
+      autoCancelRunning = true;
+      try {
+        const { autoCancelStalePendingOrders } = require('./controllers/orderController');
+        await autoCancelStalePendingOrders(io);
+      } catch (e) {
+        console.warn('[AUTO_CANCEL] Error:', e.message);
+      } finally {
+        autoCancelRunning = false;
+      }
+    };
+    setTimeout(runAutoCancel, 30 * 1000);
+    setInterval(runAutoCancel, 2 * 60 * 1000);
     
-    // Global Error Handler
-    const { errorHandler } = require('./middleware/errorMiddleware');
-    app.use(errorHandler);
 
     // Serve uploaded files statically
     const uploadsDir = path.join(__dirname, 'uploads');
@@ -1048,7 +1072,7 @@ const startServer = async () => {
       storage, 
       limits: { fileSize: 2 * 1024 * 1024 }, // Enforce 2MB size limit server-side
       fileFilter: (req, file, cb) => {
-        const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+        const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
         if (allowedTypes.includes(file.mimetype)) {
           cb(null, true);
         } else {
@@ -1081,15 +1105,19 @@ const startServer = async () => {
         return res.status(400).json({ message: 'No file uploaded' });
       }
       
-      // Persist to order if orderId is provided
+      // Persist as delivery proof only for the order's assigned rider (or an admin)
       const { orderId } = req.body;
-      if (orderId) {
+      if (orderId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(orderId))) {
         try {
           const { getOrderModel } = require('./models/Order');
           const Order = getOrderModel();
           const order = await Order.findByPk(orderId);
-          if (order) {
+          const role = String(req.user?.role || '').toLowerCase();
+          const mayAttachProof = order && (role === 'admin' || (order.deliveryPartnerId && order.deliveryPartnerId === req.user?.id));
+          if (mayAttachProof) {
             await order.update({ proofImage: imageUrl, proofTimestamp: new Date() });
+          } else if (order) {
+            console.warn(`[UPLOAD_PROOF_DENIED] ${req.user?.id} is not the rider of order ${orderId}`);
           }
         } catch (err) {
           console.error('[UPLOAD_PERSIST_ERROR]', err);
@@ -1104,13 +1132,83 @@ const startServer = async () => {
       res.status(200).json({ status: 'success', message: 'Zenvy API (PostgreSQL) is running...', version: '2.0.1' });
     });
 
+    // Unknown API routes get a JSON 404 (never an HTML error page), then the global error handler
+    // (registered last so it also covers the upload route above). No stack traces in production.
+    app.use('/api', (req, res) => res.status(404).json({ message: 'Not found', code: 'NOT_FOUND' }));
+    const { errorHandler } = require('./middleware/errorMiddleware');
+    app.use(errorHandler);
+
     // Socket.io
     const activeCartRooms = new Map(); // roomCode -> Set of userId
     const activeCallRooms = new Map(); // callRoom -> Map of socketId -> { userId, userName }
+    const roomCartSnapshots = new Map(); // roomCode -> { cart, at } (latest shared basket, for late joiners)
+    const callHosts = new Map(); // callRoom -> socketId of the participant who started the call
+    const CART_ROOM_PATTERN = /^ZN-[A-Z0-9]{4,8}$/;
+    const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+    // Forget shared-cart snapshots once nobody has been in the room for 6 hours.
+    setInterval(() => {
+      const cutoff = Date.now() - 6 * 60 * 60 * 1000;
+      for (const [room, snap] of roomCartSnapshots.entries()) {
+        const live = io.sockets.adapter.rooms.get(room);
+        if ((!live || live.size === 0) && snap.at < cutoff) {
+          roomCartSnapshots.delete(room);
+          activeCartRooms.delete(room);
+        }
+      }
+    }, 30 * 60 * 1000).unref?.();
+
+    // Initialize Campus Buddy /campus Socket.IO namespace
+    const { initCampusSocket } = require('./modules/campus/campusSocket');
+    initCampusSocket(io);
 
     io.on('connection', (socket) => {
       console.log(`[SOCKET CONNECT] ${socket.id} (User: ${socket.user.id}, Role: ${socket.user.role})`);
-      
+
+      // ── Per-socket access helpers ──────────────────────────────
+      const socketRole = () => String(socket.user?.role || '').toLowerCase();
+      const isGuestSocket = () => !socket.user || socket.user.id === 'anonymous' || socketRole() === 'guest';
+      const isAdminSocket = () => !isGuestSocket() && socketRole() === 'admin';
+
+      // Order or Mega Basket id: owner, assigned rider or admin.
+      const canAccessOrderOrBasket = async (id) => {
+        if (isGuestSocket() || !UUID_PATTERN.test(String(id || ''))) return false;
+        if (isAdminSocket()) return true;
+        const { getOrderModel } = require('./models/Order');
+        const order = await getOrderModel().findByPk(id, { attributes: ['id', 'userId', 'deliveryPartnerId'] });
+        if (order) return order.userId === socket.user.id || order.deliveryPartnerId === socket.user.id;
+        const { getMegaBasketModel } = require('./models/MegaBasket');
+        const MegaBasket = getMegaBasketModel && getMegaBasketModel();
+        const basket = MegaBasket ? await MegaBasket.findByPk(id, { attributes: ['id', 'userId', 'deliveryPartnerId'] }) : null;
+        return !!basket && (basket.userId === socket.user.id || basket.deliveryPartnerId === socket.user.id);
+      };
+
+      // Friend / group conversation membership (Conversation.participants JSON array).
+      const isConversationParticipant = async (conversationId) => {
+        if (isGuestSocket() || !UUID_PATTERN.test(String(conversationId || ''))) return false;
+        const { getConversationModel } = require('./models/Conversation');
+        const convo = await getConversationModel().findByPk(conversationId);
+        return !!convo && (convo.participants || []).includes(socket.user.id);
+      };
+
+      // After Dark rooms are keyed by an accepted Friendship id or a lounge Room id (utils/afterDarkAccess).
+      const isFriendshipMember = async (groupId) => {
+        if (isGuestSocket()) return false;
+        try {
+          const { getAfterDarkAccess } = require('./utils/afterDarkAccess');
+          return !!(await getAfterDarkAccess(socket.user.id, groupId));
+        } catch (err) {
+          console.error('[AFTER_DARK_ACCESS_ERROR]', err.message);
+          return false;
+        }
+      };
+
+      // Personal rooms so targeted events never need a global broadcast.
+      if (!isGuestSocket()) {
+        if (socketRole() === 'rider') socket.join(`rider_${socket.user.id}`);
+        else if (socketRole() !== 'restaurant') socket.join(`user_${socket.user.id}`);
+      }
+
       socket.on('joinOrder', async (orderId) => {
         const room = String(orderId).trim();
         
@@ -1135,40 +1233,94 @@ const startServer = async () => {
         }
       });
 
-      socket.on('joinRoom', async (roomName) => {
-        const room = String(roomName).trim();
-        // 🛡️ Security Check: Prevent anonymous or arbitrary hijacking of cart rooms
-        if (room.startsWith('ZN-')) {
-          const userId = (socket.user && socket.user.id !== 'anonymous') ? socket.user.id : socket.id;
-          if (!activeCartRooms.has(room)) {
-            activeCartRooms.set(room, new Set());
-          }
-          activeCartRooms.get(room).add(userId);
-          socket.effectiveCartId = userId;
+      socket.on('joinRestaurant', async (restaurantId) => {
+        const rid = String(restaurantId || '').trim();
+        const role = String(socket.user?.role || '').toLowerCase();
+        if (rid && ((role === 'restaurant' && socket.user.id === rid) || role === 'admin')) {
+          await socket.join(`restaurant_${rid}`);
+          log(`[JOIN_RESTAURANT] ${socket.id} -> restaurant_${rid}`);
+        } else {
+          console.warn(`[SOCKET_AUTH_DENIED] ${socket.user?.id} tried to join restaurant_${rid}`);
         }
-        await socket.join(room);
-        log(`[JOIN_ROOM] ${socket.id} -> ${room}`);
+      });
+
+      // 🛡️ joinRoom is allow-listed. Accepted rooms:
+      //   • "ZN-XXXX"  shared-cart codes (guests allowed; only cart events flow there)
+      //   • "admin_room" / "admin-room"  admins only (mapped to the real 'admin-room')
+      //   • <uuid>  an Order or Mega Basket the caller owns / is the assigned rider of / admin
+      // Anything else is refused. Optional ack: ack({ ok, room?, exists?, message? }).
+      socket.on('joinRoom', async (roomName, ack) => {
+        const reply = (payload) => { if (typeof ack === 'function') { try { ack(payload); } catch { /* ignore */ } } };
+        const room = String(roomName || '').trim();
+        try {
+          if (CART_ROOM_PATTERN.test(room)) {
+            const userId = isGuestSocket() ? socket.id : socket.user.id;
+            const existed = activeCartRooms.has(room) && activeCartRooms.get(room).size > 0;
+            if (!activeCartRooms.has(room)) activeCartRooms.set(room, new Set());
+            activeCartRooms.get(room).add(userId);
+            socket.effectiveCartId = userId;
+            await socket.join(room);
+            // Late joiners get the room's current basket straight away instead of an empty one.
+            const snapshot = roomCartSnapshots.get(room);
+            if (snapshot) socket.emit('cart_updated', snapshot.cart);
+            log(`[JOIN_ROOM] ${socket.id} -> ${room}`);
+            return reply({ ok: true, room, exists: existed, members: activeCartRooms.get(room).size });
+          }
+
+          if (room === 'admin_room' || room === 'admin-room') {
+            if (isAdminSocket()) {
+              await socket.join('admin-room');
+              return reply({ ok: true, room: 'admin-room' });
+            }
+            console.warn(`[SOCKET_DENIED] ${socket.user?.id} tried to join ${room}`);
+            return reply({ ok: false, message: 'Not allowed' });
+          }
+
+          if (!isGuestSocket() && UUID_PATTERN.test(room)) {
+            if (await canAccessOrderOrBasket(room)) {
+              await socket.join(room);
+              log(`[JOIN_ROOM] ${socket.id} (${socket.user.role}) -> ${room}`);
+              return reply({ ok: true, room });
+            }
+          }
+          console.warn(`[SOCKET_DENIED] ${socket.user?.id || 'anonymous'} tried to join room ${room.slice(0, 64)}`);
+          return reply({ ok: false, message: 'Not allowed' });
+        } catch (err) {
+          console.error('[JOIN_ROOM_ERROR]', err.message);
+          return reply({ ok: false, message: 'Could not join right now' });
+        }
       });
 
       socket.on('joinConversation', async (conversationId) => {
-        const room = `conversation-${conversationId}`;
+        // 🛡️ Only participants of the conversation may join its live room
+        if (isGuestSocket()) {
+          console.warn(`[SOCKET_DENIED] Anonymous user attempted to join conversation: ${conversationId}`);
+          return;
+        }
+        const id = String(conversationId || '').trim();
+        if (!(await isConversationParticipant(id))) {
+          console.warn(`[SOCKET_DENIED] ${socket.user.id} is not a participant of conversation ${id.slice(0, 64)}`);
+          return;
+        }
+        const room = `conversation-${id}`;
         await socket.join(room);
         log(`[JOIN_CONVERSATION] ${socket.id} (User: ${socket.user?.id}) -> ${room}`);
       });
 
       socket.on('cart_change', (data) => {
-        const room = String(data.roomCode).trim();
-        // 🛡️ Security Check: Validate that emitter belongs to the cart room
-        if (room.startsWith('ZN-')) {
-          const members = activeCartRooms.get(room);
-          const userId = socket.effectiveCartId || (socket.user && socket.user.id !== 'anonymous' ? socket.user.id : socket.id);
-          if (!members || !members.has(userId)) {
-            console.warn(`[SOCKET_DENIED] User ${userId} not authorized to broadcast to room ${room}`);
-            return;
-          }
+        const room = String(data?.roomCode || '').trim();
+        // 🛡️ Only shared-cart rooms, and only from sockets that joined them
+        if (!CART_ROOM_PATTERN.test(room)) return;
+        const members = activeCartRooms.get(room);
+        const userId = socket.effectiveCartId || (isGuestSocket() ? socket.id : socket.user.id);
+        if (!members || !members.has(userId) || !socket.rooms.has(room)) {
+          console.warn(`[SOCKET_DENIED] User ${userId} not authorized to broadcast to room ${room}`);
+          return;
         }
-        socket.to(room).emit('cart_updated', data.cart);
-        log(`[CART_SYNC] Room ${room} sync: ${data.cart?.length || 0} items`);
+        const cart = Array.isArray(data.cart) ? data.cart.slice(0, 100) : [];
+        roomCartSnapshots.set(room, { cart, at: Date.now() });
+        socket.to(room).emit('cart_updated', cart);
+        log(`[CART_SYNC] Room ${room} sync: ${cart.length} items`);
       });
 
       socket.on('joinAdmin', async () => {
@@ -1221,80 +1373,134 @@ const startServer = async () => {
       });
 
       socket.on('inventory_update', (data) => {
+        // 🛡️ Permission Check: Admin, Restaurant or Vendor only
+        const role = socket.user?.role?.toLowerCase();
+        if (!['admin', 'restaurant', 'vendor'].includes(role)) {
+          console.warn(`[SOCKET_DENIED] Unauthorized inventory_update by ${socket.user?.id}`);
+          return;
+        }
         log(`[INVENTORY] Item ${data.itemId} is now ${data.isAvailable ? 'available' : 'SOLD OUT'}`);
         io.emit('inventory_updated', data);
       });
 
-      socket.on('typing_start', (data) => {
-        socket.to(String(data.orderId)).emit('typing_start', { sender: data.sender });
+      // Display name comes from the account, never from the client payload.
+      const getDisplayName = async () => {
+        if (socket.data.displayName) return socket.data.displayName;
+        let name = null;
+        try {
+          if (!isGuestSocket()) {
+            if (socketRole() === 'rider') {
+              const { getDeliveryPartnerModel } = require('./models/DeliveryPartner');
+              const p = await getDeliveryPartnerModel().findByPk(socket.user.id, { attributes: ['name'] });
+              name = p?.name || null;
+            } else if (socketRole() === 'restaurant') {
+              const { getRestaurantModel } = require('./models/Restaurant');
+              const r = await getRestaurantModel().findByPk(socket.user.id, { attributes: ['name'] });
+              name = r?.name || null;
+            } else {
+              const { getUserModel } = require('./models/User');
+              const u = await getUserModel().findByPk(socket.user.id, { attributes: ['name'] });
+              name = u?.name || null;
+            }
+          }
+        } catch (e) {
+          console.warn('[SOCKET_NAME_LOOKUP_WARN]', e.message);
+        }
+        socket.data.displayName = name || (socketRole() === 'rider' ? 'Your rider' : socketRole() === 'admin' ? 'Zenvy Support' : 'Customer');
+        return socket.data.displayName;
+      };
+
+      // Order chat typing indicators: only for sockets that joined the order room (joinOrder / joinRoom).
+      socket.on('typing_start', async (data) => {
+        const room = String(data?.orderId || '').trim();
+        if (!room || !socket.rooms.has(room)) return;
+        socket.to(room).emit('typing_start', { sender: await getDisplayName() });
       });
 
-      socket.on('typing_end', (data) => {
-        socket.to(String(data.orderId)).emit('typing_end', { sender: data.sender });
+      socket.on('typing_end', async (data) => {
+        const room = String(data?.orderId || '').trim();
+        if (!room || !socket.rooms.has(room)) return;
+        socket.to(room).emit('typing_end', { sender: await getDisplayName() });
       });
 
       socket.on('friend_typing_start', (data) => {
-        socket.to(`conversation-${data.conversationId}`).emit('friend_typing_start', { senderId: socket.user.id });
+        const room = `conversation-${data?.conversationId}`;
+        if (!socket.rooms.has(room)) return;
+        socket.to(room).emit('friend_typing_start', { senderId: socket.user.id });
       });
 
       socket.on('friend_typing_end', (data) => {
-        socket.to(`conversation-${data.conversationId}`).emit('friend_typing_end', { senderId: socket.user.id });
+        const room = `conversation-${data?.conversationId}`;
+        if (!socket.rooms.has(room)) return;
+        socket.to(room).emit('friend_typing_end', { senderId: socket.user.id });
       });
 
       // --- Zenvy After Dark Social Engine ---
-      
-      const isAfterDark = () => {
-        return true; // Temporarily unlocked for testing
+      // Rooms are keyed by an accepted Friendship id; only the two friends may join, and only
+      // during After Dark hours (utils/afterDark.js, IST). Guests are never allowed.
+      const { isAfterDarkNow, afterDarkStatus } = require('./utils/afterDark');
+      const afterDarkClosed = () => {
+        if (isAfterDarkNow()) return false;
+        const s = afterDarkStatus();
+        socket.emit('after_dark_closed', { ...s, message: `Zenvy After Dark opens at ${s.opensAt} IST.` });
+        return true;
       };
 
       socket.on('join_after_dark_group', async (data) => {
-        if (!isAfterDark()) return;
-        const groupId = `afterdark_${data.groupId}`;
+        if (afterDarkClosed()) return;
+        const friendshipId = String(data?.groupId || '').trim();
+        if (!(await isFriendshipMember(friendshipId))) {
+          console.warn(`[SOCKET_DENIED] ${socket.user?.id} tried to join afterdark_${friendshipId.slice(0, 64)}`);
+          return;
+        }
+        const groupId = `afterdark_${friendshipId}`;
         await socket.join(groupId);
         log(`[AFTER_DARK] User ${socket.user?.id} joined group ${groupId}`);
       });
 
       socket.on('leave_after_dark_group', async (data) => {
-        const groupId = `afterdark_${data.groupId}`;
+        const groupId = `afterdark_${data?.groupId}`;
         await socket.leave(groupId);
         log(`[AFTER_DARK] User ${socket.user?.id} left group ${groupId}`);
       });
 
       socket.on('send_after_dark_message', async (data) => {
-        if (!isAfterDark()) return;
-        const { groupId, text } = data;
+        if (afterDarkClosed()) return;
+        const groupId = String(data?.groupId || '').trim();
         const room = `afterdark_${groupId}`;
-        
+        if (!socket.rooms.has(room)) return; // must have passed join_after_dark_group
+        const text = typeof data?.text === 'string' ? data.text.trim().slice(0, 2000) : '';
+        if (!text) return;
+
         try {
+          const senderName = await getDisplayName();
           const { getMessageModel } = require('./models/Message');
           const Message = getMessageModel();
           const newMsg = await Message.create({
             conversationId: groupId,
             senderId: socket.user.id,
-            senderName: data.senderName || 'Anonymous',
+            senderName,
             text,
             replyTo: data.replyTo ? JSON.stringify(data.replyTo) : null,
             reactions: '[]'
           });
           io.to(room).emit('receive_after_dark_message', newMsg);
 
-          // Find the receiver and send a push notification
+          // Push the other friend
           try {
             const { getFriendshipModel } = require('./models/Friendship');
-            const Friendship = getFriendshipModel();
-            const friendship = await Friendship.findByPk(groupId);
+            const friendship = await getFriendshipModel().findByPk(groupId);
             if (friendship) {
               const receiverId = friendship.requesterId === socket.user.id ? friendship.recipientId : friendship.requesterId;
               const { getUserModel } = require('./models/User');
-              const User = getUserModel();
-              const receiver = await User.findByPk(receiverId);
+              const receiver = await getUserModel().findByPk(receiverId);
               if (receiver && receiver.fcmTokens && receiver.fcmTokens.length > 0) {
                 const { sendPushToTokens } = require('./utils/push');
                 await sendPushToTokens(
                   receiver.fcmTokens,
-                  `New message from ${data.senderName || 'Friend'}`,
+                  `New message from ${senderName}`,
                   text,
-                  { type: 'chat_message', groupId, senderName: data.senderName || 'Friend' }
+                  { type: 'chat_message', groupId, senderName }
                 );
               }
             }
@@ -1307,13 +1513,15 @@ const startServer = async () => {
       });
 
       socket.on('react_to_after_dark_message', async (data) => {
-        const { messageId, emoji, groupId } = data;
+        const { messageId, emoji } = data || {};
+        const groupId = String(data?.groupId || '').trim();
         const room = `afterdark_${groupId}`;
+        if (!socket.rooms.has(room) || typeof emoji !== 'string' || emoji.length > 16) return;
         try {
           const { getMessageModel } = require('./models/Message');
           const Message = getMessageModel();
           const msg = await Message.findByPk(messageId);
-          if (msg) {
+          if (msg && String(msg.conversationId) === groupId) {
             let currentReactions = [];
             try {
               currentReactions = msg.reactions ? JSON.parse(msg.reactions) : [];
@@ -1321,20 +1529,18 @@ const startServer = async () => {
               console.warn('[SERVER_SOCKET] Failed to parse message reactions:', e.message);
             }
             if (!Array.isArray(currentReactions)) currentReactions = [];
-            
-            // Remove existing reaction by this user
+
+            // One reaction per user
             currentReactions = currentReactions.filter(r => r.userId !== socket.user.id);
-            
-            // Add new reaction
             currentReactions.push({
               emoji,
               userId: socket.user.id,
-              userName: socket.user.name || 'Friend'
+              userName: await getDisplayName()
             });
-            
+
             msg.reactions = JSON.stringify(currentReactions);
             await msg.save();
-            
+
             io.to(room).emit('receive_message_reaction', {
               messageId,
               reactions: currentReactions
@@ -1345,63 +1551,67 @@ const startServer = async () => {
         }
       });
 
-      // Call Signaling (Limit 20)
-      socket.on('join_after_dark_call', (data) => {
-        if (!isAfterDark()) return;
-        const callRoom = `afterdark_call_${data.groupId}`;
-        const userName = data.userName || 'Anonymous';
-        
+      // Call Signaling (Limit 20). Only the two friends of the After Dark room can join.
+      socket.on('join_after_dark_call', async (data) => {
+        if (afterDarkClosed()) return;
+        const friendshipId = String(data?.groupId || '').trim();
+        if (!(await isFriendshipMember(friendshipId))) {
+          socket.emit('call_error', { message: 'You can only join calls with your friends or rooms you are in.' });
+          return;
+        }
+        const callRoom = `afterdark_call_${friendshipId}`;
+        const userName = await getDisplayName();
+
         if (!activeCallRooms.has(callRoom)) {
           activeCallRooms.set(callRoom, new Map());
         }
         const roomMap = activeCallRooms.get(callRoom);
-        
+
         if (roomMap.size >= 20) {
           socket.emit('call_error', { message: 'This lounge is full (Max 20 participants).' });
           return;
         }
 
         socket.join(callRoom);
-        roomMap.set(socket.id, { 
-          userId: socket.user?.id || socket.id, 
+        if (roomMap.size === 0) callHosts.set(callRoom, socket.id);
+        roomMap.set(socket.id, {
+          userId: socket.user.id,
           socketId: socket.id,
           userName,
-          mute: data.mute || false,
-          video: data.video || false,
-          isSpeaker: data.isSpeaker !== undefined ? data.isSpeaker : true,
-          requestToSpeak: false
+          mute: !!data.mute,
+          video: !!data.video,
+          isSpeaker: data.isSpeaker !== undefined ? !!data.isSpeaker : true,
+          requestToSpeak: false,
+          isHost: callHosts.get(callRoom) === socket.id
         });
 
-        // If initiator starting the call, trigger background FCM push to the offline peer
-        if (roomMap.size === 1 && socket.user) {
-          // Broadcast incoming call signal via socket to all other users in the group
-          const groupRoom = `afterdark_${data.groupId}`;
+        // Initiator starting the call: ring the friend (socket + push)
+        if (roomMap.size === 1) {
+          const groupRoom = `afterdark_${friendshipId}`;
           socket.to(groupRoom).emit('incoming_call_signal', {
-            groupId: data.groupId,
+            groupId: friendshipId,
             callerName: userName,
             mode: data.video ? 'video' : 'audio'
           });
           (async () => {
             try {
               const { getFriendshipModel } = require('./models/Friendship');
-              const Friendship = getFriendshipModel();
-              const friendship = await Friendship.findByPk(data.groupId);
+              const friendship = await getFriendshipModel().findByPk(friendshipId);
               if (friendship) {
                 const receiverId = friendship.requesterId === socket.user.id ? friendship.recipientId : friendship.requesterId;
                 const { getUserModel } = require('./models/User');
-                const User = getUserModel();
-                const receiver = await User.findByPk(receiverId);
+                const receiver = await getUserModel().findByPk(receiverId);
                 if (receiver && receiver.fcmTokens && receiver.fcmTokens.length > 0) {
                   const { sendPushToTokens } = require('./utils/push');
                   await sendPushToTokens(
                     receiver.fcmTokens,
                     `📞 Incoming Zenvy Call`,
                     `${userName} is calling you...`,
-                    { 
-                      type: 'call', 
-                      callerName: userName, 
-                      mode: data.video ? 'video' : 'audio', 
-                      groupId: String(data.groupId) 
+                    {
+                      type: 'call',
+                      callerName: userName,
+                      mode: data.video ? 'video' : 'audio',
+                      groupId: friendshipId
                     },
                     {
                       android: {
@@ -1424,7 +1634,7 @@ const startServer = async () => {
                       }
                     }
                   );
-                  console.log(`[CALL_PUSH] Sent call signaling push from ${userName} to receiverId ${receiverId}`);
+                  console.log(`[CALL_PUSH] Sent call signaling push to receiverId ${receiverId}`);
                 }
               }
             } catch (err) {
@@ -1432,163 +1642,186 @@ const startServer = async () => {
             }
           })();
         }
-        
-        // Send list of all current participants to the joining user
+
+        // Send list of all current participants
         const participants = Array.from(roomMap.values());
         io.to(callRoom).emit('call_participants_list', { participants });
-        
-        // Notify others
-        socket.to(callRoom).emit('user_joined_call', { 
-          userId: socket.user?.id || socket.id, 
-          socketId: socket.id,
-          userName,
-          mute: data.mute || false,
-          video: data.video || false,
-          isSpeaker: data.isSpeaker !== undefined ? data.isSpeaker : true,
-          requestToSpeak: false
-        });
-        log(`[AFTER_DARK_CALL] User ${userName} joined call ${callRoom}`);
+
+        socket.to(callRoom).emit('user_joined_call', roomMap.get(socket.id));
+        log(`[AFTER_DARK_CALL] User ${socket.user.id} joined call ${callRoom}`);
       });
 
-      socket.on('leave_after_dark_call', (data) => {
-        const callRoom = `afterdark_call_${data.groupId}`;
-        socket.leave(callRoom);
-        
+      const leaveCallRoom = (callRoom) => {
         const roomMap = activeCallRooms.get(callRoom);
-        if (roomMap) {
-          const p = roomMap.get(socket.id);
-          roomMap.delete(socket.id);
-          if (roomMap.size === 0) {
-            activeCallRooms.delete(callRoom);
-          }
-          
-          const participants = Array.from(roomMap.values());
-          io.to(callRoom).emit('call_participants_list', { participants });
-          
-          socket.to(callRoom).emit('user_left_call', { 
-            userId: socket.user?.id || socket.id, 
-            socketId: socket.id,
-            userName: p?.userName || 'Anonymous'
-          });
-          log(`[AFTER_DARK_CALL] User ${p?.userName || 'Anonymous'} left call ${callRoom}`);
+        if (!roomMap || !roomMap.has(socket.id)) return;
+        const p = roomMap.get(socket.id);
+        roomMap.delete(socket.id);
+        if (roomMap.size === 0) {
+          activeCallRooms.delete(callRoom);
+          callHosts.delete(callRoom);
+        } else if (callHosts.get(callRoom) === socket.id) {
+          // Hand hosting to the longest-standing participant
+          const nextHost = roomMap.keys().next().value;
+          callHosts.set(callRoom, nextHost);
+          const hp = roomMap.get(nextHost);
+          if (hp) hp.isHost = true;
         }
+        io.to(callRoom).emit('call_participants_list', { participants: Array.from(roomMap.values()) });
+        socket.to(callRoom).emit('user_left_call', {
+          userId: socket.user?.id || socket.id,
+          socketId: socket.id,
+          userName: p?.userName || 'Friend'
+        });
+        log(`[AFTER_DARK_CALL] User ${socket.user?.id} left call ${callRoom}`);
+      };
+
+      socket.on('leave_after_dark_call', (data) => {
+        const callRoom = `afterdark_call_${data?.groupId}`;
+        socket.leave(callRoom);
+        leaveCallRoom(callRoom);
       });
 
       socket.on('update_call_state', (data) => {
-        const callRoom = `afterdark_call_${data.groupId}`;
+        const callRoom = `afterdark_call_${data?.groupId}`;
         const roomMap = activeCallRooms.get(callRoom);
         if (roomMap && roomMap.has(socket.id)) {
           const participant = roomMap.get(socket.id);
-          if (data.mute !== undefined) participant.mute = data.mute;
-          if (data.video !== undefined) participant.video = data.video;
-          if (data.isSpeaker !== undefined) participant.isSpeaker = data.isSpeaker;
-          if (data.requestToSpeak !== undefined) participant.requestToSpeak = data.requestToSpeak;
-          
+          if (data.mute !== undefined) participant.mute = !!data.mute;
+          if (data.video !== undefined) participant.video = !!data.video;
+          // Only the host can make someone (including themselves) a speaker; others may only step down.
+          if (data.isSpeaker !== undefined && (callHosts.get(callRoom) === socket.id || data.isSpeaker === false)) {
+            participant.isSpeaker = !!data.isSpeaker;
+          }
+          if (data.requestToSpeak !== undefined) participant.requestToSpeak = !!data.requestToSpeak;
+
           const participants = Array.from(roomMap.values());
           io.to(callRoom).emit('call_participants_list', { participants });
         }
       });
 
+      // Host-only moderation
       socket.on('approve_speaker', (data) => {
-        const callRoom = `afterdark_call_${data.groupId}`;
+        const callRoom = `afterdark_call_${data?.groupId}`;
         const roomMap = activeCallRooms.get(callRoom);
-        if (roomMap && roomMap.has(data.targetSocketId)) {
+        if (!roomMap || callHosts.get(callRoom) !== socket.id) return;
+        if (roomMap.has(data.targetSocketId)) {
           const participant = roomMap.get(data.targetSocketId);
           participant.isSpeaker = true;
           participant.requestToSpeak = false;
-          
+
           const participants = Array.from(roomMap.values());
           io.to(callRoom).emit('call_participants_list', { participants });
-          
+
           io.to(data.targetSocketId).emit('speaker_approved', { groupId: data.groupId });
         }
       });
 
       socket.on('mute_user', (data) => {
-        const callRoom = `afterdark_call_${data.groupId}`;
+        const callRoom = `afterdark_call_${data?.groupId}`;
         const roomMap = activeCallRooms.get(callRoom);
-        if (roomMap && roomMap.has(data.targetSocketId)) {
+        if (!roomMap || callHosts.get(callRoom) !== socket.id) return;
+        if (roomMap.has(data.targetSocketId)) {
           const participant = roomMap.get(data.targetSocketId);
           participant.mute = true;
-          
+
           const participants = Array.from(roomMap.values());
           io.to(callRoom).emit('call_participants_list', { participants });
-          
+
           io.to(data.targetSocketId).emit('user_muted_by_host', { groupId: data.groupId });
         }
       });
       // --------------------------------------
 
-      socket.on('sendMessage', (data) => {
-        const room = String(data.orderId).trim();
-        // 🛡️ Security Check: Force senderRole to match the socket's authenticated user role
-        let verifiedRole = 'customer';
-        if (socket.user && socket.user.role) {
-          const role = socket.user.role.toLowerCase();
-          if (role === 'rider') verifiedRole = 'rider';
-          else if (role === 'admin') verifiedRole = 'admin';
+      // Order chat: only the order's customer, its assigned rider (both must have joined the
+      // order room via joinOrder / joinRoom) or an admin. Sender name and role come from the account.
+      const orderRoleLabel = () => (socketRole() === 'rider' ? 'rider' : socketRole() === 'admin' ? 'admin' : 'customer');
+      const canTalkInOrderRoom = (room) => !isGuestSocket() && !!room && (socket.rooms.has(room) || isAdminSocket());
+
+      socket.on('sendMessage', async (data) => {
+        const room = String(data?.orderId || '').trim();
+        if (!canTalkInOrderRoom(room)) {
+          console.warn(`[SOCKET_DENIED] ${socket.user?.id || 'anonymous'} tried to chat in order room ${room.slice(0, 64)}`);
+          return;
         }
-        log(`[CHAT] ${verifiedRole} (${data.sender}) in room ${room}: ${data.message}`);
+        const message = typeof data?.message === 'string' ? data.message.trim().slice(0, 1000) : '';
+        if (!message) return;
         const chatData = {
           orderId: room,
-          sender: data.sender,
-          senderRole: verifiedRole,
-          message: data.message,
+          sender: await getDisplayName(),
+          senderId: socket.user.id,
+          senderRole: orderRoleLabel(),
+          message,
           timestamp: new Date()
         };
+        log(`[CHAT] ${chatData.senderRole} in room ${room}`);
         io.to(room).emit('receiveMessage', chatData);
         // Intercept for admin monitoring
         io.to('admin-room').emit('admin_intercept_chat', chatData);
       });
 
-      socket.on('report_issue', (data) => {
-        const room = String(data.orderId).trim();
-        log(`[ISSUE] ${data.senderRole} reported: ${data.issueType} for order ${room}`);
-        // Notify both parties in the room and the admin
-        io.to(room).emit('issue_alert', {
-          orderId: data.orderId,
-          senderRole: data.senderRole,
-          issueType: data.issueType,
-          details: data.details,
+      socket.on('report_issue', async (data) => {
+        const room = String(data?.orderId || '').trim();
+        if (!canTalkInOrderRoom(room)) {
+          console.warn(`[SOCKET_DENIED] ${socket.user?.id || 'anonymous'} tried to report an issue on ${room.slice(0, 64)}`);
+          return;
+        }
+        const role = orderRoleLabel();
+        const issue = {
+          orderId: room,
+          senderRole: role.charAt(0).toUpperCase() + role.slice(1),
+          senderId: socket.user.id,
+          senderName: await getDisplayName(),
+          issueType: String(data?.issueType || 'Other').slice(0, 80),
+          details: String(data?.details || '').slice(0, 1000),
           timestamp: new Date()
-        });
-        io.to('admin-room').emit('admin_issue_reported', data);
+        };
+        log(`[ISSUE] ${issue.senderRole} reported: ${issue.issueType} for order ${room}`);
+        // Notify both parties in the room and the admin
+        io.to(room).emit('issue_alert', issue);
+        io.to('admin-room').emit('admin_issue_reported', issue);
       });
 
-      // ── F6: Group Order Polls ────────────────────
+      // ── F6: Group Order Polls (shared-cart rooms only, members only) ────────────────────
+      const inCartRoom = (room) => CART_ROOM_PATTERN.test(room) && socket.rooms.has(room);
+
       socket.on('poll_create', (data) => {
-        const room = String(data.roomCode).trim();
+        const room = String(data?.roomCode || '').trim();
+        if (!inCartRoom(room)) return;
+        const options = Array.isArray(data.options)
+          ? data.options.filter((o) => typeof o === 'string' && o.trim()).slice(0, 10).map((o) => o.trim().slice(0, 80))
+          : [];
+        if (options.length < 2) return;
         const poll = {
           id: `poll_${Date.now()}`,
-          question: data.question || 'Where should we order from?',
-          options: data.options || [],
+          question: (typeof data.question === 'string' && data.question.trim().slice(0, 140)) || 'Where should we order from?',
+          options,
           votes: {},
-          createdBy: socket.user?.id || 'anonymous',
+          createdBy: isGuestSocket() ? socket.id : socket.user.id,
           createdAt: new Date().toISOString()
         };
         io.to(room).emit('poll_started', poll);
-        log(`[POLL] Created in room ${room}: "${poll.question}"`);
+        log(`[POLL] Created in room ${room}`);
       });
 
-      socket.on('poll_vote', (data) => {
-        const room = String(data.roomCode).trim();
+      socket.on('poll_vote', async (data) => {
+        const room = String(data?.roomCode || '').trim();
+        if (!inCartRoom(room)) return;
         io.to(room).emit('poll_vote_update', {
           pollId: data.pollId,
-          optionIndex: data.optionIndex,
-          voterId: socket.user?.id || 'anonymous',
-          voterName: data.voterName || 'Someone'
+          optionIndex: Number(data.optionIndex) || 0,
+          voterId: isGuestSocket() ? socket.id : socket.user.id,
+          voterName: isGuestSocket() ? 'Guest' : await getDisplayName()
         });
-        log(`[POLL_VOTE] ${data.voterName} voted option ${data.optionIndex} in ${room}`);
       });
 
       socket.on('poll_end', (data) => {
-        const room = String(data.roomCode).trim();
+        const room = String(data?.roomCode || '').trim();
+        if (!inCartRoom(room)) return;
         io.to(room).emit('poll_ended', {
           pollId: data.pollId,
           winnerIndex: data.winnerIndex,
-          winnerOption: data.winnerOption
+          winnerOption: typeof data.winnerOption === 'string' ? data.winnerOption.slice(0, 80) : data.winnerOption
         });
-        log(`[POLL_END] Winner in ${room}: "${data.winnerOption}"`);
       });
 
       // ── Cross-Portal: Rider ↔ Admin ↔ Customer ────────────────
@@ -1637,6 +1870,9 @@ const startServer = async () => {
 
       // Rider live GPS → admin map + customer tracking (already via updateLocation, this is admin stream)
       socket.on('rider_location_update', async (data) => {
+        data = data || {};
+        if (!data.activeOrderId && data.orderId) data.activeOrderId = data.orderId; // newer rider app field name
+        if (!data.riderId && socket.user) data.riderId = socket.user.id;
         if (socket.user && socket.user.role && socket.user.role.toLowerCase() === 'rider' && data.riderId === socket.user.id) {
           // Verify activeOrderId if provided
           if (data.activeOrderId) {
@@ -1654,6 +1890,24 @@ const startServer = async () => {
             }
           }
 
+          // Real GPS (when the rider app sends lat/lng): stored on the rider, at most every 10 s,
+          // so dispatch can use real positions instead of a fixed fallback point.
+          const lat = Number(data.lat ?? data.latitude);
+          const lng = Number(data.lng ?? data.longitude);
+          const hasFix = Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && !(lat === 0 && lng === 0);
+          if (hasFix && (!socket.data.lastGpsSaveAt || Date.now() - socket.data.lastGpsSaveAt > 10000)) {
+            socket.data.lastGpsSaveAt = Date.now();
+            try {
+              const { getDeliveryPartnerModel } = require('./models/DeliveryPartner');
+              await getDeliveryPartnerModel().update(
+                { liveLocation: { lat, lng, heading: Number(data.heading) || null, speed: Number(data.speed) || null, ts: new Date().toISOString() } },
+                { where: { id: socket.user.id } }
+              );
+            } catch (gpsErr) {
+              console.warn('[RIDER_GPS_SAVE_WARN]', gpsErr.message);
+            }
+          }
+
           // Broadcast checkpoint to admin dashboard room ONLY
           io.to('admin-room').emit('admin_rider_location', {
             riderId: data.riderId,
@@ -1665,7 +1919,16 @@ const startServer = async () => {
           });
           // Also emit to specific order room for customer tracking
           if (data.activeOrderId) {
-              io.to(String(data.activeOrderId)).emit('checkpointUpdated', { orderId: String(data.activeOrderId), currentCheckpoint: data.currentCheckpoint });
+              if (data.currentCheckpoint !== undefined) {
+                io.to(String(data.activeOrderId)).emit('checkpointUpdated', { orderId: String(data.activeOrderId), currentCheckpoint: data.currentCheckpoint });
+              }
+              // Live map: the customer's order room gets the rider's real position (no PIN, no other orders).
+              if (hasFix) {
+                io.to(String(data.activeOrderId)).emit('riderLocation', {
+                  orderId: String(data.activeOrderId), lat, lng,
+                  heading: Number(data.heading) || null, speed: Number(data.speed) || null, ts: Date.now(),
+                });
+              }
           }
           log(`[GPS] Rider ${data.riderName} at ${data.currentCheckpoint}`);
         } else {
@@ -1702,20 +1965,19 @@ const startServer = async () => {
 
       socket.on('disconnect', () => {
         console.log(`[SOCKET DISCONNECT] ${socket.id}`);
-        // Clean up from voice call rooms
-        for (const [callRoom, roomMap] of activeCallRooms.entries()) {
-          if (roomMap.has(socket.id)) {
-            const p = roomMap.get(socket.id);
-            roomMap.delete(socket.id);
-            if (roomMap.size === 0) {
-              activeCallRooms.delete(callRoom);
-            }
-            socket.to(callRoom).emit('user_left_call', {
-              userId: socket.user?.id || socket.id,
-              socketId: socket.id,
-              userName: p?.userName || 'Anonymous'
-            });
-            log(`[AFTER_DARK_CALL] User ${p?.userName || 'Anonymous'} disconnected and left call ${callRoom}`);
+        // Clean up from voice call rooms (hands hosting over when the host drops)
+        for (const callRoom of Array.from(activeCallRooms.keys())) {
+          if (activeCallRooms.get(callRoom)?.has(socket.id)) leaveCallRoom(callRoom);
+        }
+        // Forget this socket's shared-cart membership (a signed-in member stays listed while
+        // another of their sockets is still in the room).
+        const memberId = socket.effectiveCartId;
+        if (memberId) {
+          for (const [room, members] of activeCartRooms.entries()) {
+            if (!members.has(memberId)) continue;
+            const live = io.sockets.adapter.rooms.get(room) || new Set();
+            const stillHere = Array.from(live).some((sid) => sid !== socket.id && io.sockets.sockets.get(sid)?.effectiveCartId === memberId);
+            if (!stillHere) members.delete(memberId);
           }
         }
       });
@@ -1758,7 +2020,7 @@ const startServer = async () => {
       }
 
       // ── Self-Ping Keep-Alive (Prevents Render Free Tier Sleep) ──
-      if (process.env.NODE_ENV === 'production' || process.env.RENDER === 'true') {
+      if (isProductionEnv()) {
         const KEEP_ALIVE_INTERVAL = 14 * 60 * 1000; // 14 minutes (Render sleeps at 15 min)
         const selfUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
         setInterval(async () => {
@@ -1814,16 +2076,12 @@ try {
   cron.schedule('0 10 * * *', async () => {
     console.log('[CRON] Running daily abandoned cart nudge...');
     try {
-      const http = require('http');
-      const port = process.env.PORT || 5005;
-      const options = { hostname: 'localhost', port, path: '/api/features/push/abandoned-cart', method: 'POST' };
-      const req = http.request(options, (res) => {
-        console.log(`[CRON] Abandoned cart nudge response: ${res.statusCode}`);
-      });
-      req.on('error', (e) => console.warn('[CRON] Nudge failed:', e.message));
-      req.end();
-    } catch (e) { console.warn('[CRON] Error:', e.message); }
-  });
+      // In-process call (the HTTP route is admin-only now)
+      const { runAbandonedCartNudge } = require('./routes/featureRoutes');
+      const { count } = await runAbandonedCartNudge();
+      console.log(`[CRON] Abandoned cart nudge sent to ${count} users`);
+    } catch (e) { console.warn('[CRON] Nudge failed:', e.message); }
+  }, { timezone: 'Asia/Kolkata' });
   console.log('⏰ [CRON] Daily abandoned cart nudge scheduled at 10:00 AM');
 } catch (e) {
   console.warn('[CRON] node-cron not available, skipping scheduled jobs');

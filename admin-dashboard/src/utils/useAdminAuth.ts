@@ -1,76 +1,48 @@
 "use client";
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useMemo, useSyncExternalStore } from 'react';
+import {
+  AdminUser,
+  AuthStatus,
+  getAuthState,
+  getServerAuthState,
+  subscribe,
+  verifySession,
+} from '@/lib/session';
 
-export function useAdminAuth() {
-  const router = useRouter();
-  const [isAuthed, setIsAuthed] = useState(false);
+export interface AdminAuth {
+  status: AuthStatus;
+  user: AdminUser | null;
+  message: string | null;
+  /** Convenience flag: status === 'authed'. */
+  isAuthed: boolean;
+  /** Re-run the server check (used by the error state's Retry button). */
+  retry: () => void;
+}
+
+/**
+ * Server-verified admin session.
+ *
+ * The first consumer triggers GET /api/admin/me; everyone shares the result.
+ * NexusLayoutClient already gates every dashboard page on this, so pages only
+ * need `const { isAuthed, user } = useAdminAuth()` when they want the user.
+ */
+export function useAdminAuth(): AdminAuth {
+  const state = useSyncExternalStore(subscribe, getAuthState, getServerAuthState);
 
   useEffect(() => {
-    const token = 'cookie-managed';
-    const userData = localStorage.getItem('user');
-    
-    if (!token || !userData) {
-      router.push('/login');
-      return;
-    }
+    if (getAuthState().status === 'checking') verifySession();
+  }, []);
 
-    // OPTIMISTIC AUTH: Assume valid if token exists, verify in background
-    let user;
-    try {
-      user = JSON.parse(userData);
-    } catch {
-      router.push('/login');
-      return;
-    }
-
-    if (user && user.role === 'admin') {
-      setIsAuthed(true);
-    } else {
-      router.push('/login');
-      return;
-    }
-
-    const MAX_RETRIES = 3;
-    const RETRY_DELAY_MS = 5000;
-
-    const checkSession = async (attempt = 1): Promise<void> => {
-      try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-jwmt.onrender.com';
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout
-
-        const res = await fetch(`${apiUrl}/api/admin/config`, {
-          signal: controller.signal
-        });
-        clearTimeout(timeout);
-
-        if (res.status === 401) {
-          
-          localStorage.removeItem('user');
-          router.push('/login');
-          setIsAuthed(false);
-          return;
-        }
-
-        if (!res.ok && attempt < MAX_RETRIES) {
-          await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
-          return checkSession(attempt + 1);
-        }
-      } catch (err: unknown) {
-        const isAbort = err instanceof DOMException && err.name === 'AbortError';
-        const isNetwork = err instanceof TypeError && err.message.includes('fetch');
-
-        if ((isAbort || isNetwork) && attempt < MAX_RETRIES) {
-          await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
-          return checkSession(attempt + 1);
-        }
-        // Persistent network error? Stay authed (cached mode)
-      }
-    };
-
-    checkSession();
-  }, [router]);
-
-  return isAuthed;
+  return useMemo(
+    () => ({
+      status: state.status,
+      user: state.user,
+      message: state.message,
+      isAuthed: state.status === 'authed',
+      retry: () => {
+        verifySession();
+      },
+    }),
+    [state]
+  );
 }

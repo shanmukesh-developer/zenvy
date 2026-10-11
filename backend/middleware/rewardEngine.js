@@ -97,4 +97,15 @@ const calculateBadgePerks = (user) => {
   return { deliveryDiscount, orderDiscount, status };
 };
 
-module.exports = { updateStreak, calculateBadgePerks };
+// The streak a user actually has right now: it lapses once a whole IST day passes with no order
+// (the stored streakCount is only rewritten on the next order).
+const effectiveStreak = (user) => {
+  const count = Number(user?.streakCount) || 0;
+  if (!count || !user?.lastOrderDate) return 0;
+  const IST = 5.5 * 60 * 60 * 1000;
+  const day = (d) => new Date(new Date(d).getTime() + IST).toISOString().slice(0, 10);
+  const daysSince = Math.round((new Date(day(new Date())) - new Date(day(user.lastOrderDate))) / 86400000);
+  return daysSince <= 1 ? count : 0;
+};
+
+module.exports = { updateStreak, calculateBadgePerks, effectiveStreak };

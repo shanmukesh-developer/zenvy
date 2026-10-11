@@ -36,9 +36,14 @@ const { initWallLikeModel } = require('../models/WallLike');
 const { initServiceBookingModel } = require('../models/ServiceBooking');
 const { initProductReviewModel } = require('../models/ProductReview');
 const { initDailyContentModel } = require('../models/DailyContent');
+const { initOtpCodeModel } = require('../models/OtpCode');
+const { initCatalogueImportLedgerModel } = require('../models/CatalogueImportLedger');
+const { initNotificationModel } = require('../models/Notification');
+const { initCampusModels } = require('../modules/campus/models');
 
 const initializeAllModels = (instance) => {
   initUserModel(instance);
+  initCampusModels(instance);
   initAppConfigModel(instance);
   initRestaurantModel(instance);
   initMenuItemModel(instance);
@@ -70,6 +75,9 @@ const initializeAllModels = (instance) => {
   initServiceBookingModel(instance);
   initProductReviewModel(instance);
   initDailyContentModel(instance);
+  initOtpCodeModel(instance);
+  initCatalogueImportLedgerModel(instance);
+  initNotificationModel(instance);
 
   // Define Associations
   const Restaurant = instance.models.Restaurant;
@@ -548,6 +556,14 @@ const connectDB = async () => {
           }
         } catch (e) {
           console.warn('⚠️ [SQLite_MIGRATION_WARN] Failed checking/dropping Messages foreign keys:', e.message);
+        }
+
+        // Campus Buddy self-healing column migrations
+        try {
+          const { runCampusMigrations } = require('../modules/campus/migrations/campusMigrations');
+          await runCampusMigrations(sequelize);
+        } catch (mErr) {
+          console.warn('⚠️ [CAMPUS_MIGRATION_WARN]', mErr.message);
         }
       }
     } else {

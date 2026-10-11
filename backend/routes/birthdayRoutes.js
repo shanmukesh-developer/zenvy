@@ -7,7 +7,6 @@ const { Op } = require('sequelize');
 
 const { getBirthdayCelebrationModel } = require('../models/BirthdayCelebration');
 const { getBirthdayWishModel } = require('../models/BirthdayWish');
-const { getCommunityPostModel } = require('../models/CommunityPost');
 const { protect, admin } = require('../middleware/authMiddleware');
 const { sendPushToTopic, sendPushToTokens } = require('../utils/push');
 
@@ -23,15 +22,45 @@ function processPhoto(base64Payload) {
   return null;
 }
 
+// ── IST date helpers (community-n17) ──
+const IST_OFFSET_MS = 330 * 60 * 1000;
+const istTodayYmd = () => new Date(Date.now() + IST_OFFSET_MS).toISOString().slice(0, 10);
+// Returns 'YYYY-MM-DD' for a real calendar date, else null.
+const parseYmd = (v) => {
+  const raw = String(v || '').trim();
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  if (!m) return null;
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  return d.toISOString().slice(0, 10) === raw ? raw : null;
+};
+// The celebration is live for that whole day in IST.
+const istDayWindow = (ymd) => {
+  const start = new Date(Date.parse(`${ymd}T00:00:00Z`) - IST_OFFSET_MS);
+  return { start, end: new Date(start.getTime() + 24 * 60 * 60 * 1000) };
+};
+const daysFromToday = (ymd) => Math.round((Date.parse(`${ymd}T00:00:00Z`) - Date.parse(`${istTodayYmd()}T00:00:00Z`)) / 86400000);
+
 // POST /api/birthdays - Submit birthday celebration request
 router.post('/', protect, async (req, res) => {
   try {
     const BirthdayCelebration = getBirthdayCelebrationModel();
     if (!BirthdayCelebration) return res.status(500).json({ message: 'Database model not initialized.' });
 
-    const { candidateName, candidatePhoto, birthdayDate } = req.body;
-    if (!candidateName || !birthdayDate) {
+    const { candidatePhoto } = req.body;
+    const candidateName = String(req.body.candidateName || '').replace(/[<>]/g, '').trim();
+    if (!candidateName || !req.body.birthdayDate) {
       return res.status(400).json({ message: 'Candidate name and date are required.' });
+    }
+    if (candidateName.length > 60) {
+      return res.status(400).json({ message: 'Please keep the name under 60 characters.' });
+    }
+    const birthdayDate = parseYmd(req.body.birthdayDate);
+    if (!birthdayDate) {
+      return res.status(400).json({ code: 'INVALID_DATE', message: 'Please enter the birthday as YYYY-MM-DD, for example 2026-10-21.' });
+    }
+    const ahead = daysFromToday(birthdayDate);
+    if (ahead < 0 || ahead > 60) {
+      return res.status(400).json({ code: 'INVALID_DATE', message: 'Pick the birthday date from today up to 60 days ahead.' });
     }
 
     // Store photo as base64 data URI directly in database (survives server restarts)
@@ -60,13 +89,11 @@ router.get('/active', async (req, res) => {
     const BirthdayCelebration = getBirthdayCelebrationModel();
     if (!BirthdayCelebration) return res.status(500).json({ message: 'Database model not initialized.' });
 
-    const now = new Date();
+    // Only birthdays whose date is today in IST.
     const activeCelebrations = await BirthdayCelebration.findAll({
       where: {
         status: 'approved',
-        expiresAt: {
-          [Op.gt]: now
-        }
+        birthdayDate: istTodayYmd()
       },
       order: [['approvedAt', 'DESC']]
     });
@@ -103,7 +130,13 @@ router.put('/:id/approve', protect, admin, async (req, res) => {
     if (!celebration) return res.status(404).json({ message: 'Celebration not found.' });
 
     const now = new Date();
-    const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000); // exactly 24 hours
+    const birthdayYmd = parseYmd(celebration.birthdayDate) || istTodayYmd();
+    // Visible for the whole birthday (IST), not "24 hours from approval".
+    const { end: expiresAt } = istDayWindow(birthdayYmd);
+    if (expiresAt <= now) {
+      return res.status(400).json({ message: 'This birthday has already passed, so it cannot go live. Reject it instead.' });
+    }
+    const isToday = birthdayYmd === istTodayYmd();
 
     await celebration.update({
       status: 'approved',
@@ -116,7 +149,7 @@ router.put('/:id/approve', protect, admin, async (req, res) => {
     try {
       const { getUserModel } = require('../models/User');
       const User = getUserModel();
-      if (User) {
+      if (User && isToday) {
         const activeUsers = await User.findAll({ where: { isActive: true } });
         let allTokens = [];
         activeUsers.forEach(user => {
@@ -146,6 +179,7 @@ router.put('/:id/approve', protect, admin, async (req, res) => {
               candidateName: celebration.candidateName
             },
             {
+              recipients: activeUsers.map((u) => u.id),
               android: {
                 notification: {
                   color: '#FF1493',
@@ -163,7 +197,7 @@ router.put('/:id/approve', protect, admin, async (req, res) => {
     // Broadcast via Socket.io so active users get live toast & save to notification history
     try {
       const io = req.app.get('io');
-      if (io) {
+      if (io && isToday) {
         io.emit('global_announcement', {
           message: `🎉 Celebrate ${celebration.candidateName}'s Birthday! 🎂 Tap here to wish them and join the campus celebration! 🎁✨`,
           type: 'promo'
@@ -205,7 +239,6 @@ router.post('/:id/wish', protect, async (req, res) => {
   try {
     const BirthdayCelebration = getBirthdayCelebrationModel();
     const BirthdayWish = getBirthdayWishModel();
-    const CommunityPost = getCommunityPostModel();
 
     if (!BirthdayCelebration || !BirthdayWish) {
       return res.status(500).json({ message: 'Database models not initialized.' });
@@ -219,7 +252,11 @@ router.post('/:id/wish', protect, async (req, res) => {
       return res.status(400).json({ message: 'This birthday celebration has expired.' });
     }
 
-    const { message } = req.body;
+    if (celebration.status !== 'approved') {
+      return res.status(400).json({ message: 'This birthday is not live yet.' });
+    }
+
+    const message = typeof req.body?.message === 'string' ? req.body.message.trim().slice(0, 300) : '';
 
     // Create unique wish constraint check
     try {
@@ -238,20 +275,7 @@ router.post('/:id/wish', protect, async (req, res) => {
     celebration.wishCount = (celebration.wishCount || 0) + 1;
     await celebration.save();
 
-    // Automatically post a notice on the community wall feed
-    if (CommunityPost) {
-      try {
-        await CommunityPost.create({
-          userId: 'system',
-          userName: 'ZENVY CELEBRATIONS 🎂',
-          content: `${req.user.name || 'A student'} sent a birthday wish to ${celebration.candidateName}! 🎉 "${message || 'Happy Birthday!'}"`,
-          postType: 'post',
-          expiresAt: celebration.expiresAt // match the celebration expiry
-        });
-      } catch (postErr) {
-        console.error('Failed to post system wish message to community:', postErr);
-      }
-    }
+    // Wishes show on the celebration itself (GET /api/birthdays/:id/wishes); no per-wish feed posts.
 
     res.json({ message: 'Wish sent successfully!', wishCount: celebration.wishCount });
   } catch (err) {

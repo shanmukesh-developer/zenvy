@@ -30,18 +30,19 @@ interface ServicePillar {
   accentColor: string;
 }
 
+// Factual copy only: every line describes something the app really does today.
 const CAMPUS_SERVICES_MAP: ServicePillar[] = [
   {
     id: 'food',
     icon: '🍔',
     title: 'Canteen & Food Delivery',
     category: 'FOOD & DINING',
-    tagline: '15-Minute Doorstep Delivery to Hostel Rooms',
-    howToAccess: 'Home Tab ➔ Browse campus food outlets, roadside stalls & late night canteens.',
+    tagline: 'Campus kitchens delivered to your hostel',
+    howToAccess: 'Home tab ➔ pick a restaurant or tap a Classic.',
     keyFeatures: [
-      'Campus Canteen & Local Food Stalls',
-      'Late-Night Delivery until 3:00 AM',
-      'Live GPS Rider Tracking & OTP Delivery'
+      'Real menus and prices from campus kitchens',
+      'Ordering open 6 AM – 9 PM, Cash on Delivery or Zenvy Wallet',
+      'Live order status and a delivery PIN only you can share'
     ],
     image: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=600&q=80',
     accentColor: '#EF4444',
@@ -49,14 +50,14 @@ const CAMPUS_SERVICES_MAP: ServicePillar[] = [
   {
     id: 'grocery',
     icon: '🛒',
-    title: 'Hostel Mega Basket & Essentials',
+    title: 'Kirana & Mega Basket',
     category: 'GROCERIES & DAILY NEEDS',
-    tagline: 'Snacks, Dairy, Beverages & Exam Stationery',
-    howToAccess: 'Others Tab ➔ "Food & Basket" or Basket Icon in bottom bar.',
+    tagline: 'Snacks, staples and hostel essentials',
+    howToAccess: 'Others tab ➔ "Food & Basket", or Home ➔ Basket for a custom list.',
     keyFeatures: [
-      'Instant Noodles, Snacks & Beverages',
-      'Lab Stationery, Engineering Tools & Notebooks',
-      'Hostel Cleaning & Personal Hygiene Kits'
+      'Noodles, snacks, drinks and daily essentials',
+      'Mega Basket: a rider shops your list and sends the real bill',
+      'You approve the bill before you pay'
     ],
     image: 'https://images.unsplash.com/photo-1578916171728-46686eac8d58?w=600&q=80',
     accentColor: '#10B981',
@@ -64,14 +65,14 @@ const CAMPUS_SERVICES_MAP: ServicePillar[] = [
   {
     id: 'laundry',
     icon: '🧺',
-    title: 'Hostel Smart Laundry Wash & Iron',
+    title: 'Laundry & Ironing',
     category: 'HOUSEKEEPING',
-    tagline: 'Per-Kilo Doorstep Laundry with 24-Hr Return',
-    howToAccess: 'Others Tab ➔ "Smart Laundry" ➔ Schedule Bag Pickup.',
+    tagline: 'Book a wash, dry clean or ironing pickup',
+    howToAccess: 'Others tab ➔ "Tech & Repairs" ➔ "Wash & Dry Clean".',
     keyFeatures: [
-      'Antiseptic Wash, Steam Press & Fold',
-      'Weight-Based Transparent Billing (₹49/kg)',
-      'Direct Delivery back to your Hostel Room'
+      'Pick a service and see its price before booking',
+      'Doorstep pickup from your hostel',
+      'The partner calls you before pickup'
     ],
     image: 'https://images.unsplash.com/photo-1517677208171-0bc6725a3e60?w=600&q=80',
     accentColor: '#3B82F6',
@@ -79,14 +80,14 @@ const CAMPUS_SERVICES_MAP: ServicePillar[] = [
   {
     id: 'print',
     icon: '🖨️',
-    title: 'PrintOuts & Project Spiral Binding',
+    title: 'Printouts & Binding',
     category: 'ACADEMICS & STATIONERY',
-    tagline: 'Upload PDF & Collect at Campus Gate or Doorstep',
-    howToAccess: 'Others Tab ➔ "PrintOuts & Xerox" ➔ Upload File.',
+    tagline: 'Assignments, records and project binding',
+    howToAccess: 'Others tab ➔ "Tech & Repairs" ➔ "Printout & Xerox".',
     keyFeatures: [
-      'Color & B/W Printing from ₹2/page',
-      'Spiral Binding, Record Hard-Binding & Charts',
-      'Doorstep Delivery or 5-Min Gate Pickup'
+      'Choose B/W or colour, single or double sided',
+      'See the estimate before you book',
+      'Stationery and study kits in the store too'
     ],
     image: 'https://images.unsplash.com/photo-1562654501-a0ccc0fc3fb1?w=600&q=80',
     accentColor: '#8B5CF6',
@@ -94,14 +95,14 @@ const CAMPUS_SERVICES_MAP: ServicePillar[] = [
   {
     id: 'pharmacy',
     icon: '💊',
-    title: 'SOS Campus Pharmacy & First-Aid',
+    title: 'Pharmacy Essentials',
     category: 'HEALTHCARE',
-    tagline: 'Prescription Meds, Pain Relievers & ORS in 15 Mins',
-    howToAccess: 'Others Tab ➔ "Campus Pharmacy" ➔ Emergency Order.',
+    tagline: 'Basic over-the-counter care, delivered',
+    howToAccess: 'Others tab ➔ "Food & Basket" ➔ search for medicine & first-aid.',
     keyFeatures: [
-      'Paracetamol, Bandages, Inhalers & Pain Sprays',
-      'Night-time Urgent Room Drop for Sick Students',
-      'Verified Licensed Campus Chemist Dispense'
+      'First-aid and everyday health items',
+      'Same Cash on Delivery or Wallet checkout',
+      'For emergencies, contact campus medical staff first'
     ],
     image: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=600&q=80',
     accentColor: '#EC4899',
@@ -109,14 +110,13 @@ const CAMPUS_SERVICES_MAP: ServicePillar[] = [
   {
     id: 'pg',
     icon: '🏢',
-    title: 'Verified PG & Student Residences',
+    title: 'PG & Student Stays',
     category: 'ACCOMMODATION',
-    tagline: 'Zero-Brokerage Stays with Direct WhatsApp Booking',
-    howToAccess: 'Others Tab ➔ "PG Homes" ➔ Filter by Gender & Distance.',
+    tagline: 'Browse PGs and rooms near campus',
+    howToAccess: 'Others tab ➔ "PG Stays".',
     keyFeatures: [
-      'Inspected WiFi, AC, Mess & Security Properties',
-      'Detailed Room Tour, Distance to Campus & Food Menus',
-      'Instant WhatsApp Booking Dispatch with Campus Wardens'
+      'Rooms, rent and amenities listed by each PG',
+      'Book a room right in the app'
     ],
     image: 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=600&q=80',
     accentColor: '#06B6D4',
@@ -124,14 +124,14 @@ const CAMPUS_SERVICES_MAP: ServicePillar[] = [
   {
     id: 'coride',
     icon: '🏍️',
-    title: 'Peer Co-Ride & Rapido Connect',
+    title: 'Co-Ride for Students',
     category: 'CAMPUS TRANSIT',
-    tagline: 'Student Fuel-Split Commute & Station Cabs',
-    howToAccess: 'Others Tab ➔ "Co-Ride & Rapido" ➔ Post or Join Ride.',
+    tagline: 'Share a ride with students going your way',
+    howToAccess: 'Others tab ➔ "Co-Ride" ➔ post or join a ride.',
     keyFeatures: [
-      'Peer Fuel Split between Campus, Vijayawada & Guntur',
-      'Verified University Student ID Validation',
-      'Fixed-Fare Airport & Railway Station Cabs'
+      'Post a trip or join one',
+      'The rider approves who hops on',
+      'Share the fuel cost with your co-riders'
     ],
     image: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=600&q=80',
     accentColor: '#EAB308',
@@ -139,14 +139,14 @@ const CAMPUS_SERVICES_MAP: ServicePillar[] = [
   {
     id: 'rewards',
     icon: '🎁',
-    title: 'Daily Rewards, Spin & Campus Vault',
+    title: 'Rewards & Daily Deals',
     category: 'PERKS & LOYALTY',
-    tagline: 'Free Meals, Cashback Scratch Cards & Coins',
-    howToAccess: 'Others Tab ➔ "Offers & Perks" ➔ Spin Fortune Wheel.',
+    tagline: 'ZenPoints, spins and daily deals',
+    howToAccess: 'Others tab ➔ "Deals & Spin", or Home ➔ Daily Deals.',
     keyFeatures: [
-      'Daily Fortune Spin Wheel for Discounts',
-      'Cashback Scratch Cards on Every Order',
-      'Hostel Block Leaderboards & Zenvy Coins'
+      'Every 2 delivered orders earn a spin',
+      'Daily deals give a coupon valid until midnight',
+      '200+ ZenPoints unlock free delivery'
     ],
     image: 'https://images.unsplash.com/photo-1596451190630-186aff535bf2?w=600&q=80',
     accentColor: '#EC4899',
@@ -244,7 +244,7 @@ export default function CampusServicesMapModal({ visible, onClose }: Props) {
                   </Text>
                   <View style={{ backgroundColor: `${activePillar.accentColor}20`, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
                     <Text style={{ color: activePillar.accentColor, fontSize: 9, fontWeight: '900' }}>
-                      CAMPUS 24/7
+                      ON ZENVY
                     </Text>
                   </View>
                 </View>

@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, TextInput, Alert, ActivityIndicator, RefreshControl } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Clipboard from '@react-native-clipboard/clipboard';
 import { useRouter } from 'expo-router';
 import { COLORS, SHADOWS } from '../../constants/theme';
-import { useCart } from '../../context/CartContext';
+import { useCart, useBasketQuote, useServiceability, isCustomRequest, DELIVERY_INSTRUCTIONS, DELIVERY_INSTRUCTIONS_KEY } from '../../context/CartContext';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { summarizeCustomizations } from '../../components/CustomizeDrawer';
@@ -16,37 +16,50 @@ import SafeImage from '../../components/SafeImage';
 export default function BasketScreen() {
   const { isDark, colors } = useTheme();
   const { user } = useAuth();
-  const { cart, removeFromCart, updateQuantity, clearCart, totalPrice, totalItems, uniqueRestaurants, deliveryFee: cartDeliveryFee, roomCode, isHosting, isJoined, handleHostRoom, handleJoinRoom, handleDisconnect } = useCart();
+  const { cart, removeFromCart, updateQuantity, clearCart, removeItems, totalPrice, totalItems, roomCode, isHosting, roomStatus, roomMessage, handleHostRoom, handleJoinRoom, handleDisconnect } = useCart();
   const [isJoinOpen, setIsJoinOpen] = useState(false);
   const [inputCode, setInputCode] = useState('');
   const [selectedInstructions, setSelectedInstructions] = useState<string[]>([]);
   const router = useRouter();
 
+  // The bill comes from the server (POST /api/orders/quote); guests see an item estimate only.
+  const { quote, loading: quoteLoading, error: quoteError, refresh: refreshQuote, hasOrderLines } = useBasketQuote(null, !!user);
+  const { serviceability } = useServiceability();
+  const isClosed = quote?.serviceability?.open === false || serviceability?.open === false;
+  const closedMessage = quote?.serviceability?.message || serviceability?.message ||
+    `Campus kitchens are closed for the night. Ordering opens again at ${serviceability?.reopensAt || '6:00 AM'}.`;
+  const customCount = cart.filter((i) => isCustomRequest(i)).length;
+
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       try {
-        const stored = await AsyncStorage.getItem('zenvy_delivery_instruction');
+        const stored = await AsyncStorage.getItem(DELIVERY_INSTRUCTIONS_KEY);
         if (stored) {
           const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed)) setSelectedInstructions(parsed);
+          if (!cancelled && Array.isArray(parsed)) setSelectedInstructions(parsed.filter((x) => typeof x === 'string'));
         }
       } catch (e) {}
     })();
+    return () => { cancelled = true; };
   }, []);
 
-  const toggleInstruction = async (id: string) => {
-    const updated = selectedInstructions.includes(id)
-      ? selectedInstructions.filter(item => item !== id)
-      : [...selectedInstructions, id];
-    setSelectedInstructions(updated);
-    try {
-      await AsyncStorage.setItem('zenvy_delivery_instruction', JSON.stringify(updated));
-    } catch (e) {}
+  const toggleInstruction = (id: string) => {
+    setSelectedInstructions((prev) => {
+      const updated = prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id];
+      AsyncStorage.setItem(DELIVERY_INSTRUCTIONS_KEY, JSON.stringify(updated)).catch(() => {});
+      return updated;
+    });
   };
 
-  const isElite = user?.isElite || (user?.zenPoints && user.zenPoints >= 200);
-  const effectiveDeliveryFee = isElite ? 0 : (cartDeliveryFee ?? 30);
-  const grandTotal = totalPrice + effectiveDeliveryFee;
+  const unavailable: { id?: string; name?: string }[] = quoteError?.code === 'ITEMS_UNAVAILABLE' && Array.isArray(quoteError.body?.unavailableItems)
+    ? quoteError.body.unavailableItems
+    : quoteError?.code === 'BOOKING_ONLY_ITEMS' && Array.isArray(quoteError.body?.bookingOnlyItems)
+      ? quoteError.body.bookingOnlyItems.map((n: any) => ({ name: String(n || '') }))
+      : [];
+  const checkoutLabel = quote && !quoteLoading
+    ? `PROCEED TO CHECKOUT • ₹${quote.finalPrice}`
+    : `PROCEED TO CHECKOUT • ${totalItems} ITEM${totalItems === 1 ? '' : 'S'}`;
 
   const bg = colors.bg;
   const cardBg = colors.card;
@@ -59,7 +72,11 @@ export default function BasketScreen() {
   return (
     <View style={[s.container, { backgroundColor: bg }]}>
       <AmbientBackground />
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={user && hasOrderLines ? <RefreshControl refreshing={false} onRefresh={refreshQuote} tintColor={goldColor} colors={[COLORS.red]} /> : undefined}
+      >
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, marginBottom: 16 }}>
           <Text style={[s.pageTitle, { color: txt, marginBottom: 0, paddingHorizontal: 0 }]}>MY BASKET</Text>
           {cart.length > 0 && (
@@ -91,7 +108,7 @@ export default function BasketScreen() {
             {!roomCode ? (
               <View>
                 <Text style={{ fontSize: 11, fontWeight: '900', color: goldColor, letterSpacing: 2, marginBottom: 2 }}>ROOMMATE GROUP CART</Text>
-                <Text style={[s.groupDesc, { color: txtSec }]}>ORDER TOGETHER WITH YOUR ROOMMATES AND SPLIT THE BILL</Text>
+                <Text style={[s.groupDesc, { color: txtSec }]}>BUILD ONE BASKET TOGETHER WITH YOUR ROOMMATES — ONE PERSON CHECKS OUT AND PAYS</Text>
                 <View style={s.groupBtns}>
                   <TouchableOpacity style={[s.hostBtn, { borderColor: border, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)' }]} onPress={handleHostRoom}>
                     <Text style={[s.hostBtnText, { color: txt }]}>📡 HOST CART</Text>
@@ -128,10 +145,27 @@ export default function BasketScreen() {
               </View>
             ) : (
               <View style={s.activeRoomCard}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                  <View style={s.liveDot} />
-                  <Text style={{ fontSize: 10, fontWeight: '900', color: '#10B981', letterSpacing: 2 }}>LIVE ROOM ACTIVE ({isHosting ? 'HOST' : 'JOINED'})</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: roomMessage ? 6 : 12 }}>
+                  {roomStatus === 'connecting' ? (
+                    <ActivityIndicator size="small" color={goldColor} />
+                  ) : (
+                    <View style={[s.liveDot, roomStatus !== 'live' && { backgroundColor: roomStatus === 'error' ? '#EF4444' : '#F59E0B' }]} />
+                  )}
+                  <Text style={{ fontSize: 10, fontWeight: '900', color: roomStatus === 'live' ? '#10B981' : roomStatus === 'error' ? '#EF4444' : txtSec, letterSpacing: 2 }}>
+                    {roomStatus === 'live'
+                      ? `LIVE ROOM ACTIVE (${isHosting ? 'HOST' : 'JOINED'})`
+                      : roomStatus === 'connecting'
+                        ? 'CONNECTING…'
+                        : roomStatus === 'waiting'
+                          ? 'WAITING FOR HOST'
+                          : roomStatus === 'error'
+                            ? 'CONNECTION PROBLEM'
+                            : `ROOM ${isHosting ? 'HOST' : 'JOINED'}`}
+                  </Text>
                 </View>
+                {!!roomMessage && (
+                  <Text style={{ fontSize: 10, color: txtSec, fontWeight: '600', marginBottom: 10, lineHeight: 15 }}>{roomMessage}</Text>
+                )}
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                   <View>
                     <Text style={{ fontSize: 9, color: txtSec, fontWeight: '700', letterSpacing: 1, marginBottom: 2 }}>ROOM CODE</Text>
@@ -176,59 +210,35 @@ export default function BasketScreen() {
           </StaggeredSection>
         ) : (
           <>
-            {/* Free Delivery Tracker */}
-            <StaggeredSection delay={60} direction="up">
-              <View style={[s.deliveryTrackerCard, { backgroundColor: cardBg, borderColor: border }]}>
-                {effectiveDeliveryFee === 0 ? (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                    <Text style={{ fontSize: 20 }}>🎉</Text>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 11, fontWeight: '900', color: '#10B981', letterSpacing: 1 }}>
-                        {isElite ? 'VIP ELITE FREE DELIVERY UNLOCKED' : 'FREE CAMPUS DELIVERY UNLOCKED'}
-                      </Text>
-                      <Text style={{ fontSize: 9, color: txtSec, fontWeight: '600', marginTop: 2 }}>
-                        You are saving ₹30 delivery fee on this order!
-                      </Text>
-                    </View>
-                  </View>
-                ) : (
-                  <View>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                      <Text style={{ fontSize: 10, fontWeight: '900', color: txt, letterSpacing: 0.5 }}>
-                        🛵 ADD ₹{Math.max(0, 199 - totalPrice)} MORE FOR FREE DELIVERY
-                      </Text>
-                      <Text style={{ fontSize: 9, fontWeight: '900', color: goldColor }}>
-                        {Math.min(100, Math.round((totalPrice / 199) * 100))}%
-                      </Text>
-                    </View>
-                    <View style={[s.progressBarOuter, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0' }]}>
-                      <View 
-                        style={[
-                          s.progressBarInner, 
-                          { 
-                            width: `${Math.min(100, Math.round((totalPrice / 199) * 100))}%`,
-                            backgroundColor: isDark ? COLORS.gold : COLORS.red
-                          }
-                        ]} 
-                      />
-                    </View>
-                  </View>
-                )}
-              </View>
-            </StaggeredSection>
-
-            {uniqueRestaurants > 1 && (
-              <StaggeredSection delay={80} direction="up">
-                <View style={[s.multiRestBanner, { backgroundColor: isDark ? 'rgba(234, 179, 8, 0.08)' : 'rgba(234, 179, 8, 0.06)', borderColor: isDark ? 'rgba(234, 179, 8, 0.25)' : 'rgba(234, 179, 8, 0.15)' }]}>
-                  <Text style={{ fontSize: 16 }}>🛵</Text>
+            {isClosed && (
+              <StaggeredSection delay={60} direction="up">
+                <View style={[s.multiRestBanner, { backgroundColor: isDark ? 'rgba(99,102,241,0.12)' : 'rgba(99,102,241,0.08)', borderColor: 'rgba(99,102,241,0.3)' }]}>
+                  <Text style={{ fontSize: 16 }}>🌙</Text>
                   <View style={{ flex: 1 }}>
-                    <Text style={[s.multiRestTitle, { color: isDark ? '#FBBF24' : '#B45309' }]}>
-                      MULTI-KITCHEN ORDER ({uniqueRestaurants} RESTAURANTS)
-                    </Text>
-                    <Text style={[s.multiRestSub, { color: txtSec }]}>
-                      Items will be collected from {uniqueRestaurants} separate campus spots to ensure each dish is cooked fresh to order.
-                    </Text>
+                    <Text style={[s.multiRestTitle, { color: txt }]}>CLOSED FOR THE NIGHT</Text>
+                    <Text style={[s.multiRestSub, { color: txtSec }]}>{closedMessage} Your basket is saved.</Text>
                   </View>
+                </View>
+              </StaggeredSection>
+            )}
+
+            {unavailable.length > 0 && (
+              <StaggeredSection delay={70} direction="up">
+                <View style={[s.multiRestBanner, { backgroundColor: isDark ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.06)', borderColor: 'rgba(239,68,68,0.3)' }]}>
+                  <Text style={{ fontSize: 16 }}>⚠️</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[s.multiRestTitle, { color: '#EF4444' }]}>SOME ITEMS ARE UNAVAILABLE</Text>
+                    <Text style={[s.multiRestSub, { color: txtSec }]}>{unavailable.map((u) => u.name).filter(Boolean).join(', ') || quoteError?.message}</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={s.bannerBtn}
+                    onPress={() => removeItems({
+                      ids: unavailable.map((u) => String(u.id || '')).filter(Boolean),
+                      names: unavailable.map((u) => String(u.name || '')).filter(Boolean),
+                    })}
+                  >
+                    <Text style={s.bannerBtnText}>REMOVE</Text>
+                  </TouchableOpacity>
                 </View>
               </StaggeredSection>
             )}
@@ -255,7 +265,15 @@ export default function BasketScreen() {
                         <Text style={{ fontSize: 8, fontWeight: '800', color: txtSec, textTransform: 'uppercase' }}>👤 ADDED BY {item.addedBy}</Text>
                       </View>
                     )}
-                    <Text style={{ fontSize: 16, fontWeight: '900', color: txt, marginTop: 4 }}>₹{item.price}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, marginTop: 4 }}>
+                      <Text style={{ fontSize: 16, fontWeight: '900', color: txt }}>₹{Math.round(item.price * item.quantity * 100) / 100}</Text>
+                      {item.quantity > 1 && (
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: txtSec }}>₹{item.price} each</Text>
+                      )}
+                      {isCustomRequest(item) && (
+                        <Text style={{ fontSize: 9, fontWeight: '700', color: txtSec }}>est.</Text>
+                      )}
+                    </View>
                   </View>
                   <View style={{ alignItems: 'flex-end', gap: 8 }}>
                     <TouchableOpacity
@@ -295,38 +313,90 @@ export default function BasketScreen() {
 
             <StaggeredSection delay={(cart.length + 1) * 80} direction="up">
               <View style={[s.billCard, { backgroundColor: cardBg, borderColor: border, borderWidth: 1 }]}>
-                <View style={s.billRow}>
-                  <Text style={[s.billLabel, { color: txtSec }]}>ITEMS SUBTOTAL</Text>
-                  <Text style={[s.billVal, { color: txt }]}>₹{totalPrice}</Text>
-                </View>
-                <View style={s.billRow}>
-                  <Text style={[s.billLabel, { color: txtSec }]}>
-                    DELIVERY FEE {uniqueRestaurants > 1 ? `(${uniqueRestaurants} KITCHENS)` : ''}
-                  </Text>
-                  <Text style={[s.billVal, { color: effectiveDeliveryFee === 0 ? '#10B981' : txt, fontWeight: '900' }]}>
-                    {effectiveDeliveryFee === 0 ? 'FREE ✨' : `₹${effectiveDeliveryFee}`}
-                  </Text>
-                </View>
-                <View style={[s.billRow, { borderTopWidth: 1, borderTopColor: border, paddingTop: 12, marginTop: 4 }]}>
-                  <Text style={[s.billLabel, { color: txt, fontSize: 13, fontWeight: '900' }]}>GRAND TOTAL</Text>
-                  <Text style={{ fontSize: 22, fontWeight: '900', color: goldColor }}>₹{grandTotal}</Text>
-                </View>
+                {!user ? (
+                  <>
+                    <View style={s.billRow}>
+                      <Text style={[s.billLabel, { color: txtSec }]}>ITEM TOTAL</Text>
+                      <Text style={[s.billVal, { color: txt }]}>₹{totalPrice}</Text>
+                    </View>
+                    <Text style={{ fontSize: 10, color: txtSec, fontWeight: '600' }}>Sign in to see delivery fee, offers and your final bill.</Text>
+                  </>
+                ) : !hasOrderLines ? (
+                  <>
+                    <View style={s.billRow}>
+                      <Text style={[s.billLabel, { color: txtSec }]}>SHOPPING LIST (EST.)</Text>
+                      <Text style={[s.billVal, { color: txt }]}>₹{totalPrice}</Text>
+                    </View>
+                    <Text style={{ fontSize: 10, color: txtSec, fontWeight: '600' }}>A rider shops your list. You pay the actual shop bill plus fees in cash on delivery.</Text>
+                  </>
+                ) : quote ? (
+                  <View style={{ opacity: quoteLoading ? 0.5 : 1 }}>
+                    <View style={s.billRow}>
+                      <Text style={[s.billLabel, { color: txtSec }]}>ITEM TOTAL</Text>
+                      <Text style={[s.billVal, { color: txt }]}>₹{quote.subtotal}</Text>
+                    </View>
+                    <View style={s.billRow}>
+                      <Text style={[s.billLabel, { color: txtSec }]}>DELIVERY FEE</Text>
+                      <Text style={[s.billVal, { color: quote.deliveryFee === 0 ? '#10B981' : txt, fontWeight: '900' }]}>
+                        {quote.deliveryFee === 0 ? 'FREE' : `₹${quote.deliveryFee}`}
+                      </Text>
+                    </View>
+                    {quote.packagingFee > 0 && (
+                      <View style={s.billRow}>
+                        <Text style={[s.billLabel, { color: txtSec }]}>PACKAGING</Text>
+                        <Text style={[s.billVal, { color: txt }]}>₹{quote.packagingFee}</Text>
+                      </View>
+                    )}
+                    {quote.taxes > 0 && (
+                      <View style={s.billRow}>
+                        <Text style={[s.billLabel, { color: txtSec }]}>TAXES</Text>
+                        <Text style={[s.billVal, { color: txt }]}>₹{quote.taxes}</Text>
+                      </View>
+                    )}
+                    {(quote.discounts || []).filter((d) => d && d.amount > 0).map((d, idx) => (
+                      <View style={s.billRow} key={`${d.type}-${idx}`}>
+                        <Text style={[s.billLabel, { color: '#10B981', flex: 1 }]} numberOfLines={1}>{String(d.label || 'Discount').toUpperCase()}</Text>
+                        <Text style={[s.billVal, { color: '#10B981' }]}>-₹{d.amount}</Text>
+                      </View>
+                    ))}
+                    <View style={[s.billRow, { borderTopWidth: 1, borderTopColor: border, paddingTop: 12, marginTop: 4 }]}>
+                      <Text style={[s.billLabel, { color: txt, fontSize: 13, fontWeight: '900' }]}>TO PAY</Text>
+                      <Text style={{ fontSize: 22, fontWeight: '900', color: goldColor }}>₹{quote.finalPrice}</Text>
+                    </View>
+                    {customCount > 0 && (
+                      <Text style={{ fontSize: 10, color: txtSec, fontWeight: '600' }}>+ your Mega Basket shopping list, paid in cash on delivery.</Text>
+                    )}
+                  </View>
+                ) : quoteLoading ? (
+                  <View style={{ paddingVertical: 12, alignItems: 'center' }}>
+                    <ActivityIndicator color={goldColor} />
+                    <Text style={{ fontSize: 10, color: txtSec, fontWeight: '600', marginTop: 8 }}>Calculating your bill…</Text>
+                  </View>
+                ) : quoteError ? (
+                  <View>
+                    <Text style={{ fontSize: 12, fontWeight: '800', color: txt, marginBottom: 4 }}>We couldn't calculate your bill</Text>
+                    <Text style={{ fontSize: 11, color: txtSec, fontWeight: '600', lineHeight: 16, marginBottom: 10 }}>{quoteError.message}</Text>
+                    {unavailable.length === 0 && (
+                      <TouchableOpacity style={[s.bannerBtn, { alignSelf: 'flex-start' }]} onPress={refreshQuote}>
+                        <Text style={s.bannerBtnText}>TRY AGAIN</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ) : null}
               </View>
             </StaggeredSection>
 
             {/* Campus Delivery Instructions */}
             <StaggeredSection delay={(cart.length + 2) * 80} direction="up">
               <View style={[s.instructionsCard, { backgroundColor: cardBg, borderColor: border, borderWidth: 1 }]}>
-                <Text style={{ fontSize: 10, fontWeight: '900', color: goldColor, letterSpacing: 1.5, marginBottom: 8 }}>
+                <Text style={{ fontSize: 10, fontWeight: '900', color: goldColor, letterSpacing: 1.5, marginBottom: 2 }}>
                   CAMPUS DELIVERY INSTRUCTIONS
                 </Text>
+                <Text style={{ fontSize: 9, color: txtSec, fontWeight: '600', marginBottom: 8 }}>
+                  Sent to your rider with the delivery address.
+                </Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                  {[
-                    { id: 'no_cutlery', label: '🌱 No Plastic Cutlery' },
-                    { id: 'call_arrival', label: '📞 Call Upon Arrival' },
-                    { id: 'guard_desk', label: '🛡️ Leave at Hostel Guard' },
-                    { id: 'quiet_knock', label: '🚪 Knock Gently' },
-                  ].map(pref => {
+                  {DELIVERY_INSTRUCTIONS.map(pref => {
                     const isSelected = selectedInstructions.includes(pref.id);
                     return (
                       <TouchableOpacity
@@ -376,7 +446,7 @@ export default function BasketScreen() {
             }}
             sound="click"
           >
-            <Text style={s.checkoutText}>PROCEED TO CHECKOUT • ₹{grandTotal}</Text>
+            <Text style={s.checkoutText}>{checkoutLabel}</Text>
           </ActionPressable>
         </FloatingPulse>
       )}
@@ -385,7 +455,7 @@ export default function BasketScreen() {
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, paddingTop: Platform.OS === 'android' ? 40 : 50, width: '100%', maxWidth: 600, alignSelf: 'center' },
+  container: { flex: 1, paddingTop: Platform.OS === 'android' ? 40 : 50, width: '100%', maxWidth: 600, alignSelf: 'center', position: 'relative' },
   pageTitle: { fontSize: 20, fontWeight: '900', letterSpacing: 4, paddingHorizontal: 16, marginBottom: 16, textAlign: 'center' },
   groupCard: { marginHorizontal: 16, padding: 16, borderRadius: 20, marginBottom: 16, borderWidth: 1 },
   groupDesc: { fontSize: 10, fontWeight: '700', letterSpacing: 1.5, marginBottom: 12 },
@@ -456,6 +526,8 @@ const s = StyleSheet.create({
     fontWeight: '600',
     lineHeight: 12,
   },
+  bannerBtn: { backgroundColor: '#EF4444', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10 },
+  bannerBtnText: { color: '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 1 },
   deliveryTrackerCard: {
     marginHorizontal: 16,
     marginBottom: 12,

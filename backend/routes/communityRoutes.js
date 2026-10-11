@@ -66,8 +66,32 @@ router.post('/', protect, async (req, res) => {
     const CommunityPost = getCommunityPostModel();
     if (!CommunityPost) return res.status(500).json({ message: 'DB disconnected.' });
 
-    const { content, parentId, imageUrl, authorName, postType, starRating, restaurantId, restaurantName, productName } = req.body;
+    // The author is always the signed-in account (a client-sent authorName is ignored).
+    const { content, parentId, imageUrl, postType, starRating, restaurantId, restaurantName, productName } = req.body;
     if (!content && !imageUrl) return res.status(400).json({ message: 'Content or image is required.' });
+
+    // Field checks (community-n18 / n21)
+    if (content !== undefined && content !== null && typeof content !== 'string') return res.status(400).json({ message: 'Post text must be text.' });
+    if (typeof content === 'string' && content.trim().length > 500) return res.status(400).json({ code: 'CONTENT_TOO_LONG', message: 'Posts can be at most 500 characters.' });
+    const tooLong = (v, n) => v !== undefined && v !== null && String(v).trim().length > n;
+    if (tooLong(restaurantName, 60)) return res.status(400).json({ message: 'Restaurant name can be at most 60 characters.' });
+    if (tooLong(productName, 60)) return res.status(400).json({ message: 'Dish name can be at most 60 characters.' });
+    let reviewStars = null;
+    if (postType === 'review' && !parentId) {
+      reviewStars = Number(starRating);
+      if (!Number.isInteger(reviewStars) || reviewStars < 1 || reviewStars > 5) {
+        return res.status(400).json({ code: 'INVALID_RATING', message: 'Pick a rating from 1 to 5 stars.' });
+      }
+      // A review tied to a store needs a delivered order from it.
+      if (restaurantId) {
+        const { getOrderModel } = require('../models/Order');
+        const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const delivered = UUID_RE.test(String(restaurantId))
+          ? await getOrderModel().count({ where: { userId: req.user.id, restaurantId: String(restaurantId), status: 'Delivered' } })
+          : 0;
+        if (!delivered) return res.status(403).json({ code: 'REVIEW_NEEDS_ORDER', message: 'You can review a place once an order from it has been delivered to you.' });
+      }
+    }
 
     if (parentId) {
       const parent = await CommunityPost.findByPk(parentId);
@@ -80,21 +104,24 @@ router.post('/', protect, async (req, res) => {
     const isReview = postType === 'review';
     const expiresAt = isReview ? null : new Date(Date.now() + 48 * 60 * 60 * 1000);
 
+    const { getUserModel: getAuthorModel } = require('../models/User');
+    const author = await getAuthorModel().findByPk(req.user.id, { attributes: ['name', 'profileImage'] });
+
     const newPost = await CommunityPost.create({
       userId: req.user.id,
-      userName: authorName || req.user.name || 'Anonymous Operative',
-      userAvatar: req.user.profileImage || null,
-      content: content || '',
+      userName: author?.name || req.user.name || 'Zenvy member',
+      userAvatar: author?.profileImage || null,
+      content: typeof content === 'string' ? content.trim() : '',
       imageUrl: imageUrl || null,
       parentId: parentId || null,
       likes: 0,
       likedBy: [],
       expiresAt,
       postType: postType || 'post',
-      starRating: isReview ? (starRating || null) : null,
+      starRating: isReview ? reviewStars : null,
       restaurantId: isReview ? (restaurantId || null) : null,
-      restaurantName: isReview ? (restaurantName || null) : null,
-      productName: isReview ? (productName || null) : null
+      restaurantName: isReview ? (String(restaurantName || '').trim() || null) : null,
+      productName: isReview ? (String(productName || '').trim() || null) : null
     });
 
     const io = req.app.get('io');
@@ -102,57 +129,8 @@ router.post('/', protect, async (req, res) => {
       io.emit('community_new_post', newPost);
     }
 
-    // --- BIRTHDAY BROADCAST LOGIC ---
-    // If the post is explicitly marked as a birthday or contains birthday keywords,
-    // we trigger an automatic specially themed broadcast to all users!
-    const isBirthdayPost = postType === 'birthday' || 
-      (content && (content.toLowerCase().includes('happy birthday') || content.toLowerCase().includes('hbd')));
-      
-    if (isBirthdayPost) {
-      const { getUserModel } = require('../models/User');
-      const User = getUserModel();
-      const activeUsers = await User.findAll({ where: { isActive: true } });
-      
-      let allTokens = [];
-      activeUsers.forEach(user => {
-        if (user.fcmTokens) {
-          let tokenList = user.fcmTokens;
-          if (typeof tokenList === 'string') {
-            try { tokenList = JSON.parse(tokenList); } catch { tokenList = [tokenList]; }
-          }
-          if (Array.isArray(tokenList)) {
-            tokenList.forEach(t => {
-              const tokenStr = typeof t === 'string' ? t : t?.token;
-              if (tokenStr) allTokens.push(tokenStr);
-            });
-          }
-        }
-      });
-      allTokens = [...new Set(allTokens.filter(Boolean))];
-
-      if (allTokens.length > 0) {
-        const { sendPushToTokens } = require('../utils/push');
-        
-        await sendPushToTokens(
-          allTokens,
-          `🎉 🎂 Birthday Alert! 🎂 🎉`,
-          `Someone just posted a birthday wish for ${newPost.userName} in the community! Join the celebration! ✨`,
-          {
-            type: 'BIRTHDAY_ALERT',
-            postId: String(newPost.id),
-            theme: 'birthday_party_special'
-          },
-          {
-            android: {
-              notification: {
-                color: '#FF1493',
-                sound: 'default'
-              }
-            }
-          }
-        ).catch(e => console.error('Birthday push broadcast error:', e));
-      }
-    }
+    // Birthday pushes go out only for admin-approved celebrations (POST /api/birthdays/:id/approve),
+    // never because a post contains "hbd" / "happy birthday".
 
     res.status(201).json(newPost);
   } catch (error) {

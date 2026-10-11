@@ -44,9 +44,9 @@ export class ErrorBoundary extends Component<Props, State> {
               <Text style={styles.icon}>⚡</Text>
             </View>
 
-            <Text style={styles.title}>System Notice</Text>
+            <Text style={styles.title}>Oops, something went wrong</Text>
             <Text style={styles.subtitle}>
-              Something unexpected occurred in the interface. Don't worry, your orders and basket data are safe.
+              This screen hit a snag. Don't worry, your orders and basket are safe. Tap below to try again.
             </Text>
 
             {__DEV__ && this.state.error && (
@@ -58,7 +58,7 @@ export class ErrorBoundary extends Component<Props, State> {
             )}
 
             <TouchableOpacity style={styles.primaryButton} activeOpacity={0.85} onPress={this.handleReset}>
-              <Text style={styles.primaryButtonText}>RELOAD INTERFACE</Text>
+              <Text style={styles.primaryButtonText}>TRY AGAIN</Text>
             </TouchableOpacity>
           </View>
         </SafeAreaView>

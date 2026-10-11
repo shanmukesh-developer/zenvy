@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Animated, Dimensions, Platform, Easing } from 'react-native';
+import { View, Text, StyleSheet, Animated, Dimensions, Platform, Easing, TouchableOpacity } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const { width: SW, height: SH } = Dimensions.get('window');
@@ -174,6 +174,16 @@ export default function IntroOverlay({ onComplete }: IntroOverlayProps) {
 
   return (
     <Animated.View style={[styles.container, { opacity: fadeOutAnim }]}>
+      {/* ── SKIP BUTTON ── */}
+      <TouchableOpacity
+        style={styles.skipBtn}
+        onPress={onComplete}
+        activeOpacity={0.8}
+        accessibilityLabel="Skip intro"
+      >
+        <Text style={styles.skipBtnText}>SKIP ➔</Text>
+      </TouchableOpacity>
+
       {/* ── SOLID BACKGROUND ── */}
       <View style={StyleSheet.absoluteFill}>
         <LinearGradient colors={['#060608', '#0F0D12', '#060608']} style={StyleSheet.absoluteFill} />
@@ -414,5 +424,23 @@ const styles = StyleSheet.create({
     opacity: 0.6,
     marginTop: 6,
     textAlign: 'center',
+  },
+  skipBtn: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 54 : 36,
+    right: 20,
+    zIndex: 999999,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(249, 196, 64, 0.4)',
+  },
+  skipBtnText: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#F9C440',
+    letterSpacing: 1.5,
   },
 });

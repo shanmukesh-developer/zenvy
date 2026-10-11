@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { useAdminAuth } from '@/utils/useAdminAuth';
+import { adminRequest as apiRequest } from '@/lib/api';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-jwmt.onrender.com';
 
 interface BikePool {
   id: string;
@@ -15,6 +16,8 @@ interface BikePool {
   genderPreference: string;
   status: 'Available' | 'Matched' | 'Completed' | 'Cancelled';
   paymentStatus: 'Unpaid' | 'Paid';
+  vehicleType?: string;
+  availableSeats?: number;
   creator?: { id: string; name: string; phone: string; gender: string };
   coRider?: { id: string; name: string; phone: string };
   createdAt: string;
@@ -27,59 +30,58 @@ const statusColors: Record<string, string> = {
   Cancelled: 'text-red-400 bg-red-500/10 border-red-500/20',
 };
 
+/** fetch against the one backend; throws an Error carrying the server's friendly `message`. */
 export default function BikePoolAdmin() {
+  const { isAuthed } = useAdminAuth();
   const [pools, setPools] = useState<BikePool[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>('all');
 
-  useEffect(() => {
-    fetchPools();
-  }, []);
-
-  const fetchPools = async () => {
+  const fetchPools = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      const res = await fetch(`${API_URL}/api/bikepool/admin/all`, {
-        credentials: 'include',
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setPools(data);
-      } else {
-        // Fallback: try public endpoint
-        const fallback = await fetch(`${API_URL}/api/bikepool/posts`, { credentials: 'include' });
-        if (fallback.ok) setPools(await fallback.json());
-      }
+      // Admin-only list of every listing. No fallback to the public feed: it hides full and old rides.
+      const data = await apiRequest<BikePool[]>('/api/bikepool/admin/all');
+      setPools(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error('[BIKEPOOL_ADMIN_FETCH_ERROR]', err);
+      setError(err instanceof Error ? err.message : 'Could not load co-ride listings.');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (isAuthed) fetchPools();
+  }, [isAuthed, fetchPools]);
 
   const formatDateTime = (dateStr: string) => {
-    try {
-      return new Date(dateStr).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-    } catch { return dateStr; }
+    const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return dateStr || '—';
+    return d.toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
 
-  const handleForceCancel = async (id: string) => {
-    if (!confirm('Are you sure you want to forcibly cancel this ride?')) return;
+  const runAction = async (pool: BikePool, action: 'force-cancel' | 'mark-paid') => {
+    if (busyId) return;
+    const route = `${pool.origin} → ${pool.destination}`;
+    const question = action === 'force-cancel'
+      ? `Cancel the ride ${route} by ${pool.creator?.name || 'this student'}? Riders will no longer see it. This cannot be undone.`
+      : `Mark the ride ${route} as paid? Only do this once the co-riders have settled up.`;
+    if (!confirm(question)) return;
+    setBusyId(pool.id);
+    setError(null);
+    setNotice(null);
     try {
-      const res = await fetch(`${API_URL}/api/bikepool/admin/${id}/force-cancel`, { method: 'POST', credentials: 'include' });
-      if (res.ok) fetchPools();
+      const res = await apiRequest<{ message?: string }>(`/api/bikepool/admin/${pool.id}/${action}`, { method: 'POST' });
+      setNotice(res?.message || (action === 'force-cancel' ? 'Ride cancelled.' : 'Ride marked as paid.'));
+      await fetchPools();
     } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleMarkPaid = async (id: string) => {
-    if (!confirm('Are you sure you want to forcibly mark this ride as paid?')) return;
-    try {
-      const res = await fetch(`${API_URL}/api/bikepool/admin/${id}/mark-paid`, { method: 'POST', credentials: 'include' });
-      if (res.ok) fetchPools();
-    } catch (err) {
-      console.error(err);
+      setError(err instanceof Error ? err.message : 'That action failed. Please try again.');
+    } finally {
+      setBusyId(null);
     }
   };
 
@@ -97,7 +99,7 @@ export default function BikePoolAdmin() {
     <div className="space-y-8 animate-fade-in">
       <header>
         <h1 className="text-3xl font-black tracking-tighter text-white">Co-Ride <span className="text-indigo-400">Monitor</span></h1>
-        <p className="text-[11px] text-gray-500 uppercase tracking-widest mt-1">All active and historical BikePool listings</p>
+        <p className="text-[11px] text-gray-500 uppercase tracking-widest mt-1">Every co-ride listing, newest first. Zenvy does not collect ride money; co-riders settle directly</p>
       </header>
 
       {/* Stats Row */}
@@ -116,6 +118,16 @@ export default function BikePoolAdmin() {
         ))}
       </div>
 
+      {error && (
+        <div className="p-4 rounded-xl border border-red-500/30 bg-red-500/10 text-sm font-bold text-red-400 flex justify-between items-center gap-4">
+          <span>{error}</span>
+          <button onClick={fetchPools} className="text-[10px] font-black uppercase tracking-wider underline">Retry</button>
+        </div>
+      )}
+      {notice && (
+        <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-sm font-bold text-emerald-400">{notice}</div>
+      )}
+
       {/* Filter Bar */}
       <div className="flex gap-2 flex-wrap">
         {['all', 'Available', 'Matched', 'Completed', 'Cancelled'].map(f => (
@@ -129,7 +141,7 @@ export default function BikePoolAdmin() {
             {f}
           </button>
         ))}
-        <button onClick={fetchPools} className="ml-auto px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black uppercase tracking-wider text-gray-400 hover:bg-white/10 transition-all">
+        <button onClick={fetchPools} disabled={loading} className="ml-auto disabled:opacity-50 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black uppercase tracking-wider text-gray-400 hover:bg-white/10 transition-all">
           ↻ Refresh
         </button>
       </div>
@@ -140,7 +152,9 @@ export default function BikePoolAdmin() {
           <div className="w-8 h-8 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
         </div>
       ) : filtered.length === 0 ? (
-        <div className="py-16 text-center text-gray-600 text-xs italic">No co-ride listings found.</div>
+        <div className="py-16 text-center text-gray-600 text-xs italic">
+          {error ? 'Listings could not be loaded.' : filter === 'all' ? 'No co-ride listings yet.' : `No ${filter.toLowerCase()} rides.`}
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filtered.map(pool => (
@@ -154,12 +168,16 @@ export default function BikePoolAdmin() {
                     {pool.creatorRole === 'rider' ? '🏍️ Rider' : '🎒 Passenger'}
                   </span>
                 </div>
-                <span className="text-emerald-400 font-black text-sm">₹{pool.splitAmount}</span>
+                <span className="text-emerald-400 font-black text-sm">{Number(pool.splitAmount) > 0 ? `₹${Number(pool.splitAmount)}/seat` : 'Free'}</span>
               </div>
 
               <div>
                 <p className="text-white font-bold text-sm">{pool.origin} → {pool.destination}</p>
-                <p className="text-[10px] text-gray-500 mt-0.5">Departs: {formatDateTime(pool.departureTime)}</p>
+                <p className="text-[10px] text-gray-500 mt-0.5">
+                  Departs: {formatDateTime(pool.departureTime)}
+                  {pool.vehicleType ? ` · ${pool.vehicleType}` : ''}
+                  {typeof pool.availableSeats === 'number' ? ` · ${pool.availableSeats} seat${pool.availableSeats === 1 ? '' : 's'} left` : ''}
+                </p>
               </div>
 
               <div className="border-t border-white/5 pt-3 grid grid-cols-2 gap-3 text-[10px]">
@@ -187,20 +205,22 @@ export default function BikePoolAdmin() {
                   </span>
                 </div>
                 <div className="flex gap-2">
-                  {pool.paymentStatus === 'Unpaid' && (
+                  {pool.paymentStatus === 'Unpaid' && pool.status !== 'Cancelled' && Number(pool.splitAmount) > 0 && (
                     <button 
-                      onClick={() => handleMarkPaid(pool.id)}
-                      className="px-2 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded hover:bg-emerald-500/20 text-[8px] font-black uppercase"
+                      onClick={() => runAction(pool, 'mark-paid')}
+                      disabled={busyId === pool.id}
+                      className="disabled:opacity-50 px-2 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded hover:bg-emerald-500/20 text-[8px] font-black uppercase"
                     >
                       ✓ Mark Paid
                     </button>
                   )}
                   {(pool.status === 'Available' || pool.status === 'Matched') && (
                     <button 
-                      onClick={() => handleForceCancel(pool.id)}
-                      className="px-2 py-1 bg-red-500/10 text-red-500 border border-red-500/20 rounded hover:bg-red-500/20 text-[8px] font-black uppercase"
+                      onClick={() => runAction(pool, 'force-cancel')}
+                      disabled={busyId === pool.id}
+                      className="disabled:opacity-50 px-2 py-1 bg-red-500/10 text-red-500 border border-red-500/20 rounded hover:bg-red-500/20 text-[8px] font-black uppercase"
                     >
-                      ✕ Force Cancel
+                      {busyId === pool.id ? '...' : '✕ Cancel Ride'}
                     </button>
                   )}
                 </div>

@@ -1,7 +1,10 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { io, Socket } from 'socket.io-client';
 import { API_URL } from '../constants/api';
+import { apiFetch, getToken } from '../utils/auth';
+import { useAuth } from './AuthContext';
 
 export interface Customizations {
   size?: string;
@@ -34,6 +37,8 @@ export interface CartItem {
   imageUrl?: string;
   restaurantId: string;
   restaurantName: string;
+  /** Checkout add-ons (EXTRAS store): they ride along with the main store's order. */
+  isAddOn?: boolean;
   isCake?: boolean;
   customName?: string;
   customizations?: Customizations;
@@ -41,31 +46,58 @@ export interface CartItem {
   addedById?: string;
 }
 
+type AddableItem = Omit<CartItem, 'quantity' | 'cartKey' | 'basePrice' | 'addedBy' | 'addedById'> & {
+  quantity?: number;
+  basePrice?: number;
+  addedBy?: string;
+  addedById?: string;
+};
+
+/** Live state of the roommate group-cart room. */
+export type RoomStatus = 'idle' | 'connecting' | 'live' | 'waiting' | 'error';
+
 interface CartContextType {
   cart: CartItem[];
-  addToCart: (item: Omit<CartItem, 'quantity' | 'cartKey' | 'basePrice'> & { quantity?: number; basePrice?: number }) => void;
+  /** Adds the item. Returns false when the basket holds another store's items (a "Replace basket?" prompt is shown instead). */
+  addToCart: (item: AddableItem) => boolean;
   removeFromCart: (cartKey: string) => void;
   updateQuantity: (cartKey: string, qty: number) => void;
   updateCustomName: (cartKey: string, name: string) => void;
+  /** Removes every line whose item id or name matches (used for items the server says are unavailable). */
+  removeItems: (match: { ids?: string[]; names?: string[] }) => void;
   clearCart: () => void;
   setCart: React.Dispatch<React.SetStateAction<CartItem[]>>;
+  /** Total quantity of one menu item across all its basket lines (customized lines included). */
+  quantityOf: (itemId: string) => number;
   totalItems: number;
+  /** Sum of the basket line prices (shown as an estimate only — the server quote is the bill). */
   totalPrice: number;
-  uniqueRestaurants: number;
-  deliveryFee: number;
   roomCode: string;
   isHosting: boolean;
   isJoined: boolean;
+  roomStatus: RoomStatus;
+  roomMessage: string | null;
   handleHostRoom: () => void;
   handleJoinRoom: (code: string) => void;
   handleDisconnect: () => void;
-  isRoomOrder: boolean;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
+export const MAX_ITEM_QTY = 20;
+const ROOM_CODE_RE = /^ZN-[A-Z0-9]{4,8}$/;
+
+/** Mega Basket "custom request" lines (free-text items a rider shops for). They are placed via /api/mega-basket, never /api/orders. */
+export const isCustomRequest = (item: Pick<CartItem, 'id'>) => String(item.id || '').startsWith('custom-');
+
+/** The store a line belongs to for the one-store-per-order rule (add-ons and custom requests ride along). */
+const storeKeyOf = (item: Pick<CartItem, 'id' | 'restaurantId' | 'isAddOn'>): string | null => {
+  if (item.isAddOn || isCustomRequest(item)) return null;
+  return item.restaurantId ? String(item.restaurantId) : null;
+};
+
 function generateCartKey(id: string, customizations?: Customizations): string {
-  if (!customizations) return id;
+  if (!customizations || Object.keys(customizations).length === 0) return id;
   const sig = JSON.stringify(customizations);
   let hash = 0;
   for (let i = 0; i < sig.length; i++) {
@@ -76,11 +108,12 @@ function generateCartKey(id: string, customizations?: Customizations): string {
 }
 
 function areCartsEqual(cartA: CartItem[], cartB: CartItem[]): boolean {
-  if (!cartA || !cartB) return false;
+  if (!Array.isArray(cartA) || !Array.isArray(cartB)) return false;
   if (cartA.length !== cartB.length) return false;
   for (let i = 0; i < cartA.length; i++) {
     const a = cartA[i];
     const b = cartB[i];
+    if (!a || !b) return false;
     if (a.cartKey !== b.cartKey) return false;
     if (a.quantity !== b.quantity) return false;
     if (a.price !== b.price) return false;
@@ -90,18 +123,54 @@ function areCartsEqual(cartA: CartItem[], cartB: CartItem[]): boolean {
   return true;
 }
 
+const sanitizeIncomingCart = (incoming: any): CartItem[] | null => {
+  if (!Array.isArray(incoming)) return null;
+  return incoming
+    .filter((i: any) => i && i.id && i.name)
+    .map((i: any) => ({
+      ...i,
+      cartKey: i.cartKey || String(i.id),
+      quantity: Math.min(MAX_ITEM_QTY, Math.max(1, parseInt(i.quantity, 10) || 1)),
+      price: Number(i.price) || 0,
+      basePrice: Number(i.basePrice) || Number(i.price) || 0,
+      image: i.image || i.imageUrl || '',
+      restaurantName: i.restaurantName || '',
+    }));
+};
+
 export function CartProvider({ children }: { children: React.ReactNode }) {
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const { user } = useAuth();
+  const [cart, setCartState] = useState<CartItem[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
+
+  // Always-current copy of the basket, so several quick adds in one tick see each other.
+  const cartRef = useRef<CartItem[]>([]);
+  const setCart: React.Dispatch<React.SetStateAction<CartItem[]>> = useCallback((action) => {
+    setCartState((prev) => {
+      const next = typeof action === 'function' ? (action as (p: CartItem[]) => CartItem[])(prev) : action;
+      cartRef.current = next;
+      return next;
+    });
+  }, []);
 
   // Collab Sync state
   const [roomCode, setRoomCode] = useState('');
   const [isHosting, setIsHosting] = useState(false);
   const [isJoined, setIsJoined] = useState(false);
+  const [roomStatus, setRoomStatus] = useState<RoomStatus>('idle');
+  const [roomMessage, setRoomMessage] = useState<string | null>(null);
 
   const socketRef = useRef<Socket | null>(null);
   const isIncomingUpdateRef = useRef(false);
+  const incomingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSyncedCartRef = useRef<CartItem[]>([]);
+
+  // "Replace basket?" prompt: items waiting for the user's answer
+  const pendingItemsRef = useRef<CartItem[]>([]);
+  const promptOpenRef = useRef(false);
+
+  const userName = user?.name || 'Guest';
+  const userId = String((user as any)?._id || (user as any)?.id || 'guest');
 
   // Sync local changes to Room
   useEffect(() => {
@@ -115,80 +184,120 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     return () => {
+      if (incomingTimerRef.current) clearTimeout(incomingTimerRef.current);
       if (socketRef.current) {
+        socketRef.current.removeAllListeners();
         socketRef.current.disconnect();
+        socketRef.current = null;
       }
     };
   }, []);
 
-  const initializeSocket = async (code: string) => {
+  const initializeSocket = useCallback(async (code: string, role: 'host' | 'join') => {
     if (socketRef.current) {
+      socketRef.current.removeAllListeners();
       socketRef.current.disconnect();
+      socketRef.current = null;
     }
+    setRoomStatus('connecting');
+    setRoomMessage(null);
     try {
-      const storedUser = await AsyncStorage.getItem('user');
-      let token = null;
-      if (storedUser) {
-        token = JSON.parse(storedUser).token || null;
-      }
-
+      const token = await getToken();
       const socket = io(API_URL, {
         withCredentials: true,
         transports: ['websocket', 'polling'],
-        auth: { token }
+        auth: token ? { token } : {},
       });
 
       socketRef.current = socket;
 
       socket.on('connect', () => {
-        socket.emit('joinRoom', code);
+        socket.emit('joinRoom', code, (ack: any) => {
+          if (socketRef.current !== socket) return;
+          if (ack && ack.ok === false) {
+            setRoomStatus('error');
+            setRoomMessage(ack.message || "Couldn't connect to this basket. Check the code and try again.");
+            return;
+          }
+          if (role === 'join' && ack && ack.exists === false) {
+            setRoomStatus('waiting');
+            setRoomMessage('No live basket with this code yet. Ask your roommate to open their basket, or check the code.');
+            return;
+          }
+          setRoomStatus('live');
+          setRoomMessage(null);
+        });
       });
 
-      socket.on('cart_updated', (incomingCart: any) => {
-        if (!areCartsEqual(cart, incomingCart)) {
+      socket.on('connect_error', () => {
+        if (socketRef.current !== socket) return;
+        setRoomStatus('error');
+        setRoomMessage("Can't reach the shared basket right now. We'll keep trying.");
+      });
+
+      socket.on('cart_updated', (incoming: any) => {
+        const incomingCart = sanitizeIncomingCart(incoming);
+        if (!incomingCart) return;
+        setRoomStatus('live');
+        setRoomMessage(null);
+        if (!areCartsEqual(cartRef.current, incomingCart)) {
           lastSyncedCartRef.current = incomingCart;
           isIncomingUpdateRef.current = true;
           setCart(incomingCart);
-          setTimeout(() => {
+          if (incomingTimerRef.current) clearTimeout(incomingTimerRef.current);
+          incomingTimerRef.current = setTimeout(() => {
             isIncomingUpdateRef.current = false;
           }, 100);
         }
       });
     } catch (err) {
-      console.error('[COLLAB_CART_SOCKET_ERROR]', err);
+      console.warn('[COLLAB_CART_SOCKET_ERROR]', err);
+      setRoomStatus('error');
+      setRoomMessage("Couldn't open the shared basket. Please try again.");
     }
-  };
+  }, [setCart]);
 
   const handleHostRoom = async () => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let code = 'ZN-';
     for (let i = 0; i < 4; i++) {
       code += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     setRoomCode(code);
     setIsHosting(true);
-    await AsyncStorage.setItem('zenvy_collab_session', JSON.stringify({ code, role: 'host' }));
-    initializeSocket(code);
+    setIsJoined(false);
+    try { await AsyncStorage.setItem('zenvy_collab_session', JSON.stringify({ code, role: 'host' })); } catch {}
+    initializeSocket(code, 'host');
   };
 
   const handleJoinRoom = async (inputCode: string) => {
     if (!inputCode) return;
-    const formatted = inputCode.trim().toUpperCase();
+    let formatted = inputCode.trim().toUpperCase().replace(/\s+/g, '');
+    if (!formatted.startsWith('ZN-')) formatted = `ZN-${formatted.replace(/^ZN/, '')}`;
+    if (!ROOM_CODE_RE.test(formatted)) {
+      Alert.alert('Check the code', 'Room codes look like ZN-8B2A. Please check with your roommate and try again.');
+      return;
+    }
     setRoomCode(formatted);
     setIsJoined(true);
-    await AsyncStorage.setItem('zenvy_collab_session', JSON.stringify({ code: formatted, role: 'join' }));
-    initializeSocket(formatted);
+    setIsHosting(false);
+    try { await AsyncStorage.setItem('zenvy_collab_session', JSON.stringify({ code: formatted, role: 'join' })); } catch {}
+    initializeSocket(formatted, 'join');
   };
 
   const handleDisconnect = async () => {
     if (socketRef.current) {
+      socketRef.current.removeAllListeners();
       socketRef.current.disconnect();
+      socketRef.current = null;
     }
     setRoomCode('');
     setIsHosting(false);
     setIsJoined(false);
+    setRoomStatus('idle');
+    setRoomMessage(null);
     lastSyncedCartRef.current = [];
-    await AsyncStorage.removeItem('zenvy_collab_session');
+    try { await AsyncStorage.removeItem('zenvy_collab_session'); } catch {}
   };
 
   // Load cart and collab state on start
@@ -198,119 +307,192 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         const saved = await AsyncStorage.getItem('zenvy_cart');
         if (saved) {
           const parsed = JSON.parse(saved);
-          const migrated = parsed.map((item: any) => ({
-            ...item,
-            cartKey: item.cartKey || item.id,
-            basePrice: item.basePrice || item.price,
-            image: item.image || item.imageUrl || '',
-            restaurantName: item.restaurantName || 'Zenvy Partner'
-          }));
-          setCart(migrated);
+          if (Array.isArray(parsed)) {
+            const migrated = parsed
+              .filter((item: any) => item && item.id)
+              .map((item: any) => ({
+                ...item,
+                cartKey: item.cartKey || item.id,
+                basePrice: item.basePrice || item.price,
+                quantity: Math.min(MAX_ITEM_QTY, Math.max(1, parseInt(item.quantity, 10) || 1)),
+                image: item.image || item.imageUrl || '',
+                restaurantName: item.restaurantName || '',
+                // Old installs added checkout extras as `extra-<id>` lines
+                isAddOn: item.isAddOn || String(item.id).startsWith('extra-'),
+              }));
+            setCart(migrated);
+          }
         }
 
         const savedCollab = await AsyncStorage.getItem('zenvy_collab_session');
         if (savedCollab) {
           const { code, role } = JSON.parse(savedCollab);
-          if (code) {
+          if (code && ROOM_CODE_RE.test(code)) {
             setRoomCode(code);
             if (role === 'host') {
               setIsHosting(true);
             } else {
               setIsJoined(true);
             }
-            initializeSocket(code);
+            initializeSocket(code, role === 'host' ? 'host' : 'join');
           }
         }
       } catch (e) {
-        console.error('[CART] failed to load async storage', e);
+        console.warn('[CART] failed to load async storage', e);
       } finally {
         setIsLoaded(true);
       }
     };
     loadState();
-  }, []);
+  }, [initializeSocket, setCart]);
 
   // Save cart changes
   useEffect(() => {
     if (isLoaded) {
-      AsyncStorage.setItem('zenvy_cart', JSON.stringify(cart));
+      AsyncStorage.setItem('zenvy_cart', JSON.stringify(cart)).catch(() => {});
     }
   }, [cart, isLoaded]);
 
-  const addToCart = async (item: Omit<CartItem, 'quantity' | 'cartKey' | 'basePrice' | 'addedBy' | 'addedById'> & { quantity?: number; basePrice?: number; addedBy?: string; addedById?: string }) => {
-    const cartKey = generateCartKey(item.id, item.customizations);
+  const mergeInto = (prev: CartItem[], line: CartItem): CartItem[] => {
+    const existing = prev.find((i) => i.cartKey === line.cartKey);
+    if (existing) {
+      return prev.map((i) =>
+        i.cartKey === line.cartKey
+          ? { ...i, quantity: Math.min(MAX_ITEM_QTY, i.quantity + line.quantity) }
+          : i
+      );
+    }
+    return [...prev, line];
+  };
+
+  const addToCart = (item: AddableItem): boolean => {
+    const id = String(item.id);
+    const cartKey = generateCartKey(id, item.customizations);
     const basePrice = item.basePrice || item.price;
 
-    let userName = 'Guest Roommate';
-    let userId = 'guest';
-    try {
-      const stored = await AsyncStorage.getItem('zenvy_user');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed.name) userName = parsed.name;
-        if (parsed._id || parsed.id) userId = parsed._id || parsed.id;
-      }
-    } catch (err) {
-      console.error('[CART_USER_INFO_LOAD_ERROR]', err);
-    }
-
-    const itemWithQty: CartItem = {
+    const line: CartItem = {
       ...item,
+      id,
       cartKey,
       basePrice,
-      quantity: item.quantity || 1,
+      quantity: Math.min(MAX_ITEM_QTY, Math.max(1, item.quantity || 1)),
       image: item.image || item.imageUrl || '',
-      restaurantName: item.restaurantName || 'Zenvy Partner',
+      restaurantName: item.restaurantName || '',
       addedBy: item.addedBy || userName,
       addedById: item.addedById || userId,
     };
 
-    setCart((prev) => {
-      const existing = prev.find((i) => i.cartKey === cartKey);
-      if (existing) {
-        return prev.map((i) =>
-          i.cartKey === cartKey
-            ? { ...i, quantity: i.quantity + itemWithQty.quantity }
-            : i
+    const current = cartRef.current;
+    const existingLine = current.find((i) => i.cartKey === cartKey);
+    if (existingLine && existingLine.quantity >= MAX_ITEM_QTY) {
+      Alert.alert('That’s the limit', `You can order up to ${MAX_ITEM_QTY} of one item per order.`);
+      return false;
+    }
+
+    // One store per order (Swiggy-style "Replace basket?")
+    const newStore = storeKeyOf(line);
+    const otherStoreLine = newStore
+      ? current.find((i) => {
+          const k = storeKeyOf(i);
+          return k !== null && k !== newStore;
+        })
+      : undefined;
+
+    if (otherStoreLine) {
+      pendingItemsRef.current = [...pendingItemsRef.current, line];
+      if (!promptOpenRef.current) {
+        promptOpenRef.current = true;
+        const fromName = otherStoreLine.restaurantName || 'another store';
+        const toName = line.restaurantName || 'this store';
+        const finish = () => {
+          promptOpenRef.current = false;
+          pendingItemsRef.current = [];
+        };
+        Alert.alert(
+          'Replace basket?',
+          `Your basket has items from ${fromName}. Each order comes from one place — start a fresh basket with ${toName}?`,
+          [
+            { text: 'No', style: 'cancel', onPress: finish },
+            {
+              text: 'Replace',
+              style: 'destructive',
+              onPress: () => {
+                const pending = pendingItemsRef.current;
+                finish();
+                // A store order and a Mega Basket shopping request are placed separately,
+                // so a fresh store basket drops custom requests and the old store's add-ons.
+                const keep = pending.every(isCustomRequest) ? cartRef.current.filter(isCustomRequest) : [];
+                setCart(pending.reduce((acc, l) => mergeInto(acc, l), keep));
+              },
+            },
+          ],
+          { cancelable: true, onDismiss: finish }
         );
       }
-      return [...prev, itemWithQty];
-    });
+      return false;
+    }
+
+    // Update the ref now so another add in the same tick sees this line, then queue the real update.
+    cartRef.current = mergeInto(current, line);
+    setCart((prev) => mergeInto(prev, line));
+    return true;
   };
 
   const removeFromCart = (cartKey: string) => {
-    setCart((prev) => prev.filter((i) => i.cartKey !== cartKey && i.id !== cartKey));
+    setCart((prev) => prev.filter((i) => i.cartKey !== cartKey));
   };
 
   const updateQuantity = (cartKey: string, qty: number) => {
     if (qty <= 0) {
-      setCart((prev) => prev.filter((i) => i.cartKey !== cartKey && i.id !== cartKey));
+      setCart((prev) => prev.filter((i) => i.cartKey !== cartKey));
       return;
     }
-    setCart((prev) => prev.map((i) =>
-      (i.cartKey === cartKey || i.id === cartKey) ? { ...i, quantity: qty } : i
-    ));
+    if (qty > MAX_ITEM_QTY) {
+      Alert.alert('That’s the limit', `You can order up to ${MAX_ITEM_QTY} of one item per order.`);
+      qty = MAX_ITEM_QTY;
+    }
+    setCart((prev) => prev.map((i) => (i.cartKey === cartKey ? { ...i, quantity: qty } : i)));
   };
 
   const updateCustomName = (cartKey: string, name: string) => {
     setCart((prev) => prev.map((i) =>
-      (i.cartKey === cartKey || i.id === cartKey) ? { ...i, customName: name, customizations: { ...i.customizations, cakeMessage: name } } : i
+      i.cartKey === cartKey ? { ...i, customName: name, customizations: { ...i.customizations, cakeMessage: name } } : i
     ));
+  };
+
+  const removeItems = ({ ids = [], names = [] }: { ids?: string[]; names?: string[] }) => {
+    const idSet = new Set(ids.filter(Boolean).map(String));
+    const nameSet = new Set(names.filter(Boolean).map((n) => String(n).trim().toLowerCase()));
+    setCart((prev) => prev.filter((i) => !idSet.has(String(i.id)) && !nameSet.has(String(i.name).trim().toLowerCase())));
   };
 
   const clearCart = () => setCart([]);
 
+  // Logout or account switch: the basket and group-cart session belong to the previous account.
+  // A guest who signs in keeps the basket they built.
+  const prevUserIdRef = useRef(userId);
+  useEffect(() => {
+    const prev = prevUserIdRef.current;
+    prevUserIdRef.current = userId;
+    if (prev !== 'guest' && prev !== userId) {
+      clearCart();
+      handleDisconnect();
+      AsyncStorage.multiRemove(['zenvy_cart', 'zenvy_collab_session']).catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
+  const quantityOf = (itemId: string) =>
+    cart.reduce((acc, i) => (String(i.id) === String(itemId) ? acc + i.quantity : acc), 0);
+
   const totalItems = cart.reduce((acc, item) => acc + item.quantity, 0);
-  const totalPrice = cart.reduce((acc, item) => acc + item.price * item.quantity, 0);
-  const uniqueRestaurants = new Set(cart.map(i => i.restaurantId)).size;
-  const isRoomOrder = !!(roomCode || isHosting || isJoined);
-  const deliveryFee = isRoomOrder ? 50 : (uniqueRestaurants * 30);
+  const totalPrice = Math.round(cart.reduce((acc, item) => acc + item.price * item.quantity, 0) * 100) / 100;
 
   return (
     <CartContext.Provider value={{
-      cart, addToCart, removeFromCart, updateQuantity, updateCustomName, clearCart, setCart,
-      totalItems, totalPrice, uniqueRestaurants, deliveryFee,
-      roomCode, isHosting, isJoined, handleHostRoom, handleJoinRoom, handleDisconnect, isRoomOrder
+      cart, addToCart, removeFromCart, updateQuantity, updateCustomName, removeItems, clearCart, setCart, quantityOf,
+      totalItems, totalPrice,
+      roomCode, isHosting, isJoined, roomStatus, roomMessage, handleHostRoom, handleJoinRoom, handleDisconnect,
     }}>
       {children}
     </CartContext.Provider>
@@ -322,3 +504,168 @@ export const useCart = () => {
   if (!context) throw new Error('useCart must be used within CartProvider');
   return context;
 };
+
+// ── Server pricing (POST /api/orders/quote) ─────────────────────────────────
+
+export interface QuoteLine {
+  menuItemId: string;
+  name: string;
+  quantity: number;
+  basePrice: number;
+  addOnPrice: number;
+  unitPrice: number;
+  lineTotal: number;
+  isAddOn: boolean;
+  customizations: any;
+  image?: string;
+}
+
+export interface OrderQuote {
+  currency: string;
+  store: { id: string; name: string; vendorType: string; isOffline: boolean; zone?: string; location?: string };
+  lines: QuoteLine[];
+  subtotal: number;
+  deliveryFee: number;
+  packagingFee: number;
+  taxes: number;
+  discounts: { type: string; label: string; amount: number }[];
+  totalDiscount: number;
+  finalPrice: number;
+  coupon: { code: string; type: string; discount: number } | null;
+  serviceability?: { open: boolean; reopensAt?: string; message?: string };
+  paymentMethods?: string[];
+  walletBalance?: number;
+  canPayWithWallet?: boolean;
+}
+
+export interface QuoteError {
+  message: string;
+  code?: string;
+  body?: any;
+  network?: boolean;
+}
+
+/** The order line the server prices (it never trusts client prices). */
+export const toOrderLine = (i: CartItem) => ({
+  menuItemId: i.id,
+  quantity: i.quantity,
+  name: i.name,
+  ...(i.customizations && Object.keys(i.customizations).length > 0 ? { customizations: i.customizations } : {}),
+});
+
+export const friendlyNetworkMessage = "We couldn't reach Zenvy. Check your internet and try again.";
+
+/**
+ * Live bill for the basket from POST /api/orders/quote. Custom Mega Basket requests are not part of it.
+ * `enabled` should be false for guests (the quote needs a signed-in customer).
+ */
+export function useBasketQuote(couponCode: string | null | undefined, enabled: boolean) {
+  const { cart } = useCart();
+  const orderLines = useMemo(() => cart.filter((i) => !isCustomRequest(i)), [cart]);
+  const signature = useMemo(
+    () => JSON.stringify(orderLines.map((l) => [l.id, l.quantity, l.customizations || null])),
+    [orderLines]
+  );
+
+  const [quote, setQuote] = useState<OrderQuote | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<QuoteError | null>(null);
+  const [nonce, setNonce] = useState(0);
+  const refresh = useCallback(() => setNonce((n) => n + 1), []);
+
+  useEffect(() => {
+    if (!enabled || orderLines.length === 0) {
+      setQuote(null);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    setLoading(true);
+    // The quote has its own abort signal, so apiFetch's default timeout does not apply: add one here
+    // (a Render cold start must end in "try again", not an endless "Calculating your bill…").
+    let timedOut = false;
+    let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
+    const timer = setTimeout(async () => {
+      timeoutTimer = setTimeout(() => { timedOut = true; try { controller?.abort(); } catch {} }, 30000);
+      try {
+        const res = await apiFetch('/api/orders/quote', {
+          method: 'POST',
+          body: JSON.stringify({ items: orderLines.map(toOrderLine), ...(couponCode ? { couponCode } : {}) }),
+          ...(controller ? { signal: controller.signal } : {}),
+        });
+        const data = await res.json().catch(() => null);
+        if (cancelled) return;
+        if (res.ok && data && typeof data.finalPrice === 'number') {
+          setQuote(data);
+          setError(null);
+        } else {
+          setQuote(null);
+          setError({
+            message: (data && typeof data.message === 'string' && data.message) || 'We could not calculate your bill right now. Please try again.',
+            code: data?.code,
+            body: data,
+          });
+        }
+      } catch (e: any) {
+        if (cancelled || (e?.name === 'AbortError' && !timedOut)) return;
+        setQuote(null);
+        setError({ message: friendlyNetworkMessage, network: true });
+      } finally {
+        if (timeoutTimer) clearTimeout(timeoutTimer);
+        if (!cancelled) setLoading(false);
+      }
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      if (timeoutTimer) clearTimeout(timeoutTimer);
+      try { controller?.abort(); } catch {}
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signature, couponCode, enabled, nonce]);
+
+  return { quote, loading, error, refresh, hasOrderLines: orderLines.length > 0 };
+}
+
+/** GET /api/orders/serviceability — is campus ordering open right now? */
+export function useServiceability() {
+  const [state, setState] = useState<{ open: boolean; reopensAt?: string; message?: string } | null>(null);
+  const [nonce, setNonce] = useState(0);
+  const refresh = useCallback(() => setNonce((n) => n + 1), []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/orders/serviceability`);
+        const data = await res.json().catch(() => null);
+        if (!cancelled && res.ok && data && typeof data.open === 'boolean') setState(data);
+      } catch {
+        // Unknown is fine: the quote / order call reports closing hours too.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [nonce]);
+
+  return { serviceability: state, refresh };
+}
+
+// ── Delivery notes (chosen on the Basket tab, sent with the order's delivery address) ──
+
+export const DELIVERY_INSTRUCTIONS_KEY = 'zenvy_delivery_instruction';
+
+export const DELIVERY_INSTRUCTIONS: { id: string; label: string; note: string }[] = [
+  { id: 'no_cutlery', label: '🌱 No Plastic Cutlery', note: 'No plastic cutlery' },
+  { id: 'call_arrival', label: '📞 Call Upon Arrival', note: 'Call on arrival' },
+  { id: 'guard_desk', label: '🛡️ Leave at Hostel Guard', note: 'Leave at the hostel guard desk' },
+  { id: 'quiet_knock', label: '🚪 Knock Gently', note: 'Knock gently' },
+];
+
+/** A fresh Idempotency-Key for one checkout attempt (RFC 4122 v4 layout). */
+export const newIdempotencyKey = (): string =>
+  'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });

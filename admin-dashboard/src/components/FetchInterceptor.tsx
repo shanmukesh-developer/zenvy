@@ -1,61 +1,70 @@
 "use client";
 
 import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { API_ORIGIN } from '@/lib/config';
+import { clearSession, getAuthState, getToken, verifySession } from '@/lib/session';
 
+// Responses from these paths are handled by the auth code itself.
+const AUTH_PATHS = ['/api/users/login', '/api/users/logout', '/api/admin/me', '/api/users/profile'];
+
+const resolveUrl = (resource: RequestInfo | URL): URL | null => {
+  try {
+    const raw =
+      typeof resource === 'string' ? resource : resource instanceof URL ? resource.href : resource.url;
+    return new URL(raw, window.location.href);
+  } catch {
+    return null;
+  }
+};
+
+/** Older pages send "Bearer cookie-managed" / "Bearer " placeholders; treat those as no header. */
+const isPlaceholder = (value: string | null) => {
+  if (!value) return true;
+  const v = value.replace(/^Bearer\s*/i, '').trim();
+  return v === '' || v === 'cookie-managed' || v === 'null' || v === 'undefined';
+};
+
+/**
+ * Attaches the admin Bearer token to requests for the backend origin only
+ * (never to third-party URLs) and reacts to auth failures:
+ * 401 -> session dropped; 403 -> session re-checked with the server.
+ */
 export default function FetchInterceptor() {
-  const router = useRouter();
-
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-
     const originalFetch = window.fetch;
 
-    window.fetch = async (...args) => {
-      const resource = args[0];
-      let config = args[1];
-      
-      // Only intercept our own API calls
-      if (typeof resource === 'string' && resource.includes('/api/')) {
-        if (!config) {
-          config = {};
-        }
-        
-        // Always include cookies for auth
-        config.credentials = 'include';
-        
-        // Load token from localStorage to append as Bearer token if not already present
-        let token = null;
-        try {
-          const storedUser = localStorage.getItem('user');
-          if (storedUser) {
-            token = JSON.parse(storedUser).token;
-          }
-        } catch {}
+    window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = resolveUrl(input);
+      const isBackend = !!url && url.origin === API_ORIGIN;
 
-        const headers = new Headers(config.headers || {});
-        if (token && !headers.has('Authorization')) {
-          headers.set('Authorization', `Bearer ${token}`);
+      if (isBackend) {
+        const base = input instanceof Request ? input.headers : undefined;
+        const headers = new Headers(init?.headers || base || {});
+        const token = getToken();
+        if (isPlaceholder(headers.get('Authorization'))) {
+          if (token) headers.set('Authorization', `Bearer ${token}`);
+          else headers.delete('Authorization');
         }
-        config.headers = headers;
-
-        args[1] = config;
+        init = { ...init, headers };
       }
 
-      const response = await originalFetch(...args);
-      
-      // Handle automatic logout on 401
-      if (response.status === 401 && typeof resource === 'string' && !resource.includes('/api/users/login')) {
-        localStorage.removeItem('user');
+      const response = await originalFetch(input, init);
+
+      if (isBackend && url && !AUTH_PATHS.some((p) => url.pathname.startsWith(p))) {
+        if (response.status === 401 && getToken()) {
+          clearSession('Your session has expired. Please sign in again.');
+        } else if (response.status === 403 && getAuthState().status === 'authed') {
+          // Might be a per-action rule; only log out if the admin role itself is gone.
+          verifySession();
+        }
       }
-      
       return response;
     };
 
     return () => {
       window.fetch = originalFetch;
     };
-  }, [router]);
+  }, []);
 
   return null;
 }

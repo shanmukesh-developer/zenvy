@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, TextInput } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
 import { Customizations } from '../context/CartContext';
@@ -70,7 +70,7 @@ function getOptionsForType(type: ProductType, basePrice: number): OptionConfig[]
             { label: 'Eggless', value: 'Eggless', priceAdd: 20 },
           ]
         },
-        { label: 'Message on Cake', key: 'cakeMessage', type: 'text', placeholder: 'e.g. Happy Birthday Shanmukh' },
+        { label: 'Message on Cake', key: 'cakeMessage', type: 'text', placeholder: 'e.g. Happy Birthday Riya!' },
         { label: 'Special Instructions', key: 'specialInstructions', type: 'text', placeholder: 'Any dietary needs, allergies...' },
       ];
 
@@ -114,7 +114,7 @@ function getOptionsForType(type: ProductType, basePrice: number): OptionConfig[]
           ]
         },
         { label: 'Spice Level', key: 'spiceLevel', type: 'select', options: [
-          { label: 'Mild', value: 'Mild' }, { label: 'Medium', value: 'Medium' },
+          { label: 'Mild', value: 'Mild' }, { label: 'Medium', value: 'Medium Spicy' },
           { label: 'Spicy', value: 'Spicy' }, { label: 'Extra Spicy', value: 'Extra Spicy' },
         ]},
       ];
@@ -130,7 +130,7 @@ function getOptionsForType(type: ProductType, basePrice: number): OptionConfig[]
           ]
         },
         { label: 'Spice Level', key: 'spiceLevel', type: 'select', options: [
-          { label: 'Mild', value: 'Mild' }, { label: 'Medium', value: 'Medium' },
+          { label: 'Mild', value: 'Mild' }, { label: 'Medium', value: 'Medium Spicy' },
           { label: 'Spicy 🌶️', value: 'Spicy' }, { label: 'Extra Spicy 🔥', value: 'Extra Spicy' },
         ]},
         {
@@ -176,7 +176,7 @@ function getOptionsForType(type: ProductType, basePrice: number): OptionConfig[]
           ]
         },
         { label: 'Spice Level', key: 'spiceLevel', type: 'select', options: [
-          { label: 'Mild', value: 'Mild' }, { label: 'Medium', value: 'Medium' },
+          { label: 'Mild', value: 'Mild' }, { label: 'Medium', value: 'Medium Spicy' },
           { label: 'Spicy', value: 'Spicy' },
         ]},
         {
@@ -249,8 +249,8 @@ function getOptionsForType(type: ProductType, basePrice: number): OptionConfig[]
           options: [
             { label: '0.5 Kg', value: '0.5 Kg', priceAdd: 0 },
             { label: '1 Kg', value: '1 Kg', priceAdd: Math.round(basePrice * 0.8) },
+            { label: '1.5 Kg', value: '1.5 Kg', priceAdd: Math.round(basePrice * 1.5) },
             { label: '2 Kg', value: '2 Kg', priceAdd: Math.round(basePrice * 2.5) },
-            { label: '3 Kg', value: '3 Kg', priceAdd: Math.round(basePrice * 4.5) },
           ]
         },
         { label: 'Special Instructions', key: 'specialInstructions', type: 'text', placeholder: 'e.g. Needs to be ripe, green, etc.' },
@@ -262,8 +262,8 @@ function getOptionsForType(type: ProductType, basePrice: number): OptionConfig[]
           label: 'Type of Clothes', key: 'clothesType', type: 'select',
           options: [
             { label: 'Mixed Casuals', value: 'Mixed Casuals' },
-            { label: 'Formals (Shirts/Pants)', value: 'Formals', priceAdd: 30 },
-            { label: 'Blankets/Heavy', value: 'Blankets', priceAdd: 100 },
+            { label: 'Formals (Shirts/Pants)', value: 'Formals' },
+            { label: 'Blankets/Heavy', value: 'Blankets' },
           ]
         },
         {
@@ -278,8 +278,8 @@ function getOptionsForType(type: ProductType, basePrice: number): OptionConfig[]
           label: 'Weight', key: 'weight', type: 'select',
           options: [
             { label: 'Under 2 Kg', value: 'Under 2 Kg' },
-            { label: '2-5 Kg', value: '2-5 Kg', priceAdd: 50 },
-            { label: 'Over 5 Kg', value: 'Over 5 Kg', priceAdd: 100 },
+            { label: '2-5 Kg', value: '2-5 Kg' },
+            { label: 'Over 5 Kg', value: 'Over 5 Kg' },
           ]
         },
         { label: 'Special Instructions', key: 'specialInstructions', type: 'text', placeholder: 'e.g. Use gentle wash, hard stains' },
@@ -294,7 +294,7 @@ function getOptionsForType(type: ProductType, basePrice: number): OptionConfig[]
             { label: 'Include Driver', value: 'With Driver', priceAdd: 500 },
           ]
         },
-        { label: 'Driver/Contact Note', key: 'rentalDriverContact', type: 'text', placeholder: 'Driver assigned post-booking. Enter requests here.' },
+        { label: 'Driver/Contact Note', key: 'rentalDriverContact', type: 'text', placeholder: 'Any requests for the driver?' },
       ];
 
     case 'pharmacy':
@@ -305,7 +305,7 @@ function getOptionsForType(type: ProductType, basePrice: number): OptionConfig[]
     case 'general-food':
       return [
         { label: 'Spice Level', key: 'spiceLevel', type: 'select', options: [
-          { label: 'Mild', value: 'Mild' }, { label: 'Medium', value: 'Medium' },
+          { label: 'Mild', value: 'Mild' }, { label: 'Medium', value: 'Medium Spicy' },
           { label: 'Spicy 🌶️', value: 'Spicy' }, { label: 'Extra Spicy 🔥', value: 'Extra Spicy' },
         ]},
         { label: 'Special Instructions', key: 'specialInstructions', type: 'text', placeholder: 'Any preferences, allergies...' },
@@ -347,7 +347,10 @@ interface CustomizeDrawerProps {
 
 export default function CustomizeDrawer({ isOpen, onClose, onConfirm, itemName, basePrice, tags, category, isVegetarian = true }: CustomizeDrawerProps) {
   const { isDark } = useTheme();
-  const productType = useMemo(() => detectProductType(itemName, tags, category), [itemName, tags, category]);
+  // Callers often pass a fresh `[]` each render; key on the contents so a parent re-render
+  // does not rebuild the options and wipe the student's choices.
+  const tagsKey = (tags || []).join('|');
+  const productType = useMemo(() => detectProductType(itemName, tagsKey ? tagsKey.split('|') : [], category), [itemName, tagsKey, category]);
   const options = useMemo(() => getOptionsForType(productType, basePrice), [productType, basePrice]);
   const typeInfo = TYPE_LABELS[productType];
 
@@ -362,10 +365,8 @@ export default function CustomizeDrawer({ isOpen, onClose, onConfirm, itemName, 
         } else if (opt.type === 'multi') {
           defaults[opt.key] = [];
         } else if (opt.type === 'text') {
-          if (opt.key === 'cakeMessage') defaults[opt.key] = 'Happy Birthday!';
-          else if (opt.key === 'specialInstructions') defaults[opt.key] = 'Please ensure fresh quality and safe packaging.';
-          else if (opt.key === 'rentalDriverContact') defaults[opt.key] = 'Need an English speaking driver if possible.';
-          else defaults[opt.key] = 'Standard preference applied.';
+          // Text fields start empty: whatever is typed here goes to the kitchen as-is.
+          defaults[opt.key] = '';
         }
       });
       setSelections(defaults);
@@ -407,8 +408,8 @@ export default function CustomizeDrawer({ isOpen, onClose, onConfirm, itemName, 
   const handleConfirm = () => {
     const customizations: Customizations = {};
     Object.entries(selections).forEach(([key, val]) => {
-      if (val !== undefined && val !== '' && !(Array.isArray(val) && val.length === 0)) {
-        (customizations as any)[key] = key === 'slices' ? Number(val) : val;
+      if (val !== undefined && !(typeof val === 'string' && val.trim() === '') && !(Array.isArray(val) && val.length === 0)) {
+        (customizations as any)[key] = key === 'slices' ? Number(val) : (typeof val === 'string' ? val.trim() : val);
       }
     });
     onConfirm(customizations, computedPrice);
@@ -427,7 +428,7 @@ export default function CustomizeDrawer({ isOpen, onClose, onConfirm, itemName, 
       animationType="slide"
       onRequestClose={onClose}
     >
-      <View style={s.modalOverlay}>
+      <KeyboardAvoidingView style={s.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <TouchableOpacity style={s.backdrop} activeOpacity={1} onPress={onClose} />
         
         <View style={[s.drawerContainer, { backgroundColor: bg }]}>
@@ -451,7 +452,7 @@ export default function CustomizeDrawer({ isOpen, onClose, onConfirm, itemName, 
           </View>
 
           {/* Scrollable Options */}
-          <ScrollView style={s.optionsList} contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+          <ScrollView style={s.optionsList} contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             {options.map((opt) => (
               <View key={opt.key} style={s.optionSection}>
                 <Text style={s.optionLabel}>
@@ -535,7 +536,7 @@ export default function CustomizeDrawer({ isOpen, onClose, onConfirm, itemName, 
           {/* Footer */}
           <View style={[s.footer, { borderTopColor: borderClr, backgroundColor: isDark ? '#0F0F10' : '#FAFAFA' }]}>
             <View style={s.footerLeft}>
-              <Text style={[s.footerPriceLabel, { color: subTextClr }]}>TOTAL PRICE</Text>
+              <Text style={[s.footerPriceLabel, { color: subTextClr }]}>ITEM PRICE</Text>
               <Text style={[s.footerPrice, { color: textClr }]}>₹{computedPrice}</Text>
             </View>
 
@@ -549,13 +550,19 @@ export default function CustomizeDrawer({ isOpen, onClose, onConfirm, itemName, 
             </View>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
-export function isCustomizable(name: string, tags?: string[], category?: string): boolean {
-  return detectProductType(name, tags, category) !== 'general' || true;
+/**
+ * Only items the restaurant/admin has marked customizable (MenuItem.specs.customizable) open the drawer.
+ * The option prices shown here mirror backend/utils/pricingSchema.js, which prices them on the server.
+ */
+export function isCustomizable(item: { name?: string; tags?: string[]; category?: string; specs?: any }): boolean {
+  let specs = item?.specs;
+  if (typeof specs === 'string') { try { specs = JSON.parse(specs); } catch { specs = null; } }
+  return !!(specs && typeof specs === 'object' && specs.customizable === true);
 }
 
 export function summarizeCustomizations(c?: Customizations): string {
@@ -576,6 +583,7 @@ export function summarizeCustomizations(c?: Customizations): string {
   if (c.temperature) parts.push(c.temperature);
   if (c.toppings && c.toppings.length > 0) parts.push(c.toppings.join(', '));
   if (c.cakeMessage) parts.push(`"${c.cakeMessage}"`);
+  if (c.specialInstructions) parts.push(`Note: ${c.specialInstructions}`);
   return parts.join(' • ');
 }
 

@@ -4,8 +4,8 @@ import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import io from 'socket.io-client';
+import { API_URL } from '@/lib/config';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-jwmt.onrender.com';
 
 const CAMPUS_HUBS = [
   { name: 'SRM Central Arch (Main Gate)', lat: 12.8231, lon: 80.0453, tag: 'GATE', icon: '🏛️' },

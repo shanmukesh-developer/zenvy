@@ -6,26 +6,21 @@ import { useTheme } from '../context/ThemeContext';
 import { API_URL } from '../constants/api';
 import { useCart } from '../context/CartContext';
 import { apiFetch } from '../utils/auth';
+import { isLocalVendorType } from '../utils/localVendor';
 
-const GROCERY_ITEMS = [
-  { id: 'cat-atta-1', name: 'Aashirvaad Shudh Chakki Atta', price: 260, originalPrice: 290, weight: '5 kg', image: 'https://images.unsplash.com/photo-1574316071802-0d684efa7bf5?w=200&q=80', isVeg: true, discount: '10% OFF' },
-  { id: 'cat-atta-2', name: 'Organic Ragi Flour', price: 75, originalPrice: 90, weight: '1 kg', image: 'https://images.unsplash.com/photo-1574316071802-0d684efa7bf5?w=200&q=80', isVeg: true, discount: '16% OFF' },
-  { id: 'cat-atta-3', name: 'Fortune Premium Besan', price: 85, originalPrice: 95, weight: '1 kg', image: 'https://images.unsplash.com/photo-1574316071802-0d684efa7bf5?w=200&q=80', isVeg: true },
-  { id: 'cat-dal-1', name: 'Tata Sampann Toor Dal', price: 159, originalPrice: 180, weight: '1 kg', image: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=200&q=80', isVeg: true, discount: '11% OFF' },
-  { id: 'cat-dal-2', name: 'Organic Kabuli Chana', price: 120, originalPrice: 145, weight: '1 kg', image: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=200&q=80', isVeg: true, discount: '17% OFF' },
-  { id: 'cat-dal-3', name: 'Premium Moong Dal Split', price: 140, originalPrice: 160, weight: '1 kg', image: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=200&q=80', isVeg: true },
-  { id: 'cat-oil-1', name: 'Saffola Gold Blended Oil', price: 165, originalPrice: 195, weight: '1 L', image: 'https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=200&q=80', isVeg: true, discount: '15% OFF' },
-  { id: 'cat-oil-2', name: 'Amul Pure Cow Ghee Tin', price: 680, originalPrice: 720, weight: '1 L', image: 'https://images.unsplash.com/photo-1589733901241-5e391270dd96?w=200&q=80', isVeg: true, discount: '5% OFF' },
-  { id: 'cat-oil-3', name: 'Fortune Kachi Ghani Mustard Oil', price: 190, originalPrice: 210, weight: '1 L', image: 'https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=200&q=80', isVeg: true },
-  { id: 'cat-rice-1', name: 'India Gate Basmati Rice Feast', price: 499, originalPrice: 550, weight: '5 kg', image: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=200&q=80', isVeg: true, discount: '9% OFF' },
-  { id: 'cat-rice-2', name: 'Double Horse Poha Thick', price: 45, originalPrice: 55, weight: '500 g', image: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=200&q=80', isVeg: true },
-  { id: 'bb-cardamom', name: 'Fresh Cardamom Green', price: 95, originalPrice: 120, weight: '20 g', image: 'https://images.unsplash.com/photo-1596797038530-2c107229654b?w=200&q=80', isVeg: true, discount: '20% OFF' },
-  { id: 'cat-spice-1', name: 'Everest Turmeric Powder', price: 28, originalPrice: 35, weight: '100 g', image: 'https://images.unsplash.com/photo-1596797038530-2c107229654b?w=200&q=80', isVeg: true },
-  { id: 'bb-honey', name: '24 MANTRA ORGANIC Wild Honey', price: 380, originalPrice: 380, weight: '500 g', image: 'https://images.unsplash.com/photo-1587049352846-4a222e784d3e?w=200&q=80', isVeg: true },
-  { id: 'bb-lemon', name: 'Fresh Lemon', price: 10, originalPrice: 27, weight: '3 pcs', image: 'https://images.unsplash.com/photo-1590502593747-42a996133562?w=200&q=80', isVeg: true, discount: '63% OFF' },
-  { id: 'bb-garlic', name: 'Fresh Garlic/Velluli', price: 65, originalPrice: 114, weight: '250 g', image: 'https://images.unsplash.com/photo-1540148426945-6cf22a6b2383?w=200&q=80', isVeg: true, discount: '43% OFF' },
-  { id: 'bb-ginger', name: 'Fresh Ginger', price: 35, originalPrice: 50, weight: '100 g', image: 'https://images.unsplash.com/photo-1615485290382-441e4d049cb5?w=200&q=80', isVeg: true, discount: '30% OFF' }
-];
+// Grocery search runs against the DB catalogue (GET /api/catalogue/items?type=grocery&q=…)
+const toGroceryResult = (it: any) => ({
+  id: it.id || it._id || it.menuItemId,
+  name: it.name,
+  price: Number(it.price) || 0,
+  originalPrice: Number(it.originalPrice) || null,
+  weight: it.weight || null,
+  image: it.image || it.imageUrl || null,
+  discount: Number(it.discountPercent) > 0 ? `${Number(it.discountPercent)}% OFF` : null,
+  restaurantId: it.storeId || it.restaurantId,
+  restaurantName: it.storeName || 'Kirana & Late-Night Mart',
+  orderable: it.orderable !== false && it.isAvailable !== false,
+});
 
 const { width: SW } = Dimensions.get('window');
 
@@ -45,56 +40,81 @@ export default function SearchOverlay({ isOpen, onClose, searchMode = 'food' }: 
     restaurants: [],
     items: [],
   });
+  const [searchError, setSearchError] = useState(false);
+  const requestIdRef = useRef(0);
 
   const inputRef = useRef<TextInput>(null);
 
-  // Debounced search fetch
+  // Debounced search fetch (stale responses are ignored; failures show a friendly message)
   useEffect(() => {
     if (!isOpen) return;
 
-    if (searchMode === 'grocery') {
-      if (query.trim().length <= 1) {
-        setResults({ restaurants: [], items: [] });
-        return;
-      }
-      setLoading(true);
-      const delayDebounceFn = setTimeout(() => {
-        const filtered = GROCERY_ITEMS.filter(item => 
-          item.name.toLowerCase().includes(query.toLowerCase())
-        );
-        setResults({ restaurants: [], items: filtered });
-        setLoading(false);
-      }, 200);
-      return () => clearTimeout(delayDebounceFn);
+    const trimmed = query.trim();
+    if (searchMode === 'grocery' && trimmed.length <= 1) {
+      requestIdRef.current++;
+      setSearchError(false);
+      setLoading(false);
+      setResults({ restaurants: [], items: [] });
+      return;
     }
 
+    const requestId = ++requestIdRef.current;
+    const controller = new AbortController();
     const delayDebounceFn = setTimeout(async () => {
       setLoading(true);
+      setSearchError(false);
       try {
-        const res = await apiFetch(`${API_URL}/api/users/search?q=${encodeURIComponent(query)}`);
-        if (res.ok) {
-          const data = await res.json();
-          setResults(data);
+        const url = searchMode === 'grocery'
+          ? `${API_URL}/api/catalogue/items?type=grocery&q=${encodeURIComponent(trimmed)}&limit=40`
+          : `${API_URL}/api/users/search?q=${encodeURIComponent(query)}`;
+        const res = await apiFetch(url, { signal: controller.signal });
+        if (requestId !== requestIdRef.current) return;
+        if (!res.ok) {
+          setResults({ restaurants: [], items: [] });
+          setSearchError(true);
+          return;
         }
-      } catch (err) {
+        const data = await res.json();
+        if (requestId !== requestIdRef.current) return;
+        if (searchMode === 'grocery') {
+          const items = (Array.isArray(data?.items) ? data.items : []).map(toGroceryResult).filter((i: any) => i.id && i.restaurantId);
+          setResults({ restaurants: [], items });
+        } else {
+          setResults({
+            restaurants: Array.isArray(data?.restaurants) ? data.restaurants : [],
+            items: Array.isArray(data?.items) ? data.items : [],
+            isTrending: !!data?.isTrending,
+          });
+        }
+      } catch (err: any) {
+        if (err?.name === 'AbortError' || requestId !== requestIdRef.current) return;
         console.error('[SEARCH_ERROR]', err);
+        setResults({ restaurants: [], items: [] });
+        setSearchError(true);
       } finally {
-        setLoading(false);
+        if (requestId === requestIdRef.current) setLoading(false);
       }
-    }, 300);
+    }, searchMode === 'grocery' ? 250 : 300);
 
-    return () => clearTimeout(delayDebounceFn);
+    return () => {
+      clearTimeout(delayDebounceFn);
+      controller.abort();
+      requestIdRef.current++;
+      setLoading(false);
+    };
   }, [query, isOpen, searchMode]);
 
   // Focus input when opened
   useEffect(() => {
     if (isOpen) {
-      setTimeout(() => {
+      const t = setTimeout(() => {
         inputRef.current?.focus();
       }, 100);
+      return () => clearTimeout(t);
     } else {
       setQuery('');
       setResults({ restaurants: [], items: [] });
+      setSearchError(false);
     }
   }, [isOpen]);
 
@@ -107,11 +127,21 @@ export default function SearchOverlay({ isOpen, onClose, searchMode = 'food' }: 
     router.push(`/restaurant/${id}` as any);
   };
 
-  const handleSelectItem = (itemId: string) => {
+  // Dishes open their kitchen's menu (like Swiggy/Zomato); store products open the product page.
+  const FOOD_VENDOR_TYPES = ['FOOD', 'RESTAURANT', 'CAFE', 'BAKERY', 'SWEETS', 'DESSERT', 'DESSERTS', 'DRINKS', 'MESS'];
+  const handleSelectItem = (item: any) => {
     const { playSound } = require('../utils/sounds');
     playSound('click');
     onClose();
-    router.push(`/products/${itemId}` as any);
+    const rest = item?.restaurantId && typeof item.restaurantId === 'object' ? item.restaurantId : null;
+    const restId = rest?._id || rest?.id || (typeof item?.restaurantId === 'string' ? item.restaurantId : null);
+    const vType = String(rest?.vendorType || '').toUpperCase();
+    // CampusBites stall dishes open the stall page (call / WhatsApp the vendor — never the basket)
+    if (restId && (!vType || FOOD_VENDOR_TYPES.includes(vType) || isLocalVendorType(vType))) {
+      router.push(`/restaurant/${restId}` as any);
+      return;
+    }
+    router.push(`/products/${item._id || item.id}` as any);
   };
 
   const cardBg = isDark ? COLORS.bgCard : '#FFF';
@@ -131,7 +161,7 @@ export default function SearchOverlay({ isOpen, onClose, searchMode = 'food' }: 
             <TextInput
               ref={inputRef}
               style={[s.input, { color: txtColor }]}
-              placeholder={searchMode === 'grocery' ? "Search 10,000+ grocery items..." : "Search food or restaurants..."}
+              placeholder={searchMode === 'grocery' ? "Search groceries & essentials..." : "Search food or restaurants..."}
               placeholderTextColor={txtMuted}
               value={query}
               onChangeText={setQuery}
@@ -146,54 +176,15 @@ export default function SearchOverlay({ isOpen, onClose, searchMode = 'food' }: 
           {/* City Pulse Trending Banner */}
           {results.isTrending && (
             <View style={[s.trendingBanner, { backgroundColor: isDark ? 'rgba(201,168,76,0.12)' : '#FEF3C7', borderLeftColor: isDark ? COLORS.gold : '#D97706' }]}>
-              <Text style={[s.trendingTag, { color: isDark ? COLORS.gold : '#B45309' }]}>CITY PULSE</Text>
-              <Text style={[s.trendingTitle, { color: isDark ? '#FFF' : '#1E293B' }]}>Trending in Amaravathi Central 🔥</Text>
-            </View>
-          )}
-
-          {/* Popular Campus Searches when query is empty */}
-          {query.trim().length === 0 && results.restaurants.length === 0 && (
-            <View style={{ paddingVertical: 12, paddingHorizontal: 16 }}>
-              <Text style={{ fontSize: 11, fontWeight: '900', color: txtMuted, letterSpacing: 1.5, marginBottom: 12 }}>
-                POPULAR CAMPUS SEARCHES 🔥
-              </Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                {[
-                  'Chicken Biryani',
-                  'Margherita Pizza',
-                  'Cold Coffee',
-                  'Cheese Maggi',
-                  'Zinger Burger',
-                  'Paneer Butter Masala',
-                  'Thums Up',
-                  'Steamed Momos'
-                ].map((item) => (
-                  <TouchableOpacity
-                    key={item}
-                    style={{
-                      paddingHorizontal: 14,
-                      paddingVertical: 8,
-                      borderRadius: 16,
-                      backgroundColor: cardBg,
-                      borderWidth: 1,
-                      borderColor: border,
-                    }}
-                    onPress={() => setQuery(item)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: txtColor }}>
-                      🔍 {item}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              <Text style={[s.trendingTag, { color: isDark ? COLORS.gold : '#B45309' }]}>TOP PICKS</Text>
+              <Text style={[s.trendingTitle, { color: isDark ? '#FFF' : '#1E293B' }]}>Campus spots & dishes to try 🍽️</Text>
             </View>
           )}
 
           {/* Empty state */}
           {results.restaurants.length === 0 && results.items.length === 0 && query.length > 1 && !loading && (
             <View style={s.emptyState}>
-              <Text style={s.emptyText}>No results found for "{query}" 😕</Text>
+              <Text style={s.emptyText}>{searchError ? "Couldn't search right now. Check your connection and try again." : `No results found for "${query}" 😕`}</Text>
             </View>
           )}
 
@@ -213,7 +204,7 @@ export default function SearchOverlay({ isOpen, onClose, searchMode = 'food' }: 
                       <Image source={{ uri: img }} style={s.gridCardImg} />
                       <View style={s.gridCardInfo}>
                         <Text style={[s.gridCardName, { color: txtColor }]} numberOfLines={1}>{res.name}</Text>
-                        <Text style={[s.gridCardMeta, { color: isDark ? COLORS.textSecondary : '#617088' }]}>⭐ {res.rating || '4.0'} • {res.location || 'Campus'}</Text>
+                        <Text style={[s.gridCardMeta, { color: isDark ? COLORS.textSecondary : '#617088' }]}>{Number(res.rating) > 0 ? `⭐ ${Number(res.rating).toFixed(1)}` : '✨ New'} • {res.location || 'Campus'}</Text>
                       </View>
                     </TouchableOpacity>
                   );
@@ -247,7 +238,7 @@ export default function SearchOverlay({ isOpen, onClose, searchMode = 'food' }: 
                           )}
                         </View>
                         <View style={s.gridCardInfo}>
-                          <Text style={{ fontSize: 8, fontWeight: '700', color: '#666', marginBottom: 2 }}>{item.weight || '1 unit'}</Text>
+                          <Text style={{ fontSize: 8, fontWeight: '700', color: '#666', marginBottom: 2 }}>{item.weight || ''}</Text>
                           <Text style={[s.gridCardName, { color: txtColor, height: 32 }]} numberOfLines={2}>
                             {item.name}
                           </Text>
@@ -281,8 +272,8 @@ export default function SearchOverlay({ isOpen, onClose, searchMode = 'food' }: 
                                       name: item.name,
                                       price: item.price,
                                       image: item.image,
-                                      restaurantId: 'mega-basket-vendor',
-                                      restaurantName: 'Mega Basket Grocery'
+                                      restaurantId: item.restaurantId,
+                                      restaurantName: item.restaurantName
                                     });
                                   }}
                                 >
@@ -291,19 +282,20 @@ export default function SearchOverlay({ isOpen, onClose, searchMode = 'food' }: 
                               </View>
                             ) : (
                               <TouchableOpacity
-                                style={s.addBtn}
+                                style={[s.addBtn, !item.orderable && { opacity: 0.5 }]}
+                                disabled={!item.orderable}
                                 onPress={() => {
                                   addToCart({
                                     id: item.id,
                                     name: item.name,
                                     price: item.price,
                                     image: item.image,
-                                    restaurantId: 'mega-basket-vendor',
-                                    restaurantName: 'Mega Basket Grocery'
+                                    restaurantId: item.restaurantId,
+                                    restaurantName: item.restaurantName
                                   });
                                 }}
                               >
-                                <Text style={s.addBtnText}>ADD +</Text>
+                                <Text style={s.addBtnText}>{item.orderable ? 'ADD +' : 'SOLD OUT'}</Text>
                               </TouchableOpacity>
                             )}
                           </View>
@@ -316,7 +308,7 @@ export default function SearchOverlay({ isOpen, onClose, searchMode = 'food' }: 
                     <TouchableOpacity
                       key={item._id || item.id}
                       style={[s.gridCard, { backgroundColor: cardBg, borderColor: border }]}
-                      onPress={() => handleSelectItem(item._id || item.id)}
+                      onPress={() => handleSelectItem(item)}
                     >
                       <Image source={{ uri: img }} style={s.gridCardImg} />
                       <View style={s.gridCardInfo}>
@@ -325,7 +317,7 @@ export default function SearchOverlay({ isOpen, onClose, searchMode = 'food' }: 
                         </Text>
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
                           <Text style={s.gridCardPrice}>₹{item.price}</Text>
-                          <Text style={s.gridCardRestName} numberOfLines={1}>{item.restaurantId?.name || 'Partner'}</Text>
+                          <Text style={s.gridCardRestName} numberOfLines={1}>{item.restaurantId?.name || ''}</Text>
                         </View>
                       </View>
                     </TouchableOpacity>
@@ -335,14 +327,14 @@ export default function SearchOverlay({ isOpen, onClose, searchMode = 'food' }: 
             </View>
           )}
 
-          {/* Popular searches when query is empty */}
+          {/* Search suggestions when query is empty */}
           {query.length <= 1 && (
             <View style={s.section}>
-              <Text style={s.sectionTitle}>POPULAR SEARCHES</Text>
+              <Text style={s.sectionTitle}>TRY SEARCHING</Text>
               <View style={s.tagsRow}>
                 {(searchMode === 'grocery'
                   ? ['Ghee', 'Atta', 'Lemon', 'Toor Dal', 'Rice', 'Spices']
-                  : ['Biryani', 'Burger', 'Pizza', 'Milkshake', 'Domino', 'Chinese']
+                  : ['Biryani', 'Burger', 'Pizza', 'Milkshake', 'Dosa', 'Noodles']
                 ).map((tag) => (
                   <TouchableOpacity
                     key={tag}

@@ -26,28 +26,39 @@ const initOrderModel = (sequelize) => {
     batchDiscount: { type: DataTypes.FLOAT, defaultValue: 0 },
     gateDiscount: { type: DataTypes.FLOAT, defaultValue: 0 },
     finalPrice: { type: DataTypes.FLOAT, allowNull: false },
+    // Server-computed bill shown to the customer: { subtotal, deliveryFee, packagingFee, taxes, discounts[], totalDiscount, finalPrice, couponCode }
+    priceBreakdown: { type: DataTypes.JSON, allowNull: true },
     status: {
       type: DataTypes.STRING,
-      defaultValue: 'Pending'
+      defaultValue: 'Pending',
+      validate: {
+        isIn: [['Pending', 'Accepted', 'Preparing', 'ReadyForPickup', 'Picking', 'PickedUp', 'ArrivedAtGate', 'Delivered', 'Cancelled']]
+      }
     },
     cancellationReason: { type: DataTypes.STRING },
     paymentStatus: {
       type: DataTypes.ENUM('Pending', 'Completed', 'Failed'),
       defaultValue: 'Pending'
     },
+    // New orders: 'COD' or 'Wallet' only (validated in createOrder). 'UPI'/'Card' stay for old rows.
     paymentMethod: {
       type: DataTypes.ENUM('COD', 'UPI', 'Card', 'Wallet'),
       allowNull: false
     },
     deliverySlot: { type: DataTypes.STRING },
     deliveryAddress: { type: DataTypes.TEXT },
+    // Customer's delivery notes, e.g. ["Call on arrival", "No plastic cutlery"] (also kept in deliveryAddress for older rider apps)
+    deliveryInstructions: { type: DataTypes.JSON, allowNull: true },
     distance: { type: DataTypes.FLOAT },
+    // When the order was actually handed over (set by the Delivered flip). Older rows: null, readers fall back to updatedAt.
+    deliveredAt: { type: DataTypes.DATE, allowNull: true },
     estDuration: { type: DataTypes.INTEGER },
     isSurge: { type: DataTypes.BOOLEAN, defaultValue: false },
     hostelGateDelivery: { type: DataTypes.BOOLEAN, defaultValue: false },
     rating: { type: DataTypes.FLOAT },
     review: { type: DataTypes.TEXT },
     deliveryPin: { type: DataTypes.STRING },
+    deliveryPinAttempts: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 }, // wrong PINs entered by the rider
     upiUTR: { type: DataTypes.STRING },
     upiScreenshot: { type: DataTypes.TEXT },
     upiStatus: {

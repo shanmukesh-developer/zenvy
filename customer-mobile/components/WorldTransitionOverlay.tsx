@@ -56,9 +56,20 @@ export default function WorldTransitionOverlay() {
   // Smooth exponential easing for premium feel
   const luxuryEase = Easing.bezier(0.22, 1, 0.36, 1);
 
+  // Infinite loops are kept here so they can be stopped once the overlay hides
+  // (otherwise they keep running in the background after every transition).
+  const loopsRef = useRef<Animated.CompositeAnimation[]>([]);
+  const stopLoops = () => {
+    loopsRef.current.forEach(l => l.stop());
+    loopsRef.current = [];
+  };
+
+  useEffect(() => () => stopLoops(), []);
+
   useEffect(() => {
     if (!isTransitioning || !theme) {
       // Reset all
+      stopLoops();
       wipeOpacity.setValue(0);
       wipeScale.setValue(0.3);
       contentOpacity.setValue(0);
@@ -105,15 +116,18 @@ export default function WorldTransitionOverlay() {
           delay: 150,
           useNativeDriver: true,
         }),
-        Animated.loop(
-          Animated.timing(ringRotation, {
-            toValue: 1,
-            duration: 4000,
-            easing: Easing.linear,
-            useNativeDriver: true,
-          })
-        ),
       ]).start();
+      stopLoops();
+      const ringLoop = Animated.loop(
+        Animated.timing(ringRotation, {
+          toValue: 1,
+          duration: 4000,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        })
+      );
+      ringLoop.start();
+      loopsRef.current.push(ringLoop);
 
       // ── 3. Content Slide + Scale ──
       Animated.parallel([
@@ -204,7 +218,7 @@ export default function WorldTransitionOverlay() {
       });
 
       // ── 7. Breath Glow ──
-      Animated.loop(
+      const breathLoop = Animated.loop(
         Animated.sequence([
           Animated.timing(breathOpacity, {
             toValue: 0.15,
@@ -217,7 +231,9 @@ export default function WorldTransitionOverlay() {
             useNativeDriver: true,
           }),
         ])
-      ).start();
+      );
+      breathLoop.start();
+      loopsRef.current.push(breathLoop);
 
     } else if (phase === 'uncovering') {
       // ── Smooth Wipe Out ──

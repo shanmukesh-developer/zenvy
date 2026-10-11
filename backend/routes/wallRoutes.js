@@ -8,6 +8,33 @@ const { getUserModel } = require('../models/User');
 const { protect, admin } = require('../middleware/authMiddleware');
 const { sendPushToTopic } = require('../utils/push');
 
+// Optional auth for public Wall endpoints: returns the decoded JWT ({ id, role }) or null.
+const optionalUser = (req) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
+  try {
+    const jwt = require('jsonwebtoken');
+    const token = authHeader.split(' ')[1].replace(/['"]+/g, '').trim();
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    return decoded && decoded.id ? decoded : null;
+  } catch {
+    return null;
+  }
+};
+const isAdminUser = (u) => !!u && String(u.role || '').toLowerCase() === 'admin';
+
+// A contest is open only while it is ACTIVE and its end time has not passed (the cron that
+// finalizes it runs every 5 minutes, so the end time is checked here too).
+const isEventOpen = (event) => !!event && event.status === 'ACTIVE' && new Date(event.endTime).getTime() > Date.now();
+
+// The event coupon code is the winner's personal reward code: only admins see it.
+const publicEvent = (event, viewer) => {
+  if (!event) return null;
+  const json = typeof event.toJSON === 'function' ? event.toJSON() : { ...event };
+  if (!isAdminUser(viewer)) delete json.couponCode;
+  return json;
+};
+
 // Simple in-memory rate limiting for /like endpoint per user (max 30 per min)
 const likeRateLimitMap = new Map();
 const checkLikeRateLimit = (userId) => {
@@ -108,26 +135,10 @@ router.get('/events/active', async (req, res) => {
       order: [['createdAt', 'DESC']]
     });
 
-    // If no active event exists in future, check if there's any ACTIVE event created recently
+    // No contest running: the app shows its empty state. Contests are created by admins
+    // (POST /api/wall/events); the server never invents one.
     if (!activeEvent) {
-      activeEvent = await WallEvent.findOne({
-        where: { status: 'ACTIVE' },
-        order: [['createdAt', 'DESC']]
-      });
-    }
-
-    if (!activeEvent) {
-      activeEvent = await WallEvent.create({
-        title: 'SRM Campus Food & Vibes Contest',
-        description: 'Share your top campus eats, late night snack boxes, or cafe vibes. Highest votes win instant discount coupons!',
-        startTime: new Date(),
-        endTime: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
-        status: 'ACTIVE',
-        couponValue: 200,
-        couponCode: 'SRMWALL200',
-        bannerText: '🔥 LIVE PHOTO CONTEST: Vote for your favourite photos & win instant discount coupons! 📸✨',
-        bannerGradient: 'fire'
-      });
+      return res.json({ activeEvent: null, submissions: [], userLikedSubmissionIds: [], userSubmission: null });
     }
 
     // Fetch approved submissions sorted by likeCount DESC
@@ -149,13 +160,11 @@ router.get('/events/active', async (req, res) => {
     // Extract current user's liked submission IDs if token provided
     let userLikedSubmissionIds = [];
     let userSubmission = null;
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
+    const viewer = optionalUser(req);
+    if (viewer) {
       try {
-        const jwt = require('jsonwebtoken');
-        const token = authHeader.split(' ')[1].replace(/['"]+/g, '').trim();
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        if (decoded && decoded.id) {
+        const decoded = viewer;
+        {
           const userLikes = await WallLike.findAll({
             where: { userId: decoded.id },
             attributes: ['submissionId']
@@ -172,7 +181,7 @@ router.get('/events/active', async (req, res) => {
     }
 
     res.json({
-      activeEvent,
+      activeEvent: publicEvent(activeEvent, viewer),
       submissions,
       userLikedSubmissionIds,
       userSubmission
@@ -192,8 +201,9 @@ router.get('/events/history', async (req, res) => {
     const User = getUserModel();
     if (!WallEvent || !WallSubmission) return res.status(500).json({ message: 'Models not initialized.' });
 
+    const viewer = optionalUser(req);
     const pastEvents = await WallEvent.findAll({
-      where: { status: 'COMPLETED' },
+      where: { status: 'ENDED' },
       order: [['endTime', 'DESC']],
       limit: 10
     });
@@ -201,8 +211,9 @@ router.get('/events/history', async (req, res) => {
     const results = [];
     for (const evt of pastEvents) {
       let winningSubmission = null;
-      if (evt.winnerSubmissionId) {
-        winningSubmission = await WallSubmission.findByPk(evt.winnerSubmissionId, {
+      if (evt.winnerUserId) {
+        winningSubmission = await WallSubmission.findOne({
+          where: { eventId: evt.id, userId: evt.winnerUserId },
           include: [{ model: User, as: 'user', attributes: ['id', 'name', 'profileImage'] }]
         });
       }
@@ -215,8 +226,9 @@ router.get('/events/history', async (req, res) => {
       }
 
       results.push({
-        event: evt,
-        winningSubmission
+        event: publicEvent(evt, viewer),
+        winningSubmission,
+        winner: winningSubmission?.user || null
       });
     }
 
@@ -238,38 +250,27 @@ router.post('/events/:id/submit', protect, async (req, res) => {
     let eventId = req.params.id;
     const { imageUrl } = req.body;
 
-    if (!imageUrl) {
+    if (!imageUrl || typeof imageUrl !== 'string') {
       return res.status(400).json({ message: 'Image payload is required.' });
     }
-
-    let event = null;
-    try {
-      if (eventId && eventId !== 'wall-active-1' && eventId !== 'active') {
-        event = await WallEvent.findByPk(eventId);
-      }
-    } catch {
-      event = null;
+    if (!/^(https?:\/\/|data:image\/)/i.test(imageUrl)) {
+      return res.status(400).json({ message: 'Please pick a photo from your gallery or camera.' });
+    }
+    if (imageUrl.length > 4 * 1024 * 1024) {
+      return res.status(413).json({ code: 'IMAGE_TOO_LARGE', message: 'That photo is too large. Please pick a smaller one.' });
     }
 
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    let event = UUID_RE.test(String(eventId || '')) ? await WallEvent.findByPk(eventId) : null;
     if (!event) {
       event = await WallEvent.findOne({
-        where: { status: 'ACTIVE' },
+        where: { status: 'ACTIVE', endTime: { [Op.gt]: new Date() } },
         order: [['createdAt', 'DESC']]
       });
     }
 
-    if (!event) {
-      event = await WallEvent.create({
-        title: 'SRM Campus Food & Vibes Contest',
-        description: 'Share your top campus eats, late night snack boxes, or cafe vibes. Highest votes win instant discount coupons!',
-        startTime: new Date(),
-        endTime: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
-        status: 'ACTIVE',
-        couponValue: 200,
-        couponCode: 'SRMWALL200',
-        bannerText: '🔥 LIVE PHOTO CONTEST: Vote for your favourite photos & win instant discount coupons! 📸✨',
-        bannerGradient: 'fire'
-      });
+    if (!isEventOpen(event)) {
+      return res.status(400).json({ code: 'CONTEST_CLOSED', message: 'There is no photo contest running right now. Check back soon!' });
     }
 
     eventId = event.id;
@@ -280,31 +281,38 @@ router.post('/events/:id/submit', protect, async (req, res) => {
     });
 
     if (existing) {
+      // Votes belong to the photo people voted for, so a voted photo cannot be swapped.
+      if ((existing.likeCount || 0) > 0) {
+        return res.status(400).json({
+          code: 'SUBMISSION_HAS_VOTES',
+          message: "Your photo already has votes, so it can't be replaced in this contest."
+        });
+      }
       existing.imageUrl = imageUrl;
-      existing.isApproved = true;
+      existing.isApproved = false;
       await existing.save();
       return res.status(200).json({
-        message: 'Your photo submission has been updated and is live on The Wall!',
+        message: 'Photo updated! It will appear on The Wall once our team approves it.',
         submission: existing
       });
     }
 
-    // Auto-approve submissions so photos are immediately visible
+    // Every photo is reviewed by an admin (GET /api/wall/admin/pending) before it goes live.
     const submission = await WallSubmission.create({
       eventId,
       userId: req.user.id,
       imageUrl,
       likeCount: 0,
-      isApproved: true
+      isApproved: false
     });
 
     res.status(201).json({
-      message: 'Photo submitted and live on The Wall!',
+      message: 'Photo submitted! It will appear on The Wall once our team approves it.',
       submission
     });
   } catch (err) {
     console.error('Error submitting Wall photo:', err);
-    res.status(500).json({ message: err.message || 'Failed to submit photo to Wall.' });
+    res.status(500).json({ message: 'Failed to submit photo to Wall.' });
   }
 });
 
@@ -330,8 +338,11 @@ router.post('/submissions/:id/like', protect, async (req, res) => {
 
     if (!submission) return res.status(404).json({ message: 'Submission not found.' });
 
-    if (submission.event && submission.event.status === 'ENDED') {
-      return res.status(400).json({ message: 'Voting has closed for this event.' });
+    if (!isEventOpen(submission.event)) {
+      return res.status(400).json({ code: 'CONTEST_CLOSED', message: 'Voting has closed for this contest.' });
+    }
+    if (!submission.isApproved) {
+      return res.status(404).json({ message: 'Submission not found.' });
     }
 
     // Toggle like
@@ -342,15 +353,21 @@ router.post('/submissions/:id/like', protect, async (req, res) => {
     let liked = false;
     if (existingLike) {
       await existingLike.destroy();
-      submission.likeCount = Math.max(0, submission.likeCount - 1);
-      await submission.save();
       liked = false;
     } else {
-      await WallLike.create({ submissionId, userId: req.user.id });
-      submission.likeCount = submission.likeCount + 1;
-      await submission.save();
+      try {
+        await WallLike.create({ submissionId, userId: req.user.id });
+      } catch (dupErr) {
+        // A double tap raced us to the same vote: it is already counted.
+        if (!(dupErr && dupErr.name === 'SequelizeUniqueConstraintError')) throw dupErr;
+      }
       liked = true;
     }
+    // The count is recomputed from the real votes (no lost or double votes when many people
+    // vote at the same moment, which a read-modify-save of likeCount would cause).
+    const likeCount = await WallLike.count({ where: { submissionId } });
+    await WallSubmission.update({ likeCount }, { where: { id: submissionId } });
+    submission.likeCount = likeCount;
 
     res.json({
       liked,
@@ -395,19 +412,19 @@ router.put('/events/:id/end', protect, admin, async (req, res) => {
     if (!event) return res.status(404).json({ message: 'Event not found.' });
     if (event.status === 'ENDED') return res.status(400).json({ message: 'Event is already ended.' });
 
-    // Find winner — top approved submission by likeCount
-    const topSubmission = await WallSubmission.findOne({
-      where: { eventId: event.id, isApproved: true },
-      order: [['likeCount', 'DESC'], ['createdAt', 'ASC']],
-      include: [{ model: User, as: 'user', attributes: ['id', 'name', 'profileImage'] }]
-    });
-
-    event.status = 'ENDED';
-    event.endTime = new Date();
-    if (topSubmission) {
-      event.winnerUserId = topSubmission.userId;
-    }
+    // End it now and finalize exactly like the scheduled job does (winner, coupon, pushes).
+    event.endTime = new Date(Date.now() - 1000);
     await event.save();
+    const { processExpiredWallEvents } = require('../cron/wallCron');
+    await processExpiredWallEvents();
+    await event.reload();
+
+    const topSubmission = event.winnerUserId
+      ? await WallSubmission.findOne({
+        where: { eventId: event.id, userId: event.winnerUserId },
+        include: [{ model: User, as: 'user', attributes: ['id', 'name', 'profileImage'] }]
+      })
+      : null;
 
     res.json({
       message: 'Event ended successfully!',

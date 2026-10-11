@@ -30,8 +30,9 @@ export default function OfflineBanner() {
   };
 
   useEffect(() => {
-    // Pulse animation loop for offline status dot
-    Animated.loop(
+    // Pulse animation loop for offline status dot (only while the banner is shown)
+    if (!isOffline) return;
+    const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, {
           toValue: 1,
@@ -44,8 +45,10 @@ export default function OfflineBanner() {
           useNativeDriver: true,
         }),
       ])
-    ).start();
-  }, [pulseAnim]);
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulseAnim, isOffline]);
 
   useEffect(() => {
     let active = true;
@@ -96,6 +99,7 @@ export default function OfflineBanner() {
 
   return (
     <Animated.View
+      pointerEvents="none"
       style={[
         styles.banner,
         {
@@ -106,7 +110,7 @@ export default function OfflineBanner() {
     >
       <View style={styles.content}>
         <Animated.View style={[styles.dot, { opacity: pulseAnim }]} />
-        <Text style={styles.text}>CONNECTION INTERRUPTED — OFFLINE MODE</Text>
+        <Text style={styles.text}>YOU'RE OFFLINE — CHECK YOUR INTERNET</Text>
       </View>
     </Animated.View>
   );

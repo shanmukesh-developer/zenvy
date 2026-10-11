@@ -3,10 +3,10 @@ import { useState, useEffect, memo } from 'react';
 import { useAdminAuth } from '@/utils/useAdminAuth';
 import { useAdminSocket } from '@/components/AdminSocketProvider';
 import dynamic from 'next/dynamic';
+import { API_URL } from '@/lib/config';
 
 const LiveRiderMap = dynamic(() => import('@/components/LiveRiderMap'), { ssr: false, loading: () => <div className="h-[600px] w-full rounded-[40px] bg-blue-900/10 animate-pulse border border-blue-500/20 flex items-center justify-center text-blue-500 font-black tracking-widest uppercase text-xl">Booting God-Mode Map...</div> });
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-jwmt.onrender.com';
 
 interface Rider {
   _id: string;
@@ -16,8 +16,23 @@ interface Rider {
   isOnline: boolean;
   isSosActive: boolean;
   vehicleType?: string;
-  completedOrders?: number;
+  completedDeliveries?: number;
 }
+
+type Notice = { kind: 'ok' | 'error'; text: string } | null;
+
+async function readError(res: Response, fallback: string): Promise<string> {
+  if (res.status === 401) return 'Your session has expired. Please sign in again.';
+  if (res.status === 403) return 'You do not have permission to do that.';
+  if (res.status >= 500) return 'The server had a problem. Please try again in a moment.';
+  const data = await res.json().catch(() => null);
+  return data && typeof data.message === 'string' && data.message.length < 200 ? data.message : fallback;
+}
+
+const errorText = (err: unknown, fallback: string) =>
+  err instanceof TypeError ? 'Could not reach the server. Check your connection.' : (err as Error)?.message || fallback;
+
+const EMPTY_RIDER = { name: '', phone: '', password: '', vehicleType: 'Bike' };
 
 interface Payout {
   riderId: string;
@@ -27,11 +42,12 @@ interface Payout {
   riderPhone?: string;
 }
 
-const RiderRow = memo(({ rider, onEdit, onToggleApproval, onResetSos }: { 
-  rider: Rider, 
+const RiderRow = memo(({ rider, busy, onEdit, onToggleApproval, onResetSos }: {
+  rider: Rider,
+  busy: boolean,
   onEdit: (r: Rider) => void,
-  onToggleApproval: (id: string, status: boolean) => void,
-  onResetSos: (id: string) => void 
+  onToggleApproval: (r: Rider) => void,
+  onResetSos: (r: Rider) => void
 }) => (
   <tr className="hover:bg-white/[0.02] transition-colors group">
     <td className="px-8 py-6">
@@ -44,7 +60,7 @@ const RiderRow = memo(({ rider, onEdit, onToggleApproval, onResetSos }: {
     <td className="px-8 py-6">
       <p className="text-xs text-gray-400 font-mono tracking-tighter">{rider.phone}</p>
       <div className="mt-1 flex items-center gap-2">
-         <span className="text-[8px] font-black text-emerald-400 uppercase tracking-widest">{rider.completedOrders || 0} Cycles Completed</span>
+         <span className="text-[8px] font-black text-emerald-400 uppercase tracking-widest">{rider.completedDeliveries || 0} deliveries completed</span>
       </div>
     </td>
     <td className="px-8 py-6">
@@ -56,9 +72,10 @@ const RiderRow = memo(({ rider, onEdit, onToggleApproval, onResetSos }: {
           </span>
         </div>
         {rider.isSosActive && (
-          <button 
-            onClick={() => onResetSos(rider._id)}
-            className="flex flex-col items-start gap-1 group/sos"
+          <button
+            disabled={busy}
+            onClick={() => onResetSos(rider)}
+            className="flex flex-col items-start gap-1 group/sos disabled:opacity-50"
           >
             <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 px-3 py-1 rounded-lg animate-bounce group-hover/sos:bg-red-500/20 transition-all">
               <span className="text-[9px] font-black text-red-500 uppercase tracking-widest">🚨 EMERGENCY SOS</span>
@@ -70,9 +87,10 @@ const RiderRow = memo(({ rider, onEdit, onToggleApproval, onResetSos }: {
     </td>
     <td className="px-8 py-6">
         <div className="flex items-center gap-3">
-          <button onClick={() => onToggleApproval(rider._id, rider.isApproved)} className={`px-6 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all ${rider.isApproved ? 'bg-red-500/10 text-red-500' : 'bg-emerald-500/10 text-emerald-500'}`}>
-            {rider.isApproved ? 'Deactivate' : 'Hire'}
+          <button disabled={busy} onClick={() => onToggleApproval(rider)} className={`px-6 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all disabled:opacity-40 ${rider.isApproved ? 'bg-red-500/10 text-red-500' : 'bg-emerald-500/10 text-emerald-500'}`}>
+            {busy ? 'Saving…' : rider.isApproved ? 'Deactivate' : 'Approve'}
           </button>
+          {!rider.isApproved && <span className="text-[8px] font-black uppercase tracking-widest text-amber-400">Pending approval</span>}
           <button onClick={() => onEdit(rider)} className="text-blue-500/50 hover:text-blue-400 text-[10px] font-black uppercase tracking-widest transition-colors ml-2">Edit</button>
         </div>
     </td>
@@ -81,59 +99,77 @@ const RiderRow = memo(({ rider, onEdit, onToggleApproval, onResetSos }: {
 RiderRow.displayName = 'RiderRow';
 
 export default function FleetManagement() {
-  const isAuthed = useAdminAuth();
+  const { isAuthed } = useAdminAuth();
   const { socket } = useAdminSocket();
-  
+
   const [activeTab, setActiveTab] = useState<'roster' | 'payouts' | 'map'>('roster');
 
   const [riders, setRiders] = useState<Rider[]>([]);
   const [totalRiders, setTotalRiders] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [currentPage, setCurrentPage] = useState(1);
-  
+
   const [payouts, setPayouts] = useState<Payout[]>([]);
 
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [payoutsError, setPayoutsError] = useState<string | null>(null);
+  const [payoutsLoading, setPayoutsLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
   const [editingRider, setEditingRider] = useState<Rider | null>(null);
-  const [newRider, setNewRider] = useState({ name: '', phone: '', password: 'password123', vehicleType: 'Bike' });
+  const [newRider, setNewRider] = useState(EMPTY_RIDER);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [settlingId, setSettlingId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<Notice>(null);
 
   const fetchRiders = async (page = 1, showSkeleton = true) => {
     try {
       if (showSkeleton) setLoading(true);
       const res = await fetch(`${API_URL}/api/admin/riders?page=${page}&t=${Date.now()}`, { credentials: 'include', cache: 'no-store' });
+      if (!res.ok) throw new Error(await readError(res, 'Could not load riders.'));
       const data = await res.json();
-      if (res.ok) {
-        setRiders(data.riders || []);
-        setTotalRiders(data.total || 0);
-        setTotalPages(data.pages || 1);
-        setCurrentPage(page);
-      }
-    } catch (err) { console.error('[FLEET_FETCH_ERROR]', err); } finally { if (showSkeleton) setLoading(false); }
+      setRiders(Array.isArray(data.riders) ? data.riders : []);
+      setTotalRiders(data.total || 0);
+      setTotalPages(Math.max(1, data.pages || 1));
+      setCurrentPage(page);
+      setLoadError(null);
+    } catch (err) {
+      // Background refreshes keep the last good list; only surface the error.
+      setLoadError(errorText(err, 'Could not load riders.'));
+    } finally { if (showSkeleton) setLoading(false); }
   };
 
   const fetchPayouts = async () => {
     try {
       const res = await fetch(`${API_URL}/api/admin/fleet/payouts?t=${Date.now()}`, { credentials: 'include', cache: 'no-store' });
-      if (res.ok) setPayouts(await res.json());
-    } catch (err) { console.error(err); }
+      if (!res.ok) throw new Error(await readError(res, 'Could not load rider payouts.'));
+      const data = await res.json();
+      setPayouts(Array.isArray(data) ? data : []);
+      setPayoutsError(null);
+    } catch (err) {
+      setPayoutsError(errorText(err, 'Could not load rider payouts.'));
+    } finally {
+      setPayoutsLoading(false);
+    }
   };
 
   useEffect(() => {
+    if (!isAuthed) return;
     fetchRiders(1, true);
     fetchPayouts();
-  }, []);
+  }, [isAuthed]);
 
-  // 20-second self-healing polling fallback
+  // 20-second polling fallback alongside socket events
   useEffect(() => {
+    if (!isAuthed) return;
     const timer = setInterval(() => {
       fetchRiders(currentPage, false);
       fetchPayouts();
     }, 20000);
     return () => clearInterval(timer);
-  }, [currentPage]);
+  }, [currentPage, isAuthed]);
 
   // Real-time fleet socket events
   useEffect(() => {
@@ -179,73 +215,105 @@ export default function FleetManagement() {
     };
   }, [socket, currentPage]);
 
-  const handleMarkSettled = async (riderId: string, riderName: string) => {
-    if (!confirm(`Are you sure you want to mark rider ${riderName}'s payout as settled?`)) return;
+  const handleMarkSettled = async (p: Payout, riderName: string) => {
+    if (settlingId) return;
+    if (!confirm(`Mark ₹${p.totalDeliveryFees} (${p.totalDeliveries} deliveries) as paid out to ${riderName}?\nOnly do this after the money has actually been paid.`)) return;
+    setSettlingId(p.riderId);
+    setNotice(null);
     try {
       const res = await fetch(`${API_URL}/api/admin/finance/settle-rider`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ riderId }),
+        body: JSON.stringify({ riderId: p.riderId }),
         credentials: 'include'
       });
-      if (res.ok) {
-        alert('Rider payout settled successfully.');
-        fetchPayouts();
-      } else {
-        const err = await res.json();
-        alert(`Settlement failed: ${err.message}`);
-      }
+      if (!res.ok) throw new Error(await readError(res, 'Could not settle this payout.'));
+      const data = await res.json().catch(() => ({}));
+      setNotice({ kind: 'ok', text: `Payout for ${riderName} marked as settled${typeof data.updatedOrdersCount === 'number' ? ` (${data.updatedOrdersCount} orders)` : ''}.` });
+      setPayouts(prev => prev.filter(x => x.riderId !== p.riderId));
+      fetchPayouts();
     } catch (err) {
-      console.error(err);
+      setNotice({ kind: 'error', text: errorText(err, 'Could not settle this payout.') });
+    } finally {
+      setSettlingId(null);
     }
   };
 
-  const handleToggleApproval = async (id: string, currentStatus: boolean) => {
+  const handleToggleApproval = async (rider: Rider) => {
+    if (busyId) return;
+    const approve = !rider.isApproved;
+    if (!confirm(approve
+      ? `Approve ${rider.name} as a delivery partner? They will be able to go online and take orders.`
+      : `Deactivate ${rider.name}? They will no longer be able to take orders.`)) return;
+    setBusyId(rider._id);
+    setNotice(null);
     try {
-      const res = await fetch(`${API_URL}/api/admin/riders/${id}/approve`, {
+      const res = await fetch(`${API_URL}/api/admin/riders/${rider._id}/approve`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', },
-        body: JSON.stringify({ isApproved: !currentStatus })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isApproved: approve })
       });
-      if (res.ok) fetchRiders();
-    } catch (err) { console.error('[FLEET_APPROVE_ERROR]', err); }
+      if (!res.ok) throw new Error(await readError(res, 'Could not update rider status.'));
+      setRiders(prev => prev.map(r => r._id === rider._id ? { ...r, isApproved: approve } : r));
+      setNotice({ kind: 'ok', text: `${rider.name} ${approve ? 'approved' : 'deactivated'}.` });
+    } catch (err) {
+      setNotice({ kind: 'error', text: errorText(err, 'Could not update rider status.') });
+    } finally {
+      setBusyId(null);
+    }
   };
 
-  const handleResetSos = async (id: string) => {
-    if (!confirm('Mark emergency as resolved and reset SOS?')) return;
+  const handleResetSos = async (rider: Rider) => {
+    if (busyId) return;
+    if (!confirm(`Mark ${rider.name}'s emergency as resolved and clear the SOS?`)) return;
+    setBusyId(rider._id);
+    setNotice(null);
     try {
-      await fetch(`${API_URL}/api/admin/riders/${id}/reset-sos`, { method: 'POST' });
-      fetchRiders();
-    } catch (err) { console.error('[SOS_RESET_ERROR]', err); }
+      const res = await fetch(`${API_URL}/api/admin/riders/${rider._id}/reset-sos`, { method: 'POST' });
+      if (!res.ok) throw new Error(await readError(res, 'Could not clear the SOS.'));
+      setRiders(prev => prev.map(r => r._id === rider._id ? { ...r, isSosActive: false } : r));
+      setNotice({ kind: 'ok', text: `SOS cleared for ${rider.name}.` });
+    } catch (err) {
+      setNotice({ kind: 'error', text: errorText(err, 'Could not clear the SOS.') });
+    } finally {
+      setBusyId(null);
+    }
   };
+
+  const closeForm = () => { setIsAdding(false); setEditingRider(null); setError(null); setNewRider(EMPTY_RIDER); };
 
   const handleCreateRider = async () => {
     if (isSubmitting) return;
     setError(null);
-    if (!newRider.name.trim() || !newRider.phone.trim()) { setError("Name and Phone are mandatory"); return; }
-    if (!newRider.password.trim()) { setError("Password is mandatory"); return; }
+    const name = newRider.name.trim();
+    const phone = newRider.phone.replace(/\D/g, '').slice(-10);
+    const password = newRider.password.trim();
+    if (!name) { setError('Name is required.'); return; }
+    if (!/^[6-9]\d{9}$/.test(phone)) { setError('Enter a valid 10-digit mobile number.'); return; }
+    if (!editingRider && password.length < 6) { setError('Set a password of at least 6 characters for the rider app login.'); return; }
+    if (editingRider && password && password.length < 6) { setError('New password must be at least 6 characters (leave blank to keep the current one).'); return; }
     setIsSubmitting(true);
     try {
       const endpoint = editingRider ? `${API_URL}/api/admin/riders/${editingRider._id}` : `${API_URL}/api/delivery/register`;
+      const body: Record<string, string> = { name, phone, vehicleType: newRider.vehicleType };
+      if (password) body.password = password;
       const res = await fetch(endpoint, {
         method: editingRider ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify(newRider)
+        body: JSON.stringify(body)
       });
-      if (res.ok) {
-        setIsAdding(false);
-        setEditingRider(null);
-        setNewRider({ name: '', phone: '', password: 'password123', vehicleType: 'Bike' });
-        fetchRiders();
-      } else {
-        const d = await res.json();
-        setError(d.message || "Failed to save personnel");
-      }
-    } catch (err) { console.error('[CREATE_RIDER_ERROR]', err); setError("Nexus Connection Error"); } finally { setIsSubmitting(false); }
+      if (!res.ok) throw new Error(await readError(res, 'Could not save this rider.'));
+      setNotice({ kind: 'ok', text: editingRider ? `${name} updated.` : `${name} added. Share the password with them privately.` });
+      const page = editingRider ? currentPage : 1;
+      closeForm();
+      fetchRiders(page);
+    } catch (err) {
+      setError(errorText(err, 'Could not save this rider.'));
+    } finally { setIsSubmitting(false); }
   };
 
-  if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Authenticating...</div>;
+  if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Checking access…</div>;
 
   return (
     <div className="space-y-10 animate-fade-in relative pb-20">
@@ -255,8 +323,8 @@ export default function FleetManagement() {
           <p className="text-gray-400 text-sm font-bold uppercase tracking-widest mt-1">Recruitment, Settlements & Global Tracking</p>
         </div>
         <div className="flex gap-4">
-           <button onClick={() => { setActiveTab('roster'); setIsAdding(true); }} className="px-8 py-3 bg-blue-600 text-white text-[12px] font-black uppercase tracking-widest rounded-2xl hover:scale-105 transition-all shadow-[0_0_20px_rgba(37,99,235,0.3)]">
-              Recruit New Node
+           <button onClick={() => { setActiveTab('roster'); setEditingRider(null); setNewRider(EMPTY_RIDER); setError(null); setIsAdding(true); }} className="px-8 py-3 bg-blue-600 text-white text-[12px] font-black uppercase tracking-widest rounded-2xl hover:scale-105 transition-all shadow-[0_0_20px_rgba(37,99,235,0.3)]">
+              Add rider
            </button>
         </div>
       </header>
@@ -272,8 +340,8 @@ export default function FleetManagement() {
             key={tab.id}
             onClick={() => setActiveTab(tab.id as any)}
             className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${
-              activeTab === tab.id 
-                ? 'bg-blue-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.4)]' 
+              activeTab === tab.id
+                ? 'bg-blue-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.4)]'
                 : 'bg-white/5 text-gray-500 hover:text-white hover:bg-white/10'
             }`}
           >
@@ -282,9 +350,16 @@ export default function FleetManagement() {
         ))}
       </div>
 
+      {notice && (
+        <div role={notice.kind === 'error' ? 'alert' : 'status'} className={`flex items-center justify-between gap-4 rounded-2xl border px-6 py-4 text-sm font-bold ${notice.kind === 'error' ? 'border-red-500/30 bg-red-500/10 text-red-300' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'}`}>
+          <span>{notice.text}</span>
+          <button onClick={() => setNotice(null)} className="text-xs uppercase tracking-widest text-white/70 hover:text-white">Dismiss</button>
+        </div>
+      )}
+
       {(isAdding || editingRider) && activeTab === 'roster' && (
         <div className="glass-card p-10 border-blue-500/30 animate-slide-up">
-           <h3 className="text-xl font-black text-white uppercase tracking-tight mb-8">{editingRider ? 'Modify Personnel Node' : 'Onboard New Personnel'}</h3>
+           <h3 className="text-xl font-black text-white uppercase tracking-tight mb-8">{editingRider ? `Edit ${editingRider.name}` : 'Add delivery partner'}</h3>
            {error && <div className="mb-6 text-red-500 text-[10px] font-black uppercase tracking-widest text-center animate-shake">{error}</div>}
            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <input placeholder="Personnel Name" className="admin-input" value={newRider.name} onChange={(e) => setNewRider({...newRider, name: e.target.value})} />
@@ -295,7 +370,7 @@ export default function FleetManagement() {
                  <option value="Cycle">Bicycle (Hostel Internal)</option>
                  <option value="Car">Car (Group Delivery)</option>
               </select>
-              <input placeholder="Password" type="password" className="admin-input" value={newRider.password} onChange={(e) => setNewRider({...newRider, password: e.target.value})} />
+              <input placeholder={editingRider ? 'New password (leave blank to keep)' : 'Password (min 6 characters)'} type="password" autoComplete="new-password" className="admin-input" value={newRider.password} onChange={(e) => setNewRider({...newRider, password: e.target.value})} />
            </div>
            <div className="flex gap-4 mt-10">
               <button disabled={isSubmitting} onClick={handleCreateRider} className="flex-1 py-5 bg-blue-600 text-white font-black uppercase tracking-[0.3em] rounded-3xl text-xs disabled:opacity-40 hover:bg-blue-500">
@@ -304,9 +379,9 @@ export default function FleetManagement() {
                     <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                     Processing...
                   </span>
-                ) : editingRider ? 'Commit Modifications' : 'Confirm Onboarding'}
+                ) : editingRider ? 'Save changes' : 'Add rider'}
               </button>
-              <button onClick={() => { setIsAdding(false); setEditingRider(null); setError(null); }} className="px-10 py-5 bg-white/5 text-gray-500 font-black uppercase tracking-widest rounded-3xl text-xs hover:bg-white/10">Cancel</button>
+              <button disabled={isSubmitting} onClick={closeForm} className="px-10 py-5 bg-white/5 text-gray-500 font-black uppercase tracking-widest rounded-3xl text-xs hover:bg-white/10">Cancel</button>
            </div>
         </div>
       )}
@@ -324,10 +399,18 @@ export default function FleetManagement() {
               </tr>
             </thead>
             <tbody className="divide-y divide-white/[0.02] text-white">
+              {loadError && (
+                <tr><td colSpan={5} className="px-8 py-6 text-center">
+                  <span role="alert" className="text-sm font-bold text-red-300">{loadError}</span>
+                  <button onClick={() => fetchRiders(currentPage, riders.length === 0)} className="ml-4 text-xs font-black uppercase tracking-widest text-white hover:underline">Retry</button>
+                </td></tr>
+              )}
               {loading ? (
-                <tr><td colSpan={5} className="px-8 py-20 text-center text-gray-600 animate-pulse font-black uppercase tracking-widest">Scanning Grid for Personnel...</td></tr>
+                <tr><td colSpan={5} className="px-8 py-20 text-center text-gray-600 animate-pulse font-black uppercase tracking-widest">Loading riders…</td></tr>
+              ) : riders.length === 0 ? (
+                !loadError && <tr><td colSpan={5} className="px-8 py-20 text-center text-gray-500 font-bold">No delivery partners yet. Use &quot;Add rider&quot; to onboard one.</td></tr>
               ) : riders.map((rider) => (
-                <RiderRow key={rider._id} rider={rider} onEdit={(r) => { setEditingRider(r); setNewRider({ name: r.name, phone: r.phone, password: '', vehicleType: r.vehicleType || 'Bike' }); }} onToggleApproval={handleToggleApproval} onResetSos={handleResetSos} />
+                <RiderRow key={rider._id} rider={rider} busy={busyId === rider._id} onEdit={(r) => { setIsAdding(false); setError(null); setEditingRider(r); setNewRider({ name: r.name, phone: r.phone, password: '', vehicleType: r.vehicleType || 'Bike' }); }} onToggleApproval={handleToggleApproval} onResetSos={handleResetSos} />
               ))}
             </tbody>
           </table>
@@ -336,8 +419,8 @@ export default function FleetManagement() {
             <div className="p-6 bg-white/[0.02] border-t border-white/5 flex items-center justify-between">
               <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Personnel Page {currentPage} / {totalPages} ({totalRiders} total)</span>
               <div className="flex gap-2">
-                 <button disabled={currentPage === 1} onClick={() => fetchRiders(currentPage - 1)} className="px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black uppercase text-gray-400 hover:text-white disabled:opacity-30">Prev</button>
-                 <button disabled={currentPage === totalPages} onClick={() => fetchRiders(currentPage + 1)} className="px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black uppercase text-gray-400 hover:text-white disabled:opacity-30">Next</button>
+                 <button disabled={loading || currentPage <= 1} onClick={() => fetchRiders(currentPage - 1)} className="px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black uppercase text-gray-400 hover:text-white disabled:opacity-30">Prev</button>
+                 <button disabled={loading || currentPage >= totalPages} onClick={() => fetchRiders(currentPage + 1)} className="px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black uppercase text-gray-400 hover:text-white disabled:opacity-30">Next</button>
               </div>
             </div>
           )}
@@ -348,7 +431,7 @@ export default function FleetManagement() {
         <div className="glass-card overflow-hidden animate-fade-in">
           <div className="p-8 border-b border-white/5 flex justify-between items-center bg-white/[0.01]">
             <h4 className="text-lg font-black text-white uppercase tracking-tight">Fleet Earnings Settlement</h4>
-            <button onClick={fetchPayouts} className="px-4 py-2 bg-blue-500/10 text-blue-400 rounded-xl text-[10px] font-black uppercase">↻ Refresh Payouts</button>
+            <button onClick={() => { setPayoutsLoading(true); fetchPayouts(); }} className="px-4 py-2 bg-blue-500/10 text-blue-400 rounded-xl text-[10px] font-black uppercase">↻ Refresh Payouts</button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
@@ -356,15 +439,19 @@ export default function FleetManagement() {
                 <tr className="bg-white/[0.03]">
                   <th className="px-8 py-4 text-[9px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5">Rider ID</th>
                   <th className="px-8 py-4 text-[9px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5">Total Deliveries</th>
-                  <th className="px-8 py-4 text-[9px] font-black text-blue-400 uppercase tracking-widest border-b border-white/5">Net Earnings (Fees)</th>
+                  <th className="px-8 py-4 text-[9px] font-black text-blue-400 uppercase tracking-widest border-b border-white/5">Unsettled earnings (delivery fees)</th>
                   <th className="px-8 py-4 text-[9px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/[0.02]">
-                {payouts.length === 0 ? (
-                  <tr><td colSpan={4} className="py-10 text-center text-gray-500 text-xs italic">No rider earnings logged yet.</td></tr>
+                {payoutsError ? (
+                  <tr><td colSpan={4} className="py-10 text-center"><span role="alert" className="text-sm font-bold text-red-300">{payoutsError}</span></td></tr>
+                ) : payoutsLoading ? (
+                  <tr><td colSpan={4} className="py-10 text-center text-gray-600 animate-pulse text-xs font-black uppercase">Loading payouts…</td></tr>
+                ) : payouts.length === 0 ? (
+                  <tr><td colSpan={4} className="py-10 text-center text-gray-500 text-xs italic">No unsettled rider earnings.</td></tr>
                 ) : payouts.map(p => {
-                  const riderName = p.riderName || riders.find(r => r._id === p.riderId)?.name || p.riderId.slice(-6).toUpperCase();
+                  const riderName = p.riderName || riders.find(r => r._id === p.riderId)?.name || String(p.riderId).slice(-6).toUpperCase();
                   return (
                     <tr key={p.riderId} className="hover:bg-white/[0.02]">
                       <td className="px-8 py-4 text-sm font-bold text-white uppercase tracking-tight">
@@ -374,7 +461,7 @@ export default function FleetManagement() {
                       <td className="px-8 py-4 text-sm text-gray-300 font-mono">{p.totalDeliveries}</td>
                       <td className="px-8 py-4 text-lg font-black text-emerald-400">₹{p.totalDeliveryFees}</td>
                       <td className="px-8 py-4">
-                        <button onClick={() => handleMarkSettled(p.riderId, riderName)} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[9px] font-black uppercase">Mark Settled</button>
+                        <button disabled={!!settlingId} onClick={() => handleMarkSettled(p, riderName)} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[9px] font-black uppercase disabled:opacity-40">{settlingId === p.riderId ? 'Settling…' : 'Mark Settled'}</button>
                       </td>
                     </tr>
                   )

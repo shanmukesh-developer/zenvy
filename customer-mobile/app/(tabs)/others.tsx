@@ -1,14 +1,14 @@
 import * as Haptics from 'expo-haptics';
-import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions, Platform, TextInput, ActivityIndicator, Alert, Modal, Linking, Animated, Vibration } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions, Platform, TextInput, ActivityIndicator, Alert, Modal, Linking, Animated, Vibration, RefreshControl, BackHandler, KeyboardAvoidingView } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { COLORS, SHADOWS, RADIUS } from '../../constants/theme';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
-import { apiFetch } from '../../utils/auth';
-import { ENDPOINTS, API_URL } from '../../constants/api';
-import { useCart } from '../../context/CartContext';
+import { apiFetch, readJson, SERVER_BUSY_MESSAGE, NETWORK_ERROR_MESSAGE } from '../../utils/auth';
+import { ENDPOINTS, API_URL, ZENVY_SUPPORT_PHONE } from '../../constants/api';
+import { useCart, isCustomRequest } from '../../context/CartContext';
 import PromoCarousel from '../../components/PromoCarousel';
 import SearchOverlay from '../../components/SearchOverlay';
 import AmbientBackground from '../../components/AmbientBackground';
@@ -16,23 +16,9 @@ import DopaminePressable, { CardPressable, ActionPressable } from '../../compone
 import { StaggeredSection, FloatingPulse, BounceIn } from '../../components/AnimatedSection';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Clipboard from '@react-native-clipboard/clipboard';
 import SafeImage from '../../components/SafeImage';
-
-// ── Self-contained countdown timer to prevent re-rendering the entire screen ──
-const FlashDealTimer = memo(() => {
-  const [secs, setSecs] = useState(9912);
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setSecs(prev => (prev > 0 ? prev - 1 : 9912));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
-  const hrs = Math.floor(secs / 3600);
-  const mins = Math.floor((secs % 3600) / 60);
-  const s = secs % 60;
-  const display = `${hrs.toString().padStart(2, '0')}h ${mins.toString().padStart(2, '0')}m ${s.toString().padStart(2, '0')}s`;
-  return <Text style={{ fontWeight: '900', color: '#DC2626' }}>{display}</Text>;
-});
+import ShimmerLoader from '../../components/ShimmerLoader';
 
 const { width: SW, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SH = SCREEN_HEIGHT;
@@ -74,20 +60,6 @@ const ScalePressable = ({ children, onPress, style, activeOpacity = 0.85 }: any)
   );
 };
 
-const DEPARTMENTS = [
-  { id: 'mega-basket', name: 'Mega Basket', img: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=200&q=80' },
-  { id: 'stationary', name: 'Stationary', img: 'https://images.unsplash.com/photo-1456735190827-d1262f71b8a3?w=200&q=80' },
-  { id: 'sweets', name: 'Desserts', img: 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=200&q=80' },
-  { id: 'drinks', name: 'Beverages', img: 'https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=200&q=80' },
-  { id: 'pharmacy', name: 'Pharmacy', img: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=200&q=80' },
-  { id: 'fruits', name: 'Fresh Fruits', img: 'https://images.unsplash.com/photo-1619566636858-adf3ef46400b?w=200&q=80' },
-  { id: 'gym', name: 'Gym & Protein', img: 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=200&q=80' },
-  { id: 'rentals', name: 'Campus Rides', img: 'https://images.unsplash.com/photo-1485965120184-e220f721d03e?w=200&q=80' },
-  { id: 'laundry', name: 'Dry Wash', img: 'https://images.unsplash.com/photo-1582735689369-4fe89db7114c?w=200&q=80' },
-  { id: 'tailoring', name: 'Tailor & Stitch', img: 'https://images.unsplash.com/photo-1582735689369-4fe89db7114c?w=200&q=80' },
-  { id: 'seasonal', name: 'Festive', img: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=200&q=80' },
-];
-
 const TABS = [
   { key: 'food', label: 'Food & Basket', icon: '🧺' },
   { key: 'services', label: 'Tech & Repairs', icon: '🛠️' },
@@ -103,49 +75,49 @@ const BB_CATEGORIES = [
   { key: 'Biscuits & Cakes', label: 'Biscuits & Cakes', icon: '🍪', bg: '#FAF5FF', border: '#F3E8FF', text: '#6B21A8' },
   { key: 'Health', label: 'Health & Care', icon: '🥗', bg: '#ECFDF5', border: '#D1FAE5', text: '#047857' },
   { key: 'Electronics', label: 'Electronics', icon: '🔌', bg: '#F0F9FF', border: '#E0F2FE', text: '#0369A1' },
-  { key: 'Vehicle toys', label: 'Toys & Play', icon: '🧸', bg: '#EFF6FF', border: '#DBEAFE', text: '#1D4ED8' },
+  { key: 'Toys', label: 'Toys & Play', icon: '🧸', bg: '#EFF6FF', border: '#DBEAFE', text: '#1D4ED8' },
   { key: 'Seeds', label: 'Seeds & Greens', icon: '🌱', bg: '#F5F5F4', border: '#E7E5E4', text: '#44403C' },
 ];
 
-const WHEEL_SECTORS = [
-  { label: '50% Off', emoji: '📝', color: '#EF4444', code: 'STATIONARY50' },
-  { label: 'Free Del', emoji: '🛵', color: '#F59E0B', code: 'FREEDELIVERY' },
-  { label: '₹50 Ride', emoji: '🚗', color: '#10B981', code: 'RIDE50' },
-  { label: 'Free Oreo', emoji: '🍪', color: '#3B82F6', code: 'OREOFREE' },
-  { label: 'BOGO Juice', emoji: '🥤', color: '#8B5CF6', code: 'JUICEBOGO' },
-  { label: '2x Karma', emoji: '✨', color: '#EC4899', code: 'KARMA2X' },
-  { label: '₹100 PG', emoji: '🏢', color: '#06B6D4', code: 'PG100' },
-  { label: 'Try Again', emoji: '🔄', color: '#6B7280', code: 'TRYAGAIN' },
+// Wheel look only. The prizes (labels, order) come from GET /api/rewards/spin-eligibility and the
+// server picks the result in POST /api/rewards/use-spin.
+const WHEEL_STYLES = [
+  { emoji: '🛵', color: '#F59E0B' },
+  { emoji: '💎', color: '#10B981' },
+  { emoji: '💎', color: '#3B82F6' },
+  { emoji: '💎', color: '#8B5CF6' },
+  { emoji: '💎', color: '#EC4899' },
+  { emoji: '💎', color: '#EF4444' },
+  { emoji: '💎', color: '#06B6D4' },
+  { emoji: '💎', color: '#6B7280' },
 ];
 
 const PROMOS_FOOD = [
-  { id: 'f1', tagline: 'CAMPUS STATIONERY 📚', title: 'EXAM ESSENTIALS', subtitle: 'STATIONERY HUB', desc: 'Notebooks, engineering graphics tools, pens & lab supplies delivered to your hostel.', btn: 'EXPLORE SUPPLIES →', img: 'https://images.unsplash.com/photo-1456735190827-d1262f71b8a3?w=600' },
-  { id: 'f2', tagline: 'NUTRITION & FITNESS 🏋️', title: 'SPORTS NUTRITION', subtitle: 'SUPPLEMENTS', desc: '100% genuine whey protein, protein bars & electrolyte drinks for campus athletes.', btn: 'VIEW NUTRITION →', img: 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=600' },
-  { id: 'f3', tagline: 'NIGHT CANTEEN & PANTRY 🛒', title: 'HOSTEL BASKET', subtitle: 'GROCERY RUN', desc: 'Late night snacks, dairy, instant noodles & beverages delivered in 15 minutes.', btn: 'ORDER GROCERIES →', img: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=600' },
+  { id: 'f1', tagline: 'CAMPUS STATIONERY 📚', title: 'EXAM ESSENTIALS', subtitle: 'STATIONERY HUB', desc: 'Notebooks, pens, lab coats & study kits delivered to your hostel.', btn: 'EXPLORE SUPPLIES →', img: 'https://images.unsplash.com/photo-1456735190827-d1262f71b8a3?w=600' },
+  { id: 'f2', tagline: 'FITNESS GEAR 🏋️', title: 'STAY ACTIVE', subtitle: 'FIT & ACTIVE', desc: 'Skipping ropes, resistance bands & yoga mats for your hostel workouts.', btn: 'SHOP FITNESS →', img: 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=600' },
+  { id: 'f3', tagline: 'NIGHT CANTEEN & PANTRY 🛒', title: 'HOSTEL BASKET', subtitle: 'GROCERY RUN', desc: 'Snacks, dairy, instant noodles & beverages from the campus mart.', btn: 'ORDER GROCERIES →', img: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=600' },
 ];
 
 const PROMOS_SERVICES = [
-  { id: 's1', tagline: 'CERTIFIED TECHNICIANS 💻', title: 'LAPTOP & PHONE', subtitle: 'REPAIR HUB', desc: 'Motherboard fix, fan overhaul, screen replacement & thermal paste servicing on campus.', btn: 'BOOK REPAIR →', img: 'https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?w=1200&q=80' },
-  { id: 's2', tagline: 'CAMPUS TAILORING ✂️', title: 'UNIFORM & FABRIC', subtitle: 'ALTERATIONS', desc: 'Lab coat tailoring, fitting alterations, blazer adjustments & urgent stitching requests.', btn: 'REQUEST TAILOR →', img: 'https://images.unsplash.com/photo-1528458909336-e7a0adfed0a5?w=1200&q=80' },
-  { id: 's3', tagline: 'DOCUMENT HUB 🖨️', title: 'HIGH-RES PRINTING', subtitle: '& BINDING', desc: 'Project reports, spiral binding, colour charts and assignment prints delivered directly.', btn: 'SUBMIT PRINT JOB →', img: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?w=1200&q=80' },
+  { id: 's1', tagline: 'LAPTOP & PHONE 💻', title: 'TECH REPAIRS', subtitle: 'ON CAMPUS', desc: 'Screen replacement, fan cleaning, thermal paste & hardware fixes. Book a slot in the app.', btn: 'BOOK REPAIR →', img: 'https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?w=1200&q=80' },
+  { id: 's2', tagline: 'CAMPUS TAILORING ✂️', title: 'UNIFORM & FABRIC', subtitle: 'ALTERATIONS', desc: 'Lab coat tailoring, fitting alterations, blazer adjustments & stitching requests.', btn: 'REQUEST TAILOR →', img: 'https://images.unsplash.com/photo-1528458909336-e7a0adfed0a5?w=1200&q=80' },
+  { id: 's3', tagline: 'DOCUMENT HUB 🖨️', title: 'PRINTING', subtitle: '& BINDING', desc: 'Project reports, spiral binding, colour charts and assignment prints.', btn: 'SUBMIT PRINT JOB →', img: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?w=1200&q=80' },
 ];
 
 const PROMOS_PG = [
-  { id: 'p1', tagline: 'VERIFIED ACCOMMODATIONS 🏢', title: 'STUDENT RESIDENCES', subtitle: 'NEAR CAMPUS', desc: 'Inspected private PGs with high-speed WiFi, power backup, hygienic mess and 24/7 security.', btn: 'BROWSE STAYS →', img: 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=1200&q=80' },
-  { id: 'p2', tagline: 'FLATSHARE & ROOMMATES 🤝', title: 'SHARED APARTMENTS', subtitle: 'FLATMATES', desc: 'Find verified campus batchmates looking for 2BHK/3BHK flat sharing near Amaravathi.', btn: 'FIND ROOMMATES →', img: 'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=1200&q=80' },
-  { id: 'p3', tagline: 'ZERO BROKERAGE 🏷️', title: 'DIRECT OWNER', subtitle: 'LISTINGS', desc: 'Direct landlord contact with transparent security deposit terms & verified rental agreements.', btn: 'VIEW LISTINGS →', img: 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=1200&q=80' },
+  { id: 'p1', tagline: 'STUDENT STAYS 🏢', title: 'PG RESIDENCES', subtitle: 'NEAR CAMPUS', desc: 'Compare rent, sharing type and distance from campus, then request a bed right here.', btn: 'BROWSE STAYS →', img: 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=1200&q=80' },
+  { id: 'p2', tagline: 'BOOK IN THE APP 🤝', title: 'REQUEST A BED', subtitle: 'WE CONFIRM IT', desc: 'Send a booking request and the Zenvy housing team confirms it with you.', btn: 'VIEW LISTINGS →', img: 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=1200&q=80' },
 ];
 
 const PROMOS_CORIDE = [
-  { id: 'c1', tagline: 'STUDENT COMMUTE NETWORK 🏍️', title: 'PEER CO-RIDE', subtitle: 'FUEL SPLIT', desc: 'Share daily rides between Campus, Vijayawada & Guntur. Verified student ID matching.', btn: 'FIND OR POST RIDE →', img: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=1200&q=80' },
-  { id: 'c2', tagline: 'INSTANT TWO-WHEELER 🛵', title: 'RAPIDO CAMPUS', subtitle: 'CONNECT', desc: 'Quick bike-taxi booking to Neerukonda, Mangalagiri station, and local transit points.', btn: 'LAUNCH RAPIDO →', img: 'https://images.unsplash.com/photo-1558980394-0a06c4631733?w=1200&q=80' },
-  { id: 'c3', tagline: 'STATION & AIRPORT CABS 🚖', title: 'CAMPUS SHUTTLES', subtitle: '& OUTSTATION CABS', desc: 'Fixed fare group cabs to Gannavaram Airport (VGA) & Vijayawada Junction (BZA).', btn: 'DISPATCH CAB →', img: 'https://images.unsplash.com/photo-1449965408869-ebd13bc9e5a8?w=1200&q=80' },
+  { id: 'c1', tagline: 'STUDENT COMMUTE NETWORK 🏍️', title: 'PEER CO-RIDE', subtitle: 'FUEL SPLIT', desc: 'Share rides between Campus, Vijayawada & Guntur with fellow students and split the fuel.', btn: 'FIND OR POST RIDE →', img: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=1200&q=80' },
+  { id: 'c2', tagline: 'BIKE TAXI 🛵', title: 'NEED A QUICK RIDE?', subtitle: 'OPENS RAPIDO', desc: 'Book a bike taxi on Rapido to Neerukonda, Mangalagiri station and nearby stops.', btn: 'OPEN RAPIDO →', img: 'https://images.unsplash.com/photo-1558980394-0a06c4631733?w=1200&q=80' },
+  { id: 'c3', tagline: 'CABS & AUTOS 🚖', title: 'STATION & AIRPORT', subtitle: 'OPENS UBER', desc: 'Book a cab on Uber to Gannavaram Airport (VGA) or Vijayawada Junction (BZA).', btn: 'OPEN UBER →', img: 'https://images.unsplash.com/photo-1449965408869-ebd13bc9e5a8?w=1200&q=80' },
 ];
 
 const PROMOS_OFFERS = [
-  { id: 'o1', tagline: 'DAILY REWARDS 🎁', title: 'LUCKY REWARD', subtitle: 'SPIN WHEEL', desc: 'Spin daily to earn Zenvy Campus Coins, free meal vouchers and discount coupons.', btn: 'SPIN WHEEL NOW →', img: 'https://images.unsplash.com/photo-1596451190630-186aff535bf2?w=600' },
-  { id: 'o2', tagline: 'ORDER PERKS 🎫', title: 'SCRATCH & WIN', subtitle: 'CASHBACK', desc: 'Unlock guaranteed cash discounts and delivery passes on every order from campus outlets.', btn: 'REDEEM REWARDS →', img: 'https://images.unsplash.com/photo-1607344645866-009c320b63e0?w=600' },
-  { id: 'o3', tagline: 'CAMPUS AMBASSADOR 🌟', title: 'REFER FRIENDS', subtitle: 'EARN CREDITS', desc: 'Invite your hostel mates to Zenvy and earn ₹100 credit on their first completed order.', btn: 'SHARE INVITE →', img: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=600' },
+  { id: 'o1', tagline: 'ORDER REWARDS 🎁', title: 'LUCKY REWARD', subtitle: 'SPIN WHEEL', desc: 'Every 2 delivered orders earn a spin. Win ZenPoints or a free-delivery coupon.', btn: 'SPIN THE WHEEL →', img: 'https://images.unsplash.com/photo-1596451190630-186aff535bf2?w=600' },
+  { id: 'o2', tagline: 'YOUR COUPONS 🎫', title: 'READY TO USE', subtitle: 'AT CHECKOUT', desc: 'Coupons you have won show up here with their expiry date.', btn: 'SEE MY COUPONS →', img: 'https://images.unsplash.com/photo-1607344645866-009c320b63e0?w=600' },
 ];
 
 const TAB_PROMOS: Record<string, typeof PROMOS_FOOD> = {
@@ -155,17 +127,6 @@ const TAB_PROMOS: Record<string, typeof PROMOS_FOOD> = {
   coride: PROMOS_CORIDE,
   promos: PROMOS_OFFERS,
 };
-
-const PROMOS = PROMOS_FOOD;
-
-
-const TRENDING = [
-  { id: '1', title: 'Essentials Mega Basket', desc: 'Build a custom grocery list & get delivery with live shop pricing', tag: 'NEW SERVICE', badge: '⚡ Zero Estimation Errors', img: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=400' },
-  { id: '2', title: 'Midnight Cravings', desc: 'Up to 20% off on late night snacks', tag: 'HOT', badge: '🔥 45 ordered tonight', img: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=400' },
-  { id: '3', title: 'Exam Season Prep', desc: 'Stationary & energy drinks combo', tag: 'NEW', badge: 'Ends in 2h', img: 'https://images.unsplash.com/photo-1456735190827-d1262f71b8a3?w=400' },
-  { id: '4', title: 'Healthy Living', desc: 'Fresh fruits and whey supplements', tag: 'TRENDING', badge: 'Selling Fast', img: 'https://images.unsplash.com/photo-1490474418585-ba9bad8fd0ea?w=400' },
-];
-
 
 const GROCERY_CATEGORIES = [
   {
@@ -206,79 +167,6 @@ const GROCERY_CATEGORIES = [
 ];
 
 const SEARCH_PLACEHOLDERS = ["Search for 'rice'", "Search for 'chips'", "Search for 'curd'", "Search for 'atta'", "Search for 'ghee'", "Search for 'toys'", "Search for 'seeds'"];
-
-const TOY_ITEMS = [
-  {
-    id: 'toys-monster-truck',
-    name: '4x4 Monster Truck For 3+ Years',
-    brand: 'KRIIDDAANK',
-    price: 49,
-    originalPrice: 499,
-    discount: '90% OFF',
-    weight: '1 pc',
-    image: 'https://images.unsplash.com/photo-1594787318286-3d835c1d207f?w=300&q=80',
-    isVeg: true
-  },
-  {
-    id: 'toys-uno-card',
-    name: 'Uno Original Card Game',
-    brand: 'MATTEL GAMES',
-    price: 119,
-    originalPrice: 149,
-    discount: '20% OFF',
-    weight: 'Pack of 1 - (108 pcs)',
-    image: 'https://images.unsplash.com/photo-1606167668584-78701c57f13d?w=300&q=80',
-    isVeg: true
-  },
-  {
-    id: 'toys-rubik-cube',
-    name: 'Speed Cube 3 x 3 High Speed Sticker Less 3D Cube',
-    brand: 'TOY CLOUD',
-    price: 89,
-    originalPrice: 299,
-    discount: '70% OFF',
-    weight: '1 pc - Box',
-    image: 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=300',
-    isVeg: true
-  }
-];
-
-const SEED_ITEMS = [
-  {
-    id: 'seeds-tomato',
-    name: 'Tomato Seeds',
-    brand: 'BOMBAY SEEDS',
-    price: 40.80,
-    originalPrice: 80,
-    discount: '49% OFF',
-    weight: '10 g',
-    image: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=300&q=80',
-    isVeg: true,
-    flashSale: true
-  },
-  {
-    id: 'seeds-cucumber',
-    name: 'Cucumber Khira Seeds',
-    brand: 'BOMBAY SEEDS',
-    price: 59,
-    originalPrice: 80,
-    discount: '26% OFF',
-    weight: '10 g',
-    image: 'https://images.unsplash.com/photo-1604977042946-1eecc30f269e?w=300&q=80',
-    isVeg: true
-  },
-  {
-    id: 'seeds-chilli',
-    name: 'Chilli Hot Pepper Seeds',
-    brand: 'BOMBAY SEEDS',
-    price: 59,
-    originalPrice: 80,
-    discount: '26% OFF',
-    weight: '10 g',
-    image: 'https://images.unsplash.com/photo-1583119022894-919a68a3d0e3?w=300&q=80',
-    isVeg: true
-  }
-];
 
 const TOY_MANIA_CATEGORIES = [
   {
@@ -325,283 +213,179 @@ const TOY_MANIA_CATEGORIES = [
   }
 ];
 
-const CATEGORY_PRODUCTS: Record<string, Array<{ id: string; name: string; price: number; originalPrice: number; weight: string; image: string; isVeg: boolean; discount?: string; brand?: string }>> = {
-  'Vehicle toys': [
-    { id: 'toys-monster-truck', name: '4x4 Monster Truck For 3+ Years', price: 49, originalPrice: 499, weight: '1 pc', image: 'https://images.unsplash.com/photo-1594787318286-3d835c1d207f?w=400&q=80', isVeg: true, discount: '90% OFF', brand: 'KRIIDDAANK' },
-    { id: 'toys-racing-car', name: 'Remote Control Racing Car Turbo', price: 299, originalPrice: 699, weight: '1 pc', image: 'https://images.unsplash.com/photo-1581235720704-06d3acfcb36f?w=400&q=80', isVeg: true, discount: '57% OFF', brand: 'SPEEDSTER' },
-    { id: 'toys-excavator', name: 'Construction Excavator Truck Toy', price: 149, originalPrice: 399, weight: '1 pc', image: 'https://images.unsplash.com/photo-1596461404969-9ae70f2830c1?w=400&q=80', isVeg: true, discount: '63% OFF', brand: 'BUILDZONE' }
-  ],
-  'Learning & education': [
-    { id: 'toys-tablet', name: 'LCD Writing Tablet Board For Kids', price: 149, originalPrice: 699, weight: '1 pc', image: 'https://images.unsplash.com/photo-1516627145497-ae6968895b74?w=400&q=80', isVeg: true, discount: '78% OFF', brand: 'SMARTKID' },
-    { id: 'toys-puzzle', name: 'World Map Jigsaw Puzzle 100 Pcs', price: 199, originalPrice: 450, weight: '1 box', image: 'https://images.unsplash.com/photo-1606503153255-59d5e417c4ed?w=400&q=80', isVeg: true, discount: '55% OFF', brand: 'BRAINBOX' },
-    { id: 'toys-abacus', name: 'Wooden Abacus Math Learning Toy', price: 129, originalPrice: 299, weight: '1 pc', image: 'https://images.unsplash.com/photo-1596464716127-f2a82984de30?w=400&q=80', isVeg: true, discount: '57% OFF', brand: 'EDUPLAY' }
-  ],
-  'Sports & games': [
-    { id: 'toys-cricket', name: 'Kids Cricket Bat and Ball Set', price: 199, originalPrice: 499, weight: 'Pack of 1', image: 'https://images.unsplash.com/photo-1531565637446-32307b194362?w=400&q=80', isVeg: true, discount: '60% OFF', brand: 'PLAYTIME' },
-    { id: 'toys-badminton', name: 'Badminton Racket Pair with Shuttle', price: 249, originalPrice: 550, weight: '1 set', image: 'https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=400&q=80', isVeg: true, discount: '55% OFF', brand: 'YONEX' },
-    { id: 'toys-football', name: 'FIFA Official Size Football', price: 349, originalPrice: 799, weight: '1 pc', image: 'https://images.unsplash.com/photo-1552318965-6e6be7484ada?w=400&q=80', isVeg: true, discount: '56% OFF', brand: 'NIVIA' }
-  ],
-  'Games & plushies': [
-    { id: 'toys-uno-card', name: 'Uno Original Card Game', price: 119, originalPrice: 149, weight: 'Pack of 1 - (108 pcs)', image: 'https://images.unsplash.com/photo-1606167668584-78701c57f13d?w=400&q=80', isVeg: true, discount: '20% OFF', brand: 'MATTEL' },
-    { id: 'toys-chess', name: 'Magnetic Chess Board Travel Set', price: 179, originalPrice: 350, weight: '1 set', image: 'https://images.unsplash.com/photo-1529699211952-734e80c4d42b?w=400&q=80', isVeg: true, discount: '49% OFF', brand: 'CHESSGURU' },
-    { id: 'toys-teddy', name: 'Soft Plush Teddy Bear 2ft', price: 299, originalPrice: 599, weight: '1 pc', image: 'https://images.unsplash.com/photo-1559715541-5daf8a0296d0?w=400&q=80', isVeg: true, discount: '50% OFF', brand: 'CUDDLETOWN' }
-  ],
-  'Baby & toddler toys': [
-    { id: 'toys-stack-rings', name: 'Multicolor Stacking Rings Toy', price: 99, originalPrice: 249, weight: '1 pc', image: 'https://images.unsplash.com/photo-1555448248-2571daf6344b?w=400&q=80', isVeg: true, discount: '60% OFF', brand: 'BABYJOY' },
-    { id: 'toys-blocks', name: 'Building Blocks Set 50 Pcs', price: 149, originalPrice: 349, weight: '1 box', image: 'https://images.unsplash.com/photo-1596461404969-9ae70f2830c1?w=400&q=80', isVeg: true, discount: '57% OFF', brand: 'BLOCKSTAR' },
-    { id: 'toys-rattle', name: 'Musical Rattle Set for Infants', price: 79, originalPrice: 199, weight: '3 pcs', image: 'https://images.unsplash.com/photo-1515488042361-ee00e0ddd4e4?w=400&q=80', isVeg: true, discount: '60% OFF', brand: 'TINYTUNES' }
-  ],
-  'Fitness ready': [
-    { id: 'toys-rope', name: 'Premium Skipping Rope Adjustable', price: 99, originalPrice: 199, weight: '1 pc', image: 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=400&q=80', isVeg: true, discount: '50% OFF', brand: 'FITGEAR' },
-    { id: 'fit-band', name: 'Resistance Band Set 5 Levels', price: 249, originalPrice: 499, weight: '5 pcs', image: 'https://images.unsplash.com/photo-1598289431512-b97b0917affc?w=400&q=80', isVeg: true, discount: '50% OFF', brand: 'FLEXFIT' },
-    { id: 'fit-yoga-mat', name: 'Anti-Slip Yoga Mat 6mm Premium', price: 399, originalPrice: 799, weight: '1 pc', image: 'https://images.unsplash.com/photo-1601925260368-ae2f83cf8b7f?w=400&q=80', isVeg: true, discount: '50% OFF', brand: 'ZENFLOW' }
-  ],
-  'Seeds': [
-    { id: 'seeds-tomato', name: 'Tomato Seeds', price: 40.80, originalPrice: 80, weight: '10 g', image: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=400&q=80', isVeg: true, discount: '49% OFF', brand: 'BOMBAY SEEDS' },
-    { id: 'seeds-cucumber', name: 'Cucumber Khira Seeds', price: 59, originalPrice: 80, weight: '10 g', image: 'https://images.unsplash.com/photo-1604977042946-1eecc30f269e?w=400&q=80', isVeg: true, discount: '26% OFF', brand: 'BOMBAY SEEDS' },
-    { id: 'seeds-chilli', name: 'Chilli Hot Pepper Seeds', price: 59, originalPrice: 80, weight: '10 g', image: 'https://images.unsplash.com/photo-1583119022894-919a68a3d0e3?w=400&q=80', isVeg: true, discount: '26% OFF', brand: 'BOMBAY SEEDS' }
-  ],
-  'Fresh': [
-    { id: 'fruit-1', name: 'Fresh Royal Gala Apple Selection', price: 180, originalPrice: 220, weight: '4 pcs', image: 'https://images.unsplash.com/photo-1619566636858-adf3ef46400b?w=400&q=80', isVeg: true, discount: '18% OFF' },
-    { id: 'bb-lemon', name: 'Fresh Lemon', price: 10, originalPrice: 27, weight: '3 pcs', image: 'https://images.unsplash.com/photo-1590502593747-42a996133562?w=400&q=80', isVeg: true, discount: '63% OFF' },
-    { id: 'bb-carrot', name: 'Carrot - Local', price: 39, originalPrice: 56.16, weight: '500 g', image: 'https://images.unsplash.com/photo-1598170845058-32b9d6a5da37?w=400&q=80', isVeg: true, discount: '30% OFF' },
-    { id: 'brand-guava', name: 'B Natural Guava Fruit Beverage', price: 88, originalPrice: 115, weight: '1 L', image: 'https://images.unsplash.com/photo-1534531173927-aeb928d54385?w=400&q=80', isVeg: true, discount: '23% OFF' }
-  ],
-  'Grocery': [
-    { id: 'cat-atta-1', name: 'Aashirvaad Shudh Chakki Atta', price: 260, originalPrice: 290, weight: '5 kg', image: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=400&q=80', isVeg: true, discount: '10% OFF' },
-    { id: 'cat-dal-1', name: 'Tata Sampann Toor Dal', price: 159, originalPrice: 180, weight: '1 kg', image: 'https://images.unsplash.com/photo-1545114197-2f5a05b38b1f?w=400&q=80', isVeg: true, discount: '11% OFF' },
-    { id: 'cat-oil-2', name: 'Amul Pure Cow Ghee Tin', price: 680, originalPrice: 720, weight: '1 L', image: 'https://images.unsplash.com/photo-1631451095765-2c91616fc9e6?w=400&q=80', isVeg: true, discount: '5% OFF' }
-  ],
-  'Organic': [
-    { id: 'org-1', name: 'Organic Unpolished Chana Dal Split', price: 85, originalPrice: 99, weight: '500 g', image: 'https://images.unsplash.com/photo-1545114197-2f5a05b38b1f?w=400&q=80', isVeg: true, discount: '14% OFF' },
-    { id: 'org-2', name: 'Organic Cold Pressed Mustard Oil', price: 230, originalPrice: 260, weight: '1 L', image: 'https://images.unsplash.com/photo-1620706857370-e1b9770e8bb1?w=400&q=80', isVeg: true, discount: '11% OFF' },
-    { id: 'org-3', name: 'Organic Whole Wheat Atta Chakki', price: 140, originalPrice: 160, weight: '2 kg', image: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=400&q=80', isVeg: true, discount: '12% OFF' }
-  ],
-  'Health': [
-    { id: 'hyg-1', name: 'Dettol Liquid Handwash Refill Pouch', price: 99, originalPrice: 110, weight: '175 ml', image: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400&q=80', isVeg: true, discount: '10% OFF' },
-    { id: 'hyg-2', name: 'Savlon Antiseptic Disinfectant Liquid', price: 45, originalPrice: 50, weight: '100 ml', image: 'https://images.unsplash.com/photo-1584017911766-d451b3d0e843?w=400&q=80', isVeg: true, discount: '10% OFF' },
-    { id: 'hyg-3', name: 'Lifebuoy Total Germ Protection Soap', price: 32, originalPrice: 35, weight: '125 g', image: 'https://images.unsplash.com/photo-1607006342411-9a3363b63b2f?w=400&q=80', isVeg: true, discount: '8% OFF' }
-  ],
-  'Electronics': [
-    { id: 'elec-1', name: 'boAt Rockerz Bluetooth Headphones', price: 999, originalPrice: 1999, weight: '1 pc', image: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400&q=80', isVeg: true, discount: '50% OFF' },
-    { id: 'elec-2', name: 'Mi 10000mAh Power Bank 3i', price: 899, originalPrice: 1299, weight: '1 pc', image: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?w=400&q=80', isVeg: true, discount: '30% OFF' },
-    { id: 'elec-3', name: 'Ambrane USB-C Fast Charging Cable', price: 149, originalPrice: 299, weight: '1 pc', image: 'https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?w=400&q=80', isVeg: true, discount: '50% OFF' }
-  ]
+// ── Store catalogue (GET /api/catalogue/items) ──
+// Every product on this screen comes from the server; the price shown is the price charged.
+type CatalogueItem = {
+  id: string;
+  name: string;
+  price: number;
+  originalPrice: number | null;
+  discountPercent: number | null;
+  weight: string | null;
+  brand: string | null;
+  category: string | null;
+  image: string | null;
+  isVegetarian: boolean;
+  isAvailable: boolean;
+  orderable: boolean;
+  bookingOnly: boolean;
+  restaurantId: string;
+  storeName: string | null;
+  vendorType: string | null;
 };
 
-const getBrandProducts = (brandName: string) => {
-  switch (brandName) {
-    case 'Amul':
-      return [
-        { id: 'brand-amul-1', name: 'Amul Pure Cow Ghee Tin', price: 680, originalPrice: 720, weight: '1 L', image: 'https://images.unsplash.com/photo-1631451095765-2c91616fc9e6?w=400&q=80', isVeg: true, discount: '5% OFF' },
-        { id: 'brand-amul-2', name: 'Amul Dark Chocolate Fruit & Nut', price: 125, originalPrice: 140, weight: '150 g', image: 'https://images.unsplash.com/photo-1549007994-cb92ca813bec?w=400&q=80', isVeg: true, discount: '10% OFF' },
-        { id: 'brand-amul-3', name: 'Amul Taaza Fresh Toned Milk', price: 54, originalPrice: 56, weight: '1 L', image: 'https://images.unsplash.com/photo-1550583724-b2692b85b150?w=400&q=80', isVeg: true }
-      ];
-    case 'Surf Excel':
-      return [
-        { id: 'brand-surf-1', name: 'Surf Excel Easy Wash Detergent Powder', price: 140, originalPrice: 160, weight: '1 kg', image: 'https://images.unsplash.com/photo-1582735689369-4fe89db7114c?w=400&q=80', isVeg: true, discount: '12% OFF' },
-        { id: 'brand-surf-2', name: 'Surf Excel Matic Liquid Comfort', price: 210, originalPrice: 240, weight: '500 ml', image: 'https://images.unsplash.com/photo-1607619056574-7b8d3ee536b2?w=400&q=80', isVeg: true, discount: '12% OFF' }
-      ];
-    case 'Nescafe':
-      return [
-        { id: 'brand-nescafe-1', name: 'Nescafe Classic Instant Coffee Jar', price: 310, originalPrice: 340, weight: '100 g', image: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=400&q=80', isVeg: true, discount: '8% OFF' },
-        { id: 'brand-nescafe-2', name: 'Nescafe Sunrise Premium blend', price: 180, originalPrice: 200, weight: '100 g', image: 'https://images.unsplash.com/photo-1544787219-7f47ccb76574?w=400&q=80', isVeg: true, discount: '10% OFF' }
-      ];
-    case 'Cadbury':
-      return [
-        { id: 'brand-cadbury-1', name: 'Cadbury Dairy Milk Silk Chocolate Bar', price: 100, originalPrice: 100, weight: '150 g', image: 'https://images.unsplash.com/photo-1549007994-cb92ca813bec?w=400&q=80', isVeg: true },
-        { id: 'brand-cadbury-2', name: 'Cadbury Oreo Chocolate Cookies', price: 35, originalPrice: 40, weight: '120 g', image: 'https://images.unsplash.com/photo-1558961363-fa8fdf82db35?w=400&q=80', isVeg: true, discount: '12% OFF' },
-        { id: 'brand-cadbury-3', name: 'Cadbury Bournvita Chocolate Health Drink', price: 230, originalPrice: 250, weight: '500 g', image: 'https://images.unsplash.com/photo-1544787219-7f47ccb76574?w=400&q=80', isVeg: true, discount: '8% OFF' }
-      ];
-    case 'Lays':
-      return [
-        { id: 'chips-1', name: 'Lays Classic Salted Potato Chips', price: 20, originalPrice: 20, weight: '50 g', image: 'https://images.unsplash.com/photo-1566478989037-eec170784d0b?w=400&q=80', isVeg: true },
-        { id: 'brand-lays-2', name: 'Lays American Style Cream & Onion', price: 20, originalPrice: 20, weight: '50 g', image: 'https://images.unsplash.com/photo-1566478989037-eec170784d0b?w=400&q=80', isVeg: true },
-        { id: 'brand-lays-3', name: 'Lays Spanish Tomato Tangy Crisps', price: 20, originalPrice: 20, weight: '50 g', image: 'https://images.unsplash.com/photo-1566478989037-eec170784d0b?w=400&q=80', isVeg: true }
-      ];
-    case 'Coca Cola':
-      return [
-        { id: 'drink-1', name: 'Coca Cola Diet Coke Can Carbonated', price: 40, originalPrice: 40, weight: '300 ml', image: 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=400&q=80', isVeg: true },
-        { id: 'brand-coke-2', name: 'Coca Cola Original Soft Drink Bottle', price: 60, originalPrice: 65, weight: '1.25 L', image: 'https://images.unsplash.com/photo-1621506289937-a8e4df240d0b?w=400&q=80', isVeg: true, discount: '8% OFF' },
-        { id: 'brand-coke-3', name: 'Sprite Lemon Lime Clear Carbonated Drink', price: 40, originalPrice: 40, weight: '300 ml', image: 'https://images.unsplash.com/photo-1621506289937-a8e4df240d0b?w=400&q=80', isVeg: true }
-      ];
-    default:
-      return [];
-  }
+// Store types sold on the Food & Basket tab, and the booking-only service types (for "From ₹X" prices).
+const SHOP_TYPES = ['grocery', 'toys', 'seeds', 'electronics'];
+const SERVICE_TYPES = ['repairs', 'tailoring', 'print', 'laundry', 'home'];
+const PRODUCT_FALLBACK_IMG = 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=400&q=80';
+// Custom "please buy this for me" requests keep using the Mega Basket shopping flow (POST /api/mega-basket).
+const MEGA_BASKET_VENDOR = 'mega-basket-vendor';
+
+const toCatalogueItem = (raw: any): CatalogueItem | null => {
+  if (!raw || !raw.id || !raw.name) return null;
+  const price = Number(raw.price);
+  if (!Number.isFinite(price) || price < 0) return null;
+  const original = Number(raw.originalPrice);
+  const discount = Number(raw.discountPercent);
+  return {
+    id: String(raw.id),
+    name: String(raw.name),
+    price,
+    originalPrice: Number.isFinite(original) && original > price ? original : null,
+    discountPercent: Number.isFinite(discount) && discount > 0 ? Math.round(discount) : null,
+    weight: raw.weight || null,
+    brand: raw.brand || null,
+    category: raw.category || null,
+    image: raw.image || raw.imageUrl || null,
+    isVegetarian: raw.isVegetarian !== false,
+    isAvailable: raw.isAvailable !== false,
+    orderable: raw.orderable !== false,
+    bookingOnly: !!raw.bookingOnly,
+    restaurantId: String(raw.restaurantId || raw.storeId || ''),
+    storeName: raw.storeName || null,
+    vendorType: raw.vendorType || null,
+  };
 };
 
-const getCategoryProducts = (categoryName: string) => {
-  const brandProds = getBrandProducts(categoryName);
-  if (brandProds.length > 0) {
-    return brandProds;
-  }
+const fmtPrice = (n: number) => `₹${Number.isInteger(n) ? n : Number(n).toFixed(2)}`;
+const discountLabel = (p: CatalogueItem) => (p.discountPercent ? `${p.discountPercent}% OFF` : null);
 
-  if (CATEGORY_PRODUCTS[categoryName]) {
-    return CATEGORY_PRODUCTS[categoryName];
-  }
-  
-  let items: Array<{ id: string; name: string; price: number; originalPrice: number; weight: string; image: string; isVeg: boolean; discount?: string }> = [];
-
-  if (categoryName.includes('Chips') || categoryName.includes('Namkeens')) {
-    items = [
-      { id: 'chips-1', name: 'Lays Classic Salted Potato Chips', price: 20, originalPrice: 20, weight: '50 g', image: 'https://images.unsplash.com/photo-1566478989037-eec170784d0b?w=400&q=80', isVeg: true },
-      { id: 'chips-2', name: 'Haldirams Bhujia Sev Premium', price: 55, originalPrice: 65, weight: '150 g', image: 'https://images.unsplash.com/photo-1589476993333-f55b84301219?w=400&q=80', isVeg: true, discount: '15% OFF' },
-      { id: 'chips-3', name: 'Kurkure Masala Munch Crisps', price: 30, originalPrice: 35, weight: '90 g', image: 'https://images.unsplash.com/photo-1613919113640-25732ec5e61f?w=400&q=80', isVeg: true, discount: '14% OFF' }
-    ];
-  } else if (categoryName.includes('Biscuits') || categoryName.includes('Cakes')) {
-    items = [
-      { id: 'bisc-1', name: 'Oreo Chocolate Sandwich Cookies', price: 35, originalPrice: 40, weight: '120 g', image: 'https://images.unsplash.com/photo-1558961363-fa8fdf82db35?w=400&q=80', isVeg: true, discount: '12% OFF' },
-      { id: 'bisc-2', name: 'Britannia Good Day Cashew cookies', price: 25, originalPrice: 30, weight: '100 g', image: 'https://images.unsplash.com/photo-1558961363-fa8fdf82db35?w=400&q=80', isVeg: true, discount: '16% OFF' },
-      { id: 'bisc-3', name: 'Sunfeast Dark Fantasy Choco Fills', price: 40, originalPrice: 40, weight: '75 g', image: 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=400&q=80', isVeg: true }
-    ];
-  } else if (categoryName.includes('Frozen') || categoryName.includes('Instant')) {
-    items = [
-      { id: 'froz-1', name: 'Maggi 2-Minute Masala Noodles Pack', price: 14, originalPrice: 14, weight: '70 g', image: 'https://images.unsplash.com/photo-1612927601601-6638404737ce?w=400&q=80', isVeg: true },
-      { id: 'froz-2', name: 'Safal Frozen Green Peas Extra Sweet', price: 95, originalPrice: 110, weight: '500 g', image: 'https://images.unsplash.com/photo-1592417817098-8f3d6eb19675?w=400&q=80', isVeg: true, discount: '13% OFF' },
-      { id: 'froz-3', name: 'Knorr Classic Tomato Soup Mix', price: 35, originalPrice: 40, weight: '50 g', image: 'https://images.unsplash.com/photo-1547592180-85f173990554?w=400&q=80', isVeg: true, discount: '12% OFF' }
-    ];
-  } else if (categoryName.includes('Breakfast')) {
-    items = [
-      { id: 'break-1', name: 'Kelloggs Corn Flakes Golden Cereal', price: 145, originalPrice: 160, weight: '300 g', image: 'https://images.unsplash.com/photo-1586444248902-2f64eddc13df?w=400&q=80', isVeg: true, discount: '9% OFF' },
-      { id: 'break-2', name: 'Quaker Whole Grain Rolled Oats', price: 180, originalPrice: 199, weight: '1 kg', image: 'https://images.unsplash.com/photo-1586444248902-2f64eddc13df?w=400&q=80', isVeg: true, discount: '10% OFF' },
-      { id: 'break-3', name: 'Bagrrys Mixed Fruit Muesli Crunchy', price: 210, originalPrice: 240, weight: '400 g', image: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=400&q=80', isVeg: true, discount: '12% OFF' }
-    ];
-  } else if (categoryName.includes('Drinks') || categoryName.includes('Juices')) {
-    items = [
-      { id: 'drink-1', name: 'Coca Cola Diet Coke Can Carbonated', price: 40, originalPrice: 40, weight: '300 ml', image: 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=400&q=80', isVeg: true },
-      { id: 'drink-2', name: 'Tropicana 100% Pure Orange Juice', price: 115, originalPrice: 130, weight: '1 L', image: 'https://images.unsplash.com/photo-1621506289937-a8e4df240d0b?w=400&q=80', isVeg: true, discount: '11% OFF' },
-      { id: 'drink-3', name: 'Red Bull Energy Drink Carbonated', price: 125, originalPrice: 125, weight: '250 ml', image: 'https://images.unsplash.com/photo-1622543956221-1d9c99533a78?w=400&q=80', isVeg: true }
-    ];
-  } else if (categoryName.includes('Tea') || categoryName.includes('Coffee')) {
-    items = [
-      { id: 'tea-1', name: 'Nescafe Classic Instant Coffee Jar', price: 310, originalPrice: 340, weight: '100 g', image: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=400&q=80', isVeg: true, discount: '8% OFF' },
-      { id: 'tea-2', name: 'Tata Tea Premium Cardamom Flavor', price: 220, originalPrice: 245, weight: '500 g', image: 'https://images.unsplash.com/photo-1544787219-7f47ccb76574?w=400&q=80', isVeg: true, discount: '10% OFF' },
-      { id: 'tea-3', name: 'Brooke Bond Red Label Loose Tea', price: 140, originalPrice: 155, weight: '250 g', image: 'https://images.unsplash.com/photo-1594631252845-29fc4cc8cfa9?w=400&q=80', isVeg: true, discount: '9% OFF' }
-    ];
-  } else if (categoryName.includes('Sweet') || categoryName.includes('Dessert') || categoryName.includes('Indulgences')) {
-    items = [
-      { id: 'sweet-1', name: 'Cadbury Dairy Milk Silk Chocolate Bar', price: 100, originalPrice: 100, weight: '150 g', image: 'https://images.unsplash.com/photo-1549007994-cb92ca813bec?w=400&q=80', isVeg: true },
-      { id: 'sweet-2', name: 'Amul Dark Chocolate Fruit & Nut', price: 125, originalPrice: 140, weight: '150 g', image: 'https://images.unsplash.com/photo-1511381939415-e44015463834?w=400&q=80', isVeg: true, discount: '10% OFF' },
-      { id: 'sweet-3', name: 'Ferrero Rocher Hazelnut Pralines', price: 150, originalPrice: 180, weight: '4 pcs', image: 'https://images.unsplash.com/photo-1548907040-4d42b52125ea?w=400&q=80', isVeg: true, discount: '16% OFF' }
-    ];
-  } else if (categoryName.includes('Gourmet')) {
-    items = [
-      { id: 'gour-1', name: 'Barilla Penne Rigate Durum Semolina', price: 190, originalPrice: 220, weight: '500 g', image: 'https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=400&q=80', isVeg: true, discount: '13% OFF' },
-      { id: 'gour-2', name: 'Epigamia Blueberries Greek Yogurt', price: 50, originalPrice: 50, weight: '90 g', image: 'https://images.unsplash.com/photo-1488477181946-6428a0291777?w=400&q=80', isVeg: true },
-      { id: 'gour-3', name: 'Borges Extra Virgin Olive Oil bottle', price: 380, originalPrice: 420, weight: '250 ml', image: 'https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=400&q=80', isVeg: true, discount: '9% OFF' }
-    ];
-  } else if (categoryName.includes('Hygiene') || categoryName.includes('Health')) {
-    items = [
-      { id: 'hyg-1', name: 'Dettol Liquid Handwash Refill Pouch', price: 99, originalPrice: 110, weight: '175 ml', image: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400&q=80', isVeg: true, discount: '10% OFF' },
-      { id: 'hyg-2', name: 'Savlon Antiseptic Disinfectant Liquid', price: 45, originalPrice: 50, weight: '100 ml', image: 'https://images.unsplash.com/photo-1584017911766-d451b3d0e843?w=400&q=80', isVeg: true, discount: '10% OFF' },
-      { id: 'hyg-3', name: 'Lifebuoy Total Germ Protection Soap', price: 32, originalPrice: 35, weight: '125 g', image: 'https://images.unsplash.com/photo-1607006342411-9a3363b63b2f?w=400&q=80', isVeg: true, discount: '8% OFF' }
-    ];
-  } else if (categoryName.includes('Detergents') || categoryName.includes('Cleaning')) {
-    items = [
-      { id: 'clean-1', name: 'Surf Excel Easy Wash Detergent Powder', price: 140, originalPrice: 160, weight: '1 kg', image: 'https://images.unsplash.com/photo-1582735689369-4fe89db7114c?w=400&q=80', isVeg: true, discount: '12% OFF' },
-      { id: 'clean-2', name: 'Vim Dishwash Gel Lemon Squeeze', price: 55, originalPrice: 60, weight: '250 ml', image: 'https://images.unsplash.com/photo-1607619056574-7b8d3ee536b2?w=400&q=80', isVeg: true, discount: '8% OFF' },
-      { id: 'clean-3', name: 'Harpic Disinfectant Toilet Cleaner Gel', price: 95, originalPrice: 105, weight: '500 ml', image: 'https://images.unsplash.com/photo-1582735689369-4fe89db7114c?w=400&q=80', isVeg: true, discount: '9% OFF' }
-    ];
-  } else if (categoryName.includes('Bath') || categoryName.includes('Body') || categoryName.includes('Hair')) {
-    items = [
-      { id: 'bath-1', name: 'Dove Cream Beauty Bath Soap Bar', price: 65, originalPrice: 75, weight: '100 g', image: 'https://images.unsplash.com/photo-1607006342411-9a3363b63b2f?w=400&q=80', isVeg: true, discount: '13% OFF' },
-      { id: 'bath-2', name: 'Nivea Soft Light Moisturising Cream', price: 110, originalPrice: 125, weight: '100 ml', image: 'https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=400&q=80', isVeg: true, discount: '12% OFF' },
-      { id: 'bath-3', name: 'Head & Shoulders Anti Dandruff Shampoo', price: 175, originalPrice: 195, weight: '180 ml', image: 'https://images.unsplash.com/photo-1535585209827-a15fcdbc4c2d?w=400&q=80', isVeg: true, discount: '10% OFF' }
-    ];
-  } else if (categoryName.includes('Beauty') || categoryName.includes('Skincare')) {
-    items = [
-      { id: 'beau-1', name: 'Lakme Peach Milk Face Soft Cream', price: 160, originalPrice: 180, weight: '120 g', image: 'https://images.unsplash.com/photo-1556229174-5e42a09e45af?w=400&q=80', isVeg: true, discount: '11% OFF' },
-      { id: 'beau-2', name: 'Biotique Morning Nectar Face Wash', price: 140, originalPrice: 165, weight: '150 ml', image: 'https://images.unsplash.com/photo-1596462502278-27bfdc403348?w=400&q=80', isVeg: true, discount: '15% OFF' },
-      { id: 'beau-3', name: 'Vaseline Cocoa Glow Body Lotion', price: 99, originalPrice: 120, weight: '100 ml', image: 'https://images.unsplash.com/photo-1556228720-195a672e8a03?w=400&q=80', isVeg: true, discount: '17% OFF' }
-    ];
-  } else if (categoryName.includes('Seeds') || categoryName.includes('Dry Fruits')) {
-    items = [
-      { id: 'seed-1', name: 'Premium Almonds Badam Value Pack', price: 210, originalPrice: 250, weight: '200 g', image: 'https://images.unsplash.com/photo-1606923829579-0ac9c49fb20a?w=400&q=80', isVeg: true, discount: '16% OFF' },
-      { id: 'seed-2', name: 'Premium Whole Cashews Kaju pouch', price: 240, originalPrice: 280, weight: '200 g', image: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=400&q=80', isVeg: true, discount: '14% OFF' },
-      { id: 'seed-3', name: 'Organic Raw Salvia Chia Seeds', price: 120, originalPrice: 150, weight: '150 g', image: 'https://images.unsplash.com/photo-1593001874117-1f9dbd6f17bb?w=400&q=80', isVeg: true, discount: '20% OFF' }
-    ];
-  } else if (categoryName.includes('Salt') || categoryName.includes('Sugar') || categoryName.includes('Jaggery')) {
-    items = [
-      { id: 'salt-1', name: 'Tata Salt Iodized Table Salt', price: 28, originalPrice: 28, weight: '1 kg', image: 'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=400&q=80', isVeg: true },
-      { id: 'salt-2', name: 'Madhur Sugar Pure Refined Crystals', price: 52, originalPrice: 60, weight: '1 kg', image: 'https://images.unsplash.com/photo-1593113598332-cd288d649433?w=400&q=80', isVeg: true, discount: '13% OFF' },
-      { id: 'salt-3', name: 'Organic Jaggery Powder Bellam', price: 65, originalPrice: 80, weight: '500 g', image: 'https://images.unsplash.com/photo-1610970881699-44a5587caaec?w=400&q=80', isVeg: true, discount: '18% OFF' }
-    ];
-  } else if (categoryName.includes('Organic') || categoryName.includes('Staples')) {
-    items = [
-      { id: 'org-1', name: 'Organic Unpolished Chana Dal Split', price: 85, originalPrice: 99, weight: '500 g', image: 'https://images.unsplash.com/photo-1545114197-2f5a05b38b1f?w=400&q=80', isVeg: true, discount: '14% OFF' },
-      { id: 'org-2', name: 'Organic Cold Pressed Mustard Oil', price: 230, originalPrice: 260, weight: '1 L', image: 'https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=400&q=80', isVeg: true, discount: '11% OFF' },
-      { id: 'org-3', name: 'Organic Whole Wheat Atta Chakki', price: 140, originalPrice: 160, weight: '2 kg', image: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=400&q=80', isVeg: true, discount: '12% OFF' }
-    ];
-  } else if (categoryName.includes('Fruits') || categoryName.includes('Fresh')) {
-    items = [
-      { id: 'fruit-1', name: 'Fresh Royal Gala Apple Selection', price: 180, originalPrice: 220, weight: '4 pcs', image: 'https://images.unsplash.com/photo-1619566636858-adf3ef46400b?w=400&q=80', isVeg: true, discount: '18% OFF' },
-      { id: 'fruit-2', name: 'Fresh Banana Robusta Premium', price: 49, originalPrice: 65, weight: '1 kg', image: 'https://images.unsplash.com/photo-1571771894821-ce9b6c11b08e?w=400&q=80', isVeg: true, discount: '24% OFF' },
-      { id: 'fruit-3', name: 'Fresh Orange Kinnow Juicy', price: 89, originalPrice: 119, weight: '6 pcs', image: 'https://images.unsplash.com/photo-1611080626919-7cf5a9dbab5b?w=400&q=80', isVeg: true, discount: '25% OFF' }
-    ];
-  } else {
-    items = [
-      { id: `${categoryName}-1`, name: `${categoryName} Campus Essentials Pack`, price: 120, originalPrice: 150, weight: '500 g', image: 'https://images.unsplash.com/photo-1604719312566-8912e9227c6a?w=400&q=80', isVeg: true, discount: '20% OFF' },
-      { id: `${categoryName}-2`, name: `${categoryName} Student Value Box`, price: 65, originalPrice: 80, weight: '1 unit', image: 'https://images.unsplash.com/photo-1584568694244-14fbdf83bd30?w=400&q=80', isVeg: true, discount: '18% OFF' },
-      { id: `${categoryName}-3`, name: `${categoryName} Hostel Budget Pack`, price: 45, originalPrice: 50, weight: '250 g', image: 'https://images.unsplash.com/photo-1590779033100-9f60a05a013d?w=400&q=80', isVeg: true }
-    ];
-  }
-  return items;
+// Which catalogue items a tile / pill / brand opens. Anything not listed here matches its own
+// category name (or product names containing it). Tiles with no real products are hidden.
+type Shelf = { categories?: string[]; keywords?: string[]; vendorTypes?: string[]; deals?: boolean };
+const SHELVES: Record<string, Shelf> = {
+  'All Groceries': { vendorTypes: ['GROCERY'] },
+  Fresh: { categories: ['Fresh', 'Fresh Fruits'] },
+  Grocery: { categories: ['Grocery', 'Atta & Flours', 'Dals & Pulses', 'Rice & Grains', 'Edible Oils & Ghee', 'Masalas & Spices', 'Salt, Sugar & Jaggery', 'Daily Essentials'] },
+  Electronics: { vendorTypes: ['ELECTRONICS'] },
+  Organic: { categories: ['Organic'] },
+  Health: { categories: ['Health', 'Monsoon Wellness Picks'] },
+  Deals: { deals: true },
+  Toys: { vendorTypes: ['TOYS'] },
+  Seeds: { vendorTypes: ['SEEDS'] },
+  'Atta & Flours': { categories: ['Atta & Flours'], keywords: ['atta'] },
+  'Dals & Pulses': { categories: ['Dals & Pulses'], keywords: [' dal'] },
+  'Edible Oils & Ghee': { categories: ['Edible Oils & Ghee'], keywords: ['ghee', ' oil'] },
+  'Organic Staples': { categories: ['Organic'] },
+  'Chips & Namkeens': { categories: ['Chips & Namkeens', 'Lays'] },
+  'Drinks & Juices': { categories: ['Drinks & Juices', 'Coca Cola'] },
+  'Tea & Coffee': { categories: ['Tea & Coffee', 'Nescafe'] },
+  'Sweet Indulgences': { categories: ['Sweet Indulgences', 'Cadbury'] },
+  'Health & Hygiene': { categories: ['Health'] },
+  'Detergents & Cleaning': { categories: ['Detergents & Cleaning', 'Surf Excel'] },
+  'Fit & active': { categories: ['Fitness ready'] },
 };
 
-const Confetti = () => {
-  const particles = Array.from({ length: 12 }); // Reduced from 25 for better performance
+const shelfItems = (name: string | null, items: CatalogueItem[]): CatalogueItem[] => {
+  if (!name) return [];
+  const shelf = SHELVES[name] || { categories: [name], keywords: [name] };
+  const cats = (shelf.categories || []).map(c => c.toLowerCase());
+  const keys = (shelf.keywords || []).map(k => k.toLowerCase());
+  const types = shelf.vendorTypes || [];
+  const seen = new Set<string>();
+  const out = items.filter(i => {
+    if (seen.has(i.id)) return false;
+    const lowerName = i.name.toLowerCase();
+    const lowerBrand = (i.brand || '').toLowerCase();
+    const hit = (shelf.deals && (i.discountPercent || 0) >= 10)
+      || (!!i.vendorType && types.includes(i.vendorType))
+      || (!!i.category && cats.includes(i.category.toLowerCase()))
+      || keys.some(k => lowerName.includes(k) || (!!lowerBrand && lowerBrand === k.trim()));
+    if (hit) seen.add(i.id);
+    return !!hit;
+  });
+  return shelf.deals ? out.sort((a, b) => (b.discountPercent || 0) - (a.discountPercent || 0)) : out;
+};
+
+// Rotating search hint lives in its own component so the whole screen does not re-render every 2.5 s.
+const RotatingSearchPlaceholder = memo(({ color, textColor, style }: { color: string; textColor: string; style: any }) => {
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    const iv = setInterval(() => setIdx(i => (i + 1) % SEARCH_PLACEHOLDERS.length), 2500);
+    return () => clearInterval(iv);
+  }, []);
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      {particles.map((_, i) => {
-        const randomLeft = Math.random() * SW;
-        const randomSize = Math.random() * 8 + 6;
-        const colors = ['#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#EC4899', '#A855F7'];
-        const randomColor = colors[Math.floor(Math.random() * colors.length)];
-        
-        const yAnim = useRef(new Animated.Value(-20)).current;
-        const rotAnim = useRef(new Animated.Value(0)).current;
+    <TextInput
+      style={[style, { color: textColor }]}
+      placeholder={SEARCH_PLACEHOLDERS[idx]}
+      placeholderTextColor={color}
+      editable={false}
+      pointerEvents="none"
+    />
+  );
+});
 
-        useEffect(() => {
-          Animated.parallel([
-            Animated.timing(yAnim, {
-              toValue: 500,
-              duration: Math.random() * 2000 + 1500,
-              delay: Math.random() * 500,
-              useNativeDriver: true,
-            }),
-            Animated.timing(rotAnim, {
-              toValue: 360,
-              duration: Math.random() * 2000 + 1500,
-              useNativeDriver: true,
-            })
-          ]).start();
-        }, []);
+const CONFETTI_COLORS = ['#EF4444', '#F59E0B', '#10B981', '#3B82F6', '#EC4899', '#A855F7'];
 
-        return (
-          <Animated.View
-            key={i}
-            style={{
-              position: 'absolute',
-              left: randomLeft,
-              width: randomSize,
-              height: randomSize,
-              backgroundColor: randomColor,
-              borderRadius: randomSize / 2,
-              transform: [
-                { translateY: yAnim },
-                { rotate: rotAnim.interpolate({ inputRange: [0, 360], outputRange: ['0deg', '360deg'] }) }
-              ]
-            }}
-          />
-        );
-      })}
-    </View>
+// Each piece picks its random look once, so parent re-renders never make the confetti jump.
+const ConfettiPiece = () => {
+  const cfg = useRef({
+    left: Math.random() * SW,
+    size: Math.random() * 8 + 6,
+    color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
+    fall: Math.random() * 2000 + 1500,
+    spin: Math.random() * 2000 + 1500,
+    delay: Math.random() * 500,
+  }).current;
+  const yAnim = useRef(new Animated.Value(-20)).current;
+  const rotAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const anim = Animated.parallel([
+      Animated.timing(yAnim, { toValue: 500, duration: cfg.fall, delay: cfg.delay, useNativeDriver: true }),
+      Animated.timing(rotAnim, { toValue: 360, duration: cfg.spin, useNativeDriver: true }),
+    ]);
+    anim.start();
+    return () => anim.stop();
+  }, []);
+
+  return (
+    <Animated.View
+      style={{
+        position: 'absolute',
+        left: cfg.left,
+        width: cfg.size,
+        height: cfg.size,
+        backgroundColor: cfg.color,
+        borderRadius: cfg.size / 2,
+        transform: [
+          { translateY: yAnim },
+          { rotate: rotAnim.interpolate({ inputRange: [0, 360], outputRange: ['0deg', '360deg'] }) }
+        ]
+      }}
+    />
   );
 };
 
+const Confetti = memo(() => (
+  <View style={StyleSheet.absoluteFill} pointerEvents="none">
+    {Array.from({ length: 12 }).map((_, i) => <ConfettiPiece key={i} />)}
+  </View>
+));
+
 export default function OthersScreen() {
   const { isDark, toggleTheme, colors } = useTheme();
-  const { user } = useAuth();
+  const { user, setUser } = useAuth();
   const router = useRouter();
   const { tab } = useLocalSearchParams<{ tab: string }>();
   const [activeTab, setActiveTab] = useState('food');
@@ -627,73 +411,181 @@ export default function OthersScreen() {
         setActiveTab('coride');
       } else if (tab === 'services') {
         setActiveTab('services');
-      } else if (tab === 'pg') {
+      } else if (tab === 'pg' || tab === 'stays') {
         setActiveTab('pg');
       } else if (tab === 'promos' || tab === 'offers') {
         setActiveTab('promos');
-      } else if (tab === 'food' || tab === 'basket') {
+      } else if (tab === 'food' || tab === 'basket' || tab === 'afterdark') {
         setActiveTab('food');
       }
     }
   }, [tab]);
 
-  const { cart, addToCart, updateQuantity } = useCart();
-  const [showPromoPopup, setShowPromoPopup] = useState(false);
-  const promoShownRef = useRef(false);
-  const [activeOilIdx, setActiveOilIdx] = useState(0);
+  // Keep the route param in sync with the chip, so a later Home shortcut (same param) still switches tabs.
+  const selectTab = useCallback((key: string) => {
+    setActiveTab(key);
+    try { router.setParams({ tab: key }); } catch {}
+  }, [router]);
+
+  const myId = String(user?._id || user?.id || '');
+  const isMountedRef = useRef(true);
+  useEffect(() => () => { isMountedRef.current = false; }, []);
+
+  const { cart, addToCart, updateQuantity, clearCart } = useCart();
   const [activeCategoryPill, setActiveCategoryPill] = useState('All');
   const [selectedCategoryName, setSelectedCategoryName] = useState<string | null>(null);
 
-  const [isAdPlaying, setIsAdPlaying] = useState(true);
-  const adAnimRotate = useRef(new Animated.Value(0)).current;
+  // ── Store catalogue (real products & prices from the server) ──
+  const [catalogue, setCatalogue] = useState<CatalogueItem[]>([]);
+  const [catalogueStatus, setCatalogueStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [serviceFromPrice, setServiceFromPrice] = useState<Record<string, number>>({});
 
-  // ── NEW SPIN WHEEL & OFFERS STATES & HANDLERS ──
+  const fetchCatalogue = useCallback(async () => {
+    setCatalogueStatus(prev => (prev === 'ready' ? prev : 'loading'));
+    try {
+      // One store type failing (e.g. a slow request) must not blank the whole store.
+      const settled = await Promise.allSettled(SHOP_TYPES.map(async t => {
+        const res = await apiFetch(`${API_URL}/api/catalogue/items?type=${encodeURIComponent(t)}&limit=200`);
+        if (!res.ok) throw new Error(`catalogue ${res.status}`);
+        const data = await readJson(res);
+        return Array.isArray(data?.items) ? data.items : [];
+      }));
+      const ok = settled.filter((r): r is PromiseFulfilledResult<any[]> => r.status === 'fulfilled');
+      if (!ok.length) throw (settled[0] as PromiseRejectedResult)?.reason || new Error('catalogue unavailable');
+      const results = ok.map(r => r.value);
+      const seen = new Set<string>();
+      const items: CatalogueItem[] = [];
+      results.flat().forEach((raw: any) => {
+        const item = toCatalogueItem(raw);
+        if (item && !item.bookingOnly && !seen.has(item.id)) { seen.add(item.id); items.push(item); }
+      });
+      if (!isMountedRef.current) return;
+      setCatalogue(items);
+      setCatalogueStatus('ready');
+    } catch (err) {
+      console.warn('[OTHERS_CATALOGUE]', err);
+      if (isMountedRef.current) setCatalogueStatus(prev => (prev === 'ready' ? prev : 'error'));
+    }
+  }, []);
+
+  // "From ₹X" on the service cards, from the real booking catalogue.
+  const fetchServicePrices = useCallback(async () => {
+    try {
+      const entries = await Promise.all(SERVICE_TYPES.map(async t => {
+        const res = await apiFetch(`${API_URL}/api/catalogue/items?type=${encodeURIComponent(t)}&limit=200`);
+        if (!res.ok) return [t, 0] as const;
+        const data = await readJson(res);
+        const prices = (Array.isArray(data?.items) ? data.items : []).map((i: any) => Number(i.price)).filter((n: number) => Number.isFinite(n) && n > 0);
+        return [t, prices.length ? Math.min(...prices) : 0] as const;
+      }));
+      if (isMountedRef.current) setServiceFromPrice(Object.fromEntries(entries.filter(([, v]) => v > 0)));
+    } catch (err) {
+      console.warn('[OTHERS_SERVICE_PRICES]', err);
+    }
+  }, []);
+
+  const toyShelf = useMemo(() => shelfItems('Toys', catalogue).slice().sort((a, b) => a.price - b.price).slice(0, 8), [catalogue]);
+  const seedShelf = useMemo(() => shelfItems('Seeds', catalogue), [catalogue]);
+  const wellnessShelf = useMemo(() => shelfItems('Monsoon Wellness Picks', catalogue), [catalogue]);
+  const dealShelf = useMemo(() => shelfItems('Deals', catalogue).slice(0, 8), [catalogue]);
+  const topDeal = dealShelf[0] || null;
+  const toyStartPrice = toyShelf.length ? toyShelf[0].price : null;
+  const hasShelf = useCallback((name: string) => catalogueStatus !== 'ready' || shelfItems(name, catalogue).length > 0, [catalogue, catalogueStatus]);
+
+  // One store per order: CartContext shows the Swiggy-style "Replace basket?" prompt.
+  // Mega Basket shopping requests are ordered separately, so they never share a basket with store items.
+  const addProduct = (product: CatalogueItem) => {
+    if (!product.orderable || !product.isAvailable) {
+      Alert.alert(
+        product.isAvailable ? `${product.storeName || 'This store'} is closed` : 'Sold out',
+        product.isAvailable ? 'You can order from here once the store opens again.' : 'This item is out of stock right now. Please check back soon.'
+      );
+      return;
+    }
+    const doAdd = () => {
+      const added = addToCart({
+        id: product.id,
+        name: product.name,
+        price: product.price,
+        image: product.image || PRODUCT_FALLBACK_IMG,
+        restaurantId: product.restaurantId,
+        restaurantName: product.storeName || 'Campus store',
+      });
+      if (added) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    };
+    if (cart.some(i => isCustomRequest(i))) {
+      Alert.alert(
+        'Start a new basket?',
+        'Your basket has a shopping request, which is ordered separately. Clear it and add this item?',
+        [
+          { text: 'Keep basket', style: 'cancel' },
+          { text: 'Clear & add', style: 'destructive', onPress: () => { clearCart(); doAdd(); } },
+        ]
+      );
+      return;
+    }
+    doAdd();
+  };
+
+  const openProduct = (product: CatalogueItem) => {
+    router.push(`/products/${product.id}` as any);
+  };
+
+  // ── SPIN WHEEL & COUPONS (server-driven) ──
   const spinAnim = useRef(new Animated.Value(0)).current;
   const [currentRotation, setCurrentRotation] = useState(0);
   const [isSpinning, setIsSpinning] = useState(false);
-  const [wheelResult, setWheelResult] = useState<any | null>(null);
+  const [wheelResult, setWheelResult] = useState<{ display: string; type: string; coupon: { code: string; expiryDate?: string } | null } | null>(null);
   const [showWheelModal, setShowWheelModal] = useState(false);
-  const [spinsLeft, setSpinsLeft] = useState(1);
-
-  const scratchOpacity1 = useRef(new Animated.Value(1)).current;
-  const scratchOpacity2 = useRef(new Animated.Value(1)).current;
-  const scratchOpacity3 = useRef(new Animated.Value(1)).current;
-  
-  const [scratchCardsState, setScratchCardsState] = useState([
-    { id: 1, title: 'Campus Special 🎁', reward: '₹49 Dry Wash!', code: 'LAUNDRY49', scratched: false, anim: scratchOpacity1 },
-    { id: 2, title: 'Midnight Snack 🎁', reward: 'Free Lemon Juice!', code: 'FREEDRINK', scratched: false, anim: scratchOpacity2 },
-    { id: 3, title: 'PG Discount 🏠', reward: '₹100 Off Deposit!', code: 'PGESCAPE', scratched: false, anim: scratchOpacity3 }
-  ]);
-
-  const [isAdWatching, setIsAdWatching] = useState(false);
-  const [adProgress, setAdProgress] = useState(0);
-  const [adCompleted, setAdCompleted] = useState(false);
-  const [adWatchingTimeLeft, setAdWatchingTimeLeft] = useState(8);
+  const [spinsLeft, setSpinsLeft] = useState(0);
+  const [spinPrizes, setSpinPrizes] = useState<Array<{ label: string; display?: string; type?: string }>>([]);
+  const [spinNextIn, setSpinNextIn] = useState<number | null>(null);
+  const [rewardsStatus, setRewardsStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [coupons, setCoupons] = useState<any[]>([]);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const spinLockRef = useRef(false);
+
+  const fetchRewards = useCallback(async () => {
+    if (!myId) { setRewardsStatus('ready'); setSpinsLeft(0); setCoupons([]); return; }
+    setRewardsStatus(prev => (prev === 'ready' ? prev : 'loading'));
+    try {
+      const [eligRes, couponRes] = await Promise.all([
+        apiFetch(`${API_URL}/api/rewards/spin-eligibility`),
+        apiFetch(`${API_URL}/api/rewards/coupons`),
+      ]);
+      const elig = await readJson(eligRes);
+      const couponData = await readJson(couponRes);
+      if (!isMountedRef.current) return;
+      if (!eligRes.ok && !couponRes.ok) throw new Error('rewards unavailable');
+      if (eligRes.ok && elig) {
+        setSpinsLeft(Math.max(0, Number(elig.spinsAvailable) || 0));
+        setSpinNextIn(Number.isFinite(Number(elig.nextMilestoneIn)) ? Number(elig.nextMilestoneIn) : null);
+        if (Array.isArray(elig.prizes)) setSpinPrizes(elig.prizes);
+      }
+      if (couponRes.ok) setCoupons(Array.isArray(couponData) ? couponData : []);
+      setRewardsStatus('ready');
+    } catch (err) {
+      console.warn('[OTHERS_REWARDS]', err);
+      if (isMountedRef.current) setRewardsStatus(prev => (prev === 'ready' ? prev : 'error'));
+    }
+  }, [myId]);
 
   // -- MICRO ANIMATIONS + STAGGERED ENTRANCE SYSTEM --
   const spinBtnScale = useRef(new Animated.Value(1)).current;
-  const adPulseScale = useRef(new Animated.Value(1)).current;
   const coinFloatAnim = useRef(new Animated.Value(0)).current;
-  const shimmerAnim = useRef(new Animated.Value(0.6)).current;
   const btnScaleAnim = useRef(new Animated.Value(1)).current;
   const [popBtnCode, setPopBtnCode] = useState<string | null>(null);
 
-  // Staggered entrance values (5 major sections)
+  // Staggered entrance values (hero, wheel, coupons)
   const heroEnterO = useRef(new Animated.Value(0)).current;
   const heroEnterY = useRef(new Animated.Value(40)).current;
   const wheelEnterO = useRef(new Animated.Value(0)).current;
   const wheelEnterY = useRef(new Animated.Value(50)).current;
   const wheelScaleIn = useRef(new Animated.Value(0.7)).current;
-  const scratchEnterO = useRef(new Animated.Value(0)).current;
-  const scratchEnterY = useRef(new Animated.Value(40)).current;
-  const adEnterO = useRef(new Animated.Value(0)).current;
-  const adEnterY = useRef(new Animated.Value(40)).current;
   const couponsEnterO = useRef(new Animated.Value(0)).current;
   const couponsEnterY = useRef(new Animated.Value(40)).current;
 
   // Wheel ambient effects
-  const rimGlowPulse = useRef(new Animated.Value(0.25)).current;
   const pointerBounce = useRef(new Animated.Value(0)).current;
 
   // Individual coupon card stagger
@@ -715,10 +607,10 @@ export default function OthersScreen() {
   // Fire staggered entrance when promos tab is selected
   useEffect(() => {
     if (activeTab === 'promos') {
-      [heroEnterO, wheelEnterO, scratchEnterO, adEnterO, couponsEnterO,
+      [heroEnterO, wheelEnterO, couponsEnterO,
        coupon0O, coupon1O, coupon2O, coupon3O].forEach(a => a.setValue(0));
       heroEnterY.setValue(40); wheelEnterY.setValue(50);
-      scratchEnterY.setValue(40); adEnterY.setValue(40); couponsEnterY.setValue(40);
+      couponsEnterY.setValue(40);
       [coupon0Y, coupon1Y, coupon2Y, coupon3Y].forEach(a => a.setValue(30));
       wheelScaleIn.setValue(0.7);
 
@@ -737,12 +629,10 @@ export default function OthersScreen() {
         enter(wheelEnterO, wheelEnterY, 250, [
           Animated.spring(wheelScaleIn, { toValue: 1, friction: 6, tension: 35, useNativeDriver: true }),
         ]),
-        enter(scratchEnterO, scratchEnterY, 450),
-        enter(adEnterO, adEnterY, 600),
-        enter(couponsEnterO, couponsEnterY, 750),
+        enter(couponsEnterO, couponsEnterY, 450),
         ...couponAnims.map((ca, i) =>
           Animated.sequence([
-            Animated.delay(850 + i * 100),
+            Animated.delay(550 + i * 100),
             Animated.parallel([
               Animated.spring(ca.o, { toValue: 1, friction: 8, tension: 40, useNativeDriver: true }),
               Animated.spring(ca.y, { toValue: 0, friction: 7, tension: 50, useNativeDriver: true }),
@@ -762,20 +652,8 @@ export default function OthersScreen() {
         Animated.timing(spinBtnScale, { toValue: 1.0, duration: 800, useNativeDriver: true }),
       ])),
       Animated.loop(Animated.sequence([
-        Animated.timing(adPulseScale, { toValue: 1.06, duration: 900, useNativeDriver: true }),
-        Animated.timing(adPulseScale, { toValue: 1.0, duration: 900, useNativeDriver: true }),
-      ])),
-      Animated.loop(Animated.sequence([
         Animated.timing(coinFloatAnim, { toValue: -4, duration: 1200, useNativeDriver: true }),
         Animated.timing(coinFloatAnim, { toValue: 0, duration: 1200, useNativeDriver: true }),
-      ])),
-      Animated.loop(Animated.sequence([
-        Animated.timing(shimmerAnim, { toValue: 1.0, duration: 700, useNativeDriver: true }),
-        Animated.timing(shimmerAnim, { toValue: 0.6, duration: 700, useNativeDriver: true }),
-      ])),
-      Animated.loop(Animated.sequence([
-        Animated.timing(rimGlowPulse, { toValue: 0.6, duration: 1500, useNativeDriver: true }),
-        Animated.timing(rimGlowPulse, { toValue: 0.25, duration: 1500, useNativeDriver: true }),
       ])),
       Animated.loop(Animated.sequence([
         Animated.timing(pointerBounce, { toValue: 6, duration: 500, useNativeDriver: true }),
@@ -787,6 +665,9 @@ export default function OthersScreen() {
   }, [activeTab]);
 
   const handleCopyCode = (code: string) => {
+    try {
+      Clipboard.setString(code);
+    } catch {}
     setCopiedCode(code);
     setPopBtnCode(code);
     btnScaleAnim.setValue(0.82);
@@ -798,15 +679,55 @@ export default function OthersScreen() {
     }).start();
   };
 
-  const handleSpin = () => {
-    if (isSpinning || spinsLeft <= 0) return;
-
+  // The server picks the prize; the wheel only animates to the slice it returned.
+  const handleSpin = async () => {
+    if (isSpinning || spinLockRef.current) return;
+    if (!myId) {
+      Alert.alert('Log in to spin', 'Spins are earned with delivered orders. Log in to see yours.', [
+        { text: 'Not now', style: 'cancel' },
+        { text: 'Log in', onPress: () => router.push('/login' as any) },
+      ]);
+      return;
+    }
+    if (spinsLeft <= 0) {
+      Alert.alert('No spins yet', spinNextIn
+        ? `Every 2 delivered orders earn a spin. ${spinNextIn} more order${spinNextIn === 1 ? '' : 's'} to go!`
+        : 'Every 2 delivered orders earn you a spin.');
+      return;
+    }
+    spinLockRef.current = true;
     setIsSpinning(true);
-    const winnerIdx = Math.floor(Math.random() * WHEEL_SECTORS.length);
-    const sectorAngle = 360 / WHEEL_SECTORS.length;
-    const targetSectorAngle = 360 - (winnerIdx * sectorAngle);
-    const additionalSpin = 1800; // 5 spins
-    const targetRotation = currentRotation + additionalSpin + targetSectorAngle;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    let data: any = null;
+    try {
+      const res = await apiFetch(`${API_URL}/api/rewards/use-spin`, { method: 'POST', body: JSON.stringify({}) });
+      data = await readJson(res);
+      if (!res.ok || !data || !Number.isInteger(data.prizeIndex)) {
+        if (isMountedRef.current) {
+          setIsSpinning(false);
+          if (Number.isFinite(Number(data?.spinsAvailable))) setSpinsLeft(Number(data.spinsAvailable));
+          Alert.alert('Could not spin', data?.message || (res.status >= 500 ? SERVER_BUSY_MESSAGE : 'Please try again in a moment.'));
+          if (res.status === 400) fetchRewards();
+        }
+        spinLockRef.current = false;
+        return;
+      }
+    } catch {
+      if (isMountedRef.current) {
+        setIsSpinning(false);
+        Alert.alert('Could not spin', NETWORK_ERROR_MESSAGE);
+      }
+      spinLockRef.current = false;
+      return;
+    }
+
+    const sectorCount = Math.max(1, spinPrizes.length || WHEEL_STYLES.length);
+    const sectorAngle = 360 / sectorCount;
+    const winnerIdx = ((data.prizeIndex % sectorCount) + sectorCount) % sectorCount;
+    // Normalise to the wheel's current absolute angle so every spin lands on the announced slice.
+    const norm = ((currentRotation % 360) + 360) % 360;
+    const targetAngle = (360 - winnerIdx * sectorAngle) % 360;
+    const targetRotation = currentRotation - norm + 1800 + targetAngle;
 
     Animated.timing(spinAnim, {
       toValue: targetRotation,
@@ -814,108 +735,25 @@ export default function OthersScreen() {
       useNativeDriver: true,
       easing: (t) => 1 - Math.pow(1 - t, 3),
     }).start(() => {
+      spinLockRef.current = false;
+      if (!isMountedRef.current) return;
       setIsSpinning(false);
       setCurrentRotation(targetRotation);
-      setSpinsLeft(prev => prev - 1);
-      
-      const winner = WHEEL_SECTORS[winnerIdx];
-      setWheelResult(winner.label.includes('Try Again') ? null : winner);
+      setSpinsLeft(Math.max(0, Number(data.spinsAvailable) || 0));
+      if (Number.isFinite(Number(data.zenPoints))) setUser({ zenPoints: Number(data.zenPoints) } as any);
+      setWheelResult({
+        display: data.prize?.display || data.message || 'You won a reward!',
+        type: data.prize?.type || 'points',
+        coupon: data.coupon || null,
+      });
       setShowWheelModal(true);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      fetchRewards();
     });
   };
 
-  const handleScratch = (cardId: number, animValue: Animated.Value) => {
-    if (cardId === 3 && !adCompleted) {
-      Alert.alert('Card Locked 🔒', 'Please watch the sponsored video ad below to unlock the premium PG Discount scratch card!');
-      return;
-    }
-    setScratchCardsState(prev => prev.map(c => {
-      if (c.id === cardId) {
-        if (c.scratched) return c;
-        Animated.timing(animValue, {
-          toValue: 0,
-          duration: 350,
-          useNativeDriver: true
-        }).start(() => {
-          setScratchCardsState(current => current.map(item => {
-            if (item.id === cardId) {
-              return { ...item, scratched: true };
-            }
-            return item;
-          }));
-        });
-      }
-      return c;
-    }));
-  };
-
-  useEffect(() => {
-    let adInterval: ReturnType<typeof setInterval> | null = null;
-    if (isAdWatching) {
-      adInterval = setInterval(() => {
-        setAdProgress(prev => {
-          if (prev >= 100) {
-            clearInterval(adInterval!);
-            setIsAdWatching(false);
-            setAdCompleted(true);
-            setAdWatchingTimeLeft(0);
-            Alert.alert('Reward Claimed! 🎁', 'You earned +30 Zenvy Coins & Free Delivery Coupon code: ADBONUS.');
-            return 100;
-          }
-          const nextProg = prev + (100 / 8);
-          setAdWatchingTimeLeft(Math.max(0, Math.ceil(8 - (nextProg / 12.5))));
-          return nextProg;
-        });
-      }, 1000);
-    }
-    return () => {
-      if (adInterval) clearInterval(adInterval);
-    };
-  }, [isAdWatching]);
-
-
-
-  // Countdown timer moved to FlashDealTimer component to prevent whole-screen re-renders
-
-  useEffect(() => {
-    let animLoop: Animated.CompositeAnimation | null = null;
-    if (isAdPlaying) {
-      adAnimRotate.setValue(0);
-      animLoop = Animated.loop(
-        Animated.timing(adAnimRotate, {
-          toValue: 1,
-          duration: 6000,
-          useNativeDriver: true,
-        })
-      );
-      animLoop.start();
-    }
-    return () => {
-      if (animLoop) {
-        animLoop.stop();
-      }
-    };
-  }, [isAdPlaying]);
-
   const tabContentFade = useRef(new Animated.Value(0)).current;
   const tabContentTranslateY = useRef(new Animated.Value(20)).current;
-
-  // 3D cooking oil animated values
-  const oilScale0 = useRef(new Animated.Value(1.05)).current;
-  const oilScale1 = useRef(new Animated.Value(0.88)).current;
-  const oilScale2 = useRef(new Animated.Value(0.88)).current;
-
-  const oilTrans0 = useRef(new Animated.Value(0)).current;
-  const oilTrans1 = useRef(new Animated.Value(SW * 0.16)).current;
-  const oilTrans2 = useRef(new Animated.Value(-SW * 0.16)).current;
-
-  const oilRot0 = useRef(new Animated.Value(0)).current;
-  const oilRot1 = useRef(new Animated.Value(8)).current;
-  const oilRot2 = useRef(new Animated.Value(-8)).current;
-
-  const oilOpacity0 = useRef(new Animated.Value(1)).current;
-  const oilOpacity1 = useRef(new Animated.Value(0.8)).current;
-  const oilOpacity2 = useRef(new Animated.Value(0.8)).current;
 
   // Backdrop & Sheet Animations
   const catalogBackdropAnim = useRef(new Animated.Value(0)).current;
@@ -928,59 +766,10 @@ export default function OthersScreen() {
     tabContentFade.setValue(0);
     tabContentTranslateY.setValue(20);
     Animated.parallel([
-      Animated.timing(tabContentFade, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.spring(tabContentTranslateY, {
-        toValue: 0,
-        friction: 8,
-        tension: 45,
-        useNativeDriver: true,
-      })
+      Animated.timing(tabContentFade, { toValue: 1, duration: 300, useNativeDriver: true }),
+      Animated.spring(tabContentTranslateY, { toValue: 0, friction: 8, tension: 45, useNativeDriver: true }),
     ]).start();
   }, [activeTab]);
-
-  // 3D Oils stack animation trigger
-  useEffect(() => {
-    const anims = [
-      { scale: oilScale0, trans: oilTrans0, rot: oilRot0, opacity: oilOpacity0 },
-      { scale: oilScale1, trans: oilTrans1, rot: oilRot1, opacity: oilOpacity1 },
-      { scale: oilScale2, trans: oilTrans2, rot: oilRot2, opacity: oilOpacity2 },
-    ];
-
-    anims.forEach((anim, idx) => {
-      let targetScale = 0.88;
-      let targetTrans = 0;
-      let targetRot = 0;
-      let targetOpacity = 0.8;
-
-      if (idx === activeOilIdx) {
-        targetScale = 1.05;
-        targetTrans = 0;
-        targetRot = 0;
-        targetOpacity = 1;
-      } else if (idx === (activeOilIdx - 1 + 3) % 3) {
-        targetScale = 0.88;
-        targetTrans = -SW * 0.16;
-        targetRot = -8;
-        targetOpacity = 0.8;
-      } else {
-        targetScale = 0.88;
-        targetTrans = SW * 0.16;
-        targetRot = 8;
-        targetOpacity = 0.8;
-      }
-
-      Animated.parallel([
-        Animated.spring(anim.scale, { toValue: targetScale, useNativeDriver: true, friction: 8, tension: 40 }),
-        Animated.spring(anim.trans, { toValue: targetTrans, useNativeDriver: true, friction: 8, tension: 40 }),
-        Animated.spring(anim.rot, { toValue: targetRot, useNativeDriver: true, friction: 8, tension: 40 }),
-        Animated.spring(anim.opacity, { toValue: targetOpacity, useNativeDriver: true, friction: 8, tension: 40 }),
-      ]).start();
-    });
-  }, [activeOilIdx]);
 
   // Bottom Sheet animation trigger
   useEffect(() => {
@@ -988,69 +777,54 @@ export default function OthersScreen() {
       catalogBackdropAnim.setValue(0);
       catalogSheetAnim.setValue(600);
       Animated.parallel([
-        Animated.timing(catalogBackdropAnim, {
-          toValue: 0.65,
-          duration: 250,
-          useNativeDriver: true,
-        }),
-        Animated.spring(catalogSheetAnim, {
-          toValue: 0,
-          friction: 8,
-          tension: 40,
-          useNativeDriver: true,
-        })
+        Animated.timing(catalogBackdropAnim, { toValue: 0.65, duration: 250, useNativeDriver: true }),
+        Animated.spring(catalogSheetAnim, { toValue: 0, friction: 8, tension: 40, useNativeDriver: true }),
       ]).start();
     }
   }, [selectedCategoryName]);
 
   const closeCatalogSheet = () => {
     Animated.parallel([
-      Animated.timing(catalogBackdropAnim, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.timing(catalogSheetAnim, {
-        toValue: 600,
-        duration: 200,
-        useNativeDriver: true,
-      })
+      Animated.timing(catalogBackdropAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
+      Animated.timing(catalogSheetAnim, { toValue: 600, duration: 200, useNativeDriver: true }),
     ]).start(() => {
-      setSelectedCategoryName(null);
+      if (isMountedRef.current) setSelectedCategoryName(null);
     });
   };
 
-  const hasGroceryItems = cart.some(item => item.restaurantId === 'mega-basket-vendor');
-  const cartSubtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-  const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+  // Android back closes the product sheet first instead of leaving the tab.
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (selectedCategoryName !== null) {
+          closeCatalogSheet();
+          return true;
+        }
+        return false;
+      });
+      return () => sub.remove();
+    }, [selectedCategoryName])
+  );
+
+  // Basket bar: only the lines from this screen's stores (plus Mega Basket shopping requests).
+  const catalogueStoreIds = useMemo(() => new Set(catalogue.map(i => i.restaurantId)), [catalogue]);
+  const shopLines = cart.filter(i => catalogueStoreIds.has(String(i.restaurantId)) || isCustomRequest(i));
+  const hasShopItems = shopLines.length > 0;
+  const shopSubtotal = shopLines.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  const shopCount = shopLines.reduce((sum, item) => sum + item.quantity, 0);
+  const shopStoreName = shopLines.find(i => !isCustomRequest(i))?.restaurantName || 'Mega Basket';
 
   // Floating Cart Bar animation trigger
   useEffect(() => {
-    if (hasGroceryItems && activeTab === 'food') {
-      Animated.spring(cartBarAnim, {
-        toValue: 0,
-        friction: 8,
-        tension: 40,
-        useNativeDriver: true,
-      }).start();
+    if (hasShopItems && activeTab === 'food') {
+      Animated.spring(cartBarAnim, { toValue: 0, friction: 8, tension: 40, useNativeDriver: true }).start();
     } else {
-      Animated.timing(cartBarAnim, {
-        toValue: 100,
-        duration: 200,
-        useNativeDriver: true,
-      }).start();
+      Animated.timing(cartBarAnim, { toValue: 100, duration: 200, useNativeDriver: true }).start();
     }
-  }, [hasGroceryItems, activeTab, cartCount]);
+  }, [hasShopItems, activeTab, shopCount]);
 
-  useEffect(() => {
-    if (tab === 'pg' || tab === 'coride' || tab === 'food' || tab === 'promos') {
-      setActiveTab(tab);
-    }
-  }, [tab]);
-
-  const [promoIdx, setPromoIdx] = useState(0);
-  const [searchPH, setSearchPH] = useState(SEARCH_PLACEHOLDERS[0]);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Global search text
   const [searchQuery, setSearchQuery] = useState('');
@@ -1058,6 +832,7 @@ export default function OthersScreen() {
   // ── PG States ──
   const [pgs, setPgs] = useState<any[]>([]);
   const [loadingPgs, setLoadingPgs] = useState(false);
+  const [pgError, setPgError] = useState<string | null>(null);
   const [genderFilter, setGenderFilter] = useState('All'); // 'All', 'Boys', 'Girls', 'Co-ed'
   const [budgetFilter, setBudgetFilter] = useState('All'); // 'All', '5000', '8000', '10000', '15000'
   const [distanceFilter, setDistanceFilter] = useState('All'); // 'All', '1', '3', '5', '10'
@@ -1068,10 +843,13 @@ export default function OthersScreen() {
   const [myRides, setMyRides] = useState<any[]>([]);
   const [loadingRides, setLoadingRides] = useState(false);
   const [loadingMyRides, setLoadingMyRides] = useState(false);
-  
+  const [rideError, setRideError] = useState<string | null>(null);
+  const [myRidesError, setMyRidesError] = useState<string | null>(null);
+  const [rideActionBusy, setRideActionBusy] = useState<string | null>(null);
+  const rideBusyRef = useRef(false);
+
   // Co-Ride Filter States
   const [vehicleFilter, setVehicleFilter] = useState<'All' | 'Bike' | 'Car' | 'Auto'>('All');
-  const [vibeFilter, setVibeFilter] = useState<'Any' | 'Silent Ride 🤫' | 'Chatty 💬' | 'Music Lover 🎵'>('Any');
 
   // Co-Ride Create Modal State
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -1079,25 +857,61 @@ export default function OthersScreen() {
   const [origin, setOrigin] = useState('');
   const [destination, setDestination] = useState('');
   const [departureTime, setDepartureTime] = useState('');
+  const [departureDate, setDepartureDate] = useState<Date | null>(null);
   const [vehicleType, setVehicleType] = useState('Bike');
   const [availableSeats, setAvailableSeats] = useState('1');
-  const [rideVibe, setRideVibe] = useState('Any');
   const [estimatedFuelCost, setEstimatedFuelCost] = useState('0');
   const [notes, setNotes] = useState('');
-  const [autoApprove, setAutoApprove] = useState(true);
+  const [rideVibe, setRideVibe] = useState('Any');
+  const [autoApprove, setAutoApprove] = useState(false);
   const [submittingRide, setSubmittingRide] = useState(false);
 
-  // Auto-rotate Promos
-  useEffect(() => {
-    const iv = setInterval(() => setPromoIdx(p => (p + 1) % PROMOS.length), 3000);
-    return () => clearInterval(iv);
-  }, []);
+  // Ordering hours (real: GET /api/orders/serviceability)
+  const [serviceability, setServiceability] = useState<{ open: boolean; reopensAt?: string } | null>(null);
 
-  // Auto-rotate Search Placeholder
-  useEffect(() => {
-    let i = 0;
-    const iv = setInterval(() => { i = (i + 1) % SEARCH_PLACEHOLDERS.length; setSearchPH(SEARCH_PLACEHOLDERS[i]); }, 2500);
-    return () => clearInterval(iv);
+  // 5xx bodies can carry raw server/database errors: never show those to a student.
+  const friendlyError = (res: Response | null, data: any, fallback: string): string => {
+    if (res && res.status >= 500) return SERVER_BUSY_MESSAGE;
+    const msg = data && typeof data.message === 'string' ? data.message.trim() : '';
+    if (!msg || msg === 'Unauthorized') return fallback;
+    if (/gender preferences mismatch/i.test(msg)) return 'This ride is set to same-gender riders only, so you cannot join it.';
+    return msg;
+  };
+
+  const fmtClock = (hhmm?: string) => {
+    const m = String(hhmm || '').match(/^(\d{1,2}):(\d{2})/);
+    if (!m) return '';
+    const h = parseInt(m[1], 10);
+    return `${h % 12 === 0 ? 12 : h % 12}:${m[2]} ${h < 12 ? 'AM' : 'PM'}`;
+  };
+
+  const fmtWhen = (iso: any) => {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '—';
+    return `${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}, ${d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}`;
+  };
+
+  const promptLogin = (title: string, message: string) => {
+    Alert.alert(title, message, [
+      { text: 'Not now', style: 'cancel' },
+      { text: 'Log in', onPress: () => router.push('/login' as any) },
+    ]);
+  };
+
+  const openExternal = (url: string, name: string) => {
+    Linking.openURL(url).catch(() => Alert.alert(`Couldn't open ${name}`, 'Please try again, or open the app directly.'));
+  };
+
+  const fetchServiceability = useCallback(async () => {
+    try {
+      const res = await apiFetch(`${API_URL}/api/orders/serviceability`);
+      const data = await readJson(res);
+      if (res.ok && data && typeof data.open === 'boolean' && isMountedRef.current) {
+        setServiceability({ open: data.open, reopensAt: data.reopensAt });
+      }
+    } catch {
+      // The badge simply stays hidden when we cannot tell.
+    }
   }, []);
 
   // Load PG lists
@@ -1105,14 +919,18 @@ export default function OthersScreen() {
     setLoadingPgs(true);
     try {
       const res = await apiFetch(ENDPOINTS.pgList);
+      const data = await readJson(res);
+      if (!isMountedRef.current) return;
       if (res.ok) {
-        const data = await res.json();
-        setPgs(data);
+        setPgs(Array.isArray(data) ? data : []);
+        setPgError(null);
+      } else {
+        setPgError(friendlyError(res, data, 'We could not load PG stays right now.'));
       }
-    } catch (err) {
-      console.error(err);
+    } catch {
+      if (isMountedRef.current) setPgError(NETWORK_ERROR_MESSAGE);
     } finally {
-      setLoadingPgs(false);
+      if (isMountedRef.current) setLoadingPgs(false);
     }
   }, []);
 
@@ -1121,14 +939,18 @@ export default function OthersScreen() {
     setLoadingRides(true);
     try {
       const res = await apiFetch(ENDPOINTS.bikepoolPosts);
+      const data = await readJson(res);
+      if (!isMountedRef.current) return;
       if (res.ok) {
-        const data = await res.json();
-        setRides(data);
+        setRides(Array.isArray(data) ? data : []);
+        setRideError(null);
+      } else {
+        setRideError(friendlyError(res, data, 'We could not load rides right now.'));
       }
-    } catch (err) {
-      console.error(err);
+    } catch {
+      if (isMountedRef.current) setRideError(NETWORK_ERROR_MESSAGE);
     } finally {
-      setLoadingRides(false);
+      if (isMountedRef.current) setLoadingRides(false);
     }
   }, []);
 
@@ -1137,159 +959,180 @@ export default function OthersScreen() {
     setLoadingMyRides(true);
     try {
       const res = await apiFetch(ENDPOINTS.bikepoolMyRides);
+      const data = await readJson(res);
+      if (!isMountedRef.current) return;
       if (res.ok) {
-        const data = await res.json();
-        setMyRides(data);
+        setMyRides(Array.isArray(data) ? data : []);
+        setMyRidesError(null);
+      } else {
+        setMyRidesError(friendlyError(res, data, 'We could not load your rides right now.'));
       }
-    } catch (err) {
-      console.error(err);
+    } catch {
+      if (isMountedRef.current) setMyRidesError(NETWORK_ERROR_MESSAGE);
     } finally {
-      setLoadingMyRides(false);
+      if (isMountedRef.current) setLoadingMyRides(false);
     }
   }, []);
 
-  // Fetch when tab switches
-  useEffect(() => {
-    if (activeTab === 'pg') {
-      fetchPGs();
-    } else if (activeTab === 'coride') {
-      fetchRides();
-      fetchMyRides();
+  // Load whatever the visible tab needs (on focus, on tab change and on pull-to-refresh).
+  const loadActiveTab = useCallback(() => {
+    const jobs: Promise<any>[] = [fetchServiceability()];
+    if (activeTab === 'food') jobs.push(fetchCatalogue());
+    else if (activeTab === 'services') jobs.push(fetchServicePrices(), fetchCatalogue());
+    else if (activeTab === 'pg') jobs.push(fetchPGs());
+    else if (activeTab === 'coride' && myId) jobs.push(fetchRides(), fetchMyRides());
+    else if (activeTab === 'promos') jobs.push(fetchRewards());
+    return Promise.all(jobs);
+  }, [activeTab, myId, fetchServiceability, fetchCatalogue, fetchServicePrices, fetchPGs, fetchRides, fetchMyRides, fetchRewards]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadActiveTab();
+    }, [loadActiveTab])
+  );
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await loadActiveTab();
+    } finally {
+      if (isMountedRef.current) setRefreshing(false);
     }
-  }, [activeTab, fetchPGs, fetchRides, fetchMyRides]);
+  }, [loadActiveTab]);
 
   // PG Filters
   const filteredPGs = pgs.filter(item => {
-    // Search query match
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       const matchesName = (item.name || '').toLowerCase().includes(q);
       const matchesAddr = (item.address || '').toLowerCase().includes(q);
       if (!matchesName && !matchesAddr) return false;
     }
-    // Gender type match
-    if (genderFilter !== 'All') {
-      if (item.genderType !== genderFilter) return false;
-    }
-    // Budget limit match (baseRent <= budget)
-    if (budgetFilter !== 'All') {
-      const maxBudget = parseInt(budgetFilter, 10);
-      if (item.baseRent > maxBudget) return false;
-    }
-    // Distance limit match (distanceFromCollege <= distance)
-    if (distanceFilter !== 'All') {
-      const maxDistance = parseFloat(distanceFilter);
-      if (item.distanceFromCollege > maxDistance) return false;
-    }
+    if (genderFilter !== 'All' && (item.genderType || 'Co-ed') !== genderFilter) return false;
+    if (budgetFilter !== 'All' && Number(item.baseRent) > parseInt(budgetFilter, 10)) return false;
+    if (distanceFilter !== 'All' && Number(item.distanceFromCollege) > parseFloat(distanceFilter)) return false;
     return true;
   });
 
-  // Co-Ride actions with Confirmation UX
-  const handleJoinRide = (ride: any) => {
-    const timeStr = new Date(ride.departureTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const fare = ride.pricePerSeat || ride.splitAmount || 30;
+  // ── Co-Ride actions (confirmations + one action at a time) ──
+  const runRideAction = async (rideId: string, request: () => Promise<Response>, successTitle: string, fallback: string, successBody?: string) => {
+    if (rideBusyRef.current) return;
+    rideBusyRef.current = true;
+    setRideActionBusy(rideId);
+    try {
+      const res = await request();
+      const data = await readJson(res);
+      if (!isMountedRef.current) return;
+      if (res.ok) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        // Completing a ride awards Karma: keep the banner in step with the server.
+        if (Number.isFinite(Number(data?.karmaPoints))) setUser({ karmaPoints: Number(data.karmaPoints) } as any);
+        Alert.alert(successTitle, successBody || data?.message || 'Done.');
+        fetchRides();
+        fetchMyRides();
+      } else {
+        Alert.alert('Could not update the ride', friendlyError(res, data, fallback));
+      }
+    } catch {
+      if (isMountedRef.current) Alert.alert('Could not update the ride', NETWORK_ERROR_MESSAGE);
+    } finally {
+      rideBusyRef.current = false;
+      if (isMountedRef.current) setRideActionBusy(null);
+    }
+  };
 
+  const fuelText = (ride: any) => {
+    const fuel = Number(ride.estimatedFuelCost) || 0;
+    return fuel > 0 ? `₹${fuel} total fuel, shared by everyone on the ride` : 'Free ride (no fuel split)';
+  };
+
+  const handleJoinRide = (ride: any) => {
+    if (!myId) { promptLogin('Log in to join rides', 'Co-rides are only for signed-in students.'); return; }
+    const together = ride.creatorRole === 'passenger';
     Alert.alert(
-      '🚗 Join Campus Commute Pool?',
-      `Route: ${ride.origin || 'Hostel'} → ${ride.destination || 'Campus'}\nDeparture: ${timeStr}\nEstimated Split: ₹${fare} per seat\nHost: ${ride.creator?.name || 'Campus Peer'}`,
+      together ? '🤝 Ride together?' : '🚗 Join this ride?',
+      `Route: ${ride.origin} → ${ride.destination}\nLeaves: ${fmtWhen(ride.departureTime)}\nFuel: ${fuelText(ride)}\n${together ? 'Posted by' : 'Host'}: ${ride.creator?.name || 'A campus student'}`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: 'Not now', style: 'cancel' },
         {
-          text: 'Confirm & Join',
-          onPress: async () => {
-            try {
-              const res = await apiFetch(ENDPOINTS.bikepoolJoin(ride.id), { method: 'POST' });
-              const data = await res.json();
-              if (res.ok) {
-                Alert.alert('Ride Confirmed 🎉', data.message || 'You have joined the commute!');
-                fetchRides();
-                fetchMyRides();
-              } else {
-                Alert.alert('Could Not Join', data.message || 'Unable to join ride.');
-              }
-            } catch (err) {
-              Alert.alert('Error', 'Network error joining ride.');
-            }
-          },
+          text: ride.autoApprove ? 'Join ride' : 'Request to join',
+          onPress: () => runRideAction(
+            ride.id,
+            () => apiFetch(ENDPOINTS.bikepoolJoin(ride.id), { method: 'POST' }),
+            ride.autoApprove ? "You're in 🎉" : 'Request sent 🎉',
+            'Could not join this ride.',
+            ride.autoApprove
+              ? 'You are on this ride. Open My Rides to message the host on WhatsApp.'
+              : 'The host will review your request. You can follow it in My Rides.'
+          ),
         },
       ]
     );
   };
 
-  const handleCompleteRide = async (rideId: string) => {
-    try {
-      const res = await apiFetch(ENDPOINTS.bikepoolComplete(rideId), { method: 'POST' });
-      const data = await res.json();
-      if (res.ok) {
-        Alert.alert('Ride Completed', data.message || 'Earned +50 Karma Points! split invoice processed.');
-        fetchRides();
-        fetchMyRides();
-      } else {
-        Alert.alert('Failed', data.message || 'Unable to complete ride.');
-      }
-    } catch (err) {
-      Alert.alert('Error', 'Network error completing ride.');
-    }
+  const handleCompleteRide = (rideId: string) => {
+    Alert.alert('Mark this ride as completed?', 'Do this once everyone has reached. Everyone on the ride earns Karma points.', [
+      { text: 'Not yet', style: 'cancel' },
+      { text: 'Complete ride', onPress: () => runRideAction(rideId, () => apiFetch(ENDPOINTS.bikepoolComplete(rideId), { method: 'POST' }), 'Ride completed ✅', 'Could not complete this ride.') },
+    ]);
   };
 
-  const handleCancelRide = async (rideId: string) => {
-    try {
-      const res = await apiFetch(ENDPOINTS.bikepoolCancel(rideId), { method: 'POST' });
-      const data = await res.json();
-      if (res.ok) {
-        Alert.alert('Cancelled', data.message || 'Ride status updated.');
-        fetchRides();
-        fetchMyRides();
-      } else {
-        Alert.alert('Failed', data.message || 'Unable to cancel ride.');
-      }
-    } catch (err) {
-      Alert.alert('Error', 'Network error cancelling ride.');
-    }
+  const handleCancelRide = (rideId: string, kind: 'host' | 'leave' | 'withdraw') => {
+    const copy = kind === 'host'
+      ? { title: 'Cancel this ride?', body: 'Everyone who joined or requested will be released.', cta: 'Cancel ride' }
+      : kind === 'leave'
+        ? { title: 'Leave this ride?', body: 'Your seat will be offered to other students.', cta: 'Leave ride' }
+        : { title: 'Withdraw your request?', body: 'The host will no longer see your request.', cta: 'Withdraw' };
+    Alert.alert(copy.title, copy.body, [
+      { text: 'Keep', style: 'cancel' },
+      { text: copy.cta, style: 'destructive', onPress: () => runRideAction(rideId, () => apiFetch(ENDPOINTS.bikepoolCancel(rideId), { method: 'POST' }), 'Done', 'Could not update this ride.') },
+    ]);
   };
 
-  const handleApproveRequest = async (rideId: string, requestId: string) => {
-    try {
-      const res = await apiFetch(`${API_URL}/api/bikepool/posts/${rideId}/requests/${requestId}/approve`, { method: 'POST' });
-      const data = await res.json();
-      if (res.ok) {
-        Alert.alert('Approved', data.message || 'Passenger approved!');
-        fetchRides();
-        fetchMyRides();
-      } else {
-        Alert.alert('Failed', data.message || 'Unable to approve request.');
-      }
-    } catch (err) {
-      Alert.alert('Error', 'Network error approving request.');
-    }
+  const handleApproveRequest = (rideId: string, requestId: string) => {
+    runRideAction(rideId, () => apiFetch(`${API_URL}/api/bikepool/posts/${rideId}/requests/${requestId}/approve`, { method: 'POST' }), 'Passenger approved ✅', 'Could not approve this request.');
   };
 
-  const handleRejectRequest = async (rideId: string, requestId: string) => {
-    try {
-      const res = await apiFetch(`${API_URL}/api/bikepool/posts/${rideId}/requests/${requestId}/reject`, { method: 'POST' });
-      const data = await res.json();
-      if (res.ok) {
-        Alert.alert('Rejected', data.message || 'Passenger request rejected.');
-        fetchRides();
-        fetchMyRides();
-      } else {
-        Alert.alert('Failed', data.message || 'Unable to reject request.');
-      }
-    } catch (err) {
-      Alert.alert('Error', 'Network error rejecting request.');
+  const handleRejectRequest = (rideId: string, requestId: string) => {
+    runRideAction(rideId, () => apiFetch(`${API_URL}/api/bikepool/posts/${rideId}/requests/${requestId}/reject`, { method: 'POST' }), 'Request declined', 'Could not decline this request.');
+  };
+
+  const contactOnWhatsApp = (phone: any) => {
+    const digits = String(phone || '').replace(/\D/g, '');
+    if (!digits) {
+      Alert.alert('Contact unavailable', 'This student has not shared a phone number.');
+      return;
     }
+    const intl = digits.length === 10 ? `91${digits}` : digits;
+    openExternal(`https://wa.me/${intl}`, 'WhatsApp');
+  };
+
+  const handleSOS = () => {
+    Alert.alert('Need help?', 'Call for help right away.', [
+      { text: 'Call 112 (Emergency)', style: 'destructive', onPress: () => openExternal('tel:112', 'the dialer') },
+      { text: 'Call Zenvy Support', onPress: () => openExternal(`tel:+${ZENVY_SUPPORT_PHONE}`, 'the dialer') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const openCreateRide = () => {
+    if (!myId) { promptLogin('Log in to post a ride', 'Co-rides are only for signed-in students.'); return; }
+    setShowCreateModal(true);
   };
 
   const handleCreateRide = async () => {
-    if (!origin || !destination || !departureTime) {
-      Alert.alert('Missing Fields', 'Please fill Origin, Destination, and Departure Time.');
+    if (submittingRide) return;
+    const o = origin.trim();
+    const d = destination.trim();
+    const n = notes.trim();
+    if (!o || !d || !departureTime.trim()) {
+      Alert.alert('A few details missing', 'Please add where you start, where you are going and when you leave.');
       return;
     }
 
-    // Robust Date & Time parsing
-    let parsedDate = new Date(departureTime);
+    let parsedDate = departureDate ? new Date(departureDate) : new Date(departureTime);
     if (isNaN(parsedDate.getTime())) {
-      // Check if time-only format entered (e.g. "18:30" or "6:30 PM")
+      // Time only, e.g. "18:30" or "6:30 PM"
       const timeMatch = departureTime.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
       if (timeMatch) {
         let hours = parseInt(timeMatch[1], 10);
@@ -1299,20 +1142,21 @@ export default function OthersScreen() {
         if (meridiem === 'AM' && hours === 12) hours = 0;
         parsedDate = new Date();
         parsedDate.setHours(hours, minutes, 0, 0);
-        // If the time already passed today, assume tomorrow
-        if (parsedDate.getTime() < Date.now()) {
-          parsedDate.setDate(parsedDate.getDate() + 1);
-        }
+        if (parsedDate.getTime() < Date.now()) parsedDate.setDate(parsedDate.getDate() + 1);
       }
     }
 
     if (isNaN(parsedDate.getTime())) {
-      Alert.alert(
-        'Invalid Departure Time',
-        'Please enter a valid time or date (e.g. "18:30", "6:30 PM", or "2026-08-30 19:00").'
-      );
+      Alert.alert('Check the departure time', 'Pick a quick option or type a time like "18:30" or "6:30 PM".');
       return;
     }
+    if (parsedDate.getTime() < Date.now() - 5 * 60 * 1000) {
+      Alert.alert('That time has passed', 'Please pick a departure time in the future.');
+      return;
+    }
+
+    const seats = Math.min(6, Math.max(1, parseInt(availableSeats, 10) || 1));
+    const fuel = Math.min(5000, Math.max(0, Math.round(Number(estimatedFuelCost) || 0)));
 
     setSubmittingRide(true);
     try {
@@ -1320,236 +1164,240 @@ export default function OthersScreen() {
         method: 'POST',
         body: JSON.stringify({
           creatorRole,
-          origin,
-          destination,
+          origin: o,
+          destination: d,
           departureTime: parsedDate.toISOString(),
           vehicleType,
-          availableSeats: parseInt(availableSeats, 10) || 1,
+          availableSeats: seats,
+          estimatedFuelCost: fuel,
+          notes: n,
           rideVibe,
-          estimatedFuelCost: parseFloat(estimatedFuelCost) || 0,
-          notes,
-          autoApprove
+          autoApprove,
         })
       });
-      const data = await res.json();
+      const data = await readJson(res);
+      if (!isMountedRef.current) return;
       if (res.ok) {
-        Alert.alert('Success', 'Ride posted successfully!');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        Alert.alert('Ride posted 🎉', autoApprove
+          ? 'Students heading the same way can now join your ride.'
+          : 'Students heading the same way can now request to join. You approve who rides with you.');
         setShowCreateModal(false);
-        // Reset Form
         setOrigin('');
         setDestination('');
         setDepartureTime('');
+        setDepartureDate(null);
+        setAvailableSeats('1');
         setEstimatedFuelCost('0');
         setNotes('');
-        setAutoApprove(true);
+        setRideVibe('Any');
+        setAutoApprove(false);
+        setCorideTab('my-rides');
         fetchRides();
         fetchMyRides();
       } else {
-        Alert.alert('Failed', data.message || 'Unable to post ride.');
+        Alert.alert('Could not post the ride', friendlyError(res, data, 'Please check the details and try again.'));
       }
-    } catch (err) {
-      Alert.alert('Error', 'Network error creating ride.');
+    } catch {
+      if (isMountedRef.current) Alert.alert('Could not post the ride', NETWORK_ERROR_MESSAGE);
     } finally {
-      setSubmittingRide(false);
+      if (isMountedRef.current) setSubmittingRide(false);
     }
   };
 
+  // ── Mega Basket: quick list & custom shopping requests ──
   const handleSmartAutoFill = () => {
     if (!listText.trim()) {
-      Alert.alert('Empty List', 'Please type or paste your shopping list first.');
+      Alert.alert('Your list is empty', 'Type or paste your shopping list first, e.g. "2 maggi, 1 atta".');
+      return;
+    }
+    if (catalogueStatus !== 'ready' || catalogue.length === 0) {
+      Alert.alert('Store is still loading', 'Give it a second and try again.');
       return;
     }
 
-    const itemsList = listText.split(/[,\n;]+/).map(i => i.trim()).filter(Boolean);
-    let matchedCount = 0;
-    
-    const allProducts: any[] = [];
-    Object.values(CATEGORY_PRODUCTS).forEach(arr => allProducts.push(...arr));
-    allProducts.push(...TOY_ITEMS, ...SEED_ITEMS);
-    
-    const uniqueProds = Array.from(new Map(allProducts.map(p => [p.id, p])).values());
-
-    itemsList.forEach(queryText => {
-      const cleanQuery = queryText.replace(/^\d+\s*/, '').toLowerCase(); 
-      const matched = uniqueProds.find(p => p.name.toLowerCase().includes(cleanQuery) || p.brand?.toLowerCase().includes(cleanQuery));
-      
-      if (matched) {
-        let qty = 1;
-        const matchesQty = queryText.match(/^(\d+)/);
-        if (matchesQty) {
-          qty = parseInt(matchesQty[1], 10);
-        }
-        
-        for (let k = 0; k < qty; k++) {
-          addToCart({
-            id: matched.id,
-            name: matched.name,
-            price: matched.price,
-            image: matched.image,
-            restaurantId: 'mega-basket-vendor',
-            restaurantName: 'Mega Basket Grocery'
-          });
-        }
-        matchedCount++;
-      }
+    const matched: { item: CatalogueItem; qty: number }[] = [];
+    const missed: string[] = [];
+    listText.split(/[,\n;]+/).map(t => t.trim()).filter(Boolean).forEach(line => {
+      const qtyMatch = line.match(/^(\d+)\s*(x\s*)?/i);
+      const qty = Math.min(20, Math.max(1, qtyMatch ? parseInt(qtyMatch[1], 10) : 1));
+      const q = line.replace(/^(\d+)\s*(x\s*)?/i, '').trim().toLowerCase();
+      if (!q) return;
+      const item = catalogue.find(p => p.orderable && p.isAvailable && (p.name.toLowerCase().includes(q) || (p.brand || '').toLowerCase().includes(q)));
+      if (item) matched.push({ item, qty });
+      else missed.push(line);
     });
 
-    if (matchedCount > 0) {
-      Alert.alert(
-        'Basket Auto-filled! ⚡',
-        `Successfully matched and added ${matchedCount} items to your basket based on your shopping list! 🎉`
-      );
-      setListText('');
-      setShowAutoFillCard(false);
-    } else {
-      Alert.alert(
-        'No Matches Found 😕',
-        'We could not match any items in our catalog. Try simpler keywords like "atta", "chips", or "lemon".'
-      );
+    if (matched.length === 0) {
+      Alert.alert('No matches found', 'Try simple words like "atta", "chips" or "maggi" — or add it as a custom request.');
+      return;
     }
+
+    // One store per order: keep the lines from the first matched store.
+    const storeId = matched[0].item.restaurantId;
+    const sameStore = matched.filter(m => m.item.restaurantId === storeId);
+    const skipped = matched.length - sameStore.length;
+    let shownPrompt = false;
+    sameStore.forEach(m => {
+      const ok = addToCart({
+        id: m.item.id,
+        name: m.item.name,
+        price: m.item.price,
+        quantity: m.qty,
+        image: m.item.image || PRODUCT_FALLBACK_IMG,
+        restaurantId: m.item.restaurantId,
+        restaurantName: m.item.storeName || 'Campus store',
+      });
+      if (!ok) shownPrompt = true;
+    });
+
+    setListText('');
+    setShowAutoFillCard(false);
+    if (shownPrompt) return; // the "Replace basket?" prompt is already on screen
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    const notes2: string[] = [];
+    if (missed.length) notes2.push(`Not found: ${missed.join(', ')}`);
+    if (skipped) notes2.push(`${skipped} item${skipped === 1 ? '' : 's'} from another store were skipped (one store per order).`);
+    Alert.alert('Added to basket ⚡', `${sameStore.length} item${sameStore.length === 1 ? '' : 's'} from ${sameStore[0].item.storeName || 'the store'}.${notes2.length ? `\n\n${notes2.join('\n')}` : ''}`);
+  };
+
+  const openCustomRequest = () => {
+    setGroceryMode('categories');
+    setShowAutoFillCard(false);
+    setShowCustomForm(true);
   };
 
   const handleAddCustomRequest = () => {
-    if (!customItemName.trim()) {
-      Alert.alert('Missing Name', 'Please specify the item name you want.');
+    const name = customItemName.trim();
+    if (!name) {
+      Alert.alert('What should we buy?', 'Please type the item name (and brand, if you have one in mind).');
       return;
     }
-    const priceVal = parseFloat(customItemPrice) || 50;
-    const qtyVal = parseInt(customItemQty, 10) || 1;
-    
-    addToCart({
-      id: `custom-${Date.now()}`,
-      name: `[Custom Request] ${customItemName} (${qtyVal} unit)`,
-      price: priceVal,
-      image: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=200',
-      restaurantId: 'mega-basket-vendor',
-      restaurantName: 'Mega Basket Grocery'
-    });
+    const price = Number(customItemPrice);
+    if (!Number.isFinite(price) || price <= 0 || price > 10000) {
+      Alert.alert('Add an estimated price', 'Enter the approximate price per unit (₹1 – ₹10,000). You approve the real bill later.');
+      return;
+    }
+    const qty = Math.min(20, Math.max(1, parseInt(customItemQty, 10) || 1));
 
-    Alert.alert(
-      'Custom Request Added! 🛍️',
-      `"${customItemName}" added to basket at an estimated price of ₹${priceVal}. Your rider will pick it up!`
-    );
+    const doAdd = () => {
+      addToCart({
+        id: `custom-${Date.now()}`,
+        name: `[Custom Request] ${name}`,
+        price: Math.round(price * 100) / 100,
+        quantity: qty,
+        image: '', // a shopping request has no product photo; the basket shows its placeholder
+        restaurantId: MEGA_BASKET_VENDOR,
+        restaurantName: 'Mega Basket',
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      Alert.alert('Request added 🛍️', `"${name}" × ${qty} is in your basket. A Zenvy shopper buys it for you, and you approve the final bill before paying.`);
+      setCustomItemName('');
+      setCustomItemPrice('');
+      setCustomItemQty('1');
+      setShowCustomForm(false);
+    };
 
-    setCustomItemName('');
-    setCustomItemPrice('');
-    setCustomItemQty('1');
-    setShowCustomForm(false);
+    // Shopping requests are placed separately from store orders.
+    if (cart.some(i => !isCustomRequest(i))) {
+      Alert.alert(
+        'Start a new basket?',
+        'Shopping requests are ordered separately from store and restaurant items. Clear your basket and add this request?',
+        [
+          { text: 'Keep basket', style: 'cancel' },
+          { text: 'Clear & add', style: 'destructive', onPress: () => { clearCart(); doAdd(); } },
+        ]
+      );
+      return;
+    }
+    doAdd();
   };
 
   // Filter available ride posts
-  const filteredRides = rides.filter(ride => {
-    if (vehicleFilter !== 'All' && ride.vehicleType !== vehicleFilter) return false;
-    if (vibeFilter !== 'Any' && ride.rideVibe !== vibeFilter) return false;
-    return true;
+  const filteredRides = rides.filter(ride => vehicleFilter === 'All' || ride.vehicleType === vehicleFilter);
+  // Rides I already asked to join (from My Rides), so Browse does not offer "Request to join" twice.
+  const myJoinStatus = useMemo(() => {
+    const map: Record<string, string> = {};
+    myRides.forEach(r => {
+      const mine = (Array.isArray(r.requests) ? r.requests : []).find((q: any) => String(q.passengerId) === myId);
+      if (mine && (mine.status === 'Pending' || mine.status === 'Approved')) map[String(r.id)] = mine.status;
+    });
+    return map;
+  }, [myRides, myId]);
+
+  // ── Saved items (stored on this device; cleared on logout) ──
+  type SavedItem = { id: string; title: string; subtitle: string; price: string; image: string; targetRoute: string };
+  const [favoritesModalVisible, setFavoritesModalVisible] = useState(false);
+  const [savedFavoritesList, setSavedFavoritesList] = useState<SavedItem[]>([]);
+  const [legacyWishlistIds, setLegacyWishlistIds] = useState<string[]>([]);
+  const wishlistIds = useMemo(() => savedFavoritesList.map(f => f.id), [savedFavoritesList]);
+
+  // Re-read on every focus: product pages save to the same list, and logout clears it.
+  const loadSaved = useCallback(() => {
+    AsyncStorage.getItem('zenvy_wishlist').then(stored => {
+      if (!isMountedRef.current) return;
+      if (!stored) { setSavedFavoritesList([]); return; }
+      try {
+        const parsed = JSON.parse(stored);
+        if (!Array.isArray(parsed)) return;
+        // Product pages only open catalogue UUIDs; saved entries from old app versions with slug ids are dropped.
+        const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        setSavedFavoritesList(parsed.filter((f: any) => {
+          if (!f || typeof f !== 'object' || !f.id || !f.title) return false;
+          const route = String(f.targetRoute || '');
+          return !route.startsWith('/products/') || UUID_RE.test(route.slice('/products/'.length));
+        }));
+        // Older app versions saved only ids: resolve them once the catalogue is loaded.
+        setLegacyWishlistIds(parsed.filter((f: any) => typeof f === 'string'));
+      } catch {}
+    }).catch(() => {});
+  }, []);
+  useFocusEffect(useCallback(() => { loadSaved(); }, [loadSaved, myId]));
+
+  // A different account (or logout) must never see the previous student's rides, spins or coupons.
+  const lastUserRef = useRef(myId);
+  useEffect(() => {
+    if (lastUserRef.current === myId) return;
+    lastUserRef.current = myId;
+    setRides([]); setMyRides([]); setRideError(null); setMyRidesError(null);
+    setCoupons([]); setSpinsLeft(0); setSpinNextIn(null); setRewardsStatus(myId ? 'loading' : 'ready');
+  }, [myId]);
+
+  const toSavedItem = (product: CatalogueItem): SavedItem => ({
+    id: product.id,
+    title: product.name,
+    subtitle: [product.storeName, product.weight].filter(Boolean).join(' • ') || 'Campus store',
+    price: fmtPrice(product.price),
+    image: product.image || PRODUCT_FALLBACK_IMG,
+    targetRoute: `/products/${product.id}`,
   });
 
-  // In-App Vehicle Web Booking Frame State (Rapido & Uber)
-  const [rideWebModalVisible, setRideWebModalVisible] = useState(false);
-  const [rideWebUrl, setRideWebUrl] = useState('https://www.rapido.bike/');
-  const [rideWebTitle, setRideWebTitle] = useState('Rapido Bike-Taxi');
-  const [rideWebIcon, setRideWebIcon] = useState('🛵');
-  const [rideWebThemeColor, setRideWebThemeColor] = useState('#F59E0B');
-
-  // Saved Favourites Wishlist State
-  const [favoritesModalVisible, setFavoritesModalVisible] = useState(false);
-  const [favFilter, setFavFilter] = useState<'ALL' | 'MEALS' | 'SERVICES' | 'PG' | 'GROCERY'>('ALL');
-  const [savedFavoritesList, setSavedFavoritesList] = useState([
-    {
-      id: 'fav-1',
-      title: 'Special Paneer Tikka Kathi Roll',
-      subtitle: 'Campus Night Canteen • Ground Floor',
-      type: 'MEALS',
-      price: '₹120',
-      rating: '4.8 (280+)',
-      badge: '🔥 BESTSELLER',
-      image: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=600&q=80',
-      targetRoute: '/(tabs)',
-    },
-    {
-      id: 'fav-2',
-      title: 'Laptop Diagnostic & Thermal Paste Overhaul',
-      subtitle: 'Certified Campus Tech Fix • Hostel Doorstep',
-      type: 'SERVICES',
-      price: 'Starts ₹99',
-      rating: '4.9 (420+)',
-      badge: '⚡ 4-HR SLA',
-      image: 'https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?w=600&q=80',
-      targetRoute: '/category/repairs',
-    },
-    {
-      id: 'fav-3',
-      title: 'Jeans Length Shortening & Fitting',
-      subtitle: 'Campus Tailoring & Stitching Hub',
-      type: 'SERVICES',
-      price: 'Starts ₹60',
-      rating: '4.9 (310+)',
-      badge: '🪡 CAMPUS PICKUP',
-      image: 'https://images.unsplash.com/photo-1528458909336-e7a0adfed0a5?w=600&q=80',
-      targetRoute: '/category/tailoring',
-    },
-    {
-      id: 'fav-4',
-      title: 'Sri Sai Luxury Student Residence',
-      subtitle: '2-Sharing AC • High Speed WiFi • Neerukonda (0.8km)',
-      type: 'PG',
-      price: '₹8,500 / mo',
-      rating: '4.7 (150+)',
-      badge: '🏢 ZERO BROKERAGE',
-      image: 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=600&q=80',
-      targetRoute: '/pg/sri-sai-residence',
-    },
-    {
-      id: 'fav-5',
-      title: 'Amul Taaza Homogenised Toned Milk 1L',
-      subtitle: 'Hostel Grocery Basket • 15 Min Delivery',
-      type: 'GROCERY',
-      price: '₹74',
-      rating: '4.9 (890+)',
-      badge: '🥛 DAILY ESSENTIAL',
-      image: 'https://images.unsplash.com/photo-1550583724-b2692b85b150?w=600&q=80',
-      targetRoute: '/category/grocery',
-    },
-  ]);
-
-  const [wishlistIds, setWishlistIds] = useState<string[]>([]);
+  const persistSaved = (next: SavedItem[]) => {
+    setSavedFavoritesList(next);
+    AsyncStorage.setItem('zenvy_wishlist', JSON.stringify(next)).catch(() => {});
+  };
 
   useEffect(() => {
-    AsyncStorage.getItem('zenvy_wishlist').then(stored => {
-      if (stored) {
-        try {
-          const ids = JSON.parse(stored);
-          if (Array.isArray(ids)) setWishlistIds(ids);
-        } catch (e) {}
-      }
-    });
-  }, []);
+    if (!legacyWishlistIds.length || catalogueStatus !== 'ready') return;
+    const known = new Set(savedFavoritesList.map(f => f.id));
+    const upgraded = legacyWishlistIds
+      .map(id => catalogue.find(p => p.id === id))
+      .filter((p): p is CatalogueItem => !!p && !known.has(p.id))
+      .map(toSavedItem);
+    setLegacyWishlistIds([]);
+    if (upgraded.length) persistSaved([...savedFavoritesList, ...upgraded]);
+  }, [legacyWishlistIds, catalogueStatus]);
 
-  const toggleWishlistProduct = (product: any) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const pId = String(product.id || product._id || '');
-    const isSaved = wishlistIds.includes(pId);
-    let updatedIds: string[];
-    if (isSaved) {
-      updatedIds = wishlistIds.filter(id => id !== pId);
-      setSavedFavoritesList(prev => prev.filter(f => f.id !== pId));
-    } else {
-      updatedIds = [...wishlistIds, pId];
-      const newFav = {
-        id: pId,
-        title: product.name || product.title || 'Campus Quick Bite',
-        subtitle: product.unit || product.category || 'Quick Grocery',
-        type: 'GROCERY',
-        price: `₹${product.price}`,
-        rating: '4.8 (100+)',
-        badge: '⭐ SAVED',
-        image: product.image || 'https://images.unsplash.com/photo-1550583724-b2692b85b150?w=600&q=80',
-        targetRoute: `/products/${pId}`,
-      };
-      setSavedFavoritesList(prev => [newFav, ...prev]);
-    }
-    setWishlistIds(updatedIds);
-    AsyncStorage.setItem('zenvy_wishlist', JSON.stringify(updatedIds)).catch(() => {});
+  const toggleWishlistProduct = (product: CatalogueItem) => {
+    Haptics.selectionAsync().catch(() => {});
+    const exists = savedFavoritesList.some(f => f.id === product.id);
+    persistSaved(exists ? savedFavoritesList.filter(f => f.id !== product.id) : [toSavedItem(product), ...savedFavoritesList]);
+  };
+
+  const removeSaved = (id: string) => {
+    Haptics.selectionAsync().catch(() => {});
+    persistSaved(savedFavoritesList.filter(f => f.id !== id));
   };
 
   const cardBg = isDark ? 'rgba(255, 255, 255, 0.08)' : colors.card;
@@ -1562,10 +1410,26 @@ export default function OthersScreen() {
   const goldColor = isDark ? COLORS.gold : colors.gold;
   const goldBorderColor = isDark ? COLORS.goldBorder : 'rgba(239, 79, 95, 0.4)';
   const goldMutedColor = isDark ? COLORS.goldMuted : 'rgba(239, 79, 95, 0.15)';
-  const goldGlowShadow = isDark ? SHADOWS.goldGlow : SHADOWS.redGlow;
   const accentGradient: [string, string] = isDark ? [COLORS.gold, COLORS.goldLight] : ['#EF4F5F', '#D43F4F'];
 
-  const userLocation = (user?.hostelBlock ? `${user.hostelBlock}${user?.roomNumber || user?.roomNo ? `, Room ${user.roomNumber || user.roomNo}` : ''}` : null) || user?.defaultAddress || user?.address || 'Campus Resident';
+  const handlePromoAction = (promoId: string) => {
+    switch (promoId) {
+      case 'f1': router.push('/category/stationary' as any); break;
+      case 'f2': setSelectedCategoryName('Fitness ready'); break;
+      case 'f3': router.push('/category/groceries' as any); break;
+      case 's1': router.push('/category/repairs' as any); break;
+      case 's2': router.push('/category/tailoring' as any); break;
+      case 's3': router.push('/category/print' as any); break;
+      case 'p1':
+      case 'p2': scrollViewRef.current?.scrollTo({ y: 300, animated: true }); break;
+      case 'c1': openCreateRide(); break;
+      case 'c2': openExternal('https://www.rapido.bike/', 'Rapido'); break;
+      case 'c3': openExternal('https://m.uber.com/looking', 'Uber'); break;
+      case 'o1': scrollViewRef.current?.scrollTo({ y: 250, animated: true }); break;
+      case 'o2': scrollViewRef.current?.scrollToEnd({ animated: true }); break;
+      default: break;
+    }
+  };
 
   const currentTabPromos = TAB_PROMOS[activeTab] || PROMOS_FOOD;
   const carouselOffers = currentTabPromos.map(p => ({
@@ -1576,43 +1440,282 @@ export default function OthersScreen() {
     title2: p.subtitle,
     description: p.desc,
     buttonText: p.btn.replace(' →', ''),
-    redirectAction: () => {
-      if (activeTab === 'food') {
-        router.push('/category/grocery' as any);
-      } else if (activeTab === 'services') {
-        scrollViewRef.current?.scrollTo({ y: 350, animated: true });
-      } else if (activeTab === 'pg') {
-        scrollViewRef.current?.scrollTo({ y: 300, animated: true });
-      } else if (activeTab === 'coride') {
-        setShowCreateModal(true);
-      } else if (activeTab === 'promos') {
-        scrollViewRef.current?.scrollTo({ y: 250, animated: true });
-      }
-    }
+    redirectAction: () => handlePromoAction(p.id),
   }));
+
+  // ── Real-data derived shelves for the Food & Basket tab ──
+  const BRANDS = [
+    { name: 'Amul', img: 'https://images.unsplash.com/photo-1550583724-b2692b85b150?w=600&q=80', border: '#B45309' },
+    { name: 'Surf Excel', img: 'https://images.unsplash.com/photo-1582735689369-4fe89db7114c?w=600&q=80', border: '#2563EB' },
+    { name: 'Nescafe', img: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=600&q=80', border: '#78350F' },
+    { name: 'Lays', img: 'https://images.unsplash.com/photo-1566478989037-eec170784d0b?w=600&q=80', border: '#D97706' },
+    { name: 'Cadbury', img: 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=600&q=80', border: '#6B21A8' },
+    { name: 'Coca Cola', img: 'https://images.unsplash.com/photo-1554866585-cd94860890b7?w=600&q=80', border: '#DC2626' },
+  ];
+  const HEALTH_TILES = [
+    { name: 'Fit & active', img: 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=200&q=80' },
+    { name: 'Health', label: 'Health & care', img: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=200&q=80' },
+    { name: 'Organic', label: 'Organic', img: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=200&q=80' },
+    { name: 'Monsoon Wellness Picks', label: 'Wellness picks', img: 'https://images.unsplash.com/photo-1607623814075-e51df1bdc82f?w=200&q=80' },
+  ];
+  const CATEGORY_PILLS = [
+    { label: 'All', icon: '🍽️', shelf: 'All Groceries' },
+    { label: 'Fresh', icon: '🍎', shelf: 'Fresh' },
+    { label: 'Grocery', icon: '🛒', shelf: 'Grocery' },
+    { label: 'Electronics', icon: '🔌', shelf: 'Electronics' },
+    { label: 'Organic', icon: '🌱', shelf: 'Organic' },
+    { label: 'Health', icon: '🥗', shelf: 'Health' },
+    { label: 'Deals', icon: '🏷️', shelf: 'Deals' },
+  ];
+  const oilShelf = useMemo(() => shelfItems('Edible Oils & Ghee', catalogue), [catalogue]);
+  const toyTiles = useMemo(() => TOY_MANIA_CATEGORIES.map(t => {
+    const items = shelfItems(t.title, catalogue);
+    const maxOff = items.reduce((m, i) => Math.max(m, i.discountPercent || 0), 0);
+    const minPrice = items.length ? Math.min(...items.map(i => i.price)) : 0;
+    return { ...t, count: items.length, badge: maxOff >= 10 ? `UP TO ${maxOff}% OFF` : `FROM ${fmtPrice(minPrice)}` };
+  }).filter(t => t.count > 0), [catalogue]);
+  const groceryGrid = useMemo(() => GROCERY_CATEGORIES
+    .map(section => ({ ...section, items: section.items.filter(i => shelfItems(i.name, catalogue).length > 0) }))
+    .filter(section => section.items.length > 0), [catalogue]);
+  const electronicsFrom = useMemo(() => {
+    const prices = shelfItems('Electronics', catalogue).map(i => i.price).filter(p => p > 0);
+    return prices.length ? Math.min(...prices) : 0;
+  }, [catalogue]);
+
+  const sheetProducts = selectedCategoryName ? shelfItems(selectedCategoryName, catalogue) : [];
+  const visibleBBCategories = BB_CATEGORIES.filter(c => hasShelf(c.key));
+  const bbProducts = shelfItems(selectedBBOption, catalogue).filter(p => !showVegOnly || p.isVegetarian);
+
+  // Keep the side-bar selection on a category that has products.
+  useEffect(() => {
+    if (catalogueStatus === 'ready' && visibleBBCategories.length && !visibleBBCategories.some(c => c.key === selectedBBOption)) {
+      setSelectedBBOption(visibleBBCategories[0].key);
+    }
+  }, [catalogueStatus, catalogue]);
+
+  const qtyOf = (id: string) => cart.filter(i => i.id === id).reduce((sum, i) => sum + i.quantity, 0);
+  const decProduct = (id: string) => {
+    const line = cart.find(i => i.id === id);
+    if (line) updateQuantity(line.cartKey, line.quantity - 1);
+  };
+
+  // Horizontal shelf card
+  const renderShelfCard = (product: CatalogueItem) => {
+    const quantity = qtyOf(product.id);
+    const saved = wishlistIds.includes(product.id);
+    const off = discountLabel(product);
+    const soldOut = !product.isAvailable;
+    return (
+      <View key={product.id} style={[s.bbProductCard, { backgroundColor: cardSurface, borderColor: border }]}>
+        <View style={s.bbProductCardImgWrap}>
+          <TouchableOpacity style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }} onPress={() => openProduct(product)}>
+            <Image source={{ uri: product.image || PRODUCT_FALLBACK_IMG }} style={[s.bbProductCardImg, soldOut && { opacity: 0.4 }]} />
+          </TouchableOpacity>
+
+          {soldOut ? (
+            <View style={[s.bbDiscountTag, { position: 'absolute', top: 6, left: 6, backgroundColor: '#6B7280' }]}>
+              <Text style={[s.bbDiscountTagText, { color: '#fff' }]}>SOLD OUT</Text>
+            </View>
+          ) : off ? (
+            <View style={[s.bbDiscountTag, { position: 'absolute', top: 6, left: 6, backgroundColor: '#FCD34D' }]}>
+              <Text style={[s.bbDiscountTagText, { color: '#78350F' }]}>{off}</Text>
+            </View>
+          ) : null}
+
+          <TouchableOpacity style={s.bbWishlistBtn} onPress={() => toggleWishlistProduct(product)} activeOpacity={0.7}>
+            <Text style={{ fontSize: 13, color: saved ? '#F59E0B' : '#999' }}>{saved ? '★' : '☆'}</Text>
+          </TouchableOpacity>
+
+          <View style={s.bbAddBtnOverlapping}>
+            {quantity > 0 ? (
+              <View style={s.bbStepperOverlapping}>
+                <TouchableOpacity style={s.bbStepperBtnMini} onPress={() => decProduct(product.id)}>
+                  <Text style={s.bbStepperBtnTextMini}>-</Text>
+                </TouchableOpacity>
+                <Text style={s.bbStepperQtyMini}>{quantity}</Text>
+                <TouchableOpacity style={s.bbStepperBtnMini} onPress={() => addProduct(product)}>
+                  <Text style={s.bbStepperBtnTextMini}>+</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity style={[s.bbAddBtnSquare, soldOut && { opacity: 0.4 }]} onPress={() => addProduct(product)}>
+                <Text style={s.bbAddBtnPlus}>+</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
+        <TouchableOpacity onPress={() => openProduct(product)}>
+          {!!product.brand && (
+            <Text style={{ fontSize: 7.5, fontWeight: '900', color: txtSec, textTransform: 'uppercase', marginBottom: 2 }} numberOfLines={1}>{product.brand}</Text>
+          )}
+          <Text style={[s.bbProductCardName, { color: txt, height: 26 }]} numberOfLines={2}>{product.name}</Text>
+          {!!product.weight && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+              <Text style={s.bbProductCardWeight}>{product.weight}</Text>
+            </View>
+          )}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+            <Text style={[s.bbProductCardPrice, { color: txt }]}>{fmtPrice(product.price)}</Text>
+            {!!product.originalPrice && <Text style={s.bbProductCardOrigPrice}>{fmtPrice(product.originalPrice)}</Text>}
+          </View>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  // Grid card (category mode + product sheet)
+  const renderGridCard = (product: CatalogueItem, cardWidth: number, onOpen: () => void) => {
+    const quantity = qtyOf(product.id);
+    const off = discountLabel(product);
+    const soldOut = !product.isAvailable;
+    return (
+      <View
+        key={product.id}
+        style={{
+          width: cardWidth,
+          backgroundColor: isDark ? '#18181B' : '#FFFFFF',
+          borderRadius: 16,
+          borderWidth: 1,
+          borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#F1F5F9',
+          padding: 8,
+          marginBottom: 4,
+          shadowColor: '#0F172A',
+          shadowOffset: { width: 0, height: 3 },
+          shadowOpacity: isDark ? 0.3 : 0.06,
+          shadowRadius: 8,
+          elevation: 3,
+        }}
+      >
+        <View style={{ width: '100%', height: 96, backgroundColor: '#FFF', borderRadius: 12, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#F8FAFC' }}>
+          <TouchableOpacity style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }} onPress={onOpen}>
+            <Image source={{ uri: product.image || PRODUCT_FALLBACK_IMG }} style={{ width: '88%', height: '88%', resizeMode: 'contain', opacity: soldOut ? 0.4 : 1 }} />
+          </TouchableOpacity>
+          {(soldOut || off) && (
+            <View style={{ position: 'absolute', top: 4, left: 4, borderRadius: 6, overflow: 'hidden' }}>
+              <LinearGradient colors={soldOut ? ['#6B7280', '#4B5563'] : ['#EF4444', '#B91C1C']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ paddingHorizontal: 5, paddingVertical: 2 }}>
+                <Text style={{ fontSize: 6.5, fontWeight: '900', color: '#FFF', letterSpacing: 0.3 }}>{soldOut ? 'SOLD OUT' : off}</Text>
+              </LinearGradient>
+            </View>
+          )}
+          <View style={{ position: 'absolute', top: 4, right: 4 }}>
+            <View style={{ width: 12, height: 12, borderWidth: 1, borderColor: product.isVegetarian ? '#22C55E' : '#EF4444', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', borderRadius: 2 }}>
+              <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: product.isVegetarian ? '#22C55E' : '#EF4444' }} />
+            </View>
+          </View>
+        </View>
+
+        <Text style={{ fontSize: 9.5, fontWeight: '800', color: txt, marginTop: 6, height: 26, lineHeight: 12 }} numberOfLines={2}>{product.name}</Text>
+        <Text style={{ fontSize: 8, color: txtSec, marginTop: 2, fontWeight: '600' }} numberOfLines={1}>{product.weight || product.storeName || ' '}</Text>
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+          <View>
+            <Text style={{ fontSize: 11, fontWeight: '900', color: isDark ? '#F3F4F6' : '#0F172A' }}>{fmtPrice(product.price)}</Text>
+            {!!product.originalPrice && <Text style={{ fontSize: 8, color: txtSec, textDecorationLine: 'line-through' }}>{fmtPrice(product.originalPrice)}</Text>}
+          </View>
+          <View style={{ minWidth: 50 }}>
+            {quantity > 0 ? (
+              <View style={{ borderRadius: 10, overflow: 'hidden' }}>
+                <LinearGradient colors={['#10B981', '#047857']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ flexDirection: 'row', alignItems: 'center', height: 24, justifyContent: 'space-between', paddingHorizontal: 5 }}>
+                  <TouchableOpacity style={{ width: 16, height: 18, alignItems: 'center', justifyContent: 'center' }} onPress={() => decProduct(product.id)}>
+                    <Text style={{ color: '#fff', fontWeight: '900', fontSize: 12 }}>-</Text>
+                  </TouchableOpacity>
+                  <Text style={{ color: '#fff', fontWeight: '900', fontSize: 9.5, paddingHorizontal: 2 }}>{quantity}</Text>
+                  <TouchableOpacity style={{ width: 16, height: 18, alignItems: 'center', justifyContent: 'center' }} onPress={() => addProduct(product)}>
+                    <Text style={{ color: '#fff', fontWeight: '900', fontSize: 12 }}>+</Text>
+                  </TouchableOpacity>
+                </LinearGradient>
+              </View>
+            ) : (
+              <TouchableOpacity style={{ borderRadius: 10, overflow: 'hidden', opacity: soldOut ? 0.5 : 1 }} onPress={() => addProduct(product)} activeOpacity={0.85}>
+                <LinearGradient colors={soldOut ? ['#9CA3AF', '#6B7280'] : ['#10B981', '#059669']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ height: 24, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 }}>
+                  <Text style={{ fontSize: 8.5, fontWeight: '900', color: '#FFF', letterSpacing: 0.5 }}>{soldOut ? 'SOLD OUT' : 'ADD +'}</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </View>
+    );
+  };
+
+  const renderShelf = (title: string, subtitle: string, items: CatalogueItem[], seeAll: string | null) => {
+    if (!items.length) return null;
+    return (
+      <View style={{ marginTop: 16 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, marginBottom: 8 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 16, fontWeight: '900', color: txt }}>{title}</Text>
+            {!!subtitle && <Text style={{ fontSize: 10, color: txtSec, marginTop: 1 }}>{subtitle}</Text>}
+          </View>
+          {seeAll && (
+            <TouchableOpacity onPress={() => setSelectedCategoryName(seeAll)} style={s.wellnessSeeAll} accessibilityLabel={`See all ${title}`}>
+              <Text style={{ fontSize: 14, color: txtSec }}>›</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 12, paddingBottom: 8 }}>
+          {items.map(renderShelfCard)}
+        </ScrollView>
+      </View>
+    );
+  };
+
+  const renderLoadError = (message: string, onRetry: () => void) => (
+    <View style={[s.emptyState, { paddingVertical: 36, paddingHorizontal: 24 }]}>
+      <Text style={{ fontSize: 32, marginBottom: 8 }}>📡</Text>
+      <Text style={{ color: txt, fontSize: 13, fontWeight: '900', marginBottom: 4, textAlign: 'center' }}>Couldn't load this</Text>
+      <Text style={{ color: txtSec, fontSize: 11, fontWeight: '600', textAlign: 'center', marginBottom: 14 }}>{message}</Text>
+      <TouchableOpacity style={[s.resetBtn, { backgroundColor: COLORS.red }]} onPress={onRetry}>
+        <Text style={[s.resetBtnText, { color: '#fff' }]}>TRY AGAIN</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  const renderShelfSkeleton = () => (
+    <View style={{ paddingTop: 16 }}>
+      {[0, 1].map(row => (
+        <View key={row} style={{ marginBottom: 18 }}>
+          <ShimmerLoader width={160} height={16} borderRadius={8} style={{ marginLeft: 16, marginBottom: 10 }} />
+          <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: 16 }}>
+            {[0, 1, 2].map(i => <ShimmerLoader key={i} width={120} height={180} borderRadius={16} />)}
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+
+  const renderListSkeleton = (h: number) => (
+    <View style={{ gap: 12, marginTop: 12 }}>
+      {[0, 1, 2].map(i => <ShimmerLoader key={i} width={SW - 32} height={h} borderRadius={20} />)}
+    </View>
+  );
+
+  const SERVICE_CARDS = [
+    { id: 'LAPTOP_REPAIR', title: 'Laptop & Phone Repairs', tag: '💻 BOOK A SLOT', desc: 'Screen replacement, thermal paste, fan cleaning, SSD upgrades and hardware fixes.', icon: '💻', cat: 'repairs', priceKey: 'repairs', image: 'https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?w=600&q=80' },
+    { id: 'TAILORING', title: 'Tailoring & Stitching', tag: '🪡 ALTERATIONS', desc: 'Length shortening, shirt and kurti alterations, lab coat resizing and zip replacement.', icon: '✂️', cat: 'tailoring', priceKey: 'tailoring', image: 'https://images.unsplash.com/photo-1528458909336-e7a0adfed0a5?w=600&q=80' },
+    { id: 'PRINTOUT', title: 'Printouts & Binding', tag: '🖨️ PRINT JOBS', desc: 'B&W and colour printouts, project reports, spiral and hard binding.', icon: '📄', cat: 'print', priceKey: 'print', image: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?w=600&q=80' },
+    { id: 'LAUNDRY', title: 'Wash, Dry Clean & Ironing', tag: '🧺 PICKUP & DROP', desc: 'Daily clothes, bedsheets, blankets and shoe cleaning from your hostel.', icon: '👕', cat: 'laundry', priceKey: 'laundry', image: 'https://images.unsplash.com/photo-1582735689369-4fe89db7114c?w=600&q=80' },
+    { id: 'MATTRESSES', title: 'Mattresses & Room Gear', tag: '🛏️ MOVE-IN ESSENTIALS', desc: 'Foam mattresses, pillows, bedsheets, buckets and drying racks.', icon: '📦', cat: 'mattresses', priceKey: 'home', image: 'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=600&q=80' },
+    { id: 'ELECTRONICS', title: 'Chargers & Gadgets', tag: '🔌 TECH ESSENTIALS', desc: 'Laptop adapters, extension boards, calculators and study lamps.', icon: '🔋', cat: 'electronics', priceKey: 'electronics', image: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?w=600&q=80' },
+  ];
+
+  const wheelSectors = spinPrizes.map((p, i) => ({ label: p.label, ...WHEEL_STYLES[i % WHEEL_STYLES.length] }));
+  const sectorDeg = 360 / Math.max(1, wheelSectors.length || WHEEL_STYLES.length);
+  const zenPoints = Number(user?.zenPoints) || 0;
 
   return (
     <View style={[s.container, { backgroundColor: bg }]}>
       <AmbientBackground />
       {/* ── UNIFIED LUXURY CAMPUS HEADER ── */}
       <View style={[s.bbHeader, { backgroundColor: cardSurface, borderBottomWidth: 1, borderColor: border, paddingBottom: 12, paddingTop: 6 }]}>
-        {/* Top Navigation Row: Back Button + Inspirational Campus Tagline + Live Status */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 }}>
-            <TouchableOpacity 
-              style={{ 
-                width: 38, 
-                height: 38, 
-                borderRadius: 19, 
-                backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#F1F5F9', 
-                borderWidth: 1, 
-                borderColor: border, 
-                alignItems: 'center', 
-                justifyContent: 'center',
-                marginRight: 10
-              }}
+            <TouchableOpacity
+              style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#F1F5F9', borderWidth: 1, borderColor: border, alignItems: 'center', justifyContent: 'center', marginRight: 10 }}
               onPress={() => router.replace('/(tabs)')}
               activeOpacity={0.7}
+              accessibilityLabel="Back to Home"
             >
               <Ionicons name="arrow-back" size={19} color={txt} />
             </TouchableOpacity>
@@ -1627,48 +1730,48 @@ export default function OthersScreen() {
             </View>
           </View>
 
-          <View style={{ 
-            flexDirection: 'row', 
-            alignItems: 'center', 
-            backgroundColor: isDark ? 'rgba(34, 197, 94, 0.15)' : '#DCFCE7', 
-            paddingHorizontal: 8, 
-            paddingVertical: 4, 
-            borderRadius: 10, 
-            borderWidth: 1, 
-            borderColor: isDark ? 'rgba(34, 197, 94, 0.3)' : '#86EFAC' 
-          }}>
-            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#22C55E', marginRight: 5 }} />
-            <Text style={{ fontSize: 9, fontWeight: '900', color: isDark ? '#4ADE80' : '#15803D', letterSpacing: 0.5 }}>OPEN 24/7</Text>
-          </View>
+          {serviceability && (
+            <View style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: serviceability.open ? (isDark ? 'rgba(34, 197, 94, 0.15)' : '#DCFCE7') : (isDark ? 'rgba(245, 158, 11, 0.15)' : '#FEF3C7'),
+              paddingHorizontal: 8,
+              paddingVertical: 4,
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: serviceability.open ? (isDark ? 'rgba(34, 197, 94, 0.3)' : '#86EFAC') : (isDark ? 'rgba(245, 158, 11, 0.3)' : '#FCD34D'),
+            }}>
+              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: serviceability.open ? '#22C55E' : '#F59E0B', marginRight: 5 }} />
+              <Text style={{ fontSize: 9, fontWeight: '900', color: serviceability.open ? (isDark ? '#4ADE80' : '#15803D') : (isDark ? '#FCD34D' : '#B45309'), letterSpacing: 0.5 }}>
+                {serviceability.open ? 'OPEN NOW' : `OPENS ${fmtClock(serviceability.reopensAt) || 'SOON'}`}
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Search Bar & Wishlist */}
         <View style={s.bbHeaderSearchRow}>
-          <CardPressable 
-            style={[s.bbSearchBar, { backgroundColor: isDark ? '#27272A' : '#F4F4F5', borderColor: border, height: 42, flex: 1 }]} 
+          <CardPressable
+            style={[s.bbSearchBar, { backgroundColor: isDark ? '#27272A' : '#F4F4F5', borderColor: border, height: 42, flex: 1 }]}
             onPress={() => setIsSearchOpen(true)}
             tilt={false}
           >
             <Text style={{ fontSize: 14, color: '#F59E0B' }}>🔍</Text>
-            <TextInput 
-              style={[s.bbSearchInput, { color: txt, fontSize: 12, fontWeight: '600' }]} 
-              placeholder={searchPH} 
-              placeholderTextColor={txtSec} 
-              editable={false} 
-              pointerEvents="none"
-            />
-            <TouchableOpacity 
+            <RotatingSearchPlaceholder color={txtSec} textColor={txt} style={[s.bbSearchInput, { fontSize: 12, fontWeight: '600' }]} />
+            <TouchableOpacity
               style={{ padding: 4, backgroundColor: 'rgba(245, 158, 11, 0.15)', borderRadius: 8 }}
-              onPress={() => setActiveTab('promos')}
+              onPress={() => selectTab('promos')}
+              accessibilityLabel="Deals and rewards"
             >
               <Text style={{ fontSize: 13 }}>🎁</Text>
             </TouchableOpacity>
           </CardPressable>
 
-          <TouchableOpacity 
-            style={[s.bbShortcutBtn, { backgroundColor: isDark ? '#27272A' : '#F4F4F5', borderWidth: 1, borderColor: border, width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }]} 
+          <TouchableOpacity
+            style={[s.bbShortcutBtn, { backgroundColor: isDark ? '#27272A' : '#F4F4F5', borderWidth: 1, borderColor: border, width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }]}
             onPress={() => setFavoritesModalVisible(true)}
             activeOpacity={0.8}
+            accessibilityLabel="Saved items"
           >
             <Text style={{ fontSize: 15 }}>❤️</Text>
           </TouchableOpacity>
@@ -1677,56 +1780,23 @@ export default function OthersScreen() {
 
       {/* ── TAB SELECTOR (HORIZONTAL SCROLLABLE CHIPS) ── */}
       <View style={{ marginBottom: 14 }}>
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false} 
-          contentContainerStyle={{ paddingHorizontal: 16, gap: 8, alignItems: 'center' }}
-        >
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 8, alignItems: 'center' }}>
           {TABS.map(t => {
             const isActive = activeTab === t.key;
             return (
-              <DopaminePressable 
-                key={t.key} 
-                onPress={() => setActiveTab(t.key)}
-                sound="tabSwitch"
-                activeScale={0.95}
-              >
+              <DopaminePressable key={t.key} onPress={() => selectTab(t.key)} sound="tabSwitch" activeScale={0.95}>
                 {isActive ? (
                   <LinearGradient
                     colors={accentGradient}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 6,
-                      paddingHorizontal: 16,
-                      paddingVertical: 9,
-                      borderRadius: 14,
-                      shadowColor: '#F59E0B',
-                      shadowOffset: { width: 0, height: 3 },
-                      shadowOpacity: 0.3,
-                      shadowRadius: 6,
-                      elevation: 3,
-                    }}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 9, borderRadius: 14, shadowColor: '#F59E0B', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 3 }}
                   >
                     <Text style={{ fontSize: 15 }}>{t.icon}</Text>
                     <Text style={{ color: '#000', fontWeight: '900', fontSize: 12, letterSpacing: 0.2 }}>{t.label}</Text>
                   </LinearGradient>
                 ) : (
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 6,
-                      paddingHorizontal: 14,
-                      paddingVertical: 8,
-                      borderRadius: 14,
-                      backgroundColor: cardBg,
-                      borderWidth: 1,
-                      borderColor: border,
-                    }}
-                  >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 14, backgroundColor: cardBg, borderWidth: 1, borderColor: border }}>
                     <Text style={{ fontSize: 14 }}>{t.icon}</Text>
                     <Text style={{ color: txtSec, fontWeight: '700', fontSize: 12 }}>{t.label}</Text>
                   </View>
@@ -1738,7 +1808,13 @@ export default function OthersScreen() {
       </View>
 
       <Animated.View style={{ opacity: tabContentFade, transform: [{ translateY: tabContentTranslateY }], flex: 1 }}>
-        <ScrollView ref={scrollViewRef} showsVerticalScrollIndicator={false} scrollEnabled={true} nestedScrollEnabled={true}>
+        <ScrollView
+          ref={scrollViewRef}
+          showsVerticalScrollIndicator={false}
+          nestedScrollEnabled={true}
+          keyboardShouldPersistTaps="handled"
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.red} colors={[COLORS.red]} />}
+        >
           {/* ── HERO CAROUSEL CARD ── */}
           {!(activeTab === 'food' && groceryMode === 'categories') && (
             <View style={[s.heroCarouselCard, { borderColor: border }]}>
@@ -1746,979 +1822,253 @@ export default function OthersScreen() {
             </View>
           )}
 
-          {/* ── LUXURY MODE SELECTOR ── */}
+          {/* ── MODE SELECTOR ── */}
           {activeTab === 'food' && (
             <View style={{ flexDirection: 'row', marginHorizontal: 12, marginTop: 4, marginBottom: 4, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9', borderRadius: 24, padding: 3, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0' }}>
-              <TouchableOpacity 
-                style={{ flex: 1, borderRadius: 20, overflow: 'hidden' }}
-                onPress={() => setGroceryMode('home')}
-                activeOpacity={0.85}
-              >
-                {groceryMode === 'home' ? (
-                  <LinearGradient
-                    colors={['#10B981', '#059669']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={{ paddingVertical: 6, alignItems: 'center', justifyContent: 'center' }}
-                  >
-                    <Text style={{ fontSize: 9, fontWeight: '900', color: '#FFF', letterSpacing: 0.5 }}>🏠 HOME</Text>
-                  </LinearGradient>
-                ) : (
-                  <View style={{ paddingVertical: 6, alignItems: 'center', justifyContent: 'center' }}>
-                    <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec, letterSpacing: 0.3 }}>🏠 HOME</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                style={{ flex: 1, borderRadius: 20, overflow: 'hidden' }}
-                onPress={() => setGroceryMode('categories')}
-                activeOpacity={0.85}
-              >
-                {groceryMode === 'categories' ? (
-                  <LinearGradient
-                    colors={['#10B981', '#059669']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={{ paddingVertical: 6, alignItems: 'center', justifyContent: 'center' }}
-                  >
-                    <Text style={{ fontSize: 9, fontWeight: '900', color: '#FFF', letterSpacing: 0.5 }}>🗂️ CATEGORIES</Text>
-                  </LinearGradient>
-                ) : (
-                  <View style={{ paddingVertical: 6, alignItems: 'center', justifyContent: 'center' }}>
-                    <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec, letterSpacing: 0.3 }}>🗂️ CATEGORIES</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
+              {(['home', 'categories'] as const).map(mode => (
+                <TouchableOpacity key={mode} style={{ flex: 1, borderRadius: 20, overflow: 'hidden' }} onPress={() => setGroceryMode(mode)} activeOpacity={0.85}>
+                  {groceryMode === mode ? (
+                    <LinearGradient colors={['#10B981', '#059669']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ paddingVertical: 6, alignItems: 'center', justifyContent: 'center' }}>
+                      <Text style={{ fontSize: 9, fontWeight: '900', color: '#FFF', letterSpacing: 0.5 }}>{mode === 'home' ? '🏠 HOME' : '🗂️ CATEGORIES'}</Text>
+                    </LinearGradient>
+                  ) : (
+                    <View style={{ paddingVertical: 6, alignItems: 'center', justifyContent: 'center' }}>
+                      <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec, letterSpacing: 0.3 }}>{mode === 'home' ? '🏠 HOME' : '🗂️ CATEGORIES'}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              ))}
             </View>
           )}
 
         {/* ── FOOD / MEGA BASKET TAB ── */}
         {activeTab === 'food' && groceryMode === 'home' && (
           <View>
-            {/* ── LIMITED-TIME FLASH DEALS TICKER ── */}
-            <View style={[s.flashDealContainer, { backgroundColor: '#FEF2F2', borderColor: '#FCA5A5', marginTop: 12 }]}>
-              <LinearGradient
-                colors={['#EF4444', '#DC2626']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={s.flashBadge}
-              >
-                <Text style={s.flashBadgeText}>⚡ FLASH DEAL</Text>
-              </LinearGradient>
-              <View style={{ flex: 1, paddingLeft: 8 }}>
-                <Text style={s.flashDealTitle} numberOfLines={1}>Cadbury Dairy Milk Silk at 50% OFF!</Text>
-                <Text style={s.flashDealTimerLabel}>Ends in: <FlashDealTimer /></Text>
-              </View>
-              <TouchableOpacity 
-                style={s.flashDealCta}
-                onPress={() => setSelectedCategoryName('Cadbury')}
-              >
-                <Text style={s.flashDealCtaText}>GRAB NOW ➔</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Space spacer */}
-            <View style={{ height: 4 }} />
-
-            {/* ── CATEGORY PILLS HORIZONTAL SCROLL ── */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 8, marginBottom: 16 }}>
-              {[
-                { label: 'All', icon: '🍽️' },
-                { label: 'Fresh', icon: '🍎' },
-                { label: 'Grocery', icon: '🛒' },
-                { label: 'Electronics', icon: '🔌' },
-                { label: 'Organic', icon: '🌱' },
-                { label: 'Health', icon: '🥗' },
-                { label: 'Deals', icon: '🏷️' },
-                { label: 'Gifting', icon: '🎁' }
-              ].map(pill => {
-                const isActive = activeCategoryPill === pill.label;
-                return (
-                  <DopaminePressable
-                    key={pill.label}
-                    style={[s.pillBtn, isActive && s.pillBtnActive, { borderColor: border, backgroundColor: isActive ? '#DCFCE7' : cardBg }]}
-                    onPress={() => {
-                      setActiveCategoryPill(pill.label);
-                      setSelectedCategoryName(pill.label === 'All' ? 'Grocery' : pill.label);
-                    }}
-                    activeScale={0.94}
-                    sound="click"
-                  >
-                    <Text style={{ fontSize: 14, marginRight: 4 }}>{pill.icon}</Text>
-                    <Text style={[s.pillText, { color: isActive ? '#15803D' : txt }]}>{pill.label}</Text>
-                  </DopaminePressable>
-                );
-              })}
-            </ScrollView>
-
-            {/* ── BRAND SPOTLIGHT (SPONSORED BRANDS) ── */}
-            <View style={{ marginBottom: 20 }}>
-              <View style={{ paddingHorizontal: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <Text style={[s.sectionTitle, { color: txt, marginVertical: 0, paddingLeft: 0 }]}>BRAND SPOTLIGHT</Text>
-                <Text style={{ fontSize: 8, fontWeight: '900', color: txtSec, letterSpacing: 1 }}>SPONSORED</Text>
-              </View>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ paddingHorizontal: 16, gap: 14 }}
-              >
-                {[
-                  {
-                    name: 'Amul',
-                    img: 'https://images.unsplash.com/photo-1550583724-b2692b85b150?w=600&q=80',
-                    border: '#B45309'
-                  },
-                  {
-                    name: 'Surf Excel',
-                    img: 'https://images.unsplash.com/photo-1582735689369-4fe89db7114c?w=600&q=80',
-                    border: '#2563EB'
-                  },
-                  {
-                    name: 'Nescafe',
-                    img: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=600&q=80',
-                    border: '#78350F'
-                  },
-                  {
-                    name: 'Lays',
-                    img: 'https://images.unsplash.com/photo-1566478989037-eec170784d0b?w=600&q=80',
-                    border: '#D97706'
-                  }
-                ].map((brand, idx) => (
-                  <DopaminePressable
-                    key={idx}
-                    style={{
-                      width: 154,
-                      height: 254,
-                      borderRadius: 22,
-                      borderWidth: 1.5,
-                      borderColor: brand.border,
-                      overflow: 'hidden',
-                      position: 'relative',
-                      backgroundColor: isDark ? '#1C1917' : '#F8FAFC',
-                      justifyContent: 'center',
-                      alignItems: 'center'
-                    }}
-                    onPress={() => setSelectedCategoryName(brand.name)}
-                    activeScale={0.96}
-                    sound="click"
-                  >
-                    <SafeImage
-                      source={{ uri: brand.img }}
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        position: 'absolute'
-                      }}
-                    />
-                    {/* Brand overlay tag at bottom */}
-                    <View style={{
-                      position: 'absolute',
-                      bottom: 0,
-                      left: 0,
-                      right: 0,
-                      paddingVertical: 8,
-                      paddingHorizontal: 10,
-                      backgroundColor: 'rgba(0,0,0,0.65)',
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between'
-                    }}>
-                      <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 11, letterSpacing: 0.5 }}>{brand.name}</Text>
-                      <Text style={{ color: '#F59E0B', fontWeight: '800', fontSize: 10 }}>EXPLORE →</Text>
-                    </View>
-                  </DopaminePressable>
-                ))}
-              </ScrollView>
-            </View>
-
-            {/* ── MONSOON STORE PROMO HEADER BANNER ── */}
-            <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
-              <LinearGradient
-                colors={['#115E59', '#134E4A']}
-                style={s.monsoonStoreBanner}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={s.monsoonBannerSubtitle}>YOUR FIRST BASKET COMES WITH PERKS</Text>
-                  <Text style={s.monsoonBannerTitle}>MONSOON STORE ⛈️</Text>
-                  <Text style={s.monsoonBannerDesc}>Save extra 5% on every basket, pay with Tata Neu Credit Card</Text>
-                </View>
-                <View style={s.frogMascotContainer}>
-                  <Text style={{ fontSize: 48 }}>🛍️</Text>
-                </View>
-              </LinearGradient>
-            </View>
-
-            {/* ── TOYS STARTING @ 49 ── */}
-            <View style={{ marginTop: 16 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, marginBottom: 8 }}>
-                <View>
-                  <Text style={{ fontSize: 16, fontWeight: '900', color: txt }}>Toys starting @ 49</Text>
-                  <Text style={{ fontSize: 10, color: txtSec, marginTop: 1 }}>Shop now & save big</Text>
-                </View>
-                <TouchableOpacity onPress={() => setSelectedCategoryName('Vehicle toys')} style={s.wellnessSeeAll}>
-                  <Text style={{ fontSize: 14, color: txtSec }}>›</Text>
+            {catalogueStatus === 'loading' && catalogue.length === 0 ? (
+              renderShelfSkeleton()
+            ) : catalogueStatus === 'error' && catalogue.length === 0 ? (
+              renderLoadError('The campus store did not load. Check your internet and try again.', fetchCatalogue)
+            ) : catalogue.length === 0 ? (
+              <View style={[s.emptyState, { paddingVertical: 36 }]}>
+                <Text style={{ fontSize: 32, marginBottom: 8 }}>🧺</Text>
+                <Text style={{ color: txt, fontSize: 13, fontWeight: '900', marginBottom: 4 }}>The store is stocking up</Text>
+                <Text style={{ color: txtSec, fontSize: 11, fontWeight: '600', textAlign: 'center', marginBottom: 14 }}>
+                  Need something now? Send a shopping request and a Zenvy shopper will buy it for you.
+                </Text>
+                <TouchableOpacity style={[s.resetBtn, { backgroundColor: '#10B981' }]} onPress={openCustomRequest}>
+                  <Text style={[s.resetBtnText, { color: '#fff' }]}>REQUEST AN ITEM</Text>
                 </TouchableOpacity>
               </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 12, paddingBottom: 8 }}>
-                {TOY_ITEMS.map(product => {
-                  const inCart = cart.find(i => i.id === product.id);
-                  const quantity = inCart ? inCart.quantity : 0;
-                  return (
-                    <View key={product.id} style={[s.bbProductCard, { backgroundColor: cardSurface, borderColor: border }]}>
-                      <View style={s.bbProductCardImgWrap}>
-                        <TouchableOpacity style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }} onPress={() => router.push(`/products/${product.id}` as any)}>
-                          <Image source={{ uri: product.image }} style={s.bbProductCardImg} />
-                        </TouchableOpacity>
-                        
-                        {product.discount && (
-                          <View style={[s.bbDiscountTag, { position: 'absolute', top: 6, left: 6, backgroundColor: '#FCD34D' }]}>
-                            <Text style={[s.bbDiscountTagText, { color: '#78350F' }]}>{product.discount}</Text>
-                          </View>
-                        )}
-                        
-                        <TouchableOpacity 
-                          style={s.bbWishlistBtn} 
-                          onPress={() => toggleWishlistProduct(product)}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={{ fontSize: 13, color: wishlistIds.includes(String(product.id)) ? '#F59E0B' : '#999' }}>
-                            {wishlistIds.includes(String(product.id)) ? '★' : '☆'}
-                          </Text>
-                        </TouchableOpacity>
-
-                        <View style={s.bbAddBtnOverlapping}>
-                          {quantity > 0 ? (
-                            <View style={s.bbStepperOverlapping}>
-                              <TouchableOpacity
-                                style={s.bbStepperBtnMini}
-                                onPress={() => {
-                                  const cartKey = cart.find(i => i.id === product.id)?.cartKey || product.id;
-                                  updateQuantity(cartKey, quantity - 1);
-                                }}
-                              >
-                                <Text style={s.bbStepperBtnTextMini}>-</Text>
-                              </TouchableOpacity>
-                              <Text style={s.bbStepperQtyMini}>{quantity}</Text>
-                              <TouchableOpacity
-                                style={s.bbStepperBtnMini}
-                                onPress={() => {
-                                  addToCart({
-                                    id: product.id,
-                                    name: product.name,
-                                    price: product.price,
-                                    image: product.image,
-                                    restaurantId: 'mega-basket-vendor',
-                                    restaurantName: 'Mega Basket Grocery'
-                                  });
-                                }}
-                              >
-                                <Text style={s.bbStepperBtnTextMini}>+</Text>
-                              </TouchableOpacity>
-                            </View>
-                          ) : (
-                            <TouchableOpacity
-                              style={s.bbAddBtnSquare}
-                              onPress={() => {
-                                addToCart({
-                                  id: product.id,
-                                  name: product.name,
-                                  price: product.price,
-                                  image: product.image,
-                                  restaurantId: 'mega-basket-vendor',
-                                  restaurantName: 'Mega Basket Grocery'
-                                });
-                              }}
-                            >
-                              <Text style={s.bbAddBtnPlus}>+</Text>
-                            </TouchableOpacity>
-                          )}
-                        </View>
-                      </View>
-
-                      <TouchableOpacity onPress={() => router.push(`/products/${product.id}` as any)}>
-                        <Text style={{ fontSize: 7.5, fontWeight: '900', color: txtSec, textTransform: 'uppercase', marginBottom: 2 }}>{product.brand}</Text>
-                        <Text style={[s.bbProductCardName, { color: txt, height: 26 }]} numberOfLines={2}>
-                          {product.name}
-                        </Text>
-                        
-                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-                          <Text style={s.bbProductCardWeight}>{product.weight}</Text>
-                          <Text style={{ fontSize: 8, color: '#999', marginLeft: 2 }}> ▽</Text>
-                        </View>
-
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
-                          <Text style={[s.bbProductCardPrice, { color: txt }]}>₹{product.price}</Text>
-                          {product.originalPrice > product.price && (
-                            <Text style={s.bbProductCardOrigPrice}>₹{product.originalPrice}</Text>
-                          )}
-                        </View>
-                      </TouchableOpacity>
+            ) : (
+              <>
+                {/* ── TOP DEAL (real discount from the catalogue) ── */}
+                {topDeal && (
+                  <View style={[s.flashDealContainer, { backgroundColor: '#FEF2F2', borderColor: '#FCA5A5', marginTop: 12 }]}>
+                    <LinearGradient colors={['#EF4444', '#DC2626']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.flashBadge}>
+                      <Text style={s.flashBadgeText}>⚡ TOP DEAL</Text>
+                    </LinearGradient>
+                    <View style={{ flex: 1, paddingLeft: 8 }}>
+                      <Text style={s.flashDealTitle} numberOfLines={1}>{topDeal.name} — {topDeal.discountPercent}% OFF</Text>
+                      <Text style={s.flashDealTimerLabel} numberOfLines={1}>Now {fmtPrice(topDeal.price)}{topDeal.originalPrice ? ` (was ${fmtPrice(topDeal.originalPrice)})` : ''}</Text>
                     </View>
-                  );
-                })}
-              </ScrollView>
-            </View>
-
-            {/* ── TOYS & SPORTS MANIA GRID (PREMIUM) ── */}
-            <View style={{ paddingHorizontal: 16, marginTop: 20, marginBottom: 12 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
-                <Text style={{ fontSize: 17, fontWeight: '900', color: txt, letterSpacing: 0.3 }}>Toys & Sports Mania</Text>
-                <View style={{ marginLeft: 8, backgroundColor: '#EF4444', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
-                  <Text style={{ fontSize: 8, fontWeight: '900', color: '#fff', letterSpacing: 1 }}>HOT</Text>
-                </View>
-              </View>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-                {TOY_MANIA_CATEGORIES.map((item, idx) => (
-                  <ScalePressable
-                    key={idx}
-                    onPress={() => setSelectedCategoryName(item.title)}
-                    style={{
-                      width: (SW - 32 - 10) / 2,
-                    }}
-                  >
-                    <View style={{
-                      width: '100%',
-                      height: 130,
-                      borderRadius: 18,
-                      overflow: 'hidden',
-                      position: 'relative',
-                    }}>
-                      <Image
-                        source={{ uri: item.image }}
-                        style={{
-                          width: '100%',
-                          height: '100%',
-                          position: 'absolute',
-                          top: 0,
-                          left: 0,
-                        }}
-                        resizeMode="cover"
-                      />
-                      <LinearGradient
-                        colors={['rgba(0,0,0,0.55)', 'rgba(0,0,0,0.15)', 'rgba(0,0,0,0.6)']}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 0, y: 1 }}
-                        style={{
-                          position: 'absolute',
-                          top: 0, left: 0, right: 0, bottom: 0,
-                          justifyContent: 'space-between',
-                          padding: 12,
-                        }}
-                      >
-                        <View>
-                          <Text style={{
-                            fontSize: 14,
-                            fontWeight: '900',
-                            color: '#fff',
-                            textShadowColor: 'rgba(0,0,0,0.5)',
-                            textShadowOffset: { width: 0, height: 1 },
-                            textShadowRadius: 3,
-                          }} numberOfLines={2}>
-                            {item.title}
-                          </Text>
-                        </View>
-                        <View style={{
-                          backgroundColor: item.badgeBg,
-                          alignSelf: 'flex-start',
-                          paddingHorizontal: 10,
-                          paddingVertical: 4,
-                          borderRadius: 10,
-                          shadowColor: item.badgeBg,
-                          shadowOffset: { width: 0, height: 2 },
-                          shadowOpacity: 0.5,
-                          shadowRadius: 6,
-                          elevation: 4,
-                        }}>
-                          <Text style={{
-                            fontSize: 8,
-                            fontWeight: '900',
-                            color: '#fff',
-                            letterSpacing: 0.8,
-                          }}>
-                            {item.badge}
-                          </Text>
-                        </View>
-                      </LinearGradient>
-                    </View>
-                  </ScalePressable>
-                ))}
-              </View>
-            </View>
-
-            {/* ── BRING HOME FRESH GREENS ── */}
-            <View style={{ marginTop: 16 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, marginBottom: 8 }}>
-                <View>
-                  <Text style={{ fontSize: 16, fontWeight: '900', color: txt }}>Bring home fresh greens</Text>
-                  <Text style={{ fontSize: 10, color: txtSec, marginTop: 1 }}>Grow your happy place</Text>
-                </View>
-                <TouchableOpacity onPress={() => setSelectedCategoryName('Seeds')} style={s.wellnessSeeAll}>
-                  <Text style={{ fontSize: 14, color: txtSec }}>›</Text>
-                </TouchableOpacity>
-              </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 12, paddingBottom: 8 }}>
-                {SEED_ITEMS.map(product => {
-                  const inCart = cart.find(i => i.id === product.id);
-                  const quantity = inCart ? inCart.quantity : 0;
-                  return (
-                    <View key={product.id} style={[s.bbProductCard, { backgroundColor: cardSurface, borderColor: border }]}>
-                      <View style={s.bbProductCardImgWrap}>
-                        <TouchableOpacity style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }} onPress={() => router.push(`/products/${product.id}` as any)}>
-                          <Image source={{ uri: product.image }} style={s.bbProductCardImg} />
-                        </TouchableOpacity>
-                        
-                        {product.discount && (
-                          <View style={[s.bbDiscountTag, { position: 'absolute', top: 6, left: 6, backgroundColor: '#FCD34D' }]}>
-                            <Text style={[s.bbDiscountTagText, { color: '#78350F' }]}>{product.discount}</Text>
-                          </View>
-                        )}
-                        
-                        <TouchableOpacity 
-                          style={s.bbWishlistBtn} 
-                          onPress={() => toggleWishlistProduct(product)}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={{ fontSize: 13, color: wishlistIds.includes(String(product.id)) ? '#F59E0B' : '#999' }}>
-                            {wishlistIds.includes(String(product.id)) ? '★' : '☆'}
-                          </Text>
-                        </TouchableOpacity>
-
-                        <View style={s.bbAddBtnOverlapping}>
-                          {quantity > 0 ? (
-                            <View style={s.bbStepperOverlapping}>
-                              <TouchableOpacity
-                                style={s.bbStepperBtnMini}
-                                onPress={() => {
-                                  const cartKey = cart.find(i => i.id === product.id)?.cartKey || product.id;
-                                  updateQuantity(cartKey, quantity - 1);
-                                }}
-                              >
-                                <Text style={s.bbStepperBtnTextMini}>-</Text>
-                              </TouchableOpacity>
-                              <Text style={s.bbStepperQtyMini}>{quantity}</Text>
-                              <TouchableOpacity
-                                style={s.bbStepperBtnMini}
-                                onPress={() => {
-                                  addToCart({
-                                    id: product.id,
-                                    name: product.name,
-                                    price: product.price,
-                                    image: product.image,
-                                    restaurantId: 'mega-basket-vendor',
-                                    restaurantName: 'Mega Basket Grocery'
-                                  });
-                                }}
-                              >
-                                <Text style={s.bbStepperBtnTextMini}>+</Text>
-                              </TouchableOpacity>
-                            </View>
-                          ) : (
-                            <TouchableOpacity
-                              style={s.bbAddBtnSquare}
-                              onPress={() => {
-                                addToCart({
-                                  id: product.id,
-                                  name: product.name,
-                                  price: product.price,
-                                  image: product.image,
-                                  restaurantId: 'mega-basket-vendor',
-                                  restaurantName: 'Mega Basket Grocery'
-                                });
-                              }}
-                            >
-                              <Text style={s.bbAddBtnPlus}>+</Text>
-                            </TouchableOpacity>
-                          )}
-                        </View>
-                      </View>
-
-                      <TouchableOpacity onPress={() => router.push(`/products/${product.id}` as any)}>
-                        <Text style={{ fontSize: 7.5, fontWeight: '900', color: txtSec, textTransform: 'uppercase', marginBottom: 2 }}>{product.brand}</Text>
-                        <Text style={[s.bbProductCardName, { color: txt, height: 26 }]} numberOfLines={2}>
-                          {product.name}
-                        </Text>
-                        
-                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-                          <Text style={s.bbProductCardWeight}>{product.weight}</Text>
-                          <Text style={{ fontSize: 8, color: '#999', marginLeft: 2 }}> ▽</Text>
-                        </View>
-
-                        {/* Special Flash Sale tag in purple */}
-                        {product.flashSale && (
-                          <View style={{ backgroundColor: '#FAF5FF', borderColor: '#E9D5FF', borderWidth: 1, borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1, alignSelf: 'flex-start', marginTop: 2 }}>
-                            <Text style={{ fontSize: 6.5, fontWeight: '900', color: '#6B21A8' }}>⚡ Flash Sale</Text>
-                          </View>
-                        )}
-
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
-                          <Text style={[s.bbProductCardPrice, { color: txt }]}>₹{product.price}</Text>
-                          {product.originalPrice > product.price && (
-                            <Text style={s.bbProductCardOrigPrice}>₹{product.originalPrice}</Text>
-                          )}
-                        </View>
-                      </TouchableOpacity>
-                    </View>
-                  );
-                })}
-              </ScrollView>
-            </View>
-
-            {/* ── BEST DEALS DIVIDER ── */}
-            <View style={{ marginHorizontal: 16, marginVertical: 16, height: 38, borderRadius: 10, backgroundColor: isDark ? '#27272A' : '#EFF6FF', borderStyle: 'dashed', borderWidth: 1, borderColor: isDark ? '#3F3F46' : '#BFDBFE', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-              <Text style={{ fontSize: 14 }}>🏷️</Text>
-              <Text style={{ fontSize: 10, fontWeight: '900', color: isDark ? '#93C5FD' : '#1D4ED8', letterSpacing: 1.5 }}>BEST DEALS</Text>
-            </View>
-
-            {/* ── COOKING OILS & GHEE (PREMIUM GRID) ── */}
-            <View style={{ paddingHorizontal: 16, marginTop: 20, marginBottom: 12 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={{ fontSize: 17, fontWeight: '900', color: txt, letterSpacing: 0.3 }}>Cooking Oils & Ghee</Text>
-                  <View style={{ marginLeft: 8, backgroundColor: '#CA8A04', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
-                    <Text style={{ fontSize: 7, fontWeight: '900', color: '#fff', letterSpacing: 1 }}>PURE</Text>
-                  </View>
-                </View>
-                <TouchableOpacity onPress={() => setSelectedCategoryName('Edible Oils & Ghee')}>
-                  <Text style={{ fontSize: 10, fontWeight: '800', color: '#16A34A' }}>See all ›</Text>
-                </TouchableOpacity>
-              </View>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-                {[
-                  { title: 'Blended Oils', img: 'https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=400&q=80' },
-                  { title: 'Cold Pressed', img: 'https://images.unsplash.com/photo-1620706857370-e1b9770e8bb1?w=400&q=80' },
-                  { title: 'Pure Cow Ghee', img: 'https://images.unsplash.com/photo-1631451095765-2c91616fc9e6?w=400&q=80' },
-                  { title: 'Organic Ghee', img: 'https://images.unsplash.com/photo-1563729784474-d77dbb933a9e?w=400&q=80' },
-                ].map((item, idx) => (
-                  <ScalePressable
-                    key={idx}
-                    onPress={() => setSelectedCategoryName('Edible Oils & Ghee')}
-                    style={{ width: (SW - 32 - 10) / 2 }}
-                  >
-                    <View style={{
-                      width: '100%',
-                      height: 120,
-                      borderRadius: 16,
-                      overflow: 'hidden',
-                      position: 'relative',
-                    }}>
-                      <Image
-                        source={{ uri: item.img }}
-                        style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }}
-                        resizeMode="cover"
-                      />
-                      <LinearGradient
-                        colors={['rgba(0,0,0,0.05)', 'rgba(0,0,0,0.7)']}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 0, y: 1 }}
-                        style={{
-                          position: 'absolute',
-                          top: 0, left: 0, right: 0, bottom: 0,
-                          justifyContent: 'flex-end',
-                          padding: 10,
-                        }}
-                      >
-                        <Text style={{
-                          fontSize: 13,
-                          fontWeight: '900',
-                          color: '#fff',
-                          textShadowColor: 'rgba(0,0,0,0.6)',
-                          textShadowOffset: { width: 0, height: 1 },
-                          textShadowRadius: 4,
-                        }}>
-                          {item.title}
-                        </Text>
-                      </LinearGradient>
-                    </View>
-                  </ScalePressable>
-                ))}
-              </View>
-            </View>
-
-            {/* ── BETTER HEALTH STARTS HERE ── */}
-            <Text style={[s.sectionTitle, { color: txt, marginTop: 24, paddingLeft: 16 }]}>Better health starts here</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, gap: 12, marginBottom: 24 }}>
-              {[
-                { name: 'Fit & active', img: 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=200&q=80' },
-                { name: 'Low-sugar choices', img: 'https://images.unsplash.com/photo-1607623814075-e51df1bdc82f?w=200&q=80' },
-                { name: 'Weight management', img: 'https://images.unsplash.com/photo-1550617931-e17a7b70dce2?w=200&q=80' },
-                { name: 'Plant-based & vegan', img: 'https://images.unsplash.com/photo-1563636619-e9143da7973b?w=200&q=80' },
-                { name: 'Ayurveda', img: 'https://images.unsplash.com/photo-1540148426945-6cf22a6b2383?w=200&q=80' }
-              ].map((h, idx) => (
-                <TouchableOpacity 
-                  key={idx} 
-                  style={{ width: (SW - 32 - 24) / 3, alignItems: 'center', marginBottom: 12 }} 
-                  onPress={() => setSelectedCategoryName(h.name)}
-                >
-                  <View style={{ width: '100%', height: 90, borderRadius: 16, backgroundColor: '#E6F4EA', overflow: 'hidden', justifyContent: 'flex-end', position: 'relative', borderWidth: 1, borderColor: border }}>
-                    <View style={{ position: 'absolute', top: 20, left: 10, right: 10, bottom: 0, borderTopLeftRadius: 36, borderTopRightRadius: 36, backgroundColor: '#10B981', opacity: 0.7 }} />
-                    <Image source={{ uri: h.img }} style={{ width: '75%', height: '80%', resizeMode: 'cover', alignSelf: 'center', borderBottomLeftRadius: 10, borderBottomRightRadius: 10 }} />
-                  </View>
-                  <Text style={{ fontSize: 9, fontWeight: '900', color: txt, textAlign: 'center', marginTop: 6 }} numberOfLines={2}>{h.name}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            {/* ── MONSOON WELLNESS PICKS ── */}
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingRight: 16 }}>
-              <Text style={[s.sectionTitle, { color: txt, flex: 1 }]}>Monsoon wellness picks</Text>
-              <TouchableOpacity style={s.wellnessSeeAll} onPress={() => setSelectedCategoryName('Monsoon Wellness Picks')}>
-                <Text style={{ fontSize: 16, color: txtSec }}>›</Text>
-              </TouchableOpacity>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 12, marginBottom: 32 }}>
-              {[
-                {
-                  id: 'bb-honey',
-                  name: '24 MANTRA ORGANIC Wild Honey',
-                  price: 380,
-                  originalPrice: 380,
-                  weight: '500 g',
-                  image: 'https://images.unsplash.com/photo-1607623814075-e51df1bdc82f?w=200&q=80',
-                  isVeg: true
-                },
-                {
-                  id: 'bb-lemon',
-                  name: 'Fresh Lemon',
-                  price: 10,
-                  originalPrice: 27,
-                  weight: '3 pcs',
-                  image: 'https://images.unsplash.com/photo-1590502593747-42a996133562?w=200&q=80',
-                  isVeg: true,
-                  discount: '63% OFF'
-                },
-                {
-                  id: 'bb-garlic',
-                  name: 'Fresh Garlic/Velluli',
-                  price: 65,
-                  originalPrice: 114,
-                  weight: '250 g',
-                  image: 'https://images.unsplash.com/photo-1540148426945-6cf22a6b2383?w=200&q=80',
-                  isVeg: true,
-                  discount: '43% OFF'
-                },
-                {
-                  id: 'bb-ginger',
-                  name: 'Fresh Ginger',
-                  price: 35,
-                  originalPrice: 50,
-                  weight: '100 g',
-                  image: 'https://images.unsplash.com/photo-1615485290382-441e4d049cb5?w=200&q=80',
-                  isVeg: true,
-                  discount: '30% OFF'
-                }
-              ].map(product => {
-                const inCart = cart.find(i => i.id === product.id);
-                const quantity = inCart ? inCart.quantity : 0;
-                return (
-                  <View key={product.id} style={[s.bbProductCard, { backgroundColor: cardSurface, borderColor: border }]}>
-                    {/* Image and overlapping controls */}
-                    <View style={s.bbProductCardImgWrap}>
-                      <TouchableOpacity style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }} onPress={() => router.push(`/products/${product.id}` as any)}>
-                        <Image source={{ uri: product.image }} style={s.bbProductCardImg} />
-                      </TouchableOpacity>
-                      
-                      {/* Heart outline badge */}
-                      <TouchableOpacity 
-                        style={s.bbWishlistBtn} 
-                        onPress={() => toggleWishlistProduct(product)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={{ fontSize: 13, color: wishlistIds.includes(String(product.id)) ? '#F59E0B' : '#999' }}>
-                          {wishlistIds.includes(String(product.id)) ? '★' : '☆'}
-                        </Text>
-                      </TouchableOpacity>
-
-                      {/* Overlapping green square + button */}
-                      <View style={s.bbAddBtnOverlapping}>
-                        {quantity > 0 ? (
-                          <View style={s.bbStepperOverlapping}>
-                            <TouchableOpacity
-                              style={s.bbStepperBtnMini}
-                              onPress={() => {
-                                const cartKey = cart.find(i => i.id === product.id)?.cartKey || product.id;
-                                updateQuantity(cartKey, quantity - 1);
-                              }}
-                            >
-                              <Text style={s.bbStepperBtnTextMini}>-</Text>
-                            </TouchableOpacity>
-                            <Text style={s.bbStepperQtyMini}>{quantity}</Text>
-                            <TouchableOpacity
-                              style={s.bbStepperBtnMini}
-                              onPress={() => {
-                                addToCart({
-                                  id: product.id,
-                                  name: product.name,
-                                  price: product.price,
-                                  image: product.image,
-                                  restaurantId: 'mega-basket-vendor',
-                                  restaurantName: 'Mega Basket Grocery'
-                                });
-                              }}
-                            >
-                              <Text style={s.bbStepperBtnTextMini}>+</Text>
-                            </TouchableOpacity>
-                          </View>
-                        ) : (
-                          <TouchableOpacity
-                            style={s.bbAddBtnSquare}
-                            onPress={() => {
-                              addToCart({
-                                id: product.id,
-                                name: product.name,
-                                price: product.price,
-                                image: product.image,
-                                restaurantId: 'mega-basket-vendor',
-                                restaurantName: 'Mega Basket Grocery'
-                              });
-                            }}
-                          >
-                            <Text style={s.bbAddBtnPlus}>+</Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                    </View>
-
-                    {/* Details */}
-                    <TouchableOpacity 
-                      style={s.bbProductCardDetails}
-                      onPress={() => router.push(`/products/${product.id}` as any)}
-                    >
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <Text style={[s.bbProductCardPrice, { color: txt }]}>₹{product.price}</Text>
-                        {product.originalPrice > product.price && (
-                          <Text style={s.bbProductCardOrigPrice}>₹{product.originalPrice}</Text>
-                        )}
-                      </View>
-                      
-                      {product.discount ? (
-                        <View style={s.bbDiscountTag}>
-                          <Text style={s.bbDiscountTagText}>{product.discount}</Text>
-                        </View>
-                      ) : (
-                        <View style={{ height: 14 }} />
-                      )}
-
-                      <Text style={[s.bbProductCardName, { color: txt }]} numberOfLines={2}>
-                        {product.name}
-                      </Text>
-                      
-                      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-                        <Text style={s.bbProductCardWeight}>{product.weight}</Text>
-                        <Text style={{ fontSize: 8, color: '#999', marginLeft: 2 }}> ▽</Text>
-                      </View>
+                    <TouchableOpacity style={s.flashDealCta} onPress={() => setSelectedCategoryName('Deals')}>
+                      <Text style={s.flashDealCtaText}>ALL DEALS ➔</Text>
                     </TouchableOpacity>
                   </View>
-                );
-              })}
-            </ScrollView>
+                )}
 
-            {/* ── OFTEN BOUGHT TOGETHER SMART CROSS-PROMOTION SHELF ── */}
-            <View style={{ marginBottom: 24 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, marginBottom: 10 }}>
-                <Text style={[s.sectionTitle, { color: txt, marginVertical: 0, paddingLeft: 0 }]}>Often Bought Together</Text>
-                <Text style={{ fontSize: 8, fontWeight: '900', color: '#16A34A', letterSpacing: 0.5 }}>SMART PICKS</Text>
-              </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}>
-                {[
-                  {
-                    id: 'brand-amul-1',
-                    name: 'Amul Pure Cow Ghee Tin',
-                    price: 680,
-                    originalPrice: 720,
-                    weight: '1 L',
-                    image: 'https://images.unsplash.com/photo-1547514701-42782101795e?w=200&q=80',
-                    isVeg: true,
-                    discount: '5% OFF'
-                  },
-                  {
-                    id: 'brand-nescafe-1',
-                    name: 'Nescafe Classic Instant Coffee',
-                    price: 310,
-                    originalPrice: 340,
-                    weight: '100 g',
-                    image: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=200&q=80',
-                    isVeg: true,
-                    discount: '8% OFF'
-                  },
-                  {
-                    id: 'brand-cadbury-1',
-                    name: 'Cadbury Dairy Milk Silk Bar',
-                    price: 100,
-                    originalPrice: 100,
-                    weight: '150 g',
-                    image: 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=200&q=80',
-                    isVeg: true
-                  }
-                ].map(product => {
-                  const inCart = cart.find(i => i.id === product.id);
-                  const quantity = inCart ? inCart.quantity : 0;
-                  return (
-                    <View key={product.id} style={[s.crossPromoCard, { backgroundColor: cardSurface, borderColor: border }]}>
-                      <Image source={{ uri: product.image }} style={s.crossPromoImg} />
-                      <View style={{ flex: 1, paddingLeft: 8 }}>
-                        <Text style={[s.crossPromoTitle, { color: txt }]} numberOfLines={1}>{product.name}</Text>
-                        <Text style={s.crossPromoWeight}>{product.weight}</Text>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
-                          <Text style={[s.crossPromoPrice, { color: txt }]}>₹{product.price}</Text>
-                          {quantity > 0 ? (
-                            <View style={[s.stepperWrap, { height: 24 }]}>
-                              <TouchableOpacity
-                                style={[s.stepperBtn, { paddingHorizontal: 4 }]}
-                                onPress={() => {
-                                  const cartKey = cart.find(i => i.id === product.id)?.cartKey || product.id;
-                                  updateQuantity(cartKey, quantity - 1);
-                                }}
-                              >
-                                <Text style={[s.stepperBtnText, { fontSize: 8 }]}>-</Text>
-                              </TouchableOpacity>
-                              <Text style={[s.stepperQty, { fontSize: 8, minWidth: 10, paddingHorizontal: 2 }]}>{quantity}</Text>
-                              <TouchableOpacity
-                                style={[s.stepperBtn, { paddingHorizontal: 4 }]}
-                                onPress={() => {
-                                  addToCart({
-                                    id: product.id,
-                                    name: product.name,
-                                    price: product.price,
-                                    image: product.image,
-                                    restaurantId: 'mega-basket-vendor',
-                                    restaurantName: 'Mega Basket Grocery'
-                                  });
-                                }}
-                              >
-                                <Text style={[s.stepperBtnText, { fontSize: 8 }]}>+</Text>
-                              </TouchableOpacity>
-                            </View>
-                          ) : (
-                            <TouchableOpacity
-                              style={[s.addBtnWellness, { paddingHorizontal: 6, paddingVertical: 2 }]}
-                              onPress={() => {
-                                addToCart({
-                                  id: product.id,
-                                  name: product.name,
-                                  price: product.price,
-                                  image: product.image,
-                                  restaurantId: 'mega-basket-vendor',
-                                  restaurantName: 'Mega Basket Grocery'
-                                });
-                              }}
+                <View style={{ height: 4 }} />
+
+                {/* ── CATEGORY PILLS ── */}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 8, marginTop: 8, marginBottom: 16 }}>
+                  {CATEGORY_PILLS.filter(p => hasShelf(p.shelf)).map(pill => {
+                    const isActive = activeCategoryPill === pill.label;
+                    return (
+                      <DopaminePressable
+                        key={pill.label}
+                        style={[s.pillBtn, isActive && s.pillBtnActive, { borderColor: border, backgroundColor: isActive ? '#DCFCE7' : cardBg }]}
+                        onPress={() => {
+                          setActiveCategoryPill(pill.label);
+                          setSelectedCategoryName(pill.shelf);
+                        }}
+                        activeScale={0.94}
+                        sound="click"
+                      >
+                        <Text style={{ fontSize: 14, marginRight: 4 }}>{pill.icon}</Text>
+                        <Text style={[s.pillText, { color: isActive ? '#15803D' : txt }]}>{pill.label}</Text>
+                      </DopaminePressable>
+                    );
+                  })}
+                </ScrollView>
+
+                {/* ── SHOP BY BRAND ── */}
+                {BRANDS.some(b => hasShelf(b.name)) && (
+                  <View style={{ marginBottom: 20 }}>
+                    <View style={{ paddingHorizontal: 16, marginBottom: 12 }}>
+                      <Text style={[s.sectionTitle, { color: txt, marginVertical: 0, paddingLeft: 0 }]}>SHOP BY BRAND</Text>
+                    </View>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 14 }}>
+                      {BRANDS.filter(b => hasShelf(b.name)).map(brand => (
+                        <DopaminePressable
+                          key={brand.name}
+                          style={{ width: 140, height: 200, borderRadius: 22, borderWidth: 1.5, borderColor: brand.border, overflow: 'hidden', backgroundColor: isDark ? '#1C1917' : '#F8FAFC', justifyContent: 'center', alignItems: 'center' }}
+                          onPress={() => setSelectedCategoryName(brand.name)}
+                          activeScale={0.96}
+                          sound="click"
+                        >
+                          <SafeImage source={{ uri: brand.img }} style={{ width: '100%', height: '100%', position: 'absolute' }} />
+                          <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, paddingVertical: 8, paddingHorizontal: 10, backgroundColor: 'rgba(0,0,0,0.65)', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 11, letterSpacing: 0.5 }}>{brand.name}</Text>
+                            <Text style={{ color: '#F59E0B', fontWeight: '800', fontSize: 10 }}>SHOP →</Text>
+                          </View>
+                        </DopaminePressable>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+
+                {/* ── TOYS ── */}
+                {renderShelf(toyStartPrice !== null ? `Toys from ${fmtPrice(toyStartPrice)}` : 'Toys & games', 'Games, plushies, sports & more', toyShelf, 'Toys')}
+
+                {/* ── TOYS & SPORTS GRID ── */}
+                {toyTiles.length > 0 && (
+                  <View style={{ paddingHorizontal: 16, marginTop: 20, marginBottom: 12 }}>
+                    <Text style={{ fontSize: 17, fontWeight: '900', color: txt, letterSpacing: 0.3, marginBottom: 14 }}>Toys & Sports Mania</Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+                      {toyTiles.map(item => (
+                        <ScalePressable key={item.title} onPress={() => setSelectedCategoryName(item.title)} style={{ width: (SW - 32 - 10) / 2 }}>
+                          <View style={{ width: '100%', height: 130, borderRadius: 18, overflow: 'hidden' }}>
+                            <Image source={{ uri: item.image }} style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }} resizeMode="cover" />
+                            <LinearGradient
+                              colors={['rgba(0,0,0,0.55)', 'rgba(0,0,0,0.15)', 'rgba(0,0,0,0.6)']}
+                              start={{ x: 0, y: 0 }}
+                              end={{ x: 0, y: 1 }}
+                              style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'space-between', padding: 12 }}
                             >
-                              <Text style={[s.addBtnWellnessText, { fontSize: 8 }]}>ADD +</Text>
-                            </TouchableOpacity>
-                          )}
-                        </View>
+                              <Text style={{ fontSize: 14, fontWeight: '900', color: '#fff', textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 }} numberOfLines={2}>
+                                {item.title}
+                              </Text>
+                              <View style={{ backgroundColor: item.badgeBg, alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 }}>
+                                <Text style={{ fontSize: 8, fontWeight: '900', color: '#fff', letterSpacing: 0.8 }}>{item.badge}</Text>
+                              </View>
+                            </LinearGradient>
+                          </View>
+                        </ScalePressable>
+                      ))}
+                    </View>
+                  </View>
+                )}
+
+                {/* ── SEEDS ── */}
+                {renderShelf('Bring home fresh greens', 'Seeds for your balcony garden', seedShelf, 'Seeds')}
+
+                {/* ── BEST DEALS ── */}
+                {dealShelf.length > 0 && (
+                  <>
+                    <View style={{ marginHorizontal: 16, marginTop: 20, height: 38, borderRadius: 10, backgroundColor: isDark ? '#27272A' : '#EFF6FF', borderStyle: 'dashed', borderWidth: 1, borderColor: isDark ? '#3F3F46' : '#BFDBFE', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                      <Text style={{ fontSize: 14 }}>🏷️</Text>
+                      <Text style={{ fontSize: 10, fontWeight: '900', color: isDark ? '#93C5FD' : '#1D4ED8', letterSpacing: 1.5 }}>BEST DEALS</Text>
+                    </View>
+                    {renderShelf('Biggest savings right now', 'Prices you pay at checkout', dealShelf, 'Deals')}
+                  </>
+                )}
+
+                {/* ── COOKING OILS & GHEE ── */}
+                {renderShelf('Cooking Oils & Ghee', 'Kitchen staples for your hostel', oilShelf, 'Edible Oils & Ghee')}
+
+                {/* ── BETTER HEALTH ── */}
+                {HEALTH_TILES.some(h => hasShelf(h.name)) && (
+                  <>
+                    <Text style={[s.sectionTitle, { color: txt, marginTop: 24, paddingLeft: 16 }]}>Better health starts here</Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, gap: 12, marginBottom: 12 }}>
+                      {HEALTH_TILES.filter(h => hasShelf(h.name)).map(h => (
+                        <TouchableOpacity key={h.name} style={{ width: (SW - 32 - 24) / 3, alignItems: 'center', marginBottom: 12 }} onPress={() => setSelectedCategoryName(h.name)}>
+                          <View style={{ width: '100%', height: 90, borderRadius: 16, backgroundColor: '#E6F4EA', overflow: 'hidden', justifyContent: 'flex-end', borderWidth: 1, borderColor: border }}>
+                            <View style={{ position: 'absolute', top: 20, left: 10, right: 10, bottom: 0, borderTopLeftRadius: 36, borderTopRightRadius: 36, backgroundColor: '#10B981', opacity: 0.7 }} />
+                            <Image source={{ uri: h.img }} style={{ width: '75%', height: '80%', resizeMode: 'cover', alignSelf: 'center', borderBottomLeftRadius: 10, borderBottomRightRadius: 10 }} />
+                          </View>
+                          <Text style={{ fontSize: 9, fontWeight: '900', color: txt, textAlign: 'center', marginTop: 6 }} numberOfLines={2}>{h.label || h.name}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </>
+                )}
+
+                {/* ── WELLNESS PICKS ── */}
+                {renderShelf('Wellness picks', 'Honey, ginger, lemon & more', wellnessShelf, 'Monsoon Wellness Picks')}
+
+                {/* ── DAILY ESSENTIALS, SNACKS, HOME NEEDS GRIDS ── */}
+                <View style={{ height: 16 }} />
+                {groceryGrid.map((section, sectionIdx) => {
+                  const sectionColors = ['#059669', '#EA580C', '#7C3AED'];
+                  return (
+                    <View key={section.title} style={{ paddingHorizontal: 16, marginBottom: 20 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
+                        <Text style={{ fontSize: 17, fontWeight: '900', color: txt, letterSpacing: 0.3 }}>{section.title}</Text>
+                        <View style={{ marginLeft: 8, width: 8, height: 8, borderRadius: 4, backgroundColor: sectionColors[sectionIdx % sectionColors.length] }} />
+                      </View>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+                        {section.items.map(item => (
+                          <ScalePressable key={item.name} onPress={() => setSelectedCategoryName(item.name)} style={{ width: (SW - 32 - 10) / 2 }}>
+                            <View style={{ width: '100%', height: 120, borderRadius: 16, overflow: 'hidden' }}>
+                              <Image source={{ uri: item.img }} style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }} resizeMode="cover" />
+                              <LinearGradient
+                                colors={['rgba(0,0,0,0.1)', 'rgba(0,0,0,0.65)']}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 0, y: 1 }}
+                                style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'flex-end', padding: 10 }}
+                              >
+                                <Text style={{ fontSize: 12, fontWeight: '900', color: '#fff', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 }} numberOfLines={2}>{item.name}</Text>
+                              </LinearGradient>
+                            </View>
+                          </ScalePressable>
+                        ))}
                       </View>
                     </View>
                   );
                 })}
-              </ScrollView>
-            </View>
 
-            {/* ── DAILY ESSENTIALS, SNACKS, HOME NEEDS GRIDS (PREMIUM) ── */}
-            {GROCERY_CATEGORIES.map((section, sectionIdx) => {
-              const sectionBadges = ['ESSENTIALS', 'POPULAR', 'HOME'];
-              const sectionColors = ['#059669', '#EA580C', '#7C3AED'];
-              return (
-              <View key={section.title} style={{ paddingHorizontal: 16, marginBottom: 20 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
-                  <Text style={{ fontSize: 17, fontWeight: '900', color: txt, letterSpacing: 0.3 }}>{section.title}</Text>
-                  <View style={{ marginLeft: 8, backgroundColor: sectionColors[sectionIdx] || '#059669', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
-                    <Text style={{ fontSize: 7, fontWeight: '900', color: '#fff', letterSpacing: 1 }}>{sectionBadges[sectionIdx] || 'NEW'}</Text>
-                  </View>
-                </View>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-                  {section.items.map((item, idx) => (
-                    <ScalePressable
-                      key={idx}
-                      onPress={() => setSelectedCategoryName(item.name)}
-                      style={{ width: (SW - 32 - 10) / 2 }}
-                    >
-                      <View style={{
-                        width: '100%',
-                        height: 120,
-                        borderRadius: 16,
-                        overflow: 'hidden',
-                        position: 'relative',
-                      }}>
-                        <Image
-                          source={{ uri: item.img }}
-                          style={{
-                            width: '100%',
-                            height: '100%',
-                            position: 'absolute',
-                            top: 0,
-                            left: 0,
-                          }}
-                          resizeMode="cover"
-                        />
-                        <LinearGradient
-                          colors={['rgba(0,0,0,0.1)', 'rgba(0,0,0,0.65)']}
-                          start={{ x: 0, y: 0 }}
-                          end={{ x: 0, y: 1 }}
-                          style={{
-                            position: 'absolute',
-                            top: 0, left: 0, right: 0, bottom: 0,
-                            justifyContent: 'flex-end',
-                            padding: 10,
-                          }}
-                        >
-                          <Text style={{
-                            fontSize: 12,
-                            fontWeight: '900',
-                            color: '#fff',
-                            textShadowOffset: { width: 0, height: 1 },
-                            textShadowRadius: 4,
-                          }} numberOfLines={2}>
-                            {item.name}
-                          </Text>
-                        </LinearGradient>
-                      </View>
-                    </ScalePressable>
-                  ))}
-                </View>
-              </View>
-              );
-            })}
+                {/* ── CAN'T FIND IT? (real Mega Basket shopping request) ── */}
+                <TouchableOpacity activeOpacity={0.9} onPress={openCustomRequest} style={{ marginHorizontal: 16, marginBottom: 8, borderRadius: 18, overflow: 'hidden' }}>
+                  <LinearGradient colors={['#115E59', '#134E4A']} style={s.monsoonStoreBanner}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.monsoonBannerSubtitle}>CAN'T FIND IT?</Text>
+                      <Text style={s.monsoonBannerTitle}>REQUEST ANY ITEM 🛍️</Text>
+                      <Text style={s.monsoonBannerDesc}>Tell us what you need. A Zenvy shopper buys it and you approve the bill before paying.</Text>
+                    </View>
+                    <View style={s.frogMascotContainer}>
+                      <Text style={{ fontSize: 44 }}>📝</Text>
+                    </View>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         )}
 
-        {/* ── BIGBASKET CATEGORY MODE ── */}
+        {/* ── CATEGORY MODE ── */}
         {activeTab === 'food' && groceryMode === 'categories' && (
           <View style={{ flex: 1, height: SH > 700 ? SH - 200 : 540, backgroundColor: isDark ? '#0B0B0D' : '#F8FAFC' }}>
             {/* Quick List Auto Fill Card */}
             {showAutoFillCard && (
               <View style={{ marginHorizontal: 10, backgroundColor: cardBg, borderWidth: 1, borderColor: '#22C55E', borderRadius: 14, padding: 10, marginVertical: 4, elevation: 3 }}>
-                <Text style={{ fontSize: 10, fontWeight: '900', color: txt, marginBottom: 4 }}>⚡ SMART BASKET AUTO-FILL</Text>
+                <Text style={{ fontSize: 10, fontWeight: '900', color: txt, marginBottom: 4 }}>⚡ QUICK LIST</Text>
+                <Text style={{ fontSize: 9, color: txtSec, marginBottom: 6 }}>Type your list and we'll add the matching items from the store.</Text>
                 <TextInput
-                  style={{
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#FFFFFF',
-                    borderWidth: 1,
-                    borderColor: border,
-                    borderRadius: 8,
-                    padding: 6,
-                    fontSize: 10,
-                    color: txt,
-                    height: 48,
-                    textAlignVertical: 'top'
-                  }}
+                  style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#FFFFFF', borderWidth: 1, borderColor: border, borderRadius: 8, padding: 6, fontSize: 11, color: txt, height: 52, textAlignVertical: 'top' }}
                   multiline
-                  placeholder="e.g. 1 Atta, 2 chips, 3 Lemon"
+                  maxLength={500}
+                  placeholder="e.g. 2 maggi, 1 atta, lays"
                   placeholderTextColor={txtSec}
                   value={listText}
                   onChangeText={setListText}
                 />
                 <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 6, marginTop: 6 }}>
-                  <TouchableOpacity 
-                    style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: isDark ? '#3F3F46' : '#E2E8F0' }}
-                    onPress={() => setShowAutoFillCard(false)}
-                  >
-                    <Text style={{ fontSize: 8.5, fontWeight: '900', color: txt }}>CANCEL</Text>
+                  <TouchableOpacity style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, backgroundColor: isDark ? '#3F3F46' : '#E2E8F0' }} onPress={() => setShowAutoFillCard(false)}>
+                    <Text style={{ fontSize: 9, fontWeight: '900', color: txt }}>CANCEL</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: '#22C55E' }}
-                    onPress={handleSmartAutoFill}
-                  >
-                    <Text style={{ fontSize: 8.5, fontWeight: '900', color: '#fff' }}>AUTO-FILL</Text>
+                  <TouchableOpacity style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, backgroundColor: '#22C55E' }} onPress={handleSmartAutoFill}>
+                    <Text style={{ fontSize: 9, fontWeight: '900', color: '#fff' }}>ADD ITEMS</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -2727,177 +2077,79 @@ export default function OthersScreen() {
             {/* Custom Request Form */}
             {showCustomForm && (
               <View style={{ marginHorizontal: 10, backgroundColor: cardBg, borderWidth: 1, borderColor: '#EF4444', borderRadius: 14, padding: 10, marginVertical: 4, elevation: 3 }}>
-                <Text style={{ fontSize: 10, fontWeight: '900', color: txt, marginBottom: 4 }}>🎁 REQUEST CUSTOM ITEM</Text>
+                <Text style={{ fontSize: 10, fontWeight: '900', color: txt, marginBottom: 4 }}>🛍️ REQUEST ANY ITEM</Text>
+                <Text style={{ fontSize: 9, color: txtSec, marginBottom: 6 }}>A Zenvy shopper buys it for you. You approve the real bill before paying (Cash on Delivery).</Text>
                 <TextInput
-                  style={{
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#FFFFFF',
-                    borderWidth: 1,
-                    borderColor: border,
-                    borderRadius: 6,
-                    paddingHorizontal: 8,
-                    height: 28,
-                    fontSize: 10,
-                    color: txt,
-                    marginBottom: 6
-                  }}
+                  style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#FFFFFF', borderWidth: 1, borderColor: border, borderRadius: 6, paddingHorizontal: 8, height: 32, fontSize: 11, color: txt, marginBottom: 6 }}
                   placeholder="Item name and brand"
                   placeholderTextColor={txtSec}
+                  maxLength={60}
                   value={customItemName}
                   onChangeText={setCustomItemName}
                 />
-
                 <View style={{ flexDirection: 'row', gap: 8, marginBottom: 6 }}>
                   <TextInput
-                    style={{
-                      flex: 1,
-                      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#FFFFFF',
-                      borderWidth: 1,
-                      borderColor: border,
-                      borderRadius: 6,
-                      paddingHorizontal: 8,
-                      height: 28,
-                      fontSize: 10,
-                      color: txt
-                    }}
-                    placeholder="Qty (e.g. 2)"
+                    style={{ flex: 1, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#FFFFFF', borderWidth: 1, borderColor: border, borderRadius: 6, paddingHorizontal: 8, height: 32, fontSize: 11, color: txt }}
+                    placeholder="Qty (1–20)"
                     placeholderTextColor={txtSec}
-                    keyboardType="numeric"
+                    keyboardType="number-pad"
+                    maxLength={2}
                     value={customItemQty}
-                    onChangeText={setCustomItemQty}
+                    onChangeText={t => setCustomItemQty(t.replace(/[^0-9]/g, ''))}
                   />
                   <TextInput
-                    style={{
-                      flex: 1,
-                      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#FFFFFF',
-                      borderWidth: 1,
-                      borderColor: border,
-                      borderRadius: 6,
-                      paddingHorizontal: 8,
-                      height: 28,
-                      fontSize: 10,
-                      color: txt
-                    }}
-                    placeholder="Price (e.g. 100)"
+                    style={{ flex: 1, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#FFFFFF', borderWidth: 1, borderColor: border, borderRadius: 6, paddingHorizontal: 8, height: 32, fontSize: 11, color: txt }}
+                    placeholder="Est. price ₹ / unit"
                     placeholderTextColor={txtSec}
-                    keyboardType="numeric"
+                    keyboardType="decimal-pad"
+                    maxLength={7}
                     value={customItemPrice}
-                    onChangeText={setCustomItemPrice}
+                    onChangeText={t => setCustomItemPrice(t.replace(/[^0-9.]/g, ''))}
                   />
                 </View>
-
                 <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 6, marginTop: 4 }}>
-                  <TouchableOpacity 
-                    style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: isDark ? '#3F3F46' : '#E2E8F0' }}
-                    onPress={() => setShowCustomForm(false)}
-                  >
-                    <Text style={{ fontSize: 8.5, fontWeight: '900', color: txt }}>CANCEL</Text>
+                  <TouchableOpacity style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, backgroundColor: isDark ? '#3F3F46' : '#E2E8F0' }} onPress={() => setShowCustomForm(false)}>
+                    <Text style={{ fontSize: 9, fontWeight: '900', color: txt }}>CANCEL</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: '#EF4444' }}
-                    onPress={handleAddCustomRequest}
-                  >
-                    <Text style={{ fontSize: 8.5, fontWeight: '900', color: '#fff' }}>ADD TO CART</Text>
+                  <TouchableOpacity style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, backgroundColor: '#EF4444' }} onPress={handleAddCustomRequest}>
+                    <Text style={{ fontSize: 9, fontWeight: '900', color: '#fff' }}>ADD TO BASKET</Text>
                   </TouchableOpacity>
                 </View>
               </View>
             )}
 
-            {/* Luxury Split Grid */}
+            {/* Split Grid */}
             <View style={{ flexDirection: 'row', flex: 1, width: '100%', borderTopWidth: 1, borderTopColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0' }}>
-              {/* Luxury Sidebar (Strict Fixed 68px Width) */}
-              <ScrollView 
-                style={{ 
-                  width: 68, 
-                  maxWidth: 68, 
-                  minWidth: 68, 
-                  flexGrow: 0, 
-                  flexShrink: 0, 
-                  borderRightWidth: 1, 
-                  borderRightColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0', 
-                  backgroundColor: isDark ? '#0D0E12' : '#F8FAFC' 
-                }} 
+              {/* Sidebar */}
+              <ScrollView
+                style={{ width: 68, maxWidth: 68, minWidth: 68, flexGrow: 0, flexShrink: 0, borderRightWidth: 1, borderRightColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0', backgroundColor: isDark ? '#0D0E12' : '#F8FAFC' }}
                 contentContainerStyle={{ alignItems: 'center', paddingBottom: 100 }}
                 nestedScrollEnabled={true}
                 showsVerticalScrollIndicator={false}
               >
-                {BB_CATEGORIES.map(cat => {
+                {visibleBBCategories.map(cat => {
                   const isSelected = selectedBBOption === cat.key;
                   return (
                     <TouchableOpacity
                       key={cat.key}
-                      style={{
-                        width: 68,
-                        paddingVertical: 10,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        position: 'relative',
-                        backgroundColor: isSelected ? (isDark ? 'rgba(16,185,129,0.08)' : '#F0FDF4') : 'transparent',
-                      }}
+                      style={{ width: 68, paddingVertical: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: isSelected ? (isDark ? 'rgba(16,185,129,0.08)' : '#F0FDF4') : 'transparent' }}
                       onPress={() => setSelectedBBOption(cat.key)}
                       activeOpacity={0.8}
                     >
-                      {/* Left Active Line */}
                       {isSelected && (
-                        <View style={{
-                          position: 'absolute',
-                          left: 0,
-                          top: 10,
-                          bottom: 10,
-                          width: 3.5,
-                          backgroundColor: '#10B981',
-                          borderTopRightRadius: 3,
-                          borderBottomRightRadius: 3
-                        }} />
+                        <View style={{ position: 'absolute', left: 0, top: 10, bottom: 10, width: 3.5, backgroundColor: '#10B981', borderTopRightRadius: 3, borderBottomRightRadius: 3 }} />
                       )}
-
-                      {/* Small Circular Icon Bubble */}
                       {isSelected ? (
-                        <LinearGradient
-                          colors={['#10B981', '#059669']}
-                          start={{ x: 0, y: 0 }}
-                          end={{ x: 1, y: 1 }}
-                          style={{
-                            width: 40,
-                            height: 40,
-                            borderRadius: 20,
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            marginBottom: 4,
-                            shadowColor: '#10B981',
-                            shadowOffset: { width: 0, height: 3 },
-                            shadowOpacity: 0.35,
-                            shadowRadius: 6,
-                            elevation: 4
-                          }}
-                        >
+                        <LinearGradient colors={['#10B981', '#059669']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: 4 }}>
                           <Text style={{ fontSize: 18 }}>{cat.icon}</Text>
                         </LinearGradient>
                       ) : (
-                        <View style={{
-                          width: 38,
-                          height: 38,
-                          borderRadius: 19,
-                          backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          marginBottom: 4,
-                          borderWidth: 1,
-                          borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0',
-                        }}>
+                        <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9', alignItems: 'center', justifyContent: 'center', marginBottom: 4, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0' }}>
                           <Text style={{ fontSize: 17 }}>{cat.icon}</Text>
                         </View>
                       )}
-
-                      {/* Compact Title */}
-                      <Text 
-                        style={{
-                          fontSize: 7.5,
-                          fontWeight: isSelected ? '900' : '600',
-                          color: isSelected ? (isDark ? '#34D399' : '#047857') : txtSec,
-                          textAlign: 'center',
-                          paddingHorizontal: 2,
-                          lineHeight: 9
-                        }}
+                      <Text
+                        style={{ fontSize: 7.5, fontWeight: isSelected ? '900' : '600', color: isSelected ? (isDark ? '#34D399' : '#047857') : txtSec, textAlign: 'center', paddingHorizontal: 2, lineHeight: 9 }}
                         numberOfLines={2}
                       >
                         {cat.label}
@@ -2908,327 +2160,127 @@ export default function OthersScreen() {
               </ScrollView>
 
               {/* Right Product Grid */}
-              <ScrollView 
-                style={{ flex: 1, backgroundColor: isDark ? '#0B0B0D' : '#FAFAFA' }} 
-                contentContainerStyle={{ padding: 8, paddingBottom: 140 }} 
+              <ScrollView
+                style={{ flex: 1, backgroundColor: isDark ? '#0B0B0D' : '#FAFAFA' }}
+                contentContainerStyle={{ padding: 8, paddingBottom: 140 }}
                 nestedScrollEnabled={true}
+                keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
               >
-                {/* Header with Luxury Badge & Actions */}
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, paddingHorizontal: 2 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                    <Text style={{ fontSize: 10, fontWeight: '900', color: txt, textTransform: 'uppercase', letterSpacing: 0.8 }}>✨ {selectedBBOption}</Text>
-                  </View>
-                  
+                  <Text style={{ fontSize: 10, fontWeight: '900', color: txt, textTransform: 'uppercase', letterSpacing: 0.8, flex: 1 }} numberOfLines={1}>
+                    ✨ {BB_CATEGORIES.find(c => c.key === selectedBBOption)?.label || selectedBBOption}
+                  </Text>
+
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    {/* Inline Quick Action Icons */}
-                    <TouchableOpacity 
-                      style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: isDark ? 'rgba(16,185,129,0.2)' : '#DCFCE7', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: isDark ? 'rgba(16,185,129,0.4)' : '#86EFAC' }}
-                      onPress={() => setShowAutoFillCard(!showAutoFillCard)}
+                    <TouchableOpacity
+                      style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: isDark ? 'rgba(16,185,129,0.2)' : '#DCFCE7', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: isDark ? 'rgba(16,185,129,0.4)' : '#86EFAC' }}
+                      onPress={() => { setShowCustomForm(false); setShowAutoFillCard(v => !v); }}
+                      accessibilityLabel="Quick list"
                     >
                       <Text style={{ fontSize: 11 }}>⚡</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity 
-                      style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: isDark ? 'rgba(239,68,68,0.2)' : '#FEE2E2', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: isDark ? 'rgba(239,68,68,0.4)' : '#FCA5A5' }}
-                      onPress={() => setShowCustomForm(!showCustomForm)}
+                    <TouchableOpacity
+                      style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: isDark ? 'rgba(239,68,68,0.2)' : '#FEE2E2', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: isDark ? 'rgba(239,68,68,0.4)' : '#FCA5A5' }}
+                      onPress={() => { setShowAutoFillCard(false); setShowCustomForm(v => !v); }}
+                      accessibilityLabel="Request any item"
                     >
-                      <Text style={{ fontSize: 11 }}>🎁</Text>
+                      <Text style={{ fontSize: 11 }}>🛍️</Text>
                     </TouchableOpacity>
 
-                    {/* Veg Only Toggle */}
                     <Text style={{ fontSize: 8, fontWeight: '800', color: txtSec, marginLeft: 2 }}>🟢 Veg</Text>
-                    <TouchableOpacity 
+                    <TouchableOpacity
                       style={{ width: 28, height: 16, borderRadius: 9, backgroundColor: showVegOnly ? '#10B981' : '#D1D5DB', justifyContent: 'center', paddingHorizontal: 2 }}
-                      onPress={() => setShowVegOnly(!showVegOnly)}
+                      onPress={() => setShowVegOnly(v => !v)}
+                      accessibilityLabel="Veg only"
                     >
                       <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#fff', alignSelf: showVegOnly ? 'flex-end' : 'flex-start' }} />
                     </TouchableOpacity>
                   </View>
                 </View>
 
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                  {getCategoryProducts(selectedBBOption)
-                    .filter(p => !showVegOnly || p.isVeg)
-                    .map(product => {
-                      const inCart = cart.find(i => i.id === product.id);
-                      const quantity = inCart ? inCart.quantity : 0;
-                      // SW - 68 (sidebar) - 16 (padding) - 8 (gap) / 2
-                      const cardWidth = (SW - 68 - 24) / 2;
-                      return (
-                        <View
-                          key={product.id}
-                          style={{
-                            width: cardWidth,
-                            backgroundColor: isDark ? '#18181B' : '#FFFFFF',
-                            borderRadius: 16,
-                            borderWidth: 1,
-                            borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#F1F5F9',
-                            padding: 8,
-                            marginBottom: 4,
-                            position: 'relative',
-                            shadowColor: '#0F172A',
-                            shadowOffset: { width: 0, height: 3 },
-                            shadowOpacity: isDark ? 0.3 : 0.06,
-                            shadowRadius: 8,
-                            elevation: 3
-                          }}
-                        >
-                          {/* Product Image Stage */}
-                          <View style={{ width: '100%', height: 90, backgroundColor: '#FFF', borderRadius: 12, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', position: 'relative', borderWidth: 1, borderColor: '#F8FAFC' }}>
-                            <TouchableOpacity 
-                              style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }} 
-                              onPress={() => {
-                                router.push(`/products/${product.id}` as any);
-                              }}
-                            >
-                              <Image source={{ uri: product.image }} style={{ width: '88%', height: '88%', resizeMode: 'contain' }} />
-                            </TouchableOpacity>
-                            {product.discount && (
-                              <View style={{ position: 'absolute', top: 4, left: 4, borderRadius: 6, overflow: 'hidden' }}>
-                                <LinearGradient
-                                  colors={['#EF4444', '#B91C1C']}
-                                  start={{ x: 0, y: 0 }}
-                                  end={{ x: 1, y: 0 }}
-                                  style={{ paddingHorizontal: 5, paddingVertical: 2 }}
-                                >
-                                  <Text style={{ fontSize: 6.5, fontWeight: '900', color: '#FFF', letterSpacing: 0.3 }}>{product.discount}</Text>
-                                </LinearGradient>
-                              </View>
-                            )}
-                          </View>
-
-                          {/* Details */}
-                          <Text style={{ fontSize: 9.5, fontWeight: '800', color: txt, marginTop: 6, height: 26, lineHeight: 12 }} numberOfLines={2}>{product.name}</Text>
-                          <Text style={{ fontSize: 8, color: txtSec, marginTop: 2, fontWeight: '600' }}>{product.weight}</Text>
-
-                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
-                            <Text style={{ fontSize: 11, fontWeight: '900', color: isDark ? '#F3F4F6' : '#0F172A' }}>₹{product.price}</Text>
-
-                            {/* Luxury Stepper / ADD Button */}
-                            <View style={{ minWidth: 50 }}>
-                              {quantity > 0 ? (
-                                <View style={{ borderRadius: 10, overflow: 'hidden' }}>
-                                  <LinearGradient
-                                    colors={['#10B981', '#047857']}
-                                    start={{ x: 0, y: 0 }}
-                                    end={{ x: 1, y: 0 }}
-                                    style={{ flexDirection: 'row', alignItems: 'center', height: 24, justifyContent: 'space-between', paddingHorizontal: 5 }}
-                                  >
-                                    <TouchableOpacity
-                                      style={{ width: 14, height: 14, alignItems: 'center', justifyContent: 'center' }}
-                                      onPress={() => {
-                                        const cartKey = cart.find(i => i.id === product.id)?.cartKey || product.id;
-                                        updateQuantity(cartKey, quantity - 1);
-                                      }}
-                                    >
-                                      <Text style={{ color: '#fff', fontWeight: '900', fontSize: 12 }}>-</Text>
-                                    </TouchableOpacity>
-                                    <Text style={{ color: '#fff', fontWeight: '900', fontSize: 9.5, paddingHorizontal: 2 }}>{quantity}</Text>
-                                    <TouchableOpacity
-                                      style={{ width: 14, height: 14, alignItems: 'center', justifyContent: 'center' }}
-                                      onPress={() => {
-                                        addToCart({
-                                          id: product.id,
-                                          name: product.name,
-                                          price: product.price,
-                                          image: product.image,
-                                          restaurantId: 'mega-basket-vendor',
-                                          restaurantName: 'Mega Basket Grocery'
-                                        });
-                                      }}
-                                    >
-                                      <Text style={{ color: '#fff', fontWeight: '900', fontSize: 12 }}>+</Text>
-                                    </TouchableOpacity>
-                                  </LinearGradient>
-                                </View>
-                              ) : (
-                                <TouchableOpacity
-                                  style={{ borderRadius: 10, overflow: 'hidden', shadowColor: '#10B981', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 2 }}
-                                  onPress={() => {
-                                    addToCart({
-                                      id: product.id,
-                                      name: product.name,
-                                      price: product.price,
-                                      image: product.image,
-                                      restaurantId: 'mega-basket-vendor',
-                                      restaurantName: 'Mega Basket Grocery'
-                                    });
-                                  }}
-                                  activeOpacity={0.85}
-                                >
-                                  <LinearGradient
-                                    colors={['#10B981', '#059669']}
-                                    start={{ x: 0, y: 0 }}
-                                    end={{ x: 1, y: 0 }}
-                                    style={{ height: 24, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 }}
-                                  >
-                                    <Text style={{ fontSize: 8.5, fontWeight: '900', color: '#FFF', letterSpacing: 0.5 }}>ADD +</Text>
-                                  </LinearGradient>
-                                </TouchableOpacity>
-                              )}
-                            </View>
-                          </View>
-                        </View>
-                      );
-                    })}
-                </View>
+                {catalogueStatus === 'loading' && catalogue.length === 0 ? (
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    {[0, 1, 2, 3].map(i => <ShimmerLoader key={i} width={(SW - 68 - 24) / 2} height={170} borderRadius={16} />)}
+                  </View>
+                ) : catalogueStatus === 'error' && catalogue.length === 0 ? (
+                  renderLoadError('The campus store did not load.', fetchCatalogue)
+                ) : bbProducts.length === 0 ? (
+                  <View style={{ alignItems: 'center', paddingVertical: 40, paddingHorizontal: 12 }}>
+                    <Text style={{ fontSize: 28, marginBottom: 6 }}>🧺</Text>
+                    <Text style={{ fontSize: 12, fontWeight: '900', color: txt, textAlign: 'center' }}>{showVegOnly ? 'No veg items here' : 'Nothing here yet'}</Text>
+                    <Text style={{ fontSize: 10, color: txtSec, textAlign: 'center', marginTop: 4, marginBottom: 12 }}>Request any item and a Zenvy shopper will buy it for you.</Text>
+                    <TouchableOpacity style={[s.resetBtn, { backgroundColor: '#EF4444' }]} onPress={() => { setShowAutoFillCard(false); setShowCustomForm(true); }}>
+                      <Text style={[s.resetBtnText, { color: '#fff' }]}>REQUEST AN ITEM</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    {bbProducts.map(product => renderGridCard(product, (SW - 68 - 24) / 2, () => openProduct(product)))}
+                  </View>
+                )}
               </ScrollView>
             </View>
           </View>
         )}
 
-        {/* ── TECH & REPAIRS & 24/7 SERVICES TAB ── */}
+        {/* ── TECH & REPAIRS & SERVICES TAB ── */}
         {activeTab === 'services' && (
           <View style={{ paddingHorizontal: 16 }}>
-            {/* Section Header */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, marginTop: 4 }}>
-              <View>
-                <Text style={{ fontSize: 9, fontWeight: '900', color: '#3B82F6', letterSpacing: 1.5 }}>
-                  VERIFIED CAMPUS PARTNERS
-                </Text>
-                <Text style={{ fontSize: 16, fontWeight: '900', color: txt, marginTop: 2 }}>
-                  Doorstep Campus Services 🛠️
-                </Text>
-              </View>
-              <View style={{ backgroundColor: isDark ? 'rgba(16,185,129,0.15)' : '#ECFDF5', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, borderWidth: 1, borderColor: isDark ? 'rgba(16,185,129,0.3)' : '#6EE7B7' }}>
-                <Text style={{ fontSize: 9.5, fontWeight: '900', color: '#059669' }}>
-                  Campus Essentials ⚡
-                </Text>
-              </View>
+            <View style={{ marginBottom: 14, marginTop: 4 }}>
+              <Text style={{ fontSize: 9, fontWeight: '900', color: '#3B82F6', letterSpacing: 1.5 }}>CAMPUS SERVICES</Text>
+              <Text style={{ fontSize: 16, fontWeight: '900', color: txt, marginTop: 2 }}>Book it from your hostel 🛠️</Text>
             </View>
 
-            {/* Curated Service Directory Cards */}
-            {[
-              {
-                id: 'LAPTOP_REPAIR',
-                title: 'Laptop Diagnostic & Hardware Fix',
-                tag: '⚡ 4-HR TURNAROUND',
-                desc: 'Screen replacement, thermal paste overhaul, fan cleaning, SSD upgrade & motherboard repair.',
-                icon: '💻',
-                price: 'Starts ₹99',
-                cat: 'repairs',
-                image: 'https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?w=600&q=80',
-              },
-              {
-                id: 'TAILORING',
-                title: 'Campus Tailoring & Stitching',
-                tag: '🪡 CAMPUS FITTING',
-                desc: 'Jeans length shortening, shirt/kurti alterations, lab coat resizing & zipper replacement.',
-                icon: '✂️',
-                price: 'Starts ₹30',
-                cat: 'tailoring',
-                image: 'https://images.unsplash.com/photo-1528458909336-e7a0adfed0a5?w=600&q=80',
-              },
-              {
-                id: 'PRINTOUT',
-                title: '24/7 Laser Print & Project Binding',
-                tag: '🖨️ HIGH SPEED',
-                desc: 'High-speed B&W / Color printouts, CAD schematics, and spiral/hardbound thesis binding.',
-                icon: '📄',
-                price: '₹2 / page',
-                cat: 'print',
-                image: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?w=600&q=80',
-              },
-              {
-                id: 'LAUNDRY',
-                title: 'Hostel Wash & Steam Ironing',
-                tag: '🧺 SAME DAY RETURN',
-                desc: 'Doorstep pickup for daily clothes, bedsheets, blankets, and sneaker deep cleaning.',
-                icon: '👕',
-                price: '₹60 / kg',
-                cat: 'laundry',
-                image: 'https://images.unsplash.com/photo-1582735689369-4fe89db7114c?w=600&q=80',
-              },
-              {
-                id: 'MATTRESSES',
-                title: 'Hostel Mattresses & Room Gear',
-                tag: '🛏️ MOVE-IN PACK',
-                desc: 'Single bed high-density foam mattresses, pillows, bedsheets, buckets & drying racks.',
-                icon: '📦',
-                price: 'Starts ₹149',
-                cat: 'mattresses',
-                image: 'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=600&q=80',
-              },
-              {
-                id: 'ELECTRONICS',
-                title: '65W GaN Chargers & Tech Gadgets',
-                tag: '🔌 15-MIN DISPATCH',
-                desc: 'Laptop power adapters, heavy extension boards, scientific calculators & study lamps.',
-                icon: '🔋',
-                price: 'Starts ₹299',
-                cat: 'electronics',
-                image: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?w=600&q=80',
-              },
-            ].map((srv) => (
-              <ScalePressable
-                key={srv.id}
-                style={{
-                  borderRadius: 20,
-                  backgroundColor: cardSurface,
-                  borderWidth: 1,
-                  borderColor: border,
-                  marginBottom: 14,
-                  overflow: 'hidden',
-                  shadowColor: '#000',
-                  shadowOffset: { width: 0, height: 4 },
-                  shadowOpacity: isDark ? 0.25 : 0.07,
-                  shadowRadius: 10,
-                  elevation: 4,
-                }}
-                onPress={() => router.push(`/category/${srv.cat}` as any)}
-              >
-                <View style={{ flexDirection: 'row', padding: 14, gap: 14 }}>
-                  {/* Image with gradient overlay */}
-                  <View style={{ width: 90, height: 90, borderRadius: 16, overflow: 'hidden', position: 'relative' }}>
-                    <Image source={{ uri: srv.image }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-                    <LinearGradient
-                      colors={['transparent', 'rgba(0,0,0,0.5)']}
-                      style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 40, justifyContent: 'flex-end', padding: 6 }}
-                    >
-                      <Text style={{ fontSize: 16 }}>{srv.icon}</Text>
-                    </LinearGradient>
-                  </View>
-
-                  <View style={{ flex: 1, justifyContent: 'space-between' }}>
-                    <View>
-                      {/* Tag + Price row */}
-                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
-                        <View style={{ backgroundColor: isDark ? 'rgba(59,130,246,0.15)' : '#EFF6FF', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8, borderWidth: 1, borderColor: isDark ? 'rgba(59,130,246,0.3)' : '#BFDBFE' }}>
-                          <Text style={{ fontSize: 7.5, fontWeight: '900', color: '#3B82F6', letterSpacing: 0.5 }}>{srv.tag}</Text>
-                        </View>
-                        <Text style={{ fontSize: 13, fontWeight: '900', color: '#10B981' }}>{srv.price}</Text>
-                      </View>
-
-                      <Text style={{ fontSize: 14, fontWeight: '900', color: txt, lineHeight: 18, letterSpacing: -0.2 }}>{srv.title}</Text>
-                      <Text style={{ fontSize: 10.5, color: txtSec, lineHeight: 15, marginTop: 5 }} numberOfLines={2}>{srv.desc}</Text>
-                    </View>
-
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 10 }}>
-                      <LinearGradient
-                        colors={isDark ? ['#3B82F6', '#2563EB'] : ['#1D4ED8', '#2563EB']}
-                        start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                        style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 10 }}
-                      >
-                        <Text style={{ fontSize: 10, fontWeight: '900', color: '#FFF', letterSpacing: 0.4 }}>BOOK NOW ➔</Text>
+            {SERVICE_CARDS.map(srv => {
+              const from = srv.priceKey === 'electronics' ? electronicsFrom : (serviceFromPrice[srv.priceKey] || 0);
+              return (
+                <ScalePressable
+                  key={srv.id}
+                  style={{ borderRadius: 20, backgroundColor: cardSurface, borderWidth: 1, borderColor: border, marginBottom: 14, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: isDark ? 0.25 : 0.07, shadowRadius: 10, elevation: 4 }}
+                  onPress={() => router.push(`/category/${srv.cat}` as any)}
+                >
+                  <View style={{ flexDirection: 'row', padding: 14, gap: 14 }}>
+                    <View style={{ width: 90, height: 90, borderRadius: 16, overflow: 'hidden' }}>
+                      <Image source={{ uri: srv.image }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                      <LinearGradient colors={['transparent', 'rgba(0,0,0,0.5)']} style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 40, justifyContent: 'flex-end', padding: 6 }}>
+                        <Text style={{ fontSize: 16 }}>{srv.icon}</Text>
                       </LinearGradient>
                     </View>
+
+                    <View style={{ flex: 1, justifyContent: 'space-between' }}>
+                      <View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
+                          <View style={{ backgroundColor: isDark ? 'rgba(59,130,246,0.15)' : '#EFF6FF', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 8, borderWidth: 1, borderColor: isDark ? 'rgba(59,130,246,0.3)' : '#BFDBFE' }}>
+                            <Text style={{ fontSize: 7.5, fontWeight: '900', color: '#3B82F6', letterSpacing: 0.5 }}>{srv.tag}</Text>
+                          </View>
+                          {from > 0 && <Text style={{ fontSize: 12, fontWeight: '900', color: '#10B981' }}>From {fmtPrice(from)}</Text>}
+                        </View>
+                        <Text style={{ fontSize: 14, fontWeight: '900', color: txt, lineHeight: 18, letterSpacing: -0.2 }}>{srv.title}</Text>
+                        <Text style={{ fontSize: 10.5, color: txtSec, lineHeight: 15, marginTop: 5 }} numberOfLines={2}>{srv.desc}</Text>
+                      </View>
+
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 10 }}>
+                        <LinearGradient colors={isDark ? ['#3B82F6', '#2563EB'] : ['#1D4ED8', '#2563EB']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ paddingHorizontal: 14, paddingVertical: 7, borderRadius: 10 }}>
+                          <Text style={{ fontSize: 10, fontWeight: '900', color: '#FFF', letterSpacing: 0.4 }}>{['repairs', 'tailoring', 'print', 'laundry'].includes(srv.cat) ? 'BOOK NOW ➔' : 'SHOP NOW ➔'}</Text>
+                        </LinearGradient>
+                      </View>
+                    </View>
                   </View>
-                </View>
-              </ScalePressable>
-            ))}
+                </ScalePressable>
+              );
+            })}
           </View>
         )}
 
         {/* ── PG & HOMES TAB ── */}
         {activeTab === 'pg' && (
           <View style={{ paddingHorizontal: 16 }}>
-            {/* Search */}
             <View style={[s.searchWrap, { backgroundColor: cardBg, borderColor: border, marginHorizontal: 0 }]}>
               <Text style={{ fontSize: 16 }}>🔍 </Text>
-              <TextInput style={[s.searchInput, { color: txt }]} placeholder="Search by PG Name or Location..." placeholderTextColor={txtSec} value={searchQuery} onChangeText={setSearchQuery} />
+              <TextInput style={[s.searchInput, { color: txt }]} placeholder="Search by PG name or location..." placeholderTextColor={txtSec} value={searchQuery} onChangeText={setSearchQuery} />
             </View>
 
-            {/* Gender Filters */}
             <Text style={[s.filterLabel, { color: txt }]}>GENDER TYPE</Text>
             <View style={s.rowFilters}>
               {['All', 'Boys', 'Girls', 'Co-ed'].map(g => (
@@ -3238,7 +2290,6 @@ export default function OthersScreen() {
               ))}
             </View>
 
-            {/* Price Limits */}
             <Text style={[s.filterLabel, { color: txt }]}>MAX RENT BUDGET</Text>
             <View style={s.rowFilters}>
               {['All', '5000', '8000', '10000', '15000'].map(b => (
@@ -3248,7 +2299,6 @@ export default function OthersScreen() {
               ))}
             </View>
 
-            {/* Distance Limits */}
             <Text style={[s.filterLabel, { color: txt }]}>CAMPUS PROXIMITY</Text>
             <View style={s.rowFilters}>
               {['All', '1', '3', '5', '10'].map(d => (
@@ -3258,52 +2308,59 @@ export default function OthersScreen() {
               ))}
             </View>
 
-            {/* List */}
             <View style={{ marginTop: 20 }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
                 <Text style={{ fontSize: 10, fontWeight: '800', color: COLORS.red, letterSpacing: 2 }}>STUDENT ACCOMMODATIONS</Text>
-                <Text style={{ fontSize: 10, fontWeight: '800', color: txtSec }}>{filteredPGs.length} FOUND</Text>
+                {!pgError && !(loadingPgs && pgs.length === 0) && <Text style={{ fontSize: 10, fontWeight: '800', color: txtSec }}>{filteredPGs.length} FOUND</Text>}
               </View>
 
-              {loadingPgs ? (
-                <ActivityIndicator size="large" color={COLORS.red} style={{ marginTop: 24 }} />
+              {loadingPgs && pgs.length === 0 ? (
+                renderListSkeleton(200)
+              ) : pgError && pgs.length === 0 ? (
+                renderLoadError(pgError, fetchPGs)
               ) : filteredPGs.length > 0 ? (
                 filteredPGs.map((pg, idx) => {
-                  const pgImg = pg.images && pg.images.length > 0 ? pg.images[0] : 'https://images.unsplash.com/photo-1555854877-bab0e564b8d5?w=400';
+                  const pgImg = Array.isArray(pg.images) && pg.images.length > 0 ? pg.images[0] : 'https://images.unsplash.com/photo-1555854877-bab0e564b8d5?w=400';
+                  const g = pg.genderType || 'Co-ed';
+                  const dist = Number(pg.distanceFromCollege);
                   return (
                     <StaggeredSection key={pg.id} delay={50 + (idx % 6) * 50} direction="up">
-                    <CardPressable style={[s.pgCard, { backgroundColor: cardBg, borderColor: border }]} onPress={() => router.push(`/pg/${pg.id}` as any)} sound="pgTransition" tilt={true}>
-                      <Image source={{ uri: pgImg }} style={s.pgCardImg} />
-                      <View style={s.pgCardOverlay} />
-                      
-                      <View style={s.pgCardVerified}>
-                        <Text style={s.pgCardVerifiedText}>★ VERIFIED</Text>
-                      </View>
+                      <CardPressable style={[s.pgCard, { backgroundColor: cardBg, borderColor: border }]} onPress={() => router.push(`/pg/${pg.id}` as any)} sound="pgTransition" tilt={true}>
+                        <Image source={{ uri: pgImg }} style={s.pgCardImg} />
+                        <View style={s.pgCardOverlay} />
 
-                      <View style={s.pgCardContent}>
-                        <View style={s.pgCardGenderRow}>
-                          <Text style={[s.pgCardGender, { color: pg.genderType === 'Boys' ? '#60A5FA' : pg.genderType === 'Girls' ? '#F472B6' : '#A78BFA' }]}>
-                            ● {pg.genderType.toUpperCase()} ONLY
-                          </Text>
-                          <Text style={s.pgCardDistance}>🏃 {pg.distanceFromCollege} KM FROM CAMPUS</Text>
-                        </View>
-                        <Text style={s.pgCardName}>{pg.name}</Text>
-                        <Text style={s.pgCardAddr} numberOfLines={1}>📍 {pg.address}</Text>
-
-                        <View style={s.pgCardPriceRow}>
-                          <View>
-                            <Text style={s.pgCardPriceLabel}>RENT STARTS FROM</Text>
-                            <Text style={[s.pgCardPrice, { color: goldColor }]}>₹{pg.baseRent}<Text style={{ fontSize: 9, fontWeight: '600', color: '#ccc' }}>/mo</Text></Text>
+                        <View style={s.pgCardContent}>
+                          <View style={s.pgCardGenderRow}>
+                            <Text style={[s.pgCardGender, { color: g === 'Boys' ? '#60A5FA' : g === 'Girls' ? '#F472B6' : '#A78BFA' }]}>
+                              ● {g === 'Co-ed' ? 'CO-ED' : `${String(g).toUpperCase()} ONLY`}
+                            </Text>
+                            {Number.isFinite(dist) && <Text style={s.pgCardDistance}>🏃 {dist} KM FROM CAMPUS</Text>}
                           </View>
-                          <View style={s.pgCardBookBtn}>
-                            <Text style={s.pgCardBookText}>VIEW DETAILS →</Text>
+                          <Text style={s.pgCardName}>{pg.name}</Text>
+                          <Text style={s.pgCardAddr} numberOfLines={1}>📍 {pg.address}</Text>
+
+                          <View style={s.pgCardPriceRow}>
+                            <View>
+                              <Text style={s.pgCardPriceLabel}>RENT STARTS FROM</Text>
+                              <Text style={[s.pgCardPrice, { color: goldColor }]}>₹{Number(pg.baseRent) || 0}<Text style={{ fontSize: 9, fontWeight: '600', color: '#ccc' }}>/mo</Text></Text>
+                            </View>
+                            <View style={s.pgCardBookBtn}>
+                              <Text style={s.pgCardBookText}>VIEW DETAILS →</Text>
+                            </View>
                           </View>
                         </View>
-                      </View>
-                    </CardPressable>
+                      </CardPressable>
                     </StaggeredSection>
                   );
                 })
+              ) : pgs.length === 0 ? (
+                <View style={s.emptyState}>
+                  <Text style={{ fontSize: 32, marginBottom: 8 }}>🏢</Text>
+                  <Text style={{ color: txt, fontSize: 12, fontWeight: '900', letterSpacing: 1, marginBottom: 4 }}>NO PG LISTINGS YET</Text>
+                  <Text style={{ color: txtSec, fontSize: 10, fontWeight: '600', textAlign: 'center' }}>
+                    The Zenvy housing team is adding stays near campus. Pull down to check again soon.
+                  </Text>
+                </View>
               ) : (
                 <View style={s.emptyState}>
                   <Text style={{ fontSize: 32, marginBottom: 8 }}>🏢</Text>
@@ -3331,344 +2388,276 @@ export default function OthersScreen() {
         {/* ── CO-RIDE (BIKEPOOL) TAB ── */}
         {activeTab === 'coride' && (
           <View style={{ paddingHorizontal: 16 }}>
-            {/* Karma Trust Header */}
+            {/* Karma Header */}
             <View style={[s.karmaBanner, { backgroundColor: goldMutedColor, borderColor: goldBorderColor }]}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <Text style={{ fontSize: 24 }}>✨</Text>
                 <View>
-                  <Text style={[s.karmaLabel, { color: goldColor }]}>MY TRUST PROFILE SCORE</Text>
-                  <Text style={[s.karmaVal, { color: goldColor }]}>{user?.karmaPoints || 0} PTS</Text>
+                  <Text style={[s.karmaLabel, { color: goldColor }]}>MY KARMA POINTS</Text>
+                  <Text style={[s.karmaVal, { color: goldColor }]}>{Number(user?.karmaPoints) || 0} PTS</Text>
                 </View>
               </View>
               <View style={[s.karmaBadge, { borderColor: goldBorderColor }]}>
-                <Text style={[s.karmaBadgeText, { color: goldColor }]}>ACTIVE RIDER</Text>
+                <Text style={[s.karmaBadgeText, { color: goldColor }]}>+50 PER RIDE</Text>
               </View>
             </View>
 
-            {/* 1-Tap In-App Vehicle Booking Frames (Rapido & Uber) */}
+            {/* Quick links to ride apps */}
             <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
               <TouchableOpacity
-                style={{
-                  flex: 1,
-                  padding: 12,
-                  borderRadius: 14,
-                  backgroundColor: '#F59E0B15',
-                  borderWidth: 1.5,
-                  borderColor: '#F59E0B40',
-                }}
-                onPress={() => {
-                  setRideWebTitle('Rapido Bike-Taxi');
-                  setRideWebUrl('https://www.rapido.bike/');
-                  setRideWebIcon('🛵');
-                  setRideWebThemeColor('#F59E0B');
-                  setRideWebModalVisible(true);
-                }}
+                style={{ flex: 1, padding: 12, borderRadius: 14, backgroundColor: '#F59E0B15', borderWidth: 1.5, borderColor: '#F59E0B40' }}
+                onPress={() => openExternal('https://www.rapido.bike/', 'Rapido')}
                 activeOpacity={0.8}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
                   <Text style={{ fontSize: 18 }}>🛵</Text>
                   <Text style={{ fontSize: 12, fontWeight: '900', color: '#F59E0B' }}>RAPIDO</Text>
                 </View>
-                <Text style={{ fontSize: 9, color: txtSec }}>In-App Web Frame Booking</Text>
+                <Text style={{ fontSize: 9, color: txtSec }}>Opens Rapido ↗</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={{
-                  flex: 1,
-                  padding: 12,
-                  borderRadius: 14,
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F3F4F6',
-                  borderWidth: 1.5,
-                  borderColor: isDark ? 'rgba(255,255,255,0.15)' : '#E5E7EB',
-                }}
-                onPress={() => {
-                  setRideWebTitle('Uber Cab & Auto');
-                  setRideWebUrl('https://m.uber.com/looking');
-                  setRideWebIcon('🚗');
-                  setRideWebThemeColor('#000000');
-                  setRideWebModalVisible(true);
-                }}
+                style={{ flex: 1, padding: 12, borderRadius: 14, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F3F4F6', borderWidth: 1.5, borderColor: isDark ? 'rgba(255,255,255,0.15)' : '#E5E7EB' }}
+                onPress={() => openExternal('https://m.uber.com/looking', 'Uber')}
                 activeOpacity={0.8}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
                   <Text style={{ fontSize: 18 }}>🚗</Text>
                   <Text style={{ fontSize: 12, fontWeight: '900', color: txt }}>UBER</Text>
                 </View>
-                <Text style={{ fontSize: 9, color: txtSec }}>In-App Cab Dispatch</Text>
+                <Text style={{ fontSize: 9, color: txtSec }}>Opens Uber ↗</Text>
               </TouchableOpacity>
             </View>
 
-            {/* Post a Commute Action Banner */}
             <TouchableOpacity
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 8,
-                paddingVertical: 12,
-                paddingHorizontal: 16,
-                borderRadius: 14,
-                backgroundColor: COLORS.red,
-                marginBottom: 12,
-                shadowColor: COLORS.red,
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.3,
-                shadowRadius: 6,
-                elevation: 4,
-              }}
-              onPress={() => setShowCreateModal(true)}
+              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 14, backgroundColor: COLORS.red, marginBottom: 12, shadowColor: COLORS.red, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 4 }}
+              onPress={openCreateRide}
               activeOpacity={0.85}
             >
               <Text style={{ fontSize: 16 }}>🛵</Text>
-              <Text style={{ color: '#fff', fontSize: 11, fontWeight: '900', letterSpacing: 1.5 }}>
-                + POST A CAMPUS COMMUTE (OFFER / REQUEST)
-              </Text>
+              <Text style={{ color: '#fff', fontSize: 11, fontWeight: '900', letterSpacing: 1.5 }}>+ POST A RIDE (OFFER / REQUEST)</Text>
             </TouchableOpacity>
 
-            {/* Commute Sub-Tabs */}
-            <View style={s.corideSubTabs}>
-              <DopaminePressable style={[s.corideSubTabBtn, corideTab === 'browse' && s.corideSubTabBtnActive, { flex: 1 }]} onPress={() => setCorideTab('browse')} sound="tabSwitch">
-                <Text style={[s.corideSubTabLabel, { color: colors.textSecondary }, corideTab === 'browse' && s.corideSubTabLabelActive]}>🚗 BROWSE COMMUTES</Text>
-              </DopaminePressable>
-              <DopaminePressable style={[s.corideSubTabBtn, corideTab === 'my-rides' && s.corideSubTabBtnActive, { flex: 1 }]} onPress={() => setCorideTab('my-rides')} sound="tabSwitch">
-                <Text style={[s.corideSubTabLabel, { color: colors.textSecondary }, corideTab === 'my-rides' && s.corideSubTabLabelActive]}>❤️ MY RIDES</Text>
-              </DopaminePressable>
-            </View>
-
-            {/* BROWSE SUB-TAB */}
-            {corideTab === 'browse' && (
-              <View>
-                {/* Filters */}
-                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[s.filterLabel, { color: txt, marginBottom: 4 }]}>VEHICLE</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.rowFilters}>
-                      {['All', 'Bike', 'Car', 'Auto'].map(v => (
-                        <DopaminePressable key={v} style={[s.chip, { backgroundColor: cardBg }, vehicleFilter === v && s.chipActive, { borderColor: border }]} onPress={() => setVehicleFilter(v as any)} sound="click">
-                          <Text style={[s.chipText, { color: colors.textSecondary }, vehicleFilter === v && s.chipTextActive]}>{v.toUpperCase()}</Text>
-                        </DopaminePressable>
-                      ))}
-                    </ScrollView>
-                  </View>
+            {!myId ? (
+              <View style={s.emptyState}>
+                <Text style={{ fontSize: 32, marginBottom: 8 }}>🔐</Text>
+                <Text style={{ color: txt, fontSize: 12, fontWeight: '900', letterSpacing: 1, marginBottom: 4 }}>LOG IN TO SHARE RIDES</Text>
+                <Text style={{ color: txtSec, fontSize: 10, fontWeight: '600', textAlign: 'center', marginBottom: 14 }}>
+                  Co-rides are only for signed-in students, so you always know who you ride with.
+                </Text>
+                <TouchableOpacity style={[s.resetBtn, { backgroundColor: COLORS.red }]} onPress={() => router.push('/login' as any)}>
+                  <Text style={[s.resetBtnText, { color: '#fff' }]}>LOG IN</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <>
+                <View style={s.corideSubTabs}>
+                  <DopaminePressable style={[s.corideSubTabBtn, corideTab === 'browse' && s.corideSubTabBtnActive, { flex: 1 }]} onPress={() => setCorideTab('browse')} sound="tabSwitch">
+                    <Text style={[s.corideSubTabLabel, { color: colors.textSecondary }, corideTab === 'browse' && s.corideSubTabLabelActive]}>🚗 FIND A RIDE</Text>
+                  </DopaminePressable>
+                  <DopaminePressable style={[s.corideSubTabBtn, corideTab === 'my-rides' && s.corideSubTabBtnActive, { flex: 1 }]} onPress={() => setCorideTab('my-rides')} sound="tabSwitch">
+                    <Text style={[s.corideSubTabLabel, { color: colors.textSecondary }, corideTab === 'my-rides' && s.corideSubTabLabelActive]}>❤️ MY RIDES</Text>
+                  </DopaminePressable>
                 </View>
 
-                {/* List available rides */}
-                {loadingRides ? (
-                  <ActivityIndicator size="large" color={COLORS.red} style={{ marginTop: 24 }} />
-                ) : filteredRides.length > 0 ? (
-                  filteredRides.map((ride, idx) => {
-                    const isPassenger = ride.creatorRole === 'passenger';
-                    const dateText = new Date(ride.departureTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ', ' + new Date(ride.departureTime).toLocaleDateString([], { month: 'short', day: 'numeric' });
-                    
-                    return (
-                      <StaggeredSection key={ride.id} delay={50 + (idx % 6) * 50} direction="up">
-                      <CardPressable style={[s.rideCard, { backgroundColor: cardBg, borderColor: border }]} onPress={() => handleJoinRide(ride)} sound="rideTransition" tilt={true}>
-                        <View style={s.rideCardHeader}>
-                          <View style={s.rideCreatorRow}>
-                            <View style={[s.rideAvatar, { backgroundColor: goldMutedColor, borderColor: goldBorderColor }]}>
-                              <Text style={[s.rideAvatarText, { color: goldColor }]}>{(ride.creator?.name || 'U').substring(0, 1).toUpperCase()}</Text>
-                            </View>
-                            <View>
-                              <Text style={[s.rideCreatorName, { color: txt }]}>{ride.creator?.name || 'Campus Peer'}</Text>
-                              <Text style={{ fontSize: 8, color: txtSec }}>GENDER: {ride.creator?.gender || 'Any'}</Text>
-                            </View>
-                          </View>
-                          <View style={[s.roleBadge, { backgroundColor: isPassenger ? 'rgba(239,79,95,0.1)' : 'rgba(16,185,129,0.1)' }]}>
-                            <Text style={[s.roleBadgeText, { color: isPassenger ? COLORS.red : COLORS.emerald }]}>
-                              {isPassenger ? 'PASSENGER REQUEST' : 'OFFERING RIDE'}
-                            </Text>
-                          </View>
-                        </View>
+                {/* BROWSE SUB-TAB */}
+                {corideTab === 'browse' && (
+                  <View>
+                    <View style={{ marginBottom: 12 }}>
+                      <Text style={[s.filterLabel, { color: txt, marginBottom: 4 }]}>VEHICLE</Text>
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.rowFilters}>
+                        {(['All', 'Bike', 'Car', 'Auto'] as const).map(v => (
+                          <DopaminePressable key={v} style={[s.chip, { backgroundColor: cardBg }, vehicleFilter === v && s.chipActive, { borderColor: border }]} onPress={() => setVehicleFilter(v)} sound="click">
+                            <Text style={[s.chipText, { color: colors.textSecondary }, vehicleFilter === v && s.chipTextActive]}>{v.toUpperCase()}</Text>
+                          </DopaminePressable>
+                        ))}
+                      </ScrollView>
+                    </View>
 
-                        <View style={s.ridePathRow}>
-                          <View style={s.rideDotCol}>
-                            <View style={[s.rideDot, { backgroundColor: COLORS.red }]} />
-                            <View style={s.rideDashLine} />
-                            <View style={[s.rideDot, { backgroundColor: COLORS.emerald }]} />
-                          </View>
-                          <View style={s.ridePathTextCol}>
-                            <Text style={[s.ridePathText, { color: txt }]} numberOfLines={1}>FROM: {ride.origin}</Text>
-                            <Text style={[s.ridePathText, { color: txt, marginTop: 10 }]} numberOfLines={1}>TO: {ride.destination}</Text>
-                          </View>
-                        </View>
+                    {loadingRides && rides.length === 0 ? (
+                      renderListSkeleton(170)
+                    ) : rideError && rides.length === 0 ? (
+                      renderLoadError(rideError, fetchRides)
+                    ) : filteredRides.length > 0 ? (
+                      filteredRides.map((ride, idx) => {
+                        const isPassenger = ride.creatorRole === 'passenger';
+                        const fuel = Number(ride.estimatedFuelCost) || 0;
+                        const busy = rideActionBusy === ride.id;
+                        const joinStatus = myJoinStatus[String(ride.id)];
+                        return (
+                          <StaggeredSection key={ride.id} delay={50 + (idx % 6) * 50} direction="up">
+                            <CardPressable style={[s.rideCard, { backgroundColor: cardBg, borderColor: border, opacity: busy ? 0.6 : 1 }]} onPress={() => { if (busy) return; if (joinStatus) setCorideTab('my-rides'); else handleJoinRide(ride); }} sound="rideTransition" tilt={true}>
+                              <View style={s.rideCardHeader}>
+                                <View style={s.rideCreatorRow}>
+                                  <View style={[s.rideAvatar, { backgroundColor: goldMutedColor, borderColor: goldBorderColor }]}>
+                                    <Text style={[s.rideAvatarText, { color: goldColor }]}>{(ride.creator?.name || 'U').substring(0, 1).toUpperCase()}</Text>
+                                  </View>
+                                  <View>
+                                    <Text style={[s.rideCreatorName, { color: txt }]}>{ride.creator?.name || 'Campus student'}</Text>
+                                    {!!ride.creator?.gender && ride.creator.gender !== 'Prefer not to say' && (
+                                      <Text style={{ fontSize: 8, color: txtSec }}>{String(ride.creator.gender).toUpperCase()}</Text>
+                                    )}
+                                  </View>
+                                </View>
+                                <View style={[s.roleBadge, { backgroundColor: isPassenger ? 'rgba(239,79,95,0.1)' : 'rgba(16,185,129,0.1)' }]}>
+                                  <Text style={[s.roleBadgeText, { color: isPassenger ? COLORS.red : COLORS.emerald }]}>{isPassenger ? 'NEEDS A RIDE' : 'OFFERING RIDE'}</Text>
+                                </View>
+                              </View>
 
-                        <View style={s.rideMetaRow}>
-                          <View>
-                            <Text style={s.metaLabel}>DEPARTURE TIME</Text>
-                            <Text style={[s.metaVal, { color: txt }]}>{dateText}</Text>
-                          </View>
-                          <View>
-                            <Text style={s.metaLabel}>VEHICLE TYPE</Text>
-                            <Text style={[s.metaVal, { color: txt }]}>{ride.vehicleType.toUpperCase()} ({ride.vehicleInfo || 'Active'})</Text>
-                          </View>
-                          <View>
-                            <Text style={s.metaLabel}>SEATS LEFT</Text>
-                            <Text style={[s.metaVal, { color: COLORS.red }]}>{ride.availableSeats} SEAT{(ride.availableSeats !== 1) ? 'S' : ''}</Text>
-                          </View>
-                        </View>
+                              <View style={s.ridePathRow}>
+                                <View style={s.rideDotCol}>
+                                  <View style={[s.rideDot, { backgroundColor: COLORS.red }]} />
+                                  <View style={s.rideDashLine} />
+                                  <View style={[s.rideDot, { backgroundColor: COLORS.emerald }]} />
+                                </View>
+                                <View style={s.ridePathTextCol}>
+                                  <Text style={[s.ridePathText, { color: txt }]} numberOfLines={1}>FROM: {ride.origin}</Text>
+                                  <Text style={[s.ridePathText, { color: txt, marginTop: 10 }]} numberOfLines={1}>TO: {ride.destination}</Text>
+                                </View>
+                              </View>
 
-                        {ride.notes && (
-                          <View style={[s.rideNotesBox, { backgroundColor: isDark ? '#141416' : '#F1F3F5' }]}>
-                            <Text style={[s.rideNotesText, { color: txtSec }]}>💬 &quot;{ride.notes}&quot;</Text>
-                          </View>
-                        )}
+                              <View style={s.rideMetaRow}>
+                                <View>
+                                  <Text style={s.metaLabel}>LEAVES</Text>
+                                  <Text style={[s.metaVal, { color: txt }]}>{fmtWhen(ride.departureTime)}</Text>
+                                </View>
+                                <View>
+                                  <Text style={s.metaLabel}>VEHICLE</Text>
+                                  <Text style={[s.metaVal, { color: txt }]}>{String(ride.vehicleType || 'Bike').toUpperCase()}{ride.vehicleInfo ? ` (${ride.vehicleInfo})` : ''}</Text>
+                                </View>
+                                <View>
+                                  <Text style={s.metaLabel}>SEATS LEFT</Text>
+                                  <Text style={[s.metaVal, { color: COLORS.red }]}>{ride.availableSeats} SEAT{ride.availableSeats !== 1 ? 'S' : ''}</Text>
+                                </View>
+                              </View>
 
-                        <View style={[s.joinBtn, { marginTop: 12 }]}>
-                          <Text style={s.joinBtnText}>REQUEST TO JOIN SPLIT 🚗</Text>
-                        </View>
-                      </CardPressable>
-                      </StaggeredSection>
-                    );
-                  })
-                ) : (
-                  <View style={s.emptyState}>
-                    <Text style={{ fontSize: 32, marginBottom: 8 }}>🚗</Text>
-                    <Text style={{ color: txt, fontSize: 12, fontWeight: '900', letterSpacing: 1, marginBottom: 4 }}>NO COMMUTES ACTIVE</Text>
-                    <Text style={{ color: txtSec, fontSize: 10, fontWeight: '600', textAlign: 'center', marginBottom: 14 }}>
-                      Be the first to create a fuel-split pool or travel together with campus peers.
-                    </Text>
-                    <TouchableOpacity
-                      style={[s.resetBtn, { backgroundColor: COLORS.red }]}
-                      onPress={() => setShowCreateModal(true)}
-                    >
-                      <Text style={[s.resetBtnText, { color: '#fff' }]}>+ POST A COMMUTE</Text>
-                    </TouchableOpacity>
+                              <Text style={{ fontSize: 9.5, color: txtSec, marginTop: 8, fontWeight: '700' }}>⛽ {fuel > 0 ? `₹${fuel} total fuel, split between riders` : 'Free ride'}</Text>
+
+                              {!!ride.notes && (
+                                <View style={[s.rideNotesBox, { backgroundColor: isDark ? '#141416' : '#F1F3F5' }]}>
+                                  <Text style={[s.rideNotesText, { color: txtSec }]}>💬 &quot;{ride.notes}&quot;</Text>
+                                </View>
+                              )}
+
+                              <View style={[s.joinBtn, { marginTop: 12 }, joinStatus && { backgroundColor: joinStatus === 'Approved' ? COLORS.emerald : '#6B7280' }]}>
+                                {busy ? <ActivityIndicator size="small" color="#fff" /> : <Text style={[s.joinBtnText, joinStatus && { color: '#fff' }]}>{joinStatus === 'Approved' ? "YOU'RE IN ✅ · VIEW IN MY RIDES" : joinStatus ? 'REQUEST SENT · VIEW IN MY RIDES' : isPassenger ? 'RIDE TOGETHER 🤝' : ride.autoApprove ? 'JOIN RIDE 🚗' : 'REQUEST TO JOIN 🚗'}</Text>}
+                              </View>
+                            </CardPressable>
+                          </StaggeredSection>
+                        );
+                      })
+                    ) : (
+                      <View style={s.emptyState}>
+                        <Text style={{ fontSize: 32, marginBottom: 8 }}>🚗</Text>
+                        <Text style={{ color: txt, fontSize: 12, fontWeight: '900', letterSpacing: 1, marginBottom: 4 }}>{rides.length ? 'NO RIDES FOR THIS FILTER' : 'NO RIDES RIGHT NOW'}</Text>
+                        <Text style={{ color: txtSec, fontSize: 10, fontWeight: '600', textAlign: 'center', marginBottom: 14 }}>
+                          Post where you are going and split the fuel with students heading the same way.
+                        </Text>
+                        <TouchableOpacity style={[s.resetBtn, { backgroundColor: COLORS.red }]} onPress={rides.length ? () => setVehicleFilter('All') : openCreateRide}>
+                          <Text style={[s.resetBtnText, { color: '#fff' }]}>{rides.length ? 'SHOW ALL VEHICLES' : '+ POST A RIDE'}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
                   </View>
                 )}
-              </View>
-            )}
 
-            {/* MY RIDES SUB-TAB */}
-            {corideTab === 'my-rides' && (
-              <View>
-                {loadingMyRides ? (
-                  <ActivityIndicator size="large" color={COLORS.red} style={{ marginTop: 24 }} />
-                ) : myRides.length > 0 ? (
-                  myRides.map(ride => {
-                    const isCreator = ride.creatorId === user?.id;
-                    const counterpart = isCreator ? ride.coRider : ride.creator;
-                    const dateText = new Date(ride.departureTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ', ' + new Date(ride.departureTime).toLocaleDateString([], { month: 'short', day: 'numeric' });
-                    
-                    return (
-                      <View key={ride.id} style={[s.rideCard, { backgroundColor: cardBg, borderColor: border }]}>
-                        <View style={s.rideCardHeader}>
-                          <View>
-                            <Text style={{ fontSize: 8, color: txtSec, fontWeight: '800' }}>COMMUTE ID: #{ride.id.slice(-6).toUpperCase()}</Text>
-                            <Text style={[s.rideCreatorName, { color: txt, marginTop: 2 }]}>
-                              {isCreator ? 'MY COMMUTE LISTING' : `WITH ${counterpart?.name || 'CAMPUS PEER'}`}
-                            </Text>
-                          </View>
-                          <View style={[s.statusBadge, { backgroundColor: ride.status === 'Completed' ? 'rgba(16,185,129,0.1)' : ride.status === 'Matched' ? 'rgba(245,158,11,0.1)' : 'rgba(239,68,68,0.1)' }]}>
-                            <Text style={{ fontSize: 8, fontWeight: '900', color: ride.status === 'Completed' ? COLORS.emerald : ride.status === 'Matched' ? COLORS.amber : '#EF4444' }}>
-                              {ride.status.toUpperCase()}
-                            </Text>
-                          </View>
-                        </View>
+                {/* MY RIDES SUB-TAB */}
+                {corideTab === 'my-rides' && (
+                  <View>
+                    {loadingMyRides && myRides.length === 0 ? (
+                      renderListSkeleton(170)
+                    ) : myRidesError && myRides.length === 0 ? (
+                      renderLoadError(myRidesError, fetchMyRides)
+                    ) : myRides.length > 0 ? (
+                      myRides.map(ride => {
+                        const isCreator = String(ride.creatorId) === myId;
+                        const requests: any[] = Array.isArray(ride.requests) ? ride.requests : [];
+                        const pending = requests.filter(r => r.status === 'Pending');
+                        const approved = requests.filter(r => r.status === 'Approved');
+                        const myRequest = !isCreator ? requests.find(r => String(r.passengerId) === myId) : null;
+                        const myStatus: string | null = myRequest?.status || (String(ride.coRiderId) === myId ? 'Approved' : null);
+                        const isOpenRide = ride.status === 'Available' || ride.status === 'Matched';
+                        const busy = rideActionBusy === ride.id;
+                        const fuel = Number(ride.estimatedFuelCost) || 0;
+                        const riders = 1 + approved.length;
+                        const badgeText = !isCreator && myStatus && myStatus !== 'Approved' && isOpenRide
+                          ? (myStatus === 'Pending' ? 'REQUEST PENDING' : String(myStatus).toUpperCase())
+                          : String(ride.status || '').toUpperCase();
+                        const badgeColor = ride.status === 'Completed' ? COLORS.emerald : (ride.status === 'Cancelled' || myStatus === 'Rejected' || myStatus === 'Cancelled') ? '#EF4444' : COLORS.amber;
 
-                        <View style={s.ridePathRow}>
-                          <View style={s.rideDotCol}>
-                            <View style={[s.rideDot, { backgroundColor: COLORS.red }]} />
-                            <View style={s.rideDashLine} />
-                            <View style={[s.rideDot, { backgroundColor: COLORS.emerald }]} />
-                          </View>
-                          <View style={s.ridePathTextCol}>
-                            <Text style={[s.ridePathText, { color: txt }]} numberOfLines={1}>FROM: {origin || ride.origin}</Text>
-                            <Text style={[s.ridePathText, { color: txt, marginTop: 10 }]} numberOfLines={1}>TO: {destination || ride.destination}</Text>
-                          </View>
-                        </View>
-
-                        <View style={s.rideMetaRow}>
-                          <View>
-                            <Text style={s.metaLabel}>DEPARTURE TIME</Text>
-                            <Text style={[s.metaVal, { color: txt }]}>{dateText}</Text>
-                          </View>
-                          <View>
-                            <Text style={s.metaLabel}>SPLIT FUEL COST</Text>
-                            <Text style={[s.metaVal, { color: COLORS.red }]}>₹{ride.estimatedFuelCost || 0}</Text>
-                          </View>
-                          <View>
-                            <Text style={s.metaLabel}>STATUS</Text>
-                            <Text style={[s.metaVal, { color: txt }]}>{ride.status}</Text>
-                          </View>
-                        </View>
-
-                        {/* Invoice split receipt details if Completed */}
-                        {ride.status === 'Completed' && (
-                          <View style={[s.invoiceCard, { borderColor: border, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#F1F3F5' }]}>
-                            <Text style={s.invoiceTitle}>SPLIT INVOICE RECEIPT 🧾</Text>
-                            <View style={s.invoiceRow}>
-                              <Text style={[s.invoiceLabel, { color: colors.textSecondary }]}>TOTAL FUEL ESTIMATE</Text>
-                              <Text style={s.invoiceVal}>₹{ride.estimatedFuelCost}</Text>
-                            </View>
-                            <View style={s.invoiceRow}>
-                              <Text style={[s.invoiceLabel, { color: colors.textSecondary }]}>SPLIT COST PER RIDER</Text>
-                              <Text style={[s.invoiceVal, { color: COLORS.red }]}>₹{(ride.estimatedFuelCost / 2).toFixed(1)}</Text>
-                            </View>
-                            <View style={s.invoiceRow}>
-                              <Text style={[s.invoiceLabel, { color: colors.textSecondary }]}>PAYMENT STATUS</Text>
-                              <Text style={[s.invoiceVal, { color: COLORS.emerald }]}>{ride.paymentStatus.toUpperCase()}</Text>
-                            </View>
-                          </View>
-                        )}
-
-                        {/* Actions for active Match */}
-                        {ride.status === 'Matched' && (
-                          <View>
-                            {/* WhatsApp contact & SOS integration */}
-                            <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
-                              <ActionPressable 
-                                style={[s.actionBtn, { flex: 1, backgroundColor: '#25D366' }]} 
-                                onPress={() => {
-                                  const ph = counterpart?.phone || '+91 9988776655';
-                                  Linking.openURL(`https://wa.me/${ph.replace('+', '')}`);
-                                }}
-                                sound="click"
-                              >
-                                <Text style={s.actionBtnText}>WHATSAPP CHAT 💬</Text>
-                              </ActionPressable>
-                              <ActionPressable 
-                                style={[s.actionBtn, { flex: 1, backgroundColor: '#EF4444' }]} 
-                                onPress={() => {
-                                  Alert.alert('SOS Triggered', 'Emergency alert message generated for security wardens.');
-                                }}
-                                sound="click"
-                              >
-                                <Text style={s.actionBtnText}>SOS SECURITY 🚨</Text>
-                              </ActionPressable>
+                        return (
+                          <View key={ride.id} style={[s.rideCard, { backgroundColor: cardBg, borderColor: border }]}>
+                            <View style={s.rideCardHeader}>
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 8, color: txtSec, fontWeight: '800' }}>RIDE #{String(ride.id).slice(-6).toUpperCase()}</Text>
+                                <Text style={[s.rideCreatorName, { color: txt, marginTop: 2 }]}>
+                                  {isCreator ? 'MY RIDE' : `HOSTED BY ${(ride.creator?.name || 'A STUDENT').toUpperCase()}`}
+                                </Text>
+                              </View>
+                              <View style={[s.statusBadge, { backgroundColor: `${badgeColor}1A` }]}>
+                                <Text style={{ fontSize: 8, fontWeight: '900', color: badgeColor }}>{badgeText}</Text>
+                              </View>
                             </View>
 
-                            {/* Complete and Cancel ride */}
-                            {isCreator && (
-                              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-                                <ActionPressable style={[s.completeBtn, { flex: 1 }]} onPress={() => handleCompleteRide(ride.id)} sound="success">
-                                  <Text style={s.completeBtnText}>COMPLETE RIDE ✅</Text>
-                                </ActionPressable>
-                                <ActionPressable style={[s.cancelRideBtn, { width: 100 }]} onPress={() => handleCancelRide(ride.id)} sound="click">
-                                  <Text style={s.cancelRideBtnText}>CANCEL</Text>
-                                </ActionPressable>
+                            <View style={s.ridePathRow}>
+                              <View style={s.rideDotCol}>
+                                <View style={[s.rideDot, { backgroundColor: COLORS.red }]} />
+                                <View style={s.rideDashLine} />
+                                <View style={[s.rideDot, { backgroundColor: COLORS.emerald }]} />
+                              </View>
+                              <View style={s.ridePathTextCol}>
+                                <Text style={[s.ridePathText, { color: txt }]} numberOfLines={1}>FROM: {ride.origin}</Text>
+                                <Text style={[s.ridePathText, { color: txt, marginTop: 10 }]} numberOfLines={1}>TO: {ride.destination}</Text>
+                              </View>
+                            </View>
+
+                            <View style={s.rideMetaRow}>
+                              <View>
+                                <Text style={s.metaLabel}>LEAVES</Text>
+                                <Text style={[s.metaVal, { color: txt }]}>{fmtWhen(ride.departureTime)}</Text>
+                              </View>
+                              <View>
+                                <Text style={s.metaLabel}>TOTAL FUEL</Text>
+                                <Text style={[s.metaVal, { color: COLORS.red }]}>{fuel > 0 ? `₹${fuel}` : 'FREE'}</Text>
+                              </View>
+                              <View>
+                                <Text style={s.metaLabel}>SEATS LEFT</Text>
+                                <Text style={[s.metaVal, { color: txt }]}>{Number(ride.availableSeats) || 0}</Text>
+                              </View>
+                            </View>
+
+                            {/* Split summary once completed */}
+                            {ride.status === 'Completed' && fuel > 0 && (
+                              <View style={[s.invoiceCard, { borderColor: border, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#F1F3F5' }]}>
+                                <Text style={s.invoiceTitle}>FUEL SPLIT 🧾</Text>
+                                <View style={s.invoiceRow}>
+                                  <Text style={[s.invoiceLabel, { color: colors.textSecondary }]}>TOTAL FUEL</Text>
+                                  <Text style={s.invoiceVal}>₹{fuel}</Text>
+                                </View>
+                                <View style={s.invoiceRow}>
+                                  <Text style={[s.invoiceLabel, { color: colors.textSecondary }]}>PER PERSON ({riders} RIDER{riders === 1 ? '' : 'S'})</Text>
+                                  <Text style={[s.invoiceVal, { color: COLORS.red }]}>₹{Math.ceil(fuel / riders)}</Text>
+                                </View>
+                                <Text style={{ fontSize: 8.5, color: txtSec, marginTop: 4 }}>Settle the split directly with your co-riders.</Text>
                               </View>
                             )}
-                          </View>
-                        )}
 
-                        {ride.status === 'Available' && isCreator && (
-                          <View style={{ marginTop: 8 }}>
-                            {/* List of pending requests */}
-                            {ride.requests && ride.requests.filter((r: any) => r.status === 'Pending').length > 0 && (
-                              <View style={{ marginTop: 8, padding: 10, backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F8FAFC', borderRadius: 12, borderWidth: 1, borderColor: border }}>
-                                <Text style={{ fontSize: 10, fontWeight: '900', color: goldColor, letterSpacing: 1, marginBottom: 8 }}>PENDING PASSENGER REQUESTS</Text>
-                                {ride.requests.filter((r: any) => r.status === 'Pending').map((r: any) => (
+                            {/* Host: requests and passengers */}
+                            {isCreator && isOpenRide && pending.length > 0 && (
+                              <View style={{ marginTop: 10, padding: 10, backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F8FAFC', borderRadius: 12, borderWidth: 1, borderColor: border }}>
+                                <Text style={{ fontSize: 10, fontWeight: '900', color: goldColor, letterSpacing: 1, marginBottom: 8 }}>JOIN REQUESTS ({pending.length})</Text>
+                                {pending.map(r => (
                                   <View key={r.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 0.5, borderBottomColor: border }}>
                                     <View style={{ flex: 1 }}>
-                                      <Text style={{ fontSize: 12, fontWeight: '700', color: txt }}>{r.passenger?.name || 'Campus Peer'}</Text>
-                                      <Text style={{ fontSize: 9, color: txtSec }}>Gender: {r.passenger?.gender || 'Any'} • Phone: {r.passenger?.phone || 'Hidden'}</Text>
+                                      <Text style={{ fontSize: 12, fontWeight: '700', color: txt }}>{r.passenger?.name || 'Campus student'}</Text>
+                                      {!!r.passenger?.gender && r.passenger.gender !== 'Prefer not to say' && <Text style={{ fontSize: 9, color: txtSec }}>{r.passenger.gender}</Text>}
                                     </View>
                                     <View style={{ flexDirection: 'row', gap: 6 }}>
-                                      <TouchableOpacity style={{ backgroundColor: COLORS.emerald, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 }} onPress={() => handleApproveRequest(ride.id, r.id)}>
+                                      <TouchableOpacity disabled={busy} style={{ backgroundColor: COLORS.emerald, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, opacity: busy ? 0.5 : 1 }} onPress={() => handleApproveRequest(ride.id, r.id)}>
                                         <Text style={{ color: '#fff', fontSize: 10, fontWeight: '900' }}>✓ APPROVE</Text>
                                       </TouchableOpacity>
-                                      <TouchableOpacity style={{ backgroundColor: COLORS.red, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 }} onPress={() => handleRejectRequest(ride.id, r.id)}>
-                                        <Text style={{ color: '#fff', fontSize: 10, fontWeight: '900' }}>✕ REJECT</Text>
+                                      <TouchableOpacity disabled={busy} style={{ backgroundColor: COLORS.red, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, opacity: busy ? 0.5 : 1 }} onPress={() => handleRejectRequest(ride.id, r.id)}>
+                                        <Text style={{ color: '#fff', fontSize: 10, fontWeight: '900' }}>✕ DECLINE</Text>
                                       </TouchableOpacity>
                                     </View>
                                   </View>
@@ -3676,529 +2665,254 @@ export default function OthersScreen() {
                               </View>
                             )}
 
-                            {/* List of approved passengers */}
-                            {ride.requests && ride.requests.filter((r: any) => r.status === 'Approved').length > 0 && (
-                              <View style={{ marginTop: 8, padding: 10, backgroundColor: isDark ? 'rgba(16,185,129,0.05)' : '#ECFDF5', borderRadius: 12, borderWidth: 1, borderColor: border }}>
-                                <Text style={{ fontSize: 9, fontWeight: '900', color: COLORS.emerald, letterSpacing: 1, marginBottom: 6 }}>JOINED PASSENGERS</Text>
-                                {ride.requests.filter((r: any) => r.status === 'Approved').map((r: any) => (
+                            {isCreator && approved.length > 0 && ride.status !== 'Cancelled' && (
+                              <View style={{ marginTop: 10, padding: 10, backgroundColor: isDark ? 'rgba(16,185,129,0.05)' : '#ECFDF5', borderRadius: 12, borderWidth: 1, borderColor: border }}>
+                                <Text style={{ fontSize: 9, fontWeight: '900', color: COLORS.emerald, letterSpacing: 1, marginBottom: 6 }}>RIDING WITH YOU</Text>
+                                {approved.map(r => (
                                   <View key={r.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 4 }}>
-                                    <View style={{ flex: 1 }}>
-                                      <Text style={{ fontSize: 12, fontWeight: '700', color: txt }}>👤 {r.passenger?.name || 'Campus Peer'}</Text>
-                                      <Text style={{ fontSize: 9, color: txtSec }}>Phone: {r.passenger?.phone || 'Hidden'}</Text>
-                                    </View>
+                                    <Text style={{ fontSize: 12, fontWeight: '700', color: txt, flex: 1 }}>👤 {r.passenger?.name || 'Campus student'}</Text>
+                                    {isOpenRide && (
+                                      <TouchableOpacity style={{ backgroundColor: '#25D366', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 }} onPress={() => contactOnWhatsApp(r.passenger?.phone)}>
+                                        <Text style={{ color: '#fff', fontSize: 9.5, fontWeight: '900' }}>WHATSAPP 💬</Text>
+                                      </TouchableOpacity>
+                                    )}
                                   </View>
                                 ))}
                               </View>
                             )}
 
-                            <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
-                              {ride.requests && ride.requests.filter((r: any) => r.status === 'Approved').length > 0 && (
-                                <ActionPressable style={[s.completeBtn, { flex: 1 }]} onPress={() => handleCompleteRide(ride.id)} sound="success">
-                                  <Text style={s.completeBtnText}>COMPLETE RIDE ✅</Text>
+                            {/* Passenger: contact the host once approved */}
+                            {!isCreator && myStatus === 'Approved' && isOpenRide && (
+                              <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+                                <ActionPressable style={[s.actionBtn, { flex: 1, backgroundColor: '#25D366' }]} onPress={() => contactOnWhatsApp(ride.creator?.phone)} sound="click">
+                                  <Text style={s.actionBtnText}>WHATSAPP HOST 💬</Text>
                                 </ActionPressable>
-                              )}
-                              <ActionPressable style={[s.cancelRideBtn, { flex: 1 }]} onPress={() => handleCancelRide(ride.id)} sound="click">
-                                <Text style={s.cancelRideBtnText}>REMOVE LISTING ✕</Text>
+                                <ActionPressable style={[s.actionBtn, { flex: 1, backgroundColor: '#EF4444' }]} onPress={handleSOS} sound="click">
+                                  <Text style={s.actionBtnText}>SOS HELP 🚨</Text>
+                                </ActionPressable>
+                              </View>
+                            )}
+
+                            {isCreator && approved.length > 0 && isOpenRide && (
+                              <ActionPressable style={[s.actionBtn, { marginTop: 8, backgroundColor: '#EF4444' }]} onPress={handleSOS} sound="click">
+                                <Text style={s.actionBtnText}>SOS HELP 🚨</Text>
                               </ActionPressable>
-                            </View>
+                            )}
+
+                            {/* Actions */}
+                            {isOpenRide && (isCreator || myStatus === 'Pending' || myStatus === 'Approved') && (
+                              <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+                                {isCreator && approved.length > 0 && (
+                                  <ActionPressable style={[s.completeBtn, { flex: 1, opacity: busy ? 0.5 : 1 }]} onPress={() => !busy && handleCompleteRide(ride.id)} sound="success">
+                                    <Text style={s.completeBtnText}>COMPLETE RIDE ✅</Text>
+                                  </ActionPressable>
+                                )}
+                                <ActionPressable
+                                  style={[s.cancelRideBtn, { flex: 1, opacity: busy ? 0.5 : 1 }]}
+                                  onPress={() => !busy && handleCancelRide(ride.id, isCreator ? 'host' : myStatus === 'Pending' ? 'withdraw' : 'leave')}
+                                  sound="click"
+                                >
+                                  <Text style={s.cancelRideBtnText}>{isCreator ? 'CANCEL RIDE' : myStatus === 'Pending' ? 'WITHDRAW REQUEST' : 'LEAVE RIDE'}</Text>
+                                </ActionPressable>
+                              </View>
+                            )}
                           </View>
-                        )}
+                        );
+                      })
+                    ) : (
+                      <View style={s.emptyState}>
+                        <Text style={{ fontSize: 32, marginBottom: 8 }}>🚗</Text>
+                        <Text style={{ color: txt, fontSize: 12, fontWeight: '900', letterSpacing: 1, marginBottom: 4 }}>NO RIDES YET</Text>
+                        <Text style={{ color: txtSec, fontSize: 10, fontWeight: '600', textAlign: 'center', marginBottom: 14 }}>
+                          Rides you post or ask to join show up here.
+                        </Text>
+                        <TouchableOpacity style={[s.resetBtn, { backgroundColor: goldColor }]} onPress={() => setCorideTab('browse')}>
+                          <Text style={[s.resetBtnText, { color: isDark ? '#000' : '#fff' }]}>FIND A RIDE</Text>
+                        </TouchableOpacity>
                       </View>
-                    );
-                  })
-                ) : (
-                  <View style={s.emptyState}>
-                    <Text style={{ fontSize: 32, marginBottom: 8 }}>🚗</Text>
-                    <Text style={{ color: txt, fontSize: 12, fontWeight: '900', letterSpacing: 1, marginBottom: 4 }}>NO COMMUTE RECORDS FOUND</Text>
-                    <Text style={{ color: txtSec, fontSize: 10, fontWeight: '600', textAlign: 'center', marginBottom: 14 }}>
-                      You have not created or joined any peer ride-sharing pools yet.
-                    </Text>
-                    <TouchableOpacity
-                      style={[s.resetBtn, { backgroundColor: goldColor }]}
-                      onPress={() => setCorideTab('browse')}
-                    >
-                      <Text style={[s.resetBtnText, { color: isDark ? '#000' : '#fff' }]}>FIND A COMMUTE</Text>
-                    </TouchableOpacity>
+                    )}
                   </View>
                 )}
-              </View>
-            )}
 
-            {/* Create Post floating trigger */}
-            <ActionPressable style={s.floatingFab} onPress={() => setShowCreateModal(true)} sound="click">
-              <Text style={s.floatingFabText}>POST A COMMUTE +</Text>
-            </ActionPressable>
+                <ActionPressable style={s.floatingFab} onPress={openCreateRide} sound="click">
+                  <Text style={s.floatingFabText}>POST A RIDE +</Text>
+                </ActionPressable>
+              </>
+            )}
           </View>
         )}
 
         {/* ── DEALS & SPINS TAB ── */}
         {activeTab === 'promos' && (
           <View style={{ paddingHorizontal: 16 }}>
-            {/* 1. Glassmorphic Hero Badge: Coin Balance */}
+            {/* 1. Rewards hero: real ZenPoints */}
             <Animated.View style={{ opacity: heroEnterO, transform: [{ translateY: heroEnterY }] }}>
-            <View style={{
-              borderRadius: 24,
-              overflow: 'hidden',
-              marginBottom: 16,
-              borderWidth: 1.5,
-              borderColor: border,
-            }}>
-              <LinearGradient
-                colors={isDark ? ['#1E1B4B', '#311042'] : ['#FDF4E3', '#FCE7C8']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={{ padding: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 9, fontWeight: '900', color: COLORS.gold, letterSpacing: 2 }}>ZENVY PREMIUM OFFERS</Text>
-                  <Text style={{ fontSize: 24, fontWeight: '900', color: txt, marginTop: 4 }}>Your Rewards Hub</Text>
-                  <Text style={{ fontSize: 10, fontWeight: '700', color: txtSec, marginTop: 2 }}>Spin, scratch, & watch ads to claim coupons!</Text>
-                </View>
-                <View style={{ alignItems: 'flex-end', minWidth: 80 }}>
-                  <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec }}>COIN BALANCE</Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
-                    <Animated.View style={{ transform: [{ translateY: coinFloatAnim }] }}>
-                      <Text style={{ fontSize: 20 }}>🪙</Text>
-                    </Animated.View>
-                    <Text style={{ fontSize: 20, fontWeight: '900', color: COLORS.gold }}>{user?.karmaPoints || 250}</Text>
+              <View style={{ borderRadius: 24, overflow: 'hidden', marginBottom: 16, borderWidth: 1.5, borderColor: border }}>
+                <LinearGradient
+                  colors={isDark ? ['#1E1B4B', '#311042'] : ['#FDF4E3', '#FCE7C8']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={{ padding: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 9, fontWeight: '900', color: COLORS.gold, letterSpacing: 2 }}>ZENVY REWARDS</Text>
+                    <Text style={{ fontSize: 24, fontWeight: '900', color: txt, marginTop: 4 }}>Your Rewards Hub</Text>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: txtSec, marginTop: 2 }}>Every 2 delivered orders earn a spin.</Text>
                   </View>
-                </View>
-              </LinearGradient>
-            </View>
+                  {myId ? (
+                    <View style={{ alignItems: 'flex-end', minWidth: 80 }}>
+                      <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec }}>ZENPOINTS</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
+                        <Animated.View style={{ transform: [{ translateY: coinFloatAnim }] }}>
+                          <Text style={{ fontSize: 20 }}>💎</Text>
+                        </Animated.View>
+                        <Text style={{ fontSize: 20, fontWeight: '900', color: COLORS.gold }}>{zenPoints}</Text>
+                      </View>
+                    </View>
+                  ) : (
+                    <TouchableOpacity style={{ backgroundColor: COLORS.red, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12 }} onPress={() => router.push('/login' as any)}>
+                      <Text style={{ color: '#fff', fontSize: 10, fontWeight: '900' }}>LOG IN</Text>
+                    </TouchableOpacity>
+                  )}
+                </LinearGradient>
+              </View>
             </Animated.View>
 
-            {/* 2. Fortune Spin Wheel Section */}
+            {/* 2. Spin wheel (server picks the prize) */}
             <Animated.View style={{ opacity: wheelEnterO, transform: [{ translateY: wheelEnterY }, { scale: wheelScaleIn }] }}>
-            <View style={{
-              borderRadius: 24,
-              borderWidth: 1.5,
-              borderColor: border,
-              backgroundColor: cardBg,
-              padding: 20,
-              alignItems: 'center',
-              marginBottom: 16,
-              ...SHADOWS.card
-            }}>
-              <Text style={{ fontSize: 13, fontWeight: '900', color: txt, letterSpacing: 1.5 }}>FORTUNE SPIN WHEEL 🎡</Text>
-              <Text style={{ fontSize: 9, fontWeight: '700', color: txtSec, marginTop: 2, marginBottom: 16 }}>Spin daily to win exclusive campus discounts!</Text>
+              <View style={{ borderRadius: 24, borderWidth: 1.5, borderColor: border, backgroundColor: cardBg, padding: 20, alignItems: 'center', marginBottom: 16, ...SHADOWS.card }}>
+                <Text style={{ fontSize: 13, fontWeight: '900', color: txt, letterSpacing: 1.5 }}>LUCKY SPIN WHEEL 🎡</Text>
+                <Text style={{ fontSize: 9, fontWeight: '700', color: txtSec, marginTop: 2, marginBottom: 16 }}>Win ZenPoints or a free-delivery coupon</Text>
 
-              {/* Spin Wheel Visual Element */}
-              <View style={{ width: 260, height: 260, justifyContent: 'center', alignItems: 'center', marginVertical: 12, position: 'relative' }}>
-                {/* Pointer ▼ with bounce */}
-                <Animated.Text style={{ fontSize: 26, color: '#D4AF7A', position: 'absolute', top: -16, zIndex: 15, textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 4, transform: [{ translateY: pointerBounce }] }}>▼</Animated.Text>
-                
-                {/* Outer Rim */}
-                <View style={{
-                  width: 250,
-                  height: 250,
-                  borderRadius: 125,
-                  borderWidth: 6,
-                  borderColor: '#D4AF7A',
-                  backgroundColor: '#0B0B0D',
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  shadowColor: '#D4AF7A',
-                  shadowOffset: { width: 0, height: 4 },
-                  shadowOpacity: 0.25,
-                  shadowRadius: 8,
-                  elevation: 6
-                }}>
-                  {/* Rotating Inner Wheel */}
-                  <Animated.View style={{
-                    width: 238,
-                    height: 238,
-                    borderRadius: 119,
-                    backgroundColor: '#111318',
-                    overflow: 'hidden',
-                    position: 'relative',
-                    transform: [{
-                      rotate: spinAnim.interpolate({
-                        inputRange: [0, 360000],
-                        outputRange: ['0deg', '360000deg']
-                      })
-                    }]
-                  }}>
-                    {/* Wedges Divider Lines */}
-                    {Array(8).fill(0).map((_, idx) => (
-                      <View
-                        key={`line-${idx}`}
-                        style={{
-                          position: 'absolute',
-                          width: 1.5,
-                          height: 119,
-                          backgroundColor: 'rgba(212, 175, 122, 0.25)',
-                          top: 0,
-                          left: 118,
-                          transform: [
-                            { rotate: `${idx * 45 + 22.5}deg` },
-                            { translateY: 59.5 }
-                          ]
-                        }}
-                      />
-                    ))}
+                <View style={{ width: 260, height: 260, justifyContent: 'center', alignItems: 'center', marginVertical: 12 }}>
+                  <Animated.Text style={{ fontSize: 26, color: '#D4AF7A', position: 'absolute', top: -16, zIndex: 15, textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 4, transform: [{ translateY: pointerBounce }] }}>▼</Animated.Text>
 
-                    {/* Sector Items */}
-                    {WHEEL_SECTORS.map((sector, idx) => (
-                      <View
-                        key={`sector-${idx}`}
-                        style={{
-                          position: 'absolute',
-                          width: 86,
-                          height: 86,
-                          top: 76,
-                          left: 76,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          transform: [
-                            { rotate: `${idx * 45}deg` },
-                            { translateY: -64 }
-                          ]
-                        }}
-                      >
-                        <View style={{
-                          width: 38,
-                          height: 38,
-                          borderRadius: 19,
-                          backgroundColor: sector.color,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          borderWidth: 2,
-                          borderColor: '#fff',
-                          shadowColor: sector.color,
-                          shadowOffset: { width: 0, height: 2 },
-                          shadowOpacity: 0.4,
-                          shadowRadius: 3,
-                        }}>
-                          <Text style={{ fontSize: 15 }}>{sector.emoji}</Text>
+                  <View style={{ width: 250, height: 250, borderRadius: 125, borderWidth: 6, borderColor: '#D4AF7A', backgroundColor: '#0B0B0D', justifyContent: 'center', alignItems: 'center', shadowColor: '#D4AF7A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 6 }}>
+                    <Animated.View style={{
+                      width: 238,
+                      height: 238,
+                      borderRadius: 119,
+                      backgroundColor: '#111318',
+                      overflow: 'hidden',
+                      transform: [{ rotate: spinAnim.interpolate({ inputRange: [0, 360000], outputRange: ['0deg', '360000deg'] }) }]
+                    }}>
+                      {wheelSectors.map((_, idx) => (
+                        <View
+                          key={`line-${idx}`}
+                          style={{ position: 'absolute', width: 1.5, height: 119, backgroundColor: 'rgba(212, 175, 122, 0.25)', top: 0, left: 118, transform: [{ rotate: `${idx * sectorDeg + sectorDeg / 2}deg` }, { translateY: 59.5 }] }}
+                        />
+                      ))}
+                      {wheelSectors.map((sector, idx) => (
+                        <View
+                          key={`sector-${idx}`}
+                          style={{ position: 'absolute', width: 86, height: 86, top: 76, left: 76, alignItems: 'center', justifyContent: 'center', transform: [{ rotate: `${idx * sectorDeg}deg` }, { translateY: -64 }] }}
+                        >
+                          <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: sector.color, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' }}>
+                            <Text style={{ fontSize: 15 }}>{sector.emoji}</Text>
+                          </View>
+                          <Text style={{ fontSize: 7, fontWeight: '900', color: '#fff', textAlign: 'center', marginTop: 3, width: 70 }}>{sector.label}</Text>
                         </View>
-                        <Text style={{
-                          fontSize: 7,
-                          fontWeight: '900',
-                          color: '#fff',
-                          textAlign: 'center',
-                          marginTop: 3,
-                          width: 70,
-                        }}>
-                          {sector.label}
-                        </Text>
-                      </View>
-                    ))}
+                      ))}
+                      {wheelSectors.length === 0 && (
+                        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                          {rewardsStatus === 'loading' ? <ActivityIndicator color="#D4AF7A" /> : <Text style={{ fontSize: 40 }}>🎡</Text>}
+                        </View>
+                      )}
+                    </Animated.View>
+                  </View>
+
+                  <Animated.View style={{ position: 'absolute', transform: [{ scale: spinBtnScale }], zIndex: 10 }}>
+                    <TouchableOpacity
+                      activeOpacity={0.85}
+                      disabled={isSpinning || (!!myId && wheelSectors.length === 0)}
+                      onPress={handleSpin}
+                      accessibilityLabel="Spin the wheel"
+                      style={{ width: 58, height: 58, borderRadius: 29, backgroundColor: spinsLeft > 0 || !myId ? '#D4AF7A' : '#9CA3AF', alignItems: 'center', justifyContent: 'center', shadowColor: '#D4AF7A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.6, shadowRadius: 6, elevation: 5, borderWidth: 3, borderColor: '#fff' }}
+                    >
+                      {isSpinning ? (
+                        <ActivityIndicator size="small" color="#000" />
+                      ) : (
+                        <Text style={{ fontSize: 9.5, fontWeight: '900', color: '#000', letterSpacing: 0.5 }}>{spinsLeft > 0 || !myId ? 'SPIN' : 'LOCKED'}</Text>
+                      )}
+                    </TouchableOpacity>
                   </Animated.View>
                 </View>
 
-                {/* Central SPIN Button */}
-                <Animated.View style={{
-                  position: 'absolute',
-                  transform: [{ scale: spinBtnScale }],
-                  zIndex: 10,
-                }}>
-                  <TouchableOpacity
-                    activeOpacity={0.85}
-                    disabled={isSpinning || spinsLeft <= 0}
-                    onPress={handleSpin}
-                    style={{
-                      width: 58,
-                      height: 58,
-                      borderRadius: 29,
-                      backgroundColor: '#D4AF7A',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      shadowColor: '#D4AF7A',
-                      shadowOffset: { width: 0, height: 4 },
-                      shadowOpacity: 0.6,
-                      shadowRadius: 6,
-                      elevation: 5,
-                      borderWidth: 3,
-                      borderColor: '#fff'
-                    }}
-                  >
-                    <Text style={{ fontSize: 9.5, fontWeight: '900', color: '#000', letterSpacing: 0.5 }}>
-                      {isSpinning ? 'SPINNING' : spinsLeft > 0 ? 'SPIN' : 'LOCKED'}
-                    </Text>
-                  </TouchableOpacity>
-                </Animated.View>
+                <Text style={{ fontSize: 9, fontWeight: '800', color: spinsLeft > 0 ? COLORS.gold : txtSec, marginTop: 8, textAlign: 'center' }}>
+                  {!myId
+                    ? 'Log in to see your spins'
+                    : rewardsStatus === 'error' || (rewardsStatus === 'ready' && wheelSectors.length === 0)
+                      ? 'Could not load your spins. Pull down to retry.'
+                      : spinsLeft > 0
+                        ? `🎉 YOU HAVE ${spinsLeft} SPIN${spinsLeft === 1 ? '' : 'S'} READY`
+                        : spinNextIn
+                          ? `${spinNextIn} more delivered order${spinNextIn === 1 ? '' : 's'} to your next spin`
+                          : 'Every 2 delivered orders earn a spin'}
+                </Text>
               </View>
-
-              {/* Action Info */}
-              <Text style={{ fontSize: 8.5, fontWeight: '800', color: spinsLeft > 0 ? COLORS.gold : txtSec, marginTop: 8 }}>
-                {spinsLeft > 0 ? `🎉 YOU HAVE ${spinsLeft} SPIN LEFT TODAY` : '❌ DAILY SPIN EXHAUSTED (Watch an ad below to reset!)'}
-              </Text>
-            </View>
             </Animated.View>
 
-            {/* 3. Interactive Scratch Cards */}
-            <Animated.View style={{ opacity: scratchEnterO, transform: [{ translateY: scratchEnterY }] }}>
-            <View style={{
-              borderRadius: 24,
-              borderWidth: 1.5,
-              borderColor: border,
-              backgroundColor: cardBg,
-              padding: 16,
-              marginBottom: 16,
-              ...SHADOWS.card
-            }}>
-              <Text style={{ fontSize: 13, fontWeight: '900', color: txt, letterSpacing: 1.5, textAlign: 'center' }}>SCRATCH & WIN CARDS 🎁</Text>
-              <Text style={{ fontSize: 9, fontWeight: '700', color: txtSec, marginTop: 2, marginBottom: 12, textAlign: 'center' }}>Tap to scratch and unlock secret campus coupon codes!</Text>
+            {/* 3. Your coupons (real, usable ones only) */}
+            <Animated.View style={{ opacity: couponsEnterO, transform: [{ translateY: couponsEnterY }] }}>
+              <View style={{ marginBottom: 20 }}>
+                <Text style={{ fontSize: 13, fontWeight: '900', color: txt, letterSpacing: 1.5, marginBottom: 12, textAlign: 'center' }}>YOUR COUPONS 🎟️</Text>
 
-              {/* Cards Grid */}
-              <View style={{ flexDirection: 'row', gap: 10, justifyContent: 'center', marginTop: 8 }}>
-                {scratchCardsState.map(card => (
-                  <View
-                    key={card.id}
-                    style={{
-                      width: (SW - 32 - 20 - 32) / 3,
-                      height: 120,
-                      borderRadius: 16,
-                      backgroundColor: isDark ? '#1F2937' : '#F3F4F6',
-                      borderWidth: 1.5,
-                      borderColor: border,
-                      position: 'relative',
-                      overflow: 'hidden',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      padding: 6
-                    }}
-                  >
-                    {/* Reward content */}
-                    <View style={{ alignItems: 'center', justifyContent: 'center', flex: 1 }}>
-                      <Text style={{ fontSize: 18, marginBottom: 4 }}>🎁</Text>
-                      <Text style={{ fontSize: 7, fontWeight: '900', color: txtSec, textAlign: 'center' }}>{card.title}</Text>
-                      <Text style={{ fontSize: 8.5, fontWeight: '900', color: COLORS.greenRating, textAlign: 'center', marginTop: 4, height: 22 }}>{card.reward}</Text>
-                      
-                      <TouchableOpacity
-                        onPress={() => {
-                          if (card.scratched) {
-                            setCopiedCode(card.code);
-                            Alert.alert('Coupon Copied', `Code "${card.code}" has been copied!`);
-                          }
-                        }}
-                        style={{
-                          backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#E5E7EB',
-                          paddingHorizontal: 6,
-                          paddingVertical: 2,
-                          borderRadius: 6,
-                          marginTop: 6
-                        }}
-                      >
-                        <Text style={{ fontSize: 7, fontWeight: '900', color: txt }}>
-                          {card.scratched ? `COPY: ${card.code}` : (card.id === 3 && !adCompleted ? 'LOCKED' : 'SCRATCH')}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-
-                    {/* Gold scratch covering overlay */}
-                    {!card.scratched && (
-                      <Animated.View
-                        style={[
-                          StyleSheet.absoluteFill,
-                          {
-                            backgroundColor: '#D4AF7A',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            opacity: card.anim,
-                            zIndex: 5
-                          }
-                        ]}
-                      >
-                        <TouchableOpacity
-                          activeOpacity={0.9}
-                          onPress={() => handleScratch(card.id, card.anim)}
-                          style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}
-                        >
-                          <LinearGradient
-                            colors={['#D4AF7A', '#AA7C11', '#FDF6E2', '#AA7C11']}
-                            start={{ x: 0, y: 0 }}
-                            end={{ x: 1, y: 1 }}
-                            style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center', padding: 8 }]}
-                          >
-                            <Text style={{ fontSize: 20, marginBottom: 4 }}>
-                              {card.id === 3 && !adCompleted ? '🔒' : '✨'}
-                            </Text>
-                            <Animated.Text style={{ fontSize: 7.5, fontWeight: '900', color: '#000', letterSpacing: 0.5, textAlign: 'center', opacity: shimmerAnim }}>
-                              {card.id === 3 && !adCompleted ? 'LOCKED' : 'TAP TO REVEAL'}
-                            </Animated.Text>
-                          </LinearGradient>
-                        </TouchableOpacity>
-                      </Animated.View>
-                    )}
+                {!myId ? (
+                  <View style={[s.emptyState, { padding: 24 }]}>
+                    <Text style={{ color: txtSec, fontSize: 11, fontWeight: '600', textAlign: 'center' }}>Log in to see the coupons you have won.</Text>
                   </View>
-                ))}
-              </View>
-            </View>
-            </Animated.View>
-
-            {/* 4. Rich Interactive Ad & Watch-to-Earn Mechanism */}
-            <Animated.View style={{ opacity: adEnterO, transform: [{ translateY: adEnterY }] }}>
-            <View style={{
-              borderRadius: 24,
-              borderWidth: 1.5,
-              borderColor: border,
-              backgroundColor: cardBg,
-              padding: 16,
-              marginBottom: 16,
-              ...SHADOWS.card
-            }}>
-              <Text style={{ fontSize: 13, fontWeight: '900', color: txt, letterSpacing: 1.5, textAlign: 'center' }}>WATCH & EARN SPONSOR ZONE 📺</Text>
-              <Text style={{ fontSize: 9, fontWeight: '700', color: txtSec, marginTop: 2, marginBottom: 14, textAlign: 'center' }}>Complete a short 8-second video to claim free coins & spin!</Text>
-
-              <View style={{
-                borderRadius: 20,
-                padding: 16,
-                backgroundColor: '#0F172A',
-                borderWidth: 1,
-                borderColor: '#1E293B',
-                position: 'relative',
-                overflow: 'hidden',
-                minHeight: 120,
-                justifyContent: 'center',
-                alignItems: 'center'
-              }}>
-                {/* Simulated playback visual */}
-                {!isAdWatching && !adCompleted ? (
-                  <View style={{ alignItems: 'center' }}>
-                    <Image
-                      source={{ uri: 'https://images.unsplash.com/photo-1543007630-9710e4a00a20?w=400&q=80' }}
-                      style={{ width: '100%', height: 70, borderRadius: 12, opacity: 0.4, position: 'absolute' }}
-                    />
-                    <Text style={{ fontSize: 22, color: '#fff', marginBottom: 4 }}>▶️</Text>
-                    <Text style={{ fontSize: 9, fontWeight: '900', color: '#fff', letterSpacing: 1 }}>Unlock Extra Daily Spin & +30 Coins</Text>
-                    <Animated.View style={{ transform: [{ scale: adPulseScale }] }}>
-                      <TouchableOpacity
-                        onPress={() => {
-                          setIsAdWatching(true);
-                          setAdProgress(0);
-                          setAdWatchingTimeLeft(8);
-                        }}
-                        style={{
-                          backgroundColor: COLORS.emerald,
-                          paddingHorizontal: 16,
-                          paddingVertical: 8,
-                          borderRadius: 12,
-                          marginTop: 10,
-                          shadowColor: '#10B981', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 12, elevation: 6
-                        }}
-                      >
-                        <Text style={{ color: '#fff', fontSize: 8.5, fontWeight: '900', letterSpacing: 1.5 }}>START VIDEO AD</Text>
-                      </TouchableOpacity>
-                    </Animated.View>
+                ) : rewardsStatus === 'loading' && coupons.length === 0 ? (
+                  <View style={{ gap: 10 }}>
+                    {[0, 1].map(i => <ShimmerLoader key={i} width={SW - 32} height={70} borderRadius={16} />)}
                   </View>
-                ) : isAdWatching ? (
-                  <View style={{ width: '100%', alignItems: 'center' }}>
-                    <Text style={{ fontSize: 9, fontWeight: '900', color: '#38BDF8', letterSpacing: 1 }}>WATCHING SPONSORED VIDEO... ⏳</Text>
-                    <Text style={{ fontSize: 18, color: '#fff', marginVertical: 6 }}>{adWatchingTimeLeft}s Remaining</Text>
-                    
-                    {/* Progress Bar Container */}
-                    <View style={{ width: '80%', height: 6, backgroundColor: '#334155', borderRadius: 3, overflow: 'hidden', marginTop: 4 }}>
-                      <View style={{ width: `${adProgress}%`, height: '100%', backgroundColor: '#38BDF8' }} />
-                    </View>
+                ) : rewardsStatus === 'error' && coupons.length === 0 ? (
+                  renderLoadError('Your coupons did not load.', fetchRewards)
+                ) : coupons.length === 0 ? (
+                  <View style={[s.emptyState, { padding: 24 }]}>
+                    <Text style={{ fontSize: 28, marginBottom: 6 }}>🎫</Text>
+                    <Text style={{ color: txt, fontSize: 12, fontWeight: '900', marginBottom: 4 }}>No coupons yet</Text>
+                    <Text style={{ color: txtSec, fontSize: 10, fontWeight: '600', textAlign: 'center' }}>Spin the wheel or claim a daily deal — coupons you win show up here.</Text>
                   </View>
                 ) : (
-                  <View style={{ alignItems: 'center' }}>
-                    <Text style={{ fontSize: 28, marginBottom: 4 }}>🎉</Text>
-                    <Text style={{ fontSize: 10, fontWeight: '900', color: '#34D399', letterSpacing: 1 }}>REWARD UNLOCKED SUCCESSFULLY!</Text>
-                    <Text style={{ fontSize: 8, color: COLORS.textMuted, marginTop: 2 }}>Claim code "ADBONUS" at grocery checkout for FREE Delivery.</Text>
-                    
-                    <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
-                      <TouchableOpacity
-                        onPress={() => {
-                          setCopiedCode('ADBONUS');
-                          Alert.alert('Coupon Copied', 'ADBONUS copied!');
-                        }}
-                        style={{
-                          backgroundColor: 'rgba(255,255,255,0.08)',
-                          borderWidth: 1,
-                          borderColor: 'rgba(255,255,255,0.15)',
-                          paddingHorizontal: 12,
-                          paddingVertical: 6,
-                          borderRadius: 8
-                      }}
-                    >
-                      <Text style={{ color: '#fff', fontSize: 8, fontWeight: '900' }}>COPY: ADBONUS</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => {
-                        setAdCompleted(false);
-                        setSpinsLeft(prev => prev + 1);
-                        Alert.alert('Extra Spin Added', 'One bonus spin added to your Fortune Wheel!');
-                      }}
-                      style={{
-                        backgroundColor: COLORS.gold,
-                        paddingHorizontal: 12,
-                        paddingVertical: 6,
-                        borderRadius: 8
-                      }}
-                    >
-                      <Text style={{ color: '#000', fontSize: 8, fontWeight: '900' }}>CLAIM +1 WHEEL SPIN</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              )}
-            </View>
-          </View>
-          </Animated.View>
-                 {/* 5. Copyable Coupons List */}
-            <Animated.View style={{ opacity: couponsEnterO, transform: [{ translateY: couponsEnterY }] }}>
-            <View style={{ marginBottom: 20 }}>
-              <Text style={{ fontSize: 13, fontWeight: '900', color: txt, letterSpacing: 1.5, marginBottom: 12, textAlign: 'center' }}>AVAILABLE CAMPUS OFFERS 🎟️ </Text>
-              
-              {[
-                { title: '50% Off Stationary Blowout', code: 'STATIONARY50', desc: 'Valid on notebooks, pens, and packs at Campus Store.', tag: 'STATIONARY' },
-                { title: 'Free Delivery on Essentials', code: 'FREEDELIVERY', desc: 'Get zero-delivery-fee grocery on order above ₹299.', tag: 'ESSENTIALS' },
-                { title: '₹50 Off Ride Commute Share', code: 'RIDE50', desc: 'Applies on your next campus Co-Ride split fuel share.', tag: 'RIDE' },
-                { title: '₹100 Off PG Booking Deposit', code: 'PG100', desc: 'Exclusive concession code for premium booking on app.', tag: 'PG HOUSING' },
-              ].map((coupon, index) => (
-                <View
-                  key={index}
-                  style={{
-                    backgroundColor: cardBg,
-                    borderWidth: 1.5,
-                    borderColor: border,
-                    borderRadius: 16,
-                    padding: 14,
-                    marginBottom: 10,
-                    position: 'relative',
-                    overflow: 'hidden',
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between'
-                  }}
-                >
-                  {/* Semicircular Ticket Cutouts */}
-                  <View style={{ position: 'absolute', left: -7, width: 14, height: 14, borderRadius: 7, backgroundColor: isDark ? '#0B0B0D' : '#F8FAFC', borderWidth: 1.5, borderColor: border }} />
-                  <View style={{ position: 'absolute', right: -7, width: 14, height: 14, borderRadius: 7, backgroundColor: isDark ? '#0B0B0D' : '#F8FAFC', borderWidth: 1.5, borderColor: border }} />
+                  coupons.map((coupon: any, index: number) => {
+                    const code = String(coupon.code || '');
+                    const anim = couponAnims[index] || null;
+                    const days = Number(coupon.expiresInDays);
+                    const expiry = Number.isFinite(days) && coupon.expiresInDays !== null
+                      ? (days <= 0 ? 'Expires today' : `Expires in ${days} day${days === 1 ? '' : 's'}`)
+                      : 'No expiry';
+                    return (
+                      <Animated.View key={code || index} style={anim ? { opacity: anim.o, transform: [{ translateY: anim.y }] } : undefined}>
+                        <View style={{ backgroundColor: cardBg, borderWidth: 1.5, borderColor: border, borderRadius: 16, padding: 14, marginBottom: 10, overflow: 'hidden', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <View style={{ position: 'absolute', left: -7, width: 14, height: 14, borderRadius: 7, backgroundColor: isDark ? '#0B0B0D' : '#F8FAFC', borderWidth: 1.5, borderColor: border }} />
+                          <View style={{ position: 'absolute', right: -7, width: 14, height: 14, borderRadius: 7, backgroundColor: isDark ? '#0B0B0D' : '#F8FAFC', borderWidth: 1.5, borderColor: border }} />
 
-                  <View style={{ flex: 1, paddingHorizontal: 6 }}>
-                    <Text style={{ fontSize: 7.5, fontWeight: '900', color: COLORS.gold, letterSpacing: 1 }}>{coupon.tag}</Text>
-                    <Text style={{ fontSize: 11, fontWeight: '900', color: txt, marginTop: 2 }}>{coupon.title}</Text>
-                    <Text style={{ fontSize: 8, color: txtSec, marginTop: 2 }}>{coupon.desc}</Text>
-                  </View>
+                          <View style={{ flex: 1, paddingHorizontal: 6 }}>
+                            <Text style={{ fontSize: 7.5, fontWeight: '900', color: COLORS.gold, letterSpacing: 1 }}>{expiry.toUpperCase()}</Text>
+                            <Text style={{ fontSize: 12, fontWeight: '900', color: txt, marginTop: 2 }}>{coupon.label || 'Coupon'}</Text>
+                            <Text style={{ fontSize: 8.5, color: txtSec, marginTop: 2 }}>Use code {code} at checkout</Text>
+                          </View>
 
-                  <View style={{ width: 1, height: 40, borderStyle: 'dashed', borderWidth: 0.5, borderColor: border, marginHorizontal: 8 }} />
+                          <View style={{ width: 1, height: 40, borderStyle: 'dashed', borderWidth: 0.5, borderColor: border, marginHorizontal: 8 }} />
 
-                  <Animated.View style={{ transform: [{ scale: popBtnCode === coupon.code ? btnScaleAnim : 1.0 }] }}>
-                    <TouchableOpacity
-                      onPress={() => {
-                        handleCopyCode(coupon.code);
-                        Alert.alert('Coupon Copied', `Coupon code "${coupon.code}" copied to clipboard!`);
-                      }}
-                      style={{
-                        backgroundColor: copiedCode === coupon.code ? COLORS.emerald : COLORS.red,
-                        paddingHorizontal: 12,
-                        paddingVertical: 8,
-                        borderRadius: 10,
-                        width: 85,
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                      }}
-                    >
-                      <Text style={{ color: '#fff', fontSize: 8, fontWeight: '900', letterSpacing: 0.5 }}>
-                        {copiedCode === coupon.code ? 'COPIED ✓' : coupon.code}
-                      </Text>
-                    </TouchableOpacity>
-                  </Animated.View>
-                </View>
-              ))}
-            </View>
+                          <Animated.View style={{ transform: [{ scale: popBtnCode === code ? btnScaleAnim : 1.0 }] }}>
+                            <TouchableOpacity
+                              onPress={() => {
+                                handleCopyCode(code);
+                                Haptics.selectionAsync().catch(() => {});
+                              }}
+                              style={{ backgroundColor: copiedCode === code ? COLORS.emerald : COLORS.red, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, minWidth: 85, alignItems: 'center', justifyContent: 'center' }}
+                              accessibilityLabel={`Copy code ${code}`}
+                            >
+                              <Text style={{ color: '#fff', fontSize: 8, fontWeight: '900', letterSpacing: 0.5 }} numberOfLines={1}>{copiedCode === code ? 'COPIED ✓' : code}</Text>
+                            </TouchableOpacity>
+                          </Animated.View>
+                        </View>
+                      </Animated.View>
+                    );
+                  })
+                )}
+              </View>
             </Animated.View>
           </View>
         )}
@@ -4207,96 +2921,15 @@ export default function OthersScreen() {
       </ScrollView>
       </Animated.View>
 
-      {/* ── CO-RIDE POST A COMMUTE MODAL FORM ── */}
-      <Modal visible={showCreateModal} animationType="slide" transparent={true}>
-        <View style={s.modalOverlay}>
-          <View style={[s.modalContentBox, { backgroundColor: cardBg }]}>
-            <Text style={[s.modalTitle, { color: txt }]}>POST CAMPUS RIDE</Text>
-            
-            <ScrollView showsVerticalScrollIndicator={false} style={{ width: '100%' }}>
-              <Text style={[s.formLabel, { color: txt }]}>I AM THE:</Text>
-              <View style={s.formRoleRow}>
-                <DopaminePressable style={[s.roleBtn, creatorRole === 'rider' && s.roleBtnActive, { flex: 1 }]} onPress={() => setCreatorRole('rider')} sound="click" activeScale={0.95}>
-                  <Text style={[s.roleBtnTextLabel, { color: colors.textSecondary }, creatorRole === 'rider' && s.roleBtnTextLabelActive]}>🏍️ RIDER (HAVE BIKE)</Text>
-                </DopaminePressable>
-                <DopaminePressable style={[s.roleBtn, creatorRole === 'passenger' && s.roleBtnActive, { flex: 1 }]} onPress={() => setCreatorRole('passenger')} sound="click" activeScale={0.95}>
-                  <Text style={[s.roleBtnTextLabel, { color: colors.textSecondary }, creatorRole === 'passenger' && s.roleBtnTextLabelActive]}>🚶 PASSENGER</Text>
-                </DopaminePressable>
-              </View>
-
-              <Text style={[s.formLabel, { color: txt }]}>START LOCATION (ORIGIN)</Text>
-              <TextInput style={[s.formInput, { color: txt, borderColor: border }]} placeholder="e.g. Campus Main Gate" placeholderTextColor={txtSec} value={origin} onChangeText={setOrigin} />
-
-              <Text style={[s.formLabel, { color: txt }]}>DESTINATION</Text>
-              <TextInput style={[s.formInput, { color: txt, borderColor: border }]} placeholder="e.g. Vijayawada Station" placeholderTextColor={txtSec} value={destination} onChangeText={setDestination} />
-
-              <Text style={[s.formLabel, { color: txt }]}>DEPARTURE TIME (YYYY-MM-DD HH:MM)</Text>
-              <TextInput style={[s.formInput, { color: txt, borderColor: border }]} placeholder="e.g. 2026-07-15 10:30" placeholderTextColor={txtSec} value={departureTime} onChangeText={setDepartureTime} />
-
-              <Text style={[s.formLabel, { color: txt }]}>VEHICLE TYPE</Text>
-              <View style={s.formRoleRow}>
-                {['Bike', 'Car', 'Auto'].map(v => (
-                  <DopaminePressable key={v} style={[s.roleBtn, vehicleType === v && s.roleBtnActive, { flex: 1 }]} onPress={() => setVehicleType(v)} sound="click" activeScale={0.95}>
-                    <Text style={[s.roleBtnTextLabel, { color: colors.textSecondary }, vehicleType === v && s.roleBtnTextLabelActive]}>{v.toUpperCase()}</Text>
-                  </DopaminePressable>
-                ))}
-              </View>
-
-              <Text style={[s.formLabel, { color: txt }]}>ESTIMATED FUEL SPLIT COST (₹ TOTAL)</Text>
-              <TextInput style={[s.formInput, { color: txt, borderColor: border }]} keyboardType="numeric" placeholder="e.g. 150" placeholderTextColor={txtSec} value={estimatedFuelCost} onChangeText={setEstimatedFuelCost} />
-
-              <Text style={[s.formLabel, { color: txt }]}>RIDE VIBE PREFERENCE</Text>
-              <View style={s.formRoleRow}>
-                {['Any', 'Silent Ride 🤫', 'Chatty 💬'].map(vb => (
-                  <DopaminePressable key={vb} style={[s.roleBtn, rideVibe === vb && s.roleBtnActive, { flex: 1 }]} onPress={() => setRideVibe(vb)} sound="click" activeScale={0.95}>
-                    <Text style={[s.roleBtnTextLabel, { color: colors.textSecondary }, rideVibe === vb && s.roleBtnTextLabelActive]}>{vb.toUpperCase()}</Text>
-                  </DopaminePressable>
-                ))}
-              </View>
-
-              <Text style={[s.formLabel, { color: txt }]}>APPROVAL & MATCHING MODE</Text>
-              <View style={s.formRoleRow}>
-                <DopaminePressable style={[s.roleBtn, autoApprove && s.roleBtnActive, { flex: 1 }]} onPress={() => setAutoApprove(true)} sound="click" activeScale={0.95}>
-                  <Text style={[s.roleBtnTextLabel, { color: colors.textSecondary }, autoApprove && s.roleBtnTextLabelActive]}>⚡ INSTANT MATCH</Text>
-                </DopaminePressable>
-                <DopaminePressable style={[s.roleBtn, !autoApprove && s.roleBtnActive, { flex: 1 }]} onPress={() => setAutoApprove(false)} sound="click" activeScale={0.95}>
-                  <Text style={[s.roleBtnTextLabel, { color: colors.textSecondary }, !autoApprove && s.roleBtnTextLabelActive]}>🛡️ MANUAL APPROVAL</Text>
-                </DopaminePressable>
-              </View>
-
-              <Text style={[s.formLabel, { color: txt }]}>NOTES (OPTIONAL)</Text>
-              <TextInput style={[s.formInput, { color: txt, borderColor: border, height: 60 }]} multiline placeholder="Any specific requirements..." placeholderTextColor={txtSec} value={notes} onChangeText={setNotes} />
-
-              <ActionPressable style={s.formSubmitBtn} onPress={handleCreateRide} disabled={submittingRide} sound="success">
-                {submittingRide ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={s.formSubmitText}>POST COMMUTE LISTING 🚀</Text>
-                )}
-              </ActionPressable>
-
-              <DopaminePressable style={s.formCancelBtn} onPress={() => setShowCreateModal(false)} sound="click">
-                <Text style={[s.formCancelText, { color: colors.textSecondary }]}>DISMISS</Text>
-              </DopaminePressable>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
       <SearchOverlay isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} searchMode={activeTab === 'food' ? 'grocery' : 'food'} />
 
-      {/* ── HIGH FIDELITY PRODUCT CATALOG BOTTOM SHEET ── */}
+      {/* ── PRODUCT CATALOG BOTTOM SHEET ── */}
       {selectedCategoryName !== null && (
         <Animated.View style={[StyleSheet.absoluteFill, { zIndex: 100 }]}>
-          {/* Backdrop */}
-          <TouchableOpacity
-            activeOpacity={1}
-            style={StyleSheet.absoluteFill}
-            onPress={closeCatalogSheet}
-          >
+          <TouchableOpacity activeOpacity={1} style={StyleSheet.absoluteFill} onPress={closeCatalogSheet}>
             <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: '#000', opacity: catalogBackdropAnim }]} />
           </TouchableOpacity>
 
-          {/* Sheet Body */}
           <Animated.View
             style={[
               s.catalogContentBox,
@@ -4316,178 +2949,58 @@ export default function OthersScreen() {
               }
             ]}
           >
-            {/* Grab handle bar */}
             <View style={s.grabHandle} />
-            
+
             <View style={s.catalogHeader}>
-              <Text style={[s.catalogTitle, { color: txt }]}>{selectedCategoryName?.toUpperCase()}</Text>
-              <TouchableOpacity style={s.catalogCloseBtn} onPress={closeCatalogSheet}>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.catalogTitle, { color: txt }]} numberOfLines={1}>{(selectedCategoryName === 'All Groceries' ? 'All groceries' : selectedCategoryName).toUpperCase()}</Text>
+                {sheetProducts.length > 0 && <Text style={{ fontSize: 10, color: txtSec, fontWeight: '700', marginTop: 2 }}>{sheetProducts.length} item{sheetProducts.length === 1 ? '' : 's'}</Text>}
+              </View>
+              <TouchableOpacity style={s.catalogCloseBtn} onPress={closeCatalogSheet} accessibilityLabel="Close">
                 <Text style={{ fontSize: 18, color: txtSec, fontWeight: '800' }}>✕</Text>
               </TouchableOpacity>
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingHorizontal: 4 }}>
-                {selectedCategoryName && getCategoryProducts(selectedCategoryName).map(product => {
-                  const inCart = cart.find(i => i.id === product.id);
-                  const quantity = inCart ? inCart.quantity : 0;
-                  const cardWidth = (SW - 40 - 12 - 8) / 2;
-                  return (
-                    <View
-                      key={product.id}
-                      style={{
-                        width: cardWidth,
-                        backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
-                        borderRadius: 20,
-                        borderWidth: 1,
-                        borderColor: border,
-                        overflow: 'hidden',
-                        padding: 10,
-                        position: 'relative',
-                        justifyContent: 'space-between',
-                        shadowColor: '#000',
-                        shadowOffset: { width: 0, height: 4 },
-                        shadowOpacity: isDark ? 0.3 : 0.05,
-                        shadowRadius: 8,
-                        elevation: 3,
-                        marginBottom: 4,
-                      }}
-                    >
-                      {/* Product Image Wrap */}
-                      <View style={{ width: '100%', height: 110, borderRadius: 14, overflow: 'hidden', backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', marginBottom: 10, position: 'relative' }}>
-                        <TouchableOpacity
-                          style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' }}
-                          onPress={() => {
-                            closeCatalogSheet();
-                            router.push(`/products/${product.id}` as any);
-                          }}
-                        >
-                          <Image
-                            source={{ uri: product.image }}
-                            style={{ width: '90%', height: '90%' }}
-                            resizeMode="contain"
-                          />
-                        </TouchableOpacity>
-                        
-                        {product.discount && (
-                          <View style={{ position: 'absolute', top: 6, left: 6, backgroundColor: '#EA580C', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6 }}>
-                            <Text style={{ fontSize: 7, fontWeight: '900', color: '#fff', letterSpacing: 0.5 }}>{product.discount}</Text>
-                          </View>
-                        )}
-
-                        <View style={{ position: 'absolute', top: 6, right: 6 }}>
-                          <View style={{ width: 14, height: 14, borderWidth: 1, borderColor: product.isVeg ? '#22C55E' : '#EF4444', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', borderRadius: 2 }}>
-                            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: product.isVeg ? '#22C55E' : '#EF4444' }} />
-                          </View>
-                        </View>
-                      </View>
-
-                      {/* Product Info */}
-                      <View style={{ flex: 1, justifyContent: 'space-between' }}>
-                        <View>
-                          <Text style={{ fontSize: 9, color: txtSec, fontWeight: '700', marginBottom: 2 }}>{product.weight}</Text>
-                          <Text style={{ fontSize: 12, fontWeight: '900', color: txt, lineHeight: 15, height: 30 }} numberOfLines={2}>{product.name}</Text>
-                        </View>
-
-                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
-                          <View>
-                            <Text style={{ fontSize: 13, fontWeight: '900', color: txt }}>₹{product.price}</Text>
-                            {product.originalPrice > product.price && (
-                              <Text style={{ fontSize: 9, color: txtSec, textDecorationLine: 'line-through' }}>₹{product.originalPrice}</Text>
-                            )}
-                          </View>
-
-                          {/* Stepper / Add button */}
-                          <View style={{ minWidth: 60 }}>
-                            {quantity > 0 ? (
-                              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#16A34A', borderRadius: 10, paddingHorizontal: 4, height: 26, justifyContent: 'space-between' }}>
-                                <TouchableOpacity
-                                  style={{ width: 16, height: 16, alignItems: 'center', justifyContent: 'center' }}
-                                  onPress={() => {
-                                    const cartKey = cart.find(i => i.id === product.id)?.cartKey || product.id;
-                                    updateQuantity(cartKey, quantity - 1);
-                                  }}
-                                >
-                                  <Text style={{ color: '#fff', fontWeight: '900', fontSize: 11 }}>-</Text>
-                                </TouchableOpacity>
-                                <Text style={{ color: '#fff', fontWeight: '900', fontSize: 10, paddingHorizontal: 4 }}>{quantity}</Text>
-                                <TouchableOpacity
-                                  style={{ width: 16, height: 16, alignItems: 'center', justifyContent: 'center' }}
-                                  onPress={() => {
-                                    addToCart({
-                                      id: product.id,
-                                      name: product.name,
-                                      price: product.price,
-                                      image: product.image,
-                                      restaurantId: 'mega-basket-vendor',
-                                      restaurantName: 'Mega Basket Grocery'
-                                    });
-                                  }}
-                                >
-                                  <Text style={{ color: '#fff', fontWeight: '900', fontSize: 11 }}>+</Text>
-                                </TouchableOpacity>
-                              </View>
-                            ) : (
-                              <ScalePressable
-                                onPress={() => {
-                                  addToCart({
-                                    id: product.id,
-                                    name: product.name,
-                                    price: product.price,
-                                    image: product.image,
-                                    restaurantId: 'mega-basket-vendor',
-                                    restaurantName: 'Mega Basket Grocery'
-                                  });
-                                }}
-                              >
-                                <View style={{ height: 26, borderWidth: 1, borderColor: '#16A34A', borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? 'transparent' : '#F0FDF4', flexDirection: 'row', paddingHorizontal: 6 }}>
-                                  <Text style={{ fontSize: 9, fontWeight: '900', color: '#16A34A', letterSpacing: 0.5 }}>ADD</Text>
-                                  <Text style={{ fontSize: 10, fontWeight: '900', color: '#16A34A', marginLeft: 2 }}>+</Text>
-                                </View>
-                              </ScalePressable>
-                            )}
-                          </View>
-                        </View>
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
+              {catalogueStatus === 'loading' && catalogue.length === 0 ? (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+                  {[0, 1, 2, 3].map(i => <ShimmerLoader key={i} width={(SW - 40 - 12 - 8) / 2} height={190} borderRadius={20} />)}
+                </View>
+              ) : catalogueStatus === 'error' && catalogue.length === 0 ? (
+                renderLoadError('The campus store did not load.', fetchCatalogue)
+              ) : sheetProducts.length === 0 ? (
+                <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                  <Text style={{ fontSize: 32, marginBottom: 8 }}>🧺</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '900', color: txt }}>Nothing here yet</Text>
+                  <Text style={{ fontSize: 11, color: txtSec, textAlign: 'center', marginTop: 4, marginBottom: 14, maxWidth: 260 }}>Request it and a Zenvy shopper will buy it for you.</Text>
+                  <TouchableOpacity style={[s.resetBtn, { backgroundColor: '#10B981' }]} onPress={() => { closeCatalogSheet(); openCustomRequest(); }}>
+                    <Text style={[s.resetBtnText, { color: '#fff' }]}>REQUEST AN ITEM</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingHorizontal: 4 }}>
+                  {sheetProducts.map(product => renderGridCard(product, (SW - 40 - 12 - 8) / 2, () => { closeCatalogSheet(); openProduct(product); }))}
+                </View>
+              )}
             </ScrollView>
           </Animated.View>
         </Animated.View>
       )}
 
-      {/* ── FLOATING CART STATUS BAR ── */}
-      {hasGroceryItems && (
+      {/* ── FLOATING BASKET BAR ── */}
+      {hasShopItems && (
         <Animated.View style={[s.floatingCartBar, { transform: [{ translateY: cartBarAnim }] }]}>
-          <TouchableOpacity 
-            activeOpacity={0.95} 
-            style={s.floatingCartBarTouch}
-            onPress={() => router.push('/checkout' as any)}
-          >
-            <LinearGradient
-              colors={['#16A34A', '#15803D']}
-              style={s.floatingCartBarGradient}
-            >
+          <TouchableOpacity activeOpacity={0.95} style={s.floatingCartBarTouch} onPress={() => router.push('/checkout' as any)}>
+            <LinearGradient colors={['#16A34A', '#15803D']} style={s.floatingCartBarGradient}>
               <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, marginRight: 8 }}>
                 <Text style={{ fontSize: 18 }}>🛒</Text>
                 <View style={{ flex: 1 }}>
-                  <Text style={s.cartBarTitle}>{cartCount} ITEM{cartCount > 1 ? 'S' : ''} ADDED</Text>
-                  <Text style={s.cartBarSubtitle} numberOfLines={1}>₹{cartSubtotal} • Mega Basket</Text>
+                  <Text style={s.cartBarTitle}>{shopCount} ITEM{shopCount > 1 ? 'S' : ''} ADDED</Text>
+                  <Text style={s.cartBarSubtitle} numberOfLines={1}>{fmtPrice(Math.round(shopSubtotal * 100) / 100)} • {shopStoreName}</Text>
                 </View>
               </View>
-              
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                {cartSubtotal < 299 ? (
-                  <Text style={[s.cartBarCta, { fontSize: 8.5, opacity: 0.95 }]}>
-                    +₹{299 - cartSubtotal} for Free Del.
-                  </Text>
-                ) : (
-                  <Text style={[s.cartBarCta, { fontSize: 9.5 }]}>Free Delivery! 🎉</Text>
-                )}
-                <View style={{ width: 1, height: 14, backgroundColor: 'rgba(255,255,255,0.3)', marginHorizontal: 2 }} />
-                <Text style={[s.cartBarCta, { fontSize: 9.5 }]}>VIEW CART</Text>
+                <Text style={[s.cartBarCta, { fontSize: 9.5 }]}>VIEW BASKET</Text>
                 <Text style={{ fontSize: 11, color: '#fff', marginLeft: 2 }}>➔</Text>
               </View>
             </LinearGradient>
@@ -4495,250 +3008,124 @@ export default function OthersScreen() {
         </Animated.View>
       )}
 
-
-
-      {/* ── FORTUNE SPIN WHEEL OUTCOME MODAL ── */}
-      <Modal visible={showWheelModal} transparent={true} animationType="fade">
+      {/* ── SPIN RESULT MODAL ── */}
+      <Modal
+        visible={showWheelModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => { setShowWheelModal(false); setWheelResult(null); }}
+      >
         <View style={s.promoOverlayCentred}>
-          {/* Confetti Animation Layer */}
           {wheelResult !== null && <Confetti />}
 
           <View style={[s.promoPopupCard, { backgroundColor: isDark ? '#1F2937' : '#fff' }]}>
-            {/* Close Button */}
-            <TouchableOpacity
-              style={s.promoCloseBtn}
-              onPress={() => {
-                setShowWheelModal(false);
-                setWheelResult(null);
-              }}
-            >
+            <TouchableOpacity style={s.promoCloseBtn} onPress={() => { setShowWheelModal(false); setWheelResult(null); }} accessibilityLabel="Close">
               <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>✕</Text>
             </TouchableOpacity>
 
             <View style={{ alignItems: 'center', marginVertical: 12 }}>
-              <Text style={{ fontSize: 32, marginBottom: 8 }}>{wheelResult ? '🎉' : '🎡'}</Text>
-              <Text style={[s.modalTitle, { color: txt, textAlign: 'center', marginBottom: 4 }]}>
-                {wheelResult ? 'CONGRATULATIONS!' : 'BETTER LUCK NEXT TIME!'}
-              </Text>
+              <Text style={{ fontSize: 32, marginBottom: 8 }}>🎉</Text>
+              <Text style={[s.modalTitle, { color: txt, textAlign: 'center', marginBottom: 4 }]}>CONGRATULATIONS!</Text>
               <Text style={{ fontSize: 9.5, fontWeight: '800', color: txtSec, textAlign: 'center', marginBottom: 12 }}>
-                {wheelResult ? 'You won a premium campus reward slice!' : 'Don\'t give up! Reset and spin again.'}
+                {wheelResult?.coupon ? 'Your coupon is ready to use at checkout.' : 'Added to your ZenPoints balance.'}
               </Text>
-
-              {wheelResult ? (
-                <LinearGradient
-                  colors={['#AA7C11', '#D4AF7A', '#AA7C11']}
-                  style={{
-                    paddingHorizontal: 20,
-                    paddingVertical: 16,
-                    borderRadius: 20,
-                    width: '100%',
-                    alignItems: 'center',
-                    marginVertical: 10
-                  }}
-                >
-                  <Text style={{ fontSize: 18, fontWeight: '900', color: '#000', textAlign: 'center' }}>
-                    {wheelResult.label}
-                  </Text>
-                  <Text style={{ fontSize: 8.5, fontWeight: '800', color: '#451A03', marginTop: 4, letterSpacing: 0.5 }}>
-                    COUPON CODE UNLOCKED:
-                  </Text>
-                  <Text style={{ fontSize: 16, fontWeight: '900', color: '#000', letterSpacing: 1.5, marginTop: 4 }}>
-                    {wheelResult.code}
-                  </Text>
-                </LinearGradient>
-              ) : (
-                <View style={{ paddingVertical: 16, alignItems: 'center' }}>
-                  <Text style={{ fontSize: 12, fontWeight: '800', color: txtSec }}>Try again on your next spin.</Text>
-                </View>
-              )}
 
               {wheelResult && (
+                <LinearGradient colors={['#AA7C11', '#D4AF7A', '#AA7C11']} style={{ paddingHorizontal: 20, paddingVertical: 16, borderRadius: 20, width: '100%', alignItems: 'center', marginVertical: 10 }}>
+                  <Text style={{ fontSize: 18, fontWeight: '900', color: '#000', textAlign: 'center' }}>{wheelResult.display}</Text>
+                  {wheelResult.coupon && (
+                    <>
+                      <Text style={{ fontSize: 8.5, fontWeight: '800', color: '#451A03', marginTop: 6, letterSpacing: 0.5 }}>YOUR COUPON CODE</Text>
+                      <Text style={{ fontSize: 16, fontWeight: '900', color: '#000', letterSpacing: 1.5, marginTop: 4 }}>{wheelResult.coupon.code}</Text>
+                      {!!wheelResult.coupon.expiryDate && !isNaN(new Date(wheelResult.coupon.expiryDate).getTime()) && (
+                        <Text style={{ fontSize: 8.5, fontWeight: '700', color: '#451A03', marginTop: 4 }}>
+                          Valid till {new Date(wheelResult.coupon.expiryDate).toLocaleDateString([], { day: 'numeric', month: 'short' })}
+                        </Text>
+                      )}
+                    </>
+                  )}
+                </LinearGradient>
+              )}
+
+              {wheelResult?.coupon && (
                 <TouchableOpacity
                   onPress={() => {
-                    setCopiedCode(wheelResult.code);
-                    Alert.alert('Code Copied', `Coupon code "${wheelResult.code}" copied to clipboard!`);
+                    const code = wheelResult.coupon!.code;
+                    handleCopyCode(code);
+                    Haptics.selectionAsync().catch(() => {});
                   }}
-                  style={{
-                    backgroundColor: '#111827',
-                    width: '100%',
-                    paddingVertical: 12,
-                    borderRadius: 14,
-                    alignItems: 'center',
-                    marginTop: 10
-                  }}
+                  style={{ backgroundColor: '#111827', width: '100%', paddingVertical: 12, borderRadius: 14, alignItems: 'center', marginTop: 10 }}
                 >
-                  <Text style={{ color: '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 1 }}>COPY COUPON CODE</Text>
+                  <Text style={{ color: '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 1 }}>{copiedCode === wheelResult.coupon.code ? 'CODE COPIED ✓' : 'COPY COUPON CODE'}</Text>
                 </TouchableOpacity>
               )}
 
-              <TouchableOpacity
-                onPress={() => {
-                  setShowWheelModal(false);
-                  setWheelResult(null);
-                }}
-                style={{
-                  paddingVertical: 12,
-                  marginTop: 6
-                }}
-              >
-                <Text style={{ fontSize: 9.5, fontWeight: '900', color: COLORS.gold, letterSpacing: 1 }}>CONTINUE EXPLORING</Text>
+              <TouchableOpacity onPress={() => { setShowWheelModal(false); setWheelResult(null); }} style={{ paddingVertical: 12, marginTop: 6 }}>
+                <Text style={{ fontSize: 9.5, fontWeight: '900', color: COLORS.gold, letterSpacing: 1 }}>AWESOME!</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
-      {/* ── PROFESSIONAL SAVED FAVOURITES & WISHLIST MODAL ── */}
-      <Modal
-        visible={favoritesModalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setFavoritesModalVisible(false)}
-      >
+
+      {/* ── SAVED ITEMS MODAL ── */}
+      <Modal visible={favoritesModalVisible} animationType="slide" transparent={true} onRequestClose={() => setFavoritesModalVisible(false)}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' }}>
-          <View style={{ 
-            backgroundColor: isDark ? '#1C1C1E' : '#FFF', 
-            borderTopLeftRadius: 28, 
-            borderTopRightRadius: 28, 
-            maxHeight: '85%',
-            minHeight: '55%',
-            paddingBottom: Platform.OS === 'ios' ? 36 : 24,
-            borderWidth: 1,
-            borderColor: border,
-          }}>
-            {/* Sheet Handle */}
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setFavoritesModalVisible(false)} />
+          <View style={{ backgroundColor: isDark ? '#1C1C1E' : '#FFF', borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: '85%', minHeight: '45%', paddingBottom: Platform.OS === 'ios' ? 36 : 24, borderWidth: 1, borderColor: border }}>
             <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: isDark ? '#3F3F46' : '#E4E4E7', alignSelf: 'center', marginTop: 10, marginBottom: 14 }} />
 
-            {/* Header */}
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 14, borderBottomWidth: 1, borderColor: border }}>
-              <View>
+              <View style={{ flex: 1 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={{ fontSize: 17, fontWeight: '900', color: txt }}>
-                    Saved Bookmarks ❤️
-                  </Text>
-                  <View style={{ backgroundColor: 'rgba(239, 68, 68, 0.12)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 }}>
-                    <Text style={{ color: '#EF4444', fontSize: 10, fontWeight: '900' }}>
-                      {savedFavoritesList.length} SAVED
-                    </Text>
-                  </View>
+                  <Text style={{ fontSize: 17, fontWeight: '900', color: txt }}>Saved Items ❤️</Text>
+                  {savedFavoritesList.length > 0 && (
+                    <View style={{ backgroundColor: 'rgba(239, 68, 68, 0.12)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 }}>
+                      <Text style={{ color: '#EF4444', fontSize: 10, fontWeight: '900' }}>{savedFavoritesList.length} SAVED</Text>
+                    </View>
+                  )}
                 </View>
-                <Text style={{ fontSize: 10.5, color: txtSec, fontWeight: '600', marginTop: 2 }}>
-                  Your bookmarked campus meals, services & PG listings
-                </Text>
+                <Text style={{ fontSize: 10.5, color: txtSec, fontWeight: '600', marginTop: 2 }}>Products you starred in the campus store</Text>
               </View>
-
-              <TouchableOpacity 
-                style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: isDark ? '#27272A' : '#F1F5F9', alignItems: 'center', justifyContent: 'center' }}
-                onPress={() => setFavoritesModalVisible(false)}
-              >
+              <TouchableOpacity style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: isDark ? '#27272A' : '#F1F5F9', alignItems: 'center', justifyContent: 'center' }} onPress={() => setFavoritesModalVisible(false)} accessibilityLabel="Close">
                 <Ionicons name="close" size={18} color={txt} />
               </TouchableOpacity>
             </View>
 
-            {/* Filter Tabs */}
-            <View style={{ paddingVertical: 12, paddingHorizontal: 16 }}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-                {[
-                  { id: 'ALL', label: `All (${savedFavoritesList.length})` },
-                  { id: 'MEALS', label: `Meals 🍔 (${savedFavoritesList.filter(f => f.type === 'MEALS').length})` },
-                  { id: 'SERVICES', label: `Services 🛠️ (${savedFavoritesList.filter(f => f.type === 'SERVICES').length})` },
-                  { id: 'PG', label: `PG Stays 🏢 (${savedFavoritesList.filter(f => f.type === 'PG').length})` },
-                  { id: 'GROCERY', label: `Essentials 🛒 (${savedFavoritesList.filter(f => f.type === 'GROCERY').length})` },
-                ].map((tab) => {
-                  const active = favFilter === tab.id;
-                  return (
-                    <TouchableOpacity
-                      key={tab.id}
-                      style={{
-                        paddingHorizontal: 14,
-                        paddingVertical: 7,
-                        borderRadius: 12,
-                        backgroundColor: active ? (isDark ? '#EF4444' : '#EF4444') : (isDark ? '#27272A' : '#F4F4F5'),
-                        borderWidth: 1,
-                        borderColor: active ? '#EF4444' : border,
-                      }}
-                      onPress={() => setFavFilter(tab.id as any)}
-                    >
-                      <Text style={{ fontSize: 11, fontWeight: '800', color: active ? '#FFF' : txtSec }}>
-                        {tab.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            </View>
-
-            {/* Favorites List */}
-            <ScrollView style={{ paddingHorizontal: 16 }} showsVerticalScrollIndicator={false}>
-              {savedFavoritesList.filter(f => favFilter === 'ALL' || f.type === favFilter).length > 0 ? (
-                savedFavoritesList
-                  .filter(f => favFilter === 'ALL' || f.type === favFilter)
-                  .map((item) => (
-                    <View
-                      key={item.id}
-                      style={{
-                        flexDirection: 'row',
-                        backgroundColor: isDark ? '#242428' : '#F8FAFC',
-                        borderRadius: 16,
-                        borderWidth: 1,
-                        borderColor: border,
-                        padding: 12,
-                        marginBottom: 12,
-                        gap: 12,
-                        alignItems: 'center',
-                      }}
-                    >
-                      <Image source={{ uri: item.image }} style={{ width: 72, height: 72, borderRadius: 12, backgroundColor: isDark ? '#333' : '#E2E8F0' }} />
-                      <View style={{ flex: 1 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
-                          <Text style={{ fontSize: 8, fontWeight: '900', color: '#EF4444', letterSpacing: 0.8 }}>
-                            {item.badge}
-                          </Text>
-                          <Text style={{ fontSize: 9.5, fontWeight: '800', color: '#F59E0B' }}>
-                            ⭐ {item.rating}
-                          </Text>
-                        </View>
-                        <Text style={{ fontSize: 12.5, fontWeight: '900', color: txt, lineHeight: 16 }}>
-                          {item.title}
-                        </Text>
-                        <Text style={{ fontSize: 9.5, color: txtSec, marginTop: 2 }} numberOfLines={1}>
-                          {item.subtitle}
-                        </Text>
-
-                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
-                          <Text style={{ fontSize: 13, fontWeight: '900', color: '#10B981' }}>
-                            {item.price}
-                          </Text>
-
-                          <View style={{ flexDirection: 'row', gap: 6 }}>
-                            <TouchableOpacity
-                              style={{ paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8, backgroundColor: isDark ? '#3F3F46' : '#E2E8F0' }}
-                              onPress={() => {
-                                setSavedFavoritesList(prev => prev.filter(x => x.id !== item.id));
-                              }}
-                            >
-                              <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec }}>REMOVE</Text>
-                            </TouchableOpacity>
-
-                            <TouchableOpacity
-                              style={{ paddingHorizontal: 12, paddingVertical: 5, borderRadius: 8, backgroundColor: '#EF4444' }}
-                              onPress={() => {
-                                setFavoritesModalVisible(false);
-                                router.push(item.targetRoute as any);
-                              }}
-                            >
-                              <Text style={{ fontSize: 9, fontWeight: '900', color: '#FFF' }}>VIEW ➔</Text>
-                            </TouchableOpacity>
-                          </View>
+            <ScrollView style={{ paddingHorizontal: 16, paddingTop: 12 }} showsVerticalScrollIndicator={false}>
+              {savedFavoritesList.length > 0 ? (
+                savedFavoritesList.map(item => (
+                  <View key={item.id} style={{ flexDirection: 'row', backgroundColor: isDark ? '#242428' : '#F8FAFC', borderRadius: 16, borderWidth: 1, borderColor: border, padding: 12, marginBottom: 12, gap: 12, alignItems: 'center' }}>
+                    <Image source={{ uri: item.image }} style={{ width: 64, height: 64, borderRadius: 12, backgroundColor: isDark ? '#333' : '#E2E8F0' }} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 12.5, fontWeight: '900', color: txt, lineHeight: 16 }} numberOfLines={2}>{item.title}</Text>
+                      <Text style={{ fontSize: 9.5, color: txtSec, marginTop: 2 }} numberOfLines={1}>{item.subtitle}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+                        <Text style={{ fontSize: 13, fontWeight: '900', color: '#10B981' }}>{item.price}</Text>
+                        <View style={{ flexDirection: 'row', gap: 6 }}>
+                          <TouchableOpacity style={{ paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8, backgroundColor: isDark ? '#3F3F46' : '#E2E8F0' }} onPress={() => removeSaved(item.id)}>
+                            <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec }}>REMOVE</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={{ paddingHorizontal: 12, paddingVertical: 5, borderRadius: 8, backgroundColor: '#EF4444' }}
+                            onPress={() => {
+                              setFavoritesModalVisible(false);
+                              router.push(item.targetRoute as any);
+                            }}
+                          >
+                            <Text style={{ fontSize: 9, fontWeight: '900', color: '#FFF' }}>VIEW ➔</Text>
+                          </TouchableOpacity>
                         </View>
                       </View>
                     </View>
-                  ))
+                  </View>
+                ))
               ) : (
                 <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 40 }}>
                   <Text style={{ fontSize: 36, marginBottom: 10 }}>🔖</Text>
-                  <Text style={{ fontSize: 15, fontWeight: '900', color: txt }}>No Bookmarks in this Category</Text>
+                  <Text style={{ fontSize: 15, fontWeight: '900', color: txt }}>Nothing saved yet</Text>
                   <Text style={{ fontSize: 11, color: txtSec, marginTop: 4, textAlign: 'center', maxWidth: 260 }}>
-                    Tap the heart icon on any meal, service or PG listing to save it here for quick access.
+                    Tap the ☆ on any product in Food & Basket to save it here.
                   </Text>
                 </View>
               )}
@@ -4747,285 +3134,200 @@ export default function OthersScreen() {
         </View>
       </Modal>
 
-      {/* ── IN-APP VEHICLE BOOKING WEB FRAME MODAL (RAPIDO & UBER) ── */}
-      <Modal
-        visible={rideWebModalVisible}
-        animationType="slide"
-        transparent={false}
-        onRequestClose={() => setRideWebModalVisible(false)}
-      >
-        <View style={{ flex: 1, backgroundColor: isDark ? '#141416' : '#FFF' }}>
-          {/* Top In-App Browser Navigation Bar */}
-          <View style={{ 
-            flexDirection: 'row', 
-            alignItems: 'center', 
-            justifyContent: 'space-between',
-            paddingHorizontal: 16, 
-            paddingTop: Platform.OS === 'ios' ? 52 : 14, 
-            paddingBottom: 12,
-            borderBottomWidth: 1,
-            borderColor: border,
-            backgroundColor: isDark ? '#1E1E22' : '#FFF'
-          }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
-              <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: `${rideWebThemeColor}20`, alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ fontSize: 18 }}>{rideWebIcon}</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 13, fontWeight: '900', color: txt }}>
-                  {rideWebTitle}
-                </Text>
-                <Text style={{ fontSize: 9.5, color: txtSec, fontWeight: '600' }} numberOfLines={1}>
-                  🔒 {rideWebUrl}
-                </Text>
-              </View>
-            </View>
-
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <TouchableOpacity 
-                style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: isDark ? '#2A2A2E' : '#F1F5F9' }}
-                onPress={() => Linking.openURL(rideWebUrl)}
-              >
-                <Text style={{ fontSize: 9, fontWeight: '800', color: txt }}>EXTERNAL ↗</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: isDark ? '#2A2A2E' : '#F1F5F9', alignItems: 'center', justifyContent: 'center' }}
-                onPress={() => setRideWebModalVisible(false)}
-              >
-                <Ionicons name="close" size={18} color={txt} />
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Embedded Live Web Frame */}
-          {Platform.OS === 'web' ? (
-            <iframe 
-              src={rideWebUrl}
-              style={{ flex: 1, width: '100%', height: '100%', border: 'none' }}
-              allow="geolocation; camera; microphone"
-            />
-          ) : (
-            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-              <Text style={{ fontSize: 36, marginBottom: 12 }}>{rideWebIcon}</Text>
-              <Text style={{ fontSize: 16, fontWeight: '900', color: txt, textAlign: 'center' }}>
-                {rideWebTitle} In-App Portal
-              </Text>
-              <Text style={{ fontSize: 12, color: txtSec, textAlign: 'center', marginTop: 6, marginBottom: 20 }}>
-                Tap below to open {rideWebTitle} securely or book your ride.
-              </Text>
-              <TouchableOpacity 
-                style={{ paddingHorizontal: 24, paddingVertical: 12, borderRadius: 14, backgroundColor: '#EF4444' }}
-                onPress={() => Linking.openURL(rideWebUrl)}
-              >
-                <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '900' }}>LAUNCH {rideWebTitle.toUpperCase()} ➔</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-      </Modal>
-
-      {/* ── CO-RIDE / BIKEPOOL POST CREATION MODAL ── */}
-      <Modal visible={showCreateModal} transparent animationType="slide">
-        <View style={s.modalOverlay}>
-          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowCreateModal(false)} />
-          <View style={[s.modalCard, { backgroundColor: cardBg, maxHeight: '90%' }]}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <View>
-                <Text style={{ fontSize: 10, fontWeight: '900', color: goldColor, letterSpacing: 2 }}>CAMPUS CO-RIDE DISPATCH</Text>
-                <Text style={[s.modalTitle, { color: txt, marginTop: 2 }]}>Post a Commute</Text>
-              </View>
-              <TouchableOpacity 
-                style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#E5E7EB', alignItems: 'center', justifyContent: 'center' }} 
-                onPress={() => setShowCreateModal(false)}
-              >
-                <Text style={{ color: txt, fontSize: 12, fontWeight: '900' }}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {/* Creator Role Toggle */}
-              <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec, letterSpacing: 1, marginBottom: 6 }}>YOUR ROLE</Text>
-              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+      {/* ── POST A RIDE MODAL ── */}
+      <Modal visible={showCreateModal} transparent animationType="slide" onRequestClose={() => setShowCreateModal(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+          <View style={s.modalOverlay}>
+            <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowCreateModal(false)} accessibilityLabel="Close" />
+            <View style={[s.modalCard, { backgroundColor: cardBg, maxHeight: '90%' }]}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                <View>
+                  <Text style={{ fontSize: 10, fontWeight: '900', color: goldColor, letterSpacing: 2 }}>CAMPUS CO-RIDE</Text>
+                  <Text style={[s.modalTitle, { color: txt, marginTop: 2 }]}>Post a Ride</Text>
+                </View>
                 <TouchableOpacity
-                  style={{
-                    flex: 1,
-                    paddingVertical: 10,
-                    borderRadius: 12,
-                    alignItems: 'center',
-                    backgroundColor: creatorRole === 'rider' ? COLORS.red : (isDark ? 'rgba(255,255,255,0.04)' : '#F3F4F6'),
-                    borderWidth: 1,
-                    borderColor: creatorRole === 'rider' ? COLORS.red : border
-                  }}
-                  onPress={() => setCreatorRole('rider')}
+                  style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#E5E7EB', alignItems: 'center', justifyContent: 'center' }}
+                  onPress={() => setShowCreateModal(false)}
+                  accessibilityLabel="Close"
                 >
-                  <Text style={{ fontSize: 11, fontWeight: '900', color: creatorRole === 'rider' ? '#fff' : txt }}>🛵 I HAVE A VEHICLE (OFFERING)</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={{
-                    flex: 1,
-                    paddingVertical: 10,
-                    borderRadius: 12,
-                    alignItems: 'center',
-                    backgroundColor: creatorRole === 'passenger' ? COLORS.red : (isDark ? 'rgba(255,255,255,0.04)' : '#F3F4F6'),
-                    borderWidth: 1,
-                    borderColor: creatorRole === 'passenger' ? COLORS.red : border
-                  }}
-                  onPress={() => setCreatorRole('passenger')}
-                >
-                  <Text style={{ fontSize: 11, fontWeight: '900', color: creatorRole === 'passenger' ? '#fff' : txt }}>🙋‍♂️ NEED A RIDE (PASSENGER)</Text>
+                  <Text style={{ color: txt, fontSize: 12, fontWeight: '900' }}>✕</Text>
                 </TouchableOpacity>
               </View>
 
-              {/* Origin */}
-              <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec, letterSpacing: 1, marginBottom: 4 }}>FROM (PICKUP POINT)</Text>
-              <TextInput
-                style={{ borderWidth: 1, borderColor: border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 12, color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#FAFAFA', marginBottom: 6 }}
-                placeholder="e.g. Campus Main Gate / Sector-2"
-                placeholderTextColor={txtSec}
-                value={origin}
-                onChangeText={setOrigin}
-              />
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-                <View style={{ flexDirection: 'row', gap: 6 }}>
-                  {['Campus Gate', 'Hostel Sector', 'Amaravathi Center', 'Vijayawada Stn', 'Guntur Bus Stand'].map(chip => (
+              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
+                <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec, letterSpacing: 1, marginBottom: 6 }}>YOUR ROLE</Text>
+                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+                  {(['rider', 'passenger'] as const).map(role => (
                     <TouchableOpacity
-                      key={chip}
-                      style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#E5E7EB' }}
-                      onPress={() => setOrigin(chip)}
+                      key={role}
+                      style={{ flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: 'center', backgroundColor: creatorRole === role ? COLORS.red : (isDark ? 'rgba(255,255,255,0.04)' : '#F3F4F6'), borderWidth: 1, borderColor: creatorRole === role ? COLORS.red : border }}
+                      onPress={() => setCreatorRole(role)}
                     >
-                      <Text style={{ fontSize: 9, fontWeight: '700', color: txt }}>{chip}</Text>
+                      <Text style={{ fontSize: 11, fontWeight: '900', color: creatorRole === role ? '#fff' : txt }}>{role === 'rider' ? '🛵 I HAVE A VEHICLE' : '🙋 I NEED A RIDE'}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
-              </ScrollView>
 
-              {/* Destination */}
-              <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec, letterSpacing: 1, marginBottom: 4 }}>TO (DESTINATION)</Text>
-              <TextInput
-                style={{ borderWidth: 1, borderColor: border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 12, color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#FAFAFA', marginBottom: 6 }}
-                placeholder="e.g. PVP Square Mall / Trendset / Airport"
-                placeholderTextColor={txtSec}
-                value={destination}
-                onChangeText={setDestination}
-              />
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-                <View style={{ flexDirection: 'row', gap: 6 }}>
-                  {['PVP Square Mall', 'Vijayawada Stn', 'Gannavaram Airport', 'Trendset Mall', 'Mangalagiri D-Mart', 'Main Campus'].map(chip => (
-                    <TouchableOpacity
-                      key={chip}
-                      style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#E5E7EB' }}
-                      onPress={() => setDestination(chip)}
-                    >
-                      <Text style={{ fontSize: 9, fontWeight: '700', color: txt }}>{chip}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </ScrollView>
-
-              {/* Departure Time */}
-              <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec, letterSpacing: 1, marginBottom: 4 }}>DEPARTURE TIME</Text>
-              <TextInput
-                style={{ borderWidth: 1, borderColor: border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 12, color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#FAFAFA', marginBottom: 6 }}
-                placeholder="e.g. 18:30 or 6:30 PM"
-                placeholderTextColor={txtSec}
-                value={departureTime}
-                onChangeText={setDepartureTime}
-              />
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-                <View style={{ flexDirection: 'row', gap: 6 }}>
-                  {['In 15 Mins', 'In 1 Hour', 'Tonight 8:00 PM', 'Tomorrow 8:00 AM', 'Tomorrow 5:00 PM'].map(chip => (
-                    <TouchableOpacity
-                      key={chip}
-                      style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#E5E7EB' }}
-                      onPress={() => {
-                        const now = new Date();
-                        if (chip === 'In 15 Mins') now.setMinutes(now.getMinutes() + 15);
-                        else if (chip === 'In 1 Hour') now.setHours(now.getHours() + 1);
-                        else if (chip === 'Tonight 8:00 PM') { now.setHours(20, 0, 0, 0); }
-                        else if (chip === 'Tomorrow 8:00 AM') { now.setDate(now.getDate() + 1); now.setHours(8, 0, 0, 0); }
-                        else if (chip === 'Tomorrow 5:00 PM') { now.setDate(now.getDate() + 1); now.setHours(17, 0, 0, 0); }
-                        setDepartureTime(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-                      }}
-                    >
-                      <Text style={{ fontSize: 9, fontWeight: '700', color: txt }}>{chip}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </ScrollView>
-
-              {/* Vehicle Type & Seats */}
-              <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec, letterSpacing: 1, marginBottom: 4 }}>VEHICLE</Text>
-                  <View style={{ flexDirection: 'row', gap: 4 }}>
-                    {['Bike', 'Car', 'Auto'].map(v => (
-                      <TouchableOpacity
-                        key={v}
-                        style={{
-                          flex: 1,
-                          paddingVertical: 8,
-                          borderRadius: 8,
-                          alignItems: 'center',
-                          backgroundColor: vehicleType === v ? (isDark ? goldColor : COLORS.red) : (isDark ? 'rgba(255,255,255,0.04)' : '#F3F4F6'),
-                        }}
-                        onPress={() => setVehicleType(v)}
-                      >
-                        <Text style={{ fontSize: 10, fontWeight: '900', color: vehicleType === v ? '#fff' : txt }}>
-                          {v === 'Bike' ? '🛵' : v === 'Car' ? '🚗' : '🛺'} {v}
-                        </Text>
+                <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec, letterSpacing: 1, marginBottom: 4 }}>FROM (PICKUP POINT)</Text>
+                <TextInput
+                  style={{ borderWidth: 1, borderColor: border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 12, color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#FAFAFA', marginBottom: 6 }}
+                  placeholder="e.g. Campus Main Gate"
+                  placeholderTextColor={txtSec}
+                  maxLength={80}
+                  value={origin}
+                  onChangeText={setOrigin}
+                />
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={{ marginBottom: 12 }}>
+                  <View style={{ flexDirection: 'row', gap: 6 }}>
+                    {['Campus Gate', 'Hostel Sector', 'Amaravathi Center', 'Vijayawada Stn', 'Guntur Bus Stand'].map(chip => (
+                      <TouchableOpacity key={chip} style={{ paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8, backgroundColor: origin === chip ? COLORS.red : (isDark ? 'rgba(255,255,255,0.06)' : '#E5E7EB') }} onPress={() => setOrigin(chip)}>
+                        <Text style={{ fontSize: 9, fontWeight: '700', color: origin === chip ? '#fff' : txt }}>{chip}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
+                </ScrollView>
+
+                <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec, letterSpacing: 1, marginBottom: 4 }}>TO (DESTINATION)</Text>
+                <TextInput
+                  style={{ borderWidth: 1, borderColor: border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 12, color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#FAFAFA', marginBottom: 6 }}
+                  placeholder="e.g. PVP Square Mall / Airport"
+                  placeholderTextColor={txtSec}
+                  maxLength={80}
+                  value={destination}
+                  onChangeText={setDestination}
+                />
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={{ marginBottom: 12 }}>
+                  <View style={{ flexDirection: 'row', gap: 6 }}>
+                    {['PVP Square Mall', 'Vijayawada Stn', 'Gannavaram Airport', 'Trendset Mall', 'Mangalagiri D-Mart', 'Main Campus'].map(chip => (
+                      <TouchableOpacity key={chip} style={{ paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8, backgroundColor: destination === chip ? COLORS.red : (isDark ? 'rgba(255,255,255,0.06)' : '#E5E7EB') }} onPress={() => setDestination(chip)}>
+                        <Text style={{ fontSize: 9, fontWeight: '700', color: destination === chip ? '#fff' : txt }}>{chip}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </ScrollView>
+
+                <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec, letterSpacing: 1, marginBottom: 4 }}>DEPARTURE TIME</Text>
+                <TextInput
+                  style={{ borderWidth: 1, borderColor: border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 12, color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#FAFAFA', marginBottom: 6 }}
+                  placeholder="e.g. 18:30 or 6:30 PM"
+                  placeholderTextColor={txtSec}
+                  maxLength={40}
+                  value={departureTime}
+                  onChangeText={t => { setDepartureTime(t); setDepartureDate(null); }}
+                />
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={{ marginBottom: 12 }}>
+                  <View style={{ flexDirection: 'row', gap: 6 }}>
+                    {['In 15 Mins', 'In 1 Hour', 'Tonight 8:00 PM', 'Tomorrow 8:00 AM', 'Tomorrow 5:00 PM'].map(chip => (
+                      <TouchableOpacity
+                        key={chip}
+                        style={{ paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#E5E7EB' }}
+                        onPress={() => {
+                          const when = new Date();
+                          if (chip === 'In 15 Mins') when.setMinutes(when.getMinutes() + 15);
+                          else if (chip === 'In 1 Hour') when.setHours(when.getHours() + 1);
+                          else if (chip === 'Tonight 8:00 PM') {
+                            when.setHours(20, 0, 0, 0);
+                            if (when.getTime() < Date.now()) when.setDate(when.getDate() + 1);
+                          }
+                          else if (chip === 'Tomorrow 8:00 AM') { when.setDate(when.getDate() + 1); when.setHours(8, 0, 0, 0); }
+                          else if (chip === 'Tomorrow 5:00 PM') { when.setDate(when.getDate() + 1); when.setHours(17, 0, 0, 0); }
+                          setDepartureDate(when);
+                          setDepartureTime(when.toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }));
+                        }}
+                      >
+                        <Text style={{ fontSize: 9, fontWeight: '700', color: txt }}>{chip}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </ScrollView>
+
+                <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec, letterSpacing: 1, marginBottom: 4 }}>VEHICLE</Text>
+                    <View style={{ flexDirection: 'row', gap: 4 }}>
+                      {['Bike', 'Car', 'Auto'].map(v => (
+                        <TouchableOpacity
+                          key={v}
+                          style={{ flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: 'center', backgroundColor: vehicleType === v ? (isDark ? goldColor : COLORS.red) : (isDark ? 'rgba(255,255,255,0.04)' : '#F3F4F6') }}
+                          onPress={() => setVehicleType(v)}
+                        >
+                          <Text style={{ fontSize: 10, fontWeight: '900', color: vehicleType === v ? '#fff' : txt }}>{v === 'Bike' ? '🛵' : v === 'Car' ? '🚗' : '🛺'} {v}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+
+                  <View style={{ width: 90 }}>
+                    <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec, letterSpacing: 1, marginBottom: 4 }}>SEATS (1–6)</Text>
+                    <TextInput
+                      style={{ borderWidth: 1, borderColor: border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, fontSize: 12, color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#FAFAFA', textAlign: 'center' }}
+                      value={availableSeats}
+                      onChangeText={t => setAvailableSeats(t.replace(/[^0-9]/g, ''))}
+                      keyboardType="number-pad"
+                      maxLength={1}
+                    />
+                  </View>
                 </View>
 
-                <View style={{ width: 100 }}>
-                  <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec, letterSpacing: 1, marginBottom: 4 }}>SEATS</Text>
-                  <TextInput
-                    style={{ borderWidth: 1, borderColor: border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, fontSize: 12, color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#FAFAFA', textAlign: 'center' }}
-                    value={availableSeats}
-                    onChangeText={setAvailableSeats}
-                    keyboardType="numeric"
-                  />
+                <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec, letterSpacing: 1, marginBottom: 4 }}>TOTAL FUEL COST TO SPLIT (₹)</Text>
+                <TextInput
+                  style={{ borderWidth: 1, borderColor: border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#FAFAFA', marginBottom: 12, fontWeight: '700' }}
+                  placeholder="e.g. 50 (or 0 for a free ride)"
+                  placeholderTextColor={txtSec}
+                  value={estimatedFuelCost}
+                  onChangeText={t => setEstimatedFuelCost(t.replace(/[^0-9]/g, ''))}
+                  keyboardType="number-pad"
+                  maxLength={4}
+                />
+
+                <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec, letterSpacing: 1, marginBottom: 4 }}>RIDE VIBE</Text>
+                <View style={{ flexDirection: 'row', gap: 4, marginBottom: 12 }}>
+                  {['Any', 'Silent Ride 🤫', 'Chatty 💬'].map(vb => (
+                    <TouchableOpacity
+                      key={vb}
+                      style={{ flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: 'center', backgroundColor: rideVibe === vb ? (isDark ? goldColor : COLORS.red) : (isDark ? 'rgba(255,255,255,0.04)' : '#F3F4F6') }}
+                      onPress={() => setRideVibe(vb)}
+                    >
+                      <Text style={{ fontSize: 10, fontWeight: '900', color: rideVibe === vb ? '#fff' : txt }}>{vb}</Text>
+                    </TouchableOpacity>
+                  ))}
                 </View>
-              </View>
 
-              {/* Estimated Fuel Cost */}
-              <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec, letterSpacing: 1, marginBottom: 4 }}>ESTIMATED SPLIT FUEL COST (₹)</Text>
-              <TextInput
-                style={{ borderWidth: 1, borderColor: border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 13, color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#FAFAFA', marginBottom: 12, fontWeight: '700' }}
-                placeholder="e.g. 50 (or 0 if sharing friendly ride)"
-                placeholderTextColor={txtSec}
-                value={estimatedFuelCost}
-                onChangeText={setEstimatedFuelCost}
-                keyboardType="numeric"
-              />
+                <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec, letterSpacing: 1, marginBottom: 4 }}>WHO CAN JOIN</Text>
+                <View style={{ flexDirection: 'row', gap: 4, marginBottom: 12 }}>
+                  {[{ v: false, label: '🛡️ I approve each request' }, { v: true, label: '⚡ Anyone can join' }].map(opt => (
+                    <TouchableOpacity
+                      key={opt.label}
+                      style={{ flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: 'center', backgroundColor: autoApprove === opt.v ? (isDark ? goldColor : COLORS.red) : (isDark ? 'rgba(255,255,255,0.04)' : '#F3F4F6') }}
+                      onPress={() => setAutoApprove(opt.v)}
+                    >
+                      <Text style={{ fontSize: 10, fontWeight: '900', color: autoApprove === opt.v ? '#fff' : txt }}>{opt.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
 
-              {/* Notes */}
-              <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec, letterSpacing: 1, marginBottom: 4 }}>NOTES / TRIP VIBE (OPTIONAL)</Text>
-              <TextInput
-                style={{ borderWidth: 1, borderColor: border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 11, color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#FAFAFA', marginBottom: 16 }}
-                placeholder="e.g. Extra helmet available, leaving on time"
-                placeholderTextColor={txtSec}
-                value={notes}
-                onChangeText={setNotes}
-              />
+                <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec, letterSpacing: 1, marginBottom: 4 }}>NOTES (OPTIONAL)</Text>
+                <TextInput
+                  style={{ borderWidth: 1, borderColor: border, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 11, color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#FAFAFA', marginBottom: 16 }}
+                  placeholder="e.g. Extra helmet available, leaving on time"
+                  placeholderTextColor={txtSec}
+                  maxLength={200}
+                  value={notes}
+                  onChangeText={setNotes}
+                />
 
-              {/* Submit Button */}
-              <TouchableOpacity
-                style={{ paddingVertical: 14, borderRadius: 14, backgroundColor: COLORS.red, alignItems: 'center', marginBottom: 10 }}
-                onPress={handleCreateRide}
-                disabled={submittingRide}
-                activeOpacity={0.85}
-              >
-                {submittingRide ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={{ color: '#fff', fontSize: 11, fontWeight: '900', letterSpacing: 2 }}>PUBLISH COMMUTE MISSION 🚀</Text>
-                )}
-              </TouchableOpacity>
-            </ScrollView>
+                <TouchableOpacity
+                  style={{ paddingVertical: 14, borderRadius: 14, backgroundColor: COLORS.red, alignItems: 'center', marginBottom: 10, opacity: submittingRide ? 0.7 : 1 }}
+                  onPress={handleCreateRide}
+                  disabled={submittingRide}
+                  activeOpacity={0.85}
+                >
+                  {submittingRide ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontSize: 11, fontWeight: '900', letterSpacing: 2 }}>PUBLISH RIDE 🚀</Text>}
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );

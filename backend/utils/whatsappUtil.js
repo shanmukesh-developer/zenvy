@@ -56,15 +56,11 @@ const formatOrderMessage = (order, type = 'CUSTOMER_CONFIRMATION') => {
  * Primary delivery function
  */
 const sendWhatsAppMessage = async (to, messageContent, type = 'LOG') => {
-  console.log(`[WHATSAPP_BRIDGE] [${type}] Sending to ${to}...`);
-
+  // No provider configured (the default): nothing is sent, and we say so honestly.
+  // Message bodies are never logged (they contain names, phones and addresses).
   if (PROVIDER === 'CONSOLE') {
-    console.log('──────────────────────────────────────────────────');
-    console.log(`To: ${to}`);
-    console.log('Content:');
-    console.log(messageContent);
-    console.log('──────────────────────────────────────────────────');
-    return { success: true, provider: 'CONSOLE' };
+    console.log('[WHATSAPP_BRIDGE] [' + type + '] skipped: WHATSAPP_PROVIDER is not configured');
+    return { success: false, simulated: true, provider: 'CONSOLE' };
   }
 
   // Example Webhook Integration (UltraMsg/Wati pattern)

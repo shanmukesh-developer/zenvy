@@ -9,6 +9,7 @@ const initServiceBookingModel = (sequelize) => {
     id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
     userId: { type: DataTypes.UUID, allowNull: false },
     serviceType: {
+      // Keep in sync with VALID_SERVICE_TYPES in routes/serviceRoutes.js (sync adds new enum values on Postgres).
       type: DataTypes.ENUM(
         'LAPTOP_REPAIR',
         'MOBILE_REPAIR',
@@ -17,7 +18,16 @@ const initServiceBookingModel = (sequelize) => {
         'ROOM_SHIFTING',
         'AUTO_RIDE',
         'BIKE_TAXI',
-        'CLEANING'
+        'CLEANING',
+        'PHONE_REPAIR',
+        'TAILORING',
+        'STATION_CAB',
+        'PG_BOOKING',
+        'MATTRESS_DELIVERY',
+        'ELECTRONICS_DELIVERY',
+        'GROCERY_DELIVERY',
+        'PHARMACY_DELIVERY',
+        'GENERAL'
       ),
       allowNull: false,
     },

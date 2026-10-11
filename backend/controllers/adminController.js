@@ -8,10 +8,20 @@ const { getGlobalConfigModel } = require('../models/GlobalConfig');
 const { getVerificationLogModel } = require('../models/VerificationLog');
 const { Op } = require('sequelize');
 
+const { getStoreOpenState } = require('../utils/storeHours');
+const { STORE_VENDOR_TYPES, isLocalVendorStore } = require('../utils/vendorTypes');
+
+// Public restaurant listing cache: short TTL + cleared on every admin/vendor menu or status change.
 let cachedRestaurantsResponse = null;
+let cachedRestaurantsAt = 0;
+const RESTAURANTS_CACHE_TTL_MS = 60 * 1000;
 const clearRestaurantsCache = () => {
   cachedRestaurantsResponse = null;
+  cachedRestaurantsAt = 0;
 };
+exports.clearRestaurantsCache = clearRestaurantsCache;
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const broadcastSystemUpdate = (req, type, data) => {
   const io = req.app.get('io');
@@ -50,8 +60,12 @@ const logAuditAction = async (req, targetId, action, details) => {
 // ─── Public Endpoints ─────────────────────────────────────────
 exports.getRestaurants = async (req, res) => {
   try {
-    if (cachedRestaurantsResponse) {
-      return res.json(cachedRestaurantsResponse);
+    // Stores (grocery, pharmacy, add-ons, …) are browsed via /api/catalogue; ?includeStores=true lists them too.
+    const includeStores = String(req.query.includeStores || '').toLowerCase() === 'true';
+    const fresh = cachedRestaurantsResponse && (Date.now() - cachedRestaurantsAt) < RESTAURANTS_CACHE_TTL_MS;
+    if (fresh) {
+      const list = includeStores ? cachedRestaurantsResponse : cachedRestaurantsResponse.filter(r => !STORE_VENDOR_TYPES.includes(String(r.vendorType || '').toUpperCase()));
+      return res.json(list);
     }
 
     const Restaurant = getRestaurantModel();
@@ -90,6 +104,7 @@ exports.getRestaurants = async (req, res) => {
     const result = restaurants.map(r => {
       const rObj = r.toJSON();
       delete rObj.password;
+      const openState = getStoreOpenState(r);
       let tags = rObj.tags || [];
       if (typeof tags === 'string') {
         try { tags = JSON.parse(tags); } catch { tags = []; }
@@ -103,16 +118,22 @@ exports.getRestaurants = async (req, res) => {
         image: cleanedImg,
         tags,
         categories: tags,
-        // Map deliveryTime (integer minutes) to time string for frontend compatibility
-        time: rObj.deliveryTime ? `${rObj.deliveryTime} min` : (rObj.time || '30-50 min'),
+        // Real delivery time only when the restaurant has set one (no invented ETA)
+        time: rObj.deliveryTime ? `${rObj.deliveryTime} min` : null,
+        rating: rObj.rating > 0 ? rObj.rating : null,
+        isOpen: openState.isOpen,
+        opensAt: openState.opensAt || null,
+        closedReason: openState.isOpen ? null : (openState.message || null),
         menu: menuByRestaurant[r.id] || []
       };
     });
 
     cachedRestaurantsResponse = result;
-    res.json(result);
+    cachedRestaurantsAt = Date.now();
+    res.json(includeStores ? result : result.filter(r => !STORE_VENDOR_TYPES.includes(String(r.vendorType || '').toUpperCase())));
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('[RESTAURANTS_ERROR]', error);
+    res.status(500).json({ message: 'Could not load restaurants right now. Pull down to refresh.' });
   }
 };
 
@@ -120,22 +141,29 @@ exports.getRestaurantById = async (req, res) => {
   try {
     const Restaurant = getRestaurantModel();
     const MenuItem = getMenuItemModel();
+    if (!UUID_RE.test(String(req.params.id || ''))) return res.status(404).json({ message: 'Restaurant not found' });
     const restaurant = await Restaurant.findByPk(req.params.id);
     if (!restaurant) return res.status(404).json({ message: 'Restaurant not found' });
     const menu = await MenuItem.findAll({ where: { restaurantId: restaurant.id } });
     const resObj = restaurant.toJSON();
+    delete resObj.password;
     let tags = resObj.tags || [];
     if (typeof tags === 'string') {
       try { tags = JSON.parse(tags); } catch { tags = []; }
     }
 
+    const openState = getStoreOpenState(restaurant);
     res.json({ 
       ...resObj, 
       _id: restaurant.id, 
       id: restaurant.id,
       tags,
       categories: tags,
-      time: resObj.deliveryTime ? `${resObj.deliveryTime} min` : (resObj.time || '30-50 min'),
+      time: resObj.deliveryTime ? `${resObj.deliveryTime} min` : null,
+      rating: resObj.rating > 0 ? resObj.rating : null,
+      isOpen: openState.isOpen,
+      opensAt: openState.opensAt || null,
+      closedReason: openState.isOpen ? null : (openState.message || null),
       menu: menu.map(m => {
         const mObj = m.toJSON();
         let mTags = mObj.tags || [];
@@ -155,43 +183,61 @@ exports.getMenuItemById = async (req, res) => {
     const MenuItem = getMenuItemModel();
     const Restaurant = getRestaurantModel();
     const VaultItem = getVaultItemModel();
-    
-    let item = await MenuItem.findByPk(req.params.id);
-    let restaurant;
+    const id = String(req.params.id || '').trim();
+    if (!UUID_RE.test(id)) return res.status(404).json({ message: 'This product is not available any more.', code: 'PRODUCT_NOT_FOUND' });
 
+    const item = await MenuItem.findByPk(id);
     if (!item) {
-      // Fallback: Check VaultItem if MenuItem not found
-      item = await VaultItem.findByPk(req.params.id);
-      if (!item) return res.status(404).json({ message: 'Product not found (Nexus Error: 404)' });
-      
-      const itemObj = item.toJSON();
-      return res.json({ 
-        ...itemObj, 
-        _id: item.id, 
-        id: item.id, 
-        image: itemObj.imageUrl || itemObj.image,
-        restaurantName: 'Zenvy Exclusive Vault', 
-        restaurantId: 'vault_prime' 
+      // Daily-deal (vault) items are claimed through POST /api/vault/claim/:id, never added to a basket.
+      const vault = await VaultItem.findByPk(id);
+      if (!vault) return res.status(404).json({ message: 'This product is not available any more.', code: 'PRODUCT_NOT_FOUND' });
+      const v = vault.toJSON();
+      return res.json({
+        ...v,
+        _id: vault.id,
+        id: vault.id,
+        image: v.imageUrl || v.image,
+        isVaultItem: true,
+        orderable: false,
+        restaurantName: 'Zenvy Daily Deals',
+        restaurantId: null
       });
     }
 
-    restaurant = await Restaurant.findByPk(item.restaurantId);
+    const restaurant = await Restaurant.findByPk(item.restaurantId);
     const itemObj = item.toJSON();
     let tags = itemObj.tags || [];
     if (typeof tags === 'string') {
       try { tags = JSON.parse(tags); } catch { tags = []; }
     }
-    res.json({ 
-      ...itemObj, 
-      _id: item.id, 
-      id: item.id, 
+    const specs = itemObj.specs && typeof itemObj.specs === 'object' ? itemObj.specs : {};
+    const now = new Date();
+    const inStock = !!itemObj.isAvailable || !!(itemObj.outOfStockUntil && new Date(itemObj.outOfStockUntil) <= now);
+    const openState = restaurant ? getStoreOpenState(restaurant) : { isOpen: false };
+    res.json({
+      ...itemObj,
+      _id: item.id,
+      id: item.id,
       tags,
       image: itemObj.imageUrl || itemObj.image,
-      restaurantName: restaurant?.name || 'Zenvy Kitchen', 
-      restaurantId: restaurant?.id 
+      originalPrice: specs.originalPrice || null,
+      weight: specs.weight || null,
+      rating: specs.rating || null,
+      ratingCount: specs.ratingCount || 0,
+      isAvailable: inStock,
+      bookingOnly: !!specs.bookingOnly,
+      // CampusBites stalls are display-only: customers order from the vendor by call / WhatsApp.
+      orderable: inStock && !specs.bookingOnly && !!restaurant && !isLocalVendorStore(restaurant) && restaurant.isActive !== false && openState.isOpen,
+      directOrderOnly: isLocalVendorStore(restaurant),
+      restaurantName: restaurant ? restaurant.name : null,
+      restaurantId: restaurant ? restaurant.id : null,
+      vendorType: restaurant ? restaurant.vendorType : null,
+      storeIsOpen: openState.isOpen,
+      storeClosedReason: openState.isOpen ? null : (openState.message || null)
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('[GET_PRODUCT_ERROR]', error);
+    res.status(500).json({ message: 'Could not load this product right now. Please try again.' });
   }
 };
 
@@ -202,9 +248,14 @@ exports.searchAll = async (req, res) => {
     const Restaurant = getRestaurantModel();
     const MenuItem = getMenuItemModel();
 
+    const { getSequelize } = require('../config/db');
+    const sequelize = getSequelize();
+    const isPostgres = sequelize && typeof sequelize.getDialect === 'function' && sequelize.getDialect() === 'postgres';
+    const matchOp = isPostgres ? Op.iLike : Op.like;
+
     const matchedRestaurants = await Restaurant.findAll({
       where: {
-        name: { [Op.iLike]: `%${q}%` },
+        name: { [matchOp]: `%${q}%` },
         isActive: true
       }
     });
@@ -212,8 +263,8 @@ exports.searchAll = async (req, res) => {
     const matchedItems = await MenuItem.findAll({
       where: {
         [Op.or]: [
-          { name: { [Op.iLike]: `%${q}%` } },
-          { category: { [Op.iLike]: `%${q}%` } }
+          { name: { [matchOp]: `%${q}%` } },
+          { category: { [matchOp]: `%${q}%` } }
         ],
         isAvailable: true
       }
@@ -229,97 +280,270 @@ exports.searchAll = async (req, res) => {
 };
 
 // ─── Restaurant & Menu Control ────────────────────────────────
+// Stores (restaurants, non-food stores, CampusBites stalls) are Restaurant rows; their products are MenuItem rows.
+// Admin writes go through explicit field lists: rating / clickCount are never set by hand (they come from
+// real reviews and taps), and the portal password hash is never sent back or broadcast.
+
+class AdminInputError extends Error {}
+
+const RESTAURANT_FIELDS = [
+  'name', 'location', 'imageUrl', 'vendorType', 'deliveryTime', 'commissionRate', 'commissionType',
+  'tags', 'operatingHours', 'isActive', 'isOffline', 'isOpenNow', 'zone', 'lat', 'lon',
+  'isFeatured', 'featuredUntil', 'featuredBadge', 'promoOffer', 'campus', 'whatsappNumber',
+  'subscriptionTier', 'stallDescription', 'brandTheme'
+];
+const MENU_ITEM_FIELDS = [
+  'name', 'price', 'description', 'imageUrl', 'category', 'tags', 'isVegetarian', 'isAvailable',
+  'outOfStockUntil', 'isEliteOnly', 'customCommission', 'specs', 'ownerName', 'ownerPhone'
+];
+const HHMM_RE = /^([01]?\d|2[0-3]):([0-5]\d)$/;
+const toBool = (v) => v === true || v === 'true' || v === 1 || v === '1';
+const cleanTags = (tags) => (Array.isArray(tags) ? tags : String(tags || '').split(','))
+  .map((t) => String(t).trim()).filter(Boolean).slice(0, 30);
+
+const publicRestaurant = (r) => {
+  const json = r && typeof r.toJSON === 'function' ? r.toJSON() : { ...(r || {}) };
+  delete json.password;
+  return { ...json, _id: json.id };
+};
+
+const pickRestaurantFields = (body = {}, { creating = false } = {}) => {
+  const out = {};
+  for (const key of RESTAURANT_FIELDS) if (body[key] !== undefined) out[key] = body[key];
+
+  if (creating || out.name !== undefined) {
+    out.name = String(out.name || '').trim();
+    if (!out.name) throw new AdminInputError('Store name is required.');
+    if (out.name.length > 120) throw new AdminInputError('Store name must be 120 characters or fewer.');
+  }
+  if (creating || out.location !== undefined) out.location = String(out.location || '').trim() || 'Main Campus';
+  if (out.vendorType !== undefined) {
+    out.vendorType = String(out.vendorType || '').trim().toUpperCase().replace(/[^A-Z_]/g, '');
+    if (!out.vendorType) throw new AdminInputError('Pick a store type.');
+  }
+  if (out.deliveryTime !== undefined) {
+    if (out.deliveryTime === null || out.deliveryTime === '') out.deliveryTime = null;
+    else {
+      const n = Number(out.deliveryTime);
+      if (!Number.isInteger(n) || n < 5 || n > 240) throw new AdminInputError('Delivery time must be a whole number of minutes between 5 and 240.');
+      out.deliveryTime = n;
+    }
+  }
+  if (out.commissionType !== undefined && !['percentage', 'flat'].includes(out.commissionType)) {
+    throw new AdminInputError("Commission type must be 'percentage' or 'flat'.");
+  }
+  if (out.commissionRate !== undefined) {
+    const n = Number(out.commissionRate);
+    const max = (out.commissionType || body.commissionType) === 'flat' ? 1000 : 100;
+    if (!Number.isFinite(n) || n < 0 || n > max) throw new AdminInputError(`Commission must be between 0 and ${max}.`);
+    out.commissionRate = n;
+  }
+  if (out.operatingHours !== undefined) {
+    const h = out.operatingHours || {};
+    const s = HHMM_RE.exec(String(h.start || '').trim());
+    const e = HHMM_RE.exec(String(h.end || '').trim());
+    if (!s || !e) throw new AdminInputError('Operating hours must be 24-hour times like 09:00 and 22:00.');
+    out.operatingHours = { start: `${s[1].padStart(2, '0')}:${s[2]}`, end: `${e[1].padStart(2, '0')}:${e[2]}` };
+  }
+  if (out.whatsappNumber !== undefined) {
+    const digits = String(out.whatsappNumber || '').replace(/\D/g, '');
+    const ten = digits.length === 12 && digits.startsWith('91') ? digits.slice(2) : digits;
+    if (!ten) out.whatsappNumber = null;
+    else if (!/^[6-9]\d{9}$/.test(ten)) throw new AdminInputError('WhatsApp number must be a 10-digit Indian mobile number.');
+    else out.whatsappNumber = `91${ten}`; // same format as wa.me links and the existing rows
+  }
+  if (out.tags !== undefined) out.tags = cleanTags(out.tags);
+  for (const key of ['isActive', 'isOffline', 'isOpenNow', 'isFeatured']) if (out[key] !== undefined) out[key] = toBool(out[key]);
+  if (out.featuredUntil === '') out.featuredUntil = null;
+  for (const key of ['lat', 'lon']) {
+    if (out[key] === undefined) continue;
+    if (out[key] === null || out[key] === '') { out[key] = null; continue; }
+    const n = Number(out[key]);
+    if (!Number.isFinite(n)) throw new AdminInputError('Latitude and longitude must be numbers.');
+    out[key] = n;
+  }
+  return out;
+};
+
+const readItemSpecs = (specs) => {
+  if (typeof specs === 'string') { try { specs = JSON.parse(specs); } catch { specs = {}; } }
+  return specs && typeof specs === 'object' && !Array.isArray(specs) ? specs : {};
+};
+
+// specs are merged into the stored ones (bookingOnly, weight, brand, extraFor... are kept); a key sent as null is removed.
+const pickMenuItemFields = (body = {}, existing = null) => {
+  const out = {};
+  for (const key of MENU_ITEM_FIELDS) if (body[key] !== undefined) out[key] = body[key];
+  if (out.imageUrl === undefined && body.image !== undefined) out.imageUrl = body.image;
+
+  if (!existing || out.name !== undefined) {
+    out.name = String(out.name || '').trim();
+    if (!out.name) throw new AdminInputError('Product name is required.');
+    if (out.name.length > 200) throw new AdminInputError('Product name must be 200 characters or fewer.');
+  }
+  if (!existing || out.price !== undefined) {
+    const price = Number(out.price);
+    if (!Number.isFinite(price) || price < 0 || price > 100000) throw new AdminInputError('Price must be between ₹0 and ₹1,00,000.');
+    out.price = Math.round(price * 100) / 100;
+  }
+  if (out.imageUrl !== undefined) out.imageUrl = String(out.imageUrl || '').trim() || null;
+  if (out.category !== undefined) out.category = String(out.category || '').trim() || null;
+  if (out.tags !== undefined) out.tags = cleanTags(out.tags);
+  for (const key of ['isVegetarian', 'isAvailable', 'isEliteOnly']) if (out[key] !== undefined) out[key] = toBool(out[key]);
+  if (out.outOfStockUntil === '') out.outOfStockUntil = null;
+  if (out.isAvailable === true) out.outOfStockUntil = null;
+
+  if (out.specs !== undefined) {
+    const incoming = readItemSpecs(out.specs);
+    const merged = { ...readItemSpecs(existing && existing.specs) };
+    for (const [key, value] of Object.entries(incoming)) {
+      if (value === null || value === '') delete merged[key];
+      else merged[key] = value;
+    }
+    if (merged.originalPrice !== undefined) {
+      const mrp = Number(merged.originalPrice);
+      const price = out.price !== undefined ? out.price : Number(existing && existing.price);
+      if (!Number.isFinite(mrp) || mrp <= 0 || mrp > 100000) throw new AdminInputError('MRP must be a positive amount.');
+      if (Number.isFinite(price) && mrp < price) throw new AdminInputError('MRP cannot be lower than the selling price.');
+      merged.originalPrice = Math.round(mrp * 100) / 100;
+    }
+    out.specs = merged;
+  }
+  return out;
+};
+
+const sendAdminError = (res, error, fallback) => {
+  if (error instanceof AdminInputError) return res.status(400).json({ message: error.message });
+  if (error && error.name === 'SequelizeValidationError') return res.status(400).json({ message: error.errors?.[0]?.message || fallback });
+  console.error('[ADMIN_CATALOGUE_ERROR]', error);
+  return res.status(500).json({ message: fallback });
+};
+
 exports.getAllRestaurants = async (req, res) => {
   try {
     const Restaurant = getRestaurantModel();
-    const restaurants = await Restaurant.findAll();
-    res.json(restaurants.map(r => ({ ...r.toJSON(), _id: r.id })));
+    const MenuItem = getMenuItemModel();
+    const { fn, col } = require('sequelize');
+    const [restaurants, counts] = await Promise.all([
+      Restaurant.findAll({ attributes: { exclude: ['password'] }, order: [['name', 'ASC']] }),
+      MenuItem.findAll({ attributes: ['restaurantId', [fn('COUNT', col('id')), 'count']], group: ['restaurantId'], raw: true })
+    ]);
+    const countBy = new Map(counts.map((c) => [c.restaurantId, Number(c.count) || 0]));
+    res.json(restaurants.map((r) => {
+      const open = getStoreOpenState(r);
+      return {
+        ...publicRestaurant(r),
+        itemCount: countBy.get(r.id) || 0,
+        isOpen: !!open.isOpen,
+        opensAt: open.opensAt || null,
+        closedReason: open.isOpen ? null : (open.message || null)
+      };
+    }));
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendAdminError(res, error, 'Could not load stores.');
   }
 };
 
 exports.getAllMenuItems = async (req, res) => {
   try {
     const MenuItem = getMenuItemModel();
-    const where = req.query.restaurantId ? { restaurantId: req.query.restaurantId } : {};
-    const items = await MenuItem.findAll({ where });
+    const where = {};
+    if (req.query.restaurantId) {
+      if (!UUID_RE.test(String(req.query.restaurantId))) return res.status(404).json({ message: 'Store not found.' });
+      where.restaurantId = req.query.restaurantId;
+    }
+    const items = await MenuItem.findAll({ where, order: [['category', 'ASC'], ['name', 'ASC']] });
     res.json(items.map(i => ({ ...i.toJSON(), _id: i.id })));
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendAdminError(res, error, 'Could not load products.');
   }
 };
 
 exports.createRestaurant = async (req, res) => {
   try {
     const Restaurant = getRestaurantModel();
-    const data = { ...req.body };
-    delete data._id; // Ensure we don't try to insert a custom string ID into UUID field
+    const data = pickRestaurantFields(req.body, { creating: true });
+    if (req.body.password && typeof req.body.password === 'string' && req.body.password.trim().length >= 6) {
+      data.password = req.body.password.trim(); // hashed by the model hook
+    }
     const restaurant = await Restaurant.create(data);
     clearRestaurantsCache();
-    broadcastSystemUpdate(req, 'RESTAURANT_CREATED', restaurant);
+    broadcastSystemUpdate(req, 'RESTAURANT_CREATED', publicRestaurant(restaurant));
     await logAuditAction(req, restaurant.id, 'CREATE_RESTAURANT', { name: restaurant.name });
-    res.status(201).json({ ...restaurant.toJSON(), _id: restaurant.id });
+    res.status(201).json(publicRestaurant(restaurant));
   } catch (error) {
-    console.error('[CREATE_REST_ERROR]', error);
-    res.status(400).json({ message: error.message });
+    sendAdminError(res, error, 'Could not create the store.');
   }
 };
 
 exports.updateRestaurant = async (req, res) => {
   try {
+    if (!UUID_RE.test(String(req.params.id))) return res.status(404).json({ message: 'Store not found.' });
     const Restaurant = getRestaurantModel();
     const restaurant = await Restaurant.findByPk(req.params.id);
-    if (!restaurant) return res.status(404).json({ message: 'Not found' });
-    await restaurant.update(req.body);
+    if (!restaurant) return res.status(404).json({ message: 'Store not found.' });
+
+    const updateData = pickRestaurantFields(req.body);
+    if (req.body.password && typeof req.body.password === 'string' && req.body.password.trim().length >= 6) {
+      updateData.password = req.body.password.trim(); // hashed by the model hook
+    }
+    await restaurant.update(updateData);
     clearRestaurantsCache();
-    broadcastSystemUpdate(req, 'RESTAURANT_UPDATED', restaurant);
-    await logAuditAction(req, restaurant.id, 'UPDATE_RESTAURANT', { name: restaurant.name });
-    res.json({ ...restaurant.toJSON(), _id: restaurant.id });
+    broadcastSystemUpdate(req, 'RESTAURANT_UPDATED', publicRestaurant(restaurant));
+    await logAuditAction(req, restaurant.id, 'UPDATE_RESTAURANT', { name: restaurant.name, fields: Object.keys(updateData).filter(k => k !== 'password') });
+    res.json(publicRestaurant(restaurant));
   } catch (error) {
-    res.status(400).json({ message: error.message });
+    sendAdminError(res, error, 'Could not update the store.');
   }
 };
 
 exports.upsertMenuItem = async (req, res) => {
   try {
     const MenuItem = getMenuItemModel();
+    const Restaurant = getRestaurantModel();
     const { id } = req.params;
     let menuItem;
     if (id && id !== 'new') {
+      if (!UUID_RE.test(String(id))) return res.status(404).json({ message: 'Product not found.' });
       menuItem = await MenuItem.findByPk(id);
-      if (menuItem) await menuItem.update(req.body);
-      else menuItem = await MenuItem.create(req.body);
+      if (!menuItem) return res.status(404).json({ message: 'Product not found.' });
+      await menuItem.update(pickMenuItemFields(req.body, menuItem));
     } else {
-      menuItem = await MenuItem.create(req.body);
+      const restaurantId = String(req.body.restaurantId || '');
+      if (!UUID_RE.test(restaurantId) || !(await Restaurant.findByPk(restaurantId, { attributes: ['id'] }))) {
+        return res.status(400).json({ message: 'Pick the store this product belongs to.' });
+      }
+      menuItem = await MenuItem.create({ ...pickMenuItemFields(req.body), restaurantId });
     }
     clearRestaurantsCache();
-    broadcastSystemUpdate(req, 'MENU_UPDATED', menuItem);
+    broadcastSystemUpdate(req, 'MENU_UPDATED', { id: menuItem.id, restaurantId: menuItem.restaurantId });
     const io = req.app.get('io');
     if (io) {
-      io.emit('inventory_updated', { itemId: menuItem.id, isAvailable: menuItem.isAvailable });
+      io.emit('inventory_updated', { itemId: menuItem.id, restaurantId: menuItem.restaurantId, isAvailable: menuItem.isAvailable });
     }
-    await logAuditAction(req, menuItem.id, 'UPSERT_MENU_ITEM', { name: menuItem.name });
+    await logAuditAction(req, menuItem.id, 'UPSERT_MENU_ITEM', { name: menuItem.name, price: menuItem.price });
     res.json({ ...menuItem.toJSON(), _id: menuItem.id });
   } catch (error) {
-    res.status(400).json({ message: error.message });
+    sendAdminError(res, error, 'Could not save the product.');
   }
 };
 
 exports.deleteMenuItem = async (req, res) => {
   try {
+    if (!UUID_RE.test(String(req.params.id))) return res.status(404).json({ message: 'Product not found.' });
     const MenuItem = getMenuItemModel();
     const item = await MenuItem.findByPk(req.params.id);
-    if (!item) return res.status(404).json({ message: 'Item not found' });
+    if (!item) return res.status(404).json({ message: 'Product not found.' });
     await item.destroy();
     clearRestaurantsCache();
-    broadcastSystemUpdate(req, 'MENU_ITEM_DELETED', { id: req.params.id });
-    await logAuditAction(req, req.params.id, 'DELETE_MENU_ITEM', { id: req.params.id });
-    res.json({ message: 'Menu item deleted' });
+    broadcastSystemUpdate(req, 'MENU_ITEM_DELETED', { id: req.params.id, restaurantId: item.restaurantId });
+    await logAuditAction(req, req.params.id, 'DELETE_MENU_ITEM', { id: req.params.id, name: item.name });
+    res.json({ message: 'Product deleted.' });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendAdminError(res, error, 'Could not delete the product.');
   }
 };
+
 
 // ─── Fleet Management ──────────────────────────────────────────
 exports.getAllRiders = async (req, res) => {
@@ -377,9 +601,25 @@ exports.updateRider = async (req, res) => {
     const DeliveryPartner = getDeliveryPartnerModel();
     const rider = await DeliveryPartner.findByPk(req.params.id);
     if (!rider) return res.status(404).json({ message: 'Rider not found' });
-    await rider.update(req.body);
+    
+    // Prevent mass assignment of sensitive/calculated metrics
+    const allowedFields = [
+      'name', 'phone', 'vehicleType', 'vehicleNumber', 'photoUrl', 'bio',
+      'emergencyContact', 'isOnline', 'isAvailable', 'isApproved'
+    ];
+    const updateData = {};
+    for (const key of allowedFields) {
+      if (req.body[key] !== undefined) updateData[key] = req.body[key];
+    }
+    if (req.body.password && typeof req.body.password === 'string' && req.body.password.trim().length >= 6) {
+      const bcrypt = require('bcryptjs');
+      updateData.password = await bcrypt.hash(req.body.password, 10);
+    }
+    await rider.update(updateData);
     broadcastSystemUpdate(req, 'RIDER_UPDATED', rider);
-    res.json({ ...rider.toJSON(), _id: rider.id });
+    const riderData = rider.toJSON();
+    delete riderData.password;
+    res.json({ ...riderData, _id: rider.id });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -389,13 +629,33 @@ exports.updateRider = async (req, res) => {
 exports.getAllUsers = async (req, res) => {
   try {
     const User = getUserModel();
-    const { page = 1, limit = 50 } = req.query;
-    const offset = (parseInt(page) - 1) * parseInt(limit);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 500);
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const offset = (page - 1) * limit;
 
-    const { count, rows: users } = await User.findAndCountAll({ 
+    // Optional ?search= matches name, phone or email.
+    const search = String(req.query.search || '').trim().slice(0, 64);
+    let where;
+    if (search) {
+      const { getSequelize } = require('../config/db');
+      const sequelize = getSequelize();
+      const isPostgres = sequelize && typeof sequelize.getDialect === 'function' && sequelize.getDialect() === 'postgres';
+      const matchOp = isPostgres ? Op.iLike : Op.like;
+      const pattern = `%${search.replace(/[%_\\]/g, '')}%`; // wildcards stripped from user input
+      where = {
+        [Op.or]: [
+          { name: { [matchOp]: pattern } },
+          { phone: { [matchOp]: pattern } },
+          { email: { [matchOp]: pattern } },
+        ],
+      };
+    }
+
+    const { count, rows: users } = await User.findAndCountAll({
+      where,
       attributes: { exclude: ['password'] },
-      limit: parseInt(limit),
-      offset: parseInt(offset),
+      limit,
+      offset,
       order: [['createdAt', 'DESC']]
     });
 
@@ -430,7 +690,15 @@ exports.updateUserWallet = async (req, res) => {
     const user = await User.findByPk(req.params.userId);
     if (!user) return res.status(404).json({ message: 'User not found' });
     
-    const newBalance = (user.walletBalance || 0) + Number(amount);
+    const delta = Number(amount);
+    if (isNaN(delta)) {
+      return res.status(400).json({ message: 'Invalid amount value' });
+    }
+    const currentBalance = user.walletBalance || 0;
+    if (currentBalance + delta < 0) {
+      return res.status(400).json({ message: 'Wallet balance cannot be negative' });
+    }
+    const newBalance = Math.max(0, currentBalance + delta);
     await user.update({ walletBalance: newBalance });
     
     await logAuditAction(req, user.id, 'WALLET_UPDATE', { email: user.email, added: amount, newBalance });
@@ -445,13 +713,14 @@ exports.updateUserWallet = async (req, res) => {
 exports.getAuditLogs = async (req, res) => {
   try {
     const VerificationLog = getVerificationLogModel();
-    const { page = 1, limit = 100 } = req.query;
-    const offset = (parseInt(page) - 1) * parseInt(limit);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 200);
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const offset = (page - 1) * limit;
 
-    const { count, rows: logs } = await VerificationLog.findAndCountAll({ 
-      order: [['timestamp', 'DESC']], 
-      limit: parseInt(limit),
-      offset: parseInt(offset)
+    const { count, rows: logs } = await VerificationLog.findAndCountAll({
+      order: [['timestamp', 'DESC']],
+      limit,
+      offset
     });
 
     res.json({
@@ -544,12 +813,18 @@ exports.getFinanceReport = async (req, res) => {
     const restaurants = await Restaurant.findAll();
     const restaurantMap = restaurants.reduce((acc, r) => ({ ...acc, [r.id]: r }), {});
 
-    const totalRevenue = allDelivered.reduce((s, o) => s + (o.finalPrice || o.totalPrice), 0);
-    const totalDeliveryFees = allDelivered.reduce((s, o) => s + (o.deliveryFee || 30), 0);
-    const totalCommission = allDelivered.reduce((s, o) => {
+    // Commission uses each store's own rate/type; orders without a known store earn none.
+    const orderAmount = (o) => Number(o.finalPrice ?? o.totalPrice) || 0;
+    const commissionFor = (o) => {
       const rest = restaurantMap[o.restaurantId];
-      return s + ((o.finalPrice || o.totalPrice) * ((rest?.commissionRate || 10) / 100));
-    }, 0);
+      if (!rest) return 0;
+      const rate = Number(rest.commissionRate) || 0;
+      return rest.commissionType === 'flat' ? rate : orderAmount(o) * (rate / 100);
+    };
+
+    const totalRevenue = allDelivered.reduce((s, o) => s + orderAmount(o), 0);
+    const totalDeliveryFees = allDelivered.reduce((s, o) => s + (Number(o.deliveryFee) || 0), 0);
+    const totalCommission = allDelivered.reduce((s, o) => s + commissionFor(o), 0);
 
     // Get paginated transactions
     const { count, rows: orders } = await Order.findAndCountAll({
@@ -560,16 +835,14 @@ exports.getFinanceReport = async (req, res) => {
     });
 
     const transactions = orders.map(order => {
-      const restaurant = restaurantMap[order.restaurantId] || { commissionRate: 10, name: 'Zenvy Kitchen' };
-      const itemPrice = order.finalPrice || order.totalPrice;
-      const commission = itemPrice * ((restaurant.commissionRate || 10) / 100);
+      const restaurant = restaurantMap[order.restaurantId];
       return {
         _id: order.id,
         orderId: order.id.slice(-6),
-        restaurantName: restaurant.name,
-        totalAmount: itemPrice,
-        commissionEarned: Math.round(commission),
-        deliveryFee: order.deliveryFee || 30,
+        restaurantName: restaurant ? restaurant.name : 'Unknown store',
+        totalAmount: orderAmount(order),
+        commissionEarned: Math.round(commissionFor(order)),
+        deliveryFee: Number(order.deliveryFee) || 0,
         timestamp: order.createdAt
       };
     });
@@ -594,40 +867,8 @@ exports.seedDatabase = async (req, res) => {
     let { restaurants } = req.body;
     
     if (!restaurants || !Array.isArray(restaurants) || restaurants.length === 0) {
-      // Default cinematic collection
-      restaurants = [
-        {
-          "name": "Biryani Hub",
-          "location": "Amaravathi Central",
-          "imageUrl": "https://images.unsplash.com/photo-1589302168068-964664d93dc0?q=80&w=400&auto=format&fit=crop",
-          "categories": ["Biryani", "Kebabs"],
-          "vendorType": "RESTAURANT",
-          "menu": [
-            { "name": "Special Mutton Fry", "price": 280, "description": "Tender goat cooked in traditional spices.", "image": "https://images.unsplash.com/photo-1514327605112-b887c0e61c0a?w=400", "category": "Biryani" },
-            { "name": "Hyderabadi Dum Biryani", "price": 250, "description": "Classic slow-cooked chicken biryani.", "image": "https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=400", "category": "Biryani" }
-          ]
-        },
-        {
-          "name": "The Burger Club",
-          "location": "SRM North",
-          "imageUrl": "https://images.unsplash.com/photo-1571091718767-18b5b1457add?q=80&w=400",
-          "categories": ["Burgers", "Shakes"],
-          "vendorType": "RESTAURANT",
-          "menu": [
-            { "name": "Classic Cheeseburger", "price": 150, "description": "Juicy patty with melted cheddar.", "image": "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400", "category": "Burgers" }
-          ]
-        },
-        {
-          "name": "Nezumi Sushi",
-          "location": "Amaravathi East",
-          "imageUrl": "https://images.unsplash.com/photo-1579871494447-9811cf80d66c?q=80&w=400",
-          "categories": ["Sushi", "Japanese"],
-          "vendorType": "RESTAURANT",
-          "menu": [
-            { "name": "Salmon Nigiri", "price": 450, "description": "Fresh salmon on vinegared rice.", "image": "https://images.unsplash.com/photo-1583623025817-d180a2221d0a?w=400", "category": "Sushi" }
-          ]
-        }
-      ];
+      // No built-in sample restaurants: only real partner data sent by the admin is imported.
+      return res.status(400).json({ message: 'Send the restaurants to import as { restaurants: [...] }.' });
     }
 
     const Restaurant = getRestaurantModel();
@@ -655,7 +896,7 @@ exports.seedDatabase = async (req, res) => {
           tags: restData.categories || restData.tags || [],
           brandTheme: restData.brandTheme || null,
           subscriptionTier: restData.subscriptionTier || 'free',
-          rating: restData.rating || (Math.random() * (5.0 - 4.5) + 4.5).toFixed(1)
+          rating: Number(restData.rating) > 0 ? Number(restData.rating) : 0 // no invented ratings: 0 shows as "New"
         });
       } else {
         // Update existing to refresh images/tags
@@ -719,45 +960,74 @@ exports.seedDatabase = async (req, res) => {
 exports.getVaultItems = async (req, res) => {
   try {
     const VaultItem = getVaultItemModel();
-    const items = await VaultItem.findAll();
+    const items = await VaultItem.findAll({ order: [['createdAt', 'DESC']] });
     res.json(items.map(i => ({ ...i.toJSON(), _id: i.id })));
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
+const pickVaultFields = (body = {}, existing = null) => {
+  const out = {};
+  for (const key of ['name', 'price', 'originalPrice', 'remainingCount', 'imageUrl', 'isActive', 'streakRequirement']) {
+    if (body[key] !== undefined) out[key] = body[key];
+  }
+  if (!existing || out.name !== undefined) {
+    out.name = String(out.name || '').trim();
+    if (!out.name) throw new AdminInputError('Deal name is required.');
+  }
+  for (const key of ['price', 'originalPrice']) {
+    if (existing && out[key] === undefined) continue;
+    const n = Number(out[key]);
+    if (!Number.isFinite(n) || n < 0 || n > 100000) throw new AdminInputError('Prices must be between ₹0 and ₹1,00,000.');
+    out[key] = Math.round(n * 100) / 100;
+  }
+  const price = out.price !== undefined ? out.price : Number(existing && existing.price);
+  const mrp = out.originalPrice !== undefined ? out.originalPrice : Number(existing && existing.originalPrice);
+  if (Number.isFinite(price) && Number.isFinite(mrp) && mrp < price) throw new AdminInputError('The original price cannot be lower than the deal price.');
+  for (const key of ['remainingCount', 'streakRequirement']) {
+    if (out[key] === undefined) continue;
+    const n = Number(out[key]);
+    if (!Number.isInteger(n) || n < 0 || n > 100000) throw new AdminInputError(key === 'remainingCount' ? 'Stock must be a whole number (0 or more).' : 'Streak requirement must be a whole number (0 or more).');
+    out[key] = n;
+  }
+  if (out.imageUrl !== undefined) out.imageUrl = String(out.imageUrl || '').trim() || null;
+  if (out.isActive !== undefined) out.isActive = toBool(out.isActive);
+  return out;
+};
+
 exports.upsertVaultItem = async (req, res) => {
   try {
     const VaultItem = getVaultItemModel();
     const { id } = req.params;
-    const updateData = { ...req.body };
-    delete updateData._id;
-    delete updateData.id;
-
     let item;
     if (id && id !== 'new') {
+      if (!UUID_RE.test(String(id))) return res.status(404).json({ message: 'Deal not found.' });
       item = await VaultItem.findByPk(id);
-      if (item) await item.update(updateData);
-      else item = await VaultItem.create({ ...updateData, id });
+      if (!item) return res.status(404).json({ message: 'Deal not found.' });
+      await item.update(pickVaultFields(req.body, item));
     } else {
-      item = await VaultItem.create(updateData);
+      item = await VaultItem.create(pickVaultFields(req.body));
     }
     broadcastSystemUpdate(req, 'VAULT_UPDATED', item);
-
+    await logAuditAction(req, item.id, 'UPSERT_VAULT_ITEM', { name: item.name, price: item.price, remainingCount: item.remainingCount });
     res.json({ ...item.toJSON(), _id: item.id });
   } catch (error) {
-    res.status(400).json({ message: error.message });
+    sendAdminError(res, error, 'Could not save the deal.');
   }
 };
 
 exports.deleteVaultItem = async (req, res) => {
   try {
+    if (!UUID_RE.test(String(req.params.id))) return res.status(404).json({ message: 'Deal not found.' });
     const VaultItem = getVaultItemModel();
-    await VaultItem.destroy({ where: { id: req.params.id } });
+    const removed = await VaultItem.destroy({ where: { id: req.params.id } });
+    if (!removed) return res.status(404).json({ message: 'Deal not found.' });
     broadcastSystemUpdate(req, 'VAULT_DELETED', { id: req.params.id });
-    res.json({ message: 'Deleted' });
+    await logAuditAction(req, req.params.id, 'DELETE_VAULT_ITEM', { id: req.params.id });
+    res.json({ message: 'Deal deleted.' });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendAdminError(res, error, 'Could not delete the deal.');
   }
 };
 
@@ -780,7 +1050,7 @@ exports.getRewardsAnalytics = async (req, res) => {
     const topPerformers = users
       .map(u => {
         const uJson = u.toJSON();
-        const earned = Math.floor((uJson.completedOrders || 0) / 5);
+        const earned = Math.floor((uJson.completedOrders || 0) / 2);
         totalSpinsEarned += earned;
         totalSpinsUsed += (uJson.spinsUsed || 0);
         totalZenPoints += (uJson.zenPoints || 0);
@@ -841,10 +1111,28 @@ exports.deleteRestaurant = async (req, res) => {
     const Restaurant = getRestaurantModel();
     const MenuItem = getMenuItemModel();
     const id = req.params.id;
-    
+    if (!UUID_RE.test(String(id))) return res.status(404).json({ message: 'Store not found.' });
+
     const restaurant = await Restaurant.findByPk(id);
-    if (!restaurant) return res.status(404).json({ message: 'Restaurant not found' });
+    if (!restaurant) return res.status(404).json({ message: 'Store not found.' });
     
+    // Check for non-terminal active orders before deletion
+    const { getOrderModel } = require('../models/Order');
+    const Order = getOrderModel();
+    if (Order) {
+      const activeOrdersCount = await Order.count({
+        where: {
+          restaurantId: id,
+          status: { [Op.notIn]: ['Delivered', 'Cancelled'] }
+        }
+      });
+      if (activeOrdersCount > 0) {
+        return res.status(400).json({ 
+          message: `This store has ${activeOrdersCount} active order(s). Finish or cancel them before deleting it.` 
+        });
+      }
+    }
+
     // Cleanup items
     await MenuItem.destroy({ where: { restaurantId: id } });
     await restaurant.destroy();
@@ -853,9 +1141,9 @@ exports.deleteRestaurant = async (req, res) => {
     broadcastSystemUpdate(req, 'RESTAURANT_DELETED', { id });
     logAuditAction(req, id, 'RESTAURANT_DELETE', `Deleted restaurant "${restaurant.name}"`);
     
-    res.json({ message: 'Restaurant successfully removed' });
+    res.json({ message: 'Store deleted.' });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendAdminError(res, error, 'Could not delete the store.');
   }
 };
 
@@ -893,10 +1181,22 @@ exports.getOrderVolumeStats = async (req, res) => {
       });
     }
  
-    res.json(stats.map(s => ({
-      hour: new Date(s.dataValues.hour).getHours() + ':00',
-      count: parseInt(s.dataValues.count)
-    })));
+    // Buckets are UTC hours. `timestamp` is ISO so clients can format in their own zone;
+    // `hour` is kept for older clients and is formatted in IST (the campus time zone).
+    const toDate = (value) => {
+      if (value instanceof Date) return value;
+      const text = String(value);
+      return new Date(/[zZ]|[+-]\d{2}:?\d{2}$/.test(text) ? text : `${text.replace(' ', 'T')}Z`);
+    };
+    res.json(stats.map(s => {
+      const date = toDate(s.dataValues.hour);
+      const valid = !Number.isNaN(date.getTime());
+      return {
+        timestamp: valid ? date.toISOString() : null,
+        hour: valid ? date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' }) : '',
+        count: parseInt(s.dataValues.count, 10) || 0
+      };
+    }));
   } catch (error) {
     console.error('[VOLUME_STATS_ERROR]', error);
     res.status(500).json({ message: 'Failed to aggregate volume telemetry' });
@@ -909,6 +1209,14 @@ exports.batchUpdateOrders = async (req, res) => {
     const { targetStatus, newStatus } = req.body;
     
     if (!targetStatus || !newStatus) return res.status(400).json({ message: 'Missing parameters' });
+
+    const ALLOWED_STATUSES = ['Pending', 'Accepted', 'Preparing', 'ReadyForPickup', 'Picking', 'PickedUp', 'ArrivedAtGate', 'Delivered', 'Cancelled'];
+    if (!ALLOWED_STATUSES.includes(targetStatus) || !ALLOWED_STATUSES.includes(newStatus)) {
+      return res.status(400).json({ message: 'Invalid targetStatus or newStatus value' });
+    }
+    if (['Delivered', 'Cancelled'].includes(targetStatus)) {
+      return res.status(400).json({ message: `Cannot batch transition from terminal status: ${targetStatus}` });
+    }
 
     const [updatedCount] = await Order.update(
       { status: newStatus },
@@ -1091,15 +1399,19 @@ exports.processManualRefund = async (req, res) => {
     if (!order) return res.status(404).json({ message: 'Order not found' });
     if (order.status !== 'Cancelled') return res.status(400).json({ message: 'Can only refund Cancelled orders.' });
     if (order.paymentMethod === 'COD') return res.status(400).json({ message: 'COD orders do not require refunds.' });
+    if (order.paymentMethod === 'Wallet') return res.status(400).json({ message: 'Wallet orders are refunded to the Wallet automatically when they are cancelled.' });
+    const VerificationLog = getVerificationLogModel();
+    const already = VerificationLog ? await VerificationLog.findOne({ where: { targetId: String(order.id), action: 'MANUAL_REFUND_PROCESSED' } }) : null;
+    if (already) return res.status(400).json({ message: 'This order has already been refunded.' });
 
     const user = await User.findByPk(order.userId);
     if (!user) return res.status(404).json({ message: 'User not found' });
 
     const refundAmount = order.finalPrice || order.totalPrice;
     
-    // Perform manual wallet refund
-    user.walletBalance = (user.walletBalance || 0) + refundAmount;
-    await user.save();
+    // Perform manual wallet refund (atomic increment)
+    await User.increment('walletBalance', { by: refundAmount, where: { id: user.id } });
+    await user.reload();
     
     await logAuditAction(req, order.id, 'MANUAL_REFUND_PROCESSED', { amount: refundAmount, userId: user.id });
     
@@ -1166,9 +1478,11 @@ exports.broadcastPushNotification = async (req, res) => {
     // Remove duplicates
     allTokens = [...new Set(allTokens.filter(Boolean))];
 
-    if (allTokens.length > 0) {
+    if (activeUsers.length > 0) {
       const { sendPushToTokens } = require('../utils/push');
-      await sendPushToTokens(allTokens, title, body, { type: 'global_broadcast', targetBlock: targetBlock || 'all', category: category || 'announcement' });
+      // Saved in every targeted user's notification list, then pushed to their devices.
+      await sendPushToTokens(allTokens, title, body, { type: 'global_broadcast', targetBlock: targetBlock || 'all', category: category || 'announcement' },
+        { recipients: activeUsers.map((u) => u.id) });
     }
     
     // Fallback: Always broadcast to 'all' topic as well
@@ -1212,6 +1526,7 @@ exports.getRecentReviews = async (req, res) => {
       where: {
         review: { [Op.not]: null }
       },
+      attributes: { exclude: ['deliveryPin'] },
       order: [['createdAt', 'DESC']],
       limit: 50,
       include: [
@@ -1225,7 +1540,7 @@ exports.getRecentReviews = async (req, res) => {
 
     const mapped = reviews.map(r => {
       const data = r.toJSON();
-      data.restaurantName = restMap[r.restaurantId] || 'Unknown Node';
+      data.restaurantName = restMap[r.restaurantId] || 'Unknown store';
       return data;
     });
 
@@ -1314,16 +1629,4 @@ exports.settleRiderPayout = async (req, res) => {
   }
 };
 
-exports.getAuditLogs = async (req, res) => {
-  try {
-    const VerificationLog = getVerificationLogModel();
-    const logs = await VerificationLog.findAll({
-      order: [['timestamp', 'DESC']],
-      limit: 100
-    });
-    res.json(logs);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
 

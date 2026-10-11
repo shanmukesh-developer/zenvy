@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Platform, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -9,92 +9,125 @@ import { useDietary } from '../context/DietaryContext';
 import { StaggeredSection, BounceIn } from '../components/AnimatedSection';
 import DopaminePressable from '../components/DopaminePressable';
 import { LinearGradient } from 'expo-linear-gradient';
+import { apiFetch } from '../utils/auth';
 
 interface NotificationItem {
   id: string;
   title: string;
   body: string;
   timestamp: string;
-  type: 'info' | 'warning' | 'promo' | 'emergency' | 'friend_accepted' | 'chat_message' | 'ORDER_STATUS' | 'PROMO' | 'SURGE' | string;
+  type: string;
   read: boolean;
   isVeg?: boolean;
   orderId?: string;
 }
 
-const DEFAULT_NOTIFICATIONS: NotificationItem[] = [
-  {
-    id: 'default-1',
-    title: '🚀 Zenvy Elite Status Unlocked!',
-    body: 'Welcome to the premium campus circle! Enjoy 50% flat discount coupons, zero surge fees, and free priority delivery on all local orders. 🎁',
-    timestamp: new Date(Date.now() - 3600000 * 2).toISOString(),
-    type: 'promo',
-    read: false,
-    isVeg: true,
-  },
-  {
-    id: 'default-2',
-    title: '🏆 Hostel Challenge is Live!',
-    body: 'Amaravathi Central is leading the weekly leaderboard. Order now to earn bonus points and claim your hostel\'s trophy! ⚡',
-    timestamp: new Date(Date.now() - 3600000 * 5).toISOString(),
-    type: 'info',
-    read: false,
-    isVeg: true,
-  },
-  {
-    id: 'default-3',
-    title: '🚨 Zone Surge Alert: Rainfall',
-    body: 'High demand detected in Central Hostels. Delivery speeds are optimized for priority partners. Stay indoors, we will bring your food warm! 🌧️',
-    timestamp: new Date(Date.now() - 3600000 * 24).toISOString(),
-    type: 'warning',
-    read: true,
-    isVeg: true,
-  }
-];
+const LOCAL_KEY = 'zenvy_notifications';
+
+// Signed-in users: the list comes from the server (GET /api/notifications), so pushes that
+// arrived while the app was closed are here too. Guests only have this device's announcements.
+// Older app versions seeded made-up sample alerts with ids 'default-*'; they are purged on load.
+const isLegacySample = (n: any) => typeof n?.id === 'string' && n.id.startsWith('default-');
+
+const fromServer = (n: any): NotificationItem => ({
+  id: String(n.id || n._id),
+  title: n.title || '',
+  body: n.body || '',
+  timestamp: n.createdAt || '',
+  type: n.type || 'info',
+  read: !!n.read,
+  orderId: n.orderId || n.data?.orderId || undefined,
+});
+
+const markLocalAllRead = () => {
+  AsyncStorage.getItem(LOCAL_KEY).then(stored => {
+    if (!stored) return;
+    try {
+      const list = JSON.parse(stored);
+      if (Array.isArray(list)) {
+        AsyncStorage.setItem(LOCAL_KEY, JSON.stringify(list.map((n: any) => ({ ...n, read: true })))).catch(() => {});
+      }
+    } catch {}
+  }).catch(() => {});
+};
 
 export default function NotificationsScreen() {
   const router = useRouter();
   const { isDark, colors } = useTheme();
   const { user } = useAuth();
   const { dietMode } = useDietary();
+  const signedIn = !!user;
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const mountedRef = useRef(true);
+  const signedInRef = useRef(signedIn);
+  signedInRef.current = signedIn;
+  const hadUnreadRef = useRef(false);
 
   useEffect(() => {
-    loadNotifications();
-
+    mountedRef.current = true;
     return () => {
-      // When leaving notification center, mark all as read so home screen bell badge is cleared
-      AsyncStorage.getItem('zenvy_notifications').then(stored => {
-        if (stored) {
-          try {
-            const list = JSON.parse(stored);
-            if (Array.isArray(list)) {
-              const allRead = list.map((n: any) => ({ ...n, read: true }));
-              AsyncStorage.setItem('zenvy_notifications', JSON.stringify(allRead));
-            }
-          } catch {}
-        }
-      });
+      mountedRef.current = false;
+      // Leaving the notification center marks everything as read, so the Home bell badge clears.
+      markLocalAllRead();
+      if (signedInRef.current && hadUnreadRef.current) {
+        apiFetch('/api/notifications/read-all', { method: 'PUT' }).catch(() => {});
+      }
     };
   }, []);
 
+  useEffect(() => {
+    loadNotifications();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signedIn]);
+
+  useEffect(() => {
+    hadUnreadRef.current = notifications.some(n => !n.read);
+  }, [notifications]);
+
+  const loadLocal = async (): Promise<NotificationItem[]> => {
+    const stored = await AsyncStorage.getItem(LOCAL_KEY);
+    let parsed: any = [];
+    try { parsed = stored ? JSON.parse(stored) : []; } catch { parsed = []; }
+    const list: NotificationItem[] = Array.isArray(parsed) ? parsed : [];
+    const loaded = list.filter(n => n && !isLegacySample(n) && (n.title || n.body));
+    if (loaded.length !== list.length) {
+      await AsyncStorage.setItem(LOCAL_KEY, JSON.stringify(loaded));
+    }
+    return loaded;
+  };
+
   const loadNotifications = async () => {
     try {
-      const stored = await AsyncStorage.getItem('zenvy_notifications');
-      let loaded: NotificationItem[];
-      if (stored) {
-        loaded = JSON.parse(stored);
+      let list: NotificationItem[];
+      if (signedIn) {
+        try {
+          const res = await apiFetch('/api/notifications?limit=100');
+          const data = await res.json().catch(() => null);
+          if (!res.ok || !data || !Array.isArray(data.notifications)) throw new Error(`status ${res.status}`);
+          list = data.notifications.map(fromServer);
+          if (mountedRef.current) setLoadError(null);
+        } catch (e) {
+          console.warn('Notifications sync error:', e);
+          // Show what this phone received while we can't reach Zenvy.
+          list = await loadLocal();
+          if (mountedRef.current) setLoadError("Couldn't refresh your notifications. Pull down to try again.");
+        }
       } else {
-        loaded = DEFAULT_NOTIFICATIONS;
-        await AsyncStorage.setItem('zenvy_notifications', JSON.stringify(DEFAULT_NOTIFICATIONS));
+        list = await loadLocal();
       }
-      setNotifications(loaded);
+      list.sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
+      if (mountedRef.current) setNotifications(list);
     } catch (e) {
       console.error('Error loading notifications:', e);
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (mountedRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   };
 
@@ -103,31 +136,42 @@ export default function NotificationsScreen() {
     loadNotifications();
   };
 
+  const saveLocal = (list: NotificationItem[]) => {
+    if (signedIn) return;
+    AsyncStorage.setItem(LOCAL_KEY, JSON.stringify(list)).catch(() => {});
+  };
+
   const markAllAsRead = async () => {
     const updated = notifications.map(n => ({ ...n, read: true }));
     setNotifications(updated);
-    try {
-      await AsyncStorage.setItem('zenvy_notifications', JSON.stringify(updated));
-    } catch (e) {
-      console.error(e);
+    markLocalAllRead();
+    if (signedIn) {
+      apiFetch('/api/notifications/read-all', { method: 'PUT' }).catch(() => {});
+    } else {
+      saveLocal(updated);
     }
   };
 
   const clearAllNotifications = () => {
     Alert.alert(
-      'Clear Notifications',
-      'Are you sure you want to clear all notification history?',
+      'Clear notifications',
+      'Clear your whole notification history?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Clear All',
+          text: 'Clear all',
           style: 'destructive',
           onPress: async () => {
+            const previous = notifications;
             setNotifications([]);
+            AsyncStorage.setItem(LOCAL_KEY, JSON.stringify([])).catch(() => {});
+            if (!signedIn) return;
             try {
-              await AsyncStorage.setItem('zenvy_notifications', JSON.stringify([]));
-            } catch (e) {
-              console.error(e);
+              const res = await apiFetch('/api/notifications', { method: 'DELETE' });
+              if (!res.ok) throw new Error(`status ${res.status}`);
+            } catch {
+              if (mountedRef.current) setNotifications(previous);
+              Alert.alert('Could not clear', 'Please check your connection and try again.');
             }
           }
         }
@@ -136,47 +180,54 @@ export default function NotificationsScreen() {
   };
 
   const deleteNotification = async (id: string) => {
+    const previous = notifications;
     const updated = notifications.filter(n => n.id !== id);
     setNotifications(updated);
+    if (!signedIn) {
+      saveLocal(updated);
+      return;
+    }
     try {
-      await AsyncStorage.setItem('zenvy_notifications', JSON.stringify(updated));
-    } catch (e) {
-      console.error(e);
+      const res = await apiFetch(`/api/notifications/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      if (!res.ok && res.status !== 404) throw new Error(`status ${res.status}`);
+    } catch {
+      if (mountedRef.current) setNotifications(previous);
     }
   };
 
   const handleNotificationPress = async (n: NotificationItem) => {
     // 1. Mark as read
-    const updated = notifications.map(item => item.id === n.id ? { ...item, read: true } : item);
-    setNotifications(updated);
-    try {
-      await AsyncStorage.setItem('zenvy_notifications', JSON.stringify(updated));
-    } catch (e) {
-      console.error(e);
+    if (!n.read) {
+      const updated = notifications.map(item => item.id === n.id ? { ...item, read: true } : item);
+      setNotifications(updated);
+      if (signedIn) {
+        apiFetch(`/api/notifications/${encodeURIComponent(n.id)}/read`, { method: 'PUT' }).catch(() => {});
+      } else {
+        saveLocal(updated);
+      }
     }
 
     // 2. Contextual navigation
     if (n.orderId) {
       router.push(`/tracking/${n.orderId}` as any);
-    } else if (n.type === 'ORDER_STATUS') {
+    } else if (n.type === 'SUPPORT_TICKET') {
+      router.push('/support' as any);
+    } else if (n.type === 'ORDER_STATUS' || n.type === 'ORDER_UPDATE') {
       router.push('/(tabs)/orders' as any);
-    } else if (n.type === 'PROMO' || n.type === 'SURGE') {
+    } else if (n.type === 'SPIN_EARNED' || n.type === 'WALL_WINNER_REWARD') {
+      router.push('/rewards' as any);
+    } else if (n.type === 'BIRTHDAY_ALERT') {
+      router.push('/community' as any);
+    } else if (['FRIEND_REQUEST', 'FRIEND_ACCEPTED', 'FRIEND_NUDGE', 'NEW_CHAT_MESSAGE', 'friend_accepted', 'chat_message'].includes(n.type)) {
+      router.push('/friends' as any);
+    } else if (n.type === 'PROMO' || n.type === 'SURGE' || n.type === 'abandoned_cart' || n.type === 'streak_nudge') {
       router.push('/(tabs)' as any);
-    }
-  };
-
-  const toggleReadStatus = async (id: string) => {
-    const updated = notifications.map(n => n.id === id ? { ...n, read: !n.read } : n);
-    setNotifications(updated);
-    try {
-      await AsyncStorage.setItem('zenvy_notifications', JSON.stringify(updated));
-    } catch (e) {
-      console.error(e);
     }
   };
 
   const formatTime = (isoString: string) => {
     const date = new Date(isoString);
+    if (!isoString || Number.isNaN(date.getTime())) return '';
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / 60000);
@@ -199,10 +250,20 @@ export default function NotificationsScreen() {
     switch (type) {
       case 'emergency': return '🚨';
       case 'warning': return '⚠️';
-      case 'promo': return '🎁';
-      case 'info': return '📢';
-      case 'friend_accepted': return '🤝';
-      case 'chat_message': return '💬';
+      case 'promo': case 'PROMO': case 'campaign': return '🎁';
+      case 'info': case 'global_broadcast': return '📢';
+      case 'friend_accepted': case 'FRIEND_ACCEPTED': case 'FRIEND_REQUEST': return '🤝';
+      case 'FRIEND_NUDGE': return '👋';
+      case 'chat_message': case 'NEW_CHAT_MESSAGE': return '💬';
+      case 'ORDER_UPDATE': case 'ORDER_STATUS': return '🛵';
+      case 'GATE_ARRIVAL': return '🛎️';
+      case 'SUPPORT_TICKET': return '💬';
+      case 'PG_BOOKING_STATUS': case 'PG_BOOKING': return '🏠';
+      case 'BADGE': case 'WALL_WINNER_REWARD': return '🏆';
+      case 'SPIN_EARNED': return '🎡';
+      case 'streak_nudge': return '🔥';
+      case 'BIRTHDAY_ALERT': return '🎂';
+      case 'abandoned_cart': return '🍽️';
       default: return '📢';
     }
   };
@@ -238,7 +299,9 @@ export default function NotificationsScreen() {
 
   const nonVegWords = ['chicken', 'mutton', 'meat', 'beef', 'pork', 'fish', 'prawn', 'wings', 'tandoori chicken', 'shawarma'];
   const displayedNotifications = notifications.filter(n => {
-    if (dietMode === 'veg') {
+    // Veg mode hides non-veg promotions only, never the user's own order or account alerts.
+    const isPromo = ['promo', 'PROMO', 'SURGE', 'info'].includes(n.type);
+    if (dietMode === 'veg' && isPromo) {
       const text = (n.title + ' ' + n.body).toLowerCase();
       const hasNonVeg = nonVegWords.some(word => text.includes(word));
       if (hasNonVeg) return false;
@@ -264,10 +327,14 @@ export default function NotificationsScreen() {
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={[s.subText, { color: goldColor }]}>
-            {displayedNotifications.filter(n => !n.read).length} UNREAD ALERTS
+            {(() => {
+              const unread = displayedNotifications.filter(n => !n.read).length;
+              return unread > 0 ? `${unread} UNREAD` : 'ALL CAUGHT UP';
+            })()}
           </Text>
           <Text style={[s.title, { color: txt }]}>Notifications</Text>
         </View>
+        {notifications.length > 0 && (
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <TouchableOpacity onPress={markAllAsRead} style={s.actionHeaderBtn}>
             <Text style={[s.actionHeaderBtnText, { color: goldColor }]}>MARK READ</Text>
@@ -276,7 +343,14 @@ export default function NotificationsScreen() {
             <Text style={[s.actionHeaderBtnText, { color: COLORS.red }]}>CLEAR</Text>
           </TouchableOpacity>
         </View>
+        )}
       </View>
+
+      {loadError && !loading ? (
+        <TouchableOpacity activeOpacity={0.85} onPress={handleRefresh} style={{ marginHorizontal: 16, marginTop: 12, padding: 10, borderRadius: 12, backgroundColor: isDark ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.08)' }}>
+          <Text style={{ color: '#EF4444', fontSize: 11, fontWeight: '700', textAlign: 'center' }}>{loadError}</Text>
+        </TouchableOpacity>
+      ) : null}
 
       {/* Main Content */}
       {loading ? (

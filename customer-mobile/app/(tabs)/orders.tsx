@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, RefreshControl, Animated, LayoutAnimation, UIManager, Alert, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { ShimmerCard } from '../../components/ShimmerLoader';
+import { connectSocket } from '../../utils/socket';
 import { COLORS, SHADOWS } from '../../constants/theme';
 import { ENDPOINTS } from '../../constants/api';
 import { useTheme } from '../../context/ThemeContext';
@@ -53,106 +55,338 @@ const ScalePressable = ({ children, onPress, style, activeOpacity = 0.85 }: any)
   );
 };
 
+// Friendly labels for the backend status enum (never show raw enums like READYFORPICKUP).
+const STATUS_LABEL: Record<string, string> = {
+  Pending: 'Awaiting store',
+  Accepted: 'Confirmed',
+  Preparing: 'Preparing',
+  ReadyForPickup: 'Ready for pickup',
+  Picking: 'Rider at store',
+  PickedUp: 'Out for delivery',
+  ArrivedAtGate: 'Rider at gate',
+  Delivered: 'Delivered',
+  Cancelled: 'Cancelled',
+};
+const statusLabel = (s?: string) => (s && STATUS_LABEL[s]) || s || 'Pending';
+const isActiveStatus = (s?: string) => s !== 'Delivered' && s !== 'Cancelled';
+const PIN_STATUSES = ['Accepted', 'Preparing', 'ReadyForPickup', 'Picking', 'PickedUp', 'ArrivedAtGate'];
+
+const parseItems = (raw: any): any[] => {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    try { const parsed = JSON.parse(raw); return Array.isArray(parsed) ? parsed : []; } catch { return []; }
+  }
+  return [];
+};
+
+const parseBreakdown = (raw: any): any => {
+  if (!raw) return null;
+  if (typeof raw === 'object') return raw;
+  try { return JSON.parse(raw); } catch { return null; }
+};
+
+// Service bookings (repairs, print, laundry, tailoring…)
+const SERVICE_STATUS_LABEL: Record<string, string> = {
+  REQUESTED: 'Requested',
+  DIAGNOSED_QUOTED: 'Quote ready',
+  CONFIRMED: 'Confirmed',
+  IN_PROGRESS: 'In progress',
+  READY_FOR_DELIVERY: 'Ready for delivery',
+  COMPLETED: 'Completed',
+  CANCELLED: 'Cancelled',
+};
+const serviceStatusLabel = (s?: string) => (s && SERVICE_STATUS_LABEL[s]) || (s ? s.replace(/_/g, ' ').toLowerCase() : 'Requested');
+const isServiceOpen = (s?: string) => s !== 'COMPLETED' && s !== 'CANCELLED';
+const formatWhen = (iso?: string) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+};
+
+const amountCharged = (o: any) => Number(o.finalPrice ?? o.priceBreakdown?.finalPrice ?? o.totalPrice ?? 0) || 0;
+
 export default function OrdersScreen() {
   const router = useRouter();
   const { isDark, colors } = useTheme();
-  const { user } = useAuth();
-  const { addToCart, clearCart, cart } = useCart();
+  const { user, refreshUser } = useAuth();
+  const { addToCart } = useCart();
   const [orders, setOrders] = useState<any[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<'ALL' | 'ACTIVE' | 'PAST'>('ALL');
+  const [filter, setFilter] = useState<'ALL' | 'ACTIVE' | 'PAST' | 'SERVICES'>('ALL');
+  const [bookings, setBookings] = useState<any[]>([]);
+  const [bookingsLoading, setBookingsLoading] = useState(false);
+  const [bookingsError, setBookingsError] = useState<string | null>(null);
+  const [bookingsLoaded, setBookingsLoaded] = useState(false);
+  const [bookingDetail, setBookingDetail] = useState<Record<string, any>>({});
+  const [bookingBusyId, setBookingBusyId] = useState<string | null>(null);
+  const [reorderingId, setReorderingId] = useState<string | null>(null);
+  const { segment } = useLocalSearchParams<{ segment?: string | string[] }>();
+  const segmentParam = Array.isArray(segment) ? segment[0] : segment;
+  useEffect(() => {
+    if (segmentParam === 'services') setFilter('SERVICES');
+  }, [segmentParam]);
+  const mountedRef = useRef(true);
+  const hasLoadedRef = useRef(false);
+  const inFlightRef = useRef(false);
 
-  const handleReorder = (order: any) => {
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  const handleReorder = async (order: any) => {
+    const orderKey = order._id || order.id;
+    if (reorderingId) return;
+    const items = parseItems(order.items);
+    if (items.length === 0) {
+      Alert.alert('Reorder unavailable', 'We could not find the items from this order.');
+      return;
+    }
+    const targetRestaurantId = order.restaurantId || order.restaurant?.id;
+    const targetRestaurantName = order.restaurantName || order.restaurant?.name || 'this store';
+    if (!targetRestaurantId) {
+      Alert.alert('Reorder unavailable', 'This store is no longer on Zenvy.');
+      return;
+    }
+
+    setReorderingId(orderKey);
     try {
-      let items = order.items || [];
-      if (typeof items === 'string') {
-        try {
-          items = JSON.parse(items);
-        } catch {
-          items = [];
+      // Re-read the live menu so the basket uses today's prices and availability.
+      const res = await apiFetch(ENDPOINTS.restaurantMenu(targetRestaurantId));
+      if (!res.ok) throw new Error(`menu ${res.status}`);
+      const menu = await res.json();
+      const menuById = new Map<string, any>();
+      (Array.isArray(menu) ? menu : []).forEach((m: any) => menuById.set(String(m.id || m._id), m));
+
+      const available: { item: any; live: any }[] = [];
+      const dropped: string[] = [];
+      items.forEach((item: any) => {
+        const itemId = String(item.menuItemId || item.id || item._id || '');
+        const live = itemId ? menuById.get(itemId) : null;
+        if (!live || live.isAvailable === false) {
+          // Add-ons (EXTRAS) live in a different store; the basket offers them again at checkout.
+          if (!item.isAddOn) dropped.push(item.name || 'An item');
+          return;
         }
-      }
-      if (!Array.isArray(items) || items.length === 0) {
-        Alert.alert('Reorder Unavailable', 'Could not retrieve items from this past order.');
+        available.push({ item, live });
+      });
+
+      if (!mountedRef.current) return;
+      if (available.length === 0) {
+        Alert.alert('Items unavailable', `None of the items from this order are available at ${targetRestaurantName} right now.`);
         return;
       }
 
-      const targetRestaurantId = order.restaurantId;
-      const targetRestaurantName = order.restaurant || 'Zenvy Partner';
-      const hasConflict = cart.length > 0 && cart[0].restaurantId !== targetRestaurantId;
-
-      const performReorder = () => {
-        if (hasConflict) {
-          clearCart();
-        }
-        items.forEach((item: any) => {
-          addToCart({
-            id: item.itemId || item.id || String(Math.random()),
-            name: item.name,
-            price: item.price,
-            basePrice: item.basePrice || item.price,
-            image: item.image || item.imageUrl || '',
+      // The basket enforces one store per order itself: when it holds another store's items,
+      // addToCart returns false and shows a single "Replace basket?" prompt for all these lines.
+      let addedAny = false;
+      available.forEach(({ item, live }) => {
+        const added = addToCart({
+            id: String(live.id || live._id),
+            name: live.name || item.name,
+            price: Number(live.price) || 0,
+            basePrice: Number(live.price) || 0,
+            image: live.imageUrl || item.image || '',
             restaurantId: targetRestaurantId,
             restaurantName: targetRestaurantName,
-            quantity: item.quantity || 1,
-            customizations: item.customizations || {},
-          });
+            quantity: Math.min(Math.max(Number(item.quantity) || 1, 1), 20),
+            customizations: item.customizations || undefined,
         });
-        router.push('/(tabs)/basket' as any);
-      };
+        if (added) addedAny = true;
+      });
+      if (!addedAny) return; // the basket's "Replace basket?" prompt is showing
 
-      if (hasConflict) {
+      if (dropped.length > 0) {
         Alert.alert(
-          'Replace Basket?',
-          `Your basket contains items from another restaurant. Replace them with items from ${targetRestaurantName}?`,
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Replace & Reorder', onPress: performReorder }
-          ]
+          'Some items are unavailable',
+          `${dropped.join(', ')} ${dropped.length === 1 ? 'is' : 'are'} not available right now, so we left ${dropped.length === 1 ? 'it' : 'them'} out.`
         );
-      } else {
-        performReorder();
       }
+      router.push('/(tabs)/basket' as any);
     } catch (e) {
       console.error('Reorder error:', e);
+      if (mountedRef.current) Alert.alert('Could not reorder', 'Please check your connection and try again.');
+    } finally {
+      if (mountedRef.current) setReorderingId(null);
     }
   };
 
-  const fetchOrders = async () => {
-    setLoading(true);
-    setError(null);
+  const fetchOrders = useCallback(async (mode: 'initial' | 'silent' = 'initial') => {
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
+    // Full-screen skeleton only for the very first load; later refreshes keep the list on screen.
+    if (mode === 'initial' && !hasLoadedRef.current) setLoading(true);
     try {
       const res = await apiFetch(ENDPOINTS.myOrders);
-      if (!res.ok) {
-        throw new Error(`Server returned status ${res.status}`);
-      }
+      if (!res.ok) throw new Error(`Server returned status ${res.status}`);
       const data = await res.json();
-      if (Array.isArray(data)) {
-        setOrders(data);
-      } else {
-        setOrders([]);
-      }
+      if (!mountedRef.current) return;
+      setOrders(Array.isArray(data) ? data : []);
+      setError(null);
+      hasLoadedRef.current = true;
     } catch (e: any) {
       console.error('Orders sync error:', e);
-      setError(e?.message || 'Network disruption while retrieving orders. Please pull to refresh.');
+      if (mountedRef.current) setError('We could not load your orders. Check your connection and try again.');
     } finally {
-      setLoading(false);
+      inFlightRef.current = false;
+      if (mountedRef.current) setLoading(false);
+    }
+  }, []);
+
+  const fetchBookings = useCallback(async () => {
+    setBookingsLoading(true);
+    try {
+      const res = await apiFetch(ENDPOINTS.servicesMyBookings);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.message || `status ${res.status}`);
+      if (!mountedRef.current) return;
+      setBookings(Array.isArray(data?.bookings) ? data.bookings : []);
+      setBookingsError(null);
+      setBookingsLoaded(true);
+    } catch (e) {
+      console.warn('Service bookings error:', e);
+      if (mountedRef.current) setBookingsError('We could not load your service bookings. Check your connection and try again.');
+    } finally {
+      if (mountedRef.current) setBookingsLoading(false);
+    }
+  }, []);
+
+  const toggleBooking = async (id: string) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    const next = expanded === id ? null : id;
+    setExpanded(next);
+    if (!next) return;
+    try {
+      const res = await apiFetch(ENDPOINTS.servicesDetail(id));
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.booking && mountedRef.current) {
+        setBookingDetail(prev => ({ ...prev, [id]: data.booking }));
+      }
+    } catch {
+      // The card already shows the list data; the timeline simply stays as it was.
     }
   };
 
+  const applyBooking = (id: string, booking: any) => {
+    if (!booking || !mountedRef.current) return;
+    setBookings(prev => prev.map(x => (String(x.id || x._id) === id ? { ...x, ...booking } : x)));
+    setBookingDetail(prev => ({ ...prev, [id]: booking }));
+  };
+
+  const cancelBooking = (b: any) => {
+    const id = String(b.id || b._id);
+    Alert.alert('Cancel this booking?', `${b.title || 'This service'} will be cancelled.`, [
+      { text: 'Keep it', style: 'cancel' },
+      {
+        text: 'Cancel booking',
+        style: 'destructive',
+        onPress: async () => {
+          setBookingBusyId(id);
+          try {
+            const res = await apiFetch(ENDPOINTS.servicesCancel(id), { method: 'POST', body: JSON.stringify({ reason: 'Cancelled by customer' }) });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+              Alert.alert('Could not cancel', data?.message || 'Please try again in a moment.');
+              return;
+            }
+            applyBooking(id, data.booking || { ...b, status: 'CANCELLED' });
+          } catch {
+            Alert.alert('Could not cancel', 'Please check your connection and try again.');
+          } finally {
+            if (mountedRef.current) setBookingBusyId(null);
+          }
+        },
+      },
+    ]);
+  };
+
+  const acceptQuote = async (b: any) => {
+    const id = String(b.id || b._id);
+    setBookingBusyId(id);
+    try {
+      const res = await apiFetch(ENDPOINTS.servicesConfirmQuote(id), { method: 'POST', body: JSON.stringify({ acceptQuote: true }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        Alert.alert('Could not confirm', data?.message || 'Please try again in a moment.');
+        return;
+      }
+      applyBooking(id, data.booking);
+    } catch {
+      Alert.alert('Could not confirm', 'Please check your connection and try again.');
+    } finally {
+      if (mountedRef.current) setBookingBusyId(null);
+    }
+  };
+
+  // Refetch every time the tab gains focus (after checkout, cancel, rating...).
+  useFocusEffect(
+    useCallback(() => {
+      if (user) fetchOrders(hasLoadedRef.current ? 'silent' : 'initial');
+      if (user && filter === 'SERVICES') fetchBookings();
+    }, [user, fetchOrders, fetchBookings, filter])
+  );
+
+  // Clear the list when the account signs out.
   useEffect(() => {
-    if (user) {
-      fetchOrders();
+    if (!user) {
+      setOrders([]);
+      setBookings([]);
+      setBookingsLoaded(false);
+      setBookingDetail({});
+      hasLoadedRef.current = false;
     }
   }, [user]);
 
+  // Live status for active orders: join each order room and patch the card in place.
+  const activeIdsKey = orders
+    .filter(o => isActiveStatus(o.status))
+    .map(o => String(o._id || o.id))
+    .sort()
+    .join(',');
+  useEffect(() => {
+    if (!user || !activeIdsKey) return;
+    const ids = activeIdsKey.split(',');
+    let socket: any;
+    try {
+      socket = connectSocket();
+    } catch {
+      return;
+    }
+    const join = () => ids.forEach(id => socket.emit('joinOrder', id));
+    join();
+    const onStatus = (payload: any) => {
+      const pid = String(payload?.id || payload?.orderId || '');
+      if (!pid || !ids.includes(pid) || !payload?.status || !mountedRef.current) return;
+      // A store timeout / cancel refunds Wallet orders: keep the balance on Profile and Checkout current.
+      if (payload.status === 'Cancelled' && Number(payload.refundedToWallet) > 0) refreshUser?.().catch(() => {});
+      setOrders(prev => prev.map(o => (
+        String(o._id || o.id) === pid
+          ? {
+              ...o,
+              status: payload.status,
+              ...(payload.finalPrice != null ? { finalPrice: payload.finalPrice } : {}),
+              ...(payload.reason === 'STORE_TIMEOUT' ? { cancellationReason: 'The store did not accept the order in time' } : {}),
+            }
+          : o
+      )));
+    };
+    socket.on('connect', join);
+    socket.on('statusUpdated', onStatus);
+    return () => {
+      socket.off('connect', join);
+      socket.off('statusUpdated', onStatus);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, activeIdsKey]);
+
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchOrders();
-    setRefreshing(false);
+    await (filter === 'SERVICES' ? fetchBookings() : fetchOrders('silent'));
+    if (mountedRef.current) setRefreshing(false);
   };
 
   const bg = colors.bg;
@@ -168,10 +402,10 @@ export default function OrdersScreen() {
         <AmbientBackground />
         <Text style={{ fontSize: 48, marginBottom: 16 }}>🔐</Text>
         <Text style={{ fontSize: 18, fontWeight: '900', color: txt, letterSpacing: 2, textAlign: 'center', marginBottom: 8 }}>
-          AUTHENTICATION REQUIRED
+          SIGN IN TO SEE YOUR ORDERS
         </Text>
         <Text style={{ fontSize: 12, color: txtSec, fontWeight: '600', textAlign: 'center', marginBottom: 24, lineHeight: 18 }}>
-          Please sign in to access your live order records, OTP verification, and tracking.
+          Sign in to see your orders, delivery PINs and live tracking.
         </Text>
         <TouchableOpacity 
           style={{ 
@@ -200,6 +434,119 @@ export default function OrdersScreen() {
     return isDark ? COLORS.gold : colors.gold;
   };
 
+  const renderServices = () => {
+    if (bookingsLoading && !bookingsLoaded) {
+      return (
+        <View style={{ paddingHorizontal: 16, gap: 12 }}>
+          <ShimmerCard />
+          <ShimmerCard />
+        </View>
+      );
+    }
+    if (bookingsError && bookings.length === 0) {
+      return (
+        <View style={[st.emptyBox, { backgroundColor: cardBg, borderColor: border }]}>
+          <Text style={{ fontSize: 44, marginBottom: 12 }}>📡</Text>
+          <Text style={[st.emptyTitle, { color: txt }]}>Couldn't load your bookings</Text>
+          <Text style={[st.emptyDesc, { color: txtSec }]}>{bookingsError}</Text>
+          <TouchableOpacity style={[st.browseBtn, { backgroundColor: COLORS.gold || '#D4AF7A' }]} activeOpacity={0.85} onPress={fetchBookings}>
+            <Text style={[st.browseBtnText, { color: '#000' }]}>TRY AGAIN 🔄</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    if (bookings.length === 0) {
+      return (
+        <View style={[st.emptyBox, { backgroundColor: cardBg, borderColor: border }]}>
+          <Text style={{ fontSize: 44, marginBottom: 12 }}>🛠️</Text>
+          <Text style={[st.emptyTitle, { color: txt }]}>No service bookings yet</Text>
+          <Text style={[st.emptyDesc, { color: txtSec }]}>
+            Repairs, printouts, laundry and tailoring you book will show up here with their live status.
+          </Text>
+          <TouchableOpacity style={[st.browseBtn, { backgroundColor: COLORS.red }]} activeOpacity={0.85} onPress={() => router.push('/(tabs)/others' as any)}>
+            <Text style={st.browseBtnText}>BROWSE SERVICES →</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    return bookings.map((b, idx) => {
+      const bid = String(b.id || b._id);
+      const detail = bookingDetail[bid] || b;
+      const isOpen = isServiceOpen(b.status);
+      const isExpanded = expanded === bid;
+      const amount = Number(b.finalAmount || b.quotedAmount || 0) || 0;
+      const history: any[] = Array.isArray(detail.trackingHistory) ? detail.trackingHistory : [];
+      const busy = bookingBusyId === bid;
+      const color = b.status === 'COMPLETED' ? COLORS.emerald : b.status === 'CANCELLED' ? '#EF4444' : goldColor;
+      return (
+        <StaggeredSection key={bid} delay={idx * 60} direction="up">
+          <ScalePressable style={[st.card, { backgroundColor: cardBg, borderColor: border }]} onPress={() => toggleBooking(bid)}>
+            <View style={st.cardHeader}>
+              <View style={{ flex: 1, marginRight: 8 }}>
+                <Text style={{ fontSize: 10, color: txtSec, fontWeight: '700', letterSpacing: 1.5 }}>
+                  🛠️ <Text style={{ color: goldColor, fontWeight: '800' }}>BOOKING #{bid.slice(-6).toUpperCase()}</Text>
+                </Text>
+                <Text style={[st.restaurantName, { color: txt }]} numberOfLines={2}>{b.title || 'Service booking'}</Text>
+                <Text style={{ fontSize: 10, color: txtSec, fontWeight: '600' }}>
+                  {[b.pickupSlot, formatWhen(b.createdAt)].filter(Boolean).join(' • ')}
+                </Text>
+              </View>
+              <View style={{ alignItems: 'flex-end', justifyContent: 'center' }}>
+                <Text style={[st.statusBadge, { color }]}>{serviceStatusLabel(b.status).toUpperCase()}</Text>
+                <Text style={[st.price, { color: txt }]}>{amount > 0 ? `₹${amount}` : 'Quote pending'}</Text>
+                {amount > 0 && b.status !== 'COMPLETED' ? (
+                  <Text style={{ fontSize: 9, color: txtSec, fontWeight: '700' }}>estimate</Text>
+                ) : null}
+              </View>
+            </View>
+
+            {isExpanded && (
+              <View style={[st.details, { borderTopColor: border }]}>
+                {detail.description ? (
+                  <Text style={{ fontSize: 11, color: txtSec, fontWeight: '600', marginBottom: 8 }}>{detail.description}</Text>
+                ) : null}
+                {history.map((h: any, i: number) => (
+                  <View key={`h-${i}`} style={{ flexDirection: 'row', gap: 8, paddingVertical: 4 }}>
+                    <Text style={{ fontSize: 10, color: i === history.length - 1 ? goldColor : txtSec }}>●</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 11, color: txt, fontWeight: '800' }}>{serviceStatusLabel(h.stage)}</Text>
+                      {h.note ? <Text style={{ fontSize: 10, color: txtSec, fontWeight: '600' }}>{h.note}</Text> : null}
+                      <Text style={{ fontSize: 9, color: txtSec, fontWeight: '600' }}>{formatWhen(h.timestamp)}</Text>
+                    </View>
+                  </View>
+                ))}
+                <Text style={{ fontSize: 10, color: txtSec, fontWeight: '600', marginTop: 6 }}>
+                  {b.paymentMethod === 'Wallet' ? 'Pay from Zenvy Wallet' : 'Pay in cash when the job is done'}
+                </Text>
+                {b.status === 'DIAGNOSED_QUOTED' && (
+                  <ActionPressable style={{ borderRadius: 16, overflow: 'hidden', marginTop: 12 }} onPress={() => { if (!busy) acceptQuote(b); }} sound="click">
+                    <LinearGradient colors={['#D4AF7A', '#F0D9A8']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={st.trackBtnGradient}>
+                      {busy ? <ActivityIndicator size="small" color="#000" /> : <Text style={st.trackBtnText}>ACCEPT QUOTE ₹{Number(b.quotedAmount) || 0}</Text>}
+                    </LinearGradient>
+                  </ActionPressable>
+                )}
+                {isOpen && (
+                  <TouchableOpacity
+                    disabled={busy}
+                    style={{ marginTop: 12, paddingVertical: 12, borderRadius: 16, borderWidth: 1, borderColor: '#EF4444', alignItems: 'center' }}
+                    onPress={() => cancelBooking(b)}
+                  >
+                    {busy ? <ActivityIndicator size="small" color="#EF4444" /> : (
+                      <Text style={{ fontSize: 10, fontWeight: '900', color: '#EF4444', letterSpacing: 2 }}>CANCEL BOOKING</Text>
+                    )}
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity style={{ marginTop: 10, alignSelf: 'flex-start' }} onPress={() => router.push('/support' as any)}>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: isDark ? goldColor : COLORS.red }}>Need help with this booking? →</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </ScalePressable>
+        </StaggeredSection>
+      );
+    });
+  };
+
   return (
     <View style={[st.container, { backgroundColor: bg }]}>
       <AmbientBackground />
@@ -210,10 +557,10 @@ export default function OrdersScreen() {
         }
       >
         <Text style={[st.pageTitle, { color: txt }]}>MY ORDERS</Text>
-        <Text style={[st.pageSub, { color: txtSec }]}>LIVE TRACKING • ONE-TAP REORDER • OTP CODES</Text>
+        <Text style={[st.pageSub, { color: txtSec }]}>LIVE TRACKING • ONE-TAP REORDER • SERVICE BOOKINGS</Text>
 
         <View style={st.filterRow}>
-          {['ALL', 'ACTIVE', 'PAST'].map((f) => {
+          {['ALL', 'ACTIVE', 'PAST', 'SERVICES'].map((f) => {
             const isActive = filter === f;
             return (
               <TouchableOpacity
@@ -238,24 +585,39 @@ export default function OrdersScreen() {
           })}
         </View>
 
-        {loading ? (
-          <View style={{ paddingTop: 60, alignItems: 'center' }}>
-            <ActivityIndicator size="large" color={goldColor} />
-            <Text style={{ color: txtSec, fontSize: 10, fontWeight: '700', letterSpacing: 2, marginTop: 12 }}>LOADING YOUR ORDERS...</Text>
+        {filter === 'SERVICES' ? renderServices() : null}
+
+        {filter !== 'SERVICES' && error && orders.length > 0 && !loading ? (
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => fetchOrders('silent')}
+            style={{ marginHorizontal: 16, marginBottom: 12, padding: 10, borderRadius: 12, backgroundColor: isDark ? 'rgba(239,68,68,0.12)' : 'rgba(239,68,68,0.08)' }}
+          >
+            <Text style={{ color: '#EF4444', fontSize: 11, fontWeight: '700', textAlign: 'center' }}>
+              Couldn't refresh your orders. Tap to try again.
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+
+        {filter === 'SERVICES' ? null : loading ? (
+          <View style={{ paddingHorizontal: 16, gap: 12 }}>
+            <ShimmerCard />
+            <ShimmerCard />
+            <ShimmerCard />
           </View>
         ) : error && orders.length === 0 ? (
           <View style={[st.emptyBox, { backgroundColor: cardBg, borderColor: border }]}>
             <Text style={{ fontSize: 44, marginBottom: 12 }}>📡</Text>
-            <Text style={[st.emptyTitle, { color: txt }]}>Order Sync Unavailable</Text>
+            <Text style={[st.emptyTitle, { color: txt }]}>Couldn't load your orders</Text>
             <Text style={[st.emptyDesc, { color: txtSec }]}>
               {error}
             </Text>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[st.browseBtn, { backgroundColor: COLORS.gold || '#D4AF7A' }]}
               activeOpacity={0.85}
-              onPress={fetchOrders}
+              onPress={() => fetchOrders('initial')}
             >
-              <Text style={[st.browseBtnText, { color: '#000' }]}>RETRY RADAR SYNC 🔄</Text>
+              <Text style={[st.browseBtnText, { color: '#000' }]}>TRY AGAIN 🔄</Text>
             </TouchableOpacity>
           </View>
         ) : orders.length === 0 ? (
@@ -275,21 +637,60 @@ export default function OrdersScreen() {
               <Text style={st.browseBtnText}>EXPLORE CAMPUS EATS →</Text>
             </TouchableOpacity>
           </View>
+        ) : !loading && orders.filter(o => {
+          if (filter === 'ACTIVE') return o.status !== 'Delivered' && o.status !== 'Cancelled';
+          if (filter === 'PAST') return o.status === 'Delivered' || o.status === 'Cancelled';
+          return true;
+        }).length === 0 ? (
+          <View style={[st.emptyBox, { backgroundColor: cardBg, borderColor: border }]}>
+            <Text style={{ fontSize: 44, marginBottom: 12 }}>{filter === 'ACTIVE' ? '🛵' : '📋'}</Text>
+            <Text style={[st.emptyTitle, { color: txt }]}>
+              {filter === 'ACTIVE' ? 'No Active Orders' : 'No Past Orders Found'}
+            </Text>
+            <Text style={[st.emptyDesc, { color: txtSec }]}>
+              {filter === 'ACTIVE' 
+                ? 'You do not have any ongoing deliveries right now. Order fresh food or canteen snacks anytime!'
+                : 'You have not completed any past orders in this view.'}
+            </Text>
+            <TouchableOpacity 
+              style={[st.browseBtn, { backgroundColor: COLORS.red }]}
+              activeOpacity={0.85}
+              onPress={() => filter === 'ACTIVE' ? router.push('/(tabs)' as any) : setFilter('ALL')}
+            >
+              <Text style={st.browseBtnText}>
+                {filter === 'ACTIVE' ? 'ORDER FRESH BITES →' : 'VIEW ALL ORDERS ➔'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         ) : null}
 
-        {!loading && orders.filter(o => {
+        {filter !== 'SERVICES' && !loading && orders.filter(o => {
           if (filter === 'ACTIVE') return o.status !== 'Delivered' && o.status !== 'Cancelled';
           if (filter === 'PAST') return o.status === 'Delivered' || o.status === 'Cancelled';
           return true;
         }).map((o, idx) => {
           const id = (o._id || o.id || '').slice(-6).toUpperCase();
           const isExpanded = expanded === (o._id || o.id);
-          let orderItems: any[] = [];
-          if (Array.isArray(o.items)) {
-            orderItems = o.items;
-          } else if (typeof o.items === 'string') {
-            try { orderItems = JSON.parse(o.items); } catch { orderItems = []; }
-          }
+          const orderItems: any[] = parseItems(o.items);
+          const breakdown = parseBreakdown(o.priceBreakdown);
+          const charged = amountCharged(o);
+          const restaurantName = o.restaurantName || o.restaurant?.name || (o.category === 'Mega Basket' ? 'Mega Basket' : 'Zenvy order');
+          const needsRating = o.status === 'Delivered' && o.rating == null;
+          // Customer cancels carry no reason (or the default one); store / system cancels explain themselves.
+          const cancelReason = o.status === 'Cancelled' && typeof o.cancellationReason === 'string'
+            && o.cancellationReason.trim() && !/by customer|by user/i.test(o.cancellationReason)
+            ? o.cancellationReason.trim()
+            : null;
+          const showPin = !!o.deliveryPin && PIN_STATUSES.includes(o.status);
+          const subtotal = Number(breakdown?.subtotal ?? o.totalPrice ?? 0) || 0;
+          const deliveryFee = Number(breakdown?.deliveryFee ?? o.deliveryFee ?? 0) || 0;
+          const discounts: any[] = Array.isArray(breakdown?.discounts)
+            ? breakdown.discounts.filter((d: any) => Number(d?.amount) > 0)
+            : [
+                ...(Number(o.batchDiscount) > 0 ? [{ label: 'Shared delivery discount', amount: Number(o.batchDiscount) }] : []),
+                ...(Number(o.gateDiscount) > 0 ? [{ label: 'Perk discount', amount: Number(o.gateDiscount) }] : []),
+              ];
+          const paymentLabel = o.paymentMethod === 'Wallet' ? 'Paid from Zenvy Wallet' : o.paymentMethod === 'COD' ? 'Cash on Delivery' : null;
 
           return (
             <StaggeredSection key={o._id || o.id} delay={idx * 80} direction="up">
@@ -303,7 +704,7 @@ export default function OrdersScreen() {
                     {o.status === 'Cancelled' ? '✕' : o.status === 'Delivered' ? '✓' : '◉'}{' '}
                     <Text style={{ color: goldColor, fontWeight: '800' }}>ORDER #{id}</Text>
                   </Text>
-                  <Text style={[st.restaurantName, { color: txt }]}>{o.restaurant || 'Zenvy Partner'}</Text>
+                  <Text style={[st.restaurantName, { color: txt }]} numberOfLines={1}>{restaurantName}</Text>
                   <Text style={{ fontSize: 10, color: txtSec, fontWeight: '600' }}>{orderItems.length} item{orderItems.length !== 1 ? 's' : ''} • {o.createdAt ? new Date(o.createdAt).toLocaleDateString() : ''}</Text>
                 </View>
                 <View style={{ alignItems: 'flex-end', justifyContent: 'center' }}>
@@ -311,9 +712,9 @@ export default function OrdersScreen() {
                     {o.status !== 'Delivered' && o.status !== 'Cancelled' && (
                       <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#10B981' }} />
                     )}
-                    <Text style={[st.statusBadge, { color: statusColor(o.status) }]}>{(o.status || 'PENDING').toUpperCase()}</Text>
+                    <Text style={[st.statusBadge, { color: statusColor(o.status) }]}>{statusLabel(o.status).toUpperCase()}</Text>
                   </View>
-                  <Text style={[st.price, { color: txt }]}>₹{o.totalPrice || 0}</Text>
+                  <Text style={[st.price, { color: txt }]}>₹{charged}</Text>
                 </View>
               </View>
 
@@ -336,29 +737,102 @@ export default function OrdersScreen() {
                   }}
                 >
                   <Text style={{ fontSize: 10, fontWeight: '900', color: isDark ? goldColor : COLORS.red, letterSpacing: 1 }}>
-                    📍 LIVE MISSION IN PROGRESS • TRACK NOW
+                    📍 {statusLabel(o.status).toUpperCase()} • TRACK ORDER
                   </Text>
                   <Text style={{ fontSize: 11, fontWeight: '900', color: isDark ? goldColor : COLORS.red }}>→</Text>
                 </TouchableOpacity>
               )}
 
+              {/* Rate a delivered order (the tracking screen opens the rating sheet) */}
+              {needsRating && !isExpanded && (
+                <TouchableOpacity
+                  style={{
+                    marginTop: 10,
+                    paddingVertical: 8,
+                    paddingHorizontal: 12,
+                    borderRadius: 12,
+                    backgroundColor: isDark ? 'rgba(212,175,122,0.12)' : 'rgba(201,151,46,0.08)',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
+                  onPress={(e) => {
+                    e.stopPropagation?.();
+                    router.push(`/tracking/${o._id || o.id}` as any);
+                  }}
+                >
+                  <Text style={{ fontSize: 10, fontWeight: '900', color: goldColor, letterSpacing: 1 }}>⭐ RATE THIS ORDER</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '900', color: goldColor }}>→</Text>
+                </TouchableOpacity>
+              )}
+
               {isExpanded && (
                 <View style={[st.details, { borderTopColor: border }]}>
-                  {o.deliveryOTP && (
+                  {showPin && (
                     <View style={[st.otpSection, { borderColor: isDark ? 'rgba(212,175,122,0.3)' : 'rgba(201,151,46,0.3)', backgroundColor: isDark ? 'rgba(212,175,122,0.08)' : 'rgba(201,151,46,0.08)' }]}>
-                      <Text style={{ fontSize: 9, fontWeight: '900', color: goldColor, letterSpacing: 2, marginBottom: 4 }}>DELIVERY OTP PIN</Text>
+                      <Text style={{ fontSize: 9, fontWeight: '900', color: goldColor, letterSpacing: 2, marginBottom: 4 }}>DELIVERY PIN</Text>
                       <View style={st.otpBox}>
-                        <Text style={[st.otpText, { color: goldColor }]}>{o.deliveryOTP}</Text>
-                        <Text style={{ fontSize: 9, color: txtSec, fontWeight: '700', lineHeight: 14 }}>VERIFICATION PIN{'\n'}Show to Delivery Partner</Text>
+                        <Text style={[st.otpText, { color: goldColor }]}>{o.deliveryPin}</Text>
+                        <Text style={{ fontSize: 9, color: txtSec, fontWeight: '700', lineHeight: 14 }}>Share this PIN with your{'\n'}rider at handover only</Text>
                       </View>
                     </View>
                   )}
-                  {orderItems.map((item: any, i: number) => (
-                    <View key={i} style={st.itemRow}>
-                      <Text style={{ fontSize: 11, color: txt, fontWeight: '600' }}>{item.quantity}x  {item.name}</Text>
-                      <Text style={{ fontSize: 11, color: txt, fontWeight: '800' }}>₹{(item.price || 0) * (item.quantity || 1)}</Text>
+                  {cancelReason ? (
+                    <Text style={{ fontSize: 11, color: '#EF4444', fontWeight: '700', marginBottom: 8 }}>{cancelReason}</Text>
+                  ) : null}
+                  {orderItems.map((item: any, i: number) => {
+                    const qty = Number(item.quantity) || 1;
+                    const line = Number(item.lineTotal ?? (Number(item.unitPrice ?? item.price ?? 0) * qty)) || 0;
+                    return (
+                      <View key={i} style={st.itemRow}>
+                        <Text style={{ fontSize: 11, color: txt, fontWeight: '600', flex: 1, marginRight: 8 }} numberOfLines={2}>{qty}x  {item.name}</Text>
+                        <Text style={{ fontSize: 11, color: txt, fontWeight: '800' }}>₹{line}</Text>
+                      </View>
+                    );
+                  })}
+                  <View style={{ marginTop: 8, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: border }}>
+                    <View style={st.itemRow}>
+                      <Text style={{ fontSize: 11, color: txtSec, fontWeight: '600' }}>Item total</Text>
+                      <Text style={{ fontSize: 11, color: txtSec, fontWeight: '700' }}>₹{subtotal}</Text>
                     </View>
-                  ))}
+                    {deliveryFee > 0 && (
+                      <View style={st.itemRow}>
+                        <Text style={{ fontSize: 11, color: txtSec, fontWeight: '600' }}>Delivery fee</Text>
+                        <Text style={{ fontSize: 11, color: txtSec, fontWeight: '700' }}>₹{deliveryFee}</Text>
+                      </View>
+                    )}
+                    {discounts.map((d: any, i: number) => (
+                      <View key={`d-${i}`} style={st.itemRow}>
+                        <Text style={{ fontSize: 11, color: COLORS.emerald, fontWeight: '600', flex: 1, marginRight: 8 }} numberOfLines={1}>{d.label || 'Discount'}</Text>
+                        <Text style={{ fontSize: 11, color: COLORS.emerald, fontWeight: '700' }}>−₹{Number(d.amount)}</Text>
+                      </View>
+                    ))}
+                    <View style={st.itemRow}>
+                      <Text style={{ fontSize: 12, color: txt, fontWeight: '900' }}>{o.status === 'Cancelled' ? 'Order total' : 'Total'}</Text>
+                      <Text style={{ fontSize: 12, color: txt, fontWeight: '900' }}>₹{charged}</Text>
+                    </View>
+                    {paymentLabel && (
+                      <Text style={{ fontSize: 10, color: txtSec, fontWeight: '600', marginTop: 2 }}>
+                        {paymentLabel}
+                        {o.status === 'Cancelled' && o.paymentMethod === 'Wallet' ? ' • refunded to Wallet' : ''}
+                        {o.status === 'Cancelled' && o.paymentMethod === 'COD' ? ' • no payment taken' : ''}
+                      </Text>
+                    )}
+                  </View>
+                  <TouchableOpacity
+                    style={{ marginTop: 10, alignSelf: 'flex-start' }}
+                    onPress={() => router.push({ pathname: '/support', params: { orderId: String(o._id || o.id) } } as any)}
+                  >
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: isDark ? goldColor : COLORS.red }}>Need help with this order? →</Text>
+                  </TouchableOpacity>
+                  {needsRating && (
+                    <TouchableOpacity
+                      style={{ marginTop: 8, alignSelf: 'flex-start' }}
+                      onPress={() => router.push(`/tracking/${o._id || o.id}` as any)}
+                    >
+                      <Text style={{ fontSize: 11, fontWeight: '800', color: goldColor }}>⭐ Rate this order →</Text>
+                    </TouchableOpacity>
+                  )}
                   {o.status !== 'Delivered' && o.status !== 'Cancelled' ? (
                     <ActionPressable style={{ borderRadius: 16, overflow: 'hidden', marginTop: 12 }} onPress={() => router.push(`/tracking/${o._id || o.id}` as any)} sound="click">
                       <LinearGradient
@@ -367,7 +841,7 @@ export default function OrdersScreen() {
                         end={{ x: 1, y: 1 }}
                         style={st.trackBtnGradient}
                       >
-                        <Text style={st.trackBtnText}>TRACK LIVE LOCATION →</Text>
+                        <Text style={st.trackBtnText}>TRACK ORDER →</Text>
                       </LinearGradient>
                     </ActionPressable>
                   ) : (
@@ -378,7 +852,11 @@ export default function OrdersScreen() {
                         end={{ x: 1, y: 1 }}
                         style={st.trackBtnGradient}
                       >
-                        <Text style={[st.trackBtnText, { color: '#fff' }]}>REORDER THIS MEAL 🔁</Text>
+                        {reorderingId === (o._id || o.id) ? (
+                          <ActivityIndicator size="small" color="#fff" />
+                        ) : (
+                          <Text style={[st.trackBtnText, { color: '#fff' }]}>REORDER 🔁</Text>
+                        )}
                       </LinearGradient>
                     </ActionPressable>
                   )}
@@ -405,7 +883,7 @@ const st = StyleSheet.create({
   emptyDesc: { fontSize: 13, textAlign: 'center', lineHeight: 20, marginBottom: 24, paddingHorizontal: 12 },
   browseBtn: { paddingHorizontal: 24, paddingVertical: 14, borderRadius: 16, ...SHADOWS.redGlow },
   browseBtnText: { color: '#FFFFFF', fontSize: 11, fontWeight: '900', letterSpacing: 1.5 },
-  filterRow: { flexDirection: 'row', paddingHorizontal: 16, marginBottom: 20, gap: 10 },
+  filterRow: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, marginBottom: 20, gap: 8 },
   filterBtn: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, borderWidth: 1 },
   filterBtnText: { fontSize: 11, fontWeight: '800', letterSpacing: 1 },
   card: { marginHorizontal: 16, marginBottom: 12, borderRadius: 20, padding: 16, borderWidth: 1, ...SHADOWS.card },

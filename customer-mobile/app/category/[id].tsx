@@ -1,115 +1,45 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Image,
   Dimensions,
   Platform,
   Alert,
   FlatList,
   ActivityIndicator,
   TextInput,
-  Modal
+  Modal,
+  RefreshControl,
+  KeyboardAvoidingView,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { COLORS, SHADOWS, RADIUS } from '../../constants/theme';
+import { COLORS } from '../../constants/theme';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
-import { useCart } from '../../context/CartContext';
-import { API_URL, ENDPOINTS } from '../../constants/api';
+import { useCart, MAX_ITEM_QTY } from '../../context/CartContext';
+import { API_URL } from '../../constants/api';
 import { apiFetch } from '../../utils/auth';
-import DopaminePressable, { ActionPressable } from '../../components/DopaminePressable';
 import SafeImage from '../../components/SafeImage';
+import { ShimmerCard } from '../../components/ShimmerLoader';
 
 const { width: SW } = Dimensions.get('window');
 
-const MOCK_DATA: Record<string, any[]> = {
-  electronics: [
-    { id: 'elec-1', name: '65W GaN Fast Type-C Charger', price: 1499, originalPrice: 2499, discount: '40% OFF', image: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?w=600&q=80', desc: 'Universal fast charging for MacBook, Dell, iPhone & Android' },
-    { id: 'elec-2', name: '20,000mAh Fast Power Bank', price: 1799, originalPrice: 2999, discount: '40% OFF', image: 'https://images.unsplash.com/photo-1609091839311-d5368f9bc14a?w=600&q=80', desc: '22.5W dual output, power your devices all day during classes' },
-    { id: 'elec-3', name: '4-Socket Surge Extension Board', price: 499, originalPrice: 899, discount: '44% OFF', image: 'https://images.unsplash.com/photo-1621252179027-94459d278660?w=600&q=80', desc: '2-meter heavy wire with individual switches & surge safety' },
-    { id: 'elec-4', name: 'Scientific Calculator (fx-991EX)', price: 1250, originalPrice: 1595, discount: '21% OFF', image: 'https://images.unsplash.com/photo-1594980596870-8caa52a79d00?w=600&q=80', desc: 'Must-have for engineering mathematics and exams' },
-    { id: 'elec-5', name: 'Ergonomic Laptop Cooling Stand', price: 699, originalPrice: 1299, discount: '46% OFF', image: 'https://images.unsplash.com/photo-1527864550417-7fd91fc51a46?w=600&q=80', desc: 'Foldable aluminum stand for study tables & hostel beds' },
-    { id: 'elec-6', name: 'ANC Wireless Earbuds', price: 1499, originalPrice: 2999, discount: '50% OFF', image: 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=600&q=80', desc: 'Active noise cancellation for late-night hostel study sessions' },
-    { id: 'elec-7', name: 'Rechargeable LED Study Lamp', price: 549, originalPrice: 999, discount: '45% OFF', image: 'https://images.unsplash.com/photo-1534972195531-a756b1126f24?w=600&q=80', desc: 'Eye-care warm light with 3 brightness modes and touch sensor' },
-    { id: 'elec-8', name: 'Braided Type-C to Type-C Cable', price: 299, originalPrice: 599, discount: '50% OFF', image: 'https://images.unsplash.com/photo-1585338107529-13afc5f02586?w=600&q=80', desc: '100W PD charging & 480Mbps fast data sync' },
-    { id: 'elec-9', name: 'Type-C 7-in-1 Multiport Hub', price: 1299, originalPrice: 2199, discount: '41% OFF', image: 'https://images.unsplash.com/photo-1628155930542-40a0291f00f0?w=600&q=80', desc: 'HDMI 4K, USB 3.0, SD Card reader for laptops without ports' },
-    { id: 'elec-10', name: 'Wireless Keyboard & Mouse Combo', price: 899, originalPrice: 1599, discount: '43% OFF', image: 'https://images.unsplash.com/photo-1587829741301-dc798b83add3?w=600&q=80', desc: 'Quiet keystrokes so you don\'t disturb your roommate' },
-  ],
-  mattresses: [
-    { id: 'mat-1', name: 'Single Bed Foam Mattress (4-Inch)', price: 1899, originalPrice: 3200, discount: '40% OFF', image: 'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=600&q=80', desc: 'High-density foam, ideal for standard hostel bed frames (72x36 in)' },
-    { id: 'mat-2', name: 'Orthopedic Mattress Topper', price: 1199, originalPrice: 1999, discount: '40% OFF', image: 'https://images.unsplash.com/photo-1584100936595-c0654b55a2e2?w=600&q=80', desc: 'Adds ultra comfort to hard hostel mattresses. Back pain relief' },
-    { id: 'mat-3', name: 'Pure Cotton Bedsheet + Pillow Cover', price: 449, originalPrice: 799, discount: '43% OFF', image: 'https://images.unsplash.com/photo-1582533561751-ef6f6ab93a2e?w=600&q=80', desc: 'Breathable 100% cotton, non-fading fabric for hostel rooms' },
-    { id: 'mat-4', name: 'Microfiber Plush Sleep Pillow', price: 299, originalPrice: 599, discount: '50% OFF', image: 'https://images.unsplash.com/photo-1629949009765-40fc74c9521b?w=600&q=80', desc: 'Soft neck support with anti-dustmite casing' },
-    { id: 'mat-5', name: '20L Heavy Duty Bucket & Mug Set', price: 249, originalPrice: 450, discount: '44% OFF', image: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=600&q=80', desc: 'Unbreakable plastic hostel bathroom essential' },
-    { id: 'mat-6', name: 'Cloth Drying Rack (Foldable)', price: 799, originalPrice: 1499, discount: '46% OFF', image: 'https://images.unsplash.com/photo-1582735689369-4fe89db7114c?w=600&q=80', desc: 'Rust-proof stainless steel for drying clothes inside hostel balcony' },
-    { id: 'mat-7', name: 'Clothes Hangers Pack (12 Pieces)', price: 149, originalPrice: 299, discount: '50% OFF', image: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=600&q=80', desc: 'Heavy plastic non-slip coat & shirt hangers for hostel almirahs' },
-    { id: 'mat-8', name: 'Foldable Mesh Laundry Basket', price: 199, originalPrice: 399, discount: '50% OFF', image: 'https://images.unsplash.com/photo-1517677208171-0bc6725a3e60?w=600&q=80', desc: 'Pop-up dirty clothes organizer bag' },
-    { id: 'mat-9', name: 'Mosquito Net Canopy for Bed', price: 399, originalPrice: 799, discount: '50% OFF', image: 'https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=600&q=80', desc: 'Easy setup pop-up net for peaceful sleep' },
-  ],
-  groceries: [
-    { id: 'groc-1', name: 'Maggi 2-Minute Noodles (Pack of 12)', price: 168, originalPrice: 180, discount: '7% OFF', image: 'https://images.unsplash.com/photo-1612927601601-6638404737ce?w=600&q=80', desc: 'Hostel lifeline! Special masala noodles' },
-    { id: 'groc-2', name: 'Buldak 2x Spicy Korean Ramen', price: 135, originalPrice: 150, discount: '10% OFF', image: 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=600&q=80', desc: 'Ultra spicy late night craving treat' },
-    { id: 'groc-3', name: 'Amul Taaza Toned Milk (1 Litre)', price: 60, originalPrice: 65, discount: '8% OFF', image: 'https://images.unsplash.com/photo-1563636619-e9143da7973b?w=600&q=80', desc: 'Homogenized UHT milk with long shelf life' },
-    { id: 'groc-4', name: 'Nutella Hazelnut Cocoa Spread (350g)', price: 340, originalPrice: 390, discount: '12% OFF', image: 'https://images.unsplash.com/photo-1588195538326-c5b1e9f80a1b?w=600&q=80', desc: 'Delicious cocoa spread for morning bread' },
-    { id: 'groc-5', name: 'Red Bull Energy Drink (4-Pack)', price: 460, originalPrice: 500, discount: '8% OFF', image: 'https://images.unsplash.com/photo-1622543925917-763c34d1a86e?w=600&q=80', desc: 'Vitalizes body & mind during semester exams' },
-    { id: 'groc-6', name: 'Dark Fantasy Choco Fills (Pack of 3)', price: 120, originalPrice: 150, discount: '20% OFF', image: 'https://images.unsplash.com/photo-1558961363-fa8fdf82db35?w=600&q=80', desc: 'Molten choco center cookies' },
-    { id: 'groc-7', name: 'Bisleri Mineral Water Can (20 Litres)', price: 70, originalPrice: 90, discount: '22% OFF', image: 'https://images.unsplash.com/photo-1550572017-edd951aa8f72?w=600&q=80', desc: 'Delivered directly to your hostel block' },
-    { id: 'groc-8', name: 'Quaker Instant Oats (1kg)', price: 185, originalPrice: 220, discount: '16% OFF', image: 'https://images.unsplash.com/photo-1586444248902-2f64eddc13df?w=600&q=80', desc: 'Quick 3-minute healthy breakfast' },
-  ],
-  repairs: [
-    { id: 'rep-1', name: 'Laptop Deep Clean & Thermal Paste', price: 499, originalPrice: 899, discount: '44% OFF', image: 'https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?w=600&q=80', desc: 'Fix overheating, noisy fans and boost speed with Arctic MX-4 paste' },
-    { id: 'rep-2', name: 'Laptop Screen Replacement', price: 2999, originalPrice: 4500, discount: '33% OFF', image: 'https://images.unsplash.com/photo-1593642632823-8f785ba67e45?w=600&q=80', desc: 'Original FHD IPS panels for HP, Dell, Lenovo, Asus, Acer' },
-    { id: 'rep-3', name: 'Laptop Keyboard & Trackpad Fix', price: 999, originalPrice: 1600, discount: '37% OFF', image: 'https://images.unsplash.com/photo-1587829741301-dc798b83add3?w=600&q=80', desc: 'Fix sticky, unresponsive, or water-damaged keys' },
-    { id: 'rep-4', name: 'SSD Upgrade & OS Migration (512GB)', price: 2499, originalPrice: 3800, discount: '34% OFF', image: 'https://images.unsplash.com/photo-1597872200969-2b65d56bd16b?w=600&q=80', desc: 'Make your slow laptop 10x faster with NVMe SSD + Genuine Windows' },
-    { id: 'rep-5', name: 'Mobile Display & Glass Repair', price: 1499, originalPrice: 2500, discount: '40% OFF', image: 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=600&q=80', desc: 'OEM quality screens for iPhone, OnePlus, Samsung, Redmi' },
-    { id: 'rep-6', name: 'Doorstep Tech Diagnosis & Pickup', price: 99, originalPrice: 250, discount: '60% OFF', image: 'https://images.unsplash.com/photo-1581092335397-9583fe92d232?w=600&q=80', desc: 'Executive inspects device in your hostel room' },
-  ],
-  print: [
-    { id: 'pr-1', name: 'Document Printout (Black & White)', price: 2, originalPrice: 3, discount: '33% OFF', image: 'https://images.unsplash.com/photo-1586075010923-2dd4570fb338?w=600&q=80', desc: 'Crisp 75 GSM laser printing (Price per page)' },
-    { id: 'pr-2', name: 'High-Res Color Printout', price: 8, originalPrice: 15, discount: '46% OFF', image: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?w=600&q=80', desc: 'Vibrant color prints for diagrams, presentations & assignments' },
-    { id: 'pr-3', name: 'Spiral Project Binding', price: 35, originalPrice: 60, discount: '41% OFF', image: 'https://images.unsplash.com/photo-1531346878377-a5447cb02621?w=600&q=80', desc: 'Transparent plastic sheet front & back with sturdy coil' },
-    { id: 'pr-4', name: 'Hardbound Golden Embossed Thesis', price: 250, originalPrice: 400, discount: '37% OFF', image: 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=600&q=80', desc: 'Official final-year engineering / PG dissertation hard binding' },
-    { id: 'pr-5', name: 'Engineering Drawing A3 Prints', price: 15, originalPrice: 25, discount: '40% OFF', image: 'https://images.unsplash.com/photo-1503387762-592deb58ef4e?w=600&q=80', desc: 'CAD sheets, electrical schematics and blueprints' },
-  ],
-  stationary: [
-    { id: 'stat-1', name: 'Premium Spiral Notebooks (3 Pcs)', price: 150, originalPrice: 220, discount: '31% OFF', image: 'https://images.unsplash.com/photo-1531346878377-a5be20888e57?q=80&w=600&auto=format&fit=crop', desc: 'Set of 3 spiral notebooks, 200 pages' },
-    { id: 'stat-2', name: 'Gel & Ball Pens Pack (12 Pcs)', price: 80, originalPrice: 120, discount: '33% OFF', image: 'https://images.unsplash.com/photo-1585040316886-4f51e0417935?q=80&w=600&auto=format&fit=crop', desc: '12 vibrant colors for notes and charts' },
-    { id: 'stat-3', name: 'Sticky Notes Neon Bundle (500 Sheets)', price: 120, originalPrice: 180, discount: '33% OFF', image: 'https://images.unsplash.com/photo-1586075010923-2dd4570fb338?q=80&w=600&auto=format&fit=crop', desc: '5 neon colors, 500 sheets total' },
-    { id: 'stat-4', name: 'Laboratory Apron (White Cotton)', price: 299, originalPrice: 499, discount: '40% OFF', image: 'https://images.unsplash.com/photo-1584483766114-2cea6facdf57?w=600&q=80', desc: 'Standard lab coat for chemistry & biology experiments' },
-  ],
-  laundry: [
-    { id: 'laun-1', name: 'Wash & Fold Laundry (Per kg)', price: 60, originalPrice: 80, discount: '25% OFF', image: 'https://images.unsplash.com/photo-1582735689369-4fe89db7114c?q=80&w=600&auto=format&fit=crop', desc: 'Standard machine wash and neat fold' },
-    { id: 'laun-2', name: 'Wash & Steam Iron (Per kg)', price: 90, originalPrice: 120, discount: '25% OFF', image: 'https://images.unsplash.com/photo-1590393802821-396a84c8a209?q=80&w=600&auto=format&fit=crop', desc: 'Complete laundry service delivered crisp' },
-    { id: 'laun-3', name: 'Sneaker Deep Cleaning Spa', price: 200, originalPrice: 350, discount: '42% OFF', image: 'https://images.unsplash.com/photo-1608231387042-66d1773070a5?q=80&w=600&auto=format&fit=crop', desc: 'Removes stains, soles whitening, sanitized' },
-    { id: 'laun-4', name: 'Heavy Blanket / Quilt Wash', price: 300, originalPrice: 450, discount: '33% OFF', image: 'https://images.unsplash.com/photo-1585058177114-f89a9f24ba22?q=80&w=600&auto=format&fit=crop', desc: 'Heavy winter blanket & comforter wash' },
-  ],
-  pharmacy: [
-    { id: 'phar-1', name: 'Paracetamol 500mg (Strip of 10)', price: 30, image: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ad?q=80&w=600&auto=format&fit=crop', desc: 'Fever and headache pain relief' },
-    { id: 'phar-2', name: 'Volini Pain Relief Fast Spray', price: 160, image: 'https://images.unsplash.com/photo-1576602976047-174e57a47881?q=80&w=600&auto=format&fit=crop', desc: 'Instant relief for backache and sports sprains' },
-    { id: 'phar-3', name: 'First Aid Emergency Box Kit', price: 350, image: 'https://images.unsplash.com/photo-1603398938378-e54eab446dde?q=80&w=600&auto=format&fit=crop', desc: 'Bandages, Dettol antiseptic, cotton, burnol' },
-    { id: 'phar-4', name: 'Electral ORS Hydration (5 Packs)', price: 110, image: 'https://images.unsplash.com/photo-1614735241165-6756e1df61ab?q=80&w=600&auto=format&fit=crop', desc: 'WHO approved formula for quick energy & rehydration' },
-  ],
-  rentals: [
-    { id: 'coride-1', name: 'Campus to Vijayawada Station (Bike Pool)', price: 80, originalPrice: 150, discount: '47% OFF', image: 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=600&q=80', desc: 'Riding with 3rd Year CSE student. Helmet provided. 5:30 PM slot.' },
-    { id: 'coride-2', name: 'Weekend Mall Drop & Return (Car Pool)', price: 120, originalPrice: 250, discount: '52% OFF', image: 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?w=600&q=80', desc: 'AC Car ride to PVP Square / Trendset Mall. 3 seats open.' },
-    { id: 'coride-3', name: 'Gannavaram Airport Drop (Cab Pool)', price: 350, originalPrice: 800, discount: '56% OFF', image: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?w=600&q=80', desc: 'Early morning flight share with hostel mates. Split luggage space.' },
-    { id: 'coride-4', name: 'Campus Gear Cycle Rental (Daily)', price: 49, originalPrice: 99, discount: '50% OFF', image: 'https://images.unsplash.com/photo-1485965120184-e220f721d03e?w=600&q=80', desc: 'Geared bicycle with lock for moving between academic blocks.' },
-    { id: 'coride-5', name: 'Electric Scooter (Weekly Pass)', price: 399, originalPrice: 700, discount: '43% OFF', image: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=600&q=80', desc: 'Battery charged, 40km range for daily campus and mess transit.' },
-  ],
-  tailoring: [
-    { id: 'tailor-1', name: 'Jeans & Trouser Length Alteration', price: 60, originalPrice: 100, discount: '40% OFF', image: 'https://images.unsplash.com/photo-1541099649105-f69ad21f3246?w=600&q=80', desc: 'Bottom shortening & neat machine hem stitch for denim & formals' },
-    { id: 'tailor-2', name: 'Shirt / Kurti Fitting & Alteration', price: 80, originalPrice: 150, discount: '46% OFF', image: 'https://images.unsplash.com/photo-1598033129183-c4f50c736f10?w=600&q=80', desc: 'Side taper and chest tightening for campus interview formals' },
-    { id: 'tailor-3', name: 'Lab Coat Resizing & Name Tag Stitch', price: 75, originalPrice: 120, discount: '37% OFF', image: 'https://images.unsplash.com/photo-1584483766114-2cea6facdf57?w=600&q=80', desc: 'Sleeve short & custom department embroidery name badge' },
-    { id: 'tailor-4', name: 'Heavy Metal Zipper Replacement', price: 50, originalPrice: 90, discount: '44% OFF', image: 'https://images.unsplash.com/photo-1512436991641-6745cdb1723f?w=600&q=80', desc: 'Heavy brass/metal runner zipper for hoodies, jackets & pants' },
-    { id: 'tailor-5', name: 'Button Attachment & Seam Repair', price: 30, originalPrice: 50, discount: '40% OFF', image: 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=600&q=80', desc: 'Reinforced stitch for pockets, belt loops & formal buttons' },
-    { id: 'tailor-6', name: 'Custom Fest Kurti / Blouse Stitching', price: 299, originalPrice: 500, discount: '40% OFF', image: 'https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?w=600&q=80', desc: 'Traditional fest wear stitched to exact body measurements' },
-    { id: 'tailor-7', name: 'Doorstep Measurement & Pickup', price: 40, originalPrice: 80, discount: '50% OFF', image: 'https://images.unsplash.com/photo-1581092335397-9583fe92d232?w=600&q=80', desc: 'Campus tailor executive takes measurements in hostel lobby' },
-  ],
+// Max attachment we send inline with a booking (the server accepts JSON bodies up to 10 MB; base64 adds ~33%).
+const MAX_ATTACHMENT_BYTES = 6 * 1024 * 1024;
+
+// App category ids that point at the same shelf
+const CATEGORY_ALIASES: Record<string, string> = {
+  grocery: 'groceries',
+  express: 'groceries',
+  kirana: 'groceries',
+  stationery: 'stationary',
+  bedding: 'mattresses',
+  rental: 'rentals',
 };
 
 const CATEGORY_META: Record<string, { title: string; subtitle: string; icon: string }> = {
@@ -117,34 +47,92 @@ const CATEGORY_META: Record<string, { title: string; subtitle: string; icon: str
   mattresses: { title: 'Mattresses & Bedding', subtitle: 'ROOM ESSENTIALS & MOVE-IN GEAR', icon: '🛏️' },
   groceries: { title: 'Kirana & Late-Night Mart', subtitle: 'SNACKS, NOODLES, DRINKS & ESSENTIALS', icon: '🛒' },
   repairs: { title: 'Laptop & Tech Repairs', subtitle: 'DOORSTEP DIAGNOSTICS & HARDWARE FIX', icon: '💻' },
-  print: { title: '24/7 Printout & Xerox', subtitle: 'ASSIGNMENTS, THESIS BINDING & CAD', icon: '🖨️' },
+  print: { title: 'Printout & Xerox', subtitle: 'ASSIGNMENTS, THESIS BINDING & CAD', icon: '🖨️' },
   stationary: { title: 'Stationery & Study Kits', subtitle: 'NOTEBOOKS, PENS, LAB COATS & SUPPLIES', icon: '📓' },
   laundry: { title: 'Wash & Dry Clean', subtitle: 'HOSTEL DOORSTEP PICKUP & IRONING', icon: '🧺' },
-  pharmacy: { title: 'Emergency Pharmacy SOS', subtitle: 'MEDICINES, FIRST AID & WELLNESS', icon: '⚕️' },
-  rentals: { title: 'Co-Ride & Campus Rentals', subtitle: 'PEER BIKEPOOL, CARPOOL & CYCLE RENTALS', icon: '🏍️' },
+  pharmacy: { title: 'Emergency Pharmacy', subtitle: 'MEDICINES, FIRST AID & WELLNESS', icon: '⚕️' },
+  rentals: { title: 'Campus Rentals', subtitle: 'CYCLES, SCOOTERS & MORE', icon: '🚲' },
   tailoring: { title: 'Tailoring & Stitching', subtitle: 'CLOTHES ALTERATION, FITTING & REPAIRS', icon: '🪡' },
+  toys: { title: 'Toys & Games', subtitle: 'BOARD GAMES, PUZZLES & GIFTS', icon: '🧸' },
+  seeds: { title: 'Seeds & Gardening', subtitle: 'PLANTS FOR YOUR ROOM & BALCONY', icon: '🌱' },
+};
+
+const SERVICE_CATEGORIES = ['tailoring', 'repairs', 'print', 'laundry'];
+
+// Pickup slots still ahead of us (a 4–6 PM slot is not offered at 8 PM).
+const upcomingPickupSlots = (now = new Date()): string[] => {
+  const h = now.getHours();
+  const slots: string[] = [];
+  if (h < 16) slots.push('Today 4:00 PM - 6:00 PM');
+  if (h < 19) slots.push('Today 7:00 PM - 9:00 PM');
+  slots.push('Tomorrow Morning 10 AM');
+  if (h >= 8 && h < 20) slots.push('Urgent (within 2 hours)');
+  return slots;
+};
+
+interface CatalogueItem {
+  id: string;
+  name: string;
+  price: number;
+  originalPrice: number | null;
+  discountPercent: number | null;
+  image: string | null;
+  emoji: string | null;
+  desc: string;
+  weight: string | null;
+  restaurantId: string;
+  restaurantName: string;
+  storeId: string;
+  bookingOnly: boolean;
+  /** Server `orderable`: in stock AND the store is open right now. */
+  orderable: boolean;
+  inStock: boolean;
+}
+
+interface StoreInfo { id: string; name: string; isOpen: boolean; opensAt: string | null; closedReason: string | null }
+
+const cleanRoom = (room: any) => String(room || '').replace(/^\s*room\s*/i, '').trim();
+
+const formatOpensAt = (hhmm: string | null) => {
+  if (!hhmm || !/^\d{1,2}:\d{2}$/.test(hhmm)) return null;
+  const [h, m] = hhmm.split(':').map(Number);
+  const suffix = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m).padStart(2, '0')} ${suffix}`;
 };
 
 export default function CategoryDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id: string | string[] }>();
+  const rawId = Array.isArray(params.id) ? params.id[0] : params.id;
   const router = useRouter();
   const { isDark, colors } = useTheme();
   const { user } = useAuth();
   const { addToCart, cart, updateQuantity, totalItems, totalPrice } = useCart();
-  const [items, setItems] = useState<any[]>(MOCK_DATA[id || ''] || []);
+
+  const requestedId = String(rawId || 'electronics').toLowerCase().trim();
+  const categoryId = CATEGORY_ALIASES[requestedId] || requestedId;
+  const isServiceCategory = SERVICE_CATEGORIES.includes(categoryId);
+  const meta = CATEGORY_META[categoryId] || { title: 'Campus Store', subtitle: 'STUDENT ESSENTIALS', icon: '✨' };
+
+  const [items, setItems] = useState<CatalogueItem[]>([]);
+  const [stores, setStores] = useState<Record<string, StoreInfo>>({});
   const [searchQuery, setSearchQuery] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Dedicated Service Booking Modal States
-  const [selectedService, setSelectedService] = useState<any | null>(null);
+  const [selectedService, setSelectedService] = useState<CatalogueItem | null>(null);
   const [serviceModalVisible, setServiceModalVisible] = useState(false);
   const [garmentType, setGarmentType] = useState('Jeans / Trousers');
   const [serviceNotes, setServiceNotes] = useState('');
-  const [pickupSlot, setPickupSlot] = useState('Today 4:00 PM - 6:00 PM');
-  const [hostelBlock, setHostelBlock] = useState(user?.hostelBlock || 'Ganga Block');
-  const [roomNumber, setRoomNumber] = useState(user?.roomNumber || user?.roomNo || 'Room 412');
-  const [contactPhone, setContactPhone] = useState(user?.phone || user?.mobile || '');
+  const [pickupSlots, setPickupSlots] = useState<string[]>(() => upcomingPickupSlots());
+  const [pickupSlot, setPickupSlot] = useState<string>(() => upcomingPickupSlots()[0]);
+  const [hostelBlock, setHostelBlock] = useState<string>((user as any)?.hostelBlock || '');
+  const [roomNumber, setRoomNumber] = useState<string>(cleanRoom((user as any)?.roomNumber || (user as any)?.roomNo));
+  const [contactPhone, setContactPhone] = useState<string>((user as any)?.phone || '');
   const [submittingBooking, setSubmittingBooking] = useState(false);
+  const submittingRef = useRef(false);
 
   // Document Upload & Printout Specific States
   const [attachedFile, setAttachedFile] = useState<{
@@ -161,115 +149,150 @@ export default function CategoryDetailScreen() {
   const [bindingType, setBindingType] = useState<'none' | 'spiral' | 'hardbound'>('none');
   const [copies, setCopies] = useState('1');
 
-  const categoryId = (id || 'electronics').toLowerCase();
-  const isServiceCategory = ['tailoring', 'repairs', 'print', 'laundry'].includes(categoryId);
-  const meta = CATEGORY_META[categoryId] || { title: 'Campus Store', subtitle: 'A TO Z STUDENT ESSENTIALS', icon: '✨' };
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
 
-  // Calculate live dynamic price for printouts
+  // Print rates come from the same catalogue rows the print cards show
+  const printRates = useMemo(() => {
+    const find = (re: RegExp) => items.find((i) => re.test(i.name))?.price ?? null;
+    return {
+      bw: find(/black|b\s*&\s*w|b\/w/i),
+      color: find(/colou?r/i),
+      spiral: find(/spiral/i),
+      hardbound: find(/hard\s*bound|thesis/i),
+    };
+  }, [items]);
+
+  // Price shown in the booking sheet (and sent as the quote): the card price, or the print formula
   const calculatedServicePrice = useMemo(() => {
     if (categoryId !== 'print') return selectedService?.price || 0;
-    const pages = Math.max(1, parseInt(pageCount, 10) || 1);
-    const numCopies = Math.max(1, parseInt(copies, 10) || 1);
-    const costPerPage = printColor === 'color' ? 5 : 2;
+    const pages = Math.min(5000, Math.max(1, parseInt(pageCount, 10) || 1));
+    const numCopies = Math.min(500, Math.max(1, parseInt(copies, 10) || 1));
+    const costPerPage = (printColor === 'color' ? printRates.color : printRates.bw) ?? selectedService?.price ?? 0;
     const printTotal = pages * costPerPage * numCopies;
-    const bindingCost = bindingType === 'spiral' ? 25 : bindingType === 'hardbound' ? 150 : 0;
-    return printTotal + bindingCost;
-  }, [categoryId, selectedService, pageCount, printColor, bindingType, copies]);
+    const bindingCost = bindingType === 'spiral' ? (printRates.spiral ?? 0) : bindingType === 'hardbound' ? (printRates.hardbound ?? 0) : 0;
+    return Math.round((printTotal + bindingCost) * 100) / 100;
+  }, [categoryId, selectedService, pageCount, printColor, bindingType, copies, printRates]);
 
-  // Cross-platform document & file picker
+  // Photo / screenshot attachment (images only: there is no document picker in this build)
   const handlePickDocument = async () => {
-    if (Platform.OS === 'web') {
-      try {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = '.pdf,.doc,.docx,.ppt,.pptx,.jpg,.jpeg,.png,.zip';
-        input.onchange = (e: any) => {
-          const file = e.target?.files?.[0];
-          if (file) {
-            const sizeInMB = (file.size / (1024 * 1024)).toFixed(2);
-            const reader = new FileReader();
-            reader.onload = (event: any) => {
-              setAttachedFile({
-                name: file.name,
-                size: `${sizeInMB} MB`,
-                base64: event.target.result,
-                type: file.type || 'document'
-              });
-            };
-            reader.readAsDataURL(file);
-          }
-        };
-        input.click();
-      } catch (err) {
-        Alert.alert('Upload Error', 'Could not open file selector.');
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Allow photo access', 'To attach a photo, allow Zenvy to access your photos in Settings.');
+        return;
       }
-    } else {
-      try {
-        const result = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.All,
-          allowsEditing: false,
-          quality: 0.3,
-          base64: true,
-        });
-        if (!result.canceled && result.assets && result.assets[0]) {
-          const asset = result.assets[0];
-          const fileName = asset.fileName || `Document_${Date.now()}.${asset.mimeType?.includes('pdf') ? 'pdf' : 'jpg'}`;
-          setAttachedFile({
-            name: fileName,
-            size: asset.fileSize ? `${(asset.fileSize / (1024 * 1024)).toFixed(2)} MB` : '1.2 MB',
-            uri: asset.uri,
-            base64: asset.base64 ? `data:${asset.mimeType || 'image/jpeg'};base64,${asset.base64}` : undefined,
-            type: asset.mimeType || 'image'
-          });
-        }
-      } catch (err) {
-        Alert.alert('Upload Error', 'Failed to pick file.');
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        quality: 0.5,
+        base64: true,
+      });
+      if (result.canceled || !result.assets || !result.assets[0]) return;
+      const asset = result.assets[0];
+      const approxBytes = asset.fileSize || (asset.base64 ? Math.round(asset.base64.length * 0.75) : 0);
+      if (approxBytes > MAX_ATTACHMENT_BYTES) {
+        Alert.alert('That photo is too large', 'Please pick a photo under 6 MB, or crop it and try again.');
+        return;
       }
+      if (!asset.base64) {
+        Alert.alert('Could not read that photo', 'Please try a different photo.');
+        return;
+      }
+      setAttachedFile({
+        name: asset.fileName || `Photo_${Date.now()}.jpg`,
+        size: approxBytes ? `${(approxBytes / (1024 * 1024)).toFixed(2)} MB` : undefined,
+        uri: asset.uri,
+        base64: `data:${asset.mimeType || 'image/jpeg'};base64,${asset.base64}`,
+        type: asset.mimeType || 'image/jpeg',
+      });
+    } catch {
+      Alert.alert('Could not attach', 'Something went wrong while picking the photo. Please try again.');
     }
   };
 
   useEffect(() => {
-    if (user?.hostelBlock) setHostelBlock(user.hostelBlock);
-    if (user?.roomNumber || user?.roomNo) setRoomNumber(user.roomNumber || user.roomNo || '');
-    if (user?.phone || user?.mobile) setContactPhone(user.phone || user.mobile || '');
+    const u: any = user;
+    if (u?.hostelBlock) setHostelBlock((prev) => prev || u.hostelBlock);
+    if (u?.roomNumber || u?.roomNo) setRoomNumber((prev) => prev || cleanRoom(u.roomNumber || u.roomNo));
+    if (u?.phone) setContactPhone((prev) => prev || u.phone);
   }, [user]);
 
-  useEffect(() => {
-    const fetchCategoryItems = async () => {
-      try {
-        setLoading(true);
-        const res = await apiFetch(`${API_URL}/api/search?q=${encodeURIComponent(categoryId)}`);
-        if (res.ok) {
-          const data = await res.json();
-          const fetchedItems = data.items || [];
-          if (fetchedItems.length > 0) {
-            const formatted = fetchedItems.map((item: any) => ({
-              id: item.id || item._id,
-              name: item.name,
-              price: item.price,
-              originalPrice: item.price * 1.3,
-              discount: '30% OFF',
-              image: item.imageUrl || item.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600',
-              desc: item.description,
-              restaurantId: item.restaurantId?._id || item.restaurantId || 'campus-hub-merchant',
-              restaurantName: item.restaurantId?.name || 'Zenvy Campus Hub'
-            }));
-            const curated = MOCK_DATA[categoryId] || [];
-            setItems([...curated, ...formatted]);
-          }
-        }
-      } catch (err) {
-      } finally {
-        setLoading(false);
+  const fetchCategoryItems = useCallback(async (mode: 'initial' | 'refresh' = 'initial') => {
+    if (!CATEGORY_META[categoryId]) {
+      setItems([]);
+      setLoading(false);
+      return;
+    }
+    if (mode === 'initial') setLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/catalogue/items?type=${encodeURIComponent(categoryId)}&includeUnavailable=true`);
+      const data = await res.json().catch(() => null);
+      if (!mountedRef.current) return;
+      if (!res.ok || !data || !Array.isArray(data.items)) {
+        setLoadError((data && typeof data.message === 'string' && data.message) || 'We could not load this store right now.');
+        return;
       }
-    };
-    fetchCategoryItems();
+      const storeMap: Record<string, StoreInfo> = {};
+      (Array.isArray(data.stores) ? data.stores : []).forEach((st: any) => {
+        const sid = String(st?.id || st?._id || '');
+        if (sid) storeMap[sid] = {
+          id: sid,
+          name: String(st.name || ''),
+          isOpen: st.isOpen !== false,
+          opensAt: st.opensAt || null,
+          closedReason: st.closedReason || null,
+        };
+      });
+      setStores(storeMap);
+      setItems(data.items.map((it: any) => {
+        const price = Number(it.price) || 0;
+        const original = Number(it.originalPrice) || 0;
+        return {
+          id: String(it.id || it._id),
+          name: String(it.name || ''),
+          price,
+          originalPrice: original > price ? original : null,
+          discountPercent: original > price ? (Number(it.discountPercent) || Math.round((1 - price / original) * 100)) : null,
+          image: it.imageUrl || it.image || null,
+          emoji: it.emoji || null,
+          desc: String(it.description || ''),
+          weight: it.weight || null,
+          restaurantId: String(it.restaurantId || it.storeId || ''),
+          restaurantName: String(it.storeName || ''),
+          storeId: String(it.storeId || it.restaurantId || ''),
+          bookingOnly: !!it.bookingOnly,
+          orderable: it.orderable !== false && it.isAvailable !== false,
+          inStock: it.isAvailable !== false,
+        } as CatalogueItem;
+      }));
+      setLoadError(null);
+    } catch {
+      if (mountedRef.current) setLoadError("Can't reach Zenvy right now. Check your internet and try again.");
+    } finally {
+      if (mountedRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    }
   }, [categoryId]);
 
-  const filteredItems = items.filter(item =>
-    item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (item.desc && item.desc.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  useEffect(() => {
+    fetchCategoryItems('initial');
+  }, [fetchCategoryItems]);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchCategoryItems('refresh');
+  };
+
+  const q = searchQuery.trim().toLowerCase();
+  const filteredItems = q
+    ? items.filter(item => item.name.toLowerCase().includes(q) || item.desc.toLowerCase().includes(q))
+    : items;
+
+  // A closed store (outside its hours) can be browsed but not ordered from
+  const closedStore = useMemo(() => Object.values(stores).find((st) => !st.isOpen) || null, [stores]);
 
   const txt = colors.text;
   const txtSec = colors.textSecondary;
@@ -277,38 +300,69 @@ export default function CategoryDetailScreen() {
   const cardBg = colors.card;
   const border = colors.border;
 
-  const handleAction = (item: any) => {
-    if (isServiceCategory) {
+  const lineFor = (itemId: string) => cart.find((i) => i.cartKey === itemId);
+
+  const handleAction = (item: CatalogueItem) => {
+    if (isServiceCategory || item.bookingOnly) {
+      if (!user) {
+        Alert.alert('Sign in to book', 'Sign in so the partner knows where to pick up and whom to call.', [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'Sign in', onPress: () => router.push('/login' as any) },
+        ]);
+        return;
+      }
       setSelectedService(item);
       setServiceNotes('');
+      const slots = upcomingPickupSlots();
+      setPickupSlots(slots);
+      setPickupSlot((prev) => (slots.includes(prev) ? prev : slots[0]));
       setAttachedFile(null);
       setPageCount('1');
-      setPrintColor(item.name.toLowerCase().includes('color') ? 'color' : 'bw');
-      setBindingType(item.name.toLowerCase().includes('spiral') ? 'spiral' : item.name.toLowerCase().includes('thesis') ? 'hardbound' : 'none');
+      setCopies('1');
+      setPrintColor(/colou?r/i.test(item.name) ? 'color' : 'bw');
+      setBindingType(/spiral/i.test(item.name) ? 'spiral' : /thesis|hard\s*bound/i.test(item.name) ? 'hardbound' : 'none');
       setServiceModalVisible(true);
-    } else {
-      addToCart({
-        id: item.id,
-        name: item.name,
-        price: item.price,
-        image: item.image,
-        quantity: 1,
-        restaurantId: item.restaurantId || 'campus-hub-merchant',
-        restaurantName: item.restaurantName || meta.title
-      });
-      Alert.alert('Added to Cart 🛒', `${item.name} added to your basket.`);
+      return;
     }
+    const store = stores[item.storeId];
+    if (store && !store.isOpen) {
+      const opens = formatOpensAt(store.opensAt);
+      Alert.alert(`${store.name || 'This store'} is closed`, store.closedReason || (opens ? `It opens at ${opens}.` : 'Please check back later.'));
+      return;
+    }
+    if (!item.orderable) {
+      Alert.alert('Not available right now', `${item.name} can't be ordered at the moment. Please check back later.`);
+      return;
+    }
+    const added = addToCart({
+      id: item.id,
+      name: item.name,
+      price: item.price,
+      image: item.image || '',
+      quantity: 1,
+      restaurantId: item.restaurantId,
+      restaurantName: item.restaurantName || meta.title,
+    });
+    if (added) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
   };
 
   const handleConfirmServiceBooking = async () => {
-    if (!selectedService) return;
-    if (!hostelBlock || !roomNumber) {
-      Alert.alert('Missing Location', 'Please enter your hostel block and room number for doorstep pickup.');
+    if (!selectedService || submittingRef.current) return;
+    const block = hostelBlock.trim();
+    const room = cleanRoom(roomNumber);
+    if (!block || !room) {
+      Alert.alert('Where should we pick up?', 'Please enter your hostel block and room number.');
+      return;
+    }
+    const phoneDigits = String(contactPhone || '').replace(/\D/g, '');
+    if (phoneDigits.length < 10) {
+      Alert.alert('Add a contact number', 'The partner calls you before pickup. Please enter your 10-digit mobile number.');
       return;
     }
 
+    submittingRef.current = true;
+    setSubmittingBooking(true);
     try {
-      setSubmittingBooking(true);
       const serviceTypeMapping: Record<string, string> = {
         tailoring: 'TAILORING',
         repairs: 'LAPTOP_REPAIR',
@@ -317,11 +371,12 @@ export default function CategoryDetailScreen() {
       };
 
       const finalAmount = calculatedServicePrice;
+      const notes = serviceNotes.trim();
 
       const payload = {
         serviceType: serviceTypeMapping[categoryId] || 'GENERAL',
-        title: selectedService.name,
-        description: serviceNotes ? `[Notes: ${serviceNotes}] - ${selectedService.desc}` : selectedService.desc,
+        title: selectedService.name.slice(0, 200),
+        description: (notes ? `[Notes: ${notes}] - ${selectedService.desc}` : selectedService.desc).slice(0, 2000),
         specifications: {
           garmentType: categoryId === 'tailoring' ? garmentType : undefined,
           pageCount: categoryId === 'print' ? pageCount : undefined,
@@ -331,57 +386,119 @@ export default function CategoryDetailScreen() {
           copies: categoryId === 'print' ? copies : undefined,
           attachedFileName: attachedFile?.name || undefined,
           serviceName: selectedService.name,
+          catalogueItemId: selectedService.id,
           category: categoryId,
-          notes: serviceNotes
+          notes
         },
-        attachmentUrl: attachedFile?.base64 || attachedFile?.uri || undefined,
+        attachmentUrl: attachedFile?.base64 || undefined,
         quotedAmount: finalAmount,
         pickupSlot: pickupSlot,
-        hostelBlock: hostelBlock,
-        roomNumber: roomNumber,
-        deliveryAddress: `${hostelBlock}, Room ${roomNumber}`,
-        contactPhone: contactPhone
+        hostelBlock: block,
+        roomNumber: room,
+        deliveryAddress: `${block}, Room ${room}`,
+        contactPhone: contactPhone,
+        paymentMethod: 'COD',
       };
 
-      const res = await apiFetch(`${API_URL}/api/services/book`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      const data = await res.json();
-      setServiceModalVisible(false);
-
-      if (res.ok && data.booking) {
-        Alert.alert(
-          '🎉 Service Scheduled Successfully!',
-          `Booking ID: #${(data.booking.id || '').substring(0, 8).toUpperCase()}\n\nService: ${selectedService.name}\nTotal Estimated: ₹${finalAmount}\nDocument: ${attachedFile ? attachedFile.name : 'Physical Pickup'}\nPickup Slot: ${pickupSlot}\nLocation: ${hostelBlock}, ${roomNumber}\n\nOur campus partner will arrive at your hostel at the scheduled slot.`,
-          [{ text: 'VIEW ORDERS / SERVICES', onPress: () => router.push('/(tabs)/orders' as any) }, { text: 'DONE' }]
-        );
-      } else {
-        Alert.alert(
-          '🎉 Service Scheduled!',
-          `Your request for ${selectedService.name} (₹${finalAmount}) has been received.\nDoorstep pickup at ${hostelBlock}, ${roomNumber} during ${pickupSlot}.`,
-          [{ text: 'OK' }]
-        );
+      let res: Response;
+      try {
+        res = await apiFetch(`${API_URL}/api/services/book`, {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
+      } catch {
+        Alert.alert('Connection problem', "Can't reach Zenvy right now. Check your internet and try again.");
+        return;
       }
-    } catch (err: any) {
-      Alert.alert(
-        '🎉 Service Request Confirmed',
-        `Pickup scheduled for ${selectedService?.name} at ${hostelBlock}, ${roomNumber} (${pickupSlot}). Partner will contact you before arrival.`
-      );
-      setServiceModalVisible(false);
+      const data = await res.json().catch(() => null);
+
+      if (res.ok && data && data.booking) {
+        if (mountedRef.current) setServiceModalVisible(false);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        // The server prices the booking from the catalogue; show its number, not ours.
+        const serverAmount = Number(data.booking.quotedAmount);
+        const estimateLine = Number.isFinite(serverAmount) && serverAmount > 0
+          ? `Estimate: ₹${serverAmount} (pay on delivery)`
+          : Number.isFinite(serverAmount) ? 'Estimate: the partner will quote a price' : `Estimate: ₹${finalAmount} (pay on delivery)`;
+        Alert.alert(
+          'Booking confirmed 🎉',
+          `Booking #${String(data.booking.id || '').substring(0, 8).toUpperCase()}\n\n${selectedService.name}\n${estimateLine}\nPickup: ${pickupSlot}\nAt: ${block}, Room ${room}\n\nThe partner will call you on ${contactPhone} before pickup and confirm the final price.`,
+          [
+            { text: 'Done', style: 'cancel' },
+            { text: 'View booking', onPress: () => router.push({ pathname: '/(tabs)/orders', params: { segment: 'services' } } as any) },
+          ]
+        );
+      } else if (res.status === 413) {
+        Alert.alert('Attachment too large', 'Please attach a smaller photo, or remove it and share the file with the partner at pickup.');
+      } else if (res.status === 401) {
+        Alert.alert('Please sign in again', 'Your session has expired.', [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Sign in', onPress: () => router.push('/login' as any) },
+        ]);
+      } else {
+        Alert.alert('Booking not placed', (data && typeof data.message === 'string' && res.status < 500 && data.message) || 'We could not book this service right now. Please try again.');
+      }
     } finally {
-      setSubmittingBooking(false);
+      submittingRef.current = false;
+      if (mountedRef.current) setSubmittingBooking(false);
     }
+  };
+
+  const renderEmpty = () => {
+    if (!CATEGORY_META[categoryId]) {
+      return (
+        <View style={s.emptyState}>
+          <Text style={{ fontSize: 32, marginBottom: 8 }}>🧭</Text>
+          <Text style={{ color: txt, fontSize: 15, fontWeight: '800' }}>This shelf isn't open yet</Text>
+          <Text style={{ color: txtSec, fontSize: 12, marginTop: 4, textAlign: 'center', paddingHorizontal: 32 }}>We couldn't find this category. Explore the other stores instead.</Text>
+          <TouchableOpacity style={[s.addBtn, { marginTop: 16, paddingHorizontal: 18, paddingVertical: 10 }]} onPress={() => router.replace('/(tabs)/others' as any)}>
+            <Text style={s.addBtnText}>EXPLORE STORES</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    if (loadError) {
+      return (
+        <View style={s.emptyState}>
+          <Text style={{ fontSize: 32, marginBottom: 8 }}>📡</Text>
+          <Text style={{ color: txt, fontSize: 15, fontWeight: '800' }}>Couldn't load this store</Text>
+          <Text style={{ color: txtSec, fontSize: 12, marginTop: 4, textAlign: 'center', paddingHorizontal: 32 }}>{loadError}</Text>
+          <TouchableOpacity style={[s.addBtn, { marginTop: 16, paddingHorizontal: 18, paddingVertical: 10 }]} onPress={() => { setLoading(true); setLoadError(null); fetchCategoryItems('initial'); }}>
+            <Text style={s.addBtnText}>TRY AGAIN</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    if (q) {
+      return (
+        <View style={s.emptyState}>
+          <Text style={{ fontSize: 32, marginBottom: 8 }}>🔍</Text>
+          <Text style={{ color: txt, fontSize: 15, fontWeight: '800' }}>No match for "{searchQuery.trim()}"</Text>
+          <Text style={{ color: txtSec, fontSize: 12, marginTop: 4 }}>Try a different word</Text>
+          <TouchableOpacity style={[s.addBtn, { marginTop: 16, paddingHorizontal: 18, paddingVertical: 10 }]} onPress={() => setSearchQuery('')}>
+            <Text style={s.addBtnText}>CLEAR SEARCH</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    return (
+      <View style={s.emptyState}>
+        <Text style={{ fontSize: 32, marginBottom: 8 }}>📦</Text>
+        <Text style={{ color: txt, fontSize: 15, fontWeight: '800' }}>Nothing on this shelf yet</Text>
+        <Text style={{ color: txtSec, fontSize: 12, marginTop: 4, textAlign: 'center', paddingHorizontal: 32 }}>New items are added often. Need something now? Send it as a Mega Basket shopping list.</Text>
+        <TouchableOpacity style={[s.addBtn, { marginTop: 16, paddingHorizontal: 18, paddingVertical: 10 }]} onPress={() => router.push('/mega-basket' as any)}>
+          <Text style={s.addBtnText}>OPEN MEGA BASKET</Text>
+        </TouchableOpacity>
+      </View>
+    );
   };
 
   return (
     <View style={[s.container, { backgroundColor: bg }]}>
       {/* Header */}
       <View style={[s.header, { borderBottomColor: border, backgroundColor: isDark ? '#111114' : '#FFF' }]}>
-        <TouchableOpacity 
-          style={s.backBtn} 
+        <TouchableOpacity
+          style={s.backBtn}
           onPress={() => {
             if (router.canGoBack()) {
               router.back();
@@ -396,7 +513,7 @@ export default function CategoryDetailScreen() {
           <Text style={s.subText}>{meta.subtitle}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <Text style={{ fontSize: 18 }}>{meta.icon}</Text>
-            <Text style={[s.title, { color: txt }]}>{meta.title}</Text>
+            <Text style={[s.title, { color: txt }]} numberOfLines={1}>{meta.title}</Text>
           </View>
         </View>
         <View style={{ backgroundColor: isServiceCategory ? 'rgba(59,130,246,0.12)' : 'rgba(16,185,129,0.12)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: isServiceCategory ? '#3B82F6' : '#10B981' }}>
@@ -415,19 +532,29 @@ export default function CategoryDetailScreen() {
           value={searchQuery}
           onChangeText={setSearchQuery}
           style={[s.searchInput, { color: txt }]}
+          returnKeyType="search"
+          maxLength={60}
         />
         {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={() => setSearchQuery('')}>
+          <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Text style={{ color: txtSec, fontSize: 12 }}>✕</Text>
           </TouchableOpacity>
         )}
       </View>
 
+      {!isServiceCategory && closedStore && (
+        <View style={[s.closedBanner, { backgroundColor: isDark ? 'rgba(99,102,241,0.12)' : 'rgba(99,102,241,0.08)' }]}>
+          <Text style={{ fontSize: 14 }}>🌙</Text>
+          <Text style={{ flex: 1, color: txt, fontSize: 11, fontWeight: '700' }}>
+            {closedStore.closedReason || `${closedStore.name || 'This store'} is closed${formatOpensAt(closedStore.opensAt) ? ` — opens ${formatOpensAt(closedStore.opensAt)}` : ''}. You can browse now and order when it opens.`}
+          </Text>
+        </View>
+      )}
+
       {/* Grid List */}
       {loading && items.length === 0 ? (
-        <View style={s.emptyState}>
-          <ActivityIndicator size="large" color={COLORS.red} />
-          <Text style={{ marginTop: 12, color: txtSec, fontSize: 11, fontWeight: '700' }}>Loading items...</Text>
+        <View style={[s.listContent, { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 14 }]}>
+          {[0, 1, 2, 3].map((k) => <ShimmerCard key={k} style={{ width: (SW - 44) / 2, height: 220 }} />)}
         </View>
       ) : filteredItems.length > 0 ? (
         <FlatList
@@ -437,50 +564,91 @@ export default function CategoryDetailScreen() {
           contentContainerStyle={s.listContent}
           columnWrapperStyle={s.columnWrapper}
           showsVerticalScrollIndicator={false}
-          renderItem={({ item }) => (
-            <View style={[s.card, { backgroundColor: cardBg, borderColor: border }]}>
-              <View style={s.imageBox}>
-                <SafeImage source={{ uri: item.image }} style={s.cardImg} />
-                {item.discount && (
-                  <View style={s.discountBadge}>
-                    <Text style={s.discountText}>{item.discount}</Text>
-                  </View>
-                )}
-                {isServiceCategory && (
-                  <View style={{ position: 'absolute', top: 6, right: 6, backgroundColor: 'rgba(0,0,0,0.7)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
-                    <Text style={{ color: '#FCD34D', fontSize: 7.5, fontWeight: '900', letterSpacing: 0.5 }}>DOORSTEP</Text>
-                  </View>
-                )}
-              </View>
-              <View style={s.cardInfo}>
-                <Text style={[s.itemName, { color: txt }]} numberOfLines={2}>{item.name}</Text>
-                <Text style={s.itemDesc} numberOfLines={2}>{item.desc}</Text>
-                
-                <View style={s.bottomRow}>
-                  <View>
-                    <Text style={[s.itemPrice, { color: txt }]}>₹{item.price}</Text>
-                    {item.originalPrice && (
-                      <Text style={s.originalPrice}>₹{item.originalPrice}</Text>
+          keyboardShouldPersistTaps="handled"
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.red} colors={[COLORS.red]} />}
+          renderItem={({ item }) => {
+            const isService = isServiceCategory || item.bookingOnly;
+            const line = isService ? undefined : lineFor(item.id);
+            const storeClosed = !isService && stores[item.storeId] && !stores[item.storeId].isOpen;
+            // A closed store's items are "CLOSED", not "SOLD OUT" (the server's orderable is false for both)
+            const soldOut = !isService && !item.inStock;
+            return (
+              <View style={[s.card, { backgroundColor: cardBg, borderColor: border }]}>
+                <View style={s.imageBox}>
+                  {item.image ? (
+                    <SafeImage source={{ uri: item.image }} style={[s.cardImg, soldOut && { opacity: 0.45 }]} />
+                  ) : (
+                    <View style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#1F1F23' : '#F3F4F6' }}>
+                      <Text style={{ fontSize: 40 }}>{item.emoji || meta.icon}</Text>
+                    </View>
+                  )}
+                  {!!item.discountPercent && item.discountPercent > 0 && (
+                    <View style={s.discountBadge}>
+                      <Text style={s.discountText}>{item.discountPercent}% OFF</Text>
+                    </View>
+                  )}
+                  {soldOut && (
+                    <View style={[s.discountBadge, { backgroundColor: '#374151', left: undefined, right: 8 }]}>
+                      <Text style={s.discountText}>SOLD OUT</Text>
+                    </View>
+                  )}
+                  {isService && (
+                    <View style={{ position: 'absolute', top: 6, right: 6, backgroundColor: 'rgba(0,0,0,0.7)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                      <Text style={{ color: '#FCD34D', fontSize: 7.5, fontWeight: '900', letterSpacing: 0.5 }}>DOORSTEP</Text>
+                    </View>
+                  )}
+                </View>
+                <View style={s.cardInfo}>
+                  <Text style={[s.itemName, { color: txt }]} numberOfLines={2}>{item.name}</Text>
+                  {!!(item.desc || item.weight) && (
+                    <Text style={s.itemDesc} numberOfLines={2}>{item.weight ? `${item.weight}${item.desc ? ' · ' : ''}` : ''}{item.desc}</Text>
+                  )}
+
+                  <View style={s.bottomRow}>
+                    <View>
+                      <Text style={[s.itemPrice, { color: txt }]}>₹{item.price}</Text>
+                      {!!item.originalPrice && (
+                        <Text style={s.originalPrice}>₹{item.originalPrice}</Text>
+                      )}
+                    </View>
+                    {line ? (
+                      <View style={s.stepper}>
+                        <TouchableOpacity onPress={() => updateQuantity(line.cartKey, line.quantity - 1)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                          <Text style={s.stepperText}>−</Text>
+                        </TouchableOpacity>
+                        <Text style={s.stepperQty}>{line.quantity}</Text>
+                        <TouchableOpacity
+                          onPress={() => updateQuantity(line.cartKey, line.quantity + 1)}
+                          disabled={line.quantity >= MAX_ITEM_QTY}
+                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                        >
+                          <Text style={[s.stepperText, line.quantity >= MAX_ITEM_QTY && { opacity: 0.4 }]}>+</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      <TouchableOpacity
+                        style={[s.addBtn, isService && { backgroundColor: '#3B82F6' }, (soldOut || storeClosed) && { backgroundColor: '#9CA3AF' }]}
+                        onPress={() => handleAction(item)}
+                        disabled={soldOut}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={s.addBtnText}>{isService ? 'BOOK ➔' : soldOut ? 'SOLD OUT' : storeClosed ? 'CLOSED' : 'ADD +'}</Text>
+                      </TouchableOpacity>
                     )}
                   </View>
-                  <TouchableOpacity
-                    style={[s.addBtn, isServiceCategory && { backgroundColor: '#3B82F6' }]}
-                    onPress={() => handleAction(item)}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={s.addBtnText}>{isServiceCategory ? 'BOOK ➔' : 'ADD +'}</Text>
-                  </TouchableOpacity>
                 </View>
               </View>
-            </View>
-          )}
+            );
+          }}
         />
       ) : (
-        <View style={s.emptyState}>
-          <Text style={{ fontSize: 32, marginBottom: 8 }}>📦</Text>
-          <Text style={{ color: txt, fontSize: 15, fontWeight: '800' }}>No items found</Text>
-          <Text style={{ color: txtSec, fontSize: 12, marginTop: 4 }}>Try searching for a different item name</Text>
-        </View>
+        <ScrollView
+          contentContainerStyle={{ flexGrow: 1 }}
+          refreshControl={CATEGORY_META[categoryId] ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.red} colors={[COLORS.red]} /> : undefined}
+          keyboardShouldPersistTaps="handled"
+        >
+          {renderEmpty()}
+        </ScrollView>
       )}
 
       {/* Floating Cart Sticky Bar if items exist and NOT service category */}
@@ -490,7 +658,7 @@ export default function CategoryDetailScreen() {
           onPress={() => router.push('/(tabs)/basket' as any)}
         >
           <View>
-            <Text style={s.floatingCartCount}>{totalItems} ITEMS IN BASKET</Text>
+            <Text style={s.floatingCartCount}>{totalItems} ITEM{totalItems === 1 ? '' : 'S'} IN BASKET</Text>
             <Text style={s.floatingCartTotal}>₹{totalPrice}</Text>
           </View>
           <View style={s.viewCartBtn}>
@@ -506,7 +674,7 @@ export default function CategoryDetailScreen() {
         transparent={true}
         onRequestClose={() => setServiceModalVisible(false)}
       >
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' }}>
+        <KeyboardAvoidingView style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={{ 
             backgroundColor: isDark ? '#1C1C1E' : '#FFF', 
             borderTopLeftRadius: 28, 
@@ -516,7 +684,7 @@ export default function CategoryDetailScreen() {
             borderWidth: 1,
             borderColor: border 
           }}>
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               {/* Modal Header */}
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                 <View style={{ flex: 1, marginRight: 10 }}>
@@ -539,15 +707,15 @@ export default function CategoryDetailScreen() {
               <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
                 <View style={{ backgroundColor: isDark ? '#27272A' : '#F8FAFC', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, borderWidth: 1, borderColor: border }}>
                   <Text style={{ fontSize: 8, fontWeight: '800', color: txtSec }}>
-                    {categoryId === 'print' ? 'CALCULATED TOTAL' : 'BASE CHARGE'}
+                    {categoryId === 'print' ? 'ESTIMATE' : 'STARTS AT'}
                   </Text>
                   <Text style={{ fontSize: 16, fontWeight: '900', color: '#10B981', marginTop: 1 }}>
                     ₹{calculatedServicePrice}
                   </Text>
                 </View>
                 <View style={{ backgroundColor: isDark ? '#27272A' : '#F8FAFC', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, borderWidth: 1, borderColor: border, flex: 1 }}>
-                  <Text style={{ fontSize: 8, fontWeight: '800', color: txtSec }}>CAMPUS TURNAROUND</Text>
-                  <Text style={{ fontSize: 11, fontWeight: '900', color: txt, marginTop: 2 }}>⚡ Same Day / 24h Delivery</Text>
+                  <Text style={{ fontSize: 8, fontWeight: '800', color: txtSec }}>HOW IT WORKS</Text>
+                  <Text style={{ fontSize: 10, fontWeight: '800', color: txt, marginTop: 2 }}>Partner calls you, confirms the final price, then picks up. Pay on delivery.</Text>
                 </View>
               </View>
 
@@ -555,10 +723,10 @@ export default function CategoryDetailScreen() {
               <View style={{ marginBottom: 14 }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                   <Text style={{ fontSize: 10, fontWeight: '900', color: txt, letterSpacing: 1 }}>
-                    {categoryId === 'print' ? '📄 ATTACH DOCUMENT / PDF' : '📸 ATTACH REFERENCE / PHOTO'}
+                    {categoryId === 'print' ? '📄 ATTACH PHOTOS OF YOUR PAGES' : '📸 ATTACH REFERENCE PHOTO'}
                   </Text>
                   <Text style={{ fontSize: 8.5, fontWeight: '700', color: '#3B82F6' }}>
-                    {categoryId === 'print' ? 'PDF, DOCX, PPT, IMAGES' : 'OPTIONAL'}
+                    OPTIONAL
                   </Text>
                 </View>
 
@@ -580,7 +748,7 @@ export default function CategoryDetailScreen() {
                           {attachedFile.name}
                         </Text>
                         <Text style={{ fontSize: 9, fontWeight: '600', color: '#059669', marginTop: 2 }}>
-                          {attachedFile.size} • Ready for Processing ✅
+                          {attachedFile.size ? `${attachedFile.size} • ` : ''}Attached ✅
                         </Text>
                       </View>
                     </View>
@@ -611,10 +779,10 @@ export default function CategoryDetailScreen() {
                   >
                     <Text style={{ fontSize: 20 }}>📁</Text>
                     <Text style={{ fontSize: 11, fontWeight: '900', color: '#2563EB', letterSpacing: 0.5 }}>
-                      Click to Upload Document / PDF / Photos
+                      Tap to attach a photo
                     </Text>
                     <Text style={{ fontSize: 8.5, color: txtSec, fontWeight: '600' }}>
-                      Supports PDF, Word, PowerPoint & Images (Up to 25MB)
+                      {categoryId === 'print' ? 'Photos up to 6 MB. Have a PDF? Hand it to the partner at pickup.' : 'Photos up to 6 MB.'}
                     </Text>
                   </TouchableOpacity>
                 )}
@@ -654,7 +822,8 @@ export default function CategoryDetailScreen() {
                         placeholder="e.g. 10"
                         placeholderTextColor={txtSec}
                         value={pageCount}
-                        onChangeText={setPageCount}
+                        maxLength={4}
+                        onChangeText={(v) => setPageCount(v.replace(/[^0-9]/g, ''))}
                       />
                     </View>
 
@@ -676,7 +845,8 @@ export default function CategoryDetailScreen() {
                         placeholder="e.g. 1"
                         placeholderTextColor={txtSec}
                         value={copies}
-                        onChangeText={setCopies}
+                        maxLength={3}
+                        onChangeText={(v) => setCopies(v.replace(/[^0-9]/g, ''))}
                       />
                     </View>
                   </View>
@@ -698,7 +868,7 @@ export default function CategoryDetailScreen() {
                         onPress={() => setPrintColor('bw')}
                       >
                         <Text style={{ fontSize: 10, fontWeight: '900', color: printColor === 'bw' ? (isDark ? '#38BDF8' : '#2563EB') : txtSec }}>
-                          Black & White (₹2/page)
+                          Black & White{printRates.bw != null ? ` (₹${printRates.bw}/page)` : ''}
                         </Text>
                       </TouchableOpacity>
 
@@ -715,7 +885,7 @@ export default function CategoryDetailScreen() {
                         onPress={() => setPrintColor('color')}
                       >
                         <Text style={{ fontSize: 10, fontWeight: '900', color: printColor === 'color' ? (isDark ? '#38BDF8' : '#2563EB') : txtSec }}>
-                          🌈 Full Color (₹5/page)
+                          🌈 Full Color{printRates.color != null ? ` (₹${printRates.color}/page)` : ''}
                         </Text>
                       </TouchableOpacity>
                     </View>
@@ -726,10 +896,10 @@ export default function CategoryDetailScreen() {
                     <Text style={{ fontSize: 8.5, fontWeight: '800', color: txtSec, marginBottom: 6 }}>BINDING / FINISHING</Text>
                     <View style={{ flexDirection: 'row', gap: 6 }}>
                       {[
-                        { key: 'none', label: 'No Binding (Free)' },
-                        { key: 'spiral', label: 'Spiral (+₹25)' },
-                        { key: 'hardbound', label: 'Hardbound (+₹150)' }
-                      ].map(b => (
+                        { key: 'none', label: 'No Binding', rate: 0 as number | null },
+                        { key: 'spiral', label: `Spiral (+₹${printRates.spiral})`, rate: printRates.spiral },
+                        { key: 'hardbound', label: `Hardbound (+₹${printRates.hardbound})`, rate: printRates.hardbound }
+                      ].filter(b => b.rate != null).map(b => (
                         <TouchableOpacity
                           key={b.key}
                           style={{
@@ -760,7 +930,7 @@ export default function CategoryDetailScreen() {
                   PREFERRED PICKUP SLOT
                 </Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                  {['Today 4:00 PM - 6:00 PM', 'Today 7:00 PM - 9:00 PM', 'Tomorrow Morning 10 AM', 'Urgent / 2 Hours (+₹20)'].map(slot => (
+                  {pickupSlots.map(slot => (
                     <TouchableOpacity
                       key={slot}
                       style={{
@@ -800,9 +970,10 @@ export default function CategoryDetailScreen() {
                       fontWeight: '700',
                       color: txt
                     }}
-                    placeholder="Hostel Block (e.g. Ganga)"
+                    placeholder="Hostel block (e.g. Ganga)"
                     placeholderTextColor={txtSec}
                     value={hostelBlock}
+                    maxLength={60}
                     onChangeText={setHostelBlock}
                   />
                   <TextInput
@@ -818,12 +989,54 @@ export default function CategoryDetailScreen() {
                       fontWeight: '700',
                       color: txt
                     }}
-                    placeholder="Room No (e.g. 412)"
+                    placeholder="Room no. (e.g. 412)"
                     placeholderTextColor={txtSec}
                     value={roomNumber}
+                    maxLength={12}
                     onChangeText={setRoomNumber}
                   />
                 </View>
+                <TextInput
+                  style={{
+                    marginTop: 8,
+                    backgroundColor: isDark ? '#27272A' : '#F8FAFC',
+                    borderWidth: 1,
+                    borderColor: border,
+                    borderRadius: 10,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    fontSize: 11.5,
+                    fontWeight: '700',
+                    color: txt
+                  }}
+                  placeholder="Mobile number for the partner to call"
+                  placeholderTextColor={txtSec}
+                  keyboardType="phone-pad"
+                  value={contactPhone}
+                  maxLength={13}
+                  onChangeText={(v) => setContactPhone(v.replace(/[^0-9+]/g, ''))}
+                />
+                <TextInput
+                  style={{
+                    marginTop: 8,
+                    backgroundColor: isDark ? '#27272A' : '#F8FAFC',
+                    borderWidth: 1,
+                    borderColor: border,
+                    borderRadius: 10,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    fontSize: 11.5,
+                    fontWeight: '700',
+                    color: txt,
+                    minHeight: 44
+                  }}
+                  placeholder="Anything the partner should know? (optional)"
+                  placeholderTextColor={txtSec}
+                  value={serviceNotes}
+                  maxLength={300}
+                  multiline
+                  onChangeText={setServiceNotes}
+                />
               </View>
 
               {/* Confirm Booking CTA */}
@@ -849,13 +1062,13 @@ export default function CategoryDetailScreen() {
                   <ActivityIndicator color="#FFF" size="small" />
                 ) : (
                   <Text style={{ color: '#FFF', fontSize: 11.5, fontWeight: '900', letterSpacing: 1 }}>
-                    CONFIRM & SCHEDULE PICKUP 🚀
+                    CONFIRM PICKUP • ₹{calculatedServicePrice} ON DELIVERY
                   </Text>
                 )}
               </TouchableOpacity>
             </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -916,7 +1129,11 @@ const s = StyleSheet.create({
   originalPrice: { fontSize: 10, color: '#999', textDecorationLine: 'line-through' },
   addBtn: { backgroundColor: '#EF4444', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
   addBtnText: { color: '#FFF', fontSize: 10, fontWeight: '900' },
-  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 60 },
+  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 60, paddingBottom: 40 },
+  closedBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, marginBottom: 10, padding: 10, borderRadius: 12 },
+  stepper: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#EF4444', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
+  stepperText: { color: '#FFF', fontSize: 14, fontWeight: '900' },
+  stepperQty: { color: '#FFF', fontSize: 12, fontWeight: '900', minWidth: 14, textAlign: 'center' },
   floatingCartBar: {
     position: 'absolute',
     bottom: 20,

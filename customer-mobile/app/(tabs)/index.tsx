@@ -11,12 +11,15 @@ import { API_URL, ENDPOINTS } from '../../constants/api';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { useTheme } from '../../context/ThemeContext';
+import { useDietary } from '../../context/DietaryContext';
 import { apiFetch } from '../../utils/auth';
 import NexusExplorer from '../../components/NexusExplorer';
 import SearchOverlay from '../../components/SearchOverlay';
 import PromoCarousel from '../../components/PromoCarousel';
+import HighClassPromoCarousel from '../../components/HighClassPromoCarousel';
 import CampusLiveTicker from '../../components/CampusLiveTicker';
 import CampusBitesSection from '../../components/CampusBitesSection';
+import { isLocalVendor } from '../../utils/localVendor';
 import RecentlyViewed from '../../components/RecentlyViewed';
 import { useWorldTransition } from '../../context/WorldTransitionContext';
 import AmbientBackground from '../../components/AmbientBackground';
@@ -30,9 +33,10 @@ const VaultTimerBadge = ({ pulseAnim }: { pulseAnim: any }) => {
   const [vaultTimer, setVaultTimer] = useState('00:00:00');
   useEffect(() => {
     const iv = setInterval(() => {
-      const now = new Date();
-      const end = new Date(); end.setHours(23, 59, 59, 999);
-      const d = end.getTime() - now.getTime();
+      // Daily deals reset at midnight IST (coupons are valid until then)
+      const IST_OFFSET = 5.5 * 3600000;
+      const istNow = Date.now() + IST_OFFSET;
+      const d = 86400000 - (istNow % 86400000);
       if (d < 0) return;
       const h = Math.floor(d / 3600000);
       const m = Math.floor((d % 3600000) / 60000);
@@ -57,7 +61,7 @@ const FILTERS = [
   { key: 'veg', label: '🥗 VEG' },
   { key: 'under99', label: '🔥 UNDER ₹99' },
   { key: 'topRated', label: '⭐ 4.5+ RATED' },
-  { key: 'express', label: '⚡ 15 MIN EXPRESS' },
+  { key: 'express', label: '⚡ UNDER 20 MIN' },
   { key: 'premium', label: '👑 PREMIUM' },
   { key: 'budget', label: '💰 BUDGET' },
   { key: 'jain', label: '🙏 JAIN' },
@@ -77,14 +81,6 @@ const CLASSICS = [
   { name: 'Bakery', img: 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?q=80&w=200' },
 ];
 
-const PROMOS = [
-  { id: 'mega-basket', tagline: '🏢 APARTMENT & HOSTEL BULK BASKET', title: 'BIG BASKET FOR', subtitle: 'APARTMENT PEOPLE', desc: 'Order bulk groceries, daily essentials & Kirana items together with flatmates.', btn: 'START BASKET', img: 'https://images.unsplash.com/photo-1542838132-92c53300491e?q=80&w=1200' },
-  { id: 'biryani', tagline: 'SPECIAL CAMPUS CRAVING', title: 'HYDERABADI DUM', subtitle: 'ROYAL BIRYANI', desc: 'Aromatic basmati rice & succulent spiced chicken.', btn: 'ORDER NOW', img: 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?q=80&w=1200' },
-  { id: 'kfc', tagline: 'KFC TAKEOVER LIVE', title: 'CRISPY JUICY', subtitle: 'CRUNCHY BUCKET', desc: 'Golden fried chicken buckets delivered hot to your hostel.', btn: 'ORDER KFC', img: 'https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?q=80&w=1200' },
-  { id: 'ride', tagline: 'ZENVY CO-RIDE 🏍️', title: 'SPLIT THE', subtitle: 'RIDE', desc: 'Connect with campus peers for instant bike pooling.', btn: 'FIND A RIDE', img: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?q=80&w=1200' },
-  { id: 'stays', tagline: 'VERIFIED CAMPUS STAYS', title: 'YOUR NEXT', subtitle: 'LUXURY HOME', desc: 'Discover verified hostels and PG accommodations near campus.', btn: 'EXPLORE STAYS', img: 'https://images.unsplash.com/photo-1555854877-bab0e564b8d5?q=80&w=1200' },
-  { id: 'elite', tagline: 'ZENVY ELITE PASS ✨', title: 'UNLIMITED', subtitle: 'FREE DELIVERY', desc: 'Zero delivery fee & VIP priority dispatch on every order.', btn: 'CLAIM ELITE', img: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=1200' },
-];
 
 const CATEGORIES = [
   { key: 'food', label: 'Food', emoji: '🍔' },
@@ -107,6 +103,100 @@ function getGreeting() {
   return 'Good Evening';
 }
 
+// Helper to accurately classify pure-vegetarian dining spots
+const isPureVegRestaurant = (r: any): boolean => {
+  if (r.isVeg === true || r.isVegetarian === true) return true;
+
+  const parseTags = (t: any): string[] => {
+    if (!t) return [];
+    if (Array.isArray(t)) return t.map(x => String(x).toLowerCase());
+    if (typeof t === 'string') {
+      try {
+        const parsed = JSON.parse(t);
+        if (Array.isArray(parsed)) return parsed.map(x => String(x).toLowerCase());
+      } catch {
+        return [t.toLowerCase()];
+      }
+    }
+    return [];
+  };
+
+  const tags = parseTags(r.tags || r.categories);
+  const name = (r.name || '').toLowerCase();
+  const cuisine = (r.cuisine || '').toLowerCase();
+
+  // Strictly Non-Veg keywords: If these exist, this restaurant is definitely NOT pure veg
+  const nonVegKeywords = ['chicken', 'mutton', 'meat', 'fish', 'seafood', 'shawarma', 'kfc', 'non-veg', 'nonveg', 'kebab', 'beef', 'pork', 'parotta hub'];
+  if (nonVegKeywords.some(w => name.includes(w) || tags.includes(w) || cuisine.includes(w))) {
+    return false;
+  }
+
+  // If restaurant has a menu: check if any item is non-veg
+  const menu = r.menu || [];
+  if (menu.length > 0) {
+    const hasNonVegItem = menu.some((item: any) => {
+      if (item.isVegetarian === false || item.isVeg === false) return true;
+      const iName = (item.name || '').toLowerCase();
+      const iTags = (item.tags || []).map((t: string) => String(t).toLowerCase());
+      return nonVegKeywords.some(w => iName.includes(w) || iTags.includes(w));
+    });
+    if (hasNonVegItem) return false;
+  }
+
+  // Pure veg indicators
+  const vegKeywords = ['veg', 'pure-veg', 'pure veg', 'vegetarian', 'south-indian', 'tiffin', 'sweets', 'bakery', 'juice', 'fruits', 'chaat', 'idli', 'dosa', 'ice cream', 'icecream', 'salad', 'chai', 'coffee', 'dessert', 'waffle', 'thali', 'paneer'];
+  return vegKeywords.some(w => name.includes(w) || tags.includes(w) || cuisine.includes(w));
+};
+
+// Restaurant types shown in the Home food list and the Classics explorer
+const HOME_FOOD_TYPES = ['FOOD', 'RESTAURANT', 'CAFE', 'BAKERY', 'SWEETS', 'DESSERT', 'DESSERTS', 'DRINKS', 'MESS'];
+// CampusBites stalls are display-only (call / WhatsApp the vendor) and live in their own section, never the orderable grid
+const isHomeFoodVendor = (r: any): boolean => {
+  if (isLocalVendor(r)) return false;
+  const t = String(r?.vendorType || '').toUpperCase();
+  return !t || HOME_FOOD_TYPES.includes(t);
+};
+
+// Only dishes the kitchen can actually serve right now
+const availableMenu = (r: any): any[] => (Array.isArray(r?.menu) ? r.menu : []).filter((i: any) => i && i.isAvailable !== false);
+
+// Open/closed: the server sends isOpen (vendor toggle + operatingHours, IST). Fall back to the raw fields for cached data.
+const isRestaurantOpenNow = (r: any): boolean => {
+  if (!r) return false;
+  if (typeof r.isOpen === 'boolean') return r.isOpen;
+  if (r.isActive === false || r.isOffline === true || r.isOpenNow === false) return false;
+  let hours: any = r.operatingHours;
+  if (typeof hours === 'string') { try { hours = JSON.parse(hours); } catch { hours = null; } }
+  if (!hours || typeof hours !== 'object') return true;
+  const [sH, sM] = String(hours.start || '00:00').split(':').map(Number);
+  const [eH, eM] = String(hours.end || '23:59').split(':').map(Number);
+  if ([sH, sM, eH, eM].some(n => Number.isNaN(n))) return true;
+  const now = new Date();
+  const ist = new Date(now.getTime() + now.getTimezoneOffset() * 60000 + 5.5 * 3600000);
+  const cur = ist.getHours() * 60 + ist.getMinutes();
+  const start = sH * 60 + sM;
+  const end = eH * 60 + eM;
+  if (end < start) return cur >= start || cur <= end; // overnight hours
+  return cur >= start && cur <= end;
+};
+
+// "9:00 AM" from the server's opensAt ("09:00")
+const formatOpensAt = (opensAt: any): string | null => {
+  if (!opensAt || typeof opensAt !== 'string') return null;
+  const [h, m] = opensAt.split(':').map(Number);
+  if (Number.isNaN(h)) return null;
+  const suffix = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m || 0).padStart(2, '0')} ${suffix}`;
+};
+
+// Diet keyword match across restaurant tags, name and available dishes
+const hasDietTag = (r: any, kw: string): boolean => {
+  const has = (v: any) => (Array.isArray(v) ? v : []).some((x: any) => String(x || '').toLowerCase().includes(kw));
+  return has(r.tags) || (r.name || '').toLowerCase().includes(kw) || (r.cuisine || '').toLowerCase().includes(kw) ||
+    availableMenu(r).some((i: any) => (i.name || '').toLowerCase().includes(kw) || (i.category || '').toLowerCase().includes(kw) || has(i.tags));
+};
+
 export default function HomeScreen() {
   const router = useRouter();
   const { user, refreshUser } = useAuth();
@@ -115,15 +205,28 @@ export default function HomeScreen() {
   const { triggerTransition } = useWorldTransition();
   const scrollRef = useRef<ScrollView>(null);
   const nexusY = useRef(0);
+  const gridY = useRef(0);
+  const pendingNexusScroll = useRef(false);
+  const scrollToGrid = () => { scrollRef.current?.scrollTo({ y: Math.max(0, gridY.current - 8), animated: true }); };
+  const scrollToNexusSoon = (alreadyMounted: boolean) => {
+    if (alreadyMounted && nexusY.current > 0) scrollRef.current?.scrollTo({ y: nexusY.current, animated: true });
+    else pendingNexusScroll.current = true;
+  };
   const [restaurants, setRestaurants] = useState<any[]>([]);
   const [filter, setFilter] = useState('all');
-  const [classicFilter, setClassicFilter] = useState('Biryani');
+  const [classicFilter, setClassicFilter] = useState('');
   const [search, setSearch] = useState('');
+  const { dietMode, setDietMode } = useDietary();
+  const [vegOnly, setVegOnly] = useState(dietMode === 'veg' || dietMode === 'eggarian');
+
+  useEffect(() => {
+    setVegOnly(dietMode === 'veg' || dietMode === 'eggarian');
+  }, [dietMode]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [classics, setClassics] = useState<any[]>(CLASSICS);
-  const [promos, setPromos] = useState<any[]>(PROMOS);
   const [showWakeup, setShowWakeup] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   // Search Overlay State
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -132,6 +235,7 @@ export default function HomeScreen() {
   const [showVaultModal, setShowVaultModal] = useState(false);
   const [vaultItems, setVaultItems] = useState<any[]>([]);
   const [loadingVault, setLoadingVault] = useState(false);
+  const [vaultError, setVaultError] = useState(false);
   const [claimingItemId, setClaimingItemId] = useState<string | null>(null);
 
   const [showBlockModal, setShowBlockModal] = useState(false);
@@ -149,7 +253,7 @@ export default function HomeScreen() {
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
-    Animated.loop(
+    const pulseLoop = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, {
           toValue: 1,
@@ -162,7 +266,38 @@ export default function HomeScreen() {
           useNativeDriver: true,
         })
       ])
-    ).start();
+    );
+    pulseLoop.start();
+    return () => pulseLoop.stop();
+  }, []);
+
+  // Swiggy/Zomato style dynamic search placeholders
+  const SEARCH_PLACEHOLDERS = [
+    "Search 'Biryani'...",
+    "Search 'Pizza'...",
+    "Search 'Dosa & Chai'...",
+    "Search 'Cold Coffee & Shakes'...",
+    "Search 'Burgers & Fries'..."
+  ];
+  const [placeholderIndex, setPlaceholderIndex] = useState(0);
+  const placeholderFade = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      Animated.timing(placeholderFade, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: true
+      }).start(() => {
+        setPlaceholderIndex(prev => (prev + 1) % SEARCH_PLACEHOLDERS.length);
+        Animated.timing(placeholderFade, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true
+        }).start();
+      });
+    }, 3500);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -215,33 +350,48 @@ export default function HomeScreen() {
 
   const fetchVaultItems = async () => {
     setLoadingVault(true);
+    setVaultError(false);
+    setVaultItems([]);
     try {
       const res = await apiFetch(ENDPOINTS.vaultList);
       if (res.ok) {
         const data = await res.json();
-        setVaultItems(data);
+        setVaultItems(Array.isArray(data) ? data : []);
+      } else {
+        setVaultError(true);
       }
     } catch (e) {
       console.error(e);
+      setVaultError(true);
     } finally {
       setLoadingVault(false);
     }
   };
 
   const handleClaimVault = async (itemId: string) => {
+    if (!user) {
+      setShowVaultModal(false);
+      Alert.alert('Log in to claim', "Log in to your Zenvy account to claim today's deals.", [
+        { text: 'Not now', style: 'cancel' },
+        { text: 'Log in', onPress: () => router.push('/login' as any) },
+      ]);
+      return;
+    }
     setClaimingItemId(itemId);
     try {
       const res = await apiFetch(ENDPOINTS.vaultClaim(itemId), { method: 'POST' });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        Alert.alert('Deal Claimed!', data.message || 'Added to your coupons!');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        const code = data.code || data.coupon?.code;
+        Alert.alert('Deal claimed! 🎉', code ? `Use code ${code} at checkout. It's valid until midnight.` : (data.message || 'Added to your coupons.'));
         fetchVaultItems();
         if (refreshUser) refreshUser();
       } else {
-        Alert.alert('Access Denied', data.message || 'Claim failed.');
+        Alert.alert("Couldn't claim this deal", data.message || 'Please try again in a moment.');
       }
     } catch (e) {
-      Alert.alert('Error', 'Could not claim this deal. Check your connection.');
+      Alert.alert("Couldn't claim this deal", 'Check your connection and try again.');
     } finally {
       setClaimingItemId(null);
     }
@@ -275,89 +425,85 @@ export default function HomeScreen() {
   };
 
   const fetchData = useCallback(async () => {
-    try {
-      const res = await fetch(ENDPOINTS.restaurants);
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        const cleaned = data.map((r: any) => ({
-          ...r,
-          imageUrl: sanitizeImage(r.imageUrl || r.image),
-          image: sanitizeImage(r.imageUrl || r.image)
-        }));
-        setRestaurants(cleaned);
-      }
-    } catch (e: any) { 
-      console.warn('[ZENVY_SYNC] Backend connection notice:', e?.message || e);
-      setShowWakeup(true);
-    }
+    // Quick timeout helper — don't hang on cold-start backends
+    const fetchWithTimeout = (url: string, ms = 8000) => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), ms);
+      return fetch(url, { signal: controller.signal }).finally(() => clearTimeout(timer));
+    };
 
     try {
-      const confRes = await fetch(`${API_URL}/api/config`);
-      const confData = await confRes.json();
-      if (confData.success && confData.config) {
-        if (confData.config.banners) {
-          setPromos(confData.config.banners.filter((b: any) => b.isActive).map((b: any) => ({
-            id: b._id || Math.random().toString(),
-            tagline: b.tagline || '',
-            title: b.title1 || '',
-            subtitle: b.title2 || '',
-            desc: b.description || '',
-            btn: b.buttonText || '',
-            img: b.imageUrl,
-            redirectUrl: b.redirectUrl
-          })));
+      const res = await fetchWithTimeout(ENDPOINTS.restaurants);
+      const data = await res.json();
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!Array.isArray(data)) throw new Error('Bad restaurants payload');
+      const cleaned = data.map((r: any) => ({
+        ...r,
+        imageUrl: sanitizeImage(r.imageUrl || r.image),
+        image: sanitizeImage(r.imageUrl || r.image)
+      }));
+      setRestaurants(cleaned);
+      // Cache for instant load next time
+      AsyncStorage.setItem('zenvy_cached_restaurants', JSON.stringify(cleaned)).catch(() => {});
+      setLoadError(false);
+      setShowWakeup(false); // Connected — hide any banner
+    } catch (e: any) {
+      console.warn('[ZENVY_SYNC] Restaurants failed to load:', e?.message || e);
+      // Load cached restaurants as instant fallback
+      let hadCache = false;
+      try {
+        const cached = await AsyncStorage.getItem('zenvy_cached_restaurants');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setRestaurants(parsed);
+            hadCache = true;
+          }
         }
-        // Commented out to prevent overriding with missing images from backend
-        // if (confData.config.categories) {
-        //   setClassics(confData.config.categories.filter((c: any) => c.isActive).sort((a: any, b: any) => a.order - b.order).map((c: any) => ({
-        //     name: c.name,
-        //     img: c.img
-        //   })));
-        // }
-      }
-    } catch (err) { console.error('Config fetch error:', err); }
-    finally { setLoading(false); setRefreshing(false); }
+      } catch {}
+      setLoadError(!hadCache);
+      setShowWakeup(true);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
   useFocusEffect(
     useCallback(() => {
-      const loadDietPrefs = async () => {
-        try {
-          const dietPrefsRaw = await AsyncStorage.getItem('zenvy_diet_prefs');
-          if (dietPrefsRaw) {
-            const parsed = JSON.parse(dietPrefsRaw);
-            if (parsed && parsed.mode) {
-              if (parsed.mode === 'veg') {
-                setFilter('veg');
-              } else if (parsed.mode === 'all') {
-                setFilter('all');
-              }
-            }
-          }
-        } catch (e) {
-          console.error(e);
-        }
+      let active = true;
+      const countLocal = async () => {
+        // Guests (or offline): alerts this device received. Old app versions seeded fake
+        // 'default-*' sample alerts; they never count.
+        const stored = await AsyncStorage.getItem('zenvy_notifications');
+        const notifs = stored ? JSON.parse(stored) : [];
+        return Array.isArray(notifs)
+          ? notifs.filter((n: any) => n && !n.read && !(typeof n.id === 'string' && n.id.startsWith('default-'))).length
+          : 0;
       };
       const checkUnread = async () => {
         try {
-          const stored = await AsyncStorage.getItem('zenvy_notifications');
-          if (stored) {
-            const notifs = JSON.parse(stored);
-            if (Array.isArray(notifs)) {
-              setUnreadCount(notifs.filter((n: any) => !n.read).length);
-            }
-          } else {
-            setUnreadCount(0);
+          if (user) {
+            try {
+              const res = await apiFetch('/api/notifications/unread-count');
+              const data = await res.json().catch(() => null);
+              if (res.ok && data && typeof data.unreadCount === 'number') {
+                if (active) setUnreadCount(data.unreadCount);
+                return;
+              }
+            } catch {}
           }
+          const local = await countLocal();
+          if (active) setUnreadCount(local);
         } catch (e) {
-          console.error(e);
+          console.warn('Unread count error:', e);
         }
       };
-      loadDietPrefs();
       checkUnread();
-    }, [])
+      return () => { active = false; };
+    }, [user])
   );
 
   const pathname = usePathname();
@@ -411,25 +557,28 @@ export default function HomeScreen() {
   }, [fetchData]);
 
   const filtered = restaurants
-    .filter(r => { 
-      const t = (r.vendorType||'').toUpperCase(); 
-      return !t || t === 'FOOD' || t === 'RESTAURANT' || t === 'CAFE' || t === 'BAKERY' || t === 'SWEETS' || t === 'DRINKS' || t === 'MESS'; 
+    .filter(isHomeFoodVendor)
+    .filter(r => {
+      if (vegOnly) {
+        return isPureVegRestaurant(r);
+      }
+      return true;
     })
     .filter(r => {
-      if (filter === 'veg') return r.isVeg || (r.cuisine||'').toLowerCase().includes('veg') || (r.menu||[]).some((i:any) => i.isVegetarian || i.isVeg);
-      if (filter === 'under99') return (r.menu||[]).some((i:any) => i.price <= 99);
-      if (filter === 'topRated') return (Number(r.rating) || 4.5) >= 4.5;
-      if (filter === 'express') return (r.deliveryTime || '').includes('15') || (r.deliveryTime || '').includes('10') || (r.deliveryTime || '').includes('20');
-      if (filter === 'budget') return (r.menu||[]).some((i:any) => i.price < 150) || (r.priceForTwo && r.priceForTwo < 200);
+      if (filter === 'veg') return isPureVegRestaurant(r);
+      if (filter === 'under99') return availableMenu(r).some((i:any) => Number(i.price) <= 99);
+      if (filter === 'topRated') return Number(r.rating) >= 4.5;
+      if (filter === 'express') { const d = Number(r.deliveryTime); return d > 0 && d <= 20; }
+      if (filter === 'budget') return availableMenu(r).some((i:any) => Number(i.price) < 150);
       if (filter === 'premium') return r.subscriptionTier === 'premium' || r.isFeatured;
-      if (filter === 'jain') return (r.cuisine||'').toLowerCase().includes('jain') || (r.name||'').toLowerCase().includes('jain') || (r.menu||[]).some((i:any) => (i.name||'').toLowerCase().includes('jain') || i.isJain);
-      if (filter === 'eggless') return (r.cuisine||'').toLowerCase().includes('eggless') || (r.name||'').toLowerCase().includes('eggless') || (r.menu||[]).some((i:any) => (i.name||'').toLowerCase().includes('eggless') || i.isEggless);
+      if (filter === 'jain') return hasDietTag(r, 'jain');
+      if (filter === 'eggless') return hasDietTag(r, 'eggless');
       return true;
     })
     .filter(r => {
       if (!search) return true;
       const q = search.toLowerCase();
-      return (r.name||'').toLowerCase().includes(q) || (r.cuisine||'').toLowerCase().includes(q);
+      return (r.name||'').toLowerCase().includes(q) || (r.cuisine||'').toLowerCase().includes(q) || (Array.isArray(r.tags) && r.tags.some((t: any) => String(t || '').toLowerCase().includes(q)));
     })
     .sort((a, b) => {
       const aFeat = a.isFeatured ? 1 : 0;
@@ -437,58 +586,20 @@ export default function HomeScreen() {
       if (bFeat !== aFeat) return bFeat - aFeat;
       if (!classicFilter) return 0;
       const q = classicFilter.toLowerCase();
-      const aMatch = (a.cuisine||'').toLowerCase().includes(q) || (a.name||'').toLowerCase().includes(q) || (a.menu||[]).some((m:any) => (m.name||'').toLowerCase().includes(q));
-      const bMatch = (b.cuisine||'').toLowerCase().includes(q) || (b.name||'').toLowerCase().includes(q) || (b.menu||[]).some((m:any) => (m.name||'').toLowerCase().includes(q));
+      const aMatch = (a.cuisine||'').toLowerCase().includes(q) || (a.name||'').toLowerCase().includes(q) || availableMenu(a).some((m:any) => (m.name||'').toLowerCase().includes(q));
+      const bMatch = (b.cuisine||'').toLowerCase().includes(q) || (b.name||'').toLowerCase().includes(q) || availableMenu(b).some((m:any) => (m.name||'').toLowerCase().includes(q));
       if (aMatch && !bMatch) return -1;
       if (!aMatch && bMatch) return 1;
       return 0;
     });
 
-  const carouselOffers = [
-    ...promos.map(p => ({
-      id: p.id,
-      imageUrl: p.img,
-      tagline: p.tagline,
-      title1: p.title,
-      title2: p.subtitle,
-      description: p.desc,
-      buttonText: p.btn,
-      redirectAction: () => {
-        if (p.redirectUrl) {
-          if (p.redirectUrl.startsWith('/')) {
-             router.push(p.redirectUrl as any);
-          } else {
-             Linking.openURL(p.redirectUrl).catch(err => console.error("Couldn't open external URL", err));
-          }
-        } else if (p.id === 'kfc') {
-          router.push('/restaurant/kfc' as any);
-        } else if (p.id === 'ride') {
-          router.push({ pathname: '/(tabs)/others', params: { tab: 'coride' } } as any);
-        } else if (p.id === 'stays') {
-          router.push({ pathname: '/(tabs)/others', params: { tab: 'pg' } } as any);
-        } else if (p.id === 'elite') {
-          router.push('/(tabs)/profile' as any);
-        }
-      }
-    })),
-    {
-      id: 'friends',
-      imageUrl: 'https://images.unsplash.com/photo-1614064641938-3bbee52942c7?q=80&w=600',
-      tagline: '🔒 SECURE LOUNGE',
-      title1: 'ENCRYPTED CHATS',
-      title2: '& STREAKS',
-      description: 'Sync contacts to start secure 1-on-1 chats & daily fire streaks.',
-      buttonText: 'ENTER LOUNGE',
-      redirectAction: () => {
-        router.push('/friends' as any);
-      }
-    }
-  ];
   const cardBg = isDark ? 'rgba(255, 255, 255, 0.08)' : colors.card;
   const txt = colors.text;
   const txtSec = colors.textSecondary;
   const border = isDark ? COLORS.borderGold : colors.border;
   const bg = colors.bg;
+  // Bottom sheets need an opaque surface (cardBg is translucent in dark mode)
+  const sheetBg = isDark ? '#18181B' : colors.card;
 
   const goldColor = isDark ? COLORS.gold : colors.gold;
   const goldBorderColor = isDark ? COLORS.goldBorder : 'rgba(239, 79, 95, 0.35)';
@@ -499,16 +610,15 @@ export default function HomeScreen() {
     <View style={[s.container, { backgroundColor: bg }]}>
       <ServerWakeupOverlay 
         visible={showWakeup} 
-        onWakeupComplete={() => {
-          setShowWakeup(false);
-          setRefreshing(true);
-          fetchData();
-        }} 
+        // Refetch only once the server answers; when it stays unreachable the grid shows Retry
+        // (re-fetching here re-opened the banner every minute while offline).
+        onRetry={() => { fetchData(); }}
+        onWakeupComplete={() => setShowWakeup(false)}
       />
       <AmbientBackground />
       <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchData(); }} tintColor={goldColor} />}>
 
-        {/* ── NAVBAR ── */}
+        {/* ── NAVBAR (SWIGGY & ZOMATO ELEVATED HEADER) ── */}
         <StaggeredSection delay={0} direction="down">
         <View style={s.nav}>
           <TouchableOpacity 
@@ -530,8 +640,8 @@ export default function HomeScreen() {
             <View>
               <Text style={[s.greeting, { color: txtSec }]}>{getGreeting().toUpperCase()}</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={[s.userName, { color: txt }]}>{(user?.name || 'Zenvy').split(' ')[0].toUpperCase()}</Text>
-                {(user?.isElite || (user?.zenPoints && user.zenPoints >= 200)) && (
+                <Text style={[s.userName, { color: txt }]}>{(user?.name || 'Guest').split(' ')[0].toUpperCase()}</Text>
+                {!!(user?.isElite || (user?.zenPoints && user.zenPoints >= 200)) && (
                   <View style={[s.eliteBadge, { backgroundColor: '#D4AF7A', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 }]}>
                     <Text style={{ fontSize: 7, fontWeight: '900', color: '#000', letterSpacing: 1.5 }}>✨ VIP GOLD</Text>
                   </View>
@@ -539,6 +649,7 @@ export default function HomeScreen() {
               </View>
             </View>
           </TouchableOpacity>
+
           <View style={s.navRight}>
             <DopaminePressable 
               style={[s.navBtn, { backgroundColor: cardBg, borderColor: goldBorderColor }]} 
@@ -561,11 +672,48 @@ export default function HomeScreen() {
         </View>
         </StaggeredSection>
 
-        {/* ── HERO CAROUSEL CARD ── */}
+        {/* ── HIGH-CLASS SWIGGY/ZOMATO PROMO CAROUSEL (WITH MINIATURE ANIMATIONS & ADMIN SPOTLIGHT) ── */}
         <StaggeredSection delay={100} direction="up">
-          <PromoCarousel 
-            offers={carouselOffers} 
+          <HighClassPromoCarousel 
+            featuredRestaurants={restaurants}
+            onSelectRestaurant={(id) => router.push(`/restaurant/${id}` as any)}
+            onSelectSlide={(slide) => {
+              if (slide.id === 'gold-pass') router.push('/(tabs)/profile');
+              else if (slide.id === 'biryani') {
+                const wasOpen = classicFilter !== '';
+                setClassicFilter('Biryani');
+                scrollToNexusSoon(wasOpen);
+              } else if (slide.id === 'kfc') {
+                const kfc = restaurants.find((r: any) => /kfc/i.test(r?.name || ''));
+                if (kfc) router.push(`/restaurant/${kfc.id || kfc._id}` as any);
+                else { setSearch('KFC'); scrollToGrid(); }
+              } else if (slide.id === 'mega-basket') {
+                router.push('/mega-basket' as any);
+              } else if (slide.id === 'campus-buddy') {
+                router.push('/friends' as any);
+              } else if (slide.id === 'after-dark') {
+                router.push({ pathname: '/(tabs)/others', params: { tab: 'afterdark' } } as any);
+              } else if (slide.id === 'ride') {
+                router.push({ pathname: '/(tabs)/others', params: { tab: 'rides' } } as any);
+              } else if (slide.id === 'stays') {
+                router.push({ pathname: '/(tabs)/others', params: { tab: 'stays' } } as any);
+              } else if (slide.id === 'express-canteen') {
+                router.push('/category/express' as any);
+              } else if (slide.id === 'welcome-benefits') {
+                fetchVaultItems();
+                setShowVaultModal(true);
+              } else if (slide.id === 'free-cash') {
+                scrollToGrid();
+              }
+            }}
           />
+        </StaggeredSection>
+
+        {/* ── LIVE CAMPUS TICKER (SWIGGY / ZOMATO DEALS & PULSE) ── */}
+        <StaggeredSection delay={150} direction="up">
+          <View style={{ marginTop: 6, marginBottom: 2 }}>
+            <CampusLiveTicker />
+          </View>
         </StaggeredSection>
 
         {/* ── CATEGORIES GRID CONTAINER (EXACT FIT) ── */}
@@ -583,7 +731,7 @@ export default function HomeScreen() {
               ]} 
               onPress={() => {
                 if (c.key === 'food') {
-                  if (scrollRef.current) scrollRef.current.scrollTo({ y: 485, animated: true });
+                  scrollToGrid();
                 } else if (c.key === 'basket') {
                   router.push('/mega-basket' as any);
                 } else if (c.key === 'services') {
@@ -609,23 +757,57 @@ export default function HomeScreen() {
         </View>
         </StaggeredSection>
 
-        {/* ── SEARCH ── */}
+        {/* ── SEARCH & VEG MODE TOGGLE (SWIGGY / ZOMATO SIGNATURE BAR) ── */}
         <StaggeredSection delay={350} direction="left">
-        <TouchableOpacity 
-          activeOpacity={0.9}
-          onPress={() => setIsSearchOpen(true)}
-          style={[s.searchWrap, { backgroundColor: cardBg, borderColor: isDark ? goldBorderColor : COLORS.borderLight }]}
-        >
-          <Text style={{ fontSize: 16 }}>🔍</Text>
-          <TextInput 
-            style={[s.searchInput, { color: txt }]} 
-            placeholder="Search for dishes or restaurants..." 
-            placeholderTextColor={txtSec} 
-            value={search} 
-            editable={false}
-            pointerEvents="none"
-          />
-        </TouchableOpacity>
+        <View style={s.searchBarContainer}>
+          <TouchableOpacity 
+            activeOpacity={0.9}
+            onPress={() => setIsSearchOpen(true)}
+            style={[s.searchWrap, { backgroundColor: cardBg, borderColor: isDark ? goldBorderColor : COLORS.borderLight, flex: 1, marginBottom: 0 }]}
+          >
+            <Text style={{ fontSize: 16 }}>🔍</Text>
+            <Animated.View style={{ flex: 1, opacity: placeholderFade }}>
+              <TextInput 
+                style={[s.searchInput, { color: txt }]} 
+                placeholder={SEARCH_PLACEHOLDERS[placeholderIndex]} 
+                placeholderTextColor={txtSec} 
+                value={search} 
+                editable={false}
+                pointerEvents="none"
+              />
+            </Animated.View>
+            {!!search && (
+              <TouchableOpacity
+                onPress={() => setSearch('')}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                accessibilityLabel="Clear search"
+              >
+                <Text style={{ fontSize: 14, fontWeight: '800', color: txtSec }}>✕</Text>
+              </TouchableOpacity>
+            )}
+          </TouchableOpacity>
+
+          {/* VEG MODE Switch (Swiggy / Zomato Style) */}
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+              const nextVal = !vegOnly;
+              setVegOnly(nextVal);
+              setDietMode(nextVal ? 'veg' : 'all');
+              if (!nextVal && filter === 'veg') setFilter('all');
+            }}
+            style={[
+              s.vegToggleWrap,
+              { backgroundColor: cardBg, borderColor: vegOnly ? '#10B981' : (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)') }
+            ]}
+          >
+            <Text style={[s.vegToggleText, { color: vegOnly ? '#10B981' : txtSec }]}>VEG</Text>
+            <View style={[s.vegSwitchTrack, { backgroundColor: vegOnly ? '#10B981' : (isDark ? 'rgba(255,255,255,0.2)' : '#E2E8F0') }]}>
+              <View style={[s.vegSwitchThumb, vegOnly && s.vegSwitchThumbActive]} />
+            </View>
+          </TouchableOpacity>
+        </View>
         </StaggeredSection>
 
         {/* ── CLASSICS ── */}
@@ -647,10 +829,9 @@ export default function HomeScreen() {
                 key={i} 
                 style={s.classicItem} 
                 onPress={() => {
+                  const wasOpen = classicFilter !== '';
                   setClassicFilter(isActive ? '' : c.name);
-                  if (!isActive && scrollRef.current) {
-                    scrollRef.current.scrollTo({ y: nexusY.current, animated: true });
-                  }
+                  if (!isActive) scrollToNexusSoon(wasOpen);
                 }}
                 sound="tabSwitch"
                 activeScale={0.92}
@@ -667,7 +848,13 @@ export default function HomeScreen() {
         {/* ── MENU EXPLORER: Dish Discovery ── */}
         {classicFilter !== '' && (
           <Animated.View 
-            onLayout={(e) => { nexusY.current = e.nativeEvent.layout.y; }}
+            onLayout={(e) => {
+              nexusY.current = e.nativeEvent.layout.y;
+              if (pendingNexusScroll.current) {
+                pendingNexusScroll.current = false;
+                scrollRef.current?.scrollTo({ y: e.nativeEvent.layout.y, animated: true });
+              }
+            }}
             style={{
               opacity: classicAnim,
               transform: [
@@ -693,7 +880,7 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </View>
             <NexusExplorer
-              restaurants={restaurants.filter(r => { const t = (r.vendorType||'').toUpperCase(); return !t || t === 'FOOD' || t === 'RESTAURANT' || t === 'CAFE' || t === 'BAKERY' || t === 'SWEETS' || t === 'DRINKS' || t === 'MESS'; })}
+              restaurants={restaurants.filter(isHomeFoodVendor)}
               activeCategory={classicFilter}
               onSelectItem={(restaurantId) => router.push(`/restaurant/${restaurantId}` as any)}
             />
@@ -732,7 +919,7 @@ export default function HomeScreen() {
         <RecentlyViewed />
 
         {/* ── FILTERS ── */}
-        <View style={s.sectionHeader}><Text style={[s.sectionTitle, { color: txt }]}>All Restaurants</Text></View>
+        <View onLayout={(e) => { gridY.current = e.nativeEvent.layout.y; }} style={s.sectionHeader}><Text style={[s.sectionTitle, { color: txt }]}>All Restaurants</Text></View>
         <Text style={[s.sectionSub, { color: txtSec }]}>DISCOVER YOUR CAMPUS FAVORITES</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingLeft: 16, marginBottom: 16 }}>
           {FILTERS.map(f => {
@@ -764,44 +951,71 @@ export default function HomeScreen() {
               <View style={{ width: '48.5%' }}><RestaurantCardSkeleton /></View>
               <View style={{ width: '48.5%' }}><RestaurantCardSkeleton /></View>
             </>
+          ) : loadError && restaurants.length === 0 ? (
+            <View style={[s.emptyFilterBox, { backgroundColor: cardBg, borderColor: isDark ? goldBorderColor : COLORS.borderLight }]}>
+              <Text style={{ fontSize: 34, marginBottom: 8 }}>📡</Text>
+              <Text style={[s.emptyFilterTitle, { color: txt }]}>COULDN'T LOAD RESTAURANTS</Text>
+              <Text style={[s.emptyFilterSub, { color: txtSec }]}>
+                We couldn't reach the campus kitchens. Check your connection, then pull down or tap Retry.
+              </Text>
+              <TouchableOpacity
+                style={[s.resetFilterBtn, { backgroundColor: goldColor }]}
+                onPress={() => { setRefreshing(true); fetchData(); }}
+                activeOpacity={0.85}
+              >
+                <Text style={[s.resetFilterBtnText, { color: isDark ? '#000' : '#fff' }]}>RETRY</Text>
+              </TouchableOpacity>
+            </View>
           ) : filtered.length === 0 ? (
             <View style={[s.emptyFilterBox, { backgroundColor: cardBg, borderColor: isDark ? goldBorderColor : COLORS.borderLight }]}>
               <Text style={{ fontSize: 34, marginBottom: 8 }}>🍽️</Text>
               <Text style={[s.emptyFilterTitle, { color: txt }]}>NO RESTAURANTS FOUND</Text>
               <Text style={[s.emptyFilterSub, { color: txtSec }]}>
-                No dining spots match your active &quot;{filter.toUpperCase()}&quot; filter or search query. Reset filters to see all campus favorites.
+                {(() => {
+                  const parts: string[] = [];
+                  if (vegOnly) parts.push('VEG MODE');
+                  if (filter !== 'all') parts.push(`"${(FILTERS.find(f => f.key === filter)?.label || filter).toUpperCase()}" filter`);
+                  if (search) parts.push(`search "${search}"`);
+                  return parts.length
+                    ? `No dining spots match your ${parts.join(' + ')}. Reset filters to see all campus favorites.`
+                    : 'No campus kitchens are listed right now. Pull down to refresh.';
+                })()}
               </Text>
-              <TouchableOpacity 
-                style={[s.resetFilterBtn, { backgroundColor: goldColor }]}
-                onPress={() => {
-                  setFilter('all');
-                  setClassicFilter('');
-                  setSearch('');
-                }}
-                activeOpacity={0.85}
-              >
-                <Text style={[s.resetFilterBtnText, { color: isDark ? '#000' : '#fff' }]}>VIEW ALL RESTAURANTS</Text>
-              </TouchableOpacity>
+              {(vegOnly || filter !== 'all' || !!search || classicFilter !== '') && (
+                <TouchableOpacity
+                  style={[s.resetFilterBtn, { backgroundColor: goldColor }]}
+                  onPress={() => {
+                    setFilter('all');
+                    setClassicFilter('');
+                    setSearch('');
+                    if (vegOnly) {
+                      setVegOnly(false);
+                      setDietMode('all');
+                    }
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[s.resetFilterBtnText, { color: isDark ? '#000' : '#fff' }]}>VIEW ALL RESTAURANTS</Text>
+                </TouchableOpacity>
+              )}
             </View>
           ) : (
             filtered.map((r, i) => {
             const id = r._id || r.id;
-            const rating = Number(r.rating) || 4.0;
-            const nameSeed = (r.name || '').length + (id || '').charCodeAt(0);
-            const deliveryMin = 25 + (nameSeed % 11);
-            const deliveryMax = deliveryMin + 15;
-            const time = `${deliveryMin}-${deliveryMax} min`;
+            // Real data only: no invented ratings, ETAs, offers or prices
+            const rating = Number(r.rating) || 0;
+            const deliveryMins = Number(r.deliveryTime) || 0;
+            const time: string | null = r.time || (deliveryMins > 0 ? `${deliveryMins} min` : null);
             const img = r.imageUrl || r.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400';
-            
-            // Open/Closed status — use backend field if available, else derive from hour (7 AM – 11 PM)
-            const nowHour = new Date().getHours();
-            const isOpen = r.isOpen !== undefined ? r.isOpen : (nowHour >= 7 && nowHour < 23);
-            
-            // Stable pseudo-random offers & pricing to match web portal behaviour
-            const priceForTwo = 150 + (nameSeed * 7) % 201;
-            const offers = ["50% OFF up to ₹100", "Flat ₹75 OFF", "Free Delivery", "60% OFF up to ₹120", "Buy 1 Get 1 Free"];
-            const offer = offers[nameSeed % offers.length];
-            const hasOffer = (nameSeed % 10) < 7;
+
+            // Open/Closed status from the server (vendor toggle + operating hours, IST)
+            const isOpen = isRestaurantOpenNow(r);
+            const opensAtLabel = !isOpen ? formatOpensAt(r.opensAt) : null;
+
+            const activeOffer: string | null = r.promoOffer || null;
+            const cuisineText = Array.isArray(r.tags) && r.tags.length
+              ? r.tags.slice(0, 3).map((t: any) => String(t)).join(', ')
+              : (r.cuisine || r.description || '');
             const isFav = (Array.isArray(favorites) ? favorites.includes(id) : false);
             const isPremium = r.subscriptionTier === 'premium' || r.isFeatured;
 
@@ -813,7 +1027,17 @@ export default function HomeScreen() {
                 style={{ width: '48.5%' }}
               >
               <CardPressable 
-                style={[s.rCard, { backgroundColor: cardBg, borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.06)', borderWidth: 1, width: '100%', marginHorizontal: 0 }]} 
+                style={[
+                  s.rCard, 
+                  { 
+                    backgroundColor: cardBg, 
+                    borderColor: r.isFeatured ? '#F59E0B' : (isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.06)'), 
+                    borderWidth: r.isFeatured ? 1.5 : 1, 
+                    width: '100%', 
+                    marginHorizontal: 0,
+                    ...(r.isFeatured ? { shadowColor: '#F59E0B', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 10, elevation: 4 } : {})
+                  }
+                ]} 
                 onPress={() => router.push(`/restaurant/${id}` as any)}
                 sound={isPremium ? 'premiumRestaurantTransition' : 'click'}
               >
@@ -829,36 +1053,77 @@ export default function HomeScreen() {
                   >
                     <Text style={{ fontSize: 13 }}>{isFav ? '❤️' : '🤍'}</Text>
                   </DopaminePressable>
- 
-                  {/* Promoted badge */}
-                  {r.isFeatured && (
-                    <View style={s.promotedBadge}>
-                      <Text style={s.promotedText}>PROMOTED</Text>
-                    </View>
-                  )}
- 
-                  <View style={s.timeChip}><Text style={s.timeText}>{time}</Text></View>
-                  {/* Open/Closed status badge */}
+
+                  {/* Open/Closed status badge with pulsing live dot */}
                   <View style={{
                     position: 'absolute',
                     top: 8,
                     left: 8,
                     backgroundColor: isOpen ? 'rgba(16,185,129,0.92)' : 'rgba(100,100,100,0.88)',
                     paddingHorizontal: 6,
-                    paddingVertical: 2,
+                    paddingVertical: 3,
                     borderRadius: 6,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 3.5
                   }}>
-                    <Text style={{ fontSize: 7, fontWeight: '900', color: '#fff', letterSpacing: 1 }}>
-                      {isOpen ? '● OPEN' : '● CLOSED'}
+                    <Animated.View style={{
+                      width: 5,
+                      height: 5,
+                      borderRadius: 2.5,
+                      backgroundColor: '#fff',
+                      opacity: isOpen ? pulseAnim : 0.6
+                    }} />
+                    <Text style={{ fontSize: 7.5, fontWeight: '900', color: '#fff', letterSpacing: 0.8 }}>
+                      {isOpen ? 'OPEN' : 'CLOSED'}
                     </Text>
                   </View>
+
+                  {/* Promoted / Sponsored Badge */}
+                  {r.isFeatured && (
+                    <LinearGradient
+                      colors={['#F59E0B', '#D97706']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={{
+                        position: 'absolute',
+                        top: 8,
+                        right: 36,
+                        paddingHorizontal: 6,
+                        paddingVertical: 2.5,
+                        borderRadius: 6,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 2,
+                        shadowColor: '#F59E0B',
+                        shadowOffset: { width: 0, height: 2 },
+                        shadowOpacity: 0.4,
+                        shadowRadius: 4,
+                        elevation: 3
+                      }}
+                    >
+                      <Text style={{ fontSize: 7, fontWeight: '900', color: '#000', letterSpacing: 0.6 }}>
+                        ✨ {r.featuredBadge || 'PROMOTED'}
+                      </Text>
+                    </LinearGradient>
+                  )}
+ 
+                  {!!time && isOpen && (
+                    <View style={s.timeChip}><Text style={s.timeText}>{time}</Text></View>
+                  )}
+                  {!isOpen && (
+                    <View style={s.timeChip}><Text style={s.timeText}>{opensAtLabel ? `OPENS ${opensAtLabel}` : 'CLOSED NOW'}</Text></View>
+                  )}
                   {!isOpen && (
                     <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.38)', borderRadius: 16 }]} />
                   )}
-                  {hasOffer && (
-                    <View style={s.offerRibbon}>
-                      <Text style={s.offerText}>
-                        {offer.includes('%') ? offer.split(' ')[0] : (offer.includes('Flat') ? 'FLAT OFF' : 'BOGO')}
+                  {activeOffer && (
+                    <View style={[
+                      s.offerRibbon, 
+                      r.isFeatured && { backgroundColor: '#F59E0B' }
+                    ]}>
+                      <Text style={[s.offerText, r.isFeatured && { color: '#000', fontWeight: '900' }]} numberOfLines={1}>
+                        {activeOffer.toUpperCase()}
                       </Text>
                     </View>
                   )}
@@ -866,24 +1131,29 @@ export default function HomeScreen() {
                 <View style={s.rInfo}>
                   <View style={s.rTitleRow}>
                     <Text style={[s.rName, { color: txt }]} numberOfLines={1}>{r.name}</Text>
-                    <View style={s.ratingBadge}>
-                      <Text style={s.ratingText}>{rating.toFixed(1)}</Text>
-                      <Text style={{ fontSize: 8, color: '#fff', fontWeight: '900' }}>★</Text>
+                    {rating > 0 ? (
+                      <View style={s.ratingBadge}>
+                        <Text style={s.ratingText}>{rating.toFixed(1)}</Text>
+                        <Text style={{ fontSize: 8, color: '#fff', fontWeight: '900' }}>★</Text>
+                      </View>
+                    ) : (
+                      <View style={s.ratingBadge}>
+                        <Text style={s.ratingText}>NEW</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Cuisine (from the restaurant's own tags) */}
+                  {!!cuisineText && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
+                      <Text style={[s.rCuisine, { color: txtSec, flex: 1 }]} numberOfLines={1}>
+                        {cuisineText}
+                      </Text>
                     </View>
-                  </View>
-                  
-                  {/* Cuisine and Price */}
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
-                    <Text style={[s.rCuisine, { color: txtSec, flex: 1, marginRight: 4 }]} numberOfLines={1}>
-                      {r.cuisine || 'North Indian, Fast Food'}
-                    </Text>
-                    <Text style={{ fontSize: 10, fontWeight: '800', color: txtSec }}>
-                      ₹{priceForTwo} for two
-                    </Text>
-                  </View>
+                  )}
  
                   {/* Zomato style dashed offer line */}
-                  {hasOffer && (
+                  {activeOffer && (
                     <View style={{ 
                       paddingTop: 6, 
                       borderTopWidth: 1, 
@@ -896,7 +1166,7 @@ export default function HomeScreen() {
                     }}>
                       <Text style={{ fontSize: 10 }}>🏷️</Text>
                       <Text style={{ fontSize: 9.5, color: txtSec, fontWeight: '700', flex: 1 }} numberOfLines={1}>
-                        {offer}
+                        {activeOffer}
                       </Text>
                     </View>
                   )}
@@ -918,34 +1188,42 @@ export default function HomeScreen() {
       </ScrollView>
 
       {/* ── ZENVY VAULT MODAL ── */}
-      <Modal visible={showVaultModal} animationType="slide" transparent={true}>
+      <Modal visible={showVaultModal} animationType="slide" transparent={true} onRequestClose={() => setShowVaultModal(false)}>
         <View style={s.modalOverlay}>
-          <View style={[s.modalContentBox, { backgroundColor: cardBg }]}>
-            <Text style={[s.modalTitle, { color: txt }]}>THE ZENVY VAULT DROPS</Text>
-            <Text style={[s.modalSubtitle, { color: txtSec }]}>VERIFIED PREMIUM CAMPUS DISCOUNTS & EXCLUSIVES</Text>
+          <View style={[s.modalContentBox, { backgroundColor: sheetBg }]}>
+            <Text style={[s.modalTitle, { color: txt }]}>TODAY'S DAILY DEALS</Text>
+            <Text style={[s.modalSubtitle, { color: txtSec }]}>CLAIM A COUPON • VALID UNTIL MIDNIGHT</Text>
 
             {loadingVault ? (
               <ActivityIndicator size="large" color={goldColor} style={{ marginVertical: 32 }} />
+            ) : vaultError ? (
+              <TouchableOpacity onPress={fetchVaultItems} style={{ padding: 32, alignItems: 'center' }} activeOpacity={0.8}>
+                <Text style={{ fontSize: 32, marginBottom: 12 }}>⚠️</Text>
+                <Text style={{ color: txtSec, fontSize: 11, fontWeight: '700', textAlign: 'center' }}>Couldn't load today's deals. Tap to retry.</Text>
+              </TouchableOpacity>
             ) : vaultItems.length > 0 ? (
               <ScrollView style={{ width: '100%' }} showsVerticalScrollIndicator={false}>
                 {vaultItems.map(item => {
-                  const hasStreak = (user?.streakCount || 0) >= item.streakRequirement;
+                  const streakReq = Number(item.streakRequirement) || 0;
+                  const hasStreak = (user?.streakCount || 0) >= streakReq;
                   const itemImg = item.imageUrl || 'https://images.unsplash.com/photo-1618331835717-801e976710b2?w=400';
                   return (
                     <View key={item.id} style={[s.vaultItemCard, { borderColor: border }]}>
                       <Image source={{ uri: itemImg }} style={s.vaultItemImg} />
                       <View style={s.vaultItemInfo}>
                         <Text style={[s.vaultItemName, { color: txt }]}>{item.name}</Text>
-                        <Text style={[s.vaultItemDesc, { color: txtSec }]}>{item.description || 'Exclusive premium campus drop.'}</Text>
+                        {!!item.description && <Text style={[s.vaultItemDesc, { color: txtSec }]}>{item.description}</Text>}
                         <Text style={[s.vaultItemStock, { color: COLORS.red }]}>{item.remainingCount} items left</Text>
                         
-                        <View style={s.vaultItemReqRow}>
-                          <View style={[s.reqBadge, { backgroundColor: hasStreak ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)' }]}>
-                            <Text style={[s.reqBadgeText, { color: hasStreak ? COLORS.emerald : '#EF4444' }]}>
-                              🔥 {item.streakRequirement}d Streak
-                            </Text>
+                        {streakReq > 0 && (
+                          <View style={s.vaultItemReqRow}>
+                            <View style={[s.reqBadge, { backgroundColor: hasStreak ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)' }]}>
+                              <Text style={[s.reqBadgeText, { color: hasStreak ? COLORS.emerald : '#EF4444' }]}>
+                                🔥 {streakReq}-day streak
+                              </Text>
+                            </View>
                           </View>
-                        </View>
+                        )}
 
                         {hasStreak ? (
                           <TouchableOpacity 
@@ -956,7 +1234,7 @@ export default function HomeScreen() {
                             {claimingItemId === item.id ? (
                               <ActivityIndicator size="small" color={isDark ? "#000" : "#fff"} />
                             ) : (
-                              <Text style={[s.claimBtnText, { color: isDark ? '#000' : '#fff' }]}>SECURE ACCESS 🔑</Text>
+                              <Text style={[s.claimBtnText, { color: isDark ? '#000' : '#fff' }]}>CLAIM DEAL</Text>
                             )}
                           </TouchableOpacity>
                         ) : (
@@ -981,7 +1259,7 @@ export default function HomeScreen() {
               onPress={() => setShowVaultModal(false)}
               sound="click"
             >
-              <Text style={s.modalCloseText}>CLOSE VAULT</Text>
+              <Text style={s.modalCloseText}>CLOSE</Text>
             </DopaminePressable>
           </View>
         </View>
@@ -990,7 +1268,7 @@ export default function HomeScreen() {
       {/* ── BLOCKWARS ARENA MODAL ── */}
       <Modal visible={showBlockModal} animationType="slide" transparent={true}>
         <View style={s.modalOverlay}>
-          <View style={[s.modalContentBox, { backgroundColor: cardBg }]}>
+          <View style={[s.modalContentBox, { backgroundColor: sheetBg }]}>
             <Text style={[s.modalTitle, { color: txt }]}>🏆 BLOCKWARS ARENA</Text>
             <Text style={[s.modalSubtitle, { color: txtSec }]}>CAMPUS HOSTEL BLOCK COMPETITION</Text>
 
@@ -1004,7 +1282,6 @@ export default function HomeScreen() {
                     <View style={{ flex: 1 }}>
                       <Text style={[s.challengeTitle, { color: txt }]}>{activeChallenge.title.toUpperCase()}</Text>
                       <Text style={[s.challengeDesc, { color: txtSec }]}>{activeChallenge.description}</Text>
-                      <Text style={[s.challengeReward, { color: goldColor }]}>🎁 REWARD: +50 ZENPOINTS PER USER IN WINNING BLOCK</Text>
                     </View>
                   </View>
                 )}
@@ -1057,7 +1334,7 @@ export default function HomeScreen() {
       <Modal visible={showCatPrefModal} animationType="slide" transparent={true} onRequestClose={() => setShowCatPrefModal(false)}>
         <View style={s.modalOverlay}>
           <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowCatPrefModal(false)} />
-          <View style={[s.modalContentBox, { backgroundColor: cardBg, borderColor: goldBorderColor, borderWidth: 1 }]}>
+          <View style={[s.modalContentBox, { backgroundColor: sheetBg, borderColor: goldBorderColor, borderWidth: 1 }]}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 6 }}>
               <Text style={[s.modalTitle, { color: txt, marginBottom: 0 }]}>⚙️ CATEGORY PREFERENCES</Text>
               <TouchableOpacity onPress={() => setShowCatPrefModal(false)} style={{ padding: 4 }}>
@@ -1083,7 +1360,11 @@ export default function HomeScreen() {
                     }}
                     onPress={() => {
                       setFilter('all');
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                      if (vegOnly) {
+                        setVegOnly(false);
+                        setDietMode('all');
+                      }
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
                     }}
                   >
                     <Text style={{ fontSize: 10, fontWeight: '900', color: filter === 'all' ? (isDark ? '#000' : '#FFF') : txt }}>🍽️ ALL DISHES</Text>
@@ -1100,7 +1381,7 @@ export default function HomeScreen() {
                     }}
                     onPress={() => {
                       setFilter('veg');
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
                     }}
                   >
                     <Text style={{ fontSize: 10, fontWeight: '900', color: filter === 'veg' ? '#FFF' : txt }}>🥦 PURE VEG ONLY</Text>
@@ -1128,14 +1409,11 @@ export default function HomeScreen() {
                         gap: 6,
                       }}
                       onPress={() => {
+                        const wasOpen = classicFilter !== '';
                         setClassicFilter(isSelected ? '' : c.name);
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
                         setShowCatPrefModal(false);
-                        if (!isSelected && scrollRef.current) {
-                          setTimeout(() => {
-                            scrollRef.current?.scrollTo({ y: nexusY.current || 550, animated: true });
-                          }, 250);
-                        }
+                        if (!isSelected) scrollToNexusSoon(wasOpen);
                       }}
                     >
                       <Text style={{ fontSize: 13 }}>{c.icon || '🍛'}</Text>
@@ -1200,7 +1478,6 @@ export default function HomeScreen() {
           activeScale={0.88}
         >
           <Text style={{ fontSize: 22 }}>💬</Text>
-          <View style={s.fabBadge} />
         </DopaminePressable>
       </FloatingPulse>
     </View>
@@ -1225,8 +1502,13 @@ const s = StyleSheet.create({
   userName: { fontSize: 18, fontWeight: '900', letterSpacing: -0.5 },
   eliteBadge: { backgroundColor: COLORS.gold, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
   eliteBadgeText: { fontSize: 8, fontWeight: '900', color: '#000', letterSpacing: 2 },
-  navRight: { flexDirection: 'row', gap: 8 },
-  navBtn: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.goldBorder },
+  navRight: { flexDirection: 'row', gap: 6, alignItems: 'center' },
+  goldNavBadge: { borderRadius: 12, overflow: 'hidden' },
+  goldNavBadgeGradient: { paddingHorizontal: 8, paddingVertical: 5, borderRadius: 12 },
+  goldNavBadgeText: { fontSize: 8.5, fontWeight: '900', color: '#000', letterSpacing: 0.8 },
+  walletNavBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 4.5, borderRadius: 12, borderWidth: 1 },
+  walletNavText: { fontSize: 10, fontWeight: '900' },
+  navBtn: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.goldBorder },
   profileBtn: { borderColor: COLORS.gold, ...SHADOWS.goldGlow },
   badge: { position: 'absolute', top: -4, right: -4, width: 18, height: 18, borderRadius: 9, backgroundColor: COLORS.red, alignItems: 'center', justifyContent: 'center' },
   badgeText: { fontSize: 8, fontWeight: '900', color: '#fff' },
@@ -1249,9 +1531,15 @@ const s = StyleSheet.create({
   catBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 12, paddingHorizontal: 10, borderRadius: 16, borderWidth: 1, borderColor: COLORS.borderDark },
   catIcon: { width: 32, height: 32, borderRadius: 16, backgroundColor: COLORS.goldMuted, borderWidth: 1, borderColor: COLORS.goldBorder, alignItems: 'center', justifyContent: 'center' },
   catLabel: { fontSize: 8, fontWeight: '900', letterSpacing: 1 },
-  // Search
-  searchWrap: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, paddingHorizontal: 16, paddingVertical: 14, borderRadius: 16, borderWidth: 1.5, gap: 10, marginBottom: 20 },
+  // Search & Veg Mode Bar
+  searchBarContainer: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, gap: 8, marginBottom: 16 },
+  searchWrap: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12, borderRadius: 16, borderWidth: 1.5, gap: 8 },
   searchInput: { flex: 1, fontSize: 12, fontWeight: '600', padding: 0 },
+  vegToggleWrap: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 10, borderRadius: 14, borderWidth: 1.5 },
+  vegToggleText: { fontSize: 9.5, fontWeight: '900', letterSpacing: 0.8 },
+  vegSwitchTrack: { width: 32, height: 18, borderRadius: 9, padding: 2, justifyContent: 'center' },
+  vegSwitchThumb: { width: 14, height: 14, borderRadius: 7, backgroundColor: '#94A3B8' },
+  vegSwitchThumbActive: { transform: [{ translateX: 14 }], backgroundColor: '#FFFFFF' },
   // Classics
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, marginBottom: 12 },
   sectionTitle: { fontSize: 14, fontWeight: '900', letterSpacing: 2 },

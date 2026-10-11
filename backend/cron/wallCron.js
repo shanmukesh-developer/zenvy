@@ -72,7 +72,7 @@ const processExpiredWallEvents = async () => {
       }
 
       // Generate coupon reward for winner
-      const uniqueSuffix = Math.random().toString(36).substring(2, 7).toUpperCase();
+      const uniqueSuffix = require('crypto').randomBytes(4).toString('hex').slice(0, 6).toUpperCase();
       couponCode = `WALL-${uniqueSuffix}`;
       const rewardVal = event.couponValue || 100;
 
@@ -120,7 +120,8 @@ const processExpiredWallEvents = async () => {
             type: 'WALL_WINNER_REWARD',
             couponCode: couponCode || '',
             eventId: event.id
-          }
+          },
+          { recipients: [winnerUserId] }
         );
       }
     } catch (pErr) {

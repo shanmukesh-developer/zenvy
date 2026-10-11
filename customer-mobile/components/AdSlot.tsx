@@ -16,55 +16,12 @@ export interface AdCreative {
   ctaText?: string;
 }
 
-// ── Dummy Ad Creative Resolver (Production-ready placeholder) ─────────────────
-export const fetchAdCreative = async (placement: AdPlacement): Promise<AdCreative | null> => {
-  // Simulate quick async network delay
-  await new Promise((r) => setTimeout(r, 120));
-
-  const ADS: Record<AdPlacement, AdCreative> = {
-    spotlight: {
-      id: 'ad-spotlight-campus-roasters',
-      placement: 'spotlight',
-      title: 'Campus Roasters',
-      subtitle: 'Fuel for your late-night study sessions',
-      brand: 'Campus Roasters',
-      imageUrl: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=500&q=80',
-      targetUrl: 'https://zenvy.com/promos/roasters',
-      ctaText: 'EXPLORE →',
-    },
-    interstitial: {
-      id: 'ad-interstitial-study-kit',
-      placement: 'interstitial',
-      title: 'Premium Study Kit',
-      subtitle: 'Everything you need for Finals week. Notebooks, highlighters & sticky notes.',
-      brand: 'Stationery Pro',
-      imageUrl: 'https://images.unsplash.com/photo-1456735190827-d1262f71b8a3?w=800&q=80',
-      targetUrl: 'https://zenvy.com/category/stationary',
-      ctaText: 'Shop Now',
-    },
-    rail: {
-      id: 'ad-rail-monster-energy',
-      placement: 'rail',
-      title: 'Monster Energy Drink',
-      subtitle: 'Unleash the Beast',
-      brand: 'Monster Energy',
-      imageUrl: 'https://images.unsplash.com/photo-1622543925917-763c34d1a86e?w=500&q=80',
-      targetUrl: 'https://zenvy.com/category/drinks',
-      ctaText: '+ ADD',
-    },
-    pdp_footer: {
-      id: 'ad-pdp-peanut-butter',
-      placement: 'pdp_footer',
-      title: 'Organic Peanut Butter',
-      subtitle: 'The perfect pairing for whole wheat bread.',
-      brand: 'NuttyDelight',
-      imageUrl: 'https://images.unsplash.com/photo-1589301760014-d929f3979dbc?w=500&q=80',
-      targetUrl: 'https://zenvy.com/products/peanut-butter',
-      ctaText: 'Shop Now',
-    },
-  };
-
-  return ADS[placement] || null;
+// ── Ad Creative Resolver ──────────────────────────────────────────────────────
+// There is no real ad/campaign source yet, so no creative is returned and the
+// slot collapses to zero height. When ads exist they must come from the backend
+// and point at in-app routes for real products, never at external domains.
+export const fetchAdCreative = async (_placement: AdPlacement): Promise<AdCreative | null> => {
+  return null;
 };
 
 // ── Ad Analytics Tracker ──────────────────────────────────────────────────────
@@ -81,7 +38,7 @@ interface AdSlotProps {
 
 export default function AdSlot({ placement, containerStyle }: AdSlotProps) {
   const [ad, setAd] = useState<AdCreative | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [hasImpressionTracked, setHasImpressionTracked] = useState(false);
 
   useEffect(() => {

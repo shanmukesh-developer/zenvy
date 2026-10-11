@@ -12,6 +12,8 @@ interface ThemeContextType {
   isDark: boolean;
   activeColors: typeof COLORS;
   colors: ThemeColors;
+  /** False until the saved theme preference has been read from storage. */
+  isThemeReady: boolean;
 }
 
 const ThemeContext = createContext<ThemeContextType>({
@@ -20,29 +22,38 @@ const ThemeContext = createContext<ThemeContextType>({
   isDark: true,
   activeColors: COLORS,
   colors: DARK_THEME,
+  isThemeReady: true,
 });
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>('dark');
+  const [isThemeReady, setIsThemeReady] = useState(false);
 
   useEffect(() => {
+    let active = true;
     const loadTheme = async () => {
       try {
         const saved = await AsyncStorage.getItem('zenvy_theme_mode');
-        if (saved === 'light' || saved === 'dark') {
+        if (active && (saved === 'light' || saved === 'dark')) {
           setTheme(saved);
         }
       } catch (e) {
-        console.error(e);
+        // Storage unavailable: keep the default theme.
+      } finally {
+        if (active) setIsThemeReady(true);
       }
     };
     loadTheme();
+    return () => {
+      active = false;
+    };
   }, []);
 
   const toggleTheme = () => {
+    // Functional update so two quick taps never save a stale value.
     setTheme(prev => {
-      const next = prev === 'dark' ? 'light' : 'dark';
-      AsyncStorage.setItem('zenvy_theme_mode', next).catch(console.error);
+      const next: Theme = prev === 'dark' ? 'light' : 'dark';
+      AsyncStorage.setItem('zenvy_theme_mode', next).catch(() => {});
       return next;
     });
   };
@@ -51,7 +62,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const colors = getThemeColors(isDark);
 
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme, isDark, activeColors: COLORS, colors }}>
+    <ThemeContext.Provider value={{ theme, toggleTheme, isDark, activeColors: COLORS, colors, isThemeReady }}>
       {children}
     </ThemeContext.Provider>
   );

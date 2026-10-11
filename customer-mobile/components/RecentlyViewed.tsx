@@ -23,6 +23,7 @@ export async function saveRecentlyViewed(item: ViewedItem) {
   try {
     const existing = await AsyncStorage.getItem(STORAGE_KEY);
     let items: ViewedItem[] = existing ? JSON.parse(existing) : [];
+    if (!Array.isArray(items)) items = [];
 
     // Remove if already exists and push to front
     items = items.filter(i => i.id !== item.id);
@@ -48,9 +49,9 @@ export default function RecentlyViewed() {
       const load = async () => {
         try {
           const existing = await AsyncStorage.getItem(STORAGE_KEY);
-          if (existing && isMounted) {
-            setItems(JSON.parse(existing));
-          }
+          if (!isMounted) return;
+          const parsed = existing ? JSON.parse(existing) : [];
+          setItems(Array.isArray(parsed) ? parsed.filter((i: any) => i && i.id && i.name) : []);
         } catch (e) {
           console.error(e);
         }
@@ -76,7 +77,7 @@ export default function RecentlyViewed() {
     <View style={s.container}>
       <View style={s.headerRow}>
         <View>
-          <Text style={s.sectionLabel}>MEMORY CACHE</Text>
+          <Text style={s.sectionLabel}>JUMP BACK IN</Text>
           <Text style={[s.sectionTitle, { color: txt }]}>Recently Visited</Text>
         </View>
         <TouchableOpacity onPress={handleClear} style={s.clearBtn}>

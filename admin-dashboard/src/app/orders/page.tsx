@@ -1,288 +1,276 @@
 "use client";
-import React, { useState, useEffect, memo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
 import { useAdminSocket } from '@/components/AdminSocketProvider';
 import { useAdminAuth } from '@/utils/useAdminAuth';
+import { API_URL } from '@/lib/config';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-jwmt.onrender.com';
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://hostelbites-backend-jwmt.onrender.com';
-
+// ─── Types (shape of GET /api/admin/orders) ───────────────────
 interface OrderItem {
-  name: string;
+  name?: string;
   quantity: number;
+  priceAtOrder?: number;
   price?: number;
+  lineTotal?: number;
+}
+
+interface PriceBreakdown {
+  subtotal?: number;
+  deliveryFee?: number;
+  packagingFee?: number;
+  taxes?: number;
+  discounts?: { type: string; label: string; amount: number }[];
+  totalDiscount?: number;
+  finalPrice?: number;
+  couponCode?: string | null;
 }
 
 interface Order {
   _id: string;
-  id: string; 
-  userId?: { name: string; phone: string };
-  restaurantId?: string;
+  id?: string;
+  user?: { name?: string; phone?: string } | null;
+  restaurant?: { name?: string } | null;
   items: OrderItem[];
   totalPrice: number;
-  finalPrice?: number;
+  finalPrice?: number | null;
+  deliveryFee?: number | null;
+  priceBreakdown?: PriceBreakdown | string | null;
   status: string;
-  hostelGateDelivery: boolean;
-  deliverySlot?: string;
-  cancellationReason?: string;
-  estDuration?: string;
+  paymentMethod?: 'COD' | 'Wallet' | 'UPI' | 'Card' | string;
+  paymentStatus?: 'Pending' | 'Completed' | 'Failed' | string;
+  upiStatus?: 'Pending' | 'Verified' | 'Rejected' | null;
+  upiUTR?: string | null;
+  upiScreenshot?: string | null;
+  deliveryAddress?: string | null;
+  deliveryInstructions?: string[] | string | null;
+  hostelGateDelivery?: boolean;
+  deliverySlot?: string | null;
+  cancellationReason?: string | null;
+  estDuration?: number | string | null;
+  deliveryPartnerId?: string | null;
+  deliveryPinAttempts?: number;
   createdAt: string;
 }
 
-const OrderRow = memo(({ order, onSelect, onUpdateStatus, onAccept, actionLoading, getStatusStyle }: { 
-  order: Order, 
-  onSelect: (o: Order) => void,
-  onUpdateStatus: (id: string, status: string) => void,
-  onAccept: (id: string) => void,
-  actionLoading: string | null,
-  getStatusStyle: (s: string) => string
-}) => (
-  <tr className="hover:bg-white/[0.01] transition-colors">
-     <td className="p-4">
-        <span className="font-mono text-[10px] text-gray-400">#{order._id.slice(-6).toUpperCase()}</span>
-     </td>
-     <td className="p-4">
-        <p className="text-xs font-bold text-white">{order.userId?.name || 'Student'}</p>
-        <p className="text-[9px] text-gray-500">{order.userId?.phone || 'N/A'}</p>
-     </td>
-     <td className="p-4">
-        <button 
-          onClick={() => onSelect(order)}
-          className="text-left group"
-        >
-          <p className="text-xs text-white max-w-[200px] truncate group-hover:text-blue-400 transition-colors">
-             {(order.items || []).map(i => `${i.name} (x${i.quantity})`).join(', ')}
-          </p>
-          <span className="text-[7px] text-gray-500 uppercase font-black tracking-widest">View Manifest →</span>
-        </button>
-     </td>
-     <td className="p-4">
-        <div className="flex flex-col">
-           <span className="text-xs font-black text-white">₹{order.finalPrice || order.totalPrice}</span>
-           {order.finalPrice !== undefined && order.finalPrice !== order.totalPrice && (
-              <span className="text-[8px] text-gray-500 line-through">₹{order.totalPrice}</span>
-           )}
-           <span className="text-[7px] text-gray-500 uppercase font-black tracking-tighter">Grand Total</span>
-        </div>
-     </td>
-     <td className="p-4">
-        <span className="text-[10px] font-bold text-gray-300">
-           {order.hostelGateDelivery ? 'Hostel Gate' : 'Room Delivery'}
-        </span>
-        {order.deliverySlot && <p className="text-[8px] text-blue-400">{order.deliverySlot}</p>}
-     </td>
-     <td className="p-4">
+type Notice = { kind: 'success' | 'error'; text: string } | null;
+
+const STATUS_FILTERS = ['All', 'Pending', 'Accepted', 'Preparing', 'ReadyForPickup', 'PickedUp', 'ArrivedAtGate', 'Delivered', 'Cancelled'];
+const STATUS_LABELS: Record<string, string> = {
+  ReadyForPickup: 'Ready',
+  PickedUp: 'Picked up',
+  ArrivedAtGate: 'At gate',
+};
+const TERMINAL = ['Delivered', 'Cancelled'];
+const PIN_LOCK_ATTEMPTS = 5;
+
+const statusLabel = (s: string) => STATUS_LABELS[s] || s;
+const orderId = (o: { _id?: string; id?: string }) => String(o._id || o.id || '');
+const shortId = (id: string) => `#${id.slice(-6).toUpperCase()}`;
+const rupees = (n: number | null | undefined) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+const grandTotal = (o: Order) => (o.finalPrice ?? o.totalPrice ?? 0);
+const isLegacyUpiPending = (o: Order) => o.paymentMethod === 'UPI' && o.upiStatus === 'Pending' && !TERMINAL.includes(o.status);
+
+const parseJson = <T,>(v: T | string | null | undefined): T | null => {
+  if (v == null) return null;
+  if (typeof v !== 'string') return v;
+  try { return JSON.parse(v) as T; } catch { return null; }
+};
+
+const formatEta = (v: Order['estDuration']) => {
+  if (v == null || v === '') return null;
+  return typeof v === 'number' ? `${v} min` : String(v);
+};
+
+/** fetch + JSON with friendly errors (never shows raw server internals). */
+async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(url, { cache: 'no-store', ...init });
+  } catch {
+    throw new Error('Could not reach the server. Check your connection and try again.');
+  }
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    const msg = res.status < 500 && body && typeof body.message === 'string' ? body.message : null;
+    throw new Error(msg || (res.status >= 500 ? 'The server ran into a problem. Please try again.' : `Request failed (${res.status}).`));
+  }
+  return body as T;
+}
+
+const getStatusStyle = (status: string) => {
+  switch (status) {
+    case 'Pending': return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+    case 'Accepted':
+    case 'Preparing': return 'bg-sky-500/10 text-sky-400 border-sky-500/20';
+    case 'ReadyForPickup': return 'bg-violet-500/10 text-violet-400 border-violet-500/20';
+    case 'Picking':
+    case 'PickedUp':
+    case 'ArrivedAtGate': return 'bg-orange-500/10 text-orange-400 border-orange-500/20';
+    case 'Delivered': return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+    case 'Cancelled': return 'bg-red-500/10 text-red-500 border-red-500/20';
+    default: return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
+  }
+};
+
+const PaymentBadge = ({ order }: { order: Order }) => {
+  const method = order.paymentMethod || '—';
+  let tone = 'text-gray-400 bg-white/5 border-white/10';
+  let note = order.paymentStatus || '';
+  if (method === 'UPI') {
+    tone = order.upiStatus === 'Pending' ? 'text-amber-400 bg-amber-500/10 border-amber-500/20' : 'text-gray-400 bg-white/5 border-white/10';
+    note = `Legacy UPI · ${order.upiStatus || 'n/a'}`;
+  } else if (order.paymentStatus === 'Completed') {
+    tone = 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20';
+  }
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <span className={`text-[9px] font-black px-2 py-0.5 rounded border uppercase tracking-wider ${tone}`}>{method}</span>
+      {note && <span className="text-[8px] text-gray-500 uppercase tracking-wider">{note}</span>}
+    </div>
+  );
+};
+
+const OrderRow = memo(({ order, busy, onSelect }: {
+  order: Order;
+  busy: boolean;
+  onSelect: (o: Order) => void;
+}) => {
+  const id = orderId(order);
+  const pinLocked = (order.deliveryPinAttempts || 0) >= PIN_LOCK_ATTEMPTS && !TERMINAL.includes(order.status);
+  return (
+    <tr className="hover:bg-white/[0.02] transition-colors cursor-pointer" onClick={() => onSelect(order)}>
+      <td className="p-4">
+        <span className="font-mono text-[10px] text-gray-400">{shortId(id)}</span>
+      </td>
+      <td className="p-4">
+        <p className="text-xs font-bold text-white">{order.user?.name || 'Customer'}</p>
+        <p className="text-[9px] text-gray-500">{order.user?.phone || '—'}</p>
+      </td>
+      <td className="p-4">
+        <p className="text-xs text-gray-300 font-bold">{order.restaurant?.name || '—'}</p>
+        <p className="text-[10px] text-gray-500 max-w-[220px] truncate">
+          {(order.items || []).map(i => `${i.name || 'Item'} ×${i.quantity}`).join(', ') || '—'}
+        </p>
+      </td>
+      <td className="p-4">
+        <span className="text-xs font-black text-white">{rupees(grandTotal(order))}</span>
+      </td>
+      <td className="p-4"><PaymentBadge order={order} /></td>
+      <td className="p-4">
         <div className="flex flex-col items-start gap-1">
           <span className={`text-[9px] font-black px-2 py-1 rounded-md border uppercase tracking-wider ${getStatusStyle(order.status)}`}>
-             {order.status}
+            {statusLabel(order.status)}
           </span>
-          {order.status === 'Cancelled' && order.cancellationReason && (
-            <span className="text-[7px] font-black text-red-400 bg-red-500/10 px-1.5 py-0.5 rounded border border-red-500/20 max-w-[120px] truncate" title={order.cancellationReason}>
-              Reason: {order.cancellationReason}
-            </span>
+          {isLegacyUpiPending(order) && (
+            <span className="text-[8px] font-black text-amber-400 uppercase tracking-wider">Payment check needed</span>
           )}
-          {order.status === 'Accepted' && order.estDuration && (
-            <span className="text-[7px] font-black text-sky-400 bg-sky-500/10 px-1.5 py-0.5 rounded border border-sky-500/20">
-              Prep: {order.estDuration}
-            </span>
+          {pinLocked && (
+            <span className="text-[8px] font-black text-red-400 uppercase tracking-wider">PIN locked</span>
           )}
         </div>
-     </td>
-      <td className="p-4">
-         <span className="text-[10px] text-gray-500">
-            {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-         </span>
       </td>
       <td className="p-4">
-         <div className="flex gap-2">
-           {order.status === 'Pending' && (
-             <button
-               onClick={() => onAccept(order._id)}
-               disabled={actionLoading === order._id + 'Accept'}
-               className="px-3 py-1.5 bg-sky-500/10 text-sky-400 border border-sky-500/20 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-sky-500/20 transition-all disabled:opacity-40"
-             >
-               {actionLoading === order._id + 'Accept' ? '...' : '▶ Dispatch'}
-             </button>
-           )}
-           {order.status !== 'Delivered' && order.status !== 'Cancelled' && order.status !== 'Pending' && (
-             <button
-               onClick={() => onUpdateStatus(order._id, 'Delivered')}
-               disabled={actionLoading === order._id + 'Delivered'}
-               className="px-3 py-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-emerald-500/20 transition-all disabled:opacity-40"
-             >
-               {actionLoading === order._id + 'Delivered' ? '...' : '✓ Deliver'}
-             </button>
-           )}
-           {order.status !== 'Cancelled' && order.status !== 'Delivered' && (
-             <button
-               onClick={() => onUpdateStatus(order._id, 'Cancelled')}
-               disabled={actionLoading === order._id + 'Cancelled'}
-               className="px-3 py-1.5 bg-red-500/10 text-red-400 border border-red-500/20 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-red-500/20 transition-all disabled:opacity-40"
-             >
-               {actionLoading === order._id + 'Cancelled' ? '...' : '✕ Cancel'}
-             </button>
-           )}
-           {(order.status === 'Delivered' || order.status === 'Cancelled') && (
-             <span className="text-[9px] text-gray-600 italic">—</span>
-           )}
-         </div>
+        <span className="text-[10px] text-gray-500">
+          {new Date(order.createdAt).toLocaleString([], { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+        </span>
       </td>
-  </tr>
-));
+      <td className="p-4 text-right">
+        <span className="text-[9px] font-black uppercase tracking-widest text-blue-400">{busy ? 'Working…' : 'Open →'}</span>
+      </td>
+    </tr>
+  );
+});
 OrderRow.displayName = 'OrderRow';
 
 export default function OrdersPage() {
-  const isAuthed = useAdminAuth();
-  const { socket, isConnected } = useAdminSocket();
+  const { isAuthed } = useAdminAuth();
+  const { socket } = useAdminSocket();
   const [orders, setOrders] = useState<Order[]>([]);
   const [totalOrders, setTotalOrders] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('All');
+  const [notice, setNotice] = useState<Notice>(null);
 
-  const updateOrderStatus = async (orderId: string, status: string) => {
+  const requestSeq = useRef(0);
+  const inFlight = useRef(false);
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pageRef = useRef(1);
+  pageRef.current = currentPage;
+
+  const selectedOrder = selectedId ? orders.find(o => orderId(o) === selectedId) || null : null;
+
+  const showNotice = useCallback((n: Notice) => {
+    setNotice(n);
+    if (n) setTimeout(() => setNotice(cur => (cur === n ? null : cur)), 6000);
+  }, []);
+
+  const fetchOrders = useCallback(async (page = 1, showSpinner = true) => {
+    const seq = ++requestSeq.current;
+    if (showSpinner) setLoading(true);
     try {
-      setActionLoading(orderId + status);
-      const res = await fetch(`${API_URL}/api/orders/${orderId}/status`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status })
-      });
-      if (res.ok) {
-        setOrders(prev => prev.map(o => String(o._id || o.id) === String(orderId) ? { ...o, status } : o));
-        if (selectedOrder && String(selectedOrder._id || selectedOrder.id) === String(orderId)) {
-          setSelectedOrder(prev => prev ? { ...prev, status } : null);
-        }
-        await fetchOrders(currentPage, false);
-      }
+      const params = new URLSearchParams({ page: String(page), limit: '50', status: filterStatus });
+      const data = await requestJson<{ orders?: Order[]; total?: number; pages?: number }>(`${API_URL}/api/admin/orders?${params}`);
+      if (seq !== requestSeq.current) return; // a newer request (filter/page change) superseded this one
+      setOrders(Array.isArray(data.orders) ? data.orders : []);
+      setTotalOrders(data.total || 0);
+      setTotalPages(Math.max(1, data.pages || 1));
+      setCurrentPage(page);
+      setLoadError(null);
     } catch (err) {
-      console.error('[ORDER_UPDATE_ERROR]', err);
+      if (seq !== requestSeq.current) return;
+      // Background refreshes keep the last good list; only a visible load shows the error.
+      if (showSpinner) setLoadError(err instanceof Error ? err.message : 'Could not load orders.');
     } finally {
-      setActionLoading(null);
+      if (seq === requestSeq.current && showSpinner) setLoading(false);
     }
-  };
-
-  const fetchOrders = async (page = 1, showSkeleton = true) => {
-    try {
-      if (showSkeleton) setLoading(true);
-      const res = await fetch(`${API_URL}/api/admin/orders?page=${page}&status=${filterStatus}&t=${Date.now()}`, {
-        cache: 'no-store'
-      });
-      const data = await res.json();
-      if (res.ok) {
-         setOrders(data.orders || []);
-         setTotalOrders(data.total || 0);
-         setTotalPages(data.pages || 1);
-         setCurrentPage(page);
-      }
-    } catch (err) {
-      console.error('[ORDERS_FETCH_ERROR]', err);
-    } finally {
-      if (showSkeleton) setLoading(false);
-    }
-  };
-
-  const handleAcceptOrder = async (orderId: string) => {
-    try {
-      setActionLoading(orderId + 'Accept');
-      const res = await fetch(`${API_URL}/api/orders/${orderId}/restaurant-accept`, {
-        method: 'PUT',
-      });
-      if (res.ok) {
-        setOrders(prev => prev.map(o => String(o._id || o.id) === String(orderId) ? { ...o, status: 'Accepted' } : o));
-        await fetchOrders(currentPage, false);
-      }
-    } catch { } finally { setActionLoading(null); }
-  };
-
-  useEffect(() => {
-    fetchOrders(1, true);
   }, [filterStatus]);
 
-  // 15-second background auto-polling fallback
-  useEffect(() => {
-    const timer = setInterval(() => {
-      fetchOrders(currentPage, false);
-    }, 15000);
-    return () => clearInterval(timer);
-  }, [currentPage, filterStatus]);
+  /** Coalesces bursts of socket events into one quiet refresh. */
+  const scheduleRefresh = useCallback(() => {
+    if (refreshTimer.current) clearTimeout(refreshTimer.current);
+    refreshTimer.current = setTimeout(() => fetchOrders(pageRef.current, false), 800);
+  }, [fetchOrders]);
 
-  // Real-time socket event listeners via unified AdminSocketProvider
+  useEffect(() => () => { if (refreshTimer.current) clearTimeout(refreshTimer.current); }, []);
+
+  useEffect(() => {
+    if (isAuthed) fetchOrders(1, true);
+  }, [isAuthed, fetchOrders]);
+
+  // Background polling fallback in case a socket event is missed.
+  useEffect(() => {
+    if (!isAuthed) return;
+    const timer = setInterval(() => {
+      if (!document.hidden) fetchOrders(pageRef.current, false);
+    }, 20000);
+    return () => clearInterval(timer);
+  }, [isAuthed, fetchOrders]);
+
+  // Live updates from the admin socket room.
   useEffect(() => {
     if (!socket) return;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handleNewOrder = (order: any) => { 
-      const orderId = order.id || order._id;
-      if (!orderId) return;
-      setOrders(prev => {
-        if (prev.some(o => String(o._id || o.id) === String(orderId))) return prev;
-        return [{
-          ...order,
-          _id: orderId,
-          id: orderId,
-          createdAt: order.createdAt || new Date().toISOString()
-        }, ...prev].slice(0, 50);
-      });
-      setTotalOrders(prev => prev + 1);
+    const patchStatus = (targetId: string, status: string) => {
+      if (!targetId || !status) return;
+      setOrders(prev => prev.map(o => (orderId(o) === targetId ? { ...o, status } : o)));
     };
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handleNewMegaBasket = (basket: any) => {
-      const basketId = basket.id || basket._id;
-      if (!basketId) return;
-      setOrders(prev => {
-        if (prev.some(o => String(o._id || o.id) === String(basketId))) return prev;
-        return [{
-          ...basket,
-          _id: basketId,
-          id: basketId,
-          items: basket.items || [],
-          totalPrice: basket.totalPrice || basket.finalPrice || 0,
-          createdAt: basket.createdAt || new Date().toISOString()
-        }, ...prev].slice(0, 50);
-      });
-      setTotalOrders(prev => prev + 1);
+    // New-order payloads are partial (no items/status), so reload the page instead of inserting them.
+    const handleNewOrder = () => scheduleRefresh();
+    const handleStatusUpdated = (data: { id?: string; orderId?: string; status?: string }) => {
+      patchStatus(String(data?.id || data?.orderId || ''), String(data?.status || ''));
+      scheduleRefresh();
     };
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handleStatusUpdated = (data: any) => { 
-      const targetId = String(data?.id || data?.orderId || '');
-      if (!targetId) return;
-      setOrders(prev => prev.map(o => String(o._id || o.id) === targetId ? { ...o, status: data.status } : o));
-      setSelectedOrder(prev => {
-        if (prev && String(prev._id || prev.id) === targetId) {
-          return { ...prev, status: data.status };
-        }
-        return prev;
-      });
-    };
-
-    const handleOrderAccepted = (data: { orderId: string, riderName: string }) => {
-      const targetId = String(data.orderId);
-      setOrders(prev => prev.map(o => String(o._id || o.id) === targetId ? { ...o, status: 'Accepted' } : o));
-    };
-
-    const handleDeliveryComplete = (data: { orderId: string }) => {
-      const targetId = String(data.orderId);
-      setOrders(prev => prev.map(o => String(o._id || o.id) === targetId ? { ...o, status: 'Delivered' } : o));
-    };
-
-    const handleOrderUnassigned = (data: { orderId: string }) => {
-      const targetId = String(data.orderId);
-      setOrders(prev => prev.map(o => String(o._id || o.id) === targetId ? { ...o, status: 'Pending' } : o));
-    };
-
-    const handleOrderCancelled = ({ orderId }: { orderId: string }) => { 
-      const targetId = String(orderId);
-      setOrders(prev => prev.map(o => String(o._id || o.id) === targetId ? { ...o, status: 'Cancelled' } : o));
-    };
+    const handleOrderAccepted = (data: { orderId: string }) => { patchStatus(String(data?.orderId || ''), 'Accepted'); scheduleRefresh(); };
+    const handleDeliveryComplete = (data: { orderId: string }) => patchStatus(String(data?.orderId || ''), 'Delivered');
+    const handleOrderCancelled = (data: { orderId: string }) => { patchStatus(String(data?.orderId || ''), 'Cancelled'); scheduleRefresh(); };
+    const handleOrderUnassigned = () => scheduleRefresh();
 
     socket.on('admin_newOrder', handleNewOrder);
     socket.on('newOrder', handleNewOrder);
-    socket.on('admin_newMegaBasket', handleNewMegaBasket);
     socket.on('statusUpdated', handleStatusUpdated);
     socket.on('admin_order_accepted', handleOrderAccepted);
     socket.on('admin_delivery_complete', handleDeliveryComplete);
@@ -292,226 +280,326 @@ export default function OrdersPage() {
     return () => {
       socket.off('admin_newOrder', handleNewOrder);
       socket.off('newOrder', handleNewOrder);
-      socket.off('admin_newMegaBasket', handleNewMegaBasket);
       socket.off('statusUpdated', handleStatusUpdated);
       socket.off('admin_order_accepted', handleOrderAccepted);
       socket.off('admin_delivery_complete', handleDeliveryComplete);
       socket.off('order_unassigned', handleOrderUnassigned);
       socket.off('orderCancelled', handleOrderCancelled);
     };
-  }, [socket]);
+  }, [socket, scheduleRefresh]);
 
-  const getStatusStyle = (status: string) => {
-    switch (status) {
-      case 'Pending': return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
-      case 'Accepted': return 'bg-sky-500/10 text-sky-400 border-sky-500/20';
-      case 'PickedUp': return 'bg-orange-500/10 text-orange-400 border-orange-500/20';
-      case 'Delivered': return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
-      case 'Cancelled': return 'bg-red-500/10 text-red-500 border-red-500/20';
-      default: return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
+  /** Runs one order action at a time (guards against double clicks). */
+  const runAction = async (order: Order, label: string, url: string, body: Record<string, unknown> | undefined, optimisticStatus?: string) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    const id = orderId(order);
+    setBusyId(id);
+    try {
+      const data = await requestJson<{ message?: string; status?: string; refundedToWallet?: number }>(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {}),
+      });
+      const nextStatus = data?.status || optimisticStatus;
+      if (nextStatus) setOrders(prev => prev.map(o => (orderId(o) === id ? { ...o, status: nextStatus } : o)));
+      // The cancel endpoint's message is written for the customer ("your Wallet"), so word refunds for the admin here.
+      const refunded = typeof data?.refundedToWallet === 'number' && data.refundedToWallet > 0
+        ? `${label}. ${rupees(data.refundedToWallet)} refunded to the customer's Wallet.`
+        : null;
+      showNotice({ kind: 'success', text: `${shortId(id)}: ${refunded || (data?.message ? data.message.replace(/\.$/, '') + '.' : `${label}.`)}` });
+      await fetchOrders(pageRef.current, false);
+    } catch (err) {
+      showNotice({ kind: 'error', text: `${shortId(id)}: ${err instanceof Error ? err.message : 'Action failed.'}` });
+    } finally {
+      inFlight.current = false;
+      setBusyId(null);
     }
   };
 
-  if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Authenticating...</div>;
+  const acceptOrder = (o: Order) => {
+    if (!confirm(`Accept order ${shortId(orderId(o))} on behalf of ${o.restaurant?.name || 'the store'} and send it to riders?`)) return;
+    runAction(o, 'Order accepted', `${API_URL}/api/orders/${orderId(o)}/restaurant-accept`, {}, 'Accepted');
+  };
+
+  const setStatus = (o: Order, status: string) => {
+    const id = shortId(orderId(o));
+    if (status === 'Delivered') {
+      const cash = o.paymentMethod === 'COD' ? `\n\nThis is a Cash on Delivery order: confirm ${rupees(grandTotal(o))} was collected.` : '';
+      if (!confirm(`Mark order ${id} as delivered? The customer is notified and rewards are credited.${cash}`)) return;
+    } else if (!confirm(`Change order ${id} to "${statusLabel(status)}"?`)) {
+      return;
+    }
+    runAction(o, `Marked ${statusLabel(status)}`, `${API_URL}/api/orders/${orderId(o)}/status`, { status }, status);
+  };
+
+  const cancelOrder = (o: Order) => {
+    const id = shortId(orderId(o));
+    const refundNote = o.paymentMethod === 'Wallet' ? `\n${rupees(grandTotal(o))} will be refunded to the customer's Wallet.` : '';
+    const reason = prompt(`Cancel order ${id}? This cannot be undone.${refundNote}\n\nReason (shown to the customer):`, 'Cancelled by Zenvy support');
+    if (reason === null) return;
+    runAction(o, 'Order cancelled', `${API_URL}/api/orders/${orderId(o)}/status`, { status: 'Cancelled', reason: reason.trim() || undefined }, 'Cancelled');
+  };
+
+  const verifyUpi = (o: Order, isVerified: boolean) => {
+    const id = shortId(orderId(o));
+    const question = isVerified
+      ? `Confirm you found UTR ${o.upiUTR || '(none)'} for ${rupees(grandTotal(o))} in the bank statement? The order will be accepted.`
+      : `Reject the UPI payment for order ${id}? The order will be cancelled.`;
+    if (!confirm(question)) return;
+    runAction(o, isVerified ? 'Payment verified' : 'Payment rejected', `${API_URL}/api/orders/${orderId(o)}/verify-upi`, { isVerified });
+  };
+
+  if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Checking access…</div>;
+
+  const visibleOrders = orders.filter(o => filterStatus === 'All' || o.status === filterStatus);
+  const breakdown = selectedOrder ? parseJson<PriceBreakdown>(selectedOrder.priceBreakdown) : null;
+  const instructions = selectedOrder ? parseJson<string[]>(selectedOrder.deliveryInstructions as string[] | string | null) : null;
+  const selectedBusy = !!selectedOrder && busyId === orderId(selectedOrder);
+  const selectedOpen = !!selectedOrder && !TERMINAL.includes(selectedOrder.status);
+  const selectedPinLocked = !!selectedOrder && (selectedOrder.deliveryPinAttempts || 0) >= PIN_LOCK_ATTEMPTS && selectedOpen;
 
   return (
     <div className="space-y-8 animate-fade-in relative pb-20">
-      <div className="flex items-center justify-between">
-         <div className="flex items-center gap-6">
-           <h1 className="text-3xl font-black tracking-tighter text-white uppercase">Live Orders <span className="text-blue-500">Trace</span></h1>
-           <div className="flex gap-2">
-              {['All', 'Pending', 'Accepted', 'PickedUp', 'Delivered', 'Cancelled'].map(s => (
-                <button 
-                  key={s} 
-                  onClick={() => setFilterStatus(s)}
-                  className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${filterStatus === s ? 'bg-blue-500 text-white border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.4)]' : 'bg-white/5 text-gray-500 border-white/10 hover:text-white'}`}
-                >
-                  {s}
-                </button>
-              ))}
-           </div>
-         </div>
-          <button onClick={() => fetchOrders(currentPage)} className="nexus-badge bg-blue-500/10 text-blue-400 border-blue-500/20 hover:bg-blue-500/20 transition-all flex items-center gap-2">
-            🔄 Refresh ({totalOrders})
-          </button>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-black tracking-tighter text-white uppercase">Orders</h1>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mt-1">Live order queue · Cash on Delivery and Wallet</p>
+        </div>
+        <button
+          onClick={() => fetchOrders(currentPage)}
+          disabled={loading}
+          className="nexus-badge bg-blue-500/10 text-blue-400 border-blue-500/20 hover:bg-blue-500/20 transition-all disabled:opacity-40"
+        >
+          ↻ Refresh ({totalOrders})
+        </button>
       </div>
+
+      <div className="flex flex-wrap gap-2">
+        {STATUS_FILTERS.map(s => (
+          <button
+            key={s}
+            onClick={() => setFilterStatus(s)}
+            className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${filterStatus === s ? 'bg-blue-500 text-white border-blue-500' : 'bg-white/5 text-gray-500 border-white/10 hover:text-white'}`}
+          >
+            {s === 'All' ? 'All' : statusLabel(s)}
+          </button>
+        ))}
+      </div>
+
+      {notice && (
+        <div className={`p-4 rounded-2xl border text-xs font-bold flex justify-between items-start gap-4 ${notice.kind === 'error' ? 'bg-red-500/10 border-red-500/20 text-red-400' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'}`}>
+          <span>{notice.text}</span>
+          <button onClick={() => setNotice(null)} className="text-gray-500 hover:text-white">✕</button>
+        </div>
+      )}
 
       <div className="glass-card overflow-hidden border-white/10">
-         <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-               <thead>
-                  <tr className="border-b border-white/5 bg-white/[0.02]">
-                     <th className="p-4 text-[10px] font-black uppercase text-gray-400 tracking-wider">Order ID</th>
-                     <th className="p-4 text-[10px] font-black uppercase text-gray-400 tracking-wider">Customer</th>
-                     <th className="p-4 text-[10px] font-black uppercase text-gray-400 tracking-wider">Items</th>
-                     <th className="p-4 text-[10px] font-black uppercase text-gray-400 tracking-wider">Total</th>
-                     <th className="p-4 text-[10px] font-black uppercase text-gray-400 tracking-wider">Drop Location</th>
-                     <th className="p-4 text-[10px] font-black uppercase text-gray-400 tracking-wider">Status</th>
-                     <th className="p-4 text-[10px] font-black uppercase text-gray-400 tracking-wider">Timestamp</th>
-                     <th className="p-4 text-[10px] font-black uppercase text-gray-400 tracking-wider">Actions</th>
-                   </tr>
-               </thead>
-               <tbody className="divide-y divide-white/[0.03]">
-                  {loading ? (
-                     <tr>
-                        <td colSpan={8} className="p-10 text-center">
-                           <div className="flex flex-col items-center justify-center gap-2 text-gray-500">
-                              <div className="w-6 h-6 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
-                              <p className="text-[10px] uppercase font-black tracking-widest">Syncing Nodes...</p>
-                           </div>
-                        </td>
-                     </tr>
-                  ) : orders.filter(o => filterStatus === 'All' || o.status === filterStatus).length === 0 ? (
-                     <tr>
-                        <td colSpan={8} className="p-10 text-center text-gray-500 text-xs italic">
-                           No orders found matching the filter.
-                        </td>
-                     </tr>
-                  ) : (
-                     orders.filter(o => filterStatus === 'All' || o.status === filterStatus).map((order) => (
-                        <OrderRow 
-                          key={order._id} 
-                          order={order} 
-                          onSelect={setSelectedOrder} 
-                          onUpdateStatus={updateOrderStatus} 
-                          onAccept={handleAcceptOrder}
-                          actionLoading={actionLoading}
-                          getStatusStyle={getStatusStyle}
-                        />
-                     ))
-                  )}
-               </tbody>
-            </table>
-         </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-white/5 bg-white/[0.02]">
+                {['Order', 'Customer', 'Store & items', 'Total', 'Payment', 'Status', 'Placed', ''].map(h => (
+                  <th key={h} className="p-4 text-[10px] font-black uppercase text-gray-400 tracking-wider">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/[0.03]">
+              {loading ? (
+                <tr>
+                  <td colSpan={8} className="p-10 text-center">
+                    <div className="flex flex-col items-center justify-center gap-2 text-gray-500">
+                      <div className="w-6 h-6 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+                      <p className="text-[10px] uppercase font-black tracking-widest">Loading orders…</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : loadError ? (
+                <tr>
+                  <td colSpan={8} className="p-10 text-center">
+                    <p className="text-xs text-red-400 font-bold">{loadError}</p>
+                    <button onClick={() => fetchOrders(currentPage)} className="mt-3 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black uppercase text-gray-300 hover:text-white">Try again</button>
+                  </td>
+                </tr>
+              ) : visibleOrders.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="p-10 text-center text-gray-500 text-xs">
+                    {filterStatus === 'All' ? 'No orders yet.' : `No ${statusLabel(filterStatus).toLowerCase()} orders.`}
+                  </td>
+                </tr>
+              ) : (
+                visibleOrders.map(order => (
+                  <OrderRow
+                    key={orderId(order)}
+                    order={order}
+                    busy={busyId === orderId(order)}
+                    onSelect={(o) => setSelectedId(orderId(o))}
+                  />
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
 
-         {/* Pagination Interface */}
-         {totalPages > 1 && (
-           <div className="p-6 bg-white/[0.02] border-t border-white/5 flex items-center justify-between">
-              <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">
-                Showing Page {currentPage} of {totalPages}
-              </span>
-              <div className="flex gap-2">
-                 <button 
-                   disabled={currentPage === 1}
-                   onClick={() => fetchOrders(currentPage - 1)}
-                   className="px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black uppercase text-gray-400 hover:text-white disabled:opacity-30"
-                 >
-                   Previous
-                 </button>
-                 <button 
-                   disabled={currentPage === totalPages}
-                   onClick={() => fetchOrders(currentPage + 1)}
-                   className="px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black uppercase text-gray-400 hover:text-white disabled:opacity-30"
-                 >
-                   Next
-                 </button>
-              </div>
-           </div>
-         )}
+        {totalPages > 1 && (
+          <div className="p-6 bg-white/[0.02] border-t border-white/5 flex items-center justify-between">
+            <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">
+              Page {currentPage} of {totalPages}
+            </span>
+            <div className="flex gap-2">
+              <button
+                disabled={currentPage <= 1 || loading}
+                onClick={() => fetchOrders(currentPage - 1)}
+                className="px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black uppercase text-gray-400 hover:text-white disabled:opacity-30"
+              >
+                Previous
+              </button>
+              <button
+                disabled={currentPage >= totalPages || loading}
+                onClick={() => fetchOrders(currentPage + 1)}
+                className="px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black uppercase text-gray-400 hover:text-white disabled:opacity-30"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Order Manifest Modal */}
+      {/* Order detail */}
       {selectedOrder && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm animate-fade-in">
-          <div className="glass-card max-w-2xl w-full p-10 space-y-8 animate-slide-up relative">
-            <button 
-              onClick={() => setSelectedOrder(null)}
-              className="absolute top-8 right-8 text-gray-500 hover:text-white transition-colors"
-            >
-              ✕
-            </button>
-            
-            <div className="flex justify-between items-start border-b border-white/5 pb-8">
-               <div>
-                  <h3 className="text-2xl font-black text-white uppercase tracking-tighter">Order <span className="text-blue-500">Manifest</span></h3>
-                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">Trace ID: #{selectedOrder._id.toUpperCase()}</p>
-               </div>
-               <div className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${getStatusStyle(selectedOrder.status)}`}>
-                  {selectedOrder.status}
-               </div>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedId(null)}>
+          <div className="glass-card max-w-3xl w-full p-8 space-y-6 animate-slide-up relative max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <button onClick={() => setSelectedId(null)} className="absolute top-6 right-6 text-gray-500 hover:text-white transition-colors" aria-label="Close">✕</button>
+
+            <div className="flex justify-between items-start border-b border-white/5 pb-6 pr-10">
+              <div>
+                <h3 className="text-2xl font-black text-white uppercase tracking-tighter">Order {shortId(orderId(selectedOrder))}</h3>
+                <p className="text-[10px] text-gray-500 font-mono mt-1">{orderId(selectedOrder)}</p>
+                <p className="text-[10px] text-gray-500 mt-1">Placed {new Date(selectedOrder.createdAt).toLocaleString()}</p>
+              </div>
+              <div className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${getStatusStyle(selectedOrder.status)}`}>
+                {statusLabel(selectedOrder.status)}
+              </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-10">
-               <div className="space-y-6">
-                  <div>
-                    <h5 className="text-[9px] font-black text-blue-500 uppercase tracking-[0.2em] mb-3">Customer Intel</h5>
-                    <p className="text-lg font-black text-white">{selectedOrder.userId?.name || 'Student Resident'}</p>
-                    <p className="text-xs text-gray-500 font-bold">{selectedOrder.userId?.phone || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <h5 className="text-[9px] font-black text-blue-500 uppercase tracking-[0.2em] mb-3">Operational Meta</h5>
-                    <p className="text-xs text-white font-bold">{selectedOrder.hostelGateDelivery ? '📍 Gate Deployment' : '🚪 Direct Room Entry'}</p>
-                    {selectedOrder.deliverySlot && <p className="text-[10px] text-blue-400 font-black mt-1">Slot: {selectedOrder.deliverySlot}</p>}
-                    {selectedOrder.estDuration && <p className="text-[10px] text-sky-400 font-black mt-1">Kitchen ETA: {selectedOrder.estDuration}</p>}
-                    {selectedOrder.cancellationReason && (
-                      <div className="mt-2 p-2 bg-red-500/10 border border-red-500/20 rounded text-red-400">
-                        <span className="text-[8px] font-black uppercase tracking-widest block mb-1">Cancellation Reason</span>
-                        <p className="text-[10px] font-bold">{selectedOrder.cancellationReason}</p>
+            {selectedPinLocked && (
+              <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-xs text-red-400 font-bold">
+                The rider entered a wrong delivery PIN {selectedOrder.deliveryPinAttempts} times and is locked out. Call the customer to confirm they received the order before marking it delivered here.
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="space-y-5">
+                <div>
+                  <h5 className="text-[9px] font-black text-blue-500 uppercase tracking-[0.2em] mb-2">Customer</h5>
+                  <p className="text-lg font-black text-white">{selectedOrder.user?.name || 'Customer'}</p>
+                  <p className="text-xs text-gray-400 font-bold">{selectedOrder.user?.phone || 'No phone on file'}</p>
+                </div>
+                <div>
+                  <h5 className="text-[9px] font-black text-blue-500 uppercase tracking-[0.2em] mb-2">Delivery</h5>
+                  <p className="text-xs text-white font-bold whitespace-pre-line">{selectedOrder.deliveryAddress || (selectedOrder.hostelGateDelivery ? 'Hostel gate' : 'No address on file')}</p>
+                  {selectedOrder.deliverySlot && <p className="text-[10px] text-blue-400 font-black mt-1">Slot: {selectedOrder.deliverySlot}</p>}
+                  {formatEta(selectedOrder.estDuration) && <p className="text-[10px] text-sky-400 font-black mt-1">Kitchen time: {formatEta(selectedOrder.estDuration)}</p>}
+                  {Array.isArray(instructions) && instructions.length > 0 && (
+                    <ul className="mt-2 space-y-1">
+                      {instructions.map((t, i) => <li key={i} className="text-[10px] text-gray-300">• {t}</li>)}
+                    </ul>
+                  )}
+                  <p className="text-[10px] text-gray-500 mt-2">Store: {selectedOrder.restaurant?.name || '—'}</p>
+                  <p className="text-[10px] text-gray-500">Rider: {selectedOrder.deliveryPartnerId ? 'Assigned' : 'Not assigned yet'}</p>
+                </div>
+                <div>
+                  <h5 className="text-[9px] font-black text-blue-500 uppercase tracking-[0.2em] mb-2">Payment</h5>
+                  <PaymentBadge order={selectedOrder} />
+                  {selectedOrder.cancellationReason && (
+                    <div className="mt-3 p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400">
+                      <span className="text-[8px] font-black uppercase tracking-widest block mb-1">Cancellation reason</span>
+                      <p className="text-[11px] font-bold">{selectedOrder.cancellationReason}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h5 className="text-[9px] font-black text-blue-500 uppercase tracking-[0.2em]">Items</h5>
+                <div className="space-y-2 bg-white/[0.02] p-4 rounded-2xl border border-white/5 max-h-[200px] overflow-y-auto">
+                  {(selectedOrder.items || []).length === 0 ? (
+                    <p className="text-xs text-gray-500">No items recorded.</p>
+                  ) : selectedOrder.items.map((item, i) => {
+                    const unit = item.priceAtOrder ?? item.price;
+                    const line = item.lineTotal ?? (unit != null ? unit * item.quantity : null);
+                    return (
+                      <div key={i} className="flex justify-between items-center text-xs gap-4">
+                        <span className="text-white font-bold">{item.name || 'Item'} <span className="text-gray-500 ml-1">×{item.quantity}</span></span>
+                        <span className="text-gray-400">{line != null ? rupees(line) : '—'}</span>
                       </div>
-                    )}
-                  </div>
-               </div>
-               <div className="space-y-4">
-                  <h5 className="text-[9px] font-black text-blue-500 uppercase tracking-[0.2em] mb-1">Asset Allocation</h5>
-                  <div className="space-y-3 bg-white/[0.02] p-4 rounded-2xl border border-white/5 max-h-[200px] overflow-y-auto">
-                    {selectedOrder.items.map((item, i) => (
-                      <div key={i} className="flex justify-between items-center text-xs">
-                        <span className="text-white font-bold">{item.name} <span className="text-gray-500 ml-1">x{item.quantity}</span></span>
-                        <span className="text-gray-400">₹{(item.price || 0) * item.quantity}</span>
-                      </div>
+                    );
+                  })}
+                </div>
+                {breakdown && (
+                  <div className="space-y-1 text-[11px] text-gray-400">
+                    {breakdown.subtotal != null && <div className="flex justify-between"><span>Subtotal</span><span>{rupees(breakdown.subtotal)}</span></div>}
+                    {breakdown.deliveryFee != null && <div className="flex justify-between"><span>Delivery fee</span><span>{rupees(breakdown.deliveryFee)}</span></div>}
+                    {!!breakdown.packagingFee && <div className="flex justify-between"><span>Packaging</span><span>{rupees(breakdown.packagingFee)}</span></div>}
+                    {!!breakdown.taxes && <div className="flex justify-between"><span>Taxes</span><span>{rupees(breakdown.taxes)}</span></div>}
+                    {(breakdown.discounts || []).map((d, i) => (
+                      <div key={i} className="flex justify-between text-emerald-400"><span>{d.label}</span><span>−{rupees(d.amount)}</span></div>
                     ))}
                   </div>
-                  <div className="flex justify-between items-center pt-4 border-t border-white/5">
-                     <span className="text-[10px] font-black text-white uppercase tracking-widest">Total Valuation</span>
-                     <span className="text-xl font-black text-blue-500">₹{selectedOrder.finalPrice || selectedOrder.totalPrice}</span>
-                  </div>
-               </div>
+                )}
+                <div className="flex justify-between items-center pt-3 border-t border-white/5">
+                  <span className="text-[10px] font-black text-white uppercase tracking-widest">Total</span>
+                  <span className="text-xl font-black text-blue-500">{rupees(grandTotal(selectedOrder))}</span>
+                </div>
+              </div>
             </div>
 
-            <div className="space-y-4 pt-4 border-t border-white/5">
-               <div className="flex items-center justify-between">
-                 <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Control Room Status Override</span>
-                 <span className="text-[9px] text-blue-400 font-mono">Syncs to Customer & Delivery App</span>
-               </div>
-               <div className="grid grid-cols-4 gap-2">
-                 <button
-                   disabled={selectedOrder.status === 'Accepted' || actionLoading === selectedOrder._id + 'Accepted'}
-                   onClick={() => updateOrderStatus(selectedOrder._id, 'Accepted')}
-                   className="py-2.5 px-2 bg-sky-500/10 text-sky-400 border border-sky-500/20 rounded-xl text-[9px] font-black uppercase tracking-wider hover:bg-sky-500/20 disabled:opacity-30 transition-all"
-                 >
-                   ▶ Accept
-                 </button>
-                 <button
-                   disabled={selectedOrder.status === 'PickedUp' || actionLoading === selectedOrder._id + 'PickedUp'}
-                   onClick={() => updateOrderStatus(selectedOrder._id, 'PickedUp')}
-                   className="py-2.5 px-2 bg-orange-500/10 text-orange-400 border border-orange-500/20 rounded-xl text-[9px] font-black uppercase tracking-wider hover:bg-orange-500/20 disabled:opacity-30 transition-all"
-                 >
-                   🛵 Picked Up
-                 </button>
-                 <button
-                   disabled={selectedOrder.status === 'Delivered' || actionLoading === selectedOrder._id + 'Delivered'}
-                   onClick={() => updateOrderStatus(selectedOrder._id, 'Delivered')}
-                   className="py-2.5 px-2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-xl text-[9px] font-black uppercase tracking-wider hover:bg-emerald-500/20 disabled:opacity-30 transition-all"
-                 >
-                   ✓ Delivered
-                 </button>
-                 <button
-                   disabled={selectedOrder.status === 'Cancelled' || actionLoading === selectedOrder._id + 'Cancelled'}
-                   onClick={() => updateOrderStatus(selectedOrder._id, 'Cancelled')}
-                   className="py-2.5 px-2 bg-red-500/10 text-red-400 border border-red-500/20 rounded-xl text-[9px] font-black uppercase tracking-wider hover:bg-red-500/20 disabled:opacity-30 transition-all"
-                 >
-                   ✕ Cancel
-                 </button>
-               </div>
-            </div>
+            {/* Legacy UPI orders: manual verification only. New orders are COD or Wallet. */}
+            {isLegacyUpiPending(selectedOrder) && (
+              <div className="p-5 rounded-2xl border border-amber-500/20 bg-amber-500/5 space-y-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-amber-400">Legacy UPI payment awaiting verification</p>
+                  <p className="text-[11px] text-gray-400 mt-1">UPI checkout is switched off. Check this older payment against the bank statement before accepting.</p>
+                </div>
+                <div className="flex flex-wrap gap-4 items-center text-xs">
+                  <span className="text-gray-400">UTR: <span className="font-mono text-white">{selectedOrder.upiUTR || 'not provided'}</span></span>
+                  {selectedOrder.upiScreenshot && /^(https?:|data:image\/)/i.test(selectedOrder.upiScreenshot) && (
+                    <a href={selectedOrder.upiScreenshot} target="_blank" rel="noopener noreferrer" className="text-blue-400 underline">Open screenshot</a>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <button disabled={selectedBusy} onClick={() => verifyUpi(selectedOrder, true)} className="px-4 py-2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-xl text-[9px] font-black uppercase tracking-wider hover:bg-emerald-500/20 disabled:opacity-30">Payment received</button>
+                  <button disabled={selectedBusy} onClick={() => verifyUpi(selectedOrder, false)} className="px-4 py-2 bg-red-500/10 text-red-400 border border-red-500/20 rounded-xl text-[9px] font-black uppercase tracking-wider hover:bg-red-500/20 disabled:opacity-30">Reject payment</button>
+                </div>
+              </div>
+            )}
 
-            <div className="flex gap-4 pt-2">
-               <button onClick={() => setSelectedOrder(null)} className="w-full py-4 bg-white/5 border border-white/10 rounded-2xl text-[10px] font-black uppercase text-gray-400 hover:text-white transition-all">Close Trace</button>
-            </div>
+            {selectedOpen && !isLegacyUpiPending(selectedOrder) && (
+              <div className="space-y-3 pt-4 border-t border-white/5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Support actions</span>
+                  <span className="text-[9px] text-gray-500">The customer, store and rider apps update automatically</span>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  {selectedOrder.status === 'Pending' && (
+                    <button disabled={selectedBusy} onClick={() => acceptOrder(selectedOrder)} className="py-2.5 px-2 bg-sky-500/10 text-sky-400 border border-sky-500/20 rounded-xl text-[9px] font-black uppercase tracking-wider hover:bg-sky-500/20 disabled:opacity-30 transition-all">Accept & dispatch</button>
+                  )}
+                  {!['Pending', 'PickedUp', 'ArrivedAtGate'].includes(selectedOrder.status) && (
+                    <button disabled={selectedBusy} onClick={() => setStatus(selectedOrder, 'PickedUp')} className="py-2.5 px-2 bg-orange-500/10 text-orange-400 border border-orange-500/20 rounded-xl text-[9px] font-black uppercase tracking-wider hover:bg-orange-500/20 disabled:opacity-30 transition-all">Mark picked up</button>
+                  )}
+                  {selectedOrder.status !== 'Pending' && (
+                    <button disabled={selectedBusy} onClick={() => setStatus(selectedOrder, 'Delivered')} className="py-2.5 px-2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-xl text-[9px] font-black uppercase tracking-wider hover:bg-emerald-500/20 disabled:opacity-30 transition-all">Mark delivered</button>
+                  )}
+                  <button disabled={selectedBusy} onClick={() => cancelOrder(selectedOrder)} className="py-2.5 px-2 bg-red-500/10 text-red-400 border border-red-500/20 rounded-xl text-[9px] font-black uppercase tracking-wider hover:bg-red-500/20 disabled:opacity-30 transition-all">Cancel order</button>
+                </div>
+                {selectedBusy && <p className="text-[10px] text-gray-500">Working…</p>}
+              </div>
+            )}
+
+            <button onClick={() => setSelectedId(null)} className="w-full py-3 bg-white/5 border border-white/10 rounded-2xl text-[10px] font-black uppercase text-gray-400 hover:text-white transition-all">Close</button>
           </div>
         </div>
       )}
     </div>
   );
 }
-

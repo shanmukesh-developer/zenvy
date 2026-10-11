@@ -2,10 +2,15 @@ const { getRestaurantModel } = require('../models/Restaurant');
 const { getMenuItemModel } = require('../models/MenuItem');
 const { Op } = require('sequelize');
 
+// Real rating only (0 = not rated yet → null, the app shows "New").
+const realRating = (r) => (Number(r) > 0 ? Number(r) : null);
+// LIKE wildcards typed by users are treated as plain spaces.
+const cleanQuery = (q) => String(q || '').replace(/[%_]/g, ' ').trim().slice(0, 60);
+
 // @desc    Global search across restaurants and menu items
 // @route   GET /api/search
 const globalSearch = async (req, res) => {
-  const { q } = req.query;
+  const q = cleanQuery(req.query.q);
   
   try {
     const Restaurant = getRestaurantModel();
@@ -15,29 +20,29 @@ const globalSearch = async (req, res) => {
     const dialect = Restaurant.sequelize.getDialect();
     const likeOp = dialect === 'postgres' ? Op.iLike : Op.like;
 
-    if (!q || q.trim().length < 3) {
+    if (!q || q.trim().length < 2) {
       // Return Trending/Featured if no query
       const trendingRestaurants = await Restaurant.findAll({
         where: { isActive: true },
-        order: [['rating', 'DESC']],
+        order: [['rating', 'DESC NULLS LAST']], // Postgres puts NULL first on plain DESC
         limit: 4
       });
       const trendingItems = await MenuItem.findAll({
         where: { isAvailable: true },
         limit: 6,
-        include: [{ model: Restaurant, as: 'restaurant', attributes: ['id', 'name', 'imageUrl'] }]
+        include: [{ model: Restaurant, as: 'restaurant', attributes: ['id', 'name', 'imageUrl', 'vendorType'], where: { isActive: true } }]
       });
 
       return res.json({
         restaurants: trendingRestaurants.map(r => ({
-          _id: r.id, id: r.id, name: r.name, location: r.location, imageUrl: r.imageUrl, rating: r.rating || 4.5
+          _id: r.id, id: r.id, name: r.name, location: r.location, imageUrl: r.imageUrl, vendorType: r.vendorType, rating: realRating(r.rating)
         })),
         items: trendingItems.map(item => {
           const itemJSON = item.toJSON();
           return {
             ...itemJSON,
             _id: itemJSON.id,
-            restaurantId: itemJSON.restaurant ? { _id: itemJSON.restaurant.id, name: itemJSON.restaurant.name } : { _id: itemJSON.restaurantId, name: 'Unknown' }
+            restaurantId: { _id: itemJSON.restaurantId, name: itemJSON.restaurant ? itemJSON.restaurant.name : null, vendorType: itemJSON.restaurant ? itemJSON.restaurant.vendorType : null }
           };
         }),
         isTrending: true
@@ -67,7 +72,7 @@ const globalSearch = async (req, res) => {
           }
         ]
       },
-      include: [{ model: Restaurant, as: 'restaurant', attributes: ['id', 'name', 'imageUrl'] }],
+      include: [{ model: Restaurant, as: 'restaurant', attributes: ['id', 'name', 'imageUrl', 'vendorType'], where: { isActive: true } }],
       limit: 15
     });
 
@@ -77,26 +82,29 @@ const globalSearch = async (req, res) => {
       return {
         ...itemJSON,
         _id: itemJSON.id,
-        restaurantId: itemJSON.restaurant ? { 
-          _id: itemJSON.restaurant.id, 
-          name: itemJSON.restaurant.name 
-        } : { _id: itemJSON.restaurantId, name: 'Unknown' }
+        restaurantId: {
+          _id: itemJSON.restaurantId,
+          name: itemJSON.restaurant ? itemJSON.restaurant.name : null,
+          vendorType: itemJSON.restaurant ? itemJSON.restaurant.vendorType : null
+        }
       };
     });
 
     res.json({
       restaurants: restaurants.map(r => ({
         _id: r.id,
+        id: r.id,
         name: r.name,
         location: r.location,
         imageUrl: r.imageUrl,
-        rating: r.rating || 4.5
+        vendorType: r.vendorType,
+        rating: realRating(r.rating)
       })),
       items
     });
   } catch (error) {
     console.error('[SEARCH_ERROR]', error);
-    res.status(500).json({ message: 'Error performing search', error: error.message });
+    res.status(500).json({ message: 'Search is having a moment. Please try again.' });
   }
 };
 

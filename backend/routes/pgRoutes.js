@@ -5,6 +5,40 @@ const { getPGHostelModel } = require('../models/PGHostel');
 const { getPGRoomModel } = require('../models/PGRoom');
 const { getPGBookingModel } = require('../models/PGBooking');
 const { getUserModel } = require('../models/User');
+const { Op } = require('sequelize');
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Zenvy housing desk WhatsApp number (students can message it from the app). Override on Render.
+const PG_DESK_WHATSAPP = (process.env.PG_DESK_WHATSAPP || '9391955674').replace(/\D/g, '').slice(-10);
+const ACTIVE_BOOKING = ['Pending', 'Confirmed'];
+
+// Optional auth for public PG endpoints (admins may view inactive listings).
+const viewerIsAdmin = (req) => {
+  const h = req.headers.authorization;
+  if (!h || !h.startsWith('Bearer ')) return false;
+  try {
+    const decoded = require('jsonwebtoken').verify(h.split(' ')[1], process.env.JWT_SECRET);
+    return String(decoded?.role || '').toLowerCase() === 'admin';
+  } catch {
+    return false;
+  }
+};
+
+// Push + live alert to admins about a booking (real channels; WhatsApp only if a provider is set up).
+const notifyAdminsOfBooking = async (req, text, data) => {
+  try {
+    const io = req.app.get('io');
+    if (io) io.to('admin-room').emit('admin_pg_booking', data);
+    const admins = await getUserModel().findAll({ where: { role: 'admin', isActive: true }, attributes: ['id', 'fcmTokens'] });
+    const tokens = admins.flatMap((a) => (Array.isArray(a.fcmTokens) ? a.fcmTokens : []));
+    if (admins.length) {
+      const { sendPushToTokens } = require('../utils/push');
+      await sendPushToTokens(tokens, '🏢 New PG booking request', text, { type: 'PG_BOOKING', bookingId: String(data.id) }, { recipients: admins.map((a) => a.id) });
+    }
+  } catch (e) {
+    console.warn('[PG_ADMIN_NOTIFY_WARN]', e.message);
+  }
+};
 
 // GET all PGs (Student Search)
 router.get('/', async (req, res) => {
@@ -25,13 +59,15 @@ router.get('/:id', async (req, res) => {
   try {
     const PGHostel = getPGHostelModel();
     const PGRoom = getPGRoomModel();
+    if (!UUID_RE.test(String(req.params.id))) return res.status(404).json({ message: 'PG not found.' });
     const pg = await PGHostel.findByPk(req.params.id, {
       include: [{ model: PGRoom, as: 'rooms', where: { isActive: true }, required: false }]
     });
-    if (!pg) return res.status(404).json({ message: 'PG not found.' });
+    if (!pg || (pg.isActive === false && !viewerIsAdmin(req))) return res.status(404).json({ message: 'PG not found.' });
     res.json(pg);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('[PG_DETAIL_ERROR]', err);
+    res.status(500).json({ message: 'Could not load this residence right now.' });
   }
 });
 
@@ -44,19 +80,50 @@ router.post('/:roomId/book', protect, async (req, res) => {
     const PGBooking = getPGBookingModel();
     const PGHostel = getPGHostelModel();
     const User = getUserModel();
+    if (!UUID_RE.test(String(req.params.roomId))) return res.status(404).json({ message: 'Room not found.' });
     const room = await PGRoom.findByPk(req.params.roomId);
-    
+
+    // Check-in: YYYY-MM-DD, today (IST) up to 90 days ahead. Missing = today.
+    const BAD_DATE = { code: 'INVALID_CHECKIN_DATE', message: 'Pick a check-in date from today onwards.' };
+    const istToday = new Date(Date.now() + 330 * 60 * 1000).toISOString().slice(0, 10);
+    let checkInYmd = istToday;
+    if (req.body.checkInDate !== undefined && req.body.checkInDate !== null && req.body.checkInDate !== '') {
+      const raw = String(req.body.checkInDate).trim();
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+      if (!m) return res.status(400).json(BAD_DATE);
+      const probe = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+      if (probe.toISOString().slice(0, 10) !== raw) return res.status(400).json(BAD_DATE); // e.g. 2026-02-31
+      const daysAhead = Math.round((probe.getTime() - Date.parse(`${istToday}T00:00:00Z`)) / 86400000);
+      if (daysAhead < 0) return res.status(400).json(BAD_DATE);
+      if (daysAhead > 90) return res.status(400).json({ code: 'INVALID_CHECKIN_DATE', message: 'Check-in can be booked up to 90 days ahead.' });
+      checkInYmd = raw;
+    }
+    const checkInDate = new Date(`${checkInYmd}T00:00:00Z`);
+
     if (!room || !room.isActive) return res.status(404).json({ message: 'Room not found.' });
     if (room.availableBeds <= 0) return res.status(400).json({ message: 'No beds available.' });
 
     const pgHostel = await PGHostel.findByPk(room.hostelId);
+    if (!pgHostel || pgHostel.isActive === false) return res.status(404).json({ message: 'This residence is not taking bookings right now.' });
     const user = await User.findByPk(req.user.id);
+
+    // One open request per student per residence.
+    const openBooking = await PGBooking.findOne({
+      where: { userId: req.user.id, hostelId: room.hostelId, status: { [Op.in]: ACTIVE_BOOKING } }
+    });
+    if (openBooking) {
+      return res.status(409).json({
+        code: 'BOOKING_EXISTS',
+        message: `You already have a ${openBooking.status.toLowerCase()} booking request here. We'll update you soon.`,
+        booking: openBooking
+      });
+    }
 
     const booking = await PGBooking.create({
       userId: req.user.id,
       hostelId: room.hostelId,
       roomId: room.id,
-      checkInDate: new Date(req.body.checkInDate || Date.now()),
+      checkInDate,
       status: 'Pending'
     });
 
@@ -67,7 +134,7 @@ router.post('/:roomId/book', protect, async (req, res) => {
     const pgName = pgHostel?.name || 'Verified Campus PG';
     const sharingType = room.sharingType ? `${room.sharingType} Sharing` : 'Standard';
     const rentAmount = room.pricePerBed || pgHostel?.baseRent || 0;
-    const checkIn = new Date(req.body.checkInDate || Date.now()).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+    const checkIn = checkInDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 
     const whatsappMessage = `🏢 *NEW PG BOOKING REQUEST!* 🚀\n\n` +
       `👤 *Student Profile:*\n` +
@@ -84,38 +151,151 @@ router.post('/:roomId/book', protect, async (req, res) => {
       `• Booking ID: #${(booking.id || '').substring(0, 8).toUpperCase()}\n\n` +
       `⚡ _Sent automatically via Zenvy Super Ecosystem._`;
 
-    // Direct WhatsApp message notification to 9391955674
+    // Real notifications: admin push + live dashboard alert. WhatsApp only when a provider is configured.
+    await notifyAdminsOfBooking(req, `${userName} requested ${sharingType} room ${room.roomNumber} at ${pgName}.`, {
+      id: booking.id, hostelId: room.hostelId, roomId: room.id, userName, pgName, checkInDate: booking.checkInDate
+    });
+    let whatsappSent = false;
     try {
-      await sendWhatsAppMessage('9391955674', whatsappMessage, 'PG_BOOKING');
+      const wa = await sendWhatsAppMessage(PG_DESK_WHATSAPP, whatsappMessage, 'PG_BOOKING');
+      whatsappSent = !!wa?.success;
     } catch (waErr) {
       console.error('[PG_WHATSAPP_ERROR]', waErr.message);
     }
 
-    const whatsappUrl = `https://wa.me/919391955674?text=${encodeURIComponent(whatsappMessage)}`;
+    // Lets the student message the housing desk themselves from WhatsApp.
+    const whatsappUrl = `https://wa.me/91${PG_DESK_WHATSAPP}?text=${encodeURIComponent(whatsappMessage)}`;
 
-    res.status(201).json({ 
-      message: 'Booking request sent successfully.', 
+    res.status(201).json({
+      message: 'Booking request received. The Zenvy housing team will confirm it with you.',
       booking,
+      whatsappSent,
       whatsappUrl,
       whatsappMessage
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('[PG_BOOK_ERROR]', err);
+    res.status(500).json({ message: 'Could not send your booking request right now.' });
   }
 });
 
-// POST Create a PG (Owner / Admin)
-router.post('/', protect, async (req, res) => {
+// GET my PG booking requests (newest first)
+router.get('/bookings/mine', protect, async (req, res) => {
+  try {
+    const bookings = await getPGBookingModel().findAll({ where: { userId: req.user.id }, order: [['createdAt', 'DESC']], limit: 50 });
+    const hostelIds = [...new Set(bookings.map((b) => b.hostelId))];
+    const roomIds = [...new Set(bookings.map((b) => b.roomId))];
+    const [hostels, rooms] = await Promise.all([
+      hostelIds.length ? getPGHostelModel().findAll({ where: { id: hostelIds }, attributes: ['id', 'name', 'address', 'images'] }) : [],
+      roomIds.length ? getPGRoomModel().findAll({ where: { id: roomIds }, attributes: ['id', 'roomNumber', 'sharingType', 'pricePerBed'] }) : [],
+    ]);
+    const h = Object.fromEntries(hostels.map((x) => [x.id, x]));
+    const r = Object.fromEntries(rooms.map((x) => [x.id, x]));
+    res.json(bookings.map((b) => ({ ...b.toJSON(), hostel: h[b.hostelId] || null, room: r[b.roomId] || null })));
+  } catch (err) {
+    console.error('[PG_MY_BOOKINGS_ERROR]', err);
+    res.status(500).json({ message: 'Could not load your bookings.' });
+  }
+});
+
+// PUT cancel my booking request
+router.put('/bookings/:bookingId/cancel', protect, async (req, res) => {
+  try {
+    const result = await changeBookingStatus(req.params.bookingId, 'Cancelled', (b) => b.userId === req.user.id);
+    if (result.error) return res.status(result.status).json({ message: result.error });
+    res.json({ message: 'Booking request cancelled.', booking: result.booking });
+  } catch (err) {
+    console.error('[PG_CANCEL_ERROR]', err);
+    res.status(500).json({ message: 'Could not cancel right now.' });
+  }
+});
+
+// GET all booking requests (Admin)
+router.get('/admin/bookings', protect, admin, async (req, res) => {
+  try {
+    const where = req.query.status ? { status: String(req.query.status) } : {};
+    const bookings = await getPGBookingModel().findAll({ where, order: [['createdAt', 'DESC']], limit: 200 });
+    const userIds = [...new Set(bookings.map((b) => b.userId))];
+    const hostelIds = [...new Set(bookings.map((b) => b.hostelId))];
+    const roomIds = [...new Set(bookings.map((b) => b.roomId))];
+    const [users, hostels, rooms] = await Promise.all([
+      userIds.length ? getUserModel().findAll({ where: { id: userIds }, attributes: ['id', 'name', 'phone', 'email'] }) : [],
+      hostelIds.length ? getPGHostelModel().findAll({ where: { id: hostelIds }, attributes: ['id', 'name'] }) : [],
+      roomIds.length ? getPGRoomModel().findAll({ where: { id: roomIds }, attributes: ['id', 'roomNumber', 'sharingType', 'availableBeds'] }) : [],
+    ]);
+    const u = Object.fromEntries(users.map((x) => [x.id, x]));
+    const h = Object.fromEntries(hostels.map((x) => [x.id, x]));
+    const r = Object.fromEntries(rooms.map((x) => [x.id, x]));
+    res.json(bookings.map((b) => ({ ...b.toJSON(), user: u[b.userId] || null, hostel: h[b.hostelId] || null, room: r[b.roomId] || null })));
+  } catch (err) {
+    console.error('[PG_ADMIN_BOOKINGS_ERROR]', err);
+    res.status(500).json({ message: 'Could not load bookings.' });
+  }
+});
+
+// PUT confirm / cancel a booking request (Admin). Confirming takes a bed; cancelling a confirmed one gives it back.
+router.put('/admin/bookings/:bookingId/status', protect, admin, async (req, res) => {
+  try {
+    const status = String(req.body?.status || '');
+    if (!['Confirmed', 'Cancelled'].includes(status)) return res.status(400).json({ message: "status must be 'Confirmed' or 'Cancelled'" });
+    const result = await changeBookingStatus(req.params.bookingId, status, () => true);
+    if (result.error) return res.status(result.status).json({ message: result.error });
+    try {
+      const student = await getUserModel().findByPk(result.booking.userId, { attributes: ['id', 'fcmTokens'] });
+      if (student) {
+        const { sendPushToTokens } = require('../utils/push');
+        await sendPushToTokens(student.fcmTokens,
+          status === 'Confirmed' ? '🏠 PG booking confirmed!' : 'PG booking update',
+          status === 'Confirmed' ? 'Your bed is reserved. See you at check-in!' : 'Your PG booking request was cancelled.',
+          { type: 'PG_BOOKING_STATUS', bookingId: String(result.booking.id), status },
+          { recipients: [student.id] });
+      }
+    } catch (e) { console.warn('[PG_STATUS_PUSH_WARN]', e.message); }
+    res.json({ message: `Booking ${status.toLowerCase()}.`, booking: result.booking });
+  } catch (err) {
+    console.error('[PG_STATUS_ERROR]', err);
+    res.status(500).json({ message: 'Could not update the booking.' });
+  }
+});
+
+// Moves a booking to Confirmed / Cancelled inside a transaction, keeping availableBeds in sync.
+async function changeBookingStatus(bookingId, nextStatus, mayChange) {
+  if (!UUID_RE.test(String(bookingId))) return { status: 404, error: 'Booking not found.' };
+  const { getSequelize } = require('../config/db');
+  return getSequelize().transaction(async (t) => {
+    const PGBooking = getPGBookingModel();
+    const PGRoom = getPGRoomModel();
+    const booking = await PGBooking.findByPk(bookingId, { transaction: t, lock: t.LOCK.UPDATE });
+    if (!booking || !mayChange(booking)) return { status: 404, error: 'Booking not found.' };
+    if (booking.status === nextStatus) return { booking };
+    if (booking.status === 'Cancelled') return { status: 400, error: 'This booking was already cancelled.' };
+    const room = await PGRoom.findByPk(booking.roomId, { transaction: t, lock: t.LOCK.UPDATE });
+    if (nextStatus === 'Confirmed') {
+      if (!room || room.availableBeds <= 0) return { status: 400, error: 'No beds left in this room.' };
+      room.availableBeds -= 1;
+      await room.save({ transaction: t });
+    } else if (booking.status === 'Confirmed' && room) {
+      room.availableBeds = Math.min(room.totalBeds || room.availableBeds + 1, room.availableBeds + 1);
+      await room.save({ transaction: t });
+    }
+    booking.status = nextStatus;
+    await booking.save({ transaction: t });
+    return { booking };
+  });
+}
+
+// POST Create a PG (Admin only: listings are curated by the Zenvy team)
+router.post('/', protect, admin, async (req, res) => {
   try {
     const PGHostel = getPGHostelModel();
-    const { 
-      name, address, distanceFromCollege, genderType, baseRent, securityDeposit, 
-      amenities, images, description, messMenu, foodTimetable, rules, contactInfo, isActive 
+    const {
+      name, address, distanceFromCollege, genderType, baseRent, securityDeposit,
+      amenities, images, description, messMenu, foodTimetable, rules, contactInfo, isActive
     } = req.body;
-    
+
     const pg = await PGHostel.create({
       ownerId: req.user.id,
-      name, address, distanceFromCollege, genderType, baseRent, securityDeposit, 
+      name, address, distanceFromCollege, genderType, baseRent, securityDeposit,
       amenities, images, description, messMenu, foodTimetable, rules, contactInfo, isActive: isActive ?? true
     });
     res.status(201).json(pg);
@@ -144,12 +324,12 @@ router.put('/:id', protect, admin, async (req, res) => {
     const pg = await PGHostel.findByPk(req.params.id);
     if (!pg) return res.status(404).json({ message: 'PG not found.' });
 
-    const { 
-      name, address, distanceFromCollege, genderType, baseRent, securityDeposit, 
-      amenities, images, description, messMenu, foodTimetable, rules, contactInfo, isActive 
+    const {
+      name, address, distanceFromCollege, genderType, baseRent, securityDeposit,
+      amenities, images, description, messMenu, foodTimetable, rules, contactInfo, isActive
     } = req.body;
     await pg.update({
-      name, address, distanceFromCollege, genderType, baseRent, securityDeposit, 
+      name, address, distanceFromCollege, genderType, baseRent, securityDeposit,
       amenities, images, description, messMenu, foodTimetable, rules, contactInfo, isActive
     });
     res.json(pg);

@@ -28,7 +28,8 @@ const initVaultItemModel = (sequelize) => {
       defaultValue: 0
     },
     imageUrl: {
-      type: DataTypes.STRING
+      // TEXT: uploaded images are stored as data URLs (longer than VARCHAR(255))
+      type: DataTypes.TEXT
     },
     isActive: {
       type: DataTypes.BOOLEAN,

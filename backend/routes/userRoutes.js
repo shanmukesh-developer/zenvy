@@ -1,5 +1,8 @@
 const express = require('express');
-const { registerUser, authUser, saveFcmToken, getUserProfile, updateUserProfile, logoutUser } = require('../controllers/userController');
+const {
+  registerUser, authUser, saveFcmToken, removeFcmToken, getUserProfile, updateUserProfile, logoutUser,
+  sendOtp, verifyOtp, googleLogin, googleComplete, resetPassword
+} = require('../controllers/userController');
 const { protect } = require('../middleware/authMiddleware');
 const rateLimit = require('express-rate-limit');
 const router = express.Router();
@@ -8,7 +11,7 @@ const router = express.Router();
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 50, // 50 auth attempts per IP per 15 min — prevents brute force while accommodating shared campus WiFi
-  skip: (req, res) => process.env.NODE_ENV !== 'production' && process.env.RENDER !== 'true',
+  skip: (req, res) => !require('../utils/env').isProduction(),
   message: { message: 'Too many authentication attempts, please try again after 15 minutes.' }
 });
 
@@ -29,12 +32,13 @@ const validate = (req, res, next) => {
 };
 
 const registerValidation = [
-  body('name').trim().notEmpty().withMessage('Name is required').escape(),
-  body('email').optional().isEmail().withMessage('Invalid email').normalizeEmail(),
-  body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
-  body('phone').notEmpty().withMessage('Phone is required').trim().escape(),
-  body('role').optional().isIn(['student', 'admin', 'restaurant', 'delivery']).withMessage('Invalid role'),
-  body('referralCode').optional().trim().escape()
+  // Names are stored as typed (React escapes on render) — no HTML-entity escaping here.
+  body('name').trim().notEmpty().withMessage('Name is required').isLength({ max: 60 }).withMessage('Name is too long'),
+  body('email').optional({ values: 'falsy' }).trim().isEmail().withMessage('Invalid email'),
+  // Password is optional for OTP / Google sign-ups; when given it must be 6+ chars
+  body('password').optional({ values: 'falsy' }).isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+  body('phone').notEmpty().withMessage('Phone is required').trim(),
+  body('referralCode').optional({ values: 'falsy' }).trim()
 ];
 
 const loginValidation = [
@@ -44,12 +48,15 @@ const loginValidation = [
 
 router.post('/register', authLimiter, registerValidation, validate, registerUser);
 router.post('/login', authLimiter, accountLockout, loginValidation, validate, authUser);
-router.post('/send-otp', authLimiter, require('../controllers/userController').sendOtp);
-router.post('/verify-otp', authLimiter, require('../controllers/userController').verifyOtp);
-router.post('/google-login', authLimiter, require('../controllers/userController').googleLogin);
-router.post('/reset-password', authLimiter, require('../controllers/userController').resetPassword);
+router.post('/send-otp', authLimiter, sendOtp);
+router.post('/verify-otp', authLimiter, verifyOtp);
+router.post('/google-login', authLimiter, googleLogin);
+router.post('/google-complete', authLimiter, googleComplete);
+router.post('/reset-password', authLimiter, resetPassword);
 router.post('/logout', logoutUser);
 router.post('/fcm-token', protect, saveFcmToken);
+router.delete('/fcm-token', protect, removeFcmToken);
+router.post('/fcm-token/remove', protect, removeFcmToken);
 router.get('/profile', protect, getUserProfile);
 router.put('/profile', protect, updateUserProfile);
 
@@ -100,15 +107,17 @@ router.get('/products/:id/reviews', async (req, res) => {
         limit: 50
       });
 
+      // Only a first name is shown — never a hostel block / room or anything from an address.
       allReviews = dbReviews.map(r => ({
         id: r.id,
-        name: r.userName || 'Verified Buyer',
-        block: r.userBlock || 'Campus Resident',
-        rating: r.rating || 5,
+        name: r.userName ? String(r.userName).trim().split(/\s+/)[0] : 'Zenvy customer',
+        block: null,
+        rating: r.rating,
         time: new Date(r.createdAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }),
         comment: r.comment || '',
-        verified: r.verified !== false,
-        helpfulCount: r.helpfulCount || 1,
+        orderId: r.orderId || null,
+        verified: !!r.orderId, // verified = written for a delivered order
+        helpfulCount: r.helpfulCount || 0,
         tags: r.tags || []
       }));
     }
@@ -138,16 +147,19 @@ router.get('/products/:id/reviews', async (req, res) => {
         );
 
         if (matchingItem && ord.review && !allReviews.some(r => r.id === 'ord-rev-' + ord.id)) {
-          allReviews.push({
-            id: 'ord-rev-' + ord.id,
-            name: 'Campus Verified Buyer',
-            block: ord.deliveryAddress ? ord.deliveryAddress.split(',')[0].trim() : 'Campus Resident',
-            rating: ord.rating || 5,
-            time: new Date(ord.createdAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }),
-            comment: ord.review,
-            verified: true,
-            helpfulCount: 2
-          });
+          // Orders rated after the review sync already have ProductReview rows (same orderId).
+          if (ord.rating && !allReviews.some(r => r.orderId === String(ord.id))) {
+            allReviews.push({
+              id: 'ord-rev-' + ord.id,
+              name: 'Zenvy customer',
+              block: null,
+              rating: ord.rating,
+              time: new Date(ord.createdAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }),
+              comment: ord.review,
+              verified: true,
+              helpfulCount: 0
+            });
+          }
         }
       }
     }
@@ -160,9 +172,9 @@ router.get('/products/:id/reviews', async (req, res) => {
     if (count > 0) {
       let sum = 0;
       allReviews.forEach(r => {
-        const star = Math.min(5, Math.max(1, Math.round(r.rating || 5)));
+        const star = Math.min(5, Math.max(1, Math.round(Number(r.rating) || 1)));
         dist[star] = (dist[star] || 0) + 1;
-        sum += (r.rating || 5);
+        sum += star;
       });
       avg = parseFloat((sum / count).toFixed(1));
     }
@@ -190,29 +202,51 @@ router.post('/products/:id/reviews', protect, async (req, res) => {
     const ProductReview = getProductReviewModel();
     const User = getUserModel();
 
+    const starRating = Number(rating);
+    if (!Number.isInteger(starRating) || starRating < 1 || starRating > 5) {
+      return res.status(400).json({ message: 'Please pick a rating from 1 to 5 stars.' });
+    }
     const user = await User.findByPk(req.user.id);
-    const starRating = Math.min(5, Math.max(1, Number(rating) || 5));
+    if (!user) return res.status(401).json({ message: 'Please log in again.' });
 
+    // Must have a delivered order containing this product.
+    const { getOrderModel } = require('../models/Order');
+    const Order = getOrderModel();
+    const delivered = await Order.findAll({ where: { userId: req.user.id, status: 'Delivered' }, order: [['createdAt', 'DESC']], limit: 100 });
+    const purchase = delivered.find(o => {
+      let items = o.items;
+      if (typeof items === 'string') { try { items = JSON.parse(items); } catch { items = []; } }
+      return (Array.isArray(items) ? items : []).some(it => String(it.menuItemId || it.id || '') === rawId);
+    });
+    if (!purchase) {
+      return res.status(403).json({ message: 'You can review this once you have ordered it and it has been delivered.' });
+    }
+    const already = await ProductReview.findOne({ where: { productId: rawId, userId: String(req.user.id) } });
+    if (already) return res.status(409).json({ message: 'You have already reviewed this product. Thank you!' });
+
+    const text = typeof comment === 'string' ? comment.trim().replace(/[<>]/g, '').slice(0, 1000) : '';
     const newReview = await ProductReview.create({
       productId: rawId,
-      productName: req.body.productName || 'Campus Dish',
-      userId: req.user.id,
-      userName: user?.name || req.user.name || 'Verified Student',
-      userBlock: user?.hostelBlock || 'Campus Resident',
+      productName: typeof req.body.productName === 'string' ? req.body.productName.slice(0, 120) : null,
+      orderId: String(purchase.id),
+      userId: String(req.user.id),
+      userName: user.name ? String(user.name).trim().split(/\s+/)[0] : 'Zenvy customer',
+      userBlock: null,
       rating: starRating,
-      comment: comment || '',
-      tags: Array.isArray(tags) ? tags : [],
+      comment: text || null,
+      tags: Array.isArray(tags) ? tags.slice(0, 10).map(x => String(x).slice(0, 40)) : [],
       verified: true,
       helpfulCount: 0
     });
 
     res.json({
       success: true,
-      message: 'Genuine customer review published successfully!',
+      message: 'Thanks for your review!',
       review: newReview
     });
   } catch (err) {
-    res.status(500).json({ message: 'Failed to submit review', error: err.message });
+    console.error('[POST_REVIEW_ERROR]', err);
+    res.status(500).json({ message: 'Could not post your review. Please try again.' });
   }
 });
 
@@ -223,7 +257,8 @@ router.get('/orders', protect, async (req, res) => {
   try {
     const { getOrderModel } = require('../models/Order');
     const Order = getOrderModel();
-    const orders = await Order.findAll({ where: { userId: req.user.id }, order: [['createdAt', 'DESC']] });
+    const limit = Math.min(100, parseInt(req.query.limit) || 50);
+    const orders = await Order.findAll({ where: { userId: req.user.id }, order: [['createdAt', 'DESC']], limit });
     res.json(orders);
   } catch (_err) {
     res.status(500).json({ message: 'Failed to fetch orders', error: _err.message });

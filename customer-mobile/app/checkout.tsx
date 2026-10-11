@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,31 +8,61 @@ import {
   TextInput,
   Platform,
   ActivityIndicator,
-  Linking,
-  Image,
   Alert,
+  KeyboardAvoidingView,
 } from 'react-native';
-import Clipboard from '@react-native-clipboard/clipboard';
-import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Haptics from 'expo-haptics';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { API_URL, ENDPOINTS } from '../constants/api';
-import { useCart } from '../context/CartContext';
+import {
+  useCart,
+  useBasketQuote,
+  useServiceability,
+  isCustomRequest,
+  toOrderLine,
+  friendlyNetworkMessage,
+  newIdempotencyKey,
+  DELIVERY_INSTRUCTIONS,
+  DELIVERY_INSTRUCTIONS_KEY,
+} from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { apiFetch } from '../utils/auth';
 import { StaggeredSection, FloatingPulse, BounceIn } from '../components/AnimatedSection';
 import DopaminePressable, { ActionPressable } from '../components/DopaminePressable';
-import * as ImagePicker from 'expo-image-picker';
+
+type CampusKey = 'srmap' | 'vitap' | 'amrita';
+type PayMethod = 'COD' | 'Wallet';
 
 interface ExtraItem {
   id: string;
   name: string;
   price: number;
-  emoji: string;
+  emoji?: string | null;
+  image?: string | null;
+  restaurantId: string;
+  storeName?: string;
 }
 
-// Detect product type from name (same logic as web checkout)
-function detectType(name: string): string {
+interface UserCoupon {
+  id: string;
+  code: string;
+  type: string;
+  label?: string;
+  expiresInDays?: number | null;
+}
+
+// Campuses the order service delivers to (server: resolveCampus in orderController).
+const CAMPUSES: { key: CampusKey; label: string; sub: string; icon: string; code: string }[] = [
+  { key: 'srmap', label: 'SRM AP', sub: 'SRM University', icon: '🏢', code: 'SRMAP' },
+  { key: 'vitap', label: 'VIT AP', sub: 'VIT Campus', icon: '🏫', code: 'VITAP' },
+  { key: 'amrita', label: 'AMRITA', sub: 'Amrita Campus', icon: '🏥', code: 'AMRITA' },
+];
+
+// Which add-on shelf (GET /api/catalogue/items?type=extras&for=…) fits the dishes in the basket.
+function detectDishType(name: string): string {
   const n = name.toLowerCase();
   if (/cake|pastry|brownie|cupcake|cheesecake|gateau|truffle/.test(n)) return 'cake';
   if (/pizza|calzone/.test(n)) return 'pizza';
@@ -47,333 +77,365 @@ function detectType(name: string): string {
   return 'meal';
 }
 
-const TYPE_EXTRAS: Record<string, ExtraItem[]> = {
-  cake: [
-    { id: 'candles', name: 'Birthday Candles (10)', price: 15, emoji: '🕯️' },
-    { id: 'knife', name: 'Cake Cutting Knife', price: 10, emoji: '🔪' },
-    { id: 'gift-wrap', name: 'Gift Wrapping', price: 30, emoji: '🎁' },
-    { id: 'plates', name: 'Paper Plates (6 pcs)', price: 15, emoji: '🍽️' },
-    { id: 'icecream', name: 'Vanilla Ice Cream Cup', price: 30, emoji: '🍦' },
-    { id: 'forks', name: 'Dessert Forks (6 pcs)', price: 10, emoji: '🍴' },
-  ],
-  pizza: [
-    { id: 'garlic-bread', name: 'Garlic Bread (4 pcs)', price: 60, emoji: '🍞' },
-    { id: 'coke', name: 'Coca Cola (300ml)', price: 40, emoji: '🥤' },
-    { id: 'dip-cheese', name: 'Cheesy Dip Sauce', price: 20, emoji: '🧀' },
-    { id: 'fries', name: 'French Fries', price: 50, emoji: '🍟' },
-    { id: 'chili-flakes', name: 'Chili Flakes & Oregano', price: 5, emoji: '🌶️' },
-    { id: 'napkins', name: 'Extra Napkins (10 pcs)', price: 10, emoji: '🧻' },
-  ],
-  biryani: [
-    { id: 'raita', name: 'Raita (Cup)', price: 25, emoji: '🥣' },
-    { id: 'salan', name: 'Mirchi Ka Salan', price: 30, emoji: '🌶️' },
-    { id: 'boiled-egg', name: 'Boiled Egg (2 pcs)', price: 20, emoji: '🥚' },
-    { id: 'buttermilk', name: 'Buttermilk (Chaas)', price: 25, emoji: '🥛' },
-    { id: 'thumbsup', name: 'Thums Up (300ml)', price: 40, emoji: '🥤' },
-    { id: 'onion-salad', name: 'Onion Salad', price: 15, emoji: '🧅' },
-  ],
-  beverage: [
-    { id: 'cookie', name: 'Chocolate Cookie', price: 20, emoji: '🍪' },
-    { id: 'muffin', name: 'Blueberry Muffin', price: 40, emoji: '🧁' },
-    { id: 'sandwich', name: 'Club Sandwich', price: 60, emoji: '🥪' },
-    { id: 'straw', name: 'Paper Straw (2 pcs)', price: 5, emoji: '🥤' },
-  ],
-  sweets: [
-    { id: 'gift-box', name: 'Premium Gift Box', price: 50, emoji: '🎁' },
-    { id: 'dry-fruits', name: 'Mixed Dry Fruits (100g)', price: 80, emoji: '🥜' },
-    { id: 'saffron-milk', name: 'Kesar Milk', price: 35, emoji: '🥛' },
-    { id: 'plates', name: 'Paper Plates (6 pcs)', price: 15, emoji: '🍽️' },
-  ],
-  burger: [
-    { id: 'fries', name: 'French Fries', price: 50, emoji: '🍟' },
-    { id: 'coke', name: 'Coca Cola (300ml)', price: 40, emoji: '🥤' },
-    { id: 'coleslaw', name: 'Coleslaw', price: 25, emoji: '🥗' },
-    { id: 'ketchup', name: 'Extra Ketchup & Mayo', price: 10, emoji: '🍅' },
-    { id: 'onion-rings', name: 'Onion Rings', price: 45, emoji: '🧅' },
-    { id: 'napkins', name: 'Extra Napkins', price: 10, emoji: '🧻' },
-  ],
-  dessert: [
-    { id: 'chocolate-sauce', name: 'Chocolate Sauce', price: 15, emoji: '🍫' },
-    { id: 'wafer', name: 'Wafer Sticks', price: 20, emoji: '🍘' },
-    { id: 'nuts', name: 'Crushed Nuts Topping', price: 20, emoji: '🥜' },
-    { id: 'coffee', name: 'Hot Coffee', price: 30, emoji: '☕' },
-  ],
-  chicken: [
-    { id: 'naan', name: 'Butter Naan (2 pcs)', price: 40, emoji: '🫓' },
-    { id: 'coke', name: 'Coca Cola (300ml)', price: 40, emoji: '🥤' },
-    { id: 'salad', name: 'Green Salad', price: 20, emoji: '🥗' },
-    { id: 'raita', name: 'Onion Raita', price: 25, emoji: '🥣' },
-    { id: 'lemon', name: 'Lemon Wedges', price: 5, emoji: '🍋' },
-  ],
-  chinese: [
-    { id: 'spring-roll', name: 'Veg Spring Rolls (4)', price: 50, emoji: '🥟' },
-    { id: 'sweet-corn', name: 'Sweet Corn Soup', price: 35, emoji: '🍜' },
-    { id: 'chili-sauce', name: 'Schezwan Sauce', price: 10, emoji: '🌶️' },
-    { id: 'coke', name: 'Coca Cola (300ml)', price: 40, emoji: '🥤' },
-  ],
-  south: [
-    { id: 'sambar', name: 'Extra Sambar', price: 15, emoji: '🥘' },
-    { id: 'chutney', name: 'Coconut Chutney', price: 10, emoji: '🥥' },
-    { id: 'filter-coffee', name: 'Filter Coffee', price: 25, emoji: '☕' },
-    { id: 'curd', name: 'Fresh Curd', price: 15, emoji: '🥛' },
-  ],
-  meal: [
-    { id: 'coke', name: 'Coca Cola (300ml)', price: 40, emoji: '🥤' },
-    { id: 'water', name: 'Water Bottle (500ml)', price: 20, emoji: '💧' },
-    { id: 'lassi', name: 'Sweet Lassi', price: 35, emoji: '🥛' },
-    { id: 'salad', name: 'Fresh Salad', price: 25, emoji: '🥗' },
-  ],
-};
+const rupees = (n: number) => `₹${Math.round((Number(n) || 0) * 100) / 100}`;
+const cleanRoom = (room: any) => String(room || '').replace(/^\s*room\s*/i, '').trim();
 
 export default function CheckoutScreen() {
   const router = useRouter();
-  const { cart, totalPrice, clearCart, addToCart, uniqueRestaurants, deliveryFee: cartDeliveryFee, isRoomOrder } = useCart();
-  const { user } = useAuth();
+  const { cart, totalItems, addToCart, setCart, removeItems } = useCart();
+  const { user, refreshUser } = useAuth();
   const { isDark, colors } = useTheme();
 
-  const [locationType, setLocationType] = useState<'srmap' | 'vitap' | 'amrita' | 'other'>('srmap');
+  const [campus, setCampus] = useState<CampusKey>('srmap');
   const [address, setAddress] = useState('');
   const [landmark, setLandmark] = useState('');
-  
-  // Delivery Time
-  const [deliveryType, setDeliveryType] = useState<'asap' | 'scheduled'>('asap');
-  const [scheduledTime, setScheduledTime] = useState('');
+  const [instructionIds, setInstructionIds] = useState<string[]>([]);
+  const [campusBlocks, setCampusBlocks] = useState<Record<string, string[]>>({});
 
-  // Payment Method
-  const [paymentMethod, setPaymentMethod] = useState<'COD' | 'UPI' | 'Card'>('COD');
-  const [upiUTR, setUpiUTR] = useState('');
-  const [upiScreenshot, setUpiScreenshot] = useState<string | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<PayMethod>('COD');
 
-  // Rewards & Coupons
-  const [zenPoints, setZenPoints] = useState(0);
-  const [coupons, setCoupons] = useState<{ id: string; code: string; type: string }[]>([]);
-  const [selectedCoupon, setSelectedCoupon] = useState<{ id: string; code: string; type: string } | null>(null);
+  const [coupons, setCoupons] = useState<UserCoupon[]>([]);
+  const [couponCode, setCouponCode] = useState<string | null>(null);
 
-  const [loading, setLoading] = useState(false);
-  const [addedExtras, setAddedExtras] = useState<Set<string>>(new Set());
-  const [hasSkippedCouponPrompt, setHasSkippedCouponPrompt] = useState(false);
-
+  // Rewards "USE NOW" opens checkout with ?coupon=CODE. The quote drops it (COUPON_INVALID) if it is not usable.
+  const { coupon: couponParam } = useLocalSearchParams<{ coupon?: string | string[] }>();
+  const couponFromLink = String((Array.isArray(couponParam) ? couponParam[0] : couponParam) || '').trim().toUpperCase();
+  const couponLinkAppliedRef = useRef(false);
   useEffect(() => {
-    if (!user) {
-      Alert.alert(
-        'Authentication Required',
-        'Please sign in to complete your order.',
-        [
-          { text: 'Cancel', onPress: () => router.replace('/(tabs)' as any), style: 'cancel' },
-          { text: 'Sign In', onPress: () => router.push('/login' as any) }
-        ],
-        { cancelable: false }
-      );
-      return;
-    }
-    if (user?.hostelBlock && user?.roomNumber) {
-      setAddress(`${user.hostelBlock}, Room ${user.roomNumber}`);
-    } else if (user?.address) {
-      setAddress(user.address);
-    }
-    if (user?.zenPoints) setZenPoints(user.zenPoints);
+    if (couponLinkAppliedRef.current || !couponFromLink) return;
+    couponLinkAppliedRef.current = true;
+    setCouponCode(couponFromLink.slice(0, 40));
+  }, [couponFromLink]);
 
-    // Fetch user coupons
-    const fetchCoupons = async () => {
-      try {
-        const res = await apiFetch(`${API_URL}/api/rewards/coupons`);
-        if (res.ok) {
-          const data = await res.json();
-          setCoupons(data);
-        }
-      } catch (err) {
-        console.error('Coupons fetch failed', err);
-      }
-    };
-    fetchCoupons();
+  const [extras, setExtras] = useState<ExtraItem[]>([]);
+
+  const [placing, setPlacing] = useState(false);
+  const placingRef = useRef(false);
+  const idempotencyKeyRef = useRef<string>(newIdempotencyKey());
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
+
+  const orderLines = useMemo(() => cart.filter((i) => !isCustomRequest(i)), [cart]);
+  const customLines = useMemo(() => cart.filter((i) => isCustomRequest(i)), [cart]);
+  const hasOrder = orderLines.length > 0;
+  const hasCustom = customLines.length > 0;
+
+  const { quote, loading: quoteLoading, error: quoteError, refresh: refreshQuote } = useBasketQuote(couponCode, !!user);
+  const { serviceability, refresh: refreshServiceability } = useServiceability();
+  const isClosed = (quote?.serviceability?.open === false) || serviceability?.open === false;
+  const closedMessage = quote?.serviceability?.message || serviceability?.message ||
+    `Campus kitchens are closed for the night. Ordering opens again at ${serviceability?.reopensAt || quote?.serviceability?.reopensAt || '6:00 AM'}.`;
+
+  // A new basket or a new bill means a new checkout attempt.
+  useEffect(() => {
+    idempotencyKeyRef.current = newIdempotencyKey();
+  }, [quote?.finalPrice, paymentMethod, cart.length]);
+
+  // Prefill the address from the profile
+  useEffect(() => {
+    if (!user) return;
+    const block = (user as any)?.hostelBlock;
+    const room = cleanRoom((user as any)?.roomNumber);
+    setAddress((prev) => {
+      if (prev) return prev;
+      if (block && room) return `${block}, Room ${room}`;
+      if (block) return String(block);
+      return (user as any)?.address || '';
+    });
   }, [user]);
 
-  // Suggested extras selector
+  // Delivery notes picked on the Basket tab
+  useEffect(() => {
+    (async () => {
+      try {
+        const stored = await AsyncStorage.getItem(DELIVERY_INSTRUCTIONS_KEY);
+        const parsed = stored ? JSON.parse(stored) : null;
+        if (Array.isArray(parsed) && mountedRef.current) setInstructionIds(parsed.filter((x) => typeof x === 'string'));
+      } catch {}
+    })();
+  }, []);
+
+  // Hostel blocks per campus come from the campus directory (admin-managed)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/campus/campuses`);
+        const data = await res.json().catch(() => null);
+        if (cancelled || !res.ok || !Array.isArray(data)) return;
+        const map: Record<string, string[]> = {};
+        data.forEach((c: any) => {
+          const code = String(c?.code || '').toUpperCase().replace(/[^A-Z]/g, '');
+          const match = CAMPUSES.find((k) => code.startsWith(k.code));
+          const blocks = c?.settings?.hostelBlocks;
+          if (match && Array.isArray(blocks)) {
+            map[match.key] = blocks.filter((b: any) => typeof b === 'string' && b.trim()).slice(0, 16);
+          }
+        });
+        setCampusBlocks(map);
+      } catch {
+        // Chips are a shortcut only; the address field always works.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Usable coupons
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiFetch(`${API_URL}/api/rewards/coupons`);
+        const data = await res.json().catch(() => null);
+        if (!cancelled && res.ok && Array.isArray(data)) setCoupons(data);
+      } catch {
+        // No coupons shown; checkout still works.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user]);
+
+  // An invalid coupon is dropped with the server's reason
+  useEffect(() => {
+    if (quoteError?.code === 'COUPON_INVALID' && couponCode) {
+      Alert.alert('Coupon not applied', quoteError.message);
+      setCouponCode(null);
+    }
+  }, [quoteError, couponCode]);
+
+  // Wallet is not possible when the balance is short
+  useEffect(() => {
+    if (paymentMethod === 'Wallet' && quote && quote.canPayWithWallet === false) setPaymentMethod('COD');
+  }, [quote, paymentMethod]);
+
+  // "Pairs well with your order": real add-ons from the catalogue
+  const dishTypesKey = useMemo(() => {
+    const types = new Set(orderLines.filter((i) => !i.isAddOn).map((i) => detectDishType(i.name)));
+    return [...types].slice(0, 3).sort().join(',');
+  }, [orderLines]);
+
+  useEffect(() => {
+    if (!dishTypesKey) { setExtras([]); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const lists = await Promise.all(dishTypesKey.split(',').map(async (t) => {
+          const res = await fetch(`${API_URL}/api/catalogue/items?type=extras&for=${encodeURIComponent(t)}`);
+          const data = await res.json().catch(() => null);
+          return res.ok && data && Array.isArray(data.items) ? data.items : [];
+        }));
+        if (cancelled) return;
+        const seen = new Set<string>();
+        const result: ExtraItem[] = [];
+        lists.flat().forEach((it: any) => {
+          const id = String(it?.id || it?._id || '');
+          if (!id || seen.has(id) || it.isAvailable === false || it.orderable === false) return;
+          seen.add(id);
+          result.push({
+            id,
+            name: String(it.name || ''),
+            price: Number(it.price) || 0,
+            emoji: it.emoji || null,
+            image: it.imageUrl || it.image || null,
+            restaurantId: String(it.restaurantId || it.storeId || ''),
+            storeName: it.storeName,
+          });
+        });
+        setExtras(result);
+      } catch {
+        if (!cancelled) setExtras([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [dishTypesKey]);
+
   const suggestions = useMemo(() => {
-    const types = new Set(cart.map(i => detectType(i.name)));
-    const seen = new Set<string>();
-    const result: ExtraItem[] = [];
+    const inCart = new Set(cart.map((i) => String(i.id)));
+    return extras.filter((e) => !inCart.has(e.id)).slice(0, 8);
+  }, [extras, cart]);
 
-    types.forEach(type => {
-      const extras = TYPE_EXTRAS[type] || TYPE_EXTRAS['meal'];
-      extras.forEach(e => {
-        if (!seen.has(e.id) && !addedExtras.has(e.id)) {
-          seen.add(e.id);
-          result.push(e);
-        }
-      });
-    });
+  const customEstimate = customLines.reduce((acc, i) => acc + (Number(i.price) || 0) * i.quantity, 0);
+  const campusLabel = CAMPUSES.find((c) => c.key === campus)?.label || 'SRM AP';
 
-    return result.slice(0, 8);
-  }, [cart, addedExtras]);
+  const deliveryNotes = useMemo(
+    () => DELIVERY_INSTRUCTIONS.filter((d) => instructionIds.includes(d.id)).map((d) => d.note),
+    [instructionIds]
+  );
 
-  // Delivery fee calculation
-  const baseDeliveryFee = cartDeliveryFee || 30;
-  const isElite = user?.isElite || false;
-  const deliveryFee = isElite || zenPoints >= 200 ? 0 : baseDeliveryFee;
-  const couponDiscount = selectedCoupon?.type === 'FREEDEL' 
-    ? deliveryFee 
-    : selectedCoupon?.type === 'DISCOUNT' 
-      ? Math.min(50, Math.round(totalPrice * 0.2)) 
-      : 0;
-  const finalTotal = Math.max(0, totalPrice + deliveryFee - couponDiscount);
+  const buildDeliveryAddress = () => {
+    const parts = [`${campusLabel} - ${address.trim()}`];
+    if (landmark.trim()) parts.push(`Landmark: ${landmark.trim()}`);
+    if (deliveryNotes.length) parts.push(`Note: ${deliveryNotes.join(', ')}`);
+    return parts.join(' · ').slice(0, 480);
+  };
 
-  const handlePlaceOrder = async () => {
-    // Double-tap guard: reject if already submitting
-    if (loading) return;
+  const unavailableFrom = (body: any) => {
+    const list = Array.isArray(body?.unavailableItems) ? body.unavailableItems : [];
+    // BOOKING_ONLY_ITEMS: services (print, laundry, …) that must be booked, not ordered
+    const bookingOnly = Array.isArray(body?.bookingOnlyItems) ? body.bookingOnlyItems : [];
+    return {
+      ids: list.map((u: any) => String(u?.id || '')).filter(Boolean),
+      names: [...list.map((u: any) => String(u?.name || '')), ...bookingOnly.map((n: any) => String(n || ''))].filter(Boolean),
+    };
+  };
 
-    if (!cart || cart.length === 0) {
-      Alert.alert('Empty Basket', 'Please add items to your basket before checking out.');
-      router.replace('/(tabs)' as any);
+  const offerRemoveUnavailable = (message: string, body: any) => {
+    const { ids, names } = unavailableFrom(body);
+    Alert.alert('Some items are unavailable', message, [
+      { text: 'Keep editing', style: 'cancel' },
+      ...(ids.length || names.length
+        ? [{ text: 'Remove them', style: 'destructive' as const, onPress: () => removeItems({ ids, names }) }]
+        : []),
+    ]);
+  };
+
+  const canPlace = !placing && !isClosed && !!user && address.trim().length >= 3 &&
+    (hasOrder ? (!!quote && !quoteLoading) : hasCustom);
+
+  const handlePlaceOrder = () => {
+    if (placingRef.current) return;
+    if (cart.length === 0) {
+      Alert.alert('Your basket is empty', 'Add something tasty first!');
+      return;
+    }
+    if (isClosed) {
+      Alert.alert('Closed for the night', closedMessage);
+      return;
+    }
+    if (address.trim().length < 3) {
+      Alert.alert('Where should we deliver?', 'Add your hostel block and room number (e.g. Ganga, Room 304) so the rider can find you.');
+      return;
+    }
+    if (hasOrder && (!quote || quoteLoading)) {
+      if (quoteLoading) Alert.alert('One moment', 'We are updating your bill. Try again in a second.');
+      else if (quoteError?.code === 'ITEMS_UNAVAILABLE' || quoteError?.code === 'BOOKING_ONLY_ITEMS') offerRemoveUnavailable(quoteError.message, quoteError.body);
+      else if (quoteError) Alert.alert('We could not get your bill', quoteError.message, [{ text: 'OK', style: 'cancel' }, { text: 'Retry', onPress: refreshQuote }]);
       return;
     }
 
-    if (!address || address.trim().length < 3) {
-      Alert.alert('Delivery Address Required', 'Please specify your Hostel Block & Room Number (e.g. GH-2, Room 304) so our delivery partner can reach you.');
-      return;
+    const lines: string[] = [];
+    if (hasOrder && quote) {
+      const n = orderLines.reduce((a, i) => a + i.quantity, 0);
+      lines.push(`${n} item${n === 1 ? '' : 's'} from ${quote.store?.name || 'your store'} • ${rupees(quote.finalPrice)}`);
+      lines.push(`💳 ${paymentMethod === 'Wallet' ? 'Zenvy Wallet' : 'Cash on Delivery'}`);
     }
-
-    if (deliveryType === 'scheduled' && !scheduledTime) {
-      Alert.alert('Select Delivery Slot', 'You chose scheduled delivery but haven\'t picked a time slot. Please select Breakfast, Lunch, or Dinner.');
-      return;
+    if (hasCustom) {
+      lines.push(`🛍️ Mega Basket shopping list (${customLines.length}) • est. ${rupees(customEstimate)} + fees, cash on delivery`);
     }
+    lines.push(`📍 ${campusLabel} - ${address.trim()}`);
 
-    if (paymentMethod === 'UPI' && (!upiUTR || !upiScreenshot)) {
-      Alert.alert('Payment Details Required', 'Please enter your UPI transaction UTR code and attach the screenshot receipt.');
-      return;
-    }
-
-    // Confirmation dialog before placing
-    Alert.alert(
-      '✅ Confirm Your Order',
-      `${cart.length} item${cart.length > 1 ? 's' : ''} • ₹${finalTotal}\n📍 ${address}\n💳 ${paymentMethod === 'UPI' ? 'UPI Instant' : paymentMethod === 'Card' ? 'Card on Delivery' : 'Cash on Delivery'}\n⏱ ${deliveryType === 'asap' ? 'ASAP (30-50 mins)' : scheduledTime}`,
-      [
-        { text: 'EDIT', style: 'cancel' },
-        { text: 'PLACE ORDER →', onPress: () => executeOrderPlacement() }
-      ]
-    );
+    Alert.alert('Confirm your order', lines.join('\n'), [
+      { text: 'Edit', style: 'cancel' },
+      { text: 'Place order', onPress: () => { executeOrderPlacement(); } },
+    ]);
   };
 
   const executeOrderPlacement = async () => {
+    if (placingRef.current) return;
+    placingRef.current = true;
+    setPlacing(true);
+    const deliveryAddress = buildDeliveryAddress();
+    let placedOrderId: string | null = null;
+    let placedBasket = false;
 
-    setLoading(true);
     try {
-      const isMegaBasket = cart.some(item => item.restaurantId === 'mega-basket-vendor');
-      let res;
-
-      const deliveryAddress = `${locationType === 'srmap' ? 'SRM AP' : locationType === 'vitap' ? 'VIT AP' : locationType === 'amrita' ? 'AMRITA' : 'OTHERS'} - ${address} (Landmark: ${landmark})`;
-
-      if (isMegaBasket) {
-        const bodyPayload = {
-          items: cart.map(item => ({
-            name: item.name,
-            quantity: item.quantity,
-            unit: 'pcs',
-            priceEstimated: item.price
-          })),
-          deliveryAddress,
-          paymentMethod,
-          upiUTR: paymentMethod === 'UPI' ? upiUTR : undefined
-        };
-
-        res = await apiFetch(`${API_URL}/api/mega-basket`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(bodyPayload),
-        });
-      } else {
-        const orderData = {
-          restaurantId: cart[0]?.restaurantId,
-          restaurantIds: [...new Set(cart.map(i => i.restaurantId))],
-          items: cart.map(item => ({
-            menuItemId: item.id,
-            name: item.name,
-            quantity: item.quantity,
-            priceAtOrder: item.price,
-            basePrice: item.basePrice || item.price,
-            customizations: item.customizations || null,
-            restaurantId: item.restaurantId,
-          })),
-          totalPrice,
-          deliveryFee,
-          isRoomOrder,
-          paymentMethod,
-          upiUTR: paymentMethod === 'UPI' ? upiUTR : undefined,
-          upiScreenshot: paymentMethod === 'UPI' ? upiScreenshot : undefined,
-          deliverySlot: deliveryType === 'asap' ? 'ASAP' : scheduledTime,
-          deliveryAddress,
-          couponCode: selectedCoupon?.code
-        };
-
-        res = await apiFetch(ENDPOINTS.placeOrder, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(orderData),
-        });
-      }
-
-      if (res.ok) {
-        const data = await res.json();
-        clearCart();
-        if (isMegaBasket) {
-          router.replace('/mega-basket' as any);
-        } else {
-          router.replace(`/tracking/${data._id || data.id}` as any);
+      // 1. The food / store order — priced and charged by the server
+      if (hasOrder) {
+        let res: Response;
+        try {
+          res = await apiFetch(ENDPOINTS.placeOrder, {
+            method: 'POST',
+            headers: { 'Idempotency-Key': idempotencyKeyRef.current },
+            body: JSON.stringify({
+              items: orderLines.map(toOrderLine),
+              paymentMethod,
+              deliveryAddress,
+              campus,
+              deliverySlot: 'ASAP',
+              ...(deliveryNotes.length ? { deliveryInstructions: deliveryNotes } : {}),
+              idempotencyKey: idempotencyKeyRef.current,
+              ...(couponCode ? { couponCode } : {}),
+            }),
+          });
+        } catch {
+          // Same key on retry, so a request that did get through is never placed twice.
+          Alert.alert('Connection problem', `${friendlyNetworkMessage} If your order went through, it will show up in Orders.`);
+          return;
         }
-      } else {
-        const err = await res.json().catch(() => ({}));
-        const msg = typeof err?.message === 'string' ? err.message : 'Unable to complete order dispatch. Please verify your details and retry.';
-        Alert.alert('Order Notice', msg);
+        const data = await res.json().catch(() => null);
+        if (res.ok && data && (data._id || data.id)) {
+          placedOrderId = String(data._id || data.id);
+          const placedKeys = new Set(orderLines.map((l) => l.cartKey));
+          setCart((prev) => prev.filter((i) => !placedKeys.has(i.cartKey)));
+        } else {
+          const code = data?.code;
+          const message = (data && typeof data.message === 'string' && data.message) || 'We could not place your order. Please try again.';
+          if (res.status !== 409) idempotencyKeyRef.current = newIdempotencyKey();
+          if (code === 'ITEMS_UNAVAILABLE' || code === 'BOOKING_ONLY_ITEMS') offerRemoveUnavailable(message, data);
+          else if (code === 'INSUFFICIENT_WALLET') {
+            Alert.alert('Not enough Wallet balance', message, [
+              { text: 'OK', style: 'cancel' },
+              { text: 'Pay cash instead', onPress: () => setPaymentMethod('COD') },
+            ]);
+          } else if (code === 'COUPON_INVALID') {
+            setCouponCode(null);
+            Alert.alert('Coupon not applied', message);
+          } else if (code === 'ORDERING_CLOSED') {
+            refreshServiceability();
+            Alert.alert('Closed for the night', message);
+          } else if (code === 'ORDER_IN_PROGRESS') {
+            Alert.alert('Almost there', message);
+          } else {
+            Alert.alert('Order not placed', message);
+          }
+          refreshQuote();
+          return;
+        }
       }
-    } catch (e) {
-      console.error(e);
-      Alert.alert('Connection Notice', 'Could not complete order dispatch. Please check your connection and retry.');
+
+      // 2. Mega Basket shopping list (free-text requests a rider buys for you; cash on delivery)
+      if (hasCustom) {
+        try {
+          const res = await apiFetch(`${API_URL}/api/mega-basket`, {
+            method: 'POST',
+            body: JSON.stringify({
+              items: customLines.map((i) => ({
+                name: String(i.name || '').replace(/^\[Custom Request\]\s*/i, ''),
+                quantity: i.quantity,
+                unit: 'pcs',
+                priceEstimated: Number(i.price) || 0,
+              })),
+              deliveryAddress,
+              paymentMethod: 'COD',
+            }),
+          });
+          const data = await res.json().catch(() => null);
+          if (res.ok) {
+            placedBasket = true;
+            const keys = new Set(customLines.map((l) => l.cartKey));
+            setCart((prev) => prev.filter((i) => !keys.has(i.cartKey)));
+          } else {
+            const message = (data && typeof data.message === 'string' && data.message) || 'We could not send your shopping list.';
+            Alert.alert(placedOrderId ? 'Order placed, shopping list not sent' : 'Shopping list not sent',
+              placedOrderId ? `${message} Your shopping list is still in your basket — try again from there.` : message);
+          }
+        } catch {
+          Alert.alert(placedOrderId ? 'Order placed, shopping list not sent' : 'Shopping list not sent',
+            `${friendlyNetworkMessage}${placedOrderId ? ' Your shopping list is still in your basket.' : ''}`);
+        }
+      }
+
+      if (placedOrderId || placedBasket) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        refreshUser().catch(() => {});
+        if (placedOrderId) router.replace(`/tracking/${placedOrderId}` as any);
+        else router.replace('/mega-basket?tab=list' as any);
+      }
     } finally {
-      setLoading(false);
+      placingRef.current = false;
+      if (mountedRef.current) setPlacing(false);
     }
-  };
-
-  const attachPaymentReceiptScreenshot = async () => {
-    try {
-      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (permissionResult.granted === false) {
-        Alert.alert("Permission Required", "You need to allow camera roll access to upload screenshots.");
-        return;
-      }
-
-      setIsUploading(true);
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        quality: 0.8,
-        base64: true,
-      });
-
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const asset = result.assets[0];
-        const base64Image = `data:image/jpeg;base64,${asset.base64}`;
-        setUpiScreenshot(base64Image);
-        Alert.alert('Screenshot Attached', 'Your payment receipt has been successfully attached.');
-      }
-    } catch (err) {
-      console.warn('Screenshot upload error:', err);
-      Alert.alert('Upload Failed', 'Could not select or process screenshot.');
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const copyUpiId = () => {
-    Clipboard.setString('kesavakesava764@ybl');
-    Alert.alert('Copied!', 'UPI ID: kesavakesava764@ybl copied to clipboard.');
-  };
-
-  const openUpiApp = () => {
-    const url = `upi://pay?pa=kesavakesava764@ybl&pn=Zenvy&am=${finalTotal.toFixed(2)}&cu=INR`;
-    Linking.openURL(url).catch(() => {
-      Alert.alert('UPI App Not Found', 'Please scan the QR code below or copy the ID to pay.');
-    });
   };
 
   const bg = colors.bg;
@@ -383,41 +445,85 @@ export default function CheckoutScreen() {
   const border = colors.border;
   const goldColor = isDark ? COLORS.gold : colors.gold;
 
-  return (
-    <View style={[s.container, { backgroundColor: bg }]}>
-      <View style={[s.header, { backgroundColor: bg, borderBottomColor: border }]}>
-        <TouchableOpacity 
-          onPress={() => {
-            if (router.canGoBack()) {
-              router.back();
-            } else {
-              router.replace('/(tabs)' as any);
-            }
-          }} 
-          style={[s.backBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}
-        >
-          <Text style={{ color: txt, fontSize: 18 }}>‹</Text>
-        </TouchableOpacity>
-        <Text style={[s.title, { color: goldColor }]}>CHECKOUT & DELIVERY</Text>
-      </View>
+  const goBack = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/(tabs)' as any);
+  };
 
-      <ScrollView 
-        contentContainerStyle={[s.scroll, { paddingBottom: 220 }]} 
+  const header = (
+    <View style={[s.header, { backgroundColor: bg, borderBottomColor: border }]}>
+      <TouchableOpacity onPress={goBack} style={[s.backBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
+        <Text style={{ color: txt, fontSize: 18 }}>‹</Text>
+      </TouchableOpacity>
+      <Text style={[s.title, { color: goldColor }]}>CHECKOUT & DELIVERY</Text>
+    </View>
+  );
+
+  // Guests: sign in first (the bill and the order need an account)
+  if (!user) {
+    return (
+      <View style={[s.container, { backgroundColor: bg }]}>
+        {header}
+        <View style={s.centerBox}>
+          <Text style={{ fontSize: 44, marginBottom: 12 }}>🔐</Text>
+          <Text style={[s.centerTitle, { color: txt }]}>Sign in to check out</Text>
+          <Text style={[s.centerSub, { color: txtSec }]}>Your basket is saved. Sign in to see your bill and place the order.</Text>
+          <TouchableOpacity style={s.primaryBtn} onPress={() => router.push('/login' as any)}>
+            <Text style={s.primaryBtnText}>SIGN IN</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  if (cart.length === 0) {
+    return (
+      <View style={[s.container, { backgroundColor: bg }]}>
+        {header}
+        <View style={s.centerBox}>
+          <Text style={{ fontSize: 44, marginBottom: 12 }}>🛒</Text>
+          <Text style={[s.centerTitle, { color: txt }]}>Your basket is empty</Text>
+          <Text style={[s.centerSub, { color: txtSec }]}>Add something from a campus kitchen or store to check out.</Text>
+          <TouchableOpacity style={s.primaryBtn} onPress={() => router.replace('/(tabs)' as any)}>
+            <Text style={s.primaryBtnText}>BROWSE FOOD</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  const blocks = campusBlocks[campus] || [];
+  const profileBlock = (user as any)?.hostelBlock ? String((user as any).hostelBlock) : null;
+  const blockChips = profileBlock && !blocks.includes(profileBlock) ? [profileBlock, ...blocks] : blocks;
+  const walletBalance = Number(quote?.walletBalance ?? (user as any)?.walletBalance ?? 0) || 0;
+  const walletAllowed = hasOrder && !!quote && quote.canPayWithWallet !== false;
+
+  return (
+    <KeyboardAvoidingView style={[s.container, { backgroundColor: bg }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      {header}
+
+      <ScrollView
+        contentContainerStyle={[s.scroll, { paddingBottom: 220 }]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
         showsVerticalScrollIndicator={false}
       >
+        {isClosed && (
+          <View style={[s.noticeCard, { backgroundColor: isDark ? 'rgba(99,102,241,0.12)' : 'rgba(99,102,241,0.08)', borderColor: 'rgba(99,102,241,0.3)' }]}>
+            <Text style={{ fontSize: 20 }}>🌙</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[s.noticeTitle, { color: txt }]}>Closed for the night</Text>
+              <Text style={[s.noticeSub, { color: txtSec }]}>{closedMessage}</Text>
+            </View>
+          </View>
+        )}
+
         {/* Campus Selection */}
         <StaggeredSection delay={50} direction="up">
-          <Text style={[s.sectionTitle, { color: txt }]}>DELIVERY CAMPUS LOCATION</Text>
+          <Text style={[s.sectionTitle, { color: txt }]}>DELIVERY CAMPUS</Text>
           <View style={s.campusRow}>
-            {[
-              { key: 'srmap', label: 'SRM AP', sub: 'SRM University', icon: '🏢' },
-              { key: 'vitap', label: 'VIT AP', sub: 'VIT Campus', icon: '🏫' },
-              { key: 'amrita', label: 'AMRITA', sub: 'Amrita Campus', icon: '🏥' },
-              { key: 'other', label: 'OTHERS', sub: 'Custom Place', icon: '📍' },
-            ].map(item => {
-              const isActive = locationType === item.key;
+            {CAMPUSES.map(item => {
+              const isActive = campus === item.key;
               return (
                 <DopaminePressable
                   key={item.key}
@@ -426,7 +532,7 @@ export default function CheckoutScreen() {
                     { backgroundColor: cardBg, borderColor: border },
                     isActive && { borderColor: goldColor, backgroundColor: isDark ? 'rgba(201,168,76,0.08)' : 'rgba(239,79,95,0.05)' }
                   ]}
-                  onPress={() => setLocationType(item.key as any)}
+                  onPress={() => setCampus(item.key)}
                   sound="click"
                   activeScale={0.95}
                 >
@@ -446,114 +552,58 @@ export default function CheckoutScreen() {
           </View>
 
           <TextInput
-            style={[s.input, { backgroundColor: cardBg, color: txt, borderColor: border }]}
-            placeholder="Hostel Block, Room No. or Delivery Point"
+            style={[s.input, { backgroundColor: cardBg, color: txt, borderColor: address.trim().length >= 3 ? border : 'rgba(239,68,68,0.5)' }]}
+            placeholder="Hostel block & room no. (e.g. Ganga, Room 304)"
             placeholderTextColor={txtSec}
             value={address}
             onChangeText={setAddress}
+            maxLength={200}
+            returnKeyType="next"
           />
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-            {['Vedha', 'Kaveri', 'Paari', 'Godavari', 'Manas', 'Brahmaputra', 'Ganga', 'Krishna', 'Girls Hostel', 'Non-Veg Mess'].map((block) => {
-              const isSelected = address.includes(block);
-              return (
-                <DopaminePressable
-                  key={block}
-                  style={{
-                    paddingHorizontal: 12,
-                    paddingVertical: 6,
-                    borderRadius: 14,
-                    backgroundColor: isSelected ? (isDark ? goldColor : '#EF4F5F') : cardBg,
-                    borderWidth: 1.5,
-                    borderColor: isSelected ? (isDark ? goldColor : '#EF4F5F') : border,
-                    shadowColor: '#000',
-                    shadowOffset: { width: 0, height: 2 },
-                    shadowOpacity: isSelected ? 0.25 : 0.04,
-                    shadowRadius: 4,
-                    elevation: 2,
-                  }}
-                  onPress={() => {
-                    const roomMatch = address.match(/(?:room\s*#?\s*|#\s*)(\d+)/i) || address.match(/\b(\d{3,4})\b/);
-                    const roomPart = roomMatch ? `Room ${roomMatch[1]}` : '';
-
-                    if (isSelected) {
-                      setAddress(roomPart);
-                    } else {
-                      setAddress(roomPart ? `${block}, ${roomPart}` : `${block}`);
-                    }
-                  }}
-                  sound="click"
-                  activeScale={0.92}
-                >
-                  <Text style={{ fontSize: 10, fontWeight: '800', color: isSelected ? '#FFFFFF' : txt, letterSpacing: 0.5 }}>
-                    🏢 {block}
-                  </Text>
-                </DopaminePressable>
-              );
-            })}
-          </View>
+          {blockChips.length > 0 && (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+              {blockChips.map((block) => {
+                const isSelected = address.toLowerCase().startsWith(block.toLowerCase());
+                return (
+                  <DopaminePressable
+                    key={block}
+                    style={[s.blockChip, {
+                      backgroundColor: isSelected ? (isDark ? goldColor : '#EF4F5F') : cardBg,
+                      borderColor: isSelected ? (isDark ? goldColor : '#EF4F5F') : border,
+                    }]}
+                    onPress={() => {
+                      const roomMatch = address.match(/(?:room\s*#?\s*|#\s*)(\w+)/i) || address.match(/\b(\d{3,4})\b/);
+                      const roomPart = roomMatch ? `Room ${roomMatch[1]}` : '';
+                      if (isSelected) setAddress(roomPart);
+                      else setAddress(roomPart ? `${block}, ${roomPart}` : `${block}, Room `);
+                    }}
+                    sound="click"
+                    activeScale={0.92}
+                  >
+                    <Text style={{ fontSize: 10, fontWeight: '800', color: isSelected ? '#FFFFFF' : txt, letterSpacing: 0.5 }}>
+                      🏢 {block}
+                    </Text>
+                  </DopaminePressable>
+                );
+              })}
+            </View>
+          )}
           <TextInput
             style={[s.input, { backgroundColor: cardBg, color: txt, borderColor: border }]}
-            placeholder="Landmark / Instructions for Delivery Boy (Optional)"
+            placeholder="Landmark or note for the rider (optional)"
             placeholderTextColor={txtSec}
             value={landmark}
             onChangeText={setLandmark}
+            maxLength={120}
           />
-        </StaggeredSection>
-
-        {/* Delivery Time Selection */}
-        <StaggeredSection delay={130} direction="up">
-          <Text style={[s.sectionTitle, { color: txt, marginTop: 18 }]}>DELIVERY SCHEDULE</Text>
-          <View style={s.timeRow}>
-            <DopaminePressable
-              style={[s.timeTypeBtn, deliveryType === 'asap' && s.timeTypeBtnActive, { backgroundColor: cardBg }]}
-              onPress={() => setDeliveryType('asap')}
-              sound="click"
-              activeScale={0.95}
-            >
-              <Text style={{ fontSize: 18 }}>⚡</Text>
-              <Text style={[s.timeTypeLabel, deliveryType === 'asap' && s.timeTypeLabelActive]}>ASAP</Text>
-              <Text style={s.timeTypeSub}>30-50 Mins</Text>
-            </DopaminePressable>
-            <DopaminePressable
-              style={[s.timeTypeBtn, deliveryType === 'scheduled' && s.timeTypeBtnActive, { backgroundColor: cardBg }]}
-              onPress={() => setDeliveryType('scheduled')}
-              sound="click"
-              activeScale={0.95}
-            >
-              <Text style={{ fontSize: 18 }}>🗓️</Text>
-              <Text style={[s.timeTypeLabel, deliveryType === 'scheduled' && s.timeTypeLabelActive]}>SCHEDULE</Text>
-              <Text style={s.timeTypeSub}>Pre-order Slots</Text>
-            </DopaminePressable>
-          </View>
-
-          {deliveryType === 'scheduled' && (
-            <View style={s.scheduleSlotsContainer}>
-              <Text style={s.scheduleHelperText}>SELECT PRE-ORDER MEAL SLOT:</Text>
-              <View style={s.slotsGrid}>
-                {[
-                  { label: '🌅 Breakfast', time: 'Tomorrow 08:00 AM' },
-                  { label: '☀️ Lunch', time: 'Tomorrow 12:00 PM' },
-                  { label: '🌙 Dinner', time: 'Tomorrow 07:00 PM' },
-                ].map(slot => (
-                  <DopaminePressable
-                    key={slot.label}
-                    style={[s.slotBtn, scheduledTime === slot.time && s.slotBtnActive, { backgroundColor: cardBg }]}
-                    onPress={() => setScheduledTime(slot.time)}
-                    sound="click"
-                    activeScale={0.95}
-                  >
-                    <Text style={[s.slotEmojiLabel, { color: txt }]}>{slot.label}</Text>
-                    <Text style={s.slotTimeLabel}>{slot.time.split(' ')[1] + ' ' + slot.time.split(' ')[2]}</Text>
-                  </DopaminePressable>
-                ))}
-              </View>
-            </View>
+          {deliveryNotes.length > 0 && (
+            <Text style={[s.helperText, { color: txtSec }]}>📝 Rider note: {deliveryNotes.join(', ')}</Text>
           )}
         </StaggeredSection>
 
-        {/* Pairs Well With Your Order (Suggested Extras) */}
-        {suggestions.length > 0 && (
-          <StaggeredSection delay={210} direction="up">
+        {/* Pairs Well With Your Order (catalogue add-ons) */}
+        {hasOrder && suggestions.length > 0 && (
+          <StaggeredSection delay={130} direction="up">
             <View style={{ marginTop: 20 }}>
               <Text style={[s.sectionTitle, { color: txt, marginBottom: 8 }]}>PAIRS WELL WITH YOUR ORDER</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.extrasScroll}>
@@ -561,22 +611,23 @@ export default function CheckoutScreen() {
                   <TouchableOpacity
                     key={extra.id}
                     style={[s.extraCard, { backgroundColor: cardBg }]}
+                    activeOpacity={0.85}
                     onPress={() => {
-                      addToCart({
-                        id: `extra-${extra.id}`,
+                      const added = addToCart({
+                        id: extra.id,
                         name: extra.name,
                         price: extra.price,
-                        image: '',
-                        restaurantId: cart[0]?.restaurantId || 'extras',
-                        restaurantName: cart[0]?.restaurantName || 'Zenvy Extras',
+                        image: extra.image || '',
+                        restaurantId: extra.restaurantId,
+                        restaurantName: extra.storeName || 'Add-ons',
+                        isAddOn: true,
                       });
-                      setAddedExtras(prev => new Set([...prev, extra.id]));
-                      Alert.alert('Added Extra', `${extra.name} added to your basket.`);
+                      if (added) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
                     }}
                   >
-                    <Text style={{ fontSize: 24, marginBottom: 4 }}>{extra.emoji}</Text>
-                    <Text style={[s.extraName, { color: txt }]} numberOfLines={1}>{extra.name}</Text>
-                    <Text style={s.extraPrice}>₹{extra.price}</Text>
+                    <Text style={{ fontSize: 24, marginBottom: 4 }}>{extra.emoji || '➕'}</Text>
+                    <Text style={[s.extraName, { color: txt }]} numberOfLines={2}>{extra.name}</Text>
+                    <Text style={s.extraPrice}>{rupees(extra.price)}</Text>
                     <Text style={s.extraAddBtn}>+ ADD</Text>
                   </TouchableOpacity>
                 ))}
@@ -585,63 +636,72 @@ export default function CheckoutScreen() {
           </StaggeredSection>
         )}
 
-        {/* Gourmet Rewards & Coupons */}
-        <StaggeredSection delay={290} direction="up">
-          <View style={{ marginTop: 20 }}>
-            <View style={s.rewardsHeader}>
-              <Text style={[s.sectionTitle, { color: txt, marginBottom: 0 }]}>GOURMET REWARDS</Text>
-              <View style={s.pointsBadge}>
-                <Text style={s.pointsText}>{zenPoints} ZEN</Text>
-              </View>
+        {/* Coupons */}
+        {hasOrder && (
+          <StaggeredSection delay={210} direction="up">
+            <View style={{ marginTop: 20 }}>
+              <Text style={[s.sectionTitle, { color: txt, marginBottom: 10 }]}>YOUR COUPONS</Text>
+              {coupons.length > 0 ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.couponsScroll}>
+                  {coupons.map(cpn => {
+                    const isActive = couponCode === cpn.code;
+                    return (
+                      <TouchableOpacity
+                        key={cpn.id || cpn.code}
+                        style={[s.couponCard, isActive && s.couponCardActive, { backgroundColor: cardBg }]}
+                        onPress={() => setCouponCode(isActive ? null : cpn.code)}
+                      >
+                        <Text style={{ fontSize: 20, marginBottom: 4 }}>{cpn.type === 'FREEDEL' ? '🚚' : '🏷️'}</Text>
+                        <Text style={[s.couponCode, { color: txt }]}>{cpn.code}</Text>
+                        <Text style={s.couponType}>{cpn.label || (cpn.type === 'FREEDEL' ? 'Free delivery' : 'Discount')}</Text>
+                        {typeof cpn.expiresInDays === 'number' && (
+                          <Text style={s.couponType}>{cpn.expiresInDays <= 0 ? 'Expires today' : `Expires in ${cpn.expiresInDays}d`}</Text>
+                        )}
+                        {isActive && <Text style={s.activeIndicator}>{quoteLoading ? 'APPLYING…' : 'APPLIED'}</Text>}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              ) : (
+                <TouchableOpacity style={[s.emptyCoupons, { backgroundColor: cardBg }]} onPress={() => router.push('/rewards' as any)} activeOpacity={0.85}>
+                  <Text style={{ fontSize: 20, marginBottom: 4 }}>🎡</Text>
+                  <Text style={s.emptyCouponsText}>NO COUPONS YET</Text>
+                  <Text style={s.emptyCouponsSub}>Spin the wheel in Rewards to win one →</Text>
+                </TouchableOpacity>
+              )}
             </View>
+          </StaggeredSection>
+        )}
 
-            {coupons.length > 0 ? (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.couponsScroll}>
-                {coupons.map(cpn => {
-                  const isActive = selectedCoupon?.id === cpn.id;
-                  return (
-                    <TouchableOpacity
-                      key={cpn.id}
-                      style={[s.couponCard, isActive && s.couponCardActive, { backgroundColor: cardBg }]}
-                      onPress={() => setSelectedCoupon(isActive ? null : cpn)}
-                    >
-                      <Text style={{ fontSize: 20, marginBottom: 4 }}>{cpn.type === 'FREEDEL' ? '🚚' : '🏷️'}</Text>
-                      <Text style={[s.couponCode, { color: txt }]}>{cpn.code}</Text>
-                      <Text style={s.couponType}>{cpn.type === 'FREEDEL' ? 'FREE DELIVERY' : 'DISCOUNT'}</Text>
-                      {isActive && <Text style={s.activeIndicator}>ACTIVE</Text>}
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            ) : (
-              <View style={[s.emptyCoupons, { backgroundColor: cardBg }]}>
-                <Text style={{ fontSize: 20, marginBottom: 4 }}>🎡</Text>
-                <Text style={s.emptyCouponsText}>NO ACTIVE COUPONS AVAILABLE</Text>
-                <Text style={s.emptyCouponsSub}>SPIN THE WHEEL TO WIN UNIQUE CODES</Text>
-              </View>
-            )}
-          </View>
-        </StaggeredSection>
-
-        {/* Payment */}
-        <StaggeredSection delay={370} direction="up">
+        {/* Payment: Cash on Delivery or Wallet */}
+        <StaggeredSection delay={290} direction="up">
           <Text style={[s.sectionTitle, { color: txt, marginTop: 24 }]}>PAYMENT METHOD</Text>
           <View style={s.payRowNew}>
-            {[
-              { key: 'UPI', title: 'UPI INSTANT PAY', desc: 'Google Pay, PhonePe, Paytm', icon: '⚡' },
-              { key: 'Card', title: 'CARD ON DELIVERY', desc: 'Delivery partner brings swipe POS', icon: '💳' },
-              { key: 'COD', title: 'CASH ON DELIVERY', desc: 'Pay with physical cash on arrival', icon: '💵' },
-            ].map(item => {
+            {([
+              { key: 'COD' as PayMethod, title: 'CASH ON DELIVERY', desc: 'Pay the rider in cash when it arrives', icon: '💵', enabled: true },
+              {
+                key: 'Wallet' as PayMethod,
+                title: 'ZENVY WALLET',
+                desc: !hasOrder
+                  ? 'Shopping lists are paid in cash on delivery'
+                  : walletAllowed
+                    ? `Balance ${rupees(walletBalance)}`
+                    : `Balance ${rupees(walletBalance)} — not enough for this order`,
+                icon: '👛',
+                enabled: walletAllowed,
+              },
+            ]).map(item => {
               const isActive = paymentMethod === item.key;
               return (
                 <DopaminePressable
                   key={item.key}
                   style={[
                     s.payCardNew,
-                    { backgroundColor: cardBg, borderColor: border },
+                    { backgroundColor: cardBg, borderColor: border, opacity: item.enabled ? 1 : 0.55 },
                     isActive && { borderColor: COLORS.red, backgroundColor: isDark ? 'rgba(239,79,95,0.06)' : 'rgba(239,79,95,0.03)' }
                   ]}
-                  onPress={() => setPaymentMethod(item.key as any)}
+                  onPress={() => { if (item.enabled) setPaymentMethod(item.key); }}
+                  disabled={!item.enabled}
                   sound="click"
                   activeScale={0.97}
                 >
@@ -665,109 +725,116 @@ export default function CheckoutScreen() {
               );
             })}
           </View>
-
-          {paymentMethod === 'Card' && (
-            <View style={[s.infoCard, { backgroundColor: cardBg, borderColor: border }]}>
-              <Text style={{ fontSize: 22, marginRight: 12 }}>💳</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={[s.infoTitle, { color: txt }]}>Card on Delivery</Text>
-                <Text style={[s.infoDesc, { color: txtSec }]}>Our delivery partner carries a swipe POS machine. Pay securely when food arrives.</Text>
-              </View>
-            </View>
-          )}
-
-          {paymentMethod === 'UPI' && (
-            <View style={[s.upiBox, { backgroundColor: cardBg, borderColor: border }]}>
-              <Text style={{ fontSize: 10, fontWeight: '900', color: goldColor, letterSpacing: 2, marginBottom: 8 }}>SCAN & PAY INSTANTLY</Text>
-
-              {/* UPI Intent Apps */}
-              <View style={s.intentRow}>
-                <TouchableOpacity style={[s.intentBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', borderColor: border }]} onPress={openUpiApp}>
-                  <Text style={{ fontSize: 20 }}>📲</Text>
-                  <Text style={[s.intentText, { color: txt }]}>PAY VIA INSTANT APP</Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* QR Code image display */}
-              <View style={s.qrWrapper}>
-                <Image
-                  source={{ uri: `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=upi://pay?pa=kesavakesava764@ybl&pn=Zenvy&am=${finalTotal.toFixed(2)}&cu=INR` }}
-                  style={s.qrImage}
-                />
-                <TouchableOpacity style={s.copyUpiBtn} onPress={copyUpiId}>
-                  <Text style={s.copyUpiText}>ID: kesavakesava764@ybl (TAP TO COPY)</Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* UTR Input */}
-
-              <TextInput
-                style={[s.input, { backgroundColor: bg, color: txt, borderColor: border, marginTop: 12 }]}
-                placeholder="Enter 12-Digit Transaction UTR No."
-                placeholderTextColor={txtSec}
-                value={upiUTR}
-                onChangeText={setUpiUTR}
-                keyboardType="numeric"
-              />
-
-              {/* Payment Screenshot Receipt Upload */}
-              <TouchableOpacity style={s.uploadBtn} onPress={attachPaymentReceiptScreenshot} disabled={isUploading}>
-                {isUploading ? (
-                  <ActivityIndicator color={COLORS.gold} />
-                ) : (
-                  <Text style={s.uploadBtnText}>
-                    {upiScreenshot ? '✓ SCREENSHOT RECEIPT ATTACHED' : '📸 UPLOAD TRANSACTION SCREENSHOT'}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            </View>
+          {hasOrder && hasCustom && paymentMethod === 'Wallet' && (
+            <Text style={[s.helperText, { color: txtSec }]}>Your Mega Basket shopping list is paid in cash when it arrives.</Text>
           )}
         </StaggeredSection>
 
-        {/* Summary */}
-        <StaggeredSection delay={450} direction="up">
+        {/* Bill (from the server quote — exactly what you will be charged) */}
+        <StaggeredSection delay={370} direction="up">
           <View style={[s.billCard, { backgroundColor: cardBg, borderColor: border, borderWidth: 1, marginTop: 24 }]}>
-            <View style={s.billRow}>
-              <Text style={[s.billLabel, { color: txt }]}>ITEMS SUBTOTAL</Text>
-              <Text style={[s.billVal, { color: txt }]}>₹{totalPrice}</Text>
-            </View>
-            <View style={s.billRow}>
-              <Text style={[s.billLabel, { color: txt }]}>DELIVERY FEE</Text>
-              {isElite || zenPoints >= 200 ? (
-                <Text style={[s.billVal, { color: COLORS.gold, fontWeight: '900' }]}>FREE (ELITE VIP) ✨</Text>
-              ) : (
-                <Text style={[s.billVal, { color: txt }]}>₹{deliveryFee}</Text>
-              )}
-            </View>
-
-            {selectedCoupon && (
-              <View style={s.billRow}>
-                <Text style={[s.billLabel, { color: COLORS.emerald }]}>COUPON DISCOUNT ({selectedCoupon.code})</Text>
-                <Text style={[s.billVal, { color: COLORS.emerald }]}>-₹{couponDiscount}</Text>
+            {hasOrder && quoteLoading && !quote && (
+              <View style={{ paddingVertical: 18, alignItems: 'center' }}>
+                <ActivityIndicator color={COLORS.red} />
+                <Text style={[s.helperText, { color: txtSec, marginTop: 8 }]}>Calculating your bill…</Text>
               </View>
             )}
 
-            <View style={[s.billRow, { borderTopWidth: 1, borderTopColor: border, paddingTop: 12, marginTop: 8 }]}>
-              <Text style={{ fontSize: 14, fontWeight: '900', color: txt }}>GRAND TOTAL</Text>
-              <Text style={{ fontSize: 22, fontWeight: '900', color: COLORS.red }}>₹{finalTotal}</Text>
-            </View>
+            {hasOrder && !quote && !quoteLoading && quoteError && (
+              <View style={{ paddingVertical: 8 }}>
+                <Text style={[s.noticeTitle, { color: txt }]}>We couldn't calculate your bill</Text>
+                <Text style={[s.noticeSub, { color: txtSec, marginBottom: 10 }]}>{quoteError.message}</Text>
+                {quoteError.code === 'ITEMS_UNAVAILABLE' || quoteError.code === 'BOOKING_ONLY_ITEMS' ? (
+                  <TouchableOpacity style={s.smallBtn} onPress={() => { const u = unavailableFrom(quoteError.body); removeItems(u); }}>
+                    <Text style={s.smallBtnText}>REMOVE UNAVAILABLE ITEMS</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity style={s.smallBtn} onPress={refreshQuote}>
+                    <Text style={s.smallBtnText}>TRY AGAIN</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
+            {hasOrder && quote && (
+              <View style={{ opacity: quoteLoading ? 0.5 : 1 }}>
+                <View style={s.billRow}>
+                  <Text style={[s.billLabel, { color: txt }]}>ITEM TOTAL</Text>
+                  <Text style={[s.billVal, { color: txt }]}>{rupees(quote.subtotal)}</Text>
+                </View>
+                <View style={s.billRow}>
+                  <Text style={[s.billLabel, { color: txt }]}>DELIVERY FEE</Text>
+                  <Text style={[s.billVal, { color: quote.deliveryFee === 0 ? COLORS.emerald : txt }]}>
+                    {quote.deliveryFee === 0 ? 'FREE' : rupees(quote.deliveryFee)}
+                  </Text>
+                </View>
+                {quote.packagingFee > 0 && (
+                  <View style={s.billRow}>
+                    <Text style={[s.billLabel, { color: txt }]}>PACKAGING</Text>
+                    <Text style={[s.billVal, { color: txt }]}>{rupees(quote.packagingFee)}</Text>
+                  </View>
+                )}
+                {quote.taxes > 0 && (
+                  <View style={s.billRow}>
+                    <Text style={[s.billLabel, { color: txt }]}>TAXES</Text>
+                    <Text style={[s.billVal, { color: txt }]}>{rupees(quote.taxes)}</Text>
+                  </View>
+                )}
+                {(quote.discounts || []).filter((d) => d && d.amount > 0).map((d, idx) => (
+                  <View style={s.billRow} key={`${d.type}-${idx}`}>
+                    <Text style={[s.billLabel, { color: COLORS.emerald, flex: 1 }]} numberOfLines={1}>{String(d.label || 'Discount').toUpperCase()}</Text>
+                    <Text style={[s.billVal, { color: COLORS.emerald }]}>-{rupees(d.amount)}</Text>
+                  </View>
+                ))}
+                <View style={[s.billRow, { borderTopWidth: 1, borderTopColor: border, paddingTop: 12, marginTop: 8 }]}>
+                  <Text style={{ fontSize: 14, fontWeight: '900', color: txt }}>TO PAY</Text>
+                  <Text style={{ fontSize: 22, fontWeight: '900', color: COLORS.red }}>{rupees(quote.finalPrice)}</Text>
+                </View>
+                {quote.totalDiscount > 0 && (
+                  <Text style={[s.savingsText]}>🎉 You save {rupees(quote.totalDiscount)} on this order</Text>
+                )}
+              </View>
+            )}
+
+            {hasCustom && (
+              <View style={[hasOrder && { borderTopWidth: 1, borderTopColor: border, marginTop: 12, paddingTop: 12 }]}>
+                <View style={s.billRow}>
+                  <Text style={[s.billLabel, { color: txt }]}>MEGA BASKET (EST.)</Text>
+                  <Text style={[s.billVal, { color: txt }]}>{rupees(customEstimate)}</Text>
+                </View>
+                <Text style={[s.helperText, { color: txtSec }]}>
+                  A rider shops your list. You pay the actual shop bill plus shopping and delivery fees, in cash on delivery.
+                </Text>
+              </View>
+            )}
           </View>
         </StaggeredSection>
 
         <FloatingPulse color={COLORS.red} style={s.placeBtnContainer}>
-          <ActionPressable style={[s.placeBtn, { width: '100%', opacity: loading ? 0.6 : 1 }]} onPress={handlePlaceOrder} disabled={loading} sound="success">
-            {loading ? (
+          <ActionPressable
+            style={[s.placeBtn, { width: '100%', opacity: canPlace ? 1 : 0.5 }]}
+            onPress={handlePlaceOrder}
+            disabled={placing}
+            sound="success"
+          >
+            {placing ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <ActivityIndicator color="#fff" />
-                <Text style={[s.placeText, { fontSize: 11 }]}>PROCESSING ORDER...</Text>
+                <Text style={[s.placeText, { fontSize: 11 }]}>PLACING ORDER…</Text>
               </View>
             ) : (
-              <Text style={s.placeText}>REVIEW & PLACE ORDER</Text>
+              <Text style={s.placeText}>
+                {isClosed
+                  ? 'CLOSED FOR THE NIGHT'
+                  : hasOrder && quote
+                    ? `PLACE ORDER • ${rupees(quote.finalPrice)}`
+                    : `PLACE ORDER${totalItems ? ` • ${totalItems} ITEM${totalItems === 1 ? '' : 'S'}` : ''}`}
+              </Text>
             )}
           </ActionPressable>
         </FloatingPulse>
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -785,17 +852,19 @@ const s = StyleSheet.create({
   activeCheckBadge: { position: 'absolute', top: 0, right: 0, borderBottomLeftRadius: 8, width: 14, height: 14, alignItems: 'center', justifyContent: 'center' },
   activeCheckText: { color: '#000', fontSize: 8, fontWeight: '900' },
   input: { borderWidth: 1, borderRadius: 12, padding: 14, fontSize: 13, marginBottom: 10, fontWeight: '600' },
+  blockChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14, borderWidth: 1.5 },
+  helperText: { fontSize: 10, fontWeight: '600', lineHeight: 15, marginBottom: 6 },
   payRowNew: { gap: 10, marginBottom: 12 },
   payCardNew: { padding: 14, borderRadius: 16, borderWidth: 1.5 },
   payCardTitle: { fontSize: 11, fontWeight: '900', letterSpacing: 1.5 },
-  payCardDesc: { fontSize: 8, color: COLORS.textSecondary, fontWeight: '600', marginTop: 2 },
+  payCardDesc: { fontSize: 9, color: COLORS.textSecondary, fontWeight: '600', marginTop: 2 },
   radioOuter: { width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
   radioInner: { width: 8, height: 8, borderRadius: 4 },
-  upiBox: { padding: 16, borderRadius: 16, borderWidth: 1, borderColor: COLORS.goldBorder },
   billCard: { padding: 16, borderRadius: 20 },
-  billRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
+  billRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, gap: 8 },
   billLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 2 },
   billVal: { fontSize: 12, fontWeight: '800' },
+  savingsText: { fontSize: 10, fontWeight: '800', color: COLORS.emerald, marginTop: 8, textAlign: 'center' },
   placeBtnContainer: {
     marginTop: 24,
     marginBottom: Platform.OS === 'android' ? 80 : 40,
@@ -809,57 +878,33 @@ const s = StyleSheet.create({
   },
   placeText: { fontSize: 12, fontWeight: '900', color: '#fff', letterSpacing: 3 },
 
-  // Delivery Time Scheduling
-  timeRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
-  timeTypeBtn: { flex: 1, padding: 16, borderRadius: 20, borderWidth: 1, borderColor: COLORS.borderDark, alignItems: 'center' },
-  timeTypeBtnActive: { borderColor: COLORS.gold },
-  timeTypeLabel: { fontSize: 12, fontWeight: '900', marginTop: 6 },
-  timeTypeLabelActive: { color: COLORS.gold },
-  timeTypeSub: { fontSize: 9, color: COLORS.textSecondary, marginTop: 2 },
-  scheduleSlotsContainer: { marginBottom: 16, padding: 14, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.02)', borderWidth: 1, borderColor: COLORS.borderDark },
-  scheduleHelperText: { fontSize: 8, fontWeight: '900', color: COLORS.textSecondary, letterSpacing: 2, marginBottom: 10 },
-  slotsGrid: { flexDirection: 'row', gap: 8 },
-  slotBtn: { flex: 1, padding: 10, borderRadius: 12, borderWidth: 1, borderColor: COLORS.borderDark, alignItems: 'center' },
-  slotBtnActive: { borderColor: COLORS.gold, backgroundColor: 'rgba(201,168,76,0.1)' },
-  slotEmojiLabel: { fontSize: 10, fontWeight: '800' },
-  slotTimeLabel: { fontSize: 9, color: COLORS.gold, fontWeight: '800', marginTop: 4 },
+  noticeCard: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 16, borderWidth: 1, marginBottom: 16 },
+  noticeTitle: { fontSize: 12, fontWeight: '900' },
+  noticeSub: { fontSize: 10, fontWeight: '600', marginTop: 2, lineHeight: 15 },
+  smallBtn: { alignSelf: 'flex-start', backgroundColor: COLORS.red, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10 },
+  smallBtnText: { color: '#fff', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+
+  centerBox: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
+  centerTitle: { fontSize: 18, fontWeight: '800', marginBottom: 8, textAlign: 'center' },
+  centerSub: { fontSize: 13, textAlign: 'center', lineHeight: 20, marginBottom: 20 },
+  primaryBtn: { backgroundColor: COLORS.red, paddingHorizontal: 28, paddingVertical: 14, borderRadius: 16, ...SHADOWS.redGlow },
+  primaryBtnText: { color: '#fff', fontSize: 12, fontWeight: '900', letterSpacing: 2 },
 
   // Suggested Extras
   extrasScroll: { gap: 10, paddingRight: 16 },
   extraCard: { width: 120, padding: 12, borderRadius: 20, borderWidth: 1, borderColor: COLORS.borderDark, alignItems: 'center' },
   extraName: { fontSize: 9, fontWeight: '800', marginTop: 4, width: '100%', textAlign: 'center' },
   extraPrice: { fontSize: 10, fontWeight: '900', color: COLORS.gold, marginTop: 2 },
-  extraAddBtn: { fontSize: 8, fontWeight: '900', color: '#000', backgroundColor: COLORS.gold, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 8, marginTop: 8 },
+  extraAddBtn: { fontSize: 8, fontWeight: '900', color: '#000', backgroundColor: COLORS.gold, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 8, marginTop: 8, overflow: 'hidden' },
 
-  // Gourmet Rewards
-  rewardsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  pointsBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10, backgroundColor: 'rgba(201,168,76,0.1)' },
-  pointsText: { fontSize: 9, fontWeight: '900', color: COLORS.gold },
+  // Coupons
   couponsScroll: { gap: 10, paddingRight: 16 },
   couponCard: { width: 130, padding: 12, borderRadius: 20, borderWidth: 1, borderColor: COLORS.borderDark, alignItems: 'center', position: 'relative' },
   couponCardActive: { borderColor: COLORS.gold, borderWidth: 1.5 },
   couponCode: { fontSize: 10, fontWeight: '900', textTransform: 'uppercase' },
-  couponType: { fontSize: 7, fontWeight: '800', color: COLORS.textSecondary, marginTop: 2 },
+  couponType: { fontSize: 8, fontWeight: '800', color: COLORS.textSecondary, marginTop: 2 },
   activeIndicator: { fontSize: 8, fontWeight: '900', color: COLORS.gold, marginTop: 6 },
   emptyCoupons: { padding: 20, borderRadius: 20, borderWidth: 1, borderStyle: 'dashed', borderColor: COLORS.borderDark, alignItems: 'center' },
   emptyCouponsText: { fontSize: 9, fontWeight: '900', color: COLORS.textSecondary },
-  emptyCouponsSub: { fontSize: 8, color: COLORS.textSecondary, marginTop: 2 },
-
-  // Info Card
-  infoCard: { flexDirection: 'row', padding: 16, borderRadius: 20, borderWidth: 1, alignItems: 'center', marginBottom: 16 },
-  infoTitle: { fontSize: 12, fontWeight: '900' },
-  infoDesc: { fontSize: 9, marginTop: 2 },
-
-  // UPI Box QR
-  intentRow: { marginBottom: 16 },
-  intentBtn: { paddingVertical: 12, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: COLORS.borderDark, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  intentText: { fontSize: 10, fontWeight: '900', color: '#fff', letterSpacing: 2 },
-  qrWrapper: { alignItems: 'center', marginVertical: 16 },
-  qrImage: { width: 180, height: 180, borderRadius: 16, backgroundColor: '#fff' },
-  copyUpiBtn: { marginTop: 10, padding: 6 },
-  copyUpiText: { fontSize: 8, fontWeight: '900', color: COLORS.gold, letterSpacing: 1 },
-  devSimBtn: { paddingVertical: 8, borderRadius: 12, backgroundColor: 'rgba(16,185,129,0.1)', borderWidth: 1, borderColor: 'rgba(16,185,129,0.2)', alignItems: 'center', marginVertical: 10 },
-  devSimText: { fontSize: 8, fontWeight: '900', color: '#10b981', letterSpacing: 1 },
-  uploadBtn: { paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderStyle: 'dashed', borderColor: COLORS.borderDark, alignItems: 'center', marginTop: 12, backgroundColor: 'rgba(255,255,255,0.01)' },
-  uploadBtnText: { fontSize: 8, fontWeight: '900', color: COLORS.textSecondary, letterSpacing: 1 }
+  emptyCouponsSub: { fontSize: 9, color: COLORS.textSecondary, marginTop: 2 },
 });

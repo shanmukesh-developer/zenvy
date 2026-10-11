@@ -26,10 +26,14 @@ const initDeliveryPartnerModel = (sequelize) => {
       set(val) { this.setDataValue('liveLocation', JSON.stringify(val)); }
     },
     isOnline: { type: DataTypes.BOOLEAN, defaultValue: false },
+    isAvailable: { type: DataTypes.BOOLEAN, defaultValue: true },
+    walletBalance: { type: DataTypes.FLOAT, defaultValue: 0 },
+    completedDeliveries: { type: DataTypes.INTEGER, defaultValue: 0 },
     currentOrderId: { type: DataTypes.UUID },
     totalEarnings: { type: DataTypes.FLOAT, defaultValue: 0 },
     zenPoints: { type: DataTypes.INTEGER, defaultValue: 0 },
-    averageRating: { type: DataTypes.FLOAT, defaultValue: 5 },
+    // null until the first real customer rating (new riders are not shown invented stars)
+    averageRating: { type: DataTypes.FLOAT, allowNull: true, defaultValue: null },
     totalRatings: { type: DataTypes.INTEGER, defaultValue: 0 },
     fcmTokens: { 
       type: DataTypes.TEXT, 

@@ -2,6 +2,17 @@ const { getRestaurantModel } = require('../models/Restaurant');
 const { getMenuItemModel } = require('../models/MenuItem');
 const { getOrderModel } = require('../models/Order');
 const jwt = require('jsonwebtoken');
+const { getStoreOpenState } = require('../utils/storeHours');
+
+// Customers' restaurant listing is cached in adminController; any vendor change must clear it.
+const clearPublicRestaurantsCache = () => {
+  try { require('./adminController').clearRestaurantsCache(); } catch (e) { console.error('[CACHE_CLEAR_ERROR]', e.message); }
+};
+
+const validPrice = (price) => {
+  const n = Number(price);
+  return Number.isFinite(n) && n > 0 && n <= 100000;
+};
 
 // @desc    Restaurant Login
 // @route   POST /api/restaurants/login
@@ -81,9 +92,14 @@ const getRestaurantOrders = async (req, res) => {
         { model: User, as: 'user', attributes: ['name', 'phone'] },
         { model: DeliveryPartner, as: 'deliveryPartner', attributes: ['name', 'phone'] }
       ],
-      order: [['createdAt', 'DESC']]
+      order: [['createdAt', 'DESC']],
+      limit: 200 // the partner app shows recent orders; an all-time list grows without bound
     });
-    res.json(orders.map(o => ({ ...o.toJSON(), _id: o.id })));
+    // The delivery PIN is only for the customer (the rider asks for it at the door).
+    res.json(orders.map(o => {
+      const { deliveryPin, deliveryPinAttempts, ...rest } = o.toJSON();
+      return { ...rest, _id: o.id };
+    }));
   } catch (error) {
     console.error('[GET_ORDERS_ERROR]', error);
     res.status(500).json({ message: 'Server error' });
@@ -114,6 +130,9 @@ const getRestaurants = async (req, res) => {
       rJson._id = rJson.id; // Map UUIDs to expected legacy Mongo _id formats
       rJson.imageUrl = cleanImageUrl(rJson.imageUrl || rJson.image);
       rJson.image = rJson.imageUrl;
+      const openState = getStoreOpenState(r);
+      rJson.isOpen = openState.isOpen;
+      rJson.opensAt = openState.opensAt || null;
       rJson.menu = allMenuItems
         .filter(m => m.restaurantId === r.id)
         .map(m => {
@@ -156,7 +175,10 @@ const createRestaurant = async (req, res) => {
   try {
     const Restaurant = getRestaurantModel();
     const restaurant = await Restaurant.create({ name, location, imageUrl, deliveryTime, commissionRate, isOffline, password });
-    res.status(201).json(restaurant);
+    clearPublicRestaurantsCache();
+    const json = restaurant.toJSON();
+    delete json.password;
+    res.status(201).json(json);
   } catch (error) {
     console.error('[CREATE_RESTAURANT_ERROR]', error);
     res.status(400).json({ message: 'Invalid restaurant data' });
@@ -195,8 +217,9 @@ const toggleMenuItemAvailability = async (req, res) => {
     }
     await item.save();
 
+    clearPublicRestaurantsCache();
     const io = req.app.get('io');
-    io.emit('inventory_updated', { itemId: item.id, isAvailable: item.isAvailable });
+    if (io) io.emit('inventory_updated', { itemId: item.id, restaurantId: item.restaurantId, isAvailable: item.isAvailable });
 
     res.json({ message: 'Item availability updated', _id: item.id, isAvailable: item.isAvailable });
   } catch (error) {
@@ -224,6 +247,7 @@ const updateMenuItemTags = async (req, res) => {
 
     item.tags = tags;
     await item.save();
+    clearPublicRestaurantsCache();
 
     res.json({ message: 'Item tags updated', _id: item.id, tags: item.tags });
   } catch {
@@ -246,6 +270,8 @@ const createMenuItem = async (req, res) => {
     if (!isOwner && !isAdmin) {
        return res.status(403).json({ message: 'Not authorized to create items for this restaurant' });
     }
+    if (!name || !String(name).trim()) return res.status(400).json({ message: 'Item name is required' });
+    if (!validPrice(price)) return res.status(400).json({ message: 'Please enter a price greater than ₹0' });
 
     const newItem = await MenuItem.create({
       restaurantId,
@@ -258,6 +284,7 @@ const createMenuItem = async (req, res) => {
       isAvailable: true
     });
 
+    clearPublicRestaurantsCache();
     res.status(201).json(newItem);
   } catch (error) {
     console.error('[CREATE_MENU_ITEM_ERROR]', error);
@@ -284,7 +311,10 @@ const updateMenuItem = async (req, res) => {
     const { name, price, description, imageUrl, category, isVegetarian, isAvailable, isEliteOnly } = req.body;
     const updateData = {};
     if (name !== undefined) updateData.name = name;
-    if (price !== undefined) updateData.price = price;
+    if (price !== undefined) {
+      if (!validPrice(price)) return res.status(400).json({ message: 'Please enter a price greater than ₹0' });
+      updateData.price = Number(price);
+    }
     if (description !== undefined) updateData.description = description;
     if (imageUrl !== undefined) updateData.imageUrl = imageUrl;
     if (category !== undefined) updateData.category = category;
@@ -293,6 +323,7 @@ const updateMenuItem = async (req, res) => {
     if (isEliteOnly !== undefined) updateData.isEliteOnly = isEliteOnly;
 
     await item.update(updateData);
+    clearPublicRestaurantsCache();
     res.json(item);
   } catch {
     res.status(500).json({ message: 'Server error' });
@@ -375,10 +406,11 @@ const toggleRestaurantOffline = async (req, res) => {
 
     restaurant.isOffline = !restaurant.isOffline;
     await restaurant.save();
+    clearPublicRestaurantsCache();
 
     // Broadcast to riders/customers that the store state changed
     const io = req.app.get('io');
-    io.emit('store_status_changed', { restaurantId: restaurant.id, isOffline: restaurant.isOffline });
+    if (io) io.emit('store_status_changed', { restaurantId: restaurant.id, isOffline: restaurant.isOffline });
 
     res.json({ message: 'Store status updated', isOffline: restaurant.isOffline });
   } catch (error) {

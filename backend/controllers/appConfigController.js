@@ -41,7 +41,11 @@ exports.getConfig = async (req, res) => {
 
 exports.updateConfig = async (req, res) => {
   try {
-    const updates = req.body;
+    // Only real config fields (never id / timestamps / lastUpdatedBy from the client).
+    const EDITABLE = ['banners', 'categories', 'maintenanceMode', 'campusOpen', 'activeTheme', 'globalAnnouncement'];
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const updates = {};
+    for (const key of EDITABLE) if (body[key] !== undefined) updates[key] = body[key];
     let config = await AppConfig.findOne();
     
     if (!config) {
@@ -53,7 +57,7 @@ exports.updateConfig = async (req, res) => {
       });
     }
     
-    config.lastUpdatedBy = req.user ? req.user._id : null;
+    config.lastUpdatedBy = req.user ? req.user.id : null;
     await config.save();
     
     // Broadcast via socket if available

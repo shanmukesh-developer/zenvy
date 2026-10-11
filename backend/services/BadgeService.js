@@ -62,4 +62,38 @@ const evaluateBadges = (user) => {
   return newBadges;
 };
 
-module.exports = { evaluateBadges, BADGE_CRITERIA };
+// IST hour (Render runs in UTC).
+const istHour = () => new Date(Date.now() + 5.5 * 60 * 60 * 1000).getUTCHours();
+
+/**
+ * Credits the customer for a delivered order: ZenPoints (10 per ₹100), completedOrders (+1)
+ * and late-night count, as atomic SQL increments so a concurrent spin / rating / redeem is
+ * never overwritten by a stale read-modify-save. Then awards any newly unlocked badges.
+ * Call only from the request that actually flipped the order to Delivered.
+ * @returns {{ customer: object|null, newBadges: string[], points: number }}
+ */
+const creditCustomerForDelivery = async (User, order) => {
+  const points = Math.max(0, Math.floor(Number(order.finalPrice || order.totalPrice || 0) / 100) * 10);
+  const hour = istHour();
+  const lateNight = hour >= 22 || hour < 4;
+  const { literal } = require('sequelize');
+  const bump = (col, by) => literal(`COALESCE("${col}", 0) + ${Number(by)}`);
+  await User.update(
+    {
+      completedOrders: bump('completedOrders', 1),
+      ...(points > 0 ? { zenPoints: bump('zenPoints', points) } : {}),
+      ...(lateNight ? { lateNightOrders: bump('lateNightOrders', 1) } : {})
+    },
+    { where: { id: order.userId } }
+  );
+  const customer = await User.findByPk(order.userId);
+  if (!customer) return { customer: null, newBadges: [], points };
+  const newBadges = evaluateBadges(customer);
+  if (newBadges.length > 0) {
+    customer.badges = [...(Array.isArray(customer.badges) ? customer.badges : []), ...newBadges];
+    await customer.save({ fields: ['badges'] });
+  }
+  return { customer, newBadges, points };
+};
+
+module.exports = { evaluateBadges, creditCustomerForDelivery, BADGE_CRITERIA };

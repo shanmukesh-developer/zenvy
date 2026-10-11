@@ -2,19 +2,19 @@ const IMG = 'https://images.unsplash.com/photo-';
 const W = '?w=600&h=400&fit=crop';
 
 const RESTS = [
-  { name:'Spice Garden', location:'Near Gate 2, Amaravathi', lat:16.515, lon:80.5164, zone:'Amaravathi_Central', vendorType:'RESTAURANT', rating:4.5, deliveryTime:25, commissionRate:12, tags:['South Indian','Biryani'], imageUrl:IMG+'1517248135467-4c7edcad34c4'+W, password:'spice123' },
-  { name:'Urban Bites', location:'Food Court, Block A', lat:16.5175, lon:80.519, zone:'Amaravathi_Central', vendorType:'RESTAURANT', rating:4.7, deliveryTime:20, commissionRate:10, tags:['Burgers','Pizza'], imageUrl:IMG+'1552566626-98f62a5dd1b5'+W, password:'urban123' },
-  { name:'Dragon Wok', location:'Main Road, Amaravathi', lat:16.513, lon:80.521, zone:'Amaravathi_Central', vendorType:'RESTAURANT', rating:4.3, deliveryTime:30, commissionRate:15, tags:['Chinese','Noodles'], imageUrl:IMG+'1526234362653-3b75a0c07438'+W, password:'dragon123' },
-  { name:'Chai & Chill', location:'Library Corner, Block C', lat:16.516, lon:80.518, zone:'Amaravathi_Central', vendorType:'CAFE', rating:4.8, deliveryTime:10, commissionRate:8, tags:['Tea','Coffee'], imageUrl:IMG+'1445116572660-236099ec97a0'+W, password:'chai123' },
-  { name:'Tandoori Nights', location:'Hostel Road, Gate 1', lat:16.514, lon:80.5155, zone:'Amaravathi_Central', vendorType:'RESTAURANT', rating:4.6, deliveryTime:35, commissionRate:12, tags:['Tandoori','Mughlai'], imageUrl:IMG+'1555396273-367ea4eb4db5'+W, password:'tandoori123' },
-  { name:'Green Bowl', location:'Sports Complex, Block D', lat:16.5185, lon:80.52, zone:'Amaravathi_Central', vendorType:'RESTAURANT', rating:4.4, deliveryTime:15, commissionRate:10, tags:['Healthy','Bowls'], imageUrl:IMG+'1512621776951-a57141f2eefd'+W, password:'green123' },
-  { name:'Bombay Street', location:'Market Area, Amaravathi', lat:16.512, lon:80.517, zone:'Amaravathi_Central', vendorType:'RESTAURANT', rating:4.2, deliveryTime:20, commissionRate:11, tags:['Street Food','Chaat'], imageUrl:IMG+'1601050690597-df0568f70950'+W, password:'bombay123' },
-  { name:'Frozen Bliss', location:'Near Auditorium, Block B', lat:16.517, lon:80.5195, zone:'Amaravathi_Central', vendorType:'DESSERT', rating:4.9, deliveryTime:10, commissionRate:8, tags:['Ice Cream','Desserts'], imageUrl:IMG+'1501443762994-82bd5dace89a'+W, password:'frozen123' },
-  { name:'Campus Pharmacy', location:'Admin Block, SRM AP', lat:16.516, lon:80.516, zone:'Amaravathi_Central', vendorType:'PHARMACY', rating:4.6, deliveryTime:8, commissionRate:5, tags:['pharmacy','medicine'], imageUrl:IMG+'1584308666744-24d55c2168ef'+W, password:'pharma123' },
-  { name:'Fresh Mart', location:'Hostel Gate, Block E', lat:16.518, lon:80.517, zone:'Amaravathi_Central', vendorType:'GROCERY', rating:4.3, deliveryTime:12, commissionRate:6, tags:['fruits','grocery'], imageUrl:IMG+'1542838132-92c53300491e'+W, password:'fresh123' },
-  { name:'SpinClean Laundry', location:'Block F Service Area', lat:16.515, lon:80.519, zone:'Amaravathi_Central', vendorType:'LAUNDRY', rating:4.5, deliveryTime:60, commissionRate:7, tags:['laundry','dry-wash'], imageUrl:IMG+'1582735689351-37b08f4c5f9c'+W, password:'spin123' },
-  { name:'Campus Stationery Hub', location:'Near Library, Block A', lat:16.517, lon:80.515, zone:'Amaravathi_Central', vendorType:'STATIONARY', rating:4.4, deliveryTime:15, commissionRate:6, tags:['stationary','books','print'], imageUrl:IMG+'1497633762265-9d0213b5ec04'+W, password:'stat123' },
-  { name:'Campus Rentals', location:'Parking Lot, Block B', lat:16.516, lon:80.518, zone:'Amaravathi_Central', vendorType:'RENTAL', rating:4.5, deliveryTime:20, commissionRate:8, tags:['rental'], imageUrl:IMG+'1558618666-fcd25c85cd64'+W, password:'rental123' },
+  { name:'Spice Garden', location:'Near Gate 2, Amaravathi', lat:16.515, lon:80.5164, zone:'Amaravathi_Central', vendorType:'RESTAURANT', rating:4.5, deliveryTime:25, commissionRate:12, tags:['South Indian','Biryani'], imageUrl:IMG+'1517248135467-4c7edcad34c4'+W },
+  { name:'Urban Bites', location:'Food Court, Block A', lat:16.5175, lon:80.519, zone:'Amaravathi_Central', vendorType:'RESTAURANT', rating:4.7, deliveryTime:20, commissionRate:10, tags:['Burgers','Pizza'], imageUrl:IMG+'1552566626-98f62a5dd1b5'+W },
+  { name:'Dragon Wok', location:'Main Road, Amaravathi', lat:16.513, lon:80.521, zone:'Amaravathi_Central', vendorType:'RESTAURANT', rating:4.3, deliveryTime:30, commissionRate:15, tags:['Chinese','Noodles'], imageUrl:IMG+'1526234362653-3b75a0c07438'+W },
+  { name:'Chai & Chill', location:'Library Corner, Block C', lat:16.516, lon:80.518, zone:'Amaravathi_Central', vendorType:'CAFE', rating:4.8, deliveryTime:10, commissionRate:8, tags:['Tea','Coffee'], imageUrl:IMG+'1445116572660-236099ec97a0'+W },
+  { name:'Tandoori Nights', location:'Hostel Road, Gate 1', lat:16.514, lon:80.5155, zone:'Amaravathi_Central', vendorType:'RESTAURANT', rating:4.6, deliveryTime:35, commissionRate:12, tags:['Tandoori','Mughlai'], imageUrl:IMG+'1555396273-367ea4eb4db5'+W },
+  { name:'Green Bowl', location:'Sports Complex, Block D', lat:16.5185, lon:80.52, zone:'Amaravathi_Central', vendorType:'RESTAURANT', rating:4.4, deliveryTime:15, commissionRate:10, tags:['Healthy','Bowls'], imageUrl:IMG+'1512621776951-a57141f2eefd'+W },
+  { name:'Bombay Street', location:'Market Area, Amaravathi', lat:16.512, lon:80.517, zone:'Amaravathi_Central', vendorType:'RESTAURANT', rating:4.2, deliveryTime:20, commissionRate:11, tags:['Street Food','Chaat'], imageUrl:IMG+'1601050690597-df0568f70950'+W },
+  { name:'Frozen Bliss', location:'Near Auditorium, Block B', lat:16.517, lon:80.5195, zone:'Amaravathi_Central', vendorType:'DESSERT', rating:4.9, deliveryTime:10, commissionRate:8, tags:['Ice Cream','Desserts'], imageUrl:IMG+'1501443762994-82bd5dace89a'+W },
+  { name:'Campus Pharmacy', location:'Admin Block, SRM AP', lat:16.516, lon:80.516, zone:'Amaravathi_Central', vendorType:'PHARMACY', rating:4.6, deliveryTime:8, commissionRate:5, tags:['pharmacy','medicine'], imageUrl:IMG+'1584308666744-24d55c2168ef'+W },
+  { name:'Fresh Mart', location:'Hostel Gate, Block E', lat:16.518, lon:80.517, zone:'Amaravathi_Central', vendorType:'GROCERY', rating:4.3, deliveryTime:12, commissionRate:6, tags:['fruits','grocery'], imageUrl:IMG+'1542838132-92c53300491e'+W },
+  { name:'SpinClean Laundry', location:'Block F Service Area', lat:16.515, lon:80.519, zone:'Amaravathi_Central', vendorType:'LAUNDRY', rating:4.5, deliveryTime:60, commissionRate:7, tags:['laundry','dry-wash'], imageUrl:IMG+'1582735689351-37b08f4c5f9c'+W },
+  { name:'Campus Stationery Hub', location:'Near Library, Block A', lat:16.517, lon:80.515, zone:'Amaravathi_Central', vendorType:'STATIONARY', rating:4.4, deliveryTime:15, commissionRate:6, tags:['stationary','books','print'], imageUrl:IMG+'1497633762265-9d0213b5ec04'+W },
+  { name:'Campus Rentals', location:'Parking Lot, Block B', lat:16.516, lon:80.518, zone:'Amaravathi_Central', vendorType:'RENTAL', rating:4.5, deliveryTime:20, commissionRate:8, tags:['rental'], imageUrl:IMG+'1558618666-fcd25c85cd64'+W },
 ];
 
 // [name, price, description, category, isVeg, unsplashId, tags[]]
@@ -202,17 +202,9 @@ const MENU_MAP = [
   3,3,3,3,3,           // 5 Drinks -> Chai & Chill
 ];
 
-const USERS = [
-  { name:'Arjun Reddy', phone:'9876543210', password:'student123', email:'arjun@srmap.edu.in', hostelBlock:'Block A', roomNumber:'204', walletBalance:350, streakCount:5, totalOrders:12, completedOrders:11, role:'student', zenPoints:240, isElite:true, address:'Block A, Room 204, SRM AP', city:'Amaravathi', dietaryPreference:'None', badges:['First Order','Streak Master'] },
-  { name:'Priya Sharma', phone:'9876543211', password:'student123', email:'priya@srmap.edu.in', hostelBlock:'Block C', roomNumber:'112', walletBalance:150, streakCount:3, totalOrders:7, completedOrders:7, role:'student', zenPoints:140, isElite:false, address:'Block C, Room 112, SRM AP', city:'Amaravathi', dietaryPreference:'Veg', badges:['First Order','Veggie Lover'] },
-  { name:'Rahul Kumar', phone:'9876543212', password:'student123', email:'rahul@srmap.edu.in', hostelBlock:'Block B', roomNumber:'308', walletBalance:500, streakCount:8, totalOrders:20, completedOrders:19, role:'student', zenPoints:400, isElite:true, address:'Block B, Room 308, SRM AP', city:'Amaravathi', dietaryPreference:'None', badges:['First Order','Elite Member'] },
-  { name:'Admin Zenvy', phone:'9999999999', password:'admin123', email:'admin@zenvy.app', hostelBlock:null, roomNumber:null, walletBalance:0, streakCount:0, totalOrders:0, completedOrders:0, role:'admin', zenPoints:0, isElite:false, address:'Admin Office', city:'Amaravathi', dietaryPreference:'None', badges:[] },
-];
-
-const RIDERS = [
-  { name:'Vikram Singh', phone:'8765432100', password:'rider123', vehicleType:'Bike', vehicleNumber:'AP-07-AB-1234', bio:'Fast and reliable. 2 years experience.', emergencyContact:'8765432199', isOnline:true, totalEarnings:15400, zenPoints:310, averageRating:4.8, totalRatings:45, isApproved:true, photoUrl:'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&h=300&fit=crop' },
-  { name:'Ravi Teja', phone:'8765432101', password:'rider123', vehicleType:'Scooter', vehicleNumber:'AP-07-CD-5678', bio:'Friendly rider, always on time!', emergencyContact:'8765432198', isOnline:true, totalEarnings:8200, zenPoints:180, averageRating:4.6, totalRatings:28, isApproved:true, photoUrl:'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=300&h=300&fit=crop' },
-];
+// NOTE: No demo users, admins or riders are seeded. Real accounts come only from
+// verified sign-up (phone OTP / Firebase) and admin approval. Restaurant portal
+// passwords are never seeded either: the admin sets them from the dashboard.
 
 const VAULT = [
   { name:'Free Delivery Pass (3 Orders)', price:0, originalPrice:90, remainingCount:50, isActive:true, streakRequirement:3, imageUrl:IMG+'1556742049-0cfed4f6a45d'+W },
@@ -376,7 +368,7 @@ const PG_HOSTELS = [
 ];
 
 async function seedProduction(sequelize) {
-  const { Restaurant, MenuItem, User, DeliveryPartner, VaultItem, GlobalConfig, Coupon, CommunityPost, PGHostel, PGRoom } = sequelize.models;
+  const { Restaurant, MenuItem, User, VaultItem, GlobalConfig, PGHostel, PGRoom } = sequelize.models;
 
   console.log('🌱 [SEED] Non-destructive production seed starting...');
   // NO MORE destroy() calls — we use findOrCreate to preserve existing data
@@ -400,26 +392,16 @@ async function seedProduction(sequelize) {
     });
   }
 
-  const users = [];
-  for (const u of USERS) {
-    const [inst] = await User.findOrCreate({ where:{ phone:u.phone }, defaults:u });
-    users.push(inst);
-  }
-  for (const r of RIDERS) await DeliveryPartner.findOrCreate({ where:{ phone:r.phone }, defaults:r });
   for (const v of VAULT) await VaultItem.findOrCreate({ where: { name: v.name }, defaults: v });
   for (const c of CONFIGS) await GlobalConfig.findOrCreate({ where:{ key:c.key }, defaults:c });
 
-  if (users.length >= 2) {
-    await CommunityPost.findOrCreate({ where: { content: 'Brownie Sundae from Frozen Bliss is 🔥 must try!' }, defaults: { userId:users[0].id, userName:users[0].name, content:'Brownie Sundae from Frozen Bliss is 🔥 must try!', likes:14, expiresAt:new Date(Date.now()+48*3600000) }});
-    await CommunityPost.findOrCreate({ where: { content: 'Green Bowl quinoa bowl = best healthy option on campus 💪' }, defaults: { userId:users[1].id, userName:users[1].name, content:'Green Bowl quinoa bowl = best healthy option on campus 💪', likes:9, expiresAt:new Date(Date.now()+48*3600000) }});
-  }
-
   // ── Seed PG Hostels & Rooms ────────────────────────────────────
   if (PGHostel && PGRoom) {
-    const adminUser = users.find(u => u.role === 'admin') || users[0];
+    // PG listings need an owner: use a real admin account if one exists, never a seeded one.
+    const adminUser = User ? await User.findOne({ where: { role: 'admin' }, order: [['createdAt', 'ASC']] }) : null;
     const ownerId = adminUser ? adminUser.id : null;
 
-    for (const pgData of PG_HOSTELS) {
+    for (const pgData of (ownerId ? PG_HOSTELS : [])) {
       const { rooms, ...hostelFields } = pgData;
       const [hostel, created] = await PGHostel.findOrCreate({
         where: { name: pgData.name },
@@ -438,7 +420,7 @@ async function seedProduction(sequelize) {
         }
       }
     }
-    console.log(`🏠 [SEED] Seeded ${PG_HOSTELS.length} PG Hostels with rooms.`);
+    console.log(ownerId ? `🏠 [SEED] Seeded ${PG_HOSTELS.length} PG Hostels with rooms.` : "🏠 [SEED] Skipped PG seeding: no admin account exists yet.");
   }
 
   console.log(`✅ [SEED] Done! ${MENUS.length} items across ${RESTS.length} restaurants + ${PG_HOSTELS.length} PGs (non-destructive).`);

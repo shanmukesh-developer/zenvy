@@ -1,5 +1,3 @@
-import { Platform } from 'react-native';
-import Constants from 'expo-constants';
 
 // Production Cloud API URL (Render)
 export const PROD_API_URL = 'https://hostelbites-backend-jwmt.onrender.com';
@@ -8,25 +6,11 @@ export const PROD_API_URL = 'https://hostelbites-backend-jwmt.onrender.com';
 export const DEV_PORT = 8080;
 export const LOCAL_API_URL = 'http://localhost:8080';
 
-// In local development, connect directly to local backend for zero-latency, real database testing
+// The app always talks to the one Zenvy backend on Render. To point a dev build at a local
+// backend, set EXPO_PUBLIC_API_URL (e.g. http://192.168.1.5:8080) — never a silent switch.
 const getApiUrl = () => {
-  if (Platform.OS === 'web') {
-    if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
-      return LOCAL_API_URL;
-    }
-    return PROD_API_URL;
-  }
-  // On mobile device in dev mode:
-  if (__DEV__) {
-    const hostUri = Constants.expoConfig?.hostUri || (Constants as any).manifest?.debuggerHost;
-    if (hostUri) {
-      const ip = hostUri.split(':')[0];
-      if (ip && ip !== 'localhost' && ip !== '127.0.0.1') {
-        return `http://${ip}:${DEV_PORT}`;
-      }
-    }
-    return LOCAL_API_URL; // Works seamlessly with adb reverse tcp:8080 tcp:8080
-  }
+  const override = (process.env.EXPO_PUBLIC_API_URL || '').trim().replace(/\/$/, '');
+  if (override && /^https?:\/\//.test(override)) return override;
   return PROD_API_URL;
 };
 
@@ -47,7 +31,14 @@ export const ENDPOINTS = {
   sendOtp: `${API_URL}/api/users/send-otp`,
   verifyOtp: `${API_URL}/api/users/verify-otp`,
   profile: `${API_URL}/api/users/profile`,
-  forgotPassword: `${API_URL}/api/users/forgot-password`,
+  resetPassword: `${API_URL}/api/users/reset-password`,
+  // Kept for older imports: the backend route is /reset-password (there is no /forgot-password)
+  forgotPassword: `${API_URL}/api/users/reset-password`,
+  googleLogin: `${API_URL}/api/users/google-login`,
+  googleComplete: `${API_URL}/api/users/google-complete`,
+  logout: `${API_URL}/api/users/logout`,
+  fcmToken: `${API_URL}/api/users/fcm-token`,
+  fcmTokenRemove: `${API_URL}/api/users/fcm-token/remove`,
 
   // Restaurants
   restaurants: `${API_URL}/api/users/restaurants`,

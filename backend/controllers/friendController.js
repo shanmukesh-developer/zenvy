@@ -39,18 +39,15 @@ const sendPushToUser = async (userId, title, body, data = {}) => {
     const User = getUserModel();
     if (!User) return;
     const user = await User.findByPk(userId);
-    if (!user || !user.fcmTokens) return;
+    if (!user) return;
 
-    let tokenList = user.fcmTokens;
+    let tokenList = user.fcmTokens || [];
     if (typeof tokenList === 'string') {
       try { tokenList = JSON.parse(tokenList); } catch { tokenList = [tokenList]; }
     }
-    if (Array.isArray(tokenList)) {
-      const tokens = tokenList.map(t => typeof t === 'string' ? t : t?.token).filter(Boolean);
-      if (tokens.length > 0) {
-        await sendPushToTokens(tokens, title, body, data);
-      }
-    }
+    const tokens = Array.isArray(tokenList) ? tokenList.map(t => typeof t === 'string' ? t : t?.token).filter(Boolean) : [];
+    // Also saved in the user's in-app notification list, even without a device token.
+    await sendPushToTokens(tokens, title, body, data, { recipients: [user.id] });
   } catch (err) {
     console.error(`[PUSH_ERROR] Failed sending user push to ${userId}:`, err.message);
   }
@@ -67,17 +64,25 @@ exports.searchContacts = async (req, res) => {
 
     let matchedUsers = [];
 
-    if (query && query.trim().length > 0) {
-      const searchStr = query.trim();
+    let exactPhone = null;
+    if (typeof query === 'string' && query.trim().length > 0) {
+      // LIKE wildcards in the query are literal characters, not patterns.
+      const searchStr = query.trim().slice(0, 40).replace(/[\\%_]/g, (c) => `\\${c}`);
+      if (searchStr.length < 2) return res.json([]);
       const isPostgres = User.sequelize.options.dialect === 'postgres';
       const matchOp = isPostgres ? Op.iLike : Op.like;
+      // Phone lookup only by the FULL number (partial digits would let anyone harvest numbers).
+      const digits = query.replace(/\D/g, '');
+      const normalized = digits.length >= 10 ? normalizePhone(digits) : null;
+      if (normalized && /^\d{10}$/.test(normalized)) exactPhone = normalized;
 
       matchedUsers = await User.findAll({
         where: {
           id: { [Op.ne]: req.user.id }, // Exclude self
+          role: 'student',
           [Op.or]: [
             { name: { [matchOp]: `%${searchStr}%` } },
-            { phone: { [Op.like]: `%${searchStr}%` } },
+            ...(exactPhone ? [{ phone: exactPhone }] : []),
             { friendCode: { [matchOp]: `%${searchStr}%` } }
           ]
         },
@@ -115,10 +120,13 @@ exports.searchContacts = async (req, res) => {
         }
       });
 
+      // Full number only for accepted friends, synced contacts (the caller already has it)
+      // or an exact-number search; everyone else sees the last 4 digits.
+      const showPhone = !!(friendship && friendship.status === 'accepted') || !query || (exactPhone && matchedUser.phone === exactPhone);
       results.push({
         id: matchedUser.id,
         name: matchedUser.name,
-        phone: matchedUser.phone,
+        phone: showPhone ? matchedUser.phone : (matchedUser.phone ? `•••••• ${String(matchedUser.phone).slice(-4)}` : null),
         friendCode: matchedUser.friendCode,
         profileImage: matchedUser.profileImage,
         friendshipStatus: friendship ? friendship.status : 'none',
@@ -207,7 +215,7 @@ exports.sendFriendRequest = async (req, res) => {
     // Socket emission & push notification to recipient
     const io = req.app.get('io');
     if (io) {
-      io.to(`user-${recipientId}`).emit('incoming_friend_request', {
+      io.to(`user_${recipientId}`).emit('incoming_friend_request', {
         friendshipId: friendship.id,
         vibe: friendship.vibe,
         icebreaker: friendship.icebreaker,
@@ -328,7 +336,7 @@ exports.acceptFriendRequest = async (req, res) => {
     // Trigger alerts to requester
     const io = req.app.get('io');
     if (io) {
-      io.to(`user-${friendship.requesterId}`).emit('friend_request_accepted', {
+      io.to(`user_${friendship.requesterId}`).emit('friend_request_accepted', {
         friendshipId: friendship.id,
         friendName: req.user.name,
         vibe: friendship.vibe,
@@ -486,7 +494,7 @@ exports.updateFriendshipTheme = async (req, res) => {
     const io = req.app.get('io');
     if (io) {
       const otherUserId = friendship.requesterId === req.user.id ? friendship.recipientId : friendship.requesterId;
-      io.to(`user-${otherUserId}`).emit('friendship_theme_updated', { friendshipId: friendship.id, theme });
+      io.to(`user_${otherUserId}`).emit('friendship_theme_updated', { friendshipId: friendship.id, theme });
     }
 
     res.json({ message: 'Theme updated.', theme });
@@ -499,9 +507,12 @@ exports.updateFriendshipTheme = async (req, res) => {
 // 7. Send Encrypted Message
 exports.sendFriendMessage = async (req, res) => {
   try {
-    let { conversationId, text, friendshipId } = req.body;
-    if (!text) {
-      return res.status(400).json({ message: 'text is required.' });
+    let { conversationId, text, friendshipId } = req.body || {};
+    if (typeof text !== 'string' || !text.trim()) {
+      return res.status(400).json({ message: 'Type a message first.' });
+    }
+    if (text.length > 2000) {
+      return res.status(400).json({ message: 'Messages can be at most 2000 characters.' });
     }
 
     const Conversation = getConversationModel();
@@ -517,7 +528,9 @@ exports.sendFriendMessage = async (req, res) => {
     // Fallback: If conversationId is missing or null, resolve/create conversation via friendshipId
     if (!conversation && friendshipId) {
       const friendship = await Friendship.findByPk(friendshipId);
-      if (friendship && friendship.status === 'accepted') {
+      // Only one of the two friends may open / use their chat.
+      const isMember = friendship && (friendship.requesterId === req.user.id || friendship.recipientId === req.user.id);
+      if (friendship && isMember && friendship.status === 'accepted') {
         const participants = [friendship.requesterId, friendship.recipientId];
         // Find or create conversation
         conversation = await Conversation.findOne({
@@ -540,6 +553,27 @@ exports.sendFriendMessage = async (req, res) => {
 
     if (!conversation) {
       return res.status(400).json({ message: 'Valid conversationId or friendshipId is required.' });
+    }
+    conversationId = conversation.id;
+
+    // Sender must be in the conversation (no posting into other people's chats by id).
+    const members = Array.isArray(conversation.participants) ? conversation.participants : [];
+    if (!members.includes(req.user.id)) {
+      return res.status(403).json({ message: 'Not a participant of this conversation.' });
+    }
+    // 1:1 chats need a live (accepted, not blocked) friendship.
+    if (!conversation.isGroup) {
+      const peerId = members.find(p => p !== req.user.id);
+      const live = peerId && await Friendship.findOne({
+        where: {
+          status: 'accepted',
+          [Op.or]: [
+            { requesterId: req.user.id, recipientId: peerId },
+            { requesterId: peerId, recipientId: req.user.id }
+          ]
+        }
+      });
+      if (!live) return res.status(403).json({ message: 'You can only message people in your circle.' });
     }
 
     // Encrypt cleartext
@@ -623,8 +657,8 @@ exports.getFriendMessages = async (req, res) => {
     const messages = await Message.findAll({
       where: { conversationId },
       order: [['createdAt', 'DESC']], // Fetch latest first for pagination
-      limit: parseInt(limit, 10),
-      offset: parseInt(offset, 10)
+      limit: Math.min(100, Math.max(1, parseInt(limit, 10) || 50)),
+      offset: Math.max(0, parseInt(offset, 10) || 0)
     });
 
     const decrypted = messages.map(m => ({
@@ -646,8 +680,11 @@ exports.updateFriendshipNickname = async (req, res) => {
 
     const friendship = await Friendship.findByPk(req.params.id);
     if (!friendship) return res.status(404).json({ message: 'Friendship not found' });
+    if (friendship.requesterId !== req.user.id && friendship.recipientId !== req.user.id) {
+      return res.status(403).json({ message: 'Not authorized.' });
+    }
 
-    const nickname = (req.body.nickname || '').trim();
+    const nickname = String((req.body || {}).nickname || '').replace(/[<>]/g, '').trim().slice(0, 40);
     friendship.nickname = nickname || null;
     await friendship.save();
 
@@ -703,7 +740,7 @@ exports.declineFriendRequest = async (req, res) => {
     // Notify the requester via socket
     const io = req.app.get('io');
     if (io) {
-      io.to(`user-${friendship.requesterId}`).emit('friend_request_declined', {
+      io.to(`user_${friendship.requesterId}`).emit('friend_request_declined', {
         friendshipId,
         declinedBy: { id: req.user.id, name: req.user.name }
       });
@@ -825,6 +862,8 @@ exports.getBlockedUsers = async (req, res) => {
 };
 
 // 10. Send Orbit Nudge
+const NUDGE_DAILY_LIMIT = 3;
+const nudgeLog = new Map(); // "<friendshipId>:<senderId>" -> [timestamps]
 exports.sendFriendNudge = async (req, res) => {
   try {
     const { friendshipId } = req.body;
@@ -835,13 +874,27 @@ exports.sendFriendNudge = async (req, res) => {
 
     const friendship = await Friendship.findByPk(friendshipId);
     if (!friendship) return res.status(404).json({ message: 'Friendship not found.' });
+    // Only one of the two friends, on an accepted friendship, can nudge.
+    if (![friendship.requesterId, friendship.recipientId].includes(req.user.id) || friendship.status !== 'accepted') {
+      return res.status(403).json({ message: 'You can only nudge your friends.' });
+    }
+
+    // At most NUDGE_DAILY_LIMIT nudges per friend per day (keeps pushes friendly, not spammy).
+    const nudgeKey = `${friendshipId}:${req.user.id}`;
+    const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+    const recentNudges = (nudgeLog.get(nudgeKey) || []).filter((t) => t > dayAgo);
+    if (recentNudges.length >= NUDGE_DAILY_LIMIT) {
+      return res.status(429).json({ message: 'You have nudged this friend enough for today. Try again tomorrow!' });
+    }
+    recentNudges.push(Date.now());
+    nudgeLog.set(nudgeKey, recentNudges);
 
     const otherUserId = friendship.requesterId === req.user.id ? friendship.recipientId : friendship.requesterId;
     await updateFriendshipStreak(friendship);
 
     const io = req.app.get('io');
     if (io) {
-      io.to(`user-${otherUserId}`).emit('friend_nudge', {
+      io.to(`user_${otherUserId}`).emit('friend_nudge', {
         friendshipId,
         senderId: req.user.id,
         senderName: req.user.name,
@@ -900,7 +953,7 @@ exports.updateUserStatus = async (req, res) => {
         statusEmoji: user.statusEmoji
       };
       friendIds.forEach(friendId => {
-        io.to(`user-${friendId}`).emit('friend_status_updated', payload);
+        io.to(`user_${friendId}`).emit('friend_status_updated', payload);
       });
     }
 
@@ -961,11 +1014,9 @@ exports.markStatusAsSeen = async (req, res) => {
       // Broadcast status change (cleared) via socket
       const io = req.app.get('io');
       if (io) {
-        io.emit('friend_status_updated', {
-          userId: friendId,
-          statusText: null,
-          statusEmoji: null
-        });
+        // Only the friends who can see this status (and the owner) are told it was cleared.
+        const clearedPayload = { userId: friendId, statusText: null, statusEmoji: null };
+        for (const id of [friendId, ...friendIds]) io.to('user_' + id).emit('friend_status_updated', clearedPayload);
       }
     }
 

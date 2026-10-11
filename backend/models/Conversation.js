@@ -41,6 +41,48 @@ const initConversationModel = (sequelize) => {
     callParticipantCount: {
       type: DataTypes.INTEGER,
       defaultValue: 0 // Hard limit to 20 inside socket logic
+    },
+    type: {
+      type: DataTypes.STRING(20),
+      defaultValue: 'dm' // 'dm', 'class', 'club', 'ride', 'secret'
+    },
+    groupAvatar: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+    description: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+    joinCode: {
+      type: DataTypes.STRING(10),
+      allowNull: true
+    },
+    adminIds: {
+      type: DataTypes.TEXT,
+      defaultValue: '[]',
+      get() {
+        const val = this.getDataValue('adminIds');
+        try { return val ? JSON.parse(val) : []; } catch { return []; }
+      },
+      set(val) {
+        this.setDataValue('adminIds', JSON.stringify(val || []));
+      }
+    },
+    pinnedMessageIds: {
+      type: DataTypes.TEXT,
+      defaultValue: '[]',
+      get() {
+        const val = this.getDataValue('pinnedMessageIds');
+        try { return val ? JSON.parse(val) : []; } catch { return []; }
+      },
+      set(val) {
+        this.setDataValue('pinnedMessageIds', JSON.stringify(val || []));
+      }
+    },
+    onlyAdminsCanSend: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
     }
   }, { timestamps: true });
 

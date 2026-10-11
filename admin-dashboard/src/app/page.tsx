@@ -2,16 +2,14 @@
 import { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { useAdminSocket } from '@/components/AdminSocketProvider';
 import dynamic from 'next/dynamic';
-import { useRouter } from 'next/navigation';
 import { useAdminAuth } from '@/utils/useAdminAuth';
 import PaymentVerificationModal from '@/components/PaymentVerificationModal';
-import Image from 'next/image';
+import { API_URL } from '@/lib/config';
+import { adminRequest as apiRequest } from '@/lib/api';
 
 const LiveFleetMap = dynamic(() => import('@/components/LiveFleetMap'), { ssr: false });
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-jwmt.onrender.com';
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || API_URL;
-
+// Route reference points drawn on the fleet map (real places on the Mangalagiri → SRM AP route).
 const CHECKPOINTS = [
   { name: 'Mangalagiri Jn', lat: 16.4422, lng: 80.5604 },
   { name: 'Neerukonda', lat: 16.4715, lng: 80.5055 },
@@ -20,26 +18,43 @@ const CHECKPOINTS = [
   { name: 'Hostel Sector', lat: 16.4618, lng: 80.5068 }
 ];
 
+const ORDER_FEED_LIMIT = 40;
+
+/** fetch against the one backend; throws an Error carrying the server's friendly `message`. */
+const errMsg = (err: unknown, fallback: string) => (err instanceof Error && err.message ? err.message : fallback);
+
+const getImageUrl = (url?: string | null) => {
+  if (!url) return '';
+  if (url.startsWith('http') || url.startsWith('data:')) return url;
+  return `${API_URL}${url.startsWith('/') ? '' : '/'}${url}`;
+};
+
+const toNumber = (v: unknown) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
+
 // ─── Types ───────────────────────────────────────────────────
 interface AdminStat {
   label: string;
   value: string;
-  growth: string;
-  trend: 'up' | 'down' | 'neutral';
+  hint: string;
 }
 
 interface LiveOrder {
   id: string;
+  kind: 'order' | 'basket';
   customer: string;
   location: string;
   status: string;
   price: number;
-  restaurant?: string;
+  restaurant: string;
   timestamp: Date;
   paymentMethod: string;
   upiStatus?: string;
   upiUTR?: string;
   upiScreenshot?: string;
+  riderAssigned: boolean;
   deliveryPartnerName?: string;
   deliveryPartnerPhoto?: string;
 }
@@ -64,95 +79,150 @@ interface OperationalEvent {
   timestamp: Date;
 }
 
+interface InterceptedChat {
+  orderId: string;
+  sender: string;
+  senderRole: string;
+  message: string;
+  timestamp: Date;
+}
+
+const mapOrder = (o: any): LiveOrder => ({
+  id: String(o.id || o._id),
+  kind: 'order',
+  customer: o.user?.name || 'Customer',
+  location: o.hostelGateDelivery ? 'Hostel gate' : 'Room delivery',
+  status: String(o.status || 'Pending'),
+  price: toNumber(o.finalPrice ?? o.totalPrice),
+  restaurant: o.restaurant?.name || 'Store',
+  timestamp: new Date(o.createdAt || Date.now()),
+  paymentMethod: String(o.paymentMethod || 'COD'),
+  upiStatus: o.upiStatus ? String(o.upiStatus) : undefined,
+  upiUTR: o.upiUTR || undefined,
+  upiScreenshot: o.upiScreenshot || undefined,
+  riderAssigned: !!(o.deliveryPartnerId || o.deliveryPartner),
+  deliveryPartnerName: o.deliveryPartner?.name,
+  deliveryPartnerPhoto: o.deliveryPartner?.photoUrl,
+});
+
+const mapBasket = (b: any): LiveOrder => ({
+  id: String(b.id || b._id),
+  kind: 'basket',
+  customer: b.user?.name || 'Customer',
+  location: b.deliveryAddress || 'Hostel delivery',
+  status: String(b.status || 'Pending'),
+  price: toNumber(b.actualTotal ?? b.estimatedTotal) + toNumber(b.shoppingFee) + toNumber(b.deliveryFee),
+  restaurant: '🛒 Mega Basket',
+  timestamp: new Date(b.createdAt || Date.now()),
+  paymentMethod: String(b.paymentMethod || 'COD'),
+  riderAssigned: !!(b.deliveryPartnerId || b.deliveryPartner),
+  deliveryPartnerName: b.deliveryPartner?.name,
+  deliveryPartnerPhoto: b.deliveryPartner?.photoUrl,
+});
+
+// Legacy UPI orders (before COD + Wallet only) can still be waiting for a manual check.
+const needsUpiCheck = (o: LiveOrder) => o.kind === 'order' && o.paymentMethod === 'UPI' && o.upiStatus === 'Pending';
+
+const shortId = (id?: string) => (id ? `#${String(id).slice(-6).toUpperCase()}` : '');
+
 // ─── Memoized Components for Performance ───────────────────
-const OrderItem = memo(({ order, onVerify }: { order: LiveOrder, onVerify: (o: LiveOrder) => void }) => (
-  <div 
-    onClick={() => { if (order.paymentMethod === 'UPI' && order.upiStatus === 'Pending') onVerify(order); }}
-    className={`group p-4 rounded-3xl bg-white/[0.015] border border-white/5 hover:border-white/10 transition-all duration-300 ${order.paymentMethod === 'UPI' && order.upiStatus === 'Pending' ? 'cursor-pointer hover:bg-amber-500/5' : ''}`}
-  >
-    <div className="flex justify-between items-start mb-2">
-       <div>
-          <p className="text-[11px] font-black text-blue-500 uppercase tracking-widest mb-0.5">{order.restaurant}</p>
-           <p className="text-sm font-bold text-white group-hover:text-blue-400 transition-colors flex items-center gap-2">
-             {order.customer}
-             <span className="text-[9px] text-gray-600 font-black opacity-50 font-mono tracking-tighter">#{order.id.slice(-6).toUpperCase()}</span>
-           </p>
-       </div>
-        <div className="flex gap-2">
-           {order.paymentMethod === 'UPI' && order.upiStatus === 'Pending' && (
-             <span className="text-[7px] font-black px-1.5 py-0.5 bg-amber-500 text-black rounded animate-pulse">UPI_PENDING</span>
-           )}
-           <span className={`text-[10px] font-black px-2 py-1 rounded-lg uppercase tracking-wider ${
-             order.status === 'Cancelled' ? 'bg-red-500/10 text-red-500' :
-             order.status === 'Delivered' ? 'bg-emerald-500/10 text-emerald-500' :
-             'bg-blue-500/10 text-blue-500'
-           }`}>
-             {order.status}
-           </span>
+const OrderItem = memo(({ order, onVerify }: { order: LiveOrder, onVerify: (o: LiveOrder) => void }) => {
+  const upi = needsUpiCheck(order);
+  return (
+    <div
+      onClick={() => { if (upi) onVerify(order); }}
+      className={`group p-4 rounded-3xl bg-white/[0.015] border border-white/5 hover:border-white/10 transition-all duration-300 ${upi ? 'cursor-pointer hover:bg-amber-500/5' : ''}`}
+    >
+      <div className="flex justify-between items-start mb-2 gap-2">
+        <div className="min-w-0">
+          <p className="text-[11px] font-black text-blue-500 uppercase tracking-widest mb-0.5 truncate">{order.restaurant}</p>
+          <p className="text-sm font-bold text-white group-hover:text-blue-400 transition-colors flex items-center gap-2">
+            <span className="truncate">{order.customer}</span>
+            <span className="text-[9px] text-gray-600 font-black opacity-50 font-mono tracking-tighter">{shortId(order.id)}</span>
+          </p>
         </div>
-    </div>
-    <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/[0.03]">
-        <div className="flex items-center gap-2">
+        <div className="flex gap-2 shrink-0 items-start">
+          {upi && (
+            <span className="text-[8px] font-black px-1.5 py-0.5 bg-amber-500 text-black rounded" title="Legacy UPI order: click to verify">VERIFY UPI</span>
+          )}
+          <span className={`text-[10px] font-black px-2 py-1 rounded-lg uppercase tracking-wider ${
+            order.status === 'Cancelled' ? 'bg-red-500/10 text-red-500' :
+            order.status === 'Delivered' ? 'bg-emerald-500/10 text-emerald-500' :
+            'bg-blue-500/10 text-blue-500'
+          }`}>
+            {order.status}
+          </span>
+        </div>
+      </div>
+      <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/[0.03] gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           {order.deliveryPartnerName ? (
             <>
-               <div className="w-5 h-5 rounded-full overflow-hidden border border-white/10 bg-slate-800 flex items-center justify-center">
-                  {order.deliveryPartnerPhoto ? (
-                     <Image src={order.deliveryPartnerPhoto} width={20} height={20} alt="Node" className="object-cover" />
-                  ) : '👤'}
-               </div>
-               <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest truncate max-w-[80px]">
-                  {order.deliveryPartnerName}
-               </span>
+              <div className="w-5 h-5 rounded-full overflow-hidden border border-white/10 bg-slate-800 flex items-center justify-center text-[10px]">
+                {order.deliveryPartnerPhoto ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={getImageUrl(order.deliveryPartnerPhoto)} width={20} height={20} alt="" className="object-cover w-5 h-5" />
+                ) : '👤'}
+              </div>
+              <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest truncate max-w-[100px]">
+                {order.deliveryPartnerName}
+              </span>
             </>
+          ) : order.riderAssigned ? (
+            <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest">Rider assigned</span>
+          ) : ['Delivered', 'Cancelled'].includes(order.status) ? (
+            <span className="text-[10px] font-black text-gray-600 uppercase tracking-widest">{order.paymentMethod}</span>
           ) : (
-            <div className="flex items-center gap-2 text-gray-600 group-hover:text-blue-500/50 transition-colors">
-               <div className="w-5 h-5 rounded-full border border-white/5 bg-white/5 flex items-center justify-center text-[10px] animate-pulse">?</div>
-               <span className="text-[10px] font-black uppercase tracking-widest">Awaiting Dispatch</span>
-            </div>
+            <span className="text-[10px] font-black text-gray-600 uppercase tracking-widest">Awaiting rider</span>
           )}
         </div>
-       <div className="text-right">
-         <span className="text-[12px] text-gray-500 font-bold uppercase tracking-wide block">{order.location}</span>
-         <span className="text-xs text-white font-black tracking-tighter">₹{order.price.toFixed(0)}</span>
-       </div>
+        <div className="text-right shrink-0">
+          <span className="text-[11px] text-gray-500 font-bold block truncate max-w-[140px]">{order.location}</span>
+          <span className="text-xs text-white font-black tracking-tighter">₹{order.price.toFixed(0)} · {order.paymentMethod}</span>
+        </div>
+      </div>
     </div>
-  </div>
-));
+  );
+});
 OrderItem.displayName = 'OrderItem';
 
 const RiderStatusItem = memo(({ rider }: { rider: RiderPosition }) => (
   <div className="flex items-center gap-4 p-3 bg-white/[0.02] border border-white/5 rounded-2xl">
     <div className={`w-2 h-2 rounded-full ${rider.isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-gray-700'}`} />
-    <div className="flex-1">
-      <p className="text-[11px] font-black text-white uppercase tracking-tight">{rider.riderName}</p>
-      <p className="text-[8px] text-gray-500 font-bold uppercase tracking-widest">
-        {rider.isOnline ? `At ${rider.currentCheckpoint || 'Hub'}` : 'Disconnected'}
+    <div className="flex-1 min-w-0">
+      <p className="text-[11px] font-black text-white uppercase tracking-tight truncate">{rider.riderName}</p>
+      <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">
+        {rider.isOnline ? (rider.currentCheckpoint ? `Near ${rider.currentCheckpoint}` : 'Online') : 'Offline'}
       </p>
     </div>
     <div className="text-right">
-       <span className="text-[9px] font-black text-blue-500">{rider.activeOrderCount || 0} Tasks</span>
+      <span className="text-[9px] font-black text-blue-500">{rider.activeOrderCount || 0} active</span>
     </div>
   </div>
 ));
 RiderStatusItem.displayName = 'RiderStatusItem';
 
 const EventItem = memo(({ event, onResolve }: { event: OperationalEvent, onResolve: (id: string) => void }) => (
-  <div className={`p-4 rounded-3xl animate-pulse flex items-center gap-4 ${event.type === 'SOS' ? 'bg-red-600/20 border border-red-600' : 'bg-amber-600/20 border border-amber-600'}`}>
+  <div className={`p-4 rounded-3xl flex items-center gap-4 ${event.type === 'SOS' ? 'bg-red-600/20 border border-red-600 animate-pulse' : 'bg-amber-600/20 border border-amber-600'}`}>
     <div className="text-2xl">{event.type === 'SOS' ? '🚨' : '⚠️'}</div>
-    <div className="flex-1">
-      <p className="text-[12px] font-black uppercase text-white tracking-widest">{event.type} Alert: {event.senderRole}</p>
-      <p className="text-xs font-black text-white">{event.issueType || event.details}</p>
-      {event.orderId && <p className="text-[10px] text-white/50 font-black uppercase mt-1 tracking-tighter">Order ID: <span className="text-[var(--zenvy-gold)]">#{event.orderId.slice(-6).toUpperCase()}</span></p>}
+    <div className="flex-1 min-w-0">
+      <p className="text-[12px] font-black uppercase text-white tracking-widest">
+        {event.type === 'SOS' ? 'SOS' : 'Issue'} · {event.senderRole}{event.senderName ? ` (${event.senderName})` : ''}
+      </p>
+      <p className="text-xs font-black text-white break-words">{event.issueType || event.details}</p>
+      {event.issueType && event.details && <p className="text-[11px] text-white/70 break-words">{event.details}</p>}
+      {event.orderId && <p className="text-[10px] text-white/50 font-black uppercase mt-1 tracking-tighter">Order <span className="text-[var(--zenvy-gold)]">{shortId(event.orderId)}</span></p>}
     </div>
     <div className="flex flex-col items-end gap-2">
       <span className="text-[10px] font-black text-white opacity-40">
-        {new Date(event.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        {event.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
       </span>
-      <button 
+      <button
         onClick={() => onResolve(event.id)}
         className="text-[8px] font-black text-white/60 uppercase tracking-widest hover:text-white border border-white/10 px-2 py-1 rounded bg-white/5"
+        title="Hide from this screen"
       >
-        Resolve
+        Dismiss
       </button>
     </div>
   </div>
@@ -161,105 +231,86 @@ EventItem.displayName = 'EventItem';
 
 
 export default function AdminHome() {
-  const router = useRouter();
-  const isAuthed = useAdminAuth();
+  const { isAuthed } = useAdminAuth();
   const { socket, isConnected } = useAdminSocket();
 
-  const [stats, setStats] = useState<AdminStat[]>([
-    { label: 'Platform Revenue', value: '₹0', growth: '+0%', trend: 'neutral' },
-    { label: 'Order Activity', value: '0', growth: '+0%', trend: 'neutral' },
-    { label: 'Active Fleet', value: '0', growth: 'Initializing', trend: 'neutral' },
-    { label: 'Zenvy Commission', value: '₹0', growth: 'Real-time', trend: 'up' },
-  ]);
+  const [stats, setStats] = useState<AdminStat[] | null>(null);
+  const [statsError, setStatsError] = useState<string | null>(null);
 
   const [liveOrders, setLiveOrders] = useState<LiveOrder[]>([]);
+  const [ordersError, setOrdersError] = useState<string | null>(null);
   const [riders, setRiders] = useState<Record<string, RiderPosition>>({});
   const [operationalEvents, setOperationalEvents] = useState<OperationalEvent[]>([]);
-  const [interceptedChats, setInterceptedChats] = useState<{orderId: string, sender: string, senderRole: string, message: string, timestamp: Date}[]>([]);
+  const [interceptedChats, setInterceptedChats] = useState<InterceptedChat[]>([]);
   const [loading, setLoading] = useState(true);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
 
   const [megaMsg, setMegaMsg] = useState('');
   const [megaType, setMegaType] = useState<'info' | 'warning' | 'promo' | 'emergency'>('info');
   const [broadcasting, setBroadcasting] = useState(false);
+  const [batchRunning, setBatchRunning] = useState(false);
   const [selectedUPIOrder, setSelectedUPIOrder] = useState<LiveOrder | null>(null);
-  const [stormMode, setStormMode] = useState(false);
 
   const fetchStats = useCallback(async () => {
     try {
-      const userData = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') || '{}') : {};
-      const token = userData.token || '';
-      const res = await fetch(`${API_URL}/api/admin/stats?t=${Date.now()}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-        credentials: 'include', cache: 'no-store'
-      });
-      if (!res.ok) return;
-      const data = await res.json();
+      const data = await apiRequest<any>('/api/admin/stats');
       setStats([
-        { label: 'Platform Revenue', value: data.revenue || '₹0', growth: 'Delivered', trend: 'up' },
-        { label: 'Active Pipeline', value: data.activeRevenue || '₹0', growth: `${data.activeOrders || 0} Awaiting`, trend: 'up' },
-        { label: 'Active Fleet', value: data.activeFleet || '0', growth: 'Nodes Online', trend: 'neutral' },
-        { label: 'Zenvy Commission', value: data.commission || '₹0', growth: 'Operational Fee', trend: 'up' },
-        { label: 'Local Vendors', value: data.localVendorCount || '0', growth: '🏪 CampusBites', trend: 'up' },
+        { label: 'Delivered Revenue', value: data?.revenue || '₹0', hint: 'All delivered orders' },
+        { label: 'Active Pipeline', value: data?.activeRevenue || '₹0', hint: `${data?.activeOrders || 0} open orders` },
+        { label: 'Approved Riders', value: data?.activeFleet || '0', hint: 'Fleet size' },
+        { label: 'Commission', value: data?.commission || '₹0', hint: 'Estimate at 10%' },
+        { label: 'Local Vendors', value: data?.localVendorCount || '0', hint: 'Active CampusBites stalls' },
       ]);
-    } catch (err) { console.error('[STATS_FETCH_ERROR]', err); }
+      setStatsError(null);
+    } catch (err) {
+      setStatsError(errMsg(err, 'Could not load dashboard numbers.'));
+    }
   }, []);
 
   const fetchOrders = useCallback(async () => {
     try {
-      const userData = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') || '{}') : {};
-      const token = userData.token || '';
-      
-      const [ordersRes, basketsRes] = await Promise.all([
-        fetch(`${API_URL}/api/orders?t=${Date.now()}`, { headers: { 'Authorization': `Bearer ${token}` }, credentials: 'include', cache: 'no-store' }),
-        fetch(`${API_URL}/api/mega-basket/admin/all?t=${Date.now()}`, { headers: { 'Authorization': `Bearer ${token}` }, credentials: 'include', cache: 'no-store' }).catch(() => null)
+      const [ordersData, basketsData] = await Promise.all([
+        apiRequest<{ orders?: any[] }>(`/api/orders?limit=${ORDER_FEED_LIMIT}`),
+        apiRequest<any[]>('/api/mega-basket/admin/all').catch(() => [] as any[]),
       ]);
-
-      const data = await ordersRes.json();
-      let formatted = [];
-      if (ordersRes.ok) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        formatted = data.map((o: any) => ({
-            id: String(o._id || o.id),
-            customer: o.userId?.name || 'Student',
-            location: (o.hostelGateDelivery) ? 'Hostel Gate' : 'Room Delivery',
-            status: String(o.status),
-            price: Number(o.finalPrice || o.totalPrice),
-            restaurant: o.restaurant?.name || 'Zenvy Elite',
-            timestamp: new Date(String(o.createdAt)),
-            paymentMethod: String(o.paymentMethod),
-            upiStatus: String(o.upiStatus),
-            upiUTR: String(o.upiUTR),
-            upiScreenshot: String(o.upiScreenshot),
-            deliveryPartnerName: o.deliveryPartner?.name,
-            deliveryPartnerPhoto: o.deliveryPartner?.photoUrl
-        }));
-      }
-
-      if (basketsRes && basketsRes.ok) {
-        const basketsData = await basketsRes.json();
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const formattedBaskets = basketsData.map((b: any) => ({
-            id: String(b.id),
-            customer: b.user?.name || 'Student',
-            location: b.deliveryAddress || 'Hostel Delivery',
-            status: String(b.status),
-            price: Number((b.actualTotal || b.estimatedTotal) + b.shoppingFee + b.deliveryFee),
-            restaurant: '🛒 Mega Basket',
-            timestamp: new Date(String(b.createdAt)),
-            paymentMethod: String(b.paymentMethod),
-            upiStatus: String(b.paymentStatus === 'Completed' ? 'Verified' : 'Pending'),
-            upiUTR: String(b.upiUTR || ''),
-            upiScreenshot: '',
-            deliveryPartnerName: b.deliveryPartner?.name,
-            deliveryPartnerPhoto: b.deliveryPartner?.photoUrl
-        }));
-        formatted = [...formatted, ...formattedBaskets].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-      }
-
-      setLiveOrders(formatted);
-    } catch {
+      const orders = (Array.isArray(ordersData?.orders) ? ordersData.orders : []).map(mapOrder);
+      const baskets = (Array.isArray(basketsData) ? basketsData : []).map(mapBasket);
+      const merged = [...orders, ...baskets]
+        .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+        .slice(0, ORDER_FEED_LIMIT);
+      setLiveOrders(merged);
+      setOrdersError(null);
+    } catch (err) {
+      setOrdersError(errMsg(err, 'Could not load recent orders.'));
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  // Seed the rider list from the database; sockets keep it live afterwards.
+  const fetchRiders = useCallback(async () => {
+    try {
+      const data = await apiRequest<{ riders?: any[] }>('/api/admin/riders?limit=100');
+      const list = Array.isArray(data?.riders) ? data.riders : [];
+      setRiders(prev => {
+        const next: Record<string, RiderPosition> = { ...prev };
+        list.filter(r => r.isApproved).forEach(r => {
+          const id = String(r.id || r._id);
+          const existing: RiderPosition | undefined = prev[id];
+          next[id] = {
+            ...existing,
+            activeOrderCount: existing?.activeOrderCount ?? 0,
+            riderId: id,
+            riderName: r.name || 'Rider',
+            photoUrl: r.photoUrl || undefined,
+            isOnline: existing?.isOnline ?? !!r.isOnline,
+          };
+        });
+        return next;
+      });
+    } catch {
+      // Non-critical: the live socket events still populate riders.
     }
   }, []);
 
@@ -272,59 +323,74 @@ export default function AdminHome() {
     }
   }, [fetchStats]);
 
-  const handleVerifyUPI = async (orderId: string, isVerified: boolean) => {
+  // Called by PaymentVerificationModal; returns an error message (modal stays open) or null.
+  const handleVerifyUPI = async (orderId: string, isVerified: boolean): Promise<string | null> => {
+    setActionError(null);
+    setActionNotice(null);
     try {
-      const userData = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') || '{}') : {};
-      const token = userData.token || '';
-      const res = await fetch(`${API_URL}/api/orders/${orderId}/verify-payment`, {
+      const res = await apiRequest<{ message?: string }>(`/api/orders/${orderId}/verify-upi`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-          },
-        body: JSON.stringify({ isVerified })
+        body: JSON.stringify({ isVerified }),
       });
-      if (res.ok) {
-        fetchOrders();
-        fetchStats();
-      }
-    } catch (err) { console.error('Verification failed', err); }
+      setActionNotice(res?.message || (isVerified ? 'Payment verified.' : 'Payment rejected and order cancelled.'));
+      fetchOrders();
+      fetchStats();
+      return null;
+    } catch (err) {
+      return errMsg(err, 'Could not update the payment.');
+    }
   };
 
-  const handleOverrideGlobalBatch = async () => {
-    if (!confirm('Are you sure you want to batch-accept all pending orders?')) return;
+  const handleVerifyRequest = useCallback((o: LiveOrder) => setSelectedUPIOrder(o), []);
+
+  const handleAcceptAllPending = async () => {
+    if (batchRunning) return;
+    if (!confirm('Move EVERY order in "Pending" to "Accepted"? This skips the store\'s own accept step and does not notify stores. Use it only when stores cannot accept in their app. It cannot be undone.')) return;
+    setBatchRunning(true);
+    setActionError(null);
+    setActionNotice(null);
     try {
-      const userData = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') || '{}') : {};
-      const token = userData.token || '';
-      const res = await fetch(`${API_URL}/api/admin/orders/batch-update`, {
+      const data = await apiRequest<{ count?: number; message?: string }>('/api/admin/orders/batch-update', {
         method: 'PUT',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ targetStatus: 'Pending', newStatus: 'Accepted' })
+        body: JSON.stringify({ targetStatus: 'Pending', newStatus: 'Accepted' }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        alert(`SUCCESS: ${data.count} nodes transitioned to ACCEPTED state.`);
-        fetchOrders();
-      }
-    } catch (err) { console.error('[BATCH_OVERRIDE_ERROR]', err); }
+      setActionNotice(typeof data?.count === 'number' ? `${data.count} pending order${data.count === 1 ? '' : 's'} moved to Accepted.` : (data?.message || 'Done.'));
+      fetchOrders();
+      fetchStats();
+    } catch (err) {
+      setActionError(errMsg(err, 'Could not accept the pending orders.'));
+    } finally {
+      setBatchRunning(false);
+    }
   };
 
-  const handlePrintReport = () => {
-    window.print();
+  const handleBroadcast = () => {
+    const message = megaMsg.trim();
+    if (!message || broadcasting) return;
+    if (!socket || !isConnected) {
+      setActionError('Live connection is offline, so the in-app banner cannot be sent right now. Use Push Notifications instead.');
+      return;
+    }
+    if (!confirm('Show this banner in the app to everyone who is online right now?')) return;
+    setBroadcasting(true);
+    setActionError(null);
+    socket.emit('admin_broadcast', { message, type: megaType });
+    setActionNotice('Banner sent to everyone currently online. Students who are offline will not see it.');
+    setMegaMsg('');
+    setTimeout(() => setBroadcasting(false), 800);
   };
 
-  const handleResolveEvent = (eventId: string) => {
+  const handleResolveEvent = useCallback((eventId: string) => {
     setOperationalEvents(prev => prev.filter(e => e.id !== eventId));
-  };
+  }, []);
 
   useEffect(() => {
+    if (!isAuthed) return;
     fetchStats();
     fetchOrders();
+    fetchRiders();
 
-    // 15-second self-healing polling fallback to guarantee dashboard never desyncs
+    // Polling fallback so the feed never desyncs if a socket event is missed.
     const pollInterval = setInterval(() => {
       fetchOrders();
       throttledFetchStats();
@@ -334,181 +400,183 @@ export default function AdminHome() {
       return () => clearInterval(pollInterval);
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const prependOrder = (entry: LiveOrder) => {
+      setLiveOrders(prev => (prev.some(o => o.id === entry.id) ? prev : [entry, ...prev].slice(0, ORDER_FEED_LIMIT)));
+    };
+
+    // admin_newOrder: { id, restaurant, customer, drop, totalPrice, finalPrice, paymentMethod, paymentStatus, createdAt }
     const handleIncomingOrder = (order: any) => {
       throttledFetchStats();
-      const orderId = order.id || order._id;
+      const orderId = order?.id || order?._id;
       if (!orderId) return;
-      setLiveOrders(prev => {
-        if (prev.some(o => o.id === orderId)) return prev;
-        return [{
-          id: orderId,
-          customer: order.customer || order.user?.name || 'Student Resident',
-          location: order.drop || (order.hostelGateDelivery ? 'Gate Delivery' : 'Room Entry') || 'Campus',
-          status: order.status || 'Pending',
-          price: order.finalPrice || order.totalPrice || 0,
-          restaurant: order.restaurant?.name || order.restaurant || 'Zenvy Kitchen',
-          timestamp: new Date(),
-          paymentMethod: order.paymentMethod || 'COD',
-          upiStatus: order.upiStatus || (order.paymentMethod === 'UPI' ? 'Pending' : 'Verified')
-        }, ...prev].slice(0, 25);
+      prependOrder({
+        id: String(orderId),
+        kind: 'order',
+        customer: order.customer || order.user?.name || 'Customer',
+        location: order.hostelGateDelivery ? 'Hostel gate' : (order.drop || 'Room delivery'),
+        status: order.status || 'Pending',
+        price: toNumber(order.finalPrice ?? order.totalPrice),
+        restaurant: (typeof order.restaurant === 'string' ? order.restaurant : order.restaurant?.name) || 'Store',
+        timestamp: new Date(order.createdAt || Date.now()),
+        paymentMethod: order.paymentMethod || 'COD',
+        riderAssigned: false,
       });
     };
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // admin_newMegaBasket: { id, customer, address, estimatedTotal, paymentMethod, status }
     const handleIncomingMegaBasket = (basket: any) => {
       throttledFetchStats();
-      const basketId = basket.id || basket._id;
+      const basketId = basket?.id || basket?._id;
       if (!basketId) return;
-      setLiveOrders(prev => {
-        if (prev.some(o => o.id === basketId)) return prev;
-        return [{
-          id: basketId,
-          customer: basket.user?.name || 'Student Resident',
-          location: basket.drop || 'Hostel Delivery',
-          status: basket.status || 'Pending',
-          price: basket.finalPrice || basket.totalPrice || 0,
-          restaurant: 'Mega Basket Multi-Stop',
-          timestamp: new Date(),
-          paymentMethod: basket.paymentMethod || 'UPI',
-          upiStatus: 'Verified'
-        }, ...prev].slice(0, 25);
+      prependOrder({
+        id: String(basketId),
+        kind: 'basket',
+        customer: basket.customer || basket.user?.name || 'Customer',
+        location: basket.address || 'Hostel delivery',
+        status: basket.status || 'Pending',
+        price: toNumber(basket.estimatedTotal),
+        restaurant: '🛒 Mega Basket',
+        timestamp: new Date(),
+        paymentMethod: basket.paymentMethod || 'COD',
+        riderAssigned: false,
       });
     };
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleStatusUpdated = (data: any) => {
       throttledFetchStats();
       const targetId = String(data?.id || data?.orderId || '');
+      if (!targetId || !data?.status) return;
+      setLiveOrders(prev => prev.map(o => o.id === targetId ? { ...o, status: String(data.status) } : o));
+    };
+
+    const handleOrderCancelled = (data: any) => {
+      const targetId = String(data?.orderId || '');
       if (!targetId) return;
-      setLiveOrders(prev => prev.map(o => String(o.id) === targetId ? { ...o, status: data.status } : o));
+      setLiveOrders(prev => prev.map(o => o.id === targetId ? { ...o, status: 'Cancelled' } : o));
     };
 
-    const handleOrderCancelled = ({ orderId }: { orderId: string }) => {
-      const targetId = String(orderId);
-      setLiveOrders(prev => prev.map(o => String(o.id) === targetId ? { ...o, status: 'Cancelled' } : o));
-    };
+    let pendingRidersUpdate: Record<string, RiderPosition> = {};
+    let riderUpdateTimeout: ReturnType<typeof setTimeout> | null = null;
 
-    let pendingRidersUpdate: Record<string, any> = {};
-    let riderUpdateTimeout: NodeJS.Timeout | null = null;
-
-    const handleRiderLocation = (data: RiderPosition) => {
-      pendingRidersUpdate[data.riderId] = {
-        ...data,
-        timestamp: new Date()
+    const handleRiderLocation = (data: any) => {
+      if (!data?.riderId) return;
+      const id = String(data.riderId);
+      pendingRidersUpdate[id] = {
+        riderId: id,
+        riderName: data.riderName || 'Rider',
+        currentCheckpoint: data.currentCheckpoint,
+        activeOrderCount: toNumber(data.activeOrderCount),
+        isOnline: data.isOnline !== false,
       };
-      
       if (!riderUpdateTimeout) {
         riderUpdateTimeout = setTimeout(() => {
-          setRiders(prev => ({ ...prev, ...pendingRidersUpdate }));
+          const batch = pendingRidersUpdate;
           pendingRidersUpdate = {};
           riderUpdateTimeout = null;
-        }, 1500); // 1.5s throttle to fix UI lag
+          setRiders(prev => {
+            const next = { ...prev };
+            Object.values(batch).forEach(r => { next[r.riderId] = { ...(prev[r.riderId] || {}), ...r, photoUrl: prev[r.riderId]?.photoUrl }; });
+            return next;
+          });
+        }, 1500); // throttle map/list re-renders
       }
     };
 
-    const handleRiderOnline = (data: { riderId: string, name: string }) => {
+    const upsertRider = (riderId: string, patch: Partial<RiderPosition>) => {
       setRiders(prev => ({
         ...prev,
-        [data.riderId]: {
-          ...(prev[data.riderId] || {}),
-          riderId: data.riderId,
-          riderName: data.name,
-          isOnline: true,
-          activeOrderCount: 0
-        }
+        [riderId]: {
+          activeOrderCount: prev[riderId]?.activeOrderCount ?? 0,
+          riderName: prev[riderId]?.riderName ?? 'Rider',
+          isOnline: prev[riderId]?.isOnline ?? false,
+          currentCheckpoint: prev[riderId]?.currentCheckpoint,
+          photoUrl: prev[riderId]?.photoUrl,
+          ...patch,
+          riderId,
+        },
       }));
     };
 
-    const handleRiderOffline = (data: { riderId: string }) => {
-      setRiders(prev => {
-        const next = { ...prev };
-        if (next[data.riderId]) next[data.riderId].isOnline = false;
-        return next;
-      });
+    const handleRiderOnline = (data: any) => {
+      if (!data?.riderId) return;
+      upsertRider(String(data.riderId), { isOnline: true, ...(data.name ? { riderName: data.name } : {}) });
     };
 
-    const handleRiderStatus = (data: { riderId: string, isOnline: boolean, name: string }) => {
-      setRiders(prev => ({
-        ...prev,
-        [data.riderId]: {
-          ...(prev[data.riderId] || { activeOrderCount: 0 }),
-          riderId: data.riderId,
-          riderName: data.name,
-          isOnline: data.isOnline
-        }
-      }));
+    const handleRiderOffline = (data: any) => {
+      if (!data?.riderId) return;
+      upsertRider(String(data.riderId), { isOnline: false });
     };
 
-    const handleOrderAccepted = (data: { orderId: string, riderName: string }) => {
-      const targetId = String(data.orderId);
-      setLiveOrders(prev => prev.map(o => String(o.id) === targetId ? { ...o, status: 'Accepted', deliveryPartnerName: data.riderName } : o));
+    const handleRiderStatus = (data: any) => {
+      if (!data?.riderId) return;
+      upsertRider(String(data.riderId), { isOnline: !!data.isOnline, ...(data.name ? { riderName: data.name } : {}) });
     };
 
-    const handleDeliveryComplete = (data: { orderId: string }) => {
+    const handleOrderAccepted = (data: any) => {
+      const targetId = String(data?.orderId || '');
+      if (!targetId) return;
+      setLiveOrders(prev => prev.map(o => o.id === targetId ? { ...o, status: 'Accepted', riderAssigned: true, deliveryPartnerName: data.riderName || o.deliveryPartnerName } : o));
+    };
+
+    const handleDeliveryComplete = (data: any) => {
       throttledFetchStats();
-      const targetId = String(data.orderId);
-      setLiveOrders(prev => prev.map(o => String(o.id) === targetId ? { ...o, status: 'Delivered' } : o));
+      const targetId = String(data?.orderId || '');
+      if (!targetId) return;
+      setLiveOrders(prev => prev.map(o => o.id === targetId ? { ...o, status: 'Delivered' } : o));
     };
 
-    const handleOrderUnassigned = (data: { orderId: string }) => {
-      const targetId = String(data.orderId);
-      setLiveOrders(prev => prev.map(o => String(o.id) === targetId ? { ...o, status: 'Pending', deliveryPartnerName: undefined } : o));
+    const handleOrderUnassigned = (data: any) => {
+      const targetId = String(data?.orderId || '');
+      if (!targetId) return;
+      setLiveOrders(prev => prev.map(o => o.id === targetId ? { ...o, status: 'Pending', riderAssigned: false, deliveryPartnerName: undefined, deliveryPartnerPhoto: undefined } : o));
     };
 
-    const handleRiderProfileUpdated = (data: Record<string, unknown>) => {
-      const riderId = String(data.riderId);
-      setRiders(prev => {
-        if (prev[riderId]) {
-          return {
-            ...prev,
-            [riderId]: {
-              ...prev[riderId],
-              riderName: String(data.name),
-              photoUrl: String(data.photoUrl)
-            }
-          };
-        }
-        return prev;
-      });
+    const handleRiderProfileUpdated = (data: any) => {
+      const riderId = String(data?.riderId || '');
+      if (!riderId) return;
+      setRiders(prev => (prev[riderId]
+        ? { ...prev, [riderId]: { ...prev[riderId], riderName: data.name || prev[riderId].riderName, photoUrl: data.photoUrl || prev[riderId].photoUrl } }
+        : prev));
     };
 
-    const handleSosReceived = (data: Record<string, unknown>) => {
+    const handleSosReceived = (data: any) => {
       setOperationalEvents(prev => [{
-        id: `sos-${Date.now()}`,
+        id: `sos-${data?.riderId || 'rider'}-${Date.now()}`,
         type: 'SOS' as const,
         senderRole: 'Rider',
-        senderName: String(data.riderName),
-        details: 'CRITICAL EMERGENCY: SOS Triggered',
-        timestamp: new Date()
+        senderName: data?.riderName ? String(data.riderName) : undefined,
+        details: 'Emergency SOS triggered. Call the rider now.',
+        orderId: data?.orderId ? String(data.orderId) : undefined,
+        timestamp: new Date(),
       }, ...prev].slice(0, 10));
     };
 
-    const handleIssueReported = (data: Record<string, unknown>) => {
+    const handleIssueReported = (data: any) => {
       setOperationalEvents(prev => [{
-        id: `issue-${Date.now()}`,
+        id: `issue-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         type: 'ISSUE' as const,
-        senderRole: String(data.senderRole) as 'Customer' | 'Rider',
-        issueType: String(data.issueType),
-        details: String(data.details),
-        orderId: String(data.orderId),
-        timestamp: new Date()
+        senderRole: String(data?.senderRole || 'User'),
+        senderName: data?.senderName ? String(data.senderName) : undefined,
+        issueType: data?.issueType ? String(data.issueType) : undefined,
+        details: String(data?.details || ''),
+        orderId: data?.orderId ? String(data.orderId) : undefined,
+        timestamp: new Date(),
       }, ...prev].slice(0, 10));
     };
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleInterceptChat = (data: any) => {
+      if (!data?.message) return;
+      const ts = new Date(data.timestamp || Date.now());
       setInterceptedChats(prev => [{
-        orderId: data.orderId,
-        sender: data.sender,
-        senderRole: data.senderRole,
-        message: data.message,
-        timestamp: new Date(data.timestamp)
+        orderId: String(data.orderId || ''),
+        sender: String(data.sender || 'Unknown'),
+        senderRole: String(data.senderRole || ''),
+        message: String(data.message),
+        timestamp: Number.isNaN(ts.getTime()) ? new Date() : ts,
       }, ...prev].slice(0, 30));
     };
 
     socket.on('admin_newOrder', handleIncomingOrder);
-    socket.on('newOrder', handleIncomingOrder);
     socket.on('admin_newMegaBasket', handleIncomingMegaBasket);
     socket.on('statusUpdated', handleStatusUpdated);
     socket.on('orderCancelled', handleOrderCancelled);
@@ -527,7 +595,6 @@ export default function AdminHome() {
     return () => {
       clearInterval(pollInterval);
       socket.off('admin_newOrder', handleIncomingOrder);
-      socket.off('newOrder', handleIncomingOrder);
       socket.off('admin_newMegaBasket', handleIncomingMegaBasket);
       socket.off('statusUpdated', handleStatusUpdated);
       socket.off('orderCancelled', handleOrderCancelled);
@@ -544,161 +611,156 @@ export default function AdminHome() {
       socket.off('admin_intercept_chat', handleInterceptChat);
       if (riderUpdateTimeout) clearTimeout(riderUpdateTimeout);
     };
-  }, [socket, fetchStats, fetchOrders, router, throttledFetchStats]);
+  }, [isAuthed, socket, fetchStats, fetchOrders, fetchRiders, throttledFetchStats]);
 
-  if (!isAuthed) {
-    return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Authenticating Command Terminal...</div>;
-  }
+  if (!isAuthed) return null; // NexusLayoutClient shows the auth loader / redirect
+
+  const riderList = Object.values(riders);
+  const onlineCount = riderList.filter(r => r.isOnline).length;
+  const upiPendingCount = liveOrders.filter(needsUpiCheck).length;
 
   return (
     <div className="space-y-12 animate-fade-in relative pb-20">
-      {/* 🚀 Header */}
-      <header className="flex justify-between items-center mb-8">
-         <div className="flex flex-col">
-            <h1 className="text-3xl font-black text-white italic tracking-tighter">COMMAND<span className="text-blue-500">CENTER</span></h1>
-            <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.4em] mt-1">SRM AP LOGISTICS HUB v4.2.0</p>
-         </div>
+      <header className="flex justify-between items-center mb-8 flex-wrap gap-4">
+        <div className="flex flex-col">
+          <h1 className="text-3xl font-black text-white italic tracking-tighter">COMMAND<span className="text-blue-500">CENTER</span></h1>
+          <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.4em] mt-1">Live operations · SRM AP</p>
+        </div>
+        <span className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${isConnected ? 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10' : 'text-amber-400 border-amber-500/30 bg-amber-500/10'}`}>
+          <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+          {isConnected ? 'Live updates on' : 'Live updates offline · polling every 15s'}
+        </span>
       </header>
 
+      {(actionError || actionNotice) && (
+        <div className={`p-4 rounded-xl border text-sm font-bold flex justify-between gap-4 ${actionError ? 'border-red-500/30 bg-red-500/10 text-red-400' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'}`}>
+          <span>{actionError || actionNotice}</span>
+          <button onClick={() => { setActionError(null); setActionNotice(null); }} className="text-[10px] font-black uppercase tracking-wider opacity-70 hover:opacity-100">Close</button>
+        </div>
+      )}
+
       {/* ─── Hero Metrics ─── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-        {stats.map((stat, i) => (
-          <div key={i} className="glass-card p-8 group overflow-hidden relative">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/[0.03] blur-[40px] group-hover:bg-blue-600/[0.08] transition-all" />
-            <p className="stat-label tracking-[0.2em]">{stat.label}</p>
-            <div className="flex items-end justify-between mt-2">
-              <h4 className="text-3xl font-black text-white">{stat.value}</h4>
-              <span className={`text-[12px] font-black px-2 py-1 rounded-md border ${
-                stat.trend === 'up' ? 'text-emerald-400 bg-emerald-400/5 border-emerald-400/20' :
-                stat.trend === 'down' ? 'text-blue-400 bg-blue-400/5 border-blue-400/20' :
-                'text-gray-500 bg-white/5 border-white/10'
-              }`}>
-                {stat.growth}
-              </span>
+      {statsError && !stats ? (
+        <div className="glass-card p-6 flex justify-between items-center gap-4">
+          <p className="text-sm font-bold text-red-400">{statsError}</p>
+          <button onClick={fetchStats} className="text-[10px] font-black uppercase tracking-wider text-gray-300 underline">Retry</button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+          {(stats || Array.from({ length: 5 }, (_, i) => ({ label: '', value: '', hint: String(i) }))).map((stat, i) => (
+            <div key={i} className="glass-card p-8 group overflow-hidden relative">
+              {stats ? (
+                <>
+                  <p className="stat-label tracking-[0.2em]">{stat.label}</p>
+                  <h4 className="text-3xl font-black text-white mt-2">{stat.value}</h4>
+                  <p className="text-[11px] font-bold text-gray-500 mt-1">{stat.hint}</p>
+                </>
+              ) : (
+                <div className="space-y-3 animate-pulse">
+                  <div className="h-3 w-24 bg-white/10 rounded" />
+                  <div className="h-8 w-20 bg-white/10 rounded" />
+                </div>
+              )}
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-10 items-start">
-        {/* ─── Hybrid Campus Radar (Nodes on Map) ─── */}
+        {/* ─── Fleet map ─── */}
         <div className="col-span-1 lg:col-span-2">
           <div className="glass-card p-2 border-white/5 relative overflow-hidden bg-slate-900/50 h-[550px]">
             <LiveFleetMap riders={riders} checkpoints={CHECKPOINTS} />
-            
-            {/* Status Intelligence Floor Overlay */}
-            <div className="absolute bottom-6 left-6 right-6 z-[1000] px-6 py-4 glass-card border-white/10 bg-slate-900/80 backdrop-blur-md">
-               <div className="grid grid-cols-3 gap-6">
-                  <div className="text-center">
-                     <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Base Hub</p>
-                     <p className="text-[12px] text-white font-black uppercase mt-1">Mangalagiri</p>
-                  </div>
-                  <div className="text-center">
-                     <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Transit Logic</p>
-                     <p className="text-[12px] text-blue-400 font-black uppercase mt-1">Neerukonda Node</p>
-                  </div>
-                  <div className="text-center">
-                     <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Nexus Goal</p>
-                     <p className="text-[12px] text-emerald-400 font-black uppercase mt-1">SRM Campus</p>
-                  </div>
-               </div>
-            </div>
           </div>
+          <p className="text-[11px] text-gray-600 mt-2">Riders appear on the map at the last route checkpoint their app reported.</p>
         </div>
 
-        {/* ─── Gourmet Feed (Recent Activity) ─── */}
+        {/* ─── Ops stream ─── */}
         <div className="space-y-6">
-           <h3 className="text-xl font-black tracking-tighter uppercase text-white">Tactical <span className="text-[var(--zenvy-gold)]">Ops Stream</span></h3>
-           <div className="glass-card h-[450px] overflow-y-auto p-6 space-y-4 scrollbar-hide border-white/10">
-              
-              {/* Critical Alerts Priority */}
-              {operationalEvents.map(event => (
-                <EventItem key={event.id} event={event} onResolve={handleResolveEvent} />
-              ))}
+          <h3 className="text-xl font-black tracking-tighter uppercase text-white">Ops <span className="text-[var(--zenvy-gold)]">Stream</span></h3>
+          <div className="glass-card h-[450px] overflow-y-auto p-6 space-y-4 scrollbar-hide border-white/10">
 
-              <div className="h-px bg-white/5 my-4" />
+            {operationalEvents.map(event => (
+              <EventItem key={event.id} event={event} onResolve={handleResolveEvent} />
+            ))}
+            {operationalEvents.length > 0 && <div className="h-px bg-white/5 my-4" />}
 
-              <div className="space-y-4">
-                 <div className="flex items-center justify-between">
-                    <h4 className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">Live Fleet Status</h4>
-                    <span className="text-[9px] font-black text-emerald-500 uppercase px-2 py-0.5 bg-emerald-500/10 rounded-md">
-                       {Object.values(riders).filter(r => r.isOnline).length} Nodes Active
-                    </span>
-                 </div>
-                 <div className="grid grid-cols-1 gap-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-                    {Object.values(riders).length === 0 ? (
-                      <p className="text-[10px] text-gray-600 italic text-center py-10">No personnel data in grid...</p>
-                    ) : Object.values(riders).sort((a, b) => Number(b.isOnline) - Number(a.isOnline)).map(rider => (
-                       <RiderStatusItem key={rider.riderId} rider={rider} />
-                    ))}
-                 </div>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">Riders</h4>
+                <span className="text-[9px] font-black text-emerald-500 uppercase px-2 py-0.5 bg-emerald-500/10 rounded-md">
+                  {onlineCount} online
+                </span>
               </div>
+              <div className="grid grid-cols-1 gap-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                {riderList.length === 0 ? (
+                  <p className="text-[11px] text-gray-600 italic text-center py-6">No approved riders yet.</p>
+                ) : riderList.sort((a, b) => Number(b.isOnline) - Number(a.isOnline)).map(rider => (
+                  <RiderStatusItem key={rider.riderId} rider={rider} />
+                ))}
+              </div>
+            </div>
 
-              <div className="h-px bg-white/5 my-4" />
+            <div className="h-px bg-white/5 my-4" />
 
-              {loading ? (
-                <div className="flex flex-col items-center justify-center h-full gap-4 text-gray-500">
-                   <div className="w-8 h-8 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
-                   <p className="text-[12px] uppercase font-black tracking-widest">Syncing Nodes...</p>
-                </div>
-              ) : liveOrders.length === 0 ? (
-                <p className="text-center py-20 text-gray-600 text-xs italic tracking-wide">No movements detected in the last scan.</p>
-              ) : (
-                liveOrders.map((order) => (
-                  <OrderItem 
-                    key={order.id} 
-                    order={order} 
-                    onVerify={(o) => setSelectedUPIOrder(o)} 
-                  />
-                ))
+            <div className="flex items-center justify-between">
+              <h4 className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">Recent orders</h4>
+              {upiPendingCount > 0 && (
+                <span className="text-[9px] font-black text-amber-400 uppercase px-2 py-0.5 bg-amber-500/10 rounded-md">{upiPendingCount} legacy UPI to verify</span>
               )}
-           </div>
+            </div>
+
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-10 gap-4 text-gray-500">
+                <div className="w-8 h-8 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+                <p className="text-[12px] uppercase font-black tracking-widest">Loading orders...</p>
+              </div>
+            ) : ordersError && liveOrders.length === 0 ? (
+              <div className="text-center py-10 space-y-3">
+                <p className="text-xs font-bold text-red-400">{ordersError}</p>
+                <button onClick={fetchOrders} className="text-[10px] font-black uppercase tracking-wider text-gray-300 underline">Retry</button>
+              </div>
+            ) : liveOrders.length === 0 ? (
+              <p className="text-center py-10 text-gray-600 text-xs italic tracking-wide">No orders yet.</p>
+            ) : (
+              liveOrders.map((order) => (
+                <OrderItem key={`${order.kind}-${order.id}`} order={order} onVerify={handleVerifyRequest} />
+              ))
+            )}
+          </div>
         </div>
       </div>
 
-      {/* ─── Global Search & Batch Controls ─── */}
+      {/* ─── Bulk action ─── */}
       <div className="glass-card p-10 flex flex-col md:flex-row items-center gap-10">
-         <div className="flex-1 space-y-2">
-            <h3 className="text-2xl font-black text-white tracking-tight">Tactically Informed Management</h3>
-            <p className="text-sm text-gray-500 max-w-lg leading-relaxed">The Nexus Terminal provides absolute transparency over all campus movement. Every byte of data is verified through our SRM-Alpha nodes.</p>
-         </div>
-          <div className="flex gap-4 print:hidden">
-            <button 
-              onClick={() => {
-                const nextState = !stormMode;
-                if (nextState) {
-                   if (!confirm("Activate STORM MODE? This will globally enable Surge Pricing and alert all active users.")) return;
-                   if (socket) socket.emit('admin_broadcast', { message: "⚠️ SEVERE WEATHER: Deliveries may be delayed. Surge pricing active.", type: "emergency" });
-                } else {
-                   if (!confirm("Deactivate STORM MODE?")) return;
-                   if (socket) socket.emit('admin_broadcast', { message: "✅ Weather clear. Normal operations resumed.", type: "info" });
-                }
-                setStormMode(nextState);
-              }}
-              className={`px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:scale-105 transition-all ${stormMode ? 'bg-red-600 text-white shadow-[0_0_30px_rgba(220,38,38,0.3)] animate-pulse' : 'bg-red-900/40 text-red-400 border border-red-500/30'}`}
-            >
-               {stormMode ? '🚨 STORM MODE ACTIVE' : '☁️ ACTIVATE STORM MODE'}
-            </button>
-            <button 
-              onClick={handleOverrideGlobalBatch}
-              className="px-8 py-4 bg-[var(--zenvy-gold)] shadow-[0_0_30px_rgba(212,175,122,0.3)] rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] text-black hover:scale-105 transition-all"
-            >
-               Override Global Batch
-            </button>
-          </div>
+        <div className="flex-1 space-y-2">
+          <h3 className="text-2xl font-black text-white tracking-tight">Stuck orders</h3>
+          <p className="text-sm text-gray-500 max-w-lg leading-relaxed">
+            Pending orders that nobody picks up are cancelled and refunded automatically after the server timeout (15 minutes by default).
+            If stores are reachable by phone but cannot use their app, you can accept all pending orders at once.
+          </p>
+        </div>
+        <div className="flex gap-4 print:hidden">
+          <button
+            onClick={handleAcceptAllPending}
+            disabled={batchRunning}
+            className="px-8 py-4 bg-[var(--zenvy-gold)] disabled:opacity-50 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] text-black hover:brightness-110 transition-all"
+          >
+            {batchRunning ? 'Working...' : 'Accept all pending'}
+          </button>
+        </div>
       </div>
 
-      {/* ─── Communication Suite ─── */}
+      {/* ─── Communication ─── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        
-        {/* Tactical Megaphone */}
+
         <div className="glass-card p-8 border border-white/10 flex flex-col justify-between">
           <div>
             <div className="flex items-center gap-3 mb-6">
               <span className="text-2xl">📢</span>
               <div>
-                <h3 className="text-xl font-black text-white uppercase tracking-widest">Tactical Broadcast</h3>
-                <p className="text-[11px] text-gray-500">Push live alerts to all 3 portals instantly via WebSockets</p>
+                <h3 className="text-xl font-black text-white uppercase tracking-widest">In-app Banner</h3>
+                <p className="text-[11px] text-gray-500">Shown live to everyone who has the app open. For phones that are closed, use Push Notifications.</p>
               </div>
             </div>
             <div className="flex flex-col gap-4">
@@ -716,71 +778,66 @@ export default function AdminHome() {
                         : 'bg-white/5 border-white/10 text-gray-400 hover:bg-white/10'
                     }`}
                   >
-                    { t === 'emergency' ? '🚨' : t === 'warning' ? '⚠️' : t === 'promo' ? '🎉' : '📢' } {t}
+                    {t === 'emergency' ? '🚨' : t === 'warning' ? '⚠️' : t === 'promo' ? '🎉' : '📢'} {t}
                   </button>
                 ))}
               </div>
               <textarea
                 rows={3}
+                maxLength={280}
                 value={megaMsg}
                 onChange={e => setMegaMsg(e.target.value)}
-                placeholder="Type your message. Use {{username}} for personalized names (e.g., '{{username}} garu, order cheysukondi!')"
+                placeholder="Type your message. {{username}} is replaced with each student's name."
                 className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-2xl text-sm text-white placeholder-gray-600 outline-none focus:border-blue-500/40 resize-none transition-all"
               />
             </div>
           </div>
           <button
             disabled={!megaMsg.trim() || broadcasting}
-            onClick={() => {
-              if (!socket || !megaMsg.trim()) return;
-              setBroadcasting(true);
-              socket.emit('admin_broadcast', { message: megaMsg.trim(), type: megaType });
-              setTimeout(() => { setMegaMsg(''); setBroadcasting(false); }, 1500);
-            }}
+            onClick={handleBroadcast}
             className="w-full mt-6 py-4 rounded-xl text-[13px] font-black uppercase tracking-widest bg-[var(--zenvy-gold)] text-black hover:bg-yellow-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           >
-            {broadcasting ? 'Broadcasting...' : 'Send Broadcast'}
+            {broadcasting ? 'Sending...' : 'Send Banner'}
           </button>
         </div>
 
-        {/* Live Chat Intercept Terminal */}
         <div className="glass-card p-8 border border-blue-500/20 bg-black/60 relative overflow-hidden flex flex-col h-[400px]">
-           <div className="absolute top-0 right-0 p-4">
-              <span className="flex items-center gap-2 px-2 py-1 bg-red-500/10 border border-red-500/20 text-red-500 rounded text-[9px] font-black uppercase animate-pulse">
-                <span className="w-1.5 h-1.5 rounded-full bg-red-500" /> REC
-              </span>
-           </div>
-           <div className="flex items-center gap-3 mb-6">
-              <span className="text-2xl">📡</span>
-              <div>
-                <h3 className="text-xl font-black text-white uppercase tracking-widest text-blue-400">Live Order Chat Feed</h3>
-                <p className="text-[11px] text-gray-500 font-mono tracking-tight">Real-time customer & delivery communications</p>
+          <div className="absolute top-0 right-0 p-4">
+            <span className={`flex items-center gap-2 px-2 py-1 rounded text-[9px] font-black uppercase border ${isConnected ? 'bg-red-500/10 border-red-500/20 text-red-500' : 'bg-white/5 border-white/10 text-gray-500'}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-red-500 animate-pulse' : 'bg-gray-500'}`} /> {isConnected ? 'Live' : 'Offline'}
+            </span>
+          </div>
+          <div className="flex items-center gap-3 mb-6">
+            <span className="text-2xl">📡</span>
+            <div>
+              <h3 className="text-xl font-black uppercase tracking-widest text-blue-400">Order Chat Feed</h3>
+              <p className="text-[11px] text-gray-500 font-mono tracking-tight">Customer and rider messages since this page opened</p>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
+            {interceptedChats.length === 0 ? (
+              <div className="h-full flex items-center justify-center">
+                <p className="text-xs font-mono text-gray-600">No order chat messages yet.</p>
               </div>
-           </div>
-           
-           <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar flex flex-col-reverse">
-             {interceptedChats.length === 0 ? (
-                <div className="flex-1 flex items-center justify-center">
-                   <p className="text-xs font-mono text-gray-600">No live chat messages active...</p>
+            ) : interceptedChats.map((chat, idx) => (
+              <div key={`${chat.orderId}-${chat.timestamp.getTime()}-${idx}`} className="bg-white/5 border border-white/5 p-3 rounded-lg flex flex-col gap-1">
+                <div className="flex justify-between items-center gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-500 truncate">
+                    {chat.senderRole} <span className="text-white normal-case">{chat.sender}</span>
+                  </span>
+                  <span className="text-[8px] font-mono text-gray-600 shrink-0">{chat.timestamp.toLocaleTimeString()}</span>
                 </div>
-             ) : interceptedChats.map((chat, idx) => (
-               <div key={idx} className="bg-white/5 border border-white/5 p-3 rounded-lg flex flex-col gap-1">
-                 <div className="flex justify-between items-center">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">
-                      {chat.senderRole} <span className="text-white">({chat.sender.slice(0,12)}...)</span>
-                    </span>
-                    <span className="text-[8px] font-mono text-gray-600">{chat.timestamp.toLocaleTimeString()}</span>
-                 </div>
-                 <p className="text-sm font-mono text-blue-300">{chat.message}</p>
-                 <span className="text-[8px] font-black text-yellow-600/50 uppercase">Order: #{chat.orderId.slice(-6).toUpperCase()}</span>
-               </div>
-             ))}
-           </div>
+                <p className="text-sm font-mono text-blue-300 break-words">{chat.message}</p>
+                {chat.orderId && <span className="text-[8px] font-black text-yellow-600/50 uppercase">Order {shortId(chat.orderId)}</span>}
+              </div>
+            ))}
+          </div>
         </div>
 
       </div>
 
-      <PaymentVerificationModal 
+      <PaymentVerificationModal
         isOpen={!!selectedUPIOrder}
         order={selectedUPIOrder}
         onClose={() => setSelectedUPIOrder(null)}

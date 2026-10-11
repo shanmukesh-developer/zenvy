@@ -1,8 +1,9 @@
 "use client";
 import React, { useEffect, useState, createContext, useContext, useRef, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { SOCKET_URL } from '@/lib/config';
+import { getToken, subscribe } from '@/lib/session';
 
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-jwmt.onrender.com';
 
 interface SocketContextType {
   socket: Socket | null;
@@ -23,14 +24,7 @@ export default function AdminSocketProvider({ children }: { children: React.Reac
   const [isConnected, setIsConnected] = useState(false);
 
   const initSocket = useCallback(() => {
-    let token: string | null = null;
-    try {
-      const userData = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
-      if (userData) {
-        const user = JSON.parse(userData);
-        token = user.token || null;
-      }
-    } catch {}
+    const token = getToken();
 
     if (socketRef.current) {
       socketRef.current.disconnect();
@@ -88,7 +82,16 @@ export default function AdminSocketProvider({ children }: { children: React.Reac
     };
   }, []);
 
+  // Reconnect whenever the admin signs in or out so the socket uses the current token.
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
   useEffect(() => {
+    const sync = () => setSessionToken(getToken());
+    sync();
+    return subscribe(sync);
+  }, []);
+
+  useEffect(() => {
+    if (!sessionToken) return;
     const cleanupInterval = initSocket();
     return () => {
       if (typeof cleanupInterval === 'function') cleanupInterval();
@@ -97,7 +100,7 @@ export default function AdminSocketProvider({ children }: { children: React.Reac
         socketRef.current = null;
       }
     };
-  }, [initSocket]);
+  }, [initSocket, sessionToken]);
 
   return (
     <SocketContext.Provider value={{ socket: socketRef.current, isConnected, refreshSocket: initSocket }}>

@@ -7,7 +7,10 @@ const initTicketModel = (sequelize) => {
 
   Ticket = sequelize.define('Ticket', {
     id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-    userId: { type: DataTypes.UUID, allowNull: false },
+    // Customer tickets set userId; rider tickets (POST /api/delivery/support) set riderId instead
+    // (riders are DeliveryPartner rows, so they cannot satisfy the userId → Users foreign key).
+    userId: { type: DataTypes.UUID, allowNull: true },
+    riderId: { type: DataTypes.UUID, allowNull: true },
     orderId: { type: DataTypes.UUID, allowNull: true },
     subject: { type: DataTypes.STRING, allowNull: false },
     description: { type: DataTypes.TEXT, allowNull: false },

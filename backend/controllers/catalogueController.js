@@ -1,0 +1,193 @@
+// Read API for stores (non-food vendors) and their products. Everything comes from the DB,
+// so the ids returned here are the ids to send in POST /api/orders (and /api/orders/quote).
+const { Op } = require('sequelize');
+const { getRestaurantModel } = require('../models/Restaurant');
+const { getMenuItemModel } = require('../models/MenuItem');
+const { getStoreOpenState } = require('../utils/storeHours');
+const { STORE_VENDOR_TYPES, resolveVendorTypes, isLocalVendorStore } = require('../utils/vendorTypes');
+
+const MAX_LIMIT = 200;
+
+const likeOp = (model) => (model.sequelize.getDialect() === 'postgres' ? Op.iLike : Op.like);
+// Wildcards are dropped (LIKE escape syntax differs between Postgres and SQLite).
+const escapeLike = (s) => String(s).replace(/[\\%_]/g, ' ');
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const readSpecs = (item) => {
+  let specs = item.specs;
+  if (typeof specs === 'string') { try { specs = JSON.parse(specs); } catch { specs = {}; } }
+  return specs && typeof specs === 'object' ? specs : {};
+};
+
+const shapeStore = (store, itemCount) => {
+  const s = store.toJSON ? store.toJSON() : store;
+  const open = getStoreOpenState(store);
+  return {
+    id: s.id,
+    _id: s.id,
+    name: s.name,
+    vendorType: s.vendorType,
+    description: s.stallDescription || null,
+    imageUrl: s.imageUrl || null,
+    location: s.location,
+    campus: s.campus || null,
+    tags: Array.isArray(s.tags) ? s.tags : [],
+    rating: s.rating > 0 ? s.rating : null,
+    deliveryTime: s.deliveryTime || null,
+    operatingHours: s.operatingHours || null,
+    isOpen: open.isOpen,
+    opensAt: open.opensAt || null,
+    closedReason: open.isOpen ? null : (open.message || null),
+    ...(itemCount !== undefined ? { itemCount } : {})
+  };
+};
+
+const shapeItem = (item, store) => {
+  const i = item.toJSON ? item.toJSON() : item;
+  const specs = readSpecs(i);
+  const now = new Date();
+  const inStock = !!i.isAvailable || !!(i.outOfStockUntil && new Date(i.outOfStockUntil) <= now);
+  const price = Number(i.price);
+  const originalPrice = Number(specs.originalPrice) > price ? Number(specs.originalPrice) : null;
+  let tags = i.tags || [];
+  if (typeof tags === 'string') { try { tags = JSON.parse(tags); } catch { tags = []; } }
+  const open = store ? getStoreOpenState(store) : { isOpen: false };
+  return {
+    id: i.id,
+    _id: i.id,
+    menuItemId: i.id,
+    name: i.name,
+    description: i.description || null,
+    price,
+    originalPrice,
+    discountPercent: originalPrice ? Math.round((1 - price / originalPrice) * 100) : null,
+    weight: specs.weight || null,
+    brand: specs.brand || null,
+    emoji: specs.emoji || null,
+    category: i.category || null,
+    tags,
+    imageUrl: i.imageUrl || null,
+    image: i.imageUrl || null,
+    isVegetarian: i.isVegetarian !== false,
+    isAvailable: inStock,
+    outOfStockUntil: inStock ? null : (i.outOfStockUntil || null),
+    rating: specs.rating || null,
+    ratingCount: specs.ratingCount || 0,
+    bookingOnly: !!specs.bookingOnly,
+    extraFor: Array.isArray(specs.extraFor) ? specs.extraFor : undefined,
+    restaurantId: i.restaurantId,
+    storeId: i.restaurantId,
+    storeName: store ? store.name : null,
+    vendorType: store ? store.vendorType : null,
+    // CampusBites stalls are display-only: customers order from the vendor by call / WhatsApp.
+    orderable: inStock && !specs.bookingOnly && !!store && !isLocalVendorStore(store) && store.isActive !== false && open.isOpen,
+    directOrderOnly: isLocalVendorStore(store)
+  };
+};
+
+const storeWhere = (types) => {
+  const where = { isActive: true };
+  where.vendorType = types ? { [Op.in]: types } : { [Op.in]: STORE_VENDOR_TYPES };
+  return where;
+};
+
+// @desc    Store types that currently have at least one active store
+// @route   GET /api/catalogue/types
+const getTypes = async (req, res) => {
+  try {
+    const Restaurant = getRestaurantModel();
+    const stores = await Restaurant.findAll({ where: storeWhere(null), attributes: ['vendorType'] });
+    const counts = {};
+    for (const s of stores) counts[s.vendorType] = (counts[s.vendorType] || 0) + 1;
+    res.json(Object.entries(counts).map(([vendorType, storeCount]) => ({ vendorType, storeCount })));
+  } catch (error) {
+    console.error('[CATALOGUE_TYPES_ERROR]', error);
+    res.status(500).json({ message: 'Could not load stores right now. Please try again.' });
+  }
+};
+
+// @desc    Active stores, optionally of one type
+// @route   GET /api/catalogue/stores?type=grocery
+const getStores = async (req, res) => {
+  try {
+    const Restaurant = getRestaurantModel();
+    const MenuItem = getMenuItemModel();
+    const types = resolveVendorTypes(req.query.type);
+    const where = types ? { isActive: true, vendorType: { [Op.in]: types } } : storeWhere(null);
+    if (req.query.campus) where.campus = String(req.query.campus);
+    const stores = await Restaurant.findAll({ where, order: [['name', 'ASC']] });
+    const ids = stores.map(s => s.id);
+    const counts = {};
+    if (ids.length) {
+      const rows = await MenuItem.findAll({
+        where: { restaurantId: { [Op.in]: ids } },
+        attributes: ['restaurantId', [MenuItem.sequelize.fn('COUNT', MenuItem.sequelize.col('id')), 'n']],
+        group: ['restaurantId'],
+        raw: true
+      });
+      for (const r of rows) counts[r.restaurantId] = Number(r.n) || 0;
+    }
+    res.set('Cache-Control', 'no-cache');
+    res.json(stores.map(s => shapeStore(s, counts[s.id] || 0)));
+  } catch (error) {
+    console.error('[CATALOGUE_STORES_ERROR]', error);
+    res.status(500).json({ message: 'Could not load stores right now. Please try again.' });
+  }
+};
+
+// @desc    Products of active stores
+// @route   GET /api/catalogue/items?type=grocery&storeId=&category=&q=&for=cake&includeUnavailable=true&limit=&offset=
+const getItems = async (req, res) => {
+  try {
+    const Restaurant = getRestaurantModel();
+    const MenuItem = getMenuItemModel();
+    const types = resolveVendorTypes(req.query.type);
+
+    const storeFilter = { isActive: true };
+    if (types) storeFilter.vendorType = { [Op.in]: types };
+    else if (!req.query.storeId) storeFilter.vendorType = { [Op.in]: STORE_VENDOR_TYPES };
+    if (req.query.storeId) {
+      if (!UUID_RE.test(String(req.query.storeId))) return res.json({ items: [], total: 0, stores: [] });
+      storeFilter.id = String(req.query.storeId);
+    }
+    const stores = await Restaurant.findAll({ where: storeFilter });
+    if (!stores.length) return res.json({ items: [], total: 0, stores: [] });
+    const storeMap = new Map(stores.map(s => [s.id, s]));
+
+    const where = { restaurantId: { [Op.in]: [...storeMap.keys()] } };
+    if (String(req.query.includeUnavailable || '').toLowerCase() !== 'true') {
+      where[Op.or] = [{ isAvailable: true }, { outOfStockUntil: { [Op.lte]: new Date() } }];
+    }
+    if (req.query.category) where.category = String(req.query.category);
+    const q = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 60) : '';
+    if (q) {
+      const op = likeOp(MenuItem);
+      const pattern = `%${escapeLike(q)}%`;
+      where[Op.and] = [{ [Op.or]: [{ name: { [op]: pattern } }, { description: { [op]: pattern } }, { category: { [op]: pattern } }] }];
+    }
+
+    const limit = Math.min(MAX_LIMIT, Math.max(1, parseInt(req.query.limit, 10) || MAX_LIMIT));
+    const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+    const { count, rows } = await MenuItem.findAndCountAll({ where, order: [['category', 'ASC'], ['name', 'ASC']], limit, offset });
+
+    let items = rows.map(r => shapeItem(r, storeMap.get(r.restaurantId)));
+    // Add-ons for a dish type, e.g. ?type=extras&for=cake
+    const forType = typeof req.query.for === 'string' ? req.query.for.trim().toLowerCase() : '';
+    if (forType) items = items.filter(i => Array.isArray(i.extraFor) && i.extraFor.includes(forType));
+
+    res.set('Cache-Control', 'no-cache');
+    res.json({
+      items,
+      total: forType ? items.length : count,
+      limit,
+      offset,
+      categories: [...new Set(items.map(i => i.category).filter(Boolean))],
+      stores: stores.map(s => shapeStore(s))
+    });
+  } catch (error) {
+    console.error('[CATALOGUE_ITEMS_ERROR]', error);
+    res.status(500).json({ message: 'Could not load products right now. Please try again.' });
+  }
+};
+
+module.exports = { getTypes, getStores, getItems, shapeItem, shapeStore };

@@ -1,99 +1,134 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, Alert, Modal } from 'react-native';
-import { WebView } from 'react-native-webview';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, Alert, Keyboard } from 'react-native';
 import { useRouter } from 'expo-router';
-import { COLORS, SHADOWS, RADIUS } from '../constants/theme';
-import { API_URL } from '../constants/api';
+import { COLORS, SHADOWS } from '../constants/theme';
+import { ENDPOINTS } from '../constants/api';
+import { postAuth, normalizePhone, isValidIndianMobile, NETWORK_ERROR_MESSAGE } from '../utils/auth';
+import { usePhoneOtp, PhoneProof } from '../utils/phoneOtp';
 
+/**
+ * Password reset: real SMS code (POST /send-otp purpose "reset_password", Firebase fallback on native),
+ * then POST /reset-password { phone, newPassword, otp | firebaseToken }.
+ */
 export default function ForgotPasswordScreen() {
   const router = useRouter();
-  const [step, setStep] = useState<1 | 2>(1);
   const [phone, setPhone] = useState('');
+  const [otp, setOtp] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  
-  // Real-Time Firebase Auth States
-  const [authModalVisible, setAuthModalVisible] = useState(false);
-  const [realtimeToken, setRealtimeToken] = useState('');
+  const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
+  const busyRef = useRef(false);
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
 
-  const handleAuthMessage = (event: any) => {
-    try {
-      const msg = JSON.parse(event.nativeEvent.data);
-      if (msg.type === 'OTP_SUCCESS') {
-        setRealtimeToken(msg.token);
-        if (msg.phone) {
-          setPhone(msg.phone.replace('+91', ''));
-        }
-        setAuthModalVisible(false);
-        setStep(2);
-        Alert.alert('Identity Verified', 'Your number is successfully verified in real-time! Please enter your new password below.');
-      } else if (msg.type === 'AUTH_ERROR') {
-        setAuthModalVisible(false);
-        Alert.alert('Verification Failed', msg.error || 'Firebase could not verify this phone number.');
-      }
-    } catch (e) {
-      console.warn('Could not parse webview message', e);
-    }
-  };
+  // Android Firebase fallback can verify the number in the background (no code typed)
+  const [autoProof, setAutoProof] = useState<PhoneProof | null>(null);
+  const phoneOtp = usePhoneOtp('reset_password', {
+    onAutoVerified: (_p, proof) => {
+      if (!mountedRef.current) return;
+      setAutoProof(proof);
+      setInfo('Number verified automatically. Choose your new password.');
+    },
+  });
+  const step: 1 | 2 = phoneOtp.sentTo ? 2 : 1;
+  const busy = loading || phoneOtp.sending;
 
-  const handleSendOtp = async () => {
-    const digits = phone.replace(/\D/g, '').slice(-10);
-    if (digits.length < 10) {
-      Alert.alert('Invalid Number', 'Enter a valid 10-digit phone number.');
-      return;
-    }
-
-    setAuthModalVisible(true);
-  };
-
-  const handleVerifyAndReset = async () => {
-    const digits = phone.replace(/\D/g, '').slice(-10);
-
-    if (!newPassword || newPassword.length < 6) {
-      Alert.alert('Password Too Short', 'Password must be at least 6 characters.');
-      return;
-    }
-
+  const runGuarded = async (fn: () => Promise<void>) => {
+    if (busyRef.current) return; // double-tap protection
+    busyRef.current = true;
     setLoading(true);
+    setError('');
     try {
-      const response = await fetch(`${API_URL}/api/users/reset-password`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          phone: digits, 
-          firebaseToken: realtimeToken, 
-          newPassword 
-        }),
-      });
-      const data = await response.json();
-
-      if (response.ok) {
-        Alert.alert('Password Reset', 'Your password has been successfully updated.');
-        router.replace('/login' as any);
-      } else {
-        Alert.alert('Reset Failed', data.message || 'Could not reset password.');
-      }
-    } catch (err) {
-      Alert.alert('Error', 'Failed to connect to reset servers.');
+      await fn();
+    } catch (e: any) {
+      setError(e?.isNetwork ? NETWORK_ERROR_MESSAGE
+        : (e?.message && typeof e.message === 'string' && e.message.length < 140 ? e.message : 'Something went wrong. Please try again.'));
     } finally {
-      setLoading(false);
+      busyRef.current = false;
+      if (mountedRef.current) setLoading(false);
     }
+  };
+
+  const sendCode = (digits: string) => {
+    runGuarded(async () => {
+      const r = await phoneOtp.send(digits);
+      if (r.ok) {
+        setAutoProof(null);
+        setOtp('');
+        setInfo(r.message);
+      } else {
+        setError(r.message);
+      }
+    });
+  };
+
+  const handleSendOtp = () => {
+    const digits = normalizePhone(phone);
+    if (!isValidIndianMobile(digits)) {
+      setError('Please enter a valid 10-digit mobile number.');
+      return;
+    }
+    Keyboard.dismiss();
+    setInfo('');
+    sendCode(digits);
+  };
+
+  const changeNumber = () => {
+    phoneOtp.reset();
+    setAutoProof(null);
+    setOtp('');
+    setError('');
+    setInfo('');
+  };
+
+  const handleVerifyAndReset = () => {
+    const phone10 = phoneOtp.sentTo;
+    if (!phone10) return;
+    if (!autoProof && phoneOtp.mode !== 'firebase' && otp.replace(/\D/g, '').length !== 6) {
+      setError('Enter the 6-digit code we sent you.');
+      return;
+    }
+    if (!newPassword || newPassword.length < 6) {
+      setError('Password must be at least 6 characters.');
+      return;
+    }
+    Keyboard.dismiss();
+    runGuarded(async () => {
+      const proof = autoProof || await phoneOtp.getProof(otp);
+      const r = await postAuth(ENDPOINTS.resetPassword, { phone: phone10, newPassword, ...proof });
+      if (r.ok) {
+        try { require('../utils/sounds').playSound('success'); } catch {}
+        Alert.alert('Password updated 🎉', 'You can now sign in with your new password.');
+        if (router.canGoBack()) router.back();
+        else router.replace('/login' as any);
+        return;
+      }
+      if (r.code === 'OTP_EXPIRED' || r.code === 'OTP_LOCKED' || r.code === 'VERIFICATION_EXPIRED' || r.code === 'PHONE_MISMATCH') {
+        setAutoProof(null);
+        setOtp('');
+      }
+      phoneOtp.allowAutoRetry();
+      setError(r.message);
+    });
   };
 
   return (
     <KeyboardAvoidingView style={s.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView 
-        contentContainerStyle={[s.scroll, { paddingBottom: 220 }]} 
+      <ScrollView
+        contentContainerStyle={[s.scroll, { paddingBottom: 220 }]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
       >
         {/* Back Link */}
-        <TouchableOpacity 
-          style={s.backLink} 
+        <TouchableOpacity
+          style={s.backLink}
+          disabled={busy}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           onPress={() => {
             if (step === 2) {
-              setStep(1);
+              changeNumber();
             } else if (router.canGoBack()) {
               router.back();
             } else {
@@ -107,7 +142,7 @@ export default function ForgotPasswordScreen() {
         <View style={s.logoWrap}>
           <Text style={s.logo}>✨</Text>
           <Text style={s.brand}>ZENVY</Text>
-          <Text style={s.tagline}>RESET CREDENTIALS</Text>
+          <Text style={s.tagline}>RESET PASSWORD</Text>
         </View>
 
         <View style={s.card}>
@@ -116,57 +151,101 @@ export default function ForgotPasswordScreen() {
           </Text>
           <Text style={s.stepSub}>
             {step === 1
-              ? "Verify your registered mobile number using OTP to reset your password."
-              : 'Identity verified successfully! Enter your new password below.'}
+              ? "We'll text a 6-digit code to your registered mobile number."
+              : `Enter the code sent to +91 ${phoneOtp.sentTo} and pick a new password.`}
           </Text>
 
-          {/* Step 1: Phone Verification */}
+          {/* Step 1: Phone */}
           {step === 1 && (
             <View style={{ marginTop: 20 }}>
               <Text style={s.label}>PHONE NUMBER</Text>
               <View style={s.phoneInputWrap}>
                 <Text style={s.prefix}>+91</Text>
-                <TextInput 
-                  style={s.phoneInput} 
+                <TextInput
+                  style={s.phoneInput}
                   keyboardType="phone-pad"
-                  maxLength={10}
+                  textContentType="telephoneNumber"
+                  autoComplete="tel"
                   placeholder="Registered number"
                   placeholderTextColor={COLORS.textMuted}
                   value={phone}
-                  onChangeText={setPhone}
+                  onChangeText={(t) => { setPhone(t); if (error) setError(''); }}
+                  returnKeyType="done"
+                  onSubmitEditing={handleSendOtp}
+                  editable={!busy}
                 />
               </View>
 
-              <TouchableOpacity style={s.actionBtn} onPress={handleSendOtp} disabled={loading}>
-                {loading ? (
+              {error ? <Text style={s.error}>{error}</Text> : null}
+
+              <TouchableOpacity style={[s.actionBtn, busy && { opacity: 0.7 }]} onPress={handleSendOtp} disabled={busy}>
+                {busy ? (
                   <ActivityIndicator size="small" color="#000" />
                 ) : (
-                  <Text style={s.actionBtnText}>VERIFY VIA OTP</Text>
+                  <Text style={s.actionBtnText}>SEND OTP</Text>
                 )}
               </TouchableOpacity>
             </View>
           )}
 
-          {/* Step 2: New Password Form */}
+          {/* Step 2: Code + New Password */}
           {step === 2 && (
             <View style={{ marginTop: 20 }}>
+              {!autoProof && (
+                <>
+                  <Text style={s.label}>6-DIGIT CODE</Text>
+                  <TextInput
+                    style={[s.input, { letterSpacing: 8, textAlign: 'center', fontSize: 18, fontWeight: '900' }]}
+                    value={otp}
+                    onChangeText={(t) => { setOtp(t.replace(/\D/g, '')); if (error) setError(''); }}
+                    placeholder="••••••"
+                    placeholderTextColor={COLORS.textMuted}
+                    keyboardType="number-pad"
+                    textContentType="oneTimeCode"
+                    autoComplete="sms-otp"
+                    maxLength={6}
+                    autoFocus
+                    editable={!busy}
+                  />
+                  <View style={s.resendWrap}>
+                    <TouchableOpacity
+                      disabled={phoneOtp.countdown > 0 || busy}
+                      onPress={() => { const p = phoneOtp.sentTo; if (p) sendCode(p); }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Text style={[s.resendText, !(phoneOtp.countdown > 0 || busy) && { color: COLORS.gold }]}>
+                        {phoneOtp.countdown > 0 ? `Resend OTP in ${phoneOtp.countdown}s` : 'Resend OTP'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+
               <Text style={s.label}>NEW PASSWORD</Text>
               <View style={[s.phoneInputWrap, { paddingRight: 14 }]}>
-                <TextInput 
-                  style={[s.phoneInput, { paddingHorizontal: 14 }]} 
+                <TextInput
+                  style={[s.phoneInput, { paddingHorizontal: 14 }]}
                   secureTextEntry={!showPassword}
                   placeholder="At least 6 characters"
                   placeholderTextColor={COLORS.textMuted}
                   value={newPassword}
-                  onChangeText={setNewPassword}
+                  onChangeText={(t) => { setNewPassword(t); if (error) setError(''); }}
+                  textContentType="newPassword"
+                  autoComplete="password-new"
+                  returnKeyType="go"
+                  onSubmitEditing={handleVerifyAndReset}
+                  editable={!busy}
                 />
-                <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                <TouchableOpacity onPress={() => setShowPassword(!showPassword)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                   <Text style={{ fontSize: 16 }}>{showPassword ? '👁️' : '🔒'}</Text>
                 </TouchableOpacity>
               </View>
 
-              <TouchableOpacity style={s.actionBtn} onPress={handleVerifyAndReset} disabled={loading}>
-                {loading ? (
+              {info && !error ? <Text style={s.info}>{info}</Text> : null}
+              {error ? <Text style={s.error}>{error}</Text> : null}
+
+              <TouchableOpacity style={[s.actionBtn, busy && { opacity: 0.7 }]} onPress={handleVerifyAndReset} disabled={busy}>
+                {busy ? (
                   <ActivityIndicator size="small" color="#000" />
                 ) : (
                   <Text style={s.actionBtnText}>RESET PASSWORD</Text>
@@ -176,68 +255,6 @@ export default function ForgotPasswordScreen() {
           )}
         </View>
       </ScrollView>
-
-      {/* Real-time Auth Gateway Modal */}
-      <Modal
-        visible={authModalVisible}
-        animationType="slide"
-        transparent={false}
-        onRequestClose={() => setAuthModalVisible(false)}
-      >
-        <KeyboardAvoidingView 
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined} 
-          style={{ flex: 1, backgroundColor: '#0A0A0B' }}
-        >
-          {/* Header */}
-          <View style={{ 
-            flexDirection: 'row', 
-            alignItems: 'center', 
-            justifyContent: 'space-between', 
-            paddingHorizontal: 20, 
-            paddingTop: Platform.OS === 'ios' ? 50 : 20, 
-            paddingBottom: 15,
-            borderBottomWidth: 1,
-            borderBottomColor: 'rgba(255,255,255,0.08)'
-          }}>
-            <Text style={{ fontSize: 13, fontWeight: '900', color: COLORS.gold, letterSpacing: 2 }}>ZENVY SECURE OTP</Text>
-            <TouchableOpacity 
-              onPress={() => setAuthModalVisible(false)}
-              style={{ 
-                paddingHorizontal: 12, 
-                paddingVertical: 6, 
-                borderRadius: 8, 
-                backgroundColor: 'rgba(255,255,255,0.08)' 
-              }}
-            >
-              <Text style={{ fontSize: 11, fontWeight: '800', color: '#fff' }}>CLOSE</Text>
-            </TouchableOpacity>
-          </View>
-          
-          {Platform.OS === 'web' ? (
-            <View style={{ flex: 1, backgroundColor: '#0A0A0B', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-              <Text style={{ color: COLORS.gold, fontSize: 14, fontWeight: '900', marginBottom: 8, letterSpacing: 2 }}>ZENVY SECURE AUTH</Text>
-              <Text style={{ color: COLORS.textSecondary, fontSize: 11, textAlign: 'center', marginBottom: 20 }}>
-                Enter phone & OTP above to reset password.
-              </Text>
-            </View>
-          ) : (
-            <WebView
-              source={{ uri: `${API_URL}/auth-helper?phone=${encodeURIComponent('+91' + phone.replace(/\D/g, '').slice(-10))}` }}
-              onMessage={handleAuthMessage}
-              style={{ flex: 1, backgroundColor: '#0A0A0B' }}
-              javaScriptEnabled={true}
-              domStorageEnabled={true}
-              userAgent="Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1"
-              startInLoadingState={true}
-              renderLoading={() => (
-                <View style={[StyleSheet.absoluteFill, { backgroundColor: '#0A0A0B', alignItems: 'center', justifyContent: 'center' }]}>
-                  <ActivityIndicator size="large" color={COLORS.gold} />
-                </View>
-              )}
-            />
-          )}
-        </KeyboardAvoidingView>
-      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -268,6 +285,8 @@ const s = StyleSheet.create({
   otpInputActive: { borderColor: COLORS.gold, color: COLORS.gold },
   resendWrap: { alignItems: 'flex-end', marginTop: 8 },
   resendText: { fontSize: 9, fontWeight: '800', color: COLORS.textSecondary },
+  error: { color: '#EF4444', fontSize: 11, fontWeight: '600', marginTop: 10 },
+  info: { color: '#10B981', fontSize: 11, fontWeight: '700', marginTop: 10 },
 
   actionBtn: { backgroundColor: COLORS.gold, paddingVertical: 14, borderRadius: 14, alignItems: 'center', marginTop: 24, ...SHADOWS.goldGlow },
   actionBtnText: { fontSize: 11, fontWeight: '900', color: '#000', letterSpacing: 2 },

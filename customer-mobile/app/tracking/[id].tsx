@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,31 +12,45 @@ import {
   Alert,
   Share,
   Linking,
-  Animated,
   Image,
-  AppState
+  AppState,
+  KeyboardAvoidingView
 } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { COLORS, SHADOWS, RADIUS } from '../../constants/theme';
 import { API_URL } from '../../constants/api';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
-import { connectSocket, getSocket } from '../../utils/socket';
-import { apiFetch } from '../../utils/auth';
-import { StaggeredSection, FloatingPulse, BounceIn } from '../../components/AnimatedSection';
+import { connectSocket } from '../../utils/socket';
+import { apiFetch, readJson } from '../../utils/auth';
+import { StaggeredSection } from '../../components/AnimatedSection';
 import ConfettiCannon from 'react-native-confetti-cannon';
-import Svg, { Polyline, Circle } from 'react-native-svg';
 import LiveOrderCockpit from '../../components/LiveOrderCockpit';
 
-const CHECKPOINTS = [
-  { name: 'Mangalagiri Jn' },
-  { name: 'Neerukonda' },
-  { name: 'Campus Main Gate' },
-  { name: 'Academic Block' },
-  { name: 'Hostel Sector' },
-];
+const MAX_TIP = 500;
+
+/**
+ * Maps the backend status enum to the screen's step number.
+ * 1 placed, 2 confirmed, 3 preparing / rider at store, 4 out for delivery, 5 at gate, 6 delivered, -1 cancelled.
+ * Unknown statuses keep the previous step instead of jumping backwards.
+ */
+const statusToStep = (s: string | undefined | null, prev: number): number => {
+  switch (s) {
+    case 'Pending': return 1;
+    case 'Accepted': return 2;
+    case 'Preparing':
+    case 'ReadyForPickup':
+    case 'Picking': return 3;
+    case 'PickedUp': return 4;
+    case 'ArrivedAtGate': return 5;
+    case 'Delivered': return 6;
+    case 'Cancelled': return -1;
+    default: return prev;
+  }
+};
+
+const isTerminalStep = (step: number) => step === 6 || step === -1;
 
 interface OrderInfo {
   _id: string;
@@ -58,6 +72,12 @@ interface OrderInfo {
   restaurantName?: string;
   deliveryAddress?: string;
   address?: string;
+  paymentMethod?: string;
+  paymentStatus?: string;
+  estDuration?: number | null;
+  rating?: number | null;
+  refundedToWallet?: number;
+  cancellationReason?: string | null;
   deliveryPartner?: {
     id: string;
     _id?: string;
@@ -72,42 +92,27 @@ interface OrderInfo {
   };
 }
 
-interface Message {
-  sender: string;
-  senderRole: 'rider' | 'customer';
-  message: string;
-  timestamp: string | Date;
-}
-
 export default function TrackingScreen() {
-  const { id: orderId } = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id: string | string[] }>();
+  const orderId = Array.isArray(params.id) ? params.id[0] : params.id;
   const router = useRouter();
   const { isDark } = useTheme();
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
 
   const [status, setStatus] = useState<number>(1);
   const [orderInfo, setOrderInfo] = useState<OrderInfo | null>(null);
   const [loadingOrder, setLoadingOrder] = useState<boolean>(true);
   const [orderError, setOrderError] = useState<string | null>(null);
-  const [currentCheckpoint, setCurrentCheckpoint] = useState('Mangalagiri Jn');
-  const [eta, setEta] = useState('Calculating...');
   const [isConnected, setIsConnected] = useState(false);
-  const [showDeliveryOverlay, setShowDeliveryOverlay] = useState(false);
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [gateNotification, setGateNotification] = useState<string | null>(null);
-  const [isChatOpen, setIsChatOpen] = useState(false);
-  const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [cancelSecondsLeft, setCancelSecondsLeft] = useState(0);
   const [zoomPin, setZoomPin] = useState(false);
   const [showCancelConfirmation, setShowCancelConfirmation] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelMessage, setCancelMessage] = useState<string | null>(null);
+  const [approving, setApproving] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
-
-  // Chat states
-  const [chatMessages, setChatMessages] = useState<Message[]>([]);
-  const [chatInput, setChatInput] = useState('');
-  const [remoteTyping, setRemoteTyping] = useState(false);
-  const chatScrollRef = useRef<ScrollView>(null);
-  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Rating states
   const [ratingStars, setRatingStars] = useState(5);
@@ -115,97 +120,128 @@ export default function TrackingScreen() {
   const [ratingTip, setRatingTip] = useState('');
   const [submittingRating, setSubmittingRating] = useState(false);
 
-  const userName = user?.name || 'Customer';
+  const mountedRef = useRef(true);
+  const statusRef = useRef(1);
+  const fetchingRef = useRef(false);
+  const lastFetchRef = useRef(0);
+  const ratingPromptedRef = useRef(false);
+  const confettiShownRef = useRef(false);
+  const gateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (gateTimerRef.current) clearTimeout(gateTimerRef.current);
+    };
+  }, []);
+
+  const applyStep = (step: number) => {
+    statusRef.current = step;
+    setStatus(step);
+  };
 
   // Copy PIN helper
   const copyPinToClipboard = () => {
     if (!orderInfo?.deliveryPin) return;
     Clipboard.setString(orderInfo.deliveryPin);
-    Alert.alert('🔑 PIN Copied!', `Delivery PIN ${orderInfo.deliveryPin} copied to clipboard. Show this to your rider upon delivery.`);
+    Alert.alert('PIN copied', 'Share it with your rider only when you receive your order.');
   };
 
-  // Rich Live Tracking Share
+  const storeName = orderInfo?.restaurant?.name || orderInfo?.restaurantName || '';
+  const estMinutes = orderInfo?.estDuration && orderInfo.estDuration > 0 ? orderInfo.estDuration : null;
+
+  // Share the order status (text only: never the delivery PIN, no link to a page that does not exist)
   const handleShareTracking = async () => {
+    const stageText = status === 1 ? 'waiting for the store to confirm' : status === 2 ? 'confirmed' : status === 3 ? 'being prepared' : status === 4 ? 'out for delivery' : status === 5 ? 'at the gate' : 'delivered';
     try {
-      const stageText = status === 1 ? 'Order Placed ⏳' : status === 2 ? 'Accepted ✅' : status === 3 ? 'Preparing 🍳' : status === 4 ? `Out for Delivery (${currentCheckpoint}) 🛵` : status === 5 ? 'Arrived at Gate 🔔' : 'Delivered 🎉';
       await Share.share({
-        message: `🛵 Track my Zenvy order live!\n\nStatus: ${stageText}\nOrder ID: #${(orderId || '').slice(-6).toUpperCase()}\n${orderInfo?.deliveryPin ? `Verification PIN: ${orderInfo.deliveryPin}\n` : ''}ETA: ${eta}\n\nTrack real-time delivery here:\nhttps://zenvy.in/tracking/${orderId}`,
-        title: 'Zenvy Live Order Tracking'
+        message: `My Zenvy order${storeName ? ` from ${storeName}` : ''} is ${stageText}.${estMinutes && status >= 2 && status <= 4 ? ` The store estimated about ${estMinutes} min.` : ''}`,
+        title: 'Zenvy order status'
       });
     } catch (e) {
       console.log('Share tracking error:', e);
     }
   };
 
-  const fetchOrder = async () => {
-    if (!orderId) return;
+  const fetchOrder = useCallback(async () => {
+    if (!orderId || fetchingRef.current) return;
+    fetchingRef.current = true;
+    lastFetchRef.current = Date.now();
     try {
-      setLoadingOrder(true);
-      setOrderError(null);
       const res = await apiFetch(`${API_URL}/api/orders/${orderId}`);
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        setOrderError(errData.message || 'Order details not found or expired.');
+        const errData = (await readJson(res)) || {};
+        if (!mountedRef.current) return;
+        setOrderError(
+          res.status === 401
+            ? 'Please sign in again to see this order.'
+            : res.status === 404 || res.status === 403
+              ? "We couldn't find this order on your account."
+              : (res.status < 500 && errData.message) || 'We could not load this order. Please try again.'
+        );
         return;
       }
       const data = await res.json();
-      
+      if (!mountedRef.current) return;
+
       if (typeof data.items === 'string') {
         try { data.items = JSON.parse(data.items); } catch { data.items = []; }
       }
       setOrderInfo(data);
-      
-      if (data.status === 'Pending') setStatus(1);
-      else if (data.status === 'Accepted') setStatus(2);
-      else if (data.status === 'Preparing' || data.status === 'ReadyForPickup') setStatus(3);
-      else if (data.status === 'PickedUp') setStatus(4);
-      else if (data.status === 'ArrivedAtGate') setStatus(5);
-      else if (data.status === 'Delivered') { 
-        setStatus(6); 
-        if (!data.rating) setShowRatingModal(true); 
-      }
-      else if (data.status === 'Cancelled') setStatus(-1);
+      setOrderError(null);
+      applyStep(statusToStep(data.status, statusRef.current));
 
-      if (data.status === 'Pending' && data.createdAt) {
+      // Ask for a rating once per visit, and never for an order that is already rated.
+      if (data.status === 'Delivered' && data.rating == null && !ratingPromptedRef.current) {
+        ratingPromptedRef.current = true;
+        setShowRatingModal(true);
+      }
+
+      if (data.createdAt) {
         const elapsed = (Date.now() - new Date(data.createdAt).getTime()) / 1000;
         setCancelSecondsLeft(Math.max(0, 120 - Math.round(elapsed)));
-        if (elapsed < 30) setShowConfetti(true);
+        if (data.status === 'Pending' && elapsed < 30 && !confettiShownRef.current) {
+          confettiShownRef.current = true;
+          setShowConfetti(true);
+        }
       }
     } catch (e) {
       console.error('Fetch order error:', e);
-      setOrderError('Unable to connect to live tracking service. Please check your connection.');
+      if (mountedRef.current) setOrderError("Can't reach Zenvy right now. Check your internet and try again.");
     } finally {
-      setLoadingOrder(false);
+      fetchingRef.current = false;
+      if (mountedRef.current) setLoadingOrder(false);
     }
-  };
+  }, [orderId]);
 
   useEffect(() => {
-    if (!orderId) return;
+    if (!orderId) {
+      setLoadingOrder(false);
+      setOrderError("We couldn't find this order.");
+      return;
+    }
 
     const socket = connectSocket();
-
-    // Join order room
-    socket.emit('joinOrder', orderId);
+    const join = () => socket.emit('joinOrder', orderId);
+    join();
 
     const handleConnect = () => {
       setIsConnected(true);
-      socket.emit('joinOrder', orderId);
+      join();
+      fetchOrder();
     };
-
     const handleDisconnect = () => setIsConnected(false);
 
-    socket.on('connect', handleConnect);
-    socket.on('disconnect', handleDisconnect);
-    if (socket.connected) setIsConnected(true);
+    const handleGate = (data: { message?: string }) => {
+      setGateNotification(data?.message || 'Your rider is waiting at the gate!');
+      if (gateTimerRef.current) clearTimeout(gateTimerRef.current);
+      gateTimerRef.current = setTimeout(() => {
+        if (mountedRef.current) setGateNotification(null);
+      }, 20000);
+    };
 
-    socket.on('driverAtGate', (data: { message: string }) => {
-      setGateNotification(data.message);
-      setTimeout(() => setGateNotification(null), 10000);
-    });
-
-    fetchOrder();
-
-    socket.on('statusUpdated', (data: { id?: string; orderId?: string; status: string } | string) => {
+    const handleStatus = (data: { id?: string; orderId?: string; status: string } | string) => {
       let s = '';
       if (typeof data === 'object' && data !== null) {
         const targetId = data.id || data.orderId;
@@ -214,52 +250,46 @@ export default function TrackingScreen() {
       } else {
         s = data;
       }
-
-      if (s === 'Pending') setStatus(1);
-      else if (s === 'Accepted') { setStatus(2); fetchOrder(); }
-      else if (s === 'Preparing' || s === 'ReadyForPickup') { setStatus(3); fetchOrder(); }
-      else if (s === 'PickedUp') { setStatus(4); fetchOrder(); }
-      else if (s === 'ArrivedAtGate') { setStatus(5); fetchOrder(); }
-      else if (s === 'Delivered') { setStatus(6); setShowDeliveryOverlay(true); fetchOrder(); }
-      else if (s === 'Cancelled') { setStatus(-1); fetchOrder(); }
-    });
-
-    socket.on('checkpointUpdated', (d: { orderId?: string; currentCheckpoint: string }) => {
-      if (d.orderId && String(d.orderId) !== String(orderId)) return;
-      setCurrentCheckpoint(prev => prev === d.currentCheckpoint ? prev : d.currentCheckpoint);
-    });
-
-    // Chat Listeners
-    const handleReceiveMessage = (msg: Message) => {
-      setChatMessages(prev => [...prev, msg]);
-      setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 100);
+      if (!s) return;
+      const step = statusToStep(s, statusRef.current);
+      applyStep(step);
+      if (s === 'Delivered' && !confettiShownRef.current) {
+        confettiShownRef.current = true;
+        setShowConfetti(true);
+      }
+      // Store timeout / admin cancel refunds Wallet orders: refresh the balance.
+      if (s === 'Cancelled' && typeof data === 'object' && data !== null && Number((data as any).refundedToWallet) > 0) {
+        refreshUser().catch(() => {});
+      }
+      fetchOrder();
     };
 
-    socket.on('receiveMessage', handleReceiveMessage);
-
-    socket.on('typing_start', (data: { sender: string }) => {
-      if (data.sender !== userName) setRemoteTyping(true);
-    });
-
-    socket.on('typing_end', (data: { sender: string }) => {
-      if (data.sender !== userName) setRemoteTyping(false);
-    });
+    socket.on('connect', handleConnect);
+    socket.on('disconnect', handleDisconnect);
+    socket.on('driverAtGate', handleGate);
+    socket.on('statusUpdated', handleStatus);
+    if (socket.connected) setIsConnected(true);
 
     fetchOrder();
-    const poll = setInterval(fetchOrder, 10000);
 
-    // AppState listener: reconnect socket & re-fetch when returning from background (e.g. UPI payment)
-    const appStateRef = { current: AppState.currentState };
+    // Safety-net polling: every 10 s while offline, every 30 s while the socket is live,
+    // and never once the order is delivered or cancelled.
+    const poll = setInterval(() => {
+      if (isTerminalStep(statusRef.current)) return;
+      const since = Date.now() - lastFetchRef.current;
+      if (since < (socket.connected ? 30000 : 10000)) return;
+      fetchOrder();
+    }, 5000);
+
+    // Re-sync when the app returns to the foreground.
+    let appState = AppState.currentState;
     const appStateSubscription = AppState.addEventListener('change', (nextState) => {
-      if (appStateRef.current.match(/inactive|background/) && nextState === 'active') {
-        // App returned to foreground — force reconnect & sync
-        if (!socket.connected) {
-          socket.connect();
-        }
-        socket.emit('joinOrder', orderId);
+      if (appState.match(/inactive|background/) && nextState === 'active') {
+        if (!socket.connected) socket.connect();
+        join();
         fetchOrder();
       }
-      appStateRef.current = nextState;
+      appState = nextState;
     });
 
     return () => {
@@ -267,187 +297,143 @@ export default function TrackingScreen() {
       appStateSubscription.remove();
       socket.off('connect', handleConnect);
       socket.off('disconnect', handleDisconnect);
-      socket.off('statusUpdated');
-      socket.off('checkpointUpdated');
-      socket.off('driverAtGate');
-      socket.off('receiveMessage', handleReceiveMessage);
-      socket.off('typing_start');
-      socket.off('typing_end');
+      socket.off('driverAtGate', handleGate);
+      socket.off('statusUpdated', handleStatus);
     };
-  }, [orderId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderId, fetchOrder]);
 
-  // Countdown timer for cancel window
+  // Countdown for the 2-minute cancel window
   useEffect(() => {
-    if (cancelSecondsLeft > 0 && status === 1) {
-      const t = setInterval(() => setCancelSecondsLeft(p => Math.max(0, p - 1)), 1000);
-      return () => clearInterval(t);
-    }
-  }, [cancelSecondsLeft, status]);
+    if (cancelSecondsLeft <= 0) return;
+    const t = setTimeout(() => setCancelSecondsLeft(p => Math.max(0, p - 1)), 1000);
+    return () => clearTimeout(t);
+  }, [cancelSecondsLeft]);
 
-  // Calculate dynamic ETA
-  useEffect(() => {
-    if (status >= 4) { setEta('Arrived'); return; }
-    const idx = CHECKPOINTS.findIndex(cp => cp.name === currentCheckpoint);
-    const remaining = CHECKPOINTS.length - 1 - Math.max(0, idx);
-    setEta(`~${Math.max(2, remaining * 4)} min`);
-  }, [currentCheckpoint, status]);
+  // Customers can cancel while the store has not accepted yet, or within 2 minutes of placing it (before pickup).
+  const canCancel = status === 1 || (cancelSecondsLeft > 0 && (status === 2 || status === 3));
 
   // Cancel order handler
   const handleCancelOrder = async () => {
+    if (cancelling) return;
+    setCancelling(true);
     try {
-      const res = await apiFetch(`${API_URL}/api/orders/${orderId}/cancel`, { method: 'PUT' });
+      const res = await apiFetch(`${API_URL}/api/orders/${orderId}/cancel`, { method: 'PUT', body: JSON.stringify({}) });
+      const data = (await readJson(res)) || {};
+      if (!mountedRef.current) return;
+      setShowCancelConfirmation(false);
       if (res.ok) {
-        setShowCancelConfirmation(false);
-        setStatus(-1);
-        Alert.alert('Success', 'Order cancelled and refund initiated.');
+        setCancelMessage(data.message || 'Order cancelled.');
+        setOrderInfo(prev => (prev ? { ...prev, status: 'Cancelled', refundedToWallet: Number(data.refundedToWallet) || 0 } : prev));
+        applyStep(-1);
+        if (Number(data.refundedToWallet) > 0) refreshUser().catch(() => {});
       } else {
-        Alert.alert('Error', 'Unable to cancel order at this stage.');
+        Alert.alert("Couldn't cancel", data.message || 'This order can no longer be cancelled.');
+        fetchOrder();
       }
     } catch {
-      Alert.alert('Error', 'Network error. Please try again.');
+      if (mountedRef.current) Alert.alert('No connection', 'Please check your internet and try again.');
+    } finally {
+      if (mountedRef.current) setCancelling(false);
     }
   };
 
   const handleApprovePurchase = async () => {
+    if (approving) return;
+    setApproving(true);
     try {
       const res = await apiFetch(`${API_URL}/api/orders/${orderId}/approve-purchase`, { method: 'PUT' });
+      const data = (await readJson(res)) || {};
+      if (!mountedRef.current) return;
       if (res.ok) {
-        Alert.alert('🟢 Purchase Approved', 'Rider is notified to proceed with shopping items.');
-        const updated = await res.json();
-        setOrderInfo(prev => prev ? { ...prev, ...updated.order } : prev);
+        Alert.alert('Purchase approved', data.message || 'Your rider will go ahead with the shopping.');
+        if (data.order) setOrderInfo(prev => (prev ? { ...prev, ...data.order } : prev));
       } else {
-        Alert.alert('Error', 'Failed to approve purchase. Please try again.');
+        Alert.alert("Couldn't approve", data.message || 'Please try again.');
       }
     } catch {
-      Alert.alert('Error', 'Network error. Please check connection.');
+      if (mountedRef.current) Alert.alert('No connection', 'Please check your internet and try again.');
+    } finally {
+      if (mountedRef.current) setApproving(false);
     }
   };
 
   const handleApproveBill = async () => {
+    if (approving) return;
+    setApproving(true);
     try {
       const res = await apiFetch(`${API_URL}/api/orders/${orderId}/approve-bill`, { method: 'PUT' });
+      const data = (await readJson(res)) || {};
+      if (!mountedRef.current) return;
       if (res.ok) {
-        Alert.alert('💸 Reimbursement Confirmed', 'Reimbursement payment processed successfully! Checklist unlocked for rider.');
-        const updated = await res.json();
-        setOrderInfo(prev => prev ? { ...prev, ...updated.order } : prev);
+        Alert.alert('Bill approved', data.message || 'Thanks! Your rider is on the way.');
+        if (data.order) setOrderInfo(prev => (prev ? { ...prev, ...data.order } : prev));
+        if (orderInfo?.paymentMethod === 'Wallet') refreshUser().catch(() => {});
       } else {
-        Alert.alert('Error', 'Failed to approve bill. Please try again.');
+        Alert.alert("Couldn't approve the bill", data.message || 'Please try again.');
       }
     } catch {
-      Alert.alert('Error', 'Network error. Please check connection.');
+      if (mountedRef.current) Alert.alert('No connection', 'Please check your internet and try again.');
+    } finally {
+      if (mountedRef.current) setApproving(false);
     }
   };
 
-  // Submit Rating handler
+  const tipAmount = Math.min(MAX_TIP, parseInt(ratingTip.replace(/\D/g, ''), 10) || 0);
+
+  // Submit Rating handler (the server stores the item reviews itself)
   const handleSubmitRating = async () => {
+    if (submittingRating) return;
     setSubmittingRating(true);
     try {
       const res = await apiFetch(`${API_URL}/api/orders/${orderId}/rate`, {
         method: 'PUT',
         body: JSON.stringify({
           rating: ratingStars,
-          review: ratingReview,
-          tipAmount: ratingTip ? Number(ratingTip) : 0
+          review: ratingReview.trim() || undefined,
+          tipAmount
         })
       });
+      const data = (await readJson(res)) || {};
+      if (!mountedRef.current) return;
       if (res.ok) {
         setShowRatingModal(false);
-        // Persist genuine review locally for each ordered item for instantaneous reflection on PDP
-        try {
-          let itemsList: any[] = [];
-          if (Array.isArray(orderInfo?.items)) {
-            itemsList = orderInfo.items;
-          } else if (typeof orderInfo?.items === 'string') {
-            try { itemsList = JSON.parse(orderInfo.items); } catch {}
-          }
-
-          const revComment = ratingReview?.trim() || 'Genuine verified campus order rating.';
-          const nowStr = 'Just now';
-
-          for (const it of itemsList) {
-            const possibleIds = [
-              it.menuItemId,
-              it.id,
-              it._id,
-              it.name ? it.name.toLowerCase().replace(/[^a-z0-9]/g, '-') : null,
-            ].filter(Boolean);
-
-            const reviewEntry = {
-              id: 'local-ord-' + orderId + '-' + Date.now(),
-              name: userName || 'Verified Buyer',
-              block: orderInfo?.deliveryAddress ? orderInfo.deliveryAddress.split(',')[0].trim() : 'Campus Resident',
-              rating: ratingStars,
-              time: nowStr,
-              comment: revComment,
-              verified: true,
-              helpfulCount: 1,
-            };
-
-            for (const pid of possibleIds) {
-              const storageKey = `zenvy_reviews_${pid}`;
-              const prevData = await AsyncStorage.getItem(storageKey);
-              let arr: any[] = [];
-              if (prevData) {
-                try { arr = JSON.parse(prevData); } catch {}
-              }
-              if (!Array.isArray(arr)) arr = [];
-              arr.unshift(reviewEntry);
-              await AsyncStorage.setItem(storageKey, JSON.stringify(arr));
-            }
-          }
-        } catch (syncErr) {
-          console.warn('[Review Local Sync Error]', syncErr);
+        setOrderInfo(prev => (prev ? { ...prev, rating: data.rating ?? ratingStars } : prev));
+        refreshUser().catch(() => {});
+        if (data.tipError) {
+          Alert.alert('Thanks for rating!', `${data.tipError}`);
+        } else {
+          const points = Number(data.zenPointsEarned) || 0;
+          Alert.alert('⭐ Thanks for rating!', `${data.message || 'Your rating was saved.'}${points ? ` You earned ${points} ZenPoints.` : ''}`);
         }
-
-        Alert.alert('⭐ Rating Submitted!', 'Thank you! Your verified rating and review now reflects directly on these campus dishes.');
+      } else if (data.code === 'ALREADY_RATED') {
+        setShowRatingModal(false);
+        setOrderInfo(prev => (prev ? { ...prev, rating: prev.rating ?? ratingStars } : prev));
+        Alert.alert('Already rated', data.message || 'You have already rated this order. Thank you!');
+      } else {
+        Alert.alert("Couldn't save your rating", data.message || 'Please try again.');
       }
     } catch (e) {
       console.error(e);
+      if (mountedRef.current) Alert.alert('No connection', 'Please check your internet and try again.');
     } finally {
-      setSubmittingRating(false);
+      if (mountedRef.current) setSubmittingRating(false);
     }
   };
 
-  // Chat message sending
-  const sendMessage = () => {
-    if (!chatInput.trim()) return;
-    const s = getSocket();
-    const messageData = {
-      orderId,
-      sender: userName,
-      senderRole: 'customer',
-      message: chatInput.trim()
-    };
-    s.emit('sendMessage', messageData);
-    s.emit('typing_end', { orderId, sender: userName });
-    setChatInput('');
+  const callRider = () => {
+    const phone = orderInfo?.deliveryPartner?.phone;
+    if (!phone) return;
+    Linking.openURL(`tel:${phone}`).catch(() => {
+      Alert.alert('Could not start the call', `You can call your rider on ${phone}.`);
+    });
   };
 
-  const handleChatInputChange = (text: string) => {
-    setChatInput(text);
-    const s = getSocket();
-    s.emit('typing_start', { orderId, sender: userName });
-    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-    typingTimeoutRef.current = setTimeout(() => {
-      s.emit('typing_end', { orderId, sender: userName });
-    }, 1500);
+  const openHelp = () => {
+    router.push({ pathname: '/support', params: { orderId: String(orderId || '') } } as any);
   };
 
-  const QUICK_REPLIES = [
-    "Got it, coming down in 2 mins! 🏃‍♂️",
-    "Please leave it with the gate warden/security. 🛡️",
-    "Please leave it outside my room door. 🛏️",
-    "Thanks, on my way! 🙌",
-    "Please call me when you reach the gate. 📞"
-  ];
-
-  const steps = [
-    { label: 'Order Placed', desc: 'Your order has been received.' },
-    { label: 'Order Accepted', desc: 'Driver is preparing to fetch your meal.' },
-    { label: 'Kitchen Preparing', desc: 'The kitchen is cooking your order right now.' },
-    { label: 'Out for Delivery', desc: 'Rider is on the way to your hostel.' },
-    { label: 'Arrived', desc: 'Pick up your food at the designated spot.' },
-  ];
+  const rider = orderInfo?.deliveryPartner || null;
 
   const bg = isDark ? COLORS.bgDark : COLORS.bgLight;
   const cardBg = isDark ? COLORS.bgCard : COLORS.bgLightCard;
@@ -460,10 +446,10 @@ export default function TrackingScreen() {
       <View style={[s.container, { backgroundColor: bg, justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
         <ActivityIndicator size="large" color={COLORS.gold} />
         <Text style={{ fontSize: 12, fontWeight: '900', color: txt, letterSpacing: 2, marginTop: 18 }}>
-          CONNECTING TO LIVE TRACKING...
+          LOADING YOUR ORDER...
         </Text>
         <Text style={{ fontSize: 11, color: txtSec, marginTop: 6, textAlign: 'center' }}>
-          Retrieving live delivery status for order #{orderId ? orderId.slice(-6).toUpperCase() : ''}
+          Order #{orderId ? orderId.slice(-6).toUpperCase() : ''}
         </Text>
       </View>
     );
@@ -475,12 +461,15 @@ export default function TrackingScreen() {
         <View style={[s.cancelledCircle, { borderColor: COLORS.goldBorder, backgroundColor: 'rgba(212,175,122,0.1)' }]}>
           <Text style={{ fontSize: 32 }}>📡</Text>
         </View>
-        <Text style={[s.cancelledTitle, { color: txt, marginTop: 16 }]}>Tracking Offline</Text>
+        <Text style={[s.cancelledTitle, { color: txt, marginTop: 16 }]}>Couldn't load this order</Text>
         <Text style={[s.cancelledDesc, { color: txtSec, textAlign: 'center', marginTop: 8 }]}>
           {orderError}
         </Text>
-        <TouchableOpacity style={[s.returnBtn, { backgroundColor: COLORS.gold, marginTop: 24 }]} onPress={fetchOrder}>
-          <Text style={[s.returnBtnText, { color: '#000' }]}>RETRY TRACKING</Text>
+        <TouchableOpacity
+          style={[s.returnBtn, { backgroundColor: COLORS.gold, marginTop: 24 }]}
+          onPress={() => { setLoadingOrder(true); fetchOrder(); }}
+        >
+          <Text style={[s.returnBtnText, { color: '#000' }]}>TRY AGAIN</Text>
         </TouchableOpacity>
         <TouchableOpacity style={{ marginTop: 16 }} onPress={() => router.replace('/(tabs)/orders' as any)}>
           <Text style={{ fontSize: 11, fontWeight: '800', color: txtSec, letterSpacing: 1 }}>VIEW ALL ORDERS</Text>
@@ -490,21 +479,35 @@ export default function TrackingScreen() {
   }
 
   if (status === -1) {
+    const charged = Number(orderInfo?.finalPrice ?? orderInfo?.totalPrice ?? 0) || 0;
+    const refundLine = cancelMessage
+      || (orderInfo?.paymentMethod === 'Wallet'
+        ? `₹${charged} has been refunded to your Zenvy Wallet.`
+        : 'No payment was taken for this Cash on Delivery order.');
+    // Store / system cancels explain why; the customer's own cancel needs no reason line.
+    const reasonText = orderInfo?.cancellationReason && !/by customer|by user/i.test(orderInfo.cancellationReason)
+      ? orderInfo.cancellationReason
+      : null;
     return (
       <View style={[s.container, { backgroundColor: bg, justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
         <View style={s.cancelledCircle}>
           <Text style={{ fontSize: 32, color: COLORS.red }}>✕</Text>
         </View>
         <Text style={[s.cancelledTitle, { color: txt }]}>Order Cancelled</Text>
+        {!!reasonText && !cancelMessage && (
+          <Text style={[s.cancelledDesc, { color: txt, fontWeight: '700', marginBottom: 6 }]}>{reasonText}</Text>
+        )}
         <Text style={[s.cancelledDesc, { color: txtSec }]}>
-          This order was cancelled. A full refund of{' '}
-          <Text style={{ color: COLORS.emerald, fontWeight: '700' }}>
-            ₹{orderInfo?.finalPrice || orderInfo?.totalPrice || 0}
-          </Text>{' '}
-          has been initiated.
+          {refundLine}
         </Text>
         <TouchableOpacity style={s.returnBtn} onPress={() => router.replace('/(tabs)' as any)}>
-          <Text style={s.returnBtnText}>RETURN HOME</Text>
+          <Text style={s.returnBtnText}>BACK TO HOME</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={{ marginTop: 16 }} onPress={() => router.replace('/(tabs)/orders' as any)}>
+          <Text style={{ fontSize: 11, fontWeight: '800', color: txtSec, letterSpacing: 1 }}>VIEW ALL ORDERS</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={{ marginTop: 12 }} onPress={openHelp}>
+          <Text style={{ fontSize: 11, fontWeight: '800', color: txtSec, letterSpacing: 1 }}>NEED HELP?</Text>
         </TouchableOpacity>
       </View>
     );
@@ -550,24 +553,35 @@ export default function TrackingScreen() {
       </View>
 
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
-        {/* ── LIVE ORDER DISPATCH COCKPIT ── */}
+        {/* ── RIDER AT GATE BANNER (socket 'driverAtGate') ── */}
+        {!!gateNotification && status < 6 && (
+          <View style={s.gateBanner}>
+            <Text style={{ fontSize: 22 }}>🔔</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={s.gateBannerTitle}>{gateNotification}</Text>
+              <Text style={s.gateBannerSub}>Keep your delivery PIN ready.</Text>
+            </View>
+            {!!rider?.phone && (
+              <TouchableOpacity style={s.gateBannerBtn} onPress={callRider}>
+                <Text style={s.gateBannerBtnText}>CALL</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity onPress={() => setGateNotification(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Text style={{ color: '#fff', fontSize: 14, fontWeight: '900' }}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* ── LIVE ORDER COCKPIT ── */}
         <StaggeredSection delay={30} direction="up">
           <LiveOrderCockpit
             status={status}
-            currentCheckpoint={currentCheckpoint}
             isDark={isDark}
-            restaurantName={orderInfo?.restaurant?.name || orderInfo?.restaurantName || (orderInfo?.category === 'Mega Basket' ? 'Campus Kirana Store' : 'Campus Kitchen')}
-            hostelAddress={orderInfo?.deliveryAddress || orderInfo?.address || 'Campus Hostel Drop'}
-            orderId={orderInfo?._id || orderId || 'ZENVY-ORDER'}
-            deliveryPin={orderInfo?.deliveryPin || '----'}
-            riderInfo={orderInfo?.deliveryPartner}
-            onOpenChat={() => {
-              if (orderInfo?.deliveryPartner?.phone) {
-                Linking.openURL(`tel:${orderInfo.deliveryPartner.phone}`).catch(() => {});
-              } else {
-                Alert.alert('Campus Delivery Captain', 'Your verified rider is currently en route to your hostel block.');
-              }
-            }}
+            restaurantName={storeName || undefined}
+            hostelAddress={orderInfo?.deliveryAddress || orderInfo?.address || undefined}
+            orderId={orderInfo?._id || orderId || ''}
+            riderInfo={rider}
+            estMinutes={estMinutes}
           />
         </StaggeredSection>
 
@@ -580,24 +594,45 @@ export default function TrackingScreen() {
             <View style={{ flex: 1 }}>
               <Text style={[s.stageLabel, { color: txtSec }]}>CURRENT STATUS</Text>
               <Text style={[s.stageText, { color: txt }]}>
-                {status === 1 && 'Waiting for restaurant acceptance'}
-                {status === 2 && 'Order accepted — rider assigning'}
-                {status === 3 && 'Kitchen is preparing your fresh meal'}
-                {status === 4 && `Rider is on the way to ${currentCheckpoint}`}
-                {status === 5 && 'Rider has arrived at your gate!'}
-                {status >= 6 && 'Order delivered successfully!'}
+                {status === 1 && `Waiting for ${storeName || 'the store'} to accept`}
+                {status === 2 && (rider ? `${rider.name || 'Your rider'} will pick up your order` : 'Order confirmed — assigning a rider')}
+                {status === 3 && (orderInfo?.status === 'Picking'
+                  ? 'Your rider is at the store picking up your order'
+                  : orderInfo?.status === 'ReadyForPickup'
+                    ? 'Your order is packed and ready for pickup'
+                    : 'Your order is being prepared')}
+                {status === 4 && 'Your rider is on the way'}
+                {status === 5 && 'Your rider has arrived at your gate!'}
+                {status >= 6 && 'Order delivered. Enjoy!'}
               </Text>
             </View>
-            {eta && eta !== 'Calculating...' && (
+            {status === 5 ? (
               <View style={s.etaChip}>
-                <Text style={s.etaText}>{eta}</Text>
+                <Text style={s.etaText}>At gate</Text>
               </View>
-            )}
+            ) : estMinutes && status >= 2 && status <= 4 ? (
+              <View style={s.etaChip}>
+                <Text style={s.etaText}>~{estMinutes} min</Text>
+              </View>
+            ) : null}
           </View>
         </StaggeredSection>
 
-        {/* ── MEGA BASKET KIRANA APPROVAL PANEL ── */}
-        {orderInfo?.category === 'Mega Basket' && (
+        {/* ── RIDER IS DELIVERING ANOTHER ORDER ON THE WAY ── */}
+        {(orderInfo?.riderOtherOrders ?? 0) > 0 && status < 6 && (
+          <StaggeredSection delay={110} direction="up">
+            <View style={s.ecoBanner}>
+              <Text style={{ fontSize: 16, marginRight: 6 }}>🌱</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={s.ecoTitle}>Batched delivery</Text>
+                <Text style={s.ecoSubtitle}>Your rider is also delivering another order on the same route.</Text>
+              </View>
+            </View>
+          </StaggeredSection>
+        )}
+
+        {/* ── MEGA BASKET: approve the shopping and the final bill ── */}
+        {orderInfo?.category === 'Mega Basket' && status < 6 && (
           <StaggeredSection delay={80} direction="up">
             <View style={{ backgroundColor: cardBg, borderColor: COLORS.goldBorder, borderWidth: 1, padding: 16, borderRadius: 20, marginBottom: 16 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
@@ -605,44 +640,47 @@ export default function TrackingScreen() {
                   <Text style={{ fontSize: 16 }}>🧺</Text>
                 </View>
                 <View>
-                  <Text style={{ fontSize: 9, fontWeight: '900', color: '#F59E0B', letterSpacing: 2 }}>MEGA BASKET ACTIVE WORKFLOW</Text>
-                  <Text style={{ fontSize: 13, fontWeight: 'bold', color: txt }}>Household Kirana Verification</Text>
+                  <Text style={{ fontSize: 9, fontWeight: '900', color: '#F59E0B', letterSpacing: 2 }}>MEGA BASKET</Text>
+                  <Text style={{ fontSize: 13, fontWeight: 'bold', color: txt }}>Check your shopping</Text>
                 </View>
               </View>
 
-              {/* Step 1: Pre-Purchase Item/Estimate Approval */}
+              {/* Step 1: approve the items before the rider buys them */}
               <View style={{ borderBottomWidth: 1, borderBottomColor: border, paddingBottom: 14, marginBottom: 14 }}>
-                <Text style={{ fontSize: 10, fontWeight: 'bold', color: txtSec, marginBottom: 4 }}>STEP 1: PRE-PURCHASE APPROVAL</Text>
+                <Text style={{ fontSize: 10, fontWeight: 'bold', color: txtSec, marginBottom: 4 }}>STEP 1: APPROVE THE ITEMS</Text>
                 {!orderInfo.itemPhotoUrl ? (
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 }}>
                     <ActivityIndicator size="small" color="#F59E0B" />
                     <Text style={{ fontSize: 11, color: txtSec, fontStyle: 'italic' }}>
-                      Rider is checking items at the Kirana store...
+                      Your rider will share a photo of the items from the store.
                     </Text>
                   </View>
                 ) : (
                   <View>
                     <Text style={{ fontSize: 11, color: txt, marginBottom: 8 }}>
-                      Rider has uploaded a preview of the grocery items and price estimate:
+                      Your rider shared a photo of the items:
                     </Text>
-                    {orderInfo.itemPhotoUrl && (
-                      <View style={{ height: 160, borderRadius: 10, overflow: 'hidden', backgroundColor: '#222', marginBottom: 10 }}>
-                        <Image source={{ uri: orderInfo.itemPhotoUrl }} style={{ width: '100%', height: '100%', resizeMode: 'cover' }} />
-                      </View>
-                    )}
+                    <View style={{ height: 160, borderRadius: 10, overflow: 'hidden', backgroundColor: '#222', marginBottom: 10 }}>
+                      <Image source={{ uri: orderInfo.itemPhotoUrl }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                    </View>
 
                     {!orderInfo.isPurchasingApprovedByCustomer ? (
                       <TouchableOpacity
-                        style={{ backgroundColor: '#F59E0B', paddingVertical: 10, borderRadius: 10, alignItems: 'center' }}
+                        style={{ backgroundColor: '#F59E0B', paddingVertical: 10, borderRadius: 10, alignItems: 'center', opacity: approving ? 0.6 : 1 }}
                         onPress={handleApprovePurchase}
+                        disabled={approving}
                       >
-                        <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 11 }}>🟢 AGREE & APPROVE PURCHASING</Text>
+                        {approving ? (
+                          <ActivityIndicator size="small" color="#000" />
+                        ) : (
+                          <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 11 }}>LOOKS GOOD, GO AHEAD</Text>
+                        )}
                       </TouchableOpacity>
                     ) : (
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <Text style={{ fontSize: 13 }}>🟢</Text>
+                        <Text style={{ fontSize: 13 }}>✅</Text>
                         <Text style={{ fontSize: 11, fontWeight: 'bold', color: COLORS.emerald }}>
-                          Pre-Purchase Approved! Rider is building basket.
+                          Approved. Your rider is buying your items.
                         </Text>
                       </View>
                     )}
@@ -650,45 +688,55 @@ export default function TrackingScreen() {
                 )}
               </View>
 
-              {/* Step 2: Final Receipt Reimbursement Payment */}
+              {/* Step 2: approve the final bill */}
               {orderInfo.isPurchasingApprovedByCustomer && (
                 <View>
-                  <Text style={{ fontSize: 10, fontWeight: 'bold', color: txtSec, marginBottom: 4 }}>STEP 2: RECEIPT REIMBURSEMENT</Text>
+                  <Text style={{ fontSize: 10, fontWeight: 'bold', color: txtSec, marginBottom: 4 }}>STEP 2: APPROVE THE BILL</Text>
                   {!orderInfo.billProofUrl ? (
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 }}>
                       <ActivityIndicator size="small" color="#F59E0B" />
                       <Text style={{ fontSize: 11, color: txtSec, fontStyle: 'italic' }}>
-                        Waiting for final billing/receipt upload...
+                        Waiting for your rider to upload the store bill...
                       </Text>
                     </View>
                   ) : (
                     <View>
                       <Text style={{ fontSize: 11, color: txt, marginBottom: 4 }}>
-                        Rider uploaded the final receipt:
+                        Store bill uploaded by your rider:
                       </Text>
-                      <Text style={{ fontSize: 14, fontWeight: 'bold', color: COLORS.emerald, marginBottom: 8 }}>
-                        Total Amount: ₹{orderInfo.billAmount}
-                      </Text>
-                      {orderInfo.billProofUrl && (
-                        <View style={{ height: 160, borderRadius: 10, overflow: 'hidden', backgroundColor: '#222', marginBottom: 10 }}>
-                          <Image source={{ uri: orderInfo.billProofUrl }} style={{ width: '100%', height: '100%', resizeMode: 'cover' }} />
-                        </View>
+                      {Number(orderInfo.billAmount) > 0 && (
+                        <Text style={{ fontSize: 14, fontWeight: 'bold', color: COLORS.emerald, marginBottom: 8 }}>
+                          Bill amount: ₹{orderInfo.billAmount}
+                        </Text>
                       )}
+                      <View style={{ height: 160, borderRadius: 10, overflow: 'hidden', backgroundColor: '#222', marginBottom: 10 }}>
+                        <Image source={{ uri: orderInfo.billProofUrl }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                      </View>
 
                       {!orderInfo.isBillApproved ? (
-                        <TouchableOpacity
-                          style={{ backgroundColor: COLORS.emerald, paddingVertical: 10, borderRadius: 10, alignItems: 'center' }}
-                          onPress={handleApproveBill}
-                        >
-                          <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 11 }}>
-                            💸 CONFIRM REIMBURSEMENT & PAY ₹{orderInfo.billAmount}
+                        <>
+                          <TouchableOpacity
+                            style={{ backgroundColor: COLORS.emerald, paddingVertical: 10, borderRadius: 10, alignItems: 'center', opacity: approving ? 0.6 : 1 }}
+                            onPress={handleApproveBill}
+                            disabled={approving}
+                          >
+                            {approving ? (
+                              <ActivityIndicator size="small" color="#fff" />
+                            ) : (
+                              <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 11 }}>APPROVE BILL</Text>
+                            )}
+                          </TouchableOpacity>
+                          <Text style={{ fontSize: 10, color: txtSec, marginTop: 6, textAlign: 'center' }}>
+                            {orderInfo.paymentMethod === 'Wallet'
+                              ? 'The difference is adjusted in your Zenvy Wallet.'
+                              : 'You pay the new total in cash at delivery.'}
                           </Text>
-                        </TouchableOpacity>
+                        </>
                       ) : (
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                          <Text style={{ fontSize: 13 }}>🟢</Text>
+                          <Text style={{ fontSize: 13 }}>✅</Text>
                           <Text style={{ fontSize: 11, fontWeight: 'bold', color: COLORS.emerald }}>
-                            Bill Reimbursed & Confirmed! Rider is in transit.
+                            Bill approved. Your rider is on the way.
                           </Text>
                         </View>
                       )}
@@ -700,34 +748,21 @@ export default function TrackingScreen() {
           </StaggeredSection>
         )}
 
-        {/* ── BATCH DISCOUNT BANNER ── */}
-        {orderInfo?.riderOtherOrders && orderInfo.riderOtherOrders > 0 && (
-          <StaggeredSection delay={110} direction="up">
-            <View style={s.ecoBanner}>
-              <Text style={{ fontSize: 16, marginRight: 6 }}>🌱</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={s.ecoTitle}>Eco-Batching Active</Text>
-                <Text style={s.ecoSubtitle}>Rider is delivering another order along the route to reduce carbon emissions.</Text>
-              </View>
-            </View>
-          </StaggeredSection>
-        )}
-
-        {/* ── GATE VERIFICATION PIN ── */}
-        {orderInfo?.deliveryPin && status < 6 && (
+        {/* ── DELIVERY PIN ── */}
+        {!!orderInfo?.deliveryPin && status < 6 && (
           <StaggeredSection delay={170} direction="up">
-            <View style={[s.pinCard, { backgroundColor: cardBg, borderColor: border }]}>
+            <View style={[s.pinCard, { backgroundColor: cardBg, borderColor: status >= 4 ? COLORS.gold : border }]}>
               <View style={s.pinHeader}>
                 <View style={s.pinIconWrap}>
                   <Text style={{ fontSize: 18 }}>🔑</Text>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[s.pinLabel, { color: txtSec }]}>DELIVERY SECURITY PIN</Text>
-                  <Text style={[s.pinDesc, { color: txt }]}>Show this code to the rider to verify delivery</Text>
+                  <Text style={[s.pinLabel, { color: txtSec }]}>DELIVERY PIN</Text>
+                  <Text style={[s.pinDesc, { color: txt }]}>Share this PIN with your rider only at handover</Text>
                 </View>
               </View>
               <View style={s.pinDisplayRow}>
-                <TouchableOpacity style={s.pinButton} onPress={copyPinToClipboard}>
+                <TouchableOpacity style={s.pinButton} onPress={copyPinToClipboard} accessibilityLabel="Copy delivery PIN">
                   <Text style={s.pinText}>{orderInfo.deliveryPin}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={s.zoomBtn} onPress={() => setZoomPin(true)}>
@@ -738,148 +773,111 @@ export default function TrackingScreen() {
           </StaggeredSection>
         )}
 
-        {/* ── RIDER PROFILE CARD ── */}
-        <StaggeredSection delay={230} direction="up">
-          <TouchableOpacity 
-            activeOpacity={0.85} 
-            onPress={() => setIsProfileOpen(true)}
-            style={[s.riderCard, { backgroundColor: cardBg, borderColor: border }]}
-          >
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <Text style={{ fontSize: 9, fontWeight: '900', color: COLORS.gold, letterSpacing: 2 }}>
-                DELIVERY RIDER DETAILS
-              </Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: isDark ? 'rgba(212,175,55,0.15)' : '#FEF3C7', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 }}>
-                <Text style={{ fontSize: 9, fontWeight: '800', color: COLORS.gold }}>VIEW PROFILE</Text>
-                <Text style={{ fontSize: 10, color: COLORS.gold }}>➔</Text>
-              </View>
-            </View>
-
-            <View style={s.riderRow}>
-              <View style={s.riderAvatarWrap}>
-                {orderInfo?.deliveryPartner?.photoUrl ? (
-                  <Image source={{ uri: orderInfo.deliveryPartner.photoUrl }} style={{ width: 44, height: 44, borderRadius: 22 }} />
-                ) : (
-                  <Text style={{ fontSize: 24 }}>🛵</Text>
-                )}
-              </View>
-              <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={[s.riderName, { color: txt }]}>
-                    {orderInfo?.deliveryPartner?.name || 'Assigning Captain...'}
-                  </Text>
-                  {orderInfo?.deliveryPartner && (
-                    <View style={s.verifiedBadge}>
-                      <Text style={s.verifiedText}>VERIFIED</Text>
-                    </View>
-                  )}
-                </View>
-                <Text style={[s.riderVehicle, { color: txtSec }]}>
-                  {orderInfo?.deliveryPartner?.vehicleType || 'Zenvy Logistics'}
-                  {orderInfo?.deliveryPartner?.vehicleNumber ? ` • ${orderInfo.deliveryPartner.vehicleNumber}` : ''}
-                </Text>
-                {orderInfo?.deliveryPartner && (
-                  <Text style={{ fontSize: 9, color: COLORS.gold, fontWeight: '800', marginTop: 2 }}>
-                    ⭐ {orderInfo?.deliveryPartner?.averageRating || '5.0'}
-                  </Text>
-                )}
-              </View>
-            </View>
-
-            {/* Progress bar */}
-            <View style={s.progressTrack}>
-              <View
-                style={[
-                  s.progressBar,
-                  { width: `${status === 1 ? 10 : status === 2 ? 30 : status === 3 ? 55 : status === 4 ? 75 : status === 5 ? 92 : 100}%` }
-                ]}
-              />
-            </View>
-          </TouchableOpacity>
-        </StaggeredSection>
-
         {/* ── QUICK ACTION BUTTONS ── */}
-        <StaggeredSection delay={290} direction="up">
+        <StaggeredSection delay={230} direction="up">
           <View style={s.actionRow}>
-            <TouchableOpacity style={[s.actionBtn, { backgroundColor: cardBg, borderColor: border }]} onPress={() => setIsChatOpen(true)}>
-              <Text style={{ fontSize: 16 }}>💬</Text>
-              <Text style={[s.actionBtnText, { color: txt }]}>CHAT</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[s.actionBtn, { backgroundColor: cardBg, borderColor: border }, !orderInfo?.deliveryPartner?.phone && { opacity: 0.5 }]} 
-              disabled={!orderInfo?.deliveryPartner?.phone}
-              onPress={() => Linking.openURL(`tel:${orderInfo?.deliveryPartner?.phone}`)}
+            <TouchableOpacity
+              style={[s.actionBtn, { backgroundColor: cardBg, borderColor: border }, !(rider?.phone && status < 6) && { opacity: 0.5 }]}
+              disabled={!(rider?.phone && status < 6)}
+              onPress={callRider}
+              accessibilityLabel="Call your rider"
             >
               <Text style={{ fontSize: 16 }}>📞</Text>
-              <Text style={[s.actionBtnText, { color: txt }]}>CALL RIDER</Text>
+              <Text style={[s.actionBtnText, { color: txt }]}>{rider ? 'CALL RIDER' : 'NO RIDER YET'}</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={[s.actionBtn, { backgroundColor: cardBg, borderColor: border }]} onPress={handleShareTracking}>
-              <Text style={{ fontSize: 16 }}>🔗</Text>
-              <Text style={[s.actionBtnText, { color: txt }]}>SHARE</Text>
+            <TouchableOpacity style={[s.actionBtn, { backgroundColor: cardBg, borderColor: border }]} onPress={openHelp}>
+              <Text style={{ fontSize: 16 }}>🛟</Text>
+              <Text style={[s.actionBtnText, { color: txt }]}>HELP</Text>
             </TouchableOpacity>
+
+            {status < 6 && (
+              <TouchableOpacity style={[s.actionBtn, { backgroundColor: cardBg, borderColor: border }]} onPress={handleShareTracking}>
+                <Text style={{ fontSize: 16 }}>🔗</Text>
+                <Text style={[s.actionBtnText, { color: txt }]}>SHARE</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </StaggeredSection>
 
-        {/* ── CANCEL WINDOW COUNTDOWN ── */}
-        {status === 1 && cancelSecondsLeft > 0 && (
-          <StaggeredSection delay={330} direction="up">
-            <TouchableOpacity style={s.cancelBox} onPress={() => setShowCancelConfirmation(true)}>
-              <Text style={s.cancelBoxText}>CANCEL ORDER ({cancelSecondsLeft}s)</Text>
+        {/* ── CANCEL (Pending, or within 2 minutes of placing) ── */}
+        {canCancel && (
+          <StaggeredSection delay={260} direction="up">
+            <TouchableOpacity style={s.cancelBox} onPress={() => setShowCancelConfirmation(true)} disabled={cancelling}>
+              <Text style={s.cancelBoxText}>
+                CANCEL ORDER{status !== 1 && cancelSecondsLeft > 0 ? ` (${cancelSecondsLeft}s)` : ''}
+              </Text>
             </TouchableOpacity>
           </StaggeredSection>
         )}
 
-        {/* ── STEPS PROGRESS TIMELINE ── */}
-        <StaggeredSection delay={370} direction="up">
-          <View style={[s.timelineCard, { backgroundColor: cardBg, borderColor: border }]}>
-            <Text style={{ fontSize: 9, fontWeight: '900', color: txtSec, letterSpacing: 2, marginBottom: 16 }}>
-              ORDER STAGE TIMELINE
-            </Text>
-            <View style={{ gap: 0 }}>
-              {steps.map((step, idx) => {
-                const stepNum = idx + 1;
-                const isDone = status > stepNum;
-                const isCurrent = status === stepNum;
-                const isUpcoming = status < stepNum;
-                return (
-                  <View key={idx} style={s.timelineStepRow}>
-                    {idx < steps.length - 1 && <View style={[s.timelineLine, { backgroundColor: isDone ? COLORS.gold : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)') }]} />}
-                    <View style={[
-                      s.timelineDot,
-                      {
-                        borderColor: (isDone || isCurrent) ? COLORS.gold : (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'),
-                        backgroundColor: isDone ? COLORS.gold : (isDark ? '#111' : '#f0f0f0')
-                      }
-                    ]}>
-                      {isDone ? (
-                        <Text style={{ fontSize: 9, color: '#000', fontWeight: '900' }}>✓</Text>
-                      ) : (
-                        <Text style={{ fontSize: 8, color: isCurrent ? COLORS.gold : txtSec, fontWeight: 'bold' }}>{stepNum}</Text>
-                      )}
-                    </View>
-                    <View style={[s.timelineContent, isUpcoming && { opacity: 0.3 }]}>
-                      <Text style={[s.timelineTitle, { color: isCurrent ? COLORS.gold : txt }]}>{step.label}</Text>
-                      {(isCurrent || isDone) && <Text style={[s.timelineDesc, { color: txtSec }]}>{step.desc}</Text>}
-                    </View>
-                  </View>
-                );
-              })}
+        {/* ── RATE (delivered, not rated yet) ── */}
+        {status >= 6 && orderInfo?.rating == null && (
+          <StaggeredSection delay={260} direction="up">
+            <TouchableOpacity style={[s.rateCta, { backgroundColor: cardBg }]} onPress={() => setShowRatingModal(true)}>
+              <Text style={{ fontSize: 20 }}>⭐</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.rateCtaTitle, { color: txt }]}>How was your order?</Text>
+                <Text style={[s.rateCtaSub, { color: txtSec }]}>Rate it and earn ZenPoints</Text>
+              </View>
+              <Text style={{ fontSize: 16, color: COLORS.gold, fontWeight: '900' }}>›</Text>
+            </TouchableOpacity>
+          </StaggeredSection>
+        )}
+        {status >= 6 && orderInfo?.rating != null && (
+          <StaggeredSection delay={260} direction="up">
+            <View style={[s.rateCta, { backgroundColor: cardBg }]}>
+              <Text style={{ fontSize: 20 }}>💛</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.rateCtaTitle, { color: txt }]}>You rated this order {orderInfo.rating}★</Text>
+                <Text style={[s.rateCtaSub, { color: txtSec }]}>Thanks for your feedback!</Text>
+              </View>
             </View>
-          </View>
-        </StaggeredSection>
+          </StaggeredSection>
+        )}
+
+        {/* ── ORDER SUMMARY (real order data) ── */}
+        {!!orderInfo && (
+          <StaggeredSection delay={300} direction="up">
+            <View style={[s.timelineCard, { backgroundColor: cardBg, borderColor: border }]}>
+              <Text style={{ fontSize: 9, fontWeight: '900', color: txtSec, letterSpacing: 2, marginBottom: 12 }}>
+                ORDER SUMMARY{storeName ? ` • ${storeName.toUpperCase()}` : ''}
+              </Text>
+              {(Array.isArray(orderInfo.items) ? orderInfo.items : []).map((it, idx) => (
+                <View key={idx} style={s.summaryRow}>
+                  <Text style={[s.summaryItem, { color: txt }]} numberOfLines={2}>
+                    {it?.quantity || 1} × {it?.name || 'Item'}
+                  </Text>
+                </View>
+              ))}
+              <View style={[s.summaryDivider, { backgroundColor: border }]} />
+              <View style={s.summaryRow}>
+                <Text style={[s.summaryTotalLabel, { color: txt }]}>
+                  {orderInfo.paymentMethod === 'Wallet' ? 'Paid from Zenvy Wallet' : 'To pay (Cash on Delivery)'}
+                </Text>
+                <Text style={[s.summaryTotal, { color: txt }]}>
+                  ₹{Number(orderInfo.finalPrice ?? orderInfo.totalPrice ?? 0) || 0}
+                </Text>
+              </View>
+              {!!(orderInfo.deliveryAddress || orderInfo.address) && (
+                <Text style={[s.summaryAddress, { color: txtSec }]} numberOfLines={2}>
+                  📍 {orderInfo.deliveryAddress || orderInfo.address}
+                </Text>
+              )}
+            </View>
+          </StaggeredSection>
+        )}
 
         <View style={{ height: 100 }} />
       </ScrollView>
 
       {/* ── ZOOM PIN MODAL ── */}
-      <Modal visible={zoomPin} transparent animationType="fade">
-        <View style={s.modalOverlay}>
+      <Modal visible={zoomPin} transparent animationType="fade" onRequestClose={() => setZoomPin(false)}>
+        <View style={[s.modalOverlay, { justifyContent: 'center' }]}>
           <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setZoomPin(false)} />
           <View style={[s.zoomPinBox, { backgroundColor: cardBg, borderColor: border }]}>
-            <Text style={s.zoomTitle}>SECURITY PIN</Text>
-            <Text style={[s.zoomDesc, { color: txtSec }]}>Show this code to the rider to verify delivery</Text>
+            <Text style={s.zoomTitle}>DELIVERY PIN</Text>
+            <Text style={[s.zoomDesc, { color: txtSec }]}>Show this code to your rider at handover</Text>
             <View style={s.zoomPinDisplay}>
               <Text style={s.zoomPinText}>{orderInfo?.deliveryPin}</Text>
             </View>
@@ -891,305 +889,132 @@ export default function TrackingScreen() {
       </Modal>
 
       {/* ── CANCEL CONFIRMATION MODAL ── */}
-      <Modal visible={showCancelConfirmation} transparent animationType="slide">
+      <Modal
+        visible={showCancelConfirmation}
+        transparent
+        animationType="slide"
+        onRequestClose={() => { if (!cancelling) setShowCancelConfirmation(false); }}
+      >
         <View style={s.modalOverlay}>
-          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowCancelConfirmation(false)} />
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => { if (!cancelling) setShowCancelConfirmation(false); }} />
           <View style={[s.cancelModalBox, { backgroundColor: cardBg }]}>
-            <Text style={[s.cancelModalTitle, { color: txt }]}>Cancel Order?</Text>
+            <Text style={[s.cancelModalTitle, { color: txt }]}>Cancel this order?</Text>
             <Text style={[s.cancelModalDesc, { color: txtSec }]}>
-              This action cannot be undone. You will lose your queue position and any batch discounts.
+              {orderInfo?.paymentMethod === 'Wallet'
+                ? `₹${Number(orderInfo?.finalPrice ?? orderInfo?.totalPrice ?? 0) || 0} will go straight back to your Zenvy Wallet.`
+                : 'No payment has been taken for this Cash on Delivery order.'}
             </Text>
-            <TouchableOpacity style={s.confirmCancelBtn} onPress={handleCancelOrder}>
-              <Text style={s.confirmCancelBtnText}>YES, CANCEL ORDER</Text>
+            <TouchableOpacity
+              style={[s.confirmCancelBtn, cancelling && { opacity: 0.6 }]}
+              onPress={handleCancelOrder}
+              disabled={cancelling}
+            >
+              {cancelling ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={s.confirmCancelBtnText}>YES, CANCEL ORDER</Text>
+              )}
             </TouchableOpacity>
-            <TouchableOpacity style={s.dismissCancelBtn} onPress={() => setShowCancelConfirmation(false)}>
+            <TouchableOpacity style={s.dismissCancelBtn} onPress={() => setShowCancelConfirmation(false)} disabled={cancelling}>
               <Text style={[s.dismissCancelBtnText, { color: txtSec }]}>KEEP MY ORDER</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* ── CHAT DRAWER MODAL ── */}
-      <Modal visible={isChatOpen} transparent animationType="slide">
-        <View style={s.modalOverlay}>
-          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setIsChatOpen(false)} />
-          <View style={[s.chatContainer, { backgroundColor: isDark ? '#111116' : '#fff' }]}>
-            {/* Header */}
-            <View style={[s.chatHeader, { borderBottomColor: border }]}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <View style={s.chatAvatarWrap}>
-                  <Text style={{ fontSize: 18 }}>🛵</Text>
-                </View>
-                <View>
-                  <Text style={{ fontSize: 8, color: COLORS.emerald, fontWeight: '900', letterSpacing: 2 }}>LIVE CHAT</Text>
-                  <Text style={[s.chatRiderName, { color: txt }]}>
-                    {orderInfo?.deliveryPartner?.name || 'Zenvy Captain'}
-                  </Text>
-                </View>
-              </View>
-              <TouchableOpacity onPress={() => setIsChatOpen(false)} style={s.chatCloseBtn}>
-                <Text style={{ color: txtSec, fontSize: 16, fontWeight: '900' }}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Messages ScrollView */}
-            <ScrollView
-              ref={chatScrollRef}
-              style={{ flex: 1, padding: 16 }}
-              contentContainerStyle={{ paddingBottom: 24 }}
-            >
-              {chatMessages.length === 0 && (
-                <View style={{ alignItems: 'center', paddingVertical: 40 }}>
-                  <Text style={{ fontSize: 24, marginBottom: 8 }}>💬</Text>
-                  <Text style={{ fontSize: 11, color: txtSec, fontStyle: 'italic', textAlign: 'center' }}>
-                    Direct messages are masked for your privacy.
-                  </Text>
-                </View>
-              )}
-              {chatMessages.map((msg, idx) => {
-                const isMe = msg.sender === userName;
-                return (
-                  <View key={idx} style={[s.messageRow, { justifyContent: isMe ? 'flex-end' : 'flex-start' }]}>
-                    <View style={[
-                      s.messageBubble,
-                      {
-                        backgroundColor: isMe ? COLORS.emerald : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'),
-                        borderBottomRightRadius: isMe ? 0 : 16,
-                        borderBottomLeftRadius: isMe ? 16 : 0,
-                      }
-                    ]}>
-                      <Text style={[s.messageText, { color: isMe ? '#fff' : txt }]}>
-                        {msg.message}
-                      </Text>
-                    </View>
-                  </View>
-                );
-              })}
-              {remoteTyping && (
-                <View style={{ flexDirection: 'row', padding: 8 }}>
-                  <Text style={{ fontSize: 9, color: COLORS.emerald, fontWeight: '800' }}>Captain is typing...</Text>
-                </View>
-              )}
-            </ScrollView>
-
-            {/* Input & Quick Replies */}
-            <View style={[s.chatFooter, { borderTopColor: border }]}>
-              {/* Quick Replies list */}
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-                {QUICK_REPLIES.map((reply, i) => (
-                  <TouchableOpacity
-                    key={i}
-                    onPress={() => {
-                      const messageData = {
-                        orderId,
-                        sender: userName,
-                        senderRole: 'customer',
-                        message: reply
-                      };
-                      getSocket().emit('sendMessage', messageData);
-                    }}
-                    style={s.quickReplyChip}
-                  >
-                    <Text style={s.quickReplyText}>{reply.toUpperCase()}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-
-              <View style={s.chatInputRow}>
-                <TextInput
-                  style={[s.chatInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)', color: txt }]}
-                  placeholder="Type a message..."
-                  placeholderTextColor={txtSec}
-                  value={chatInput}
-                  onChangeText={handleChatInputChange}
-                />
-                <TouchableOpacity style={s.sendBtn} onPress={sendMessage}>
-                  <Text style={{ fontSize: 16 }}>🚀</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
       {/* ── RATING MODAL ── */}
       <Modal visible={showRatingModal} transparent animationType="slide" onRequestClose={() => setShowRatingModal(false)}>
-        <View style={s.modalOverlay}>
-          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowRatingModal(false)} />
-          <View style={[s.ratingModalBox, { backgroundColor: cardBg }]}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 4 }}>
-              <Text style={[s.ratingModalTitle, { color: txt, marginBottom: 0 }]}>Rate Your Experience</Text>
-              <TouchableOpacity onPress={() => setShowRatingModal(false)} style={{ padding: 4 }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                <Text style={{ fontSize: 18, color: txtSec, fontWeight: '800' }}>✕</Text>
-              </TouchableOpacity>
-            </View>
-            <Text style={[s.ratingModalDesc, { color: txtSec }]}>
-              How was the delivery by {orderInfo?.deliveryPartner?.name || 'Zenvy Captain'}?
-            </Text>
-
-            {/* Stars Row */}
-            <View style={s.starsRow}>
-              {[1, 2, 3, 4, 5].map((star) => (
-                <TouchableOpacity key={star} onPress={() => setRatingStars(star)}>
-                  <Text style={{ fontSize: 32, color: star <= ratingStars ? COLORS.gold : '#aaa', marginHorizontal: 4 }}>
-                    ★
-                  </Text>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={s.modalOverlay}>
+            <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowRatingModal(false)} />
+            <View style={[s.ratingModalBox, { backgroundColor: cardBg }]}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 4 }}>
+                <Text style={[s.ratingModalTitle, { color: txt, marginBottom: 0 }]}>Rate your order</Text>
+                <TouchableOpacity onPress={() => setShowRatingModal(false)} style={{ padding: 4 }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                  <Text style={{ fontSize: 18, color: txtSec, fontWeight: '800' }}>✕</Text>
                 </TouchableOpacity>
-              ))}
-            </View>
+              </View>
+              <Text style={[s.ratingModalDesc, { color: txtSec }]}>
+                {storeName ? `How was your order from ${storeName}?` : 'How was your order?'}
+              </Text>
 
-            {/* Review Input */}
-            <TextInput
-              style={[s.ratingInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)', color: txt }]}
-              placeholder="Leave a comment (optional)..."
-              placeholderTextColor={txtSec}
-              multiline
-              value={ratingReview}
-              onChangeText={setRatingReview}
-            />
+              {/* Stars Row */}
+              <View style={s.starsRow}>
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <TouchableOpacity key={star} onPress={() => setRatingStars(star)} accessibilityLabel={`${star} star${star === 1 ? '' : 's'}`}>
+                    <Text style={{ fontSize: 32, color: star <= ratingStars ? COLORS.gold : '#aaa', marginHorizontal: 4 }}>
+                      ★
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
 
-            {/* Tip Input */}
-            <TextInput
-              style={[s.ratingInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)', color: txt, marginTop: 12 }]}
-              placeholder="Add Tip for captain (e.g. ₹20)"
-              placeholderTextColor={txtSec}
-              keyboardType="numeric"
-              value={ratingTip}
-              onChangeText={setRatingTip}
-            />
+              {/* Review Input */}
+              <TextInput
+                style={[s.ratingInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)', color: txt }]}
+                placeholder="Tell us more (optional)"
+                placeholderTextColor={txtSec}
+                multiline
+                maxLength={300}
+                value={ratingReview}
+                onChangeText={setRatingReview}
+              />
 
-            {/* Submit rating */}
-            <TouchableOpacity style={s.submitRatingBtn} onPress={handleSubmitRating} disabled={submittingRating}>
-              {submittingRating ? (
-                <ActivityIndicator color="#000" />
-              ) : (
-                <Text style={s.submitRatingText}>SUBMIT RATING</Text>
-              )}
-            </TouchableOpacity>
-
-            {/* Maybe Later Skip Button */}
-            <TouchableOpacity 
-              style={{ marginTop: 10, paddingVertical: 8, alignItems: 'center', width: '100%' }} 
-              onPress={() => setShowRatingModal(false)}
-            >
-              <Text style={{ fontSize: 10, fontWeight: '800', color: txtSec, letterSpacing: 1.2 }}>MAYBE LATER</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* ── DRIVER PROFILE MODAL ── */}
-      <Modal visible={isProfileOpen} transparent animationType="slide" onRequestClose={() => setIsProfileOpen(false)}>
-        <View style={s.modalOverlay}>
-          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setIsProfileOpen(false)} />
-          <View style={[s.driverModalBox, { backgroundColor: cardBg, borderColor: border }]}>
-            {/* Drag handle */}
-            <View style={s.modalDragHandle} />
-
-            {/* Close button */}
-            <TouchableOpacity style={s.driverModalCloseBtn} onPress={() => setIsProfileOpen(false)}>
-              <Text style={{ fontSize: 16, color: txtSec, fontWeight: '700' }}>✕</Text>
-            </TouchableOpacity>
-
-            {/* Avatar & Badges */}
-            <View style={{ alignItems: 'center', marginTop: 8, marginBottom: 16 }}>
-              <View style={s.driverModalAvatarRing}>
-                {orderInfo?.deliveryPartner?.photoUrl ? (
-                  <Image 
-                    source={{ uri: orderInfo.deliveryPartner.photoUrl }} 
-                    style={s.driverModalAvatarImg} 
-                  />
-                ) : (
-                  <View style={[s.driverModalAvatarImg, { backgroundColor: isDark ? '#262626' : '#E2E8F0', alignItems: 'center', justifyContent: 'center' }]}>
-                    <Text style={{ fontSize: 36 }}>🛵</Text>
+              {/* Tip for the rider (paid from the Zenvy Wallet) */}
+              {!!rider && (
+                <>
+                  <View style={{ flexDirection: 'row', gap: 8, width: '100%', marginTop: 12 }}>
+                    {[10, 20, 30].map(v => {
+                      const active = tipAmount === v;
+                      return (
+                        <TouchableOpacity
+                          key={v}
+                          onPress={() => setRatingTip(active ? '' : String(v))}
+                          style={[s.tipChip, { borderColor: active ? COLORS.gold : border, backgroundColor: active ? 'rgba(212,175,55,0.15)' : 'transparent' }]}
+                        >
+                          <Text style={{ fontSize: 11, fontWeight: '800', color: active ? COLORS.gold : txt }}>₹{v}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                    <TextInput
+                      style={[s.ratingInput, { flex: 1, width: undefined, height: 36, paddingVertical: 6, backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)', color: txt }]}
+                      placeholder="Other ₹"
+                      placeholderTextColor={txtSec}
+                      keyboardType="number-pad"
+                      maxLength={3}
+                      value={ratingTip}
+                      onChangeText={(v) => setRatingTip(v.replace(/\D/g, ''))}
+                    />
                   </View>
-                )}
-                <View style={s.driverVerifiedBadge}>
-                  <Text style={{ fontSize: 10, color: '#fff', fontWeight: '900' }}>✓</Text>
-                </View>
-              </View>
-
-              <Text style={[s.driverModalName, { color: txt }]}>
-                {orderInfo?.deliveryPartner?.name || 'Zenvy Delivery Captain'}
-              </Text>
-
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
-                <View style={s.driverRatingPill}>
-                  <Text style={{ fontSize: 12, color: COLORS.gold, fontWeight: '900' }}>
-                    ⭐ {orderInfo?.deliveryPartner?.averageRating || '5.0'}
+                  <Text style={{ fontSize: 10, color: txtSec, marginTop: 6, alignSelf: 'flex-start' }}>
+                    {tipAmount > 0
+                      ? `₹${tipAmount} tip for ${rider.name || 'your rider'} from your Zenvy Wallet (balance ₹${Number(user?.walletBalance) || 0})`
+                      : `Optional tip for ${rider.name || 'your rider'}, paid from your Zenvy Wallet (up to ₹${MAX_TIP})`}
                   </Text>
-                  <Text style={{ fontSize: 10, color: txtSec }}>
-                    ({orderInfo?.deliveryPartner?.totalRatings || 48}+ deliveries)
-                  </Text>
-                </View>
-                <View style={[s.driverTagPill, { backgroundColor: isDark ? 'rgba(34,197,94,0.15)' : '#DCFCE7' }]}>
-                  <Text style={{ fontSize: 10, fontWeight: '800', color: '#16A34A' }}>CAMPUS VERIFIED</Text>
-                </View>
-              </View>
-            </View>
-
-            {/* Details Grid */}
-            <View style={[s.driverInfoGrid, { backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', borderColor: border }]}>
-              <View style={s.driverInfoItem}>
-                <Text style={[s.driverInfoLabel, { color: txtSec }]}>VEHICLE TYPE</Text>
-                <Text style={[s.driverInfoValue, { color: txt }]}>
-                  {orderInfo?.deliveryPartner?.vehicleType || 'Electric Scooter'}
-                </Text>
-              </View>
-              <View style={[s.driverInfoItem, { borderLeftWidth: 1, borderLeftColor: border }]}>
-                <Text style={[s.driverInfoLabel, { color: txtSec }]}>REG NUMBER</Text>
-                <Text style={[s.driverInfoValue, { color: txt }]}>
-                  {orderInfo?.deliveryPartner?.vehicleNumber || 'AP 39 ZV 2026'}
-                </Text>
-              </View>
-            </View>
-
-            {/* Safety Badges */}
-            <View style={{ marginVertical: 14 }}>
-              <Text style={{ fontSize: 9, fontWeight: '900', color: txtSec, letterSpacing: 1.5, marginBottom: 8 }}>
-                CAMPUS SAFETY & HYGIENE CHECKS
-              </Text>
-              <View style={{ gap: 6 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={{ color: '#16A34A', fontSize: 14 }}>✓</Text>
-                  <Text style={{ fontSize: 12, color: txt }}>Insulated & Sanitized Delivery Bag</Text>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={{ color: '#16A34A', fontSize: 14 }}>✓</Text>
-                  <Text style={{ fontSize: 12, color: txt }}>Campus Gate ID & Verified Captain License</Text>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={{ color: '#16A34A', fontSize: 14 }}>✓</Text>
-                  <Text style={{ fontSize: 12, color: txt }}>Contactless Hostel Drop Protocol</Text>
-                </View>
-              </View>
-            </View>
-
-            {/* Direct Action Buttons */}
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 6 }}>
-              {orderInfo?.deliveryPartner?.phone && (
-                <TouchableOpacity
-                  style={[s.driverActionCallBtn, { backgroundColor: '#16A34A' }]}
-                  onPress={() => Linking.openURL(`tel:${orderInfo?.deliveryPartner?.phone}`)}
-                >
-                  <Text style={{ fontSize: 16 }}>📞</Text>
-                  <Text style={{ color: '#fff', fontWeight: '900', fontSize: 12, letterSpacing: 0.5 }}>CALL DRIVER</Text>
-                </TouchableOpacity>
+                </>
               )}
+
+              {/* Submit rating */}
+              <TouchableOpacity style={[s.submitRatingBtn, submittingRating && { opacity: 0.7 }]} onPress={handleSubmitRating} disabled={submittingRating}>
+                {submittingRating ? (
+                  <ActivityIndicator color="#000" />
+                ) : (
+                  <Text style={s.submitRatingText}>SUBMIT RATING</Text>
+                )}
+              </TouchableOpacity>
 
               <TouchableOpacity
-                style={[s.driverActionChatBtn, { backgroundColor: cardBg, borderColor: COLORS.gold, flex: orderInfo?.deliveryPartner?.phone ? 1 : 2 }]}
-                onPress={() => {
-                  setIsProfileOpen(false);
-                  setIsChatOpen(true);
-                }}
+                style={{ marginTop: 10, paddingVertical: 8, alignItems: 'center', width: '100%' }}
+                onPress={() => setShowRatingModal(false)}
               >
-                <Text style={{ fontSize: 16 }}>💬</Text>
-                <Text style={{ color: COLORS.gold, fontWeight: '900', fontSize: 12, letterSpacing: 0.5 }}>CHAT</Text>
+                <Text style={{ fontSize: 10, fontWeight: '800', color: txtSec, letterSpacing: 1.2 }}>MAYBE LATER</Text>
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -1197,6 +1022,52 @@ export default function TrackingScreen() {
 
 const s = StyleSheet.create({
   container: { flex: 1, width: '100%', maxWidth: 600, alignSelf: 'center' },
+
+  // Rider-at-gate banner
+  gateBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: COLORS.emerald,
+    padding: 14,
+    borderRadius: 18,
+    marginBottom: 16,
+    ...SHADOWS.card
+  },
+  gateBannerTitle: { fontSize: 13, fontWeight: '900', color: '#fff' },
+  gateBannerSub: { fontSize: 10, fontWeight: '600', color: 'rgba(255,255,255,0.85)', marginTop: 2 },
+  gateBannerBtn: { backgroundColor: '#fff', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
+  gateBannerBtnText: { fontSize: 10, fontWeight: '900', color: COLORS.emerald, letterSpacing: 1 },
+
+  // Rate CTA
+  rateCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 16,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: COLORS.goldBorder,
+    marginBottom: 16
+  },
+  rateCtaTitle: { fontSize: 13, fontWeight: '800' },
+  rateCtaSub: { fontSize: 10, fontWeight: '600', marginTop: 2 },
+  tipChip: {
+    paddingHorizontal: 12,
+    height: 36,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+
+  // Order summary
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 },
+  summaryItem: { flex: 1, fontSize: 12, fontWeight: '600' },
+  summaryDivider: { height: 1, marginVertical: 10 },
+  summaryTotalLabel: { fontSize: 12, fontWeight: '800' },
+  summaryTotal: { fontSize: 15, fontWeight: '900' },
+  summaryAddress: { fontSize: 10, fontWeight: '600', marginTop: 8 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

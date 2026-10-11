@@ -1,254 +1,253 @@
 "use client";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAdminAuth } from '@/utils/useAdminAuth';
+import { adminRequest as apiRequest } from '@/lib/api';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-jwmt.onrender.com';
-
-interface Config {
+interface ConfigRow {
   _id: string;
   key: string;
-  value: string | number | boolean | string[];
-  description: string;
+  value: unknown;
+  description?: string | null;
+  updatedAt?: string;
 }
 
+interface Serviceability {
+  open: boolean;
+  reopensAt?: string;
+  message?: string;
+  paymentMethods?: string[];
+}
+
+/** fetch against the one backend; throws an Error carrying the server's friendly `message`. */
+// Keys the backend actually reads. Everything else in GlobalConfig is stored but not enforced.
+const DELIVERY_FEE_KEY = 'delivery_fee';
+const DEFAULT_DELIVERY_FEE = 30; // backend fallback in utils/orderPricing.js
+const MAX_DELIVERY_FEE = 200;
+
+const formatValue = (value: unknown) => {
+  if (Array.isArray(value)) return value.join(', ');
+  if (value === null || value === undefined || value === '') return '—';
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+};
+
 export default function ConfigTerminal() {
-  const isAuthed = useAdminAuth();
-  const [configs, setConfigs] = useState<Config[]>([]);
+  const { isAuthed } = useAdminAuth();
+  const [configs, setConfigs] = useState<ConfigRow[]>([]);
+  const [serviceability, setServiceability] = useState<Serviceability | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchConfigs();
-  }, []);
+  const [feeInput, setFeeInput] = useState('');
+  const [savingFee, setSavingFee] = useState(false);
+  const [feeError, setFeeError] = useState<string | null>(null);
+  const [feeNotice, setFeeNotice] = useState<string | null>(null);
 
-  const fetchConfigs = async () => {
+  const fetchAll = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
     try {
-      const token = 'cookie-managed';
-      const res = await fetch(`${API_URL}/api/admin/config`, {
-        });
-      const data = await res.json();
-      if (res.ok) setConfigs(data);
-    } catch {
-      console.error('[CONFIG_FETCH_ERROR]');
+      const [rows, svc] = await Promise.all([
+        apiRequest<ConfigRow[]>('/api/admin/config'),
+        apiRequest<Serviceability>('/api/orders/serviceability').catch(() => null),
+      ]);
+      const list = Array.isArray(rows) ? rows : [];
+      setConfigs(list);
+      setServiceability(svc);
+      const fee = list.find(c => c.key === DELIVERY_FEE_KEY)?.value;
+      setFeeInput(String(fee ?? DEFAULT_DELIVERY_FEE));
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : 'Could not load the configuration.');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const handleUpdateConfig = async (key: string, value: string | number | boolean | string[]) => {
+  useEffect(() => {
+    if (isAuthed) fetchAll();
+  }, [isAuthed, fetchAll]);
+
+  const feeRow = configs.find(c => c.key === DELIVERY_FEE_KEY);
+  const currentFee = Number(feeRow?.value ?? DEFAULT_DELIVERY_FEE);
+  const otherRows = configs.filter(c => c.key !== DELIVERY_FEE_KEY);
+
+  const handleSaveFee = async () => {
+    if (savingFee) return;
+    setFeeError(null);
+    setFeeNotice(null);
+    const fee = Number(feeInput);
+    if (!Number.isInteger(fee) || fee < 0 || fee > MAX_DELIVERY_FEE) {
+      setFeeError(`Enter a whole number of rupees from 0 to ${MAX_DELIVERY_FEE}.`);
+      return;
+    }
+    if (fee === currentFee) {
+      setFeeNotice('No change to save.');
+      return;
+    }
+    if (!confirm(`Change the delivery fee from ₹${currentFee} to ₹${fee}? It applies to every new order quote immediately.`)) return;
+    setSavingFee(true);
     try {
-      const token = 'cookie-managed';
-      const res = await fetch(`${API_URL}/api/admin/config`, {
+      await apiRequest('/api/admin/config', {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          },
-        body: JSON.stringify({ key, value })
+        body: JSON.stringify({
+          key: DELIVERY_FEE_KEY,
+          value: fee,
+          description: feeRow?.description || 'Global delivery fee in INR',
+        }),
       });
-      if (res.ok) fetchConfigs();
-    } catch {
-      console.error('[CONFIG_UPDATE_ERROR]');
+      setFeeNotice(`Delivery fee is now ₹${fee}.`);
+      await fetchAll();
+    } catch (err) {
+      setFeeError(err instanceof Error ? err.message : 'Could not save the delivery fee.');
+    } finally {
+      setSavingFee(false);
     }
   };
 
-  const rawShifts = configs.find(c => c.key === 'delivery_shifts')?.value;
-  const shifts = Array.isArray(rawShifts) ? rawShifts : ['13:00', '19:30'];
+  if (loading) {
+    return (
+      <div className="flex justify-center py-24">
+        <div className="w-8 h-8 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+      </div>
+    );
+  }
 
-  if (!isAuthed || loading) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Synchronizing Config...</div>;
+  if (loadError) {
+    return (
+      <div className="max-w-xl mx-auto mt-16 glass-card p-8 text-center space-y-4">
+        <p className="text-sm font-bold text-red-400">{loadError}</p>
+        <button onClick={fetchAll} className="px-6 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-black uppercase tracking-widest text-white">
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-10 animate-fade-in relative pb-20">
-      <header className="bg-white/5 p-8 rounded-[40px] border border-white/5 glass">
-          <h2 className="text-3xl font-black text-white tracking-tighter uppercase">Nexus <span className="text-blue-500">Config</span> Overrides</h2>
-          <p className="text-gray-400 text-sm font-bold uppercase tracking-widest mt-1">Global System Parameters & Operational Windows</p>
+      <header className="bg-white/5 p-8 rounded-[40px] border border-white/5 glass flex justify-between items-start gap-4 flex-wrap">
+        <div>
+          <h2 className="text-3xl font-black text-white tracking-tighter uppercase">System <span className="text-blue-500">Config</span></h2>
+          <p className="text-gray-400 text-sm font-bold uppercase tracking-widest mt-1">Pricing and ordering parameters enforced by the backend</p>
+        </div>
+        <button onClick={fetchAll} className="px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black uppercase tracking-wider text-gray-400 hover:bg-white/10">
+          ↻ Refresh
+        </button>
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* Delivery Shifts Configuration */}
-        <div className="glass-card p-10 space-y-8">
-           <div className="flex items-center gap-4 mb-2">
-              <div className="w-10 h-10 bg-blue-600/20 rounded-xl flex items-center justify-center text-xl">🕒</div>
-              <div>
-                 <h4 className="text-lg font-black text-white uppercase tracking-tight">Delivery Shift Timings</h4>
-                 <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Sets the active delivery slots for campus</p>
-              </div>
-           </div>
+        {/* Delivery fee: read by the server's order pricing */}
+        <div className="glass-card p-10 space-y-6">
+          <div className="flex items-center gap-4">
+            <div className="w-10 h-10 bg-blue-600/20 rounded-xl flex items-center justify-center text-xl">🛵</div>
+            <div>
+              <h4 className="text-lg font-black text-white uppercase tracking-tight">Delivery Fee</h4>
+              <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Used by the server for every order quote</p>
+            </div>
+          </div>
 
-           <div className="space-y-4">
-              {shifts.map((time: string, i: number) => (
-                <div key={i} className="flex gap-4">
-                   <input 
-                     type="time" 
-                     className="flex-1 bg-white/5 border border-white/10 rounded-2xl p-4 text-white font-black"
-                     defaultValue={time}
-                     onBlur={(e) => {
-                        const newShifts = [...shifts];
-                        newShifts[i] = e.target.value;
-                        handleUpdateConfig('delivery_shifts', newShifts);
-                     }}
-                   />
-                </div>
-              ))}
-              <button 
-                onClick={() => handleUpdateConfig('delivery_shifts', [...shifts, '12:00'])}
-                className="w-full py-4 border border-dashed border-white/10 rounded-2xl text-[10px] font-black uppercase text-gray-600 hover:bg-white/5"
-              >
-                Assemble New Shift Slot
-              </button>
-           </div>
+          <div className="flex items-end gap-4">
+            <div className="flex-1 space-y-2">
+              <label htmlFor="delivery-fee" className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Fee per order (₹)</label>
+              <input
+                id="delivery-fee"
+                type="number"
+                min={0}
+                max={MAX_DELIVERY_FEE}
+                step={1}
+                value={feeInput}
+                onChange={(e) => { setFeeInput(e.target.value); setFeeError(null); setFeeNotice(null); }}
+                className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white font-black"
+              />
+            </div>
+            <button
+              onClick={handleSaveFee}
+              disabled={savingFee}
+              className="px-6 py-4 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-2xl text-[10px] font-black uppercase tracking-widest text-white"
+            >
+              {savingFee ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+          <p className="text-[11px] text-gray-500">
+            Current: ₹{currentFee}{!feeRow && ' (server default, not set in the database yet)'}. Member perks may discount it per order.
+          </p>
+          {feeError && <p className="text-xs font-bold text-red-400">{feeError}</p>}
+          {feeNotice && <p className="text-xs font-bold text-emerald-400">{feeNotice}</p>}
         </div>
 
-        {/* Elite Program Configuration */}
-        <div className="glass-card p-10 space-y-8">
-           <div className="flex items-center gap-4 mb-2">
-              <div className="w-10 h-10 bg-[var(--zenvy-gold)]/20 rounded-xl flex items-center justify-center text-xl">💎</div>
-              <div>
-                 <h4 className="text-lg font-black text-white uppercase tracking-tight">Elite Thresholds</h4>
-                 <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Criteria for automated elite status</p>
-              </div>
-           </div>
+        {/* Live ordering status (read-only) */}
+        <div className="glass-card p-10 space-y-6">
+          <div className="flex items-center gap-4">
+            <div className="w-10 h-10 bg-emerald-600/20 rounded-xl flex items-center justify-center text-xl">🕒</div>
+            <div>
+              <h4 className="text-lg font-black text-white uppercase tracking-tight">Ordering Status</h4>
+              <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Live from /api/orders/serviceability</p>
+            </div>
+          </div>
 
-           <div className="space-y-6">
-              <div className="pt-4 border-t border-white/5">
-                 <div className="flex items-center justify-between mb-6">
-                    <div>
-                       <h5 className="text-[11px] font-black text-white uppercase tracking-wider">Pulse Social Ripples</h5>
-                       <p className="text-[9px] text-gray-500">Enable/Disable campus-wide order triggers</p>
-                    </div>
-                    <button 
-                      onClick={() => handleUpdateConfig('pulse_enabled', !(configs.find(c => c.key === 'pulse_enabled')?.value ?? true))}
-                      className={`w-14 h-8 rounded-full relative transition-colors ${configs.find(c => c.key === 'pulse_enabled')?.value !== false ? 'bg-blue-600 shadow-[0_0_15px_rgba(37,99,235,0.4)]' : 'bg-white/10'}`}
-                    >
-                       <div className={`absolute top-1 w-6 h-6 rounded-full bg-white transition-all ${configs.find(c => c.key === 'pulse_enabled')?.value !== false ? 'left-7' : 'left-1'}`} />
-                    </button>
-                 </div>
-
-                 <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                       <label className="text-[8px] font-black text-gray-500 uppercase tracking-widest ml-1">Global Delivery Fee (₹)</label>
-                       <input 
-                         type="number" 
-                         className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white font-black text-xs"
-                         defaultValue={(configs.find(c => c.key === 'delivery_fee')?.value as number) ?? 30}
-                         onBlur={(e) => handleUpdateConfig('delivery_fee', Number(e.target.value))}
-                       />
-                    </div>
-                    <div className="space-y-2">
-                       <label className="text-[8px] font-black text-gray-500 uppercase tracking-widest ml-1">Surge Multiplier (x)</label>
-                       <input 
-                         type="number" 
-                         step="0.1"
-                         className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white font-black text-xs"
-                         defaultValue={(configs.find(c => c.key === 'surge_multiplier')?.value as number) ?? 1.0}
-                         onBlur={(e) => handleUpdateConfig('surge_multiplier', Number(e.target.value))}
-                       />
-                    </div>
-                 </div>
+          {serviceability ? (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <span className={`w-3 h-3 rounded-full ${serviceability.open ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                <span className="text-sm font-black text-white uppercase tracking-wider">
+                  {serviceability.open ? 'Campus ordering is open' : 'Campus ordering is closed'}
+                </span>
               </div>
-           </div>
-        </div>
-
-        {/* 🛠️ System Resilience & Global Toggles */}
-        <div className="glass-card p-10 space-y-8 border-amber-500/20 bg-amber-500/[0.02]">
-           <div className="flex items-center gap-4 mb-2">
-              <div className="w-10 h-10 bg-amber-600/20 rounded-xl flex items-center justify-center text-xl">🛠️</div>
-              <div>
-                 <h4 className="text-lg font-black text-white uppercase tracking-tight">System Resilience</h4>
-                 <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Master overrides for emergency protocols</p>
+              {!serviceability.open && (
+                <p className="text-xs text-gray-400">
+                  {serviceability.message}{serviceability.reopensAt ? ` Reopens at ${serviceability.reopensAt} IST.` : ''}
+                </p>
+              )}
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Payment methods:</span>
+                {(serviceability.paymentMethods || ['COD', 'Wallet']).map(m => (
+                  <span key={m} className="px-2 py-0.5 text-[10px] font-black rounded-full border border-white/10 bg-white/5 text-white">{m}</span>
+                ))}
               </div>
-           </div>
-
-           <div className="space-y-6">
-              <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5">
-                 <div>
-                    <h5 className="text-xs font-black text-white uppercase tracking-wider">Maintenance Mode</h5>
-                    <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest mt-1">Freezes all orders across student apps</p>
-                 </div>
-                 <button 
-                   onClick={() => handleUpdateConfig('maintenance_mode', !(configs.find(c => c.key === 'maintenance_mode')?.value === true))}
-                   className={`w-14 h-8 rounded-full relative transition-colors ${configs.find(c => c.key === 'maintenance_mode')?.value === true ? 'bg-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.4)]' : 'bg-white/10'}`}
-                 >
-                    <div className={`absolute top-1 w-6 h-6 rounded-full bg-white transition-all ${configs.find(c => c.key === 'maintenance_mode')?.value === true ? 'left-7' : 'left-1'}`} />
-                 </button>
-              </div>
-
-              <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5">
-                 <div>
-                    <h5 className="text-xs font-black text-white uppercase tracking-wider">Campus Operational Status</h5>
-                    <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest mt-1">Master switch for campus delivery</p>
-                 </div>
-                 <button 
-                   onClick={() => handleUpdateConfig('campus_open', !(configs.find(c => c.key === 'campus_open')?.value !== false))}
-                   className={`w-14 h-8 rounded-full relative transition-colors ${configs.find(c => c.key === 'campus_open')?.value !== false ? 'bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.4)]' : 'bg-red-500 shadow-[0_0_15px_rgba(239,68,68,0.4)]'}`}
-                 >
-                    <div className={`absolute top-1 w-6 h-6 rounded-full bg-white transition-all ${configs.find(c => c.key === 'campus_open')?.value !== false ? 'left-7' : 'left-1'}`} />
-                 </button>
-              </div>
-
-              <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-4">
-                 <div className="flex justify-between items-center">
-                    <h5 className="text-xs font-black text-white uppercase tracking-wider">Minimum Order Value</h5>
-                    <span className="text-[10px] font-black text-[var(--zenvy-gold)]">₹{configs.find(c => c.key === 'min_order_value')?.value || 0}</span>
-                 </div>
-                 <input 
-                   type="range" 
-                   min="0" 
-                   max="500" 
-                   step="10"
-                   className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-[var(--zenvy-gold)]"
-                   defaultValue={Number(configs.find(c => c.key === 'min_order_value')?.value || 0)}
-                   onMouseUp={(e) => handleUpdateConfig('min_order_value', Number((e.target as HTMLInputElement).value))}
-                 />
-                 <p className="text-[8px] text-gray-600 font-bold uppercase tracking-widest text-center">Prevents sub-threshold low-margin orders</p>
-              </div>
-           </div>
+              <p className="text-[11px] text-gray-500 leading-relaxed">
+                Night hours are set on the server (storeHours). Online UPI/card payments are off: new orders are Cash on Delivery or Wallet only.
+              </p>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-500">Could not read the live ordering status.</p>
+          )}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* Nexus Seeding Engine */}
-        <div className="glass-card p-10 space-y-8 border-emerald-500/20 bg-emerald-500/[0.02]">
-           <div className="flex items-center gap-4 mb-2">
-              <div className="w-10 h-10 bg-emerald-600/20 rounded-xl flex items-center justify-center text-xl">🚀</div>
-              <div>
-                 <h4 className="text-lg font-black text-white uppercase tracking-tight">Nexus Seeding Engine</h4>
-                 <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Migrate legacy assets to database</p>
-              </div>
-           </div>
-           
-           <p className="text-[11px] text-gray-400 leading-relaxed uppercase tracking-widest font-bold">
-             Sync all current restaurants and menu items into the database to enable absolute administrative control. Warning: This will overwrite existing database records.
-           </p>
-
-           <button 
-             onClick={async () => {
-                if(!confirm('Migrate all legacy campus data to Database? This cannot be undone.')) return;
-                try {
-                  const token = 'cookie-managed';
-                  const res = await fetch(`${API_URL}/api/admin/seed`, {
-                    method: 'POST',
-                    headers: {  'Content-Type': 'application/json' },
-                    body: JSON.stringify({ restaurants: [] }) 
-                  });
-                  if(res.ok) alert('Nexus Synchronized Successfully!');
-                } catch(_err) { console.error(_err); }
-             }}
-             className="w-full py-6 bg-emerald-600/20 text-emerald-500 border border-emerald-600/30 rounded-3xl text-[10px] font-black uppercase tracking-[0.3em] hover:bg-emerald-600 hover:text-white transition-all shadow-[0_0_20px_rgba(16,185,129,0.2)]"
-           >
-             Initialize System Assets
-           </button>
+      {/* Other stored keys: shown honestly as not enforced */}
+      <div className="glass-card p-10 space-y-6">
+        <div>
+          <h4 className="text-lg font-black text-white uppercase tracking-tight">Other Stored Settings</h4>
+          <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+            These keys exist in the database but neither the backend nor the apps read them today, so changing them would have no effect.
+            They are shown read-only to avoid a false sense of control.
+          </p>
         </div>
-
-        <div className="glass-card p-10 border-blue-500/20 bg-blue-500/[0.02]">
-           <div className="flex items-center gap-6">
-              <div className="w-4 h-4 rounded-full bg-blue-500 animate-pulse shadow-[0_0_15px_rgba(37,99,235,0.8)]" />
-              <div>
-                 <h4 className="text-sm font-black text-white uppercase tracking-wider">Absolute Sync Active</h4>
-                 <p className="text-xs text-gray-500 leading-relaxed">Every modification in this terminal broadcasts an Omni-Sync byte to all student and rider nodes. System state is final upon commitment.</p>
-              </div>
-           </div>
-        </div>
+        {otherRows.length === 0 ? (
+          <p className="text-xs text-gray-600 italic">No other settings stored.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="text-[10px] text-gray-500 uppercase tracking-widest border-b border-white/5">
+                  <th className="py-2 pr-4">Key</th>
+                  <th className="py-2 pr-4">Value</th>
+                  <th className="py-2">Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                {otherRows.map(row => (
+                  <tr key={row._id || row.key} className="border-b border-white/[0.03]">
+                    <td className="py-2 pr-4 font-mono text-gray-300">{row.key}</td>
+                    <td className="py-2 pr-4 text-white font-bold">{formatValue(row.value)}</td>
+                    <td className="py-2 text-gray-500">{row.description || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
 }
-

@@ -71,7 +71,8 @@ const runStreakNudgeLogic = async () => {
           {
             type: 'streak_nudge',
             streakCount: String(user.streakCount)
-          }
+          },
+          { recipients: [user.id] }
         );
         nudgedCount++;
       } else {

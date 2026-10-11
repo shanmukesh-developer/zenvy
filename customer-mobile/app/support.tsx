@@ -1,50 +1,111 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert, Platform, RefreshControl, Linking } from 'react-native';
-import { useRouter } from 'expo-router';
-import { COLORS, SHADOWS, RADIUS } from '../constants/theme';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert, Platform, RefreshControl, Linking, KeyboardAvoidingView } from 'react-native';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { COLORS } from '../constants/theme';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { apiFetch } from '../utils/auth';
-import { ENDPOINTS } from '../constants/api';
+import { apiFetch, readJson } from '../utils/auth';
+import { ENDPOINTS, ZENVY_SUPPORT_PHONE, ZENVY_SUPPORT_WHATSAPP } from '../constants/api';
+import { connectSocket } from '../utils/socket';
+
+const SUBJECT_MAX = 120;
+const DESCRIPTION_MAX = 2000;
+const shortId = (id?: string | null) => (id ? String(id).slice(-6).toUpperCase() : '');
+// Server 5xx bodies can be generic ("Internal Server Error"); only show messages meant for people.
+const friendlyMessage = (res: Response, data: any, fallback: string) =>
+  (res.status < 500 && typeof data?.message === 'string' && data.message) || fallback;
+const formatWhen = (iso?: string) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+};
 
 export default function SupportScreen() {
   const router = useRouter();
   const { isDark, colors } = useTheme();
   const { user } = useAuth();
+  const params = useLocalSearchParams<{ orderId?: string | string[] }>();
+  const paramOrderId = (Array.isArray(params.orderId) ? params.orderId[0] : params.orderId) || '';
 
   const [tickets, setTickets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [showNewForm, setShowNewForm] = useState(false);
+  const [showNewForm, setShowNewForm] = useState(!!paramOrderId);
 
-  // Form states
-  const [subject, setSubject] = useState('');
+  // Form states (when opened from an order, the ticket is linked to it)
+  const [linkedOrderId, setLinkedOrderId] = useState<string>(paramOrderId);
+  const [subject, setSubject] = useState(paramOrderId ? `Help with order #${shortId(paramOrderId)}` : '');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState('Medium');
   const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
-    if (user) {
-      fetchTickets();
-    } else {
-      setLoading(false);
-    }
-  }, [user]);
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
-  const fetchTickets = async () => {
+  const fetchTickets = useCallback(async () => {
     try {
       const res = await apiFetch(ENDPOINTS.support);
+      const data = await readJson(res);
+      if (!mountedRef.current) return;
       if (res.ok) {
-        const data = await res.json();
         setTickets(Array.isArray(data) ? data : []);
+        setLoadError(null);
+      } else {
+        setLoadError(res.status === 401
+          ? 'Please sign in again to see your tickets.'
+          : friendlyMessage(res, data, "We couldn't load your tickets. Please try again."));
       }
     } catch (e) {
       console.error('Error fetching tickets:', e);
+      if (mountedRef.current) setLoadError("Can't reach Zenvy right now. Check your internet and try again.");
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (mountedRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (user) {
+      setLoading(true);
+      fetchTickets();
+    } else {
+      setTickets([]);
+      setLoading(false);
+    }
+  }, [user, fetchTickets]);
+
+  // Live updates when the support team replies (the server emits 'ticket_updated' to the user's own room).
+  useEffect(() => {
+    if (!user) return;
+    let socket: any;
+    try { socket = connectSocket(); } catch { return; }
+    const onTicketUpdated = (payload: any) => {
+      if (!mountedRef.current) return;
+      if (payload?.id) {
+        setTickets(prev => prev.map(tk => (
+          String(tk.id || tk._id) === String(payload.id)
+            ? {
+                ...tk,
+                ...(payload.status ? { status: payload.status } : {}),
+                ...(payload.adminResponse !== undefined ? { adminResponse: payload.adminResponse } : {}),
+              }
+            : tk
+        )));
+      } else {
+        fetchTickets();
+      }
+    };
+    socket.on('ticket_updated', onTicketUpdated);
+    return () => { socket.off('ticket_updated', onTicketUpdated); };
+  }, [user, fetchTickets]);
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -58,8 +119,8 @@ export default function SupportScreen() {
   const handleSubmit = async () => {
     if (!user) {
       Alert.alert(
-        'Sign In Required',
-        'Please sign in to register a support ticket so our team can link it to your account.',
+        'Sign in required',
+        'Please sign in so our team can link your ticket to your account.',
         [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Sign In', onPress: () => router.push('/login' as any) }
@@ -69,35 +130,53 @@ export default function SupportScreen() {
     }
 
     if (!subject.trim() || !description.trim()) {
-      Alert.alert('Validation Error', 'Please enter both a subject and description.');
+      Alert.alert('Almost there', 'Please add a short subject and tell us what went wrong.');
       return;
     }
+    if (submittingRef.current) return;
+    submittingRef.current = true;
 
     setSubmitting(true);
     try {
       const res = await apiFetch(ENDPOINTS.support, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subject, description, priority }),
+        body: JSON.stringify({
+          subject: subject.trim().slice(0, SUBJECT_MAX),
+          description: description.trim().slice(0, DESCRIPTION_MAX),
+          priority,
+          ...(linkedOrderId ? { orderId: linkedOrderId } : {}),
+        }),
       });
+      const data = await readJson(res);
+      if (!mountedRef.current) return;
 
       if (res.ok) {
-        Alert.alert('Success', 'Your support ticket has been registered.');
+        Alert.alert('Ticket raised ✅', "Our team will reply here, and we'll notify you as soon as they do.");
         setSubject('');
         setDescription('');
         setPriority('Medium');
+        setLinkedOrderId('');
         setShowNewForm(false);
         fetchTickets();
       } else {
-        const err = await res.json();
-        Alert.alert('Error', err.message || 'Failed to submit support ticket.');
+        Alert.alert("Couldn't raise your ticket", friendlyMessage(res, data, 'Please try again in a moment.'));
       }
     } catch (e) {
-      Alert.alert('Error', 'Failed to connect to support servers.');
+      if (mountedRef.current) Alert.alert('No connection', 'Please check your internet and try again.');
     } finally {
-      setSubmitting(false);
+      submittingRef.current = false;
+      if (mountedRef.current) setSubmitting(false);
     }
   };
+
+  const openSupportLink = (url: string, fallback: string) => {
+    Linking.openURL(url).catch(() => Alert.alert('Could not open', fallback));
+  };
+
+  const whatsappText = linkedOrderId
+    ? `Hi Zenvy Support, I need help with order #${shortId(linkedOrderId)}`
+    : 'Hi Zenvy Support, I need help';
 
   const txt = colors.text;
   const txtSec = colors.textSecondary;
@@ -109,11 +188,11 @@ export default function SupportScreen() {
   const activeTextColor = isDark ? COLORS.gold : COLORS.red;
 
   return (
-    <View style={[s.container, { backgroundColor: bg }]}>
+    <KeyboardAvoidingView style={[s.container, { backgroundColor: bg }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       {/* Header */}
       <View style={[s.header, { borderBottomColor: border, backgroundColor: cardBg }]}>
-        <TouchableOpacity 
-          style={[s.backBtn, { borderColor: border, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F6' }]} 
+        <TouchableOpacity
+          style={[s.backBtn, { borderColor: border, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F6' }]}
           onPress={() => {
             if (router.canGoBack()) {
               router.back();
@@ -128,8 +207,8 @@ export default function SupportScreen() {
           <Text style={[s.subText, { color: goldColor }]}>CUSTOMER HELP & SUPPORT</Text>
           <Text style={[s.title, { color: txt }]}>Support Center</Text>
         </View>
-        <TouchableOpacity 
-          style={[s.newBtn, { backgroundColor: showNewForm ? 'rgba(239,68,68,0.15)' : activeBgColor }] as any} 
+        <TouchableOpacity
+          style={[s.newBtn, { backgroundColor: showNewForm ? 'rgba(239,68,68,0.15)' : activeBgColor }] as any}
           onPress={() => setShowNewForm(!showNewForm)}
         >
           <Text style={[s.newBtnText, { color: showNewForm ? '#EF4444' : activeTextColor }]}>
@@ -138,20 +217,20 @@ export default function SupportScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView 
-        style={{ flex: 1 }} 
-        showsVerticalScrollIndicator={false} 
+      <ScrollView
+        style={{ flex: 1 }}
+        showsVerticalScrollIndicator={false}
         contentContainerStyle={[s.scrollContent, { paddingBottom: 240 }]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={goldColor} />}
       >
-        {/* Instant Campus Helpline Card */}
+        {/* Helpline Card */}
         <View style={[s.formCard, { backgroundColor: cardBg, borderColor: border, marginBottom: 16 }]}>
-          <Text style={[s.subText, { color: goldColor, marginBottom: 4 }]}>CAMPUS DISPATCH HELPLINE</Text>
+          <Text style={[s.subText, { color: goldColor, marginBottom: 4 }]}>ZENVY HELPLINE</Text>
           <Text style={{ fontSize: 13, fontWeight: '800', color: txt, marginBottom: 4 }}>Need urgent help with a live order?</Text>
           <Text style={{ fontSize: 11, color: txtSec, lineHeight: 16, marginBottom: 14 }}>
-            For delayed orders or delivery rider gate coordination, reach out directly to campus dispatch.
+            For a delayed order or trouble meeting your rider, message or call our support team directly.
           </Text>
 
           <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -168,7 +247,10 @@ export default function SupportScreen() {
                 paddingVertical: 10,
                 borderRadius: 12
               }}
-              onPress={() => Linking.openURL('https://wa.me/919876543210?text=Hi%20Zenvy%20Campus%20Support%2C%20I%20need%20assistance')}
+              onPress={() => openSupportLink(
+                `https://wa.me/${ZENVY_SUPPORT_WHATSAPP}?text=${encodeURIComponent(whatsappText)}`,
+                `WhatsApp us on +${ZENVY_SUPPORT_WHATSAPP}.`
+              )}
             >
               <Text style={{ fontSize: 14 }}>💬</Text>
               <Text style={{ fontSize: 10, fontWeight: '900', color: '#22C55E', letterSpacing: 0.5 }}>WHATSAPP</Text>
@@ -187,10 +269,10 @@ export default function SupportScreen() {
                 paddingVertical: 10,
                 borderRadius: 12
               }}
-              onPress={() => Linking.openURL('tel:+919876543210')}
+              onPress={() => openSupportLink(`tel:+${ZENVY_SUPPORT_PHONE}`, `Call us on +${ZENVY_SUPPORT_PHONE}.`)}
             >
               <Text style={{ fontSize: 14 }}>📞</Text>
-              <Text style={{ fontSize: 10, fontWeight: '900', color: '#3B82F6', letterSpacing: 0.5 }}>CALL DESK</Text>
+              <Text style={{ fontSize: 10, fontWeight: '900', color: '#3B82F6', letterSpacing: 0.5 }}>CALL US</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -202,7 +284,7 @@ export default function SupportScreen() {
               SIGN IN TO TRACK TICKETS
             </Text>
             <Text style={{ fontSize: 10, color: txtSec, textAlign: 'center', lineHeight: 15, marginBottom: 12 }}>
-              Log in with your student account to submit requests and receive real-time admin resolution updates.
+              Sign in to raise tickets and get notified when our team replies.
             </Text>
             <TouchableOpacity
               style={{ backgroundColor: goldColor, paddingHorizontal: 20, paddingVertical: 8, borderRadius: 10 }}
@@ -219,14 +301,24 @@ export default function SupportScreen() {
           <View style={[s.formCard, { backgroundColor: cardBg, borderColor: goldColor }]}>
             <Text style={[s.formTitle, { color: goldColor }]}>FILE A SUPPORT REQUEST</Text>
 
+            {!!linkedOrderId && (
+              <View style={[s.linkedOrder, { borderColor: border, backgroundColor: activeBgColor }]}>
+                <Text style={{ flex: 1, fontSize: 11, fontWeight: '800', color: txt }}>🧾 About order #{shortId(linkedOrderId)}</Text>
+                <TouchableOpacity onPress={() => setLinkedOrderId('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                  <Text style={{ fontSize: 10, fontWeight: '900', color: txtSec }}>REMOVE</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
             {/* Subject */}
             <Text style={[s.label, { color: txtSec }]}>ISSUE SUBJECT</Text>
-            <TextInput 
-              style={[s.input, { color: txt, borderColor: border, backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)' }]} 
-              placeholder="E.g., Order Delayed, Payment Failed"
+            <TextInput
+              style={[s.input, { color: txt, borderColor: border, backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)' }]}
+              placeholder="E.g., Order delayed, item missing"
               placeholderTextColor={txtSec}
               value={subject}
               onChangeText={setSubject}
+              maxLength={SUBJECT_MAX}
             />
 
             {/* Priority Selection */}
@@ -235,12 +327,12 @@ export default function SupportScreen() {
               {['Low', 'Medium', 'High', 'Critical'].map(level => {
                 const active = priority === level;
                 return (
-                  <TouchableOpacity 
-                    key={level} 
+                  <TouchableOpacity
+                    key={level}
                     style={[
-                      s.chip, 
-                      active && { borderColor: goldColor, backgroundColor: activeBgColor }, 
-                      { borderColor: border }
+                      s.chip,
+                      { borderColor: border },
+                      active && { borderColor: goldColor, backgroundColor: activeBgColor },
                     ] as any}
                     onPress={() => setPriority(level)}
                   >
@@ -254,18 +346,19 @@ export default function SupportScreen() {
 
             {/* Description */}
             <Text style={[s.label, { color: txtSec }]}>DETAILED DESCRIPTION</Text>
-            <TextInput 
-              style={[s.input, s.textarea, { color: txt, borderColor: border, backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)' }]} 
-              placeholder="Describe the issue in detail..."
+            <TextInput
+              style={[s.input, s.textarea, { color: txt, borderColor: border, backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)' }]}
+              placeholder="Tell us what happened..."
               placeholderTextColor={txtSec}
               multiline={true}
               numberOfLines={4}
               value={description}
               onChangeText={setDescription}
+              maxLength={DESCRIPTION_MAX}
             />
 
-            <TouchableOpacity 
-              style={[s.submitBtn, { backgroundColor: goldColor }]} 
+            <TouchableOpacity
+              style={[s.submitBtn, { backgroundColor: goldColor }, submitting && { opacity: 0.7 }]}
               onPress={handleSubmit}
               disabled={submitting}
             >
@@ -278,60 +371,101 @@ export default function SupportScreen() {
           </View>
         )}
 
-        <Text style={[s.sectionTitle, { color: txt }]}>YOUR TICKETS</Text>
+        {!!user && <Text style={[s.sectionTitle, { color: txt }]}>YOUR TICKETS</Text>}
 
-        {loading ? (
+        {!user ? null : loading ? (
           <View style={{ paddingVertical: 40 }}>
             <ActivityIndicator size="large" color={goldColor} />
+          </View>
+        ) : loadError && tickets.length === 0 ? (
+          <View style={[s.emptyCard, { backgroundColor: cardBg, borderColor: border }]}>
+            <Text style={{ fontSize: 36, marginBottom: 8 }}>📡</Text>
+            <Text style={{ fontSize: 12, fontWeight: '900', color: txt, letterSpacing: 1.5, marginBottom: 4 }}>
+              COULDN'T LOAD YOUR TICKETS
+            </Text>
+            <Text style={{ fontSize: 10, color: txtSec, textAlign: 'center', lineHeight: 15, maxWidth: 260, marginBottom: 16 }}>
+              {loadError}
+            </Text>
+            <TouchableOpacity
+              style={{ backgroundColor: goldColor, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 12 }}
+              onPress={() => { setLoading(true); fetchTickets(); }}
+            >
+              <Text style={{ color: isDark ? '#000' : '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 1 }}>
+                TRY AGAIN
+              </Text>
+            </TouchableOpacity>
           </View>
         ) : tickets.length === 0 ? (
           <View style={[s.emptyCard, { backgroundColor: cardBg, borderColor: border }]}>
             <Text style={{ fontSize: 36, marginBottom: 8 }}>🎫</Text>
             <Text style={{ fontSize: 12, fontWeight: '900', color: txt, letterSpacing: 1.5, marginBottom: 4 }}>
-              NO ACTIVE TICKETS
+              NO TICKETS YET
             </Text>
             <Text style={{ fontSize: 10, color: txtSec, textAlign: 'center', lineHeight: 15, maxWidth: 260, marginBottom: 16 }}>
-              Have an issue with your order, payment, or delivery? File a ticket and our campus team will resolve it swiftly.
+              Have an issue with an order, payment or delivery? Raise a ticket and our team will help you out.
             </Text>
-            <TouchableOpacity
-              style={{ backgroundColor: goldColor, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 12 }}
-              onPress={() => setShowNewForm(true)}
-            >
-              <Text style={{ color: isDark ? '#000' : '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 1 }}>
-                + FILE NEW TICKET
-              </Text>
-            </TouchableOpacity>
+            {!showNewForm && (
+              <TouchableOpacity
+                style={{ backgroundColor: goldColor, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 12 }}
+                onPress={() => setShowNewForm(true)}
+              >
+                <Text style={{ color: isDark ? '#000' : '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 1 }}>
+                  + FILE NEW TICKET
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         ) : (
           <View style={s.ticketList}>
-            {tickets.map((ticket, idx) => (
-              <View key={ticket.id || ticket._id || String(idx)} style={[s.ticketCard, { backgroundColor: cardBg, borderColor: border }]}>
-                <View style={s.ticketHeader}>
-                  <View style={{ flexDirection: 'row', gap: 6 }}>
-                    <View style={[s.statusBadge, ticket.status === 'Resolved' || ticket.status === 'Closed' ? s.statusResolved : { backgroundColor: activeBgColor }] as any}>
-                      <Text style={[s.statusText, { color: activeTextColor }, (ticket.status === 'Resolved' || ticket.status === 'Closed') && { color: '#22C55E' }]}>{(ticket.status || 'Pending').toUpperCase()}</Text>
+            {loadError && (
+              <TouchableOpacity onPress={() => fetchTickets()}>
+                <Text style={{ fontSize: 10, fontWeight: '700', color: '#EF4444', textAlign: 'center', marginBottom: 4 }}>
+                  Couldn't refresh your tickets. Tap to try again.
+                </Text>
+              </TouchableOpacity>
+            )}
+            {tickets.map((ticket, idx) => {
+              const isClosed = ticket.status === 'Resolved' || ticket.status === 'Closed';
+              const ticketOrderId = ticket.order?.id || ticket.orderId;
+              return (
+                <View key={ticket.id || ticket._id || String(idx)} style={[s.ticketCard, { backgroundColor: cardBg, borderColor: border }]}>
+                  <View style={s.ticketHeader}>
+                    <View style={{ flexDirection: 'row', gap: 6 }}>
+                      <View style={[s.statusBadge, isClosed ? s.statusResolved : { backgroundColor: activeBgColor }] as any}>
+                        <Text style={[s.statusText, { color: activeTextColor }, isClosed && { color: '#22C55E' }]}>{String(ticket.status || 'Open').toUpperCase()}</Text>
+                      </View>
+                      <View style={[s.prioBadge, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
+                        <Text style={s.prioText}>{String(ticket.priority || 'Medium').toUpperCase()}</Text>
+                      </View>
                     </View>
-                    <View style={[s.prioBadge, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
-                      <Text style={s.prioText}>{(ticket.priority || 'Medium').toUpperCase()}</Text>
-                    </View>
+                    <Text style={s.ticketId}>#{shortId(ticket.id || ticket._id)}</Text>
                   </View>
-                  <Text style={s.ticketId}>#{(ticket.id || ticket._id || '').slice(0, 8)}</Text>
-                </View>
-                <Text style={[s.ticketSubject, { color: txt }]}>{ticket.subject}</Text>
-                <Text style={[s.ticketDesc, { color: txtSec }]}>{ticket.description}</Text>
+                  <Text style={[s.ticketSubject, { color: txt }]}>{ticket.subject}</Text>
+                  {!!ticketOrderId && (
+                    <TouchableOpacity onPress={() => router.push(`/tracking/${ticketOrderId}` as any)}>
+                      <Text style={{ fontSize: 10, fontWeight: '800', color: activeTextColor, marginBottom: 4 }}>
+                        Order #{shortId(ticketOrderId)} →
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  <Text style={[s.ticketDesc, { color: txtSec }]}>{ticket.description}</Text>
+                  {!!formatWhen(ticket.createdAt) && (
+                    <Text style={{ fontSize: 9, fontWeight: '700', color: '#888', marginTop: 6 }}>Raised {formatWhen(ticket.createdAt)}</Text>
+                  )}
 
-                {ticket.adminResponse && (
-                  <View style={[s.responseBox, { backgroundColor: isDark ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.03)', borderColor: border }]}>
-                    <Text style={s.responseLabel}>ADMIN RESPONSE</Text>
-                    <Text style={[s.responseText, { color: txt }]}>{ticket.adminResponse}</Text>
-                  </View>
-                )}
-              </View>
-            ))}
+                  {!!ticket.adminResponse && (
+                    <View style={[s.responseBox, { backgroundColor: isDark ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.03)', borderColor: border }]}>
+                      <Text style={s.responseLabel}>ZENVY SUPPORT REPLY</Text>
+                      <Text style={[s.responseText, { color: txt }]}>{ticket.adminResponse}</Text>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
           </View>
         )}
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -348,6 +482,7 @@ const s = StyleSheet.create({
   scrollContent: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 40 },
   formCard: { padding: 20, borderRadius: 24, borderWidth: 1, marginBottom: 20 },
   formTitle: { fontSize: 10, fontWeight: '900', letterSpacing: 2, marginBottom: 16 },
+  linkedOrder: { flexDirection: 'row', alignItems: 'center', padding: 10, borderRadius: 12, borderWidth: 1, marginBottom: 14 },
   label: { fontSize: 8, fontWeight: '900', letterSpacing: 1, marginBottom: 6, marginLeft: 2 },
   input: { height: 48, borderRadius: 14, borderWidth: 1, paddingHorizontal: 16, fontSize: 13, marginBottom: 16 },
   textarea: { height: 100, paddingTop: 12, paddingBottom: 12, textAlignVertical: 'top' },
@@ -372,7 +507,7 @@ const s = StyleSheet.create({
   statusText: { fontSize: 7, fontWeight: '900' },
   prioBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   prioText: { fontSize: 7, fontWeight: '900', color: '#AAA' },
-  ticketId: { fontSize: 9, fontWeight: '600', color: '#888', fontFamily: 'monospace' },
+  ticketId: { fontSize: 9, fontWeight: '600', color: '#888', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
   ticketSubject: { fontSize: 14, fontWeight: '900', marginBottom: 4 },
   ticketDesc: { fontSize: 11, fontWeight: '700', lineHeight: 16 },
 

@@ -1,14 +1,18 @@
 const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/authMiddleware');
-const { 
-  checkAfterDarkHours, 
-  getConversations, 
-  getMessages, 
-  createGroup 
+const {
+  checkAfterDarkHours,
+  getAfterDarkStatus,
+  getConversations,
+  getMessages,
+  createGroup
 } = require('../controllers/chatController');
 
-// All chat routes are protected and gated by After Dark hours
+// Public: is Zenvy After Dark open right now? { open, opensAt, closesAt, timezone }
+router.get('/status', getAfterDarkStatus);
+
+// All other chat routes are protected and gated by After Dark hours
 router.use(protect);
 router.use(checkAfterDarkHours);
 

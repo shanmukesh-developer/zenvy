@@ -8,8 +8,10 @@ Follow these **exact** steps on Render:
 1.  **Go to Dashboard**: [https://dashboard.render.com](https://dashboard.render.com)
 2.  **Click "New +"**: Select **Blueprint** (the one with the map icon 🗺️).
 3.  **Select Repo**: Connect your `zenvy` repository.
-4.  **Confirm**: Render will read `render.yaml` and show you 5 services (Backend, Customer, Delivery, Restaurant, Admin).
+4.  **Confirm**: Render will read `render.yaml` and show two web services (Backend, Admin) plus the database. The customer, restaurant, and rider native apps are built separately with Expo Application Services (EAS).
 5.  **Click "Apply"**: That's it! It will deploy everything in the correct order.
+
+Native apps are not Render web services. Before the first EAS build, run `npx eas-cli@latest init` from each of `customer-mobile`, `restaurant-mobile`, and `delivery-boy-app` to link the app to your Expo account.
 
 ## 🚀 LOCAL DEVELOPMENT (Zenvy unified startup)
 If you want to run the system locally for testing:
@@ -17,7 +19,7 @@ If you want to run the system locally for testing:
 1. **Seed the Database**:
    ```bash
    cd backend
-   npm run seed # or node scripts/unified_seed.js
+   npm run seed:full # or node scripts/unified_seed.js
    ```
    This will initialize the database with standard components (Nexus Omni-Kitchen, Mock Orders, Vault Items) and create the standard test credentials.
 

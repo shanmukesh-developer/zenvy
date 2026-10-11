@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Image, Linking, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Image, Linking, ActivityIndicator, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
-import { API_URL } from '../constants/api';
+import { API_URL, ZENVY_SUPPORT_WHATSAPP } from '../constants/api';
+import { isLocalVendor, vendorCallNumber, vendorWhatsappNumber, callVendor, whatsappVendor } from '../utils/localVendor';
 
 const CAMPUSES = [
   { code: 'ALL', label: 'All Campuses', emoji: '🌐' },
@@ -15,74 +16,6 @@ interface CampusBitesSectionProps {
   restaurants: any[];
 }
 
-const DEFAULT_STALLS = [
-  {
-    _id: 'srm-tea-stall',
-    name: 'Campus Tea Stall & Tiffin Center',
-    vendorType: 'LOCAL_VENDOR',
-    campus: 'SRM',
-    imageUrl: 'https://images.unsplash.com/photo-1541832676-9b763b0239ab?w=400',
-    stallDescription: 'Hot Ginger Tea, Filter Coffee, Samosa, Mirchi Bajji & Idli Dosa.',
-    whatsappNumber: '919391955674',
-    rating: 4.6,
-    isLocalVendor: true,
-    operatingHours: { start: '06:00', end: '23:30' },
-    menu: [
-      { name: 'Special Ginger Tea', price: 15, isVegetarian: true },
-      { name: 'Hot Samosa (2 pcs)', price: 20, isVegetarian: true },
-      { name: 'Crispy Mirchi Bajji', price: 25, isVegetarian: true }
-    ]
-  },
-  {
-    _id: 'sri-lakshmi-fastfood',
-    name: 'Sri Lakshmi Fast Food',
-    vendorType: 'LOCAL_VENDOR',
-    campus: 'SRM',
-    imageUrl: 'https://images.unsplash.com/photo-1585032226651-759b368d7246?w=400',
-    stallDescription: 'Egg Noodles, Chicken Fried Rice, Fast Food & Schezwan Dishes.',
-    whatsappNumber: '919391955674',
-    rating: 4.4,
-    isLocalVendor: true,
-    operatingHours: { start: '11:00', end: '01:00' },
-    menu: [
-      { name: 'Chicken Fried Rice', price: 90, isVegetarian: false },
-      { name: 'Egg Schezwan Noodles', price: 80, isVegetarian: false }
-    ]
-  },
-  {
-    _id: 'anna-canteen',
-    name: 'Anna Canteen & Night Snacks',
-    vendorType: 'LOCAL_VENDOR',
-    campus: 'SRM',
-    imageUrl: 'https://images.unsplash.com/photo-1567620832903-9fc6debc209f?w=400',
-    stallDescription: 'Midnight Maggi, Omelette, Bread Butter & Cold Drinks.',
-    whatsappNumber: '919391955674',
-    rating: 4.7,
-    isLocalVendor: true,
-    operatingHours: { start: '18:00', end: '03:00' },
-    menu: [
-      { name: 'Cheese Butter Maggi', price: 50, isVegetarian: true },
-      { name: 'Double Egg Omelette', price: 40, isVegetarian: false }
-    ]
-  },
-  {
-    _id: 'fresh-juice-corner',
-    name: 'Campus Fresh Juice Corner',
-    vendorType: 'LOCAL_VENDOR',
-    campus: 'SRM',
-    imageUrl: 'https://images.unsplash.com/photo-1572490122747-3968b75cc699?w=400',
-    stallDescription: 'Fresh Watermelon, Muskmelon, Lemon Soda & Thick Milkshakes.',
-    whatsappNumber: '919391955674',
-    rating: 4.5,
-    isLocalVendor: true,
-    operatingHours: { start: '09:00', end: '22:00' },
-    menu: [
-      { name: 'Fresh Watermelon Juice', price: 40, isVegetarian: true },
-      { name: 'Oreo Milkshake', price: 70, isVegetarian: true }
-    ]
-  }
-];
-
 export default function CampusBitesSection({ restaurants }: CampusBitesSectionProps) {
   const router = useRouter();
   const { isDark } = useTheme();
@@ -90,13 +23,10 @@ export default function CampusBitesSection({ restaurants }: CampusBitesSectionPr
   const [stallSearch, setStallSearch] = useState('');
 
   // 1. Check if there are any local vendors
-  const localVendors = useMemo(() => {
-    const apiVendors = restaurants.filter(r => {
-      const vt = (r.vendorType || '').toUpperCase();
-      return vt === 'LOCAL_VENDOR' || vt === 'LOCAL' || vt === 'STALL' || vt === 'SERVICES' || r.isLocalVendor === true;
-    });
+  const allVendors = useMemo(() => (Array.isArray(restaurants) ? restaurants : []).filter(isLocalVendor), [restaurants]);
 
-    const pool = apiVendors.length > 0 ? apiVendors : DEFAULT_STALLS;
+  const localVendors = useMemo(() => {
+    const pool = allVendors;
 
     return pool
       .filter(r => {
@@ -118,10 +48,13 @@ export default function CampusBitesSection({ restaurants }: CampusBitesSectionPr
         if (bTier !== aTier) return bTier - aTier;
         return (Number(b.rating) || 0) - (Number(a.rating) || 0);
       });
-  }, [restaurants, selectedCampus, stallSearch]);
+  }, [allVendors, selectedCampus, stallSearch]);
 
   // 2. Check open status helper safely
   const isVendorOpen = (vendor: any): boolean => {
+    // The server computes isOpen from the vendor toggle + operating hours (IST)
+    if (typeof vendor.isOpen === 'boolean') return vendor.isOpen;
+    if (vendor.isActive === false || vendor.isOffline === true) return false;
     if (!vendor.operatingHours) return vendor.isOpenNow !== false;
     const now = new Date();
     // Convert client's local system time to Indian Standard Time (IST, GMT+5:30)
@@ -168,23 +101,18 @@ export default function CampusBitesSection({ restaurants }: CampusBitesSectionPr
     fetch(`${API_URL}/api/restaurants/${vendorId}/click`, { method: 'POST' }).catch(() => {});
   };
 
-  const getWhatsAppLink = (vendor: any) => {
-    const phone = vendor.whatsappNumber || '919391955674';
-    const campusName = CAMPUSES.find(c => c.code === vendor.campus)?.label || vendor.campus || 'Campus';
-    const msg = `Hi! I'd like to order from ${vendor.name} via CampusBites (Zenvy). My campus: ${campusName}.`;
-    return `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
-  };
-
-  const getCallLink = (vendor: any) => {
-    const phone = vendor.whatsappNumber || '919391955674';
-    return `tel:+${phone}`;
-  };
-
   const bg = isDark ? COLORS.bgDark : COLORS.bgLight;
   const cardBg = isDark ? COLORS.bgCard : '#FFF';
   const txt = isDark ? COLORS.textPrimary : COLORS.textDark;
   const txtSec = isDark ? COLORS.textSecondary : COLORS.textDarkSecondary;
   const border = isDark ? COLORS.borderDark : COLORS.borderLight;
+
+  const noStallsYet = allVendors.length === 0;
+  const openListStall = () => {
+    const msg = 'Hi Zenvy! I run a food stall near campus and would like to list it on CampusBites.';
+    Linking.openURL(`https://wa.me/${ZENVY_SUPPORT_WHATSAPP}?text=${encodeURIComponent(msg)}`)
+      .catch(() => Alert.alert('WhatsApp not available', `Message us on +${ZENVY_SUPPORT_WHATSAPP} to list your stall.`));
+  };
 
   return (
     <View style={s.section}>
@@ -199,11 +127,29 @@ export default function CampusBitesSection({ restaurants }: CampusBitesSectionPr
             LOCAL <Text style={{ color: COLORS.gold }}>VENDOR STALLS</Text>
           </Text>
           <Text style={[s.sectionDesc, { color: txtSec }]}>
-            DISCOVER ROADSIDE FOOD STALLS NEAR YOUR CAMPUS. BROWSE MENUS & ORDER VIA WHATSAPP OR CALL.
+            DISCOVER FOOD STALLS NEAR YOUR CAMPUS. BROWSE MENUS & PRICES HERE, THEN ORDER DIRECTLY FROM THE STALL BY CALL OR WHATSAPP — THE VENDOR DELIVERS.
           </Text>
         </View>
       </View>
 
+      {noStallsYet ? (
+        <View style={[s.emptyState, { backgroundColor: cardBg, borderColor: border }]}>
+          <Text style={{ fontSize: 32, marginBottom: 8 }}>🏪</Text>
+          <Text style={[s.emptyText, { color: txt, marginBottom: 6 }]}>LOCAL STALLS ARE JOINING SOON</Text>
+          <Text style={{ color: txtSec, fontSize: 12, textAlign: 'center', marginBottom: 14 }}>
+            Your favourite chai, tiffin and juice spots near campus will show up here.
+          </Text>
+          <TouchableOpacity
+            onPress={openListStall}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="List your stall on CampusBites via WhatsApp"
+            style={{ backgroundColor: COLORS.gold, paddingHorizontal: 16, paddingVertical: 9, borderRadius: 12 }}
+          >
+            <Text style={{ color: '#000', fontWeight: '900', fontSize: 11, letterSpacing: 0.6 }}>RUN A STALL? LIST IT FREE →</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (<>
       {/* Campus Selector Scroll */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.campusScroll}>
         {CAMPUSES.map(c => {
@@ -244,7 +190,7 @@ export default function CampusBitesSection({ restaurants }: CampusBitesSectionPr
         <View style={[s.emptyState, { backgroundColor: cardBg, borderColor: border }]}>
           <Text style={{ fontSize: 32, marginBottom: 8 }}>🏪</Text>
           <Text style={[s.emptyText, { color: txtSec }]}>
-            {stallSearch ? 'NO STALLS MATCH YOUR SEARCH' : 'NO LOCAL VENDORS AVAILABLE YET'}
+            {stallSearch ? 'NO STALLS MATCH YOUR SEARCH' : (selectedCampus !== 'ALL' ? 'NO STALLS LISTED FOR THIS CAMPUS YET' : 'NO LOCAL VENDORS AVAILABLE YET')}
           </Text>
         </View>
       ) : (
@@ -288,18 +234,18 @@ export default function CampusBitesSection({ restaurants }: CampusBitesSectionPr
 
                 {/* Right Info */}
                 <View style={s.info}>
-                  <Text style={[s.nameText, { color: txt }]} numberOfLines={1}>{vendor.name.toUpperCase()}</Text>
+                  <Text style={[s.nameText, { color: txt }]} numberOfLines={1}>{String(vendor.name || 'Local stall').toUpperCase()}</Text>
                   
                   <View style={s.metaRow}>
                     <View style={s.campusTag}><Text style={s.campusTagText}>{vendor.campus || 'CAMPUS'}</Text></View>
-                    <Text style={[s.ratingText, { color: txt }]}>⭐ {Number(vendor.rating || 4.5).toFixed(1)}</Text>
+                    <Text style={[s.ratingText, { color: txt }]}>{Number(vendor.rating) > 0 ? `⭐ ${Number(vendor.rating).toFixed(1)}` : '✨ NEW'}</Text>
                   </View>
 
                   <Text style={[s.descText, { color: txtSec }]} numberOfLines={2}>
                     {vendor.stallDescription || vendor.description || 'Local food stall near campus.'}
                   </Text>
 
-                  {vendor.promoOffer && (
+                  {!!vendor.promoOffer && (
                     <View style={s.promoWrap}>
                       <Text style={s.promoText}>{vendor.promoOffer.toUpperCase()}</Text>
                     </View>
@@ -311,9 +257,9 @@ export default function CampusBitesSection({ restaurants }: CampusBitesSectionPr
               <View style={[s.bottomRow, { borderTopColor: border }]}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                   <Text style={[s.hoursText, { color: txtSec }]}>
-                    🕐 {vendor.operatingHours ? `${vendor.operatingHours.start} - ${vendor.operatingHours.end}` : 'Hours vary'}
+                    🕐 {vendor.operatingHours && typeof vendor.operatingHours === 'object' && vendor.operatingHours.start ? `${vendor.operatingHours.start} - ${vendor.operatingHours.end}` : 'Hours vary'}
                   </Text>
-                  {vendor.menu && vendor.menu.length > 0 && (
+                  {Array.isArray(vendor.menu) && vendor.menu.length > 0 && (
                     <Text style={[s.hoursText, { color: txtSec }]}>
                       📋 {vendor.menu.length} items
                     </Text>
@@ -333,35 +279,42 @@ export default function CampusBitesSection({ restaurants }: CampusBitesSectionPr
                     <Text style={{ color: COLORS.gold, fontSize: 8, fontWeight: '900', letterSpacing: 0.5 }}>VIEW MENU →</Text>
                   </TouchableOpacity>
 
-                  <TouchableOpacity
-                    style={[s.actionBtn, s.callBtn]}
-                    onPress={() => {
-                      trackClick(vendor._id || vendor.id);
-                      Linking.openURL(getCallLink(vendor));
-                    }}
-                  >
-                    <Text style={s.callText}>📞 CALL</Text>
-                  </TouchableOpacity>
+                  {!!vendorCallNumber(vendor) && (
+                    <TouchableOpacity
+                      style={[s.actionBtn, s.callBtn]}
+                      accessibilityLabel={`Call ${vendor.name || 'the stall'} to order`}
+                      onPress={() => {
+                        trackClick(vendor._id || vendor.id);
+                        callVendor(vendor);
+                      }}
+                    >
+                      <Text style={s.callText}>📞 CALL</Text>
+                    </TouchableOpacity>
+                  )}
 
-                  <TouchableOpacity
-                    style={[s.actionBtn, s.orderBtn]}
-                    onPress={() => {
-                      trackClick(vendor._id || vendor.id);
-                      Linking.openURL(getWhatsAppLink(vendor));
-                    }}
-                  >
-                    <Text style={s.orderText}>💬 ORDER</Text>
-                  </TouchableOpacity>
+                  {!!vendorWhatsappNumber(vendor) && (
+                    <TouchableOpacity
+                      style={[s.actionBtn, s.orderBtn]}
+                      accessibilityLabel={`Order from ${vendor.name || 'the stall'} on WhatsApp`}
+                      onPress={() => {
+                        trackClick(vendor._id || vendor.id);
+                        whatsappVendor(vendor);
+                      }}
+                    >
+                      <Text style={s.orderText}>💬 WHATSAPP</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               </View>
             </TouchableOpacity>
           );
         })
       )}
+      </>)}
 
       {/* Footer disclaimer */}
       <Text style={[s.disclaimer, { color: txtSec }]}>
-        Zenvy acts as a discovery platform. Orders are placed directly with vendors via WhatsApp or Call.
+        Zenvy only lists these stalls. You order directly with the vendor by call or WhatsApp, and the vendor delivers — Zenvy takes no order, payment or rider.
       </Text>
     </View>
   );

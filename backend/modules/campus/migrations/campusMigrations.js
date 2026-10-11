@@ -1,0 +1,59 @@
+/**
+ * Campus Buddy Self-Healing Database Migrations
+ * Ensures all required columns exist across SQLite and PostgreSQL
+ */
+const runCampusMigrations = async (sequelize) => {
+  if (!sequelize) return;
+  const dialect = sequelize.getDialect();
+
+  const conversationCols = [
+    { name: 'type', type: "VARCHAR(20) DEFAULT 'dm'" },
+    { name: 'groupAvatar', type: "VARCHAR(255)" },
+    { name: 'description', type: "TEXT" },
+    { name: 'joinCode', type: "VARCHAR(10)" },
+    { name: 'adminIds', type: "TEXT DEFAULT '[]'" },
+    { name: 'pinnedMessageIds', type: "TEXT DEFAULT '[]'" },
+    { name: 'onlyAdminsCanSend', type: "BOOLEAN DEFAULT 0" },
+  ];
+
+  for (const col of conversationCols) {
+    try {
+      if (dialect === 'sqlite') {
+        await sequelize.query(`ALTER TABLE "Conversations" ADD COLUMN "${col.name}" ${col.type};`);
+      } else {
+        await sequelize.query(`ALTER TABLE "Conversations" ADD COLUMN IF NOT EXISTS "${col.name}" ${col.type};`);
+      }
+      console.log(`✅ [CAMPUS_MIGRATION] Added ${col.name} to Conversations.`);
+    } catch (_err) {
+      // Column already exists
+    }
+  }
+
+  const messageCols = [
+    { name: 'clientMsgId', type: "VARCHAR(255)" },
+    { name: 'type', type: "VARCHAR(20) DEFAULT 'text'" },
+    { name: 'mediaUrl', type: "TEXT" },
+    { name: 'mediaMetadata', type: "TEXT DEFAULT '{}'" },
+    { name: 'readBy', type: "TEXT DEFAULT '[]'" },
+    { name: 'deliveredTo', type: "TEXT DEFAULT '[]'" },
+    { name: 'isEdited', type: "BOOLEAN DEFAULT 0" },
+    { name: 'editedAt', type: "DATETIME" },
+    { name: 'isDeletedForEveryone', type: "BOOLEAN DEFAULT 0" },
+    { name: 'isPinned', type: "BOOLEAN DEFAULT 0" },
+  ];
+
+  for (const col of messageCols) {
+    try {
+      if (dialect === 'sqlite') {
+        await sequelize.query(`ALTER TABLE "Messages" ADD COLUMN "${col.name}" ${col.type};`);
+      } else {
+        await sequelize.query(`ALTER TABLE "Messages" ADD COLUMN IF NOT EXISTS "${col.name}" ${col.type};`);
+      }
+      console.log(`✅ [CAMPUS_MIGRATION] Added ${col.name} to Messages.`);
+    } catch (_err) {
+      // Column already exists
+    }
+  }
+};
+
+module.exports = { runCampusMigrations };

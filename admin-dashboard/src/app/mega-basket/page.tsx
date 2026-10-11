@@ -1,0 +1,188 @@
+"use client";
+
+import { useEffect, useState } from 'react';
+import { API_URL } from '@/lib/config';
+import { useAdminAuth } from '@/utils/useAdminAuth';
+import { useAdminSocket } from '@/components/AdminSocketProvider';
+
+interface BasketItem {
+  id?: string;
+  name: string;
+  quantity: number;
+  unit?: string;
+  priceEstimated?: number;
+  priceActual?: number;
+  status?: string;
+}
+
+interface MegaBasket {
+  id: string;
+  status: string;
+  estimatedTotal: number;
+  actualTotal: number | null;
+  shoppingFee: number;
+  deliveryFee: number;
+  deliveryAddress: string;
+  paymentMethod: string;
+  paymentStatus: string;
+  upiUTR?: string | null;
+  createdAt: string;
+  items?: BasketItem[];
+  user?: { name?: string; phone?: string; hostelBlock?: string; roomNumber?: string };
+  deliveryPartner?: { name?: string; phone?: string } | null;
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  Created: 'Waiting for a shopper',
+  PaidEstimate: 'Waiting for a shopper (legacy prepaid)',
+  PartnerAssigned: 'Shopper assigned',
+  Shopping: 'Shopping',
+  PriceApprovalPending: 'Waiting for customer to approve prices',
+  Approved: 'Prices approved',
+  Purchased: 'Purchased',
+  Delivering: 'Out for delivery',
+  Delivered: 'Delivered',
+  Cancelled: 'Cancelled',
+};
+const ADMIN_LIST_LIMIT = 50; // GET /api/mega-basket/admin/all returns the latest 50
+
+// New baskets are cash on delivery only; UPI baskets are legacy and shown for reference.
+const paymentText = (basket: MegaBasket) => {
+  if (basket.paymentMethod === 'UPI') {
+    return `UPI (legacy) · ${basket.paymentStatus}${basket.upiUTR ? ` · UTR ${basket.upiUTR}` : ' · no UTR'}`;
+  }
+  const state = basket.paymentStatus === 'Completed' ? 'collected' : basket.paymentStatus === 'Failed' ? 'failed' : 'due at delivery';
+  return `Cash on delivery · ${state}`;
+};
+
+const formatDate = (value: string) => {
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+};
+
+const STATUSES = ['Created', 'PaidEstimate', 'PartnerAssigned', 'Shopping', 'PriceApprovalPending', 'Approved', 'Purchased', 'Delivering', 'Delivered', 'Cancelled'];
+
+export default function MegaBasketAdminPage() {
+  const { isAuthed } = useAdminAuth();
+  const [baskets, setBaskets] = useState<MegaBasket[]>([]);
+  const [status, setStatus] = useState('All');
+  const [search, setSearch] = useState('');
+  const [refreshCount, setRefreshCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const { socket } = useAdminSocket();
+
+  // Reload when a customer creates a new basket.
+  useEffect(() => {
+    if (!socket) return;
+    const onNew = () => setRefreshCount(count => count + 1);
+    socket.on('admin_newMegaBasket', onNew);
+    return () => { socket.off('admin_newMegaBasket', onNew); };
+  }, [socket]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadBaskets = async () => {
+      setLoading(true);
+      setError('');
+      try {
+        const response = await fetch(`${API_URL}/api/mega-basket/admin/all`, {
+          credentials: 'include',
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+        const data = await response.json().catch(() => ({}));
+        if (response.status === 401) throw new Error('Your session has expired. Please sign in again.');
+        if (response.status >= 500) throw new Error(`The server could not load Mega Baskets (${response.status}). Please try again.`);
+        if (!response.ok) throw new Error(data.message || `Could not load Mega Baskets (${response.status}).`);
+        setBaskets(Array.isArray(data) ? data : []);
+      } catch (loadError) {
+        if (!controller.signal.aborted) setError(loadError instanceof TypeError ? 'Could not reach the server. Check your connection and try again.' : loadError instanceof Error ? loadError.message : 'Could not load Mega Baskets.');
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    };
+    loadBaskets();
+    return () => controller.abort();
+  }, [refreshCount]);
+
+  const filtered = baskets.filter(basket => {
+    const matchesStatus = status === 'All' || basket.status === status;
+    const query = search.trim().toLowerCase();
+    const matchesSearch = !query || [basket.id, basket.user?.name, basket.user?.phone, basket.deliveryAddress, basket.user?.hostelBlock, basket.upiUTR]
+      .some(value => value?.toLowerCase().includes(query));
+    return matchesStatus && matchesSearch;
+  });
+
+  if (!isAuthed) return <div className="p-10 text-center text-sm text-gray-400" role="status">Checking your admin session…</div>;
+
+  return (
+    <div className="mx-auto max-w-7xl space-y-6 p-6 text-white md:p-8">
+      <header className="flex flex-wrap items-end justify-between gap-4 border-b border-white/10 pb-5">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-widest text-amber-400">Multi-item shopping</p>
+          <h1 className="mt-1 text-2xl font-black">Mega Basket</h1>
+          <p className="mt-2 text-sm text-gray-400">Read-only overview of customer baskets, shopping progress, payment and shopper assignment. New baskets are cash on delivery; older UPI baskets are shown for reference.</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-gray-400">{filtered.length} of {baskets.length} baskets{baskets.length >= ADMIN_LIST_LIMIT ? ` (latest ${ADMIN_LIST_LIMIT})` : ''}</span>
+          <button type="button" disabled={loading} onClick={() => setRefreshCount(count => count + 1)} className="border border-white/10 px-4 py-2 text-sm font-bold text-gray-300 hover:text-white disabled:opacity-50">{loading ? 'Refreshing...' : 'Refresh'}</button>
+        </div>
+      </header>
+
+      <section className="grid gap-3 border border-white/10 bg-white/[0.02] p-4 md:grid-cols-[1fr_2fr]" aria-label="Mega Basket filters">
+        <label className="space-y-1 text-xs font-bold uppercase tracking-wider text-gray-400">Status
+          <select value={status} onChange={event => setStatus(event.target.value)} className="mt-1 w-full border border-white/10 bg-[#111318] p-2.5 text-sm text-white">
+            <option value="All">All</option>{STATUSES.map(value => <option key={value} value={value}>{STATUS_LABELS[value] || value}</option>)}
+          </select>
+        </label>
+        <label className="space-y-1 text-xs font-bold uppercase tracking-wider text-gray-400">Search
+          <input value={search} onChange={event => setSearch(event.target.value)} placeholder="Basket ID, customer, phone, block, address" className="mt-1 w-full border border-white/10 bg-[#111318] p-2.5 text-sm font-normal text-white placeholder:text-gray-600" />
+        </label>
+      </section>
+
+      {error && <div role="alert" className="flex items-center justify-between gap-3 border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">{error}<button type="button" onClick={() => setRefreshCount(count => count + 1)} className="font-bold underline">Retry</button></div>}
+      {loading ? <div role="status" className="border border-white/10 p-8 text-sm text-gray-400">Loading Mega Baskets...</div> : filtered.length === 0 ? (
+        <div className="border border-white/10 p-10 text-center"><h2 className="font-bold">No matching baskets</h2><p className="mt-2 text-sm text-gray-400">Recent customer baskets will appear here.</p></div>
+      ) : (
+        <section className="divide-y divide-white/10 border border-white/10" aria-label="Mega Basket list">
+          {filtered.map(basket => {
+            const itemCount = basket.items?.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0) || 0;
+            const total = Number(basket.actualTotal ?? basket.estimatedTotal ?? 0) + Number(basket.shoppingFee || 0) + Number(basket.deliveryFee || 0);
+            return (
+              <article key={basket.id} className="p-5">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="text-lg font-bold">{basket.user?.name || 'Student'}’s basket</h2>
+                      <span className="border border-amber-400/20 bg-amber-400/5 px-2 py-1 text-xs font-bold text-amber-300">{STATUS_LABELS[basket.status] || basket.status}</span>
+                    </div>
+                    <p className="mt-2 text-xs text-gray-500">#{basket.id.slice(-8).toUpperCase()} · {formatDate(basket.createdAt)}</p>
+                  </div>
+                  <button type="button" aria-expanded={expandedId === basket.id} onClick={() => setExpandedId(current => current === basket.id ? null : basket.id)} className="border border-white/10 px-3 py-2 text-xs font-bold text-gray-300 hover:text-white">{expandedId === basket.id ? 'Hide items' : `View ${itemCount} items`}</button>
+                </div>
+                <div className="mt-4 grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                  <div><p className="text-xs uppercase tracking-wider text-gray-500">Student</p><p className="mt-1">{basket.user?.phone || 'Phone unavailable'}</p></div>
+                  <div><p className="text-xs uppercase tracking-wider text-gray-500">Delivery</p><p className="mt-1">{basket.deliveryAddress || [basket.user?.hostelBlock, basket.user?.roomNumber].filter(Boolean).join(', ') || 'Not specified'}</p></div>
+                  <div><p className="text-xs uppercase tracking-wider text-gray-500">Payment</p><p className="mt-1">{paymentText(basket)}</p></div>
+                  <div><p className="text-xs uppercase tracking-wider text-gray-500">{basket.actualTotal != null ? 'Bill total' : 'Current estimate'}</p><p className="mt-1 font-bold">₹{total}</p></div>
+                </div>
+                {expandedId === basket.id && (
+                  <div className="mt-5 border-t border-white/10 pt-4">
+                    <div className="mb-3 flex flex-wrap gap-x-6 gap-y-2 text-sm"><span><span className="text-gray-500">Shopper: </span>{basket.deliveryPartner?.name ? `${basket.deliveryPartner.name}${basket.deliveryPartner.phone ? ` (${basket.deliveryPartner.phone})` : ''}` : 'Unassigned'}</span><span><span className="text-gray-500">Shopping fee: </span>₹{basket.shoppingFee || 0}</span><span><span className="text-gray-500">Delivery fee: </span>₹{basket.deliveryFee || 0}</span><span><span className="text-gray-500">Estimated items: </span>₹{basket.estimatedTotal || 0}</span>{basket.actualTotal != null && <span><span className="text-gray-500">Actual items: </span>₹{basket.actualTotal}</span>}</div>
+                    <div className="overflow-x-auto border border-white/10">
+                      <table className="w-full text-left text-sm"><thead className="bg-white/[0.03] text-xs uppercase text-gray-500"><tr><th className="p-3">Item</th><th className="p-3">Qty</th><th className="p-3">Estimated</th><th className="p-3">Actual</th><th className="p-3">Status</th></tr></thead>
+                        <tbody className="divide-y divide-white/5">{(basket.items || []).map((item, index) => <tr key={item.id || `${item.name}-${index}`}><td className="p-3">{item.name}</td><td className="p-3">{item.quantity} {item.unit || ''}</td><td className="p-3">₹{item.priceEstimated ?? '—'}</td><td className="p-3">₹{item.priceActual ?? '—'}</td><td className="p-3">{item.status || 'Pending'}</td></tr>)}</tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </article>
+            );
+          })}
+        </section>
+      )}
+    </div>
+  );
+}

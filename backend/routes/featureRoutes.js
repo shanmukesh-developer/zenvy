@@ -18,7 +18,8 @@ router.post('/referral/apply', protect, async (req, res) => {
     const { getUserModel } = require('../models/User');
     const User = getUserModel();
 
-    const referrer = await User.findOne({ where: { referralCode } });
+    const code = String(referralCode).trim().toUpperCase();
+    const referrer = await User.findOne({ where: { referralCode: code } });
     if (!referrer) return res.status(404).json({ message: 'Invalid referral code' });
 
     if (referrer.id === req.user.id) {
@@ -30,14 +31,21 @@ router.post('/referral/apply', protect, async (req, res) => {
     if (currentUser.referredBy) {
       return res.status(400).json({ message: 'You have already used a referral code' });
     }
-    currentUser.referredBy = referralCode;
-    currentUser.referralRewardClaimed = true;
-    currentUser.zenPoints = (currentUser.zenPoints || 0) + 50;
-    await currentUser.save();
-
-    referrer.referralCount = (referrer.referralCount || 0) + 1;
-    referrer.zenPoints = (referrer.zenPoints || 0) + 50;
-    await referrer.save();
+    if (referrer.referredBy && currentUser.referralCode && referrer.referredBy === currentUser.referralCode) {
+      return res.status(400).json({ message: 'You cannot use the code of someone you referred.' });
+    }
+    // Conditional, atomic claim: a double tap can never pay out twice.
+    const { literal } = require('sequelize');
+    const [claimed] = await User.update(
+      { referredBy: code, referralRewardClaimed: true, zenPoints: literal('COALESCE("zenPoints", 0) + 50') },
+      { where: { id: currentUser.id, referredBy: null } }
+    );
+    if (claimed === 0) return res.status(400).json({ message: 'You have already used a referral code' });
+    await User.update(
+      { referralCount: literal('COALESCE("referralCount", 0) + 1'), zenPoints: literal('COALESCE("zenPoints", 0) + 50') },
+      { where: { id: referrer.id } }
+    );
+    await currentUser.reload();
 
     console.log(`[REFERRAL] ${currentUser.name} used code ${referralCode} (referrer: ${referrer.name})`);
 
@@ -231,13 +239,17 @@ router.get('/recommendations', protect, async (req, res) => {
 // ═══════════════════════════════════════════════════════
 
 // POST /api/features/gift - Send a gift (meal voucher) to another user
+const giftError = (msg) => Object.assign(new Error(msg), { expose: true });
 router.post('/gift', protect, async (req, res) => {
   try {
-    const { recipientPhone, amount, message } = req.body;
-    if (!recipientPhone || !amount) {
-      return res.status(400).json({ message: 'Recipient phone and amount are required' });
+    const { message } = req.body || {};
+    const { normalizePhone } = require('../utils/phoneUtils');
+    const recipientPhone = normalizePhone(String(req.body?.recipientPhone || ''));
+    const amount = Number(req.body?.amount);
+    if (!/^\d{10}$/.test(recipientPhone) || !amount) {
+      return res.status(400).json({ message: "Enter your friend's 10-digit phone number and a gift amount." });
     }
-    if (amount < 10 || amount > 500) {
+    if (!Number.isInteger(amount) || amount < 10 || amount > 500) {
       return res.status(400).json({ message: 'Gift amount must be between ₹10 and ₹500' });
     }
 
@@ -251,8 +263,8 @@ router.post('/gift', protect, async (req, res) => {
 
     await sequelize.transaction(async (t) => {
       const sender = await User.findByPk(req.user.id, { transaction: t, lock: true });
-      if (!sender) throw new Error('Sender not found');
-      if (!sender.isElite) throw new Error('Only Elite members can send gifts');
+      if (!sender) throw giftError('Sender not found');
+      if (!sender.isElite) throw giftError('Only Elite members can send gifts');
 
       const now = new Date();
       if (sender.lastGiftResetDate) {
@@ -266,16 +278,16 @@ router.post('/gift', protect, async (req, res) => {
       }
 
       if ((sender.eliteGiftsUsedThisMonth || 0) >= 3) {
-        throw new Error('Monthly gift limit reached (3/month)');
+        throw giftError('Monthly gift limit reached (3/month)');
       }
 
       if ((sender.walletBalance || 0) < amount) {
-        throw new Error('Insufficient wallet balance');
+        throw giftError('Insufficient wallet balance');
       }
 
       const recipient = await User.findOne({ where: { phone: recipientPhone }, transaction: t, lock: true });
-      if (!recipient) throw new Error('Recipient not found on Zenvy');
-      if (recipient.id === sender.id) throw new Error('Cannot gift yourself');
+      if (!recipient) throw giftError('No Zenvy account uses that phone number.');
+      if (recipient.id === sender.id) throw giftError('Cannot gift yourself');
 
       sender.walletBalance = (sender.walletBalance || 0) - amount;
       sender.eliteGiftsUsedThisMonth = (sender.eliteGiftsUsedThisMonth || 0) + 1;
@@ -287,10 +299,10 @@ router.post('/gift', protect, async (req, res) => {
       updatedSender = sender;
       recipientName = recipient.name;
 
-      // Emit socket notification
+      // Notify only the recipient (personal socket room joined on connect)
       const io = req.app.get('io');
       if (io) {
-        io.emit('gift_received', {
+        io.to(`user_${recipient.id}`).emit('gift_received', {
           recipientId: recipient.id,
           senderName: sender.name,
           amount,
@@ -307,7 +319,8 @@ router.post('/gift', protect, async (req, res) => {
     });
   } catch (error) {
     console.error('[GIFT_ERROR]', error);
-    res.status(400).json({ message: error.message || 'Server error' });
+    if (error.expose) return res.status(400).json({ message: error.message });
+    res.status(500).json({ message: 'Could not send the gift right now. Your wallet was not charged.' });
   }
 });
 
@@ -352,7 +365,7 @@ router.post('/push/campaign', protect, admin, async (req, res) => {
     for (const user of users) {
       const tokens = user.fcmTokens;
       if (tokens && Array.isArray(tokens) && tokens.length > 0) {
-        await sendPushToTokens(tokens, title, body, { type: 'campaign' });
+        await sendPushToTokens(tokens, title, body, { type: 'campaign' }, { recipients: [user.id] });
         sentCount++;
       }
     }
@@ -369,57 +382,66 @@ router.post('/push/campaign', protect, admin, async (req, res) => {
   }
 });
 
-// POST /api/features/push/abandoned-cart - Trigger abandoned cart nudge
-router.post('/push/abandoned-cart', async (req, res) => {
-  try {
-    const { getUserModel } = require('../models/User');
-    const { getOrderModel } = require('../models/Order');
-    const { sendPushToTokens } = require('../utils/push');
-    const { Op } = require('sequelize');
-    const User = getUserModel();
-    const Order = getOrderModel();
+// Abandoned-cart nudge: customers who ordered 3-10 days ago and not since.
+// Called in-process by the daily cron (server.js) and by admins through the route below.
+const runAbandonedCartNudge = async () => {
+  const { getUserModel } = require('../models/User');
+  const { getOrderModel } = require('../models/Order');
+  const { sendPushToTokens } = require('../utils/push');
+  const { Op } = require('sequelize');
+  const User = getUserModel();
+  const Order = getOrderModel();
 
-    // Find users who haven't ordered in the last 3 days but were active before
-    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
-    const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
+  const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+  const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
 
-    const recentOrders = await Order.findAll({
-      where: { createdAt: { [Op.between]: [tenDaysAgo, threeDaysAgo] } },
-      attributes: ['userId'],
-      group: ['userId']
-    });
+  const olderOrders = await Order.findAll({
+    where: { createdAt: { [Op.between]: [tenDaysAgo, threeDaysAgo] } },
+    attributes: ['userId'],
+    group: ['userId']
+  });
+  const recentOrders = await Order.findAll({
+    where: { createdAt: { [Op.gt]: threeDaysAgo } },
+    attributes: ['userId'],
+    group: ['userId']
+  });
+  const orderedRecently = new Set(recentOrders.map(o => o.userId));
+  const targetUserIds = olderOrders.map(o => o.userId).filter(id => id && !orderedRecently.has(id));
+  if (targetUserIds.length === 0) return { count: 0 };
 
-    const targetUserIds = recentOrders.map(o => o.userId);
-    if (targetUserIds.length === 0) return res.json({ message: 'No abandoned cart users found', count: 0 });
+  const users = await User.findAll({ where: { id: { [Op.in]: targetUserIds } } });
 
-    const users = await User.findAll({
-      where: { id: { [Op.in]: targetUserIds } }
-    });
-
-    let sentCount = 0;
-    for (const user of users) {
-      const tokens = user.fcmTokens;
-      if (tokens && Array.isArray(tokens) && tokens.length > 0) {
-        await sendPushToTokens(
-          tokens,
-          '🍽️ Missing your Zenvy meals?',
-          `Hey ${user.name || 'there'}! Your favorite restaurants are waiting. Order now and earn ZenPoints!`,
-          { type: 'abandoned_cart' }
-        );
-        sentCount++;
-      }
+  let sentCount = 0;
+  for (const user of users) {
+    const tokens = user.fcmTokens;
+    if (tokens && Array.isArray(tokens) && tokens.length > 0) {
+      await sendPushToTokens(
+        tokens,
+        '🍽️ Missing your Zenvy meals?',
+        `Hey ${(user.name || 'there').split(' ')[0]}! Your favourite campus spots are open. Order now and earn ZenPoints!`,
+        { type: 'abandoned_cart' },
+        { recipients: [user.id] }
+      );
+      sentCount++;
     }
+  }
+  console.log(`[ABANDONED_CART] Nudged ${sentCount} users`);
+  return { count: sentCount };
+};
 
-    console.log(`[ABANDONED_CART] Nudged ${sentCount} users`);
-    res.json({ message: `Nudged ${sentCount} users`, count: sentCount });
+// POST /api/features/push/abandoned-cart - Trigger abandoned cart nudge (Admin only)
+router.post('/push/abandoned-cart', protect, admin, async (req, res) => {
+  try {
+    const { count } = await runAbandonedCartNudge();
+    res.json({ message: count ? `Nudged ${count} users` : 'No abandoned cart users found', count });
   } catch (error) {
     console.error('[ABANDONED_CART_ERROR]', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    res.status(500).json({ message: 'Could not send the nudge right now.' });
   }
 });
 
-// POST /api/features/streak/nudge-trigger - Trigger daily fire streak reminders manually (admin/test)
-router.post('/streak/nudge-trigger', protect, async (req, res) => {
+// POST /api/features/streak/nudge-trigger - Trigger daily fire streak reminders manually (admin only)
+router.post('/streak/nudge-trigger', protect, admin, async (req, res) => {
   try {
     const { runStreakNudgeLogic } = require('../cron/streakNudge');
     await runStreakNudgeLogic();
@@ -431,3 +453,4 @@ router.post('/streak/nudge-trigger', protect, async (req, res) => {
 });
 
 module.exports = router;
+module.exports.runAbandonedCartNudge = runAbandonedCartNudge;

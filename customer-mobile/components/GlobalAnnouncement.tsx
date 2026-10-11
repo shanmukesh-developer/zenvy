@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Animated, TouchableOpacity, Dimensions, Platform } from 'react-native';
-import { io, Socket } from 'socket.io-client';
+import { View, Text, StyleSheet, Animated, TouchableOpacity, Dimensions, Platform, AppState } from 'react-native';
+import { Socket } from 'socket.io-client';
+import { connectSocket } from '../utils/socket';
 import { API_URL } from '../constants/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BlurView } from 'expo-blur';
@@ -30,17 +31,65 @@ const TYPE_STYLES = {
   emergency: { bg: 'rgba(26, 26, 28, 0.95)', border: 'rgba(239, 79, 95, 0.8)', icon: '🚨' },
 };
 
+// Push `data.type` values the backend sends for an order (orderController / deliveryPartnerController)
+const ORDER_PUSH_TYPES = ['order', 'ORDER_UPDATE', 'GATE_ARRIVAL', 'ORDER_STATUS'];
+const CHAT_PUSH_TYPES = ['chat_message', 'NEW_CHAT_MESSAGE', 'FRIEND_REQUEST', 'FRIEND_ACCEPTED', 'FRIEND_NUDGE'];
+const NOTIF_HISTORY_KEY = 'zenvy_notifications';
+const MAX_HISTORY = 100;
+
+/** Adds one item to the on-device notification inbox (newest first, no duplicates by id). */
+const saveToHistory = async (item: { id: string; title: string; body: string; type: string; orderId?: string }) => {
+  try {
+    const stored = await AsyncStorage.getItem(NOTIF_HISTORY_KEY);
+    let notifs: any[] = [];
+    try { notifs = stored ? JSON.parse(stored) : []; } catch { notifs = []; }
+    if (!Array.isArray(notifs)) notifs = [];
+    if (notifs.some((n: any) => n?.id === item.id)) return;
+    notifs.unshift({ ...item, timestamp: new Date().toISOString(), read: false });
+    await AsyncStorage.setItem(NOTIF_HISTORY_KEY, JSON.stringify(notifs.slice(0, MAX_HISTORY)));
+  } catch (e) {
+    console.warn('Error saving notification history:', e);
+  }
+};
+
 export default function GlobalAnnouncement() {
   const router = useRouter();
   const [announcement, setAnnouncement] = useState<Announcement | null>(null);
   const slideAnim = React.useRef(new Animated.Value(-150)).current;
+  const hideTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const { user } = useAuth();
+  // Effects depend on the account id only: profile refreshes create a new user object every time
+  const userId = (user as any)?._id || (user as any)?.id || null;
+  const userRef = React.useRef(user);
+  userRef.current = user;
   const insets = useSafeAreaInsets();
   const topOffset = Math.max(insets.top + 8, 16);
+  const topOffsetRef = React.useRef(topOffset);
+  topOffsetRef.current = topOffset;
 
+  const clearHideTimer = () => {
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
+  };
+
+  const hideAnnouncement = () => {
+    clearHideTimer();
+    Animated.timing(slideAnim, {
+      toValue: -200,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => setAnnouncement(null));
+  };
+  const hideRef = React.useRef(hideAnnouncement);
+  hideRef.current = hideAnnouncement;
+
+  // Register this phone's push token once per signed-in account
   useEffect(() => {
-    if (Platform.OS === 'web' || !user || !Notifications) return;
-    
+    if (Platform.OS === 'web' || !userId || !Notifications) return;
+    let cancelled = false;
+
     const registerPushToken = async () => {
       try {
         const { status: existingStatus } = await Notifications.getPermissionsAsync();
@@ -49,36 +98,38 @@ export default function GlobalAnnouncement() {
           const { status } = await Notifications.requestPermissionsAsync();
           finalStatus = status;
         }
-        if (finalStatus !== 'granted') return;
-        
+        if (finalStatus !== 'granted' || cancelled) return;
+
+        const Constants = require('expo-constants').default;
         let fcmToken = '';
         try {
           const deviceTokenData = await Notifications.getDevicePushTokenAsync();
           fcmToken = deviceTokenData.data;
         } catch (deviceError) {
           console.warn('FCM native token failed in GlobalAnnouncement, trying Expo fallback:', deviceError);
-          const Constants = require('expo-constants').default;
           let projectId = Constants.expoConfig?.extra?.eas?.projectId || Constants.easConfig?.projectId;
           if (!projectId || projectId === 'your-eas-project-id') {
-            projectId = undefined; 
+            projectId = undefined;
           }
           const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
           fcmToken = tokenData.data;
         }
-        
-        if (!fcmToken) return;
-        
-        // Sync with backend
+
+        if (!fcmToken || cancelled) return;
+
+        // Sync with backend (the server detaches this token from any other account)
         const { apiFetch } = require('../utils/auth');
         const res = await apiFetch(`${API_URL}/api/users/fcm-token`, {
           method: 'POST',
           body: JSON.stringify({
             fcmToken,
-            appVersion: '1.0.0'
+            appVersion: Constants.expoConfig?.version,
+            platform: Platform.OS,
           })
         });
         if (res.ok) {
-          console.log('[PUSH] Push token auto-registered successfully.');
+          // Remembered so logout can unregister this device
+          await AsyncStorage.setItem('zenvy_push_token', fcmToken).catch(() => {});
         } else {
           console.warn('[PUSH] Auto-register failed:', res.status);
         }
@@ -86,10 +137,10 @@ export default function GlobalAnnouncement() {
         console.warn('[PUSH] Auto-register error:', err);
       }
     };
-    
+
     const timer = setTimeout(registerPushToken, 3000);
-    return () => clearTimeout(timer);
-  }, [user]);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [userId]);
 
   useEffect(() => {
     if (Platform.OS === 'web' || !Notifications) return;
@@ -97,13 +148,18 @@ export default function GlobalAnnouncement() {
     // Set notification handler at runtime (not module scope — avoids Android crash)
     try {
       Notifications.setNotificationHandler({
-        handleNotification: async () => ({
-          shouldShowAlert: true,
-          shouldPlaySound: true,
-          shouldSetBadge: false,
-          shouldShowBanner: true,
-          shouldShowList: true,
-        }),
+        handleNotification: async (notification: any) => {
+          // Admin broadcasts also arrive over the socket as an in-app toast: don't show them twice
+          const type = notification?.request?.content?.data?.type;
+          const inApp = type === 'global_broadcast';
+          return {
+            shouldShowAlert: !inApp,
+            shouldPlaySound: !inApp,
+            shouldSetBadge: false,
+            shouldShowBanner: !inApp,
+            shouldShowList: true,
+          };
+        },
       });
 
       // Register notification category for calls with action buttons (WhatsApp style)
@@ -123,94 +179,90 @@ export default function GlobalAnnouncement() {
             isDestructive: true,
           },
         },
-      ]);
+      ]).catch(() => {});
     } catch (e) {
       console.warn('Failed to set notification handler:', e);
     }
 
-    // Response listener when notification clicked or button pressed
-    try {
-      responseSub = Notifications.addNotificationResponseReceivedListener(async (response: any) => {
-        try {
-          const { actionIdentifier, notification } = response;
-          const data = notification.request.content.data;
-          const { router } = require('expo-router');
+    // Opens the screen a tapped notification refers to
+    const handleResponse = async (response: any, delayMs = 0) => {
+      try {
+        // Clear so the same tap is never handled twice
+        try { Notifications.clearLastNotificationResponse?.(); } catch {}
+        const { actionIdentifier, notification } = response || {};
+        const data = notification?.request?.content?.data || {};
+        const { router: nav } = require('expo-router');
+        const go = (path: string) => setTimeout(() => {
+          try { nav.push(path as any); } catch (e) { console.warn('Notification nav failed:', e); }
+        }, delayMs);
 
-          if (data?.type === 'call') {
-            if (actionIdentifier === 'ANSWER' || actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER) {
-              // Store auto-answer request
-              await AsyncStorage.setItem('zenvy_auto_answer_call', JSON.stringify({
-                callerName: data.callerName || 'Alex (Developer)',
-                mode: data.mode || 'audio'
-              }));
-              // Redirect to community Tab
-              router.push('/community');
-            }
-          } else if (data?.type === 'BIRTHDAY_ALERT') {
-            // Navigate to community section
-            router.push('/community');
-          } else if (data?.type === 'promo' || data?.type === 'offer') {
-            // Navigate to offers/others section
-            router.push('/others');
-          } else if (data?.type === 'badge') {
-            // Navigate to rewards section
-            router.push('/rewards');
-          } else if (data?.type === 'order') {
-            // Navigate to tracking page or orders tab
-            const orderIdStr = data.orderId || data.id;
-            if (orderIdStr) {
-              router.push(`/tracking/${orderIdStr}`);
-            } else {
-              router.push('/(tabs)/orders');
-            }
-          } else if (data?.type === 'chat_message') {
-            // Navigate to friends chat section
-            router.push('/friends');
+        if (data.type === 'call') {
+          if (actionIdentifier === 'ANSWER' || actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER) {
+            await AsyncStorage.setItem('zenvy_auto_answer_call', JSON.stringify({
+              callerName: data.callerName || 'Incoming call',
+              mode: data.mode || 'audio'
+            }));
+            go('/community');
           }
-        } catch (err) {
-          console.warn('Error handling notification response:', err);
+        } else if (data.type === 'BIRTHDAY_ALERT') {
+          go('/community');
+        } else if (data.type === 'promo' || data.type === 'offer') {
+          go('/others');
+        } else if (['badge', 'BADGE', 'SPIN_EARNED', 'points', 'coupon', 'streak_nudge'].includes(data.type)) {
+          go('/rewards');
+        } else if (data.type === 'PG_BOOKING' || data.type === 'PG_BOOKING_STATUS') {
+          go('/others?tab=stays');
+        } else if (typeof data.type === 'string' && data.type.startsWith('WALL_')) {
+          go('/community');
+        } else if (data.type === 'abandoned_cart') {
+          go('/basket');
+        } else if (ORDER_PUSH_TYPES.includes(data.type)) {
+          const orderIdStr = data.orderId || data.id;
+          go(orderIdStr ? `/tracking/${orderIdStr}` : '/(tabs)/orders');
+        } else if (CHAT_PUSH_TYPES.includes(data.type)) {
+          go('/friends');
+        } else if (data.type === 'SUPPORT_TICKET') {
+          go('/support');
+        } else if (data.type && data.type !== 'chat_message') {
+          // Anything else (campaigns, broadcasts, new types): the in-app inbox lists it
+          go('/notifications');
         }
-      });
+      } catch (err) {
+        console.warn('Error handling notification response:', err);
+      }
+    };
+
+    try {
+      responseSub = Notifications.addNotificationResponseReceivedListener((r: any) => handleResponse(r));
     } catch (e) {
       console.warn('Failed to add notification response listener:', e);
     }
 
-    // Add incoming notification listener (foreground) to save to history
+    // The notification tap that cold-launched the app fired before this listener existed
+    try {
+      const last = Notifications.getLastNotificationResponse?.();
+      if (last) handleResponse(last, 600); // give the navigator a moment to mount
+    } catch (e) {
+      console.warn('Failed to read last notification response:', e);
+    }
+
+    // Save pushes received in the foreground to the notification inbox
     let notificationSub: any;
     try {
-      notificationSub = Notifications.addNotificationReceivedListener(async (notification: any) => {
-        try {
-          const { title, body, data } = notification.request.content;
-          if (data?.type === 'call') return;
-
-          const stored = await AsyncStorage.getItem('zenvy_notifications');
-          const notifs = stored ? JSON.parse(stored) : [];
-          
-          const exists = notifs.some((n: any) => n.title === title && n.body === body);
-          if (!exists) {
-            const newNotif = {
-              id: notification.request.identifier || Math.random().toString(),
-              title: title || '📢 Zenvy Announcement',
-              body: body || '',
-              timestamp: new Date().toISOString(),
-              type: data?.type || 'info',
-              read: false
-            };
-            if (Array.isArray(notifs)) {
-              notifs.unshift(newNotif);
-              await AsyncStorage.setItem('zenvy_notifications', JSON.stringify(notifs));
-            }
-          }
-        } catch (e) {
-          console.warn('Error saving received notification:', e);
-        }
+      notificationSub = Notifications.addNotificationReceivedListener((notification: any) => {
+        const { title, body, data } = notification?.request?.content || {};
+        if (data?.type === 'call' || data?.source === 'zenvy_socket') return; // socket toasts are saved below
+        saveToHistory({
+          id: notification?.request?.identifier || `${Date.now()}-${Math.random()}`,
+          title: title || '📢 Zenvy',
+          body: body || '',
+          type: data?.type || 'info',
+          ...(data?.orderId ? { orderId: String(data.orderId) } : {}),
+        });
       });
     } catch (e) {
       console.warn('Failed to add notification received listener:', e);
     }
-
-    // Request notification permissions gracefully
-    Notifications.requestPermissionsAsync().catch(() => {});
 
     if (Platform.OS === 'android') {
       Notifications.setNotificationChannelAsync('incoming-calls', {
@@ -224,17 +276,21 @@ export default function GlobalAnnouncement() {
       }).catch((e: any) => console.warn('Failed to set channel:', e));
     }
 
-    const socket: Socket = io(API_URL, { transports: ['websocket', 'polling'] });
-    
-    socket.on('global_announcement', async (data: Announcement) => {
+    // Live campus announcements (public broadcast, no sign-in needed)
+    // Uses the app's one shared socket (a second connection doubled every server event)
+    const socket: Socket = connectSocket();
+
+    const onAnnouncement = async (data: Announcement) => {
+      if (!data || typeof data.message !== 'string' || !data.message) return;
       let processedMessage = data.message;
       if (processedMessage.includes('{{username}}')) {
-        let userName = 'User';
-        if (user && user.name) {
-          userName = user.name.split(' ')[0];
+        let userName = 'there';
+        const currentUser = userRef.current;
+        if (currentUser && currentUser.name) {
+          userName = currentUser.name.split(' ')[0];
         } else {
           try {
-            const stored = await AsyncStorage.getItem('user');
+            const stored = await AsyncStorage.getItem('zenvy_user');
             if (stored) {
               const u = JSON.parse(stored);
               if (u.name) userName = u.name.split(' ')[0];
@@ -243,71 +299,49 @@ export default function GlobalAnnouncement() {
         }
         processedMessage = processedMessage.replace(/{{username}}/g, userName);
       }
+      const title = data.type === 'emergency' ? '🚨 Zenvy Alert' : data.type === 'promo' ? '🎉 Zenvy Update' : '📢 Zenvy Announcement';
 
-      // Fire a native OS push notification
-      try {
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: data.type === 'emergency' ? '🚨 Zenvy Alert' : data.type === 'promo' ? '🎉 Zenvy Update' : '📢 Zenvy',
-            body: processedMessage,
-            data: { type: data.type },
-          },
-          trigger: null,
-        });
-      } catch (err) {
-        console.warn('Native notification failed', err);
-      }
-
-      // Save notification in AsyncStorage history
-      try {
-        const stored = await AsyncStorage.getItem('zenvy_notifications');
-        const notifs = stored ? JSON.parse(stored) : [];
-        const newNotif = {
-          id: Math.random().toString(),
-          title: data.type === 'emergency' ? '🚨 Zenvy Alert' : data.type === 'promo' ? '🎉 Zenvy Update' : '📢 Zenvy Announcement',
-          body: processedMessage,
-          timestamp: new Date().toISOString(),
-          type: data.type,
-          read: false
-        };
-        if (Array.isArray(notifs)) {
-          notifs.unshift(newNotif);
-          await AsyncStorage.setItem('zenvy_notifications', JSON.stringify(notifs));
+      // In the background the toast is invisible: show a system notification instead
+      if (AppState.currentState !== 'active') {
+        try {
+          await Notifications.scheduleNotificationAsync({
+            content: { title, body: processedMessage, data: { type: data.type, source: 'zenvy_socket' } },
+            trigger: null,
+          });
+        } catch (err) {
+          console.warn('Native notification failed', err);
         }
-      } catch (e) {
-        console.warn('Error saving notification history:', e);
       }
+
+      saveToHistory({ id: `ann-${Date.now()}-${Math.random()}`, title, body: processedMessage, type: data.type || 'info' });
 
       setAnnouncement({ ...data, message: processedMessage });
-      
+
       Animated.spring(slideAnim, {
-        toValue: topOffset,
+        toValue: topOffsetRef.current,
         useNativeDriver: true,
         friction: 8,
         tension: 40
       }).start();
 
+      // A newer announcement restarts the auto-hide timer
+      clearHideTimer();
       if (data.type !== 'emergency') {
-        setTimeout(() => {
-          hideAnnouncement();
+        hideTimerRef.current = setTimeout(() => {
+          hideTimerRef.current = null;
+          hideRef.current();
         }, 8000);
       }
-    });
+    };
+    socket.on('global_announcement', onAnnouncement);
 
     return () => {
-      socket.disconnect();
+      clearHideTimer();
+      socket.off('global_announcement', onAnnouncement);
       if (responseSub) responseSub.remove();
       if (notificationSub) notificationSub.remove();
     };
-  }, [user, topOffset]);
-
-  const hideAnnouncement = () => {
-    Animated.timing(slideAnim, {
-      toValue: -200,
-      duration: 300,
-      useNativeDriver: true,
-    }).start(() => setAnnouncement(null));
-  };
+  }, []);
 
   if (!announcement) return null;
 

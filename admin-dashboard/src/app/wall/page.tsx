@@ -2,9 +2,21 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAdminAuth } from '@/utils/useAdminAuth';
-import api from '@/lib/api';
+import { API_URL } from '@/lib/config';
+import { adminRequest as apiRequest } from '@/lib/api';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-jwmt.onrender.com';
+/** fetch against the one backend; throws an Error carrying the server's friendly `message`. */
+const errMsg = (err: unknown, fallback: string) => (err instanceof Error && err.message ? err.message : fallback);
+
+/** Date -> value for <input type="datetime-local"> in the admin's local time (toISOString would be UTC). */
+const toLocalInput = (d: Date) => {
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
+const MAX_COUPON_VALUE = 1000;
+
 
 const getImageUrl = (url: string | null) => {
   if (!url) return '';
@@ -42,6 +54,12 @@ interface WallSubmission {
   event?: { id: string; title: string; status: string };
 }
 
+interface HistoryEntry {
+  event: WallEvent | null;
+  winningSubmission: WallSubmission | null;
+  winner: { id: string; name: string; profileImage: string | null } | null;
+}
+
 const GRADIENT_OPTIONS = [
   { value: 'fire', label: '🔥 Fire', css: 'from-orange-500 via-red-500 to-yellow-500' },
   { value: 'ocean', label: '🌊 Ocean', css: 'from-cyan-500 via-blue-500 to-indigo-500' },
@@ -52,7 +70,7 @@ const GRADIENT_OPTIONS = [
 ];
 
 export default function WallAdmin() {
-  const isAuthed = useAdminAuth();
+  const { isAuthed } = useAdminAuth();
   const [activeTab, setActiveTab] = useState<'events' | 'moderation' | 'fame'>('events');
 
   // Events state
@@ -70,7 +88,6 @@ export default function WallAdmin() {
   const [formEnd, setFormEnd] = useState('');
   const [formBannerText, setFormBannerText] = useState('🔥 LIVE PHOTO CONTEST: Vote for your favourite photos & win instant discount coupons! 📸✨');
   const [formGradient, setFormGradient] = useState('fire');
-  const [formCouponCode, setFormCouponCode] = useState('');
   const [formCouponValue, setFormCouponValue] = useState<number>(100);
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
@@ -81,8 +98,11 @@ export default function WallAdmin() {
   const [moderatingId, setModeratingId] = useState<string | null>(null);
 
   // Hall of Fame state
-  const [history, setHistory] = useState<any[]>([]);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
+
+  const [pageError, setPageError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     if (isAuthed) {
@@ -95,10 +115,10 @@ export default function WallAdmin() {
   const fetchEvents = async () => {
     setLoadingEvents(true);
     try {
-      const res = await api.get('/wall/admin/events');
-      setEvents(res.data);
+      const data = await apiRequest<WallEvent[]>('/api/wall/admin/events');
+      setEvents(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error('[WALL_EVENTS_FETCH]', err);
+      setPageError(errMsg(err, 'Could not load Wall events.'));
     } finally {
       setLoadingEvents(false);
     }
@@ -107,10 +127,10 @@ export default function WallAdmin() {
   const fetchPending = async () => {
     setLoadingPending(true);
     try {
-      const res = await api.get('/wall/admin/pending');
-      setPendingSubmissions(res.data);
+      const data = await apiRequest<WallSubmission[]>('/api/wall/admin/pending');
+      setPendingSubmissions(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error('[WALL_PENDING_FETCH]', err);
+      setPageError(errMsg(err, 'Could not load the moderation queue.'));
     } finally {
       setLoadingPending(false);
     }
@@ -119,10 +139,10 @@ export default function WallAdmin() {
   const fetchHistory = async () => {
     setLoadingHistory(true);
     try {
-      const res = await api.get('/wall/events/history');
-      setHistory(res.data);
+      const data = await apiRequest<HistoryEntry[]>('/api/wall/events/history');
+      setHistory(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error('[WALL_HISTORY_FETCH]', err);
+      setPageError(errMsg(err, 'Could not load the Hall of Fame.'));
     } finally {
       setLoadingHistory(false);
     }
@@ -134,25 +154,38 @@ export default function WallAdmin() {
     setFormError('');
     if (!formTitle.trim()) { setFormError('Title is required.'); return; }
     if (!formStart || !formEnd) { setFormError('Start and End times are required.'); return; }
+    const start = new Date(formStart);
+    const end = new Date(formEnd);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) { setFormError('Enter valid start and end times.'); return; }
+    if (end <= start) { setFormError('The end time must be after the start time.'); return; }
+    if (end <= new Date()) { setFormError('The end time must be in the future.'); return; }
+    if (!Number.isInteger(formCouponValue) || formCouponValue < 1 || formCouponValue > MAX_COUPON_VALUE) {
+      setFormError(`Prize value must be a whole number from ₹1 to ₹${MAX_COUPON_VALUE}.`); return;
+    }
+    if (formSubmitting) return;
+    if (!confirm(`Launch "${formTitle.trim()}"? Every student gets a push notification that the contest is live.`)) return;
 
     setFormSubmitting(true);
     try {
-      await api.post('/wall/events', {
-        title: formTitle.trim(),
-        description: formDesc.trim(),
-        startTime: new Date(formStart).toISOString(),
-        endTime: new Date(formEnd).toISOString(),
-        bannerText: formBannerText.trim(),
-        bannerGradient: formGradient,
-        couponCode: formCouponCode.trim() || `WALL-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
-        couponValue: formCouponValue
+      await apiRequest('/api/wall/events', {
+        method: 'POST',
+        body: JSON.stringify({
+          title: formTitle.trim(),
+          description: formDesc.trim(),
+          startTime: start.toISOString(),
+          endTime: end.toISOString(),
+          bannerText: formBannerText.trim(),
+          bannerGradient: formGradient,
+          couponValue: formCouponValue
+        })
       });
 
       setShowCreateModal(false);
       resetForm();
+      setNotice('Event launched.');
       fetchEvents();
-    } catch (err: any) {
-      setFormError(err.message || 'Failed to create event.');
+    } catch (err) {
+      setFormError(errMsg(err, 'Failed to create event.'));
     } finally {
       setFormSubmitting(false);
     }
@@ -161,27 +194,40 @@ export default function WallAdmin() {
   // ── Edit Event ──
   const handleEditEvent = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingEvent) return;
+    if (!editingEvent || formSubmitting) return;
     setFormError('');
+    if (!formTitle.trim()) { setFormError('Title is required.'); return; }
+    // Only send the end time when the admin changed it (an unchanged, already-passed end must not block other edits).
+    const endChanged = !!formEnd && formEnd !== toLocalInput(new Date(editingEvent.endTime));
+    const end = endChanged ? new Date(formEnd) : null;
+    if (end && Number.isNaN(end.getTime())) { setFormError('Enter a valid end time.'); return; }
+    if (end && end <= new Date(editingEvent.startTime)) { setFormError('The end time must be after the start time.'); return; }
+    if (end && end <= new Date()) { setFormError('The end time must be in the future. Use End to finish the contest now.'); return; }
+    if (!Number.isInteger(formCouponValue) || formCouponValue < 1 || formCouponValue > MAX_COUPON_VALUE) {
+      setFormError(`Prize value must be a whole number from ₹1 to ₹${MAX_COUPON_VALUE}.`); return;
+    }
     setFormSubmitting(true);
 
     try {
-      await api.put(`/wall/events/${editingEvent.id}`, {
-        title: formTitle.trim() || undefined,
-        description: formDesc.trim(),
-        bannerText: formBannerText.trim(),
-        bannerGradient: formGradient,
-        couponCode: formCouponCode.trim() || undefined,
-        couponValue: formCouponValue,
-        endTime: formEnd ? new Date(formEnd).toISOString() : undefined
+      await apiRequest(`/api/wall/events/${editingEvent.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          title: formTitle.trim(),
+          description: formDesc.trim(),
+          bannerText: formBannerText.trim(),
+          bannerGradient: formGradient,
+          couponValue: formCouponValue,
+          endTime: end ? end.toISOString() : undefined
+        })
       });
 
       setShowEditModal(false);
       setEditingEvent(null);
       resetForm();
+      setNotice('Event updated.');
       fetchEvents();
-    } catch (err: any) {
-      setFormError(err.message || 'Failed to update event.');
+    } catch (err) {
+      setFormError(errMsg(err, 'Failed to update event.'));
     } finally {
       setFormSubmitting(false);
     }
@@ -189,14 +235,18 @@ export default function WallAdmin() {
 
   // ── End Event ──
   const handleEndEvent = async (eventId: string) => {
-    if (!confirm('End this event now? The winner will be determined by highest votes.')) return;
+    if (actionLoading) return;
+    if (!confirm('End this contest now? The approved photo with the most votes wins and its owner gets the prize coupon. This cannot be undone.')) return;
     setActionLoading(eventId);
+    setPageError(null);
+    setNotice(null);
     try {
-      await api.put(`/wall/events/${eventId}/end`);
+      const res = await apiRequest<{ winner?: { name?: string } | null }>(`/api/wall/events/${eventId}/end`, { method: 'PUT' });
+      setNotice(res?.winner?.name ? `Contest ended. Winner: ${res.winner.name}.` : 'Contest ended. There was no eligible winner.');
       fetchEvents();
       fetchHistory();
-    } catch (err: any) {
-      alert(err.message || 'Failed to end event.');
+    } catch (err) {
+      setPageError(errMsg(err, 'Failed to end event.'));
     } finally {
       setActionLoading(null);
     }
@@ -204,27 +254,35 @@ export default function WallAdmin() {
 
   // ── Moderate Submissions ──
   const handleApprove = async (submissionId: string) => {
+    if (moderatingId) return;
     setModeratingId(submissionId);
+    setPageError(null);
+    setNotice(null);
     try {
-      await api.put(`/wall/admin/submissions/${submissionId}/approve`);
+      await apiRequest(`/api/wall/admin/submissions/${submissionId}/approve`, { method: 'PUT' });
       setPendingSubmissions(prev => prev.filter(s => s.id !== submissionId));
+      setNotice('Photo approved. It is now visible on The Wall.');
       fetchEvents();
     } catch (err) {
-      console.error('[APPROVE_ERR]', err);
+      setPageError(errMsg(err, 'Could not approve the photo.'));
     } finally {
       setModeratingId(null);
     }
   };
 
   const handleReject = async (submissionId: string) => {
-    if (!confirm('Reject and permanently delete this submission?')) return;
+    if (moderatingId) return;
+    if (!confirm('Reject this photo? It is permanently deleted and the student can submit a new one while the contest is open.')) return;
     setModeratingId(submissionId);
+    setPageError(null);
+    setNotice(null);
     try {
-      await api.put(`/wall/admin/submissions/${submissionId}/reject`);
+      await apiRequest(`/api/wall/admin/submissions/${submissionId}/reject`, { method: 'PUT' });
       setPendingSubmissions(prev => prev.filter(s => s.id !== submissionId));
+      setNotice('Photo rejected and removed.');
       fetchEvents();
     } catch (err) {
-      console.error('[REJECT_ERR]', err);
+      setPageError(errMsg(err, 'Could not reject the photo.'));
     } finally {
       setModeratingId(null);
     }
@@ -233,30 +291,31 @@ export default function WallAdmin() {
   const resetForm = () => {
     setFormTitle(''); setFormDesc(''); setFormStart(''); setFormEnd('');
     setFormBannerText('🔥 LIVE PHOTO CONTEST: Vote for your favourite photos & win instant discount coupons! 📸✨');
-    setFormGradient('fire'); setFormCouponCode(''); setFormCouponValue(100); setFormError('');
+    setFormGradient('fire'); setFormCouponValue(100); setFormError('');
   };
 
   const openEditModal = (evt: WallEvent) => {
     setEditingEvent(evt);
     setFormTitle(evt.title);
     setFormDesc(evt.description);
-    setFormEnd(new Date(evt.endTime).toISOString().slice(0, 16));
+    setFormEnd(toLocalInput(new Date(evt.endTime)));
     setFormBannerText(evt.bannerText || '');
     setFormGradient(evt.bannerGradient || 'fire');
-    setFormCouponCode(evt.couponCode || '');
     setFormCouponValue(evt.couponValue || 100);
     setFormError('');
     setShowEditModal(true);
   };
 
-  const formatDate = (d: string) => {
-    try { return new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); }
-    catch { return d; }
+  const formatDate = (d?: string | null) => {
+    if (!d) return '—';
+    const date = new Date(d);
+    if (Number.isNaN(date.getTime())) return d;
+    return date.toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
 
   const getGradientCss = (value: string) => GRADIENT_OPTIONS.find(g => g.value === value)?.css || GRADIENT_OPTIONS[0].css;
 
-  if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Authenticating...</div>;
+  if (!isAuthed) return null; // NexusLayoutClient shows the auth loader / redirect
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -264,7 +323,7 @@ export default function WallAdmin() {
       <header className="flex justify-between items-center flex-wrap gap-4 bg-white/5 p-8 rounded-[40px] border border-white/5 glass">
         <div>
           <h1 className="text-3xl font-black tracking-tighter text-white uppercase">The <span className="text-amber-400">Wall</span> 📸</h1>
-          <p className="text-[11px] text-gray-400 font-bold uppercase tracking-widest mt-1">Photo Contest Events • Moving Banner • Coupon Management</p>
+          <p className="text-[11px] text-gray-400 font-bold uppercase tracking-widest mt-1">Photo contests • Moving banner • Photo approval queue</p>
         </div>
         <div className="flex gap-2">
           {(['events', 'moderation', 'fame'] as const).map(tab => (
@@ -285,6 +344,16 @@ export default function WallAdmin() {
         </div>
       </header>
 
+      {pageError && (
+        <div className="p-4 rounded-xl border border-red-500/30 bg-red-500/10 text-sm font-bold text-red-400 flex justify-between items-center gap-4">
+          <span>{pageError}</span>
+          <button onClick={() => { setPageError(null); fetchEvents(); fetchPending(); fetchHistory(); }} className="text-[10px] font-black uppercase tracking-wider underline">Retry</button>
+        </div>
+      )}
+      {notice && (
+        <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-sm font-bold text-emerald-400">{notice}</div>
+      )}
+
       {/* ══════════════════════════════════════════════════════════════════ */}
       {/* TAB 1: Events & Banners */}
       {/* ══════════════════════════════════════════════════════════════════ */}
@@ -296,9 +365,9 @@ export default function WallAdmin() {
               onClick={() => {
                 resetForm();
                 const now = new Date();
-                setFormStart(now.toISOString().slice(0, 16));
+                setFormStart(toLocalInput(now));
                 const end = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-                setFormEnd(end.toISOString().slice(0, 16));
+                setFormEnd(toLocalInput(end));
                 setShowCreateModal(true);
               }}
               className="px-6 py-3.5 bg-amber-600 hover:bg-amber-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-[0_0_20px_rgba(217,119,6,0.4)] transition-all flex items-center gap-2"
@@ -322,7 +391,8 @@ export default function WallAdmin() {
               {events.map(evt => {
                 const isActive = evt.status === 'ACTIVE';
                 const isEnded = evt.status === 'ENDED';
-                const isLive = isActive && new Date(evt.endTime) > new Date();
+                const isScheduled = isActive && new Date(evt.startTime) > new Date();
+                const isLive = isActive && !isScheduled && new Date(evt.endTime) > new Date();
                 return (
                   <div
                     key={evt.id}
@@ -342,8 +412,11 @@ export default function WallAdmin() {
                           {isEnded && (
                             <span className="px-2 py-0.5 bg-gray-500/15 border border-gray-500/25 text-gray-400 text-[8px] font-black uppercase rounded-full tracking-wider">ENDED</span>
                           )}
-                          {isActive && !isLive && (
-                            <span className="px-2 py-0.5 bg-red-500/15 border border-red-500/25 text-red-400 text-[8px] font-black uppercase rounded-full tracking-wider">EXPIRED</span>
+                          {isScheduled && (
+                            <span className="px-2 py-0.5 bg-blue-500/15 border border-blue-500/25 text-blue-400 text-[8px] font-black uppercase rounded-full tracking-wider">SCHEDULED</span>
+                          )}
+                          {isActive && !isLive && !isScheduled && (
+                            <span className="px-2 py-0.5 bg-red-500/15 border border-red-500/25 text-red-400 text-[8px] font-black uppercase rounded-full tracking-wider">FINALIZING</span>
                           )}
                         </div>
                         <h3 className="text-lg font-black text-white tracking-tight">{evt.title}</h3>
@@ -368,7 +441,7 @@ export default function WallAdmin() {
                         { label: 'Total', value: evt.totalSubmissions ?? 0, color: 'text-blue-400' },
                         { label: 'Approved', value: evt.approvedSubmissions ?? 0, color: 'text-green-400' },
                         { label: 'Pending', value: evt.pendingSubmissions ?? 0, color: 'text-amber-400' },
-                        { label: 'Coupon', value: `₹${evt.couponValue}`, color: 'text-purple-400' },
+                        { label: 'Prize', value: `₹${evt.couponValue ?? 0}`, color: 'text-purple-400' },
                       ].map(stat => (
                         <div key={stat.label} className="bg-white/[0.03] rounded-xl p-2.5 text-center border border-white/5">
                           <p className={`text-sm font-black ${stat.color}`}>{stat.value}</p>
@@ -382,8 +455,8 @@ export default function WallAdmin() {
                       <div>
                         <span className="font-bold text-gray-400">📅</span> {formatDate(evt.startTime)} → {formatDate(evt.endTime)}
                       </div>
-                      {evt.couponCode && (
-                        <span className="font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 text-[9px] font-bold">
+                      {isEnded && evt.couponCode && (
+                        <span title="Winner's coupon code" className="font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 text-[9px] font-bold">
                           {evt.couponCode}
                         </span>
                       )}
@@ -396,7 +469,7 @@ export default function WallAdmin() {
                           onClick={() => openEditModal(evt)}
                           className="flex-1 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all"
                         >
-                          ✏️ Edit Banner & Coupon
+                          ✏️ Edit Event
                         </button>
                         <button
                           onClick={() => handleEndEvent(evt.id)}
@@ -457,7 +530,9 @@ export default function WallAdmin() {
                     {/* Event Badge */}
                     {sub.event && (
                       <div className="absolute top-3 left-3 px-2 py-1 bg-black/60 backdrop-blur-sm rounded-lg border border-white/10">
-                        <span className="text-[8px] font-black text-white uppercase tracking-wider">{sub.event.title}</span>
+                        <span className="text-[8px] font-black text-white uppercase tracking-wider">
+                          {sub.event.title}{sub.event.status === 'ENDED' ? ' · ended' : ''}
+                        </span>
                       </div>
                     )}
                   </div>
@@ -490,7 +565,7 @@ export default function WallAdmin() {
                         disabled={moderatingId === sub.id}
                         className="flex-[2] py-2.5 bg-green-600 hover:bg-green-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all disabled:opacity-50"
                       >
-                        ✓ Approve & Publish
+                        {moderatingId === sub.id ? '...' : '✓ Approve'}
                       </button>
                     </div>
                   </div>
@@ -537,7 +612,7 @@ export default function WallAdmin() {
                         <span className="text-2xl">🏆</span>
                         <div>
                           <p className="text-xs font-black text-amber-400 uppercase tracking-wider">Winner</p>
-                          <p className="text-sm font-bold text-white">{entry.winner?.name || 'Unknown'}</p>
+                          <p className="text-sm font-bold text-white">{entry.winner?.name || 'No winner'}</p>
                         </div>
                       </div>
                       <div className="absolute bottom-3 right-4 px-2 py-1 bg-black/50 backdrop-blur rounded-lg">
@@ -551,9 +626,12 @@ export default function WallAdmin() {
                     <div className="flex gap-3 text-[10px] text-gray-500">
                       <span>📅 {formatDate(entry.event?.startTime)} → {formatDate(entry.event?.endTime)}</span>
                     </div>
+                    {!entry.winningSubmission && (
+                      <p className="text-[11px] text-gray-500 italic">No approved photos, so nobody won this contest.</p>
+                    )}
                     {entry.event?.couponCode && (
                       <div className="flex items-center gap-2">
-                        <span className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">Prize Coupon:</span>
+                        <span className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">Winner&apos;s coupon:</span>
                         <span className="font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 text-[10px] font-bold">
                           {entry.event.couponCode} (₹{entry.event.couponValue})
                         </span>
@@ -682,18 +760,9 @@ export default function WallAdmin() {
 
               {/* Coupon Section */}
               <div className="space-y-4 p-5 bg-white/[0.02] rounded-2xl border border-white/5">
-                <h4 className="text-[10px] font-black uppercase tracking-widest text-purple-400">🏷️ Winner Coupon Configuration</h4>
+                <h4 className="text-[10px] font-black uppercase tracking-widest text-purple-400">🏷️ Winner Prize</h4>
+                <p className="text-[11px] text-gray-500">When the contest ends, the server creates a one-time coupon of this value for the winner and sends them the code.</p>
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Coupon Code</label>
-                    <input
-                      type="text"
-                      placeholder="Auto-generated if empty"
-                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-3.5 px-5 text-sm font-mono text-white placeholder-gray-600 outline-none focus:border-purple-500/50 transition-all uppercase"
-                      value={formCouponCode}
-                      onChange={e => setFormCouponCode(e.target.value)}
-                    />
-                  </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Coupon Value (₹)</label>
                     <input
@@ -770,7 +839,7 @@ export default function WallAdmin() {
 
               {/* Extend End Time */}
               <div className="space-y-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Extend End Time</label>
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">End Time</label>
                 <input
                   type="datetime-local"
                   className="w-full bg-white/5 border border-white/10 rounded-2xl py-3.5 px-5 text-sm text-white outline-none focus:border-amber-500/50 transition-all"
@@ -790,7 +859,7 @@ export default function WallAdmin() {
                       onClick={() => {
                         const d = new Date(editingEvent.endTime);
                         d.setHours(d.getHours() + opt.hours);
-                        setFormEnd(d.toISOString().slice(0, 16));
+                        setFormEnd(toLocalInput(d));
                       }}
                       className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white rounded text-[9px] font-bold transition-all"
                     >{opt.label}</button>
@@ -833,16 +902,7 @@ export default function WallAdmin() {
               {/* Coupon Config */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Coupon Code</label>
-                  <input
-                    type="text"
-                    className="w-full bg-white/5 border border-white/10 rounded-2xl py-3.5 px-5 text-sm font-mono text-white outline-none focus:border-purple-500/50 transition-all uppercase"
-                    value={formCouponCode}
-                    onChange={e => setFormCouponCode(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Coupon Value (₹)</label>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Winner Prize (₹)</label>
                   <input
                     type="number"
                     className="w-full bg-white/5 border border-white/10 rounded-2xl py-3.5 px-5 text-sm text-white outline-none focus:border-purple-500/50 transition-all"

@@ -1,58 +1,105 @@
 "use client";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAdminAuth } from '@/utils/useAdminAuth';
+import { API_URL } from '@/lib/config';
 
 interface AuditLog {
   id: string;
-  adminId: string;
-  targetId: string;
-  action: string;
-  details: string;
+  adminId: string | null;
+  targetId: string | null;
+  action: string | null;
+  details: string | null;
   timestamp: string;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-jwmt.onrender.com';
+/** fetch + JSON with friendly errors (never shows raw server internals). */
+async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(url, { cache: 'no-store', ...init });
+  } catch {
+    throw new Error('Could not reach the server. Check your connection and try again.');
+  }
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    const msg = res.status < 500 && body && typeof body.message === 'string' ? body.message : null;
+    throw new Error(msg || (res.status >= 500 ? 'The server ran into a problem. Please try again.' : `Request failed (${res.status}).`));
+  }
+  return body as T;
+}
+
+const shortRef = (v: string | null) => {
+  if (!v) return '—';
+  return v.length > 12 ? `${v.slice(0, 8)}…` : v;
+};
+
+/** Pretty-print JSON details ({"code":"X"} → code: X) and leave plain text alone. */
+const formatDetails = (raw: string | null) => {
+  if (!raw) return '';
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object') {
+      return Object.entries(parsed).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : String(v)}`).join(' · ');
+    }
+  } catch { /* plain text */ }
+  return raw;
+};
+
+const actionTone = (action: string) => {
+  if (/DELETE|BAN|REJECT|REVOKE/.test(action)) return 'text-red-400 bg-red-400/5 border-red-400/10';
+  if (/CREATE|APPROVE|SETTLED|REFUND/.test(action)) return 'text-emerald-400 bg-emerald-400/5 border-emerald-400/10';
+  if (/UPDATE|CHANGE/.test(action)) return 'text-blue-400 bg-blue-400/5 border-blue-400/10';
+  return 'text-amber-400 bg-amber-400/5 border-amber-400/10';
+};
 
 export default function AuditPage() {
-  const isAuthed = useAdminAuth();
+  const { isAuthed, user } = useAdminAuth();
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
-  useEffect(() => {
-    const fetchLogs = async () => {
-      try {
-        const token = 'cookie-managed';
-        const res = await fetch(`${API_URL}/api/admin/audit`, {
-          });
-        const data = await res.json();
-        if (res.ok) setLogs(data);
-      } catch (error) {
-        console.error('[AUDIT_FETCH_ERROR]', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchLogs();
+  const fetchLogs = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await requestJson<AuditLog[] | { logs?: AuditLog[] }>(`${API_URL}/api/admin/audit`);
+      setLogs(Array.isArray(data) ? data : Array.isArray(data?.logs) ? data.logs : []);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load the audit log.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Authenticating...</div>;
+  useEffect(() => {
+    if (isAuthed) fetchLogs();
+  }, [isAuthed, fetchLogs]);
+
+  if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Checking access…</div>;
+
+  const q = search.trim().toLowerCase();
+  const visible = logs.filter(log =>
+    !q || [log.action, log.adminId, log.targetId, log.details].some(v => String(v || '').toLowerCase().includes(q))
+  );
+  const myId = user?.id ? String(user.id) : '';
 
   return (
     <div className="space-y-8 animate-fade-in relative pb-20">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap gap-4 items-center justify-between">
         <div>
-          <h1 className="text-3xl font-black tracking-tighter text-white uppercase">Audit Intelligence</h1>
-          <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mt-1">Operational mutation ledger</p>
+          <h1 className="text-3xl font-black tracking-tighter text-white uppercase">Audit log</h1>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mt-1">Last 100 admin actions (refunds, payouts, coupons, deletions…)</p>
         </div>
-        <div className="flex items-center gap-4">
-           <input 
-              type="text" 
-              placeholder="Search Mutations..." 
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="bg-white/5 border border-white/10 rounded-2xl px-4 py-2 text-sm text-white outline-none focus:border-blue-500/50 transition-all w-64"
-           />
+        <div className="flex items-center gap-3">
+          <input
+            type="text"
+            placeholder="Search action, admin, target or details…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="bg-white/5 border border-white/10 rounded-2xl px-4 py-2 text-sm text-white outline-none focus:border-blue-500/50 transition-all w-72"
+          />
+          <button onClick={fetchLogs} disabled={loading} className="px-4 py-2 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-2xl text-[10px] font-black uppercase disabled:opacity-40">↻ Refresh</button>
         </div>
       </div>
 
@@ -61,44 +108,41 @@ export default function AuditPage() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-white/5 bg-white/[0.02]">
-                <th className="px-6 py-4 text-[10px] uppercase font-black tracking-widest text-gray-400">Timestamp</th>
-                <th className="px-6 py-4 text-[10px] uppercase font-black tracking-widest text-gray-400">Action</th>
-                <th className="px-6 py-4 text-[10px] uppercase font-black tracking-widest text-gray-400">Admin</th>
-                <th className="px-6 py-4 text-[10px] uppercase font-black tracking-widest text-gray-400">Target ID</th>
-                <th className="px-6 py-4 text-[10px] uppercase font-black tracking-widest text-gray-400">Details</th>
+                {['Time', 'Action', 'Admin', 'Target', 'Details'].map(h => (
+                  <th key={h} className="px-6 py-4 text-[10px] uppercase font-black tracking-widest text-gray-400">{h}</th>
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-white/[0.03]">
               {loading ? (
-                <tr><td colSpan={5} className="px-6 py-12 text-center text-xs text-gray-500 animate-pulse">Scanning ledger...</td></tr>
-              ) : logs.length === 0 ? (
-                <tr><td colSpan={5} className="px-6 py-12 text-center text-xs text-gray-500">No recent mutations recorded.</td></tr>
+                <tr><td colSpan={5} className="px-6 py-12 text-center text-xs text-gray-500 animate-pulse">Loading audit log…</td></tr>
+              ) : error ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-12 text-center">
+                    <p className="text-xs text-red-400 font-bold">{error}</p>
+                    <button onClick={fetchLogs} className="mt-3 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black uppercase text-gray-300 hover:text-white">Try again</button>
+                  </td>
+                </tr>
+              ) : visible.length === 0 ? (
+                <tr><td colSpan={5} className="px-6 py-12 text-center text-xs text-gray-500">{q ? 'No entries match your search.' : 'No admin actions recorded yet.'}</td></tr>
               ) : (
-                logs.filter(log => 
-                  log.action.toLowerCase().includes(search.toLowerCase()) || 
-                  log.adminId.toLowerCase().includes(search.toLowerCase()) || 
-                  log.details.toLowerCase().includes(search.toLowerCase())
-                ).map((log) => (
-                  <tr key={log.id} className="hover:bg-white/[0.02] transition-colors">
-                    <td className="px-6 py-4 text-[11px] text-gray-400 font-medium">
-                      {new Date(log.timestamp).toLocaleString()}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`text-[9px] font-black px-2 py-1 rounded-md uppercase border ${
-                        log.action.includes('CREATE') ? 'text-emerald-400 bg-emerald-400/5 border-emerald-400/10' :
-                        log.action.includes('UPDATE') ? 'text-blue-400 bg-blue-400/5 border-blue-400/10' :
-                        'text-primary-yellow bg-primary-yellow/5 border-primary-yellow/10'
-                      }`}>
-                        {log.action}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-xs font-bold text-white/90">{log.adminId}</td>
-                    <td className="px-6 py-4 text-[10px] font-mono text-gray-500">{log.targetId.slice(0, 8)}...</td>
-                    <td className="px-6 py-4 text-[11px] text-gray-400 max-w-xs truncate">
-                      {log.details}
-                    </td>
-                  </tr>
-                ))
+                visible.map((log) => {
+                  const action = log.action || 'UNKNOWN';
+                  const details = formatDetails(log.details);
+                  return (
+                    <tr key={log.id} className="hover:bg-white/[0.02] transition-colors align-top">
+                      <td className="px-6 py-4 text-[11px] text-gray-400 font-medium whitespace-nowrap">{new Date(log.timestamp).toLocaleString()}</td>
+                      <td className="px-6 py-4">
+                        <span className={`text-[9px] font-black px-2 py-1 rounded-md uppercase border whitespace-nowrap ${actionTone(action)}`}>{action.replace(/_/g, ' ')}</span>
+                      </td>
+                      <td className="px-6 py-4 text-[10px] font-mono text-white/80" title={log.adminId || ''}>
+                        {myId && log.adminId === myId ? 'You' : shortRef(log.adminId)}
+                      </td>
+                      <td className="px-6 py-4 text-[10px] font-mono text-gray-500" title={log.targetId || ''}>{shortRef(log.targetId)}</td>
+                      <td className="px-6 py-4 text-[11px] text-gray-400 max-w-md break-words">{details || '—'}</td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -107,4 +151,3 @@ export default function AuditPage() {
     </div>
   );
 }
-

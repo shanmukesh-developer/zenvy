@@ -1,0 +1,193 @@
+const { getConversationModel } = require('../../../models/Conversation');
+const { getUserModel } = require('../../../models/User');
+
+// Generate unambiguous 6-character code (No 0/O/1/I/L) per Section 3.3
+const generateJoinCode = () => {
+  const chars = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+};
+
+// @desc    Create a new group (Class, Club, Study, Ride)
+// @route   POST /api/campus/groups
+const createGroup = async (req, res) => {
+  try {
+    const { name, description, type = 'study', groupAvatar, onlyAdminsCanSend } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ message: 'Group name is required' });
+    }
+
+    const Conversation = getConversationModel();
+    const joinCode = generateJoinCode();
+
+    const group = await Conversation.create({
+      name: name.trim(),
+      description: description ? description.trim() : '',
+      isGroup: true,
+      type,
+      groupAvatar: groupAvatar || null,
+      joinCode,
+      participants: [req.user.id],
+      adminIds: [req.user.id],
+      onlyAdminsCanSend: !!onlyAdminsCanSend,
+    });
+
+    console.log(`👥 [CAMPUS_GROUP] Created "${group.name}" (Code: ${joinCode}) by ${req.user.name}`);
+
+    res.status(201).json({
+      message: 'Group created successfully',
+      group,
+    });
+  } catch (err) {
+    console.error('[CREATE_GROUP_ERR]', err);
+    res.status(500).json({ message: 'Failed to create group' });
+  }
+};
+
+// @desc    Preview group details before joining
+// @route   GET /api/campus/groups/preview/:code
+const previewGroupByCode = async (req, res) => {
+  try {
+    const code = req.params.code ? req.params.code.trim().toUpperCase() : '';
+    const Conversation = getConversationModel();
+
+    const group = await Conversation.findOne({ where: { joinCode: code } });
+    if (!group) {
+      return res.status(404).json({ message: 'Code not found. Please check and try again.' });
+    }
+
+    res.json({
+      id: group.id,
+      name: group.name,
+      description: group.description,
+      type: group.type,
+      memberCount: (group.participants || []).length,
+      groupAvatar: group.groupAvatar,
+    });
+  } catch (err) {
+    console.error('[PREVIEW_GROUP_ERR]', err);
+    res.status(500).json({ message: 'Failed to preview group' });
+  }
+};
+
+// @desc    Join group using code
+// @route   POST /api/campus/groups/join
+const joinGroupByCode = async (req, res) => {
+  try {
+    const { code } = req.body;
+    if (!code) {
+      return res.status(400).json({ message: 'Join code is required' });
+    }
+
+    const cleanCode = code.trim().toUpperCase();
+    const Conversation = getConversationModel();
+
+    // Read-modify-write of the participants list under a row lock, so when a whole class joins
+    // at once nobody's membership is overwritten.
+    const { getSequelize } = require('../../../config/db');
+    const { group, alreadyMember } = await getSequelize().transaction(async (t) => {
+      const g = await Conversation.findOne({ where: { joinCode: cleanCode }, transaction: t, lock: t.LOCK.UPDATE });
+      if (!g) return { group: null };
+      const participants = g.participants || [];
+      if (participants.includes(req.user.id)) return { group: g, alreadyMember: true };
+      g.participants = [...participants, req.user.id];
+      await g.save({ transaction: t });
+      return { group: g, alreadyMember: false };
+    });
+    if (!group) {
+      return res.status(404).json({ message: 'Code not found' });
+    }
+    if (alreadyMember) {
+      return res.json({
+        message: 'You are already a member of this group',
+        group,
+      });
+    }
+
+    console.log(`👥 [CAMPUS_GROUP_JOIN] ${req.user.name} joined "${group.name}" via code ${cleanCode}`);
+
+    res.json({
+      message: `Successfully joined ${group.name}!`,
+      group,
+    });
+  } catch (err) {
+    console.error('[JOIN_GROUP_ERR]', err);
+    res.status(500).json({ message: 'Failed to join group' });
+  }
+};
+
+// @desc    Reset join code (owner/admin only)
+// @route   POST /api/campus/groups/:id/code/reset
+const resetJoinCode = async (req, res) => {
+  try {
+    const Conversation = getConversationModel();
+    const group = await Conversation.findByPk(req.params.id);
+
+    if (!group) {
+      return res.status(404).json({ message: 'Group not found' });
+    }
+
+    const adminIds = group.adminIds || [];
+    if (!adminIds.includes(req.user.id) && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Only group admins can reset the join code' });
+    }
+
+    const newCode = generateJoinCode();
+    group.joinCode = newCode;
+    await group.save();
+
+    res.json({
+      message: 'Join code has been reset immediately. Old code is now invalid.',
+      joinCode: newCode,
+    });
+  } catch (err) {
+    console.error('[RESET_JOIN_CODE_ERR]', err);
+    res.status(500).json({ message: 'Failed to reset code' });
+  }
+};
+
+// @desc    List groups the current user belongs to
+// @route   GET /api/campus/groups/mine
+const getMyGroups = async (req, res) => {
+  try {
+    const Conversation = getConversationModel();
+    const { Op } = require('sequelize');
+
+    const groups = await Conversation.findAll({
+      where: {
+        isGroup: true,
+        participants: { [Op.like]: `%${req.user.id}%` },
+      },
+      order: [['createdAt', 'DESC']],
+    });
+
+    const mine = groups.filter((g) => (g.participants || []).includes(req.user.id));
+
+    res.json({
+      groups: mine.map((g) => ({
+        id: g.id,
+        name: g.name,
+        description: g.description,
+        type: g.type,
+        groupAvatar: g.groupAvatar,
+        joinCode: (g.adminIds || []).includes(req.user.id) ? g.joinCode : undefined,
+        isAdmin: (g.adminIds || []).includes(req.user.id),
+        memberCount: (g.participants || []).length,
+      })),
+    });
+  } catch (err) {
+    console.error('[GET_MY_GROUPS_ERR]', err);
+    res.status(500).json({ message: 'Failed to load groups' });
+  }
+};
+
+module.exports = {
+  createGroup,
+  previewGroupByCode,
+  joinGroupByCode,
+  resetJoinCode,
+  getMyGroups,
+};

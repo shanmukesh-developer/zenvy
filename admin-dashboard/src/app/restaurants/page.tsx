@@ -1,702 +1,518 @@
 "use client";
-import { useState, useEffect, memo } from 'react';
-import Image from 'next/image';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAdminAuth } from '@/utils/useAdminAuth';
+import {
+  Product, Store, adminRequest, formatTime, formatWhatsapp, readSpecs, storeId, vendorLabel,
+} from './catalogue';
+import { StoreForm, StorePayload, FIELD } from './StoreForm';
+import { ProductForm, ProductPayload } from './ProductForm';
+import { PromoteModal, PromotionInput } from './PromoteModal';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-jwmt.onrender.com';
+type Notice = { kind: 'ok' | 'error'; text: string } | null;
 
-const LEGACY_DATA = [
-  {
-    "id": "biryani-hub",
-    "name": "Biryani Hub",
-    "imageUrl": "https://images.unsplash.com/photo-1589302168068-964664d93dc0?q=80&w=400&auto=format&fit=crop",
-    "categories": ["Biryani", "Kebabs", "Main Course"],
-    "vendorType": "RESTAURANT",
-    "menu": [
-      { "id": "bir-01", "name": "Special Mutton Fry", "price": 280, "description": "Tender goat cooked in traditional spices.", "image": "https://images.unsplash.com/photo-1514327605112-b887c0e61c0a?w=400", "category": "Biryani" },
-      { "id": "bir-02", "name": "Royal Egg Biryani", "price": 220, "description": "Fragrant rice with double eggs.", "image": "https://images.unsplash.com/photo-1543339308-43e59d6b73a6?w=400", "category": "Biryani" }
-    ]
-  },
-  {
-    "id": "burger-club",
-    "name": "The Burger Club",
-    "imageUrl": "https://images.unsplash.com/photo-1571091718767-18b5b1457add?q=80&w=400",
-    "categories": ["Burgers", "Sides", "Shakes"],
-    "vendorType": "RESTAURANT",
-    "menu": [
-      { "id": "brg-01", "name": "Classic Cheeseburger", "price": 150, "description": "Juicy patty with melted cheddar.", "image": "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400", "category": "Burgers" }
-    ]
-  },
-  {
-    "id": "pizza-paradise",
-    "name": "Pizza Paradise",
-    "imageUrl": "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=400",
-    "categories": ["Pizza", "Pasta", "Sides"],
-    "vendorType": "RESTAURANT",
-    "menu": [
-      { "id": "piz-01", "name": "Margherita Classica", "price": 280, "description": "San Marzano tomatoes & fresh mozzarella.", "image": "https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=400", "category": "Pizza" }
-    ]
-  },
-  {
-    "id": "campus-pharmacy",
-    "name": "Campus MedPoint",
-    "imageUrl": "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400",
-    "categories": ["First Aid", "Vitamins", "Hygiene"],
-    "vendorType": "PHARMACY",
-    "menu": [
-      { "id": "ph-01", "name": "First Aid Compact Kit", "price": 199, "description": "Essential campus first aid essentials.", "image": "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400", "category": "First Aid" },
-      { "id": "ph-02", "name": "Vitamin C Booster", "price": 150, "description": "Immune support tablets.", "image": "https://images.unsplash.com/photo-1547489432-cf93fa6c71ee?w=400", "category": "Vitamins" },
-      { "id": "ph-03", "name": "Hand Sanitizer Pack", "price": 80, "description": "Alcohol-based sanitizer 3-pack.", "image": "https://images.unsplash.com/photo-1584744982491-665216d95f8b?w=400", "category": "Hygiene" }
-    ]
-  },
-  {
-    "id": "campus-stationary",
-    "name": "Nexus BookHouse",
-    "imageUrl": "https://images.unsplash.com/photo-1531346878377-a5be20888e57?w=400",
-    "categories": ["Notebooks", "Pens", "Drafting"],
-    "vendorType": "STATIONARY",
-    "menu": [
-      { "id": "st-01", "name": "Executive Leather Journal", "price": 599, "description": "Premium leather-bound A5 journal.", "image": "https://images.unsplash.com/photo-1531346878377-a5be20888e57?w=400", "category": "Notebooks" },
-      { "id": "st-02", "name": "Precision Pen Set", "price": 850, "description": "Professional drafting pen collection.", "image": "https://images.unsplash.com/photo-1583485088034-697b5bc54ccd?w=400", "category": "Pens" },
-      { "id": "st-03", "name": "Graph Pad A4 (Pack of 5)", "price": 120, "description": "Engineering graph paper pads.", "image": "https://images.unsplash.com/photo-1456735190827-d1262f71b8a3?w=400", "category": "Drafting" }
-    ]
-  },
-  {
-    "id": "campus-laundry",
-    "name": "FreshPress Laundry",
-    "imageUrl": "https://images.unsplash.com/photo-1545173168-9f1947eebb7f?w=400",
-    "categories": ["Dry Wash", "Ironing", "Sneaker Care"],
-    "vendorType": "LAUNDRY",
-    "menu": [
-      { "id": "lnd-01", "name": "Express Dry Cleaning (Suit)", "price": 499, "description": "Premium dry wash for formal wear.", "image": "https://images.unsplash.com/photo-1545173168-9f1947eebb7f?w=400", "category": "Dry Wash" },
-      { "id": "lnd-02", "name": "Sneaker Deep Restore", "price": 250, "description": "Full sneaker cleaning & whitening.", "image": "https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?w=400", "category": "Sneaker Care" },
-      { "id": "lnd-03", "name": "Weekly Ironing Pack (10 pcs)", "price": 150, "description": "Iron & fold service for 10 items.", "image": "https://images.unsplash.com/photo-1567113463300-102a7eb3cb26?w=400", "category": "Ironing" }
-    ]
-  },
-  {
-    "id": "gym-nutrition-hq",
-    "name": "Iron Kitchen: Pro Meals",
-    "imageUrl": "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400",
-    "categories": ["Protein Bowls", "Shakes", "Supplements"],
-    "vendorType": "GYM",
-    "menu": [
-      { "id": "gm-01", "name": "High-Protein Salmon Bowl", "price": 350, "description": "30g protein with quinoa & avocado.", "image": "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400", "category": "Protein Bowls" },
-      { "id": "gm-02", "name": "Whey Isolate Shake", "price": 199, "description": "Vanilla whey isolate, 25g protein.", "image": "https://images.unsplash.com/photo-1593095948071-474c5cc2989d?w=400", "category": "Shakes" },
-      { "id": "gm-03", "name": "Vegan Protein Crisp Bar", "price": 120, "description": "Plant-based protein bar.", "image": "https://images.unsplash.com/photo-1590301157890-4810ed352733?w=400", "category": "Supplements" }
-    ]
-  },
-  {
-    "id": "campus-cafe",
-    "name": "Zenvy Brew Bar",
-    "imageUrl": "https://images.unsplash.com/photo-1485808191679-5f86510681a2?w=400",
-    "categories": ["Coffee", "Tea", "Mocktails"],
-    "vendorType": "DRINKS",
-    "menu": [
-      { "id": "dr-01", "name": "Iced Caramel Macchiato", "price": 160, "description": "Double-shot espresso with caramel drizzle.", "image": "https://images.unsplash.com/photo-1485808191679-5f86510681a2?w=400", "category": "Coffee" },
-      { "id": "dr-02", "name": "Matcha Green Tea Latte", "price": 140, "description": "Premium matcha with steamed milk.", "image": "https://images.unsplash.com/photo-1515823064-d6e0c04616a7?w=400", "category": "Tea" },
-      { "id": "dr-03", "name": "Nitro Cold Brew", "price": 220, "description": "Nitrogen-infused cold brew coffee.", "image": "https://images.unsplash.com/photo-1517701550927-30cf4bb1dba5?w=400", "category": "Coffee" }
-    ]
-  },
-  {
-    "id": "seasonal-gifting",
-    "name": "Nexus Gift Lounge",
-    "imageUrl": "https://images.unsplash.com/photo-1549465220-1a8b9238cd48?w=400",
-    "categories": ["Hampers", "Merch", "Limited Edition"],
-    "vendorType": "SEASONAL",
-    "menu": [
-      { "id": "se-01", "name": "Nexus Holiday Hamper", "price": 999, "description": "Curated premium gift box.", "image": "https://images.unsplash.com/photo-1549465220-1a8b9238cd48?w=400", "category": "Hampers" },
-      { "id": "se-02", "name": "Limited Edition Campus Mug", "price": 299, "description": "Collector's edition SRMAP mug.", "image": "https://images.unsplash.com/photo-1514228742587-6b1558fcca3d?w=400", "category": "Merch" }
-    ]
-  },
-  {
-    "id": "campus-rentals",
-    "name": "Nexus Campus Fleet",
-    "imageUrl": "https://images.unsplash.com/photo-1571068316344-75bc76f77891?w=400",
-    "categories": ["E-Bikes", "Scooters", "Boards"],
-    "vendorType": "RENTAL",
-    "menu": [
-      { "id": "rn-01", "name": "Nexus E-Bike Pro (Hourly)", "price": 50, "description": "Electric bike rental per hour.", "image": "https://images.unsplash.com/photo-1571068316344-75bc76f77891?w=400", "category": "E-Bikes" },
-      { "id": "rn-02", "name": "Electric Longboard X", "price": 75, "description": "Premium electric longboard rental.", "image": "https://images.unsplash.com/photo-1531565637446-32307b194362?w=400", "category": "Boards" },
-      { "id": "rn-03", "name": "Classic Campus Cruiser", "price": 30, "description": "Standard bicycle rental per hour.", "image": "https://images.unsplash.com/photo-1485965120184-e220f721d03e?w=400", "category": "E-Bikes" }
-    ]
-  },
-  {
-    "id": "fruit-market",
-    "name": "Fresh Harvest Hub",
-    "imageUrl": "https://images.unsplash.com/photo-1464965211904-c72145311ad7?w=400",
-    "categories": ["Exotic", "Seasonal", "Bundles"],
-    "vendorType": "GROCERY",
-    "menu": [
-      { "id": "fr-01", "name": "Organic Dragon Fruit", "price": 120, "description": "Premium imported dragon fruit.", "image": "https://images.unsplash.com/photo-1527325541517-4506b7d44c8c?w=400", "category": "Exotic" },
-      { "id": "fr-02", "name": "Exotic Berries Symphony", "price": 599, "description": "Mixed premium berry box.", "image": "https://images.unsplash.com/photo-1464965211904-c72145311ad7?w=400", "category": "Exotic" },
-      { "id": "fr-03", "name": "Avocado Toast Kit", "price": 350, "description": "Everything for the perfect avocado toast.", "image": "https://images.unsplash.com/photo-1525351484163-7529414344d8?w=400", "category": "Bundles" }
-    ]
-  },
-  {
-    "id": "sweets-boutique",
-    "name": "Le Macaron Boutique",
-    "imageUrl": "https://images.unsplash.com/photo-1569864352342-fd43c330df47?w=400",
-    "categories": ["Chocolates", "Pastries", "Pralines"],
-    "vendorType": "SWEETS",
-    "menu": [
-      { "id": "sw-01", "name": "Gold Leaf Belgian Pralines", "price": 699, "description": "Handcrafted gold leaf chocolates.", "image": "https://images.unsplash.com/photo-1581798459219-3385269f0653?w=400", "category": "Pralines" },
-      { "id": "sw-02", "name": "Macaron Collection (12 pcs)", "price": 450, "description": "Assorted French macarons.", "image": "https://images.unsplash.com/photo-1569864352342-fd43c330df47?w=400", "category": "Pastries" },
-      { "id": "sw-03", "name": "Artisan Dark Chocolate Box", "price": 299, "description": "Single-origin 72% dark chocolate.", "image": "https://images.unsplash.com/photo-1549007994-cb92caebd54b?w=400", "category": "Chocolates" }
-    ]
-  }
-];
-
-interface Restaurant {
-  _id: string;
-  name: string;
-  location: string;
-  commissionRate: number;
-  commissionType: 'percentage' | 'flat';
-  operatingHours: { start: string, end: string };
-  isActive: boolean;
-  isOffline?: boolean;
-  tags?: string[];
-  imageUrl?: string;
-  vendorType?: string;
-}
-
-interface MenuItem {
-  _id: string;
-  name: string;
-  price: number;
-  category: string;
-  isAvailable: boolean;
-  isEliteOnly: boolean;
-  description?: string;
-  image?: string;
-  imageUrl?: string;
-  tags?: string[];
-  isVegetarian?: boolean;
-  specs?: { engine?: string; topSpeed?: string };
-  ownerName?: string;
-  ownerPhone?: string;
-}
-
-import { AddRestaurantForm, AddMenuItemForm } from '@/components/GourmetForms';
-
-// ... (LEGACY_DATA unchanged)
-
-const VENDOR_TYPES = ['All', 'RESTAURANT', 'LOCAL_VENDOR', 'GROCERY', 'SWEETS', 'DRINKS', 'RENTAL', 'GYM', 'LAUNDRY', 'PHARMACY', 'STATIONARY', 'SEASONAL'];
-const VENDOR_ICONS: Record<string, string> = {
-  All: '🌐', RESTAURANT: '🍽️', LOCAL_VENDOR: '🏪', GROCERY: '🍎', SWEETS: '🍩', DRINKS: '🥤', RENTAL: '🚗',
-  GYM: '💪', LAUNDRY: '👔', PHARMACY: '💊', STATIONARY: '📚', SEASONAL: '🎁'
-};
-
-export default function GourmetManagement() {
-  const isAuthed = useAdminAuth();
-  const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
-  const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
-  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<'list' | 'menu'>('list');
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [isAdding, setIsAdding] = useState(false);
-  const [editingRestaurant, setEditingRestaurant] = useState<Restaurant | null>(null);
-  const [isAddingItem, setIsAddingItem] = useState(false);
-  const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
-  const [isCreating, setIsCreating] = useState(false);
-  const [isCreatingItem, setIsCreatingItem] = useState(false);
-  const [search, setSearch] = useState('');
-  const [vendorFilter, setVendorFilter] = useState('All');
-  const [menuSearch, setMenuSearch] = useState('');
-  const [selectedMenuCategory, setSelectedMenuCategory] = useState('All');
-
-  useEffect(() => {
-    fetchRestaurants();
+function useNotice() {
+  const [notice, setNotice] = useState<Notice>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const show = useCallback((kind: 'ok' | 'error', text: string) => {
+    if (timer.current) clearTimeout(timer.current);
+    setNotice({ kind, text });
+    timer.current = setTimeout(() => setNotice(null), kind === 'ok' ? 3500 : 8000);
   }, []);
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  return { notice, show, clear: () => setNotice(null) };
+}
 
-  const fetchRestaurants = async () => {
-    try {
-      const token = 'cookie-managed';
-      const res = await fetch(`${API_URL}/api/admin/restaurants`, {
-        });
-      const data = await res.json();
-      if (res.ok) setRestaurants(data);
-    } catch {
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSyncLegacy = async () => {
-    if(!confirm('Import all current campus restaurants and items into the Nexus?')) return;
-    setIsSyncing(true);
-    try {
-      const token = 'cookie-managed';
-      const res = await fetch(`${API_URL}/api/admin/seed`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', },
-        body: JSON.stringify({ restaurants: LEGACY_DATA })
-      });
-      if (res.ok) fetchRestaurants();
-    } catch { } finally { setIsSyncing(false); }
-  };
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const handleCreateRestaurant = async (newRest: any, imageFile: File | null) => {
-    if (isCreating) return;
-    setIsCreating(true);
-    try {
-      const token = 'cookie-managed';
-      let finalImageUrl = newRest.imageUrl;
-      if (imageFile) {
-        const formData = new FormData();
-        formData.append('image', imageFile);
-        try {
-          const uploadRes = await fetch(`${API_URL}/api/upload`, { method: 'POST', body: formData });
-          const uploadData = await uploadRes.json();
-          if (uploadData.imageUrl) finalImageUrl = uploadData.imageUrl;
-        } catch (err) { console.error("Upload failed", err); }
-      }
-
-      const payload = {
-        ...newRest,
-        imageUrl: finalImageUrl,
-        tags: (newRest.tags || '').split(',').map((t: string) => t.trim()).filter((t: string) => t),
-        operatingHours: { start: newRest.operatingHoursStart, end: newRest.operatingHoursEnd }
-      };
-      
-      const endpoint = editingRestaurant ? `${API_URL}/api/admin/restaurants/${editingRestaurant._id}` : `${API_URL}/api/admin/restaurants`;
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', },
-        body: JSON.stringify(payload)
-      });
-      
-      if (res.ok) { 
-        setIsAdding(false); 
-        setEditingRestaurant(null);
-        fetchRestaurants(); 
-      }
-    } catch { 
-    } finally {
-      setIsCreating(false);
-    }
-  };
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const handleCreateMenuItem = async (newItem: any, imageFile: File | null) => {
-    if(!selectedRestaurant || isCreatingItem) return;
-    setIsCreatingItem(true);
-    try {
-      const token = 'cookie-managed';
-      let finalImageUrl = newItem.image;
-      if (imageFile) {
-        const formData = new FormData();
-        formData.append('image', imageFile);
-        try {
-          const uploadRes = await fetch(`${API_URL}/api/upload`, { method: 'POST', body: formData });
-          const uploadData = await uploadRes.json();
-          if (uploadData.imageUrl) finalImageUrl = uploadData.imageUrl;
-        } catch (err) { console.error("Item upload failed", err); }
-      }
-
-      const endpoint = editingItem ? `${API_URL}/api/admin/menu-items/${editingItem._id}` : `${API_URL}/api/admin/menu-items/new`;
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', },
-        body: JSON.stringify({ 
-          ...newItem, 
-          image: finalImageUrl,
-          imageUrl: finalImageUrl,
-          restaurantId: selectedRestaurant._id,
-          tags: (newItem.tags || '').split(',').map((t: string) => t.trim()).filter((t: string) => t),
-          isVegetarian: newItem.isVegetarian,
-          specs: { engine: newItem.engine, topSpeed: newItem.topSpeed },
-          ownerName: newItem.ownerName,
-          ownerPhone: newItem.ownerPhone
-        })
-      });
-      
-      if (res.ok) { 
-        setIsAddingItem(false); 
-        setEditingItem(null);
-        fetchMenu(selectedRestaurant._id); 
-      }
-    } catch { 
-    } finally { setIsCreatingItem(false); }
-  };
-
-  const fetchMenu = async (restaurantId: string) => {
-    try {
-      const token = 'cookie-managed';
-      const res = await fetch(`${API_URL}/api/admin/menu-items?restaurantId=${restaurantId}`, {
-         cache: 'no-store'
-      });
-      const data = await res.json();
-      if (res.ok) setMenuItems(data);
-    } catch { }
-  };
-
-  const toggleEliteItem = async (menuItem: MenuItem) => {
-    try {
-      const token = 'cookie-managed';
-      const res = await fetch(`${API_URL}/api/admin/menu-items/${menuItem._id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', },
-        body: JSON.stringify({ ...menuItem, isEliteOnly: !menuItem.isEliteOnly })
-      });
-      if (res.ok && selectedRestaurant) fetchMenu(selectedRestaurant._id);
-    } catch { }
-  };
-
-  const toggleAvailability = async (menuItem: MenuItem) => {
-    try {
-      const token = 'cookie-managed';
-      const res = await fetch(`${API_URL}/api/admin/menu-items/${menuItem._id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', },
-        body: JSON.stringify({ ...menuItem, isAvailable: !menuItem.isAvailable })
-      });
-      if (res.ok && selectedRestaurant) fetchMenu(selectedRestaurant._id);
-    } catch { }
-  };
-
-  const deleteMenuItem = async (menuItemId: string) => {
-    if (!confirm('Remove this menu item from the Nexus?')) return;
-    try {
-      const token = 'cookie-managed';
-      await fetch(`${API_URL}/api/admin/menu-items/${menuItemId}/delete`, {
-        method: 'DELETE',
-        });
-      setMenuItems(prev => prev.filter(i => i._id !== menuItemId));
-    } catch { }
-  };
-
-  const deleteRestaurant = async (restaurantId: string) => {
-    if (!confirm('DANGER: This will permanently delete this restaurant node and ALL its menu items. Continue?')) return;
-    try {
-      const token = 'cookie-managed';
-      const res = await fetch(`${API_URL}/api/admin/restaurants/${restaurantId}`, {
-        method: 'DELETE',
-        });
-      if (res.ok) {
-        setRestaurants(prev => prev.filter(r => r._id !== restaurantId));
-      }
-    } catch { }
-  };
-
-  const toggleRestaurantStatus = async (restaurant: Restaurant) => {
-    try {
-      const token = 'cookie-managed';
-      const res = await fetch(`${API_URL}/api/admin/restaurants/${restaurant._id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', },
-        body: JSON.stringify({ ...restaurant, isActive: !restaurant.isActive })
-      });
-      if (res.ok) fetchRestaurants();
-    } catch { }
-  };
-
-  if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Authenticating...</div>;
-
+function NoticeBar({ notice, onClose }: { notice: Notice; onClose: () => void }) {
+  if (!notice) return null;
   return (
-    <div className="space-y-10 animate-fade-in relative pb-20">
-      <header className="flex justify-between items-center bg-white/5 p-8 rounded-[40px] border border-white/5 glass">
-        <div>
-          <h2 className="text-3xl font-black text-white tracking-tighter uppercase">
-            {view === 'list' ? 'Gourmet ' : 'Tactical '}
-            <span className="text-emerald-500">{view === 'list' ? 'Terminal' : 'Menu Control'}</span>
-          </h2>
-          <p className="text-gray-400 text-sm font-bold uppercase tracking-widest mt-1">
-            {view === 'list' ? 'Absolute Partner Oversight & Revenue splits' : `Managing Assets for ${selectedRestaurant?.name}`}
-          </p>
-        </div>
-        <div className="flex gap-4">
-           {view === 'list' && (
-             <div className="flex gap-4">
-               <button onClick={() => setIsAdding(true)} className="px-8 py-3 bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest rounded-2xl hover:scale-105 transition-all shadow-[0_0_20px_rgba(16,185,129,0.3)]">
-                 Deploy New Node
-               </button>
-               <button onClick={handleSyncLegacy} disabled={isSyncing} className="px-8 py-3 bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest rounded-2xl hover:scale-105 transition-all">
-                 {isSyncing ? 'Syncing...' : 'Omni-Sync Assets'}
-               </button>
-             </div>
-           )}
-           {view === 'menu' && (
-             <button onClick={() => setView('list')} className="px-6 py-3 bg-white/10 rounded-2xl text-[10px] font-black uppercase tracking-widest text-white hover:bg-white/20">
-                Return to Terminal
-             </button>
-           )}
-        </div>
-      </header>
-
-      {isAdding || editingRestaurant ? (
-        <AddRestaurantForm 
-          onCancel={() => { setIsAdding(false); setEditingRestaurant(null); }} 
-          onSubmit={handleCreateRestaurant} 
-          isCreating={isCreating} 
-          initialData={editingRestaurant}
-        />
-      ) : null}
-
-      {isAddingItem || editingItem ? (
-        <AddMenuItemForm 
-          onCancel={() => { setIsAddingItem(false); setEditingItem(null); }} 
-          onSubmit={handleCreateMenuItem} 
-          vendorType={selectedRestaurant?.vendorType}
-          initialData={editingItem}
-          isCreating={isCreatingItem}
-        />
-      ) : null}
-
-      {/* Search & Filter Bar */}
-      {view === 'list' && !isAdding && !editingRestaurant && (
-        <div className="glass-card p-6 space-y-5">
-          <div className="flex flex-col md:flex-row gap-4 items-center">
-            <div className="relative flex-1 w-full">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-sm">🔍</span>
-              <input 
-                type="text" 
-                placeholder="Search restaurants by name or location..." 
-                className="w-full bg-white/5 border border-white/10 rounded-2xl py-3.5 pl-11 pr-6 text-sm text-white font-bold outline-none focus:border-emerald-500/30 transition-all placeholder:text-gray-600"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-            <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest whitespace-nowrap">
-              {restaurants.filter(r => (vendorFilter === 'All' || r.vendorType === vendorFilter) && (r.name.toLowerCase().includes(search.toLowerCase()) || r.location?.toLowerCase().includes(search.toLowerCase()))).length} Nodes Active
-            </div>
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            {VENDOR_TYPES.map(v => (
-              <button 
-                key={v}
-                onClick={() => setVendorFilter(v)}
-                className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all flex items-center gap-1.5 ${vendorFilter === v ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 shadow-[0_0_12px_rgba(16,185,129,0.15)]' : 'bg-white/[0.02] text-gray-500 border-white/5 hover:text-white hover:border-white/10'}`}
-              >
-                <span className="text-xs">{VENDOR_ICONS[v]}</span> {v === 'All' ? 'All Types' : v}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {view === 'list' && !isAdding && !editingRestaurant ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 text-white">
-          {loading ? (
-            <div className="col-span-full py-20 text-center font-black text-gray-600 animate-pulse tracking-widest uppercase">Initializing Gourmet Nodes...</div>
-          ) : restaurants
-            .filter(r => vendorFilter === 'All' || r.vendorType === vendorFilter)
-            .filter(r => r.name.toLowerCase().includes(search.toLowerCase()) || r.location?.toLowerCase().includes(search.toLowerCase()))
-            .map((rest) => (
-            <RestaurantCard 
-              key={rest._id} 
-              rest={rest} 
-              onManage={(r: Restaurant) => { setSelectedRestaurant(r); fetchMenu(r._id); setView('menu'); }}
-              onEdit={(r: Restaurant) => setEditingRestaurant(r)}
-              onToggleStatus={toggleRestaurantStatus}
-              onDelete={deleteRestaurant}
-            />
-          ))}
-          {!loading && restaurants.filter(r => vendorFilter === 'All' || r.vendorType === vendorFilter).filter(r => r.name.toLowerCase().includes(search.toLowerCase()) || r.location?.toLowerCase().includes(search.toLowerCase())).length === 0 && (
-            <div className="col-span-full py-20 text-center">
-              <p className="text-gray-500 text-sm font-bold">No restaurants match your filters.</p>
-              <button onClick={() => { setSearch(''); setVendorFilter('All'); }} className="mt-4 text-[10px] font-black text-emerald-400 uppercase tracking-widest hover:underline">Clear Filters</button>
-            </div>
-          )}
-        </div>
-      ) : view === 'menu' && !isAddingItem ? (
-        <div className="space-y-6">
-          <div className="glass-card p-6 space-y-5">
-             <div className="flex flex-col md:flex-row gap-4 items-center">
-                <div className="relative flex-1 w-full">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-sm">🔍</span>
-                  <input 
-                    type="text" 
-                    placeholder="Search assets by name or category..." 
-                    className="w-full bg-white/5 border border-white/10 rounded-2xl py-3.5 pl-11 pr-6 text-sm text-white font-bold outline-none focus:border-blue-500/30 transition-all placeholder:text-gray-600"
-                    value={menuSearch}
-                    onChange={(e) => setMenuSearch(e.target.value)}
-                  />
-                </div>
-                <div className="text-[10px] font-black text-gray-500 uppercase tracking-widest whitespace-nowrap">
-                  {menuItems.filter(item => 
-                    (selectedMenuCategory === 'All' || item.category === selectedMenuCategory) && 
-                    (item.name.toLowerCase().includes(menuSearch.toLowerCase()) || item.category.toLowerCase().includes(menuSearch.toLowerCase()))
-                  ).length} Assets Deployed
-                </div>
-             </div>
-             <div className="flex gap-2 flex-wrap">
-                {['All', ...Array.from(new Set(menuItems.map(item => item.category)))].map(category => (
-                  <button 
-                    key={category}
-                    onClick={() => setSelectedMenuCategory(category)}
-                    className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${selectedMenuCategory === category ? 'bg-blue-500/10 text-blue-400 border-blue-500/20 shadow-[0_0_12px_rgba(37,99,235,0.15)]' : 'bg-white/[0.02] text-gray-500 border-white/5 hover:text-white hover:border-white/10'}`}
-                  >
-                    {category}
-                  </button>
-                ))}
-             </div>
-          </div>
-
-          <div className="glass-card p-8 bg-white/[0.01]">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {menuItems
-                  .filter(item => selectedMenuCategory === 'All' || item.category === selectedMenuCategory)
-                  .filter(item => item.name.toLowerCase().includes(menuSearch.toLowerCase()) || item.category.toLowerCase().includes(menuSearch.toLowerCase()))
-                  .map((item: MenuItem) => (
-                    <MenuItemCard 
-                      key={item._id} 
-                      item={item} 
-                      onToggleElite={toggleEliteItem} 
-                      onToggleAvailability={toggleAvailability}
-                      onEdit={(i: MenuItem) => setEditingItem(i)}
-                      onDelete={deleteMenuItem} 
-                    />
-                  ))}
-                <div onClick={() => setIsAddingItem(true)} className="p-10 rounded-3xl border border-dashed border-white/10 flex flex-col items-center justify-center gap-4 cursor-pointer hover:bg-white/5 group transition-all h-full min-h-[140px]">
-                    <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-xl group-hover:scale-110 transition-transform">➕</div>
-                    <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Deploy New Asset</span>
-                </div>
-              </div>
-          </div>
-        </div>
-      ) : null}
-      <style jsx>{`
-        .admin-input {
-          background: rgba(255,255,255,0.05);
-          border: 1px solid rgba(255,255,255,0.1);
-          padding: 1.25rem;
-          border-radius: 1.5rem;
-          color: white;
-          font-weight: 900;
-          outline: none;
-        }
-        .admin-input:focus { border-color: rgba(16, 185, 129, 0.5); }
-      `}</style>
+    <div role={notice.kind === 'error' ? 'alert' : 'status'} className={`flex items-start justify-between gap-3 rounded-lg border p-3 text-sm ${notice.kind === 'error' ? 'border-red-500/30 bg-red-500/10 text-red-200' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'}`}>
+      <span>{notice.text}</span>
+      <button type="button" onClick={onClose} className="text-xs font-semibold opacity-70 hover:opacity-100">Dismiss</button>
     </div>
   );
 }
 
-// ─── Optimized Sub-Components ─────────────────────────────────
+function Thumb({ src, alt }: { src?: string | null; alt: string }) {
+  return src ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={src} alt={alt} loading="lazy" className="h-12 w-12 shrink-0 rounded-lg border border-white/10 bg-slate-900 object-cover" />
+  ) : (
+    <div aria-hidden className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-slate-900 text-sm font-bold text-gray-600">{alt.slice(0, 1).toUpperCase()}</div>
+  );
+}
 
-const RestaurantCard = memo(({ rest, onManage, onEdit, onToggleStatus, onDelete }: { rest: Restaurant, onManage: (r: Restaurant) => void, onEdit: (r: Restaurant) => void, onToggleStatus: (r: Restaurant) => void, onDelete: (id: string) => void }) => (
-  <div className={`glass-card p-8 group relative overflow-hidden flex flex-col justify-between h-full transition-all duration-500 ${!rest.isActive ? 'opacity-60 grayscale-[0.5] border-red-500/20' : ''}`}>
-    <div className="flex gap-6 items-start mb-6">
-      <div className="w-24 h-24 rounded-3xl overflow-hidden border border-white/10 shrink-0 relative bg-slate-900">
-        <Image 
-          src={rest.imageUrl || "/assets/placeholder.png"} 
-          fill 
-          style={{ objectFit: 'cover' }} 
-          alt={rest.name} 
-          className="group-hover:scale-110 transition-transform duration-700 ease-out" 
+const STATUS_FILTERS = [
+  { value: 'all', label: 'All' },
+  { value: 'active', label: 'Active' },
+  { value: 'inactive', label: 'Inactive' },
+] as const;
+
+export default function StoresPage() {
+  const { isAuthed } = useAdminAuth();
+  const [stores, setStores] = useState<Store[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [typeFilter, setTypeFilter] = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [search, setSearch] = useState('');
+  const [busy, setBusy] = useState<Record<string, boolean>>({});
+  const [formStore, setFormStore] = useState<Store | 'new' | null>(null);
+  const [promoting, setPromoting] = useState<Store | null>(null);
+  const [selected, setSelected] = useState<Store | null>(null);
+  const { notice, show, clear } = useNotice();
+
+  const loadStores = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true);
+    setLoadError('');
+    try {
+      const data = await adminRequest<Store[]>('/api/admin/restaurants');
+      setStores(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : 'Could not load stores.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isAuthed) loadStores();
+  }, [isAuthed, loadStores]);
+
+  const typeCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const s of stores) {
+      const t = (s.vendorType || 'RESTAURANT').toUpperCase();
+      counts[t] = (counts[t] || 0) + 1;
+    }
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  }, [stores]);
+
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return stores.filter(s => {
+      const type = (s.vendorType || 'RESTAURANT').toUpperCase();
+      if (typeFilter !== 'ALL' && type !== typeFilter) return false;
+      if (statusFilter === 'active' && !s.isActive) return false;
+      if (statusFilter === 'inactive' && s.isActive) return false;
+      return !q || [s.name, s.location, s.campus, type].some(v => String(v || '').toLowerCase().includes(q));
+    });
+  }, [stores, typeFilter, statusFilter, search]);
+
+  const updateStore = async (store: Store, patch: Record<string, unknown>, successText: string) => {
+    const id = storeId(store);
+    if (busy[id]) return;
+    setBusy(prev => ({ ...prev, [id]: true }));
+    try {
+      const saved = await adminRequest<Store>(`/api/admin/restaurants/${id}`, { method: 'POST', body: JSON.stringify(patch) });
+      setStores(prev => prev.map(s => (storeId(s) === id ? { ...s, ...saved } : s)));
+      setSelected(prev => (prev && storeId(prev) === id ? { ...prev, ...saved } : prev));
+      show('ok', successText);
+      loadStores(true); // refresh the computed open/closed state
+    } catch (e) {
+      show('error', e instanceof Error ? e.message : 'Could not update the store.');
+    } finally {
+      setBusy(prev => ({ ...prev, [id]: false }));
+    }
+  };
+
+  const toggleActive = (store: Store) => {
+    if (store.isActive && !window.confirm(`Deactivate "${store.name}"?\n\nIt disappears from the customer app and stops taking orders until you activate it again.`)) return;
+    if (!store.isActive && !window.confirm(`Activate "${store.name}"?\n\nIt becomes visible in the customer app${(store.vendorType || '').toUpperCase() === 'LOCAL_VENDOR' ? ' as a display-only listing' : ' and can take orders during its operating hours'}.`)) return;
+    updateStore(store, { isActive: !store.isActive }, store.isActive ? `${store.name} deactivated.` : `${store.name} activated.`);
+  };
+
+  const togglePaused = (store: Store) => {
+    const paused = store.isOpenNow === false;
+    if (!paused && !window.confirm(`Pause "${store.name}"? Customers see it as closed until you resume it.`)) return;
+    updateStore(store, { isOpenNow: paused }, paused ? `${store.name} resumed.` : `${store.name} paused.`);
+  };
+
+  const saveStore = async (payload: StorePayload) => {
+    const editing = formStore && formStore !== 'new' ? formStore : null;
+    const path = editing ? `/api/admin/restaurants/${storeId(editing)}` : '/api/admin/restaurants';
+    // New stores start inactive so the catalogue can be filled before customers see them.
+    const body = editing ? payload : { ...payload, isActive: false };
+    await adminRequest<Store>(path, { method: 'POST', body: JSON.stringify(body) });
+    setFormStore(null);
+    show('ok', editing ? `${payload.name} saved.` : `${payload.name} created as inactive. Add products, then activate it.`);
+    await loadStores(true);
+  };
+
+  const deleteStore = async (store: Store) => {
+    const id = storeId(store);
+    const typed = window.prompt(`Delete "${store.name}" and all ${store.itemCount ?? 'its'} products permanently?\n\nPast orders keep their history, but this cannot be undone. Consider deactivating instead.\n\nType the store name to confirm:`);
+    if (typed === null) return;
+    if (typed.trim() !== store.name.trim()) {
+      show('error', 'The name did not match, so nothing was deleted.');
+      return;
+    }
+    setBusy(prev => ({ ...prev, [id]: true }));
+    try {
+      await adminRequest(`/api/admin/restaurants/${id}`, { method: 'DELETE' });
+      setStores(prev => prev.filter(s => storeId(s) !== id));
+      show('ok', `${store.name} deleted.`);
+    } catch (e) {
+      show('error', e instanceof Error ? e.message : 'Could not delete the store.');
+    } finally {
+      setBusy(prev => ({ ...prev, [id]: false }));
+    }
+  };
+
+  const savePromotion = async (store: Store, input: PromotionInput) => {
+    const id = storeId(store);
+    if (input.addToCarousel && !store.imageUrl) throw new Error('Add a store image before adding a Home banner.');
+    const saved = await adminRequest<Store>(`/api/admin/restaurants/${id}`, {
+      method: 'POST',
+      body: JSON.stringify({ isFeatured: input.isFeatured, featuredBadge: input.featuredBadge || null, promoOffer: input.promoOffer || null }),
+    });
+    setStores(prev => prev.map(s => (storeId(s) === id ? { ...s, ...saved } : s)));
+
+    if (input.addToCarousel) {
+      try {
+        const cfg = await adminRequest<{ config?: { banners?: Record<string, unknown>[] } }>('/api/config');
+        const banners = Array.isArray(cfg?.config?.banners) ? cfg.config!.banners! : [];
+        const redirectUrl = `/restaurant/${id}`;
+        const banner = {
+          imageUrl: store.imageUrl,
+          tagline: input.featuredBadge || 'Featured',
+          title1: store.name.toUpperCase(),
+          title2: input.promoOffer || vendorLabel(store.vendorType),
+          description: `Order from ${store.name} on Zenvy.`,
+          buttonText: 'ORDER NOW',
+          redirectUrl,
+          isActive: true,
+        };
+        const index = banners.findIndex(b => b.redirectUrl === redirectUrl);
+        const next = index >= 0 ? banners.map((b, i) => (i === index ? { ...b, ...banner } : b)) : [banner, ...banners];
+        await adminRequest('/api/config', { method: 'PUT', body: JSON.stringify({ banners: next }) });
+      } catch (e) {
+        setPromoting(null);
+        show('error', `Promotion saved, but the Home banner was not updated: ${e instanceof Error ? e.message : 'unknown error'}`);
+        return;
+      }
+    }
+    setPromoting(null);
+    show('ok', input.isFeatured ? `${store.name} is promoted.` : `Promotion for ${store.name} ended.`);
+  };
+
+  if (!isAuthed) return <div className="p-10 text-center text-sm text-gray-400" role="status">Checking your admin session…</div>;
+
+  if (selected) {
+    return (
+      <ProductsPanel
+        store={selected}
+        onBack={() => { setSelected(null); loadStores(true); }}
+        onToggleActive={() => toggleActive(selected)}
+        storeBusy={!!busy[storeId(selected)]}
+      />
+    );
+  }
+
+  return (
+    <div className="mx-auto max-w-7xl space-y-6 p-6 text-white md:p-8">
+      <header className="flex flex-wrap items-end justify-between gap-4 border-b border-white/10 pb-5">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-widest text-emerald-400">Catalogue</p>
+          <h1 className="mt-1 text-2xl font-black">Stores &amp; products</h1>
+          <p className="mt-2 max-w-2xl text-sm text-gray-400">Restaurants, campus stores and CampusBites stalls. Set hours, delivery time and contact details, switch stores on or off, and manage their products.</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button type="button" disabled={loading} onClick={() => loadStores()} className="rounded-lg border border-white/10 px-4 py-2 text-sm font-semibold text-gray-300 hover:text-white disabled:opacity-50">{loading ? 'Loading…' : 'Refresh'}</button>
+          <button type="button" onClick={() => setFormStore('new')} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-500">Add store</button>
+        </div>
+      </header>
+
+      <NoticeBar notice={notice} onClose={clear} />
+
+      <section className="space-y-4 rounded-xl border border-white/10 bg-white/[0.02] p-4" aria-label="Store filters">
+        <div className="flex flex-wrap gap-3">
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name, location or campus" className={`${FIELD} min-w-[220px] flex-1`} aria-label="Search stores" />
+          <div className="flex overflow-hidden rounded-lg border border-white/10" role="group" aria-label="Status">
+            {STATUS_FILTERS.map(f => (
+              <button key={f.value} type="button" onClick={() => setStatusFilter(f.value)} aria-pressed={statusFilter === f.value} className={`px-4 py-2 text-sm font-semibold ${statusFilter === f.value ? 'bg-white/10 text-white' : 'text-gray-400 hover:text-white'}`}>{f.label}</button>
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Store type">
+          <button type="button" onClick={() => setTypeFilter('ALL')} aria-pressed={typeFilter === 'ALL'} className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${typeFilter === 'ALL' ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' : 'border-white/10 text-gray-400 hover:text-white'}`}>All types · {stores.length}</button>
+          {typeCounts.map(([type, count]) => (
+            <button key={type} type="button" onClick={() => setTypeFilter(type)} aria-pressed={typeFilter === type} className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${typeFilter === type ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300' : 'border-white/10 text-gray-400 hover:text-white'}`}>{vendorLabel(type)} · {count}</button>
+          ))}
+        </div>
+      </section>
+
+      {loadError && (
+        <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
+          {loadError}
+          <button type="button" onClick={() => loadStores()} className="font-bold underline">Retry</button>
+        </div>
+      )}
+
+      {loading ? (
+        <div role="status" className="rounded-lg border border-white/10 p-8 text-sm text-gray-400">Loading stores…</div>
+      ) : !loadError && visible.length === 0 ? (
+        <div className="rounded-lg border border-white/10 p-10 text-center">
+          <h2 className="font-bold">{stores.length === 0 ? 'No stores yet' : 'No stores match these filters'}</h2>
+          <p className="mt-2 text-sm text-gray-400">{stores.length === 0 ? 'Add the first store to start building the catalogue.' : 'Try another type, status or search.'}</p>
+          {stores.length > 0 && <button type="button" onClick={() => { setSearch(''); setTypeFilter('ALL'); setStatusFilter('all'); }} className="mt-4 text-sm font-semibold text-emerald-300 hover:underline">Clear filters</button>}
+        </div>
+      ) : (
+        <section className="divide-y divide-white/10 rounded-xl border border-white/10" aria-label="Stores">
+          {visible.map(store => {
+            const id = storeId(store);
+            const isLocal = (store.vendorType || '').toUpperCase() === 'LOCAL_VENDOR';
+            const hours = store.operatingHours?.start && store.operatingHours?.end ? `${formatTime(store.operatingHours.start)} – ${formatTime(store.operatingHours.end)}` : 'No hours set';
+            return (
+              <article key={id} className={`flex flex-wrap items-center gap-4 p-4 ${store.isActive ? '' : 'bg-white/[0.015]'}`}>
+                <Thumb src={store.imageUrl} alt={store.name} />
+                <div className="min-w-[220px] flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="font-bold">{store.name}</h2>
+                    <span className="rounded border border-white/10 px-1.5 py-0.5 text-[11px] font-semibold text-gray-300">{vendorLabel(store.vendorType)}</span>
+                    {!store.isActive ? (
+                      <span className="rounded border border-red-500/30 bg-red-500/10 px-1.5 py-0.5 text-[11px] font-semibold text-red-300">Inactive</span>
+                    ) : store.isOpen === false ? (
+                      <span title={store.closedReason || ''} className="rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[11px] font-semibold text-amber-300">{store.isOpenNow === false ? 'Paused' : 'Closed now'}</span>
+                    ) : (
+                      <span className="rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-300">Open</span>
+                    )}
+                    {store.isFeatured && <span className="rounded border border-amber-400/30 px-1.5 py-0.5 text-[11px] font-semibold text-amber-300">{store.featuredBadge || 'Featured'}</span>}
+                    {store.isOffline && <span className="rounded border border-white/10 px-1.5 py-0.5 text-[11px] text-gray-400">Offline store</span>}
+                  </div>
+                  <p className="mt-1 text-xs text-gray-400">
+                    {[store.location, store.campus].filter(Boolean).join(' · ')} · {hours} · {store.deliveryTime ? `${store.deliveryTime} min delivery` : 'No delivery time'} · {store.itemCount ?? 0} products
+                  </p>
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    WhatsApp: {store.whatsappNumber ? formatWhatsapp(store.whatsappNumber) : <span className={isLocal ? 'text-amber-300' : ''}>not set{isLocal ? ' (needed for local vendors)' : ''}</span>}
+                    {' · '}Commission: {store.commissionRate ?? 0}{store.commissionType === 'flat' ? ' ₹/order' : '%'}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button type="button" disabled={!!busy[id]} onClick={() => toggleActive(store)} className={`rounded-lg border px-3 py-1.5 text-xs font-semibold disabled:opacity-50 ${store.isActive ? 'border-white/10 text-gray-300 hover:border-red-500/40 hover:text-red-300' : 'border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10'}`}>{store.isActive ? 'Deactivate' : 'Activate'}</button>
+                  {store.isActive && !isLocal && (
+                    <button type="button" disabled={!!busy[id]} onClick={() => togglePaused(store)} className="rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-gray-300 hover:text-white disabled:opacity-50">{store.isOpenNow === false ? 'Resume' : 'Pause'}</button>
+                  )}
+                  <button type="button" onClick={() => setFormStore(store)} className="rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-gray-300 hover:text-white">Edit</button>
+                  {!isLocal && <button type="button" onClick={() => setPromoting(store)} className="rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-gray-300 hover:text-amber-300">Promote</button>}
+                  <button type="button" onClick={() => setSelected(store)} className="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-bold text-white hover:bg-white/15">Products</button>
+                  <button type="button" disabled={!!busy[id]} onClick={() => deleteStore(store)} className="rounded-lg px-2 py-1.5 text-xs font-semibold text-red-400/70 hover:text-red-300 disabled:opacity-50" aria-label={`Delete ${store.name}`}>Delete</button>
+                </div>
+              </article>
+            );
+          })}
+        </section>
+      )}
+
+      {formStore && (
+        <StoreForm initial={formStore === 'new' ? null : formStore} onCancel={() => setFormStore(null)} onSave={saveStore} />
+      )}
+      {promoting && (
+        <PromoteModal store={promoting} onClose={() => setPromoting(null)} onSave={input => savePromotion(promoting, input)} />
+      )}
+    </div>
+  );
+}
+
+// ─── Products of one store ───────────────────────────────────
+
+function ProductsPanel({ store, onBack, onToggleActive, storeBusy }: {
+  store: Store;
+  onBack: () => void;
+  onToggleActive: () => void;
+  storeBusy: boolean;
+}) {
+  const id = storeId(store);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [search, setSearch] = useState('');
+  const [category, setCategory] = useState('All');
+  const [stock, setStock] = useState<'all' | 'in' | 'out'>('all');
+  const [editing, setEditing] = useState<Product | 'new' | null>(null);
+  const [busy, setBusy] = useState<Record<string, boolean>>({});
+  const { notice, show, clear } = useNotice();
+  const isLocal = (store.vendorType || '').toUpperCase() === 'LOCAL_VENDOR';
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setLoadError('');
+    try {
+      const data = await adminRequest<Product[]>(`/api/admin/menu-items?restaurantId=${encodeURIComponent(id)}`);
+      setProducts(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : 'Could not load products.');
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const categories = useMemo(
+    () => Array.from(new Set(products.map(p => p.category).filter((c): c is string => !!c))).sort(),
+    [products]
+  );
+
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return products.filter(p => {
+      if (category !== 'All' && (p.category || '') !== category) return false;
+      if (stock === 'in' && !p.isAvailable) return false;
+      if (stock === 'out' && p.isAvailable) return false;
+      return !q || [p.name, p.category, p.description].some(v => String(v || '').toLowerCase().includes(q));
+    });
+  }, [products, search, category, stock]);
+
+  const outOfStock = products.filter(p => !p.isAvailable).length;
+
+  const toggleAvailability = async (product: Product) => {
+    if (busy[product._id]) return;
+    setBusy(prev => ({ ...prev, [product._id]: true }));
+    try {
+      const saved = await adminRequest<Product>(`/api/admin/menu-items/${product._id}`, { method: 'POST', body: JSON.stringify({ isAvailable: !product.isAvailable }) });
+      setProducts(prev => prev.map(p => (p._id === product._id ? { ...p, ...saved } : p)));
+    } catch (e) {
+      show('error', e instanceof Error ? e.message : 'Could not update the product.');
+    } finally {
+      setBusy(prev => ({ ...prev, [product._id]: false }));
+    }
+  };
+
+  const saveProduct = async (payload: ProductPayload) => {
+    const existing = editing && editing !== 'new' ? editing : null;
+    const saved = await adminRequest<Product>(`/api/admin/menu-items/${existing ? existing._id : 'new'}`, {
+      method: 'POST',
+      body: JSON.stringify(existing ? payload : { ...payload, restaurantId: id }),
+    });
+    setProducts(prev => (existing ? prev.map(p => (p._id === existing._id ? { ...p, ...saved } : p)) : [...prev, saved]));
+    setEditing(null);
+    show('ok', existing ? `${payload.name} saved.` : `${payload.name} added.`);
+  };
+
+  const deleteProduct = async (product: Product) => {
+    if (!window.confirm(`Delete "${product.name}" permanently?\n\nTo hide it for now, mark it out of stock instead.`)) return;
+    setBusy(prev => ({ ...prev, [product._id]: true }));
+    try {
+      await adminRequest(`/api/admin/menu-items/${product._id}/delete`, { method: 'DELETE' });
+      setProducts(prev => prev.filter(p => p._id !== product._id));
+      show('ok', `${product.name} deleted.`);
+    } catch (e) {
+      show('error', e instanceof Error ? e.message : 'Could not delete the product.');
+      setBusy(prev => ({ ...prev, [product._id]: false }));
+    }
+  };
+
+  return (
+    <div className="mx-auto max-w-7xl space-y-6 p-6 text-white md:p-8">
+      <header className="flex flex-wrap items-end justify-between gap-4 border-b border-white/10 pb-5">
+        <div className="flex items-center gap-4">
+          <Thumb src={store.imageUrl} alt={store.name} />
+          <div>
+            <button type="button" onClick={onBack} className="text-xs font-semibold text-gray-400 hover:text-white">← All stores</button>
+            <h1 className="mt-1 text-2xl font-black">{store.name}</h1>
+            <p className="mt-1 text-sm text-gray-400">
+              {vendorLabel(store.vendorType)} · {products.length} products{outOfStock ? ` · ${outOfStock} out of stock` : ''} · {store.isActive ? 'Active' : 'Inactive'}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <button type="button" disabled={storeBusy} onClick={onToggleActive} className="rounded-lg border border-white/10 px-4 py-2 text-sm font-semibold text-gray-300 hover:text-white disabled:opacity-50">{store.isActive ? 'Deactivate store' : 'Activate store'}</button>
+          <button type="button" onClick={() => setEditing('new')} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-500">Add product</button>
+        </div>
+      </header>
+
+      {isLocal && (
+        <p className="rounded-lg border border-amber-400/20 bg-amber-400/5 p-3 text-sm text-amber-200">Display-only stall: these prices are shown to customers, who order directly from the vendor on WhatsApp or by phone.</p>
+      )}
+
+      <NoticeBar notice={notice} onClose={clear} />
+
+      <section className="flex flex-wrap gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-4" aria-label="Product filters">
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search products" className={`${FIELD} min-w-[200px] flex-1`} aria-label="Search products" />
+        <select value={category} onChange={e => setCategory(e.target.value)} className={`${FIELD} w-auto`} aria-label="Category">
+          <option value="All">All categories</option>
+          {categories.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select value={stock} onChange={e => setStock(e.target.value as 'all' | 'in' | 'out')} className={`${FIELD} w-auto`} aria-label="Stock">
+          <option value="all">Any stock</option>
+          <option value="in">In stock</option>
+          <option value="out">Out of stock</option>
+        </select>
+      </section>
+
+      {loadError && (
+        <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
+          {loadError}
+          <button type="button" onClick={load} className="font-bold underline">Retry</button>
+        </div>
+      )}
+
+      {loading ? (
+        <div role="status" className="rounded-lg border border-white/10 p-8 text-sm text-gray-400">Loading products…</div>
+      ) : !loadError && visible.length === 0 ? (
+        <div className="rounded-lg border border-white/10 p-10 text-center">
+          <h2 className="font-bold">{products.length === 0 ? 'No products yet' : 'No products match these filters'}</h2>
+          <p className="mt-2 text-sm text-gray-400">{products.length === 0 ? 'Add the first product for this store.' : 'Try another search, category or stock filter.'}</p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-white/10">
+          <table className="w-full min-w-[720px] text-left text-sm">
+            <thead className="bg-white/[0.03] text-xs uppercase tracking-wider text-gray-500">
+              <tr>
+                <th className="p-3">Product</th>
+                <th className="p-3">Category</th>
+                <th className="p-3 text-right">Price</th>
+                <th className="p-3 text-right">MRP</th>
+                <th className="p-3">Stock</th>
+                <th className="p-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {visible.map(p => {
+                const specs = readSpecs(p.specs);
+                const mrp = Number(specs.originalPrice);
+                return (
+                  <tr key={p._id} className={p.isAvailable ? '' : 'text-gray-500'}>
+                    <td className="p-3">
+                      <div className="flex items-center gap-3">
+                        <Thumb src={p.imageUrl || p.image} alt={p.name} />
+                        <div className="min-w-0">
+                          <p className="font-semibold text-white">{p.name}</p>
+                          <p className="mt-0.5 text-xs text-gray-500">
+                            {[typeof specs.weight === 'string' ? specs.weight : null, p.isVegetarian ? 'Veg' : 'Non-veg', p.isEliteOnly ? 'Elite only' : null, specs.bookingOnly ? 'Booking only' : null].filter(Boolean).join(' · ')}
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="p-3 text-gray-300">{p.category || '—'}</td>
+                    <td className="p-3 text-right font-semibold text-white">₹{Number(p.price).toLocaleString('en-IN')}</td>
+                    <td className="p-3 text-right text-gray-400">{Number.isFinite(mrp) && mrp > Number(p.price) ? `₹${mrp.toLocaleString('en-IN')}` : '—'}</td>
+                    <td className="p-3">
+                      <button type="button" disabled={!!busy[p._id]} onClick={() => toggleAvailability(p)} className={`rounded-full border px-2.5 py-1 text-xs font-semibold disabled:opacity-50 ${p.isAvailable ? 'border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/10' : 'border-red-500/30 text-red-300 hover:bg-red-500/10'}`} title="Click to switch">
+                        {p.isAvailable ? 'In stock' : 'Out of stock'}
+                      </button>
+                    </td>
+                    <td className="p-3 text-right">
+                      <button type="button" onClick={() => setEditing(p)} className="rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-gray-300 hover:text-white">Edit</button>
+                      <button type="button" disabled={!!busy[p._id]} onClick={() => deleteProduct(p)} className="ml-2 rounded-lg px-2 py-1.5 text-xs font-semibold text-red-400/70 hover:text-red-300 disabled:opacity-50">Delete</button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {editing && (
+        <ProductForm
+          initial={editing === 'new' ? null : editing}
+          storeName={store.name}
+          categories={categories}
+          onCancel={() => setEditing(null)}
+          onSave={saveProduct}
         />
-        {!rest.isActive && (
-           <div className="absolute inset-0 bg-red-900/40 flex items-center justify-center">
-              <span className="text-[9px] font-black text-white bg-red-600 px-2 py-0.5 rounded uppercase tracking-widest">Deactivated</span>
-           </div>
-        )}
-        {rest.isActive && rest.isOffline && (
-           <div className="absolute inset-0 bg-amber-900/40 flex flex-col items-center justify-center backdrop-blur-[1px]">
-              <span className="text-xl mb-1">⚠️</span>
-              <span className="text-[8px] font-black text-white bg-amber-600 px-2 py-0.5 rounded uppercase tracking-widest text-center">Store Marked<br/>Offline</span>
-           </div>
-        )}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex justify-between items-start">
-           <span className={`text-[8px] font-black uppercase tracking-[0.2em] mb-1 ${rest.isActive ? 'text-emerald-500' : 'text-red-500'}`}>{rest.vendorType || 'RESTAURANT'}</span>
-           <button onClick={() => onDelete(rest._id)} className="text-red-500/30 hover:text-red-500 hover:scale-125 transition-all text-xs">✕</button>
-        </div>
-        <h4 className="text-xl font-black text-white uppercase tracking-tight truncate">{rest.name}</h4>
-        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">📍 {rest.location}</p>
-        <div className="flex gap-2 mt-3">
-           <button 
-             onClick={() => onToggleStatus(rest)}
-             className={`px-3 py-1 rounded-lg border text-[8px] font-black uppercase tracking-widest transition-all ${rest.isActive ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/30' : 'bg-red-500 border-red-500 text-white'}`}
-           >
-             {rest.isActive ? '⚡ Active' : '🌑 Inactive'}
-           </button>
-        </div>
-      </div>
+      )}
     </div>
-    <div className="flex items-center justify-between pt-6 border-t border-white/5 mt-auto">
-       <div className="flex flex-col">
-          <span className="text-[8px] font-black text-gray-500 uppercase tracking-widest">Revenue Split</span>
-          <span className="text-sm font-black text-white">{rest.commissionRate}{rest.commissionType === 'percentage' ? '%' : '₹'}</span>
-       </div>
-       <div className="flex gap-2 items-center">
-          <button 
-            onClick={() => onEdit(rest)}
-            className="px-4 py-2.5 bg-white/5 border border-white/10 rounded-2xl text-[9px] font-black uppercase tracking-widest text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/20 transition-all"
-          >
-            Edit
-          </button>
-          <button 
-            onClick={() => onManage(rest)}
-            className="px-6 py-2.5 bg-white/5 border border-white/10 rounded-2xl text-[9px] font-black uppercase tracking-widest text-white hover:bg-white/10 hover:border-white/20 transition-all"
-          >
-            Manage Assets →
-          </button>
-       </div>
-    </div>
-  </div>
-));
-RestaurantCard.displayName = 'RestaurantCard';
-
-const MenuItemCard = memo(({ item, onToggleElite, onToggleAvailability, onEdit, onDelete }: { 
-  item: MenuItem, 
-  onToggleElite: (i: MenuItem) => void, 
-  onToggleAvailability: (i: MenuItem) => void,
-  onEdit: (i: MenuItem) => void,
-  onDelete: (id: string) => void 
-}) => (
-  <div className={`glass-card p-6 group transition-all duration-300 ${!item.isAvailable ? 'opacity-60 grayscale-[0.5]' : ''} ${item.isEliteOnly ? 'border-[var(--zenvy-gold)]/30 bg-[var(--zenvy-gold)]/[0.02]' : 'border-white/5'}`}>
-     <div className="flex gap-6">
-        <div className="w-20 h-20 rounded-2xl overflow-hidden border border-white/10 shrink-0 relative bg-slate-900">
-           <Image src={item.imageUrl || item.image || "/assets/placeholder.png"} fill style={{ objectFit: 'cover' }} alt={item.name} />
-           {item.isEliteOnly && <div className="absolute top-1 left-1 bg-[var(--zenvy-gold)] text-black text-[7px] font-black px-1 rounded">ELITE</div>}
-           {!item.isAvailable && <div className="absolute inset-0 bg-red-900/40 flex items-center justify-center"><span className="text-[8px] font-black text-white bg-red-600 px-1.5 py-0.5 rounded uppercase">Out of Stock</span></div>}
-        </div>
-        <div className="flex-1 min-w-0 flex flex-col justify-between py-1">
-           <div>
-              <div className="flex justify-between items-start">
-                 <h5 className={`text-sm font-black text-white uppercase tracking-tight truncate ${!item.isAvailable ? 'line-through decoration-red-500/50' : ''}`}>{item.name}</h5>
-                 <button onClick={() => onDelete(item._id)} className="text-red-500/40 hover:text-red-500 text-[10px]">✕</button>
-              </div>
-              <div className="flex items-center gap-2">
-                 <p className="text-[10px] font-bold text-gray-500 uppercase">{item.category}</p>
-                 {item.isVegetarian && (
-                    <div className="w-2.5 h-2.5 border border-emerald-500/50 flex items-center justify-center p-[1px] rounded-[2px]">
-                       <div className="w-full h-full bg-emerald-500 rounded-full" />
-                    </div>
-                 )}
-              </div>
-           </div>
-           <div className="flex justify-between items-end">
-              <span className={`text-sm font-black ${item.isAvailable ? 'text-emerald-400' : 'text-gray-500'}`}>₹{item.price}</span>
-              <div className="flex gap-2">
-                 <button 
-                   onClick={() => onEdit(item)}
-                   className="p-1.5 rounded-lg border border-white/10 bg-white/5 text-gray-500 hover:text-white hover:border-white/20 transition-all"
-                   title="Edit Asset"
-                 >
-                   <span className="text-[8px] font-black uppercase">Edit</span>
-                 </button>
-                 <button 
-                   onClick={() => onToggleAvailability(item)}
-                   className={`p-1.5 rounded-lg border transition-all ${item.isAvailable ? 'bg-white/5 border-white/10 text-gray-500 hover:border-emerald-500/30' : 'bg-red-500 border-red-500 text-white'}`}
-                   title={item.isAvailable ? "Mark as Unavailable" : "Mark as Available"}
-                 >
-                   <span className="text-[8px] font-black uppercase">{item.isAvailable ? '📦 In Stock' : '🚫 Out of Stock'}</span>
-                 </button>
-                 <button 
-                   onClick={() => onToggleElite(item)}
-                   className={`p-1.5 rounded-lg border transition-all ${item.isEliteOnly ? 'bg-[var(--zenvy-gold)] border-[var(--zenvy-gold)] text-black' : 'bg-white/5 border-white/10 text-gray-500 hover:border-white/20'}`}
-                 >
-                   <span className="text-[8px] font-black uppercase">{item.isEliteOnly ? '★ Elite' : '☆ Standard'}</span>
-                 </button>
-              </div>
-           </div>
-        </div>
-     </div>
-  </div>
-));
-MenuItemCard.displayName = 'MenuItemCard';
-
+  );
+}

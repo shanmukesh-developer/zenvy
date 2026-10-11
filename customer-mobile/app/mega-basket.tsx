@@ -1,17 +1,14 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert, Modal, Dimensions, Platform, Image } from 'react-native';
-import { useRouter } from 'expo-router';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert, Platform, RefreshControl, KeyboardAvoidingView, Linking } from 'react-native';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { COLORS, SHADOWS, RADIUS } from '../constants/theme';
 import { ENDPOINTS, API_URL } from '../constants/api';
 import { apiFetch } from '../utils/auth';
+import { connectSocket } from '../utils/socket';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { io, Socket } from 'socket.io-client';
 import { StaggeredSection, FloatingPulse, BounceIn } from '../components/AnimatedSection';
 import { LinearGradient } from 'expo-linear-gradient';
-import Clipboard from '@react-native-clipboard/clipboard';
-
-const { width: SW } = Dimensions.get('window');
 
 interface BasketItem {
   id?: string;
@@ -19,41 +16,45 @@ interface BasketItem {
   quantity: number;
   unit: string;
   priceEstimated: number;
-  priceActual?: number;
-  status: 'Pending' | 'Approved' | 'Unavailable';
+  priceActual?: number | null;
+  status: 'Pending' | 'Approved' | 'Unavailable' | string;
 }
 
 interface MegaBasket {
   id: string;
   status: 'Created' | 'PaidEstimate' | 'PartnerAssigned' | 'Shopping' | 'PriceApprovalPending' | 'Approved' | 'Purchased' | 'Delivering' | 'Delivered';
   estimatedTotal: number;
-  actualTotal?: number;
+  actualTotal?: number | null;
   shoppingFee: number;
   deliveryFee: number;
   deliveryAddress: string;
-  deliveryPin: string;
-  paymentMethod: 'COD' | 'UPI';
+  deliveryPin?: string;
+  paymentMethod: 'COD';
   paymentStatus: 'Pending' | 'Completed';
-  upiUTR?: string;
   items: BasketItem[];
   deliveryPartner?: {
+    id?: string;
     name: string;
     phone: string;
     photoUrl?: string;
-  };
+  } | null;
   createdAt: string;
 }
 
-const QUICK_ITEMS = [
-  { name: 'Fresh Lemon', unit: '3 pcs', priceEstimated: 10, category: '🍋 Fruits' },
-  { name: 'Fresh Garlic', unit: '250 g', priceEstimated: 65, category: '🧄 Veggies' },
-  { name: '24 MANTRA Organic Honey', unit: '500 g', priceEstimated: 380, category: '🍯 Wellness' },
-  { name: 'Fresh Ginger', unit: '100 g', priceEstimated: 35, category: '🧄 Veggies' },
-  { name: 'Organic Toor Dal', unit: '1 kg', priceEstimated: 159, category: '🌾 Staples' },
-  { name: 'Cardamom Green', unit: '20 g', priceEstimated: 95, category: '🌶️ Masalas' },
-  { name: 'Pure Ghee Jar', unit: '500 ml', priceEstimated: 340, category: '🥛 Dairy' },
-  { name: 'Fortune Sunflower Oil', unit: '1 L', priceEstimated: 120, category: '🌻 Oils' }
-];
+/** Popular essentials from the campus Kirana store (GET /api/catalogue/items?type=grocery). Prices are shop estimates. */
+interface QuickItem {
+  id: string;
+  name: string;
+  unit: string;
+  priceEstimated: number;
+  category: string;
+}
+
+const NUM = (v: any) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+const money = (n: any) => `₹${Math.round(NUM(n) * 100) / 100}`;
+const basketTotal = (b: MegaBasket) =>
+  NUM(b.actualTotal ?? b.estimatedTotal) + NUM(b.shoppingFee) + NUM(b.deliveryFee);
+const cleanRoom = (room: any) => String(room || '').replace(/^\s*room\s*/i, '').trim();
 
 export default function MegaBasketScreen() {
   const router = useRouter();
@@ -65,145 +66,185 @@ export default function MegaBasketScreen() {
   const bg = colors.bg;
   const border = colors.border;
   const goldColor = isDark ? COLORS.gold : colors.gold;
-  
-  const [activeTab, setActiveTab] = useState<'new' | 'list'>('new');
-  
+
+  // Checkout opens this screen with ?tab=list after sending a shopping list, so the student sees it straight away.
+  const { tab: tabParam } = useLocalSearchParams<{ tab?: string | string[] }>();
+  const initialTab = (Array.isArray(tabParam) ? tabParam[0] : tabParam) === 'list' ? 'list' : 'new';
+  const [activeTab, setActiveTab] = useState<'new' | 'list'>(initialTab);
+
   // Form States
   const [items, setItems] = useState<BasketItem[]>([]);
   const [customName, setCustomName] = useState('');
-  const [customQty, setCustomQty] = useState(1);
+  const [customQty, setCustomQty] = useState('1');
   const [customUnit, setCustomUnit] = useState('pcs');
-  const [customPrice, setCustomPrice] = useState(20);
-  const [deliveryAddress, setDeliveryAddress] = useState(
-    user?.defaultAddress || ((user as any)?.hostelBlock && (user as any)?.roomNumber ? `Block ${(user as any).hostelBlock}, Room ${(user as any).roomNumber}` : '')
-  );
-  const [paymentMethod, setPaymentMethod] = useState<'COD' | 'UPI'>('COD');
-  const [upiUTR, setUpiUTR] = useState('');
+  const [customPrice, setCustomPrice] = useState('');
+  const [deliveryAddress, setDeliveryAddress] = useState(() => {
+    const u: any = user;
+    const block = u?.hostelBlock;
+    const room = cleanRoom(u?.roomNumber);
+    if (block && room) return `${block}, Room ${room}`;
+    return u?.address || '';
+  });
+  // The profile may load (or the user may sign in) after this screen opens
+  useEffect(() => {
+    const u: any = user;
+    if (!u) return;
+    const block = u.hostelBlock;
+    const room = cleanRoom(u.roomNumber);
+    const fromProfile = block && room ? `${block}, Room ${room}` : (u.address || '');
+    if (fromProfile) setDeliveryAddress((prev: string) => prev || String(fromProfile));
+  }, [user]);
   const [placing, setPlacing] = useState(false);
-  const [showUpiModal, setShowUpiModal] = useState(false);
-  const [createdBasketId, setCreatedBasketId] = useState<string | null>(null);
+  const placingRef = useRef(false);
+
+  // Popular essentials (real catalogue items)
+  const [quickItems, setQuickItems] = useState<QuickItem[]>([]);
+  const [quickLoading, setQuickLoading] = useState(true);
 
   // Lists & Live updates
   const [baskets, setBaskets] = useState<MegaBasket[]>([]);
-  const [selectedBasket, setSelectedBasket] = useState<MegaBasket | null>(null);
+  const [selectedBasketId, setSelectedBasketId] = useState<string | null>(null);
   const [loadingBaskets, setLoadingBaskets] = useState(false);
+  const [basketsError, setBasketsError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [approvingPrice, setApprovingPrice] = useState(false);
+  const approvingRef = useRef(false);
+  const [liveNote, setLiveNote] = useState<string | null>(null);
+  const liveNoteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const socketRef = useRef<Socket | null>(null);
+  const mountedRef = useRef(true);
+  useEffect(() => () => {
+    mountedRef.current = false;
+    if (liveNoteTimer.current) clearTimeout(liveNoteTimer.current);
+  }, []);
 
-  useEffect(() => {
-    if (!user) {
-      Alert.alert(
-        'Authentication Required',
-        'Please sign in to order or manage daily essentials.',
-        [
-          { text: 'Cancel', onPress: () => router.replace('/(tabs)' as any), style: 'cancel' },
-          { text: 'Sign In', onPress: () => router.push('/login' as any) }
-        ],
-        { cancelable: false }
-      );
-      return;
-    }
-    fetchBaskets();
-  }, [user]);
+  const selectedBasket = useMemo(
+    () => baskets.find((b) => String(b.id) === String(selectedBasketId)) || null,
+    [baskets, selectedBasketId]
+  );
+  const activeBaskets = useMemo(() => baskets.filter((b) => b.status !== 'Delivered'), [baskets]);
+  const pastBaskets = useMemo(() => baskets.filter((b) => b.status === 'Delivered'), [baskets]);
 
-  // Socket Connection for selected basket (keyed only on basket id to prevent reconnect thrashing)
-  const selectedBasketId = selectedBasket?.id;
-  useEffect(() => {
-    if (!selectedBasketId) {
-      if (socketRef.current) {
-        socketRef.current.disconnect();
-        socketRef.current = null;
-      }
-      return;
-    }
-
-    const basketIdStr = selectedBasketId.toString();
-    const socket = io(API_URL, { transports: ['websocket', 'polling'] });
-    socketRef.current = socket;
-
-    socket.on('connect', () => {
-      socket.emit('joinRoom', basketIdStr);
-      console.log('[SOCKET] Mobile joined basket room:', basketIdStr);
-    });
-
-    socket.on('statusUpdated', (data: { id: string; status: MegaBasket['status']; actualTotal?: number }) => {
-      if (String(data.id) === String(selectedBasketId)) {
-        Alert.alert('Status Updated', `Basket status is now: ${data.status}!`);
-        setSelectedBasket(prev => prev ? { ...prev, status: data.status, actualTotal: data.actualTotal ?? prev.actualTotal } : null);
-        fetchBaskets();
-      }
-    });
-
-    socket.on('basket_item_updated', (item: BasketItem) => {
-      Alert.alert('Item Updated', `Rider updated item: ${item.name}!`);
-      setSelectedBasket(prev => {
-        if (!prev) return null;
-        const updatedItems = prev.items.map(i => i.name === item.name ? { ...i, ...item } : i);
-        return { ...prev, items: updatedItems };
-      });
-      fetchBaskets();
-    });
-
-    return () => {
-      socket.disconnect();
-    };
-  }, [selectedBasketId]);
-
-  const fetchBaskets = async () => {
-    setLoadingBaskets(true);
+  const fetchBaskets = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoadingBaskets(true);
     try {
       const res = await apiFetch(ENDPOINTS.megaBasketList);
-      if (res.ok) {
-        const data = await res.json();
-        setBaskets(data);
-        if (selectedBasket) {
-          const fresh = data.find((b: MegaBasket) => b.id === selectedBasket.id);
-          if (fresh) setSelectedBasket(fresh);
-        }
+      const data = await res.json().catch(() => null);
+      if (!mountedRef.current) return;
+      if (res.ok && Array.isArray(data)) {
+        setBaskets(data.map((b: any) => ({ ...b, items: Array.isArray(b?.items) ? b.items : [] })));
+        setBasketsError(null);
+      } else {
+        setBasketsError((data && typeof data.message === 'string' && data.message) || 'We could not load your baskets.');
       }
-    } catch (err) {
-      console.error(err);
+    } catch {
+      if (mountedRef.current) setBasketsError("Can't reach Zenvy right now. Check your internet and try again.");
     } finally {
-      setLoadingBaskets(false);
+      if (mountedRef.current) setLoadingBaskets(false);
     }
-  };
+  }, []);
 
-  const handleQuickAdd = (item: typeof QUICK_ITEMS[0]) => {
-    const exists = items.find(i => i.name === item.name);
-    if (exists) {
-      setItems(prev => prev.map(i => i.name === item.name ? { ...i, quantity: i.quantity + 1 } : i));
-    } else {
-      setItems(prev => [...prev, {
-        name: item.name,
-        quantity: 1,
-        unit: item.unit,
-        priceEstimated: item.priceEstimated,
-        status: 'Pending'
-      }]);
-    }
+  useEffect(() => {
+    if (user) fetchBaskets();
+  }, [user, fetchBaskets]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/catalogue/items?type=grocery&limit=8`);
+        const data = await res.json().catch(() => null);
+        if (cancelled) return;
+        const list = res.ok && data && Array.isArray(data.items) ? data.items : [];
+        setQuickItems(list
+          .filter((it: any) => it && it.name && it.isAvailable !== false)
+          .slice(0, 8)
+          .map((it: any) => ({
+            id: String(it.id || it._id || it.name),
+            name: String(it.name),
+            unit: String(it.weight || 'pcs'),
+            priceEstimated: NUM(it.price),
+            category: String(it.category || 'Essentials'),
+          })));
+      } catch {
+        if (!cancelled) setQuickItems([]);
+      } finally {
+        if (!cancelled) setQuickLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const showLiveNote = useCallback((note: string) => {
+    setLiveNote(note);
+    if (liveNoteTimer.current) clearTimeout(liveNoteTimer.current);
+    liveNoteTimer.current = setTimeout(() => { if (mountedRef.current) setLiveNote(null); }, 4000);
+  }, []);
+
+  // Live updates for the open basket (the server only sends them to the owner's basket room)
+  useEffect(() => {
+    if (!selectedBasketId) return;
+    const room = String(selectedBasketId);
+    const socket = connectSocket();
+    const join = () => socket.emit('joinRoom', room);
+    if (socket.connected) join();
+
+    const onStatus = (data: { id?: string; status?: MegaBasket['status']; actualTotal?: number }) => {
+      if (!data || String(data.id) !== room || !data.status) return;
+      setBaskets((prev) => prev.map((b) => (String(b.id) === room
+        ? { ...b, status: data.status as MegaBasket['status'], actualTotal: data.actualTotal ?? b.actualTotal }
+        : b)));
+      showLiveNote(`Update: ${getStatusLabel(data.status)}`);
+      fetchBaskets({ silent: true });
+    };
+    const onItem = (item: BasketItem) => {
+      if (!item || !item.name) return;
+      setBaskets((prev) => prev.map((b) => (String(b.id) === room
+        ? { ...b, items: b.items.map((i) => ((item.id && i.id === item.id) || (!item.id && i.name === item.name) ? { ...i, ...item } : i)) }
+        : b)));
+      showLiveNote(`Your shopper updated ${item.name}`);
+    };
+
+    socket.on('connect', join);
+    socket.on('statusUpdated', onStatus);
+    socket.on('basket_item_updated', onItem);
+    return () => {
+      socket.off('connect', join);
+      socket.off('statusUpdated', onStatus);
+      socket.off('basket_item_updated', onItem);
+    };
+  }, [selectedBasketId, fetchBaskets, showLiveNote]);
+
+  const handleQuickAdd = (item: QuickItem) => {
+    setItems(prev => {
+      const exists = prev.find(i => i.name === item.name);
+      if (exists) return prev.map(i => i.name === item.name ? { ...i, quantity: Math.min(50, i.quantity + 1) } : i);
+      return [...prev, { name: item.name, quantity: 1, unit: item.unit, priceEstimated: item.priceEstimated, status: 'Pending' }];
+    });
   };
 
   const handleAddCustom = () => {
-    if (!customName.trim()) {
-      Alert.alert('Item Name Required', 'Please enter a grocery or essentials item name.');
+    const name = customName.trim();
+    if (!name) {
+      Alert.alert('What should we buy?', 'Type the item name, for example "Tomato ketchup" or "Blue pen".');
       return;
     }
-    const exists = items.find(i => i.name.toLowerCase() === customName.trim().toLowerCase());
-    if (exists) {
-      Alert.alert('Warning', 'Item already in list.');
+    const qty = Math.min(50, Math.max(1, parseInt(customQty, 10) || 1));
+    const price = Math.max(0, parseFloat(customPrice) || 0);
+    if (items.find(i => i.name.toLowerCase() === name.toLowerCase())) {
+      Alert.alert('Already on your list', `"${name}" is already in your shopping list. Change the quantity there instead.`);
       return;
     }
     setItems(prev => [...prev, {
-      name: customName.trim(),
-      quantity: customQty,
-      unit: customUnit,
-      priceEstimated: customPrice,
+      name,
+      quantity: qty,
+      unit: customUnit.trim() || 'pcs',
+      priceEstimated: price,
       status: 'Pending'
     }]);
     setCustomName('');
-    setCustomQty(1);
-    setCustomPrice(20);
+    setCustomQty('1');
+    setCustomPrice('');
   };
 
   const handleRemoveItem = (index: number) => {
@@ -214,106 +255,85 @@ export default function MegaBasketScreen() {
     return items.reduce((acc, curr) => acc + (curr.priceEstimated * curr.quantity), 0);
   }, [items]);
 
+  // Same fees the server charges (megaBasketController.createBasket)
   const shoppingFee = 30;
   const deliveryFee = 20;
   const grandTotal = subtotal + shoppingFee + deliveryFee;
 
   const handlePlaceOrder = async () => {
-    if (items.length === 0) {
-      Alert.alert('Basket Empty', 'Your custom essentials basket has no items. Add at least one item to proceed.');
+    if (placingRef.current) return;
+    if (!user) {
+      router.push('/login' as any);
       return;
     }
-    if (!deliveryAddress.trim()) {
-      Alert.alert('Delivery Address Required', 'Please enter your hostel block and room number for delivery.');
+    if (items.length === 0) {
+      Alert.alert('Your list is empty', 'Add at least one item for your shopper to buy.');
+      return;
+    }
+    if (deliveryAddress.trim().length < 3) {
+      Alert.alert('Where should we deliver?', 'Add your hostel block and room number.');
       return;
     }
 
+    placingRef.current = true;
     setPlacing(true);
     try {
       const res = await apiFetch(ENDPOINTS.megaBasketCreate, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          items,
-          deliveryAddress,
-          paymentMethod
+          items: items.map(({ name, quantity, unit, priceEstimated }) => ({ name, quantity, unit, priceEstimated })),
+          deliveryAddress: deliveryAddress.trim(),
+          paymentMethod: 'COD',
         })
       });
+      const data = await res.json().catch(() => null);
+      if (!mountedRef.current) return;
 
-      if (res.ok) {
-        const basket = await res.json();
-        setCreatedBasketId(basket.id);
-        if (paymentMethod === 'UPI') {
-          setShowUpiModal(true);
-        } else {
-          Alert.alert('Success', 'Essentials basket order placed!');
-          setItems([]);
-          fetchBaskets();
-          setSelectedBasket(basket);
-          setActiveTab('list');
-        }
-      } else {
-        const err = await res.json().catch(() => ({}));
-        Alert.alert('Order Notice', err.message || 'Unable to place custom basket order. Please try again.');
-      }
-    } catch (error) {
-      Alert.alert('Connection Notice', 'Network connection issue while placing order. Please check your connection and retry.');
-    } finally {
-      setPlacing(false);
-    }
-  };
-
-  const handleUpiSubmit = async () => {
-    if (!upiUTR.trim() || upiUTR.trim().length < 6) {
-      Alert.alert('UTR Required', 'Please enter a valid UPI Reference / UTR Number (minimum 6 digits).');
-      return;
-    }
-    if (!createdBasketId) return;
-
-    try {
-      const res = await apiFetch(ENDPOINTS.megaBasketPay(createdBasketId), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ upiUTR })
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        Alert.alert('Verified', 'Payment submitted! Awaiting dispatch.');
-        setShowUpiModal(false);
-        setUpiUTR('');
+      if (res.ok && data && data.id) {
         setItems([]);
-        fetchBaskets();
-        setSelectedBasket(data.basket);
+        setBaskets(prev => [{ ...data, items: Array.isArray(data.items) ? data.items : [] }, ...prev.filter(b => b.id !== data.id)]);
+        setSelectedBasketId(String(data.id));
         setActiveTab('list');
+        Alert.alert('Shopping list sent 🛒', 'A shopper will pick it up soon. You will approve the real shop prices before they buy.');
       } else {
-        const err = await res.json().catch(() => ({}));
-        Alert.alert('Payment Notice', err.message || 'Payment submission could not be processed. Please verify your UTR.');
+        Alert.alert('Not placed yet', (res.status < 500 && data && typeof data.message === 'string' && data.message) || 'We could not place your basket. Please try again.');
       }
-    } catch (err) {
-      Alert.alert('Connection Notice', 'Network issue during payment submission. Please check your connection and retry.');
+    } catch {
+      Alert.alert('Connection problem', "Can't reach Zenvy right now. Check your internet and try again.");
+    } finally {
+      placingRef.current = false;
+      if (mountedRef.current) setPlacing(false);
     }
   };
 
   const handleApproveBill = async () => {
-    if (!selectedBasket) return;
+    if (!selectedBasket || approvingRef.current) return;
+    approvingRef.current = true;
     setApprovingPrice(true);
     try {
       const res = await apiFetch(ENDPOINTS.megaBasketApprove(selectedBasket.id), {
         method: 'POST'
       });
+      const data = await res.json().catch(() => null);
       if (res.ok) {
-        Alert.alert('Success', 'Prices approved! Rider is purchasing now.');
-        fetchBaskets();
+        Alert.alert('Approved ✅', (data && data.message) || 'Prices approved! Your shopper is buying now.');
+        fetchBaskets({ silent: true });
       } else {
-        const err = await res.json().catch(() => ({}));
-        Alert.alert('Approval Notice', err.message || 'Could not approve prices at this time. Please retry.');
+        Alert.alert('Not approved', (res.status < 500 && data && typeof data.message === 'string' && data.message) || 'We could not approve the prices. Please try again.');
+        fetchBaskets({ silent: true });
       }
-    } catch (err) {
-      Alert.alert('Connection Notice', 'Network connection issue. Please check your connection and retry.');
+    } catch {
+      Alert.alert('Connection problem', "Can't reach Zenvy right now. Check your internet and try again.");
     } finally {
-      setApprovingPrice(false);
+      approvingRef.current = false;
+      if (mountedRef.current) setApprovingPrice(false);
     }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchBaskets({ silent: true });
+    if (mountedRef.current) setRefreshing(false);
   };
 
   const getStatusStep = (status: MegaBasket['status']) => {
@@ -323,9 +343,9 @@ export default function MegaBasketScreen() {
 
   const getStatusLabel = (status: MegaBasket['status']) => {
     const labels: Record<MegaBasket['status'], string> = {
-      Created: 'Created (Awaiting Payment)',
-      PaidEstimate: 'Payment Verified (Finding Rider)',
-      PartnerAssigned: 'Rider Claimed Job',
+      Created: 'Placed',
+      PaidEstimate: 'Finding a shopper for you',
+      PartnerAssigned: 'Shopper assigned',
       Shopping: 'Rider is in the Shop 🛒',
       PriceApprovalPending: 'Price Approval Required 🚨',
       Approved: 'Prices Approved by You',
@@ -339,7 +359,7 @@ export default function MegaBasketScreen() {
 
 
   return (
-    <View style={[s.container, { backgroundColor: bg }]}>
+    <KeyboardAvoidingView style={[s.container, { backgroundColor: bg }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       {/* Header */}
       <View style={[s.header, { borderBottomColor: border }]}>
         <TouchableOpacity 
@@ -364,7 +384,7 @@ export default function MegaBasketScreen() {
       <View style={[s.tabRow, { backgroundColor: cardBg, borderColor: border }]}>
         <TouchableOpacity 
           style={[s.tabBtn, activeTab === 'new' && s.tabBtnActive]} 
-          onPress={() => { setActiveTab('new'); setSelectedBasket(null); }}
+          onPress={() => { setActiveTab('new'); setSelectedBasketId(null); }}
         >
           {activeTab === 'new' ? (
             <LinearGradient
@@ -378,7 +398,7 @@ export default function MegaBasketScreen() {
         </TouchableOpacity>
         <TouchableOpacity 
           style={[s.tabBtn, activeTab === 'list' && s.tabBtnActive]} 
-          onPress={() => { setActiveTab('list'); fetchBaskets(); }}
+          onPress={() => { setActiveTab('list'); if (user) fetchBaskets({ silent: baskets.length > 0 }); }}
         >
           {activeTab === 'list' ? (
             <LinearGradient
@@ -389,7 +409,7 @@ export default function MegaBasketScreen() {
             />
           ) : null}
           <Text style={[s.tabLabel, activeTab === 'list' && s.tabLabelActive]}>
-            ACTIVE BASKETS ({baskets.filter(b => b.status !== 'Delivered').length})
+            MY BASKETS ({activeBaskets.length})
           </Text>
         </TouchableOpacity>
       </View>
@@ -399,53 +419,34 @@ export default function MegaBasketScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
+        refreshControl={activeTab === 'list' && user ? <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.red} colors={[COLORS.red]} /> : undefined}
       >
         {activeTab === 'new' ? (
           <View style={s.scrollContent}>
-            {/* Apartment & Hostel Group Buying Hero Card */}
-            <StaggeredSection delay={20} direction="down">
-              <View style={{
-                borderRadius: 20,
-                borderWidth: 1.5,
-                borderColor: '#F59E0B',
-                backgroundColor: isDark ? 'rgba(245, 158, 11, 0.1)' : '#FEF3C7',
-                padding: 16,
-                marginBottom: 16,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 12
-              }}>
+            {!user && (
+              <TouchableOpacity style={[s.card, { backgroundColor: cardBg, borderColor: border, flexDirection: 'row', alignItems: 'center', gap: 12 }]} onPress={() => router.push('/login' as any)} activeOpacity={0.85}>
+                <Text style={{ fontSize: 22 }}>🔐</Text>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 9, fontWeight: '900', color: '#B45309', letterSpacing: 1.5 }}>🏢 APARTMENT & HOSTEL BULK HUB</Text>
-                  <Text style={{ fontSize: 13, fontWeight: '900', color: isDark ? '#FFF' : '#78350F', marginTop: 2 }}>
-                    {(user as any)?.hostelBlock ? `Block ${(user as any).hostelBlock} Basket` : 'Apartment Essentials Hub'}
-                  </Text>
-                  <Text style={{ fontSize: 10, fontWeight: '600', color: isDark ? 'rgba(255,255,255,0.7)' : '#92400E', marginTop: 2, lineHeight: 14 }}>
-                    Order Kirana & groceries in bulk with flatmates. Real-time prices verified directly at shop door!
-                  </Text>
+                  <Text style={[s.listItemName, { color: txt }]}>Sign in to send a shopping list</Text>
+                  <Text style={s.listItemSub}>You can build your list now — sign in to place it.</Text>
                 </View>
-                <TouchableOpacity 
-                  style={{ backgroundColor: '#F59E0B', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 14, elevation: 2 }}
-                  onPress={() => {
-                    Clipboard.setString(`🛒 Join our Apartment Bulk Basket on Zenvy! Delivery location: ${deliveryAddress || 'Apartment Block'}. Order together for fast Kirana dispatch!`);
-                    Alert.alert('📲 Copied Invite Link', 'Share this message with your apartment flatmates to order together!');
-                  }}
-                >
-                  <Text style={{ fontSize: 10, fontWeight: '900', color: '#000' }}>INVITE 📲</Text>
-                </TouchableOpacity>
-              </View>
-            </StaggeredSection>
+                <Text style={{ color: COLORS.red, fontWeight: '900', fontSize: 11 }}>SIGN IN →</Text>
+              </TouchableOpacity>
+            )}
             {/* Quick Add */}
             <StaggeredSection delay={50} direction="up">
               <View style={[s.card, { backgroundColor: cardBg, borderColor: border }]}>
                 <Text style={s.cardTitle}>QUICK ADD ESSENTIALS</Text>
                 <View style={s.quickGrid}>
-                  {QUICK_ITEMS.map((item, idx) => (
-                    <TouchableOpacity key={idx} style={[s.quickItem, { borderColor: border }]} onPress={() => handleQuickAdd(item)}>
-                      <Text style={s.quickCat}>{item.category}</Text>
+                  {quickLoading ? (
+                    <ActivityIndicator color={COLORS.red} style={{ marginVertical: 12, alignSelf: 'center', flex: 1 }} />
+                  ) : quickItems.length === 0 ? (
+                    <Text style={[s.listItemSub, { paddingVertical: 8 }]}>Type anything you need below — your shopper buys it from the nearest store.</Text>
+                  ) : quickItems.map((item) => (
+                    <TouchableOpacity key={item.id} style={[s.quickItem, { borderColor: border }]} onPress={() => handleQuickAdd(item)}>
+                      <Text style={s.quickCat} numberOfLines={1}>{item.category}</Text>
                       <Text style={[s.quickName, { color: txt }]} numberOfLines={1}>{item.name}</Text>
-                      <Text style={s.quickPrice}>Est. ₹{item.priceEstimated}</Text>
+                      <Text style={s.quickPrice}>Est. {money(item.priceEstimated)}{item.unit && item.unit !== 'pcs' ? ` · ${item.unit}` : ''}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -466,8 +467,10 @@ export default function MegaBasketScreen() {
                       <TextInput 
                         style={[s.input, { color: txt, borderColor: border, textAlign: 'center' }]}
                         keyboardType="numeric"
-                        value={customQty.toString()}
-                        onChangeText={(val) => setCustomQty(Math.max(1, parseInt(val) || 1))}
+                        value={customQty}
+                        maxLength={2}
+                        onChangeText={(val) => setCustomQty(val.replace(/[^0-9]/g, ''))}
+                        onBlur={() => { if (!customQty || parseInt(customQty, 10) < 1) setCustomQty('1'); }}
                       />
                     </View>
                     <View style={{ flex: 1.5, marginHorizontal: 8 }}>
@@ -485,8 +488,11 @@ export default function MegaBasketScreen() {
                       <TextInput 
                         style={[s.input, { color: txt, borderColor: border, textAlign: 'center' }]}
                         keyboardType="numeric"
-                        value={customPrice.toString()}
-                        onChangeText={(val) => setCustomPrice(Math.max(0, parseFloat(val) || 0))}
+                        value={customPrice}
+                        maxLength={6}
+                        placeholder="₹ approx."
+                        placeholderTextColor={txtSec}
+                        onChangeText={(val) => setCustomPrice(val.replace(/[^0-9.]/g, ''))}
                       />
                     </View>
                   </View>
@@ -507,9 +513,9 @@ export default function MegaBasketScreen() {
                       <View key={idx} style={[s.listItem, { borderColor: border }]}>
                         <View style={{ flex: 1 }}>
                           <Text style={[s.listItemName, { color: txt }]}>{item.name}</Text>
-                          <Text style={s.listItemSub}>{item.quantity} {item.unit} • Est. ₹{item.priceEstimated}/unit</Text>
+                          <Text style={s.listItemSub}>{item.quantity} {item.unit} • Est. {money(item.priceEstimated)}/unit</Text>
                         </View>
-                        <Text style={s.listItemPrice}>₹{item.priceEstimated * item.quantity}</Text>
+                        <Text style={s.listItemPrice}>{money(item.priceEstimated * item.quantity)}</Text>
                         <TouchableOpacity style={s.removeBtn} onPress={() => handleRemoveItem(idx)}>
                           <Text style={s.removeText}>✕</Text>
                         </TouchableOpacity>
@@ -521,7 +527,7 @@ export default function MegaBasketScreen() {
                   <View style={[s.summaryContainer, { borderTopColor: border }]}>
                     <View style={s.summaryRow}>
                       <Text style={{ color: txtSec, fontSize: 10 }}>Items Subtotal</Text>
-                      <Text style={{ color: txt, fontSize: 10 }}>₹{subtotal}</Text>
+                      <Text style={{ color: txt, fontSize: 10 }}>{money(subtotal)}</Text>
                     </View>
                     <View style={s.summaryRow}>
                       <Text style={{ color: txtSec, fontSize: 10 }}>Personal Shopper Fee</Text>
@@ -533,7 +539,7 @@ export default function MegaBasketScreen() {
                     </View>
                     <View style={[s.summaryRow, s.grandTotalRow, { borderTopColor: border }]}>
                       <Text style={{ color: txt, fontSize: 12, fontWeight: '900' }}>Estimated Total Bill</Text>
-                      <Text style={{ color: COLORS.red, fontSize: 14, fontWeight: '900' }}>₹{grandTotal}</Text>
+                      <Text style={{ color: COLORS.red, fontSize: 14, fontWeight: '900' }}>{money(grandTotal)}</Text>
                     </View>
                   </View>
                 </View>
@@ -553,20 +559,13 @@ export default function MegaBasketScreen() {
                   onChangeText={setDeliveryAddress}
                 />
 
-                <Text style={[s.inputLabel, { marginTop: 12 }]}>Payment Method</Text>
-                <View style={s.paymentRow}>
-                  <TouchableOpacity 
-                    style={[s.paymentBtn, paymentMethod === 'COD' && s.paymentBtnActive, { borderColor: border }]} 
-                    onPress={() => setPaymentMethod('COD')}
-                  >
-                    <Text style={[s.paymentBtnText, paymentMethod === 'COD' && { color: '#FFF' }]}>CASH / COD</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={[s.paymentBtn, paymentMethod === 'UPI' && s.paymentBtnActive, { borderColor: border }]} 
-                    onPress={() => setPaymentMethod('UPI')}
-                  >
-                    <Text style={[s.paymentBtnText, paymentMethod === 'UPI' && { color: '#FFF' }]}>PAY UPI ADVANCE</Text>
-                  </TouchableOpacity>
+                <Text style={[s.inputLabel, { marginTop: 12 }]}>Payment</Text>
+                <View style={[s.listItem, { borderColor: border }]}>
+                  <Text style={{ fontSize: 18, marginRight: 10 }}>💵</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[s.listItemName, { color: txt }]}>Cash on Delivery</Text>
+                    <Text style={s.listItemSub}>You approve the real shop bill first, then pay the rider in cash.</Text>
+                  </View>
                 </View>
               </View>
             </StaggeredSection>
@@ -577,7 +576,7 @@ export default function MegaBasketScreen() {
                 {placing ? (
                   <ActivityIndicator size="small" color="#FFF" />
                 ) : (
-                  <Text style={s.placeOrderText}>PLACE SHOPPING ORDER (EST. ₹{grandTotal})</Text>
+                  <Text style={s.placeOrderText}>PLACE SHOPPING ORDER (EST. {money(grandTotal)})</Text>
                 )}
               </TouchableOpacity>
             </FloatingPulse>
@@ -586,18 +585,27 @@ export default function MegaBasketScreen() {
           <View style={s.scrollContent}>
             {selectedBasket ? (
               <View>
-                <TouchableOpacity style={s.backToListBtn} onPress={() => setSelectedBasket(null)}>
+                <TouchableOpacity style={s.backToListBtn} onPress={() => setSelectedBasketId(null)}>
                   <Text style={s.backToListText}>← BACK TO BASKETS LIST</Text>
                 </TouchableOpacity>
+
+                {!!liveNote && (
+                  <BounceIn delay={0}>
+                    <View style={[s.listItem, { borderColor: '#10B981', backgroundColor: 'rgba(16,185,129,0.08)', marginBottom: 12 }]}>
+                      <Text style={{ fontSize: 14, marginRight: 8 }}>🔔</Text>
+                      <Text style={[s.listItemName, { color: txt, flex: 1 }]}>{liveNote}</Text>
+                    </View>
+                  </BounceIn>
+                )}
 
                 <View style={[s.card, { backgroundColor: cardBg, borderColor: border }]}>
                   <View style={s.cardHeaderRow}>
                     <View>
                       <Text style={s.inputLabel}>BASKET CODE</Text>
-                      <Text style={s.basketCode}>#{selectedBasket.id.slice(-6).toUpperCase()}</Text>
+                      <Text style={s.basketCode}>#{String(selectedBasket.id).slice(-6).toUpperCase()}</Text>
                     </View>
                     <View style={s.statusBadge}>
-                      <Text style={s.statusBadgeText}>{selectedBasket.status.toUpperCase()}</Text>
+                      <Text style={s.statusBadgeText}>{getStatusLabel(selectedBasket.status).toUpperCase()}</Text>
                     </View>
                   </View>
 
@@ -612,14 +620,21 @@ export default function MegaBasketScreen() {
                         <View style={{ flex: 1 }}>
                           <Text style={s.partnerLabel}>PERSONAL SHOPPER</Text>
                           <Text style={[s.partnerName, { color: txt }]}>{selectedBasket.deliveryPartner.name}</Text>
-                          <Text style={s.partnerPhone}>Call: {selectedBasket.deliveryPartner.phone}</Text>
+                          {!!selectedBasket.deliveryPartner.phone && (
+                            <TouchableOpacity
+                              onPress={() => Linking.openURL(`tel:${String(selectedBasket.deliveryPartner?.phone || '').replace(/[^\d+]/g, '')}`).catch(() => Alert.alert('Could not start the call', 'Please dial the number from your phone app.'))}
+                              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                            >
+                              <Text style={s.partnerPhone}>📞 Call {selectedBasket.deliveryPartner.phone}</Text>
+                            </TouchableOpacity>
+                          )}
                         </View>
                       </View>
                     )}
                   </View>
 
                   {/* Delivery PIN Code */}
-                  {getStatusStep(selectedBasket.status) >= getStatusStep('Approved') && (
+                  {!!selectedBasket.deliveryPin && getStatusStep(selectedBasket.status) >= getStatusStep('Approved') && selectedBasket.status !== 'Delivered' && (
                     <View style={s.pinBox}>
                       <Text style={s.pinLabel}>SECURE DELIVERY PIN</Text>
                       <Text style={s.pinVal}>{selectedBasket.deliveryPin}</Text>
@@ -632,7 +647,7 @@ export default function MegaBasketScreen() {
                     <View style={s.approvalAlertBox}>
                       <Text style={s.approvalAlertTitle}>🚨 Price Approval Required</Text>
                       <Text style={s.approvalAlertDesc}>
-                        The shopper has uploaded actual prices. The actual total is ₹{selectedBasket.actualTotal}. Please approve the pricing below.
+                        Your shopper found the real shop prices. The items come to {money(selectedBasket.actualTotal)}. Approve to let them buy.
                       </Text>
                       <TouchableOpacity style={s.approveBtn} onPress={handleApproveBill} disabled={approvingPrice}>
                         {approvingPrice ? (
@@ -649,16 +664,16 @@ export default function MegaBasketScreen() {
                   <View style={{ gap: 8, marginBottom: 16 }}>
                     {selectedBasket.items.map((item, idx) => {
                       const isShopping = getStatusStep(selectedBasket.status) >= getStatusStep('Shopping');
-                      const actualPrice = item.priceActual !== undefined ? item.priceActual : null;
+                      const actualPrice = item.priceActual !== undefined && item.priceActual !== null ? Number(item.priceActual) : null;
                       
                       return (
                         <View key={idx} style={[s.listItem, { borderColor: border }]}>
                           <View style={{ flex: 1 }}>
-                            <Text style={[s.listItemName, item.status === 'Unavailable' && { textDecorationLine: 'line-through', color: '#ff6b6b' }, { color: txt }]}>
+                            <Text style={[s.listItemName, { color: txt }, item.status === 'Unavailable' && { textDecorationLine: 'line-through', color: '#ff6b6b' }]}>
                               {item.name}
                             </Text>
                             <Text style={s.listItemSub}>
-                              Qty: {item.quantity} {item.unit} • Est: ₹{item.priceEstimated}/unit
+                              Qty: {item.quantity} {item.unit} • Est: {money(item.priceEstimated)}/unit
                             </Text>
                           </View>
 
@@ -667,7 +682,7 @@ export default function MegaBasketScreen() {
                               <View style={s.unavailableBadge}><Text style={s.unavailableText}>Unavailable</Text></View>
                             ) : isShopping && actualPrice !== null ? (
                               <View style={{ alignItems: 'flex-end' }}>
-                                <Text style={s.actualItemPrice}>Actual: ₹{actualPrice * item.quantity}</Text>
+                                <Text style={s.actualItemPrice}>Actual: {money(actualPrice * item.quantity)}</Text>
                                 {actualPrice !== item.priceEstimated && (
                                   <Text style={[s.priceDiffText, { color: actualPrice > item.priceEstimated ? '#ff6b6b' : '#22c55e' }]}>
                                     {actualPrice > item.priceEstimated ? '↑ Higher' : '↓ Lower'}
@@ -675,7 +690,7 @@ export default function MegaBasketScreen() {
                                 )}
                               </View>
                             ) : (
-                              <Text style={[s.listItemPrice, { color: txtSec }]}>Est: ₹{item.priceEstimated * item.quantity}</Text>
+                              <Text style={[s.listItemPrice, { color: txtSec }]}>Est: {money(item.priceEstimated * item.quantity)}</Text>
                             )}
                           </View>
                         </View>
@@ -694,9 +709,9 @@ export default function MegaBasketScreen() {
                       <Text style={{ color: txt, fontSize: 10 }}>₹{selectedBasket.deliveryFee}</Text>
                     </View>
                     <View style={[s.summaryRow, s.grandTotalRow, { borderTopColor: border }]}>
-                      <Text style={{ color: txt, fontSize: 12, fontWeight: '900' }}>Grand Total Bill</Text>
+                      <Text style={{ color: txt, fontSize: 12, fontWeight: '900' }}>{selectedBasket.actualTotal != null ? 'Total (cash on delivery)' : 'Estimated total'}</Text>
                       <Text style={{ color: COLORS.red, fontSize: 14, fontWeight: '900' }}>
-                        ₹{(selectedBasket.actualTotal || selectedBasket.estimatedTotal) + selectedBasket.shoppingFee + selectedBasket.deliveryFee}
+                        {money(basketTotal(selectedBasket))}
                       </Text>
                     </View>
                   </View>
@@ -704,36 +719,61 @@ export default function MegaBasketScreen() {
               </View>
             ) : (
               <View>
-                {loadingBaskets && baskets.length === 0 ? (
+                {!user ? (
+                  <View style={s.emptyState}>
+                    <Text style={{ fontSize: 48, marginBottom: 12 }}>🔐</Text>
+                    <Text style={[s.emptyTitle, { color: txt }]}>SIGN IN TO SEE YOUR BASKETS</Text>
+                    <TouchableOpacity style={[s.addCustomBtn, { marginTop: 16, paddingHorizontal: 24 }]} onPress={() => router.push('/login' as any)}>
+                      <Text style={s.addCustomText}>SIGN IN</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : loadingBaskets && baskets.length === 0 ? (
                   <ActivityIndicator size="large" color={COLORS.red} style={{ marginTop: 40 }} />
+                ) : basketsError && baskets.length === 0 ? (
+                  <View style={s.emptyState}>
+                    <Text style={{ fontSize: 48, marginBottom: 12 }}>📡</Text>
+                    <Text style={[s.emptyTitle, { color: txt }]}>COULDN'T LOAD YOUR BASKETS</Text>
+                    <Text style={s.emptySub}>{basketsError}</Text>
+                    <TouchableOpacity style={[s.addCustomBtn, { marginTop: 16, paddingHorizontal: 24 }]} onPress={() => fetchBaskets()}>
+                      <Text style={s.addCustomText}>TRY AGAIN</Text>
+                    </TouchableOpacity>
+                  </View>
                 ) : baskets.length === 0 ? (
                   <View style={s.emptyState}>
                     <Text style={{ fontSize: 48, marginBottom: 12 }}>🛒</Text>
-                    <Text style={[s.emptyTitle, { color: txt }]}>NO ACTIVE BASKETS</Text>
-                    <Text style={s.emptySub}>You don't have any daily essentials baskets active right now.</Text>
+                    <Text style={[s.emptyTitle, { color: txt }]}>NO BASKETS YET</Text>
+                    <Text style={s.emptySub}>Send a shopping list and a shopper will buy it for you.</Text>
+                    <TouchableOpacity style={[s.addCustomBtn, { marginTop: 16, paddingHorizontal: 24 }]} onPress={() => setActiveTab('new')}>
+                      <Text style={s.addCustomText}>CREATE A BASKET</Text>
+                    </TouchableOpacity>
                   </View>
                 ) : (
                   <View style={{ gap: 12 }}>
-                    {baskets.map((basket) => (
-                      <TouchableOpacity 
-                        key={basket.id} 
-                        style={[s.card, { backgroundColor: cardBg, borderColor: border }]}
-                        onPress={() => setSelectedBasket(basket)}
-                      >
-                        <View style={s.cardHeaderRow}>
-                          <Text style={s.basketCode}>BASKET #{basket.id.slice(-6).toUpperCase()}</Text>
-                          <View style={s.statusBadge}>
-                            <Text style={s.statusBadgeText}>{basket.status.toUpperCase()}</Text>
-                          </View>
-                        </View>
-                        <Text style={[s.basketItemsText, { color: txtSec }]} numberOfLines={1}>
-                          {basket.items.map(i => `${i.quantity}x ${i.name}`).join(', ')}
-                        </Text>
-                        <View style={s.basketFooterRow}>
-                          <Text style={{ fontSize: 8, color: '#888' }}>{new Date(basket.createdAt).toLocaleDateString()}</Text>
-                          <Text style={s.basketPrice}>₹{(basket.actualTotal || basket.estimatedTotal) + basket.shoppingFee + basket.deliveryFee}</Text>
-                        </View>
-                      </TouchableOpacity>
+                    {[{ title: 'ACTIVE', list: activeBaskets }, { title: 'PAST', list: pastBaskets }].filter((g) => g.list.length > 0).map((group) => (
+                      <View key={group.title} style={{ gap: 12 }}>
+                        <Text style={s.cardTitle}>{group.title} ({group.list.length})</Text>
+                        {group.list.map((basket) => (
+                          <TouchableOpacity
+                            key={basket.id}
+                            style={[s.card, { backgroundColor: cardBg, borderColor: border, marginBottom: 0 }]}
+                            onPress={() => setSelectedBasketId(String(basket.id))}
+                          >
+                            <View style={s.cardHeaderRow}>
+                              <Text style={s.basketCode}>BASKET #{String(basket.id).slice(-6).toUpperCase()}</Text>
+                              <View style={s.statusBadge}>
+                                <Text style={s.statusBadgeText}>{getStatusLabel(basket.status).toUpperCase()}</Text>
+                              </View>
+                            </View>
+                            <Text style={[s.basketItemsText, { color: txtSec }]} numberOfLines={1}>
+                              {basket.items.map(i => `${i.quantity}x ${i.name}`).join(', ')}
+                            </Text>
+                            <View style={s.basketFooterRow}>
+                              <Text style={{ fontSize: 8, color: '#888' }}>{new Date(basket.createdAt).toLocaleDateString()}</Text>
+                              <Text style={s.basketPrice}>{basket.actualTotal != null ? '' : 'Est. '}{money(basketTotal(basket))}</Text>
+                            </View>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
                     ))}
                   </View>
                 )}
@@ -743,46 +783,8 @@ export default function MegaBasketScreen() {
         )}
       </ScrollView>
 
-      {/* UPI QR verification modal */}
-      <Modal visible={showUpiModal} transparent={true} animationType="slide">
-        <View style={s.modalOverlay}>
-          <View style={s.modalContent}>
-            <Text style={s.modalTitle}>SUBMIT UPI ADVANCE PAYMENT</Text>
-            <Text style={s.modalDesc}>
-              Scan the campus UPI QR to transfer the estimated advance amount of ₹{grandTotal}.
-            </Text>
 
-            {/* Visual Campus UPI QR */}
-            <View style={s.qrDisplayBox}>
-              <View style={s.qrBorderSquare}>
-                <Text style={{ fontSize: 32 }}>📲</Text>
-                <Text style={s.qrScanText}>CAMPUS UPI MERCHANT</Text>
-                <Text style={s.qrUpiId}>zenvy@ybl</Text>
-              </View>
-            </View>
-
-            <Text style={s.inputLabel}>12-Digit Transaction Reference (UTR)</Text>
-            <TextInput 
-              style={[s.utrInput, { color: txt, borderColor: border, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }]}
-              placeholder="e.g. 340590112345"
-              placeholderTextColor={txtSec}
-              keyboardType="numeric"
-              value={upiUTR}
-              onChangeText={setUpiUTR}
-            />
-
-            <View style={s.modalActions}>
-              <TouchableOpacity style={s.modalCancelBtn} onPress={() => { setShowUpiModal(false); setUpiUTR(''); }}>
-                <Text style={s.modalCancelText}>PAY COD</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={s.modalSubmitBtn} onPress={handleUpiSubmit}>
-                <Text style={s.modalSubmitText}>VERIFY PAYMENT</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -805,7 +807,7 @@ const s = StyleSheet.create({
   cardTitle: { fontSize: 10, fontWeight: '900', color: COLORS.red, letterSpacing: 1.5, marginBottom: 12 },
 
   quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
-  quickItem: { width: (SW - 48 - 8) / 2, padding: 10, borderRadius: 12, borderWidth: 1, backgroundColor: 'rgba(0,0,0,0.02)' },
+  quickItem: { width: '48%', padding: 10, borderRadius: 12, borderWidth: 1, backgroundColor: 'rgba(0,0,0,0.02)' },
   quickCat: { fontSize: 7, fontWeight: '900', color: '#888', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 },
   quickName: { fontSize: 10, fontWeight: '900' },
   quickPrice: { fontSize: 9, fontWeight: '900', color: '#22c55e', marginTop: 6 },

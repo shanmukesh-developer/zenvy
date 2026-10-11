@@ -1,9 +1,10 @@
 "use client";
-import { useState, useEffect, memo } from 'react';
-import Image from 'next/image';
+import { useCallback, useEffect, useState } from 'react';
 import { useAdminAuth } from '@/utils/useAdminAuth';
+import { adminRequest as request } from '@/lib/api';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-jwmt.onrender.com';
+// Vault = limited daily deals. Claiming one (POST /api/vault/claim/:id in the app) creates a real coupon valid until
+// midnight IST, one claim per deal per person per day, and takes one unit of stock.
 
 interface VaultItem {
   _id: string;
@@ -11,400 +12,283 @@ interface VaultItem {
   price: number;
   originalPrice: number;
   remainingCount: number;
-  imageUrl: string;
+  imageUrl?: string | null;
   isActive: boolean;
   streakRequirement?: number;
+  updatedAt?: string;
 }
 
-export default function VaultTerminal() {
-  const isAuthed = useAdminAuth();
+interface DealForm {
+  name: string;
+  price: string;
+  originalPrice: string;
+  remainingCount: string;
+  streakRequirement: string;
+  imageUrl: string;
+}
+
+const EMPTY_FORM: DealForm = { name: '', price: '', originalPrice: '', remainingCount: '10', streakRequirement: '0', imageUrl: '' };
+const FIELD = 'w-full rounded-lg border border-white/10 bg-[#111318] px-3 py-2.5 text-sm text-white placeholder:text-gray-600 outline-none focus:border-amber-400/50';
+const LABEL = 'block space-y-1.5 text-xs font-semibold uppercase tracking-wider text-gray-400';
+
+
+const toForm = (item: VaultItem): DealForm => ({
+  name: item.name,
+  price: String(item.price ?? ''),
+  originalPrice: String(item.originalPrice ?? ''),
+  remainingCount: String(item.remainingCount ?? 0),
+  streakRequirement: String(item.streakRequirement ?? 0),
+  imageUrl: item.imageUrl || '',
+});
+
+/** Returns a payload or an error message. */
+function validate(form: DealForm): { payload?: Record<string, unknown>; error?: string } {
+  const name = form.name.trim();
+  const price = Number(form.price);
+  const originalPrice = Number(form.originalPrice);
+  const remainingCount = Number(form.remainingCount);
+  const streakRequirement = Number(form.streakRequirement || 0);
+  if (!name) return { error: 'Deal name is required.' };
+  if (form.price.trim() === '' || !Number.isFinite(price) || price < 0) return { error: 'Enter the deal price.' };
+  if (form.originalPrice.trim() === '' || !Number.isFinite(originalPrice) || originalPrice <= 0) return { error: 'Enter the original price.' };
+  if (originalPrice < price) return { error: 'The original price cannot be lower than the deal price.' };
+  if (!Number.isInteger(remainingCount) || remainingCount < 0) return { error: 'Stock must be a whole number (0 or more).' };
+  if (!Number.isInteger(streakRequirement) || streakRequirement < 0) return { error: 'Streak requirement must be a whole number (0 or more).' };
+  return { payload: { name, price, originalPrice, remainingCount, streakRequirement, imageUrl: form.imageUrl.trim() || null } };
+}
+
+export default function VaultPage() {
+  const { isAuthed } = useAdminAuth();
   const [items, setItems] = useState<VaultItem[]>([]);
-  const [menuItems, setMenuItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isAdding, setIsAdding] = useState(false);
-  const [isCreating, setIsCreating] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [newItem, setNewItem] = useState({ 
-    name: '', 
-    price: 0, 
-    originalPrice: 0, 
-    remainingCount: 1, 
-    imageUrl: '',
-    streakRequirement: 0
-  });
+  const [loadError, setLoadError] = useState('');
+  const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
+  const [editing, setEditing] = useState<VaultItem | 'new' | null>(null);
+  const [busy, setBusy] = useState<Record<string, boolean>>({});
 
-  useEffect(() => {
-    fetchVault();
-    fetchMenuItems();
-  }, []);
-
-  const fetchMenuItems = async () => {
+  const load = useCallback(async () => {
+    setLoading(true);
+    setLoadError('');
     try {
-      const res = await fetch(`${API_URL}/api/admin/menu-items`);
-      const data = await res.json();
-      if (res.ok) setMenuItems(data);
-    } catch (err) {
-      console.error('[MENU_ITEMS_FETCH_ERROR]', err);
-    }
-  };
-
-
-  const fetchVault = async () => {
-    try {
-      const token = 'cookie-managed';
-      const res = await fetch(`${API_URL}/api/admin/vault`, {
-        });
-      const data = await res.json();
-      if (res.ok) setItems(data);
-    } catch (_err) {
-      console.error('[VAULT_FETCH_ERROR]', _err);
+      const data = await request<VaultItem[]>('/api/admin/vault');
+      setItems(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : 'Could not load vault deals.');
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    if (isAuthed) load();
+  }, [isAuthed, load]);
+
+  const flash = (kind: 'ok' | 'error', text: string) => setNotice({ kind, text });
+
+  const save = async (id: string, payload: Record<string, unknown>) => {
+    const saved = await request<VaultItem>(`/api/admin/vault/${id}`, { method: 'POST', body: JSON.stringify(payload) });
+    setItems(prev => (id === 'new' ? [saved, ...prev] : prev.map(i => (i._id === id ? { ...i, ...saved } : i))));
+    return saved;
   };
 
-  const handleUpsert = async (item: Partial<VaultItem>) => {
+  const toggleActive = async (item: VaultItem) => {
+    if (busy[item._id]) return;
+    if (item.isActive && !window.confirm(`Hide "${item.name}" from the Vault? Students can no longer claim it.`)) return;
+    setBusy(prev => ({ ...prev, [item._id]: true }));
     try {
-      const token = 'cookie-managed';
-      const id = item._id || 'new';
-      const res = await fetch(`${API_URL}/api/admin/vault/${id}`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          },
-        body: JSON.stringify(item)
-      });
-      if (res.ok) fetchVault();
-    } catch (_err) {
-      console.error('[VAULT_UPSERT_ERROR]', _err);
+      await save(item._id, { isActive: !item.isActive });
+      flash('ok', item.isActive ? `${item.name} hidden.` : `${item.name} is live in the Vault.`);
+    } catch (e) {
+      flash('error', e instanceof Error ? e.message : 'Could not update the deal.');
+    } finally {
+      setBusy(prev => ({ ...prev, [item._id]: false }));
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const remove = async (item: VaultItem) => {
+    if (!window.confirm(`Delete "${item.name}" permanently? Coupons already claimed stay valid until midnight.`)) return;
+    setBusy(prev => ({ ...prev, [item._id]: true }));
     try {
-      const token = 'cookie-managed';
-      const res = await fetch(`${API_URL}/api/admin/vault/${id}`, {
-        method: 'DELETE',
-        });
-      if (res.ok) fetchVault();
-    } catch (_err) {
-      console.error('[VAULT_DELETE_ERROR]', _err);
+      await request(`/api/admin/vault/${item._id}`, { method: 'DELETE' });
+      setItems(prev => prev.filter(i => i._id !== item._id));
+      flash('ok', `${item.name} deleted.`);
+    } catch (e) {
+      flash('error', e instanceof Error ? e.message : 'Could not delete the deal.');
+      setBusy(prev => ({ ...prev, [item._id]: false }));
     }
   };
 
-  if (!isAuthed) {
-    return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Authenticating...</div>;
-  }
+  if (!isAuthed) return <div className="p-10 text-center text-sm text-gray-400" role="status">Checking your admin session…</div>;
+
+  const live = items.filter(i => i.isActive && i.remainingCount > 0).length;
 
   return (
-    <div className="space-y-10 animate-fade-in relative pb-20">
-      <header className="flex justify-between items-center bg-white/5 p-8 rounded-[40px] border border-white/5 glass">
+    <div className="mx-auto max-w-6xl space-y-6 p-6 text-white md:p-8">
+      <header className="flex flex-wrap items-end justify-between gap-4 border-b border-white/10 pb-5">
         <div>
-          <h2 className="text-3xl font-black text-white tracking-tighter uppercase">Zenvy <span className="text-[var(--zenvy-gold)]">Vault</span> Drops</h2>
-          <p className="text-gray-400 text-sm font-bold uppercase tracking-widest mt-1">Daily Deals & Limited Drops Management</p>
+          <p className="text-xs font-bold uppercase tracking-widest text-amber-400">Rewards</p>
+          <h1 className="mt-1 text-2xl font-black">Vault deals</h1>
+          <p className="mt-2 max-w-2xl text-sm text-gray-400">Limited daily deals. A claim gives the student a coupon valid until midnight (one claim per deal per day) and uses one unit of stock.</p>
         </div>
-        <button 
-          onClick={() => setIsAdding(!isAdding)}
-          className="px-8 py-3 bg-[var(--zenvy-gold)] text-black text-[10px] font-black uppercase tracking-widest rounded-2xl hover:scale-105 transition-all"
-        >
-          {isAdding ? 'Close Drawer' : 'Add Vault Deal'}
-        </button>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-gray-400">{live} live of {items.length}</span>
+          <button type="button" disabled={loading} onClick={load} className="rounded-lg border border-white/10 px-4 py-2 text-sm font-semibold text-gray-300 hover:text-white disabled:opacity-50">{loading ? 'Loading…' : 'Refresh'}</button>
+          <button type="button" onClick={() => setEditing('new')} className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-bold text-black hover:bg-amber-400">Add deal</button>
+        </div>
       </header>
 
-      {isAdding && (
-        <div className="glass-card p-10 border-[var(--zenvy-gold)]/30 animate-in fade-in slide-in-from-top-4 duration-500">
-          <h3 className="text-xl font-black text-white uppercase tracking-tight mb-8 flex items-center gap-3">
-             <span className="w-8 h-8 bg-[var(--zenvy-gold)]/20 rounded-lg flex items-center justify-center text-sm">📦</span>
-             Create New Vault Deal
-          </h3>
-          
-          {/* Pre-fill from Existing Menu Item */}
-          <div className="mb-8 space-y-3">
-            <label className="text-[10px] font-black uppercase tracking-widest text-[var(--zenvy-gold)] ml-1">Pre-fill from Existing Menu Item</label>
-            <select
-              className="vault-input"
-              onChange={(e) => {
-                const val = e.target.value;
-                if (val) {
-                  const selected = menuItems.find(m => m._id === val);
-                  if (selected) {
-                    setNewItem({
-                      name: selected.name,
-                      price: selected.price,
-                      originalPrice: selected.originalPrice || selected.price,
-                      remainingCount: newItem.remainingCount,
-                      imageUrl: selected.imageUrl || '',
-                      streakRequirement: newItem.streakRequirement
-                    });
-                  }
-                }
-              }}
-              defaultValue=""
-            >
-              <option value="" className="text-gray-400">-- Choose Menu Item (Optional) --</option>
-              {menuItems.map(m => (
-                <option key={m._id} value={m._id}>{m.name} (₹{m.price})</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="space-y-3">
-              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Deal Name</label>
-              <input 
-                placeholder="e.g. Premium Cold Brew or Hyderabadi Dum Biryani" 
-                className="vault-input" 
-                value={newItem.name} 
-                onChange={(e) => setNewItem({...newItem, name: e.target.value})} 
-              />
-            </div>
-            <div className="space-y-3">
-              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Deal Image</label>
-              <div className="flex gap-4">
-                <input 
-                  type="file" 
-                  accept="image/*"
-                  id="vault-image-upload"
-                  className="hidden" 
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      setImageFile(file);
-                      setIsUploading(true);
-                      const formData = new FormData();
-                      formData.append('image', file);
-                      try {
-                        const res = await fetch(`${API_URL}/api/upload`, { method: 'POST', body: formData });
-                        const data = await res.json();
-                        if (data.imageUrl) setNewItem({...newItem, imageUrl: data.imageUrl});
-                      } catch (_err) { console.error("Vault Upload Error", _err); }
-                      finally { setIsUploading(false); }
-                    }
-                  }} 
-                />
-                <label 
-                  htmlFor="vault-image-upload"
-                  className="flex-1 bg-white/5 border border-white/10 rounded-2xl p-4 text-[10px] font-black uppercase tracking-widest text-center cursor-pointer hover:bg-white/10 transition-all flex items-center justify-center gap-3"
-                >
-                  {isUploading ? '📦 Uploading...' : imageFile ? `✅ ${imageFile.name.slice(0, 15)}...` : '📂 Upload Image'}
-                </label>
-                <input 
-                  placeholder="Or paste URL" 
-                  className="vault-input flex-[2]" 
-                  value={newItem.imageUrl} 
-                  onChange={(e) => setNewItem({...newItem, imageUrl: e.target.value})} 
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-4 gap-6 md:col-span-2">
-               <div className="space-y-3">
-                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Deal Price (₹)</label>
-                 <input 
-                   type="number" 
-                   className="vault-input" 
-                   value={newItem.price} 
-                   onChange={(e) => setNewItem({...newItem, price: Number(e.target.value)})} 
-                 />
-               </div>
-               <div className="space-y-3">
-                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 ml-1">Original Price (₹)</label>
-                 <input 
-                   type="number" 
-                   className="vault-input" 
-                   value={newItem.originalPrice} 
-                   onChange={(e) => setNewItem({...newItem, originalPrice: Number(e.target.value)})} 
-                 />
-               </div>
-               <div className="space-y-3">
-                 <label className="text-[10px] font-black uppercase tracking-widest text-[var(--zenvy-gold)] ml-1">Stock Quantity</label>
-                 <input 
-                   type="number" 
-                   className="vault-input border-[var(--zenvy-gold)]/20 bg-[var(--zenvy-gold)]/5 text-[var(--zenvy-gold)]" 
-                   value={newItem.remainingCount} 
-                   onChange={(e) => setNewItem({...newItem, remainingCount: Number(e.target.value)})} 
-                 />
-               </div>
-               <div className="space-y-3">
-                 <label className="text-[10px] font-black uppercase tracking-widest text-yellow-500 ml-1">Daily Streak Req</label>
-                 <input 
-                   type="number" 
-                   className="vault-input border-yellow-500/20 bg-yellow-500/5 text-yellow-500" 
-                   value={newItem.streakRequirement} 
-                   onChange={(e) => setNewItem({...newItem, streakRequirement: Number(e.target.value)})} 
-                 />
-               </div>
-            </div>
-          </div>
-          <div className="flex gap-4 mt-10">
-            <button 
-              onClick={async () => {
-                setIsCreating(true);
-                await handleUpsert({ ...newItem, isActive: true });
-                setIsCreating(false);
-                setIsAdding(false);
-                setImageFile(null);
-                setNewItem({ name: '', price: 0, originalPrice: 0, remainingCount: 1, imageUrl: '', streakRequirement: 0 });
-              }}
-              disabled={isCreating || !newItem.name}
-              className="flex-1 py-5 bg-[var(--zenvy-gold)] text-black font-black uppercase tracking-[0.3em] rounded-3xl text-xs disabled:opacity-50"
-            >
-              {isCreating ? 'Publishing Deal...' : 'Publish Vault Deal'}
-            </button>
-            <button 
-              onClick={() => setIsAdding(false)}
-              className="px-10 py-5 bg-white/5 text-gray-500 font-black uppercase tracking-widest rounded-3xl text-xs hover:bg-white/10"
-            >
-              Cancel
-            </button>
-          </div>
+      {notice && (
+        <div role={notice.kind === 'error' ? 'alert' : 'status'} className={`flex items-start justify-between gap-3 rounded-lg border p-3 text-sm ${notice.kind === 'error' ? 'border-red-500/30 bg-red-500/10 text-red-200' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'}`}>
+          <span>{notice.text}</span>
+          <button type="button" onClick={() => setNotice(null)} className="text-xs font-semibold opacity-70 hover:opacity-100">Dismiss</button>
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {loading ? (
-            <div className="col-span-full py-20 text-center font-black text-gray-500 animate-pulse tracking-widest uppercase">Syncing with Secure Vault...</div>
-        ) : items.map((item) => (
-          <VaultItemComponent 
-            key={item._id} 
-            item={item} 
-            onUpdate={handleUpsert} 
-            onDelete={handleDelete} 
-          />
-        ))}
-      </div>
+      {loadError && (
+        <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
+          {loadError}
+          <button type="button" onClick={load} className="font-bold underline">Retry</button>
+        </div>
+      )}
 
-      <div className="glass-card p-10 flex items-center justify-between border-[var(--zenvy-gold)]/20 bg-[var(--zenvy-gold)]/[0.02]">
-         <div className="flex items-center gap-6">
-            <span className="text-3xl">🕯️</span>
-            <div>
-               <h4 className="text-sm font-black text-white uppercase tracking-wider">The Psychology of Scarcity</h4>
-               <p className="text-[10px] text-gray-500 leading-relaxed uppercase tracking-wide">The Vault generates intensity through limited numbers. By updating these counts in real-time, you trigger the campus FOMO engine.</p>
-            </div>
-         </div>
-      </div>
-      <style jsx>{`
-        .vault-input { 
-          width: 100%;
-          background: rgba(255,255,255,0.03); 
-          border: 1px solid rgba(255,255,255,0.05); 
-          padding: 1.25rem; 
-          border-radius: 1.5rem; 
-          color: white; 
-          font-weight: 900; 
-          outline: none; 
-          transition: all 0.3s ease;
-        }
-        .vault-input:focus { 
-          border-color: rgba(212, 175, 122, 0.4); 
-          background: rgba(212, 175, 122, 0.02);
-        }
-      `}</style>
+      {loading ? (
+        <div role="status" className="rounded-lg border border-white/10 p-8 text-sm text-gray-400">Loading vault deals…</div>
+      ) : !loadError && items.length === 0 ? (
+        <div className="rounded-lg border border-white/10 p-10 text-center">
+          <h2 className="font-bold">No vault deals yet</h2>
+          <p className="mt-2 text-sm text-gray-400">The Vault is empty in the app until you add a deal.</p>
+        </div>
+      ) : (
+        <section className="divide-y divide-white/10 rounded-xl border border-white/10" aria-label="Vault deals">
+          {items.map(item => {
+            const off = item.originalPrice > item.price ? Math.round((1 - item.price / item.originalPrice) * 100) : 0;
+            const status = !item.isActive ? 'Hidden' : item.remainingCount <= 0 ? 'Sold out' : 'Live';
+            return (
+              <article key={item._id} className="flex flex-wrap items-center gap-4 p-4">
+                {item.imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={item.imageUrl} alt="" className="h-14 w-14 rounded-lg border border-white/10 object-cover" />
+                ) : <div aria-hidden className="h-14 w-14 rounded-lg border border-white/10 bg-slate-900" />}
+                <div className="min-w-[200px] flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="font-bold">{item.name}</h2>
+                    <span className={`rounded border px-1.5 py-0.5 text-[11px] font-semibold ${status === 'Live' ? 'border-emerald-500/30 text-emerald-300' : status === 'Sold out' ? 'border-amber-500/30 text-amber-300' : 'border-white/10 text-gray-400'}`}>{status}</span>
+                  </div>
+                  <p className="mt-1 text-sm text-gray-300">
+                    ₹{item.price} <span className="text-gray-500 line-through">₹{item.originalPrice}</span>{off ? <span className="ml-2 text-emerald-300">{off}% off</span> : null}
+                  </p>
+                  <p className="mt-0.5 text-xs text-gray-500">{item.remainingCount} left · {item.streakRequirement ? `needs a ${item.streakRequirement}-day streak` : 'no streak needed'}</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button type="button" disabled={!!busy[item._id]} onClick={() => toggleActive(item)} className="rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-gray-300 hover:text-white disabled:opacity-50">{item.isActive ? 'Hide' : 'Make live'}</button>
+                  <button type="button" onClick={() => setEditing(item)} className="rounded-lg border border-white/10 px-3 py-1.5 text-xs font-semibold text-gray-300 hover:text-white">Edit</button>
+                  <button type="button" disabled={!!busy[item._id]} onClick={() => remove(item)} className="rounded-lg px-2 py-1.5 text-xs font-semibold text-red-400/70 hover:text-red-300 disabled:opacity-50">Delete</button>
+                </div>
+              </article>
+            );
+          })}
+        </section>
+      )}
+
+      {editing && (
+        <DealEditor
+          initial={editing === 'new' ? null : editing}
+          onCancel={() => setEditing(null)}
+          onSave={async payload => {
+            const id = editing === 'new' ? 'new' : editing._id;
+            const saved = await save(id, editing === 'new' ? { ...payload, isActive: true } : payload);
+            setEditing(null);
+            flash('ok', editing === 'new' ? `${saved.name} is live in the Vault.` : `${saved.name} saved.`);
+          }}
+        />
+      )}
     </div>
   );
 }
 
-// ─── Optimized Sub-Components ─────────────────────────────────
+function DealEditor({ initial, onCancel, onSave }: {
+  initial: VaultItem | null;
+  onCancel: () => void;
+  onSave: (payload: Record<string, unknown>) => Promise<void>;
+}) {
+  const [form, setForm] = useState<DealForm>(initial ? toForm(initial) : EMPTY_FORM);
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState('');
+  const set = (patch: Partial<DealForm>) => setForm(prev => ({ ...prev, ...patch }));
 
-const VaultItemComponent = memo(({ item, onUpdate, onDelete }: { item: VaultItem, onUpdate: (i: Partial<VaultItem>) => void, onDelete: (id: string) => void }) => (
-  <div className="glass-card p-8 group relative overflow-hidden flex flex-col justify-between h-full border-white/5 hover:border-[var(--zenvy-gold)]/20 transition-all duration-500">
-    <div className="flex gap-8 relative z-10">
-      <div className="w-32 h-32 rounded-3xl overflow-hidden border border-white/10 shrink-0 relative bg-slate-900 pointer-events-none">
-        <Image 
-          src={item.imageUrl || "/assets/placeholder.png"} 
-          fill 
-          style={{ objectFit: 'cover' }} 
-          alt={item.name} 
-          className="group-hover:scale-110 transition-transform duration-700 ease-out will-change-transform" 
-        />
-      </div>
-      <div className="flex-1 space-y-4">
-        <div className="flex justify-between items-start gap-4">
-          <div className="flex-1">
-            <label className="text-[8px] font-black text-gray-500 uppercase tracking-widest block mb-1">Asset Name</label>
-            <input 
-              type="text" 
-              defaultValue={item.name}
-              className="w-full bg-white/5 border border-white/10 rounded-xl p-2 text-sm text-white font-black focus:border-[var(--zenvy-gold)]/40 outline-none"
-              onBlur={(e) => onUpdate({ ...item, name: e.target.value })}
-            />
-          </div>
-          <button onClick={() => onDelete(item._id)} className="text-red-500/40 hover:text-red-500 hover:scale-125 transition-all text-sm mt-6">✕</button>
-        </div>
+  const upload = async (file?: File) => {
+    if (!file) return;
+    if (!/^image\/(jpe?g|png|webp)$/.test(file.type)) return setError('Use a JPEG, PNG or WEBP image.');
+    if (file.size > 2 * 1024 * 1024) return setError('The image must be 2 MB or smaller.');
+    setUploading(true);
+    setError('');
+    try {
+      const body = new FormData();
+      body.append('image', file);
+      const data = await request<{ imageUrl?: string }>('/api/upload', { method: 'POST', body });
+      if (!data?.imageUrl) throw new Error('The upload did not return an image.');
+      set({ imageUrl: data.imageUrl });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Image upload failed.');
+    } finally {
+      setUploading(false);
+    }
+  };
 
-        <div>
-          <label className="text-[8px] font-black text-gray-500 uppercase tracking-widest block mb-1">Image URL</label>
-          <input 
-            type="text" 
-            defaultValue={item.imageUrl}
-            className="w-full bg-white/5 border border-white/10 rounded-xl p-2 text-xs text-white font-mono focus:border-[var(--zenvy-gold)]/40 outline-none"
-            onBlur={(e) => onUpdate({ ...item, imageUrl: e.target.value })}
-          />
-        </div>
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (saving || uploading) return;
+    const { payload, error: invalid } = validate(form);
+    if (!payload) return setError(invalid || 'Check the form.');
+    setSaving(true);
+    setError('');
+    try {
+      await onSave(payload);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save the deal.');
+      setSaving(false);
+    }
+  };
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div>
-            <label className="text-[8px] font-black text-gray-500 uppercase tracking-widest block mb-1">Live Price</label>
-            <input 
-              type="number" 
-              defaultValue={item.price}
-              className="w-full bg-white/5 border border-white/10 rounded-xl p-2 text-xs text-white font-black focus:border-[var(--zenvy-gold)]/40 outline-none"
-              onBlur={(e) => onUpdate({ ...item, price: Number(e.target.value) })}
-            />
-          </div>
-          <div>
-            <label className="text-[8px] font-black text-gray-500 uppercase tracking-widest block mb-1">MSRP</label>
-            <input 
-              type="number" 
-              defaultValue={item.originalPrice}
-              className="w-full bg-white/5 border border-white/10 rounded-xl p-2 text-xs text-gray-400 font-bold focus:border-[var(--zenvy-gold)]/40 outline-none"
-              onBlur={(e) => onUpdate({ ...item, originalPrice: Number(e.target.value) })}
-            />
-          </div>
-          <div>
-            <label className="text-[8px] font-black text-[var(--zenvy-gold)] uppercase tracking-widest block mb-1">Remaining</label>
-            <input 
-              type="number" 
-              defaultValue={item.remainingCount}
-              className="w-full bg-[var(--zenvy-gold)]/10 border border-[var(--zenvy-gold)]/20 rounded-xl p-2 text-xs text-[var(--zenvy-gold)] font-black focus:border-[var(--zenvy-gold)]/60 outline-none"
-              onBlur={(e) => onUpdate({ ...item, remainingCount: Number(e.target.value) })}
-            />
-          </div>
-          <div>
-            <label className="text-[8px] font-black text-yellow-500 uppercase tracking-widest block mb-1">Streak Req</label>
-            <input 
-              type="number" 
-              defaultValue={item.streakRequirement || 0}
-              className="w-full bg-white/5 border border-white/10 rounded-xl p-2 text-xs text-white font-black focus:border-[var(--zenvy-gold)]/40 outline-none"
-              onBlur={(e) => onUpdate({ ...item, streakRequirement: Number(e.target.value) })}
-            />
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="deal-title">
+      <form onSubmit={submit} className="my-8 w-full max-w-xl rounded-2xl border border-white/10 bg-[#0d0f14] p-6 text-white shadow-2xl">
+        <h2 id="deal-title" className="text-xl font-bold">{initial ? 'Edit deal' : 'Add vault deal'}</h2>
+        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          <label className={`${LABEL} sm:col-span-2`}>Deal name
+            <input className={FIELD} value={form.name} onChange={e => set({ name: e.target.value })} required maxLength={120} />
+          </label>
+          <label className={LABEL}>Deal price (₹)
+            <input inputMode="decimal" className={FIELD} value={form.price} onChange={e => set({ price: e.target.value })} required />
+          </label>
+          <label className={LABEL}>Original price (₹)
+            <input inputMode="decimal" className={FIELD} value={form.originalPrice} onChange={e => set({ originalPrice: e.target.value })} required />
+          </label>
+          <label className={LABEL}>Stock left
+            <input inputMode="numeric" className={FIELD} value={form.remainingCount} onChange={e => set({ remainingCount: e.target.value })} required />
+          </label>
+          <label className={LABEL}>Streak needed (days)
+            <input inputMode="numeric" className={FIELD} value={form.streakRequirement} onChange={e => set({ streakRequirement: e.target.value })} />
+          </label>
+          <div className="space-y-1.5 sm:col-span-2">
+            <span className="block text-xs font-semibold uppercase tracking-wider text-gray-400">Image</span>
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="cursor-pointer rounded-lg border border-white/10 px-3 py-2 text-sm text-gray-200 hover:bg-white/5">
+                {uploading ? 'Uploading…' : 'Upload'}
+                <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" disabled={uploading} onChange={e => { upload(e.target.files?.[0]); e.target.value = ''; }} />
+              </label>
+              <input className={`${FIELD} min-w-[200px] flex-1`} value={form.imageUrl.startsWith('data:') ? '' : form.imageUrl} onChange={e => set({ imageUrl: e.target.value })} placeholder={form.imageUrl.startsWith('data:') ? 'Uploaded image' : 'or paste an image URL'} />
+              {form.imageUrl && <button type="button" onClick={() => set({ imageUrl: '' })} className="text-sm text-red-300 hover:underline">Remove</button>}
+            </div>
           </div>
         </div>
-        
-        <div className="flex items-center justify-between pt-2">
-          <div className="flex items-center gap-2">
-            <div className={`w-2 h-2 rounded-full ${item.isActive ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]' : 'bg-red-500 animate-pulse'}`} />
-            <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">
-              {item.isActive ? 'ACTIVE IN VAULT' : 'HIDDEN / INACTIVE'}
-            </span>
-          </div>
-          <button
-            onClick={() => onUpdate({ ...item, isActive: !item.isActive })}
-            className={`px-3 py-1.5 text-[8px] font-black uppercase tracking-widest rounded-lg border transition-all ${
-              item.isActive 
-                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20' 
-                : 'bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/20'
-            }`}
-          >
-            {item.isActive ? 'Deactivate' : 'Activate'}
-          </button>
+        {error && <p role="alert" className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{error}</p>}
+        <div className="mt-6 flex justify-end gap-3">
+          <button type="button" onClick={onCancel} className="rounded-lg border border-white/10 px-4 py-2.5 text-sm font-semibold text-gray-300 hover:text-white">Cancel</button>
+          <button type="submit" disabled={saving || uploading} className="rounded-lg bg-amber-500 px-5 py-2.5 text-sm font-bold text-black hover:bg-amber-400 disabled:opacity-50">{saving ? 'Saving…' : initial ? 'Save deal' : 'Publish deal'}</button>
         </div>
-      </div>
+      </form>
     </div>
-    <div className="absolute bottom-0 left-0 h-0.5 bg-[var(--zenvy-gold)]/30 transition-all duration-1000" style={{ width: `${Math.min(100, (item.remainingCount / 10) * 100)}%` }} />
-    <style jsx>{`
-       input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-    `}</style>
-  </div>
-));
-VaultItemComponent.displayName = 'VaultItemComponent';
+  );
+}

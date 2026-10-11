@@ -331,6 +331,12 @@ export default function ZenvyAfterDarkLounge() {
       setCallParticipants((prev) => prev.filter(p => p.socketId !== data.socketId));
     });
 
+    socket.on('after_dark_closed', (data: any) => {
+      setInCall(false);
+      setIsOpen(false);
+      Alert.alert('The lounge is closed', data?.message || `Zenvy After Dark opens at ${data?.opensAt || '22:00'} IST. See you tonight! 🌙`);
+    });
+
     socket.on('call_error', (data: any) => {
       Alert.alert('Call Error', data.message);
       setInCall(false);
@@ -368,6 +374,7 @@ export default function ZenvyAfterDarkLounge() {
       socket.off('user_joined_call');
       socket.off('user_left_call');
       socket.off('call_error');
+      socket.off('after_dark_closed');
       socket.off('speaker_approved');
       socket.off('user_muted_by_host');
       socket.off('incoming_call_signal');
@@ -619,6 +626,23 @@ export default function ZenvyAfterDarkLounge() {
     setActiveChat(null);
   };
 
+  // The lounge has real opening hours (GET /api/chat/status, 22:00–04:00 IST by default).
+  const closedMessage = (st: any) =>
+    st?.message || `Zenvy After Dark opens at ${st?.opensAt || '22:00'} IST. See you tonight! 🌙`;
+  const openLounge = async () => {
+    try {
+      const res = await apiFetch('/api/chat/status');
+      const st = await res.json().catch(() => null);
+      if (res.ok && st && st.open === false) {
+        Alert.alert('The lounge is closed', closedMessage(st));
+        return;
+      }
+    } catch {
+      // Offline: open anyway; the lounge shows its own connection state.
+    }
+    setIsOpen(true);
+  };
+
   // Determine if current user is the Call Host (first joiner in the participants list)
   const isHost = callParticipants[0]?.userId === user?.id || callParticipants[0]?.userId === user?._id;
 
@@ -628,7 +652,7 @@ export default function ZenvyAfterDarkLounge() {
       <TouchableOpacity 
         style={[s.header, { backgroundColor: 'rgba(139, 92, 246, 0.15)', borderColor: border }]}
         activeOpacity={0.8}
-        onPress={() => setIsOpen(true)}
+        onPress={openLounge}
       >
         <View style={s.headerLeft}>
           <Text style={{ fontSize: 24 }}>🌙</Text>

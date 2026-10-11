@@ -12,47 +12,13 @@ interface TickerItem {
   timeAgo?: string;
 }
 
+// Evergreen, factual tips only (no invented live stats or counts)
 const DEFAULT_TICKER_ITEMS: TickerItem[] = [
-  {
-    id: '1',
-    icon: '🔥',
-    tag: 'TRENDING',
-    tagColor: '#EF4444',
-    text: '24 students ordered Biryani in the last 30 mins',
-    timeAgo: 'Just now'
-  },
-  {
-    id: '2',
-    icon: '⚡',
-    tag: 'EXPRESS',
-    tagColor: '#10B981',
-    text: 'Live Campus Fleet: 12-min avg delivery to Campus Gates',
-    timeAgo: 'Live'
-  },
-  {
-    id: '3',
-    icon: '🍛',
-    tag: 'TOP PICK',
-    tagColor: '#F59E0B',
-    text: 'Vilasa Cafe: Chicken Dum Biryani is 4.9★ rated',
-    timeAgo: '2m ago'
-  },
-  {
-    id: '4',
-    icon: '🌙',
-    tag: 'NIGHT OWL',
-    tagColor: '#8B5CF6',
-    text: 'Anna Canteen open till 3:00 AM for Midnight Maggi',
-    timeAgo: 'Open'
-  },
-  {
-    id: '5',
-    icon: '🎉',
-    tag: 'SAVER',
-    tagColor: '#3B82F6',
-    text: 'Free Delivery active on orders above ₹149',
-    timeAgo: 'Today'
-  }
+  { id: '1', icon: '🍛', tag: 'TOP PICK', tagColor: '#F59E0B', text: 'Tap a Classic below to see real dishes from campus kitchens' },
+  { id: '2', icon: '🛵', tag: 'TRACKING', tagColor: '#10B981', text: 'Track your rider live from the Orders tab' },
+  { id: '3', icon: '⏰', tag: 'HOURS', tagColor: '#8B5CF6', text: 'Campus ordering is open 6 AM to 9 PM every day' },
+  { id: '4', icon: '💵', tag: 'PAYMENTS', tagColor: '#3B82F6', text: 'Pay with Cash on Delivery or your Zenvy Wallet' },
+  { id: '5', icon: '🎉', tag: 'SAVER', tagColor: '#EF4444', text: 'Elite members & 200+ ZenPoints get free delivery' },
 ];
 
 export default function CampusLiveTicker() {
@@ -84,6 +50,7 @@ export default function CampusLiveTicker() {
 
   // Auto-cycle ticker items with smooth animation
   useEffect(() => {
+    let alive = true;
     const interval = setInterval(() => {
       // Animate out
       Animated.parallel([
@@ -98,6 +65,7 @@ export default function CampusLiveTicker() {
           useNativeDriver: true,
         }),
       ]).start(() => {
+        if (!alive) return;
         setCurrentIndex((prev) => (prev + 1) % DEFAULT_TICKER_ITEMS.length);
         slideAnim.setValue(8);
         // Animate in
@@ -116,7 +84,7 @@ export default function CampusLiveTicker() {
       });
     }, 4000);
 
-    return () => clearInterval(interval);
+    return () => { alive = false; clearInterval(interval); };
   }, []);
 
   const currentItem = DEFAULT_TICKER_ITEMS[currentIndex];

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Modal, View, Text, StyleSheet, TouchableOpacity, Animated, Dimensions } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { COLORS } from '../constants/theme';
@@ -25,9 +25,12 @@ export default function ThemedAlert() {
   const [buttons, setButtons] = useState<AlertButton[]>([]);
   const [fadeAnim] = useState(new Animated.Value(0));
   const [scaleAnim] = useState(new Animated.Value(0.9));
+  // Guards against a quick double tap running a button's action twice during the close animation
+  const closingRef = useRef(false);
 
   useEffect(() => {
     showGlobalAlert = (t, msg, btns) => {
+      closingRef.current = false;
       setTitle(t);
       setMessage(msg || '');
       setButtons(btns && btns.length > 0 ? btns : [{ text: 'OK' }]);
@@ -54,6 +57,8 @@ export default function ThemedAlert() {
   }, []);
 
   const handlePress = (onPress?: () => void) => {
+    if (closingRef.current) return;
+    closingRef.current = true;
     // Close transition
     Animated.parallel([
       Animated.timing(fadeAnim, {

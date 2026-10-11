@@ -1,79 +1,136 @@
 "use client";
-import React, { useState, useEffect, memo } from 'react';
+import React, { useState, useEffect, useCallback, memo } from 'react';
 import { useAdminAuth } from '@/utils/useAdminAuth';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-jwmt.onrender.com';
+import { API_URL } from '@/lib/config';
 
 interface User {
   _id: string;
-  name: string;
-  email: string;
-  phone: string;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  role?: string | null;
+  hostelBlock?: string | null;
   isElite: boolean;
   isActive: boolean;
-  walletBalance: number;
+  walletBalance: number | null;
 }
 
 interface AuditLog {
-  _id: string;
+  _id?: string;
+  id?: string;
   action: string;
-  details: string;
+  details: string | null;
+  targetId?: string | null;
   timestamp: string;
 }
 
-const UserCard = memo(({ user, onToggleElite, onToggleBan, onAddWallet }: { 
-  user: User, 
-  onToggleElite: (id: string, status: boolean) => void,
-  onToggleBan: (id: string, status: boolean) => void,
-  onAddWallet: (id: string, amount: number) => void 
+type Notice = { kind: 'ok' | 'error'; text: string } | null;
+
+const FRIENDLY_FALLBACK = 'Something went wrong. Please try again.';
+
+/** Reads a friendly `message` from an error response, never raw HTML/stack text. */
+async function readError(res: Response, fallback: string): Promise<string> {
+  if (res.status === 401) return 'Your session has expired. Please sign in again.';
+  if (res.status === 403) return 'You do not have permission to do that.';
+  if (res.status >= 500) return 'The server had a problem. Please try again in a moment.';
+  const data = await res.json().catch(() => null);
+  return data && typeof data.message === 'string' && data.message.length < 200 ? data.message : fallback;
+}
+
+/** Audit `details` is stored as a JSON string; show it as readable key: value pairs. */
+function formatDetails(details: string | null): string {
+  if (!details) return '—';
+  try {
+    const parsed = JSON.parse(details);
+    if (parsed && typeof parsed === 'object') {
+      return Object.entries(parsed)
+        .map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : String(v)}`)
+        .join(' · ');
+    }
+  } catch { /* plain text */ }
+  return details;
+}
+
+const money = (n: number | null | undefined) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+
+const UserCard = memo(({ user, busy, onToggleElite, onToggleBan, onAdjustWallet }: {
+  user: User;
+  busy: boolean;
+  onToggleElite: (user: User) => void;
+  onToggleBan: (user: User) => void;
+  onAdjustWallet: (user: User, amount: number) => Promise<boolean>;
 }) => {
-  const [amount, setAmount] = useState<string>('500');
-  
+  const [amount, setAmount] = useState<string>('');
+  const parsed = Number(amount);
+  const amountValid = amount.trim() !== '' && Number.isFinite(parsed) && parsed !== 0 && Math.abs(parsed) <= 10000;
+
+  const submitWallet = async () => {
+    if (!amountValid || busy) return;
+    const ok = await onAdjustWallet(user, parsed);
+    if (ok) setAmount('');
+  };
+
   return (
-  <div className="glass-card p-8 group relative overflow-hidden border-white/5 group hover:border-[var(--zenvy-gold)]/30 transition-all">
-    <div className="flex items-start justify-between mb-8">
-       <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-xl font-black text-white relative">
-         {user.name[0]}
-         {!user.isActive && <div className="absolute -top-2 -right-2 w-4 h-4 bg-red-500 rounded-full border-2 border-zinc-900 shadow-[0_0_10px_rgba(239,68,68,0.5)]" />}
-       </div>
-       <div className="flex flex-col gap-2 items-end">
-         <button onClick={() => onToggleElite(user._id, user.isElite)} className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border transition-all ${user.isElite ? 'bg-[var(--zenvy-gold)]/20 text-[var(--zenvy-gold)] border-[var(--zenvy-gold)]/30' : 'bg-white/5 text-gray-500 border-white/10'}`}>
-           {user.isElite ? 'Elite Mode' : 'Standard'}
-         </button>
-         <button onClick={() => onToggleBan(user._id, user.isActive)} className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border transition-all ${!user.isActive ? 'bg-red-500/20 text-red-500 border-red-500/30' : 'bg-white/5 text-gray-500 border-white/10 hover:border-red-500/30 hover:text-red-400'}`}>
-           {!user.isActive ? 'Banned' : 'Ban User'}
-         </button>
-       </div>
-    </div>
-    <h4 className="text-xl font-black text-white uppercase tracking-tight line-clamp-1">{user.name}</h4>
-    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-4">{user.phone || 'NO_CONTACT'}</p>
-    
-    <div className="flex gap-2 mb-6">
-       <input 
-          type="number" 
-          value={amount} 
+    <div className="glass-card p-8 relative overflow-hidden border-white/5 hover:border-[var(--zenvy-gold)]/30 transition-all">
+      <div className="flex items-start justify-between mb-8">
+        <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-xl font-black text-white relative">
+          {(user.name || '?').trim().charAt(0).toUpperCase() || '?'}
+          {!user.isActive && <div className="absolute -top-2 -right-2 w-4 h-4 bg-red-500 rounded-full border-2 border-zinc-900" title="Suspended" />}
+        </div>
+        <div className="flex flex-col gap-2 items-end">
+          <button
+            disabled={busy}
+            onClick={() => onToggleElite(user)}
+            className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border transition-all disabled:opacity-40 ${user.isElite ? 'bg-[var(--zenvy-gold)]/20 text-[var(--zenvy-gold)] border-[var(--zenvy-gold)]/30' : 'bg-white/5 text-gray-500 border-white/10'}`}
+            title={user.isElite ? 'Click to remove Elite' : 'Click to make Elite'}
+          >
+            {user.isElite ? 'Elite' : 'Standard'}
+          </button>
+          <button
+            disabled={busy}
+            onClick={() => onToggleBan(user)}
+            className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border transition-all disabled:opacity-40 ${!user.isActive ? 'bg-red-500/20 text-red-500 border-red-500/30' : 'bg-white/5 text-gray-500 border-white/10 hover:border-red-500/30 hover:text-red-400'}`}
+          >
+            {!user.isActive ? 'Suspended · Reactivate' : 'Suspend'}
+          </button>
+        </div>
+      </div>
+      <h4 className="text-xl font-black text-white uppercase tracking-tight line-clamp-1">{user.name || 'Unnamed user'}</h4>
+      <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{user.phone || 'No phone'}</p>
+      <p className="text-[10px] text-gray-600 font-bold tracking-widest mb-4 truncate">{user.email || 'No email'}</p>
+
+      <label className="block text-[9px] font-black uppercase tracking-widest text-gray-500 mb-2" htmlFor={`wallet-${user._id}`}>
+        Wallet adjustment (₹, negative to deduct)
+      </label>
+      <div className="flex gap-2 mb-6">
+        <input
+          id={`wallet-${user._id}`}
+          type="number"
+          value={amount}
           onChange={(e) => setAmount(e.target.value)}
-          className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-white outline-none focus:border-emerald-500/30 transition-all"
-          placeholder="Amount"
-       />
-       <button 
-         onClick={() => onAddWallet(user._id, Number(amount))}
-         className="px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-[8px] font-black uppercase text-emerald-400 hover:bg-emerald-500 hover:text-white transition-all"
-       >
-         Inject
-       </button>
+          onKeyDown={(e) => { if (e.key === 'Enter') submitWallet(); }}
+          className="flex-1 min-w-0 bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-white outline-none focus:border-emerald-500/30 transition-all"
+          placeholder="e.g. 100 or -50"
+        />
+        <button
+          disabled={busy || !amountValid}
+          onClick={submitWallet}
+          className="px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-[9px] font-black uppercase text-emerald-400 hover:bg-emerald-500 hover:text-white transition-all disabled:opacity-30 disabled:hover:bg-emerald-500/10 disabled:hover:text-emerald-400"
+        >
+          {busy ? 'Saving…' : 'Apply'}
+        </button>
+      </div>
+      <div className="pt-6 border-t border-white/5 flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
+        <span className="text-gray-500">{[user.role || 'student', user.hostelBlock].filter(Boolean).join(' · ')}</span>
+        <span className="text-white">{money(user.walletBalance)} wallet</span>
+      </div>
     </div>
-    <div className="pt-6 border-t border-white/5 flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-emerald-500">
-        <span>Verified Resident</span>
-        <span className="text-white">₹{user.walletBalance.toFixed(0)} Credits</span>
-    </div>
-  </div>
   );
 });
 UserCard.displayName = 'UserCard';
 
 export default function UserManagement() {
-  const isAuthed = useAdminAuth();
+  const { isAuthed } = useAdminAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [totalUsers, setTotalUsers] = useState(0);
   const [userPages, setUserPages] = useState(1);
@@ -85,169 +142,256 @@ export default function UserManagement() {
   const [logPage, setLogPage] = useState(1);
 
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [logsLoading, setLogsLoading] = useState(true);
+  const [logsError, setLogsError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<Notice>(null);
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState<'roster' | 'audit'>('roster');
 
-  useEffect(() => {
-    fetchUsers(1);
-    fetchLogs(1);
+  const fetchUsers = useCallback(async (page = 1) => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/users?page=${page}`, { cache: 'no-store' });
+      if (!res.ok) throw new Error(await readError(res, 'Could not load users.'));
+      const data = await res.json();
+      setUsers(Array.isArray(data.users) ? data.users : []);
+      setTotalUsers(data.total || 0);
+      setUserPages(Math.max(1, data.pages || 1));
+      setUserPage(page);
+    } catch (err) {
+      setLoadError(err instanceof TypeError ? 'Could not reach the server. Check your connection.' : (err as Error).message || FRIENDLY_FALLBACK);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const fetchUsers = async (page = 1) => {
+  const fetchLogs = useCallback(async (page = 1) => {
+    setLogsLoading(true);
+    setLogsError(null);
     try {
-      const token = 'cookie-managed';
-      const res = await fetch(`${API_URL}/api/admin/users?page=${page}`, {
-        cache: 'no-store'
-      });
+      const res = await fetch(`${API_URL}/api/admin/audit?page=${page}`, { cache: 'no-store' });
+      if (!res.ok) throw new Error(await readError(res, 'Could not load the audit log.'));
       const data = await res.json();
-      if (res.ok) {
-        setUsers(data.users || []);
-        setTotalUsers(data.total || 0);
-        setUserPages(data.pages || 1);
-        setUserPage(page);
-      }
-    } catch (err) { console.error('[USER_FETCH_ERROR]', err); } finally { setLoading(false); }
-  };
-
-  const fetchLogs = async (page = 1) => {
-    try {
-      const token = 'cookie-managed';
-      const res = await fetch(`${API_URL}/api/admin/audit?page=${page}`, {
-        cache: 'no-store'
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setLogs(data.logs || []);
+      // The backend currently returns a plain array (latest 100); the paginated shape is also supported.
+      if (Array.isArray(data)) {
+        setLogs(data);
+        setTotalLogs(data.length);
+        setLogPages(1);
+        setLogPage(1);
+      } else {
+        setLogs(Array.isArray(data.logs) ? data.logs : []);
         setTotalLogs(data.total || 0);
-        setLogPages(data.pages || 1);
+        setLogPages(Math.max(1, data.pages || 1));
         setLogPage(page);
       }
-    } catch (err) { console.error('[AUDIT_FETCH_ERROR]', err); }
+    } catch (err) {
+      setLogsError(err instanceof TypeError ? 'Could not reach the server. Check your connection.' : (err as Error).message || FRIENDLY_FALLBACK);
+    } finally {
+      setLogsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthed) return;
+    fetchUsers(1);
+    fetchLogs(1);
+  }, [isAuthed, fetchUsers, fetchLogs]);
+
+  const patchUser = (id: string, patch: Partial<User>) =>
+    setUsers(prev => prev.map(u => (u._id === id ? { ...u, ...patch } : u)));
+
+  const runAction = async (user: User, request: () => Promise<Response>, onSuccess: (data: any) => void, successText: string, failText: string) => {
+    if (busyId) return false;
+    setBusyId(user._id);
+    setNotice(null);
+    try {
+      const res = await request();
+      if (!res.ok) throw new Error(await readError(res, failText));
+      const data = await res.json().catch(() => ({}));
+      onSuccess(data);
+      setNotice({ kind: 'ok', text: successText });
+      fetchLogs(logPage);
+      return true;
+    } catch (err) {
+      setNotice({ kind: 'error', text: err instanceof TypeError ? 'Could not reach the server. Nothing was changed.' : (err as Error).message || failText });
+      return false;
+    } finally {
+      setBusyId(null);
+    }
   };
 
-  const toggleElite = async (userId: string, currentStatus: boolean) => {
-    try {
-      const token = 'cookie-managed';
-      const res = await fetch(`${API_URL}/api/admin/users/${userId}/elite`, {
+  const toggleElite = (user: User) => {
+    const next = !user.isElite;
+    if (!confirm(`${next ? 'Give' : 'Remove'} Elite status ${next ? 'to' : 'from'} ${user.name || user.phone || 'this user'}?`)) return;
+    runAction(
+      user,
+      () => fetch(`${API_URL}/api/admin/users/${user._id}/elite`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', },
-        body: JSON.stringify({ isElite: !currentStatus })
-      });
-      if (res.ok) { fetchUsers(userPage); fetchLogs(logPage); }
-    } catch (err) { console.error('[ELITE_TOGGLE_ERROR]', err); }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isElite: next }),
+      }),
+      () => patchUser(user._id, { isElite: next }),
+      `${user.name || 'User'} is now ${next ? 'Elite' : 'Standard'}.`,
+      'Could not change Elite status.'
+    );
   };
 
-  const toggleBan = async (userId: string, currentStatus: boolean) => {
-    if (!confirm(`Are you sure you want to ${currentStatus ? 'BAN' : 'UNBAN'} this user?`)) return;
-    try {
-      const token = 'cookie-managed';
-      const res = await fetch(`${API_URL}/api/admin/users/${userId}/ban`, {
+  const toggleBan = (user: User) => {
+    const suspend = user.isActive;
+    if (!confirm(suspend
+      ? `Suspend ${user.name || user.phone || 'this user'}? They will not be able to use Zenvy until reactivated.`
+      : `Reactivate ${user.name || user.phone || 'this user'}?`)) return;
+    runAction(
+      user,
+      () => fetch(`${API_URL}/api/admin/users/${user._id}/ban`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', },
-        body: JSON.stringify({ isActive: !currentStatus })
-      });
-      if (res.ok) { fetchUsers(userPage); fetchLogs(logPage); }
-    } catch (err) { console.error('[BAN_TOGGLE_ERROR]', err); }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: !suspend }),
+      }),
+      () => patchUser(user._id, { isActive: !suspend }),
+      `${user.name || 'User'} ${suspend ? 'suspended' : 'reactivated'}.`,
+      `Could not ${suspend ? 'suspend' : 'reactivate'} this user.`
+    );
   };
 
-  const addWalletBalance = async (userId: string, amount: number) => {
-    if (!amount || isNaN(amount)) return;
-    try {
-      const token = 'cookie-managed';
-      const res = await fetch(`${API_URL}/api/admin/users/${userId}/wallet`, {
+  const adjustWallet = (user: User, amount: number) => {
+    const current = Number(user.walletBalance || 0);
+    if (current + amount < 0) {
+      setNotice({ kind: 'error', text: `Cannot deduct ${money(Math.abs(amount))}: ${user.name || 'this user'} only has ${money(current)}.` });
+      return Promise.resolve(false);
+    }
+    const verb = amount > 0 ? `Add ${money(amount)} to` : `Deduct ${money(Math.abs(amount))} from`;
+    if (!confirm(`${verb} ${user.name || user.phone || 'this user'}'s wallet?\nNew balance: ${money(current + amount)}`)) return Promise.resolve(false);
+    return runAction(
+      user,
+      () => fetch(`${API_URL}/api/admin/users/${user._id}/wallet`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', },
-        body: JSON.stringify({ amount })
-      });
-      if (res.ok) {
-        fetchUsers(userPage);
-        fetchLogs(logPage);
-      }
-    } catch (err) { console.error('[WALLET_ERROR]', err); }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount }),
+      }),
+      (data) => patchUser(user._id, { walletBalance: typeof data.walletBalance === 'number' ? data.walletBalance : current + amount }),
+      `Wallet updated for ${user.name || 'user'}.`,
+      'Could not update the wallet.'
+    );
   };
 
-  const filteredUsers = users.filter(u => 
-    u.name?.toLowerCase().includes(search.toLowerCase()) || 
-    u.email?.toLowerCase().includes(search.toLowerCase()) ||
-    u.phone?.toLowerCase().includes(search.toLowerCase())
-  );
+  const q = search.trim().toLowerCase();
+  const filteredUsers = q
+    ? users.filter(u =>
+        u.name?.toLowerCase().includes(q) ||
+        u.email?.toLowerCase().includes(q) ||
+        u.phone?.toLowerCase().includes(q))
+    : users;
 
-  if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Authenticating...</div>;
+  if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Checking access…</div>;
 
   return (
     <div className="space-y-10 animate-fade-in relative pb-20">
-      <header className="flex justify-between items-center bg-white/5 p-8 rounded-[40px] border border-white/5 glass">
+      <header className="flex flex-wrap gap-6 justify-between items-center bg-white/5 p-8 rounded-[40px] border border-white/5 glass">
         <div>
-          <h2 className="text-3xl font-black text-white tracking-tighter uppercase">Nexus <span className="text-[var(--zenvy-gold)]">Residents</span></h2>
-          <p className="text-gray-400 text-sm font-bold uppercase tracking-widest mt-1">Campus Tiering & Absolute Student Governance</p>
+          <h2 className="text-3xl font-black text-white tracking-tighter uppercase">Users</h2>
+          <p className="text-gray-400 text-sm font-bold uppercase tracking-widest mt-1">Accounts, Elite tier, wallet adjustments and suspensions</p>
         </div>
         <div className="flex gap-2 bg-black/40 p-1.5 rounded-2xl border border-white/5">
-           <button onClick={() => setActiveTab('roster')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'roster' ? 'bg-[var(--zenvy-gold)] text-black shadow-[0_0_20px_rgba(212,175,122,0.3)]' : 'text-gray-500 hover:text-white'}`}>Active Roster</button>
-           <button onClick={() => setActiveTab('audit')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'audit' ? 'bg-[var(--zenvy-gold)] text-black shadow-[0_0_20px_rgba(212,175,122,0.3)]' : 'text-gray-500 hover:text-white'}`}>Audit Intel</button>
+          <button onClick={() => setActiveTab('roster')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'roster' ? 'bg-[var(--zenvy-gold)] text-black' : 'text-gray-500 hover:text-white'}`}>All users</button>
+          <button onClick={() => setActiveTab('audit')} className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'audit' ? 'bg-[var(--zenvy-gold)] text-black' : 'text-gray-500 hover:text-white'}`}>Admin audit log</button>
         </div>
       </header>
 
+      {notice && (
+        <div role={notice.kind === 'error' ? 'alert' : 'status'} className={`flex items-center justify-between gap-4 rounded-2xl border px-6 py-4 text-sm font-bold ${notice.kind === 'error' ? 'border-red-500/30 bg-red-500/10 text-red-300' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'}`}>
+          <span>{notice.text}</span>
+          <button onClick={() => setNotice(null)} className="text-xs uppercase tracking-widest text-white/70 hover:text-white">Dismiss</button>
+        </div>
+      )}
+
       {activeTab === 'roster' ? (
         <div className="glass-card p-6">
-          <div className="flex flex-col md:flex-row gap-6 mb-10">
-             <input type="text" placeholder="Search by Name, Email or Phone..." className="flex-1 bg-white/5 border border-white/10 rounded-2xl py-4 px-8 text-white font-black outline-none" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <div className="flex flex-col md:flex-row gap-3 md:items-center mb-10">
+            <input type="text" placeholder="Filter this page by name, email or phone…" className="flex-1 bg-white/5 border border-white/10 rounded-2xl py-4 px-8 text-white font-black outline-none" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">{totalUsers} accounts</span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-             {loading ? <div className="col-span-full py-20 text-center animate-pulse text-gray-600 font-black uppercase">Initialising Node Scan...</div> : 
-             filteredUsers.map((user) => (
-               <UserCard 
-                 key={user._id} 
-                 user={user} 
-                 onToggleElite={toggleElite}
-                 onToggleBan={toggleBan}
-                 onAddWallet={addWalletBalance} 
-               />
-             ))}
-          </div>
+          {loadError ? (
+            <div role="alert" className="py-16 text-center">
+              <p className="text-red-300 font-bold">{loadError}</p>
+              <button onClick={() => fetchUsers(userPage)} className="mt-4 px-6 py-2 rounded-xl bg-white/10 text-white text-xs font-black uppercase tracking-widest hover:bg-white/20">Retry</button>
+            </div>
+          ) : loading ? (
+            <div className="py-20 text-center animate-pulse text-gray-600 font-black uppercase">Loading users…</div>
+          ) : filteredUsers.length === 0 ? (
+            <div className="py-20 text-center text-gray-500 font-bold">{q ? 'No users on this page match your filter.' : 'No users yet.'}</div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {filteredUsers.map((user) => (
+                <UserCard
+                  key={user._id}
+                  user={user}
+                  busy={busyId === user._id}
+                  onToggleElite={toggleElite}
+                  onToggleBan={toggleBan}
+                  onAdjustWallet={adjustWallet}
+                />
+              ))}
+            </div>
+          )}
 
-          {/* User Pagination */}
           {userPages > 1 && (
             <div className="mt-10 flex items-center justify-between bg-white/5 p-6 rounded-3xl border border-white/5">
-               <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Resident Roster - Page {userPage} / {userPages} ({totalUsers} total)</span>
-               <div className="flex gap-2">
-                  <button disabled={userPage === 1} onClick={() => fetchUsers(userPage - 1)} className="px-5 py-2 bg-black/40 border border-white/10 rounded-xl text-[10px] font-black uppercase text-gray-400 hover:text-white disabled:opacity-30">Prev</button>
-                  <button disabled={userPage === userPages} onClick={() => fetchUsers(userPage + 1)} className="px-5 py-2 bg-black/40 border border-white/10 rounded-xl text-[10px] font-black uppercase text-gray-400 hover:text-white disabled:opacity-30">Next</button>
-               </div>
+              <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Page {userPage} / {userPages} ({totalUsers} total)</span>
+              <div className="flex gap-2">
+                <button disabled={loading || userPage <= 1} onClick={() => fetchUsers(userPage - 1)} className="px-5 py-2 bg-black/40 border border-white/10 rounded-xl text-[10px] font-black uppercase text-gray-400 hover:text-white disabled:opacity-30">Prev</button>
+                <button disabled={loading || userPage >= userPages} onClick={() => fetchUsers(userPage + 1)} className="px-5 py-2 bg-black/40 border border-white/10 rounded-xl text-[10px] font-black uppercase text-gray-400 hover:text-white disabled:opacity-30">Next</button>
+              </div>
             </div>
           )}
         </div>
       ) : (
         <div className="glass-card overflow-hidden">
-           <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-white/[0.03] border-b border-white/5">
-                  <th className="px-8 py-5 text-[9px] font-black text-gray-500 uppercase tracking-widest">Timestamp</th>
-                  <th className="px-8 py-5 text-[9px] font-black text-gray-500 uppercase tracking-widest">Action Type</th>
-                  <th className="px-8 py-5 text-[9px] font-black text-gray-500 uppercase tracking-widest">Operational Detail</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/[0.02] text-white">
-                 {logs.map((log) => (
-                   <tr key={log._id} className="hover:bg-white/[0.01]">
-                      <td className="px-8 py-5 text-[10px] font-bold text-gray-500">{new Date(log.timestamp).toLocaleString()}</td>
-                      <td className="px-8 py-5"><span className="px-2 py-1 bg-blue-500/10 text-blue-400 rounded-md text-[9px] font-black uppercase">{log.action}</span></td>
-                      <td className="px-8 py-5 text-sm font-bold text-gray-300 tracking-tight">{log.details}</td>
-                   </tr>
-                 ))}
-              </tbody>
-           </table>
+          {logsError ? (
+            <div role="alert" className="py-16 text-center">
+              <p className="text-red-300 font-bold">{logsError}</p>
+              <button onClick={() => fetchLogs(logPage)} className="mt-4 px-6 py-2 rounded-xl bg-white/10 text-white text-xs font-black uppercase tracking-widest hover:bg-white/20">Retry</button>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-white/[0.03] border-b border-white/5">
+                    <th className="px-8 py-5 text-[9px] font-black text-gray-500 uppercase tracking-widest">Time</th>
+                    <th className="px-8 py-5 text-[9px] font-black text-gray-500 uppercase tracking-widest">Action</th>
+                    <th className="px-8 py-5 text-[9px] font-black text-gray-500 uppercase tracking-widest">Details</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/[0.02] text-white">
+                  {logsLoading ? (
+                    <tr><td colSpan={3} className="px-8 py-16 text-center text-gray-600 animate-pulse font-black uppercase">Loading audit log…</td></tr>
+                  ) : logs.length === 0 ? (
+                    <tr><td colSpan={3} className="px-8 py-16 text-center text-gray-500 font-bold">No admin actions recorded yet.</td></tr>
+                  ) : logs.map((log, i) => (
+                    <tr key={log._id || log.id || i} className="hover:bg-white/[0.01]">
+                      <td className="px-8 py-5 text-[10px] font-bold text-gray-500 whitespace-nowrap">{log.timestamp ? new Date(log.timestamp).toLocaleString() : '—'}</td>
+                      <td className="px-8 py-5"><span className="px-2 py-1 bg-blue-500/10 text-blue-400 rounded-md text-[9px] font-black uppercase">{log.action.replaceAll('_', ' ')}</span></td>
+                      <td className="px-8 py-5 text-sm font-bold text-gray-300 tracking-tight break-all">{formatDetails(log.details)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
-           {/* Audit Pagination */}
-           {logPages > 1 && (
-             <div className="p-6 bg-white/[0.03] border-t border-white/5 flex items-center justify-between">
-               <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Security Audit Log - Page {logPage} / {logPages} ({totalLogs} entries)</span>
-               <div className="flex gap-2">
-                  <button disabled={logPage === 1} onClick={() => fetchLogs(logPage - 1)} className="px-5 py-2 bg-black/40 border border-white/10 rounded-xl text-[10px] font-black uppercase text-gray-400 hover:text-white disabled:opacity-30">Previous</button>
-                  <button disabled={logPage === logPages} onClick={() => fetchLogs(logPage + 1)} className="px-5 py-2 bg-black/40 border border-white/10 rounded-xl text-[10px] font-black uppercase text-gray-400 hover:text-white disabled:opacity-30">Next</button>
-               </div>
-             </div>
-           )}
+          {logPages > 1 && (
+            <div className="p-6 bg-white/[0.03] border-t border-white/5 flex items-center justify-between">
+              <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Page {logPage} / {logPages} ({totalLogs} entries)</span>
+              <div className="flex gap-2">
+                <button disabled={logsLoading || logPage <= 1} onClick={() => fetchLogs(logPage - 1)} className="px-5 py-2 bg-black/40 border border-white/10 rounded-xl text-[10px] font-black uppercase text-gray-400 hover:text-white disabled:opacity-30">Previous</button>
+                <button disabled={logsLoading || logPage >= logPages} onClick={() => fetchLogs(logPage + 1)} className="px-5 py-2 bg-black/40 border border-white/10 rounded-xl text-[10px] font-black uppercase text-gray-400 hover:text-white disabled:opacity-30">Next</button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

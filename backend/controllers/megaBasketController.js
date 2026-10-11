@@ -11,11 +11,48 @@ const broadcastBasketStatus = (req, basketId, payload) => {
     const room = basketId.toString();
     io.to(room).emit('statusUpdated', payload);
     io.to('admin-room').emit('statusUpdated', payload);
-    io.emit('statusUpdated', payload);
   } catch (err) {
     console.warn('[BASKET_SOCKET_BROADCAST_WARN]', err.message);
   }
 };
+
+// The delivery PIN is the customer's secret: the rider must ask for it at the door,
+// so it is never included in rider-facing responses.
+const withoutPin = (basket) => {
+  if (!basket) return basket;
+  const json = typeof basket.toJSON === 'function' ? basket.toJSON() : { ...basket };
+  delete json.deliveryPin;
+  return json;
+};
+
+// Rider-side state machine: a basket moves forward only from the allowed statuses, with a
+// conditional write so two taps / two riders can never both win (and the customer's price
+// approval can never be skipped).
+const BASKET_STEP_MESSAGES = {
+  Shopping: 'Claim this basket before you start shopping.',
+  PriceApprovalPending: 'Start shopping before you submit the bill.',
+  Purchased: 'Wait for the customer to approve the bill before you buy.',
+  Delivering: 'Finish the purchase before you start the delivery.',
+  Delivered: 'This basket is not out for delivery yet.'
+};
+const advanceBasket = async (req, res, from, to, extra = {}) => {
+  const MegaBasket = getMegaBasketModel();
+  const basket = await MegaBasket.findByPk(req.params.id);
+  if (!basket) { res.status(404).json({ message: 'Basket not found' }); return null; }
+  if (basket.deliveryPartnerId !== req.user.id) { res.status(403).json({ message: 'Not authorized: You did not claim this basket' }); return null; }
+  if (!from.includes(basket.status)) {
+    res.status(400).json({ message: basket.status === 'Cancelled' ? 'This basket was cancelled.' : (BASKET_STEP_MESSAGES[to] || 'This basket is not at that step.'), status: basket.status });
+    return null;
+  }
+  const [n] = await MegaBasket.update({ status: to, ...extra }, { where: { id: basket.id, deliveryPartnerId: req.user.id, status: { [Op.in]: from } } });
+  if (n === 0) { res.status(409).json({ message: 'This basket was just updated. Please refresh.' }); return null; }
+  basket.set({ status: to, ...extra });
+  return basket;
+};
+
+// Wrong delivery PINs per basket (in memory): 4 digits must not be brute-forceable.
+const MAX_BASKET_PIN_ATTEMPTS = 5;
+const basketPinAttempts = new Map();
 
 // @desc    Create a new Mega Basket
 // @route   POST /api/mega-basket
@@ -27,14 +64,36 @@ const createBasket = async (req, res) => {
       return res.status(400).json({ message: 'No items provided in basket' });
     }
 
-    if (!deliveryAddress) {
-      return res.status(400).json({ message: 'Delivery address is required' });
+    if (items.length > 50) {
+      return res.status(400).json({ message: 'A Mega Basket can have up to 50 items. Please split it into two baskets.' });
+    }
+    if (items.some(item => !item || typeof item.name !== 'string' || !item.name.trim())) {
+      return res.status(400).json({ message: 'Every item needs a name. Please check your list.' });
+    }
+
+    if (!deliveryAddress || typeof deliveryAddress !== 'string' || deliveryAddress.trim().length < 3) {
+      return res.status(400).json({ message: 'Please add your delivery address (hostel block and room) so the rider can find you.' });
+    }
+
+    // The final bill is only known after shopping, so Mega Basket is Cash on Delivery only.
+    if (String(paymentMethod || 'COD').trim().toUpperCase() !== 'COD') {
+      return res.status(400).json({
+        message: 'Mega Basket is paid in cash when it arrives (the shop bill is known only after shopping). Please choose Cash on Delivery.',
+        code: 'PAYMENT_METHOD_UNAVAILABLE',
+        allowed: ['COD']
+      });
+    }
+
+    // Same campus ordering hours as regular orders (riders are off at night).
+    const serviceability = require('../utils/storeHours').getCampusServiceability();
+    if (!serviceability.open) {
+      return res.status(403).json({ message: serviceability.message, code: 'ORDERING_CLOSED', reopensAt: serviceability.reopensAt });
     }
 
     const User = getUserModel();
     const currentUser = await User.findByPk(req.user.id);
     if (!currentUser) {
-      return res.status(401).json({ message: 'User not found' });
+      return res.status(401).json({ message: 'Your session has expired. Please log in again.' });
     }
 
     // Calculate estimated total
@@ -45,9 +104,9 @@ const createBasket = async (req, res) => {
       estimatedTotal += estPrice * qty;
 
       return {
-        name: item.name,
-        quantity: qty,
-        unit: item.unit || 'pcs',
+        name: item.name.replace(/[<>]/g, '').trim().slice(0, 80),
+        quantity: Math.min(qty, 99),
+        unit: String(item.unit || 'pcs').slice(0, 20),
         priceEstimated: estPrice,
         status: 'Pending'
       };
@@ -55,12 +114,12 @@ const createBasket = async (req, res) => {
 
     const shoppingFee = 30;
     const deliveryFee = 20;
-    const deliveryPin = Math.floor(1000 + Math.random() * 9000).toString();
+    const deliveryPin = String(require('crypto').randomInt(1000, 10000));
 
     // Initial status determined by payment method
     // For COD, advance directly to PaidEstimate (ready for shopping)
-    const initialStatus = paymentMethod === 'COD' ? 'PaidEstimate' : 'Created';
-    const paymentStatus = paymentMethod === 'COD' ? 'Pending' : (upiUTR ? 'Pending' : 'Pending');
+    const initialStatus = 'PaidEstimate'; // COD: ready for shopping
+    const paymentStatus = 'Pending'; // collected in cash on delivery
 
     const MegaBasket = getMegaBasketModel();
     const MegaBasketItem = getMegaBasketItemModel();
@@ -72,10 +131,10 @@ const createBasket = async (req, res) => {
       actualTotal: null,
       shoppingFee,
       deliveryFee,
-      deliveryAddress,
+      deliveryAddress: deliveryAddress.replace(/[<>]/g, '').trim().slice(0, 500),
       deliveryPin,
-      upiUTR: paymentMethod === 'UPI' ? upiUTR : null,
-      paymentMethod,
+      upiUTR: null,
+      paymentMethod: 'COD',
       paymentStatus
     });
 
@@ -113,28 +172,12 @@ const createBasket = async (req, res) => {
 // @desc    Submit payment UTR for estimation
 // @route   POST /api/mega-basket/:id/pay
 const payBasket = async (req, res) => {
-  try {
-    const { upiUTR } = req.body;
-    if (!upiUTR) {
-      return res.status(400).json({ message: 'UPI UTR is required' });
-    }
-
-    const MegaBasket = getMegaBasketModel();
-    const basket = await MegaBasket.findByPk(req.params.id);
-    if (!basket) {
-      return res.status(404).json({ message: 'Basket not found' });
-    }
-
-    basket.upiUTR = upiUTR;
-    basket.status = 'PaidEstimate';
-    await basket.save();
-
-    broadcastBasketStatus(req, basket.id, { id: basket.id, status: basket.status });
-
-    res.json({ message: 'Payment reference submitted', basket });
-  } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
+  // Online/UPI payments are switched off: a pasted UTR was never verified by anyone.
+  res.status(400).json({
+    message: 'Online payments are coming soon — Mega Basket is paid in cash when it arrives.',
+    code: 'PAYMENT_METHOD_UNAVAILABLE',
+    allowed: ['COD']
+  });
 };
 
 // @desc    Get a single Mega Basket details
@@ -157,8 +200,12 @@ const getBasket = async (req, res) => {
     if (!basket) {
       return res.status(404).json({ message: 'Basket not found' });
     }
+    const role = String(req.user.role || '').toLowerCase();
+    if (basket.userId !== req.user.id && basket.deliveryPartnerId !== req.user.id && role !== 'admin') {
+      return res.status(403).json({ message: 'Not authorized to view this basket' });
+    }
 
-    res.json(basket);
+    res.json(basket.userId === req.user.id || role === 'admin' ? basket : withoutPin(basket));
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
@@ -171,9 +218,13 @@ const getCustomerBaskets = async (req, res) => {
     const MegaBasket = getMegaBasketModel();
     const MegaBasketItem = getMegaBasketItemModel();
 
+    const DeliveryPartner = getDeliveryPartnerModel();
     const baskets = await MegaBasket.findAll({
       where: { userId: req.user.id },
-      include: [{ model: MegaBasketItem, as: 'items' }],
+      include: [
+        { model: MegaBasketItem, as: 'items' },
+        { model: DeliveryPartner, as: 'deliveryPartner', attributes: ['id', 'name', 'phone', 'photoUrl'] }
+      ],
       order: [['createdAt', 'DESC']]
     });
 
@@ -200,7 +251,7 @@ const getPendingBaskets = async (req, res) => {
       order: [['createdAt', 'DESC']]
     });
 
-    res.json(baskets);
+    res.json(baskets.map(withoutPin));
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
@@ -220,13 +271,16 @@ const claimBasket = async (req, res) => {
       return res.status(400).json({ message: 'Basket already claimed or not ready' });
     }
 
-    basket.deliveryPartnerId = req.user.id;
-    basket.status = 'PartnerAssigned';
-    await basket.save();
+    const [claimed] = await MegaBasket.update(
+      { deliveryPartnerId: req.user.id, status: 'PartnerAssigned' },
+      { where: { id: basket.id, status: 'PaidEstimate', deliveryPartnerId: null } }
+    );
+    if (claimed === 0) return res.status(400).json({ message: 'Another rider just claimed this basket.' });
+    basket.set({ deliveryPartnerId: req.user.id, status: 'PartnerAssigned' });
 
     broadcastBasketStatus(req, basket.id, { id: basket.id, status: basket.status });
 
-    res.json({ message: 'Basket claimed successfully', basket });
+    res.json({ message: 'Basket claimed successfully', basket: withoutPin(basket) });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
@@ -236,22 +290,12 @@ const claimBasket = async (req, res) => {
 // @route   POST /api/delivery/mega-basket/:id/start-shopping
 const startShopping = async (req, res) => {
   try {
-    const MegaBasket = getMegaBasketModel();
-    const basket = await MegaBasket.findByPk(req.params.id);
-    if (!basket) {
-      return res.status(404).json({ message: 'Basket not found' });
-    }
-
-    if (basket.deliveryPartnerId !== req.user.id) {
-      return res.status(403).json({ message: 'Not authorized: You did not claim this basket' });
-    }
-
-    basket.status = 'Shopping';
-    await basket.save();
+    const basket = await advanceBasket(req, res, ['PartnerAssigned', 'Shopping'], 'Shopping');
+    if (!basket) return;
 
     broadcastBasketStatus(req, basket.id, { id: basket.id, status: basket.status });
 
-    res.json({ message: 'Shopping started', basket });
+    res.json({ message: 'Shopping started', basket: withoutPin(basket) });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
@@ -280,8 +324,19 @@ const updateItemStatus = async (req, res) => {
       return res.status(404).json({ message: 'Item not found in this basket' });
     }
 
-    item.status = status;
-    if (priceActual !== undefined) item.priceActual = priceActual;
+    if (!['PartnerAssigned', 'Shopping', 'PriceApprovalPending'].includes(basket.status)) {
+      return res.status(400).json({ message: 'Items can only be updated while shopping.' });
+    }
+    if (status !== undefined && !['Pending', 'Approved', 'Purchased', 'Unavailable'].includes(status)) {
+      return res.status(400).json({ message: 'Invalid item status' });
+    }
+    if (priceActual !== undefined && priceActual !== null) {
+      const p = Number(priceActual);
+      if (!Number.isFinite(p) || p < 0 || p > 100000) return res.status(400).json({ message: 'Please enter a valid price.' });
+    }
+
+    if (status !== undefined) item.status = status;
+    if (priceActual !== undefined) item.priceActual = priceActual === null ? null : Number(priceActual);
     if (photoProofUrl !== undefined) item.photoProofUrl = photoProofUrl;
     await item.save();
 
@@ -315,6 +370,10 @@ const submitBill = async (req, res) => {
       return res.status(403).json({ message: 'Not authorized' });
     }
 
+    if (!['PartnerAssigned', 'Shopping', 'PriceApprovalPending'].includes(basket.status)) {
+      return res.status(400).json({ message: basket.status === 'Cancelled' ? 'This basket was cancelled.' : 'The bill for this basket was already approved.' });
+    }
+
     // Calculate actual total based on items that are not Unavailable
     let actualTotal = 0;
     basket.items.forEach(item => {
@@ -334,7 +393,7 @@ const submitBill = async (req, res) => {
       io.to(basket.id.toString()).emit('price_approval_request', { actualTotal });
     }
 
-    res.json({ message: 'Bill submitted for customer approval', basket });
+    res.json({ message: 'Bill submitted for customer approval', basket: withoutPin(basket) });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
@@ -358,8 +417,9 @@ const approvePrices = async (req, res) => {
       return res.status(400).json({ message: 'No approval request pending' });
     }
 
+    const [approved] = await MegaBasket.update({ status: 'Approved' }, { where: { id: basket.id, status: 'PriceApprovalPending' } });
+    if (approved === 0) return res.status(409).json({ message: 'The bill was just updated. Please refresh and check it again.' });
     basket.status = 'Approved';
-    await basket.save();
 
     broadcastBasketStatus(req, basket.id, { id: basket.id, status: basket.status });
 
@@ -373,22 +433,12 @@ const approvePrices = async (req, res) => {
 // @route   POST /api/delivery/mega-basket/:id/purchase-completed
 const purchaseCompleted = async (req, res) => {
   try {
-    const MegaBasket = getMegaBasketModel();
-    const basket = await MegaBasket.findByPk(req.params.id);
-    if (!basket) {
-      return res.status(404).json({ message: 'Basket not found' });
-    }
-
-    if (basket.deliveryPartnerId !== req.user.id) {
-      return res.status(403).json({ message: 'Not authorized' });
-    }
-
-    basket.status = 'Purchased';
-    await basket.save();
+    const basket = await advanceBasket(req, res, ['Approved'], 'Purchased');
+    if (!basket) return;
 
     broadcastBasketStatus(req, basket.id, { id: basket.id, status: basket.status });
 
-    res.json({ message: 'Purchase marked as completed', basket });
+    res.json({ message: 'Purchase marked as completed', basket: withoutPin(basket) });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
@@ -398,22 +448,12 @@ const purchaseCompleted = async (req, res) => {
 // @route   POST /api/delivery/mega-basket/:id/start-delivery
 const startDelivery = async (req, res) => {
   try {
-    const MegaBasket = getMegaBasketModel();
-    const basket = await MegaBasket.findByPk(req.params.id);
-    if (!basket) {
-      return res.status(404).json({ message: 'Basket not found' });
-    }
-
-    if (basket.deliveryPartnerId !== req.user.id) {
-      return res.status(403).json({ message: 'Not authorized' });
-    }
-
-    basket.status = 'Delivering';
-    await basket.save();
+    const basket = await advanceBasket(req, res, ['Approved', 'Purchased'], 'Delivering');
+    if (!basket) return;
 
     broadcastBasketStatus(req, basket.id, { id: basket.id, status: basket.status });
 
-    res.json({ message: 'Delivery run started', basket });
+    res.json({ message: 'Delivery run started', basket: withoutPin(basket) });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
@@ -438,17 +478,34 @@ const completeDelivery = async (req, res) => {
       return res.status(403).json({ message: 'Not authorized' });
     }
 
-    if (basket.deliveryPin !== deliveryPin.trim()) {
-      return res.status(400).json({ message: 'Invalid delivery PIN' });
+    if (basket.status === 'Delivered') {
+      return res.status(409).json({ message: 'This basket is already delivered.' });
+    }
+    if (!['Approved', 'Purchased', 'Delivering'].includes(basket.status)) {
+      return res.status(400).json({ message: BASKET_STEP_MESSAGES.Delivered });
     }
 
-    basket.status = 'Delivered';
-    basket.paymentStatus = 'Completed';
-    await basket.save();
+    const attempts = basketPinAttempts.get(basket.id) || 0;
+    if (attempts >= MAX_BASKET_PIN_ATTEMPTS) {
+      return res.status(429).json({ code: 'PIN_LOCKED', message: 'Too many wrong PINs for this basket. Please contact Zenvy support to complete the handover.' });
+    }
+    if (basket.deliveryPin !== String(deliveryPin).trim()) {
+      basketPinAttempts.set(basket.id, attempts + 1);
+      const left = Math.max(0, MAX_BASKET_PIN_ATTEMPTS - attempts - 1);
+      return res.status(400).json({ code: 'INVALID_PIN', attemptsLeft: left, message: left > 0 ? `That PIN doesn't match. Ask the customer for the 4-digit PIN in their Zenvy app (${left} ${left === 1 ? 'try' : 'tries'} left).` : 'Too many wrong PINs for this basket. Please contact Zenvy support to complete the handover.' });
+    }
+
+    const [done] = await MegaBasket.update(
+      { status: 'Delivered', paymentStatus: 'Completed' },
+      { where: { id: basket.id, deliveryPartnerId: req.user.id, status: { [Op.in]: ['Approved', 'Purchased', 'Delivering'] } } }
+    );
+    if (done === 0) return res.status(409).json({ message: 'This basket was just updated. Please refresh.' });
+    basketPinAttempts.delete(basket.id);
+    basket.set({ status: 'Delivered', paymentStatus: 'Completed' });
 
     broadcastBasketStatus(req, basket.id, { id: basket.id, status: basket.status });
 
-    res.json({ message: 'Delivery completed successfully', basket });
+    res.json({ message: 'Delivery completed successfully', basket: withoutPin(basket) });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
@@ -476,7 +533,7 @@ const getActiveBaskets = async (req, res) => {
       order: [['createdAt', 'DESC']]
     });
 
-    res.json(baskets);
+    res.json(baskets.map(withoutPin));
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }

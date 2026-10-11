@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Dimensions, Animated, Easing, Alert, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import Clipboard from '@react-native-clipboard/clipboard';
@@ -8,12 +8,14 @@ import { useTheme } from '../context/ThemeContext';
 import { StaggeredSection, FloatingPulse, BounceIn } from '../components/AnimatedSection';
 import DopaminePressable, { ActionPressable } from '../components/DopaminePressable';
 import { LinearGradient } from 'expo-linear-gradient';
-import { apiFetch } from '../utils/auth';
-import { API_URL, ENDPOINTS } from '../constants/api';
+import { apiFetch, readJson } from '../utils/auth';
+import { API_URL } from '../constants/api';
+import { useCart } from '../context/CartContext';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 
-// 8 Sectors matching web SpinWheel and validated by backend
+// Display mirror of the server's 8-sector prize table (same order). The server picks the prize;
+// GET /api/rewards/spin-eligibility returns the live table in `prizes`, which wins when present.
 const PRIZES = [
   { label: 'FREE DEL', value: 'FREEDEL', type: 'coupon', display: 'Free Delivery 🚚' },
   { label: '10 ZEN', value: 10, type: 'points', display: '10 ZenPoints 💎' },
@@ -25,10 +27,14 @@ const PRIZES = [
   { label: '2 ZEN', value: 2, type: 'points', display: '2 ZenPoints 💎' },
 ];
 
+type Prize = { label: string; value: any; type: string; display: string };
+type Eligibility = { spinsAvailable: number; nextMilestoneIn: number; spinsUsed: number; prizes?: Prize[] };
+
 export default function RewardsScreen() {
   const router = useRouter();
-  const { user, setUser } = useAuth();
+  const { user, refreshUser } = useAuth();
   const { isDark, colors } = useTheme();
+  const { cart } = useCart();
 
   const streak = user?.streakCount || 0;
   const progressPercent = Math.min(100, (streak / 14) * 100);
@@ -41,20 +47,81 @@ export default function RewardsScreen() {
   };
 
   // Backend Eligibility State
-  const [eligibility, setEligibility] = useState<{ spinsAvailable: number, nextMilestoneIn: number, spinsUsed: number } | null>(null);
+  const [eligibility, setEligibility] = useState<Eligibility | null>(null);
   const [loadingEligibility, setLoadingEligibility] = useState(true);
+  const [eligibilityError, setEligibilityError] = useState<string | null>(null);
   const [coupons, setCoupons] = useState<any[]>([]);
   const [loadingCoupons, setLoadingCoupons] = useState(false);
+  const [couponsError, setCouponsError] = useState(false);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
   // Wheel State
   const [spinning, setSpinning] = useState(false);
   const [selectedPrize, setSelectedPrize] = useState<string | null>(null);
-  
+  const spinLockRef = useRef(false);
+  const mountedRef = useRef(true);
+  const tickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Animation Values
   const spinAnim = useRef(new Animated.Value(0)).current;
   const pointerBounce = useRef(new Animated.Value(0)).current; // Tactile Pointer Bounce
   const bulbPulse = useRef(new Animated.Value(0.3)).current;   // Perimeter Chase Lights
+
+  const wheelPrizes: Prize[] = Array.isArray(eligibility?.prizes) && eligibility!.prizes!.length === PRIZES.length
+    ? eligibility!.prizes!
+    : PRIZES;
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (tickTimerRef.current) clearTimeout(tickTimerRef.current);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      spinAnim.stopAnimation();
+      pointerBounce.stopAnimation();
+    };
+  }, []);
+
+  const fetchEligibility = useCallback(async () => {
+    setLoadingEligibility(true);
+    try {
+      const res = await apiFetch(`${API_URL}/api/rewards/spin-eligibility`);
+      const data = await readJson(res);
+      if (!mountedRef.current) return;
+      if (res.ok && data) {
+        setEligibility(data);
+        setEligibilityError(null);
+      } else {
+        setEligibilityError((res.status < 500 && data?.message) || "We couldn't load your spins. Please try again.");
+      }
+    } catch (err) {
+      console.error('Failed to fetch spin eligibility:', err);
+      if (mountedRef.current) setEligibilityError("Can't reach Zenvy right now. Check your internet and try again.");
+    } finally {
+      if (mountedRef.current) setLoadingEligibility(false);
+    }
+  }, []);
+
+  const fetchCoupons = useCallback(async () => {
+    setLoadingCoupons(true);
+    try {
+      const res = await apiFetch(`${API_URL}/api/rewards/coupons`);
+      const data = await readJson(res);
+      if (!mountedRef.current) return;
+      if (res.ok) {
+        setCoupons(Array.isArray(data) ? data : []);
+        setCouponsError(false);
+      } else {
+        setCouponsError(true);
+      }
+    } catch (err) {
+      console.error('Failed to fetch user coupons:', err);
+      if (mountedRef.current) setCouponsError(true);
+    } finally {
+      if (mountedRef.current) setLoadingCoupons(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (user) {
@@ -63,150 +130,132 @@ export default function RewardsScreen() {
     } else {
       setLoadingEligibility(false);
     }
-  }, [user]);
-
-  const fetchEligibility = async () => {
-    try {
-      const res = await apiFetch(`${API_URL}/api/rewards/spin-eligibility`);
-      if (res.ok) {
-        const data = await res.json();
-        setEligibility(data);
-      }
-    } catch (err) {
-      console.error('Failed to fetch spin eligibility:', err);
-    } finally {
-      setLoadingEligibility(false);
-    }
-  };
-
-  const fetchCoupons = async () => {
-    setLoadingCoupons(true);
-    try {
-      const res = await apiFetch(`${API_URL}/api/rewards/coupons`);
-      if (res.ok) {
-        const data = await res.json();
-        setCoupons(Array.isArray(data) ? data : []);
-      }
-    } catch (err) {
-      console.error('Failed to fetch user coupons:', err);
-    } finally {
-      setLoadingCoupons(false);
-    }
-  };
+    // Only when the account changes, not on every profile refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?._id]);
 
   const handleCopyCoupon = (code: string) => {
     Clipboard.setString(code);
     setCopiedCode(code);
-    setTimeout(() => setCopiedCode(null), 2500);
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    copyTimerRef.current = setTimeout(() => {
+      if (mountedRef.current) setCopiedCode(null);
+    }, 2500);
   };
 
-  // Bulb pulsing loop
+  const handleUseCoupon = (code: string) => {
+    if (!cart || cart.length === 0) {
+      Alert.alert(
+        'Add something first',
+        `Your basket is empty. Add items and pick ${code} at checkout to apply it.`,
+        [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'Browse', onPress: () => router.push('/(tabs)' as any) },
+        ]
+      );
+      return;
+    }
+    router.push({ pathname: '/checkout', params: { coupon: code } } as any);
+  };
+
+  // Bulb pulsing loop (stopped when leaving the screen)
   useEffect(() => {
-    Animated.loop(
+    const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(bulbPulse, { toValue: 1.0, duration: 600, useNativeDriver: true }),
         Animated.timing(bulbPulse, { toValue: 0.3, duration: 600, useNativeDriver: true }),
       ])
-    ).start();
+    );
+    loop.start();
+    return () => loop.stop();
   }, []);
 
+  // The server picks the prize first; the wheel then animates to the slice it returned.
   const startSpin = async () => {
-    if (spinning) return;
+    if (spinning || spinLockRef.current) return;
     if (!eligibility || eligibility.spinsAvailable <= 0) {
-      Alert.alert('No Spins Left', 'Complete more orders to earn your next spin!');
+      Alert.alert('No spins left', 'You earn a spin for every 2 delivered orders.');
       return;
     }
 
+    spinLockRef.current = true;
     setSpinning(true);
     setSelectedPrize(null);
+
+    let data: any = null;
+    try {
+      const res = await apiFetch(`${API_URL}/api/rewards/use-spin`, { method: 'POST', body: JSON.stringify({}) });
+      data = await readJson(res);
+      if (!res.ok || !data || typeof data.prizeIndex !== 'number') {
+        if (mountedRef.current) {
+          setSpinning(false);
+          Alert.alert("Couldn't spin", data?.message || 'Please try again in a moment.');
+          fetchEligibility();
+        }
+        spinLockRef.current = false;
+        return;
+      }
+    } catch (err) {
+      console.error('Spin failed:', err);
+      if (mountedRef.current) {
+        setSpinning(false);
+        Alert.alert('No connection', 'Please check your internet and try again. Your spin was not used.');
+      }
+      spinLockRef.current = false;
+      return;
+    }
+    if (!mountedRef.current) { spinLockRef.current = false; return; }
+
+    const targetIndex = Math.max(0, Math.min(wheelPrizes.length - 1, data.prizeIndex));
+    const prizeText: string = data.prize?.display || wheelPrizes[targetIndex]?.display || 'a prize';
+    setEligibility(prev => (prev ? {
+      ...prev,
+      spinsAvailable: Number(data.spinsAvailable ?? Math.max(0, prev.spinsAvailable - 1)),
+      spinsUsed: Number(data.spinsUsed ?? prev.spinsUsed + 1),
+    } : prev));
 
     spinAnim.setValue(0);
     pointerBounce.setValue(0);
 
-    // Predict winning prize based on developer logic: Free Delivery on 15th overall spin, else random
-    const spinsCount = (eligibility.spinsUsed || 0) + 1;
-    let targetIndex = 0;
-    if (spinsCount % 15 === 0) {
-      targetIndex = 0; // Forced to FREE DEL
-    } else {
-      // Pick any prize except index 0 (FREE DEL)
-      targetIndex = Math.floor(Math.random() * (PRIZES.length - 1)) + 1;
-    }
+    // Land the pointer on the centre of the won slice (labels sit at idx*45+22.5 degrees).
+    const sliceDeg = 360 / wheelPrizes.length;
+    const finalVal = 8 - (targetIndex * sliceDeg + sliceDeg / 2) / 360;
 
-    const prizeRotation = (360 / PRIZES.length) * targetIndex;
-    const finalVal = 8 - (targetIndex / PRIZES.length); // 8 full spins minus relative segment position
-
-    // 1. Decelerating pointer click trigger loop
+    // 1. Decelerating pointer click ticks
     let tickCount = 0;
-    const maxTicks = 42; 
+    const maxTicks = 42;
     const triggerTicks = (delay: number) => {
-      if (tickCount >= maxTicks) return;
-
+      if (tickCount >= maxTicks || !mountedRef.current) return;
       Animated.sequence([
-        Animated.timing(pointerBounce, {
-          toValue: -15, // click back
-          duration: delay * 0.2,
-          useNativeDriver: true,
-        }),
-        Animated.spring(pointerBounce, {
-          toValue: 0, // snap back
-          friction: 4,
-          tension: 110,
-          useNativeDriver: true,
-        })
+        Animated.timing(pointerBounce, { toValue: -15, duration: delay * 0.2, useNativeDriver: true }),
+        Animated.spring(pointerBounce, { toValue: 0, friction: 4, tension: 110, useNativeDriver: true }),
       ]).start();
-
       tickCount++;
-      // Progressively slower ticks to simulate deceleration
       const nextDelay = delay * 1.09;
-      setTimeout(() => triggerTicks(nextDelay), delay);
+      tickTimerRef.current = setTimeout(() => triggerTicks(nextDelay), delay);
     };
-    triggerTicks(55); // start with fast click-ticks
+    triggerTicks(55);
 
-    // 2. Main Wheel Spin Animation
+    // 2. Main wheel spin
     Animated.timing(spinAnim, {
       toValue: finalVal,
       duration: 5000,
       easing: Easing.out(Easing.bezier(0.12, 0.8, 0.32, 1)),
       useNativeDriver: true,
-    }).start(async () => {
-      const wonPrize = PRIZES[targetIndex];
-      setSelectedPrize(wonPrize.display);
+    }).start(() => {
+      spinLockRef.current = false;
+      if (tickTimerRef.current) clearTimeout(tickTimerRef.current);
+      if (!mountedRef.current) return;
+      setSelectedPrize(prizeText);
       setSpinning(false);
-
-      // Record spin in backend
-      try {
-        const res = await apiFetch(`${API_URL}/api/rewards/use-spin`, {
-          method: 'POST',
-          body: JSON.stringify({
-            prizeType: wonPrize.type,
-            prizeValue: wonPrize.value
-          })
-        });
-        
-        const data = await res.json();
-        if (res.ok) {
-          Alert.alert(
-            'You Won! 🎉', 
-            `You unlocked: ${wonPrize.display}! Check your coupons & wallet.`
-          );
-          
-          // Refresh eligibility
-          fetchEligibility();
-          
-          // Sync fresh user profile details (points, streak, etc.)
-          const profileRes = await apiFetch(ENDPOINTS.profile);
-          if (profileRes.ok) {
-            const profileData = await profileRes.json();
-            setUser(profileData);
-          }
-        } else {
-          Alert.alert('Spin Recording Failed', data.message || 'Could not save spin result.');
-        }
-      } catch (err) {
-        console.error('Failed to record spin result:', err);
-        Alert.alert('Error', 'Network error registering your prize.');
-      }
+      Alert.alert(
+        'You won! 🎉',
+        data.coupon?.code
+          ? `${prizeText}. Your voucher ${data.coupon.code} is in My Vouchers below.`
+          : `${prizeText} added to your account.`
+      );
+      refreshUser().catch(() => {});
+      if (data.coupon) fetchCoupons();
     });
   };
 
@@ -250,7 +299,7 @@ export default function RewardsScreen() {
             <Text style={{ fontSize: 16, color: txt }}>←</Text>
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
-            <Text style={s.subText}>ELYSIAN ACCESS</Text>
+            <Text style={s.subText}>ZENVY REWARDS</Text>
             <Text style={[s.title, { color: txt }]}>Rewards & Streaks</Text>
           </View>
         </View>
@@ -258,10 +307,10 @@ export default function RewardsScreen() {
         <View style={[s.center, { flex: 1, padding: 24 }]}>
           <Text style={{ fontSize: 52, marginBottom: 16 }}>👑</Text>
           <Text style={{ fontSize: 18, fontWeight: '900', color: txt, letterSpacing: 2, textAlign: 'center', marginBottom: 8 }}>
-            ELYSIAN REWARDS
+            ZENVY REWARDS
           </Text>
           <Text style={{ fontSize: 12, color: txtSec, textAlign: 'center', lineHeight: 18, marginBottom: 28, maxWidth: 280 }}>
-            Sign in to unlock daily prize spins, earn streak cashback, and access exclusive campus delivery passes.
+            Sign in to spin the prize wheel (one spin for every 2 delivered orders) and keep your order streak going.
           </Text>
 
           <DopaminePressable
@@ -313,8 +362,8 @@ export default function RewardsScreen() {
     <View style={[s.container, { backgroundColor: bg }]}>
       {/* Header */}
       <View style={[s.header, { borderBottomColor: border, backgroundColor: cardBg }]}>
-        <TouchableOpacity 
-          style={[s.backBtn, { borderColor: border, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F6' }]} 
+        <TouchableOpacity
+          style={[s.backBtn, { borderColor: border, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F6' }]}
           onPress={() => {
             if (router.canGoBack()) {
               router.back();
@@ -332,7 +381,7 @@ export default function RewardsScreen() {
       </View>
 
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={s.scrollContent}>
-        
+
         {/* Streak Details Card */}
         <StaggeredSection delay={50} direction="up">
           <View style={[s.card, { backgroundColor: cardBg, borderColor: border }]}>
@@ -352,39 +401,46 @@ export default function RewardsScreen() {
             </View>
 
             <Text style={[s.cardDesc, { color: txtSec }]}>
-              Keep ordering daily to level up your tier and unlock better rewards.
+              Order on consecutive days to grow your streak. Miss a full day and it starts again.
             </Text>
           </View>
         </StaggeredSection>
 
-        {/* ── DAILY SPIN WHEEL ── */}
+        {/* ── PRIZE WHEEL (1 spin per 2 delivered orders) ── */}
         <StaggeredSection delay={130} direction="up">
-          <Text style={[s.sectionTitle, { color: txt }]}>DAILY SPIN</Text>
-          
+          <Text style={[s.sectionTitle, { color: txt }]}>PRIZE WHEEL</Text>
+
           <View style={[s.wheelCard, { backgroundColor: cardBg, borderColor: border }]}>
-            {loadingEligibility ? (
+            {loadingEligibility && !eligibility ? (
               <ActivityIndicator size="small" color="#D4AF7A" style={{ marginBottom: 20 }} />
+            ) : !eligibility ? (
+              <TouchableOpacity onPress={fetchEligibility} style={{ marginBottom: 20, alignItems: 'center' }}>
+                <Text style={[s.wheelSub, { marginBottom: 4, color: '#EF4444' }]}>
+                  {eligibilityError || "We couldn't load your spins."}
+                </Text>
+                <Text style={[s.wheelSub, { marginBottom: 0, color: '#D4AF7A' }]}>TAP TO TRY AGAIN</Text>
+              </TouchableOpacity>
             ) : (
               <Text style={s.wheelSub}>
-                {eligibility && eligibility.spinsAvailable > 0 
+                {eligibility.spinsAvailable > 0
                   ? `${eligibility.spinsAvailable} SPIN${eligibility.spinsAvailable > 1 ? 'S' : ''} AVAILABLE! TAP TO SPIN`
-                  : `NEXT SPIN IN ${eligibility?.nextMilestoneIn || 2} MORE ORDERS`}
+                  : `NEXT SPIN AFTER ${eligibility.nextMilestoneIn} MORE DELIVERED ORDER${eligibility.nextMilestoneIn === 1 ? '' : 'S'}`}
               </Text>
             )}
 
             {/* Interactive Animated Pointer */}
-            <Animated.View 
+            <Animated.View
               style={[
-                s.pointerContainer, 
-                { 
+                s.pointerContainer,
+                {
                   transform: [
-                    { 
+                    {
                       rotate: pointerBounce.interpolate({
                         inputRange: [-25, 25],
                         outputRange: ['-25deg', '25deg']
-                      }) 
+                      })
                     }
-                  ] 
+                  ]
                 }
               ]}
             >
@@ -393,7 +449,7 @@ export default function RewardsScreen() {
 
             {/* Wheel Canvas wrapper with chase lights */}
             <View style={s.wheelFrame}>
-              
+
               {/* Pulsing Chase lights around the rim */}
               {bulbPositions.map((pos, idx) => (
                 <Animated.View
@@ -414,17 +470,17 @@ export default function RewardsScreen() {
 
               {/* Rotatable wheel block */}
               <Animated.View style={[s.wheelBody, { transform: [{ rotate: rotateWheel }] }]}>
-                
+
                 {/* 4 Overlapping lines dividing the circle into 8 segments */}
                 {[0, 45, 90, 135].map((angle, idx) => (
-                  <View 
-                    key={idx} 
-                    style={[s.wheelDividerLine, { transform: [{ rotate: `${angle}deg` }] }]} 
+                  <View
+                    key={idx}
+                    style={[s.wheelDividerLine, { transform: [{ rotate: `${angle}deg` }] }]}
                   />
                 ))}
 
                 {/* Prize labels placed along the slices */}
-                {PRIZES.map((prize, idx) => {
+                {wheelPrizes.map((prize, idx) => {
                   const angle = idx * 45 + 22.5; // center text in slice
                   return (
                     <View
@@ -451,21 +507,23 @@ export default function RewardsScreen() {
 
             {/* Initialize Trigger Button */}
             <FloatingPulse>
-              <ActionPressable 
+              <ActionPressable
                 style={[
-                  s.spinBtn, 
+                  s.spinBtn,
                   (spinning || !eligibility || eligibility.spinsAvailable <= 0) && s.spinBtnDisabled
-                ]} 
+                ]}
                 onPress={startSpin}
                 disabled={spinning || !eligibility || eligibility.spinsAvailable <= 0}
                 sound="success"
               >
                 <Text style={s.spinBtnText}>
-                  {spinning 
-                    ? 'SPINNING...' 
-                    : (eligibility && eligibility.spinsAvailable <= 0) 
-                      ? 'NO SPINS LEFT' 
-                      : 'SPIN THE WHEEL'
+                  {spinning
+                    ? 'SPINNING...'
+                    : !eligibility
+                      ? 'SPINS UNAVAILABLE'
+                      : eligibility.spinsAvailable <= 0
+                        ? 'NO SPINS LEFT'
+                        : 'SPIN THE WHEEL'
                   }
                 </Text>
               </ActionPressable>
@@ -480,52 +538,15 @@ export default function RewardsScreen() {
           </View>
         </StaggeredSection>
 
-        {/* Streak Rewards */}
-        <StaggeredSection delay={210} direction="up">
-          <Text style={[s.sectionTitle, { color: txt }]}>STREAK REWARDS</Text>
-          <View style={s.tierList}>
-            {[
-              { icon: '🥉', title: '3 Day Streak', desc: 'Free Delivery on next order', level: 'Bronze', req: 3 },
-              { icon: '🥈', title: '7 Day Streak', desc: '₹50 Cashback', level: 'Silver', req: 7 },
-              { icon: '🥇', title: '14 Day Streak', desc: 'Unlimited Free Delivery Pass', level: 'Gold', req: 14 }
-            ].map((reward, idx) => {
-              const unlocked = streak >= reward.req;
-              return (
-                <View 
-                  key={idx} 
-                  style={[
-                    s.rewardRow, 
-                    { backgroundColor: cardBg, borderColor: unlocked ? '#D4AF7A' : border }
-                  ]}
-                >
-                  <View style={[s.rewardIconWrap, { backgroundColor: isDark ? '#1F1E24' : '#F0F0F3' }]}>
-                    <Text style={{ fontSize: 24 }}>{reward.icon}</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Text style={[s.rewardTitle, { color: txt }]}>{reward.title}</Text>
-                      <View style={[s.levelBadge, { backgroundColor: unlocked ? 'rgba(34,197,94,0.1)' : 'rgba(255,255,255,0.05)' }]}>
-                        <Text style={[s.levelBadgeText, { color: unlocked ? '#22c55e' : txtSec }]}>
-                          {reward.level.toUpperCase()}
-                        </Text>
-                      </View>
-                    </View>
-                    <Text style={[s.rewardDesc, { color: txtSec }]}>{reward.desc}</Text>
-                  </View>
-                  <View style={[s.statusBox, unlocked && s.statusBoxUnlocked]}>
-                    <Text style={[s.statusBoxText, unlocked && { color: '#22c55e' }]}>
-                      {unlocked ? 'UNLOCKED' : 'LOCKED'}
-                    </Text>
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-        </StaggeredSection>
         {/* Active Won Vouchers / Coupons */}
+        {couponsError && coupons.length === 0 && !loadingCoupons && (
+          <TouchableOpacity onPress={fetchCoupons} style={{ paddingVertical: 12, alignItems: 'center' }}>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: '#EF4444' }}>Couldn't load your vouchers. Tap to try again.</Text>
+          </TouchableOpacity>
+        )}
         {coupons.length > 0 && (
           <StaggeredSection delay={280} direction="up">
-            <Text style={[s.sectionTitle, { color: txt, marginTop: 16 }]}>MY ACTIVE VOUCHERS</Text>
+            <Text style={[s.sectionTitle, { color: txt, marginTop: 16 }]}>MY VOUCHERS</Text>
             <View style={{ gap: 10, marginBottom: 16 }}>
               {coupons.map((c, idx) => {
                 const isCopied = copiedCode === c.code;
@@ -543,7 +564,10 @@ export default function RewardsScreen() {
                           {c.code}
                         </Text>
                         <Text style={[s.rewardDesc, { color: '#D4AF7A' }]}>
-                          {c.type === 'FREEDEL' ? 'Free Delivery Pass' : 'Exclusive Discount'}
+                          {c.label || (c.type === 'FREEDEL' ? 'Free delivery' : 'Discount')}
+                          {typeof c.expiresInDays === 'number'
+                            ? (c.expiresInDays <= 0 ? ' • Expires today' : ` • Expires in ${c.expiresInDays}d`)
+                            : ''}
                         </Text>
                       </View>
                     </View>
@@ -568,7 +592,7 @@ export default function RewardsScreen() {
                           s.statusBox,
                           { backgroundColor: '#D4AF7A', borderWidth: 1, borderColor: '#D4AF7A' }
                         ]}
-                        onPress={() => require('expo-router').router.push('/checkout')}
+                        onPress={() => handleUseCoupon(c.code)}
                         sound="click"
                         activeScale={0.9}
                       >
@@ -617,19 +641,19 @@ const s = StyleSheet.create({
   // Tactile Pointer
   pointerContainer: { zIndex: 50, marginBottom: -12, transformOrigin: 'top center' },
   pointerIcon: { fontSize: 24, color: '#D4AF7A', textShadowColor: 'rgba(212,175,122,0.5)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 6 },
-  
+
   // Wheel Frame
   wheelFrame: { width: 240, height: 240, position: 'relative', justifyContent: 'center', alignItems: 'center', marginBottom: 24 },
   chaseBulb: { position: 'absolute', width: 8, height: 8, borderRadius: 4, backgroundColor: '#D4AF7A', zIndex: 40, shadowColor: '#D4AF7A', shadowOpacity: 0.8, shadowRadius: 6 },
-  
+
   // Wheel Body
   wheelBody: { width: 220, height: 220, borderRadius: 110, borderWidth: 4, borderColor: '#D4AF7A', backgroundColor: '#0B0A0C', overflow: 'hidden', justifyContent: 'center', alignItems: 'center', position: 'relative', shadowColor: '#D4AF7A', shadowOpacity: 0.25, shadowRadius: 15, elevation: 8 },
   wheelDividerLine: { position: 'absolute', top: 0, bottom: 0, left: 107.5, width: 1.5, backgroundColor: 'rgba(212,175,122,0.22)' },
-  
+
   // Text segments
   sliceTextWrap: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, justifyContent: 'flex-start', alignItems: 'center', paddingTop: 20 },
   sliceText: { fontSize: 7, fontWeight: '900', color: '#EBE3CE', letterSpacing: 0.5, textTransform: 'uppercase', textShadowColor: '#000', textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 2 },
-  
+
   // Core center badge
   coreBadge: { position: 'absolute', width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(11,10,12,0.95)', borderWidth: 2, borderColor: '#D4AF7A', justifyContent: 'center', alignItems: 'center', zIndex: 30, shadowColor: '#D4AF7A', shadowOpacity: 0.4, shadowRadius: 6 },
 

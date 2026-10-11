@@ -32,12 +32,12 @@ Alert.alert = (title, message, buttons, options) => {
 };
 
 function AppContainer() {
-  const { isDark } = useTheme();
-  const [showIntro, setShowIntro] = React.useState(true);
+  const { isDark, isThemeReady } = useTheme();
+  const [showIntro, setShowIntro] = React.useState(false);
   const [checkingIntro, setCheckingIntro] = React.useState(true);
 
   // Preload Ionicons so tab bar icons render on Expo Web
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     ...Ionicons.font,
   });
 
@@ -69,16 +69,34 @@ function AppContainer() {
   }, []);
 
   React.useEffect(() => {
-    // Always show intro on startup
-    setCheckingIntro(false);
+    // Only show intro on first-ever launch, skip on subsequent opens
+    const checkFirstLaunch = async () => {
+      try {
+        const seen = await AsyncStorage.getItem('zenvy_intro_seen');
+        if (!seen) {
+          setShowIntro(true);
+        }
+      } catch (e) {
+        // If AsyncStorage fails, skip intro to avoid blocking the user
+      } finally {
+        setCheckingIntro(false);
+      }
+    };
+    checkFirstLaunch();
   }, []);
 
   const handleIntroComplete = async () => {
     setShowIntro(false);
+    try {
+      await AsyncStorage.setItem('zenvy_intro_seen', 'true');
+    } catch (e) {
+      // Silently fail — intro will just show again next time
+    }
   };
 
   // Wait for icon fonts to load (critical for Expo Web)
-  if (!fontsLoaded) {
+  // If the font fails to load, render anyway (icons fall back) instead of spinning forever
+  if (!fontsLoaded && !fontError) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#0A0A0B' : '#F5F5F7' }}>
         <ActivityIndicator size="large" color="#F59E0B" />
@@ -98,7 +116,7 @@ function AppContainer() {
             <ThemedAlert />
             <OfflineBanner />
             
-            {checkingIntro ? (
+            {(checkingIntro || !isThemeReady) ? (
               <View style={[StyleSheet.absoluteFill, { backgroundColor: '#060608', zIndex: 999999 }]} />
             ) : showIntro ? (
               <IntroOverlay onComplete={handleIntroComplete} />

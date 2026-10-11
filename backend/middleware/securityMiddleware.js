@@ -130,12 +130,12 @@ const injectionGuard = (req, res, next) => {
       if (typeof value === 'string') {
         if (containsSQLInjection(value)) {
           const matchedPattern = SQL_INJECTION_PATTERNS.find(pat => pat.test(value));
-          console.warn(`🛡️ [SECURITY_BLOCK] SQL injection detected in ${location}.${key} value "${value}" (Matched: ${matchedPattern}) from IP ${req.ip} | TraceId: ${req.traceId}`);
+          console.warn(`🛡️ [SECURITY_BLOCK] SQL injection detected in ${location}.${key} (${value.length} chars) (Matched: ${matchedPattern}) from IP ${req.ip} | TraceId: ${req.traceId}`);
           return true;
         }
         if (containsPathTraversal(value)) {
           const matchedPattern = PATH_TRAVERSAL_PATTERNS.find(pat => pat.test(value));
-          console.warn(`🛡️ [SECURITY_BLOCK] Path traversal detected in ${location}.${key} value "${value}" (Matched: ${matchedPattern}) from IP ${req.ip} | TraceId: ${req.traceId}`);
+          console.warn(`🛡️ [SECURITY_BLOCK] Path traversal detected in ${location}.${key} (${value.length} chars) (Matched: ${matchedPattern}) from IP ${req.ip} | TraceId: ${req.traceId}`);
           return true;
         }
       }
@@ -212,18 +212,30 @@ const requestTimeout = (req, res, next) => {
 };
 
 /**
- * Masks sensitive fields (password, token, secret) from request logs.
- * Prevents accidental credential exposure in application logs.
+ * Builds `req.logSafeBody`: a copy of the request body with secrets (passwords,
+ * tokens, OTPs, PINs, card data) replaced by "[REDACTED]" and long strings
+ * (base64 images) truncated. Anything that logs a request body must log
+ * `req.logSafeBody`, never `req.body`.
  */
-const sensitiveDataMask = (req, res, next) => {
-  if (req.body) {
-    const sensitiveFields = ['password', 'newPassword', 'token', 'firebaseToken', 'secret', 'apiKey'];
-    for (const field of sensitiveFields) {
-      if (req.body[field]) {
-        // Store original for controller use, but log-safe version for Morgan/debugging
-        if (!req._originalBody) req._originalBody = { ...req.body };
-      }
+const SENSITIVE_KEY_PATTERN = /pass(word)?|token|secret|api_?key|otp|^pin$|deliverypin|^code$|cvv|card/i;
+const redactForLog = (value, depth = 0) => {
+  if (value == null || depth > 4) return value;
+  if (Array.isArray(value)) return value.slice(0, 20).map((v) => redactForLog(v, depth + 1));
+  if (typeof value === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) {
+      out[k] = SENSITIVE_KEY_PATTERN.test(k) ? '[REDACTED]' : redactForLog(v, depth + 1);
     }
+    return out;
+  }
+  if (typeof value === 'string' && value.length > 200) return `${value.slice(0, 60)}...(${value.length} chars)`;
+  return value;
+};
+const sensitiveDataMask = (req, res, next) => {
+  try {
+    req.logSafeBody = req.body && typeof req.body === 'object' ? redactForLog(req.body) : undefined;
+  } catch {
+    req.logSafeBody = undefined;
   }
   next();
 };

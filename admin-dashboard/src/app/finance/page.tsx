@@ -1,9 +1,9 @@
 "use client";
-import React, { useState, useEffect, memo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
 import { useAdminAuth } from '@/utils/useAdminAuth';
+import { API_URL } from '@/lib/config';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-jwmt.onrender.com';
-
+// ─── Types (GET /api/admin/finance, /finance/payouts, /finance/disputes) ───
 interface Transaction {
   _id: string;
   orderId: string;
@@ -12,6 +12,15 @@ interface Transaction {
   commissionEarned: number;
   deliveryFee: number;
   timestamp: string;
+}
+
+interface FinanceReport {
+  transactions: Transaction[];
+  totalRevenue: number;
+  totalCommission: number;
+  totalDeliveryFees: number;
+  total: number;
+  pages: number;
 }
 
 interface Payout {
@@ -26,175 +35,247 @@ interface Payout {
 
 interface Dispute {
   _id: string;
-  userId: { name: string; phone: string };
-  restaurantId: string;
+  userId?: { name?: string; phone?: string } | null;
   totalPrice: number;
-  finalPrice?: number;
+  finalPrice?: number | null;
   status: string;
-  cancellationReason?: string;
+  paymentMethod?: string;
+  paymentStatus?: string;
+  upiStatus?: string | null;
+  cancellationReason?: string | null;
   createdAt: string;
 }
 
+type Tab = 'ledger' | 'payouts' | 'disputes';
+type Notice = { kind: 'success' | 'error'; text: string } | null;
+
+const rupees = (n: number | null | undefined) => `₹${Math.round(Number(n || 0)).toLocaleString('en-IN')}`;
+const shortId = (id: string) => `#${String(id || '').slice(-6).toUpperCase()}`;
+
+/** fetch + JSON with friendly errors (never shows raw server internals). */
+async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(url, { cache: 'no-store', ...init });
+  } catch {
+    throw new Error('Could not reach the server. Check your connection and try again.');
+  }
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    const msg = res.status < 500 && body && typeof body.message === 'string' ? body.message : null;
+    throw new Error(msg || (res.status >= 500 ? 'The server ran into a problem. Please try again.' : `Request failed (${res.status}).`));
+  }
+  return body as T;
+}
+
+const csvCell = (v: unknown) => {
+  const s = String(v ?? '');
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+
+/** How a cancelled order is (or is not) refunded under the COD + Wallet model. */
+const refundState = (d: Dispute): { refundable: boolean; note: string } => {
+  switch (d.paymentMethod) {
+    case 'COD': return { refundable: false, note: 'Cash on Delivery: nothing was paid, no refund needed.' };
+    case 'Wallet': return { refundable: false, note: 'Wallet: refunded automatically when the order was cancelled.' };
+    case 'UPI':
+      if (d.upiStatus === 'Rejected') return { refundable: false, note: 'Legacy UPI: payment was rejected, nothing to refund.' };
+      return { refundable: true, note: d.paymentStatus === 'Completed' ? 'Legacy UPI: payment was verified.' : 'Legacy UPI: payment was never verified. Check the bank statement first.' };
+    case 'Card': return { refundable: true, note: 'Legacy card payment.' };
+    default: return { refundable: false, note: 'Unknown payment method.' };
+  }
+};
+
 const TransactionRow = memo(({ tx }: { tx: Transaction }) => (
-  <tr className="hover:bg-white/[0.02] transition-colors group">
-    <td className="px-8 py-6 text-xs font-mono text-blue-500/80 group-hover:text-blue-400">#TR-{tx.orderId.slice(-6).toUpperCase()}</td>
-    <td className="px-8 py-6 text-sm font-bold text-white uppercase tracking-tight">{tx.restaurantName}</td>
-    <td className="px-8 py-6 text-sm font-black text-white">₹{tx.totalAmount}</td>
-    <td className="px-8 py-6">
-      <div className="flex flex-col">
-         <span className="text-sm font-black text-emerald-400">₹{tx.commissionEarned + tx.deliveryFee}</span>
-         <span className="text-[8px] text-gray-500 font-bold uppercase tracking-widest">₹{tx.commissionEarned} comm + ₹{tx.deliveryFee} fee</span>
-      </div>
-    </td>
-    <td className="px-8 py-6 text-[10px] text-gray-500 font-bold uppercase tracking-widest">{new Date(tx.timestamp).toLocaleDateString()}</td>
+  <tr className="hover:bg-white/[0.02] transition-colors">
+    <td className="px-8 py-5 text-xs font-mono text-gray-400">{shortId(tx.orderId)}</td>
+    <td className="px-8 py-5 text-sm font-bold text-white">{tx.restaurantName}</td>
+    <td className="px-8 py-5 text-sm font-black text-white">{rupees(tx.totalAmount)}</td>
+    <td className="px-8 py-5 text-sm font-black text-emerald-400">{rupees(tx.commissionEarned)}</td>
+    <td className="px-8 py-5 text-sm text-gray-300">{rupees(tx.deliveryFee)}</td>
+    <td className="px-8 py-5 text-[10px] text-gray-500 font-bold">{new Date(tx.timestamp).toLocaleDateString()}</td>
   </tr>
 ));
 TransactionRow.displayName = 'TransactionRow';
 
+const SectionState = ({ loading, error, onRetry, empty, emptyText, colSpan }: {
+  loading: boolean; error: string | null; onRetry: () => void; empty: boolean; emptyText: string; colSpan?: number;
+}) => {
+  const body = loading
+    ? <p className="text-gray-500 animate-pulse font-black uppercase tracking-widest text-xs">Loading…</p>
+    : error
+      ? (<><p className="text-xs text-red-400 font-bold">{error}</p><button onClick={onRetry} className="mt-3 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black uppercase text-gray-300 hover:text-white">Try again</button></>)
+      : empty ? <p className="text-gray-500 text-xs">{emptyText}</p> : null;
+  if (!body) return null;
+  return colSpan
+    ? <tr><td colSpan={colSpan} className="py-16 text-center">{body}</td></tr>
+    : <div className="col-span-full py-16 text-center">{body}</div>;
+};
+
 export default function FinanceConsole() {
-  const isAuthed = useAdminAuth();
-  const [activeTab, setActiveTab] = useState<'ledger' | 'payouts' | 'disputes'>('ledger');
-  
-  const [report, setReport] = useState<{ transactions: Transaction[], totalRevenue: number, totalCommission: number, totalDeliveryFees: number, total: number, pages: number } | null>(null);
-  const [payouts, setPayouts] = useState<Payout[]>([]);
-  const [disputes, setDisputes] = useState<Dispute[]>([]);
-  
+  const { isAuthed } = useAdminAuth();
+  const [activeTab, setActiveTab] = useState<Tab>('ledger');
+
+  const [report, setReport] = useState<FinanceReport | null>(null);
+  const [reportLoading, setReportLoading] = useState(true);
+  const [reportError, setReportError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [loading, setLoading] = useState(true);
+
+  const [payouts, setPayouts] = useState<Payout[]>([]);
+  const [payoutsLoading, setPayoutsLoading] = useState(true);
+  const [payoutsError, setPayoutsError] = useState<string | null>(null);
+
+  const [disputes, setDisputes] = useState<Dispute[]>([]);
+  const [disputesLoading, setDisputesLoading] = useState(true);
+  const [disputesError, setDisputesError] = useState<string | null>(null);
+
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const inFlight = useRef(false);
+  const [notice, setNotice] = useState<Notice>(null);
   const [search, setSearch] = useState('');
 
-  const exportCSV = () => {
-    if (!report) return;
-    const headers = ['Transaction ID', 'Restaurant Partner', 'Total GMV', 'Platform Fee', 'Date'];
-    const rows = report.transactions.map(tx => [
-      `TR-${tx.orderId.slice(-6).toUpperCase()}`,
-      tx.restaurantName,
-      tx.totalAmount,
-      tx.commissionEarned + tx.deliveryFee,
-      new Date(tx.timestamp).toLocaleDateString()
-    ]);
-    const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].map(e => e.join(",")).join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "zenvy_finance_ledger.csv");
-    document.body.appendChild(link);
-    link.click();
-  };
+  const fetchFinanceData = useCallback(async (page = 1) => {
+    setReportLoading(true);
+    try {
+      const data = await requestJson<FinanceReport>(`${API_URL}/api/admin/finance?page=${page}`);
+      setReport({ ...data, transactions: Array.isArray(data.transactions) ? data.transactions : [] });
+      setCurrentPage(page);
+      setReportError(null);
+    } catch (err) {
+      setReportError(err instanceof Error ? err.message : 'Could not load the ledger.');
+    } finally {
+      setReportLoading(false);
+    }
+  }, []);
+
+  const fetchPayouts = useCallback(async () => {
+    setPayoutsLoading(true);
+    try {
+      const data = await requestJson<Payout[]>(`${API_URL}/api/admin/finance/payouts`);
+      setPayouts(Array.isArray(data) ? data : []);
+      setPayoutsError(null);
+    } catch (err) {
+      setPayoutsError(err instanceof Error ? err.message : 'Could not load payouts.');
+    } finally {
+      setPayoutsLoading(false);
+    }
+  }, []);
+
+  const fetchDisputes = useCallback(async () => {
+    setDisputesLoading(true);
+    try {
+      const data = await requestJson<Dispute[]>(`${API_URL}/api/admin/finance/disputes`);
+      setDisputes(Array.isArray(data) ? data : []);
+      setDisputesError(null);
+    } catch (err) {
+      setDisputesError(err instanceof Error ? err.message : 'Could not load cancelled orders.');
+    } finally {
+      setDisputesLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
+    if (!isAuthed) return;
     fetchFinanceData(1);
     fetchPayouts();
     fetchDisputes();
-  }, []);
+  }, [isAuthed, fetchFinanceData, fetchPayouts, fetchDisputes]);
 
-  const fetchFinanceData = async (page = 1) => {
+  const exportCSV = () => {
+    if (!report || report.transactions.length === 0) return;
+    const headers = ['Order', 'Store', 'Order value (INR)', 'Commission (INR)', 'Delivery fee (INR)', 'Date'];
+    const rows = report.transactions.map(tx => [
+      shortId(tx.orderId), tx.restaurantName, tx.totalAmount, tx.commissionEarned, tx.deliveryFee,
+      new Date(tx.timestamp).toISOString().slice(0, 10),
+    ]);
+    const csv = [headers, ...rows].map(r => r.map(csvCell).join(',')).join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `zenvy_ledger_page${currentPage}_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const runAction = async (key: string, fn: () => Promise<string>) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setActionLoading(key);
     try {
-      setLoading(true);
-      const res = await fetch(`${API_URL}/api/admin/finance?page=${page}`, { credentials: 'include' });
-      if (res.ok) {
-        setReport(await res.json());
-        setCurrentPage(page);
-      }
+      const msg = await fn();
+      setNotice({ kind: 'success', text: msg });
     } catch (err) {
-      console.error('[FINANCE_FETCH_ERROR]', err);
+      setNotice({ kind: 'error', text: err instanceof Error ? err.message : 'Action failed.' });
     } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchPayouts = async () => {
-    try {
-      const res = await fetch(`${API_URL}/api/admin/finance/payouts`, { credentials: 'include' });
-      if (res.ok) setPayouts(await res.json());
-    } catch (err) { console.error(err); }
-  };
-
-  const fetchDisputes = async () => {
-    try {
-      const res = await fetch(`${API_URL}/api/admin/finance/disputes`, { credentials: 'include' });
-      if (res.ok) setDisputes(await res.json());
-    } catch (err) { console.error(err); }
-  };
-
-  const handleRefund = async (orderId: string) => {
-    if (!confirm('Are you sure you want to refund this order back to the user wallet?')) return;
-    try {
-      setActionLoading(orderId);
-      const res = await fetch(`${API_URL}/api/admin/finance/refund/${orderId}`, { method: 'POST', credentials: 'include' });
-      if (res.ok) {
-        alert('Refund processed successfully.');
-        fetchDisputes();
-      } else {
-        const err = await res.json();
-        alert(`Refund failed: ${err.message}`);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
+      inFlight.current = false;
       setActionLoading(null);
     }
   };
 
-  const handleMarkSettled = async (restId: string) => {
-    if (!confirm('Are you sure you want to mark this restaurant payout as settled?')) return;
-    try {
-      const res = await fetch(`${API_URL}/api/admin/finance/settle-restaurant`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ restaurantId: restId }),
-        credentials: 'include'
-      });
-      if (res.ok) {
-        alert('Restaurant payout settled successfully.');
-        fetchPayouts();
-      } else {
-        const err = await res.json();
-        alert(`Settlement failed: ${err.message}`);
-      }
-    } catch (err) {
-      console.error(err);
-    }
+  const handleRefund = (d: Dispute) => {
+    const amount = d.finalPrice ?? d.totalPrice;
+    const state = refundState(d);
+    if (!confirm(`Refund ${rupees(amount)} to ${d.userId?.name || 'the customer'}'s Zenvy Wallet for order ${shortId(d._id)}?\n\n${state.note}\nThis can only be done once.`)) return;
+    runAction(d._id, async () => {
+      const data = await requestJson<{ message?: string; refundAmount?: number }>(`${API_URL}/api/admin/finance/refund/${d._id}`, { method: 'POST' });
+      fetchDisputes();
+      return `${data?.message || 'Refund successful'}: ${rupees(data?.refundAmount ?? amount)} added to the Wallet (order ${shortId(d._id)}).`;
+    });
   };
 
-  if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Authenticating...</div>;
+  const handleMarkSettled = (p: Payout) => {
+    if (!confirm(`Mark ${rupees(p.netPayout)} for ${p.restaurantName} (${p.totalOrders} delivered orders) as paid out?\n\nOnly do this after the money has been transferred to the store.`)) return;
+    runAction(p.restaurantId, async () => {
+      const data = await requestJson<{ message?: string; updatedOrdersCount?: number }>(`${API_URL}/api/admin/finance/settle-restaurant`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ restaurantId: p.restaurantId }),
+      });
+      fetchPayouts();
+      return `${p.restaurantName}: ${data?.updatedOrdersCount ?? p.totalOrders} orders marked as settled.`;
+    });
+  };
 
-  const filteredTransactions = report?.transactions.filter(tx => 
-    tx.restaurantName.toLowerCase().includes(search.toLowerCase()) ||
-    tx.orderId.toLowerCase().includes(search.toLowerCase())
-  ) || [];
+  if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Checking access…</div>;
+
+  const q = search.trim().toLowerCase();
+  const filteredTransactions = (report?.transactions || []).filter(tx =>
+    !q || String(tx.restaurantName || '').toLowerCase().includes(q) || String(tx.orderId || '').toLowerCase().includes(q)
+  );
+  const totalPayoutOwed = payouts.reduce((s, p) => s + (p.netPayout || 0), 0);
 
   return (
     <div className="space-y-10 animate-fade-in relative pb-20">
-      <header className="flex justify-between items-center bg-white/5 p-8 rounded-[40px] border border-white/5 glass">
+      <header className="flex flex-wrap justify-between items-center gap-6 bg-white/5 p-8 rounded-[40px] border border-white/5 glass">
         <div>
-          <h2 className="text-3xl font-black text-white tracking-tighter uppercase">Zenvy <span className="text-emerald-500">Finance</span> Ledger</h2>
-          <p className="text-gray-400 text-sm font-bold uppercase tracking-widest mt-1">Revenue Splitting, Partner Settlements & Ledger</p>
+          <h2 className="text-3xl font-black text-white tracking-tighter uppercase">Finance</h2>
+          <p className="text-gray-400 text-sm font-bold uppercase tracking-widest mt-1">Delivered-order ledger, store payouts and refunds</p>
         </div>
-        <div className="flex gap-4">
-            <div className="glass px-10 py-4 rounded-3xl border border-white/10 flex flex-col">
-               <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest mb-1">Total Admin Earnings</span>
-               <span className="text-3xl font-black text-white tracking-tighter">₹{( (report?.totalCommission || 0) + (report?.totalDeliveryFees || 0) ).toLocaleString()}</span>
-            </div>
+        <div className="glass px-10 py-4 rounded-3xl border border-white/10 flex flex-col">
+          <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest mb-1">Platform commission (all time)</span>
+          <span className="text-3xl font-black text-white tracking-tighter">{report ? rupees(report.totalCommission) : '—'}</span>
         </div>
       </header>
 
-      {/* Tabs */}
+      {notice && (
+        <div className={`p-4 rounded-2xl border text-xs font-bold flex justify-between items-start gap-4 ${notice.kind === 'error' ? 'bg-red-500/10 border-red-500/20 text-red-400' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'}`}>
+          <span>{notice.text}</span>
+          <button onClick={() => setNotice(null)} className="text-gray-500 hover:text-white">✕</button>
+        </div>
+      )}
+
       <div className="flex gap-4 border-b border-white/10 pb-4">
-        {[
-          { id: 'ledger', label: 'Global Ledger' },
-          { id: 'payouts', label: 'Partner Payouts' },
-          { id: 'disputes', label: 'Disputes & Refunds' },
-        ].map(tab => (
+        {([
+          { id: 'ledger', label: 'Ledger' },
+          { id: 'payouts', label: 'Store payouts' },
+          { id: 'disputes', label: 'Cancellations & refunds' },
+        ] as { id: Tab; label: string }[]).map(tab => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id as any)}
-            className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${
-              activeTab === tab.id 
-                ? 'bg-blue-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.4)]' 
-                : 'bg-white/5 text-gray-500 hover:text-white hover:bg-white/10'
-            }`}
+            onClick={() => setActiveTab(tab.id)}
+            className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === tab.id ? 'bg-blue-600 text-white' : 'bg-white/5 text-gray-500 hover:text-white hover:bg-white/10'}`}
           >
             {tab.label}
           </button>
@@ -203,69 +284,71 @@ export default function FinanceConsole() {
 
       {activeTab === 'ledger' && (
         <>
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <div className="glass-card p-8 bg-blue-600/5">
-              <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-2">Ecosystem GMV</p>
-              <h4 className="text-2xl font-black text-white">₹{report?.totalRevenue.toLocaleString() || '0'}</h4>
+              <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-2">Delivered order value (GMV)</p>
+              <h4 className="text-2xl font-black text-white">{report ? rupees(report.totalRevenue) : '—'}</h4>
             </div>
             <div className="glass-card p-8 bg-emerald-600/5">
-              <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest mb-2">Active Commission</p>
-              <h4 className="text-2xl font-black text-white">₹{report?.totalCommission.toLocaleString() || '0'}</h4>
+              <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest mb-2">Commission</p>
+              <h4 className="text-2xl font-black text-white">{report ? rupees(report.totalCommission) : '—'}</h4>
             </div>
             <div className="glass-card p-8 bg-[var(--zenvy-gold)]/5">
-              <p className="text-[9px] font-black text-[var(--zenvy-gold)] uppercase tracking-widest mb-2">Delivery Fees</p>
-              <h4 className="text-2xl font-black text-white">₹{report?.totalDeliveryFees.toLocaleString() || '0'}</h4>
+              <p className="text-[9px] font-black text-[var(--zenvy-gold)] uppercase tracking-widest mb-2">Delivery fees (rider earnings)</p>
+              <h4 className="text-2xl font-black text-white">{report ? rupees(report.totalDeliveryFees) : '—'}</h4>
             </div>
             <div className="glass-card p-8 bg-white/5">
-              <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest mb-2">System Status</p>
-              <h4 className="text-2xl font-black text-white uppercase">Live Connected</h4>
+              <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest mb-2">Delivered orders</p>
+              <h4 className="text-2xl font-black text-white">{report ? report.total.toLocaleString('en-IN') : '—'}</h4>
             </div>
           </div>
 
           <div className="glass-card overflow-hidden">
-            <div className="p-8 border-b border-white/5 flex justify-between items-center bg-white/[0.01]">
-              <h4 className="text-lg font-black text-white uppercase tracking-tight">Income Transaction Log</h4>
-              <div className="flex gap-4">
-                  <input 
-                    type="text" 
-                    placeholder="Search Transaction ID or Partner..." 
-                    className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white outline-none focus:border-blue-500/40"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                  />
-                  <button 
-                    onClick={exportCSV}
-                    className="nexus-badge bg-emerald-500/10 border-emerald-500/20 text-emerald-400 px-6 py-2 hover:bg-emerald-500/20 transition-all font-black"
-                  >
-                    📥 EXPORT LEDGER
-                  </button>
-                  <button 
-                    onClick={() => fetchFinanceData(currentPage)}
-                    className="nexus-badge bg-blue-500/10 border-blue-500/20 text-blue-400 px-6 py-2 hover:bg-blue-500/20 transition-all font-black"
-                  >
-                    SYNC LEDGER
-                  </button>
+            <div className="p-8 border-b border-white/5 flex flex-wrap gap-4 justify-between items-center bg-white/[0.01]">
+              <h4 className="text-lg font-black text-white uppercase tracking-tight">Delivered orders</h4>
+              <div className="flex flex-wrap gap-3">
+                <input
+                  type="text"
+                  placeholder="Filter this page by store or order…"
+                  className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-white outline-none focus:border-blue-500/40 w-64"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+                <button
+                  onClick={exportCSV}
+                  disabled={!report || report.transactions.length === 0}
+                  className="nexus-badge bg-emerald-500/10 border-emerald-500/20 text-emerald-400 px-6 py-2 hover:bg-emerald-500/20 transition-all font-black disabled:opacity-30"
+                >
+                  Export page (CSV)
+                </button>
+                <button
+                  onClick={() => fetchFinanceData(currentPage)}
+                  disabled={reportLoading}
+                  className="nexus-badge bg-blue-500/10 border-blue-500/20 text-blue-400 px-6 py-2 hover:bg-blue-500/20 transition-all font-black disabled:opacity-30"
+                >
+                  ↻ Refresh
+                </button>
               </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-white/[0.03]">
-                    <th className="px-8 py-4 text-[9px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5">Transaction ID</th>
-                    <th className="px-8 py-4 text-[9px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5">Restaurant Partner</th>
-                    <th className="px-8 py-4 text-[9px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5">Total GMV</th>
-                    <th className="px-8 py-4 text-[9px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5">Platform Fee (Comm + Fee)</th>
-                    <th className="px-8 py-4 text-[9px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5">Settled Date</th>
+                    {['Order', 'Store', 'Order value', 'Commission', 'Delivery fee', 'Date'].map(h => (
+                      <th key={h} className="px-8 py-4 text-[9px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5">{h}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/[0.02]">
-                  {loading ? (
-                    <tr><td colSpan={5} className="py-20 text-center text-gray-400 animate-pulse font-black uppercase tracking-widest">Loading Ledger Transactions...</td></tr>
-                  ) : filteredTransactions.length === 0 ? (
-                    <tr><td colSpan={5} className="py-20 text-center text-gray-500 uppercase font-black text-xs tracking-widest">No Settled Transactions Found</td></tr>
-                  ) : filteredTransactions.map((tx) => (
-                    <TransactionRow key={tx._id} tx={tx} />
-                  ))}
+                  <SectionState
+                    colSpan={6}
+                    loading={reportLoading}
+                    error={reportError}
+                    onRetry={() => fetchFinanceData(currentPage)}
+                    empty={filteredTransactions.length === 0}
+                    emptyText={q ? 'No orders on this page match the filter.' : 'No delivered orders yet.'}
+                  />
+                  {!reportLoading && !reportError && filteredTransactions.map(tx => <TransactionRow key={tx._id} tx={tx} />)}
                 </tbody>
               </table>
             </div>
@@ -273,11 +356,11 @@ export default function FinanceConsole() {
             {report && report.pages > 1 && (
               <div className="p-6 bg-white/[0.03] border-t border-white/5 flex items-center justify-between">
                 <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">
-                  Ledger Page {currentPage} / {report.pages} ({report.total} flows)
+                  Page {currentPage} of {report.pages} ({report.total} orders)
                 </span>
                 <div className="flex gap-2">
-                  <button disabled={currentPage === 1} onClick={() => fetchFinanceData(currentPage - 1)} className="px-5 py-2 bg-black/40 border border-white/10 rounded-xl text-[10px] font-black uppercase text-gray-400 hover:text-white disabled:opacity-30">Prev</button>
-                  <button disabled={currentPage === report.pages} onClick={() => fetchFinanceData(currentPage + 1)} className="px-5 py-2 bg-black/40 border border-white/10 rounded-xl text-[10px] font-black uppercase text-gray-400 hover:text-white disabled:opacity-30">Next</button>
+                  <button disabled={currentPage <= 1 || reportLoading} onClick={() => fetchFinanceData(currentPage - 1)} className="px-5 py-2 bg-black/40 border border-white/10 rounded-xl text-[10px] font-black uppercase text-gray-400 hover:text-white disabled:opacity-30">Prev</button>
+                  <button disabled={currentPage >= report.pages || reportLoading} onClick={() => fetchFinanceData(currentPage + 1)} className="px-5 py-2 bg-black/40 border border-white/10 rounded-xl text-[10px] font-black uppercase text-gray-400 hover:text-white disabled:opacity-30">Next</button>
                 </div>
               </div>
             )}
@@ -287,34 +370,39 @@ export default function FinanceConsole() {
 
       {activeTab === 'payouts' && (
         <div className="glass-card overflow-hidden">
-          <div className="p-8 border-b border-white/5 flex justify-between items-center bg-white/[0.01]">
-            <h4 className="text-lg font-black text-white uppercase tracking-tight">Partner Settlement Calculator</h4>
-            <button onClick={fetchPayouts} className="px-4 py-2 bg-blue-500/10 text-blue-400 rounded-xl text-[10px] font-black uppercase">↻ Re-Calculate</button>
+          <div className="p-8 border-b border-white/5 flex flex-wrap gap-4 justify-between items-center bg-white/[0.01]">
+            <div>
+              <h4 className="text-lg font-black text-white uppercase tracking-tight">Unsettled store payouts</h4>
+              <p className="text-[11px] text-gray-500 mt-1">Delivered orders not yet paid out to the store, after commission. Total owed: <span className="text-white font-bold">{rupees(totalPayoutOwed)}</span>. Rider payouts are under Fleet.</p>
+            </div>
+            <button onClick={fetchPayouts} disabled={payoutsLoading} className="px-4 py-2 bg-blue-500/10 text-blue-400 rounded-xl text-[10px] font-black uppercase disabled:opacity-30">↻ Refresh</button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-white/[0.03]">
-                  <th className="px-8 py-4 text-[9px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5">Restaurant Partner</th>
-                  <th className="px-8 py-4 text-[9px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5">Total Orders</th>
-                  <th className="px-8 py-4 text-[9px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5">Total GMV</th>
-                  <th className="px-8 py-4 text-[9px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5">Zenvy Comm.</th>
-                  <th className="px-8 py-4 text-[9px] font-black text-blue-400 uppercase tracking-widest border-b border-white/5">Net Payout Owed</th>
-                  <th className="px-8 py-4 text-[9px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5">Action</th>
+                  {['Store', 'Orders', 'Order value', 'Commission', 'Payout owed', ''].map(h => (
+                    <th key={h} className="px-8 py-4 text-[9px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5">{h}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/[0.02]">
-                {payouts.length === 0 ? (
-                  <tr><td colSpan={6} className="py-10 text-center text-gray-500 text-xs italic">No payouts generated yet.</td></tr>
-                ) : payouts.map(p => (
+                <SectionState colSpan={6} loading={payoutsLoading} error={payoutsError} onRetry={fetchPayouts} empty={payouts.length === 0} emptyText="Nothing to settle. Every delivered order has been paid out." />
+                {!payoutsLoading && !payoutsError && payouts.map(p => (
                   <tr key={p.restaurantId} className="hover:bg-white/[0.02]">
                     <td className="px-8 py-4 text-sm font-bold text-white">{p.restaurantName} <span className="block text-[8px] text-gray-500 uppercase">{p.vendorType}</span></td>
                     <td className="px-8 py-4 text-sm text-gray-300 font-mono">{p.totalOrders}</td>
-                    <td className="px-8 py-4 text-sm text-gray-300 font-mono">₹{p.totalGMV}</td>
-                    <td className="px-8 py-4 text-sm text-red-400 font-mono">-₹{p.totalCommission}</td>
-                    <td className="px-8 py-4 text-lg font-black text-emerald-400">₹{p.netPayout}</td>
+                    <td className="px-8 py-4 text-sm text-gray-300 font-mono">{rupees(p.totalGMV)}</td>
+                    <td className="px-8 py-4 text-sm text-red-400 font-mono">−{rupees(p.totalCommission)}</td>
+                    <td className="px-8 py-4 text-lg font-black text-emerald-400">{rupees(p.netPayout)}</td>
                     <td className="px-8 py-4">
-                      <button onClick={() => handleMarkSettled(p.restaurantId)} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[9px] font-black uppercase">Mark Settled</button>
+                      <button
+                        onClick={() => handleMarkSettled(p)}
+                        disabled={actionLoading !== null}
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[9px] font-black uppercase disabled:opacity-40"
+                      >
+                        {actionLoading === p.restaurantId ? 'Saving…' : 'Mark paid'}
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -326,42 +414,50 @@ export default function FinanceConsole() {
 
       {activeTab === 'disputes' && (
         <div className="glass-card overflow-hidden">
-          <div className="p-8 border-b border-white/5 flex justify-between items-center bg-white/[0.01]">
-            <h4 className="text-lg font-black text-white uppercase tracking-tight">Disputes & Wallet Refunds</h4>
-            <button onClick={fetchDisputes} className="px-4 py-2 bg-blue-500/10 text-blue-400 rounded-xl text-[10px] font-black uppercase">↻ Refresh Disputes</button>
+          <div className="p-8 border-b border-white/5 flex flex-wrap gap-4 justify-between items-center bg-white/[0.01]">
+            <div>
+              <h4 className="text-lg font-black text-white uppercase tracking-tight">Cancelled orders</h4>
+              <p className="text-[11px] text-gray-500 mt-1">Wallet orders are refunded automatically on cancel and COD orders need no refund. Manual refunds are only for legacy UPI/card orders.</p>
+            </div>
+            <button onClick={fetchDisputes} disabled={disputesLoading} className="px-4 py-2 bg-blue-500/10 text-blue-400 rounded-xl text-[10px] font-black uppercase disabled:opacity-30">↻ Refresh</button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-6">
-            {disputes.length === 0 ? (
-              <div className="col-span-full py-10 text-center text-gray-500 text-xs italic">No cancelled orders requiring action.</div>
-            ) : disputes.map(d => (
-              <div key={d._id} className="p-6 bg-white/[0.02] border border-white/5 rounded-2xl flex flex-col justify-between">
-                <div>
-                  <div className="flex justify-between items-start mb-4">
-                    <span className="text-[10px] font-mono text-gray-400">#{d._id.slice(-6).toUpperCase()}</span>
-                    <span className="text-[8px] bg-red-500/20 text-red-400 px-2 py-1 rounded uppercase font-black">Cancelled</span>
+            <SectionState loading={disputesLoading} error={disputesError} onRetry={fetchDisputes} empty={disputes.length === 0} emptyText="No cancelled orders." />
+            {!disputesLoading && !disputesError && disputes.map(d => {
+              const state = refundState(d);
+              return (
+                <div key={d._id} className="p-6 bg-white/[0.02] border border-white/5 rounded-2xl flex flex-col justify-between">
+                  <div>
+                    <div className="flex justify-between items-start mb-4">
+                      <span className="text-[10px] font-mono text-gray-400">{shortId(d._id)} · {new Date(d.createdAt).toLocaleDateString()}</span>
+                      <span className="text-[8px] bg-white/5 text-gray-300 px-2 py-1 rounded uppercase font-black">{d.paymentMethod || '—'}</span>
+                    </div>
+                    <h5 className="text-white font-bold">{d.userId?.name || 'Customer'}</h5>
+                    <p className="text-xs text-gray-500">{d.userId?.phone || ''}</p>
+                    <div className="mt-4 p-3 bg-red-500/5 rounded-lg border border-red-500/10">
+                      <p className="text-[9px] text-red-400 font-black uppercase mb-1">Cancellation reason</p>
+                      <p className="text-xs text-gray-300">{d.cancellationReason || 'No reason recorded.'}</p>
+                    </div>
+                    <p className="text-[10px] text-gray-500 mt-3">{state.note}</p>
                   </div>
-                  <h5 className="text-white font-bold">{d.userId?.name || 'Unknown User'}</h5>
-                  <p className="text-xs text-gray-500">{d.userId?.phone}</p>
-                  <div className="mt-4 p-3 bg-red-500/5 rounded-lg border border-red-500/10">
-                    <p className="text-[9px] text-red-400 font-black uppercase mb-1">Cancellation Reason</p>
-                    <p className="text-xs text-gray-300">{d.cancellationReason || 'No specific cancellation reason provided.'}</p>
+                  <div className="mt-6 flex items-center justify-between pt-4 border-t border-white/5">
+                    <div className="flex flex-col">
+                      <span className="text-[9px] font-black text-gray-500 uppercase">Order value</span>
+                      <span className="text-lg font-black text-white">{rupees(d.finalPrice ?? d.totalPrice)}</span>
+                    </div>
+                    {state.refundable && (
+                      <button
+                        onClick={() => handleRefund(d)}
+                        disabled={actionLoading !== null}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-[9px] font-black uppercase disabled:opacity-40"
+                      >
+                        {actionLoading === d._id ? 'Refunding…' : 'Refund to Wallet'}
+                      </button>
+                    )}
                   </div>
                 </div>
-                <div className="mt-6 flex items-center justify-between pt-4 border-t border-white/5">
-                  <div className="flex flex-col">
-                    <span className="text-[9px] font-black text-gray-500 uppercase">Refund Value</span>
-                    <span className="text-lg font-black text-emerald-400">₹{d.finalPrice || d.totalPrice}</span>
-                  </div>
-                  <button 
-                    onClick={() => handleRefund(d._id)}
-                    disabled={actionLoading === d._id}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-[9px] font-black uppercase disabled:opacity-40"
-                  >
-                    {actionLoading === d._id ? 'Processing...' : 'Process Refund'}
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

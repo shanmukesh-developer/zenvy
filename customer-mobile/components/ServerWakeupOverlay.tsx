@@ -1,133 +1,229 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Modal, ActivityIndicator, Animated } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, Animated, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
 import { COLORS } from '../constants/theme';
 
 interface ServerWakeupOverlayProps {
   visible: boolean;
   onWakeupComplete?: () => void;
+  /** Called when the server answers the health check again (e.g. to re-run a failed request). */
   onRetry?: () => void;
+  /** Called when the user dismisses the banner with ✕. Falls back to onWakeupComplete. */
   onCancel?: () => void;
+  /** Text shown when the server is still unreachable after all retries. */
+  offlineText?: string;
 }
 
-export default function ServerWakeupOverlay({ visible, onWakeupComplete, onRetry, onCancel }: ServerWakeupOverlayProps) {
-  const [countdown, setCountdown] = useState(90);
-  const pulseAnim = React.useRef(new Animated.Value(1)).current;
+/**
+ * Non-blocking wakeup overlay — shows a subtle top banner instead of a 
+ * full-screen modal so users can browse the app while the backend spins up.
+ * Auto-retries every 10s in the background and auto-dismisses after success or timeout.
+ */
+export default function ServerWakeupOverlay({ visible, onWakeupComplete, onRetry, onCancel, offlineText }: ServerWakeupOverlayProps) {
+  const [retryCount, setRetryCount] = useState(0);
+  const [status, setStatus] = useState<'connecting' | 'retrying' | 'connected' | 'offline'>('connecting');
+  const slideAnim = useRef(new Animated.Value(-120)).current;
+  const dotPulse = useRef(new Animated.Value(0.3)).current;
+  const MAX_RETRIES = 6; // 6 retries × 10s = 60s max wait
+
+  // Latest callbacks + pending timers, so nothing fires after the banner unmounts
+  const cbRef = useRef({ onWakeupComplete, onRetry, onCancel });
+  cbRef.current = { onWakeupComplete, onRetry, onCancel };
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const later = (fn: () => void, ms: number) => {
+    const t = setTimeout(() => {
+      timersRef.current = timersRef.current.filter(x => x !== t);
+      fn();
+    }, ms);
+    timersRef.current.push(t);
+  };
+  useEffect(() => () => {
+    timersRef.current.forEach(clearTimeout);
+    timersRef.current = [];
+  }, []);
 
   useEffect(() => {
-    if (visible) {
-      setCountdown(90);
-      
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 1.5, duration: 1000, useNativeDriver: true }),
-          Animated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: true })
-        ])
-      ).start();
-
-      const timer = setInterval(() => {
-        setCountdown((prev) => {
-          if (prev <= 1) {
-            clearInterval(timer);
-            if (onWakeupComplete) onWakeupComplete();
-            else if (onRetry) onRetry();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-
-      return () => clearInterval(timer);
+    if (!visible) {
+      // Slide out
+      Animated.timing(slideAnim, { toValue: -120, duration: 300, useNativeDriver: true }).start();
+      return;
     }
-  }, [visible, onWakeupComplete, onRetry, pulseAnim]);
+
+    setStatus('connecting');
+    setRetryCount(0);
+
+    // Slide in
+    Animated.spring(slideAnim, { toValue: 0, friction: 8, useNativeDriver: true }).start();
+
+    // Pulse animation for the dot
+    const pulseLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(dotPulse, { toValue: 1, duration: 800, useNativeDriver: true }),
+        Animated.timing(dotPulse, { toValue: 0.3, duration: 800, useNativeDriver: true }),
+      ])
+    );
+    pulseLoop.start();
+
+    // Auto-dismiss after 4 seconds — let the user browse while we retry in background
+    const autoDismiss = setTimeout(() => {
+      Animated.timing(slideAnim, { toValue: -120, duration: 300, useNativeDriver: true }).start();
+    }, 4000);
+
+    return () => {
+      pulseLoop.stop();
+      clearTimeout(autoDismiss);
+    };
+  }, [visible]);
+
+  // Background retry logic
+  useEffect(() => {
+    if (!visible) return;
+    let attempts = 0;
+    let done = false;
+
+    const retryInterval = setInterval(async () => {
+      if (done) return;
+      attempts += 1;
+      setRetryCount(attempts);
+      if (attempts >= MAX_RETRIES) {
+        done = true;
+        clearInterval(retryInterval);
+        setStatus('offline');
+        Animated.spring(slideAnim, { toValue: 0, friction: 8, useNativeDriver: true }).start();
+        // Let the user carry on; the screen decides what to show next
+        later(() => {
+          Animated.timing(slideAnim, { toValue: -120, duration: 300, useNativeDriver: true }).start();
+          cbRef.current.onWakeupComplete?.();
+        }, 4000);
+        return;
+      }
+      setStatus('retrying');
+
+      // Try a quick health-check ping
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      try {
+        const { API_URL } = require('../constants/api');
+        const res = await fetch(`${API_URL}/api/health`, { signal: controller.signal });
+        if (res.ok && !done) {
+          done = true;
+          clearInterval(retryInterval);
+          setStatus('connected');
+          Animated.spring(slideAnim, { toValue: 0, friction: 8, useNativeDriver: true }).start();
+          later(() => {
+            Animated.timing(slideAnim, { toValue: -120, duration: 300, useNativeDriver: true }).start();
+            cbRef.current.onRetry?.();
+            cbRef.current.onWakeupComplete?.();
+          }, 1200);
+        }
+      } catch {
+        // Still waking up, will retry
+      } finally {
+        clearTimeout(timeout);
+      }
+    }, 10000);
+
+    return () => {
+      done = true;
+      clearInterval(retryInterval);
+    };
+  }, [visible]);
 
   if (!visible) return null;
 
+  const statusConfig = {
+    connecting: { text: 'Waking up kitchen servers...', color: COLORS.gold || '#C9A84C', icon: '🔄' },
+    retrying: { text: `Retrying connection (${retryCount}/${MAX_RETRIES})...`, color: '#F59E0B', icon: '📡' },
+    connected: { text: 'Connected! Loading fresh data...', color: '#10B981', icon: '✅' },
+    offline: { text: offlineText || 'Using cached data — browse freely!', color: '#6B7280', icon: '📱' },
+  };
+
+  const { text, color, icon } = statusConfig[status];
+
   return (
-    <Modal visible={visible} transparent={true} animationType="fade">
-      <View style={styles.container}>
-        <LinearGradient
-          colors={['rgba(10,10,11,0.95)', '#0A0A0B']}
-          style={StyleSheet.absoluteFill}
-        />
-        
-        <View style={styles.content}>
-          <Animated.View style={[styles.glowCircle, { transform: [{ scale: pulseAnim }] }]} />
-          <Text style={styles.title}>CONNECTING TO DISPATCH</Text>
-          <Text style={styles.subtitle}>
-            Synchronizing campus network and live kitchen radars. Establishing secure telemetry...
-          </Text>
-          
-          <View style={styles.timerBox}>
-            <Text style={styles.timerText}>{countdown}s</Text>
-          </View>
-          
-          <ActivityIndicator size="large" color={COLORS.gold} style={{ marginTop: 30 }} />
-          <Text style={styles.footerText}>We will automatically connect when ready.</Text>
+    <Animated.View style={[styles.banner, { transform: [{ translateY: slideAnim }] }]}>
+      <View style={[styles.bannerInner, { borderColor: `${color}33` }]}>
+        <View style={styles.bannerLeft}>
+          <Animated.View style={[styles.statusDot, { backgroundColor: color, opacity: dotPulse }]} />
+          <Text style={styles.bannerIcon}>{icon}</Text>
+          <Text style={styles.bannerText} numberOfLines={2}>{text}</Text>
         </View>
+        {status !== 'connected' && (
+          <TouchableOpacity 
+            style={styles.dismissBtn}
+            onPress={() => {
+              Animated.timing(slideAnim, { toValue: -120, duration: 200, useNativeDriver: true }).start();
+              later(() => {
+                if (cbRef.current.onCancel) cbRef.current.onCancel();
+                else cbRef.current.onWakeupComplete?.();
+              }, 300);
+            }}
+          >
+            <Text style={styles.dismissText}>✕</Text>
+          </TouchableOpacity>
+        )}
+        {status === 'connecting' && (
+          <ActivityIndicator size="small" color={color} style={{ marginLeft: 8 }} />
+        )}
       </View>
-    </Modal>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 9999,
-  },
-  content: {
-    alignItems: 'center',
-    padding: 30,
-    backgroundColor: 'rgba(26,26,28,0.9)',
-    borderRadius: 24,
-    borderWidth: 1.5,
-    borderColor: 'rgba(201,168,76,0.3)',
-    width: '85%',
-  },
-  glowCircle: {
+  banner: {
     position: 'absolute',
-    top: '30%',
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: 'rgba(201,168,76,0.15)',
+    top: Platform.OS === 'web' ? 0 : 48,
+    left: 12,
+    right: 12,
+    zIndex: 9999,
+    elevation: 10,
   },
-  title: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: '#fff',
-    letterSpacing: 2,
-    marginBottom: 10,
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: 11,
-    color: COLORS.textSecondary,
-    textAlign: 'center',
-    lineHeight: 18,
-    marginBottom: 20,
-    paddingHorizontal: 10,
-  },
-  timerBox: {
-    backgroundColor: 'rgba(201,168,76,0.1)',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 16,
+  bannerInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(20,20,22,0.95)',
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: COLORS.gold,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
   },
-  timerText: {
-    fontSize: 24,
-    fontWeight: '900',
-    color: COLORS.gold,
+  bannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 8,
   },
-  footerText: {
-    fontSize: 9,
-    color: COLORS.textMuted,
-    marginTop: 20,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  }
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  bannerIcon: {
+    fontSize: 14,
+  },
+  bannerText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#E5E7EB',
+    flex: 1,
+  },
+  dismissBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
+  dismissText: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    fontWeight: '700',
+  },
 });

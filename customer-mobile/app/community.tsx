@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert, Modal, Dimensions, Platform, KeyboardAvoidingView, TouchableWithoutFeedback, Keyboard, Animated, Easing, Vibration } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert, Modal, Dimensions, Platform, KeyboardAvoidingView, TouchableWithoutFeedback, Keyboard, Animated, Easing, AppState, RefreshControl } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -13,6 +13,7 @@ import { StaggeredSection, FloatingPulse, BounceIn, PulseGlow } from '../compone
 import DopaminePressable, { CardPressable, ActionPressable } from '../components/DopaminePressable';
 import { LinearGradient } from 'expo-linear-gradient';
 import { connectSocket } from '../utils/socket';
+import ShimmerLoader from '../components/ShimmerLoader';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 
@@ -23,21 +24,32 @@ const getImageUrl = (url: string | null) => {
 };
 
 // ── Confetti Particle (Pure Native Drivers, Zero-Lag) ──
+// Random params are computed once per particle (not on every parent re-render),
+// and the loop is stopped on unmount.
+const CONFETTI_COLORS = ['#FF69B4', '#FFD700', '#FF4500', '#00FFFF', '#ADFF2F', '#FF00FF'];
 const ConfettiParticle = ({ delay }: { delay: number }) => {
   const animatedValue = React.useRef(new Animated.Value(0)).current;
+  const params = React.useRef({
+    duration: 3500 + Math.random() * 2500,
+    x: [Math.random() * SW, Math.random() * SW, Math.random() * SW],
+    rot: `${Math.random() * 360}deg`,
+    color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
+    w: 8 + Math.random() * 8,
+    h: 8 + Math.random() * 8,
+    round: Math.random() > 0.5,
+  }).current;
 
   React.useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(animatedValue, {
-          toValue: 1,
-          duration: 3500 + Math.random() * 2500,
-          delay: delay,
-          useNativeDriver: true,
-          easing: Easing.linear,
-        })
-      ])
-    ).start();
+    const anim = Animated.timing(animatedValue, {
+      toValue: 1,
+      duration: params.duration,
+      delay: delay,
+      useNativeDriver: true,
+      easing: Easing.linear,
+    });
+    // One celebratory burst (not an endless loop) to keep low-end phones smooth.
+    anim.start();
+    return () => anim.stop();
   }, []);
 
   const translateY = animatedValue.interpolate({
@@ -47,29 +59,22 @@ const ConfettiParticle = ({ delay }: { delay: number }) => {
 
   const translateX = animatedValue.interpolate({
     inputRange: [0, 0.5, 1],
-    outputRange: [
-      Math.random() * SW,
-      Math.random() * SW,
-      Math.random() * SW
-    ]
+    outputRange: params.x
   });
 
   const rotate = animatedValue.interpolate({
     inputRange: [0, 1],
-    outputRange: ['0deg', `${Math.random() * 360}deg`]
+    outputRange: ['0deg', params.rot]
   });
-
-  const colors = ['#FF69B4', '#FFD700', '#FF4500', '#00FFFF', '#ADFF2F', '#FF00FF'];
-  const color = colors[Math.floor(Math.random() * colors.length)];
 
   return (
     <Animated.View
       style={{
         position: 'absolute',
-        width: 8 + Math.random() * 8,
-        height: 8 + Math.random() * 8,
-        backgroundColor: color,
-        borderRadius: Math.random() > 0.5 ? 4 : 0,
+        width: params.w,
+        height: params.h,
+        backgroundColor: params.color,
+        borderRadius: params.round ? 4 : 0,
         transform: [{ translateY }, { translateX }, { rotate }],
         opacity: 0.8,
         zIndex: 999
@@ -78,16 +83,16 @@ const ConfettiParticle = ({ delay }: { delay: number }) => {
   );
 };
 
-const ConfettiCannon = () => {
-  const particles = Array.from({ length: 45 });
+const ConfettiCannon = React.memo(() => {
+  const particles = React.useMemo(() => Array.from({ length: 45 }), []);
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       {particles.map((_, i) => (
-        <ConfettiParticle key={i} delay={i * 100} />
+        <ConfettiParticle key={i} delay={i * 60} />
       ))}
     </View>
   );
-};
+});
 
 // ── Crazy Animated Moving Ticker Banner ──
 const GRADIENT_THEMES: Record<string, string[]> = {
@@ -180,338 +185,72 @@ export default function CommunityScreen() {
   const bg = isDark ? '#0A0A0C' : '#f4f1ea';
   const cardBg = isDark ? '#141416' : '#fdfcf0';
   const border = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(139,90,43,0.1)';
-  const DEFAULT_COMMUNITY_POSTS: PostType[] = [
-    {
-      id: 'post-seed-1',
-      parentId: null,
-      userId: 'u-101',
-      userName: 'Kavya Sharma (Hostel 3)',
-      userAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
-      content: 'Terrace chai & late-night revision circle before end-sems! ❤️ Unforgettable campus memories with the best hostel roommates ever ✨',
-      imageUrl: 'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=800&auto=format&fit=crop&q=80',
-      likes: 54,
-      likedBy: ['u-1', 'u-2'],
-      replyCount: 8,
-      createdAt: new Date(Date.now() - 3600000 * 3).toISOString(),
-      postType: 'post',
-      replies: [
-        {
-          id: 'rep-1',
-          parentId: 'post-seed-1',
-          userId: 'u-102',
-          userName: 'Aarav Patel',
-          userAvatar: null,
-          content: 'That sunset from the terrace was unreal! Let’s meet again tomorrow ☕🌅',
-          imageUrl: null,
-          likes: 6,
-          likedBy: [],
-          replyCount: 0,
-          createdAt: new Date(Date.now() - 3600000 * 2).toISOString(),
-        }
-      ]
-    },
-    {
-      id: 'post-seed-2',
-      parentId: null,
-      userId: 'u-103',
-      userName: 'Vikram Reddy (CSE 4th Yr)',
-      userAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&auto=format&fit=crop&q=80',
-      content: '24-Hour Hackathon finals sprint! Team code survived 4 coffee refills and a 4 AM bug fix. Demo day here we come! 💻⚡🏆',
-      imageUrl: 'https://images.unsplash.com/photo-1531482615713-2afd69097998?w=800&auto=format&fit=crop&q=80',
-      likes: 72,
-      likedBy: ['u-3'],
-      replyCount: 14,
-      createdAt: new Date(Date.now() - 3600000 * 7).toISOString(),
-      postType: 'post',
-    },
-    {
-      id: 'post-seed-rev-1',
-      parentId: null,
-      userId: 'u-107',
-      userName: 'Ananya Roy (Hostel 1)',
-      userAvatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=100&auto=format&fit=crop&q=80',
-      content: 'Midnight biryani craving hits different! 🌶️ Delivered steaming hot in 12 mins to Gate 2. Juicy chicken and aromatic rice! 10/10 recommendation! ⭐',
-      imageUrl: 'https://images.unsplash.com/photo-1633945274405-b6c8069047b0?w=800&auto=format&fit=crop&q=80',
-      likes: 83,
-      likedBy: ['u-1'],
-      replyCount: 11,
-      createdAt: new Date(Date.now() - 3600000 * 9).toISOString(),
-      postType: 'review',
-      starRating: 5,
-      restaurantName: 'Royal Handi Biryani',
-      productName: 'Special Dum Chicken Biryani'
-    },
-    {
-      id: 'post-seed-rev-2',
-      parentId: null,
-      userId: 'u-108',
-      userName: 'Devansh Roy (Block B)',
-      userAvatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80',
-      content: 'Best woodfired cheese crust on campus! 🍕 Truffle aroma is insane and crust is super crispy. Must try during group study nights!',
-      imageUrl: 'https://images.unsplash.com/photo-1571407970349-bc81e7e96d47?w=800&auto=format&fit=crop&q=80',
-      likes: 67,
-      likedBy: [],
-      replyCount: 9,
-      createdAt: new Date(Date.now() - 3600000 * 16).toISOString(),
-      postType: 'review',
-      starRating: 5,
-      restaurantName: 'Artisanal Pizza Lab',
-      productName: 'Truffle Mushroom Overload'
-    },
-    {
-      id: 'post-seed-3',
-      parentId: null,
-      userId: 'u-104',
-      userName: 'Sneha Roy (Music Society)',
-      userAvatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=100&auto=format&fit=crop&q=80',
-      content: 'Annual Fest rock band night at the amphitheatre was electric! 🎸🔥 The whole campus was singing along!',
-      imageUrl: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=800&auto=format&fit=crop&q=80',
-      likes: 89,
-      likedBy: [],
-      replyCount: 12,
-      createdAt: new Date(Date.now() - 3600000 * 20).toISOString(),
-      postType: 'post',
-    },
-    {
-      id: 'post-seed-4',
-      parentId: null,
-      userId: 'u-105',
-      userName: 'Rohan Mehra (Sports Captain)',
-      userAvatar: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=100&auto=format&fit=crop&q=80',
-      content: 'Inter-Hostel Football Champions 2026! ⚽🥇 Huge shoutout to the defense line for keeping the clean sheet!',
-      imageUrl: 'https://images.unsplash.com/photo-1517649763962-0c623266ddc0?w=800&auto=format&fit=crop&q=80',
-      likes: 95,
-      likedBy: ['u-4'],
-      replyCount: 19,
-      createdAt: new Date(Date.now() - 3600000 * 25).toISOString(),
-      postType: 'post',
-    },
-    {
-      id: 'post-seed-lost',
-      parentId: null,
-      userId: 'u-109',
-      userName: 'Aditya Varma (Hostel 4)',
-      userAvatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=100&auto=format&fit=crop&q=80',
-      content: '🔍 LOST: Blue lanyard with Hostel 4 Room 212 keys and College ID card left near Central Library lawns. If found, please drop at Security Gate 1! 🙏',
-      imageUrl: 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?w=800&auto=format&fit=crop&q=80',
-      likes: 41,
-      likedBy: [],
-      replyCount: 5,
-      createdAt: new Date(Date.now() - 3600000 * 28).toISOString(),
-      postType: 'post',
-    }
-  ];
+  const mountedRef = React.useRef(true);
+  React.useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
-  const DEFAULT_WALL_EVENT = {
-    id: 'wall-active-1',
-    title: 'Campus Food Photography Clash 🔥',
-    description: 'Vote for the best food snaps on campus! Winner gets ₹200 off their next Zenvy order.',
-    endTime: new Date(Date.now() + 3600000 * 18).toISOString(),
-    couponValue: 200,
-    couponCode: 'WALL200',
-    bannerText: '🔥 LIVE PHOTO CONTEST: Vote for your favourite food photos & win instant discount coupons! 📸✨',
-    bannerGradient: 'fire'
-  };
-
-  const DEFAULT_WALL_SUBMISSIONS = [
-    {
-      id: 'wall-sub-1',
-      imageUrl: 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=800&q=80',
-      likeCount: 84,
-      user: { name: 'Aarav Malhotra (Hostel 2)' },
-      isApproved: true
-    },
-    {
-      id: 'wall-sub-2',
-      imageUrl: 'https://images.unsplash.com/photo-1604382354936-07c5d9983bd3?w=800&q=80',
-      likeCount: 62,
-      user: { name: 'Pooja Reddy (Block C)' },
-      isApproved: true
-    },
-    {
-      id: 'wall-sub-3',
-      imageUrl: 'https://images.unsplash.com/photo-1586190848861-99aa4a171e90?w=800&q=80',
-      likeCount: 45,
-      user: { name: 'Devansh Roy' },
-      isApproved: true
-    },
-    {
-      id: 'wall-sub-4',
-      imageUrl: 'https://images.unsplash.com/photo-1517701604599-bb29b565090c?w=800&q=80',
-      likeCount: 31,
-      user: { name: 'Tanvi Joshi' },
-      isApproved: true
-    },
-    {
-      id: 'wall-sub-5',
-      imageUrl: 'https://images.unsplash.com/photo-1526318896980-cf78c088247c?w=800&q=80',
-      likeCount: 27,
-      user: { name: 'Karthik Nair' },
-      isApproved: true
-    },
-    {
-      id: 'wall-sub-6',
-      imageUrl: 'https://images.unsplash.com/photo-1626777552726-4a6b54c97e46?w=800&q=80',
-      likeCount: 19,
-      user: { name: 'Ananya Roy' },
-      isApproved: true
-    }
-  ];
-
-  const DEFAULT_WALL_HISTORY = [
-    {
-      event: {
-        id: 'wall-hist-1',
-        title: 'Midnight Biryani Clash 👑',
-        endTime: new Date(Date.now() - 86400000 * 5).toISOString(),
-        couponCode: 'CHAMP150',
-        couponValue: 150
-      },
-      winner: {
-        name: 'Aarav Malhotra (Hostel 2)'
-      },
-      winningSubmission: {
-        imageUrl: 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=800&q=80',
-        likeCount: 142
-      }
-    },
-    {
-      event: {
-        id: 'wall-hist-2',
-        title: 'Artisan Pizza Masters 🍕',
-        endTime: new Date(Date.now() - 86400000 * 12).toISOString(),
-        couponCode: 'PIZZAWIN',
-        couponValue: 200
-      },
-      winner: {
-        name: 'Pooja Reddy (Block C)'
-      },
-      winningSubmission: {
-        imageUrl: 'https://images.unsplash.com/photo-1604382354936-07c5d9983bd3?w=800&q=80',
-        likeCount: 118
-      }
-    },
-    {
-      event: {
-        id: 'wall-hist-3',
-        title: 'Monster BBQ Showdown 🍔',
-        endTime: new Date(Date.now() - 86400000 * 19).toISOString(),
-        couponCode: 'BURGER200',
-        couponValue: 200
-      },
-      winner: {
-        name: 'Devansh Roy (Hostel 3)'
-      },
-      winningSubmission: {
-        imageUrl: 'https://images.unsplash.com/photo-1586190848861-99aa4a171e90?w=800&q=80',
-        likeCount: 96
-      }
-    },
-    {
-      event: {
-        id: 'wall-hist-4',
-        title: 'Aesthetic Cold Brews ☕',
-        endTime: new Date(Date.now() - 86400000 * 26).toISOString(),
-        couponCode: 'COFFEESTAR',
-        couponValue: 150
-      },
-      winner: {
-        name: 'Tanvi Joshi (Architecture)'
-      },
-      winningSubmission: {
-        imageUrl: 'https://images.unsplash.com/photo-1517701604599-bb29b565090c?w=800&q=80',
-        likeCount: 88
-      }
-    }
-  ];
-
-  const [posts, setPosts] = useState<PostType[]>(DEFAULT_COMMUNITY_POSTS);
+  const [posts, setPosts] = useState<PostType[]>([]);
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [postsError, setPostsError] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'all' | 'wall'>('all');
-  const [feedCategory, setFeedCategory] = useState<'all' | 'memories' | 'reviews' | 'hacks' | 'lost_found'>('all');
+  const [feedCategory, setFeedCategory] = useState<'all' | 'memories' | 'reviews'>('all');
   const [search, setSearch] = useState('');
-  const [onlineCount] = useState(Math.floor(Math.random() * 20) + 8);
+  const likePendingRef = React.useRef<Set<string>>(new Set());
+  const wallVotePendingRef = React.useRef<Set<string>>(new Set());
 
-  // ── CAMPUS CLASH LIVE POLL STATE ──
-  const [campusPoll, setCampusPoll] = useState({
-    id: 'poll-1',
-    question: '🔥 Best Late-Night Exam Fuel on Campus?',
-    totalVotes: 348,
-    userVotedOptionId: null as string | null,
-    options: [
-      { id: 'opt-1', text: '🍜 Steaming Maggi with Double Masala', votes: 148, emoji: '🍜' },
-      { id: 'opt-2', text: '🍗 Handi Dum Biryani & Cold Drink', votes: 130, emoji: '🍗' },
-      { id: 'opt-3', text: '☕ Canteen Filter Coffee & Bun Maska', votes: 70, emoji: '☕' }
-    ]
-  });
-
-  const [claimedCoupon, setClaimedCoupon] = useState<string | null>(null);
-
-  const handleVotePoll = (optionId: string) => {
-    if (campusPoll.userVotedOptionId) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setCampusPoll(prev => ({
-      ...prev,
-      totalVotes: prev.totalVotes + 1,
-      userVotedOptionId: optionId,
-      options: prev.options.map(opt => opt.id === optionId ? { ...opt, votes: opt.votes + 1 } : opt)
-    }));
-    Alert.alert('Vote Registered! ⚡', 'Your campus poll vote has been counted live.');
-  };
-
-  const handleClaimCoupon = (code: string, value: number) => {
-    setClaimedCoupon(code);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  const promptSignIn = () => {
     Alert.alert(
-      '🎉 COUPON UNLOCKED!',
-      `Discount Code "${code}" for ₹${value} OFF is ready! Apply it at checkout for instant savings.`,
+      'Sign in to join in',
+      'Sign in to your Zenvy account to post, reply, vote or send wishes.',
       [
-        { text: 'Explore Restaurants 🍔', onPress: () => router.push('/' as any) },
-        { text: 'Awesome', style: 'cancel' }
+        { text: 'Not now', style: 'cancel' },
+        { text: 'Sign In', onPress: () => router.push('/login' as any) }
       ]
     );
   };
 
+  // Turns a failed response into a short, friendly message (never raw codes/JSON).
+  const friendlyError = async (res: Response, fallback: string): Promise<string> => {
+    if (res.status === 401) return 'Please sign in again to continue.';
+    if (res.status === 413) return 'That photo is too large. Please pick a smaller one.';
+    // 4xx bodies carry a friendly server message (e.g. 403 REVIEW_NEEDS_ORDER, 429 nudge limit,
+    // 400 CONTEST_CLOSED): show it as-is instead of a generic "sign in again".
+    if (res.status >= 400 && res.status < 500) {
+      try {
+        const data = await res.json();
+        if (data?.message && typeof data.message === 'string' && data.message.length < 120) return data.message;
+      } catch { /* ignore */ }
+      if (res.status === 429) return 'Whoa, slow down a little and try again in a minute.';
+    }
+    return fallback;
+  };
+
   // ── THE WALL STATE ──
   const [wallSubTab, setWallSubTab] = useState<'live' | 'hof'>('live');
-  const [activeWallEvent, setActiveWallEvent] = useState<any | null>(DEFAULT_WALL_EVENT);
-  const [wallSubmissions, setWallSubmissions] = useState<any[]>(DEFAULT_WALL_SUBMISSIONS);
+  const [activeWallEvent, setActiveWallEvent] = useState<any | null>(null);
+  const [wallSubmissions, setWallSubmissions] = useState<any[]>([]);
   const [userLikedWallSubmissionIds, setUserLikedWallSubmissionIds] = useState<string[]>([]);
   const [userWallSubmission, setUserWallSubmission] = useState<any | null>(null);
-  const [wallHistory, setWallHistory] = useState<any[]>(DEFAULT_WALL_HISTORY);
+  const [wallHistory, setWallHistory] = useState<any[]>([]);
   const [selectedHofWinner, setSelectedHofWinner] = useState<any | null>(null);
-  const [loadingWall, setLoadingWall] = useState(false);
+  const [loadingWall, setLoadingWall] = useState(true);
+  const [wallError, setWallError] = useState(false);
+  const [wallHistoryError, setWallHistoryError] = useState(false);
   const [wallTimeLeft, setWallTimeLeft] = useState<string>('');
 
   // Modals & Form
   const [showWallSubmitModal, setShowWallSubmitModal] = useState(false);
   const [wallSubmitImage, setWallSubmitImage] = useState<string | null>(null);
   const [submittingWallPhoto, setSubmittingWallPhoto] = useState(false);
-
-  const [showWallAdminModal, setShowWallAdminModal] = useState(false);
-  const [pendingWallSubmissions, setPendingWallSubmissions] = useState<any[]>([]);
-  const [newWallTitle, setNewWallTitle] = useState('');
-  const [newWallDesc, setNewWallDesc] = useState('');
-  const [newWallHours, setNewWallHours] = useState('24');
-  const [newWallCouponVal, setNewWallCouponVal] = useState('200');
-  const [newWallCouponCode, setNewWallCouponCode] = useState('');
-  const [newWallBannerText, setNewWallBannerText] = useState('🔥 LIVE PHOTO CONTEST: Vote for your favourite photos & win instant discount coupons! 📸✨');
-  const [newWallBannerGradient, setNewWallBannerGradient] = useState('fire');
-  const [submittingNewWallEvent, setSubmittingNewWallEvent] = useState(false);
-
-  // Edit active event state
-  const [editBannerText, setEditBannerText] = useState('');
-  const [editBannerGradient, setEditBannerGradient] = useState('fire');
-  const [editCouponVal, setEditCouponVal] = useState('200');
-  const [editCouponCode, setEditCouponCode] = useState('');
-  const [updatingActiveEvent, setUpdatingActiveEvent] = useState(false);
   
   // Composer states
   const [showComposer, setShowComposer] = useState(false);
   const [draft, setDraft] = useState('');
   const [draftImage, setDraftImage] = useState<string | null>(null);
-  const [customAuthorName, setCustomAuthorName] = useState(user?.name || '');
   const [isReviewDraft, setIsReviewDraft] = useState(false);
   const [starRating, setStarRating] = useState(5);
   const [restaurantName, setRestaurantName] = useState('');
@@ -546,7 +285,7 @@ export default function CommunityScreen() {
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: false,
         aspect: [1, 1],
         quality: 0.25,
@@ -592,51 +331,13 @@ export default function CommunityScreen() {
     createdAt: string;
   }
 
-  const DEFAULT_CAMPUS_CELEBRATIONS: BirthdayType[] = [
-    {
-      id: 'bday-1',
-      userId: 'u-1',
-      candidateName: 'Ananya R (CSE 3rd Yr)',
-      candidatePhotoUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&auto=format&fit=crop&q=80',
-      birthdayDate: new Date().toISOString().split('T')[0],
-      status: 'approved',
-      wishCount: 28,
-    },
-    {
-      id: 'bday-2',
-      userId: 'u-2',
-      candidateName: 'Rohit V (Block-A 204)',
-      candidatePhotoUrl: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=300&auto=format&fit=crop&q=80',
-      birthdayDate: new Date().toISOString().split('T')[0],
-      status: 'approved',
-      wishCount: 42,
-    },
-    {
-      id: 'bday-3',
-      userId: 'u-3',
-      candidateName: 'Priya S (ECE Winner)',
-      candidatePhotoUrl: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=300&auto=format&fit=crop&q=80',
-      birthdayDate: new Date().toISOString().split('T')[0],
-      status: 'approved',
-      wishCount: 19,
-    },
-    {
-      id: 'bday-4',
-      userId: 'u-4',
-      candidateName: 'Karthik N (Hostel Mess)',
-      candidatePhotoUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&auto=format&fit=crop&q=80',
-      birthdayDate: new Date().toISOString().split('T')[0],
-      status: 'approved',
-      wishCount: 35,
-    }
-  ];
-
-  const [birthdays, setBirthdays] = useState<BirthdayType[]>(DEFAULT_CAMPUS_CELEBRATIONS);
+  const [birthdays, setBirthdays] = useState<BirthdayType[]>([]);
   const [pendingBirthdays, setPendingBirthdays] = useState<BirthdayType[]>([]);
   const [selectedBirthday, setSelectedBirthday] = useState<BirthdayType | null>(null);
   const [selectedBirthdayWishes, setSelectedBirthdayWishes] = useState<WishType[]>([]);
+  const [loadingWishes, setLoadingWishes] = useState(false);
   const [birthdayWishMessage, setBirthdayWishMessage] = useState('');
-  
+
   // Modals
   const [showBirthdayWishModal, setShowBirthdayWishModal] = useState(false);
   const [showRegisterBirthdayModal, setShowRegisterBirthdayModal] = useState(false);
@@ -645,39 +346,63 @@ export default function CommunityScreen() {
 
   // New Birthday Nomination
   const [newBirthdayName, setNewBirthdayName] = useState('');
-  const [newBirthdayDate, setNewBirthdayDate] = useState(new Date().toISOString().split('T')[0]);
+  // Device-local date (UTC would be "yesterday" before 05:30 IST and the server would reject it).
+  const todayLocalYmd = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const [newBirthdayDate, setNewBirthdayDate] = useState(todayLocalYmd);
   const [newBirthdayPhoto, setNewBirthdayPhoto] = useState<string | null>(null);
   const [submittingBirthday, setSubmittingBirthday] = useState(false);
+
+  const myUserId = user ? String(user.id || user._id || '') : '';
+  const isAdmin = user?.role?.toLowerCase() === 'admin';
+  // Read through a ref so listeners registered at mount (AppState) see the current role.
+  const isAdminRef = React.useRef(isAdmin);
+  isAdminRef.current = isAdmin;
+
+  // The signed-in user can be restored after the first render; load the
+  // admin nomination queue once we know the viewer is an admin.
+  useEffect(() => {
+    if (isAdmin) fetchBirthdays();
+  }, [isAdmin]);
 
   const fetchBirthdays = async () => {
     try {
       const res = await apiFetch((ENDPOINTS as any).birthdaysActive);
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
-          setBirthdays(data);
-        } else {
-          setBirthdays(DEFAULT_CAMPUS_CELEBRATIONS);
-        }
-      } else {
-        setBirthdays(DEFAULT_CAMPUS_CELEBRATIONS);
+        if (mountedRef.current && Array.isArray(data)) setBirthdays(data);
       }
-      if (user?.role?.toLowerCase() === 'admin') {
+      // On failure keep whatever we last loaded (no fake fallback).
+      if (isAdminRef.current) {
         const resPending = await apiFetch((ENDPOINTS as any).birthdaysPending);
         if (resPending.ok) {
           const dataPending = await resPending.json();
-          setPendingBirthdays(dataPending);
+          if (mountedRef.current && Array.isArray(dataPending)) setPendingBirthdays(dataPending);
         }
       }
     } catch (e) {
-      setBirthdays(DEFAULT_CAMPUS_CELEBRATIONS);
-      console.error('[FETCH_BIRTHDAYS_ERROR]', e);
+      console.log('[FETCH_BIRTHDAYS_ERROR]', e);
     }
   };
 
+  const isValidBirthdayDate = (value: string) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const [y, m, d] = value.split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+  };
+
   const submitBirthday = async () => {
+    if (submittingBirthday) return;
+    if (!user) { promptSignIn(); return; }
     if (!newBirthdayName.trim()) {
-      Alert.alert('Validation Error', 'Please enter the birthday candidate\'s name.');
+      Alert.alert('Name needed', 'Please enter your friend\'s name.');
+      return;
+    }
+    if (!isValidBirthdayDate(newBirthdayDate.trim())) {
+      Alert.alert('Check the date', 'Please enter the birthday as YYYY-MM-DD, for example 2026-10-21.');
       return;
     }
     setSubmittingBirthday(true);
@@ -686,26 +411,27 @@ export default function CommunityScreen() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          candidateName: newBirthdayName,
-          birthdayDate: newBirthdayDate,
+          candidateName: newBirthdayName.trim(),
+          birthdayDate: newBirthdayDate.trim(),
           candidatePhoto: newBirthdayPhoto
         })
       });
 
       if (res.ok) {
-        Alert.alert('Nominated! 🎉', 'Nomination submitted to admin queue for approval.');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        Alert.alert('Nominated! 🎉', 'Thanks! Your nomination is with our team and will go live once approved.');
         setNewBirthdayName('');
+        setNewBirthdayDate(todayLocalYmd());
         setNewBirthdayPhoto(null);
         setShowRegisterBirthdayModal(false);
         fetchBirthdays();
       } else {
-        const err = await res.json();
-        Alert.alert('Submission Failed', err.message || 'Something went wrong.');
+        Alert.alert('Couldn\'t nominate', await friendlyError(res, 'Something went wrong. Please try again.'));
       }
     } catch (e) {
-      Alert.alert('Error', 'Network connection error.');
+      Alert.alert('No connection', 'Please check your internet and try again.');
     } finally {
-      setSubmittingBirthday(false);
+      if (mountedRef.current) setSubmittingBirthday(false);
     }
   };
 
@@ -713,11 +439,11 @@ export default function CommunityScreen() {
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!perm.granted) {
-        Alert.alert('Permission Required', 'Please allow gallery access to select a birthday banner photo.');
+        Alert.alert('Permission Required', 'Please allow gallery access to select a birthday photo.');
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: false,
         aspect: [1, 1],
         quality: 0.25,
@@ -737,7 +463,7 @@ export default function CommunityScreen() {
         }
       }
     } catch (err) {
-      Alert.alert('Gallery Error', 'Could not access photo library.');
+      Alert.alert('Gallery Error', 'Could not open your photo library.');
     }
   };
 
@@ -748,10 +474,10 @@ export default function CommunityScreen() {
         Alert.alert('Approved! 🎂', 'Birthday is now live and a notification has been sent.');
         fetchBirthdays();
       } else {
-        Alert.alert('Error', 'Failed to approve request.');
+        Alert.alert('Couldn\'t approve', await friendlyError(res, 'Please try again.'));
       }
     } catch (e) {
-      console.error(e);
+      Alert.alert('No connection', 'Please check your internet and try again.');
     }
   };
 
@@ -759,87 +485,79 @@ export default function CommunityScreen() {
     try {
       const res = await apiFetch((ENDPOINTS as any).birthdaysReject(id), { method: 'PUT' });
       if (res.ok) {
-        Alert.alert('Rejected', 'Nomination rejected successfully.');
+        Alert.alert('Rejected', 'Nomination rejected.');
         fetchBirthdays();
       } else {
-        Alert.alert('Error', 'Failed to reject request.');
+        Alert.alert('Couldn\'t reject', await friendlyError(res, 'Please try again.'));
       }
     } catch (e) {
-      console.error(e);
+      Alert.alert('No connection', 'Please check your internet and try again.');
     }
-  };
-
-  const DEFAULT_WISHES: Record<string, WishType[]> = {
-    'bday-1': [
-      { id: 'w-1', celebrationId: 'bday-1', userId: 'u-10', userName: 'Kavya Sharma', message: 'Happy Birthday Ananya! 🎂 Have the best year ahead! 🌟', createdAt: new Date(Date.now() - 3600000 * 2).toISOString() },
-      { id: 'w-2', celebrationId: 'bday-1', userId: 'u-11', userName: 'Aarav Patel', message: 'HBD! Waiting for the party treat at cafeteria! 🍕🎉', createdAt: new Date(Date.now() - 3600000).toISOString() },
-      { id: 'w-3', celebrationId: 'bday-1', userId: 'u-12', userName: 'Sneha Roy', message: 'Stay blessed and keep shining superstar! ✨❤️', createdAt: new Date(Date.now() - 1800000).toISOString() }
-    ],
-    'bday-2': [
-      { id: 'w-4', celebrationId: 'bday-2', userId: 'u-13', userName: 'Vikram Reddy', message: 'Happy Birthday Rohit bro! Room 204 rocks! 🎂🔥', createdAt: new Date(Date.now() - 3600000 * 3).toISOString() },
-      { id: 'w-5', celebrationId: 'bday-2', userId: 'u-14', userName: 'Rohan Mehra', message: 'HBD champion! Match win treat pending! 🏏🍔', createdAt: new Date(Date.now() - 3600000).toISOString() }
-    ],
-    'bday-3': [
-      { id: 'w-6', celebrationId: 'bday-3', userId: 'u-15', userName: 'Pooja Reddy', message: 'Congratulations and Happy Birthday Priya! 🏆🎂', createdAt: new Date(Date.now() - 3600000 * 4).toISOString() }
-    ],
-    'bday-4': [
-      { id: 'w-7', celebrationId: 'bday-4', userId: 'u-16', userName: 'Devansh Roy', message: 'Best wishes Karthik! Keep feeding us good vibes! 🎂🍰', createdAt: new Date(Date.now() - 3600000 * 2).toISOString() }
-    ]
   };
 
   const openBirthdayDetail = async (birthday: BirthdayType) => {
     setSelectedBirthday(birthday);
     setBirthdayWishMessage('');
-    const defaultList = DEFAULT_WISHES[birthday.id] || [
-      { id: `w-init-${Date.now()}`, celebrationId: birthday.id, userId: 'u-init', userName: 'Campus Peer', message: 'Happy Birthday! 🎉🎂', createdAt: new Date().toISOString() }
-    ];
-    setSelectedBirthdayWishes(defaultList);
+    setSelectedBirthdayWishes([]);
+    setLoadingWishes(true);
     setShowBirthdayWishModal(true);
     try {
       const res = await apiFetch((ENDPOINTS as any).birthdaysWishes(birthday.id));
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
-          setSelectedBirthdayWishes(data);
-        }
+        if (mountedRef.current && Array.isArray(data)) setSelectedBirthdayWishes(data);
       }
     } catch (e) {
-      console.error(e);
+      console.log('[FETCH_WISHES_ERROR]', e);
+    } finally {
+      if (mountedRef.current) setLoadingWishes(false);
     }
   };
 
+  const alreadyWished = !!myUserId && selectedBirthdayWishes.some(w => String(w.userId) === myUserId);
+
   const submitWish = async (presetText?: string) => {
-    if (!selectedBirthday) return;
+    if (!selectedBirthday || submittingWish) return;
+    if (!user) { promptSignIn(); return; }
+    if (alreadyWished) {
+      Alert.alert('Already wished ❤️', 'You have already sent your wishes to this friend.');
+      return;
+    }
     const msg = (presetText || birthdayWishMessage || '').trim();
     if (!msg) return;
 
-    const currentUserName = user?.name || 'You';
-    const newWishItem: WishType = {
-      id: `wish-${Date.now()}`,
-      celebrationId: selectedBirthday.id,
-      userId: user?.id || user?._id || 'u-you',
-      userName: currentUserName,
-      message: msg,
-      createdAt: new Date().toISOString()
-    };
-
-    // Instant optimistic update
-    setSelectedBirthdayWishes(prev => [newWishItem, ...prev]);
-    setSelectedBirthday(prev => prev ? { ...prev, wishCount: (prev.wishCount || 0) + 1 } : null);
-    setBirthdays(prev => prev.map(b => b.id === selectedBirthday.id ? { ...b, wishCount: (b.wishCount || 0) + 1 } : b));
-    setBirthdayWishMessage('');
-
+    const celebrationId = selectedBirthday.id;
     setSubmittingWish(true);
     try {
-      await apiFetch((ENDPOINTS as any).birthdaysWish(selectedBirthday.id), {
+      const res = await apiFetch((ENDPOINTS as any).birthdaysWish(celebrationId), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: msg })
       });
+      if (!res.ok) {
+        Alert.alert('Couldn\'t send wish', await friendlyError(res, 'Please try again in a moment.'));
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!mountedRef.current) return;
+      const newWishItem: WishType = {
+        id: `wish-${Date.now()}`,
+        celebrationId,
+        userId: myUserId,
+        userName: user?.name || 'You',
+        message: msg,
+        createdAt: new Date().toISOString()
+      };
+      const serverCount = typeof data?.wishCount === 'number' ? data.wishCount : null;
+      setSelectedBirthdayWishes(prev => [newWishItem, ...prev]);
+      setSelectedBirthday(prev => prev && prev.id === celebrationId ? { ...prev, wishCount: serverCount ?? (prev.wishCount || 0) + 1 } : prev);
+      setBirthdays(prev => prev.map(b => b.id === celebrationId ? { ...b, wishCount: serverCount ?? (b.wishCount || 0) + 1 } : b));
+      setBirthdayWishMessage('');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (e) {
-      console.log('[WISH_OPTIMISTICALLY_SAVED]');
+      Alert.alert('No connection', 'Please check your internet and try again.');
     } finally {
-      setSubmittingWish(false);
+      if (mountedRef.current) setSubmittingWish(false);
     }
   };
 
@@ -847,114 +565,83 @@ export default function CommunityScreen() {
     try {
       setLoadingWall(true);
       const res = await apiFetch((ENDPOINTS as any).wallActive);
+      if (!mountedRef.current) return;
       if (res.ok) {
         const data = await res.json();
-        setActiveWallEvent(data.activeEvent || DEFAULT_WALL_EVENT);
-        setWallSubmissions(Array.isArray(data.submissions) && data.submissions.length > 0 ? data.submissions : DEFAULT_WALL_SUBMISSIONS);
-        setUserLikedWallSubmissionIds(data.userLikedSubmissionIds || []);
+        if (!mountedRef.current) return;
+        setActiveWallEvent(data.activeEvent || null);
+        setWallSubmissions(Array.isArray(data.submissions) ? data.submissions : []);
+        setUserLikedWallSubmissionIds(Array.isArray(data.userLikedSubmissionIds) ? data.userLikedSubmissionIds : []);
         setUserWallSubmission(data.userSubmission || null);
-
-        if (data.activeEvent) {
-          setEditBannerText(data.activeEvent.bannerText || '🔥 LIVE PHOTO CONTEST: Vote for your favourite photos & win instant discount coupons! 📸✨');
-          setEditBannerGradient(data.activeEvent.bannerGradient || 'fire');
-          setEditCouponVal((data.activeEvent.couponValue || 200).toString());
-          setEditCouponCode(data.activeEvent.couponCode || '');
-        }
+        setWallError(false);
       } else {
-        setActiveWallEvent(DEFAULT_WALL_EVENT);
-        setWallSubmissions(DEFAULT_WALL_SUBMISSIONS);
+        setWallError(true);
       }
     } catch (e) {
-      setActiveWallEvent(DEFAULT_WALL_EVENT);
-      setWallSubmissions(DEFAULT_WALL_SUBMISSIONS);
-      console.error('[FETCH_WALL_ERR]', e);
+      console.log('[FETCH_WALL_ERR]', e);
+      if (mountedRef.current) setWallError(true);
     } finally {
-      setLoadingWall(false);
-    }
-  };
-
-  const updateActiveWallEvent = async () => {
-    if (!activeWallEvent) return;
-    setUpdatingActiveEvent(true);
-    try {
-      const res = await apiFetch((ENDPOINTS as any).wallUpdateEvent(activeWallEvent.id), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          bannerText: editBannerText,
-          bannerGradient: editBannerGradient,
-          couponValue: parseInt(editCouponVal || '200', 10),
-          couponCode: editCouponCode || null
-        })
-      });
-      if (res.ok) {
-        Alert.alert('Success! 🎉', 'Live Event Banner & Coupon details updated!');
-        fetchWallActive();
-      } else {
-        const err = await res.json();
-        Alert.alert('Error', err.message || 'Failed to update event banner.');
-      }
-    } catch (e) {
-      Alert.alert('Error', 'Network error updating event details.');
-    } finally {
-      setUpdatingActiveEvent(false);
+      if (mountedRef.current) setLoadingWall(false);
     }
   };
 
   const fetchWallHistory = async () => {
     try {
       const res = await apiFetch((ENDPOINTS as any).wallHistory);
+      if (!mountedRef.current) return;
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
-          setWallHistory(data);
-        } else {
-          setWallHistory(DEFAULT_WALL_HISTORY);
-        }
+        if (!mountedRef.current) return;
+        const list = (Array.isArray(data) ? data : []).filter((item: any) => item?.event?.id);
+        setWallHistory(list);
+        setWallHistoryError(false);
       } else {
-        setWallHistory(DEFAULT_WALL_HISTORY);
+        setWallHistoryError(true);
       }
     } catch (e) {
-      setWallHistory(DEFAULT_WALL_HISTORY);
-      console.error('[FETCH_WALL_HISTORY_ERR]', e);
-    }
-  };
-
-  const fetchWallAdminPending = async () => {
-    if (user?.role?.toLowerCase() !== 'admin') return;
-    try {
-      const res = await apiFetch((ENDPOINTS as any).wallAdminPending);
-      if (res.ok) {
-        const data = await res.json();
-        setPendingWallSubmissions(data);
-      }
-    } catch (e) {
-      console.error('[FETCH_WALL_PENDING_ERR]', e);
+      console.log('[FETCH_WALL_HISTORY_ERR]', e);
+      if (mountedRef.current) setWallHistoryError(true);
     }
   };
 
   const handleWallLike = async (submissionId: string) => {
-    const isAlreadyLiked = userLikedWallSubmissionIds.includes(submissionId);
-    setUserLikedWallSubmissionIds(prev =>
-      isAlreadyLiked ? prev.filter(id => id !== submissionId) : [...prev, submissionId]
-    );
+    if (!user) { promptSignIn(); return; }
+    if (wallVotePendingRef.current.has(submissionId)) return;
+    wallVotePendingRef.current.add(submissionId);
 
-    setWallSubmissions(prev =>
-      prev.map(sub => {
-        if (sub.id === submissionId) {
-          return {
-            ...sub,
-            likeCount: isAlreadyLiked ? Math.max(0, sub.likeCount - 1) : sub.likeCount + 1
-          };
-        }
-        return sub;
-      })
-    );
+    const isAlreadyLiked = userLikedWallSubmissionIds.includes(submissionId);
+    const applyVote = (liked: boolean, likeCount?: number) => {
+      setUserLikedWallSubmissionIds(prev => {
+        const without = prev.filter(id => id !== submissionId);
+        return liked ? [...without, submissionId] : without;
+      });
+      setWallSubmissions(prev => prev.map(sub => {
+        if (sub.id !== submissionId) return sub;
+        const base = sub.likeCount || 0;
+        const next = typeof likeCount === 'number' ? likeCount : (liked ? base + 1 : Math.max(0, base - 1));
+        return { ...sub, likeCount: next };
+      }));
+    };
+
+    // Optimistic toggle; reconciled with the server below.
+    applyVote(!isAlreadyLiked);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
 
     try {
-      await apiFetch((ENDPOINTS as any).wallLike(submissionId), { method: 'POST' });
+      const res = await apiFetch((ENDPOINTS as any).wallLike(submissionId), { method: 'POST' });
+      if (!mountedRef.current) return;
+      if (res.ok) {
+        const data = await res.json().catch(() => null);
+        if (data && typeof data.liked === 'boolean') applyVote(data.liked, typeof data.likeCount === 'number' ? data.likeCount : undefined);
+      } else {
+        applyVote(isAlreadyLiked);
+        Alert.alert('Vote not counted', await friendlyError(res, 'Please try again in a moment.'));
+      }
     } catch (e) {
-      console.log('[WALL_VOTE_LOCAL_SAVED]');
+      if (mountedRef.current) applyVote(isAlreadyLiked);
+      Alert.alert('No connection', 'Your vote was not counted. Please check your internet and try again.');
+    } finally {
+      wallVotePendingRef.current.delete(submissionId);
     }
   };
 
@@ -966,7 +653,7 @@ export default function CommunityScreen() {
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: false,
         aspect: [1, 1],
         quality: 0.25,
@@ -986,112 +673,43 @@ export default function CommunityScreen() {
         }
       }
     } catch (err) {
-      Alert.alert('Gallery Error', 'Could not access photo library.');
+      Alert.alert('Gallery Error', 'Could not open your photo library.');
     }
   };
 
   const submitWallPhoto = async () => {
+    if (submittingWallPhoto) return;
+    if (!user) { promptSignIn(); return; }
     if (!wallSubmitImage) {
-      Alert.alert('Validation Error', 'Please select a photo to upload.');
+      Alert.alert('Pick a photo', 'Please select a photo to upload.');
       return;
     }
 
     setSubmittingWallPhoto(true);
-    const imagePayload = wallSubmitImage;
-    const targetEventId = (activeWallEvent && activeWallEvent.id && activeWallEvent.id !== 'wall-active-1') 
-      ? activeWallEvent.id 
-      : 'active';
+    const targetEventId = activeWallEvent?.id || 'active';
 
     try {
       const res = await apiFetch((ENDPOINTS as any).wallSubmit(targetEventId), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageUrl: imagePayload })
+        body: JSON.stringify({ imageUrl: wallSubmitImage })
       });
 
       if (res.ok) {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
+        if (!mountedRef.current) return;
         setWallSubmitImage(null);
         setShowWallSubmitModal(false);
-        Alert.alert('Photo Live on The Wall! 📸', data.message || 'Your entry is live on The Wall! Peers can now vote for your photo.');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        Alert.alert('Photo submitted 📸', data.message || 'It will appear on The Wall once our team approves it.');
         await fetchWallActive();
       } else {
-        const err = await res.json().catch(() => ({}));
-        Alert.alert('Submission Error', err.message || 'Server could not accept photo at this time.');
+        Alert.alert('Couldn\'t upload', await friendlyError(res, 'We couldn\'t upload your photo right now. Please try again.'));
       }
     } catch (e: any) {
-      Alert.alert('Connection Error', e.message || 'Could not reach Wall server.');
+      Alert.alert('No connection', 'Please check your internet and try again.');
     } finally {
-      setSubmittingWallPhoto(false);
-    }
-  };
-
-  const approveWallSubmission = async (id: string) => {
-    try {
-      const res = await apiFetch((ENDPOINTS as any).wallApprove(id), { method: 'PUT' });
-      if (res.ok) {
-        Alert.alert('Approved! 📸', 'Photo is now live on The Wall!');
-        fetchWallAdminPending();
-        fetchWallActive();
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const rejectWallSubmission = async (id: string) => {
-    try {
-      const res = await apiFetch((ENDPOINTS as any).wallReject(id), { method: 'PUT' });
-      if (res.ok) {
-        Alert.alert('Rejected', 'Submission removed from queue.');
-        fetchWallAdminPending();
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const createWallEvent = async () => {
-    if (!newWallTitle.trim()) {
-      Alert.alert('Validation Error', 'Please enter event title.');
-      return;
-    }
-
-    setSubmittingNewWallEvent(true);
-    try {
-      const hrs = parseInt(newWallHours || '24', 10);
-      const startTime = new Date();
-      const endTime = new Date(Date.now() + hrs * 60 * 60 * 1000);
-
-      const res = await apiFetch((ENDPOINTS as any).wallCreateEvent, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: newWallTitle,
-          description: newWallDesc,
-          startTime,
-          endTime,
-          couponValue: parseInt(newWallCouponVal || '200', 10),
-          couponCode: newWallCouponCode || null,
-          bannerText: newWallBannerText,
-          bannerGradient: newWallBannerGradient
-        })
-      });
-
-      if (res.ok) {
-        Alert.alert('Event Created! 📸', 'New Wall photo contest is live!');
-        setNewWallTitle('');
-        setNewWallDesc('');
-        setShowWallAdminModal(false);
-        fetchWallActive();
-      } else {
-        const err = await res.json();
-        Alert.alert('Error', err.message || 'Failed to create Wall event.');
-      }
-    } catch (e) {
-      Alert.alert('Error', 'Network error creating Wall event.');
-    } finally {
-      setSubmittingNewWallEvent(false);
+      if (mountedRef.current) setSubmittingWallPhoto(false);
     }
   };
 
@@ -1099,9 +717,6 @@ export default function CommunityScreen() {
     if (activeTab === 'wall') {
       fetchWallActive();
       fetchWallHistory();
-      if (user?.role?.toLowerCase() === 'admin') {
-        fetchWallAdminPending();
-      }
     }
   }, [activeTab]);
 
@@ -1113,13 +728,17 @@ export default function CommunityScreen() {
 
     const updateTimer = () => {
       const ms = new Date(activeWallEvent.endTime).getTime() - Date.now();
-      if (ms <= 0) {
+      if (isNaN(ms)) {
+        setWallTimeLeft('');
+      } else if (ms <= 0) {
         setWallTimeLeft('CONTEST ENDED');
       } else {
-        const hours = Math.floor(ms / 3600000);
+        const days = Math.floor(ms / 86400000);
+        const hours = Math.floor((ms % 86400000) / 3600000);
         const mins = Math.floor((ms % 3600000) / 60000);
         const secs = Math.floor((ms % 60000) / 1000);
-        setWallTimeLeft(`${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`);
+        const hms = `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        setWallTimeLeft(days > 0 ? `${days}d ${hms}` : hms);
       }
     };
 
@@ -1128,6 +747,28 @@ export default function CommunityScreen() {
     return () => clearInterval(tInterval);
   }, [activeWallEvent]);
 
+  // Merge a post (from the POST response or the realtime socket) without duplicates.
+  const upsertPost = (newPost: any) => {
+    if (!newPost || !newPost.id) return;
+    if (newPost.parentId) {
+      setPosts(prev => prev.map(p => {
+        if (p.id !== newPost.parentId) return p;
+        const currentReplies = p.replies || [];
+        if (currentReplies.some(r => r.id === newPost.id)) return p;
+        return {
+          ...p,
+          replyCount: Math.max((p.replyCount || 0), currentReplies.length) + 1,
+          replies: [...currentReplies, { ...newPost, likedBy: (newPost.likedBy || []).map(String) }]
+        };
+      }));
+    } else {
+      setPosts(prev => {
+        if (prev.some(p => p.id === newPost.id)) return prev;
+        return [{ ...newPost, likes: newPost.likes || 0, replyCount: newPost.replyCount || 0, likedBy: (newPost.likedBy || []).map(String), replies: newPost.replies || [] }, ...prev];
+      });
+    }
+  };
+
   useEffect(() => {
     fetchPosts();
     fetchBirthdays();
@@ -1135,38 +776,19 @@ export default function CommunityScreen() {
     const socket = connectSocket();
 
     const onNewPost = (newPost: any) => {
-      if (newPost.parentId) {
-        setPosts(prev => prev.map(p => {
-          if (p.id === newPost.parentId) {
-            const currentReplies = p.replies || [];
-            if (currentReplies.some(r => r.id === newPost.id)) return p;
-            return {
-              ...p,
-              replyCount: (p.replyCount || 0) + 1,
-              replies: [...currentReplies, newPost]
-            };
-          }
-          return p;
-        }));
-      } else {
-        setPosts(prev => {
-          if (prev.some(p => p.id === newPost.id)) return prev;
-          const isReview = newPost.postType === 'review';
-          if (activeTab === 'wall' && !isReview) return prev;
-          return [newPost, ...prev];
-        });
-      }
+      if (mountedRef.current) upsertPost(newPost);
     };
 
     const onPostLiked = (data: { id: string; likes: number; likedBy: string[] }) => {
+      if (!mountedRef.current || !data?.id) return;
       setPosts(prev => prev.map(p => {
         if (p.id === data.id) {
-          return { ...p, likes: data.likes, likedBy: data.likedBy };
+          return { ...p, likes: data.likes, likedBy: (data.likedBy || []).map(String) };
         }
         if (p.replies && p.replies.some(r => r.id === data.id)) {
           return {
             ...p,
-            replies: p.replies.map(r => r.id === data.id ? { ...r, likes: data.likes, likedBy: data.likedBy } : r)
+            replies: p.replies.map(r => r.id === data.id ? { ...r, likes: data.likes, likedBy: (data.likedBy || []).map(String) } : r)
           };
         }
         return p;
@@ -1174,9 +796,10 @@ export default function CommunityScreen() {
     };
 
     const onPostDeleted = (data: { id: string; parentId: string | null }) => {
+      if (!mountedRef.current || !data?.id) return;
       if (data.parentId) {
         setPosts(prev => prev.map(p => {
-          if (p.id === data.parentId) {
+          if (p.id === data.parentId && (p.replies || []).some(r => r.id === data.id)) {
             return {
               ...p,
               replyCount: Math.max((p.replyCount || 1) - 1, 0),
@@ -1194,163 +817,185 @@ export default function CommunityScreen() {
     socket.on('community_post_liked', onPostLiked);
     socket.on('community_post_deleted', onPostDeleted);
 
-    const interval = setInterval(() => {
-      fetchPosts();
-      fetchBirthdays();
-    }, 10000);
+    // Catch up on anything missed while the app was in the background
+    // (the realtime socket handles live updates; no polling).
+    const appStateSub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        fetchPosts();
+        fetchBirthdays();
+      }
+    });
 
     return () => {
-      clearInterval(interval);
+      appStateSub.remove();
       socket.off('community_new_post', onNewPost);
       socket.off('community_post_liked', onPostLiked);
       socket.off('community_post_deleted', onPostDeleted);
     };
-  }, [activeTab]);
+  }, []);
 
   const fetchPosts = async () => {
     try {
-      const url = ENDPOINTS.communityPosts;
-      const res = await apiFetch(url);
+      const res = await apiFetch(ENDPOINTS.communityPosts);
+      if (!mountedRef.current) return;
       if (res.ok) {
         const data = await res.json();
-        // Filter out system errors or validation errors
-        const ERROR_PATTERNS = [
-          /^INVALID\s/i, /^PAYMENT\s/i, /^ERROR:/i, /^FAILED:/i,
-          /^DB\s/i, /^SQL/i, /^SEQUELIZE/i, /SequelizeValidation/i,
-          /^TypeError/i, /^ReferenceError/i, /^UnhandledPromise/i
-        ];
-        const clean = (Array.isArray(data) ? data : []).filter((p: any) => {
-          if (!p.content) return true;
-          return !ERROR_PATTERNS.some(rx => rx.test(p.content.trim()));
-        });
-        if (clean.length > 0) {
-          setPosts(clean);
-        } else {
-          setPosts(DEFAULT_COMMUNITY_POSTS);
-        }
+        if (!mountedRef.current) return;
+        const list: PostType[] = (Array.isArray(data) ? data : []).map((p: any) => ({
+          ...p,
+          likes: p.likes || 0,
+          replyCount: p.replyCount || 0,
+          likedBy: Array.isArray(p.likedBy) ? p.likedBy.map(String) : [],
+          replies: Array.isArray(p.replies) ? p.replies : [],
+        }));
+        setPosts(list);
+        setPostsError(false);
       } else {
-        setPosts(DEFAULT_COMMUNITY_POSTS);
+        // Keep the last good feed; a retry state is shown only if we have nothing.
+        setPostsError(true);
       }
     } catch (e) {
-      setPosts(DEFAULT_COMMUNITY_POSTS);
-      console.error(e);
+      console.log('[FETCH_POSTS_ERR]', e);
+      if (mountedRef.current) setPostsError(true);
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      if (activeTab === 'wall') {
+        await Promise.all([fetchWallActive(), fetchWallHistory()]);
+      } else {
+        await Promise.all([fetchPosts(), fetchBirthdays()]);
+      }
+    } finally {
+      if (mountedRef.current) setRefreshing(false);
+    }
+  };
+
+  const retryPosts = () => {
+    setLoading(true);
+    setPostsError(false);
+    fetchPosts();
   };
 
   const checkAuthAndRun = (action: () => void) => {
     if (!user) {
-      // Allow seamless guest participation or prompt gracefully
-      action();
+      promptSignIn();
       return;
     }
     action();
   };
 
   const handlePost = async () => {
-    if (!draft.trim() && !draftImage) return;
+    if (posting) return;
+    if (!user) { promptSignIn(); return; }
+    if (!draft.trim() && !draftImage) {
+      Alert.alert('Nothing to post yet', 'Write something or add a photo first.');
+      return;
+    }
+    if (isReviewDraft && !replyingTo && !restaurantName.trim()) {
+      Alert.alert('Which restaurant?', 'Add the restaurant name so others know what you are reviewing.');
+      return;
+    }
     setPosting(true);
 
-    const newOptimisticPost: PostType = {
-      id: `post-${Date.now()}`,
-      parentId: replyingTo ? replyingTo.id : null,
-      userId: user?.id || user?._id || 'u-local',
-      userName: customAuthorName || user?.name || 'Campus Foodie',
-      userAvatar: user?.profileImage || user?.avatar || null,
-      content: draft,
-      imageUrl: draftImage,
-      likes: 1,
-      likedBy: [user?.id || user?._id || 'u-local'],
-      replyCount: 0,
-      createdAt: new Date().toISOString(),
-      postType: isReviewDraft ? 'review' : 'post',
-      starRating: isReviewDraft ? starRating : undefined,
-      restaurantName: isReviewDraft ? restaurantName : undefined,
-      productName: isReviewDraft ? productName : undefined,
-    };
-
-    setPosts(prev => [newOptimisticPost, ...prev]);
-    const submittedDraft = draft;
-    const submittedImage = draftImage;
     const submittedReplyingTo = replyingTo;
-    const submittedReview = isReviewDraft;
-    const submittedRating = starRating;
-    const submittedRes = restaurantName;
-    const submittedProd = productName;
-
-    setDraft('');
-    setDraftImage(null);
-    setReplyingTo(null);
-    setIsReviewDraft(false);
-    setRestaurantName('');
-    setProductName('');
-    setShowComposer(false);
+    const submittedReview = isReviewDraft && !submittedReplyingTo;
 
     try {
-      const body: Record<string, any> = { content: submittedDraft };
-      if (submittedImage) body.imageUrl = submittedImage;
+      const body: Record<string, any> = { content: draft.trim() };
+      if (draftImage) body.imageUrl = draftImage;
       if (submittedReplyingTo) body.parentId = submittedReplyingTo.id;
-      if (customAuthorName) body.authorName = customAuthorName;
-      
-      if (submittedReview && !submittedReplyingTo) {
+
+      if (submittedReview) {
         body.postType = 'review';
-        body.starRating = submittedRating.toString();
-        body.restaurantName = submittedRes;
-        body.productName = submittedProd;
+        body.starRating = starRating.toString();
+        body.restaurantName = restaurantName.trim();
+        body.productName = productName.trim();
       }
 
-      await apiFetch(ENDPOINTS.communityPosts, {
+      const res = await apiFetch(ENDPOINTS.communityPosts, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
+
+      if (!res.ok) {
+        // Keep the draft so the user can retry.
+        Alert.alert('Couldn\'t post', await friendlyError(res, 'Your post wasn\'t shared. Please try again.'));
+        return;
+      }
+
+      const saved = await res.json().catch(() => null);
+      if (!mountedRef.current) return;
+      if (saved) upsertPost(saved);
+      if (submittedReplyingTo) {
+        setExpandedThreads(prev => new Set(prev).add(submittedReplyingTo.id));
+      }
+
+      setDraft('');
+      setDraftImage(null);
+      setReplyingTo(null);
+      setIsReviewDraft(false);
+      setRestaurantName('');
+      setProductName('');
+      setSelectedMood(null);
+      setStarRating(5);
+      setShowComposer(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (err) {
-      console.log('[COMMUNITY_POST_LOCAL_SYNC]');
+      Alert.alert('No connection', 'Your post wasn\'t shared. Please check your internet and try again.');
     } finally {
-      setPosting(false);
+      if (mountedRef.current) setPosting(false);
     }
   };
 
   const handleLike = async (id: string) => {
-    if (!user) {
-      Alert.alert(
-        'Authentication Required',
-        'Sign in to your premium Zenvy account to post, reply, or like memories on the community wall.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Sign In', onPress: () => router.push('/login' as any) }
-        ]
-      );
-      return;
-    }
-    const userId = user ? (user.id || user._id || '') : '';
+    if (!user) { promptSignIn(); return; }
+    const userId = myUserId;
     if (!userId) return;
-    
+    if (likePendingRef.current.has(id)) return;
+    const target = posts.find(p => p.id === id);
+    if (!target) return;
+    likePendingRef.current.add(id);
+
+    const previous = { likes: target.likes, likedBy: target.likedBy };
+    const isLiked = target.likedBy.map(String).includes(userId);
+    const setLikeState = (likes: number, likedBy: string[]) => {
+      setPosts(prev => prev.map(p => p.id === id ? { ...p, likes, likedBy } : p));
+    };
+
     // Optimistic update
-    setPosts(prev => prev.map(p => {
-      if (p.id === id) {
-        const isLiked = p.likedBy.includes(userId);
-        return {
-          ...p,
-          likes: isLiked ? Math.max(0, p.likes - 1) : p.likes + 1,
-          likedBy: isLiked 
-            ? p.likedBy.filter(u => u !== userId) 
-            : [...p.likedBy, userId]
-        };
-      }
-      return p;
-    }));
+    setLikeState(
+      isLiked ? Math.max(0, target.likes - 1) : target.likes + 1,
+      isLiked ? target.likedBy.filter(u => u !== userId) : [...target.likedBy, userId]
+    );
 
     try {
-      await apiFetch(ENDPOINTS.communityLike(id), { method: 'PUT' });
+      const res = await apiFetch(ENDPOINTS.communityLike(id), { method: 'PUT' });
+      if (!mountedRef.current) return;
+      if (res.ok) {
+        const data = await res.json().catch(() => null);
+        if (data && typeof data.likes === 'number') {
+          setLikeState(data.likes, Array.isArray(data.likedBy) ? data.likedBy.map(String) : []);
+        }
+      } else {
+        setLikeState(previous.likes, previous.likedBy);
+        Alert.alert('Couldn\'t like', await friendlyError(res, 'Please try again in a moment.'));
+      }
     } catch (e) {
-      console.error(e);
+      if (mountedRef.current) setLikeState(previous.likes, previous.likedBy);
+      Alert.alert('No connection', 'Your like was not saved. Please check your internet and try again.');
+    } finally {
+      likePendingRef.current.delete(id);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    Alert.alert('Delete Post', 'Are you sure you want to remove this memory?', [
+  const handleDelete = async (id: string, parentId?: string | null) => {
+    Alert.alert('Delete post?', 'This will remove it for everyone.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
@@ -1358,11 +1003,21 @@ export default function CommunityScreen() {
         onPress: async () => {
           try {
             const res = await apiFetch(ENDPOINTS.communityDelete(id), { method: 'DELETE' });
+            if (!mountedRef.current) return;
             if (res.ok) {
-              setPosts(prev => prev.filter(p => p.id !== id));
+              if (parentId) {
+                setPosts(prev => prev.map(p => p.id === parentId && (p.replies || []).some(r => r.id === id)
+                  ? { ...p, replyCount: Math.max((p.replyCount || 1) - 1, 0), replies: (p.replies || []).filter(r => r.id !== id) }
+                  : p));
+              } else {
+                setPosts(prev => prev.filter(p => p.id !== id));
+              }
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+            } else {
+              Alert.alert('Couldn\'t delete', await friendlyError(res, 'Please try again in a moment.'));
             }
           } catch (e) {
-            console.error(e);
+            Alert.alert('No connection', 'Please check your internet and try again.');
           }
         }
       }
@@ -1379,7 +1034,7 @@ export default function CommunityScreen() {
   };
 
   const getTimeLeft = (expiresAt?: string | null) => {
-    if (!expiresAt) return '48h';
+    if (!expiresAt) return '';
     const ms = new Date(expiresAt).getTime() - Date.now();
     if (ms <= 0) return 'Expired';
     const h = Math.floor(ms / 3600000);
@@ -1390,6 +1045,7 @@ export default function CommunityScreen() {
 
   const formatTime = (isoString: string) => {
     const d = new Date(isoString);
+    if (isNaN(d.getTime())) return '';
     const diff = Date.now() - d.getTime();
     if (diff < 60000) return 'Just now';
     if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
@@ -1405,8 +1061,6 @@ export default function CommunityScreen() {
     }
     if (feedCategory === 'reviews') return p.postType === 'review';
     if (feedCategory === 'memories') return p.postType !== 'review';
-    if (feedCategory === 'hacks') return (p.content || '').toLowerCase().includes('hack') || (p.content || '').toLowerCase().includes('code') || (p.content || '').toLowerCase().includes('study') || (p.content || '').toLowerCase().includes('fest') || (p.content || '').toLowerCase().includes('football');
-    if (feedCategory === 'lost_found') return (p.content || '').toLowerCase().includes('lost') || (p.content || '').toLowerCase().includes('found') || (p.content || '').toLowerCase().includes('gate') || (p.content || '').toLowerCase().includes('library');
     return true;
   });
 
@@ -1421,7 +1075,7 @@ export default function CommunityScreen() {
       ['#34D399', '#0D9488'], // emerald-400 to teal-500
       ['#FB7185', '#EC4899'], // rose-400 to pink-500
     ];
-    const code = id.charCodeAt(id.length - 1) || 0;
+    const code = String(id || '').charCodeAt(String(id || '').length - 1) || 0;
     return colors[code % colors.length];
   };
 
@@ -1433,19 +1087,13 @@ export default function CommunityScreen() {
           <TouchableOpacity 
             style={s.backBtn} 
             onPress={() => {
-              if (router.canGoBack()) {
-                router.back();
-              }
-              // Force back to home just in case
-              router.push('/' as any);
+              if (router.canGoBack()) router.back();
+              else router.replace('/' as any);
             }}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Text style={[s.backText, { color: isDark ? COLORS.gold : '#8b5a2b' }]}>◀ HOME</Text>
+            <Text style={[s.backText, { color: isDark ? COLORS.gold : '#8b5a2b' }]}>◀ BACK</Text>
           </TouchableOpacity>
-          <View style={s.onlineBadge}>
-            <View style={s.onlineDot} />
-            <Text style={s.onlineText}>{onlineCount} LIVE</Text>
-          </View>
         </View>
 
         <View style={s.titleRow}>
@@ -1480,16 +1128,24 @@ export default function CommunityScreen() {
         {activeTab === 'all' && (
           <TextInput 
             style={[s.searchBar, { backgroundColor: cardBg, borderColor: border, color: txt }]} 
-            placeholder="Search stories..." 
-            placeholderTextColor={txtSec} 
-            value={search} 
-            onChangeText={setSearch} 
+            placeholder="Search stories..."
+            placeholderTextColor={txtSec}
+            value={search}
+            onChangeText={setSearch}
+            maxLength={60}
+            returnKeyType="search"
+            clearButtonMode="while-editing"
           />
         )}
       </View>
 
       {activeTab === 'wall' ? (
-        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 16 }}>
+        <ScrollView
+          style={{ flex: 1 }}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ padding: 16, paddingBottom: 110 }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={isDark ? COLORS.gold : '#8b5a2b'} colors={[COLORS.gold]} />}
+        >
           {/* Wall Sub-Tab Selector */}
           <View style={{ flexDirection: 'row', backgroundColor: cardBg, borderRadius: 16, borderWidth: 1, borderColor: border, padding: 4, marginBottom: 14 }}>
             <TouchableOpacity
@@ -1508,6 +1164,33 @@ export default function CommunityScreen() {
 
           {wallSubTab === 'live' ? (
             <View style={{ flex: 1 }}>
+              {!activeWallEvent && wallError && !loadingWall && (
+                <View style={s.emptyState}>
+                  <Text style={{ fontSize: 40, marginBottom: 8 }}>📡</Text>
+                  <Text style={[s.emptyTitle, { color: isDark ? COLORS.gold : '#8b5a2b' }]}>COULDN'T LOAD THE WALL</Text>
+                  <Text style={[s.emptySubtitle, { color: txtSec, textAlign: 'center' }]}>Check your connection and try again.</Text>
+                  <TouchableOpacity onPress={fetchWallActive} style={[s.retryBtn, { backgroundColor: isDark ? COLORS.gold : '#8b5a2b' }]}>
+                    <Text style={[s.retryText, { color: isDark ? '#000' : '#fff' }]}>RETRY</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {!activeWallEvent && !wallError && !loadingWall && (
+                <View style={s.emptyState}>
+                  <Text style={{ fontSize: 40, marginBottom: 8 }}>📸</Text>
+                  <Text style={[s.emptyTitle, { color: isDark ? COLORS.gold : '#8b5a2b', textAlign: 'center' }]}>NO CONTEST RIGHT NOW</Text>
+                  <Text style={[s.emptySubtitle, { color: txtSec, textAlign: 'center' }]}>The next photo contest will show up here. Check out past winners in the Hall of Fame!</Text>
+                  <TouchableOpacity onPress={() => setWallSubTab('hof')} style={[s.retryBtn, { backgroundColor: isDark ? COLORS.gold : '#8b5a2b' }]}>
+                    <Text style={[s.retryText, { color: isDark ? '#000' : '#fff' }]}>SEE HALL OF FAME</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* Live ticker with the admin-set banner text */}
+              {activeWallEvent?.bannerText ? (
+                <CrazyMovingBanner text={activeWallEvent.bannerText} theme={activeWallEvent.bannerGradient || 'fire'} />
+              ) : null}
+
               {/* 🌟 HERO EVENT SPOTLIGHT CARD 🌟 */}
               {activeWallEvent && (
                 <View style={{
@@ -1539,17 +1222,17 @@ export default function CommunityScreen() {
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(16, 185, 129, 0.15)', borderWidth: 1, borderColor: '#10B981', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 }}>
                         <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#10B981' }} />
                         <Text style={{ fontSize: 9, fontWeight: '900', color: '#10B981', letterSpacing: 0.5 }}>
-                          {wallSubmissions.reduce((acc, curr) => acc + (curr.likeCount || 0), 0) + 156} VOTES TODAY
+                          {wallSubmissions.reduce((acc, curr) => acc + (curr.likeCount || 0), 0)} TOTAL VOTES
                         </Text>
                       </View>
                     </View>
 
                     {/* Main Title & Description */}
                     <Text style={{ fontSize: 19, fontWeight: '900', color: txt, letterSpacing: 0.5, marginBottom: 4 }}>
-                      {activeWallEvent.title || 'Campus Food Photography Clash 🔥'}
+                      {activeWallEvent.title || 'Photo Contest'}
                     </Text>
                     <Text style={{ fontSize: 11, color: txtSec, lineHeight: 16, marginBottom: 14 }}>
-                      {activeWallEvent.description || 'Vote for the tastiest food snaps on campus & win instant discounts! Votes reshape the wall live in real-time.'}
+                      {activeWallEvent.description || 'Post your best photo and vote for your favourites. The top-voted photo wins.'}
                     </Text>
 
                     {/* Countdown & Reward Pills */}
@@ -1558,50 +1241,34 @@ export default function CommunityScreen() {
                         <Text style={{ fontSize: 18 }}>⏱️</Text>
                         <View>
                           <Text style={{ fontSize: 7.5, fontWeight: '900', color: txtSec, letterSpacing: 0.8 }}>COUNTDOWN CLASH</Text>
-                          <Text style={{ fontSize: 13, fontWeight: '900', color: '#FF5A00' }}>{wallTimeLeft || '17:59:32'}</Text>
+                          <Text style={{ fontSize: 13, fontWeight: '900', color: '#FF5A00' }}>{wallTimeLeft || '—'}</Text>
                         </View>
                       </View>
 
                       <View style={{ flex: 1, backgroundColor: isDark ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.85)', padding: 10, borderRadius: 14, borderWidth: 1, borderColor: border, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                         <Text style={{ fontSize: 18 }}>🎁</Text>
                         <View>
-                          <Text style={{ fontSize: 7.5, fontWeight: '900', color: txtSec, letterSpacing: 0.8 }}>REWARD COUPON</Text>
+                          <Text style={{ fontSize: 7.5, fontWeight: '900', color: txtSec, letterSpacing: 0.8 }}>WINNER GETS</Text>
                           <Text style={{ fontSize: 13, fontWeight: '900', color: '#10B981' }}>
-                            ₹{activeWallEvent.couponValue || 200} {activeWallEvent.couponCode ? `(${activeWallEvent.couponCode})` : 'OFF'}
+                            {activeWallEvent.couponValue ? `₹${activeWallEvent.couponValue} OFF` : '—'}
                           </Text>
                         </View>
                       </View>
                     </View>
 
-                    {/* 1-Tap Claim Coupon Button */}
-                    <TouchableOpacity
-                      style={{
-                        marginTop: 12,
-                        backgroundColor: '#FF8C00',
-                        paddingVertical: 10,
-                        paddingHorizontal: 16,
-                        borderRadius: 14,
-                        flexDirection: 'row',
-                        justifyContent: 'center',
-                        alignItems: 'center',
-                        gap: 8,
-                        shadowColor: '#FF8C00',
-                        shadowOpacity: 0.4,
-                        shadowRadius: 8,
-                        elevation: 4
-                      }}
-                      onPress={() => handleClaimCoupon(activeWallEvent.couponCode || 'WALL200', activeWallEvent.couponValue || 200)}
-                    >
-                      <Text style={{ fontSize: 13, color: '#FFF' }}>🎁</Text>
-                      <Text style={{ fontSize: 10, fontWeight: '900', color: '#FFF', letterSpacing: 1 }}>
-                        {claimedCoupon ? 'COUPON UNLOCKED & READY! 🎉' : `CLAIM ₹${activeWallEvent.couponValue || 200} DISCOUNT COUPON ➔`}
-                      </Text>
-                    </TouchableOpacity>
+                    {activeWallEvent.couponValue ? (
+                      <View style={{ marginTop: 12, paddingVertical: 9, paddingHorizontal: 12, borderRadius: 14, backgroundColor: isDark ? 'rgba(255,140,0,0.12)' : 'rgba(255,140,0,0.08)', borderWidth: 1, borderColor: 'rgba(255,140,0,0.5)', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                        <Text style={{ fontSize: 13 }}>🏆</Text>
+                        <Text style={{ fontSize: 10, fontWeight: '900', color: '#FF8C00', letterSpacing: 0.6, flexShrink: 1, textAlign: 'center' }}>
+                          TOP-VOTED PHOTO WINS A ₹{activeWallEvent.couponValue} COUPON
+                        </Text>
+                      </View>
+                    ) : null}
 
                     {userWallSubmission && (
                       <View style={{ marginTop: 12, padding: 8, borderRadius: 10, backgroundColor: userWallSubmission.isApproved ? 'rgba(74,222,128,0.1)' : 'rgba(250,204,21,0.1)', borderWidth: 1, borderColor: userWallSubmission.isApproved ? '#4ADE80' : '#FACC15', alignItems: 'center' }}>
                         <Text style={{ fontSize: 9, fontWeight: '900', color: userWallSubmission.isApproved ? '#4ADE80' : '#FACC15' }}>
-                          {userWallSubmission.isApproved ? '✅ YOUR PHOTO IS LIVE ON THE WALL!' : '⏳ YOUR SUBMISSION IS PENDING ADMIN MODERATION'}
+                          {userWallSubmission.isApproved ? '✅ YOUR PHOTO IS LIVE ON THE WALL!' : '⏳ YOUR PHOTO IS BEING REVIEWED'}
                         </Text>
                       </View>
                     )}
@@ -1610,13 +1277,19 @@ export default function CommunityScreen() {
               )}
 
               {/* Dynamic Masonry Mosaic Grid */}
-              {loadingWall ? (
-                <ActivityIndicator size="large" color={isDark ? COLORS.gold : '#8b5a2b'} style={{ marginVertical: 36 }} />
-              ) : wallSubmissions.length === 0 ? (
+              {loadingWall && wallSubmissions.length === 0 ? (
+                <View style={{ gap: 12, marginTop: 4 }}>
+                  <ShimmerLoader width="100%" height={240} borderRadius={24} />
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <ShimmerLoader width="48%" height={160} borderRadius={18} />
+                    <ShimmerLoader width="48%" height={160} borderRadius={18} />
+                  </View>
+                </View>
+              ) : !activeWallEvent ? null : wallSubmissions.length === 0 ? (
                 <View style={s.emptyState}>
                   <Text style={{ fontSize: 40, marginBottom: 8 }}>🖼️</Text>
                   <Text style={[s.emptyTitle, { color: isDark ? COLORS.gold : '#8b5a2b' }]}>THE WALL IS EMPTY</Text>
-                  <Text style={[s.emptySubtitle, { color: txtSec }]}>Be the first student to upload a photo for this contest!</Text>
+                  <Text style={[s.emptySubtitle, { color: txtSec, textAlign: 'center' }]}>Be the first to post a photo for this contest!</Text>
                 </View>
               ) : (
                 <View style={{ paddingBottom: 80, marginTop: 4 }}>
@@ -1643,7 +1316,7 @@ export default function CommunityScreen() {
                           overflow: 'hidden'
                         }}
                       >
-                        <TouchableOpacity activeOpacity={0.9} style={{ flex: 1 }} onPress={() => setSelectedImage(topSub.imageUrl)}>
+                        <TouchableOpacity activeOpacity={0.9} style={{ flex: 1 }} onPress={() => setSelectedImage(getImageUrl(topSub.imageUrl))}>
                           <Image 
                             source={{ uri: getImageUrl(topSub.imageUrl) }} 
                             style={{ width: '100%', height: '100%' }} 
@@ -1676,7 +1349,7 @@ export default function CommunityScreen() {
                               </Text>
                             </View>
                             <View style={{ backgroundColor: 'rgba(0,0,0,0.7)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: 'rgba(255,215,0,0.5)' }}>
-                              <Text style={{ fontSize: 13, fontWeight: '900', color: '#FFD700' }}>❤️ {topSub.likeCount} Votes</Text>
+                              <Text style={{ fontSize: 13, fontWeight: '900', color: '#FFD700' }}>❤️ {topSub.likeCount || 0} {topSub.likeCount === 1 ? 'Vote' : 'Votes'}</Text>
                             </View>
                           </LinearGradient>
                         </TouchableOpacity>
@@ -1705,7 +1378,7 @@ export default function CommunityScreen() {
                             marginBottom: 4
                           }}
                         >
-                          <TouchableOpacity activeOpacity={0.9} style={{ flex: 1 }} onPress={() => setSelectedImage(sub.imageUrl)}>
+                          <TouchableOpacity activeOpacity={0.9} style={{ flex: 1 }} onPress={() => setSelectedImage(getImageUrl(sub.imageUrl))}>
                             <Image 
                               source={{ uri: getImageUrl(sub.imageUrl) }} 
                               style={{ width: '100%', height: '100%' }} 
@@ -1736,7 +1409,7 @@ export default function CommunityScreen() {
                                 </Text>
                               </View>
                               <View style={{ backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                <Text style={{ fontSize: 10, fontWeight: '900', color: '#FFD700' }}>❤️ {sub.likeCount}</Text>
+                                <Text style={{ fontSize: 10, fontWeight: '900', color: '#FFD700' }}>❤️ {sub.likeCount || 0}</Text>
                               </View>
                             </LinearGradient>
                           </TouchableOpacity>
@@ -1747,39 +1420,6 @@ export default function CommunityScreen() {
                 </View>
               )}
 
-              {/* Bottom Votes Bar */}
-              <View style={{ paddingVertical: 12, alignItems: 'center', borderTopWidth: 1, borderTopColor: border, marginTop: 10 }}>
-                <Text style={{ fontSize: 10, fontWeight: '900', color: isDark ? COLORS.gold : '#8b5a2b' }}>
-                  Votes today: {Math.min(5, userLikedWallSubmissionIds.length)} of 5 used {userLikedWallSubmissionIds.length > 0 ? '🔥' : '✨'}
-                </Text>
-              </View>
-
-              {/* Floating Submission Action Button (Matching Mockup 1 FAB) */}
-              {activeWallEvent && (!userWallSubmission || user?.role?.toLowerCase() === 'admin') && (
-                <TouchableOpacity
-                  style={{
-                    position: 'absolute',
-                    bottom: 20,
-                    right: 16,
-                    backgroundColor: '#FF8C00',
-                    paddingHorizontal: 16,
-                    paddingVertical: 12,
-                    borderRadius: 25,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 8,
-                    shadowColor: '#FF8C00',
-                    shadowOpacity: 0.6,
-                    shadowRadius: 10,
-                    elevation: 8,
-                    zIndex: 99
-                  }}
-                  onPress={() => checkAuthAndRun(() => setShowWallSubmitModal(true))}
-                >
-                  <Text style={{ fontSize: 18, color: '#FFF' }}>📸</Text>
-                  <Text style={{ fontSize: 10, fontWeight: '900', color: '#FFF', letterSpacing: 1 }}>SUBMIT PHOTO</Text>
-                </TouchableOpacity>
-              )}
             </View>
           ) : (
             /* HALL OF FAME TIMELINE VIEW (Matching Mockup 2) */
@@ -1792,9 +1432,11 @@ export default function CommunityScreen() {
 
               {wallHistory.length === 0 ? (
                 <View style={s.emptyState}>
-                  <Text style={{ fontSize: 40, marginBottom: 8 }}>🏛️</Text>
-                  <Text style={[s.emptyTitle, { color: '#FFD700' }]}>HALL OF FAME EMPTY</Text>
-                  <Text style={[s.emptySubtitle, { color: COLORS.textMuted }]}>Past contest winners will be archived here once active events finish.</Text>
+                  <Text style={{ fontSize: 40, marginBottom: 8 }}>{wallHistoryError ? '📡' : '🏛️'}</Text>
+                  <Text style={[s.emptyTitle, { color: '#FFD700', textAlign: 'center' }]}>{wallHistoryError ? "COULDN'T LOAD WINNERS" : 'NO CHAMPIONS YET'}</Text>
+                  <Text style={[s.emptySubtitle, { color: COLORS.textMuted, textAlign: 'center' }]}>
+                    {wallHistoryError ? 'Pull down to try again.' : 'Winners of finished contests will appear here.'}
+                  </Text>
                 </View>
               ) : (
                 <View style={{ position: 'relative', width: '100%', paddingVertical: 10 }}>
@@ -1846,22 +1488,22 @@ export default function CommunityScreen() {
                             </View>
 
                             <Text style={{ fontSize: 8, fontWeight: '900', color: '#FFD700', letterSpacing: 1, marginTop: 2 }}>
-                              {new Date(item.event.endTime).toLocaleString('default', { month: 'short', year: 'numeric' }).toUpperCase()}
+                              {item.event.endTime ? new Date(item.event.endTime).toLocaleString('default', { month: 'short', year: 'numeric' }).toUpperCase() : ''}
                             </Text>
 
                             <Text style={{ fontSize: 10, fontWeight: '900', color: '#FFF', textAlign: 'center', marginTop: 2 }} numberOfLines={1}>
-                              {item.winner?.name || 'Champion'}
+                              {item.winningSubmission?.user?.name || item.winner?.name || 'Champion'}
                             </Text>
 
                             <Text style={{ fontSize: 8, color: COLORS.textMuted, marginTop: 2 }}>
                               ❤️ {item.winningSubmission?.likeCount || 0} Votes
                             </Text>
 
-                            {item.event.couponCode && (
+                            {item.event.couponValue ? (
                               <View style={{ marginTop: 4, backgroundColor: 'rgba(74,222,128,0.15)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, borderWidth: 1, borderColor: '#4ADE80' }}>
-                                <Text style={{ fontSize: 7, fontWeight: '900', color: '#4ADE80' }}>₹{item.event.couponValue || 150} ({item.event.couponCode})</Text>
+                                <Text style={{ fontSize: 7, fontWeight: '900', color: '#4ADE80' }}>WON ₹{item.event.couponValue}</Text>
                               </View>
-                            )}
+                            ) : null}
                           </TouchableOpacity>
                         </View>
                       );
@@ -1873,8 +1515,15 @@ export default function CommunityScreen() {
           )}
         </ScrollView>
       ) : (
-        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
-        {/* 👥 SECURE FRIENDS UPLINK */}
+        <ScrollView
+          style={{ flex: 1 }}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 100 }}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={isDark ? COLORS.gold : '#8b5a2b'} colors={[COLORS.gold]} />}
+        >
+        {/* 👥 FRIENDS */}
         <DopaminePressable
           style={[
             s.friendsCard,
@@ -1899,8 +1548,8 @@ export default function CommunityScreen() {
               <Text style={{ fontSize: 20 }}>👥</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={[s.friendsCardTitle, { color: txt }]}>Secure Friends Uplink</Text>
-              <Text style={[s.friendsCardSub, { color: isDark ? COLORS.gold : '#8b5a2b' }]}>END-TO-END ENCRYPTED CHATS</Text>
+              <Text style={[s.friendsCardTitle, { color: txt }]}>Campus Buddy</Text>
+              <Text style={[s.friendsCardSub, { color: isDark ? COLORS.gold : '#8b5a2b' }]}>CHATS, GROUPS & CAMPUS PULSE</Text>
             </View>
             <View style={s.streakPulseContainer}>
               <FloatingPulse color="#FF5A00">
@@ -1909,17 +1558,17 @@ export default function CommunityScreen() {
             </View>
           </View>
           <Text style={[s.friendsCardBody, { color: txtSec }]}>
-            Connect with campus friends, chat securely, and build daily fire streaks. Sync your contacts to see who is online!
+            Chat with classmates, join class and club groups, and catch up on what's happening on campus.
           </Text>
           <View style={s.friendsFooter}>
-            <Text style={[s.friendsFooterText, { color: isDark ? COLORS.gold : '#8b5a2b' }]}>ENTER THE SECURE VAULT →</Text>
+            <Text style={[s.friendsFooterText, { color: isDark ? COLORS.gold : '#8b5a2b' }]}>OPEN CAMPUS BUDDY →</Text>
           </View>
         </DopaminePressable>
 
         {/* ── BIRTHDAY CELEBRATIONS STORY ROW ── */}
         <View style={s.birthdaySection}>
           <View style={s.birthdaySectionHeader}>
-            <Text style={[s.birthdaySectionTitle, { color: isDark ? COLORS.gold : '#8b5a2b' }]}>🎂 TODAY'S CELEBRATIONS</Text>
+            <Text style={[s.birthdaySectionTitle, { color: isDark ? COLORS.gold : '#8b5a2b' }]}>🎂 CELEBRATIONS</Text>
             {user?.role?.toLowerCase() === 'admin' && pendingBirthdays.length > 0 && (
               <TouchableOpacity onPress={() => setShowAdminPanelModal(true)}>
                 <Text style={[s.adminBadgeText, { color: COLORS.red }]}>ADMIN QUEUE ({pendingBirthdays.length})</Text>
@@ -1938,6 +1587,12 @@ export default function CommunityScreen() {
               </View>
               <Text style={[s.birthdayStoryName, { color: txtSec }]} numberOfLines={1}>Nominate</Text>
             </TouchableOpacity>
+
+            {birthdays.length === 0 && (
+              <Text style={{ fontSize: 10, fontWeight: '700', color: txtSec, maxWidth: 220 }}>
+                No birthdays today. Know someone celebrating? Tap Nominate 🎈
+              </Text>
+            )}
 
             {/* Birthday Stories */}
             {birthdays.map(b => (
@@ -1970,14 +1625,14 @@ export default function CommunityScreen() {
         </View>
 
         {/* ── TRENDING ── */}
-        {!search && trending.length > 0 && posts.length > 3 && (
+        {!search && posts.length > 3 && trending.some(t => (t.likes || 0) + (t.replyCount || 0) > 0) &&(
           <View style={s.trendingSection}>
             <Text style={[s.trendingTitle, { color: isDark ? COLORS.gold : '#8b5a2b' }]}>🔥 TRENDING NOW</Text>
             <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false} style={s.trendingScroll}>
               {trending.map(tp => (
                 <View key={tp.id} style={[s.trendingCard, { backgroundColor: cardBg, borderColor: border }]}>
                   <View style={s.trendingUserRow}>
-                    <View style={s.trendingAvatar}><Text style={s.avatarText}>{(tp.userName||'A').charAt(0)}</Text></View>
+                    <View style={s.trendingAvatar}><Text style={s.avatarText}>{(tp.userName||'A').charAt(0).toUpperCase()}</Text></View>
                     <Text style={[s.trendingUser, { color: txt }]} numberOfLines={1}>{tp.userName}</Text>
                   </View>
                   <Text style={[s.trendingContent, { color: txtSec }]} numberOfLines={2}>{tp.content}</Text>
@@ -1991,93 +1646,12 @@ export default function CommunityScreen() {
           </View>
         )}
 
-        {/* ── ⚡ CAMPUS CLASH LIVE POLL ── */}
-        <View style={{
-          marginHorizontal: 16,
-          marginTop: 14,
-          marginBottom: 16,
-          borderRadius: 20,
-          padding: 16,
-          backgroundColor: cardBg,
-          borderWidth: 1.5,
-          borderColor: isDark ? 'rgba(255,215,0,0.35)' : 'rgba(139,90,43,0.2)',
-          shadowColor: isDark ? '#FFD700' : '#8b5a2b',
-          shadowOpacity: 0.15,
-          shadowRadius: 10,
-          elevation: 5
-        }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,140,0,0.15)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: '#FF8C00' }}>
-              <Text style={{ fontSize: 10 }}>⚡</Text>
-              <Text style={{ fontSize: 8.5, fontWeight: '900', color: '#FF8C00', letterSpacing: 1 }}>CAMPUS CLASH OF THE DAY</Text>
-            </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#10B981' }} />
-              <Text style={{ fontSize: 9, fontWeight: '900', color: '#10B981' }}>{campusPoll.totalVotes} VOTES</Text>
-            </View>
-          </View>
-
-          <Text style={{ fontSize: 14, fontWeight: '900', color: txt, marginBottom: 12, letterSpacing: 0.2 }}>
-            {campusPoll.question}
-          </Text>
-
-          <View style={{ gap: 8 }}>
-            {campusPoll.options.map((opt) => {
-              const percentage = campusPoll.totalVotes > 0 ? Math.round((opt.votes / campusPoll.totalVotes) * 100) : 0;
-              const isSelected = campusPoll.userVotedOptionId === opt.id;
-
-              return (
-                <TouchableOpacity
-                  key={opt.id}
-                  activeOpacity={0.85}
-                  style={{
-                    position: 'relative',
-                    borderRadius: 12,
-                    overflow: 'hidden',
-                    borderWidth: 1,
-                    borderColor: isSelected ? (isDark ? COLORS.gold : '#8b5a2b') : border,
-                    backgroundColor: isDark ? '#1C1B1F' : '#F9F8F4',
-                    paddingVertical: 10,
-                    paddingHorizontal: 12,
-                    justifyContent: 'center'
-                  }}
-                  onPress={() => handleVotePoll(opt.id)}
-                >
-                  {/* Animated Progress Fill */}
-                  <View
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      bottom: 0,
-                      left: 0,
-                      width: `${percentage}%`,
-                      backgroundColor: isSelected ? (isDark ? 'rgba(255,215,0,0.28)' : 'rgba(139,90,43,0.2)') : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'),
-                      borderRadius: 12
-                    }}
-                  />
-
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', zIndex: 2 }}>
-                    <Text style={{ fontSize: 11, fontWeight: isSelected ? '900' : '700', color: isSelected ? (isDark ? COLORS.gold : '#8b5a2b') : txt }}>
-                      {opt.text} {isSelected && '✓'}
-                    </Text>
-                    <Text style={{ fontSize: 10.5, fontWeight: '900', color: isSelected ? (isDark ? COLORS.gold : '#8b5a2b') : txtSec }}>
-                      {percentage}%
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
-
         {/* ── 🏷️ CATEGORY FILTER CHIPS ── */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 8, marginBottom: 12 }}>
           {[
             { id: 'all', label: '✨ All Stories', count: posts.length },
             { id: 'memories', label: '📸 Campus Life', count: posts.filter(p => p.postType !== 'review').length },
             { id: 'reviews', label: '⭐ Food Reviews', count: posts.filter(p => p.postType === 'review').length },
-            { id: 'hacks', label: '💻 Hostel Hacks', count: 3 },
-            { id: 'lost_found', label: '🔍 Lost & Found', count: 1 }
           ].map(cat => {
             const isActive = feedCategory === cat.id;
             return (
@@ -2111,20 +1685,50 @@ export default function CommunityScreen() {
         <View style={[s.stringLine, { backgroundColor: isDark ? 'rgba(212,175,122,0.3)' : 'rgba(139,90,43,0.15)' }]} />
 
         {/* ── POLAROID GALLERY ── */}
-        {loading ? (
-          <ActivityIndicator size="large" color={isDark ? COLORS.gold : '#8b5a2b'} style={{ marginVertical: 48 }} />
+        {loading && posts.length === 0 ? (
+          <View style={s.galleryGrid}>
+            {[0, 1, 2, 3].map(i => (
+              <View key={i} style={[s.polaroidWrapper, { padding: 0 }]}>
+                <ShimmerLoader width="100%" height={(SW - 44) / 2 + 70} borderRadius={4} />
+              </View>
+            ))}
+          </View>
+        ) : postsError && posts.length === 0 ? (
+          <View style={s.emptyState}>
+            <Text style={{ fontSize: 44, marginBottom: 12 }}>📡</Text>
+            <Text style={[s.emptyTitle, { color: isDark ? COLORS.gold : '#8b5a2b', textAlign: 'center' }]}>COULDN'T LOAD POSTS</Text>
+            <Text style={[s.emptySubtitle, { color: txtSec, textAlign: 'center' }]}>Check your connection and try again.</Text>
+            <TouchableOpacity onPress={retryPosts} style={[s.retryBtn, { backgroundColor: isDark ? COLORS.gold : '#8b5a2b' }]}>
+              <Text style={[s.retryText, { color: isDark ? '#000' : '#fff' }]}>RETRY</Text>
+            </TouchableOpacity>
+          </View>
         ) : filtered.length === 0 ? (
           <View style={s.emptyState}>
-            <Text style={{ fontSize: 48, marginBottom: 12 }}>🖼️</Text>
-            <Text style={[s.emptyTitle, { color: isDark ? COLORS.gold : '#8b5a2b' }]}>BLANK CANVAS</Text>
-            <Text style={[s.emptySubtitle, { color: txtSec }]}>Hang the first photo on the wall.</Text>
+            <Text style={{ fontSize: 48, marginBottom: 12 }}>{search ? '🔍' : '🖼️'}</Text>
+            <Text style={[s.emptyTitle, { color: isDark ? COLORS.gold : '#8b5a2b', textAlign: 'center' }]}>
+              {search ? 'NO MATCHES' : feedCategory === 'reviews' ? 'NO REVIEWS YET' : 'BLANK CANVAS'}
+            </Text>
+            <Text style={[s.emptySubtitle, { color: txtSec, textAlign: 'center' }]}>
+              {search ? `Nothing found for "${search}".` : 'Be the first to post on the wall.'}
+            </Text>
+            {search ? (
+              <TouchableOpacity onPress={() => setSearch('')} style={[s.retryBtn, { backgroundColor: isDark ? COLORS.gold : '#8b5a2b' }]}>
+                <Text style={[s.retryText, { color: isDark ? '#000' : '#fff' }]}>CLEAR SEARCH</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                onPress={() => checkAuthAndRun(() => { setReplyingTo(null); setIsReviewDraft(feedCategory === 'reviews'); setShowComposer(true); })}
+                style={[s.retryBtn, { backgroundColor: isDark ? COLORS.gold : '#8b5a2b' }]}
+              >
+                <Text style={[s.retryText, { color: isDark ? '#000' : '#fff' }]}>{feedCategory === 'reviews' ? 'WRITE A REVIEW' : 'CREATE A POST'}</Text>
+              </TouchableOpacity>
+            )}
           </View>
         ) : (
           <View style={s.galleryGrid}>
             {filtered.map((post, idx) => {
               const bgGrad = getBgHash(post.id);
-              const userId = user ? (user.id || user._id || '') : '';
-              const isLiked = userId ? post.likedBy.includes(userId) : false;
+              const isLiked = myUserId ? (post.likedBy || []).map(String).includes(myUserId) : false;
               const rotation = (idx % 2 === 0 ? '-1.5deg' : '1.5deg');
 
               return (
@@ -2140,12 +1744,12 @@ export default function CommunityScreen() {
                   {/* Polaroid Frame */}
                   <CardPressable 
                     style={[s.polaroidFrame, { backgroundColor: cardBg, borderColor: border }]} 
-                    onPress={() => post.imageUrl ? setSelectedImage(post.imageUrl) : null} 
+                    onPress={() => post.imageUrl ? setSelectedImage(getImageUrl(post.imageUrl)) : null} 
                     tilt={false} // Disabled 3D tilt to eliminate JS thread lag
                   >
                     {post.imageUrl && !imageErrors[post.id] ? (
                       <Image 
-                        source={{ uri: post.imageUrl }} 
+                        source={{ uri: getImageUrl(post.imageUrl) }}
                         style={s.polaroidImg} 
                         onError={() => {
                           setImageErrors(prev => ({ ...prev, [post.id]: true }));
@@ -2153,7 +1757,7 @@ export default function CommunityScreen() {
                       />
                     ) : (
                       <View style={[s.textPostBg, { backgroundColor: bgGrad[0] }]}>
-                        <Text style={s.textPostContent} numberOfLines={8}>{post.content || 'Memory Image unavailable'}</Text>
+                        <Text style={s.textPostContent} numberOfLines={8}>{post.content || '📷 Photo unavailable'}</Text>
                       </View>
                     )}
 
@@ -2166,7 +1770,9 @@ export default function CommunityScreen() {
                       {/* Review details */}
                       {post.postType === 'review' && (
                         <View style={[s.reviewMeta, { backgroundColor: isDark ? '#1C1B1F' : 'rgba(139,90,43,0.04)', borderColor: border }]}>
-                          <Text style={s.reviewStars}>{'★'.repeat(post.starRating || 5)}</Text>
+                          {Number(post.starRating) > 0 ? (
+                            <Text style={s.reviewStars}>{'★'.repeat(Math.min(5, Math.round(Number(post.starRating))))}{'☆'.repeat(Math.max(0, 5 - Math.min(5, Math.round(Number(post.starRating)))))}</Text>
+                          ) : null}
                           {post.restaurantName ? (
                             <Text style={[s.reviewRestaurant, { color: isDark ? COLORS.gold : '#8b5a2b' }]} numberOfLines={1}>📍 {post.restaurantName.toUpperCase()}</Text>
                           ) : null}
@@ -2182,10 +1788,10 @@ export default function CommunityScreen() {
                           <Text style={s.authorAvatarText}>{(post.userName||'A').charAt(0).toUpperCase()}</Text>
                         </View>
                         <View style={{ flex: 1 }}>
-                          <Text style={[s.authorName, { color: txt }]} numberOfLines={1}>{post.userName.toUpperCase()}</Text>
+                          <Text style={[s.authorName, { color: txt }]} numberOfLines={1}>{(post.userName || 'Student').toUpperCase()}</Text>
                           <Text style={s.postTime}>{formatTime(post.createdAt)}</Text>
                         </View>
-                        {post.postType !== 'review' && (
+                        {post.postType !== 'review' && !!getTimeLeft(post.expiresAt) && (
                           <View style={s.expiryBadge}>
                             <Text style={s.expiryText}>{getTimeLeft(post.expiresAt)}</Text>
                           </View>
@@ -2209,8 +1815,8 @@ export default function CommunityScreen() {
                           <Text style={s.actionText}>💬 {post.replyCount}</Text>
                         </DopaminePressable>
 
-                        {user && post.userId === (user.id || user._id || '') ? (
-                          <DopaminePressable style={s.actionBtn} onPress={() => handleDelete(post.id)} sound="click" activeScale={0.88}>
+                        {user && String(post.userId) === myUserId ? (
+                          <DopaminePressable style={s.actionBtn} onPress={() => handleDelete(post.id, null)}sound="click" activeScale={0.88}>
                             <Text style={[s.actionText, { color: COLORS.red }]}>🗑️</Text>
                           </DopaminePressable>
                         ) : null}
@@ -2232,8 +1838,13 @@ export default function CommunityScreen() {
                         <View style={[s.repliesBox, { borderTopColor: border }]}>
                           {post.replies.map(r => (
                             <View key={r.id} style={s.replyItem}>
-                              <Text style={[s.replyUser, { color: txt }]}>{r.userName.toUpperCase()}:</Text>
-                              <Text style={[s.replyText, { color: txtSec }]}>{r.content}</Text>
+                              <Text style={[s.replyUser, { color: txt }]}>{(r.userName || 'Student').toUpperCase()}:</Text>
+                              <Text style={[s.replyText, { color: txtSec, flexShrink: 1 }]}>{r.content}</Text>
+                              {user && String(r.userId) === myUserId ? (
+                                <TouchableOpacity onPress={() => handleDelete(r.id, post.id)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                                  <Text style={{ fontSize: 7, color: COLORS.red }}>🗑️</Text>
+                                </TouchableOpacity>
+                              ) : null}
                             </View>
                           ))}
                         </View>
@@ -2248,6 +1859,18 @@ export default function CommunityScreen() {
         )}
       </ScrollView>
     )}
+
+      {/* Floating Wall submit button (outside the ScrollView so it never scrolls away) */}
+      {activeTab === 'wall' && wallSubTab === 'live' && activeWallEvent && wallTimeLeft !== 'CONTEST ENDED' && !userWallSubmission && (
+        <TouchableOpacity
+          style={s.wallSubmitFab}
+          onPress={() => checkAuthAndRun(() => setShowWallSubmitModal(true))}
+          activeOpacity={0.85}
+        >
+          <Text style={{ fontSize: 18, color: '#FFF' }}>📸</Text>
+          <Text style={{ fontSize: 10, fontWeight: '900', color: '#FFF', letterSpacing: 1 }}>SUBMIT PHOTO</Text>
+        </TouchableOpacity>
+      )}
 
       {/* Floating Compose Button (Only on ALL POSTS tab) */}
       {activeTab === 'all' && (
@@ -2266,13 +1889,13 @@ export default function CommunityScreen() {
           </ActionPressable>
         </FloatingPulse>
       )}
-      <Modal visible={showComposer} animationType="slide" transparent={true}>
+      <Modal visible={showComposer} animationType="slide" transparent={true} onRequestClose={() => { if (!posting) setShowComposer(false); }}>
         <KeyboardAvoidingView 
           style={{ flex: 1 }} 
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
         >
-          <TouchableWithoutFeedback onPress={() => { Keyboard.dismiss(); setShowComposer(false); }}>
+          <TouchableWithoutFeedback onPress={() => { Keyboard.dismiss(); if (!posting) setShowComposer(false); }}>
             <View style={s.composerOverlay}>
               <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
                 <View style={[s.composerContent, { backgroundColor: cardBg, maxHeight: '85%' }]}>
@@ -2286,20 +1909,19 @@ export default function CommunityScreen() {
                   >
                     {replyingTo && (
                       <View style={[s.replyBanner, { backgroundColor: isDark ? '#1C1B1F' : 'rgba(139,90,43,0.05)', borderColor: border }]}>
-                        <Text style={[s.replyBannerText, { color: isDark ? COLORS.gold : '#8b5a2b' }]}>REPLYING TO {replyingTo.userName.toUpperCase()}</Text>
+                        <Text style={[s.replyBannerText, { color: isDark ? COLORS.gold : '#8b5a2b' }]}>REPLYING TO {(replyingTo.userName || 'Student').toUpperCase()}</Text>
                         <Text style={[s.replyBannerSub, { color: txtSec }]} numberOfLines={1}>{replyingTo.content}</Text>
                       </View>
                     )}
 
                     <Text style={[s.composerTitle, { color: txt }]}>{replyingTo ? 'REPLY TO THREAD' : 'PIN NEW MEMORY'}</Text>
                     
-                    <TextInput 
-                      style={[s.composerInputName, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} 
-                      placeholder="Display Name..." 
-                      placeholderTextColor={txtSec} 
-                      value={customAuthorName} 
-                      onChangeText={setCustomAuthorName} 
-                    />
+                    {/* The server always posts as the signed-in account, so the name is shown, not edited. */}
+                    {user?.name ? (
+                      <Text style={{ fontSize: 10, fontWeight: '700', color: txtSec, marginBottom: 10 }}>
+                        Posting as {user.name}
+                      </Text>
+                    ) : null}
 
                     {!replyingTo && (
                       <View style={[s.reviewToggleRow, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border }]}>
@@ -2324,8 +1946,8 @@ export default function CommunityScreen() {
                             </DopaminePressable>
                           ))}
                         </View>
-                        <TextInput style={[s.reviewInputField, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="Restaurant Name" placeholderTextColor={txtSec} value={restaurantName} onChangeText={setRestaurantName} />
-                        <TextInput style={[s.reviewInputField, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="Dish Name" placeholderTextColor={txtSec} value={productName} onChangeText={setProductName} />
+                        <TextInput style={[s.reviewInputField, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="Restaurant Name" placeholderTextColor={txtSec} value={restaurantName} onChangeText={setRestaurantName} maxLength={60} />
+                        <TextInput style={[s.reviewInputField, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="Dish Name" placeholderTextColor={txtSec} value={productName} onChangeText={setProductName} maxLength={60} />
                       </View>
                     )}
 
@@ -2347,13 +1969,17 @@ export default function CommunityScreen() {
                                 borderColor: isSel ? (isDark ? COLORS.gold : '#3e2723') : border
                               }}
                               onPress={() => {
+                                // One mood tag at a time: drop the previous [tag] prefix before adding the new one.
+                                const stripTag = (t: string) => (selectedMood && t.startsWith(`[${selectedMood}]`) ? t.slice(selectedMood.length + 2).replace(/^ /, '') : t);
                                 if (selectedMood === mood) {
                                   setSelectedMood(null);
+                                  setDraft(prev => stripTag(prev));
                                 } else {
                                   setSelectedMood(mood);
-                                  if (!draft.includes(mood)) {
-                                    setDraft(prev => prev ? `[${mood}] ${prev}` : `[${mood}] `);
-                                  }
+                                  setDraft(prev => {
+                                    const rest = stripTag(prev);
+                                    return `[${mood}] ${rest}`.slice(0, 500);
+                                  });
                                 }
                               }}
                             >
@@ -2370,25 +1996,38 @@ export default function CommunityScreen() {
                       placeholderTextColor={txtSec} 
                       multiline 
                       numberOfLines={4} 
-                      value={draft} 
-                      onChangeText={setDraft} 
+                      value={draft}
+                      onChangeText={setDraft}
+                      maxLength={500}
                     />
+                    <Text style={{ alignSelf: 'flex-end', fontSize: 9, fontWeight: '700', color: draft.length > 450 ? COLORS.red : txtSec, marginTop: -6, marginBottom: 8 }}>
+                      {draft.length}/500
+                    </Text>
 
                     <TouchableOpacity 
                       style={[s.composerInputName, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, justifyContent: 'center', alignItems: 'center' }]} 
                       onPress={pickImage}
                     >
                       <Text style={{ color: txt, fontSize: 11, fontWeight: '700' }}>
-                        {draftImage ? '🖼️ Image Selected (Tap to change)' : '📸 Upload Photo from Gallery'}
+                        {draftImage ? '🖼️ Photo added (tap to change)' : '📸 Add a photo from gallery'}
                       </Text>
                     </TouchableOpacity>
 
                     {draftImage ? (
-                      <Image source={{ uri: draftImage }} style={s.composerImgPreview} />
+                      <View style={{ alignSelf: 'center', marginBottom: 12 }}>
+                        <Image source={{ uri: draftImage }} style={[s.composerImgPreview, { marginBottom: 0 }]} />
+                        <TouchableOpacity
+                          onPress={() => setDraftImage(null)}
+                          style={{ position: 'absolute', top: -8, right: -8, width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.75)', alignItems: 'center', justifyContent: 'center' }}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Text style={{ color: '#fff', fontSize: 12, fontWeight: '900' }}>✕</Text>
+                        </TouchableOpacity>
+                      </View>
                     ) : null}
 
                     <View style={s.composerActions}>
-                      <DopaminePressable style={[s.composerCancel, { flex: 1, backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)' }]} onPress={() => setShowComposer(false)} sound="click">
+                      <DopaminePressable style={[s.composerCancel, { flex: 1, backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)' }]} onPress={() => { if (!posting) setShowComposer(false); }} sound="click">
                         <Text style={[s.cancelText, { color: txtSec }]}>CANCEL</Text>
                       </DopaminePressable>
 
@@ -2418,23 +2057,23 @@ export default function CommunityScreen() {
       </Modal>
 
       {/* ── LIGHTBOX MODAL ── */}
-      <Modal visible={!!selectedImage} transparent={true} animationType="fade">
+      <Modal visible={!!selectedImage} transparent={true} animationType="fade" onRequestClose={() => setSelectedImage(null)}>
         <TouchableOpacity 
           style={s.lightboxOverlay} 
           activeOpacity={1} 
           onPress={() => setSelectedImage(null)}
         >
           {selectedImage && (
-            <Image source={{ uri: selectedImage }} style={s.lightboxImg} />
+            <Image source={{ uri: selectedImage }} style={s.lightboxImg} contentFit="contain" />
           )}
         </TouchableOpacity>
       </Modal>
 
       {/* ── BIRTHDAY WISHING MODAL ── */}
-      <Modal visible={showBirthdayWishModal} transparent={true} animationType="slide">
+      <Modal visible={showBirthdayWishModal} transparent={true} animationType="slide" onRequestClose={() => setShowBirthdayWishModal(false)}>
         <View style={s.bdayOverlay}>
-          {/* Confetti cannon! */}
-          <ConfettiCannon />
+          {/* Confetti cannon! (one burst per opening) */}
+          {showBirthdayWishModal && <ConfettiCannon key={selectedBirthday?.id || 'confetti'} />}
 
           <TouchableWithoutFeedback onPress={() => setShowBirthdayWishModal(false)}>
             <View style={StyleSheet.absoluteFill} />
@@ -2483,7 +2122,7 @@ export default function CommunityScreen() {
                     {/* Name and count */}
                     <Text style={[s.bdayCandidateName, { color: txt }]}>{selectedBirthday.candidateName}</Text>
                     <Text style={[s.bdayWishCountText, { color: isDark ? COLORS.gold : '#8b5a2b' }]}>
-                      ❤️ {selectedBirthday.wishCount || 0} peer wishes received today!
+                      ❤️ {selectedBirthday.wishCount || 0} {selectedBirthday.wishCount === 1 ? 'wish' : 'wishes'} so far
                     </Text>
 
                     {/* Wishes Scroll View */}
@@ -2493,7 +2132,11 @@ export default function CommunityScreen() {
                         nestedScrollEnabled
                         style={{ flex: 1 }}
                       >
-                        {selectedBirthdayWishes.length === 0 ? (
+                        {loadingWishes && selectedBirthdayWishes.length === 0 ? (
+                          <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+                            <ActivityIndicator size="small" color={isDark ? COLORS.gold : '#FF69B4'} />
+                          </View>
+                        ) : selectedBirthdayWishes.length === 0 ? (
                           <View style={{ paddingVertical: 24, alignItems: 'center' }}>
                             <Text style={{ color: txtSec, fontSize: 10, fontWeight: '700' }}>No wishes yet. Be the first! 👇</Text>
                           </View>
@@ -2513,15 +2156,23 @@ export default function CommunityScreen() {
                       {['🎉 Congrats!', '🎂 HBD!', '💖 Stay Blessed!', '👑 Superstar!', '🥳 Cheers!'].map((react) => (
                         <TouchableOpacity 
                           key={react} 
-                          style={[s.quickReactionBadge, { borderColor: border }]}
+                          style={[s.quickReactionBadge, { borderColor: border }, (alreadyWished || submittingWish) && { opacity: 0.4 }]}
                           onPress={() => submitWish(react)}
+                          disabled={alreadyWished || submittingWish}
                         >
                           <Text style={s.quickReactionText}>{react}</Text>
                         </TouchableOpacity>
                       ))}
                     </View>
 
+                    {alreadyWished && (
+                      <Text style={{ fontSize: 10, fontWeight: '800', color: isDark ? COLORS.gold : '#FF69B4', marginBottom: 10 }}>
+                        ✅ Your wish has been sent!
+                      </Text>
+                    )}
+
                     {/* Custom wish composer */}
+                    {!alreadyWished && (
                     <View style={s.bdayComposeRow}>
                       <TextInput 
                         style={[s.bdayWishInput, { backgroundColor: isDark ? '#222' : '#fff', color: txt, borderColor: border }]}
@@ -2529,11 +2180,14 @@ export default function CommunityScreen() {
                         placeholderTextColor={txtSec}
                         value={birthdayWishMessage}
                         onChangeText={setBirthdayWishMessage}
+                        maxLength={140}
+                        returnKeyType="send"
+                        onSubmitEditing={() => submitWish()}
                       />
-                      <TouchableOpacity 
-                        style={[s.bdayWishSendBtn, { backgroundColor: isDark ? COLORS.gold : '#FF69B4' }]}
+                      <TouchableOpacity
+                        style={[s.bdayWishSendBtn, { backgroundColor: isDark ? COLORS.gold : '#FF69B4' }, (!birthdayWishMessage.trim() || submittingWish) && { opacity: 0.5 }]}
                         onPress={() => submitWish()}
-                        disabled={submittingWish}
+                        disabled={submittingWish || !birthdayWishMessage.trim()}
                       >
                         {submittingWish ? (
                           <ActivityIndicator size="small" color="#000" />
@@ -2542,6 +2196,7 @@ export default function CommunityScreen() {
                         )}
                       </TouchableOpacity>
                     </View>
+                    )}
                   </>
                 )}
               </ScrollView>
@@ -2551,9 +2206,9 @@ export default function CommunityScreen() {
       </Modal>
 
       {/* ── REGISTER / NOMINATE BIRTHDAY MODAL ── */}
-      <Modal visible={showRegisterBirthdayModal} transparent={true} animationType="slide">
+      <Modal visible={showRegisterBirthdayModal} transparent={true} animationType="slide" onRequestClose={() => setShowRegisterBirthdayModal(false)}>
         <View style={s.bdayOverlay}>
-          <TouchableWithoutFeedback onPress={() => setShowRegisterBirthdayModal(false)}>
+          <TouchableWithoutFeedback onPress={() => { if (!submittingBirthday) setShowRegisterBirthdayModal(false); }}>
             <View style={StyleSheet.absoluteFill} />
           </TouchableWithoutFeedback>
 
@@ -2569,7 +2224,7 @@ export default function CommunityScreen() {
                 keyboardShouldPersistTaps="handled"
               >
                 <Text style={[s.modalTitle, { color: txt }]}>NOMINATE BIRTHDAY PEER</Text>
-                <Text style={[s.modalSubtitle, { color: txtSec }]}>Nominate a classmate. Approved birthdays appear on the community feed for 24h.</Text>
+                <Text style={[s.modalSubtitle, { color: txtSec }]}>Nominate a classmate. Once approved, their birthday shows up here for everyone to wish.</Text>
 
                 {/* Form Input fields */}
                 <TextInput 
@@ -2578,6 +2233,8 @@ export default function CommunityScreen() {
                   placeholderTextColor={txtSec}
                   value={newBirthdayName}
                   onChangeText={setNewBirthdayName}
+                  maxLength={60}
+                  autoCapitalize="words"
                 />
 
                 <TextInput 
@@ -2585,7 +2242,9 @@ export default function CommunityScreen() {
                   placeholder="Birthday Date (YYYY-MM-DD)"
                   placeholderTextColor={txtSec}
                   value={newBirthdayDate}
-                  onChangeText={setNewBirthdayDate}
+                  onChangeText={(t) => setNewBirthdayDate(t.replace(/[^0-9-]/g, ''))}
+                  keyboardType="numbers-and-punctuation"
+                  maxLength={10}
                 />
 
                 {/* Photo selector */}
@@ -2631,7 +2290,7 @@ export default function CommunityScreen() {
       </Modal>
 
       {/* ── ADMIN PANEL QUEUE MODAL ── */}
-      <Modal visible={showAdminPanelModal} transparent={true} animationType="slide">
+      <Modal visible={showAdminPanelModal} transparent={true} animationType="slide" onRequestClose={() => setShowAdminPanelModal(false)}>
         <View style={s.bdayOverlay}>
           <TouchableWithoutFeedback onPress={() => setShowAdminPanelModal(false)}>
             <View style={StyleSheet.absoluteFill} />
@@ -2698,15 +2357,15 @@ export default function CommunityScreen() {
       </Modal>
 
       {/* ── WALL SUBMIT PHOTO MODAL ── */}
-      <Modal visible={showWallSubmitModal} transparent={true} animationType="slide">
+      <Modal visible={showWallSubmitModal} transparent={true} animationType="slide" onRequestClose={() => { if (!submittingWallPhoto) setShowWallSubmitModal(false); }}>
         <View style={s.bdayOverlay}>
-          <TouchableWithoutFeedback onPress={() => setShowWallSubmitModal(false)}>
+          <TouchableWithoutFeedback onPress={() => { if (!submittingWallPhoto) setShowWallSubmitModal(false); }}>
             <View style={StyleSheet.absoluteFill} />
           </TouchableWithoutFeedback>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'padding'} style={s.bdayCardWrapper}>
             <View style={[s.bdayCard, { backgroundColor: isDark ? '#141416' : '#fff' }]}>
               <Text style={[s.modalTitle, { color: txt }]}>SUBMIT CONTEST PHOTO 📸</Text>
-              <Text style={[s.modalSubtitle, { color: txtSec }]}>Upload your photo entry for "{activeWallEvent?.title}". Top voted photo wins ₹{activeWallEvent?.couponValue || 200}!</Text>
+              <Text style={[s.modalSubtitle, { color: txtSec }]}>Upload your photo for "{activeWallEvent?.title || 'The Wall'}".{activeWallEvent?.couponValue ? ` The top-voted photo wins a ₹${activeWallEvent.couponValue} coupon!` : ''}</Text>
 
               <TouchableOpacity style={[s.bdayPhotoSelector, { borderColor: border }]} onPress={pickWallPhoto}>
                 {wallSubmitImage ? (
@@ -2720,7 +2379,7 @@ export default function CommunityScreen() {
               </TouchableOpacity>
 
               <View style={s.modalActionsRow}>
-                <TouchableOpacity style={[s.modalCancelBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]} onPress={() => setShowWallSubmitModal(false)}>
+                <TouchableOpacity style={[s.modalCancelBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]} onPress={() => { if (!submittingWallPhoto) setShowWallSubmitModal(false); }}>
                   <Text style={[s.modalCancelText, { color: txtSec }]}>CANCEL</Text>
                 </TouchableOpacity>
 
@@ -2737,156 +2396,8 @@ export default function CommunityScreen() {
         </View>
       </Modal>
 
-      {/* ── WALL ADMIN PANEL & MODERATION MODAL ── */}
-      <Modal visible={showWallAdminModal} transparent={true} animationType="slide">
-        <View style={s.bdayOverlay}>
-          <TouchableWithoutFeedback onPress={() => setShowWallAdminModal(false)}>
-            <View style={StyleSheet.absoluteFill} />
-          </TouchableWithoutFeedback>
-
-          <View style={[s.bdayCard, { backgroundColor: isDark ? '#141416' : '#fff', maxHeight: '85%' }]}>
-            <Text style={[s.modalTitle, { color: txt }]}>WALL ADMIN CONTROL PANEL 🛠️</Text>
-            <Text style={[s.modalSubtitle, { color: txtSec }]}>Approve student submissions & create new photo contest events.</Text>
-
-            <ScrollView showsVerticalScrollIndicator={false} style={{ width: '100%', marginVertical: 10 }}>
-              {/* EDIT ACTIVE EVENT BANNER & COUPON */}
-              {activeWallEvent && (
-                <View style={{ padding: 12, borderRadius: 16, backgroundColor: isDark ? 'rgba(255,215,0,0.06)' : 'rgba(255,140,0,0.06)', borderWidth: 1, borderColor: isDark ? COLORS.gold : '#8b5a2b', marginBottom: 16 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '900', color: isDark ? COLORS.gold : '#8b5a2b', marginBottom: 8 }}>⚡ EDIT LIVE BANNER & COUPONS</Text>
-                  
-                  <Text style={{ fontSize: 9, fontWeight: '700', color: txtSec, marginBottom: 4 }}>Moving Ticker Banner Text:</Text>
-                  <TextInput
-                    style={[s.reviewInputField, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt, marginBottom: 8 }]}
-                    placeholder="Moving ticker announcement text..."
-                    placeholderTextColor={txtSec}
-                    value={editBannerText}
-                    onChangeText={setEditBannerText}
-                  />
-
-                  <Text style={{ fontSize: 9, fontWeight: '700', color: txtSec, marginBottom: 4 }}>Banner Gradient Theme:</Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
-                    {['fire', 'neon', 'gold', 'cyberpunk', 'emerald'].map((thm) => (
-                      <TouchableOpacity
-                        key={thm}
-                        style={{
-                          paddingHorizontal: 10,
-                          paddingVertical: 5,
-                          borderRadius: 8,
-                          backgroundColor: editBannerGradient === thm ? (isDark ? COLORS.gold : '#3e2723') : 'rgba(0,0,0,0.1)',
-                          borderWidth: 1,
-                          borderColor: editBannerGradient === thm ? (isDark ? COLORS.gold : '#3e2723') : border
-                        }}
-                        onPress={() => setEditBannerGradient(thm)}
-                      >
-                        <Text style={{ fontSize: 9, fontWeight: '900', color: editBannerGradient === thm ? (isDark ? '#000' : '#fff') : txt }}>
-                          {thm.toUpperCase()}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-
-                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 9, fontWeight: '700', color: txtSec, marginBottom: 4 }}>Coupon Value (₹):</Text>
-                      <TextInput style={[s.reviewInputField, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="200" placeholderTextColor={txtSec} keyboardType="numeric" value={editCouponVal} onChangeText={setEditCouponVal} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 9, fontWeight: '700', color: txtSec, marginBottom: 4 }}>Coupon Code (Optional):</Text>
-                      <TextInput style={[s.reviewInputField, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="e.g. WALL-FOOD200" placeholderTextColor={txtSec} value={editCouponCode} onChangeText={setEditCouponCode} />
-                    </View>
-                  </View>
-
-                  <TouchableOpacity style={{ marginTop: 4, backgroundColor: isDark ? COLORS.gold : '#8b5a2b', paddingVertical: 10, borderRadius: 10, alignItems: 'center' }} onPress={updateActiveWallEvent} disabled={updatingActiveEvent}>
-                    {updatingActiveEvent ? (
-                      <ActivityIndicator size="small" color={isDark ? '#000' : '#fff'} />
-                    ) : (
-                      <Text style={{ fontSize: 10, fontWeight: '900', color: isDark ? '#000' : '#fff' }}>SAVE LIVE BANNER & COUPON ⚡</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              )}
-
-              {/* Create Event Form */}
-              <View style={{ padding: 12, borderRadius: 16, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', borderWidth: 1, borderColor: border, marginBottom: 16 }}>
-                <Text style={{ fontSize: 11, fontWeight: '900', color: isDark ? COLORS.gold : '#8b5a2b', marginBottom: 8 }}>+ CREATE NEW CONTEST & BANNER</Text>
-                <TextInput style={[s.reviewInputField, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="Event Title (e.g. Campus Sunset Food)" placeholderTextColor={txtSec} value={newWallTitle} onChangeText={setNewWallTitle} />
-                <TextInput style={[s.reviewInputField, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="Event Description..." placeholderTextColor={txtSec} value={newWallDesc} onChangeText={setNewWallDesc} />
-                <TextInput style={[s.reviewInputField, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="Moving Ticker Banner Text..." placeholderTextColor={txtSec} value={newWallBannerText} onChangeText={setNewWallBannerText} />
-
-                <Text style={{ fontSize: 9, fontWeight: '700', color: txtSec, marginVertical: 4 }}>Banner Gradient Theme:</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                  {['fire', 'neon', 'gold', 'cyberpunk', 'emerald'].map((thm) => (
-                    <TouchableOpacity
-                      key={thm}
-                      style={{
-                        paddingHorizontal: 8,
-                        paddingVertical: 4,
-                        borderRadius: 6,
-                        backgroundColor: newWallBannerGradient === thm ? (isDark ? COLORS.gold : '#3e2723') : 'rgba(0,0,0,0.1)',
-                        borderWidth: 1,
-                        borderColor: newWallBannerGradient === thm ? (isDark ? COLORS.gold : '#3e2723') : border
-                      }}
-                      onPress={() => setNewWallBannerGradient(thm)}
-                    >
-                      <Text style={{ fontSize: 8, fontWeight: '900', color: newWallBannerGradient === thm ? (isDark ? '#000' : '#fff') : txt }}>
-                        {thm.toUpperCase()}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                <View style={{ flexDirection: 'row', gap: 6, marginTop: 4 }}>
-                  <TextInput style={[s.reviewInputField, { flex: 1, backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="Duration (Hrs)" placeholderTextColor={txtSec} keyboardType="numeric" value={newWallHours} onChangeText={setNewWallHours} />
-                  <TextInput style={[s.reviewInputField, { flex: 1, backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="Coupon (₹)" placeholderTextColor={txtSec} keyboardType="numeric" value={newWallCouponVal} onChangeText={setNewWallCouponVal} />
-                  <TextInput style={[s.reviewInputField, { flex: 1, backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="Code (Opt)" placeholderTextColor={txtSec} value={newWallCouponCode} onChangeText={setNewWallCouponCode} />
-                </View>
-
-                <TouchableOpacity style={{ marginTop: 8, backgroundColor: isDark ? COLORS.gold : '#8b5a2b', paddingVertical: 10, borderRadius: 10, alignItems: 'center' }} onPress={createWallEvent} disabled={submittingNewWallEvent}>
-                  {submittingNewWallEvent ? (
-                    <ActivityIndicator size="small" color={isDark ? '#000' : '#fff'} />
-                  ) : (
-                    <Text style={{ fontSize: 10, fontWeight: '900', color: isDark ? '#000' : '#fff' }}>PUBLISH CONTEST 🚀</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-
-              {/* Pending Queue */}
-              <Text style={{ fontSize: 11, fontWeight: '900', color: txt, marginBottom: 8 }}>MODERATION QUEUE ({pendingWallSubmissions.length})</Text>
-              {pendingWallSubmissions.length === 0 ? (
-                <Text style={{ color: txtSec, fontSize: 10, fontWeight: '700', textAlign: 'center', marginVertical: 12 }}>No pending photo submissions in moderation. ✨</Text>
-              ) : (
-                pendingWallSubmissions.map((sub) => (
-                  <View key={sub.id} style={[s.adminQueueCard, { borderColor: border, backgroundColor: isDark ? '#1C1B1F' : '#fcfcfc' }]}>
-                    <View style={s.adminQueueRow}>
-                      <Image source={{ uri: getImageUrl(sub.imageUrl) }} style={{ width: 50, height: 50, borderRadius: 10 }} />
-                      <View style={{ flex: 1, paddingLeft: 10 }}>
-                        <Text style={[s.adminQueueName, { color: txt }]}>{sub.user?.name || 'Student'}</Text>
-                        <Text style={[s.adminQueueDate, { color: txtSec }]}>Contest: {sub.event?.title || 'Wall'}</Text>
-                      </View>
-                    </View>
-
-                    <View style={s.adminQueueActions}>
-                      <TouchableOpacity style={[s.adminRejectBtn, { backgroundColor: COLORS.red + '22' }]} onPress={() => rejectWallSubmission(sub.id)}>
-                        <Text style={{ color: COLORS.red, fontSize: 10, fontWeight: '900' }}>REJECT ❌</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={[s.adminApproveBtn, { backgroundColor: COLORS.emerald + '22' }]} onPress={() => approveWallSubmission(sub.id)}>
-                        <Text style={{ color: COLORS.emerald, fontSize: 10, fontWeight: '900' }}>APPROVE ✅</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ))
-              )}
-            </ScrollView>
-
-            <TouchableOpacity style={[s.modalCancelBtn, { width: '100%', backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]} onPress={() => setShowWallAdminModal(false)}>
-              <Text style={[s.modalCancelText, { color: txtSec }]}>CLOSE</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
       {/* ── 🏆 CHAMPION SPOTLIGHT DETAIL MODAL ── */}
-      <Modal visible={!!selectedHofWinner} transparent animationType="fade">
+      <Modal visible={!!selectedHofWinner} transparent animationType="fade" onRequestClose={() => setSelectedHofWinner(null)}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
           <View style={{
             width: '100%',
@@ -2938,14 +2449,14 @@ export default function CommunityScreen() {
 
             {/* Winner Name */}
             <Text style={{ fontSize: 14, fontWeight: '800', color: '#FFD700', textAlign: 'center', marginBottom: 6 }}>
-              {selectedHofWinner?.winner?.name}
+              {selectedHofWinner?.winningSubmission?.user?.name || selectedHofWinner?.winner?.name || ''}
             </Text>
 
             {/* Victory Date & Votes */}
             <View style={{ flexDirection: 'row', gap: 12, marginBottom: 14 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,255,255,0.06)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12 }}>
                 <Text style={{ fontSize: 11, color: '#E2E8F0', fontWeight: '800' }}>
-                  📅 {selectedHofWinner?.event?.endTime ? new Date(selectedHofWinner.event.endTime).toLocaleDateString('default', { month: 'short', year: 'numeric', day: 'numeric' }) : 'Aug 2026'}
+                  📅 {selectedHofWinner?.event?.endTime ? new Date(selectedHofWinner.event.endTime).toLocaleDateString('default', { month: 'short', year: 'numeric', day: 'numeric' }) : '—'}
                 </Text>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(239,68,68,0.15)', borderWidth: 1, borderColor: '#EF4444', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12 }}>
@@ -2955,46 +2466,21 @@ export default function CommunityScreen() {
               </View>
             </View>
 
-            {/* Coupon Unlocked Box */}
-            {selectedHofWinner?.event?.couponCode && (
+            {/* Prize (the coupon itself is issued privately to the winner) */}
+            {selectedHofWinner?.event?.couponValue ? (
               <View style={{ width: '100%', backgroundColor: 'rgba(16,185,129,0.1)', borderWidth: 1.5, borderColor: '#10B981', borderRadius: 16, padding: 12, alignItems: 'center', marginBottom: 14 }}>
-                <Text style={{ fontSize: 9, fontWeight: '900', color: '#A7F3D0', letterSpacing: 1, marginBottom: 2 }}>CHAMPION REWARD COUPON</Text>
+                <Text style={{ fontSize: 9, fontWeight: '900', color: '#A7F3D0', letterSpacing: 1, marginBottom: 2 }}>CHAMPION'S PRIZE</Text>
                 <Text style={{ fontSize: 16, fontWeight: '900', color: '#10B981', letterSpacing: 1 }}>
-                  ₹{selectedHofWinner.event.couponValue || 150} OFF • {selectedHofWinner.event.couponCode}
+                  ₹{selectedHofWinner.event.couponValue} OFF COUPON
                 </Text>
               </View>
-            )}
+            ) : null}
 
             {/* Action Buttons */}
             <View style={{ width: '100%', flexDirection: 'row', gap: 10 }}>
-              {selectedHofWinner?.event?.couponCode ? (
-                <TouchableOpacity
-                  style={{
-                    flex: 1,
-                    backgroundColor: '#FF8C00',
-                    paddingVertical: 12,
-                    borderRadius: 14,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    shadowColor: '#FF8C00',
-                    shadowOpacity: 0.4,
-                    shadowRadius: 8,
-                    elevation: 4
-                  }}
-                  onPress={() => {
-                    const code = selectedHofWinner.event.couponCode;
-                    const val = selectedHofWinner.event.couponValue || 150;
-                    setSelectedHofWinner(null);
-                    handleClaimCoupon(code, val);
-                  }}
-                >
-                  <Text style={{ fontSize: 11, fontWeight: '900', color: '#FFF', letterSpacing: 0.5 }}>CLAIM & ORDER 🍔</Text>
-                </TouchableOpacity>
-              ) : null}
-
               <TouchableOpacity
                 style={{
-                  flex: selectedHofWinner?.event?.couponCode ? 0.8 : 1,
+                  flex: 1,
                   backgroundColor: 'rgba(255,255,255,0.08)',
                   paddingVertical: 12,
                   borderRadius: 14,
@@ -3054,6 +2540,25 @@ const s = StyleSheet.create({
   emptyState: { padding: 48, alignItems: 'center', justifyContent: 'center' },
   emptyTitle: { fontSize: 14, fontWeight: '900', color: '#8b5a2b', letterSpacing: 2, marginBottom: 4 },
   emptySubtitle: { fontSize: 9, fontWeight: '700', color: '#aaa', letterSpacing: 1 },
+  retryBtn: { marginTop: 14, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20 },
+  retryText: { fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  wallSubmitFab: {
+    position: 'absolute',
+    bottom: 24,
+    right: 16,
+    backgroundColor: '#FF8C00',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 25,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    shadowColor: '#FF8C00',
+    shadowOpacity: 0.6,
+    shadowRadius: 10,
+    elevation: 8,
+    zIndex: 99
+  },
 
   galleryGrid: { paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   polaroidWrapper: { width: (SW - 44) / 2, marginBottom: 24, alignItems: 'center', position: 'relative' },
@@ -3120,7 +2625,7 @@ const s = StyleSheet.create({
   submitText: { fontSize: 10, fontWeight: '900', color: '#fff', letterSpacing: 1 },
 
   lightboxOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', justifyContent: 'center', alignItems: 'center' },
-  lightboxImg: { width: SW - 20, height: SW - 20, resizeMode: 'contain', borderRadius: 8 },
+  lightboxImg: { width: SW - 20, height: SH * 0.7, borderRadius: 8 },
 
   // ── BIRTHDAY STYLING ──
   birthdaySection: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(139,90,43,0.05)' },

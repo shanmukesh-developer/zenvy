@@ -7,13 +7,11 @@ import {
   TouchableOpacity,
   Image,
   FlatList,
-  Platform,
-  SafeAreaView,
   Animated,
-  NativeSyntheticEvent,
-  NativeScrollEvent
+  ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -41,120 +39,121 @@ export interface SlideData {
 export const ONBOARDING_SLIDES: SlideData[] = [
   {
     id: 'food',
-    tag: '⚡ 15-MIN CANTEEN RUSH',
+    tag: '🍛 CAMPUS FOOD DELIVERY',
     tagColor: '#EF4444',
     headline: 'Hot Meals to Your Room',
-    subheadline: 'Midnight biryanis & canteen snacks delivered right to your hostel door in 15 minutes flat.',
+    subheadline: 'Order from campus canteens & nearby restaurants and get it delivered right to your hostel block.',
     punchline: 'No messy lines. No missed dinner.',
     heroImage: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=1200&q=85',
     howToUsePointers: [
       {
         arrow: '👉',
         pointerText: 'Browse live menus from all campus canteens & night pantries',
-        targetLocation: 'Home Tab ➔ Quick Filters',
+        targetLocation: 'Home ➔ Quick Filters',
       },
       {
         arrow: '⚡',
-        pointerText: 'Track your student delivery partner live with OTP safety handover',
-        targetLocation: 'Active Orders ➔ Live Radar',
+        pointerText: 'Track your order live and share your delivery PIN with the rider at handover',
+        targetLocation: 'Orders Tab ➔ Track Order',
       }
     ],
-    studentPerk: '🎁 Free hostel delivery during mid-term & end-term exams',
+    studentPerk: '💵 Pay with Cash on Delivery or your Zenvy Wallet',
   },
   {
     id: 'mega-basket',
-    tag: '🛒 1 DELIVERY • MULTI-STORE',
+    tag: '🛒 MEGA BASKET',
     tagColor: '#10B981',
-    headline: 'One Cart, All Campus Stores',
-    subheadline: 'Bundle Maggi noodles, dairy milk, exam notebooks & stationary into a single unified order.',
-    punchline: 'Multiple shops. Exactly one delivery fee.',
+    headline: 'Mega Basket for Daily Essentials',
+    subheadline: 'Shop snacks, groceries and daily needs from the campus store, or request anything else and a Zenvy shopper buys it for you.',
+    punchline: 'Your shopping list, delivered.',
     heroImage: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=1200&q=85',
     howToUsePointers: [
       {
         arrow: '📦',
-        pointerText: 'Add snacks + lab supplies from different vendors together',
-        targetLocation: 'Others Tab ➔ Mega Basket',
+        pointerText: 'Browse the campus store by category, brand or best deals',
+        targetLocation: 'Others Tab ➔ Food & Basket',
       },
       {
         arrow: '🚀',
-        pointerText: 'Split items or group-order with roommates in one tap',
-        targetLocation: 'Cart ➔ Split Bill',
+        pointerText: 'Type a quick list like "2 maggi, 1 atta" and we fill your basket',
+        targetLocation: 'Food & Basket ➔ Categories ➔ ⚡',
       }
     ],
-    studentPerk: '✨ Zero minimum order fee on student grocery bundles',
+    studentPerk: '💵 Pay by Cash on Delivery when it arrives',
   },
   {
     id: 'comms-wall',
     tag: '🔥 CAMPUS WALL & COMMS',
     tagColor: '#EC4899',
     headline: 'Live Campus Moments & Hype',
-    subheadline: 'Drop midnight birthday shoutouts, vote in campus photo face-offs, and earn viral clout.',
-    punchline: 'Your campus pulse, broadcasting live 24/7.',
+    subheadline: 'Drop birthday shoutouts, post on the campus wall and see what your campus is talking about.',
+    punchline: 'Your campus pulse, all in one place.',
     heroImage: 'https://images.unsplash.com/photo-1511632765486-a01980e01a18?w=1200&q=85',
     howToUsePointers: [
       {
         arrow: '🎂',
         pointerText: 'Post birthday banners on the digital hostel wall with confetti',
-        targetLocation: 'Community Tab ➔ Campus Wall',
+        targetLocation: 'Home ➔ 💬 Community',
       },
       {
         arrow: '📸',
-        pointerText: 'Enter photo contests & win daily meal vouchers by student votes',
-        targetLocation: 'Community Tab ➔ Face-Offs',
+        pointerText: 'Join photo contests on The Wall whenever one is running',
+        targetLocation: 'Community ➔ The Wall',
       }
     ],
-    studentPerk: '🏆 Top trending campus posts unlock secret vault perks',
+    studentPerk: '🤝 Made for your campus, by students',
   },
   {
     id: 'social-streaks',
-    tag: '⚡ STREAKS & SMART PEER RIDES',
+    tag: '🛵 STREAKS & CAMPUS RIDES',
     tagColor: '#F59E0B',
-    headline: 'Daily Streaks & Fuel-Split Pools',
-    subheadline: 'Build meal streaks with friends, split fuel on bike rides, or book in-app Rapido & Uber.',
-    punchline: 'Commute smarter. Earn tokens together.',
+    headline: 'Order Streaks & Shared Rides',
+    subheadline: 'Keep your daily order streak going and share rides with other students heading your way.',
+    punchline: 'Commute smarter together.',
     heroImage: 'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=1200&q=85',
     howToUsePointers: [
       {
         arrow: '🔥',
-        pointerText: 'Maintain daily dining streaks with friends for free desserts',
-        targetLocation: 'Profile ➔ Streaks Hub',
+        pointerText: 'See your current order streak on your profile',
+        targetLocation: 'Profile Tab',
       },
       {
         arrow: '🛵',
-        pointerText: 'Share rides with verified students or book cabs via in-app frames',
-        targetLocation: 'Others Tab ➔ Co-Ride & Rapido',
+        pointerText: 'Offer or join a ride and split the fuel with fellow students',
+        targetLocation: 'Others Tab ➔ Co-Ride',
       }
     ],
-    studentPerk: '🪙 Earn Zenvy Coins on every pool ride to redeem meals',
+    studentPerk: '🛡️ Rides are listed by students on your campus',
   },
   {
     id: 'doorstep-pg',
-    tag: '🛠️ LAPTOP REPAIRS & VERIFIED PGS',
+    tag: '🛠️ CAMPUS SERVICES & PGS',
     tagColor: '#8B5CF6',
-    headline: 'Doorstep Tech & Student Stays',
-    subheadline: 'Hostel pickup for laptop thermal repasting, 24/7 prints, tailoring & zero-brokerage PGs.',
+    headline: 'Campus Services & Student Stays',
+    subheadline: 'Book repairs, prints, tailoring and more from campus service partners, and explore student PGs.',
     punchline: 'Everything campus life demands under one roof.',
     heroImage: 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=1200&q=85',
     howToUsePointers: [
       {
         arrow: '💻',
-        pointerText: 'Room pickup for laptop heating fix, screen replacement & printouts',
+        pointerText: 'Request repairs, printouts and other services from campus partners',
         targetLocation: 'Others Tab ➔ Tech & Repairs',
       },
       {
         arrow: '🏢',
-        pointerText: 'Explore inspected student PGs with direct 1-tap WhatsApp booking',
-        targetLocation: 'Others Tab ➔ PG Homes',
+        pointerText: 'Explore student PGs and request a booking in the app',
+        targetLocation: 'Others Tab ➔ PG Stays',
       }
     ],
-    studentPerk: '🖨️ High-res thesis & assignment laser prints from ₹2/page',
+    studentPerk: '📍 Everything campus life needs, in one app',
   }
 ];
 
 // ── Reusable OnboardingSlide Subcomponent ──
 export function OnboardingSlide({ item }: { item: SlideData }) {
   return (
-    <View style={s.slideContainer}>
+    // Scrolls vertically on short phones so the copy never hides behind the bottom buttons.
+    <ScrollView style={s.slideContainer} contentContainerStyle={{ paddingBottom: 10 }} showsVerticalScrollIndicator={false} bounces={false}>
       {/* Visual Hero Card with Dynamic Gradient & Pointer Overlays */}
       <View style={s.heroCardWrapper}>
         <Image source={{ uri: item.heroImage }} style={s.heroImage} />
@@ -201,7 +200,7 @@ export function OnboardingSlide({ item }: { item: SlideData }) {
           <Text style={s.perkText}>{item.studentPerk}</Text>
         </View>
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -214,7 +213,11 @@ export default function OnboardingScreen() {
 
   const isLastSlide = currentIndex === ONBOARDING_SLIDES.length - 1;
 
+  const finishingRef = useRef(false);
   const handleFinishOnboarding = async (destination: '/register' | '/login') => {
+    // A quick double tap (Skip + CTA) must not stack two auth screens.
+    if (finishingRef.current) return;
+    finishingRef.current = true;
     try {
       await AsyncStorage.setItem('has_seen_onboarding', 'true');
       await AsyncStorage.setItem('zenvy_onboarded', 'true');
@@ -284,6 +287,7 @@ export default function OnboardingScreen() {
         <FlatList
           ref={flatListRef}
           data={ONBOARDING_SLIDES}
+          style={{ flex: 1 }}
           horizontal
           pagingEnabled
           showsHorizontalScrollIndicator={false}
@@ -383,7 +387,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'android' ? 36 : 14,
+    paddingTop: 14, // SafeAreaView (safe-area-context) already adds the status-bar inset
     paddingBottom: 8,
     zIndex: 10,
   },
@@ -456,8 +460,6 @@ const s = StyleSheet.create({
   slideContainer: {
     width: SCREEN_WIDTH,
     paddingHorizontal: 20,
-    justifyContent: 'space-between',
-    paddingBottom: 10,
   },
   heroCardWrapper: {
     width: '100%',
@@ -585,7 +587,7 @@ const s = StyleSheet.create({
   // Bottom Section
   bottomSection: {
     paddingHorizontal: 20,
-    paddingBottom: Platform.OS === 'ios' ? 26 : 16,
+    paddingBottom: 16,
     gap: 12,
   },
   dotsContainer: {

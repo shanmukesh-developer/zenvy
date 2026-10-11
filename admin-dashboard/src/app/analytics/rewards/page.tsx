@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAdminAuth } from '@/utils/useAdminAuth';
 import { motion } from 'framer-motion';
+import { API_URL } from '@/lib/config';
 
 interface TopPerformer {
   name: string;
@@ -19,132 +20,177 @@ interface AnalyticsData {
   badgeDistribution: Record<string, number>;
   tierDistribution: Record<string, number>;
   topPerformers: TopPerformer[];
-  redemptionRate: number;
+  redemptionRate: number | string;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-jwmt.onrender.com';
+/** fetch + JSON with friendly errors (never shows raw server internals). */
+async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(url, { cache: 'no-store', ...init });
+  } catch {
+    throw new Error('Could not reach the server. Check your connection and try again.');
+  }
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    const msg = res.status < 500 && body && typeof body.message === 'string' ? body.message : null;
+    throw new Error(msg || (res.status >= 500 ? 'The server ran into a problem. Please try again.' : `Request failed (${res.status}).`));
+  }
+  return body as T;
+}
 
 export default function RewardsAnalytics() {
-  const isAuthed = useAdminAuth();
+  const { isAuthed } = useAdminAuth();
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetch(`${API_URL}/api/admin/rewards-analytics`, {
-      headers: { 'Authorization': `Bearer ${'cookie-managed'}` }
-    })
-      .then(res => res.json())
-      .then(d => {
-        setData(d);
-        setLoading(false);
-      })
-      .catch(err => console.error(err));
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const d = await requestJson<AnalyticsData>(`${API_URL}/api/admin/rewards-analytics`);
+      setData({
+        totalSpinsEarned: Number(d?.totalSpinsEarned || 0),
+        totalSpinsUsed: Number(d?.totalSpinsUsed || 0),
+        totalZenPoints: Number(d?.totalZenPoints || 0),
+        activeRewardUsers: Number(d?.activeRewardUsers || 0),
+        badgeDistribution: d?.badgeDistribution || {},
+        tierDistribution: d?.tierDistribution || {},
+        topPerformers: Array.isArray(d?.topPerformers) ? d.topPerformers : [],
+        redemptionRate: d?.redemptionRate ?? 0,
+      });
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load rewards analytics.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  useEffect(() => {
+    if (isAuthed) load();
+  }, [isAuthed, load]);
 
-  if (loading) return (
+  if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Checking access…</div>;
+
+  if (loading && !data) return (
     <div className="flex items-center justify-center min-h-[60vh]">
       <div className="w-12 h-12 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin" />
     </div>
   );
 
-  if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Authenticating...</div>;
+  if (!data) return (
+    <div className="py-20 text-center">
+      <p className="text-sm text-red-400 font-bold">{error || 'Could not load rewards analytics.'}</p>
+      <button onClick={load} className="mt-4 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black uppercase text-gray-300 hover:text-white">Try again</button>
+    </div>
+  );
 
-  if (!data) return <div>Failed to load intelligence.</div>;
+  const tierTotal = Object.values(data.tierDistribution).reduce((s, n) => s + (Number(n) || 0), 0);
+  const badges = Object.entries(data.badgeDistribution);
 
   return (
     <div className="space-y-10">
-      {/* Header Section */}
-      <div className="flex flex-col gap-2">
-        <h2 className="text-4xl font-black text-white tracking-tight">Rewards Intelligence</h2>
-        <p className="text-gray-400 font-medium">Deep telemetry into the Zenvy Nexus gamification ecosystem.</p>
+      <div className="flex flex-wrap gap-4 justify-between items-end">
+        <div className="flex flex-col gap-2">
+          <h2 className="text-4xl font-black text-white tracking-tight">Rewards analytics</h2>
+          <p className="text-gray-400 font-medium">ZenPoints, lucky spins, badges and tiers across all students.</p>
+        </div>
+        <button onClick={load} disabled={loading} className="px-4 py-2 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-2xl text-[10px] font-black uppercase disabled:opacity-40">{loading ? 'Refreshing…' : '↻ Refresh'}</button>
       </div>
+      {error && <p className="text-xs text-red-400 font-bold">{error}</p>}
 
-      {/* Primary Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <StatCard title="Total ZenPoints" value={data.totalZenPoints.toLocaleString()} icon="💎" color="blue" />
-        <StatCard title="Lucky Spins Used" value={data.totalSpinsUsed.toString()} icon="🎡" color="amber" />
-        <StatCard title="Active Scalers" value={data.activeRewardUsers.toString()} icon="👥" color="emerald" />
-        <StatCard title="Redemption Rate" value={`${data.redemptionRate}%`} icon="🔥" color="rose" />
+        <StatCard title="ZenPoints held" value={data.totalZenPoints.toLocaleString('en-IN')} icon="💎" color="blue" />
+        <StatCard title="Spins used / earned" value={`${data.totalSpinsUsed} / ${data.totalSpinsEarned}`} icon="🎡" color="amber" />
+        <StatCard title="Students with orders" value={data.activeRewardUsers.toLocaleString('en-IN')} icon="👥" color="emerald" />
+        <StatCard title="Spin redemption" value={`${data.redemptionRate}%`} icon="🔥" color="rose" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Tier Distribution Chart */}
         <section className="glass p-8 rounded-3xl border border-white/5">
           <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-            <span className="text-blue-500">📊</span> Tier Distribution
+            <span className="text-blue-500">📊</span> Tier distribution
           </h3>
-          <div className="space-y-6">
-            {Object.entries(data.tierDistribution).map(([tier, count]) => (
-              <div key={tier} className="space-y-2">
-                <div className="flex justify-between text-xs font-black uppercase tracking-widest">
-                  <span className={tier === 'None' ? 'text-gray-500' : 'text-slate-300'}>{tier}</span>
-                  <span className="text-white">{count}</span>
+          {tierTotal === 0 ? (
+            <p className="text-xs text-gray-500">No students yet.</p>
+          ) : (
+            <div className="space-y-6">
+              {Object.entries(data.tierDistribution).map(([tier, count]) => (
+                <div key={tier} className="space-y-2">
+                  <div className="flex justify-between text-xs font-black uppercase tracking-widest">
+                    <span className={tier === 'None' ? 'text-gray-500' : 'text-slate-300'}>{tier === 'None' ? 'No tier yet' : tier}</span>
+                    <span className="text-white">{count}</span>
+                  </div>
+                  <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden">
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${(Number(count) / tierTotal) * 100}%` }}
+                      className={`h-full ${getTierColor(tier)}`}
+                    />
+                  </div>
                 </div>
-                <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden">
-                  <motion.div 
-                    initial={{ width: 0 }}
-                    animate={{ width: `${(count / data.activeRewardUsers) * 100 || 0}%` }}
-                    className={`h-full ${getTierColor(tier)}`}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </section>
 
-        {/* Top Performers Table */}
         <section className="glass p-8 rounded-3xl border border-white/5">
           <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-            <span className="text-yellow-500">🏆</span> Top Scalers
+            <span className="text-yellow-500">🏆</span> Top customers by orders
           </h3>
-          <div className="overflow-hidden">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="text-[10px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5">
-                  <th className="pb-4">Resident</th>
-                  <th className="pb-4">Orders</th>
-                  <th className="pb-4">Points</th>
-                  <th className="pb-4">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {data.topPerformers.map((user, i) => (
-                  <tr key={i} className="group hover:bg-white/[0.02] transition-colors">
-                    <td className="py-4">
-                      <p className="text-sm font-bold text-white">{user.name}</p>
-                    </td>
-                    <td className="py-4 text-sm text-slate-400 font-mono">{user.completedOrders}</td>
-                    <td className="py-4 text-sm text-blue-400 font-bold">{user.zenPoints}</td>
-                    <td className="py-4">
-                      <span className={`text-[9px] font-black px-2 py-1 rounded-md uppercase tracking-tighter ${getTierBadgeStyle(user.tier)}`}>
-                        {user.tier}
-                      </span>
-                    </td>
+          {data.topPerformers.length === 0 ? (
+            <p className="text-xs text-gray-500">No completed orders yet.</p>
+          ) : (
+            <div className="overflow-hidden">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="text-[10px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5">
+                    <th className="pb-4">Student</th>
+                    <th className="pb-4">Orders</th>
+                    <th className="pb-4">Points</th>
+                    <th className="pb-4">Tier</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {data.topPerformers.map((user, i) => (
+                    <tr key={i} className="group hover:bg-white/[0.02] transition-colors">
+                      <td className="py-4"><p className="text-sm font-bold text-white">{user.name || 'Student'}</p></td>
+                      <td className="py-4 text-sm text-slate-400 font-mono">{user.completedOrders || 0}</td>
+                      <td className="py-4 text-sm text-blue-400 font-bold">{user.zenPoints || 0}</td>
+                      <td className="py-4">
+                        <span className={`text-[9px] font-black px-2 py-1 rounded-md uppercase tracking-tighter ${getTierBadgeStyle(user.tier)}`}>
+                          {user.tier === 'None' ? '—' : user.tier}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
       </div>
 
-      {/* Badge Popularity Grid */}
       <section className="glass p-8 rounded-3xl border border-white/5">
-          <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-            <span className="text-rose-500">🎖️</span> Badge Popularity
-          </h3>
+        <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+          <span className="text-rose-500">🎖️</span> Badges earned
+        </h3>
+        {badges.length === 0 ? (
+          <p className="text-xs text-gray-500">No badges earned yet.</p>
+        ) : (
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-              {Object.entries(data.badgeDistribution).map(([badge, count]) => (
-                  <div key={badge} className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col items-center justify-center text-center gap-2 group hover:border-blue-500/30 transition-all">
-                      <div className="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center text-xl group-hover:scale-110 transition-transform">
-                          {getBadgeIcon(badge)}
-                      </div>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase leading-tight">{badge}</p>
-                      <p className="text-lg font-black text-white leading-none">{count}</p>
-                  </div>
-              ))}
+            {badges.map(([badge, count]) => (
+              <div key={badge} className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col items-center justify-center text-center gap-2 group hover:border-blue-500/30 transition-all">
+                <div className="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center text-xl group-hover:scale-110 transition-transform">
+                  {getBadgeIcon(badge)}
+                </div>
+                <p className="text-[10px] font-bold text-gray-400 uppercase leading-tight">{badge}</p>
+                <p className="text-lg font-black text-white leading-none">{count}</p>
+              </div>
+            ))}
           </div>
+        )}
       </section>
     </div>
   );

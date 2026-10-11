@@ -1,212 +1,214 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
+import { useAdminAuth } from '@/utils/useAdminAuth';
+import { API_URL } from '@/lib/config';
+import { adminRequest as apiRequest } from '@/lib/api';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://hostelbites-backend-jwmt.onrender.com';
-
-const getImageUrl = (url: string | null) => {
+const getImageUrl = (url: string | null | undefined) => {
   if (!url) return '';
   if (url.startsWith('http') || url.startsWith('data:')) return url;
   return `${API_URL}${url.startsWith('/') ? '' : '/'}${url}`;
 };
 
+/** fetch against the one backend; throws an Error carrying the server's friendly `message`. */
+// Shape returned by GET /api/community (backend/models/CommunityPost.js)
 interface CommunityPost {
   id: string;
+  parentId: string | null;
+  userId: string;
+  userName: string;
+  userAvatar?: string | null;
   content: string;
-  category: string;
-  isAnonymous: boolean;
-  likesCount: number;
-  commentsCount: number;
+  imageUrl?: string | null;
+  likes: number;
+  replyCount: number;
+  postType: 'post' | 'review';
+  starRating?: number | null;
+  restaurantName?: string | null;
+  productName?: string | null;
   createdAt: string;
-  expiresAt?: string;
-  user?: { name: string; phone: string };
+  expiresAt?: string | null;
+  replies?: CommunityPost[];
 }
 
 interface BirthdayCelebration {
   id: string;
   candidateName: string;
-  candidatePhotoUrl: string;
-  birthdayDate: string;
+  candidatePhotoUrl: string | null;
+  birthdayDate: string; // YYYY-MM-DD
   status: string;
   wishCount: number;
   createdAt: string;
 }
 
+const istToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 
-const categoryColors: Record<string, string> = {
-  General: 'text-blue-400 border-blue-500/20 bg-blue-500/10',
-  Food: 'text-orange-400 border-orange-500/20 bg-orange-500/10',
-  Event: 'text-purple-400 border-purple-500/20 bg-purple-500/10',
-  Alert: 'text-red-400 border-red-500/20 bg-red-500/10',
-  Meme: 'text-yellow-400 border-yellow-500/20 bg-yellow-500/10',
+const formatDate = (dateStr: string) => {
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return dateStr || '—';
+  return d.toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+};
+
+// birthdayDate is a plain calendar date; format without shifting time zones.
+const formatDay = (ymd: string) => {
+  const [y, m, d] = String(ymd || '').split('-').map(Number);
+  if (!y || !m || !d) return ymd || '—';
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 };
 
 export default function CommunityAdmin() {
+  const { isAuthed } = useAdminAuth();
   const [activeTab, setActiveTab] = useState<'posts' | 'birthdays'>('posts');
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
   const [posts, setPosts] = useState<CommunityPost[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingPosts, setLoadingPosts] = useState(true);
+  const [postsError, setPostsError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const [pushTitle, setPushTitle] = useState('');
-  const [pushBody, setPushBody] = useState('');
-  const [pushTarget, setPushTarget] = useState('ALL');
-  const [pushSending, setPushSending] = useState(false);
-
-  // Birthday state
   const [birthdays, setBirthdays] = useState<BirthdayCelebration[]>([]);
   const [activeBirthdays, setActiveBirthdays] = useState<BirthdayCelebration[]>([]);
-  const [loadingBirthdays, setLoadingBirthdays] = useState(false);
+  const [loadingBirthdays, setLoadingBirthdays] = useState(true);
+  const [birthdaysError, setBirthdaysError] = useState<string | null>(null);
   const [actioningBdayId, setActioningBdayId] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchPosts();
-    fetchBirthdays();
+  const fetchPosts = useCallback(async () => {
+    setLoadingPosts(true);
+    setPostsError(null);
+    try {
+      const data = await apiRequest<CommunityPost[] | { posts: CommunityPost[] }>('/api/community');
+      setPosts(Array.isArray(data) ? data : (data?.posts || []));
+    } catch (err) {
+      setPostsError(err instanceof Error ? err.message : 'Could not load posts.');
+    } finally {
+      setLoadingPosts(false);
+    }
   }, []);
 
-  const fetchPosts = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`${API_URL}/api/community/posts?limit=50`, {
-        credentials: 'include',
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setPosts(Array.isArray(data) ? data : (data.posts || []));
-      }
-    } catch (err) {
-      console.error('[COMMUNITY_ADMIN_FETCH_ERROR]', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchBirthdays = async () => {
+  const fetchBirthdays = useCallback(async () => {
     setLoadingBirthdays(true);
+    setBirthdaysError(null);
     try {
-      const resPending = await fetch(`${API_URL}/api/birthdays/pending`, {
-        credentials: 'include',
-      });
-      if (resPending.ok) {
-        const data = await resPending.json();
-        setBirthdays(data);
-      }
-      const resActive = await fetch(`${API_URL}/api/birthdays/active`, {
-        credentials: 'include',
-      });
-      if (resActive.ok) {
-        const data = await resActive.json();
-        setActiveBirthdays(data);
-      }
+      const [pending, active] = await Promise.all([
+        apiRequest<BirthdayCelebration[]>('/api/birthdays/pending'),
+        apiRequest<BirthdayCelebration[]>('/api/birthdays/active'),
+      ]);
+      setBirthdays(Array.isArray(pending) ? pending : []);
+      setActiveBirthdays(Array.isArray(active) ? active : []);
     } catch (err) {
-      console.error('[BIRTHDAY_FETCH_ERROR]', err);
+      setBirthdaysError(err instanceof Error ? err.message : 'Could not load birthdays.');
     } finally {
       setLoadingBirthdays(false);
     }
-  };
+  }, []);
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Delete this post? This cannot be undone.')) return;
-    setDeletingId(id);
+  useEffect(() => {
+    if (!isAuthed) return;
+    fetchPosts();
+    fetchBirthdays();
+  }, [isAuthed, fetchPosts, fetchBirthdays]);
+
+  const flash = (msg: string) => { setNotice(msg); setError(null); };
+
+  const handleDelete = async (post: CommunityPost, parent?: CommunityPost) => {
+    if (deletingId) return;
+    const what = parent ? 'reply' : 'post';
+    const extra = !parent && post.replyCount > 0 ? ` Its ${post.replyCount} repl${post.replyCount === 1 ? 'y' : 'ies'} will be deleted too.` : '';
+    if (!confirm(`Delete this ${what} by ${post.userName || 'this student'}?${extra} This cannot be undone.`)) return;
+    setDeletingId(post.id);
+    setNotice(null);
+    setError(null);
     try {
-      const res = await fetch(`${API_URL}/api/community/posts/${id}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
-      if (res.ok) {
-        setPosts(prev => prev.filter(p => p.id !== id));
+      await apiRequest(`/api/community/${post.id}`, { method: 'DELETE' });
+      if (parent) {
+        setPosts(prev => prev.map(p => p.id === parent.id
+          ? { ...p, replies: (p.replies || []).filter(r => r.id !== post.id), replyCount: Math.max((p.replyCount || 1) - 1, 0) }
+          : p));
+      } else {
+        setPosts(prev => prev.filter(p => p.id !== post.id));
       }
+      flash(`The ${what} was deleted.`);
     } catch (err) {
-      console.error('[COMMUNITY_DELETE_ERROR]', err);
+      setError(err instanceof Error ? err.message : 'Could not delete it.');
     } finally {
       setDeletingId(null);
     }
   };
 
-  const handleApproveBday = async (id: string) => {
-    setActioningBdayId(id);
+  const handleApproveBday = async (b: BirthdayCelebration) => {
+    if (actioningBdayId) return;
+    const isToday = b.birthdayDate === istToday();
+    const question = isToday
+      ? `Approve ${b.candidateName}'s birthday? It goes live now and every active student gets a push notification.`
+      : `Approve ${b.candidateName}'s birthday for ${formatDay(b.birthdayDate)}? It shows on the app on that day.`;
+    if (!confirm(question)) return;
+    setActioningBdayId(b.id);
+    setNotice(null);
+    setError(null);
     try {
-      const res = await fetch(`${API_URL}/api/birthdays/${id}/approve`, {
-        method: 'PUT',
-        credentials: 'include',
-      });
-      if (res.ok) {
-        fetchBirthdays();
-      }
+      const res = await apiRequest<{ message?: string }>(`/api/birthdays/${b.id}/approve`, { method: 'PUT' });
+      flash(res?.message || 'Birthday approved.');
+      await fetchBirthdays();
     } catch (err) {
-      console.error('[BDAY_APPROVE_ERROR]', err);
+      setError(err instanceof Error ? err.message : 'Could not approve the birthday.');
     } finally {
       setActioningBdayId(null);
     }
   };
 
-  const handleRejectBday = async (id: string) => {
-    if (!confirm('Reject this birthday nomination?')) return;
-    setActioningBdayId(id);
+  const handleRejectBday = async (b: BirthdayCelebration) => {
+    if (actioningBdayId) return;
+    if (!confirm(`Reject ${b.candidateName}'s birthday request?`)) return;
+    setActioningBdayId(b.id);
+    setNotice(null);
+    setError(null);
     try {
-      const res = await fetch(`${API_URL}/api/birthdays/${id}/reject`, {
-        method: 'PUT',
-        credentials: 'include',
-      });
-      if (res.ok) {
-        fetchBirthdays();
-      }
+      const res = await apiRequest<{ message?: string }>(`/api/birthdays/${b.id}/reject`, { method: 'PUT' });
+      flash(res?.message || 'Birthday request rejected.');
+      await fetchBirthdays();
     } catch (err) {
-      console.error('[BDAY_REJECT_ERROR]', err);
+      setError(err instanceof Error ? err.message : 'Could not reject the birthday.');
     } finally {
       setActioningBdayId(null);
     }
   };
 
-  const handleSendPush = async () => {
-    if (!pushTitle || !pushBody) return;
-    setPushSending(true);
-    try {
-      const res = await fetch(`${API_URL}/api/admin/broadcast-push`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: pushTitle, body: pushBody, targetRole: pushTarget })
-      });
-      if (res.ok) {
-        setPushTitle('');
-        setPushBody('');
-        alert('Push Notification Dispatched Successfully');
-      } else {
-        const d = await res.json();
-        alert(d.error || 'Failed to send push');
-      }
-    } catch (err) {
-      console.error('[PUSH_SEND_ERROR]', err);
-    } finally {
-      setPushSending(false);
-    }
-  };
-
-  const formatDate = (dateStr: string) => {
-    try {
-      return new Date(dateStr).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-    } catch { return dateStr; }
-  };
-
-  const isExpired = (expiresAt?: string) => {
-    if (!expiresAt) return false;
-    return new Date(expiresAt) < new Date();
-  };
+  const renderPostBody = (post: CommunityPost) => (
+    <>
+      {post.postType === 'review' && (
+        <p className="text-[11px] text-amber-300 font-bold">
+          {'★'.repeat(Math.max(0, Math.min(5, Math.round(Number(post.starRating) || 0))))}
+          <span className="text-gray-500 font-normal">
+            {' '}{[post.restaurantName, post.productName].filter(Boolean).join(' · ')}
+          </span>
+        </p>
+      )}
+      {post.content && <p className="text-sm text-white leading-relaxed whitespace-pre-wrap break-words line-clamp-6">{post.content}</p>}
+      {post.imageUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={getImageUrl(post.imageUrl)} alt="Post attachment" className="w-full max-h-56 object-cover rounded-xl border border-white/10 bg-neutral-900" />
+      )}
+    </>
+  );
 
   return (
     <div className="space-y-8 animate-fade-in">
       <header className="flex justify-between items-center flex-wrap gap-4">
         <div>
           <h1 className="text-3xl font-black tracking-tighter text-white">Community & <span className="text-purple-400">Celebrations</span></h1>
-          <p className="text-[11px] text-gray-500 uppercase tracking-widest mt-1">Campus Communication & Birthday Moderation Board</p>
+          <p className="text-[11px] text-gray-500 uppercase tracking-widest mt-1">Moderate campus posts and birthday requests</p>
         </div>
         <div className="flex gap-2">
-          <button 
+          <button
             onClick={() => setActiveTab('posts')}
             className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border ${activeTab === 'posts' ? 'bg-purple-600 border-purple-500 text-white' : 'bg-white/5 border-white/10 text-gray-400 hover:bg-white/10'}`}
           >
-            💬 Posts Feed
+            💬 Posts
           </button>
-          <button 
+          <button
             onClick={() => setActiveTab('birthdays')}
             className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all border ${activeTab === 'birthdays' ? 'bg-purple-600 border-purple-500 text-white' : 'bg-white/5 border-white/10 text-gray-400 hover:bg-white/10'}`}
           >
@@ -215,102 +217,80 @@ export default function CommunityAdmin() {
         </div>
       </header>
 
+      {error && <div className="p-4 rounded-xl border border-red-500/30 bg-red-500/10 text-sm font-bold text-red-400">{error}</div>}
+      {notice && <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-sm font-bold text-emerald-400">{notice}</div>}
+
       {activeTab === 'posts' ? (
         <>
-          {/* Push Notification Broadcaster */}
-          <div className="glass-card p-6 border border-purple-500/20 bg-purple-500/5">
-            <h3 className="text-sm font-black text-white uppercase tracking-widest mb-4">Native Push Broadcaster</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <input 
-                type="text" 
-                placeholder="Notification Title (e.g. Flash Sale!)" 
-                className="px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-gray-600 outline-none focus:border-purple-500/40"
-                value={pushTitle}
-                onChange={e => setPushTitle(e.target.value)}
-              />
-              <select 
-                className="px-4 py-3 bg-[#0a0a0a] border border-white/10 rounded-xl text-sm text-gray-300 outline-none focus:border-purple-500/40"
-                value={pushTarget}
-                onChange={e => setPushTarget(e.target.value)}
-              >
-                <option value="ALL">All Users (Global)</option>
-                <option value="CUSTOMER">Customers Only</option>
-                <option value="RIDER">Delivery Fleet Only</option>
-                <option value="VENDOR">Vendors Only</option>
-              </select>
-              <textarea 
-                placeholder="Notification Body (Keep it short & punchy)"
-                rows={2}
-                className="md:col-span-2 px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-gray-600 outline-none focus:border-purple-500/40 resize-none"
-                value={pushBody}
-                onChange={e => setPushBody(e.target.value)}
-              />
-            </div>
-            <div className="flex justify-end mt-4">
-              <button 
-                disabled={!pushTitle || !pushBody || pushSending}
-                onClick={handleSendPush}
-                className="px-6 py-2.5 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-[11px] font-black uppercase tracking-widest rounded-xl transition-all"
-              >
-                {pushSending ? 'Sending...' : 'Send Push Notification'}
-              </button>
-            </div>
+          <div className="flex justify-between items-center flex-wrap gap-3">
+            <p className="text-[11px] text-gray-500">
+              Live posts from the last 48 hours plus reviews (newest 50). To message students, use{' '}
+              <Link href="/notifications" className="text-purple-400 underline">Push Notifications</Link>.
+            </p>
+            <button onClick={fetchPosts} disabled={loadingPosts} className="px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black uppercase tracking-wider text-gray-400 hover:bg-white/10 disabled:opacity-50">
+              ↻ Refresh
+            </button>
           </div>
 
-          {loading ? (
+          {loadingPosts ? (
             <div className="flex justify-center py-20">
               <div className="w-8 h-8 border-2 border-purple-500/30 border-t-purple-500 rounded-full animate-spin" />
             </div>
+          ) : postsError ? (
+            <div className="py-12 text-center glass-card border border-white/5 space-y-3">
+              <p className="text-sm font-bold text-red-400">{postsError}</p>
+              <button onClick={fetchPosts} className="text-[10px] font-black uppercase tracking-wider text-gray-300 underline">Retry</button>
+            </div>
           ) : posts.length === 0 ? (
-            <div className="py-16 text-center text-gray-600 text-xs italic">No community posts found.</div>
+            <div className="py-16 text-center text-gray-600 text-xs italic">No live community posts.</div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {posts.map(post => (
-                <div
-                  key={post.id}
-                  className={`glass-card p-5 space-y-3 ${isExpired(post.expiresAt) ? 'opacity-50' : ''}`}
-                >
+                <div key={post.id} className="glass-card p-5 space-y-3">
                   <div className="flex justify-between items-start gap-3">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full border ${categoryColors[post.category] || 'text-gray-400 border-white/10'}`}>
-                        {post.category || 'General'}
+                      <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full border ${post.postType === 'review' ? 'text-amber-400 border-amber-500/20 bg-amber-500/10' : 'text-blue-400 border-blue-500/20 bg-blue-500/10'}`}>
+                        {post.postType === 'review' ? 'Review' : 'Post'}
                       </span>
-                      {post.isAnonymous && (
-                        <span className="text-[8px] font-black text-gray-500 border border-white/10 px-2 py-0.5 rounded-full uppercase">
-                          Anonymous
-                        </span>
-                      )}
-                      {isExpired(post.expiresAt) && (
-                        <span className="text-[8px] font-black text-red-400 border border-red-500/20 bg-red-500/10 px-2 py-0.5 rounded-full uppercase">
-                          Expired
-                        </span>
-                      )}
+                      <span className="text-[11px] font-bold text-gray-300">{post.userName || 'Unknown'}</span>
+                      <span className="text-[10px] text-gray-500">{formatDate(post.createdAt)}</span>
                     </div>
                     <button
-                      onClick={() => handleDelete(post.id)}
+                      onClick={() => handleDelete(post)}
                       disabled={deletingId === post.id}
                       className="shrink-0 px-3 py-1.5 bg-red-500/10 border border-red-500/20 text-red-400 text-[9px] font-black uppercase tracking-wider rounded-lg hover:bg-red-500/20 disabled:opacity-50 transition-all"
                     >
-                      {deletingId === post.id ? '...' : '🗑 Delete'}
+                      {deletingId === post.id ? '...' : 'Delete'}
                     </button>
                   </div>
 
-                  <p className="text-sm text-white leading-relaxed line-clamp-4">{post.content}</p>
+                  {renderPostBody(post)}
 
-                  <div className="border-t border-white/5 pt-3 flex justify-between items-center">
-                    <div className="text-[10px] text-gray-500">
-                      {!post.isAnonymous && post.user ? (
-                        <span className="font-bold text-gray-400">{post.user.name}</span>
-                      ) : (
-                        <span className="italic">Anonymous</span>
-                      )}
-                      <span className="ml-2">{formatDate(post.createdAt)}</span>
-                    </div>
-                    <div className="flex items-center gap-3 text-[10px] text-gray-500">
-                      <span>❤️ {post.likesCount || 0}</span>
-                      <span>💬 {post.commentsCount || 0}</span>
-                    </div>
+                  <div className="border-t border-white/5 pt-3 flex items-center gap-3 text-[10px] text-gray-500">
+                    <span>❤️ {post.likes || 0}</span>
+                    <span>💬 {post.replyCount || 0}</span>
+                    {post.expiresAt && <span className="ml-auto">Expires {formatDate(post.expiresAt)}</span>}
                   </div>
+
+                  {(post.replies || []).length > 0 && (
+                    <div className="space-y-2 pl-3 border-l border-white/10">
+                      {(post.replies || []).map(reply => (
+                        <div key={reply.id} className="flex justify-between items-start gap-3">
+                          <div className="min-w-0">
+                            <p className="text-[10px] text-gray-400"><span className="font-bold text-gray-300">{reply.userName || 'Unknown'}</span> · {formatDate(reply.createdAt)}</p>
+                            <p className="text-xs text-gray-200 break-words">{reply.content}</p>
+                          </div>
+                          <button
+                            onClick={() => handleDelete(reply, post)}
+                            disabled={deletingId === reply.id}
+                            className="shrink-0 text-[9px] font-black uppercase text-red-400 hover:underline disabled:opacity-50"
+                          >
+                            {deletingId === reply.id ? '...' : 'Delete'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -318,85 +298,89 @@ export default function CommunityAdmin() {
         </>
       ) : (
         <div className="space-y-6">
+          {birthdaysError && (
+            <div className="p-4 rounded-xl border border-red-500/30 bg-red-500/10 text-sm font-bold text-red-400 flex justify-between gap-4">
+              <span>{birthdaysError}</span>
+              <button onClick={fetchBirthdays} className="text-[10px] font-black uppercase tracking-wider underline">Retry</button>
+            </div>
+          )}
+
           <section className="space-y-4">
             <h3 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-2">
-              <span>⏳</span> Pending Nominations Queue ({birthdays.length})
+              <span>⏳</span> Pending Requests ({birthdays.length})
             </h3>
             {loadingBirthdays ? (
               <div className="flex justify-center py-10">
                 <div className="w-6 h-6 border-2 border-purple-500/30 border-t-purple-500 rounded-full animate-spin" />
               </div>
             ) : birthdays.length === 0 ? (
-              <div className="py-10 text-center text-gray-600 text-xs italic glass-card border border-white/5">No pending birthday nominations.</div>
+              <div className="py-10 text-center text-gray-600 text-xs italic glass-card border border-white/5">No pending birthday requests.</div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {birthdays.map(b => (
-                  <div key={b.id} className="glass-card p-4 border border-white/10 flex flex-col justify-between gap-4">
-                    <div className="flex gap-4">
-                      {b.candidatePhotoUrl ? (
-                        <img 
-                          src={getImageUrl(b.candidatePhotoUrl)}
-                          alt={b.candidateName}
-                          className="w-16 h-16 rounded-xl object-cover border border-white/15 bg-neutral-900"
-                        />
-                      ) : (
-                        <div className="w-16 h-16 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-lg">
-                          🎂
+                {birthdays.map(b => {
+                  const isToday = b.birthdayDate === istToday();
+                  const isPast = b.birthdayDate < istToday();
+                  return (
+                    <div key={b.id} className="glass-card p-4 border border-white/10 flex flex-col justify-between gap-4">
+                      <div className="flex gap-4">
+                        {b.candidatePhotoUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={getImageUrl(b.candidatePhotoUrl)} alt={b.candidateName} className="w-16 h-16 rounded-xl object-cover border border-white/15 bg-neutral-900" />
+                        ) : (
+                          <div className="w-16 h-16 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-lg">🎂</div>
+                        )}
+                        <div>
+                          <h4 className="font-black text-white text-sm tracking-tight">{b.candidateName}</h4>
+                          <p className="text-[10px] text-purple-400 font-bold uppercase tracking-wider mt-0.5">
+                            Birthday: {formatDay(b.birthdayDate)}{isToday ? ' (today)' : ''}
+                          </p>
+                          <p className="text-[9px] text-gray-500 mt-1">Requested {formatDate(b.createdAt)}</p>
+                          {isPast && <p className="text-[9px] text-amber-400 mt-1">This date has passed. It can only be rejected.</p>}
                         </div>
-                      )}
-                      <div>
-                        <h4 className="font-black text-white text-sm tracking-tight">{b.candidateName}</h4>
-                        <p className="text-[10px] text-purple-400 font-bold uppercase tracking-wider mt-0.5">DOB: {formatDate(b.birthdayDate).split(',')[0]}</p>
-                        <p className="text-[9px] text-gray-500 mt-1">Submitted {formatDate(b.createdAt)}</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleRejectBday(b)}
+                          disabled={actioningBdayId === b.id}
+                          className="flex-1 py-2 bg-red-500/10 border border-red-500/25 text-red-400 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-red-500/20 transition-all disabled:opacity-50"
+                        >
+                          Reject
+                        </button>
+                        <button
+                          onClick={() => handleApproveBday(b)}
+                          disabled={actioningBdayId === b.id || isPast}
+                          className="flex-[2] py-2 bg-purple-600 hover:bg-purple-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {actioningBdayId === b.id ? '...' : isToday ? 'Approve & Notify' : 'Approve'}
+                        </button>
                       </div>
                     </div>
-                    <div className="flex gap-2">
-                      <button 
-                        onClick={() => handleRejectBday(b.id)}
-                        disabled={actioningBdayId === b.id}
-                        className="flex-1 py-2 bg-red-500/10 border border-red-500/25 text-red-400 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-red-500/20 transition-all"
-                      >
-                        Reject
-                      </button>
-                      <button 
-                        onClick={() => handleApproveBday(b.id)}
-                        disabled={actioningBdayId === b.id}
-                        className="flex-2 py-2 bg-purple-600 hover:bg-purple-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all"
-                      >
-                        Approve & Broadcast
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </section>
 
           <section className="space-y-4 pt-4 border-t border-white/5">
             <h3 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-2">
-              <span>🎉</span> Currently Active Celebrations ({activeBirthdays.length})
+              <span>🎉</span> Live Today ({activeBirthdays.length})
             </h3>
-            {activeBirthdays.length === 0 ? (
-              <div className="py-10 text-center text-gray-600 text-xs italic glass-card border border-white/5">No active birthday celebrations today.</div>
+            {loadingBirthdays ? null : activeBirthdays.length === 0 ? (
+              <div className="py-10 text-center text-gray-600 text-xs italic glass-card border border-white/5">No birthdays live today.</div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {activeBirthdays.map(b => (
                   <div key={b.id} className="glass-card p-4 border border-purple-500/20 bg-purple-500/5 flex items-center justify-between gap-4">
                     <div className="flex gap-3 items-center">
                       {b.candidatePhotoUrl ? (
-                        <img 
-                          src={getImageUrl(b.candidatePhotoUrl)}
-                          alt={b.candidateName}
-                          className="w-12 h-12 rounded-full object-cover border-2 border-purple-500/30"
-                        />
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={getImageUrl(b.candidatePhotoUrl)} alt={b.candidateName} className="w-12 h-12 rounded-full object-cover border-2 border-purple-500/30" />
                       ) : (
-                        <div className="w-12 h-12 rounded-full bg-purple-500/20 flex items-center justify-center text-md">
-                          🎂
-                        </div>
+                        <div className="w-12 h-12 rounded-full bg-purple-500/20 flex items-center justify-center text-md">🎂</div>
                       )}
                       <div>
                         <h4 className="font-bold text-white text-xs">{b.candidateName}</h4>
-                        <p className="text-[9px] text-gray-400">Wishes Received: {b.wishCount || 0} ❤️</p>
+                        <p className="text-[9px] text-gray-400">Wishes received: {b.wishCount || 0}</p>
                       </div>
                     </div>
                     <span className="px-2.5 py-1 bg-green-500/10 border border-green-500/20 text-green-400 text-[8px] font-black uppercase rounded-full tracking-wider">

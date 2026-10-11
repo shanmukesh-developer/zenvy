@@ -52,15 +52,17 @@ export function DietaryProvider({ children }: { children: React.ReactNode }) {
     loadPrefs();
   }, [loadPrefs]);
 
-  const setDietMode = useCallback(async (mode: DietMode) => {
-    const updated = { ...dietPrefs, mode };
-    setDietPrefs(updated);
-    await AsyncStorage.setItem('zenvy_diet_prefs', JSON.stringify(updated));
-  }, [dietPrefs]);
+  const setDietMode = useCallback((mode: DietMode) => {
+    setDietPrefs((prev) => {
+      const updated = { ...prev, mode };
+      AsyncStorage.setItem('zenvy_diet_prefs', JSON.stringify(updated)).catch(() => {});
+      return updated;
+    });
+  }, []);
 
-  const updateDietPrefs = useCallback(async (prefs: DietPrefs) => {
+  const updateDietPrefs = useCallback((prefs: DietPrefs) => {
     setDietPrefs(prefs);
-    await AsyncStorage.setItem('zenvy_diet_prefs', JSON.stringify(prefs));
+    AsyncStorage.setItem('zenvy_diet_prefs', JSON.stringify(prefs)).catch(() => {});
   }, []);
 
   /**
@@ -73,28 +75,52 @@ export function DietaryProvider({ children }: { children: React.ReactNode }) {
    * - 'nonveg': Show only non-veg items (meat, chicken, fish, etc.)
    */
   const isItemAllowed = useCallback((item: any): boolean => {
+    if (!item) return false;
+    const tags: string[] = (Array.isArray(item.tags) ? item.tags : [])
+      .filter((t: any) => typeof t === 'string')
+      .map((t: string) => t.toLowerCase().trim());
+
+    // Allergies: hide dishes the kitchen has marked with that allergen (MenuItem.allergens or tags such as
+    // "nuts" / "contains-dairy"). Dishes without allergen data are not guessed about.
+    const allergens: string[] = [
+      ...(Array.isArray(item.allergens) ? item.allergens : []),
+      ...(Array.isArray(item.specs?.allergens) ? item.specs.allergens : []),
+    ].filter((a: any) => typeof a === 'string').map((a: string) => a.toLowerCase().trim());
+    const marks = new Set<string>([...allergens, ...tags.map((t) => t.replace(/^contains[-_ ]/, ''))]);
+    const blocked: string[] = [
+      ...(dietPrefs.nuts ? ['nuts', 'nut', 'peanut', 'peanuts', 'tree nuts'] : []),
+      ...(dietPrefs.dairy ? ['dairy', 'milk', 'lactose'] : []),
+      ...(dietPrefs.gluten ? ['gluten', 'wheat'] : []),
+      ...((dietPrefs.custom || []).filter((c) => typeof c === 'string').map((c) => c.toLowerCase().trim())),
+    ];
+    if (blocked.some((b) => b && marks.has(b))) return false;
+
     const mode = dietPrefs.mode;
     if (!mode || mode === 'all') return true;
 
-    const isVeg = item.isVegetarian === true || 
-                  String(item.isVegetarian).toLowerCase() === 'true' || 
-                  Number(item.isVegetarian) === 1 || 
-                  (item.tags || []).includes('veg') || 
-                  (item.tags || []).includes('fruits');
+    const isVeg = item.isVegetarian === true ||
+                  String(item.isVegetarian).toLowerCase() === 'true' ||
+                  Number(item.isVegetarian) === 1 ||
+                  tags.includes('veg') ||
+                  tags.includes('fruits');
 
-    const tags = (item.tags || []).map((t: string) => t.toLowerCase());
-    const name = (item.name || '').toLowerCase();
-    const category = (item.category || '').toLowerCase();
+    const name = String(item.name || '');
+    const category = String(item.category || '');
 
-    const isEgg = tags.includes('egg') || tags.includes('eggarian') || 
-                  name.includes('egg') || category.includes('egg');
+    // Whole word only: "Egg Puff" / "Eggs" are egg dishes, "Veggie Burger" is not.
+    const EGG_WORD = /\beggs?\b/i;
+    const isEgg = item.isEgg === true || tags.includes('egg') || tags.includes('eggarian') ||
+                  EGG_WORD.test(name) || EGG_WORD.test(category);
 
     if (mode === 'veg') {
       return isVeg && !isEgg; // Strict veg: no egg, no meat
     }
 
     if (mode === 'egg' || mode === 'eggarian') {
-      return isVeg || isEgg; // Veg + egg items allowed, no meat
+      // Veg + egg items allowed, no meat ("Chicken Egg Fried Rice" is an egg-named meat dish)
+      const MEAT_WORD = /\b(chicken|mutton|lamb|fish|prawns?|shrimp|crab|beef|pork|keema|meat|seafood|bacon|ham)\b/i;
+      const hasMeat = tags.includes('non-veg') || tags.includes('nonveg') || MEAT_WORD.test(name) || MEAT_WORD.test(category);
+      return isVeg || (isEgg && !hasMeat);
     }
 
     if (mode === 'nonveg' || mode === 'non-veg') {
@@ -102,7 +128,7 @@ export function DietaryProvider({ children }: { children: React.ReactNode }) {
     }
 
     return true;
-  }, [dietPrefs.mode]);
+  }, [dietPrefs]);
 
   return (
     <DietaryContext.Provider value={{

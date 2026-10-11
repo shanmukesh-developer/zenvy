@@ -9,25 +9,23 @@ import {
   Image,
   Modal,
   TextInput,
-  Switch,
   Alert,
   ActivityIndicator,
   RefreshControl,
   KeyboardAvoidingView,
+  Share,
 } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import QRCode from 'react-native-qrcode-svg';
+import * as Haptics from 'expo-haptics';
 import { COLORS, SHADOWS } from '../../constants/theme';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
-import { useDietary, DietPrefs, DietMode } from '../../context/DietaryContext';
+import { useDietary, DietPrefs } from '../../context/DietaryContext';
 import AmbientBackground from '../../components/AmbientBackground';
-import { StaggeredSection, BounceIn } from '../../components/AnimatedSection';
-import DopaminePressable from '../../components/DopaminePressable';
-import SafeImage from '../../components/SafeImage';
+import { StaggeredSection } from '../../components/AnimatedSection';
 import { apiFetch } from '../../utils/auth';
 import { API_URL, ENDPOINTS } from '../../constants/api';
 let Notifications: any = null;
@@ -39,31 +37,69 @@ try {
 import Constants from 'expo-constants';
 import * as ImagePicker from 'expo-image-picker';
 
-// Pre-selected high-quality gaming & food avatars
-const PREMIUM_AVATARS = [
-  'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150',
-  'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150',
-  'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=150',
-  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
-  'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150',
-];
+const PHONE_RE = /^[6-9]\d{9}$/;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const BIO_MAX = 160;
+// Diet filter <-> account dietaryPreference (PUT /api/users/profile accepts None/Veg/Eggetarian/Non-Veg)
+const DIET_TO_SERVER: Record<string, string> = { all: 'None', veg: 'Veg', egg: 'Eggetarian', eggarian: 'Eggetarian', 'non-veg': 'Non-Veg', nonveg: 'Non-Veg' };
+const SERVER_TO_DIET: Record<string, DietPrefs['mode']> = { None: 'all', Veg: 'veg', Eggetarian: 'egg', 'Non-Veg': 'non-veg' };
+const APP_VERSION = Constants.expoConfig?.version || '1.0.0';
 
-interface SavedAddress {
-  label: string;
-  address: string;
-  city: string;
+// Mirrors backend/services/BadgeService.js (ORDERS badges are earned on completedOrders).
+const TIER_STYLE: Record<string, { emoji: string; color: string }> = {
+  Bronze: { emoji: '🥉', color: '#D97706' },
+  Silver: { emoji: '🥈', color: '#9CA3AF' },
+  Gold: { emoji: '🥇', color: '#EAB308' },
+  Platinum: { emoji: '💠', color: '#A855F7' },
+  Diamond: { emoji: '💎', color: '#38BDF8' },
+  Elite: { emoji: '👑', color: '#F59E0B' },
+};
+
+const BADGE_INFO: Record<string, { tier: string; desc: string }> = {
+  'Bronze Beginner': { tier: 'Bronze', desc: '5 orders delivered' },
+  'Silver Scaler': { tier: 'Silver', desc: '15 orders delivered' },
+  'Gold Grafter': { tier: 'Gold', desc: '50 orders delivered' },
+  'Platinum Pro': { tier: 'Platinum', desc: '100 orders delivered' },
+  'Diamond Devotee': { tier: 'Diamond', desc: '250 orders delivered' },
+  'Elite Eater': { tier: 'Elite', desc: '500 orders delivered' },
+  'Bronze Bat': { tier: 'Bronze', desc: '3 late-night orders' },
+  'Silver Shadow': { tier: 'Silver', desc: '10 late-night orders' },
+  'Gold Ghost': { tier: 'Gold', desc: '25 late-night orders' },
+  'Platinum Phantom': { tier: 'Platinum', desc: '75 late-night orders' },
+  'Diamond Drifter': { tier: 'Diamond', desc: '150 late-night orders' },
+  'Bronze Believer': { tier: 'Bronze', desc: '3-day order streak' },
+  'Silver Streaker': { tier: 'Silver', desc: '7-day order streak' },
+  'Gold Guardian': { tier: 'Gold', desc: '21-day order streak' },
+  'Platinum Persistence': { tier: 'Platinum', desc: '50-day order streak' },
+  'Diamond Dynamo': { tier: 'Diamond', desc: '100-day order streak' },
+};
+
+function badgeVisual(name: string) {
+  const info = BADGE_INFO[name];
+  const tier = info?.tier || Object.keys(TIER_STYLE).find((t) => name.startsWith(t)) || '';
+  const style = TIER_STYLE[tier] || { emoji: '🏅', color: '#A855F7' };
+  return { ...style, desc: info?.desc || 'Badge unlocked' };
 }
 
-interface NotifPrefs {
-  orders: boolean;
-  surge: boolean;
-  promos: boolean;
+function digitsOnly(v: string, max = 10) {
+  return v.replace(/\D/g, '').slice(-max);
 }
+
+/** The user's own photo, or initials when there is none / it fails to load. Never a stock face. */
+function Avatar({ uri, style, fallback }: { uri?: string | null; style: any; fallback: React.ReactNode }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { setFailed(false); }, [uri]);
+  if (!uri || failed) return <>{fallback}</>;
+  return <Image source={{ uri }} style={style} onError={() => setFailed(true)} />;
+}
+
+type StatsState = 'loading' | 'ready' | 'error';
 
 export default function ProfileScreen() {
   const { user, setUser, logout } = useAuth();
   const { isDark, toggleTheme, colors } = useTheme();
   const router = useRouter();
+  const userId = user?._id || user?.id;
 
   // Color Palette mappings
   const bg = colors.bg;
@@ -73,11 +109,19 @@ export default function ProfileScreen() {
   const border = colors.border;
   const goldColor = isDark ? COLORS.gold : colors.gold;
 
+  const mountedRef = useRef(true);
+  const suggestTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (suggestTimeout.current) clearTimeout(suggestTimeout.current);
+    };
+  }, []);
+
   // Feature states
-  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [addingAddress, setAddingAddress] = useState(false);
-  const [showQR, setShowQR] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
 
   // Edit fields
@@ -86,212 +130,141 @@ export default function ProfileScreen() {
   const [editEmail, setEditEmail] = useState('');
   const [editAbout, setEditAbout] = useState('');
   const [editAddress, setEditAddress] = useState('');
-  const [editCity, setEditCity] = useState('Amaravathi');
+  const [editCity, setEditCity] = useState('');
   const [editProfileImage, setEditProfileImage] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const savingRef = useRef(false);
+
+  // Phone change verification (OTP to the NEW number)
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [sendingOtp, setSendingOtp] = useState(false);
+  const [resendIn, setResendIn] = useState(0);
 
   // Location suggestions
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const suggestTimeout = useRef<any>(null);
 
-  // Saved addresses
-  const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
-  const [newAddr, setNewAddr] = useState<SavedAddress>({ label: '', address: '', city: 'Amaravathi' });
-
-  // Dietary
+  // Dietary (menu filter, kept on this device by DietaryContext)
   const { dietPrefs: globalDietPrefs, updateDietPrefs } = useDietary();
-  const [dietPrefs, setDietPrefs] = useState<DietPrefs>(globalDietPrefs || { mode: 'all', nuts: false, dairy: false, gluten: false, custom: [] });
+  const dietPrefs: DietPrefs = globalDietPrefs || { mode: 'all', nuts: false, dairy: false, gluten: false, custom: [] };
   const [customAllergy, setCustomAllergy] = useState('');
-
-  // Sync with global diet prefs
-  useEffect(() => {
-    if (globalDietPrefs) {
-      setDietPrefs(globalDietPrefs);
-    }
-  }, [globalDietPrefs]);
-
-  // Notifications
-  const [notifPrefs, setNotifPrefs] = useState<NotifPrefs>({ orders: true, surge: true, promos: false });
 
   // Dashboard & stats
   const [spendStats, setSpendStats] = useState<any>(null);
+  const [statsState, setStatsState] = useState<StatsState>('loading');
   const [coupons, setCoupons] = useState<any[]>([]);
   const [giftPhone, setGiftPhone] = useState('');
+  const [pushOn, setPushOn] = useState(false);
+  const [sendingGift, setSendingGift] = useState(false);
+  const giftRef = useRef(false);
 
-  const initials = (user?.name || 'ZU').substring(0, 2).toUpperCase();
+  const initials = (user?.name || 'ZU').trim().substring(0, 2).toUpperCase() || 'ZU';
+  const completedOrders = Number(user?.completedOrders) || 0;
+  const streak = Number(user?.streakCount) || 0;
+  // Next order badge comes from the server (BadgeService), so the app never drifts from the real rules.
+  const badgeInfoLoaded = !!user && Object.prototype.hasOwnProperty.call(user, 'nextBadge');
+  const nextMilestone: { name: string; threshold: number } | null = badgeInfoLoaded ? ((user as any).nextBadge || null) : null;
+  const prevThreshold = Number((user as any)?.previousBadgeThreshold) || 0;
+  const allBadgesUnlocked = badgeInfoLoaded && !nextMilestone;
+  const milestonePct = nextMilestone
+    ? Math.min(100, Math.max(0, Math.round(((completedOrders - prevThreshold) / Math.max(1, nextMilestone.threshold - prevThreshold)) * 100)))
+    : allBadgesUnlocked ? 100 : 0;
 
-  // Load preferences and server data
+  // Resend countdown for the phone-change OTP
   useEffect(() => {
-    if (user) {
-      loadLocalPreferences();
-      fetchData();
-      handleEnablePush(true);
+    if (resendIn <= 0) return;
+    const t = setTimeout(() => {
+      if (mountedRef.current) setResendIn((v) => Math.max(0, v - 1));
+    }, 1000);
+    return () => clearTimeout(t);
+  }, [resendIn]);
+
+  const fetchData = useCallback(async (mode: 'focus' | 'pull' = 'focus') => {
+    if (mode === 'pull') setRefreshing(true);
+    const [profileRes, statsRes, couponsRes] = await Promise.allSettled([
+      apiFetch(ENDPOINTS.profile),
+      apiFetch(`${API_URL}/api/orders/stats`),
+      apiFetch(`${API_URL}/api/rewards/coupons`),
+    ]);
+    if (!mountedRef.current) return;
+
+    try {
+      if (profileRes.status === 'fulfilled' && profileRes.value.ok) {
+        const data = await profileRes.value.json();
+        if (mountedRef.current && data && typeof data === 'object') setUser(data);
+      }
+    } catch (e) {
+      console.warn('[Profile] profile sync failed:', e);
     }
-  }, [user?.id]);
+
+    try {
+      if (statsRes.status === 'fulfilled' && statsRes.value.ok) {
+        const data = await statsRes.value.json();
+        if (mountedRef.current) {
+          setSpendStats(data);
+          setStatsState('ready');
+        }
+      } else if (mountedRef.current) {
+        setStatsState((prev) => (prev === 'ready' ? 'ready' : 'error'));
+      }
+    } catch (e) {
+      if (mountedRef.current) setStatsState((prev) => (prev === 'ready' ? 'ready' : 'error'));
+    }
+
+    try {
+      if (couponsRes.status === 'fulfilled' && couponsRes.value.ok) {
+        const data = await couponsRes.value.json();
+        if (mountedRef.current && Array.isArray(data)) setCoupons(data);
+      }
+    } catch (e) {
+      console.warn('[Profile] coupons failed:', e);
+    }
+
+    if (mountedRef.current) setRefreshing(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
-      if (user) {
-        fetchData();
-      }
-    }, [user?.id])
+      if (userId) fetchData('focus');
+    }, [userId, fetchData])
   );
 
-  const loadLocalPreferences = async () => {
-    try {
-      const savedAddrRaw = await AsyncStorage.getItem('zenvy_saved_addresses');
-      if (savedAddrRaw) { try { setSavedAddresses(JSON.parse(savedAddrRaw)); } catch { /* corrupted data, reset */ } }
+  // Register this device for push once per signed-in user (silent: never prompts here)
+  useEffect(() => {
+    if (userId) handleEnablePush(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
 
-      const dietPrefsRaw = await AsyncStorage.getItem('zenvy_diet_prefs');
-      if (dietPrefsRaw) { try { setDietPrefs(JSON.parse(dietPrefsRaw)); } catch { /* corrupted data, reset */ } }
-
-      const notifPrefsRaw = await AsyncStorage.getItem('zenvy_notif_prefs');
-      if (notifPrefsRaw) { try { setNotifPrefs(JSON.parse(notifPrefsRaw)); } catch { /* corrupted data, reset */ } }
-    } catch (e) {
-      if (__DEV__) console.log('Error loading local preferences:', e);
+  const saveDietMode = (mode: DietPrefs['mode']) => {
+    Haptics.selectionAsync().catch(() => {});
+    updateDietPrefs({ ...dietPrefs, mode });
+    // Also saved on the account, so a new phone starts with the same filter.
+    if (user) {
+      apiFetch(`${API_URL}/api/users/profile`, {
+        method: 'PUT',
+        body: JSON.stringify({ dietaryPreference: DIET_TO_SERVER[mode] || 'None' }),
+      }).catch(() => {});
     }
   };
 
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      // 1. Sync latest profile details
-      const profileRes = await apiFetch(ENDPOINTS.profile);
-      if (profileRes.ok) {
-        const data = await profileRes.json();
-        setUser({ ...user, ...data });
-        if (!isEditing) {
-          setEditName(data.name || '');
-          setEditPhone(data.phone || '');
-          setEditEmail(data.email || '');
-          setEditAbout(data.about || '');
-          setEditAddress(data.address || '');
-          setEditCity(data.city || 'Amaravathi');
-          setEditProfileImage(data.profileImage || null);
-        }
-      }
-
-      // 2. Spending Stats with genuine order telemetry & marked favorite resolution
-      try {
-        let markedFavName: string | null = null;
-        try {
-          const favsStr = await AsyncStorage.getItem('zenvy_favorites');
-          const favIds = favsStr ? JSON.parse(favsStr) : [];
-          if (Array.isArray(favIds) && favIds.length > 0) {
-            const restRes = await apiFetch(ENDPOINTS.restaurants);
-            if (restRes.ok) {
-              const rests = await restRes.json();
-              const matched = rests.find((r: any) => favIds.includes(r.id) || favIds.includes(r._id));
-              if (matched) {
-                markedFavName = matched.name;
-              }
-            }
-          }
-        } catch (favErr) {
-          console.warn('Favorite resolution error:', favErr);
-        }
-
-        const statsRes = await apiFetch(`${API_URL}/api/orders/stats`);
-        if (statsRes.ok) {
-          const data = await statsRes.json();
-          setSpendStats({
-            ...data,
-            favoriteRestaurant: markedFavName || (data.favoriteRestaurant !== 'N/A' ? data.favoriteRestaurant : null) || 'None',
-            currentStreak: user?.streakCount || data.currentStreak || 0,
-            totalOrders: user?.completedOrders || user?.totalOrders || data.totalOrders || 0,
-          });
-        } else {
-          setSpendStats({
-            totalOrders: user?.totalOrders || user?.completedOrders || 0,
-            avgOrderValue: user?.totalOrders ? 260 : 0,
-            currentStreak: user?.streakCount || 0,
-            favoriteRestaurant: markedFavName || 'None',
-            monthlySpend: [],
-            topItems: []
-          });
-        }
-      } catch (err) {
-        console.warn('Spend stats fetch error:', err);
-      }
-
-      // 3. Coupons / Gourmet Vault
-      const couponsRes = await apiFetch(`${API_URL}/api/rewards/coupons`);
-      if (couponsRes.ok) {
-        const data = await couponsRes.json();
-        setCoupons(data);
-      }
-    } catch (err) {
-      console.log('Data fetch error:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Saved address helpers
-  const saveSavedAddressesList = async (list: SavedAddress[]) => {
-    setSavedAddresses(list);
-    await AsyncStorage.setItem('zenvy_saved_addresses', JSON.stringify(list));
-  };
-
-  const handleAddAddress = () => {
-    if (!newAddr.label || !newAddr.address) {
-      Alert.alert('Required Fields', 'Please fill in the Label and Address fields.');
-      return;
-    }
-    const updated = [...savedAddresses, newAddr];
-    saveSavedAddressesList(updated);
-    setNewAddr({ label: '', address: '', city: 'Amaravathi' });
-    setAddingAddress(false);
-  };
-
-  const handleDeleteAddress = (idx: number) => {
-    const target = savedAddresses[idx];
-    Alert.alert(
-      'Delete Saved Address?',
-      `Are you sure you want to remove "${target?.label || 'this address'}" from your saved locations?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            const updated = savedAddresses.filter((_, i) => i !== idx);
-            saveSavedAddressesList(updated);
-          },
-        },
-      ]
-    );
-  };
-
-  // Dietary helpers
-  const saveDietPreferences = async (updated: DietPrefs) => {
-    setDietPrefs(updated);
-    updateDietPrefs(updated);
-    await AsyncStorage.setItem('zenvy_diet_prefs', JSON.stringify(updated));
-  };
-
-  const handleAddAllergy = () => {
-    if (!customAllergy.trim()) return;
-    const updatedCustom = [...(dietPrefs.custom || []), customAllergy.trim()];
-    saveDietPreferences({ ...dietPrefs, custom: updatedCustom });
-    setCustomAllergy('');
-  };
-
-  const handleRemoveAllergy = (idx: number) => {
-    const updatedCustom = (dietPrefs.custom || []).filter((_, i) => i !== idx);
-    saveDietPreferences({ ...dietPrefs, custom: updatedCustom });
-  };
-
-  // Notification helpers
-  const saveNotifPreferences = async (updated: NotifPrefs) => {
-    setNotifPrefs(updated);
-    await AsyncStorage.setItem('zenvy_notif_prefs', JSON.stringify(updated));
-  };
+  // A phone that never picked a filter starts with the one saved on the account.
+  const dietHydratedRef = useRef(false);
+  useEffect(() => {
+    if (dietHydratedRef.current || !user) return;
+    dietHydratedRef.current = true;
+    const fromServer = SERVER_TO_DIET[String((user as any)?.dietaryPreference || '')];
+    if (!fromServer || fromServer === 'all' || dietPrefs.mode !== 'all') return;
+    AsyncStorage.getItem('zenvy_diet_prefs').then((raw) => {
+      if (!raw) updateDietPrefs({ ...dietPrefs, mode: fromServer });
+    }).catch(() => {});
+  }, [user, dietPrefs, updateDietPrefs]);
 
   const handleEnablePush = async (silent = false) => {
     if (Platform.OS === 'web' || !Notifications) {
-      if (!silent) Alert.alert('Not Supported', 'Push notifications are not supported on this device.');
+      if (!silent) Alert.alert('Not supported', 'Push notifications are not available on this device.');
       return;
     }
     try {
@@ -303,7 +276,7 @@ export default function ProfileScreen() {
         finalStatus = status;
       }
       if (finalStatus !== 'granted') {
-        if (!silent) Alert.alert('Permission Denied', 'Please enable notification permissions in your device settings to receive delivery updates.');
+        if (!silent) Alert.alert('Notifications are off', 'Turn on notifications for Zenvy in your phone settings to get order updates.');
         return;
       }
 
@@ -315,34 +288,60 @@ export default function ProfileScreen() {
         console.warn('FCM native token failed, trying Expo fallback:', deviceError);
         let projectId = Constants.expoConfig?.extra?.eas?.projectId || Constants.easConfig?.projectId;
         if (!projectId || projectId === 'your-eas-project-id') {
-          projectId = undefined; 
+          projectId = undefined;
         }
         const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
         fcmToken = tokenData.data;
       }
+      if (!fcmToken) throw new Error('No push token');
 
-      // Send to backend
       const res = await apiFetch(`${API_URL}/api/users/fcm-token`, {
         method: 'POST',
-        body: JSON.stringify({
-          fcmToken,
-          appVersion: '1.0.0'
-        })
+        body: JSON.stringify({ fcmToken, appVersion: APP_VERSION, platform: Platform.OS }),
       });
 
       if (res.ok) {
-        if (!silent) Alert.alert('Success', 'Live delivery updates have been activated for this device!');
-      } else {
+        AsyncStorage.setItem('zenvy_push_token', fcmToken).catch(() => {});
+        if (mountedRef.current) setPushOn(true);
+        if (!silent && mountedRef.current) {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+          Alert.alert('You’re all set 🔔', 'We’ll notify you about your orders on this phone.');
+        }
+      } else if (!silent && mountedRef.current) {
         const errData = await res.json().catch(() => ({}));
-        if (!silent) Alert.alert('Activation Failed', errData.message || 'Could not sync token with server.');
+        Alert.alert('Couldn’t turn on notifications', errData.message || 'Please try again in a moment.');
       }
     } catch (err: any) {
       console.warn('Push registration error:', err);
-      if (!silent) Alert.alert('Error', 'An error occurred while enabling notifications. Please try again.');
+      if (!silent && mountedRef.current) Alert.alert('Couldn’t turn on notifications', 'Please try again in a moment.');
     }
   };
 
-  // Profile Edit helpers
+  // ── Profile editor ──
+  const openEditor = () => {
+    setEditName(user?.name || '');
+    setEditPhone(user?.phone || '');
+    setEditEmail(user?.email || '');
+    setEditAbout((user?.about || '').slice(0, BIO_MAX));
+    setEditAddress(user?.address || '');
+    setEditCity(user?.city || '');
+    setEditProfileImage(user?.profileImage || null);
+    setOtpSent(false);
+    setOtpCode('');
+    setSuggestions([]);
+    setShowSuggestions(false);
+    setIsEditing(true);
+  };
+
+  const closeEditor = () => {
+    if (savingRef.current) return;
+    if (suggestTimeout.current) clearTimeout(suggestTimeout.current);
+    setIsEditing(false);
+    setOtpSent(false);
+    setOtpCode('');
+    setShowSuggestions(false);
+  };
+
   const fetchAddressSuggestions = (query: string) => {
     if (suggestTimeout.current) clearTimeout(suggestTimeout.current);
     if (query.length < 3) {
@@ -355,11 +354,12 @@ export default function ProfileScreen() {
         const res = await fetch(
           `${API_URL}/api/system/nominatim-proxy?type=search&format=json&q=${encodeURIComponent(query)}&countrycodes=in&addressdetails=1&limit=5`
         );
-        const results = await res.json();
-        setSuggestions(results || []);
-        setShowSuggestions(true);
+        const results = res.ok ? await res.json() : [];
+        if (!mountedRef.current) return;
+        setSuggestions(Array.isArray(results) ? results : []);
+        setShowSuggestions(Array.isArray(results) && results.length > 0);
       } catch (err) {
-        setSuggestions([]);
+        if (mountedRef.current) setSuggestions([]);
       }
     }, 400);
   };
@@ -367,9 +367,9 @@ export default function ProfileScreen() {
   const handleSelectSuggestion = (item: any) => {
     const addr = item.address || {};
     const parts = [item.name, addr.road || addr.neighbourhood, addr.suburb || addr.village, addr.state_district].filter(Boolean);
-    const city = addr.city || addr.town || addr.county || addr.state_district || 'Amaravathi';
-    setEditAddress(parts.join(', ') || item.display_name);
-    setEditCity(city);
+    const city = addr.city || addr.town || addr.county || addr.state_district || '';
+    setEditAddress((parts.join(', ') || item.display_name || '').slice(0, 200));
+    if (city) setEditCity(String(city).slice(0, 60));
     setSuggestions([]);
     setShowSuggestions(false);
   };
@@ -378,108 +378,187 @@ export default function ProfileScreen() {
     try {
       const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (permissionResult.granted === false) {
-        Alert.alert("Permission Required", "You need to allow camera roll access to upload a profile picture.");
+        Alert.alert('Photo access needed', 'Allow access to your photos to pick a profile picture.');
         return;
       }
 
       setUploadingImage(true);
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.15,
         base64: true,
       });
 
-      if (!result.canceled && result.assets && result.assets.length > 0) {
+      if (!result.canceled && result.assets && result.assets.length > 0 && result.assets[0].base64) {
         const asset = result.assets[0];
-        const base64Image = `data:image/jpeg;base64,${asset.base64}`;
-        setEditProfileImage(base64Image);
-        Alert.alert('Image Selected', 'Local profile image selected successfully. Save profile to sync.');
+        if (mountedRef.current) setEditProfileImage(`data:image/jpeg;base64,${asset.base64}`);
       }
     } catch (err) {
       console.warn('Profile image selection error:', err);
-      Alert.alert('Upload Failed', 'Could not select or process profile image.');
+      if (mountedRef.current) Alert.alert('Couldn’t use that photo', 'Please try a different picture.');
     } finally {
-      setUploadingImage(false);
+      if (mountedRef.current) setUploadingImage(false);
+    }
+  };
+
+  const normalizedEditPhone = digitsOnly(editPhone);
+  const phoneChanged = !!normalizedEditPhone && normalizedEditPhone !== digitsOnly(user?.phone || '');
+
+  const sendPhoneOtp = async () => {
+    if (sendingOtp || resendIn > 0) return;
+    if (!PHONE_RE.test(normalizedEditPhone)) {
+      Alert.alert('Check your number', 'Enter a valid 10-digit Indian mobile number.');
+      return;
+    }
+    setSendingOtp(true);
+    try {
+      const res = await apiFetch(`${API_URL}/api/users/send-otp`, {
+        method: 'POST',
+        body: JSON.stringify({ phone: normalizedEditPhone, purpose: 'change_phone' }),
+      });
+      const data = await res.json().catch(() => ({} as any));
+      if (!mountedRef.current) return;
+      if (res.ok) {
+        setOtpSent(true);
+        setOtpCode('');
+        setResendIn(Number(data?.resendAfter) || 60);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      } else {
+        if (data?.retryAfter) setResendIn(Number(data.retryAfter) || 0);
+        Alert.alert('Couldn’t send the code', data?.message || 'Please try again in a minute.');
+      }
+    } catch {
+      if (mountedRef.current) Alert.alert('No connection', 'Check your internet and try again.');
+    } finally {
+      if (mountedRef.current) setSendingOtp(false);
     }
   };
 
   const handleUpdateProfile = async () => {
-    try {
-      const newImg = editProfileImage !== undefined && editProfileImage !== null ? editProfileImage : (user?.profileImage || null);
-      const localUpdated = {
-        ...user,
-        name: editName,
-        phone: editPhone,
-        email: editEmail,
-        about: editAbout,
-        address: editAddress,
-        city: editCity,
-        profileImage: newImg,
-      };
+    if (savingRef.current) return;
+    const name = editName.trim();
+    const email = editEmail.trim().toLowerCase();
+    if (name.length < 2) {
+      Alert.alert('Add your name', 'Please enter your name (at least 2 letters).');
+      return;
+    }
+    if (!PHONE_RE.test(normalizedEditPhone)) {
+      Alert.alert('Check your number', 'Enter a valid 10-digit Indian mobile number.');
+      return;
+    }
+    if (email && !EMAIL_RE.test(email)) {
+      Alert.alert('Check your email', 'That email address doesn’t look right.');
+      return;
+    }
+    if (editProfileImage && !/^(https?:\/\/|data:image\/)/i.test(editProfileImage)) {
+      Alert.alert('Check the photo link', 'Paste a full image link starting with https://, or choose a photo from your gallery.');
+      return;
+    }
+    if (phoneChanged) {
+      if (!otpSent) {
+        sendPhoneOtp();
+        return;
+      }
+      if (!/^\d{6}$/.test(otpCode)) {
+        Alert.alert('Enter the code', `Type the 6-digit code we sent to +91 ${normalizedEditPhone}.`);
+        return;
+      }
+    }
 
+    const body: any = {
+      name,
+      phone: normalizedEditPhone,
+      email,
+      about: editAbout.trim().slice(0, BIO_MAX),
+      address: editAddress.trim().slice(0, 200),
+      city: editCity.trim().slice(0, 60),
+      profileImage: editProfileImage || null,
+    };
+    if (phoneChanged) body.otp = otpCode;
+
+    savingRef.current = true;
+    setSavingProfile(true);
+    try {
       const response = await apiFetch(`${API_URL}/api/users/profile`, {
         method: 'PUT',
-        body: JSON.stringify({
-          name: editName,
-          phone: editPhone,
-          email: editEmail,
-          about: editAbout,
-          address: editAddress,
-          city: editCity,
-          profileImage: newImg,
-        }),
+        body: JSON.stringify(body),
       });
-
+      const data = await response.json().catch(() => ({} as any));
+      if (!mountedRef.current) return;
       if (response.ok) {
-        const updated = await response.json();
-        const mergedUser = { ...localUpdated, ...updated, profileImage: newImg };
-        setUser(mergedUser);
-        setIsEditing(false);
-        Alert.alert('Profile Updated', 'Your profile details and photo have been updated successfully.');
+        // Never replace the account with the bare form body (it has no _id, wallet, badges…).
+        setUser(data && typeof data === 'object' && Object.keys(data).length ? data : { ...user, ...body });
+        savingRef.current = false;
+        closeEditor();
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        Alert.alert('Profile updated ✨', 'Your changes are saved.');
       } else {
-        const err = await response.json().catch(() => ({}));
-        Alert.alert('Update Failed', err.message || 'Server could not save profile updates. Please check your inputs.');
+        if (data?.code === 'OTP_EXPIRED' || data?.code === 'OTP_LOCKED') {
+          setOtpSent(false);
+          setOtpCode('');
+        }
+        Alert.alert('Couldn’t save', data?.message || 'Please check your details and try again.');
       }
     } catch (e: any) {
-      Alert.alert('Update Error', e.message || 'Network error while updating profile.');
+      if (mountedRef.current) Alert.alert('No connection', 'Check your internet and try again.');
+    } finally {
+      savingRef.current = false;
+      if (mountedRef.current) setSavingProfile(false);
     }
   };
 
-  // Gifting helper
-  const handleSendGift = async (amt: number) => {
-    if (!giftPhone) {
-      Alert.alert('Error', "Please enter your friend's phone number.");
-      return;
-    }
+  // ── Gifting (Elite perk) ──
+  const sendGift = async (amt: number, phone: string) => {
+    if (giftRef.current) return;
+    giftRef.current = true;
+    setSendingGift(true);
     try {
       const res = await apiFetch(`${API_URL}/api/features/gift`, {
         method: 'POST',
-        body: JSON.stringify({ recipientPhone: giftPhone, amount: amt }),
+        body: JSON.stringify({ recipientPhone: phone, amount: amt }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({} as any));
+      if (!mountedRef.current) return;
       if (res.ok) {
-        Alert.alert('Success', data.message || `₹${amt} gift sent successfully! 🎁`);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        Alert.alert('Gift sent 🎁', data.message || `₹${amt} is on its way to your friend.`);
         setGiftPhone('');
-        fetchData();
+        fetchData('focus');
       } else {
-        Alert.alert('Error', data.message || 'Gift transaction failed.');
+        Alert.alert('Couldn’t send the gift', data.message || 'Please try again.');
       }
     } catch {
-      Alert.alert('Error', 'Network error during transaction.');
+      if (mountedRef.current) Alert.alert('No connection', 'Your gift was not sent. Check your internet and try again.');
+    } finally {
+      giftRef.current = false;
+      if (mountedRef.current) setSendingGift(false);
     }
   };
 
-  const qrValue = [
-    'BEGIN:VCARD',
-    'VERSION:3.0',
-    `FN:${user?.name || 'Zenvy User'}`,
-    `TEL;TYPE=CELL:+91${user?.phone || ''}`,
-    `ADR;TYPE=HOME:;;${user?.address || ''};${user?.city || 'Amaravathi'};;;India`,
-    `NOTE:Zenvy ${user?.isElite ? 'Elite' : 'Standard'} Member — ${user?.city || 'Amaravathi'}`,
-    'END:VCARD',
-  ].join('\n');
+  const handleSendGift = (amt: number) => {
+    if (giftRef.current) return;
+    const phone = digitsOnly(giftPhone);
+    if (!PHONE_RE.test(phone)) {
+      Alert.alert('Check the number', "Enter your friend's 10-digit mobile number.");
+      return;
+    }
+    if (phone === digitsOnly(user?.phone || '')) {
+      Alert.alert('That’s you!', 'Enter a friend’s number to send a gift.');
+      return;
+    }
+    Alert.alert('Send this gift?', `₹${amt} from your Zenvy Wallet to +91 ${phone}.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: `Send ₹${amt}`, onPress: () => sendGift(amt, phone) },
+    ]);
+  };
+
+  const copyText = (value: string, title: string) => {
+    Clipboard.setString(value);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    Alert.alert(title, value);
+  };
 
   if (!user) {
     return (
@@ -487,19 +566,19 @@ export default function ProfileScreen() {
         <AmbientBackground />
         <Text style={{ fontSize: 48, marginBottom: 16 }}>🔐</Text>
         <Text style={{ fontSize: 18, fontWeight: '900', color: txt, letterSpacing: 2, textAlign: 'center', marginBottom: 8 }}>
-          AUTHENTICATION REQUIRED
+          SIGN IN TO CONTINUE
         </Text>
         <Text style={{ fontSize: 11, color: txtSec, fontWeight: '600', textAlign: 'center', marginBottom: 24, lineHeight: 18 }}>
-          Please sign in to access your secure Zenvy profile, orders, and elite campus benefits.
+          Sign in to see your profile, orders, coupons and rewards.
         </Text>
-        <TouchableOpacity 
-          style={{ 
-            backgroundColor: COLORS.red, 
-            paddingHorizontal: 32, 
-            paddingVertical: 14, 
-            borderRadius: 16, 
-            ...SHADOWS.redGlow 
-          }} 
+        <TouchableOpacity
+          style={{
+            backgroundColor: COLORS.red,
+            paddingHorizontal: 32,
+            paddingVertical: 14,
+            borderRadius: 16,
+            ...SHADOWS.redGlow
+          }}
           onPress={() => router.push('/login' as any)}
         >
           <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '900', letterSpacing: 2 }}>SIGN IN / SIGN UP</Text>
@@ -508,38 +587,38 @@ export default function ProfileScreen() {
     );
   }
 
+  const friendCode: string | null = user?.friendCode || null;
+  const referralCode: string | null = user?.referralCode || null;
+  const monthlySpend: any[] = Array.isArray(spendStats?.monthlySpend) ? spendStats.monthlySpend : [];
+  const topItems: any[] = Array.isArray(spendStats?.topItems) ? spendStats.topItems : [];
+  const hasSpend = monthlySpend.some((m) => Number(m?.total) > 0) || topItems.length > 0;
+  const favRestaurant = spendStats?.favoriteRestaurant && spendStats.favoriteRestaurant !== 'N/A' ? spendStats.favoriteRestaurant : '—';
+  const isDataUriImage = typeof editProfileImage === 'string' && editProfileImage.startsWith('data:');
+  const inputBg = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)';
+
   return (
     <View style={[s.container, { backgroundColor: bg }]}>
       <AmbientBackground />
-      <ScrollView 
-        showsVerticalScrollIndicator={false} 
+      <ScrollView
+        showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 120 }}
         refreshControl={
           <RefreshControl
-            refreshing={loading}
-            onRefresh={fetchData}
+            refreshing={refreshing}
+            onRefresh={() => fetchData('pull')}
             tintColor={goldColor}
             colors={[goldColor]}
           />
         }
       >
-        
-        {/* Profile Card & Identity Code */}
+
+        {/* Profile Card */}
         <StaggeredSection delay={100} direction="down">
           <View style={[s.profileCard, { backgroundColor: cardBg, borderColor: border }]}>
-            
+
             {/* Top row: Avatar + Zenvy Badge / Streak */}
             <View style={s.profileCardHeader}>
-              <TouchableOpacity onPress={() => {
-                setEditName(user?.name || '');
-                setEditPhone(user?.phone || '');
-                setEditEmail(user?.email || '');
-                setEditAbout(user?.about || '');
-                setEditAddress(user?.address || '');
-                setEditCity(user?.city || 'Amaravathi');
-                setEditProfileImage(user?.profileImage || null);
-                setIsEditing(true);
-              }}>
+              <TouchableOpacity onPress={openEditor} accessibilityLabel="Edit profile">
                 <View style={s.avatarOuterRing}>
                   <LinearGradient
                     colors={isDark ? [goldColor, '#FFF', '#C9962C'] : ['#EF4F5F', '#FF7E8B', '#E03546']}
@@ -548,23 +627,18 @@ export default function ProfileScreen() {
                     style={s.avatarRingGradient}
                   >
                     <View style={[s.avatar, { backgroundColor: isDark ? '#141416' : '#FFF' }]}>
-                      {user?.profileImage ? (
-                        <SafeImage 
-                          key={`profile_avatar_${user.profileImage}`}
-                          source={{ uri: user.profileImage }} 
-                          fallbackUri="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&q=80"
-                          style={s.avatarImg} 
-                        />
-                      ) : (
-                        <Text style={[s.avatarText, { color: isDark ? goldColor : '#EF4F5F' }]}>{initials}</Text>
-                      )}
+                      <Avatar
+                        uri={user?.profileImage}
+                        style={s.avatarImg}
+                        fallback={<Text style={[s.avatarText, { color: isDark ? goldColor : '#EF4F5F' }]}>{initials}</Text>}
+                      />
                     </View>
                   </LinearGradient>
-                  {user?.streakCount && user.streakCount > 0 && (
+                  {streak > 0 ? (
                     <View style={[s.streakBadge, { borderColor: isDark ? goldColor : '#FFF', backgroundColor: isDark ? '#000' : '#EF4F5F' }]}>
-                      <Text style={s.streakBadgeText}>🔥 {user.streakCount}</Text>
+                      <Text style={s.streakBadgeText}>🔥 {streak}</Text>
                     </View>
-                  )}
+                  ) : null}
                 </View>
               </TouchableOpacity>
 
@@ -576,60 +650,57 @@ export default function ProfileScreen() {
                     <View style={s.zenvyDot} />
                   </View>
                 </View>
-                
+
                 <TouchableOpacity style={[s.streakCapsule, { borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)', backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)' }]} onPress={() => router.push('/rewards')}>
-                  <Text style={[s.streakCapsuleText, { color: txt }]}>🔥 {user?.streakCount || 0} Day Streak</Text>
+                  <Text style={[s.streakCapsuleText, { color: txt }]}>🔥 {streak} Day Streak</Text>
                 </TouchableOpacity>
               </View>
             </View>
 
-            {/* Name, Tier & ZV code */}
+            {/* Name & tier */}
             <Text style={[s.name, { color: txt }]}>{(user?.name || 'ZENVY MEMBER').toUpperCase()}</Text>
             <Text style={[s.tierText, { color: goldColor }]}>
-              {user?.isElite ? 'ELITE MEMBER' : 'EXPLORER TIER'} • SINCE {user?.createdAt ? new Date(user.createdAt).getFullYear() : '2024'}
+              {user?.isElite ? 'ELITE MEMBER' : 'ZENVY MEMBER'}
+              {user?.createdAt ? ` • SINCE ${new Date(user.createdAt).getFullYear()}` : ''}
             </Text>
 
-            <TouchableOpacity style={[s.barcodeBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F6' }]} onPress={() => setShowQR(true)}>
-              <View style={s.barcodeLines}>
-                <View style={[s.barcodeLine, { backgroundColor: txt, width: 2 }]} />
-                <View style={[s.barcodeLine, { backgroundColor: txt, width: 1 }]} />
-                <View style={[s.barcodeLine, { backgroundColor: txt, width: 3 }]} />
-                <View style={[s.barcodeLine, { backgroundColor: txt, width: 1 }]} />
-                <View style={[s.barcodeLine, { backgroundColor: txt, width: 2 }]} />
-              </View>
-              <Text style={[s.barcodeText, { color: txtSec }]}>
-                {user?.friendCode ? user.friendCode : `ZV-${(user?._id || user?.id || '0000').slice(-6).toUpperCase()}`}
-              </Text>
-            </TouchableOpacity>
+            {friendCode ? (
+              <TouchableOpacity
+                style={[s.barcodeBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F6' }]}
+                onPress={() => copyText(friendCode, 'Friend code copied')}
+                accessibilityLabel="Copy friend code"
+              >
+                <Text style={{ fontSize: 12 }}>🤝</Text>
+                <Text style={[s.barcodeText, { color: txtSec }]}>FRIEND CODE {friendCode}</Text>
+              </TouchableOpacity>
+            ) : null}
 
-            {/* Primary Address Pinpoint widget */}
+            {/* Primary Address */}
             <TouchableOpacity
               style={[s.primaryAddressBox, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F6', borderColor: border }]}
-              onPress={() => setIsEditing(true)}
+              onPress={openEditor}
             >
               <Text style={{ fontSize: 14 }}>📍</Text>
               <Text style={[s.primaryAddressText, { color: txt }]} numberOfLines={1}>
-                {user?.address || 'Set your primary hostel room & block'}
+                {user?.address || 'Set your hostel room & block'}
               </Text>
               <Text style={[s.editAddrText, { color: goldColor }]}>EDIT</Text>
             </TouchableOpacity>
 
-            {/* User Bio and Contact Telemetry Widget */}
+            {/* Bio and contact */}
             <View style={{ width: '100%', gap: 10, marginVertical: 12 }}>
-              {/* Bio/About */}
-              <View style={{ padding: 12, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#F9FAFB', borderRadius: 12, borderWidth: 1, borderColor: border }}>
+              <TouchableOpacity activeOpacity={0.8} onPress={openEditor} style={{ padding: 12, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#F9FAFB', borderRadius: 12, borderWidth: 1, borderColor: border }}>
                 <Text style={{ fontSize: 10, fontWeight: '800', color: goldColor, letterSpacing: 1.5, marginBottom: 4 }}>ABOUT ME</Text>
                 <Text style={{ fontSize: 13, color: txt, fontStyle: user?.about ? 'normal' : 'italic', lineHeight: 18 }}>
-                  {user?.about || 'No bio written yet. Tap edit to write something about yourself!'}
+                  {user?.about || 'No bio yet. Tap to write something about yourself!'}
                 </Text>
-              </View>
+              </TouchableOpacity>
 
-              {/* Mobile & Email Row */}
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 <View style={{ flex: 1, padding: 12, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#F9FAFB', borderRadius: 12, borderWidth: 1, borderColor: border }}>
                   <Text style={{ fontSize: 10, fontWeight: '800', color: txtSec, letterSpacing: 1, marginBottom: 4 }}>MOBILE</Text>
                   <Text style={{ fontSize: 13, fontWeight: '700', color: txt }} numberOfLines={1}>
-                    {user?.phone || 'Not set'}
+                    {user?.phone ? `+91 ${user.phone}` : 'Not set'}
                   </Text>
                 </View>
                 <View style={{ flex: 1, padding: 12, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#F9FAFB', borderRadius: 12, borderWidth: 1, borderColor: border }}>
@@ -641,119 +712,79 @@ export default function ProfileScreen() {
               </View>
             </View>
 
-            {/* Identity Telemetry Grid */}
+            {/* Stats */}
             <View style={[s.telemetryContainer, { backgroundColor: isDark ? '#1C1B1F' : '#FAFAFA', borderColor: border }]}>
               <View style={s.telemetryGrid}>
                 <View style={s.telemetryItem}>
-                  <Text style={s.telemetryLabel}>TOTAL ORDERS</Text>
-                  <Text style={[s.telemetryVal, { color: txt }]}>{user?.totalOrders || 0}</Text>
+                  <Text style={s.telemetryLabel}>DELIVERED</Text>
+                  <Text style={[s.telemetryVal, { color: txt }]}>{completedOrders}</Text>
                 </View>
                 <View style={[s.telemetryItem, s.telemetryBorder]}>
                   <Text style={s.telemetryLabel}>ZEN POINTS</Text>
-                  <Text style={[s.telemetryVal, { color: goldColor }]}>{user?.zenPoints || 0}</Text>
+                  <Text style={[s.telemetryVal, { color: goldColor }]}>{Number(user?.zenPoints) || 0}</Text>
                 </View>
                 <View style={s.telemetryItem}>
-                  <Text style={s.telemetryLabel}>TIER STATUS</Text>
+                  <Text style={s.telemetryLabel}>WALLET</Text>
                   <Text style={[s.telemetryVal, { color: goldColor, fontSize: 13 }]}>
-                    {user?.isElite ? 'ELITE' : 'EXPLORER'}
+                    ₹{Number(user?.walletBalance) || 0}
                   </Text>
                 </View>
               </View>
 
               <View style={s.progressContainer}>
                 <View style={s.progressLabels}>
-                  <Text style={s.progressTitle}>DISTANCE TO ELITE TIER</Text>
+                  <Text style={s.progressTitle}>{nextMilestone ? `NEXT BADGE: ${nextMilestone.name.toUpperCase()}` : allBadgesUnlocked ? 'ALL ORDER BADGES UNLOCKED' : 'ORDER BADGES'}</Text>
                   <Text style={[s.progressVal, { color: goldColor }]}>
-                    {user?.isElite 
-                      ? '👑 ELITE ACTIVE' 
-                      : `${Math.min(user?.totalOrders || user?.completedOrders || 0, 20)} / 20 Orders (${Math.min(Math.round(((user?.totalOrders || user?.completedOrders || 0) / 20) * 100), 100)}%)`}
+                    {nextMilestone ? `${completedOrders} / ${nextMilestone.threshold}` : allBadgesUnlocked ? '👑' : `${completedOrders}`}
                   </Text>
                 </View>
                 <View style={[s.progressBarBg, { backgroundColor: isDark ? '#000' : '#E0E0E0' }]}>
-                  <View
-                    style={[
-                      s.progressBarFill,
-                      {
-                        backgroundColor: goldColor,
-                        width: `${user?.isElite ? 100 : Math.min(((user?.totalOrders || user?.completedOrders || 0) / 20) * 100, 100)}%`,
-                      },
-                    ]}
-                  />
+                  <View style={[s.progressBarFill, { backgroundColor: goldColor, width: `${milestonePct}%` }]} />
                 </View>
               </View>
             </View>
 
           </View>
-        </StaggeredSection>
-
-        {/* 🏠 Saved Addresses */}
-        <StaggeredSection delay={150} direction="up">
-          <View style={s.sectionHeader}>
-            <Text style={[s.sectionTitleText, { color: isDark ? goldColor : '#111' }]}>SAVED ADDRESSES</Text>
-            <TouchableOpacity onPress={() => setAddingAddress(true)}>
-              <Text style={[s.sectionAddBtn, { color: goldColor }]}>+ ADD NEW</Text>
-            </TouchableOpacity>
-          </View>
-
-          {savedAddresses.length === 0 ? (
-            <View style={[s.emptyCard, { backgroundColor: cardBg, borderColor: border }]}>
-              <Text style={[s.emptyText, { color: txtSec }]}>No saved addresses yet</Text>
-              <Text style={[s.emptySubText, { color: txtSec }]}>Save Hostel Room, Class Block, Gate-2...</Text>
-            </View>
-          ) : (
-            savedAddresses.map((sa, i) => (
-              <View key={i} style={[s.savedAddressCard, { backgroundColor: cardBg, borderColor: border }]}>
-                <View style={s.savedAddressLeft}>
-                  <View style={s.savedAddressIconBox}>
-                    <Text style={{ fontSize: 15 }}>📍</Text>
-                  </View>
-                  <View>
-                    <Text style={[s.savedAddressLabel, { color: goldColor }]}>{sa.label}</Text>
-                    <Text style={[s.savedAddressVal, { color: txt }]}>{sa.address}</Text>
-                  </View>
-                </View>
-                <TouchableOpacity onPress={() => handleDeleteAddress(i)}>
-                  <Text style={s.deleteBtnText}>✕</Text>
-                </TouchableOpacity>
-              </View>
-            ))
-          )}
         </StaggeredSection>
 
         {/* 🥗 Dietary Preferences */}
         <StaggeredSection delay={180} direction="up">
-          <Text style={[s.sectionTitleText, { color: isDark ? goldColor : '#111' }]}>DIETARY PREFERENCES</Text>
+          <Text style={[s.sectionTitleText, { color: isDark ? goldColor : '#111' }]}>FOOD PREFERENCE</Text>
           <View style={[s.dietCard, { backgroundColor: cardBg, borderColor: border }]}>
-            
-            <Text style={[s.dietLabel, { color: txtSec }]}>CULINARY ACCESS FILTER</Text>
+            <Text style={[s.dietLabel, { color: txtSec }]}>FILTER MENUS EVERYWHERE YOU ORDER</Text>
             <View style={s.dietModeGrid}>
-              {[
-                { id: 'all', label: 'ALL ACCESS', icon: '🍽️' },
+              {([
+                { id: 'all', label: 'EVERYTHING', icon: '🍽️' },
                 { id: 'veg', label: 'VEG ONLY', icon: '🥦' },
-                { id: 'egg', label: 'EGGARIAN', icon: '🍳' },
+                { id: 'egg', label: 'EGGETARIAN', icon: '🍳' },
                 { id: 'non-veg', label: 'NON-VEG', icon: '🍗' },
-              ].map((opt) => (
-                <TouchableOpacity
-                  key={opt.id}
-                  style={[
-                    s.dietModeBtn,
-                    {
-                      backgroundColor: dietPrefs.mode === opt.id ? goldColor : 'rgba(255,255,255,0.05)',
-                      borderColor: dietPrefs.mode === opt.id ? goldColor : border,
-                    },
-                  ]}
-                  onPress={() => saveDietPreferences({ ...dietPrefs, mode: opt.id as any })}
-                >
-                  <Text style={[s.dietModeBtnText, { color: dietPrefs.mode === opt.id ? '#000' : txt }]}>
-                    {opt.icon} {opt.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+              ] as const).map((opt) => {
+                const active = dietPrefs.mode === opt.id
+                  || (opt.id === 'egg' && dietPrefs.mode === 'eggarian')
+                  || (opt.id === 'non-veg' && dietPrefs.mode === 'nonveg');
+                return (
+                  <TouchableOpacity
+                    key={opt.id}
+                    style={[
+                      s.dietModeBtn,
+                      {
+                        backgroundColor: active ? goldColor : (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)'),
+                        borderColor: active ? goldColor : border,
+                      },
+                    ]}
+                    onPress={() => saveDietMode(opt.id)}
+                  >
+                    <Text style={[s.dietModeBtnText, { color: active ? '#000' : txt }]}>
+                      {opt.icon} {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
 
             <View style={s.divider} />
 
-            <Text style={[s.dietLabel, { color: txtSec }]}>ALLERGY FLAGS</Text>
+            <Text style={[s.dietLabel, { color: txtSec }]}>HIDE DISHES WITH</Text>
             <View style={s.allergyRow}>
               {([
                 { key: 'nuts', label: '🥜 Nuts' },
@@ -765,20 +796,27 @@ export default function ProfileScreen() {
                   style={[
                     s.allergyBadge,
                     {
-                      backgroundColor: dietPrefs[key] ? 'rgba(239, 68, 68, 0.15)' : 'rgba(255,255,255,0.05)',
+                      backgroundColor: dietPrefs[key] ? 'rgba(239, 68, 68, 0.15)' : (isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)'),
                       borderColor: dietPrefs[key] ? '#EF4444' : border,
                     },
                   ]}
-                  onPress={() => saveDietPreferences({ ...dietPrefs, [key]: !dietPrefs[key] })}
+                  onPress={() => {
+                    Haptics.selectionAsync().catch(() => {});
+                    updateDietPrefs({ ...dietPrefs, [key]: !dietPrefs[key] });
+                  }}
                 >
                   <Text style={[s.allergyBadgeText, { color: dietPrefs[key] ? '#EF4444' : txt }]}>{label}</Text>
                 </TouchableOpacity>
               ))}
 
-              {dietPrefs.custom?.map((a, i) => (
-                <View key={i} style={[s.allergyBadge, { backgroundColor: 'rgba(239, 68, 68, 0.15)', borderColor: '#EF4444' }]}>
+              {(dietPrefs.custom || []).map((a, i) => (
+                <View key={`${a}-${i}`} style={[s.allergyBadge, { backgroundColor: 'rgba(239, 68, 68, 0.15)', borderColor: '#EF4444' }]}>
                   <Text style={[s.allergyBadgeText, { color: '#EF4444' }]}>🚫 {a}</Text>
-                  <TouchableOpacity onPress={() => handleRemoveAllergy(i)} style={{ marginLeft: 6 }}>
+                  <TouchableOpacity
+                    onPress={() => updateDietPrefs({ ...dietPrefs, custom: (dietPrefs.custom || []).filter((_, j) => j !== i) })}
+                    style={{ marginLeft: 6 }}
+                    accessibilityLabel={`Remove ${a}`}
+                  >
                     <Text style={{ color: '#EF4444', fontWeight: 'bold', fontSize: 10 }}>✕</Text>
                   </TouchableOpacity>
                 </View>
@@ -789,103 +827,90 @@ export default function ProfileScreen() {
               <TextInput
                 value={customAllergy}
                 onChangeText={setCustomAllergy}
-                placeholder="Add other allergy (Soy, Shellfish...)"
+                placeholder="Other allergy (soy, shellfish…)"
                 placeholderTextColor={isDark ? '#666' : '#999'}
+                maxLength={30}
                 style={[s.allergyInput, { color: txt, borderColor: border, backgroundColor: isDark ? 'rgba(0,0,0,0.2)' : '#FFF' }]}
               />
-              <TouchableOpacity style={[s.allergyAddBtn, { backgroundColor: goldColor }]} onPress={handleAddAllergy}>
+              <TouchableOpacity
+                style={[s.allergyAddBtn, { backgroundColor: goldColor }]}
+                onPress={() => {
+                  const v = customAllergy.trim();
+                  if (!v) return;
+                  const existing = dietPrefs.custom || [];
+                  if (!existing.some((c) => String(c).toLowerCase() === v.toLowerCase())) {
+                    updateDietPrefs({ ...dietPrefs, custom: [...existing, v] });
+                  }
+                  setCustomAllergy('');
+                }}
+              >
                 <Text style={s.allergyAddBtnText}>ADD</Text>
               </TouchableOpacity>
             </View>
-
+            <Text style={{ fontSize: 9, color: txtSec, marginTop: 6 }}>Only dishes the store has marked with that allergen are hidden.</Text>
           </View>
         </StaggeredSection>
 
         {/* 🔔 Notifications */}
         <StaggeredSection delay={200} direction="up">
-          <View style={s.sectionHeader}>
-            <Text style={[s.sectionTitleText, { color: isDark ? goldColor : '#111' }]}>NOTIFICATIONS</Text>
-            <TouchableOpacity style={[s.pushBtn, { borderColor: goldColor }]} onPress={() => handleEnablePush(false)}>
-              <Text style={[s.pushBtnText, { color: goldColor }]}>ENABLE PUSH</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={[s.notifCard, { backgroundColor: cardBg, borderColor: border }]}>
-            {([
-              { key: 'orders', emoji: '🛵', label: 'Order Updates', desc: 'Placed, accepted, delivered' },
-              { key: 'surge', emoji: '⚡', label: 'Surge Alerts', desc: 'High demand zone notifications' },
-              { key: 'promos', emoji: '🎁', label: 'Promotions', desc: 'Deals, rewards, special offers' },
-            ] as const).map(({ key, emoji, label, desc }) => (
-              <View key={key} style={s.notifRow}>
-                <View style={s.notifLeft}>
-                  <View style={[s.notifIconOuter, { backgroundColor: isDark ? '#1C1B1F' : '#F3F4F6' }]}>
-                    <Text style={{ fontSize: 16 }}>{emoji}</Text>
-                  </View>
-                  <View>
-                    <Text style={[s.notifLabel, { color: txt }]}>{label}</Text>
-                    <Text style={[s.notifDesc, { color: txtSec }]}>{desc}</Text>
-                  </View>
-                </View>
-                <Switch
-                  value={notifPrefs[key]}
-                  onValueChange={(val) => saveNotifPreferences({ ...notifPrefs, [key]: val })}
-                  trackColor={{ false: '#767577', true: goldColor }}
-                  thumbColor={notifPrefs[key] ? '#FFF' : '#f4f3f4'}
-                />
-              </View>
-            ))}
-          </View>
+          <Text style={[s.sectionTitleText, { color: isDark ? goldColor : '#111' }]}>NOTIFICATIONS</Text>
+          <TouchableOpacity
+            style={[s.themeBtn, { backgroundColor: cardBg, borderColor: border }]}
+            onPress={() => handleEnablePush(false)}
+          >
+            <View style={[s.notifIconOuter, { backgroundColor: isDark ? '#1C1B1F' : '#F3F4F6' }]}>
+              <Text style={{ fontSize: 16 }}>🛵</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[s.notifLabel, { color: txt }]}>Order updates on this phone</Text>
+              <Text style={[s.notifDesc, { color: txtSec }]}>Placed, accepted, out for delivery, delivered</Text>
+            </View>
+            <View style={[s.pushBtn, { borderColor: pushOn ? COLORS.emerald : goldColor }]}>
+              <Text style={[s.pushBtnText, { color: pushOn ? COLORS.emerald : goldColor }]}>{pushOn ? 'ON ✓' : 'TURN ON'}</Text>
+            </View>
+          </TouchableOpacity>
         </StaggeredSection>
 
         {/* 🏆 Your Badges */}
         <StaggeredSection delay={220} direction="up">
           <Text style={[s.sectionTitleText, { color: isDark ? goldColor : '#111' }]}>YOUR BADGES</Text>
           <View style={[s.achievementsCard, { backgroundColor: cardBg, borderColor: border }]}>
-            {user?.badges && user.badges.length > 0 ? (
+            {Array.isArray(user?.badges) && user.badges.length > 0 ? (
               <View style={s.badgeGrid}>
-                {user.badges.map((badgeName: string, index: number) => {
-                  let emoji = '⚡';
-                  let color = '#A855F7';
-                  let desc = 'Unlocked Milestone';
-                  if (badgeName.includes('Legend') || badgeName.includes('Elite')) { emoji = '👑'; color = '#F59E0B'; desc = 'Top Tier Legend'; }
-                  else if (badgeName.includes('Night') || badgeName.includes('Owl') || badgeName.includes('Bat') || badgeName.includes('Shadow')) { emoji = '🦉'; color = '#6366F1'; desc = 'Late Night Expert'; }
-                  else if (badgeName.includes('Streak') || badgeName.includes('Believer') || badgeName.includes('Streaker')) { emoji = '🔥'; color = '#EF4444'; desc = 'Streak Master'; }
-                  else if (badgeName.includes('Gold') || badgeName.includes('Grafter')) { emoji = '🥇'; color = '#EAB308'; desc = 'Gold Tier Rank'; }
-                  else if (badgeName.includes('Silver') || badgeName.includes('Scaler')) { emoji = '🥈'; color = '#9CA3AF'; desc = 'Silver Tier Rank'; }
-                  else if (badgeName.includes('Bronze') || badgeName.includes('Beginner')) { emoji = '🥉'; color = '#D97706'; desc = 'Bronze Tier Rank'; }
-                  else if (badgeName.includes('Diamond')) { emoji = '💎'; color = '#38BDF8'; desc = 'Diamond Devotee'; }
-                  else if (badgeName.includes('Veggie')) { emoji = '🥗'; color = '#22C55E'; desc = 'Veg Specialist'; }
-
+                {user.badges.map((badgeName: string) => {
+                  const v = badgeVisual(String(badgeName));
                   return (
-                    <View key={index} style={[s.badgeCard, { borderColor: color }]}>
-                      <Text style={s.badgeEmoji}>{emoji}</Text>
+                    <View key={badgeName} style={[s.badgeCard, { borderColor: v.color }]}>
+                      <Text style={s.badgeEmoji}>{v.emoji}</Text>
                       <Text style={s.badgeTitle}>{badgeName}</Text>
-                      <Text style={s.badgeDesc}>{desc}</Text>
+                      <Text style={s.badgeDesc}>{v.desc}</Text>
                     </View>
                   );
                 })}
               </View>
             ) : (
               <View style={s.emptyAchievements}>
-                <Text style={[s.emptyAchievementsText, { color: txtSec }]}>No Achievements Unlocked Yet</Text>
+                <Text style={[s.emptyAchievementsText, { color: txtSec }]}>No badges yet</Text>
                 <View style={s.grayEmojis}>
-                  <Text style={s.grayEmoji}>👑</Text>
+                  <Text style={s.grayEmoji}>🥉</Text>
                   <Text style={s.grayEmoji}>🦉</Text>
                   <Text style={s.grayEmoji}>🔥</Text>
                 </View>
-                <Text style={s.graySubText}>Keep ordering to unlock premium badges</Text>
+                <Text style={s.graySubText}>Your first badge unlocks at 5 delivered orders</Text>
               </View>
             )}
 
             <View style={s.achievementsFooter}>
               <View style={s.footerLeft}>
-                <Text style={[s.footerLabel, { color: txtSec }]}>REWARDS EARNED</Text>
-                <Text style={[s.footerVal, { color: goldColor }]}>{user?.zenPoints || 0} ZP</Text>
+                <Text style={[s.footerLabel, { color: txtSec }]}>ZEN POINTS</Text>
+                <Text style={[s.footerVal, { color: goldColor }]}>{Number(user?.zenPoints) || 0} ZP</Text>
               </View>
               <View style={s.verticalDivider} />
               <View style={s.footerRight}>
-                <Text style={[s.footerLabel, { color: txtSec }]}>MILESTONE PROGRESS</Text>
-                <Text style={[s.footerVal, { color: txt }]}>{user?.totalOrders || 0} / 50 Orders</Text>
+                <Text style={[s.footerLabel, { color: txtSec }]}>NEXT ORDER BADGE</Text>
+                <Text style={[s.footerVal, { color: txt }]}>
+                  {nextMilestone ? `${completedOrders} / ${nextMilestone.threshold} orders` : allBadgesUnlocked ? 'All unlocked 👑' : `${completedOrders} orders`}
+                </Text>
               </View>
             </View>
           </View>
@@ -901,37 +926,33 @@ export default function ProfileScreen() {
           </View>
           {coupons.length > 0 ? (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.couponsScroll}>
-              {coupons.map((cpn, i) => (
-                <View key={i} style={[s.couponCard, { backgroundColor: isDark ? '#1C1917' : '#FFFDF5', borderColor: goldColor }]}>
-                  <Text style={[s.couponType, { color: goldColor }]}>{cpn.type === 'FREEDEL' ? 'DELIVERY' : 'DISCOUNT'}</Text>
-                  <Text style={[s.couponHeader, { color: txt }]}>{cpn.type === 'FREEDEL' ? 'FREE DELIVERY' : 'DISCOUNT'}</Text>
-                  <View style={s.couponCodeRow}>
-                    <Text style={[s.couponCodeText, { color: goldColor }]}>{cpn.code}</Text>
-                    <TouchableOpacity
-                      onPress={() => {
-                        Clipboard.setString(cpn.code);
-                        Alert.alert('Copied!', 'Coupon code copied to clipboard!');
-                      }}
-                      style={s.couponCopyBtn}
-                    >
-                      <Text style={s.couponCopyBtnText}>COPY</Text>
-                    </TouchableOpacity>
+              {coupons.map((cpn) => {
+                const label = cpn.label || (cpn.type === 'FREEDEL' ? 'Free delivery' : 'Discount');
+                const expires = typeof cpn.expiresInDays === 'number'
+                  ? (cpn.expiresInDays <= 0 ? 'Expires today' : `Expires in ${cpn.expiresInDays} day${cpn.expiresInDays === 1 ? '' : 's'}`)
+                  : 'No expiry';
+                return (
+                  <View key={cpn.id || cpn.code} style={[s.couponCard, { backgroundColor: isDark ? '#1C1917' : '#FFFDF5', borderColor: goldColor }]}>
+                    <Text style={[s.couponType, { color: goldColor }]}>{cpn.type === 'FREEDEL' ? 'DELIVERY' : 'DISCOUNT'}</Text>
+                    <Text style={[s.couponHeader, { color: txt }]}>{String(label).toUpperCase()}</Text>
+                    <Text style={{ fontSize: 9, fontWeight: '700', color: txtSec, marginBottom: 6 }}>{expires}</Text>
+                    <View style={s.couponCodeRow}>
+                      <Text style={[s.couponCodeText, { color: goldColor }]}>{cpn.code}</Text>
+                      <TouchableOpacity onPress={() => copyText(cpn.code, 'Coupon copied — use it at checkout')} style={s.couponCopyBtn}>
+                        <Text style={s.couponCopyBtnText}>COPY</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                </View>
-              ))}
+                );
+              })}
             </ScrollView>
           ) : (
             <View style={[s.emptyCard, { backgroundColor: cardBg, borderColor: border }]}>
               <Text style={{ fontSize: 24, marginBottom: 8 }}>🎫</Text>
               <Text style={[s.emptyText, { color: txtSec }]}>No coupons yet</Text>
-              <Text style={[s.emptySubText, { color: txtSec, marginBottom: 12 }]}>Spin the wheel to earn exclusive rewards</Text>
+              <Text style={[s.emptySubText, { color: txtSec, marginBottom: 12 }]}>Spin the wheel to win coupons</Text>
               <TouchableOpacity
-                style={{
-                  backgroundColor: goldColor,
-                  paddingHorizontal: 16,
-                  paddingVertical: 8,
-                  borderRadius: 12,
-                }}
+                style={{ backgroundColor: goldColor, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12 }}
                 onPress={() => router.push('/rewards')}
               >
                 <Text style={{ color: '#000', fontSize: 9, fontWeight: '900', letterSpacing: 1 }}>SPIN THE WHEEL</Text>
@@ -940,106 +961,165 @@ export default function ProfileScreen() {
           )}
         </StaggeredSection>
 
-        {/* 🔗 Invite Friends */}
-        <StaggeredSection delay={260} direction="up">
-          <Text style={[s.sectionTitleText, { color: isDark ? goldColor : '#111' }]}>INVITE FRIENDS</Text>
-          <View style={[s.referralCard, { backgroundColor: cardBg, borderColor: border }]}>
-            <Text style={[s.referralLabel, { color: txtSec }]}>YOUR REFERRAL CODE</Text>
-            <View style={s.referralRow}>
-              <Text style={[s.referralCode, { color: goldColor }]}>
-                {user?.referralCode || `ZV-${(user?._id || user?.id || 'NEW50').slice(-5).toUpperCase()}`}
-              </Text>
+        {/* 🔗 Invite friends (real referral code from the account) */}
+        {referralCode ? (
+          <StaggeredSection delay={260} direction="up">
+            <Text style={[s.sectionTitleText, { color: isDark ? goldColor : '#111' }]}>INVITE FRIENDS</Text>
+            <View style={[s.buddyLinkCard, { backgroundColor: isDark ? 'rgba(249, 196, 64, 0.06)' : 'rgba(249, 196, 64, 0.08)', borderColor: isDark ? 'rgba(249, 196, 64, 0.18)' : 'rgba(249, 196, 64, 0.25)' }]}>
+              <View style={s.buddyLinkHeader}>
+                <View style={s.buddyLinkIconCircle}>
+                  <Text style={s.buddyLinkIconEmoji}>🔗</Text>
+                </View>
+                <View style={s.buddyLinkHeaderText}>
+                  <Text style={[s.buddyLinkTitle, { color: isDark ? '#FFF' : '#111' }]}>Invite friends to Zenvy</Text>
+                  <Text style={[s.buddyLinkSubtitle, { color: txtSec }]}>
+                    When a friend signs up with your code, you both get <Text style={{ color: goldColor, fontWeight: '900' }}>50 ZenPoints</Text>
+                  </Text>
+                </View>
+              </View>
+
+              <View style={[s.buddyCodeRow, { backgroundColor: isDark ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.04)', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}>
+                <View>
+                  <Text style={[s.buddyCodeLabel, { color: txtSec }]}>YOUR CODE</Text>
+                  <Text style={[s.buddyCodeValue, { color: goldColor }]}>{referralCode}</Text>
+                </View>
+                <TouchableOpacity
+                  style={[s.buddyCopyChip, { backgroundColor: isDark ? 'rgba(249,196,64,0.15)' : 'rgba(249,196,64,0.18)' }]}
+                  onPress={() => copyText(referralCode, 'Referral code copied')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[s.buddyCopyChipText, { color: goldColor }]}>COPY</Text>
+                </TouchableOpacity>
+              </View>
+
               <TouchableOpacity
-                style={[s.referralCopyBtn, { backgroundColor: goldColor }]}
-                onPress={() => {
-                  const code = user?.referralCode || `ZV-${(user?._id || user?.id || 'NEW50').slice(-5).toUpperCase()}`;
-                  Clipboard.setString(code);
-                  Alert.alert('Referral Copied', 'Your referral code has been copied.');
+                style={s.buddyShareBtn}
+                activeOpacity={0.85}
+                onPress={async () => {
+                  const name = user?.name?.split(' ')[0] || 'Your friend';
+                  try {
+                    await Share.share({
+                      title: 'Join me on Zenvy!',
+                      message: `🍔 ${name} invited you to Zenvy — campus food & essentials delivered to your hostel. Sign up with my code ${referralCode} and we both get 50 ZenPoints! 🎉`,
+                    });
+                  } catch (e) {
+                    // share sheet dismissed
+                  }
                 }}
               >
-                <Text style={s.referralCopyText}>COPY</Text>
+                <LinearGradient colors={['#F9C440', '#E8A317']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.buddyShareBtnGrad}>
+                  <Text style={s.buddyShareBtnEmoji}>📤</Text>
+                  <Text style={s.buddyShareBtnText}>SHARE MY CODE</Text>
+                </LinearGradient>
               </TouchableOpacity>
             </View>
-            <Text style={[s.referralDesc, { color: txtSec }]}>
-              Share this code — both of you earn <Text style={{ color: goldColor }}>50 ZenPoints</Text> when they place their first order.
-            </Text>
-          </View>
-        </StaggeredSection>
+          </StaggeredSection>
+        ) : null}
 
         {/* 🎁 Send a Gift (Elite Perk) */}
-        {user?.isElite && (
+        {user?.isElite ? (
           <StaggeredSection delay={280} direction="up">
             <Text style={[s.sectionTitleText, { color: isDark ? goldColor : '#111' }]}>SEND A GIFT</Text>
             <View style={[s.giftCard, { backgroundColor: cardBg, borderColor: border }]}>
-              <Text style={[s.giftLabel, { color: txtSec }]}>GIFT A MEAL TO A FRIEND (ELITE PERK)</Text>
+              <Text style={[s.giftLabel, { color: txtSec }]}>GIFT WALLET MONEY TO A FRIEND (ELITE PERK)</Text>
               <TextInput
                 value={giftPhone}
-                onChangeText={setGiftPhone}
-                placeholder="Friend's phone number"
+                onChangeText={(t) => setGiftPhone(t.replace(/\D/g, '').slice(0, 10))}
+                placeholder="Friend's 10-digit mobile number"
                 placeholderTextColor={isDark ? '#666' : '#999'}
-                keyboardType="phone-pad"
+                keyboardType="number-pad"
+                maxLength={10}
+                editable={!sendingGift}
                 style={[s.giftInput, { color: txt, borderColor: border }]}
               />
               <View style={s.giftButtonsRow}>
                 {[50, 100, 200].map((amt) => (
                   <TouchableOpacity
                     key={amt}
-                    style={[s.giftAmtBtn, { backgroundColor: 'rgba(255,255,255,0.05)', borderColor: border }]}
+                    disabled={sendingGift}
+                    style={[s.giftAmtBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', borderColor: border }, sendingGift && { opacity: 0.5 }]}
                     onPress={() => handleSendGift(amt)}
                   >
                     <Text style={[s.giftAmtText, { color: goldColor }]}>₹{amt}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
-              <Text style={s.giftSubText}>3 gifts per month • Deducted from your wallet</Text>
+              {sendingGift ? <ActivityIndicator size="small" color={goldColor} style={{ marginTop: 8 }} /> : null}
+              <Text style={s.giftSubText}>3 gifts per month • Paid from your Wallet</Text>
             </View>
           </StaggeredSection>
-        )}
+        ) : null}
 
         {/* 📊 Spending Dashboard */}
         <StaggeredSection delay={300} direction="up">
           <Text style={[s.sectionTitleText, { color: isDark ? goldColor : '#111' }]}>MY SPENDING</Text>
-          {spendStats ? (
+          {statsState === 'loading' && !spendStats ? (
+            <View style={[s.emptyCard, { backgroundColor: cardBg, borderColor: border }]}>
+              <ActivityIndicator color={goldColor} />
+            </View>
+          ) : statsState === 'error' && !spendStats ? (
+            <View style={[s.emptyCard, { backgroundColor: cardBg, borderColor: border }]}>
+              <Text style={{ fontSize: 22, marginBottom: 6 }}>📡</Text>
+              <Text style={[s.emptyText, { color: txtSec }]}>Couldn’t load your spending</Text>
+              <TouchableOpacity
+                style={{ marginTop: 10, backgroundColor: goldColor, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12 }}
+                onPress={() => { setStatsState('loading'); fetchData('focus'); }}
+              >
+                <Text style={{ color: '#000', fontSize: 9, fontWeight: '900', letterSpacing: 1 }}>RETRY</Text>
+              </TouchableOpacity>
+            </View>
+          ) : !hasSpend ? (
+            <View style={[s.emptyCard, { backgroundColor: cardBg, borderColor: border }]}>
+              <Text style={{ fontSize: 22, marginBottom: 6 }}>🧾</Text>
+              <Text style={[s.emptyText, { color: txtSec }]}>Your spending shows up here after your first order</Text>
+              <TouchableOpacity
+                style={{ marginTop: 10, backgroundColor: goldColor, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12 }}
+                onPress={() => router.push('/(tabs)' as any)}
+              >
+                <Text style={{ color: '#000', fontSize: 9, fontWeight: '900', letterSpacing: 1 }}>ORDER NOW</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
             <View style={s.spendingWrapper}>
-              
-              {/* Monthly Bar Chart */}
-              <View style={[s.chartCard, { backgroundColor: cardBg, borderColor: border }]}>
-                <Text style={[s.chartTitle, { color: txtSec }]}>LAST 6 MONTHS</Text>
-                <View style={s.chartRow}>
-                  {(() => {
-                    const max = Math.max(...spendStats.monthlySpend.map((m: any) => m.total), 1);
-                    return spendStats.monthlySpend.map((m: any, i: number) => {
-                      const barHeight = Math.max(8, (m.total / max) * 70);
-                      return (
-                        <View key={i} style={s.chartBarContainer}>
-                          <View
-                            style={[
-                              s.chartBar,
-                              {
-                                height: barHeight,
-                                backgroundColor: i === spendStats.monthlySpend.length - 1 ? goldColor : 'rgba(255,255,255,0.1)',
-                              },
-                            ]}
-                          />
-                          <Text style={[s.chartBarMonth, { color: txtSec }]}>{m.month.split(' ')[0]}</Text>
-                          {m.total > 0 && <Text style={[s.chartBarTotal, { color: txt }]}>₹{m.total}</Text>}
-                        </View>
-                      );
-                    });
-                  })()}
+              {monthlySpend.length > 0 && (
+                <View style={[s.chartCard, { backgroundColor: cardBg, borderColor: border }]}>
+                  <Text style={[s.chartTitle, { color: txtSec }]}>LAST 6 MONTHS</Text>
+                  <View style={s.chartRow}>
+                    {(() => {
+                      const max = Math.max(...monthlySpend.map((m: any) => Number(m.total) || 0), 1);
+                      return monthlySpend.map((m: any, i: number) => {
+                        const total = Number(m.total) || 0;
+                        const barHeight = Math.max(8, (total / max) * 70);
+                        return (
+                          <View key={`${m.month}-${i}`} style={s.chartBarContainer}>
+                            <View
+                              style={[
+                                s.chartBar,
+                                {
+                                  height: barHeight,
+                                  backgroundColor: i === monthlySpend.length - 1 ? goldColor : (isDark ? 'rgba(255,255,255,0.12)' : '#E5E7EB'),
+                                },
+                              ]}
+                            />
+                            <Text style={[s.chartBarMonth, { color: txtSec }]}>{String(m.month || '').split(' ')[0]}</Text>
+                            {total > 0 ? <Text style={[s.chartBarTotal, { color: txt }]}>₹{total}</Text> : null}
+                          </View>
+                        );
+                      });
+                    })()}
+                  </View>
                 </View>
-              </View>
+              )}
 
-              {/* Top Items */}
-              {spendStats.topItems && spendStats.topItems.length > 0 && (
+              {topItems.length > 0 && (
                 <View style={[s.topItemsCard, { backgroundColor: cardBg, borderColor: border }]}>
                   <Text style={[s.chartTitle, { color: txtSec }]}>MOST ORDERED</Text>
-                  {spendStats.topItems.map((item: any, i: number) => (
-                    <View key={i} style={s.topItemRow}>
+                  {topItems.map((item: any, i: number) => (
+                    <View key={`${item.name}-${i}`} style={s.topItemRow}>
                       <View style={s.topItemLeft}>
                         <Text style={{ fontSize: 14 }}>{i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉'}</Text>
-                        <View style={{ marginLeft: 10 }}>
-                          <Text style={[s.topItemName, { color: txt }]}>{item.name}</Text>
+                        <View style={{ marginLeft: 10, flexShrink: 1 }}>
+                          <Text style={[s.topItemName, { color: txt }]} numberOfLines={1}>{item.name}</Text>
                           <Text style={[s.topItemCount, { color: txtSec }]}>{item.count}x ordered</Text>
                         </View>
                       </View>
@@ -1049,15 +1129,14 @@ export default function ProfileScreen() {
                 </View>
               )}
 
-              {/* Stats Grid */}
               <View style={s.statsGridRow}>
                 {[
-                  { label: 'AVG ORDER', value: `₹${spendStats?.avgOrderValue || 0}`, emoji: '📦' },
-                  { label: 'TOTAL ORDERS', value: user?.completedOrders || user?.totalOrders || spendStats?.totalOrders || 0, emoji: '🧾' },
-                  { label: 'STREAK', value: `🔥 ${user?.streakCount || spendStats?.currentStreak || 0}d`, emoji: '⚡' },
-                  { label: 'FAV RESTAURANT', value: spendStats?.favoriteRestaurant && spendStats.favoriteRestaurant !== 'N/A' ? spendStats.favoriteRestaurant : 'None', emoji: '❤️' },
-                ].map((stat, i) => (
-                  <View key={i} style={[s.smallStatCard, { backgroundColor: cardBg, borderColor: border }]}>
+                  { label: 'AVG ORDER', value: `₹${Number(spendStats?.avgOrderValue) || 0}`, emoji: '📦' },
+                  { label: 'DELIVERED', value: String(completedOrders), emoji: '🧾' },
+                  { label: 'STREAK', value: `🔥 ${streak}d`, emoji: '⚡' },
+                  { label: 'FAVOURITE', value: favRestaurant, emoji: '❤️' },
+                ].map((stat) => (
+                  <View key={stat.label} style={[s.smallStatCard, { backgroundColor: cardBg, borderColor: border }]}>
                     <Text style={{ fontSize: 18, marginBottom: 4 }}>{stat.emoji}</Text>
                     <Text style={[s.smallStatVal, { color: txt }]} numberOfLines={1}>
                       {stat.value}
@@ -1066,11 +1145,6 @@ export default function ProfileScreen() {
                   </View>
                 ))}
               </View>
-
-            </View>
-          ) : (
-            <View style={[s.emptyCard, { backgroundColor: cardBg, borderColor: border }]}>
-              <Text style={[s.emptyText, { color: txtSec }]}>Place your first order to see stats</Text>
             </View>
           )}
         </StaggeredSection>
@@ -1082,13 +1156,13 @@ export default function ProfileScreen() {
             <TouchableOpacity style={[s.supportBtn, { backgroundColor: cardBg, borderColor: border }]} onPress={() => router.push('/support' as any)}>
               <Text style={{ fontSize: 20 }}>🎫</Text>
               <Text style={[s.supportBtnTitle, { color: goldColor }]}>SUPPORT TICKETS</Text>
-              <Text style={[s.supportBtnDesc, { color: txtSec }]}>File issues & track</Text>
+              <Text style={[s.supportBtnDesc, { color: txtSec }]}>Report an issue & track it</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={[s.supportBtn, { backgroundColor: cardBg, borderColor: border }]} onPress={() => setShowAbout(true)}>
               <Text style={{ fontSize: 20 }}>✨</Text>
               <Text style={[s.supportBtnTitle, { color: txt }]}>ABOUT ZENVY</Text>
-              <Text style={[s.supportBtnDesc, { color: txtSec }]}>Project Vision & info</Text>
+              <Text style={[s.supportBtnDesc, { color: txtSec }]}>Version & info</Text>
             </TouchableOpacity>
           </View>
         </StaggeredSection>
@@ -1100,9 +1174,9 @@ export default function ProfileScreen() {
               <Text style={{ fontSize: 16 }}>{isDark ? '☀️' : '🌙'}</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={[s.notifLabel, { color: txt }]}>{isDark ? 'LIGHT DISPLAY MODE' : 'DARK DISPLAY MODE'}</Text>
+              <Text style={[s.notifLabel, { color: txt }]}>{isDark ? 'LIGHT MODE' : 'DARK MODE'}</Text>
               <Text style={[s.notifDesc, { color: txtSec }]}>
-                {isDark ? 'Toggle back to clean light visual modes' : 'Activate cinema gaming interfaces'}
+                {isDark ? 'Switch to the light theme' : 'Switch to the dark theme'}
               </Text>
             </View>
           </TouchableOpacity>
@@ -1110,12 +1184,12 @@ export default function ProfileScreen() {
 
         {/* Logout */}
         <StaggeredSection delay={360} direction="up">
-          <TouchableOpacity 
-            style={[s.logoutBtn, { borderColor: '#EF4444' }]} 
+          <TouchableOpacity
+            style={[s.logoutBtn, { borderColor: '#EF4444' }]}
             onPress={() => {
               Alert.alert(
-                'Sign Out?',
-                'Are you sure you want to sign out of your Zenvy account?',
+                'Sign out?',
+                'You can sign back in anytime with your mobile number.',
                 [
                   { text: 'Cancel', style: 'cancel' },
                   {
@@ -1132,47 +1206,17 @@ export default function ProfileScreen() {
           >
             <Text style={s.logoutText}>SIGN OUT</Text>
           </TouchableOpacity>
-          <Text style={s.logoutSubText}>Sign out of your campus account safely</Text>
+          <Text style={s.logoutSubText}>Sign out of your Zenvy account on this phone</Text>
         </StaggeredSection>
 
       </ScrollView>
 
-      {/* ─── MODAL: QR IDENTITY ─── */}
-      <Modal visible={showQR} animationType="slide" transparent={true} onRequestClose={() => setShowQR(false)}>
-        <View style={s.modalOverlay}>
-          <View style={[s.modalContent, { backgroundColor: cardBg, borderColor: border }]}>
-            <Text style={[s.modalTitle, { color: txt }]}>ZENVY ID</Text>
-            
-            <View style={s.qrWrapper}>
-              <View style={s.qrAvatarBox}>
-                {user?.profileImage ? (
-                  <Image source={{ uri: user.profileImage }} style={s.qrAvatarImg} />
-                ) : (
-                  <Text style={s.qrAvatarText}>{initials}</Text>
-                )}
-              </View>
-              <View style={s.qrContainer}>
-                <QRCode value={qrValue} size={160} backgroundColor="#ffffff" color="#0A0A0B" />
-              </View>
-            </View>
-
-            <Text style={s.qrName}>{user?.name}</Text>
-            <Text style={[s.qrCity, { color: goldColor }]}>ZENVY • {user?.city || 'AMARAVATHI'}</Text>
-            <Text style={[s.qrSubText, { color: txtSec }]}>Show this QR at campus events</Text>
-
-            <TouchableOpacity style={[s.modalCloseBtn, { backgroundColor: goldColor }]} onPress={() => setShowQR(false)}>
-              <Text style={s.modalCloseBtnText}>CLOSE</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
       {/* ─── MODAL: EDIT PROFILE ─── */}
-      <Modal visible={isEditing} animationType="slide" transparent={true} onRequestClose={() => setIsEditing(false)}>
+      <Modal visible={isEditing} animationType="slide" transparent={true} onRequestClose={closeEditor}>
         <KeyboardAvoidingView
           style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 20}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 0}
         >
           <View style={s.modalOverlay}>
             <ScrollView
@@ -1182,96 +1226,128 @@ export default function ProfileScreen() {
               bounces={true}
             >
               <View style={[s.modalContent, { backgroundColor: cardBg, borderColor: border }]}>
-              <Text style={[s.modalTitle, { color: txt }]}>UPDATE PROFILE</Text>
+              <Text style={[s.modalTitle, { color: txt }]}>EDIT PROFILE</Text>
 
-              {/* Live Selected Avatar Preview */}
+              {/* Avatar preview */}
               <View style={{ alignItems: 'center', marginVertical: 12 }}>
                 <View style={{ width: 80, height: 80, borderRadius: 40, overflow: 'hidden', borderWidth: 2.5, borderColor: goldColor, backgroundColor: isDark ? '#1C1917' : '#F1F5F9', alignItems: 'center', justifyContent: 'center' }}>
-                  {editProfileImage ? (
-                    <SafeImage source={{ uri: editProfileImage }} style={{ width: '100%', height: '100%' }} />
-                  ) : user?.profileImage ? (
-                    <SafeImage source={{ uri: user.profileImage }} style={{ width: '100%', height: '100%' }} />
-                  ) : (
-                    <Text style={{ fontSize: 24, fontWeight: '900', color: goldColor }}>{initials}</Text>
-                  )}
+                  <Avatar
+                    uri={editProfileImage}
+                    style={{ width: '100%', height: '100%' }}
+                    fallback={<Text style={{ fontSize: 24, fontWeight: '900', color: goldColor }}>{initials}</Text>}
+                  />
                 </View>
-                <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec, marginTop: 6, letterSpacing: 1 }}>CURRENT AVATAR</Text>
-              </View>
-
-              {/* Avatar pre-selectors */}
-              <Text style={[s.inputLabel, { color: txtSec }]}>CHOOSE PREMIUM AVATAR</Text>
-              <View style={s.avatarSelectRow}>
-                {PREMIUM_AVATARS.map((url, i) => (
-                  <TouchableOpacity
-                    key={i}
-                    onPress={() => setEditProfileImage(url)}
-                    style={[
-                      s.avatarSelectBtn,
-                      { borderColor: editProfileImage === url ? goldColor : 'transparent' },
-                    ]}
-                  >
-                    <SafeImage source={{ uri: url }} style={s.avatarSelectImg} />
+                {editProfileImage ? (
+                  <TouchableOpacity onPress={() => setEditProfileImage(null)} style={{ marginTop: 6, padding: 4 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '800', color: '#EF4444', letterSpacing: 1 }}>REMOVE PHOTO</Text>
                   </TouchableOpacity>
-                ))}
+                ) : (
+                  <Text style={{ fontSize: 9, fontWeight: '800', color: txtSec, marginTop: 6, letterSpacing: 1 }}>NO PHOTO — SHOWING INITIALS</Text>
+                )}
               </View>
 
-              {/* Custom Image URL */}
-              <Text style={[s.inputLabel, { color: txtSec }]}>OR PASTE AVATAR IMAGE URL</Text>
-              <TextInput
-                value={editProfileImage || ''}
-                onChangeText={setEditProfileImage}
-                placeholder="Paste direct HTTPS image link"
-                placeholderTextColor={txtSec}
-                style={[s.modalInput, { color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', borderColor: border }]}
-              />
-
-              {/* Local Device Image Upload */}
-              <TouchableOpacity 
-                style={s.localUploadBtn} 
+              <TouchableOpacity
+                style={s.localUploadBtn}
                 onPress={handleUploadLocalImage}
-                disabled={uploadingImage}
+                disabled={uploadingImage || savingProfile}
               >
                 {uploadingImage ? (
                   <ActivityIndicator size="small" color={goldColor} />
                 ) : (
-                  <Text style={s.localUploadBtnText}>📸 UPLOAD FROM LOCAL DEVICE</Text>
+                  <Text style={s.localUploadBtnText}>📸 {isDataUriImage ? 'CHOOSE A DIFFERENT PHOTO' : 'CHOOSE FROM GALLERY'}</Text>
                 )}
               </TouchableOpacity>
+
+              {!isDataUriImage ? (
+                <>
+                  <Text style={[s.inputLabel, { color: txtSec }]}>OR PASTE AN IMAGE LINK</Text>
+                  <TextInput
+                    value={editProfileImage || ''}
+                    onChangeText={(t) => setEditProfileImage(t.trim() ? t.trim() : null)}
+                    placeholder="https://…"
+                    placeholderTextColor={txtSec}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="url"
+                    style={[s.modalInput, { color: txt, backgroundColor: inputBg, borderColor: border }]}
+                  />
+                </>
+              ) : null}
 
               {/* Name */}
               <Text style={[s.inputLabel, { color: txtSec }]}>FULL NAME</Text>
               <TextInput
                 value={editName}
                 onChangeText={setEditName}
-                placeholder="Name"
+                placeholder="Your name"
                 placeholderTextColor={txtSec}
-                style={[s.modalInput, { color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', borderColor: border }]}
+                maxLength={50}
+                autoCapitalize="words"
+                style={[s.modalInput, { color: txt, backgroundColor: inputBg, borderColor: border }]}
               />
 
               {/* Mobile Number */}
               <Text style={[s.inputLabel, { color: txtSec }]}>MOBILE NUMBER</Text>
               <TextInput
                 value={editPhone}
-                onChangeText={setEditPhone}
-                placeholder="Mobile number"
+                onChangeText={(t) => {
+                  setEditPhone(t.replace(/\D/g, '').slice(0, 10));
+                  if (otpSent) { setOtpSent(false); setOtpCode(''); }
+                }}
+                placeholder="10-digit mobile number"
                 placeholderTextColor={txtSec}
-                keyboardType="phone-pad"
-                style={[s.modalInput, { color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', borderColor: border }]}
+                keyboardType="number-pad"
+                maxLength={10}
+                style={[s.modalInput, { color: txt, backgroundColor: inputBg, borderColor: border }]}
               />
+              {phoneChanged ? (
+                <View style={{ marginTop: -4, marginBottom: 8 }}>
+                  {otpSent ? (
+                    <>
+                      <Text style={{ fontSize: 10, color: txtSec, fontWeight: '600', marginBottom: 6 }}>
+                        Enter the 6-digit code we sent to +91 {normalizedEditPhone}
+                      </Text>
+                      <TextInput
+                        value={otpCode}
+                        onChangeText={(t) => setOtpCode(t.replace(/\D/g, '').slice(0, 6))}
+                        placeholder="6-digit code"
+                        placeholderTextColor={txtSec}
+                        keyboardType="number-pad"
+                        maxLength={6}
+                        textContentType="oneTimeCode"
+                        autoComplete="sms-otp"
+                        style={[s.modalInput, { color: txt, backgroundColor: inputBg, borderColor: goldColor, letterSpacing: 6, textAlign: 'center' }]}
+                      />
+                      <TouchableOpacity onPress={sendPhoneOtp} disabled={sendingOtp || resendIn > 0} style={{ alignSelf: 'flex-end', padding: 4 }}>
+                        <Text style={{ fontSize: 10, fontWeight: '800', color: resendIn > 0 ? txtSec : goldColor }}>
+                          {sendingOtp ? 'SENDING…' : resendIn > 0 ? `RESEND IN ${resendIn}s` : 'RESEND CODE'}
+                        </Text>
+                      </TouchableOpacity>
+                    </>
+                  ) : (
+                    <Text style={{ fontSize: 10, color: txtSec, fontWeight: '600' }}>
+                      We’ll text a code to the new number to confirm it’s yours.
+                    </Text>
+                  )}
+                </View>
+              ) : null}
 
               {/* Email */}
-              <Text style={[s.inputLabel, { color: txtSec }]}>EMAIL ADDRESS</Text>
+              <Text style={[s.inputLabel, { color: txtSec }]}>EMAIL (OPTIONAL)</Text>
               <TextInput
                 value={editEmail}
                 onChangeText={setEditEmail}
-                placeholder="Email address"
+                placeholder="you@example.com"
                 placeholderTextColor={txtSec}
                 keyboardType="email-address"
-                style={[s.modalInput, { color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', borderColor: border }]}
+                autoCapitalize="none"
+                autoCorrect={false}
+                maxLength={100}
+                style={[s.modalInput, { color: txt, backgroundColor: inputBg, borderColor: border }]}
               />
 
               {/* Bio/About */}
-              <Text style={[s.inputLabel, { color: txtSec }]}>ABOUT ME (BIO)</Text>
+              <Text style={[s.inputLabel, { color: txtSec }]}>ABOUT ME</Text>
               <TextInput
                 value={editAbout}
                 onChangeText={setEditAbout}
@@ -1279,8 +1355,10 @@ export default function ProfileScreen() {
                 placeholderTextColor={txtSec}
                 multiline
                 numberOfLines={3}
-                style={[s.modalInput, { color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', borderColor: border, height: 80, textAlignVertical: 'top', paddingTop: 10 }]}
+                maxLength={BIO_MAX}
+                style={[s.modalInput, { color: txt, backgroundColor: inputBg, borderColor: border, height: 80, textAlignVertical: 'top', paddingTop: 10 }]}
               />
+              <Text style={{ fontSize: 9, color: txtSec, textAlign: 'right', marginTop: -4, marginBottom: 6 }}>{editAbout.length}/{BIO_MAX}</Text>
 
               {/* Delivery Address Auto-complete */}
               <Text style={[s.inputLabel, { color: txtSec }]}>DELIVERY ADDRESS</Text>
@@ -1293,19 +1371,20 @@ export default function ProfileScreen() {
                   }}
                   placeholder="Hostel room, block name..."
                   placeholderTextColor={txtSec}
-                  style={[s.modalInput, { color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', borderColor: border }]}
+                  maxLength={200}
+                  style={[s.modalInput, { color: txt, backgroundColor: inputBg, borderColor: border }]}
                 />
-                
+
                 {showSuggestions && suggestions.length > 0 && (
                   <View style={[s.suggestionsBox, { backgroundColor: cardBg, borderColor: border }]}>
                     {suggestions.map((item, i) => (
                       <TouchableOpacity
-                        key={i}
+                        key={item.place_id || i}
                         onPress={() => handleSelectSuggestion(item)}
                         style={s.suggestionItem}
                       >
                         <Text style={[s.suggestionText, { color: txt }]} numberOfLines={2}>
-                          📍 {item.name ? `${item.name}, ` : ''}{item.display_name}
+                          📍 {item.display_name}
                         </Text>
                       </TouchableOpacity>
                     ))}
@@ -1318,81 +1397,36 @@ export default function ProfileScreen() {
               <TextInput
                 value={editCity}
                 onChangeText={setEditCity}
-                placeholder="Amaravathi"
+                placeholder="City"
                 placeholderTextColor={txtSec}
-                style={[s.modalInput, { color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', borderColor: border }]}
+                maxLength={60}
+                style={[s.modalInput, { color: txt, backgroundColor: inputBg, borderColor: border }]}
               />
 
               <View style={s.modalActionsRow}>
-                <TouchableOpacity style={[s.modalCancelBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]} onPress={() => setIsEditing(false)}>
+                <TouchableOpacity
+                  style={[s.modalCancelBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}
+                  onPress={closeEditor}
+                  disabled={savingProfile}
+                >
                   <Text style={[s.modalCancelBtnText, { color: txt }]}>CANCEL</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[s.modalSaveBtn, { backgroundColor: goldColor }]} onPress={handleUpdateProfile}>
-                  <Text style={s.modalSaveBtnText}>SAVE</Text>
+                <TouchableOpacity
+                  style={[s.modalSaveBtn, { backgroundColor: goldColor }, (savingProfile || sendingOtp) && { opacity: 0.7 }]}
+                  onPress={handleUpdateProfile}
+                  disabled={savingProfile || sendingOtp}
+                >
+                  {savingProfile || sendingOtp ? (
+                    <ActivityIndicator size="small" color="#000" />
+                  ) : (
+                    <Text style={s.modalSaveBtnText}>{phoneChanged && !otpSent ? 'VERIFY NUMBER' : 'SAVE'}</Text>
+                  )}
                 </TouchableOpacity>
               </View>
             </View>
           </ScrollView>
         </View>
       </KeyboardAvoidingView>
-      </Modal>
-
-      {/* ─── MODAL: ADD ADDRESS ─── */}
-      <Modal visible={addingAddress} animationType="slide" transparent={true} onRequestClose={() => setAddingAddress(false)}>
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 0}
-        >
-          <View style={s.modalOverlay}>
-            <ScrollView
-              contentContainerStyle={s.modalScroll}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-              bounces={true}
-            >
-              <View style={[s.modalContent, { backgroundColor: cardBg, borderColor: border }]}>
-                <Text style={[s.modalTitle, { color: txt }]}>ADD NEW ADDRESS</Text>
-
-                <Text style={[s.inputLabel, { color: txtSec }]}>LABEL (E.G. HOSTEL ROOM, GATE 2)</Text>
-                <TextInput
-                  value={newAddr.label}
-                  onChangeText={(text) => setNewAddr({ ...newAddr, label: text })}
-                  placeholder="Hostel Room A-204"
-                  placeholderTextColor={txtSec}
-                  style={[s.modalInput, { color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', borderColor: border }]}
-                />
-
-                <Text style={[s.inputLabel, { color: txtSec }]}>FULL ADDRESS</Text>
-                <TextInput
-                  value={newAddr.address}
-                  onChangeText={(text) => setNewAddr({ ...newAddr, address: text })}
-                  placeholder="Campus Block, room details..."
-                  placeholderTextColor={txtSec}
-                  style={[s.modalInput, { color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', borderColor: border }]}
-                />
-
-                <Text style={[s.inputLabel, { color: txtSec }]}>CITY</Text>
-                <TextInput
-                  value={newAddr.city}
-                  onChangeText={(text) => setNewAddr({ ...newAddr, city: text })}
-                  placeholder="Amaravathi"
-                  placeholderTextColor={txtSec}
-                  style={[s.modalInput, { color: txt, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', borderColor: border }]}
-                />
-
-                <View style={s.modalActionsRow}>
-                  <TouchableOpacity style={[s.modalCancelBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]} onPress={() => setAddingAddress(false)}>
-                    <Text style={[s.modalCancelBtnText, { color: txt }]}>CANCEL</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[s.modalSaveBtn, { backgroundColor: goldColor }]} onPress={handleAddAddress}>
-                    <Text style={s.modalSaveBtnText}>SAVE</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </ScrollView>
-          </View>
-        </KeyboardAvoidingView>
       </Modal>
 
       {/* ─── MODAL: ABOUT US ─── */}
@@ -1416,11 +1450,13 @@ export default function ProfileScreen() {
             <View style={s.aboutStatsRow}>
               <View style={s.aboutStatCol}>
                 <Text style={s.aboutStatLabel}>VERSION</Text>
-                <Text style={s.aboutStatVal}>2.4.0-STABLE</Text>
+                <Text style={s.aboutStatVal}>
+                  {APP_VERSION}
+                </Text>
               </View>
               <View style={s.aboutStatCol}>
                 <Text style={s.aboutStatLabel}>PLATFORM</Text>
-                <Text style={s.aboutStatVal}>REACT_NATIVE</Text>
+                <Text style={s.aboutStatVal}>{Platform.OS.toUpperCase()}</Text>
               </View>
             </View>
 
@@ -1430,7 +1466,7 @@ export default function ProfileScreen() {
             </Text>
 
             <TouchableOpacity style={s.aboutCloseBtn} onPress={() => setShowAbout(false)}>
-              <Text style={s.aboutCloseText}>CLOSE INFO</Text>
+              <Text style={s.aboutCloseText}>CLOSE</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -2001,44 +2037,157 @@ const s = StyleSheet.create({
     fontWeight: '900',
     color: '#FFF',
   },
-  referralCard: {
+  // ── Buddy Link Styles ─────────────────────────────
+  buddyLinkCard: {
     marginHorizontal: 16,
-    borderRadius: 24,
-    borderWidth: 1,
-    padding: 16,
+    borderRadius: 28,
+    borderWidth: 1.5,
+    padding: 20,
     marginBottom: 20,
   },
-  referralLabel: {
-    fontSize: 8,
-    fontWeight: '900',
-    letterSpacing: 1.5,
-    marginBottom: 6,
+  buddyLinkHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 18,
+    gap: 12,
   },
-  referralRow: {
+  buddyLinkIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(249, 196, 64, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  buddyLinkIconEmoji: {
+    fontSize: 22,
+  },
+  buddyLinkHeaderText: {
+    flex: 1,
+  },
+  buddyLinkTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 0.3,
+    marginBottom: 2,
+  },
+  buddyLinkSubtitle: {
+    fontSize: 9,
+    fontWeight: '600',
+    lineHeight: 13,
+  },
+  buddyCodeRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     marginBottom: 10,
   },
-  referralCode: {
+  buddyCodeLabel: {
+    fontSize: 7,
+    fontWeight: '900',
+    letterSpacing: 1.5,
+    marginBottom: 3,
+  },
+  buddyCodeValue: {
     fontSize: 18,
     fontWeight: '900',
-    letterSpacing: 2,
+    letterSpacing: 2.5,
   },
-  referralCopyBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 12,
+  buddyCopyChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 10,
   },
-  referralCopyText: {
+  buddyCopyChipText: {
     fontSize: 9,
     fontWeight: '900',
-    color: '#000',
+    letterSpacing: 1,
   },
-  referralDesc: {
+  buddyLinkUrlRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: 16,
+  },
+  buddyLinkUrlText: {
+    fontSize: 11,
+    fontWeight: '700',
+    flex: 1,
+    marginRight: 8,
+  },
+  buddyQrWrapper: {
+    alignItems: 'center',
+    marginBottom: 18,
+  },
+  buddyQrContainer: {
+    padding: 14,
+    borderRadius: 20,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  buddyQrHint: {
     fontSize: 8,
-    fontWeight: '600',
-    lineHeight: 11,
+    fontWeight: '700',
+    marginTop: 8,
+    letterSpacing: 0.5,
+  },
+  buddyShareBtn: {
+    marginBottom: 16,
+    borderRadius: 18,
+    overflow: 'hidden',
+    shadowColor: '#F9C440',
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
+  },
+  buddyShareBtnGrad: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 52,
+    gap: 8,
+  },
+  buddyShareBtnEmoji: {
+    fontSize: 18,
+  },
+  buddyShareBtnText: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#000',
+    letterSpacing: 1.5,
+  },
+  buddyStatsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  buddyStatPill: {
+    flex: 1,
+    borderRadius: 14,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  buddyStatNum: {
+    fontSize: 14,
+    fontWeight: '900',
+    marginBottom: 2,
+  },
+  buddyStatLabel: {
+    fontSize: 7,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
   giftCard: {
     marginHorizontal: 16,

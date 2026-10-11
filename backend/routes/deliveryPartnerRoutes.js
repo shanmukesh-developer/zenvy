@@ -1,5 +1,5 @@
 const express = require('express');
-const { registerPartner, authPartner, acceptOrder, getPendingOrders, getActiveOrders, updateOrderStatus, toggleOnline, getOrderHistory, saveFcmToken, getLeaderboard, getRiderProfile, updateRiderProfile, getPublicRiderProfile, getTodayStats, cancelOrderByRider, changePassword, notifyArrivalAtGate, createTestOrder } = require('../controllers/deliveryPartnerController');
+const { registerPartner, authPartner, acceptOrder, getPendingOrders, getActiveOrders, updateOrderStatus, toggleOnline, getOrderHistory, saveFcmToken, getLeaderboard, getRiderProfile, updateRiderProfile, getPublicRiderProfile, getTodayStats, cancelOrderByRider, changePassword, notifyArrivalAtGate, getWeekStats, createRiderTicket, getRiderTickets } = require('../controllers/deliveryPartnerController');
 const { protect, rider } = require('../middleware/authMiddleware');
 const rateLimit = require('express-rate-limit');
 const router = express.Router();
@@ -21,15 +21,19 @@ router.get('/orders/active', protect, rider, getActiveOrders);
 router.get('/orders/history', protect, rider, getOrderHistory);
 router.get('/leaderboard', protect, rider, getLeaderboard);
 router.get('/stats/today', protect, rider, getTodayStats);
+router.get('/stats/week', protect, rider, getWeekStats);
+router.post('/support', protect, rider, createRiderTicket);
+router.get('/support', protect, rider, getRiderTickets);
 router.get('/profile', protect, rider, getRiderProfile);
 router.put('/profile', protect, rider, updateRiderProfile);
 router.put('/profile/password', protect, rider, changePassword);
-router.get('/profile/:id/public', getPublicRiderProfile);   // No auth — customer tracking
+router.get('/profile/:id/public', protect, getPublicRiderProfile);
 router.put('/accept/:orderId', protect, rider, acceptOrder);
 router.put('/status/:orderId', protect, rider, updateOrderStatus);
 router.put('/arrive/:orderId', protect, rider, notifyArrivalAtGate);
 router.put('/cancel/:orderId', protect, rider, cancelOrderByRider);
+// Alias used by the rider app's "unassign" button (POST /api/delivery/orders/:orderId/cancel).
+router.post('/orders/:orderId/cancel', protect, rider, cancelOrderByRider);
 router.put('/online', protect, rider, toggleOnline);
-router.post('/orders/create-test', protect, rider, createTestOrder);
 
 module.exports = router;

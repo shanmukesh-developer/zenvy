@@ -1,5 +1,6 @@
 const admin = require('../config/firebase');
 const { getMessaging } = require('firebase-admin/messaging');
+const { recordNotifications } = require('./notificationStore');
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -29,9 +30,12 @@ const buildMessage = (data, extraFCMOptions) => ({
 });
 
 // ── Multicast Push ──────────────────────────────────────────────────────
+// Options that are ours, not FCM's:
+//   recipients: [userId]  saves the notification for these users (even if they have no device token)
+//   persist: false        do not save it in the in-app notification list
 const sendPushToTokens = async (tokens, title, body, data = {}, extraFCMOptions = {}) => {
-  const apps = (admin.getApps ? admin.getApps() : admin.apps) || [];
-  if (!apps.length) return console.log('[FCM_SEND] Firebase not initialized — skipping push');
+  const { recipients, persist, ...fcmOptions } = extraFCMOptions || {};
+  extraFCMOptions = fcmOptions;
   let tokenList = tokens;
   if (typeof tokens === 'string') {
     try {
@@ -40,7 +44,15 @@ const sendPushToTokens = async (tokens, title, body, data = {}, extraFCMOptions 
       tokenList = [];
     }
   }
-  if (!tokenList || !Array.isArray(tokenList) || tokenList.length === 0) return;
+  if (!Array.isArray(tokenList)) tokenList = [];
+
+  if (persist !== false) {
+    await recordNotifications({ userIds: Array.isArray(recipients) ? recipients : undefined, tokens: tokenList, title, body, data });
+  }
+
+  const apps = (admin.getApps ? admin.getApps() : admin.apps) || [];
+  if (!apps.length) return console.log('[FCM_SEND] Firebase not initialized — skipping push');
+  if (tokenList.length === 0) return;
 
   const validTokens = tokenList.map(t => typeof t === 'string' ? t : t.token).filter(Boolean);
   if (validTokens.length === 0) return { successCount: 0, failureCount: 0, staleTokens: [] };

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import { playSound, resumeAudio } from '../utils/sounds';
 
@@ -40,6 +40,11 @@ export function WorldTransitionProvider({ children }: { children: React.ReactNod
   const [targetWorld, setTargetWorld] = useState<WorldType | null>(null);
   const [phase, setPhase] = useState<'idle' | 'covering' | 'uncovering'>('idle');
   const lockRef = useRef(false);
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const later = (fn: () => void, ms: number) => { timersRef.current.push(setTimeout(fn, ms)); };
+
+  // Clear pending phase timers if the provider ever unmounts (no setState after unmount).
+  useEffect(() => () => { timersRef.current.forEach(clearTimeout); timersRef.current = []; }, []);
 
   const triggerTransition = useCallback((path: string, world: WorldType) => {
     if (lockRef.current) return;
@@ -62,15 +67,18 @@ export function WorldTransitionProvider({ children }: { children: React.ReactNod
     setPhase('covering');
 
     // Phase 1: Cover animation (450ms — faster for snappy feel)
-    setTimeout(() => {
-      router.replace(path as any);
+    timersRef.current.forEach(clearTimeout);
+    timersRef.current = [];
+    later(() => {
+      // A failed navigation must not leave the overlay (and the lock) stuck on screen.
+      try { router.replace(path as any); } catch (e) { console.warn('[WORLD_TRANSITION]', e); }
 
       // Phase 2: Small delay for page swap, then uncover
-      setTimeout(() => {
+      later(() => {
         setPhase('uncovering');
 
         // Phase 3: Uncover (400ms)
-        setTimeout(() => {
+        later(() => {
           setIsTransitioning(false);
           setPhase('idle');
           setTargetWorld(null);

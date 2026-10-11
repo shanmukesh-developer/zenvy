@@ -21,7 +21,11 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.srm.hostelbites",
-      "buildNumber": "6"
+      "buildNumber": "6",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Zenvy uses the camera for campus video calls and ID verification.",
+        "NSMicrophoneUsageDescription": "Zenvy uses the microphone for campus voice and video calls."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -44,6 +48,7 @@
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.READ_CONTACTS",
         "android.permission.WRITE_CONTACTS"
@@ -67,7 +72,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow Zenvy to access your photos to upload payment screenshots."
+          "photosPermission": "Allow Zenvy to access your photos to upload payment screenshots and lost & found item pictures.",
+          "cameraPermission": "Allow Zenvy to take photos of lost and found items."
         }
       ],
       [
@@ -92,11 +98,6 @@
     ],
     "experiments": {
       "typedRoutes": true
-    },
-    "extra": {
-      "eas": {
-        "projectId": "your-eas-project-id"
-      }
     }
   }
 }

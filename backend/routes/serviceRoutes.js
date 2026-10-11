@@ -4,6 +4,69 @@ const { getServiceBookingModel } = require('../models/ServiceBooking');
 const { getUserModel } = require('../models/User');
 const { protect, admin } = require('../middleware/authMiddleware');
 
+const { getMenuItemModel } = require('../models/MenuItem');
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const toInt = (v, min, max, dflt) => {
+  const n = parseInt(v, 10);
+  if (!Number.isFinite(n)) return dflt;
+  return Math.min(max, Math.max(min, n));
+};
+const specsOf = (item) => {
+  let specs = item && item.specs;
+  if (typeof specs === 'string') { try { specs = JSON.parse(specs); } catch { specs = {}; } }
+  return specs && typeof specs === 'object' ? specs : {};
+};
+
+// Server-side price of a service booking, from the same catalogue rows the app shows (M11 / ordering-n15).
+// Print: per-page rate (B&W or colour) × pages × copies + binding, exactly like the print sheet.
+// Others: the service card price. Returns { amount, item } or { error }.
+const priceServiceBooking = async (specifications) => {
+  const spec = specifications && typeof specifications === 'object' ? specifications : {};
+  const itemId = String(spec.catalogueItemId || '');
+  if (!UUID_RE.test(itemId)) return { amount: 0, item: null }; // older app: the partner sends a quote
+  const MenuItem = getMenuItemModel();
+  const item = await MenuItem.findByPk(itemId);
+  if (!item || !specsOf(item).bookingOnly) return { error: 'This service is no longer available. Please pick another one.' };
+  if (item.isAvailable === false) return { error: `${item.name} is not taking bookings right now.` };
+
+  const isPrint = String(spec.category || '').toLowerCase() === 'print';
+  if (!isPrint) return { amount: Math.round((Number(item.price) || 0) * 100) / 100, item };
+
+  const storeItems = await MenuItem.findAll({ where: { restaurantId: item.restaurantId } });
+  const rate = (re) => {
+    const hit = storeItems.find((i) => re.test(String(i.name || '')));
+    return hit ? Number(hit.price) || 0 : null;
+  };
+  const rates = {
+    bw: rate(/black|b\s*&\s*w|b\/w/i),
+    color: rate(/colou?r/i),
+    spiral: rate(/spiral/i),
+    hardbound: rate(/hard\s*bound|thesis/i),
+  };
+  const pages = toInt(spec.pageCount, 1, 5000, 1);
+  const copies = toInt(spec.copies, 1, 500, 1);
+  const perPage = (spec.printColor === 'color' ? rates.color : rates.bw) ?? (Number(item.price) || 0);
+  const binding = spec.bindingType === 'spiral' ? (rates.spiral ?? 0) : spec.bindingType === 'hardbound' ? (rates.hardbound ?? 0) : 0;
+  const amount = Math.round((pages * perPage * copies + binding) * 100) / 100;
+  if (amount > 100000) return { error: 'That print job is too large to book in the app. Please contact support.' };
+  return { amount, item };
+};
+
+const isAdminUser = (user) => !!(user && typeof user.role === 'string' && user.role.toLowerCase() === 'admin');
+// Only the customer who booked, the assigned partner, or an admin may see a booking.
+const canViewBooking = (booking, user) => !!user && (
+  booking.userId === user.id || isAdminUser(user) || (booking.assignedPartnerId && booking.assignedPartnerId === user.id)
+);
+
+// Non-UUID ids would make Postgres throw: answer 404 instead of a 500.
+router.param('id', (req, res, next, id) => {
+  if (!UUID_RE.test(String(id || ''))) return res.status(404).json({ success: false, message: 'Booking not found' });
+  next();
+});
+
+const BOOKING_STATUSES = ['REQUESTED', 'DIAGNOSED_QUOTED', 'CONFIRMED', 'IN_PROGRESS', 'READY_FOR_DELIVERY', 'COMPLETED', 'CANCELLED'];
+
 // Create a new Service Booking (Laptop Repair, Printout, Laundry, Auto Ride, Room Shift)
 router.post('/book', protect, async (req, res) => {
   try {
@@ -52,8 +115,10 @@ router.post('/book', protect, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Description must be under 2000 characters' });
     }
 
-    if (quotedAmount && (isNaN(quotedAmount) || quotedAmount < 0 || quotedAmount > 100000)) {
-      return res.status(400).json({ success: false, message: 'quotedAmount must be between 0 and 100000' });
+    // The client's quotedAmount is ignored: the price comes from the catalogue (see priceServiceBooking).
+    const priced = await priceServiceBooking(specifications);
+    if (priced.error) {
+      return res.status(400).json({ success: false, code: 'SERVICE_UNAVAILABLE', message: priced.error });
     }
 
     const sanitizedPhone = (contactPhone || req.user.phone || '').replace(/[^\d+]/g, '');
@@ -69,8 +134,7 @@ router.post('/book', protect, async (req, res) => {
       }
     ];
 
-    // Default amount for fixed service estimates
-    const finalAmt = quotedAmount || 0;
+    const finalAmt = priced.amount || 0;
 
     const booking = await ServiceBooking.create({
       userId: req.user.id,
@@ -83,7 +147,8 @@ router.post('/book', protect, async (req, res) => {
       quotedAmount: finalAmt,
       finalAmount: finalAmt,
       paymentStatus: 'Pending',
-      paymentMethod: paymentMethod || 'COD',
+      paymentMethod: 'COD', // services are paid in cash when the job is done
+
       pickupSlot: pickupSlot || 'Immediate / 30 Mins',
       hostelBlock: hostelBlock || req.user.hostelBlock || '',
       roomNumber: roomNumber || req.user.roomNumber || '',
@@ -95,7 +160,8 @@ router.post('/book', protect, async (req, res) => {
     // If socket.io is available, broadcast new service notification to admins/partners
     if (req.app.get('io')) {
       const io = req.app.get('io');
-      io.emit('newServiceBooking', {
+      // Admins only: the payload includes the customer's room.
+      io.to('admin-room').emit('newServiceBooking', {
         id: booking.id,
         serviceType: booking.serviceType,
         title: booking.title,
@@ -111,7 +177,7 @@ router.post('/book', protect, async (req, res) => {
     });
   } catch (error) {
     console.error('Error creating service booking:', error);
-    return res.status(500).json({ success: false, message: 'Server error creating booking', error: error.message });
+    return res.status(500).json({ success: false, message: 'We could not book this service right now. Please try again.' });
   }
 });
 
@@ -144,6 +210,9 @@ router.get('/:id', protect, async (req, res) => {
     if (!booking) {
       return res.status(404).json({ success: false, message: 'Booking not found' });
     }
+    if (!canViewBooking(booking, req.user)) {
+      return res.status(404).json({ success: false, message: 'Booking not found' });
+    }
 
     return res.json({ success: true, booking });
   } catch (error) {
@@ -166,7 +235,16 @@ router.post('/:id/confirm-quote', protect, async (req, res) => {
       return res.status(403).json({ success: false, message: 'Unauthorized' });
     }
 
-    const { acceptQuote } = req.body;
+    // A quote can only be answered while the booking is still waiting on the student.
+    if (!['REQUESTED', 'DIAGNOSED_QUOTED'].includes(booking.status)) {
+      return res.status(400).json({
+        success: false,
+        message: booking.status === 'CANCELLED' ? 'This booking was cancelled.' : 'This quote was already answered.',
+        booking,
+      });
+    }
+
+    const { acceptQuote } = req.body || {};
     const history = Array.isArray(booking.trackingHistory) ? [...booking.trackingHistory] : [];
 
     if (acceptQuote) {
@@ -205,13 +283,28 @@ router.patch('/:id/status', protect, async (req, res) => {
       return res.status(404).json({ success: false, message: 'Booking not found' });
     }
 
+    // Only an admin or the partner assigned to this booking may change its status or price.
+    const isAdmin = isAdminUser(req.user);
+    const isAssignedPartner = !!(booking.assignedPartnerId && booking.assignedPartnerId === req.user.id);
+    if (!isAdmin && !isAssignedPartner) {
+      return res.status(403).json({ success: false, message: 'Only the Zenvy team or the assigned partner can update this booking.' });
+    }
+
     const { status, quotedAmount, finalAmount, note, driverDetails, assignedPartnerId } = req.body;
+    const badAmount = (v) => v !== undefined && v !== null && (!Number.isFinite(Number(v)) || Number(v) < 0 || Number(v) > 100000);
+    if (badAmount(quotedAmount) || badAmount(finalAmount)) {
+      return res.status(400).json({ success: false, message: 'Amounts must be between ₹0 and ₹100000.' });
+    }
+
+    if (status && !BOOKING_STATUSES.includes(status)) {
+      return res.status(400).json({ success: false, message: `Status must be one of: ${BOOKING_STATUSES.join(', ')}` });
+    }
 
     if (status) booking.status = status;
     if (quotedAmount !== undefined) booking.quotedAmount = quotedAmount;
     if (finalAmount !== undefined) booking.finalAmount = finalAmount;
     if (driverDetails) booking.driverDetails = driverDetails;
-    if (assignedPartnerId) booking.assignedPartnerId = assignedPartnerId;
+    if (assignedPartnerId && isAdmin) booking.assignedPartnerId = assignedPartnerId;
 
     const history = Array.isArray(booking.trackingHistory) ? [...booking.trackingHistory] : [];
     if (status || note) {
@@ -261,7 +354,7 @@ router.post('/:id/cancel', protect, async (req, res) => {
     if (NON_CANCELLABLE.includes(booking.status)) {
       return res.status(400).json({
         success: false,
-        message: `Cannot cancel a booking with status: ${booking.status}`,
+        message: booking.status === 'CANCELLED' ? 'This booking is already cancelled.' : 'This booking is already completed, so it can no longer be cancelled.',
       });
     }
 
@@ -269,7 +362,7 @@ router.post('/:id/cancel', protect, async (req, res) => {
     history.push({
       stage: 'CANCELLED',
       timestamp: new Date().toISOString(),
-      note: req.body.reason || 'Cancelled by user',
+      note: (typeof (req.body || {}).reason === 'string' && req.body.reason.trim()) ? req.body.reason.replace(/[<>]/g, '').trim().slice(0, 250) : 'Cancelled by user',
     });
 
     booking.status = 'CANCELLED';
@@ -278,7 +371,10 @@ router.post('/:id/cancel', protect, async (req, res) => {
 
     // Notify partner/admin via socket
     if (req.app.get('io')) {
-      req.app.get('io').emit('serviceCancelled', { id: booking.id, serviceType: booking.serviceType });
+      // Admins (and the assigned partner) only — not a broadcast to every connected socket.
+      const io = req.app.get('io');
+      io.to('admin-room').emit('serviceCancelled', { id: booking.id, serviceType: booking.serviceType });
+      if (booking.assignedPartnerId) io.to(`rider_${booking.assignedPartnerId}`).emit('serviceCancelled', { id: booking.id, serviceType: booking.serviceType });
     }
 
     return res.json({ success: true, message: 'Booking cancelled successfully', booking });
@@ -306,17 +402,23 @@ router.post('/:id/rate', protect, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Can only rate completed bookings' });
     }
 
-    const { rating, review } = req.body;
-    if (!rating || rating < 1 || rating > 5) {
-      return res.status(400).json({ success: false, message: 'Rating must be between 1 and 5' });
+    const rating = Number((req.body || {}).rating);
+    const review = typeof (req.body || {}).review === 'string' ? req.body.review.replace(/[<>]/g, '').trim().substring(0, 500) : '';
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+      return res.status(400).json({ success: false, message: 'Please pick a rating from 1 to 5 stars.' });
+    }
+    if ((booking.specifications || {}).userRating) {
+      return res.status(409).json({ success: false, code: 'ALREADY_RATED', message: 'You have already rated this booking. Thank you!' });
     }
 
-    // Store rating in specifications JSON
-    const specs = booking.specifications || {};
-    specs.userRating = rating;
-    specs.userReview = (review || '').substring(0, 500);
-    specs.ratedAt = new Date().toISOString();
-    booking.specifications = specs;
+    // Store rating in specifications JSON (a NEW object: mutating the stored one in place is
+    // not detected as a change on Postgres, so the rating would silently never save).
+    booking.specifications = {
+      ...(booking.specifications || {}),
+      userRating: rating,
+      userReview: review,
+      ratedAt: new Date().toISOString(),
+    };
 
     const history = Array.isArray(booking.trackingHistory) ? [...booking.trackingHistory] : [];
     history.push({
