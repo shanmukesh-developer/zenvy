@@ -1,7 +1,7 @@
 // One function per rider endpoint (base: /api). No invented defaults: missing values stay null.
 import { ApiError, apiFetch } from './apiClient';
 import { normalizeOrder, normalizeOrders, toNumber } from './orderModel';
-import { APP_PUSH_VERSION } from '../constants/api';
+import { APP_PUSH_VERSION } from '../config';
 import type { RiderOrder, RiderProfile, SupportTicket, TodayStats, WeekStats } from '../types';
 
 export function toProfile(raw: any, prev?: RiderProfile | null): RiderProfile {

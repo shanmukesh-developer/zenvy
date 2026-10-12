@@ -515,7 +515,9 @@ const connectDB = async () => {
           { name: 'isMultiRestaurant', type: 'BOOLEAN DEFAULT 0' },
           { name: 'pickupStops', type: "TEXT DEFAULT '[]'" },
           { name: 'acceptedAt', type: 'DATETIME' },
-          { name: 'readyAt', type: 'DATETIME' }
+          { name: 'readyAt', type: 'DATETIME' },
+          { name: 'dropLat', type: 'FLOAT' },
+          { name: 'dropLng', type: 'FLOAT' }
         ];
         for (const col of orderCols) {
           try {
@@ -596,6 +598,14 @@ const connectDB = async () => {
       for (const col of ['acceptedAt', 'readyAt']) {
         try {
           await sequelize.query(`ALTER TABLE "Orders" ADD COLUMN IF NOT EXISTS "${col}" TIMESTAMP WITH TIME ZONE;`);
+        } catch (err) {
+          console.warn(`⚠️ [DB_MIGRATION_WARN] Orders.${col}:`, err.message);
+        }
+      }
+      // Drop coordinates for rider navigation (nullable, idempotent).
+      for (const col of ['dropLat', 'dropLng']) {
+        try {
+          await sequelize.query(`ALTER TABLE "Orders" ADD COLUMN IF NOT EXISTS "${col}" DOUBLE PRECISION;`);
         } catch (err) {
           console.warn(`⚠️ [DB_MIGRATION_WARN] Orders.${col}:`, err.message);
         }

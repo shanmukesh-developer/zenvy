@@ -1,11 +1,12 @@
 import React, { memo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { rupees } from '../services/orderModel';
-import { color, elevation, mono, radius, space, type } from '../theme/tokens';
+import { Ionicons } from '@expo/vector-icons';
+import { rupees } from '../lib/model';
+import { color, font, mono, radius, shadow, space } from '../theme';
+import { IconButton } from '../ui/kit';
 import {
-  callNumber, ElapsedText, InstructionsCallout, ItemLines, OrderActions, PastChip, PaymentBadge, PrepLine, RiderStatus,
-} from './OrderBits';
-import { IconButton } from './ui';
+  callNumber, CampusTag, Elapsed, ItemLines, NoteCallout, OrderActions, PastLine, PaymentBadge, PrepLine, RiderLine,
+} from './orderParts';
 import type { Order } from '../types';
 
 function OrderCardBase({ order, onOpen, onAccept, onReject }: {
@@ -18,38 +19,37 @@ function OrderCardBase({ order, onOpen, onAccept, onReject }: {
       <Pressable
         onPress={() => onOpen(order)}
         accessibilityRole="button"
-        accessibilityLabel={`Order ${order.shortId}, ${order.itemCount} items, open details`}
+        accessibilityLabel={`Order ${order.shortId}, ${order.itemCount} items. Open details`}
         style={({ pressed }) => [{ gap: space.sm }, pressed && { opacity: 0.85 }]}
       >
         <View style={styles.row}>
           <View style={{ flex: 1, gap: 2 }}>
-            <Text style={[type.orderId, mono, { color: color.text }]}>#{order.shortId}</Text>
-            <ElapsedText order={order} />
+            <View style={styles.row}>
+              <Text style={[font.orderId, mono, { color: color.text }]}>#{order.shortId}</Text>
+              <CampusTag order={order} />
+            </View>
+            <Elapsed order={order} />
           </View>
           <PaymentBadge order={order} />
         </View>
 
-        <View style={styles.row}>
-          <Text style={[type.title3, { color: color.text, flex: 1 }]} numberOfLines={1}>
-            {order.customerName || 'Customer'}
+        <ItemLines order={order} max={order.stage === 'past' ? 3 : undefined} />
+        <NoteCallout order={order} />
+
+        <View style={[styles.row, styles.footer]}>
+          <Text style={[font.h3, { color: color.text, flex: 1 }]}>
+            {rupees(order.totalPrice)} <Text style={[font.small, { color: color.textMuted }]}>· {order.itemCount} item{order.itemCount === 1 ? '' : 's'}</Text>
           </Text>
           {active && order.customerPhone ? (
             <IconButton icon="call" label={`Call customer ${order.customerName || ''}`} onPress={() => callNumber(order.customerPhone)} />
           ) : null}
-        </View>
-
-        <ItemLines order={order} max={order.stage === 'past' ? 3 : undefined} />
-        <InstructionsCallout order={order} />
-
-        <View style={[styles.row, styles.footer]}>
-          <Text style={[type.body, { color: color.text, fontWeight: '800' }]}>Item total {rupees(order.totalPrice)}</Text>
-          {isNew ? <Text style={[type.bodySm, { color: color.textMuted }]}>{order.itemCount} item{order.itemCount === 1 ? '' : 's'}</Text> : null}
+          <Ionicons name="chevron-forward" size={20} color={color.textMuted} />
         </View>
       </Pressable>
 
       <PrepLine order={order} />
-      <RiderStatus order={order} />
-      <PastChip order={order} />
+      <RiderLine order={order} />
+      <PastLine order={order} />
       <OrderActions order={order} onAccept={() => onAccept(order)} onReject={() => onReject(order)} />
     </View>
   );
@@ -58,8 +58,8 @@ function OrderCardBase({ order, onOpen, onAccept, onReject }: {
 export const OrderCard = memo(OrderCardBase);
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: color.surface, borderRadius: radius.lg, padding: space.md, gap: space.sm, borderWidth: 1, borderColor: color.border, ...elevation.card },
-  cardNew: { borderColor: color.alert, borderWidth: 2 },
+  card: { backgroundColor: color.surface, borderRadius: radius.lg, padding: space.md, gap: space.sm, borderWidth: 1, borderColor: color.border, ...shadow.card },
+  cardNew: { borderColor: color.alert, borderWidth: 3 },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  footer: { justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: color.surfaceAlt, paddingTop: space.sm },
+  footer: { borderTopWidth: 1, borderTopColor: color.surfaceAlt, paddingTop: space.sm },
 });

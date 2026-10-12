@@ -1,0 +1,284 @@
+// Profile: identity, vehicle, documents status, voice, support, safety, account.
+import React, { useEffect, useState } from 'react';
+import { Image, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import Constants from 'expo-constants';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { C, R, S, T } from '../theme';
+import { Badge, Btn, Card, Label, Row, ScreenHeader } from '../ui/kit';
+import { Sheet } from '../ui/Sheet';
+import { useRider } from '../state/RiderStore';
+import { useVoice } from '../voice/useVoice';
+import { LANG_LABEL } from '../voice/phrases';
+import * as api from '../services/deliveryApi';
+import * as links from '../services/links';
+import { errorMessage } from '../services/apiClient';
+import { SUPPORT_PHONE } from '../config';
+
+const VEHICLES = ['Bicycle', 'Scooter', 'Motorcycle', 'E-bike'];
+
+export function ProfileScreen() {
+  const r = useRider();
+  const voice = useVoice();
+  const p = r.profile;
+  const [refreshing, setRefreshing] = useState(false);
+  const [edit, setEdit] = useState(false);
+  const [pwd, setPwd] = useState(false);
+  const [confirmLogout, setConfirmLogout] = useState(false);
+
+  useEffect(() => {
+    r.refreshProfile();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (!p) return null;
+  const rating = p.averageRating !== null ? `★ ${p.averageRating.toFixed(1)}${p.totalRatings ? ` (${p.totalRatings})` : ''}` : 'No ratings yet';
+  const version = Constants.expoConfig?.version ?? null;
+
+  return (
+    <ScrollView
+      contentContainerStyle={{ paddingBottom: S.xxl }}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={async () => {
+            setRefreshing(true);
+            try {
+              await r.refreshProfile();
+            } finally {
+              setRefreshing(false);
+            }
+          }}
+        />
+      }
+    >
+      <ScreenHeader title="Profile" />
+      <View style={styles.content}>
+        <Card style={styles.idCard}>
+          {p.photoUrl ? (
+            <Image source={{ uri: p.photoUrl }} style={styles.avatar} accessibilityLabel="Profile photo" />
+          ) : (
+            <View style={[styles.avatar, { backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' }]}>
+              <Text style={[T.h1, { color: C.white }]}>{(p.name || '?').charAt(0).toUpperCase()}</Text>
+            </View>
+          )}
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={[T.h2, { color: C.ink }]} numberOfLines={1}>
+              {p.name || '—'}
+            </Text>
+            <Text style={[T.body, { color: C.ink2 }]}>+91 {p.phone}</Text>
+            <Text style={[T.small, { color: C.muted }]}>
+              {rating}
+              {p.completedCount !== null ? ` · ${p.completedCount} deliveries` : ''}
+            </Text>
+          </View>
+        </Card>
+
+        <Card style={{ gap: S.sm }}>
+          <Label>DOCUMENTS</Label>
+          {p.isApproved ? (
+            <Badge tone="green" icon="check-decagram" label="Verified by Zenvy" />
+          ) : (
+            <Badge tone="amber" icon="clock-outline" label="Waiting for verification" />
+          )}
+          <Text style={[T.small, { color: C.ink2 }]}>Your licence and ID are checked by the Zenvy fleet team. Call support to update them.</Text>
+        </Card>
+
+        <Card style={{ paddingVertical: S.xs }}>
+          <Row
+            icon="moped-outline"
+            label={p.vehicleType ?? 'Add vehicle type'}
+            value={p.vehicleNumber ?? 'Add vehicle number'}
+            warn={!p.vehicleType || !p.vehicleNumber}
+            onPress={() => setEdit(true)}
+          />
+          <Row
+            icon="account-heart-outline"
+            label="Emergency contact"
+            value={p.emergencyContact ? `+91 ${p.emergencyContact}` : 'Not added yet'}
+            warn={!p.emergencyContact}
+            onPress={() => setEdit(true)}
+          />
+          <Row
+            icon={voice.enabled ? 'volume-high' : 'volume-off'}
+            label="Voice announcements"
+            value={voice.enabled ? LANG_LABEL[voice.effectiveLang] : 'Off'}
+            onPress={() => r.setOverlay({ kind: 'voice' })}
+          />
+        </Card>
+
+        <Card style={{ paddingVertical: S.xs }}>
+          <Row icon="lifebuoy" label="Help & support" value="Raise a ticket, see replies" onPress={() => r.setOverlay({ kind: 'support' })} />
+          <Row icon="phone-outline" label="Call Zenvy" value="Talk to the fleet team" onPress={() => links.callNumber(`+${SUPPORT_PHONE}`)} />
+          <Row icon="lock-reset" label="Change password" onPress={() => setPwd(true)} />
+        </Card>
+
+        <Btn title="Emergency 112" icon="phone-alert" variant="red" size="mid" onPress={() => links.callNumber('112')} />
+        <Btn title="Log out" icon="logout" variant="outline" size="mid" textColor={C.red} onPress={() => setConfirmLogout(true)} />
+        {version ? <Text style={[T.small, { color: C.muted, textAlign: 'center' }]}>Zenvy Rider {version}</Text> : null}
+      </View>
+
+      <EditProfileSheet visible={edit} onClose={() => setEdit(false)} />
+      <ChangePasswordSheet visible={pwd} onClose={() => setPwd(false)} />
+      <Sheet visible={confirmLogout} onClose={() => setConfirmLogout(false)} title="Log out?">
+        <Text style={[T.body, { color: C.ink2 }]}>
+          {r.active.data.length
+            ? `You still have ${r.active.data.length} active deliver${r.active.data.length === 1 ? 'y' : 'ies'}. Finish first if you can.`
+            : 'You will go offline and stop getting orders.'}
+        </Text>
+        <View style={{ flexDirection: 'row', gap: S.md }}>
+          <Btn title="Cancel" variant="outline" size="mid" onPress={() => setConfirmLogout(false)} style={{ flex: 1 }} />
+          <Btn
+            title="Log out"
+            variant="red"
+            size="mid"
+            onPress={async () => {
+              setConfirmLogout(false);
+              await r.logout();
+            }}
+            style={{ flex: 1 }}
+          />
+        </View>
+      </Sheet>
+    </ScrollView>
+  );
+}
+
+function Field({ label, ...props }: { label: string } & React.ComponentProps<typeof TextInput>) {
+  return (
+    <View style={{ gap: 6 }}>
+      <Text style={[T.label, { color: C.ink2 }]}>{label}</Text>
+      <TextInput placeholderTextColor={C.muted} {...props} style={[T.body, styles.input]} accessibilityLabel={label} />
+    </View>
+  );
+}
+
+function ErrorLine({ text }: { text: string | null }) {
+  if (!text) return null;
+  return (
+    <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }} accessibilityRole="alert">
+      <MaterialCommunityIcons name="alert-circle" size={20} color={C.red} />
+      <Text style={[T.body, { color: C.red, flex: 1, fontWeight: '700' }]}>{text}</Text>
+    </View>
+  );
+}
+
+function EditProfileSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const r = useRider();
+  const p = r.profile;
+  const [name, setName] = useState('');
+  const [vehicleType, setVehicleType] = useState('');
+  const [vehicleNumber, setVehicleNumber] = useState('');
+  const [emergency, setEmergency] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (visible && p) {
+      setName(p.name || '');
+      setVehicleType(p.vehicleType || '');
+      setVehicleNumber(p.vehicleNumber || '');
+      setEmergency(p.emergencyContact || '');
+      setError(null);
+    }
+    // only when opening
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+
+  const emergencyDigits = emergency.replace(/\D/g, '').slice(-10);
+  const valid = name.trim().length >= 2 && (emergencyDigits.length === 0 || emergencyDigits.length === 10);
+
+  const save = async () => {
+    setError(null);
+    try {
+      await r.saveProfileEdits({
+        name: name.trim(),
+        vehicleType: vehicleType.trim(),
+        vehicleNumber: vehicleNumber.trim().toUpperCase(),
+        emergencyContact: emergencyDigits,
+      });
+      onClose();
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  };
+
+  return (
+    <Sheet visible={visible} onClose={onClose} title="Edit profile" footer={<Btn title="Save" icon="content-save" onPress={save} disabled={!valid} />}>
+      <Field label="NAME" value={name} onChangeText={setName} autoCapitalize="words" />
+      <View style={{ gap: 6 }}>
+        <Text style={[T.label, { color: C.ink2 }]}>VEHICLE TYPE</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: S.sm }}>
+          {VEHICLES.map((v) => (
+            <Btn
+              key={v}
+              title={v}
+              size="small"
+              variant={vehicleType === v ? 'green' : 'outline'}
+              icon={vehicleType === v ? 'check' : undefined}
+              onPress={() => setVehicleType(v)}
+            />
+          ))}
+        </View>
+      </View>
+      <Field label="VEHICLE NUMBER" value={vehicleNumber} onChangeText={setVehicleNumber} autoCapitalize="characters" placeholder="e.g. AP 39 AB 1234" />
+      <Field label="EMERGENCY CONTACT (10 DIGITS)" value={emergency} onChangeText={setEmergency} keyboardType="phone-pad" maxLength={14} />
+      <ErrorLine text={error} />
+    </Sheet>
+  );
+}
+
+function ChangePasswordSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const { showToast } = useRider();
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (visible) {
+      setCurrent('');
+      setNext('');
+      setError(null);
+    }
+  }, [visible]);
+  const ok = current.length > 0 && next.length >= 6;
+  return (
+    <Sheet
+      visible={visible}
+      onClose={onClose}
+      title="Change password"
+      footer={
+        <Btn
+          title="Update password"
+          disabled={!ok}
+          onPress={async () => {
+            setError(null);
+            try {
+              await api.changePassword(current, next);
+              showToast('Password updated.', 'success');
+              onClose();
+            } catch (e) {
+              setError(errorMessage(e));
+            }
+          }}
+        />
+      }
+    >
+      <Field label="CURRENT PASSWORD" value={current} onChangeText={setCurrent} secureTextEntry autoCapitalize="none" />
+      <Field label="NEW PASSWORD (6+ CHARACTERS)" value={next} onChangeText={setNext} secureTextEntry autoCapitalize="none" />
+      <ErrorLine text={error} />
+    </Sheet>
+  );
+}
+
+const styles = StyleSheet.create({
+  content: { paddingHorizontal: S.lg, gap: S.lg },
+  idCard: { flexDirection: 'row', alignItems: 'center', gap: S.lg },
+  avatar: { width: 72, height: 72, borderRadius: 36 },
+  input: {
+    minHeight: 54,
+    borderRadius: R.md,
+    borderWidth: 2,
+    borderColor: C.line,
+    paddingHorizontal: S.lg,
+    color: C.ink,
+    backgroundColor: C.card,
+  },
+});

@@ -56,6 +56,9 @@ const initOrderModel = (sequelize) => {
     // Kitchen timestamps (restaurant partner app: real prep time + "ready by"). Null on older rows.
     acceptedAt: { type: DataTypes.DATE, allowNull: true },
     readyAt: { type: DataTypes.DATE, allowNull: true },
+    // Customer's delivery pin (POST /api/orders coordinates). Sent to the ASSIGNED rider only (dropCoords). Null on older rows.
+    dropLat: { type: DataTypes.FLOAT, allowNull: true },
+    dropLng: { type: DataTypes.FLOAT, allowNull: true },
     isSurge: { type: DataTypes.BOOLEAN, defaultValue: false },
     hostelGateDelivery: { type: DataTypes.BOOLEAN, defaultValue: false },
     rating: { type: DataTypes.FLOAT },

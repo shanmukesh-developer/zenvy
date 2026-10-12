@@ -1237,6 +1237,22 @@ const initializeApp = async () => {
         else if (socketRole() !== 'restaurant') socket.join(`user_${socket.user.id}`);
       }
 
+      // Live dispatch pool: only an authenticated rider whose account is approved AND on duty joins
+      // 'riders_online' (delivery_request / delivery_request_gone). PUT /delivery/online moves it after.
+      if (!isGuestSocket() && socketRole() === 'rider') {
+        (async () => {
+          try {
+            const { getDeliveryPartnerModel } = require('./models/DeliveryPartner');
+            const partner = await getDeliveryPartnerModel().findByPk(socket.user.id, { attributes: ['id', 'isOnline', 'isApproved'] });
+            if (partner && partner.isOnline && partner.isApproved && socket.connected) {
+              socket.join(require('./utils/realtime').RIDERS_ONLINE_ROOM);
+            }
+          } catch (err) {
+            console.warn('[RIDERS_ONLINE_JOIN_WARN]', err.message);
+          }
+        })();
+      }
+
       socket.on('joinOrder', async (orderId) => {
         const room = String(orderId).trim();
         

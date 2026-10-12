@@ -123,8 +123,7 @@ function toInstructions(raw: any): { instructions: string[]; address: string | n
   return { instructions: [], address };
 }
 
-function toCoords(raw: any): { lat: number; lng: number } | null {
-  const c = raw?.pickupCoords;
+function toCoords(c: any): { lat: number; lng: number } | null {
   if (!c) return null;
   const lat = toNumber(c.lat);
   const lng = toNumber(c.lng ?? c.lon);
@@ -153,10 +152,12 @@ export function normalizeOrder(raw: any): RiderOrder {
     restaurantName: cleanText(raw?.restaurant ?? raw?.restaurantName),
     restaurantAddress: cleanText(raw?.restaurantAddress),
     restaurantPhone: isDialable(raw?.restaurantPhone) ? String(raw.restaurantPhone) : null,
-    pickupCoords: toCoords(raw),
+    pickupCoords: toCoords(raw?.pickupCoords),
     customerName: cleanText(raw?.customerName),
     customerPhone: isDialable(raw?.customerPhone) ? String(raw.customerPhone) : null,
     dropAddress: address,
+    dropArea: cleanText(raw?.dropArea),
+    dropCoords: toCoords(raw?.dropCoords),
     instructions,
     items: toItems(raw?.items),
     finalPrice,

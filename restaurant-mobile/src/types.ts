@@ -6,12 +6,11 @@ export interface StoreProfile {
   name: string;
   location?: string;
   imageUrl?: string;
+  campus?: string | null;
   operatingHours?: OperatingHours | null;
   isOpenNow?: boolean;
   isOffline?: boolean;
   vendorType?: string;
-  commissionRate?: number;
-  commissionType?: string;
   deliveryTime?: number;
 }
 
@@ -59,7 +58,10 @@ export interface Order {
   paymentMethod: string;
   paymentStatus: string | null;
   isCOD: boolean;
+  /** Delivery address without the "Note: …" parts. Shown on screen, never spoken. */
   deliveryAddress: string;
+  /** Campus label parsed from the address ("SRM AP"), safe to speak. */
+  campus: string | null;
   instructions: string[];
   estDuration: number | null;
   cancellationReason: string | null;
@@ -68,7 +70,7 @@ export interface Order {
   customerPhone: string | null;
   riderName: string | null;
   riderPhone: string | null;
-  /** Card made from a socket event before the full order was fetched. */
+  /** Card built from a socket event before the full order was fetched. */
   partial?: boolean;
 }
 

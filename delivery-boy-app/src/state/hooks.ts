@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import * as Network from 'expo-network';
 import { getItem, setItem } from '../services/session';
+import { DISMISS_TTL_MS, KEYS } from '../config';
 
 /** true while the app is in the foreground. */
 export function useAppActive(): boolean {
@@ -43,8 +44,7 @@ export function useInterval(cb: () => void, delay: number | null) {
   }, [delay]);
 }
 
-const DISMISSED_KEY = '@zenvy_rider_dismissed_orders';
-const DISMISS_TTL_MS = 30 * 60 * 1000;
+const DISMISSED_KEY = KEYS.dismissed;
 
 /** Pool orders the rider rejected or let time out (hidden for 30 minutes). */
 export function useDismissedOrders() {
@@ -55,13 +55,14 @@ export function useDismissedOrders() {
       try {
         const parsed = JSON.parse(raw) as Record<string, number>;
         const now = Date.now();
-        setDismissed(Object.fromEntries(Object.entries(parsed).filter(([, exp]) => exp > now)));
+        // merge: keep anything dismissed before storage finished loading
+        setDismissed((cur) => ({ ...Object.fromEntries(Object.entries(parsed).filter(([, exp]) => exp > now)), ...cur }));
       } catch {
         // ignore
       }
     });
   }, []);
-  const dismiss = (orderId: string) => {
+  const dismiss = useCallback((orderId: string) => {
     setDismissed((prev) => {
       const now = Date.now();
       const next = Object.fromEntries(Object.entries(prev).filter(([, exp]) => exp > now));
@@ -69,7 +70,6 @@ export function useDismissedOrders() {
       setItem(DISMISSED_KEY, JSON.stringify(next));
       return next;
     });
-  };
-  const isDismissed = (orderId: string) => (dismissed[orderId] ?? 0) > Date.now();
-  return { dismiss, isDismissed, dismissed };
+  }, []);
+  return { dismiss, dismissed };
 }

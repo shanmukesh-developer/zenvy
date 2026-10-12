@@ -1,35 +1,105 @@
-// Push: permission, Android channel, FCM token registration (once per token), listeners.
-import { Platform } from 'react-native';
+// Push: permission, Android channels, FCM token registration (once per token), listeners,
+// plus the short "soundbox" chime played before a voice announcement.
+import { Platform, Vibration } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { saveFcmToken } from './deliveryApi';
 import { getItem, setItem } from './session';
+import { KEYS } from '../config';
 
-const REGISTERED_KEY = '@zenvy_rider_push_registered';
+const REGISTERED_KEY = KEYS.pushRegistered;
+const ALERT_CHANNEL = 'delivery-alerts-v2';
+const CHIME_CHANNEL = 'zenvy-chime-v1';
 
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
+  handleNotification: async (n) => {
+    const data = (n?.request?.content?.data as any) || {};
+    const chime = data.chime === true;
+    // App open + new-order push: the in-app order card, chime and voice already cover it.
+    // Playing the push sound too would stack two sounds on top of the announcement.
+    const coveredInApp = data.type === 'NEW_ORDER';
+    // A chime is a sound cue only: no banner over the app while it is open.
+    return {
+      shouldShowBanner: !chime && !coveredInApp,
+      shouldShowList: !chime,
+      shouldPlaySound: chime || !coveredInApp,
+      shouldSetBadge: false,
+    };
+  },
 });
 
-async function ensureChannel() {
-  if (Platform.OS !== 'android') return;
-  await Notifications.setNotificationChannelAsync('delivery-alerts-v2', {
-    name: 'Delivery Alerts',
-    importance: Notifications.AndroidImportance.MAX,
-    vibrationPattern: [0, 250, 250, 250, 250, 250, 250, 250],
-    lightColor: '#FF231F7A',
-    sound: 'alert',
-  });
+let channelsReady: Promise<void> | null = null;
+
+function ensureChannels(): Promise<void> {
+  if (Platform.OS !== 'android') return Promise.resolve();
+  if (!channelsReady) {
+    channelsReady = (async () => {
+      await Notifications.setNotificationChannelAsync(ALERT_CHANNEL, {
+        name: 'Delivery alerts',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250, 250, 250],
+        lightColor: '#0E9F5B',
+        sound: 'default',
+      });
+      await Notifications.setNotificationChannelAsync(CHIME_CHANNEL, {
+        name: 'Order sounds',
+        description: 'Short sound before a voice announcement',
+        importance: Notifications.AndroidImportance.HIGH,
+        sound: 'default',
+        enableVibrate: false,
+      });
+    })().catch(() => {
+      channelsReady = null;
+    });
+  }
+  return channelsReady ?? Promise.resolve();
+}
+
+async function hasPermission(): Promise<boolean> {
+  try {
+    return (await Notifications.getPermissionsAsync()).status === 'granted';
+  } catch {
+    return false;
+  }
+}
+
+export type ChimeKind = 'order' | 'money' | 'info' | 'alert';
+
+const PATTERNS: Record<ChimeKind, number[]> = {
+  order: [0, 350, 150, 350, 150, 600],
+  money: [0, 120, 80, 120],
+  info: [0, 120],
+  alert: [0, 500, 200, 500],
+};
+
+/**
+ * Distinctive cue: vibration pattern + the system notification sound (a silent-banner local notification
+ * that removes itself). Never throws. `text` is the notification body when it shows in the tray.
+ */
+export async function playChime(kind: ChimeKind, text: string): Promise<void> {
+  try {
+    Vibration.vibrate(PATTERNS[kind]);
+  } catch {
+    // no vibrator
+  }
+  if (!(await hasPermission())) return;
+  try {
+    await ensureChannels();
+    const id = await Notifications.scheduleNotificationAsync({
+      content: { title: 'Zenvy Rider', body: text, sound: 'default', data: { chime: true } },
+      trigger: Platform.OS === 'android' ? { channelId: CHIME_CHANNEL } : null,
+    });
+    setTimeout(() => {
+      Notifications.dismissNotificationAsync(id).catch(() => {});
+    }, 6000);
+  } catch {
+    // sound is best effort
+  }
 }
 
 /** Ask permission and send the device (FCM) token to the server. Safe to call repeatedly. */
 export async function registerForPush(riderId: string): Promise<void> {
   try {
-    await ensureChannel();
+    await ensureChannels();
     const perm = await Notifications.getPermissionsAsync();
     let granted = perm.status === 'granted';
     if (!granted) granted = (await Notifications.requestPermissionsAsync()).status === 'granted';
@@ -66,13 +136,19 @@ export async function forgetPushRegistration(): Promise<void> {
 }
 
 export function onPushReceived(cb: (data: Record<string, any>) => void): () => void {
-  const sub = Notifications.addNotificationReceivedListener((n) => cb((n.request.content.data as any) || {}));
+  const sub = Notifications.addNotificationReceivedListener((n) => {
+    const data = (n.request.content.data as any) || {};
+    if (data.chime === true) return; // our own chime
+    cb(data);
+  });
   return () => sub.remove();
 }
 
 export function onPushTapped(cb: (data: Record<string, any>) => void): () => void {
-  const sub = Notifications.addNotificationResponseReceivedListener((r) =>
-    cb((r.notification.request.content.data as any) || {}),
-  );
+  const sub = Notifications.addNotificationResponseReceivedListener((r) => {
+    const data = (r.notification.request.content.data as any) || {};
+    if (data.chime === true) return;
+    cb(data);
+  });
   return () => sub.remove();
 }

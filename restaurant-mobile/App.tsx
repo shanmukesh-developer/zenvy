@@ -1,14 +1,15 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { ToastProvider } from './src/components/Toast';
-import { SocketProvider } from './src/services/socket';
+import { ToastProvider } from './src/ui/Toast';
+import { SocketProvider } from './src/state/SocketProvider';
 import { SESSION_EXPIRED, SessionProvider, useSession } from './src/state/SessionProvider';
 import { NowProvider, StoreProvider } from './src/state/StoreProvider';
-import { color } from './src/theme/tokens';
+import { initVoice } from './src/voice/voice';
+import { color } from './src/theme';
 import LoginScreen from './src/screens/LoginScreen';
 import MainScreen, { RootStack } from './src/screens/MainScreen';
 import OrderDetailScreen from './src/screens/OrderDetailScreen';
@@ -45,6 +46,7 @@ function Root() {
 }
 
 export default function App() {
+  useEffect(() => { initVoice(); }, []);
   return (
     <SafeAreaProvider>
       <StatusBar style="dark" />

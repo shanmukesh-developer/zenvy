@@ -1,6 +1,6 @@
 // The one HTTP client for the rider app. Reads the token at call time (no stale closures),
 // times out after 15 s and turns every failure into ApiError (server answered) or NetworkError (it didn't).
-import { DEFAULT_API_URL } from '../constants/api';
+import { API_URL } from '../config';
 
 export class ApiError extends Error {
   status: number;
@@ -24,7 +24,7 @@ export class NetworkError extends Error {
 
 type TokenGetter = () => string | null;
 
-let apiBase = DEFAULT_API_URL;
+const apiBase = API_URL;
 let getToken: TokenGetter = () => null;
 let onUnauthorized: (() => void) | null = null;
 let onForbiddenUnapproved: (() => void) | null = null;

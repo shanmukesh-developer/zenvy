@@ -1,9 +1,9 @@
 // Logged-in store + token. Restores the saved session on launch; any 401 logs out with a message.
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { configureApiClient } from '../services/apiClient';
-import { clearSession, loadSession, pickProfile, saveProfile, saveSession } from '../services/session';
-import { stopRinging } from '../services/alertLoop';
-import { stopKitchenForegroundService } from '../services/voiceAlert';
+import { configureHttp } from '../lib/http';
+import { clearSession, loadSession, pickProfile, saveProfile, saveSession } from '../lib/storage';
+import { stopKitchenService } from '../voice/kitchenService';
+import { stopVoice } from '../voice/voice';
 import type { StoreProfile } from '../types';
 
 interface SessionCtx {
@@ -28,11 +28,10 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [restaurant, setRestaurant] = useState<StoreProfile | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const tokenRef = useRef<string | null>(null);
-  tokenRef.current = token;
 
   const signOut = useCallback(async (msg?: string) => {
-    stopRinging();
-    stopKitchenForegroundService();
+    stopVoice();
+    stopKitchenService();
     tokenRef.current = null;
     setToken(null);
     setRestaurant(null);
@@ -41,23 +40,23 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    configureApiClient({
+    configureHttp({
       getToken: () => tokenRef.current,
-      onUnauthorized: () => {
-        if (tokenRef.current) signOut(SESSION_EXPIRED);
-      },
+      onUnauthorized: () => { if (tokenRef.current) signOut(SESSION_EXPIRED); },
     });
   }, [signOut]);
 
   useEffect(() => {
     let alive = true;
-    loadSession().then(({ token: t, restaurant: r }) => {
-      if (!alive) return;
-      tokenRef.current = t;
-      setToken(t);
-      setRestaurant(r);
-      setReady(true);
-    });
+    loadSession()
+      .then(({ token: t, restaurant: r }) => {
+        if (!alive) return;
+        tokenRef.current = t;
+        setToken(t);
+        setRestaurant(r);
+      })
+      .catch(() => { /* start logged out */ })
+      .finally(() => { if (alive) setReady(true); });
     return () => { alive = false; };
   }, []);
 
@@ -74,15 +73,22 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const updateProfile = useCallback((patch: Partial<StoreProfile>) => {
     setRestaurant((prev) => {
       if (!prev) return prev;
-      const next = { ...prev, ...patch, id: prev.id };
+      const clean: Partial<StoreProfile> = {};
+      (Object.keys(patch) as (keyof StoreProfile)[]).forEach((k) => {
+        if (patch[k] !== undefined) (clean as any)[k] = patch[k];
+      });
+      const next = { ...prev, ...clean, id: prev.id };
+      if (JSON.stringify(next) === JSON.stringify(prev)) return prev;
       saveProfile(next);
       return next;
     });
   }, []);
 
+  const clearNotice = useCallback(() => setNotice(null), []);
+
   const value = useMemo<SessionCtx>(() => ({
-    ready, token, restaurant, notice, signIn, signOut, updateProfile, clearNotice: () => setNotice(null),
-  }), [ready, token, restaurant, notice, signIn, signOut, updateProfile]);
+    ready, token, restaurant, notice, signIn, signOut, updateProfile, clearNotice,
+  }), [ready, token, restaurant, notice, signIn, signOut, updateProfile, clearNotice]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

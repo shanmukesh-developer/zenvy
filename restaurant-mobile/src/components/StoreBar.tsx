@@ -1,0 +1,189 @@
+// Top of every main screen: store name + the big OPEN / CLOSED switch, then the connection and
+// voice-off banners.
+import React, { useState } from 'react';
+import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SUPPORT_PHONE } from '../config';
+import { clockIST, formatHHMM, todayNumbers, rupees } from '../lib/model';
+import { useStore } from '../state/StoreProvider';
+import { useVoice } from '../voice/useVoice';
+import { color, font, radius, space, touch } from '../theme';
+import { Button, Sheet } from '../ui/kit';
+
+function OpenSwitch() {
+  const { store, storeError, openToggleSupported, setOpen, refreshStore, orders } = useStore();
+  const [confirm, setConfirm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [readOnlyInfo, setReadOnlyInfo] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  if (!store) {
+    return (
+      <Pressable
+        onPress={refreshStore}
+        accessibilityRole="button"
+        accessibilityLabel={storeError ? 'Store status failed to load. Tap to retry' : 'Loading store status'}
+        style={[styles.pill, { backgroundColor: color.surfaceAlt, justifyContent: 'center' }]}
+      >
+        {storeError ? <Ionicons name="refresh" size={22} color={color.text} /> : <ActivityIndicator color={color.textMuted} />}
+      </Pressable>
+    );
+  }
+  const on = store.isOpenNow;
+  const live = store.isOpen;
+
+  const change = async (open: boolean) => {
+    if (saving) return;
+    setSaving(true);
+    setErr(null);
+    const res = await setOpen(open);
+    setSaving(false);
+    if (res.ok) setConfirm(false);
+    else if (res.error) setErr(res.error);
+  };
+
+  const onPress = () => {
+    if (!openToggleSupported) { setReadOnlyInfo(true); return; }
+    setErr(null);
+    if (on) setConfirm(true);
+    else change(true);
+  };
+
+  const t = confirm ? todayNumbers(orders) : null;
+  const activeCount = orders.filter((o) => o.stage === 'new' || o.stage === 'preparing' || o.stage === 'ready').length;
+
+  return (
+    <>
+      <Pressable
+        onPress={onPress}
+        disabled={saving}
+        accessibilityRole="switch"
+        accessibilityState={{ checked: on, busy: saving }}
+        accessibilityLabel={live ? 'Store open. Tap to close' : on ? 'Switched on but outside hours' : 'Store closed. Tap to open'}
+        style={({ pressed }) => [styles.pill, { backgroundColor: live ? color.open : on ? color.warning : color.closed }, pressed && { opacity: 0.85 }]}
+      >
+        {saving ? <ActivityIndicator color={color.textInverse} style={{ flex: 1 }} /> : (
+          <>
+            <Text style={[font.label, { color: color.textInverse, fontSize: 14 }]}>{on ? 'OPEN' : 'CLOSED'}</Text>
+            <View style={[styles.track, { alignItems: on ? 'flex-end' : 'flex-start' }]}>
+              <View style={styles.knob} />
+            </View>
+          </>
+        )}
+      </Pressable>
+
+      <Sheet visible={confirm} onClose={() => setConfirm(false)} title="Close the store?">
+        <Text style={[font.body, { color: color.textSecondary, marginBottom: space.sm }]}>
+          Customers can't order until you open again.{activeCount ? ` Your ${activeCount} running order${activeCount === 1 ? '' : 's'} stay on screen.` : ''}
+        </Text>
+        {t && t.orders > 0 ? (
+          <Text style={[font.body, { color: color.text, fontWeight: '700', marginBottom: space.md }]}>
+            Today: {t.orders} order{t.orders === 1 ? '' : 's'} · {rupees(t.sales)} delivered
+          </Text>
+        ) : null}
+        {err ? <Text style={[font.body, { color: color.alertDark, fontWeight: '700', marginBottom: space.sm }]}>{err}</Text> : null}
+        <View style={{ gap: space.xs }}>
+          <Button label={err ? 'TRY AGAIN — CLOSE STORE' : 'CLOSE STORE'} variant="reject" onPress={() => change(false)} loading={saving} />
+          <Button label="Stay open" variant="secondary" size="secondary" onPress={() => setConfirm(false)} disabled={saving} />
+        </View>
+      </Sheet>
+
+      <Sheet visible={readOnlyInfo} onClose={() => setReadOnlyInfo(false)} title="Store status">
+        <Text style={[font.body, { color: color.textSecondary, marginBottom: space.md }]}>
+          Opening and closing from the app is not available yet. Call Zenvy support to change it.
+        </Text>
+        <Button label="Call Zenvy support" icon="call" onPress={() => Linking.openURL(`tel:+${SUPPORT_PHONE}`).catch(() => {})} />
+      </Sheet>
+    </>
+  );
+}
+
+export function StoreBar() {
+  const insets = useSafeAreaInsets();
+  const { restaurant, store } = useStore();
+  const name = store?.name || restaurant.name || 'Your store';
+  let line = 'Checking status…';
+  let lineColor: string = color.textMuted;
+  if (store) {
+    if (store.isOpen) {
+      line = 'Accepting orders';
+      lineColor = color.openDark;
+    } else if (store.isOpenNow) {
+      line = `Outside your hours${store.opensAt ? ` · opens ${formatHHMM(store.opensAt)}` : ''}`;
+      lineColor = color.warning;
+    } else {
+      line = 'Closed — no new orders';
+      lineColor = color.alertDark;
+    }
+  }
+  return (
+    <View style={[styles.header, { paddingTop: insets.top + space.xs }]}>
+      <View style={styles.headRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={[font.h2, { color: color.text }]} numberOfLines={1}>{name}</Text>
+          <Text style={[font.small, { color: lineColor, fontWeight: '800' }]} numberOfLines={1}>{line}</Text>
+        </View>
+        <OpenSwitch />
+      </View>
+      {store?.isOffline ? (
+        <View style={styles.notice}>
+          <Ionicons name="information-circle" size={18} color={color.info} />
+          <Text style={[font.small, { color: color.info, flex: 1 }]}>Zenvy is handling your orders directly right now.</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+export function ConnBanner() {
+  const { conn, retryConnection, lastSyncedAt, refreshing } = useStore();
+  if (conn === 'online') return null;
+  if (conn === 'offline') {
+    return (
+      <View style={[styles.banner, { backgroundColor: color.alert }]} accessibilityLiveRegion="assertive">
+        <Ionicons name="cloud-offline" size={24} color={color.textInverse} />
+        <View style={{ flex: 1 }}>
+          <Text style={[font.body, { color: color.textInverse, fontWeight: '800' }]}>No internet — orders won't ring</Text>
+          <Text style={[font.small, { color: color.textInverse }]}>
+            {lastSyncedAt ? `Last updated ${clockIST(lastSyncedAt)}` : 'Check Wi-Fi or mobile data'}
+          </Text>
+        </View>
+        <Pressable onPress={retryConnection} disabled={refreshing} accessibilityRole="button" accessibilityLabel="Retry connection" style={styles.retry}>
+          {refreshing ? <ActivityIndicator color={color.alertDark} /> : <Text style={[font.label, { color: color.alertDark }]}>RETRY</Text>}
+        </Pressable>
+      </View>
+    );
+  }
+  return (
+    <View style={[styles.banner, { backgroundColor: color.warningTint }]} accessibilityLiveRegion="polite">
+      <ActivityIndicator color={color.warning} />
+      <Text style={[font.body, { color: color.warning, fontWeight: '800', flex: 1 }]}>
+        {conn === 'connecting' ? 'Connecting to Zenvy…' : 'Reconnecting…'}
+      </Text>
+    </View>
+  );
+}
+
+export function VoiceOffBanner({ onFix }: { onFix: () => void }) {
+  const v = useVoice();
+  if (!v.loaded || v.settings.enabled) return null;
+  return (
+    <Pressable onPress={onFix} accessibilityRole="button" accessibilityLabel="Voice is off. Open settings" style={[styles.banner, { backgroundColor: color.alertTint }]}>
+      <Ionicons name="volume-mute" size={22} color={color.alert} />
+      <Text style={[font.body, { color: color.alertDark, fontWeight: '800', flex: 1 }]}>Voice announcements are OFF</Text>
+      <Text style={[font.label, { color: color.alertDark }]}>TURN ON</Text>
+    </Pressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  header: { backgroundColor: color.surface, paddingHorizontal: space.md, paddingBottom: space.sm, borderBottomWidth: 1, borderBottomColor: color.border, gap: space.xs },
+  headRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  pill: { minWidth: 132, height: touch.icon + 8, borderRadius: radius.pill, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingLeft: space.sm, paddingRight: 6, gap: space.xs },
+  track: { width: 54, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.35)', padding: 3, justifyContent: 'center' },
+  knob: { width: 26, height: 26, borderRadius: 13, backgroundColor: color.surface },
+  notice: { flexDirection: 'row', alignItems: 'center', gap: space.xs, borderRadius: radius.sm, padding: space.xs, backgroundColor: color.infoTint },
+  banner: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.md, paddingVertical: space.xs, minHeight: 52 },
+  retry: { backgroundColor: color.surface, borderRadius: radius.pill, paddingHorizontal: space.md, minHeight: touch.min, minWidth: 84, alignItems: 'center', justifyContent: 'center' },
+});

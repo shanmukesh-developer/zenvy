@@ -3,6 +3,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ApiError, NetworkError, apiFetch } from './apiClient';
 import type { OrderStatus } from '../types';
+import { KEYS } from '../config';
 
 export type QueueType = 'STATUS_PICKING' | 'STATUS_PICKED_UP' | 'ARRIVE';
 
@@ -27,8 +28,8 @@ export interface FlushResult {
   authFailed: boolean;
 }
 
-const KEY = '@zenvy_rider_offline_queue_v2';
-const LEGACY_KEY = '@zenvy_native_offline_queue';
+const KEY = KEYS.queue;
+const LEGACY_KEY = KEYS.legacyQueue;
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 export const QUEUE_STATUS: Record<QueueType, OrderStatus> = {
@@ -181,8 +182,11 @@ export function flushQueue(opts: { force?: boolean } = {}): Promise<FlushResult>
     // Keep anything enqueued while we were flushing.
     const current = await load();
     const handled = new Set([...result.done, ...result.dropped.map((d) => d.action)].map((a) => a.id));
-    const keepIds = new Set(keep.map((k) => k.id));
-    list = [...keep, ...current.filter((c) => !handled.has(c.id) && !keepIds.has(c.id))];
+    const currentIds = new Set(current.map((c) => c.id));
+    // Items removed meanwhile (removeForOrder / logout clear) must not come back.
+    const kept = keep.filter((k) => currentIds.has(k.id));
+    const keepIds = new Set(kept.map((k) => k.id));
+    list = [...kept, ...current.filter((c) => !handled.has(c.id) && !keepIds.has(c.id))];
     await save(prune(list));
     result.remaining = list.length;
     return result;

@@ -113,7 +113,8 @@ const getRestaurantOrders = async (req, res) => {
     });
     // The delivery PIN is only for the customer (the rider asks for it at the door).
     res.json(orders.map(o => {
-      const { deliveryPin, deliveryPinAttempts, ...rest } = o.toJSON();
+      // The customer's exact pin (dropLat/dropLng) is for the assigned rider only, not the kitchen.
+      const { deliveryPin, deliveryPinAttempts, dropLat, dropLng, ...rest } = o.toJSON();
       return { ...rest, _id: o.id };
     }));
   } catch (error) {

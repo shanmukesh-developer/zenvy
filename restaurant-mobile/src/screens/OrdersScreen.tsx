@@ -1,24 +1,23 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { useOrderSheets } from '../components/AcceptReject';
+import { StageTabs } from '../components/Nav';
 import { OrderCard } from '../components/OrderCard';
-import { useOrderSheets } from '../components/OrderPickers';
-import { OrderTabs } from '../components/Nav';
-import { SoundOffBanner } from '../components/StoreHeader';
-import { Button, EmptyState, SkeletonCard } from '../components/ui';
-import { isTodayIST } from '../services/orderModel';
+import { isTodayIST } from '../lib/model';
 import { useStore } from '../state/StoreProvider';
-import { color, space, type } from '../theme/tokens';
+import { color, font, space } from '../theme';
+import { EmptyState, ErrorStrip, SkeletonCard } from '../ui/kit';
 import type { Order, OrderStage } from '../types';
 
 const EMPTY: Record<OrderStage, { title: string; body: string }> = {
-  new: { title: 'No new orders', body: 'Keep this screen open — new orders ring loudly.' },
-  preparing: { title: 'Nothing cooking', body: 'Accepted orders show up here until you mark them ready.' },
-  ready: { title: 'No orders waiting', body: 'Packed orders wait here for the rider.' },
-  pickedUp: { title: 'Nothing on the road', body: 'Orders out for delivery show up here.' },
-  past: { title: 'No past orders yet', body: 'Delivered and cancelled orders show up here.' },
+  new: { title: 'No new orders', body: 'Keep the app open and the volume up. New orders ring and speak.' },
+  preparing: { title: 'Nothing cooking', body: 'Accepted orders show here until you mark them ready.' },
+  ready: { title: 'Nothing waiting', body: 'Packed orders wait here for the rider.' },
+  pickedUp: { title: 'Nothing on the road', body: 'Orders out for delivery show here.' },
+  past: { title: 'No past orders yet', body: 'Delivered and cancelled orders show here.' },
 };
 
-export default function OrdersScreen({ onOpenOrder, onOpenSettings }: { onOpenOrder: (o: Order) => void; onOpenSettings: () => void }) {
+export default function OrdersScreen({ onOpenOrder }: { onOpenOrder: (o: Order) => void }) {
   const { orders, ordersLoaded, ordersError, refreshing, refreshOrders } = useStore();
   const [tab, setTab] = useState<OrderStage>('new');
   const { openAccept, openReject, sheets } = useOrderSheets();
@@ -28,7 +27,6 @@ export default function OrdersScreen({ onOpenOrder, onOpenSettings }: { onOpenOr
     for (const o of orders) c[o.stage] += 1;
     let l = orders.filter((o) => o.stage === tab);
     if (tab === 'past') {
-      // Today first, then older (each newest first, as the server sends them).
       l = [...l.filter((o) => isTodayIST(o.createdAt)), ...l.filter((o) => !isTodayIST(o.createdAt))];
     } else {
       // Active queues: oldest first so the kitchen works top-down.
@@ -37,20 +35,26 @@ export default function OrdersScreen({ onOpenOrder, onOpenSettings }: { onOpenOr
     return { counts: c, list: l };
   }, [orders, tab]);
 
+  // When the New tab empties but food is cooking, jump to Preparing once (less tapping in a rush).
+  const lastNew = useRef(counts.new);
+  useEffect(() => {
+    if (tab === 'new' && lastNew.current > 0 && counts.new === 0 && counts.preparing > 0) setTab('preparing');
+    lastNew.current = counts.new;
+  }, [counts.new, counts.preparing, tab]);
+
   const renderItem = useCallback(
     ({ item }: { item: Order }) => <OrderCard order={item} onOpen={onOpenOrder} onAccept={openAccept} onReject={openReject} />,
     [onOpenOrder, openAccept, openReject],
   );
 
+  const pull = useCallback(() => refreshOrders({ pull: true }), [refreshOrders]);
+
   return (
     <View style={{ flex: 1 }}>
-      <SoundOffBanner onFix={onOpenSettings} />
-      <OrderTabs value={tab} onChange={setTab} counts={counts} />
+      <StageTabs value={tab} onChange={setTab} counts={counts} />
       {!ordersLoaded ? (
         ordersError ? (
-          <View style={{ padding: space.md }}>
-            <EmptyState icon="cloud-offline-outline" title="Couldn't load orders" body={ordersError} action={{ label: 'Retry', onPress: () => refreshOrders({ pull: true }) }} />
-          </View>
+          <EmptyState icon="cloud-offline-outline" title="Couldn't load orders" body={ordersError} action={{ label: 'Try again', onPress: pull, loading: refreshing }} />
         ) : (
           <View style={{ padding: space.md, gap: space.md }}><SkeletonCard /><SkeletonCard lines={2} /></View>
         )
@@ -61,16 +65,14 @@ export default function OrdersScreen({ onOpenOrder, onOpenSettings }: { onOpenOr
           renderItem={renderItem}
           contentContainerStyle={styles.list}
           ItemSeparatorComponent={Sep}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => refreshOrders({ pull: true })} colors={[color.text]} />}
-          ListHeaderComponent={ordersError ? (
-            <View style={styles.err}>
-              <Text style={[type.bodySm, { color: color.alertDark, flex: 1 }]}>{ordersError}</Text>
-              <Button label="Retry" variant="secondary" size="secondary" onPress={() => refreshOrders({ pull: true })} />
-            </View>
-          ) : null}
+          initialNumToRender={6}
+          windowSize={7}
+          removeClippedSubviews
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={pull} colors={[color.text]} />}
+          ListHeaderComponent={ordersError ? <View style={{ marginBottom: space.md }}><ErrorStrip text={ordersError} onRetry={pull} busy={refreshing} /></View> : null}
           ListEmptyComponent={<EmptyState icon={tab === 'new' ? 'notifications-outline' : 'receipt-outline'} title={EMPTY[tab].title} body={EMPTY[tab].body} />}
           ListFooterComponent={tab === 'past' && list.length > 0 ? (
-            <Text style={[type.bodySm, { color: color.textMuted, textAlign: 'center', marginTop: space.md }]}>Showing your latest 200 orders</Text>
+            <Text style={[font.small, { color: color.textMuted, textAlign: 'center', marginTop: space.md }]}>Showing your latest 200 orders</Text>
           ) : null}
         />
       )}
@@ -83,5 +85,4 @@ const Sep = () => <View style={{ height: space.md }} />;
 
 const styles = StyleSheet.create({
   list: { padding: space.md, paddingBottom: space.xxl * 2 },
-  err: { flexDirection: 'row', alignItems: 'center', gap: space.sm, backgroundColor: color.alertTint, borderRadius: 12, padding: space.sm, marginBottom: space.md },
 });

@@ -11,6 +11,7 @@ const crypto = require('crypto');
 const { computeOrderQuote, PricingError, activeCouponWhere, normalizePaymentMethod, PAYMENT_UNAVAILABLE_MESSAGE, money } = require('../utils/orderPricing');
 const { getCampusServiceability } = require('../utils/storeHours');
 const { getHaversineDistance } = require('../utils/distance');
+const realtime = require('../utils/realtime');
 
 const normalizeItems = (items) => {
   if (typeof items === 'string') {
@@ -243,6 +244,9 @@ const createOrder = async (req, res) => {
           estDuration: null, // set by the restaurant when it accepts
           deliverySlot: String(deliverySlot || 'ASAP').replace(/[<>]/g, '').slice(0, 80),
           deliveryAddress: address,
+          // Customer's pin for rider navigation (dropCoords, assigned rider only). Null when not sent.
+          dropLat: hasCoords ? lat : null,
+          dropLng: hasCoords ? lng : null,
           deliveryInstructions: deliveryInstructions.length ? deliveryInstructions : null,
           hostelGateDelivery: false,
           isSurge,
@@ -328,6 +332,7 @@ const createOrder = async (req, res) => {
     if (restaurant.isOffline || createdOrder.status === 'Accepted') {
       // Shops without a vendor app go straight to riders.
       io.to('admin-room').emit('newOrder', riderPayload);
+      realtime.deliveryRequest(createdOrder.id);
       try {
         const DeliveryPartner = getDeliveryPartnerModel();
         const onlineRiders = await DeliveryPartner.findAll({ where: { isOnline: true, isApproved: true } });
@@ -411,6 +416,7 @@ const restaurantAcceptOrder = async (req, res) => {
       status: 'Accepted' 
     };
     broadcastOrderStatus(req, order, statusPayload);
+    if (!order.deliveryPartnerId) realtime.deliveryRequest(order.id); // live pool for online riders
 
     // Fetch Restaurant to broadcast details to riders
     const Restaurant = getRestaurantModel();
@@ -825,6 +831,8 @@ const cancelAndRefund = async (order, { reason = null, onlyFromStatuses = null }
     }
     return true;
   });
+  // An unclaimed order leaves every online rider's pool (ids only; harmless if it was never listed).
+  if (cancelled && !order.deliveryPartnerId) realtime.deliveryRequestGone(order.id);
   if (cancelled && refunded > 0) console.log(`[REFUND] ₹${refunded} refunded to wallet for user ${order.userId} (order ${order.id})`);
   return { cancelled, refunded };
 };
@@ -990,6 +998,7 @@ const updateOrderStatus = async (req, res) => {
       }
     }
 
+    const prevStatus = order.status;
     if (status !== 'Delivered') {
       // Conditional write: never overwrite a cancel (and its refund) that landed after we read the order.
       const [n] = await Order.update({ status }, { where: { id: order.id, status: { [Op.notIn]: ['Cancelled'] } } });
@@ -997,6 +1006,12 @@ const updateOrderStatus = async (req, res) => {
       order.status = status;
     } else {
       order.status = 'Delivered';
+    }
+    if (!order.deliveryPartnerId) {
+      const wasClaimable = realtime.CLAIMABLE_STATUSES.includes(prevStatus);
+      const isClaimable = realtime.CLAIMABLE_STATUSES.includes(order.status);
+      if (isClaimable && !wasClaimable) realtime.deliveryRequest(order.id);
+      else if (!isClaimable && wasClaimable) realtime.deliveryRequestGone(order.id);
     }
 
     const statusPayload = { 
@@ -1197,7 +1212,12 @@ const verifyUPIPayment = async (req, res) => {
       order.status = 'Cancelled';
     }
     
+    const prevStatus = order.previous('status');
     await order.save();
+    if (!order.deliveryPartnerId) {
+      if (order.status === 'Accepted' && prevStatus === 'Pending') realtime.deliveryRequest(order.id);
+      else if (order.status === 'Cancelled' && realtime.CLAIMABLE_STATUSES.includes(prevStatus)) realtime.deliveryRequestGone(order.id);
+    }
     
     const statusPayload = { id: order.id, status: order.status };
     broadcastOrderStatus(req, order, statusPayload);
@@ -1278,9 +1298,11 @@ const restaurantUpdateOrderStatus = async (req, res) => {
     if (order.restaurantId !== req.user.id) return res.status(403).json({ message: 'Not authorized to update this order' });
 
     if (status === 'Preparing') {
+      const prevStatus = order.status;
       const [n] = await Order.update({ status: 'Preparing' }, { where: { id: order.id, status: { [Op.in]: ['Pending', 'Accepted'] } } });
       if (n === 0) return res.status(400).json({ message: 'This order was just cancelled or updated. Please refresh.' });
       order.status = 'Preparing';
+      if (prevStatus === 'Pending' && !order.deliveryPartnerId) realtime.deliveryRequest(order.id);
       broadcastOrderStatus(req, order, { id: order.id, status: 'Preparing' });
       try {
         const customer = await getUserModel().findByPk(order.userId, { attributes: ['id', 'fcmTokens'] });

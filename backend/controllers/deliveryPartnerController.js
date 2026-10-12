@@ -9,6 +9,7 @@ const { Op } = require('sequelize');
 const { sendWhatsAppMessage } = require('../utils/whatsappUtil');
 
 const { normalizePhone } = require('../utils/phoneUtils');
+const realtime = require('../utils/realtime');
 
 // ── Constants ────────────────────────────────────────────────────────────
 const BASE_DELIVERY_FEE = 30; // Flat ₹30 per delivery
@@ -63,6 +64,42 @@ const paymentFields = (order) => {
   };
 };
 
+// Pool-safe area for an unclaimed order: campus / hostel block / locality only, never a room, flat or
+// house number (the pool is visible to every online rider). Null when nothing safe can be derived.
+const CAMPUS_AREA_LABELS = [
+  [/\bsrm\b/i, 'SRM AP'], [/\bvit\b/i, 'VIT AP'], [/\bamrita\b/i, 'Amrita'], [/\bkl\s*(university|uni)?\b|\bklu\b/i, 'KL University'],
+];
+const UNSAFE_AREA_PART = /\d|\b(room|rm|flat|door|house|h\.?\s*no|plot|floor|apt|apartment|wing|bed|near|opp|behind|landmark|phone|ph|mob)\b/i;
+const cleanAreaPart = (p) => String(p || '').replace(/[<>]/g, '').replace(/\s+/g, ' ').trim();
+const dropAreaText = (order, customer) => {
+  const address = String(order.deliveryAddress || '');
+  const parts = address.split(/\s+[-–|]\s+|,|\n|·/).map(cleanAreaPart).filter(Boolean);
+  let campus = null;
+  for (const [re, label] of CAMPUS_AREA_LABELS) { if (re.test(address)) { campus = label; break; } }
+  // Hostel block name (e.g. "Block B", "Vedavathi Hostel") from the address, else the customer's profile.
+  const blockRe = /\b(block\s*[a-z0-9]{1,3}|[a-z]+\s+(hostel|block|bhavan|hall))\b/i;
+  let block = null;
+  for (const p of parts) { const m = p.match(blockRe); if (m) { block = cleanAreaPart(m[0]); break; } }
+  if (!block && customer?.hostelBlock) {
+    const m = String(customer.hostelBlock).match(blockRe);
+    block = m ? cleanAreaPart(m[0]) : (UNSAFE_AREA_PART.test(customer.hostelBlock) ? null : cleanAreaPart(customer.hostelBlock));
+  }
+  if (block) block = block.replace(/\bblock\s*([a-z0-9]{1,3})\b/i, (_, b) => `Block ${b.toUpperCase()}`);
+  if (campus || block) return [campus, block].filter(Boolean).join(' · ').slice(0, 60);
+  // Off-campus: the locality is the last address parts without numbers (area, town), never the first (door / street).
+  const safe = parts.slice(1).filter((p) => !UNSAFE_AREA_PART.test(p) && p.length <= 40);
+  return safe.length ? safe.slice(-2).join(', ').slice(0, 60) : null;
+};
+
+const finiteOrNull = (v) => (v === null || v === undefined || v === '' ? null : (Number.isFinite(Number(v)) ? Number(v) : null));
+const dropCoordsOf = (order) => {
+  const lat = finiteOrNull(order.dropLat);
+  const lng = finiteOrNull(order.dropLng);
+  return lat !== null && lng !== null && !(lat === 0 && lng === 0) ? { lat, lng } : null;
+};
+
+// revealCustomer=false → pool card (every online rider): first name, no phone, drop=null + dropArea, no dropCoords.
+// revealCustomer=true  → the assigned rider (accept / active): full drop, dropArea and dropCoords.
 const riderOrderPayload = (order, restaurant, customer, { revealCustomer }) => {
   const restLat = restaurant ? Number(restaurant.lat) : NaN;
   const restLon = restaurant ? Number(restaurant.lon) : NaN;
@@ -77,7 +114,9 @@ const riderOrderPayload = (order, restaurant, customer, { revealCustomer }) => {
     customerName: customer?.name ? (revealCustomer ? String(customer.name).trim() : String(customer.name).trim().split(/\s+/)[0]) : null,
     // Unclaimed orders are visible to every online rider: the phone is shared only after a rider claims it.
     customerPhone: revealCustomer ? (customer?.phone || null) : null,
-    drop: dropText(order, customer),
+    drop: revealCustomer ? dropText(order, customer) : null,
+    dropArea: dropAreaText(order, customer),
+    ...(revealCustomer ? { dropCoords: dropCoordsOf(order) } : {}),
     deliveryInstructions: parseInstructions(order.deliveryInstructions),
     items: normalizeItems(order.items),
     totalPrice: order.totalPrice,
@@ -272,6 +311,7 @@ const acceptOrder = async (req, res) => {
 
     // Since we successfully updated, we fetch the updated order object
     const updatedOrder = await Order.findByPk(req.params.orderId);
+    realtime.deliveryRequestGone(updatedOrder.id); // other riders drop it from their pool at once
     
     // (Status advancement is strictly controlled by the Restaurant Portal until picked up)
     
@@ -362,12 +402,34 @@ const getOrderHistory = async (req, res) => {
   try {
     const Order = getOrderModel();
     const Restaurant = getRestaurantModel();
-    // Remove 24-hour filter to allow full history visibility across sessions
-    const orders = await Order.findAll({
-      where: { deliveryPartnerId: req.user.id, status: 'Delivered' },
-      order: [['updatedAt', 'DESC']],
-      limit: 100 // Increased limit for better history visibility
+    // Paging (R-4): ?limit=<1..100>&before=<ISO deliveredAt> → { orders, hasMore }.
+    // Without either param the response stays the bare array of the newest 100 (older app builds).
+    const q = req.query || {};
+    const paged = q.limit !== undefined || q.before !== undefined;
+    let before = null;
+    if (q.before !== undefined && q.before !== '') {
+      before = new Date(String(q.before));
+      if (Number.isNaN(before.getTime())) return res.status(400).json({ message: 'before must be an ISO date', code: 'BAD_BEFORE' });
+    }
+    const parsedLimit = parseInt(q.limit, 10);
+    const pageSize = paged ? (Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 100) : 50) : 100;
+    // Delivered time = deliveredAt, or updatedAt for rows delivered before deliveredAt existed.
+    const sequelize = Order.sequelize;
+    const deliveredExpr = sequelize.fn('COALESCE', sequelize.col('deliveredAt'), sequelize.col('updatedAt'));
+    const where = { deliveryPartnerId: req.user.id, status: 'Delivered' };
+    if (before) {
+      where[Op.or] = [
+        { deliveredAt: { [Op.lt]: before } },
+        { deliveredAt: null, updatedAt: { [Op.lt]: before } },
+      ];
+    }
+    const rows = await Order.findAll({
+      where,
+      order: [[deliveredExpr, 'DESC'], ['id', 'DESC']],
+      limit: pageSize + 1
     });
+    const hasMore = rows.length > pageSize;
+    const orders = hasMore ? rows.slice(0, pageSize) : rows;
 
     const restIds = [...new Set(orders.map(o => o.restaurantId))];
     const restaurants = await Restaurant.findAll({ where: { id: restIds } });
@@ -394,7 +456,7 @@ const getOrderHistory = async (req, res) => {
       };
     }).sort((a, b) => new Date(b.deliveredAt) - new Date(a.deliveredAt));
 
-    res.json(enrichedOrders);
+    res.json(paged ? { orders: enrichedOrders, hasMore } : enrichedOrders);
   } catch (error) {
     serverError(res, '[RIDER_HISTORY_ERROR]', error);
   }
@@ -625,6 +687,7 @@ const cancelOrderByRider = async (req, res) => {
       // Re-list for dispatch (riders poll the available-orders list; admins see it live)
       io.to('admin-room').emit('newOrder', { ...order.toJSON(), id: order.id, _id: order.id });
     }
+    realtime.deliveryRequest(order.id); // back in the pool for every online rider
 
     // Push notify the customer about reassignment
     try {
@@ -660,6 +723,8 @@ const toggleOnline = async (req, res) => {
     if (wantOnline && !partner.isApproved) return notApproved(res);
     partner.isOnline = wantOnline;
     await partner.save();
+    // Join / leave the live dispatch room (delivery_request events) on every socket of this rider.
+    realtime.setRiderOnline(partner.id, wantOnline && partner.isApproved);
     res.json({ isOnline: wantOnline });
   } catch (error) {
     serverError(res, '[RIDER_ONLINE_ERROR]', error);

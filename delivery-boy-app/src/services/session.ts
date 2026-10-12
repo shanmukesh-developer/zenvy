@@ -2,10 +2,10 @@
 // NOTE (open item): expo-secure-store is not installed, so the token stays in AsyncStorage under the
 // existing key. Swapping to SecureStore later only needs loadToken/saveToken/clearToken changed here.
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { STORAGE_PROFILE_KEY, STORAGE_TOKEN_KEY } from '../constants/api';
+import { KEYS } from '../config';
 import type { RiderProfile } from '../types';
 
-const CACHE_PREFIX = '@zenvy_rider_cache:';
+const CACHE_PREFIX = KEYS.cachePrefix;
 
 async function safeGet(key: string): Promise<string | null> {
   try {
@@ -24,7 +24,7 @@ async function safeSet(key: string, value: string): Promise<void> {
 }
 
 export async function loadSession(): Promise<{ token: string | null; profile: RiderProfile | null }> {
-  const [token, rawProfile] = await Promise.all([safeGet(STORAGE_TOKEN_KEY), safeGet(STORAGE_PROFILE_KEY)]);
+  const [token, rawProfile] = await Promise.all([safeGet(KEYS.token), safeGet(KEYS.profile)]);
   let profile: RiderProfile | null = null;
   if (rawProfile) {
     try {
@@ -39,18 +39,18 @@ export async function loadSession(): Promise<{ token: string | null; profile: Ri
 }
 
 export async function saveToken(token: string): Promise<void> {
-  await safeSet(STORAGE_TOKEN_KEY, token);
+  await safeSet(KEYS.token, token);
 }
 
 export async function saveProfile(profile: RiderProfile): Promise<void> {
-  await safeSet(STORAGE_PROFILE_KEY, JSON.stringify(profile));
+  await safeSet(KEYS.profile, JSON.stringify(profile));
 }
 
 export async function clearSession(): Promise<void> {
   try {
     const keys = await AsyncStorage.getAllKeys();
     const ours = keys.filter((k) => k.startsWith(CACHE_PREFIX));
-    await AsyncStorage.removeMany([STORAGE_TOKEN_KEY, STORAGE_PROFILE_KEY, ...ours]);
+    await AsyncStorage.removeMany([KEYS.token, KEYS.profile, ...ours]);
   } catch {
     // ignore
   }

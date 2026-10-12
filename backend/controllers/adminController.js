@@ -604,6 +604,8 @@ exports.approveRider = async (req, res) => {
     await rider.update({ isApproved: req.body.isApproved });
     broadcastSystemUpdate(req, 'RIDER_STATUS_CHANGED', { id: req.params.id, isApproved: req.body.isApproved });
     realtime.notifyAdmin('rider', 'updated', rider.id);
+    // Live dispatch room: an unapproved rider stops receiving delivery_request at once.
+    realtime.setRiderOnline(rider.id, !!(rider.isApproved && rider.isOnline));
     res.json({ ...rider.toJSON(), _id: rider.id });
   } catch (error) {
     res.status(400).json({ message: error.message });

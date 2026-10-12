@@ -1,17 +1,17 @@
-// Real restaurant login (POST /api/restaurants/login). No presets or pre-filled passwords.
+// Real restaurant login (POST /api/restaurants/login). No presets, no pre-filled passwords.
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Image, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { SUPPORT_PHONE } from '../constants/api';
-import { Button } from '../components/ui';
-import { ApiError, NetworkError } from '../services/apiClient';
-import { health, login } from '../services/restaurantApi';
-import { loadSavedId, setSavedId } from '../services/session';
+import { SUPPORT_PHONE } from '../config';
+import { health, login } from '../lib/api';
+import { ApiError, NetworkError } from '../lib/http';
+import { loadSavedId, setSavedId } from '../lib/storage';
 import { useSession } from '../state/SessionProvider';
-import { color, radius, space, touch, type } from '../theme/tokens';
+import { color, font, radius, space, touch } from '../theme';
+import { Button } from '../ui/kit';
 
 type ServerState = 'checking' | 'up' | 'waking';
 
@@ -25,34 +25,37 @@ export default function LoginScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lockedUntil, setLockedUntil] = useState(0);
-  const [, force] = useState(0);
+  const [now, setNow] = useState(Date.now());
   const [server, setServer] = useState<ServerState>('checking');
   const pwRef = useRef<TextInput>(null);
+  const submittingRef = useRef(false);
 
   useEffect(() => {
-    loadSavedId().then((v) => { if (v) setIdentifier(v); });
     let alive = true;
+    loadSavedId().then((v) => { if (alive && v) setIdentifier((cur) => cur || v); });
     health().then((ok) => { if (alive) setServer(ok ? 'up' : 'waking'); });
     return () => { alive = false; };
   }, []);
 
-  // Re-render each second while locked so the button re-enables on time.
+  // Tick while locked so the button re-enables on time.
   useEffect(() => {
     if (lockedUntil <= Date.now()) return;
     const t = setInterval(() => {
-      force((n) => n + 1);
+      setNow(Date.now());
       if (Date.now() >= lockedUntil) clearInterval(t);
     }, 1000);
     return () => clearInterval(t);
   }, [lockedUntil]);
-  const locked = lockedUntil > Date.now();
+  const locked = lockedUntil > now;
 
   const submit = async () => {
+    if (submittingRef.current || locked) return;
     const id = identifier.trim();
     if (!id || !password) {
-      setError('Enter your restaurant ID (or registered name) and password.');
+      setError('Enter your restaurant ID and password.');
       return;
     }
+    submittingRef.current = true;
     setSubmitting(true);
     setError(null);
     clearNotice();
@@ -64,13 +67,17 @@ export default function LoginScreen() {
     } catch (e) {
       if (e instanceof ApiError) {
         setError(e.message);
-        if (e.status === 429) setLockedUntil(Date.now() + 60000);
+        if (e.status === 429) {
+          setLockedUntil(Date.now() + 60000);
+          setNow(Date.now());
+        }
       } else if (e instanceof NetworkError) {
-        setError(server === 'waking' ? 'Zenvy is still waking up. Please try again in a few seconds.' : 'No internet connection. Check your Wi-Fi or mobile data.');
+        setError(server === 'waking' ? 'Zenvy is waking up. Please try again in a few seconds.' : e.message);
       } else {
         setError('Something went wrong. Please try again.');
       }
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };
@@ -81,28 +88,28 @@ export default function LoginScreen() {
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: color.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView
-        contentContainerStyle={[styles.wrap, { paddingTop: insets.top + space.xxl, paddingBottom: insets.bottom + space.xl }]}
+        contentContainerStyle={[styles.wrap, { paddingTop: insets.top + space.xl, paddingBottom: insets.bottom + space.lg }]}
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.brand}>
           <Image source={require('../../assets/icon.png')} style={styles.logo} accessibilityIgnoresInvertColors />
-          <Text style={[type.title1, { color: color.text }]}>Zenvy Partner</Text>
-          <Text style={[type.body, { color: color.textSecondary }]}>Restaurant login</Text>
+          <Text style={[font.h1, { color: color.text }]}>Zenvy Partner</Text>
+          <Text style={[font.body, { color: color.textSecondary }]}>Restaurant login</Text>
         </View>
 
         {notice ? (
           <View style={[styles.msg, { backgroundColor: color.warningTint }]}>
             <Ionicons name="time-outline" size={20} color={color.warning} />
-            <Text style={[type.body, { color: color.warning, flex: 1 }]}>{notice}</Text>
+            <Text style={[font.body, { color: color.warning, flex: 1 }]}>{notice}</Text>
           </View>
         ) : null}
 
         <View style={styles.card}>
-          <Text style={styles.label}>Restaurant ID or registered name</Text>
+          <Text style={styles.label}>Restaurant ID or name</Text>
           <TextInput
             value={identifier}
             onChangeText={(t) => { setIdentifier(t); setError(null); }}
-            placeholder="e.g. your restaurant name"
+            placeholder="Your restaurant ID"
             placeholderTextColor={color.textMuted}
             autoCapitalize="none"
             autoCorrect={false}
@@ -110,7 +117,7 @@ export default function LoginScreen() {
             returnKeyType="next"
             onSubmitEditing={() => pwRef.current?.focus()}
             style={styles.input}
-            accessibilityLabel="Restaurant ID or registered name"
+            accessibilityLabel="Restaurant ID or name"
           />
 
           <Text style={[styles.label, { marginTop: space.md }]}>Password</Text>
@@ -136,24 +143,23 @@ export default function LoginScreen() {
           </View>
 
           <View style={styles.rememberRow}>
-            <Text style={[type.body, { color: color.text, flex: 1 }]}>Remember restaurant ID</Text>
-            <Switch value={remember} onValueChange={setRemember} trackColor={{ true: color.open, false: color.border }} thumbColor={color.surface} accessibilityLabel="Remember restaurant ID" />
+            <Text style={[font.body, { color: color.text, flex: 1 }]}>Remember my ID</Text>
+            <Switch value={remember} onValueChange={setRemember} trackColor={{ true: color.open, false: color.border }} thumbColor={color.surface} accessibilityLabel="Remember my restaurant ID" />
           </View>
 
           {error ? (
             <View style={[styles.msg, { backgroundColor: color.alertTint, marginTop: space.sm }]} accessibilityLiveRegion="polite">
               <Ionicons name="alert-circle" size={20} color={color.alert} />
-              <Text style={[type.body, { color: color.alertDark, flex: 1 }]}>{error}</Text>
+              <Text style={[font.body, { color: color.alertDark, flex: 1 }]}>{error}</Text>
             </View>
           ) : null}
 
           <Button
-            label={locked ? `Try again in ${Math.ceil((lockedUntil - Date.now()) / 1000)} s` : 'Log in'}
+            label={locked ? `Try again in ${Math.max(1, Math.ceil((lockedUntil - now) / 1000))} s` : 'LOG IN'}
             onPress={submit}
             loading={submitting}
             disabled={locked}
-            variant="primary"
-            style={{ marginTop: space.md, minHeight: 56 }}
+            style={{ marginTop: space.md }}
           />
         </View>
 
@@ -161,15 +167,15 @@ export default function LoginScreen() {
           {server === 'checking' ? <ActivityIndicator size="small" color={color.textMuted} /> : (
             <View style={[styles.dot, { backgroundColor: server === 'up' ? color.open : color.warning }]} />
           )}
-          <Text style={[type.bodySm, { color: color.textMuted }]}>
-            {server === 'checking' ? 'Checking Zenvy server…' : server === 'up' ? 'Zenvy server is online' : 'Server waking up — first login may take ~30 s'}
+          <Text style={[font.small, { color: color.textMuted }]}>
+            {server === 'checking' ? 'Checking Zenvy…' : server === 'up' ? 'Zenvy is online' : 'Zenvy is waking up — first login can take ~30 s'}
           </Text>
         </View>
 
         <View style={styles.help}>
-          <Text style={[type.body, { color: color.textSecondary, textAlign: 'center' }]}>Forgot password or new partner?</Text>
+          <Text style={[font.body, { color: color.textSecondary, textAlign: 'center' }]}>Forgot password or new partner?</Text>
           <View style={{ flexDirection: 'row', gap: space.sm }}>
-            <Button label="Call Zenvy" icon="call" variant="secondary" size="secondary" onPress={call} style={{ flex: 1 }} />
+            <Button label="Call" icon="call" variant="secondary" size="secondary" onPress={call} style={{ flex: 1 }} />
             <Button label="WhatsApp" icon="logo-whatsapp" variant="secondary" size="secondary" onPress={wa} style={{ flex: 1 }} />
           </View>
         </View>
@@ -183,14 +189,14 @@ const styles = StyleSheet.create({
   brand: { alignItems: 'center', gap: space.xxs },
   logo: { width: 72, height: 72, borderRadius: radius.lg, marginBottom: space.xs },
   card: { backgroundColor: color.surface, borderRadius: radius.lg, padding: space.md, borderWidth: 1, borderColor: color.border },
-  label: { ...type.label, color: color.textSecondary, marginBottom: space.xxs },
+  label: { ...font.label, color: color.textSecondary, marginBottom: space.xxs },
   input: {
     minHeight: touch.secondary + 4, borderWidth: 1, borderColor: color.border, borderRadius: radius.md, paddingHorizontal: space.sm,
-    ...type.body, color: color.text, backgroundColor: color.surface,
+    ...font.body, color: color.text, backgroundColor: color.surface,
   },
   pwRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: color.border, borderRadius: radius.md },
   eye: { width: touch.icon, height: touch.icon, alignItems: 'center', justifyContent: 'center' },
-  rememberRow: { flexDirection: 'row', alignItems: 'center', minHeight: touch.minHit, marginTop: space.sm },
+  rememberRow: { flexDirection: 'row', alignItems: 'center', minHeight: touch.min, marginTop: space.sm },
   msg: { flexDirection: 'row', alignItems: 'center', gap: space.xs, borderRadius: radius.md, padding: space.sm },
   server: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.xs },
   dot: { width: 10, height: 10, borderRadius: 5 },

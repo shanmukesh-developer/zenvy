@@ -10,6 +10,12 @@
 // type/action/id. If a single flush holds more than BULK_THRESHOLD events of one type (bulk import,
 // seeding), they collapse into ONE event { type, action: 'updated', id: null, bulk: true, count }.
 //
+// Rider dispatch (not debounced, ids only):
+// • setRiderOnline(riderId, online) → every socket of `rider_<id>` joins / leaves RIDERS_ONLINE_ROOM.
+//   Only call with online=true for an authenticated rider whose DeliveryPartner row is isOnline && isApproved.
+// • deliveryRequest(orderId)     → `delivery_request { orderId }` to RIDERS_ONLINE_ROOM (order became claimable).
+// • deliveryRequestGone(orderId) → `delivery_request_gone { orderId }` (claimed / cancelled / left the pool).
+//
 // Store/product events also clear the in-memory public restaurant listing cache immediately (not
 // debounced) so the refetch a client makes on receipt already sees fresh data.
 
@@ -112,4 +118,39 @@ const notifyAdmin = (type, action, id, extra = {}) => {
   }
 };
 
-module.exports = { init, publish, notifyAdmin, PUBLIC_EVENT, ADMIN_EVENT, ADMIN_ROOM };
+// ── Rider dispatch room ─────────────────────────────────────────────────────
+const RIDERS_ONLINE_ROOM = 'riders_online';
+const DELIVERY_REQUEST_EVENT = 'delivery_request';
+const DELIVERY_REQUEST_GONE_EVENT = 'delivery_request_gone';
+// Statuses in which an order with no rider sits in the pool (GET /delivery/orders/pending).
+const CLAIMABLE_STATUSES = ['Accepted', 'Preparing', 'ReadyForPickup'];
+
+const setRiderOnline = (riderId, online) => {
+  try {
+    const id = safeId(riderId);
+    if (!ioRef || id === null) return;
+    const sockets = ioRef.in(`rider_${id}`);
+    if (online) sockets.socketsJoin(RIDERS_ONLINE_ROOM);
+    else sockets.socketsLeave(RIDERS_ONLINE_ROOM);
+  } catch (err) {
+    console.error('[REALTIME_RIDER_ROOM_ERROR]', err.message);
+  }
+};
+
+const emitToRiders = (event, orderId) => {
+  try {
+    const id = safeId(orderId);
+    if (!ioRef || id === null) return;
+    ioRef.to(RIDERS_ONLINE_ROOM).emit(event, { orderId: id });
+  } catch (err) {
+    console.error('[REALTIME_RIDER_EMIT_ERROR]', err.message);
+  }
+};
+const deliveryRequest = (orderId) => emitToRiders(DELIVERY_REQUEST_EVENT, orderId);
+const deliveryRequestGone = (orderId) => emitToRiders(DELIVERY_REQUEST_GONE_EVENT, orderId);
+
+module.exports = {
+  init, publish, notifyAdmin, PUBLIC_EVENT, ADMIN_EVENT, ADMIN_ROOM,
+  setRiderOnline, deliveryRequest, deliveryRequestGone,
+  RIDERS_ONLINE_ROOM, DELIVERY_REQUEST_EVENT, DELIVERY_REQUEST_GONE_EVENT, CLAIMABLE_STATUSES,
+};
