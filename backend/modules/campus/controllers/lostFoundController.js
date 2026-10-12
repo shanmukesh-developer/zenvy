@@ -1,4 +1,5 @@
 const { getLostAndFoundModel } = require('../models/LostAndFound');
+const { cleanImageRef } = require('../campusHelpers');
 
 // @desc    Post a lost or found item to the campus board
 // @route   POST /api/campus/lost-found
@@ -15,6 +16,13 @@ const createLostFound = async (req, res) => {
       return res.status(400).json({ message: 'Where it was lost/found is required' });
     }
 
+    // Photo: '/api/campus/media/<id>' from POST /api/campus/media, an https URL, or a legacy data:image URL.
+    let cleanImage = null;
+    if (imageUrl) {
+      cleanImage = cleanImageRef(imageUrl, { maxDataUrlChars: 3 * 1024 * 1024 });
+      if (!cleanImage) return res.status(400).json({ code: 'BAD_IMAGE', message: 'That photo could not be attached. Please pick it again.' });
+    }
+
     const LostAndFound = getLostAndFoundModel();
     const item = await LostAndFound.create({
       userId: req.user.id,
@@ -23,7 +31,7 @@ const createLostFound = async (req, res) => {
       title: title.trim(),
       description: description ? description.trim() : null,
       location: location.trim(),
-      imageUrl: imageUrl || null,
+      imageUrl: cleanImage,
       claimContact: claimContact ? claimContact.trim() : null,
       status: 'open',
     });

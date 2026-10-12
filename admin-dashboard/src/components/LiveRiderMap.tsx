@@ -6,12 +6,14 @@ import L from 'leaflet';
 import { useAdminSocket } from '@/components/AdminSocketProvider';
 
 
+// SRM University AP (Neerukonda / Mangalagiri) - same coordinates as the dashboard CHECKPOINTS.
 const CAMPUS_HUBS = [
-  { name: 'SRM Central Arch (Main Gate)', lat: 12.8231, lon: 80.0453, tag: 'GATE', icon: '🏛️' },
-  { name: 'Java Green Food Court', lat: 12.8245, lon: 80.0460, tag: 'KITCHEN HUB', icon: '🍔' },
-  { name: 'Tech Park & University Building', lat: 12.8215, lon: 80.0440, tag: 'ACADEMIC', icon: '🏢' },
-  { name: 'Hostel Zone (Amaravathi / Kaveri)', lat: 12.8255, lon: 80.0425, tag: 'HOSTELS', icon: '🛏️' },
+  { name: 'SRM AP Main Gate', lat: 16.4673, lon: 80.5002, tag: 'GATE', icon: '🏛️' },
+  { name: 'Academic Block', lat: 16.4635, lon: 80.5065, tag: 'ACADEMIC', icon: '🏢' },
+  { name: 'Hostel Sector', lat: 16.4618, lon: 80.5068, tag: 'HOSTELS', icon: '🛏️' },
+  { name: 'Neerukonda', lat: 16.4715, lon: 80.5055, tag: 'VILLAGE', icon: '📍' },
 ];
+const CAMPUS_CENTER: [number, number] = [16.4650, 80.5040];
 
 export default function LiveRiderMap() {
   const [riders, setRiders] = useState<Record<string, { lat: number; lon: number; name?: string; updatedAt: number }>>({});
@@ -135,7 +137,7 @@ export default function LiveRiderMap() {
 
       {/* Map Surface */}
       <MapContainer
-        center={[12.8231, 80.0453]}
+        center={CAMPUS_CENTER}
         zoom={15}
         style={{ height: '100%', width: '100%' }}
       >

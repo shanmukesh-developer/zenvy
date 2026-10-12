@@ -10,7 +10,11 @@ const {
   submitIdCard,
   getVerificationRequests,
   reviewVerification,
+  getVerificationMethods,
+  getVerificationStatus,
 } = require('./controllers/profileController');
+const { parseUpload, uploadMedia, serveMedia, serveAvatar } = require('./controllers/mediaController');
+const { searchCampus, openDm, setGroupDiscoverable, joinOpenGroup } = require('./controllers/peopleController');
 
 const {
   createGroup,
@@ -74,6 +78,16 @@ const {
 // Campuses
 router.get('/campuses', getCampuses);
 
+// Media: one upload for every campus image; served from a short URL with long cache headers.
+// GET is public by unguessable id (ID cards need the owner/admin token or a signed link).
+router.post('/media', protect, parseUpload, uploadMedia);
+router.get('/media/:id', serveMedia);
+router.get('/avatar/:userId', serveAvatar);
+
+// People & clubs
+router.get('/search', protect, searchCampus);
+router.post('/dm', protect, openDm);
+
 // Chats (list + cursor-paginated history). Messaging itself is socket-driven (/campus ns).
 router.get('/chats', protect, getChats);
 router.get('/chats/:id/messages', protect, getChatMessages);
@@ -81,6 +95,8 @@ router.get('/chats/:id/messages', protect, getChatMessages);
 // Profile & Verification
 router.get('/profile', protect, getCampusProfile);
 router.put('/profile', protect, updateCampusProfile);
+router.get('/verify/methods', protect, getVerificationMethods);
+router.get('/verify/status', protect, getVerificationStatus);
 router.post('/verify/email-otp', protect, requestEmailOtp);
 router.post('/verify/confirm-otp', protect, confirmEmailOtp);
 router.post('/verify/upload-id', protect, submitIdCard);
@@ -93,6 +109,8 @@ router.post('/groups', protect, createGroup);
 router.post('/groups/join', protect, joinGroupByCode);
 router.get('/groups/preview/:code', previewGroupByCode);
 router.post('/groups/:id/code/reset', protect, resetJoinCode);
+router.put('/groups/:id/discoverable', protect, setGroupDiscoverable);
+router.post('/groups/:id/join-open', protect, joinOpenGroup);
 
 // Classwork & Announcements
 router.get('/assignments', protect, getMyAssignments);

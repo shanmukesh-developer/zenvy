@@ -1,0 +1,51 @@
+// Logged-in shell: shop bar + banners, the current tab, bottom nav, the full-screen new-order alert,
+// and the Announcer (voice). Tabs stay mounted once visited so scroll positions survive tab switches.
+import React, { useCallback, useState } from 'react';
+import { View } from 'react-native';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { BottomNav, MainTab } from '../components/Nav';
+import { NewOrderAlert } from '../components/NewOrderAlert';
+import { ConnBanner, ShopBar, VoiceOffBanner } from '../components/ShopBar';
+import { Announcer } from '../state/Announcer';
+import { useStore } from '../state/StoreProvider';
+import { color } from '../theme';
+import type { Order } from '../types';
+import MenuScreen from './MenuScreen';
+import OrdersScreen from './OrdersScreen';
+import SettingsScreen from './SettingsScreen';
+import ShopScreen from './ShopScreen';
+
+export type RootStack = { Main: undefined; OrderDetail: { orderId: string } };
+
+export default function MainScreen({ navigation }: NativeStackScreenProps<RootStack, 'Main'>) {
+  const [tab, setTab] = useState<MainTab>('orders');
+  const [visited, setVisited] = useState<Record<MainTab, boolean>>({ orders: true, menu: false, shop: false, settings: false });
+  const { orders } = useStore();
+  const activeCount = orders.filter((o) => o.stage === 'new' || o.stage === 'accepted' || o.stage === 'outForDelivery').length;
+  const openOrder = useCallback((o: Order) => navigation.navigate('OrderDetail', { orderId: o.id }), [navigation]);
+  const go = useCallback((t: MainTab) => {
+    setTab(t);
+    setVisited((v) => (v[t] ? v : { ...v, [t]: true }));
+  }, []);
+
+  const pane = (key: MainTab, node: React.ReactNode) => (visited[key] ? (
+    <View key={key} style={{ flex: 1, display: tab === key ? 'flex' : 'none' }}>{node}</View>
+  ) : null);
+
+  return (
+    <View style={{ flex: 1, backgroundColor: color.bg }}>
+      <ShopBar />
+      <ConnBanner />
+      <VoiceOffBanner onFix={() => go('settings')} />
+      <View style={{ flex: 1 }}>
+        {pane('orders', <OrdersScreen onOpenOrder={openOrder} />)}
+        {pane('menu', <MenuScreen />)}
+        {pane('shop', <ShopScreen />)}
+        {pane('settings', <SettingsScreen />)}
+      </View>
+      <BottomNav value={tab} onChange={go} badge={activeCount} />
+      <NewOrderAlert />
+      <Announcer />
+    </View>
+  );
+}

@@ -260,7 +260,7 @@ async function speakItem(item: QueueItem) {
   // itself only in Telugu (its TTS is fixed to te-IN); for other languages expo-speech speaks below.
   if (item.native && background && hasKitchenService()) {
     const nativeSpeaks = lang === 'te' && settings.enabled;
-    const ok = await nativeOrderAlert(nativeSpeaks ? text : '', item.native.orderNum, item.native.amount);
+    const ok = await nativeOrderAlert(nativeSpeaks ? text : '', item.native.orderNum, item.native.amount, settings.lang);
     // Accepted / rejected / silenced while the native call ran: never arm a timer that would end a
     // different (later) announcement.
     if (current !== item) return;

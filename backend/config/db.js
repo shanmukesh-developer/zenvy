@@ -405,6 +405,8 @@ const connectDB = async () => {
         console.log('🔄 Retrying standard sync without alter...');
         await sequelize.sync(); 
       }
+      await addMissingColumns(sequelize);
+      await ensureOrderIdempotencyIndex(sequelize);
 
       // Self-Healing SQLite Migration Guard: Ensure community post expiry column exists
       if (dialect === 'sqlite') {
@@ -571,16 +573,30 @@ const connectDB = async () => {
         }
       }
     } else {
-      try {
-        await sequelize.sync({ alter: true });
-      } catch (syncErr) {
-        console.warn('⚠️ [DB_SYNC_WARN] PostgreSQL alter sync warning:', syncErr.message);
-        console.log('🔄 Retrying standard PostgreSQL sync...');
+      // Production: no sync({ alter: true }) on every boot. Sequelize v6 alter re-adds UNIQUE
+      // constraints each run (duplicate *_key indexes pile up), slows startup (API is 503 until
+      // done) and can change column types on live data. Instead: create missing tables, then add
+      // missing columns only (nullable, never altering or dropping anything).
+      // Set DB_SYNC_ALTER=true for a one-off full alter sync if ever needed.
+      if (String(process.env.DB_SYNC_ALTER || '').toLowerCase() === 'true') {
         try {
-          await sequelize.sync();
-        } catch (normalSyncErr) {
-          console.warn('⚠️ [DB_SYNC_WARN] Standard sync warning:', normalSyncErr.message);
+          await sequelize.sync({ alter: true });
+        } catch (syncErr) {
+          console.warn('⚠️ [DB_SYNC_WARN] PostgreSQL alter sync warning:', syncErr.message);
         }
+      }
+      try {
+        await sequelize.sync();
+      } catch (normalSyncErr) {
+        console.warn('⚠️ [DB_SYNC_WARN] Standard sync warning:', normalSyncErr.message);
+      }
+      await addMissingColumns(sequelize);
+      await ensureOrderIdempotencyIndex(sequelize);
+      try {
+        const { runCampusMigrations } = require('../modules/campus/migrations/campusMigrations');
+        await runCampusMigrations(sequelize);
+      } catch (mErr) {
+        console.warn('⚠️ [CAMPUS_MIGRATION_WARN]', mErr.message);
       }
       
       // Auto-check for empty DB to help user identify missing data
@@ -691,6 +707,51 @@ const connectDB = async () => {
     console.log('✅ [DB_FALLBACK] Emergency SQLite is now active.');
   }
 };
+
+// Additive-only schema catch-up: for every model, add columns the table does not have yet
+// (nullable, model default when it is a plain value). Never alters types, constraints or indexes.
+async function addMissingColumns(db) {
+  const qi = db.getQueryInterface();
+  let added = 0;
+  for (const model of Object.values(db.models)) {
+    const table = model.getTableName();
+    let existing;
+    try {
+      existing = await qi.describeTable(table);
+    } catch (_err) {
+      continue; // table missing (sync() failed for it); nothing safe to do here
+    }
+    for (const [name, attr] of Object.entries(model.rawAttributes)) {
+      const field = attr.field || name;
+      if (existing[field]) continue;
+      if (attr.type && attr.type.key === 'VIRTUAL') continue;
+      const dv = attr.defaultValue;
+      const plainDefault = dv === undefined || dv === null || ['string', 'number', 'boolean'].includes(typeof dv);
+      try {
+        await qi.addColumn(table, field, {
+          type: attr.type,
+          allowNull: true,
+          ...(plainDefault && dv !== undefined ? { defaultValue: dv } : {}),
+        });
+        added++;
+        console.log(`✅ [DB_MIGRATION] Added ${typeof table === 'string' ? table : table.tableName}.${field}`);
+      } catch (err) {
+        console.warn(`⚠️ [DB_MIGRATION_WARN] Could not add ${field}:`, err.message);
+      }
+    }
+  }
+  if (added === 0) console.log('✅ [DB_MIGRATION] Schema up to date (no missing columns).');
+  return added;
+}
+
+// One order per (user, Idempotency-Key). Partial index: orders without a key are unaffected.
+async function ensureOrderIdempotencyIndex(db) {
+  try {
+    await db.query('CREATE UNIQUE INDEX IF NOT EXISTS "orders_user_idempotency_key" ON "Orders" ("userId", "idempotencyKey") WHERE "idempotencyKey" IS NOT NULL;');
+  } catch (err) {
+    console.warn('⚠️ [DB_MIGRATION_WARN] Orders idempotency index:', err.message);
+  }
+}
 
 const getSequelize = () => sequelize;
 

@@ -56,6 +56,9 @@ const initOrderModel = (sequelize) => {
     // Kitchen timestamps (restaurant partner app: real prep time + "ready by"). Null on older rows.
     acceptedAt: { type: DataTypes.DATE, allowNull: true },
     readyAt: { type: DataTypes.DATE, allowNull: true },
+    // Client Idempotency-Key for POST /api/orders (unique per user, see config/db.js index), so a
+    // retry after a restart or after minutes still returns the same order instead of a second one.
+    idempotencyKey: { type: DataTypes.STRING(120), allowNull: true },
     // Customer's delivery pin (POST /api/orders coordinates). Sent to the ASSIGNED rider only (dropCoords). Null on older rows.
     dropLat: { type: DataTypes.FLOAT, allowNull: true },
     dropLng: { type: DataTypes.FLOAT, allowNull: true },

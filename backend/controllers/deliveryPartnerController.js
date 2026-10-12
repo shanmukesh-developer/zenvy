@@ -12,11 +12,11 @@ const { normalizePhone } = require('../utils/phoneUtils');
 const realtime = require('../utils/realtime');
 
 // ── Constants ────────────────────────────────────────────────────────────
-const BASE_DELIVERY_FEE = 30; // Flat ₹30 per delivery
 const MAX_PIN_ATTEMPTS = 5; // wrong delivery PINs before the handover is locked for support
+const MAX_ACTIVE_ORDERS = Math.max(1, parseInt(process.env.RIDER_MAX_ACTIVE_ORDERS, 10) || 3); // orders one rider may hold
 
-// What the rider earns for an order: its stored delivery fee (₹30 for old orders without one).
-const riderPayout = (order) => (Number(order?.deliveryFee) > 0 ? Number(order.deliveryFee) : BASE_DELIVERY_FEE);
+// What the rider earns for an order (shared with the admin/support "mark delivered" path).
+const { riderPayout, pushNearestRiders } = require('../utils/riderDispatch');
 
 const normalizeItems = (items) => {
   if (typeof items === 'string') {
@@ -192,6 +192,15 @@ const registerPartner = async (req, res) => {
     }
     const isAdminRequest = skipCookie;
 
+    // Validate before the phone proof so a bad form never burns the customer's OTP (and never 500s).
+    const cleanName = typeof name === 'string' ? name.trim() : '';
+    if (cleanName.length < 2 || cleanName.length > 80) {
+      return res.status(400).json({ message: 'Enter your full name.' });
+    }
+    if (typeof password !== 'string' || password.length < 6 || password.length > 128) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+    }
+
     const DeliveryPartner = getDeliveryPartnerModel();
     const partnerExists = await DeliveryPartner.findOne({ where: { phone: cleanPhone } });
     if (partnerExists) return res.status(400).json({ message: 'Partner already exists' });
@@ -204,7 +213,7 @@ const registerPartner = async (req, res) => {
 
     // ── Create partner ───────────────────────────────────────────────────
     const partner = await DeliveryPartner.create({
-      name,
+      name: cleanName,
       phone: cleanPhone,
       password,
       vehicleType,
@@ -231,16 +240,13 @@ const authPartner = async (req, res) => {
   try {
     const DeliveryPartner = getDeliveryPartnerModel();
     const cleanPhone = normalizePhone(rawInput);
-    console.log(`[AUTH_PATH] Attempting login for identifier: "${rawInput}" -> cleaned: "${cleanPhone}"`);
 
     const partner = await DeliveryPartner.findOne({ where: { phone: cleanPhone } });
     if (!partner) {
-      console.log(`[AUTH_PATH] No partner found with phone: ${cleanPhone}`);
       return res.status(401).json({ message: 'Invalid phone or password' });
     }
 
     const isMatch = await partner.comparePassword(password);
-    console.log(`[AUTH_PATH] Partner found. Password match: ${isMatch}`);
 
     if (!isMatch) {
       return res.status(401).json({ message: 'Invalid phone or password' });
@@ -299,6 +305,22 @@ const acceptOrder = async (req, res) => {
     if (!partner) return res.status(401).json({ message: 'Rider account not found' });
     if (!partner.isApproved) return notApproved(res);
 
+    // One rider must not hoard the pool: at most RIDER_MAX_ACTIVE_ORDERS (default 3) at a time.
+    // (This order itself is not counted, so a retried claim of it still gets its 200 below.)
+    const activeCount = await Order.count({
+      where: {
+        deliveryPartnerId: req.user.id,
+        id: { [Op.ne]: req.params.orderId },
+        status: { [Op.notIn]: ['Delivered', 'Cancelled'] },
+      },
+    });
+    if (activeCount >= MAX_ACTIVE_ORDERS) {
+      return res.status(409).json({
+        code: 'MAX_ACTIVE',
+        message: `You already have ${activeCount} active orders. Deliver one before taking another.`,
+      });
+    }
+
     // 2. Atomic Claim: Only orders already accepted by restaurant/system can be claimed
     const [updatedRows] = await Order.update(
       { deliveryPartnerId: req.user.id },
@@ -306,6 +328,20 @@ const acceptOrder = async (req, res) => {
     );
 
     if (updatedRows === 0) {
+      // A retry of this rider's own claim (first request timed out on the phone but landed here):
+      // hand back their order instead of "claimed by another rider".
+      const current = await Order.findByPk(req.params.orderId);
+      if (current && current.deliveryPartnerId === req.user.id && !['Cancelled', 'Delivered'].includes(current.status)) {
+        const [restaurant, customer] = await Promise.all([
+          getRestaurantModel().findByPk(current.restaurantId),
+          getUserModel().findByPk(current.userId),
+        ]);
+        return res.json({
+          ...riderOrderPayload(current, restaurant, customer, { revealCustomer: true }),
+          hasDeliveryPin: !!current.deliveryPin,
+          alreadyClaimed: true,
+        });
+      }
       return res.status(400).json({ message: 'Order was already claimed by another rider or is not yet accepted by the merchant.' });
     }
 
@@ -474,7 +510,15 @@ const updateOrderStatus = async (req, res) => {
     if (!order) return res.status(404).json({ message: 'Order not found' });
     if (order.deliveryPartnerId !== req.user.id) return res.status(403).json({ message: 'Unauthorized' });
 
-    if (status === 'Picking' && !['Pending', 'Accepted', 'Preparing', 'ReadyForPickup'].includes(order.status)) {
+    // Replay of a step that already happened (a request that timed out on the phone but landed here,
+    // then re-sent from the offline queue): answer 200 with the order as it is, never a false error.
+    const RIDER_STEP_RANK = { Picking: 1, PickedUp: 2, ArrivedAtGate: 3 };
+    if (status !== 'Delivered' && RIDER_STEP_RANK[order.status] && RIDER_STEP_RANK[order.status] >= RIDER_STEP_RANK[status]) {
+      const { deliveryPin, deliveryPinAttempts, ...safeOrder } = order.toJSON();
+      return res.json({ ...safeOrder, _id: order.id, riderEarning: riderPayout(order), alreadyApplied: true });
+    }
+
+    if (status === 'Picking' &&!['Pending', 'Accepted', 'Preparing', 'ReadyForPickup'].includes(order.status)) {
       return res.status(400).json({ message: 'Order must be Accepted or Ready by restaurant first' });
     }
     if (status === 'PickedUp' && !['Pending', 'Accepted', 'Preparing', 'ReadyForPickup', 'Picking'].includes(order.status)) {
@@ -496,16 +540,26 @@ const updateOrderStatus = async (req, res) => {
       const pin = String(req.body?.pin ?? '').trim();
       // Every order placed through the app has a PIN (only very old orders may not).
       if (order.deliveryPin && order.deliveryPin.length > 0) {
-        const attempts = Number(order.deliveryPinAttempts) || 0;
-        if (attempts >= MAX_PIN_ATTEMPTS) {
+        // Claim one attempt atomically BEFORE comparing, so parallel requests cannot each see
+        // "0 used" and try many PINs at once. A correct PIN gives the attempt back.
+        const [claimed] = await Order.update(
+          { deliveryPinAttempts: Order.sequelize.literal('COALESCE("deliveryPinAttempts", 0) + 1') },
+          { where: { id: order.id, deliveryPinAttempts: { [Op.lt]: MAX_PIN_ATTEMPTS } } }
+        );
+        if (claimed === 0) {
           return res.status(429).json({
             code: 'PIN_LOCKED',
             message: 'Too many wrong PINs for this order. Please contact Zenvy support to complete the handover.'
           });
         }
-        if (!pin || pin !== order.deliveryPin) {
-          const used = attempts + 1;
-          await Order.update({ deliveryPinAttempts: used }, { where: { id: order.id } });
+        if (pin && pin === order.deliveryPin) {
+          await Order.update(
+            { deliveryPinAttempts: Order.sequelize.literal('CASE WHEN COALESCE("deliveryPinAttempts", 0) > 0 THEN "deliveryPinAttempts" - 1 ELSE 0 END') },
+            { where: { id: order.id } }
+          ).catch(() => {});
+        } else {
+          const fresh = await Order.findByPk(order.id, { attributes: ['id', 'deliveryPinAttempts'] });
+          const used = Number(fresh?.deliveryPinAttempts) || MAX_PIN_ATTEMPTS;
           if (used >= MAX_PIN_ATTEMPTS) {
             const io = req.app.get('io');
             if (io) io.to('admin-room').emit('admin_issue_reported', {
@@ -659,7 +713,8 @@ const cancelOrderByRider = async (req, res) => {
     // Unassign rider so another rider can claim it. The kitchen's progress is kept: only the
     // rider-set 'Picking' step is undone (back to 'Preparing', which the store can still mark Ready).
     // Conditional so a customer cancel that landed after our read is never turned back into a live order.
-    const nextStatus = order.status === 'Picking' ? 'Preparing' : order.status;
+    // A kitchen that already marked the food ready (readyAt) stays ReadyForPickup.
+    const nextStatus = order.status === 'Picking' ? (order.readyAt ? 'ReadyForPickup' : 'Preparing') : order.status;
     const [released] = await Order.update(
       { deliveryPartnerId: null, status: nextStatus },
       { where: { id: order.id, deliveryPartnerId: req.user.id, status: order.status } }
@@ -688,6 +743,22 @@ const cancelOrderByRider = async (req, res) => {
       io.to('admin-room').emit('newOrder', { ...order.toJSON(), id: order.id, _id: order.id });
     }
     realtime.deliveryRequest(order.id); // back in the pool for every online rider
+    // Riders with the app in the background only hear about it by push (never the rider who released it).
+    try {
+      const restaurant = order.restaurantId
+        ? await getRestaurantModel().findByPk(order.restaurantId, { attributes: ['id', 'name', 'location'] })
+        : null;
+      await pushNearestRiders({
+        restaurant,
+        orderId: order.id,
+        limit: 5,
+        excludeRiderId: req.user.id,
+        title: '🛵 Order needs a rider',
+        body: `${restaurant?.name || 'A store'} has an order waiting for a rider.`,
+      });
+    } catch (pushErr) {
+      console.warn('[RIDER_RELEASE_PUSH_WARN]', pushErr.message);
+    }
 
     // Push notify the customer about reassignment
     try {

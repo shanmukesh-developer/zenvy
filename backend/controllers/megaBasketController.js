@@ -50,9 +50,14 @@ const advanceBasket = async (req, res, from, to, extra = {}) => {
   return basket;
 };
 
-// Wrong delivery PINs per basket (in memory): 4 digits must not be brute-forceable.
+// Wrong delivery PINs per basket, stored on the basket row (survives restarts; claimed atomically).
 const MAX_BASKET_PIN_ATTEMPTS = 5;
-const basketPinAttempts = new Map();
+
+// Log the real error, send the client a friendly fixed message (no SQL / table names).
+const serverError = (res, tag, error) => {
+  console.error(tag, error && error.message ? error.message : error);
+  if (!res.headersSent) res.status(500).json({ message: 'Something went wrong on our side. Please try again in a moment.' });
+};
 
 // @desc    Create a new Mega Basket
 // @route   POST /api/mega-basket
@@ -124,7 +129,9 @@ const createBasket = async (req, res) => {
     const MegaBasket = getMegaBasketModel();
     const MegaBasketItem = getMegaBasketItemModel();
 
-    const basket = await MegaBasket.create({
+    // Basket + items in one transaction: a failure never leaves an empty basket behind.
+    const basket = await MegaBasket.sequelize.transaction(async (t) => {
+    const created = await MegaBasket.create({
       userId: req.user.id,
       status: initialStatus,
       estimatedTotal,
@@ -136,14 +143,16 @@ const createBasket = async (req, res) => {
       upiUTR: null,
       paymentMethod: 'COD',
       paymentStatus
-    });
+    }, { transaction: t });
 
     // Create the items associated with the basket
     const itemsWithBasketId = itemsData.map(item => ({
       ...item,
-      basketId: basket.id
+      basketId: created.id
     }));
-    await MegaBasketItem.bulkCreate(itemsWithBasketId);
+    await MegaBasketItem.bulkCreate(itemsWithBasketId, { transaction: t });
+    return created;
+    });
 
     // Fetch the full basket representation to return
     const createdBasket = await MegaBasket.findByPk(basket.id, {
@@ -165,7 +174,7 @@ const createBasket = async (req, res) => {
 
     res.status(201).json(createdBasket);
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    serverError(res, '[MEGA_BASKET_ERROR]', error);
   }
 };
 
@@ -207,7 +216,7 @@ const getBasket = async (req, res) => {
 
     res.json(basket.userId === req.user.id || role === 'admin' ? basket : withoutPin(basket));
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    serverError(res, '[MEGA_BASKET_ERROR]', error);
   }
 };
 
@@ -230,7 +239,7 @@ const getCustomerBaskets = async (req, res) => {
 
     res.json(baskets);
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    serverError(res, '[MEGA_BASKET_ERROR]', error);
   }
 };
 
@@ -253,7 +262,7 @@ const getPendingBaskets = async (req, res) => {
 
     res.json(baskets.map(withoutPin));
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    serverError(res, '[MEGA_BASKET_ERROR]', error);
   }
 };
 
@@ -282,7 +291,7 @@ const claimBasket = async (req, res) => {
 
     res.json({ message: 'Basket claimed successfully', basket: withoutPin(basket) });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    serverError(res, '[MEGA_BASKET_ERROR]', error);
   }
 };
 
@@ -297,7 +306,7 @@ const startShopping = async (req, res) => {
 
     res.json({ message: 'Shopping started', basket: withoutPin(basket) });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    serverError(res, '[MEGA_BASKET_ERROR]', error);
   }
 };
 
@@ -347,7 +356,7 @@ const updateItemStatus = async (req, res) => {
 
     res.json({ message: 'Item status updated', item });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    serverError(res, '[MEGA_BASKET_ERROR]', error);
   }
 };
 
@@ -395,7 +404,7 @@ const submitBill = async (req, res) => {
 
     res.json({ message: 'Bill submitted for customer approval', basket: withoutPin(basket) });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    serverError(res, '[MEGA_BASKET_ERROR]', error);
   }
 };
 
@@ -425,7 +434,7 @@ const approvePrices = async (req, res) => {
 
     res.json({ message: 'Prices approved successfully', basket });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    serverError(res, '[MEGA_BASKET_ERROR]', error);
   }
 };
 
@@ -440,7 +449,7 @@ const purchaseCompleted = async (req, res) => {
 
     res.json({ message: 'Purchase marked as completed', basket: withoutPin(basket) });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    serverError(res, '[MEGA_BASKET_ERROR]', error);
   }
 };
 
@@ -455,7 +464,7 @@ const startDelivery = async (req, res) => {
 
     res.json({ message: 'Delivery run started', basket: withoutPin(basket) });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    serverError(res, '[MEGA_BASKET_ERROR]', error);
   }
 };
 
@@ -485,29 +494,33 @@ const completeDelivery = async (req, res) => {
       return res.status(400).json({ message: BASKET_STEP_MESSAGES.Delivered });
     }
 
-    const attempts = basketPinAttempts.get(basket.id) || 0;
-    if (attempts >= MAX_BASKET_PIN_ATTEMPTS) {
+    // Claim one attempt atomically before comparing (parallel guesses cannot share one count).
+    const [claimed] = await MegaBasket.update(
+      { deliveryPinAttempts: MegaBasket.sequelize.literal('COALESCE("deliveryPinAttempts", 0) + 1') },
+      { where: { id: basket.id, [Op.or]: [{ deliveryPinAttempts: null }, { deliveryPinAttempts: { [Op.lt]: MAX_BASKET_PIN_ATTEMPTS } }] } }
+    );
+    if (claimed === 0) {
       return res.status(429).json({ code: 'PIN_LOCKED', message: 'Too many wrong PINs for this basket. Please contact Zenvy support to complete the handover.' });
     }
     if (basket.deliveryPin !== String(deliveryPin).trim()) {
-      basketPinAttempts.set(basket.id, attempts + 1);
-      const left = Math.max(0, MAX_BASKET_PIN_ATTEMPTS - attempts - 1);
+      const fresh = await MegaBasket.findByPk(basket.id, { attributes: ['id', 'deliveryPinAttempts'] });
+      const used = Number(fresh?.deliveryPinAttempts) || MAX_BASKET_PIN_ATTEMPTS;
+      const left = Math.max(0, MAX_BASKET_PIN_ATTEMPTS - used);
       return res.status(400).json({ code: 'INVALID_PIN', attemptsLeft: left, message: left > 0 ? `That PIN doesn't match. Ask the customer for the 4-digit PIN in their Zenvy app (${left} ${left === 1 ? 'try' : 'tries'} left).` : 'Too many wrong PINs for this basket. Please contact Zenvy support to complete the handover.' });
     }
 
     const [done] = await MegaBasket.update(
-      { status: 'Delivered', paymentStatus: 'Completed' },
+      { status: 'Delivered', paymentStatus: 'Completed', deliveryPinAttempts: 0 },
       { where: { id: basket.id, deliveryPartnerId: req.user.id, status: { [Op.in]: ['Approved', 'Purchased', 'Delivering'] } } }
     );
     if (done === 0) return res.status(409).json({ message: 'This basket was just updated. Please refresh.' });
-    basketPinAttempts.delete(basket.id);
     basket.set({ status: 'Delivered', paymentStatus: 'Completed' });
 
     broadcastBasketStatus(req, basket.id, { id: basket.id, status: basket.status });
 
     res.json({ message: 'Delivery completed successfully', basket: withoutPin(basket) });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    serverError(res, '[MEGA_BASKET_ERROR]', error);
   }
 };
 
@@ -535,7 +548,7 @@ const getActiveBaskets = async (req, res) => {
 
     res.json(baskets.map(withoutPin));
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    serverError(res, '[MEGA_BASKET_ERROR]', error);
   }
 };
 
@@ -560,11 +573,87 @@ const getAllBaskets = async (req, res) => {
 
     res.json(baskets);
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    serverError(res, '[MEGA_BASKET_ERROR]', error);
   }
 };
 
+// @desc    Cancel a basket. Customer: only before shopping starts (Created / PaidEstimate /
+//          PartnerAssigned). Admin: any time before delivery. COD only, so nothing to refund.
+// @route   PUT /api/mega-basket/:id/cancel
+const CUSTOMER_CANCELLABLE_BASKET = ['Created', 'PaidEstimate', 'PartnerAssigned'];
+const ADMIN_CANCELLABLE_BASKET = ['Created', 'PaidEstimate', 'PartnerAssigned', 'Shopping', 'PriceApprovalPending', 'Approved', 'Purchased', 'Delivering'];
+const cancelBasket = async (req, res) => {
+  try {
+    const MegaBasket = getMegaBasketModel();
+    const basket = await MegaBasket.findByPk(req.params.id);
+    if (!basket) return res.status(404).json({ message: 'Basket not found' });
+    const isAdmin = String(req.user.role || '').toLowerCase() === 'admin';
+    if (!isAdmin && basket.userId !== req.user.id) return res.status(403).json({ message: 'Not authorized to cancel this basket' });
+    if (basket.status === 'Cancelled') return res.status(400).json({ code: 'ALREADY_CANCELLED', message: 'This basket is already cancelled.' });
+    const from = isAdmin ? ADMIN_CANCELLABLE_BASKET : CUSTOMER_CANCELLABLE_BASKET;
+    if (!from.includes(basket.status)) {
+      return res.status(400).json({ code: 'CANCEL_WINDOW_CLOSED', message: 'Your rider has already started shopping, so this basket can no longer be cancelled. Need help? Contact support.' });
+    }
+    const [n] = await MegaBasket.update({ status: 'Cancelled' }, { where: { id: basket.id, status: { [Op.in]: from } } });
+    if (n === 0) return res.status(409).json({ message: 'This basket was just updated. Please refresh.' });
+    basket.set({ status: 'Cancelled' });
+    broadcastBasketStatus(req, basket.id, { id: basket.id, status: 'Cancelled' });
+    try {
+      const io = req.app.get('io');
+      if (io && basket.deliveryPartnerId) io.to(`rider_${basket.deliveryPartnerId}`).emit('statusUpdated', { id: basket.id, status: 'Cancelled' });
+    } catch (_e) { /* best effort */ }
+    res.json({ message: 'Basket cancelled', basket: withoutPin(basket) });
+  } catch (error) {
+    serverError(res, '[MEGA_BASKET_CANCEL_ERROR]', error);
+  }
+};
+
+// Baskets no rider claims are cancelled after MEGA_BASKET_TIMEOUT_MINUTES (default 60), so they do
+// not sit in the rider pool forever. Runs from server.js together with the order auto-cancel job.
+const BASKET_TIMEOUT_MINUTES = Math.max(15, parseInt(process.env.MEGA_BASKET_TIMEOUT_MINUTES, 10) || 60);
+const expireStaleBaskets = async (io) => {
+  const MegaBasket = getMegaBasketModel();
+  if (!MegaBasket) return 0;
+  const cutoff = new Date(Date.now() - BASKET_TIMEOUT_MINUTES * 60 * 1000);
+  const OPEN = ['Created', 'PaidEstimate'];
+  const stale = await MegaBasket.findAll({
+    where: { status: { [Op.in]: OPEN }, deliveryPartnerId: null, createdAt: { [Op.lt]: cutoff } },
+    attributes: ['id', 'userId'],
+    limit: 50,
+  });
+  let count = 0;
+  for (const b of stale) {
+    const [n] = await MegaBasket.update({ status: 'Cancelled' }, { where: { id: b.id, deliveryPartnerId: null, status: { [Op.in]: OPEN } } });
+    if (n === 0) continue;
+    count++;
+    if (io) {
+      const payload = { id: b.id, status: 'Cancelled', reason: 'NO_RIDER_TIMEOUT' };
+      io.to(String(b.id)).emit('statusUpdated', payload);
+      io.to('admin-room').emit('statusUpdated', payload);
+    }
+    try {
+      const customer = await getUserModel().findByPk(b.userId, { attributes: ['id', 'fcmTokens'] });
+      if (customer) {
+        await require('../utils/push').sendPushToTokens(
+          customer.fcmTokens,
+          'Mega Basket cancelled',
+          'No rider could take your Mega Basket in time. You have not been charged.',
+          { basketId: String(b.id), type: 'ORDER_UPDATE' },
+          { recipients: [customer.id] }
+        );
+      }
+    } catch (pushErr) {
+      console.warn('[BASKET_EXPIRE_PUSH_WARN]', pushErr.message);
+    }
+  }
+  if (count) console.log(`[BASKET_EXPIRE] Cancelled ${count} unclaimed Mega Basket(s) after ${BASKET_TIMEOUT_MINUTES} min`);
+  return count;
+};
+
+
 module.exports = {
+  cancelBasket,
+  expireStaleBaskets,
   createBasket,
   payBasket,
   getBasket,

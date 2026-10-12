@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const { getConversationModel } = require('../../../models/Conversation');
 const { getMessageModel } = require('../../../models/Message');
 const { getUserModel } = require('../../../models/User');
+const { readableText, avatarUrlFor, absolutize } = require('../campusHelpers');
 
 const PAGE_SIZE = 30;
 
@@ -33,9 +34,10 @@ const serializeMessage = (msg, userId) => ({
   id: msg.id,
   senderId: msg.senderId,
   senderName: msg.senderName,
-  text: msg.isDeletedForEveryone ? 'This message was deleted' : msg.text,
+  // Friend DMs sent through /api/friends/message are stored encrypted; show the real text.
+  text: msg.isDeletedForEveryone ? 'This message was deleted' : readableText(msg.text),
   type: msg.type || 'text',
-  mediaUrl: msg.mediaUrl || undefined,
+  mediaUrl: msg.mediaUrl || msg.attachmentUrl || undefined,
   replyTo: parseJson(msg.replyTo, null) || undefined,
   reactions: parseJson(msg.reactions, {}) || {},
   isEdited: !!msg.isEdited,
@@ -105,13 +107,16 @@ const getChats = async (req, res) => {
         const peerId = (c.participants || []).find((p) => p !== userId);
         const peer = peerId ? peersById[peerId] : null;
         name = peer?.name || 'Direct Message';
-        avatarUrl = peer?.profileImage || null;
+        // Never inline a base64 avatar in the list (it made this response megabytes).
+        avatarUrl = peer ? avatarUrlFor(req, peer) : null;
+      } else {
+        avatarUrl = absolutize(req, avatarUrl);
       }
 
       let preview = '';
       if (lastMsg) {
         if (lastMsg.isDeletedForEveryone) preview = 'This message was deleted';
-        else preview = lastMsg.text || (lastMsg.mediaUrl ? 'Attachment' : '');
+        else preview = readableText(lastMsg.text) || (lastMsg.mediaUrl || lastMsg.attachmentUrl ? (lastMsg.type === 'image' ? 'Photo' : 'Attachment') : '');
       }
 
       chats.push({
@@ -120,7 +125,8 @@ const getChats = async (req, res) => {
         type: c.type || (isDm ? 'dm' : 'club'),
         isGroup: !!c.isGroup,
         avatarUrl,
-        lastMessage: preview,
+        peerId: isDm ? ((c.participants || []).find((p) => p !== userId) || null) : null,
+        lastMessage: typeof preview === 'string' ? preview.slice(0, 160) : '',
         lastSenderId: lastMsg?.senderId || null,
         lastSender: lastMsg ? (lastMsg.senderId === userId ? 'You' : lastMsg.senderName) : null,
         lastMessageAt: c.lastMessageAt,

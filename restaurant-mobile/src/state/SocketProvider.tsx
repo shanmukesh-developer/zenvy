@@ -16,6 +16,8 @@ interface SocketCtx {
 }
 
 const FIRST_CONNECT_GRACE_MS = 60000;
+/** Max wait for the server's joinRestaurant ack before the catch-up refetch runs anyway. */
+const JOIN_ACK_TIMEOUT_MS = 2500;
 
 const Ctx = createContext<SocketCtx>({ socket: null, status: 'connecting', connectCount: 0, retry: () => {} });
 
@@ -54,9 +56,13 @@ export function SocketProvider({ token, restaurantId, onAuthError, children }: {
     s.on('connect', () => {
       clearOffline();
       everConnected = true;
-      s.emit('joinRestaurant', restaurantId);
       setStatus('online');
-      setConnectCount((n) => n + 1);
+      // The catch-up refetch (driven by connectCount) must run only after the server has put us in the
+      // restaurant room, or an order created in between is in neither the refetch nor the socket stream.
+      // Wait for the join ack; until the server acks it, the timeout stands in (the join takes well under it).
+      s.timeout(JOIN_ACK_TIMEOUT_MS).emit('joinRestaurant', restaurantId, () => {
+        if (s.connected) setConnectCount((n) => n + 1);
+      });
     });
     s.on('disconnect', (reason) => {
       setStatus((prev) => (prev === 'offline' ? 'offline' : 'reconnecting'));

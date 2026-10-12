@@ -130,7 +130,7 @@ export default function StudentVerificationPage() {
         <div>
           <p className="text-xs font-bold uppercase tracking-widest text-emerald-400">Campus Identity</p>
           <h1 className="mt-1 text-2xl font-black">Student Verification</h1>
-          <p className="mt-2 text-sm text-gray-400">Review university email and student ID submissions.</p>
+          <p className="mt-2 text-sm text-gray-400">Review university email and student ID submissions. Shows up to 100 requests per status, oldest first.</p>
         </div>
         <span className="text-sm text-gray-400">{requests.length} {status} requests</span>
       </header>

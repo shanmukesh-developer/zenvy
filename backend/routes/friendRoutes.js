@@ -17,7 +17,11 @@ const {
   unblockUser,
   getBlockedUsers,
   updateUserStatus,
-  markStatusAsSeen
+  markStatusAsSeen,
+  getFriendRequests,
+  acceptFriendRequestById,
+  declineFriendRequestById,
+  cancelFriendRequest
 } = require('../controllers/friendController');
 
 const router = express.Router();
@@ -25,6 +29,11 @@ const router = express.Router();
 router.use(protect); // Ensure all friends endpoints are authenticated
 
 router.post('/contacts', searchContacts);
+// Request inbox (preferred shape). The older /pending, /accept and /decline stay for old app builds.
+router.get('/requests', getFriendRequests);
+router.post('/requests/:id/accept', acceptFriendRequestById);
+router.post('/requests/:id/decline', declineFriendRequestById);
+router.delete('/requests/:id', cancelFriendRequest);
 router.post('/request', sendFriendRequest);
 router.post('/accept', acceptFriendRequest);
 router.post('/decline', declineFriendRequest);

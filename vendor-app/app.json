@@ -1,0 +1,37 @@
+{
+  "expo": {
+    "name": "Zenvy Vendor",
+    "slug": "zenvy-vendor",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.srm.zenvyvendor"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0B0D12",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "package": "com.srm.zenvyvendor"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "./plugins/withKitchenService",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Zenvy Vendor uses your photos to add pictures of your items.",
+          "cameraPermission": "Zenvy Vendor uses the camera to take pictures of your items.",
+          "microphonePermission": false
+        }
+      ]
+    ]
+  }
+}

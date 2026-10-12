@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { API_URL } from '@/lib/config';
 import { useAdminAuth } from '@/utils/useAdminAuth';
 import { useAdminSocket } from '@/components/AdminSocketProvider';
+import { useLiveSync } from '@/lib/useLiveSync';
 
 interface ServiceBooking {
   id: string;
@@ -71,11 +72,16 @@ export default function ServiceBookingsPage() {
     const onChange = () => setRefreshCount(count => count + 1);
     socket.on('newServiceBooking', onChange);
     socket.on('serviceCancelled', onChange);
+    socket.on('serviceQuoteAccepted', onChange);
     return () => {
       socket.off('newServiceBooking', onChange);
       socket.off('serviceCancelled', onChange);
+      socket.off('serviceQuoteAccepted', onChange);
     };
   }, [socket]);
+
+  // Realtime sync: the backend sends `admin:changed` { type: 'service_booking' } for bookings.
+  useLiveSync(['service_booking'], () => setRefreshCount(count => count + 1), { enabled: isAuthed });
 
   const replaceBooking = (updated: ServiceBooking) => setBookings(prev => prev.map(b => (b.id === updated.id ? { ...b, ...updated } : b)));
 
@@ -179,7 +185,7 @@ export default function ServiceBookingsPage() {
                     <div><p className="text-xs uppercase tracking-wider text-gray-500">Description</p><p className="mt-1 whitespace-pre-wrap text-gray-200">{booking.description || 'No description provided.'}</p></div>
                     <div><p className="text-xs uppercase tracking-wider text-gray-500">Payment</p><p className="mt-1">{booking.paymentMethod && booking.paymentMethod !== 'COD' ? `${booking.paymentMethod} (legacy)` : 'Cash on delivery'} · {booking.paymentStatus || 'Pending'}</p></div>
                     <div><p className="text-xs uppercase tracking-wider text-gray-500">Assigned partner</p><p className="mt-1">{booking.driverDetails?.name || booking.assignedPartnerId || 'Unassigned'}</p></div>
-                    {booking.attachmentUrl && <a className="inline-block font-bold text-emerald-300 underline" href={booking.attachmentUrl} target="_blank" rel="noreferrer">Open attachment</a>}
+                    {booking.attachmentUrl && <Attachment url={booking.attachmentUrl} id={booking.id} />}
                   </div>
                   <div className="space-y-3">
                     <div><p className="text-xs uppercase tracking-wider text-gray-500">Specifications</p>{Object.entries(booking.specifications || {}).filter(([key, value]) => key !== 'catalogueItemId' && value !== null && value !== '' && typeof value !== 'object').length ? (
@@ -193,7 +199,8 @@ export default function ServiceBookingsPage() {
                   </div>
                 </div>
               )}
-              {expandedId === booking.id && <BookingActions booking={booking} onUpdated={replaceBooking} />}
+              {/* keyed by updatedAt: a live change (customer cancel / quote accepted) resets the form to the real stage */}
+              {expandedId === booking.id && <BookingActions key={`${booking.id}-${booking.updatedAt}`} booking={booking} onUpdated={replaceBooking} />}
             </article>
           ))}
         </section>
@@ -201,6 +208,28 @@ export default function ServiceBookingsPage() {
     </div>
   );
 }
+/**
+ * The customer app sends photos inline as data: URLs. Browsers block opening a data: URL in a new tab,
+ * so show the photo here and offer a download instead.
+ */
+function Attachment({ url, id }: { url: string; id: string }) {
+  const isDataImage = /^data:image\//i.test(url);
+  const isHttp = /^https?:\/\//i.test(url);
+  if (isDataImage) {
+    const ext = (/^data:image\/(\w+)/i.exec(url)?.[1] || 'jpg').toLowerCase();
+    return (
+      <div className="space-y-2">
+        <p className="text-xs uppercase tracking-wider text-gray-500">Attachment</p>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={url} alt="Photo attached by the customer" className="max-h-64 rounded border border-white/10 object-contain" />
+        <a className="inline-block font-bold text-emerald-300 underline" href={url} download={`booking-${id.slice(-8)}.${ext === 'jpeg' ? 'jpg' : ext}`}>Download photo</a>
+      </div>
+    );
+  }
+  if (isHttp) return <a className="inline-block font-bold text-emerald-300 underline" href={url} target="_blank" rel="noreferrer">Open attachment</a>;
+  return null;
+}
+
 /** Admin update: stage, quote / final amount and a note for the customer (PATCH /api/services/:id/status). */
 function BookingActions({ booking, onUpdated }: { booking: ServiceBooking; onUpdated: (b: ServiceBooking) => void }) {
   const [nextStatus, setNextStatus] = useState(booking.status);

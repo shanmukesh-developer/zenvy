@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { API_URL } from '@/lib/config';
 import { useAdminAuth } from '@/utils/useAdminAuth';
 import { useAdminSocket } from '@/components/AdminSocketProvider';
@@ -73,12 +73,23 @@ export default function MegaBasketAdminPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const { socket } = useAdminSocket();
 
-  // Reload when a customer creates a new basket.
+  const basketIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => { basketIdsRef.current = new Set(baskets.map(b => String(b.id))); }, [baskets]);
+
+  // Reload when a customer creates a new basket, or a basket's status changes (the backend sends
+  // `statusUpdated` { id, status } to admin-room; orders use the same event, so only known basket ids count).
   useEffect(() => {
     if (!socket) return;
     const onNew = () => setRefreshCount(count => count + 1);
+    const onStatus = (payload: { id?: string | number } | undefined) => {
+      if (payload?.id != null && basketIdsRef.current.has(String(payload.id))) setRefreshCount(count => count + 1);
+    };
     socket.on('admin_newMegaBasket', onNew);
-    return () => { socket.off('admin_newMegaBasket', onNew); };
+    socket.on('statusUpdated', onStatus);
+    return () => {
+      socket.off('admin_newMegaBasket', onNew);
+      socket.off('statusUpdated', onStatus);
+    };
   }, [socket]);
 
   useEffect(() => {

@@ -84,6 +84,21 @@ export interface MenuItem {
   isVegetarian: boolean | null;
   isAvailable: boolean;
   outOfStockUntil: string | null;
+  /** Free-form server tags. "egg" marks an egg dish (the server has no egg field; isVegetarian is false). */
+  tags: string[];
+}
+
+export type Diet = 'veg' | 'nonveg' | 'egg';
+
+/** What the add / edit item form sends to the store. */
+export interface ItemInput {
+  name: string;
+  price: number;
+  category: string;
+  diet: Diet;
+  description: string;
+  imageUrl: string | null;
+  isAvailable: boolean;
 }
 
 export type ConnStatus = 'connecting' | 'online' | 'reconnecting' | 'offline';

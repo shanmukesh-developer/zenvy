@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAdminAuth } from '@/utils/useAdminAuth';
 import { API_URL } from '@/lib/config';
+import { useLiveSync } from '@/lib/useLiveSync';
 
 interface User {
   id: string;
@@ -118,6 +119,12 @@ export default function CouponManagement() {
       fetchUsers();
     }
   }, [isAuthed, fetchCoupons, fetchUsers]);
+
+  // Realtime sync: coupon changes (Vault coupons have their own page) and user changes.
+  useLiveSync(['coupon', 'user'], (events, { reconnect }) => {
+    if (reconnect || events.some(e => e.type === 'coupon' && e.scope !== 'vault')) fetchCoupons();
+    if (reconnect || events.some(e => e.type === 'user')) fetchUsers();
+  }, { enabled: isAuthed });
 
   // Older accounts are found with a server-side search (name, phone or email) and merged in.
   useEffect(() => {

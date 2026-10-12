@@ -29,10 +29,26 @@ function LinkRow({ icon, label, sub, onPress }: { icon: IconName; label: string;
 const LANGS: VoiceLang[] = ['te', 'hi', 'en'];
 
 export default function SettingsScreen() {
-  const { restaurant, store } = useStore();
+  const { restaurant, store, setOpen, openToggleSupported } = useStore();
   const { signOut } = useSession();
   const voice = useVoice();
   const [confirmOut, setConfirmOut] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const [closeErr, setCloseErr] = useState<string | null>(null);
+  // Logging out stops the ringing but not the store: offer to close it first, or orders keep coming in
+  // with nobody to accept them (each one auto-cancels after the accept window).
+  const canCloseOnLogout = !!store?.isOpenNow && store?.isActive !== false && openToggleSupported;
+  const closeOut = () => { setConfirmOut(false); setCloseErr(null); };
+  const closeAndSignOut = async () => {
+    if (closing) return;
+    setClosing(true);
+    setCloseErr(null);
+    const res = await setOpen(false);
+    setClosing(false);
+    if (!res.ok) { setCloseErr(res.error || 'Could not close the store. Try again.'); return; }
+    setConfirmOut(false);
+    signOut();
+  };
   const hours = store?.operatingHours || restaurant.operatingHours || null;
   const name = store?.name || restaurant.name;
   const location = store?.location || restaurant.location;
@@ -122,15 +138,25 @@ export default function SettingsScreen() {
         <LinkRow icon="logo-whatsapp" label="WhatsApp support" sub="Menu, hours, payouts, anything else" onPress={wa} />
       </Card>
 
-      <Button label="Log out" icon="log-out-outline" variant="rejectOutline" size="secondary" onPress={() => setConfirmOut(true)} />
+      <Button label="Log out" icon="log-out-outline" variant="rejectOutline" size="secondary" onPress={() => { setCloseErr(null); setConfirmOut(true); }} />
 
-      <Sheet visible={confirmOut} onClose={() => setConfirmOut(false)} title="Log out?">
+      <Sheet visible={confirmOut} onClose={closeOut} title="Log out?">
         <Text style={[font.body, { color: color.textSecondary, marginBottom: space.md }]}>
-          New orders will not ring on this phone after you log out.
+          {canCloseOnLogout
+            ? 'Your store is OPEN. After you log out, new orders will not ring on this phone and will be cancelled if nobody accepts them.'
+            : 'New orders will not ring on this phone after you log out.'}
         </Text>
+        {closeErr ? <Text style={[font.body, { color: color.alertDark, fontWeight: '700', marginBottom: space.sm }]}>{closeErr}</Text> : null}
         <View style={{ gap: space.xs }}>
-          <Button label="LOG OUT" variant="reject" onPress={() => { setConfirmOut(false); signOut(); }} />
-          <Button label="Cancel" variant="secondary" size="secondary" onPress={() => setConfirmOut(false)} />
+          {canCloseOnLogout ? (
+            <>
+              <Button label="CLOSE STORE & LOG OUT" variant="reject" onPress={closeAndSignOut} loading={closing} />
+              <Button label="Log out, keep store open" variant="rejectOutline" size="secondary" onPress={() => { closeOut(); signOut(); }} disabled={closing} />
+            </>
+          ) : (
+            <Button label="LOG OUT" variant="reject" onPress={() => { closeOut(); signOut(); }} />
+          )}
+          <Button label="Cancel" variant="secondary" size="secondary" onPress={closeOut} disabled={closing} />
         </View>
       </Sheet>
     </ScrollView>

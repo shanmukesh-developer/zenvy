@@ -1,7 +1,8 @@
 "use client";
-import React, { useState, useEffect, useCallback, memo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
 import { useAdminAuth } from '@/utils/useAdminAuth';
 import { API_URL } from '@/lib/config';
+import { useLiveSync } from '@/lib/useLiveSync';
 
 interface User {
   _id: string;
@@ -150,11 +151,14 @@ export default function UserManagement() {
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState<'roster' | 'audit'>('roster');
 
+  // The search runs on the server (name, phone or email across ALL users), not just the loaded page.
+  const searchRef = useRef('');
   const fetchUsers = useCallback(async (page = 1) => {
     setLoading(true);
     setLoadError(null);
     try {
-      const res = await fetch(`${API_URL}/api/admin/users?page=${page}`, { cache: 'no-store' });
+      const q = searchRef.current.trim();
+      const res = await fetch(`${API_URL}/api/admin/users?page=${page}${q ? `&search=${encodeURIComponent(q)}` : ''}`, { cache: 'no-store' });
       if (!res.ok) throw new Error(await readError(res, 'Could not load users.'));
       const data = await res.json();
       setUsers(Array.isArray(data.users) ? data.users : []);
@@ -199,6 +203,21 @@ export default function UserManagement() {
     fetchUsers(1);
     fetchLogs(1);
   }, [isAuthed, fetchUsers, fetchLogs]);
+
+  // Realtime sync: another admin (or the app) changed a user; refetch the page being shown.
+  useLiveSync(['user'], () => { fetchUsers(userPage); }, { enabled: isAuthed });
+
+  // Debounced server-side search: typing re-queries page 1 with ?search=.
+  useEffect(() => {
+    if (!isAuthed) return;
+    const q = search.trim();
+    if (q === searchRef.current.trim()) return;
+    const t = setTimeout(() => {
+      searchRef.current = q;
+      fetchUsers(1);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [search, isAuthed, fetchUsers]);
 
   const patchUser = (id: string, patch: Partial<User>) =>
     setUsers(prev => prev.map(u => (u._id === id ? { ...u, ...patch } : u)));
@@ -278,13 +297,7 @@ export default function UserManagement() {
     );
   };
 
-  const q = search.trim().toLowerCase();
-  const filteredUsers = q
-    ? users.filter(u =>
-        u.name?.toLowerCase().includes(q) ||
-        u.email?.toLowerCase().includes(q) ||
-        u.phone?.toLowerCase().includes(q))
-    : users;
+  const filteredUsers = users;
 
   if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Checking access…</div>;
 
@@ -311,7 +324,7 @@ export default function UserManagement() {
       {activeTab === 'roster' ? (
         <div className="glass-card p-6">
           <div className="flex flex-col md:flex-row gap-3 md:items-center mb-10">
-            <input type="text" placeholder="Filter this page by name, email or phone…" className="flex-1 bg-white/5 border border-white/10 rounded-2xl py-4 px-8 text-white font-black outline-none" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <input type="text" placeholder="Search all users by name, email or phone…" className="flex-1 bg-white/5 border border-white/10 rounded-2xl py-4 px-8 text-white font-black outline-none" value={search} onChange={(e) => setSearch(e.target.value)} />
             <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">{totalUsers} accounts</span>
           </div>
 
@@ -323,7 +336,7 @@ export default function UserManagement() {
           ) : loading ? (
             <div className="py-20 text-center animate-pulse text-gray-600 font-black uppercase">Loading users…</div>
           ) : filteredUsers.length === 0 ? (
-            <div className="py-20 text-center text-gray-500 font-bold">{q ? 'No users on this page match your filter.' : 'No users yet.'}</div>
+            <div className="py-20 text-center text-gray-500 font-bold">{search.trim() ? 'No users match this search.' : 'No users yet.'}</div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {filteredUsers.map((user) => (

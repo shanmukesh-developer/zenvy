@@ -1,6 +1,6 @@
 // Turns server order / menu / store rows into the shapes the UI renders, plus IST time helpers.
 // Every field is defensive: null / missing / malformed data never crashes a screen.
-import type { MenuItem, Order, OrderItem, OrderStage, StoreState } from '../types';
+import type { Diet, MenuItem, Order, OrderItem, OrderStage, StoreState } from '../types';
 
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 
@@ -193,7 +193,18 @@ export function normalizeMenuItem(raw: any): MenuItem | null {
     isVegetarian: typeof raw.isVegetarian === 'boolean' ? raw.isVegetarian : null,
     isAvailable: raw.isAvailable !== false,
     outOfStockUntil: raw.outOfStockUntil || null,
+    tags: Array.isArray(raw.tags) ? raw.tags.filter((t: unknown): t is string => typeof t === 'string') : [],
   };
+}
+
+export const isEggTag = (t: string) => t.trim().toLowerCase() === 'egg';
+
+/** Veg / non-veg / egg for the form and the row mark. */
+export function dietOf(item: Pick<MenuItem, 'isVegetarian' | 'tags'>): Diet | null {
+  if (item.tags.some(isEggTag)) return 'egg';
+  if (item.isVegetarian === true) return 'veg';
+  if (item.isVegetarian === false) return 'nonveg';
+  return null;
 }
 
 export function normalizeStore(raw: any): StoreState {

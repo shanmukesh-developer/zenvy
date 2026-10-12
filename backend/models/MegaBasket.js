@@ -30,6 +30,7 @@ const initMegaBasketModel = (sequelize) => {
     deliveryFee: { type: DataTypes.FLOAT, defaultValue: 20 },
     deliveryAddress: { type: DataTypes.TEXT, allowNull: false },
     deliveryPin: { type: DataTypes.STRING },
+    deliveryPinAttempts: { type: DataTypes.INTEGER, allowNull: true, defaultValue: 0 }, // wrong PINs by the rider
     upiUTR: { type: DataTypes.STRING },
     paymentStatus: {
       type: DataTypes.ENUM('Pending', 'Completed', 'Failed'),

@@ -4,6 +4,33 @@ const { getMessageModel } = require('../../models/Message');
 const { getConversationModel } = require('../../models/Conversation');
 const { getUserModel } = require('../../models/User');
 const { getProximityRoomModel, getProximityMessageModel } = require('./models/ProximityRoom');
+const { cleanImageRef, isBlockedBetween, pushToUsers } = require('./campusHelpers');
+
+const MESSAGE_TYPES = new Set(['text', 'image', 'voice', 'audio', 'video', 'file', 'poll', 'location', 'sticker', 'gif']);
+const MAX_TEXT = 4000;
+// Socket packets are capped at 1 MB; a legacy inline data: image must stay well under that.
+const MAX_INLINE_DATA_URL = 900 * 1024;
+
+// Push for people who are not in the Campus screen right now, at most one per chat every 20 s.
+const PUSH_GAP_MS = 20 * 1000;
+const lastPushAt = new Map(); // `${userId}:${chatId}` -> ms
+const shouldPush = (uid, chatId) => {
+  const key = `${uid}:${chatId}`;
+  const now = Date.now();
+  if (now - (lastPushAt.get(key) || 0) < PUSH_GAP_MS) return false;
+  lastPushAt.set(key, now);
+  if (lastPushAt.size > 20000) {
+    for (const [k, t] of lastPushAt) if (now - t > PUSH_GAP_MS) lastPushAt.delete(k);
+  }
+  return true;
+};
+const previewOf = (type, text) => {
+  const t = typeof text === 'string' ? text.trim() : '';
+  if (t) return t.length > 80 ? `${t.slice(0, 80)}...` : t;
+  if (type === 'image') return 'Sent a photo';
+  if (type === 'voice' || type === 'audio') return 'Sent a voice note';
+  return 'Sent an attachment';
+};
 
 const parseJsonField = (val, fallback) => {
   if (val == null) return fallback;
@@ -94,6 +121,23 @@ const initCampusSocket = (io) => {
   });
 
   campusNsp.on('connection', (socket) => {
+    // Crash shield (same as the main namespace in server.js): handlers destructure their payload,
+    // so emit('chat:leave') with no data threw inside process.nextTick → uncaughtException → the
+    // production process exited. A missing payload becomes {}, and sync throws / async rejections
+    // are logged instead.
+    const rawOn = socket.on.bind(socket);
+    socket.on = (event, handler) => rawOn(event, (...args) => {
+      if (args.length === 0 || args[0] === undefined || args[0] === null) args[0] = {};
+      try {
+        const result = handler(...args);
+        if (result && typeof result.catch === 'function') {
+          result.catch((err) => console.error(`[CAMPUS_SOCKET_HANDLER_ERROR] ${event}:`, err && err.message ? err.message : err));
+        }
+      } catch (err) {
+        console.error(`[CAMPUS_SOCKET_HANDLER_ERROR] ${event}:`, err && err.message ? err.message : err);
+      }
+    });
+
     const userId = socket.user.id;
     console.log(`💬 [CAMPUS_SOCKET] Connected: ${socket.user.name} (${userId})`);
 
@@ -105,6 +149,14 @@ const initCampusSocket = (io) => {
 
     // Join personal room
     socket.join(`user:${userId}`);
+
+    // Still ringing for this user (they opened the app from the call push)? Ring again.
+    const ringingId = userCallIndex.get(userId);
+    const ringing = ringingId && activeCalls.get(ringingId);
+    if (ringing && !ringing.ended && !ringing.acceptedUserId && ringing.incoming
+        && (ringing.calleeIds || []).includes(userId) && !ringing.rejected.has(userId)) {
+      socket.emit('call:incoming', ringing.incoming);
+    }
 
     // Presence is not broadcast to every campus user (privacy); nothing in the app consumes it.
 
@@ -155,6 +207,23 @@ const initCampusSocket = (io) => {
           if (ack) ack({ error: 'Message content or attachment is required' });
           return;
         }
+        if (text != null && typeof text !== 'string') {
+          if (ack) ack({ error: 'Message text must be text' });
+          return;
+        }
+        if (typeof text === 'string' && text.length > MAX_TEXT) {
+          if (ack) ack({ error: `Messages can be at most ${MAX_TEXT} characters` });
+          return;
+        }
+        const msgType = MESSAGE_TYPES.has(type) ? type : 'text';
+        let cleanMedia = null;
+        if (mediaUrl) {
+          cleanMedia = cleanImageRef(mediaUrl, { maxDataUrlChars: MAX_INLINE_DATA_URL });
+          if (!cleanMedia) {
+            if (ack) ack({ error: 'That photo could not be sent. Please try again.', code: 'BAD_MEDIA' });
+            return;
+          }
+        }
 
         const Conversation = getConversationModel();
         const Message = getMessageModel();
@@ -181,6 +250,15 @@ const initCampusSocket = (io) => {
           }
         }
 
+        // 1:1 chats: blocked people cannot message each other.
+        if (!conversation.isGroup) {
+          const peerId = participants.find((p) => p !== userId);
+          if (peerId && await isBlockedBetween(userId, peerId)) {
+            if (ack) ack({ error: 'You cannot message this person', code: 'BLOCKED' });
+            return;
+          }
+        }
+
         // Create message in DB
         const newMsg = await Message.create({
           conversationId: chatId,
@@ -188,8 +266,8 @@ const initCampusSocket = (io) => {
           senderName: socket.user.name,
           text: text || '',
           clientMsgId: clientMsgId || null,
-          type,
-          mediaUrl: mediaUrl || null,
+          type: msgType,
+          mediaUrl: cleanMedia,
           mediaMetadata: mediaMetadata ? JSON.stringify(mediaMetadata) : '{}',
           replyTo: replyTo ? JSON.stringify(replyTo) : null,
           readBy: [{ userId, readAt: new Date() }],
@@ -221,16 +299,37 @@ const initCampusSocket = (io) => {
         campusNsp.to(`chat:${chatId}`).emit('message:new', messagePayload);
 
         // Notify individual participant personal rooms (for unread badges in chat list)
+        const lastMessage = previewOf(newMsg.type, newMsg.text);
+        const offline = [];
         for (const pId of participants) {
           if (pId !== userId) {
             campusNsp.to(`user:${pId}`).emit('chat:updated', {
               chatId,
-              lastMessage: newMsg.text || 'Attachment',
+              lastMessage,
               lastSender: socket.user.name,
               time: new Date(),
             });
+            if (!onlineUsers.has(pId) && shouldPush(pId, chatId)) offline.push(pId);
           }
         }
+        if (offline.length) {
+          const title = conversation.isGroup ? `${socket.user.name} in ${conversation.name || 'your group'}` : socket.user.name;
+          pushToUsers(offline.slice(0, 300), title, lastMessage, {
+            type: 'chat_message',
+            kind: 'CAMPUS_MESSAGE',
+            screen: 'campus_chat',
+            chatId,
+          }, { persist: false }).catch(() => {});
+        }
+        // The sender's own chat list (their other devices too): separate event so existing
+        // 'chat:updated' listeners never count the user's own message as unread.
+        campusNsp.to(`user:${userId}`).emit('chat:self_updated', {
+          chatId,
+          lastMessage: newMsg.text || 'Attachment',
+          lastSender: 'You',
+          own: true,
+          time: new Date(),
+        });
 
         // Acknowledge back to sender
         if (ack) {
@@ -596,14 +695,26 @@ const initCampusSocket = (io) => {
         calleeIds.forEach((cid) => userCallIndex.set(cid, callId));
         socket.activeCallId = callId;
 
-        notifyUsers(campusNsp, calleeIds, 'call:incoming', {
+        const incoming = {
           callId,
           chatId,
           chatName: conversation.isGroup ? (conversation.name || 'Group') : socket.user.name,
           callType: session.callType,
           callerId: userId,
           callerName: socket.user.name,
-        });
+        };
+        session.incoming = incoming;
+        notifyUsers(campusNsp, calleeIds, 'call:incoming', incoming);
+
+        // Callees outside the Campus screen get a push; when they open Campus the ring is re-sent.
+        const offlineCallees = calleeIds.filter((cid) => !onlineUsers.has(cid));
+        if (offlineCallees.length) {
+          pushToUsers(offlineCallees.slice(0, 300),
+            `Incoming ${session.callType} call`,
+            conversation.isGroup ? `${socket.user.name} is calling ${conversation.name || 'your group'}` : `${socket.user.name} is calling you`,
+            { type: 'incoming_call', kind: 'CAMPUS_CALL', screen: 'campus_chat', chatId, callId, callType: session.callType },
+            { persist: false }).catch(() => {});
+        }
 
         if (ack) ack({ callId, status: 'ringing' });
       } catch (err) {

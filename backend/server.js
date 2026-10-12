@@ -100,7 +100,17 @@ setInterval(() => {
 
 // Periodic cleanup and check for all zones
 
+// Exact production origins. Add more (comma-separated) in the ALLOWED_ORIGINS env var on Render.
+// No substring / wildcard matching: anyone can create a *.onrender.com service with 'zenvy' in its name.
+const PRODUCTION_ORIGINS = [
+  'https://hostelbites-admin-iyoy.onrender.com',
+  'https://hostelbites-backend-jwmt.onrender.com',
+  'https://hostelbites-customer.onrender.com',
+  ...String(process.env.ALLOWED_ORIGINS || '').split(',').map((o) => o.trim().replace(/\/+$/, '')).filter(Boolean),
+];
+
 const ALLOWED_ORIGINS = [
+  ...PRODUCTION_ORIGINS,
   'http://localhost:3000',
   'http://localhost:3001',
   'http://localhost:3002',
@@ -116,9 +126,8 @@ const isAllowedOrigin = (origin) => {
   // Strict match for local dev / mobile schemes to prevent domain spoofing
   if (/^https?:\/\/(localhost|127\.0\.0\.1|[a-z0-9-]+\.localhost)(:\d+)?$/.test(origin)) return true;
   if (origin.startsWith('capacitor://') || origin.startsWith('exp://')) return true;
-  // Allow project-specific Render subdomains
-  if (/^https:\/\/[a-z0-9-]+\.onrender\.com$/.test(origin)) {
-    if (origin.includes('hostelbites') || origin.includes('zenvy')) return true;
+  if (/\.onrender\.com$/.test(origin)) {
+    console.warn(`[CORS] Refused ${origin}. Add it to ALLOWED_ORIGINS if it is a real Zenvy app.`);
   }
   return false;
 };
@@ -277,13 +286,45 @@ io.use((socket, next) => {
     }
 
     const decoded = jwt.verify(token, secret);
-    socket.user = decoded; // { id, role }
-    next();
+    // The JWT role is only a hint: load the live account so suspended / deleted accounts are
+    // refused and a demoted admin loses admin rooms at once (tokens live 30 days).
+    loadSocketAccount(decoded)
+      .then((account) => {
+        if (!account) return next(new Error('Authentication error: Account not found'));
+        if (account.suspended) return next(new Error('Authentication error: Account suspended'));
+        socket.user = { ...decoded, id: account.id, role: account.role };
+        next();
+      })
+      .catch((err) => {
+        console.warn('[SOCKET_AUTH_WARN] Account lookup failed:', err.message);
+        next(new Error('Authentication error: Please retry'));
+      });
   } catch (err) {
     console.warn('[SOCKET_AUTH_WARN] Connection rejected:', err.message);
     next(new Error('Authentication error: Invalid token'));
   }
 });
+
+// Resolve the account behind a socket JWT: { id, role, suspended } or null when it no longer exists.
+async function loadSocketAccount(decoded) {
+  const id = decoded && decoded.id;
+  if (!id) return null;
+  const tokenRole = String(decoded.role || '').toLowerCase();
+  if (tokenRole === 'rider') {
+    const { getDeliveryPartnerModel } = require('./models/DeliveryPartner');
+    const p = await getDeliveryPartnerModel().findByPk(id, { attributes: ['id'] });
+    return p ? { id: p.id, role: 'rider', suspended: false } : null;
+  }
+  if (tokenRole === 'restaurant' || tokenRole === 'vendor') {
+    const { getRestaurantModel } = require('./models/Restaurant');
+    const r = await getRestaurantModel().findByPk(id, { attributes: ['id'] });
+    return r ? { id: r.id, role: 'restaurant', suspended: false } : null;
+  }
+  const { getUserModel } = require('./models/User');
+  const u = await getUserModel().findByPk(id, { attributes: ['id', 'role', 'isActive'] });
+  if (!u) return null;
+  return { id: u.id, role: u.role || 'student', suspended: u.isActive === false };
+}
 
 // io is already attached to app via app.set('io', io) above
 
@@ -475,7 +516,10 @@ const initializeApp = async () => {
 
     app.get('/auth-helper', (req, res) => {
       res.removeHeader('X-Frame-Options');
-      res.setHeader("Content-Security-Policy", "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src * 'unsafe-inline' 'unsafe-eval'; connect-src * 'unsafe-inline'; frame-src *; style-src * 'unsafe-inline';");
+      // Only Zenvy's own web apps (and local dev) may frame this page: it hands a Firebase phone
+      // token to its parent window, which POST /api/users/login turns into a session.
+      const frameAncestors = ["'self'", ...PRODUCTION_ORIGINS, 'http://localhost:*', 'http://127.0.0.1:*'].join(' ');
+      res.setHeader("Content-Security-Policy", `default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src * 'unsafe-inline' 'unsafe-eval'; connect-src * 'unsafe-inline'; frame-src *; style-src * 'unsafe-inline'; frame-ancestors ${frameAncestors};`);
       res.send(`
 <!DOCTYPE html>
 <html>
@@ -895,7 +939,15 @@ const initializeApp = async () => {
         window.ReactNativeWebView.postMessage(JSON.stringify(data));
       } else {
         // Embedded in a web page (iframe): hand the result to the parent window only. Never display tokens.
-        try { if (window.parent && window.parent !== window) window.parent.postMessage(JSON.stringify(data), '*'); } catch (e) {}
+        // frame-ancestors (CSP above) already limits who can embed this page; also address the
+        // message to the embedding page's own origin when the browser tells us what it is.
+        try {
+          if (window.parent && window.parent !== window) {
+            var target = '*';
+            try { if (document.referrer) target = new URL(document.referrer).origin; } catch (e) {}
+            window.parent.postMessage(JSON.stringify(data), target);
+          }
+        } catch (e) {}
       }
     }
 
@@ -1065,6 +1117,8 @@ const initializeApp = async () => {
           );
           if (updated > 0) console.log(`🗑️  [EXPIRY_CLEANUP] Marked ${updated} expired birthday celebration(s) as expired.`);
         }
+        // Birthdays approved ahead of time are announced on the day itself.
+        await require('./routes/birthdayRoutes').announceDueBirthdays(io);
       } catch (e) { console.warn('[EXPIRY_CLEANUP] Error:', e.message); }
     };
     // Run once on startup, then every hour
@@ -1079,6 +1133,8 @@ const initializeApp = async () => {
       try {
         const { autoCancelStalePendingOrders } = require('./controllers/orderController');
         await autoCancelStalePendingOrders(io);
+        const { expireStaleBaskets } = require('./controllers/megaBasketController');
+        await expireStaleBaskets(io);
       } catch (e) {
         console.warn('[AUTO_CANCEL] Error:', e.message);
       } finally {
@@ -1186,12 +1242,84 @@ const initializeApp = async () => {
       }
     }, 30 * 60 * 1000).unref?.();
 
+    // ── Rider presence: closing the app must not leave a rider "online" forever ──
+    // When a rider's last socket drops, wait RIDER_OFFLINE_GRACE_MINUTES (default 30, long enough that a
+    // rider who only backgrounded the app keeps getting pushes). If they
+    // still have no socket, no fresh GPS and no active order, set isOnline=false and take them out
+    // of the live dispatch pool. Reconnecting cancels the check.
+    const RIDER_OFFLINE_GRACE_MS = Math.max(2, Number(process.env.RIDER_OFFLINE_GRACE_MINUTES) || 30) * 60 * 1000;
+    const riderOfflineTimers = new Map();
+    const cancelRiderOfflineCheck = (riderId) => {
+      const t = riderOfflineTimers.get(riderId);
+      if (t) { clearTimeout(t); riderOfflineTimers.delete(riderId); }
+    };
+    const scheduleRiderOfflineCheck = (riderId) => {
+      cancelRiderOfflineCheck(riderId);
+      const timer = setTimeout(async () => {
+        riderOfflineTimers.delete(riderId);
+        try {
+          const live = io.sockets.adapter.rooms.get(`rider_${riderId}`);
+          if (live && live.size > 0) return; // reconnected
+          const { getDeliveryPartnerModel } = require('./models/DeliveryPartner');
+          const { riderFixAgeMs } = require('./utils/riderDispatch');
+          const DeliveryPartner = getDeliveryPartnerModel();
+          const partner = await DeliveryPartner.findByPk(riderId, { attributes: ['id', 'isOnline', 'liveLocation', 'currentOrderId'] });
+          if (!partner || !partner.isOnline) return;
+          if (partner.currentOrderId) return; // still carrying an order: leave their duty state alone
+          if (riderFixAgeMs(partner) < RIDER_OFFLINE_GRACE_MS) { scheduleRiderOfflineCheck(riderId); return; }
+          const [changed] = await DeliveryPartner.update({ isOnline: false }, { where: { id: riderId, isOnline: true } });
+          if (changed > 0) {
+            require('./utils/realtime').setRiderOnline(riderId, false);
+            io.to('admin-room').emit('admin_rider_offline', { riderId, reason: 'no_connection', timestamp: new Date().toISOString() });
+            console.log(`[RIDER_PRESENCE] Rider ${riderId} set offline after ${Math.round(RIDER_OFFLINE_GRACE_MS / 60000)} min without a connection`);
+          }
+        } catch (err) {
+          console.warn('[RIDER_PRESENCE_WARN]', err.message);
+        }
+      }, RIDER_OFFLINE_GRACE_MS);
+      timer.unref?.();
+      riderOfflineTimers.set(riderId, timer);
+    };
+
+    // Sweep (also covers riders whose timer was lost in a restart / redeploy).
+    setInterval(async () => {
+      try {
+        const { getDeliveryPartnerModel } = require('./models/DeliveryPartner');
+        const { riderFixAgeMs } = require('./utils/riderDispatch');
+        const online = await getDeliveryPartnerModel().findAll({ where: { isOnline: true }, attributes: ['id', 'liveLocation', 'currentOrderId'] });
+        for (const p of online) {
+          const live = io.sockets.adapter.rooms.get(`rider_${p.id}`);
+          if ((live && live.size > 0) || p.currentOrderId || riderOfflineTimers.has(p.id)) continue;
+          if (riderFixAgeMs(p) >= RIDER_OFFLINE_GRACE_MS) scheduleRiderOfflineCheck(p.id);
+        }
+      } catch (err) {
+        console.warn('[RIDER_PRESENCE_SWEEP_WARN]', err.message);
+      }
+    }, RIDER_OFFLINE_GRACE_MS).unref?.();
+
     // Initialize Campus Buddy /campus Socket.IO namespace
     const { initCampusSocket } = require('./modules/campus/campusSocket');
     initCampusSocket(io);
 
     io.on('connection', (socket) => {
       console.log(`[SOCKET CONNECT] ${socket.id} (User: ${socket.user.id}, Role: ${socket.user.role})`);
+
+      // Crash shield: socket.io runs listeners inside process.nextTick, so a sync TypeError from a
+      // malformed payload (e.g. emit('rider_connected') with no data) would become an
+      // uncaughtException and restart production. Every listener below is wrapped: a missing
+      // payload becomes {}, sync throws and async rejections are logged and swallowed.
+      const rawOn = socket.on.bind(socket);
+      socket.on = (event, handler) => rawOn(event, (...args) => {
+        if (args.length === 0 || args[0] === undefined || args[0] === null) args[0] = {};
+        try {
+          const result = handler(...args);
+          if (result && typeof result.catch === 'function') {
+            result.catch((err) => console.error(`[SOCKET_HANDLER_ERROR] ${event}:`, err && err.message ? err.message : err));
+          }
+        } catch (err) {
+          console.error(`[SOCKET_HANDLER_ERROR] ${event}:`, err && err.message ? err.message : err);
+        }
+      });
 
       // ── Per-socket access helpers ──────────────────────────────
       const socketRole = () => String(socket.user?.role || '').toLowerCase();
@@ -1233,7 +1361,7 @@ const initializeApp = async () => {
 
       // Personal rooms so targeted events never need a global broadcast.
       if (!isGuestSocket()) {
-        if (socketRole() === 'rider') socket.join(`rider_${socket.user.id}`);
+        if (socketRole() === 'rider') { socket.join(`rider_${socket.user.id}`); cancelRiderOfflineCheck(socket.user.id); }
         else if (socketRole() !== 'restaurant') socket.join(`user_${socket.user.id}`);
       }
 
@@ -1378,7 +1506,8 @@ const initializeApp = async () => {
       });
       socket.on('updateLocation', async (data) => {
         if (socket.user && socket.user.role && socket.user.role.toLowerCase() === 'rider') {
-          const room = String(data.orderId).trim();
+          const room = String(data?.orderId || '').trim();
+          if (!UUID_PATTERN.test(room)) return;
           try {
             const { getOrderModel } = require('./models/Order');
             const Order = getOrderModel();
@@ -1397,8 +1526,8 @@ const initializeApp = async () => {
         }
       });
       
-      socket.on('sos_alert', (data) => {
-        if (socket.user && socket.user.role && socket.user.role.toLowerCase() === 'rider' && data.riderId === socket.user.id) {
+      socket.on('sos_alert', (data = {}) => {
+        if (socket.user && socket.user.role && socket.user.role.toLowerCase() === 'rider' && data?.riderId === socket.user.id) {
           log(`[CRITICAL SOS] Triggered by ${data.riderName} (ID: ${data.riderId}) at ${data.timestamp}`);
           io.to('admin-room').emit('sos_received', data);
         } else {
@@ -1406,7 +1535,7 @@ const initializeApp = async () => {
         }
       });
 
-      socket.on('admin_broadcast', (data) => {
+      socket.on('admin_broadcast', (data = {}) => {
         // 🛡️ Permission Check: Admin Only
         if (socket.user && socket.user.role && socket.user.role.toLowerCase() === 'admin') {
           log(`[MEGAPHONE] Admin broadcast: "${data.message}" (type: ${data.type})`);
@@ -1417,15 +1546,24 @@ const initializeApp = async () => {
         }
       });
 
-      socket.on('inventory_update', (data) => {
-        // 🛡️ Permission Check: Admin, Restaurant or Vendor only
-        const role = socket.user?.role?.toLowerCase();
-        if (!['admin', 'restaurant', 'vendor'].includes(role)) {
+      socket.on('inventory_update', async (data = {}) => {
+        // 🛡️ Admin, or the restaurant that owns the item. The item's real state is read from the
+        // DB and only {itemId, restaurantId, isAvailable} is relayed (never the raw client payload).
+        const role = socketRole();
+        if (!['admin', 'restaurant'].includes(role) || isGuestSocket()) {
           console.warn(`[SOCKET_DENIED] Unauthorized inventory_update by ${socket.user?.id}`);
           return;
         }
-        log(`[INVENTORY] Item ${data.itemId} is now ${data.isAvailable ? 'available' : 'SOLD OUT'}`);
-        io.emit('inventory_updated', data);
+        const itemId = String(data?.itemId || '').trim();
+        if (!itemId || itemId.length > 64) return;
+        const { getMenuItemModel } = require('./models/MenuItem');
+        const item = await getMenuItemModel().findByPk(itemId, { attributes: ['id', 'restaurantId', 'isAvailable'] });
+        if (!item || (role === 'restaurant' && String(item.restaurantId) !== String(socket.user.id))) {
+          console.warn(`[SOCKET_DENIED] ${socket.user?.id} sent inventory_update for item it does not own`);
+          return;
+        }
+        log(`[INVENTORY] Item ${item.id} is now ${item.isAvailable ? 'available' : 'SOLD OUT'}`);
+        io.emit('inventory_updated', { itemId: item.id, restaurantId: item.restaurantId, isAvailable: !!item.isAvailable });
       });
 
       // Display name comes from the account, never from the client payload.
@@ -1872,8 +2010,8 @@ const initializeApp = async () => {
       // ── Cross-Portal: Rider ↔ Admin ↔ Customer ────────────────
 
       // Rider came online: broadcast to admin dashboard
-      socket.on('rider_connected', (data) => {
-        if (socket.user && socket.user.role && socket.user.role.toLowerCase() === 'rider' && data.driverId === socket.user.id) {
+      socket.on('rider_connected', (data = {}) => {
+        if (socket.user && socket.user.role && socket.user.role.toLowerCase() === 'rider' && data?.driverId === socket.user.id) {
           log(`[RIDER ONLINE] ${data.name} (${data.driverId})`);
           io.to('admin-room').emit('admin_rider_online', { riderId: data.driverId, name: data.name, timestamp: new Date().toISOString() });
         } else {
@@ -1882,8 +2020,8 @@ const initializeApp = async () => {
       });
 
       // Rider went offline
-      socket.on('rider_disconnected', (data) => {
-        if (socket.user && socket.user.role && socket.user.role.toLowerCase() === 'rider' && data.driverId === socket.user.id) {
+      socket.on('rider_disconnected', (data = {}) => {
+        if (socket.user && socket.user.role && socket.user.role.toLowerCase() === 'rider' && data?.driverId === socket.user.id) {
           log(`[RIDER OFFLINE] ${data.driverId}`);
           io.to('admin-room').emit('admin_rider_offline', { riderId: data.driverId, timestamp: new Date().toISOString() });
         } else {
@@ -1892,8 +2030,8 @@ const initializeApp = async () => {
       });
 
       // Rider toggled online/offline status
-      socket.on('rider_status_change', (data) => {
-        if (socket.user && socket.user.role && socket.user.role.toLowerCase() === 'rider' && data.riderId === socket.user.id) {
+      socket.on('rider_status_change', (data = {}) => {
+        if (socket.user && socket.user.role && socket.user.role.toLowerCase() === 'rider' && data?.riderId === socket.user.id) {
           log(`[RIDER STATUS] ${data.name} → ${data.isOnline ? 'ONLINE' : 'OFFLINE'}`);
           io.to('admin-room').emit('admin_rider_status', { riderId: data.riderId, name: data.name, isOnline: data.isOnline });
         } else {
@@ -1902,9 +2040,14 @@ const initializeApp = async () => {
       });
 
       // Rider accepted → notify admin + join the broadcast room
-      socket.on('rider_accepted', async (data) => {
-        if (socket.user && socket.user.role && socket.user.role.toLowerCase() === 'rider' && data.riderId === socket.user.id) {
-          const room = String(data.orderId).trim();
+      socket.on('rider_accepted', async (data = {}) => {
+        if (socket.user && socket.user.role && socket.user.role.toLowerCase() === 'rider' && data?.riderId === socket.user.id) {
+          const room = String(data.orderId || '').trim();
+          // Only the rider actually assigned to the order may join its room (chat, GPS, status).
+          if (!(await canAccessOrderOrBasket(room))) {
+            console.warn(`[SOCKET_DENIED] Rider ${socket.user.id} is not assigned to ${room.slice(0, 64)}`);
+            return;
+          }
           await socket.join(room);
           log(`[RIDER ACCEPTED] ${data.riderName} accepted order ${data.orderId}`);
           io.to('admin-room').emit('admin_order_accepted', { orderId: data.orderId, riderId: data.riderId, riderName: data.riderName });
@@ -1954,12 +2097,14 @@ const initializeApp = async () => {
           }
 
           // Broadcast checkpoint to admin dashboard room ONLY
+          // Admin-room only, so the coordinates are visible to admins and nobody else.
           io.to('admin-room').emit('admin_rider_location', {
             riderId: data.riderId,
             riderName: data.riderName,
             currentCheckpoint: data.currentCheckpoint,
             activeOrderCount: data.activeOrderCount,
             isOnline: data.isOnline,
+            ...(hasFix ? { lat, lng, heading: Number(data.heading) || null, ts: Date.now() } : {}),
             timestamp: Date.now()
           });
           // Also emit to specific order room for customer tracking
@@ -1982,8 +2127,8 @@ const initializeApp = async () => {
       });
 
       // Rider completed a delivery
-      socket.on('rider_delivered', async (data) => {
-        if (socket.user && socket.user.role && socket.user.role.toLowerCase() === 'rider' && data.riderId === socket.user.id) {
+      socket.on('rider_delivered', async (data = {}) => {
+        if (socket.user && socket.user.role && socket.user.role.toLowerCase() === 'rider' && data?.riderId === socket.user.id) {
           try {
             const { getOrderModel } = require('./models/Order');
             const Order = getOrderModel();
@@ -2010,6 +2155,9 @@ const initializeApp = async () => {
 
       socket.on('disconnect', () => {
         console.log(`[SOCKET DISCONNECT] ${socket.id}`);
+        // A rider who closed the app must not stay "online" forever (dispatch pushes go to online
+        // riders). After a grace period with no rider socket and no fresh GPS, mark them offline.
+        if (!isGuestSocket() && socketRole() === 'rider') scheduleRiderOfflineCheck(socket.user.id);
         // Clean up from voice call rooms (hands hosting over when the host drops)
         for (const callRoom of Array.from(activeCallRooms.keys())) {
           if (activeCallRooms.get(callRoom)?.has(socket.id)) leaveCallRoom(callRoom);

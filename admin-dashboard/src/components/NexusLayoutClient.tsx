@@ -121,7 +121,8 @@ export default function NexusLayoutClient({
             { href: '/analytics', icon: '📈', label: 'Performance Intel' },
             { href: '/analytics/rewards', icon: '🎡', label: 'Rewards Intel' },
             { href: '/audit', icon: '📋', label: 'Audit Logs' },
-            { href: '/blocks', icon: '🔒', label: 'Blocked Users' },
+            { href: '/blocks', icon: '🏆', label: 'Block Wars' },
+            { href: '/config', icon: '⚙️', label: 'Delivery Fee & Config' },
             { href: '/cms', icon: '🎨', label: 'Global CMS Layout' },
             { href: '/notifications', icon: '🔔', label: 'Push Notifications' },
           ].map(({ href, icon, label }) => {

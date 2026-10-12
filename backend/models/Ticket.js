@@ -23,7 +23,21 @@ const initTicketModel = (sequelize) => {
       defaultValue: 'Medium'
     },
     slaBreachAt: { type: DataTypes.DATE, allowNull: true },
-    adminResponse: { type: DataTypes.TEXT, allowNull: true }
+    // Whole support conversation as text (every reply, oldest first, each stamped with its IST
+    // time). Apps render it as-is; `responses` holds the same replies as structured data.
+    adminResponse: { type: DataTypes.TEXT, allowNull: true },
+    responses: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      get() {
+        const raw = this.getDataValue('responses');
+        if (!raw) return [];
+        try { const v = JSON.parse(raw); return Array.isArray(v) ? v : []; } catch { return []; }
+      },
+      set(val) {
+        this.setDataValue('responses', JSON.stringify(Array.isArray(val) ? val : []));
+      }
+    }
   }, {
     timestamps: true,
   });

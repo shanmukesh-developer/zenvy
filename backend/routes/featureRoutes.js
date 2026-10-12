@@ -4,6 +4,7 @@
 const express = require('express');
 const router = express.Router();
 const { protect, admin } = require('../middleware/authMiddleware');
+const { sendServerError } = require('../utils/httpErrors');
 
 // ═══════════════════════════════════════════════════════
 // F1: REFERRAL SYSTEM
@@ -56,7 +57,7 @@ router.post('/referral/apply', protect, async (req, res) => {
     });
   } catch (error) {
     console.error('[REFERRAL_ERROR]', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    sendServerError(res, error, '[FEATUREROUTES_ERROR]');
   }
 });
 
@@ -75,7 +76,7 @@ router.get('/referral/my-code', protect, async (req, res) => {
       hasUsedReferral: !!user.referredBy
     });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    sendServerError(res, error, '[FEATUREROUTES_ERROR]');
   }
 });
 
@@ -148,7 +149,7 @@ router.get('/challenges/active', async (req, res) => {
     });
   } catch (error) {
     console.error('[CHALLENGE_ERROR]', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    sendServerError(res, error, '[FEATUREROUTES_ERROR]');
   }
 });
 
@@ -230,7 +231,7 @@ router.get('/recommendations', protect, async (req, res) => {
     });
   } catch (error) {
     console.error('[RECOMMENDATION_ERROR]', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    sendServerError(res, error, '[FEATUREROUTES_ERROR]');
   }
 });
 
@@ -378,7 +379,7 @@ router.post('/push/campaign', protect, admin, async (req, res) => {
     });
   } catch (error) {
     console.error('[PUSH_CAMPAIGN_ERROR]', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    sendServerError(res, error, '[FEATUREROUTES_ERROR]');
   }
 });
 
@@ -448,7 +449,7 @@ router.post('/streak/nudge-trigger', protect, admin, async (req, res) => {
     res.json({ message: 'Streak nudge checks executed successfully.' });
   } catch (error) {
     console.error('[STREAK_NUDGE_TRIGGER_ERROR]', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    sendServerError(res, error, '[FEATUREROUTES_ERROR]');
   }
 });
 

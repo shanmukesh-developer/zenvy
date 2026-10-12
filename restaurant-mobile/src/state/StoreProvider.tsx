@@ -6,16 +6,17 @@ import { AppState } from 'react-native';
 import { FALLBACK_POLL_MS, SAFETY_POLL_MS } from '../config';
 import * as api from '../lib/api';
 import { ApiError, NetworkError, errorMessage } from '../lib/http';
-import { normalizeOrder, rupees, stageFor, TIMEOUT_REASON_TEXT, todayNumbers } from '../lib/model';
+import { isEggTag, normalizeOrder, rupees, stageFor, TIMEOUT_REASON_TEXT, todayNumbers } from '../lib/model';
 import { startKitchenService } from '../voice/kitchenService';
 import { announce, cancelAnnouncements, detectVoices } from '../voice/voice';
 import { useToast } from '../ui/Toast';
 import { useSocket } from './SocketProvider';
 import { useSession } from './SessionProvider';
-import type { ConnStatus, MenuItem, Order, StoreProfile, StoreState } from '../types';
+import type { ConnStatus, ItemInput, MenuItem, Order, StoreProfile, StoreState } from '../types';
 
 export type StockChange = { isAvailable: true } | { isAvailable: false } | { outOfStockUntil: string };
 export type BusyKind = 'accept' | 'reject' | 'ready';
+export type DeleteResult = { ok: true } | { ok: false; unsupported?: boolean; error: string };
 
 interface StoreCtx {
   restaurant: StoreProfile;
@@ -48,6 +49,9 @@ interface StoreCtx {
   setOpen: (open: boolean) => Promise<{ ok: boolean; error?: string }>;
   setStock: (item: MenuItem, change: StockChange) => Promise<boolean>;
   setPrice: (item: MenuItem, price: number) => Promise<void>;
+  /** Add (editing = null) or edit an item. Throws with a friendly message; the form shows it inline. */
+  saveItem: (input: ItemInput, editing: MenuItem | null) => Promise<MenuItem>;
+  deleteItem: (item: MenuItem) => Promise<DeleteResult>;
 }
 
 const Ctx = createContext<StoreCtx | null>(null);
@@ -234,6 +238,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         refreshOrdersRef.current();
         refreshStore();
         detectVoices();
+        // Android may have stopped the kitchen service while we were away (dataSync time limit, or
+        // a start that was not allowed): start it again now that the app is in the foreground.
+        startKitchenService();
       }
     });
     return () => sub.remove();
@@ -469,16 +476,87 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     toast.show(`${item.name} is now ${rupees(price)}`, 'success');
   }, [toast]);
 
+  const upsertLocal = useCallback((item: MenuItem) => {
+    setMenu((prev) => {
+      const list = prev || [];
+      return list.some((m) => m.id === item.id) ? list.map((m) => (m.id === item.id ? item : m)) : [...list, item];
+    });
+  }, []);
+
+  const saveItem = useCallback(async (input: ItemInput, editing: MenuItem | null): Promise<MenuItem> => {
+    const body: api.MenuItemBody = {
+      name: input.name,
+      price: input.price,
+      category: input.category || null,
+      description: input.description || null,
+      imageUrl: input.imageUrl,
+      isVegetarian: input.diet === 'veg',
+    };
+    let saved: MenuItem;
+    if (editing) {
+      const res = await api.updateMenuItem(editing.id, body);
+      saved = { ...editing, ...(res || {}), ...body, category: input.category || 'Other', description: input.description || null, tags: res?.tags ?? editing.tags };
+    } else {
+      saved = await api.createMenuItem(body); // the server always creates it in stock
+    }
+    upsertLocal(saved);
+
+    // Follow-ups. The item itself is saved by now, so a failure here is a warning, not an error.
+    const warnings: string[] = [];
+    const wantEgg = input.diet === 'egg';
+    if (wantEgg !== saved.tags.some(isEggTag)) {
+      const tags = wantEgg ? [...saved.tags.filter((t) => !isEggTag(t)), 'egg'] : saved.tags.filter((t) => !isEggTag(t));
+      try {
+        await api.setMenuTags(saved.id, tags);
+        saved = { ...saved, tags };
+      } catch {
+        warnings.push('the egg mark');
+      }
+    }
+    if (input.isAvailable !== saved.isAvailable) {
+      try {
+        const res = await api.setAvailability(saved.id, { isAvailable: input.isAvailable });
+        saved = { ...saved, isAvailable: typeof res?.isAvailable === 'boolean' ? res.isAvailable : input.isAvailable, outOfStockUntil: null };
+      } catch {
+        warnings.push(input.isAvailable ? 'in stock' : 'out of stock');
+      }
+    }
+    upsertLocal(saved);
+
+    if (warnings.length) {
+      toast.show(`${saved.name} saved, but we couldn't set ${warnings.join(' and ')}. Try again from the menu.`, 'error');
+    } else {
+      toast.show(editing ? `${saved.name} saved` : `${saved.name} added to your menu`, 'success');
+    }
+    if (!editing) announce(`menu:add:${saved.id}`, { kind: 'itemAdded' }, { dedupeMs: 0 });
+    return saved;
+  }, [toast, upsertLocal]);
+
+  const deleteItem = useCallback(async (item: MenuItem): Promise<DeleteResult> => {
+    try {
+      await api.deleteMenuItem(item.id);
+    } catch (e) {
+      if (e instanceof api.DeleteUnsupported) {
+        return { ok: false, unsupported: true, error: "Deleting items isn't switched on for your store yet. You can hide it instead, or ask Zenvy support to delete it." };
+      }
+      if (!(e instanceof ApiError && e.status === 404)) return { ok: false, error: errorMessage(e, "Couldn't delete the item. Try again.") };
+      // 404 for the item itself: it is already gone, just drop it from the list.
+    }
+    setMenu((prev) => prev && prev.filter((m) => m.id !== item.id));
+    toast.show(`${item.name} deleted`, 'success');
+    return { ok: true };
+  }, [toast]);
+
   const retryConnection = useCallback(() => { retry(); refreshOrdersRef.current({ pull: true }); }, [retry]);
 
   const value = useMemo<StoreCtx>(() => ({
     restaurant, store, storeError, openToggleSupported, orders, ordersLoaded, ordersError, refreshing, lastSyncedAt,
     menu, menuError, menuLoading, menuPending, conn, alertOrders, busy, actionErrors, retryConnection, refreshOrders, refreshStore,
-    refreshMenu, silence, accept, reject, markReady, setOpen, setStock, setPrice,
+    refreshMenu, silence, accept, reject, markReady, setOpen, setStock, setPrice, saveItem, deleteItem,
   }), [
     restaurant, store, storeError, openToggleSupported, orders, ordersLoaded, ordersError, refreshing, lastSyncedAt,
     menu, menuError, menuLoading, menuPending, conn, alertOrders, busy, actionErrors, retryConnection, refreshOrders, refreshStore,
-    refreshMenu, silence, accept, reject, markReady, setOpen, setStock, setPrice,
+    refreshMenu, silence, accept, reject, markReady, setOpen, setStock, setPrice, saveItem, deleteItem,
   ]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

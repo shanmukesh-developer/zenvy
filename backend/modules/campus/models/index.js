@@ -8,6 +8,8 @@ const { initCampusPollModel, getCampusPollModel } = require('./CampusPoll');
 const { initAttendanceRecordModel, getAttendanceRecordModel } = require('./AttendanceRecord');
 const { initLostAndFoundModel, getLostAndFoundModel } = require('./LostAndFound');
 const { initRidePoolModel, getRidePoolModel } = require('./RidePool');
+const { initCampusMediaModel, getCampusMediaModel } = require('./CampusMedia');
+const { initCampusGroupSettingModel, getCampusGroupSettingModel } = require('./CampusGroupSetting');
 const { initProximityModels, getProximityRoomModel, getProximityMessageModel } = require('./ProximityRoom');
 const {
   initPulseModels,
@@ -33,6 +35,8 @@ const initCampusModels = (sequelize) => {
   initRidePoolModel(sequelize);
   initProximityModels(sequelize);
   initPulseModels(sequelize);
+  initCampusMediaModel(sequelize);
+  initCampusGroupSettingModel(sequelize);
 
   const User = sequelize.models.User;
   const Campus = getCampusModel();
@@ -89,4 +93,6 @@ module.exports = {
   getQuestionAnswerModel,
   getCampusEventModel,
   getMessMenuModel,
+  getCampusMediaModel,
+  getCampusGroupSettingModel,
 };

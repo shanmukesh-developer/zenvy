@@ -1,33 +1,49 @@
 // Menu row with a big IN STOCK / OUT switch and a tappable price, plus the stock and price sheets.
 import React, { memo, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { errorMessage } from '../lib/http';
-import { clockIST, nextISTTime, rupees } from '../lib/model';
+import { clockIST, dietOf, nextISTTime, rupees } from '../lib/model';
 import type { StockChange } from '../state/StoreProvider';
 import { color, font, radius, space, touch } from '../theme';
 import { Badge, Button, Chip, Sheet } from '../ui/kit';
-import type { MenuItem } from '../types';
+import type { Diet, MenuItem } from '../types';
 
-function VegMark({ veg }: { veg: boolean | null }) {
-  if (veg === null) return <View style={{ width: 18 }} />;
-  const c = veg ? color.veg : color.nonVeg;
+function VegMark({ diet }: { diet: Diet | null }) {
+  if (diet === null) return <View style={{ width: 18 }} />;
+  const c = diet === 'veg' ? color.veg : diet === 'egg' ? color.warning : color.nonVeg;
   return (
-    <View style={[styles.veg, { borderColor: c }]} accessibilityLabel={veg ? 'Veg' : 'Non-veg'}>
+    <View style={[styles.veg, { borderColor: c }]} accessibilityLabel={diet === 'veg' ? 'Veg' : diet === 'egg' ? 'Egg' : 'Non-veg'}>
       <View style={[styles.vegDot, { backgroundColor: c }]} />
     </View>
   );
 }
 
-function MenuRowBase({ item, pending, onToggle, onEditPrice }: {
-  item: MenuItem; pending: boolean; onToggle: (item: MenuItem) => void; onEditPrice: (item: MenuItem) => void;
+function MenuRowBase({ item, pending, onToggle, onEditPrice, onEdit }: {
+  item: MenuItem; pending: boolean; onToggle: (item: MenuItem) => void; onEditPrice: (item: MenuItem) => void; onEdit: (item: MenuItem) => void;
 }) {
   const on = item.isAvailable;
+  const diet = dietOf(item);
   return (
     <View style={[styles.row, !on && { backgroundColor: color.surfaceAlt }]}>
-      <VegMark veg={item.isVegetarian} />
+      <Pressable
+        onPress={() => onEdit(item)}
+        accessibilityRole="button"
+        accessibilityLabel={`${item.name}. Tap to edit`}
+        style={({ pressed }) => [styles.thumb, pressed && { opacity: 0.7 }]}
+      >
+        {item.imageUrl ? (
+          <>
+            <Image source={{ uri: item.imageUrl }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+            <View style={styles.thumbMark}><VegMark diet={diet} /></View>
+          </>
+        ) : <VegMark diet={diet} />}
+      </Pressable>
       <View style={{ flex: 1, gap: 4 }}>
-        <Text style={[font.body, { color: on ? color.text : color.textMuted, fontWeight: '800' }]} numberOfLines={2}>{item.name}</Text>
+        <Pressable onPress={() => onEdit(item)} accessibilityRole="button" accessibilityLabel={`Edit ${item.name}`} hitSlop={6} style={styles.nameTap}>
+          <Text style={[font.body, { color: on ? color.text : color.textMuted, fontWeight: '800', flexShrink: 1 }]} numberOfLines={2}>{item.name}</Text>
+          <Ionicons name="create-outline" size={18} color={color.textMuted} />
+        </Pressable>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs, flexWrap: 'wrap' }}>
           <Pressable
             onPress={() => onEditPrice(item)}
@@ -160,6 +176,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: space.sm, minHeight: 76, paddingHorizontal: space.md, paddingVertical: space.xs,
     backgroundColor: color.surface, borderBottomWidth: 1, borderBottomColor: color.surfaceAlt,
   },
+  thumb: {
+    width: 48, height: 48, borderRadius: radius.sm, backgroundColor: color.surfaceAlt, alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+  },
+  thumbMark: { position: 'absolute', left: 2, top: 2, backgroundColor: color.surface, borderRadius: 3 },
+  nameTap: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 32 },
   veg: { width: 18, height: 18, borderWidth: 2, borderRadius: 3, alignItems: 'center', justifyContent: 'center' },
   vegDot: { width: 8, height: 8, borderRadius: 4 },
   price: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 36, paddingHorizontal: space.xs, borderRadius: radius.sm, backgroundColor: color.infoTint },

@@ -10,15 +10,16 @@ import Link from 'next/link';
 import { useLiveSync, useFreshIds, liveLabel, FRESH_ROW_CLASS } from '@/lib/useLiveSync';
 
 // "Needs attention" counters on the overview, kept live by realtime events.
-type InboxKey = 'tickets' | 'verifications' | 'pgBookings' | 'wallPending';
+type InboxKey = 'tickets' | 'verifications' | 'pgBookings' | 'wallPending' | 'serviceRequests';
 type Inbox = Record<InboxKey, number | null>;
 const INBOX_ITEMS: { key: InboxKey; label: string; href: string; liveType: string }[] = [
   { key: 'tickets', label: 'Open tickets', href: '/tickets', liveType: 'ticket' },
   { key: 'verifications', label: 'Student IDs to review', href: '/student-verification', liveType: 'verification' },
   { key: 'pgBookings', label: 'PG booking requests', href: '/pg', liveType: 'pg_booking' },
   { key: 'wallPending', label: 'Wall photos to moderate', href: '/wall', liveType: 'wall_submission' },
+  { key: 'serviceRequests', label: 'New service bookings', href: '/service-bookings', liveType: 'service_booking' },
 ];
-const LIVE_HOME_TYPES = ['order', 'rider', 'store', 'ticket', 'verification', 'pg_booking', 'wall_submission', 'wall'] as const;
+const LIVE_HOME_TYPES = ['order', 'rider', 'store', 'ticket', 'verification', 'pg_booking', 'wall_submission', 'wall', 'service_booking'] as const;
 
 const LiveFleetMap = dynamic(() => import('@/components/LiveFleetMap'), { ssr: false });
 
@@ -247,7 +248,7 @@ export default function AdminHome() {
   const { isAuthed } = useAdminAuth();
   const { socket, isConnected, notifyLive } = useAdminSocket();
   const { mark: markFresh, isFresh } = useFreshIds();
-  const [inbox, setInbox] = useState<Inbox>({ tickets: null, verifications: null, pgBookings: null, wallPending: null });
+  const [inbox, setInbox] = useState<Inbox>({ tickets: null, verifications: null, pgBookings: null, wallPending: null, serviceRequests: null });
   const [freshInbox, setFreshInbox] = useState<Partial<Record<InboxKey, boolean>>>({});
 
   const [stats, setStats] = useState<AdminStat[] | null>(null);
@@ -341,6 +342,8 @@ export default function AdminHome() {
       .then(d => count(d?.requests));
     if (want('pgBookings')) jobs.pgBookings = apiRequest<unknown[]>('/api/pg/admin/bookings?status=Pending').then(count);
     if (want('wallPending')) jobs.wallPending = apiRequest<unknown[]>('/api/wall/admin/pending').then(count);
+    if (want('serviceRequests')) jobs.serviceRequests = apiRequest<{ bookings?: unknown[] }>('/api/services/admin/all?status=REQUESTED')
+      .then(d => count(d?.bookings));
     const keys = Object.keys(jobs) as InboxKey[];
     const results = await Promise.allSettled(keys.map(k => jobs[k]!));
     setInbox(prev => {
@@ -687,7 +690,7 @@ export default function AdminHome() {
     const newOrders = events.filter(e => e.type === 'order' && e.action === 'created');
     const label = liveLabel(newOrders, 'order');
     if (label) notifyLive(label);
-    for (const [type, noun] of [['ticket', 'support ticket'], ['verification', 'verification request'], ['pg_booking', 'PG booking request'], ['wall_submission', 'wall photo']] as const) {
+    for (const [type, noun] of [['ticket', 'support ticket'], ['verification', 'verification request'], ['pg_booking', 'PG booking request'], ['wall_submission', 'wall photo'], ['service_booking', 'service booking']] as const) {
       const l = liveLabel(events.filter(e => e.type === type && e.action === 'created'), noun);
       if (l) notifyLive(l);
     }

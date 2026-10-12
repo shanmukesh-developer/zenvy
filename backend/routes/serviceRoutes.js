@@ -5,6 +5,14 @@ const { getUserModel } = require('../models/User');
 const { protect, admin } = require('../middleware/authMiddleware');
 
 const { getMenuItemModel } = require('../models/MenuItem');
+const { getRestaurantModel } = require('../models/Restaurant');
+
+// Store types whose products are services (booked here, never ordered). A product in one of these
+// stores is bookable even if it was added without specs.bookingOnly (admin-added / older rows).
+const SERVICE_VENDOR_TYPES = ['REPAIRS', 'PRINT', 'LAUNDRY', 'TAILORING'];
+// Laundry is priced per kg / per piece: the student's quantity multiplies the card price.
+const MAX_SERVICE_QTY = 50;
+const cleanText = (v, max) => (typeof v === 'string' ? v.replace(/[<>]/g, '').trim().slice(0, max) : '');
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const toInt = (v, min, max, dflt) => {
@@ -27,11 +35,21 @@ const priceServiceBooking = async (specifications) => {
   if (!UUID_RE.test(itemId)) return { amount: 0, item: null }; // older app: the partner sends a quote
   const MenuItem = getMenuItemModel();
   const item = await MenuItem.findByPk(itemId);
-  if (!item || !specsOf(item).bookingOnly) return { error: 'This service is no longer available. Please pick another one.' };
-  if (item.isAvailable === false) return { error: `${item.name} is not taking bookings right now.` };
+  const Restaurant = getRestaurantModel();
+  const store = item && Restaurant ? await Restaurant.findByPk(item.restaurantId) : null;
+  const isServiceStore = !!store && SERVICE_VENDOR_TYPES.includes(String(store.vendorType || '').toUpperCase());
+  if (!item || !(specsOf(item).bookingOnly || isServiceStore) || (store && store.isActive === false)) {
+    return { error: 'This service is no longer available. Please pick another one.' };
+  }
+  const inStock = item.isAvailable !== false || !!(item.outOfStockUntil && new Date(item.outOfStockUntil) <= new Date());
+  if (!inStock) return { error: `${item.name} is not taking bookings right now.` };
 
   const isPrint = String(spec.category || '').toLowerCase() === 'print';
-  if (!isPrint) return { amount: Math.round((Number(item.price) || 0) * 100) / 100, item };
+  if (!isPrint) {
+    // Laundry (per kg / per piece): price x quantity. Other services: the card price.
+    const qty = String(spec.category || '').toLowerCase() === 'laundry' ? toInt(spec.quantity, 1, MAX_SERVICE_QTY, 1) : 1;
+    return { amount: Math.round((Number(item.price) || 0) * qty * 100) / 100, item, quantity: qty };
+  }
 
   const storeItems = await MenuItem.findAll({ where: { restaurantId: item.restaurantId } });
   const rate = (re) => {
@@ -121,10 +139,18 @@ router.post('/book', protect, async (req, res) => {
       return res.status(400).json({ success: false, code: 'SERVICE_UNAVAILABLE', message: priced.error });
     }
 
-    const sanitizedPhone = (contactPhone || req.user.phone || '').replace(/[^\d+]/g, '');
-    if (sanitizedPhone && sanitizedPhone.length < 10) {
-      return res.status(400).json({ success: false, message: 'Invalid contact phone number' });
+    const sanitizedPhone = String(contactPhone || req.user.phone || '').replace(/[^\d+]/g, '').slice(0, 15);
+    if (sanitizedPhone && sanitizedPhone.replace(/\D/g, '').length < 10) {
+      return res.status(400).json({ success: false, message: 'Please enter a valid 10-digit mobile number so the partner can call you.' });
     }
+
+    // Store the quantity the server actually priced (not whatever the client sent).
+    const specs = specifications && typeof specifications === 'object' && !Array.isArray(specifications) ? { ...specifications } : {};
+    if (priced.quantity) specs.quantity = priced.quantity;
+    if (specs.unit !== undefined && !['kg', 'pcs'].includes(specs.unit)) delete specs.unit;
+    if (priced.item) specs.serviceName = priced.item.name;
+    const block = cleanText(hostelBlock, 100) || cleanText(req.user.hostelBlock, 100);
+    const room = cleanText(roomNumber, 30) || cleanText(req.user.roomNumber, 30);
 
     const initialTracking = [
       {
@@ -139,21 +165,21 @@ router.post('/book', protect, async (req, res) => {
     const booking = await ServiceBooking.create({
       userId: req.user.id,
       serviceType,
-      title,
-      description,
-      specifications: specifications || {},
-      attachmentUrl: attachmentUrl || null,
+      title: cleanText(title, 200) || title,
+      description: typeof description === 'string' ? description.replace(/[<>]/g, '') : description,
+      specifications: specs,
+      attachmentUrl: typeof attachmentUrl === 'string' && attachmentUrl ? attachmentUrl : null,
       status: 'REQUESTED',
       quotedAmount: finalAmt,
       finalAmount: finalAmt,
       paymentStatus: 'Pending',
       paymentMethod: 'COD', // services are paid in cash when the job is done
 
-      pickupSlot: pickupSlot || 'Immediate / 30 Mins',
-      hostelBlock: hostelBlock || req.user.hostelBlock || '',
-      roomNumber: roomNumber || req.user.roomNumber || '',
-      deliveryAddress: deliveryAddress || `${hostelBlock || ''} Room ${roomNumber || ''}`,
-      contactPhone: contactPhone || req.user.phone || '',
+      pickupSlot: cleanText(pickupSlot, 100) || 'Immediate / 30 Mins',
+      hostelBlock: block,
+      roomNumber: room,
+      deliveryAddress: cleanText(deliveryAddress, 300) || [block, room ? `Room ${room}` : ''].filter(Boolean).join(', '),
+      contactPhone: sanitizedPhone,
       trackingHistory: initialTracking,
     });
 
@@ -198,7 +224,7 @@ router.get('/my-bookings', protect, async (req, res) => {
     return res.json({ success: true, count: bookings.length, bookings });
   } catch (error) {
     console.error('Error fetching user service bookings:', error);
-    return res.status(500).json({ success: false, message: 'Server error fetching bookings', error: error.message });
+    return res.status(500).json({ success: false, message: 'We could not load your bookings right now. Please try again.' });
   }
 });
 
@@ -218,7 +244,7 @@ router.get('/:id', protect, async (req, res) => {
     return res.json({ success: true, booking });
   } catch (error) {
     console.error('Error fetching service booking:', error);
-    return res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    return res.status(500).json({ success: false, message: 'Something went wrong. Please try again.' });
   }
 });
 
@@ -267,10 +293,15 @@ router.post('/:id/confirm-quote', protect, async (req, res) => {
     booking.trackingHistory = history;
     await booking.save();
 
+    if (req.app.get('io')) {
+      req.app.get('io').to('admin-room').emit(acceptQuote ? 'serviceQuoteAccepted' : 'serviceCancelled', { id: booking.id, serviceType: booking.serviceType });
+    }
+    require('../utils/realtime').notifyAdmin('service_booking', acceptQuote ? 'updated' : 'cancelled', booking.id);
+
     return res.json({ success: true, message: acceptQuote ? 'Quotation approved' : 'Booking cancelled', booking });
   } catch (error) {
     console.error('Error confirming quote:', error);
-    return res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    return res.status(500).json({ success: false, message: 'Something went wrong. Please try again.' });
   }
 });
 
@@ -291,7 +322,8 @@ router.patch('/:id/status', protect, async (req, res) => {
       return res.status(403).json({ success: false, message: 'Only the Zenvy team or the assigned partner can update this booking.' });
     }
 
-    const { status, quotedAmount, finalAmount, note, driverDetails, assignedPartnerId } = req.body;
+    const { status, quotedAmount, finalAmount, driverDetails, assignedPartnerId } = req.body || {};
+    const note = cleanText((req.body || {}).note, 300);
     const badAmount = (v) => v !== undefined && v !== null && (!Number.isFinite(Number(v)) || Number(v) < 0 || Number(v) > 100000);
     if (badAmount(quotedAmount) || badAmount(finalAmount)) {
       return res.status(400).json({ success: false, message: 'Amounts must be between ₹0 and ₹100000.' });
@@ -302,8 +334,12 @@ router.patch('/:id/status', protect, async (req, res) => {
     }
 
     if (status) booking.status = status;
-    if (quotedAmount !== undefined) booking.quotedAmount = quotedAmount;
-    if (finalAmount !== undefined) booking.finalAmount = finalAmount;
+    if (quotedAmount !== undefined && quotedAmount !== null) {
+      booking.quotedAmount = Number(quotedAmount);
+      // A new quote replaces the booking-time estimate, unless a final amount is set in the same update.
+      if (finalAmount === undefined || finalAmount === null) booking.finalAmount = Number(quotedAmount);
+    }
+    if (finalAmount !== undefined && finalAmount !== null) booking.finalAmount = Number(finalAmount);
     if (driverDetails) booking.driverDetails = driverDetails;
     if (assignedPartnerId && isAdmin) booking.assignedPartnerId = assignedPartnerId;
 
@@ -326,6 +362,7 @@ router.patch('/:id/status', protect, async (req, res) => {
         id: booking.id,
         status: booking.status,
         quotedAmount: booking.quotedAmount,
+        finalAmount: booking.finalAmount,
         note: note || `Status updated to ${booking.status}`,
       });
     }
@@ -333,7 +370,7 @@ router.patch('/:id/status', protect, async (req, res) => {
     return res.json({ success: true, message: 'Booking updated successfully', booking });
   } catch (error) {
     console.error('Error updating service booking:', error);
-    return res.status(500).json({ success: false, message: 'Server error updating booking', error: error.message });
+    return res.status(500).json({ success: false, message: 'Could not update the booking right now. Please try again.' });
   }
 });
 
@@ -356,6 +393,16 @@ router.post('/:id/cancel', protect, async (req, res) => {
       return res.status(400).json({
         success: false,
         message: booking.status === 'CANCELLED' ? 'This booking is already cancelled.' : 'This booking is already completed, so it can no longer be cancelled.',
+        booking,
+      });
+    }
+    // Once picked up, the partner has the student's things (clothes, laptop…): support handles it.
+    if (['IN_PROGRESS', 'READY_FOR_DELIVERY'].includes(booking.status)) {
+      return res.status(400).json({
+        success: false,
+        code: 'ALREADY_PICKED_UP',
+        message: 'The partner already has your items, so this booking can no longer be cancelled in the app. Please contact support.',
+        booking,
       });
     }
 
@@ -377,11 +424,12 @@ router.post('/:id/cancel', protect, async (req, res) => {
       io.to('admin-room').emit('serviceCancelled', { id: booking.id, serviceType: booking.serviceType });
       if (booking.assignedPartnerId) io.to(`rider_${booking.assignedPartnerId}`).emit('serviceCancelled', { id: booking.id, serviceType: booking.serviceType });
     }
+    require('../utils/realtime').notifyAdmin('service_booking', 'cancelled', booking.id);
 
     return res.json({ success: true, message: 'Booking cancelled successfully', booking });
   } catch (error) {
     console.error('Error cancelling service booking:', error);
-    return res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    return res.status(500).json({ success: false, message: 'Something went wrong. Please try again.' });
   }
 });
 
@@ -433,7 +481,7 @@ router.post('/:id/rate', protect, async (req, res) => {
     return res.json({ success: true, message: 'Thank you for your feedback!', booking });
   } catch (error) {
     console.error('Error rating service booking:', error);
-    return res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    return res.status(500).json({ success: false, message: 'Something went wrong. Please try again.' });
   }
 });
 
@@ -466,7 +514,7 @@ router.get('/stats/overview', protect, async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching service stats:', error);
-    return res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    return res.status(500).json({ success: false, message: 'Something went wrong. Please try again.' });
   }
 });
 
@@ -493,7 +541,7 @@ router.get('/admin/all', protect, admin, async (req, res) => {
     return res.json({ success: true, count: bookings.length, bookings });
   } catch (error) {
     console.error('Error fetching admin service bookings:', error);
-    return res.status(500).json({ success: false, message: 'Server error', error: error.message });
+    return res.status(500).json({ success: false, message: 'Something went wrong. Please try again.' });
   }
 });
 

@@ -8,8 +8,8 @@ import { useEffect, useRef } from 'react';
 import { AppState, Platform, Vibration } from 'react-native';
 import { RING_REPEAT_MS } from '../config';
 import { TIMED_OUT_REASON } from '../lib/model';
-import { nativeOrderAlert } from '../voice/kitchenService';
-import { announce, cancelAnnouncements, forgetAnnouncement, voiceEnabled } from '../voice/voice';
+import { cancelNativeOrderAlert, nativeOrderAlert } from '../voice/kitchenService';
+import { announce, cancelAnnouncements, forgetAnnouncement, getVoiceSnapshot, voiceEnabled } from '../voice/voice';
 import { useStore } from './StoreProvider';
 import type { Order } from '../types';
 
@@ -29,7 +29,7 @@ function ring(o: Order) {
     );
   } else if (AppState.currentState !== 'active') {
     // Voice off: still wake the phone with the native heads-up notification (no speech).
-    nativeOrderAlert('', o.shortId, amount);
+    nativeOrderAlert('', o.shortId, amount, getVoiceSnapshot().settings.lang);
   }
 }
 
@@ -39,23 +39,26 @@ export function Announcer() {
   // ── New-order ringing ──
   const alertRef = useRef(alertOrders);
   alertRef.current = alertOrders;
-  const rung = useRef<Set<string>>(new Set());
+  // id → shortId of every order that rang (shortId names its native heads-up notification).
+  const rung = useRef<Map<string, string>>(new Map());
   const alertKey = alertOrders.map((o) => `${o.id}:${o.partial ? 'p' : 'f'}`).join(',');
   const hasAlerts = alertOrders.length > 0;
 
   useEffect(() => {
     const current = new Set(alertRef.current.map((o) => o.id));
-    // Orders that left the alert list: stop their pending announcements.
-    for (const id of rung.current) {
+    // Orders that left the alert list (accepted / rejected / silenced / cancelled): stop their pending
+    // announcements and remove their heads-up notification.
+    for (const [id, shortId] of rung.current) {
       if (!current.has(id)) {
         cancelAnnouncements(`new:${id}`);
+        cancelNativeOrderAlert(shortId);
         rung.current.delete(id);
       }
     }
     // Brand-new orders ring right away (newest first, each once).
     const fresh = alertRef.current.filter((o) => !rung.current.has(o.id));
     for (const o of fresh.slice().reverse()) {
-      rung.current.add(o.id);
+      rung.current.set(o.id, o.shortId);
       ring(o);
     }
   }, [alertKey]);

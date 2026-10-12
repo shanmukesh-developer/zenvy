@@ -10,7 +10,7 @@ const nextConfig = {
   compress: true,
   poweredByHeader: false,
   images: { unoptimized: true },
-  typescript: { ignoreBuildErrors: true },
+  typescript: { ignoreBuildErrors: false },
   turbopack: {
     root: path.resolve(__dirname, '..'),
   },

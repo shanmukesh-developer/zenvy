@@ -5,6 +5,8 @@
 const runCampusMigrations = async (sequelize) => {
   if (!sequelize) return;
   const dialect = sequelize.getDialect();
+  // The column types below are written for SQLite; Postgres needs its own spelling.
+  const pgType = (t) => (dialect === 'sqlite' ? t : t.replace(/\bDATETIME\b/g, 'TIMESTAMP WITH TIME ZONE').replace(/BOOLEAN DEFAULT 0\b/g, 'BOOLEAN DEFAULT false'));
 
   const conversationCols = [
     { name: 'type', type: "VARCHAR(20) DEFAULT 'dm'" },
@@ -21,7 +23,7 @@ const runCampusMigrations = async (sequelize) => {
       if (dialect === 'sqlite') {
         await sequelize.query(`ALTER TABLE "Conversations" ADD COLUMN "${col.name}" ${col.type};`);
       } else {
-        await sequelize.query(`ALTER TABLE "Conversations" ADD COLUMN IF NOT EXISTS "${col.name}" ${col.type};`);
+        await sequelize.query(`ALTER TABLE "Conversations" ADD COLUMN IF NOT EXISTS "${col.name}" ${pgType(col.type)};`);
       }
       console.log(`✅ [CAMPUS_MIGRATION] Added ${col.name} to Conversations.`);
     } catch (_err) {
@@ -47,7 +49,7 @@ const runCampusMigrations = async (sequelize) => {
       if (dialect === 'sqlite') {
         await sequelize.query(`ALTER TABLE "Messages" ADD COLUMN "${col.name}" ${col.type};`);
       } else {
-        await sequelize.query(`ALTER TABLE "Messages" ADD COLUMN IF NOT EXISTS "${col.name}" ${col.type};`);
+        await sequelize.query(`ALTER TABLE "Messages" ADD COLUMN IF NOT EXISTS "${col.name}" ${pgType(col.type)};`);
       }
       console.log(`✅ [CAMPUS_MIGRATION] Added ${col.name} to Messages.`);
     } catch (_err) {

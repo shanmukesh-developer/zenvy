@@ -15,6 +15,7 @@ const initBirthdayCelebrationModel = (sequelize) => {
     approvedBy: { type: DataTypes.STRING, allowNull: true },
     approvedAt: { type: DataTypes.DATE, allowNull: true },
     expiresAt: { type: DataTypes.DATE, allowNull: true },
+    announcedAt: { type: DataTypes.DATE, allowNull: true }, // campus-wide push sent (exactly once)
     wishCount: { type: DataTypes.INTEGER, defaultValue: 0 }
   }, { timestamps: true });
 

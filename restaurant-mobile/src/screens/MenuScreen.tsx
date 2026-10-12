@@ -1,20 +1,33 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { Pressable, RefreshControl, SectionList, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { FormMode, ItemForm } from '../components/ItemForm';
 import { MenuRow, PriceSheet, StockSheet } from '../components/MenuParts';
 import { useStore } from '../state/StoreProvider';
 import { color, font, radius, space, touch } from '../theme';
-import { EmptyState, ErrorStrip, SkeletonCard } from '../ui/kit';
+import { Button, EmptyState, ErrorStrip, SkeletonCard } from '../ui/kit';
 import type { MenuItem } from '../types';
 
 type Filter = 'all' | 'in' | 'out';
 
 export default function MenuScreen() {
-  const { menu, menuError, menuLoading, menuPending, refreshMenu, setStock, setPrice, store, restaurant } = useStore();
+  const { menu, menuError, menuLoading, menuPending, refreshMenu, setStock, setPrice, saveItem, deleteItem, store, restaurant } = useStore();
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const [stockFor, setStockFor] = useState<MenuItem | null>(null);
   const [priceFor, setPriceFor] = useState<MenuItem | null>(null);
+  const [form, setForm] = useState<FormMode | null>(null);
+
+  const categories = useMemo(() => {
+    const byKey = new Map<string, string>();
+    for (const m of menu || []) if (m.category && m.category !== 'Other') byKey.set(m.category.toLowerCase(), m.category);
+    return [...byKey.values()].sort((a, b) => a.localeCompare(b));
+  }, [menu]);
+  const openAdd = useCallback(
+    () => setForm({ kind: 'add', category: categories.length === 1 ? categories[0] : undefined }),
+    [categories],
+  );
+  const openEdit = useCallback((item: MenuItem) => setForm({ kind: 'edit', item }), []);
 
   const outCount = menu ? menu.filter((m) => !m.isAvailable).length : 0;
 
@@ -109,16 +122,45 @@ export default function MenuScreen() {
             </View>
           )}
           renderItem={({ item }) => (
-            <MenuRow item={item} pending={!!menuPending[item.id]} onToggle={onToggle} onEditPrice={setPriceFor} />
+            <MenuRow item={item} pending={!!menuPending[item.id]} onToggle={onToggle} onEditPrice={setPriceFor} onEdit={openEdit} />
           )}
-          contentContainerStyle={{ paddingBottom: space.xxl * 2 }}
+          contentContainerStyle={{ paddingBottom: 120 }}
           ListEmptyComponent={
             menu.length === 0
-              ? <EmptyState icon="restaurant-outline" title="No dishes yet" body="Ask Zenvy support to add your menu." />
+              ? (
+                <View style={styles.firstItem}>
+                  <Ionicons name="restaurant-outline" size={52} color={color.textMuted} />
+                  <Text style={[font.h2, { color: color.text, textAlign: 'center' }]}>No dishes yet</Text>
+                  <Text style={[font.body, { color: color.textSecondary, textAlign: 'center' }]}>Add your first dish. Customers can order it right away.</Text>
+                  <Button label="+ ADD FIRST ITEM" variant="accept" size="huge" onPress={openAdd} style={{ alignSelf: 'stretch', marginTop: space.xs }} />
+                </View>
+              )
               : <EmptyState icon="search" title="No dishes match" body="Try another search or filter." />
           }
         />
       )}
+
+      {menu && menu.length > 0 ? (
+        <Pressable
+          onPress={openAdd}
+          accessibilityRole="button"
+          accessibilityLabel="Add item"
+          style={({ pressed }) => [styles.fab, pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] }]}
+        >
+          <Ionicons name="add" size={28} color={color.textInverse} />
+          <Text style={[font.button, { color: color.textInverse }]}>Add item</Text>
+        </Pressable>
+      ) : null}
+
+      <ItemForm
+        mode={form}
+        categories={categories}
+        onClose={() => setForm(null)}
+        onSave={saveItem}
+        onDelete={deleteItem}
+        onHide={setStock}
+        onDuplicate={(item) => setForm({ kind: 'duplicate', item })}
+      />
 
       <StockSheet
         item={stockFor}
@@ -143,5 +185,11 @@ const styles = StyleSheet.create({
   },
   chips: { flexDirection: 'row', gap: space.xs },
   chip: { flex: 1, minHeight: touch.min, paddingHorizontal: space.sm, borderRadius: radius.pill, borderWidth: 1, borderColor: color.border, backgroundColor: color.surface, alignItems: 'center', justifyContent: 'center' },
+  fab: {
+    position: 'absolute', right: space.md, bottom: space.md, flexDirection: 'row', alignItems: 'center', gap: space.xs,
+    minHeight: touch.primary, paddingHorizontal: space.lg, borderRadius: radius.pill, backgroundColor: color.open,
+    shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 6,
+  },
+  firstItem: { alignItems: 'center', gap: space.sm, paddingVertical: space.xxl, paddingHorizontal: space.xl },
   section: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.md, paddingVertical: space.sm, backgroundColor: color.bg, borderBottomWidth: 1, borderBottomColor: color.border },
 });

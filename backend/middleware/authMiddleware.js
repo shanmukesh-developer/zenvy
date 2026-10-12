@@ -24,6 +24,12 @@ const setCachedUser = (userId, user) => {
   AUTH_CACHE.set(userId, { user, ts: Date.now() });
 };
 
+// Drop a cached account right after a ban / role change / approval change so it applies at once
+// instead of after the 60 s TTL.
+const clearCachedUser = (userId) => {
+  if (userId !== undefined && userId !== null) AUTH_CACHE.delete(userId);
+};
+
 const protect = async (req, res, next) => {
   let token;
 
@@ -134,4 +140,23 @@ const vendor = (req, res, next) => {
   }
 };
 
-module.exports = { protect, admin, rider, vendor };
+// Rider route that also needs an admin-approved account (self sign-ups get a token before approval).
+const approvedRider = async (req, res, next) => {
+  if (!(req.user && typeof req.user.role === 'string' && req.user.role.toLowerCase() === 'rider')) {
+    return res.status(403).json({ message: 'Forbidden: Delivery Partner access required' });
+  }
+  try {
+    const { getDeliveryPartnerModel } = require('../models/DeliveryPartner');
+    const partner = await getDeliveryPartnerModel().findByPk(req.user.id, { attributes: ['id', 'isApproved'] });
+    if (!partner) return res.status(401).json({ message: 'Rider not found' });
+    if (!partner.isApproved) {
+      return res.status(403).json({ code: 'RIDER_NOT_APPROVED', message: 'Your account is waiting for admin approval.' });
+    }
+    return next();
+  } catch (err) {
+    console.error('[APPROVED_RIDER_ERROR]', err.message);
+    return res.status(500).json({ message: 'Something went wrong. Please try again.' });
+  }
+};
+
+module.exports = { protect, admin, rider, vendor, approvedRider, clearCachedUser };

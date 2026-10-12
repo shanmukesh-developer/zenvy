@@ -24,6 +24,16 @@ exports.clearRestaurantsCache = clearRestaurantsCache;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const realtime = require('../utils/realtime');
+const { stripStoreSecrets, stripItemSecrets } = require('../utils/publicFields');
+const { clearCachedUser } = require('../middleware/authMiddleware');
+const { sendServerError } = require('../utils/httpErrors');
+
+// Model rows in admin responses: never send password hashes to the browser.
+const withoutPassword = (row) => {
+  const json = row && typeof row.toJSON === 'function' ? row.toJSON() : { ...(row || {}) };
+  delete json.password;
+  return json;
+};
 
 // `systemUpdate` used to go to EVERY socket with full rows (rider rows with password hashes, wallet
 // balances, coupons). Catalogue/config types still reach everyone (the customer home listens for them)
@@ -112,7 +122,7 @@ exports.getRestaurants = async (req, res) => {
 
     const menuByRestaurant = {};
     for (const m of allMenuItems) {
-      const mObj = m.toJSON();
+      const mObj = stripItemSecrets(m.toJSON());
       let mTags = mObj.tags || [];
       if (typeof mTags === 'string') {
         try { mTags = JSON.parse(mTags); } catch { mTags = []; }
@@ -125,7 +135,7 @@ exports.getRestaurants = async (req, res) => {
 
     const result = restaurants.map(r => {
       const rObj = r.toJSON();
-      delete rObj.password;
+      stripStoreSecrets(rObj);
       const openState = getStoreOpenState(r);
       let tags = rObj.tags || [];
       if (typeof tags === 'string') {
@@ -168,7 +178,7 @@ exports.getRestaurantById = async (req, res) => {
     if (!restaurant) return res.status(404).json({ message: 'Restaurant not found' });
     const menu = await MenuItem.findAll({ where: { restaurantId: restaurant.id } });
     const resObj = restaurant.toJSON();
-    delete resObj.password;
+    stripStoreSecrets(resObj);
     let tags = resObj.tags || [];
     if (typeof tags === 'string') {
       try { tags = JSON.parse(tags); } catch { tags = []; }
@@ -187,7 +197,7 @@ exports.getRestaurantById = async (req, res) => {
       opensAt: openState.opensAt || null,
       closedReason: openState.isOpen ? null : (openState.message || null),
       menu: menu.map(m => {
-        const mObj = m.toJSON();
+        const mObj = stripItemSecrets(m.toJSON());
         let mTags = mObj.tags || [];
         if (typeof mTags === 'string') {
           try { mTags = JSON.parse(mTags); } catch { mTags = []; }
@@ -228,7 +238,7 @@ exports.getMenuItemById = async (req, res) => {
     }
 
     const restaurant = await Restaurant.findByPk(item.restaurantId);
-    const itemObj = item.toJSON();
+    const itemObj = stripItemSecrets(item.toJSON());
     let tags = itemObj.tags || [];
     if (typeof tags === 'string') {
       try { tags = JSON.parse(tags); } catch { tags = []; }
@@ -298,7 +308,7 @@ exports.searchAll = async (req, res) => {
       items: matchedItems.map(m => ({ ...m.toJSON(), _id: m.id }))
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendServerError(res, error, '[ADMINCONTROLLER_ERROR]');
   }
 };
 
@@ -592,7 +602,7 @@ exports.getAllRiders = async (req, res) => {
       pages: Math.ceil(count / limit)
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendServerError(res, error, '[ADMINCONTROLLER_ERROR]');
   }
 };
 
@@ -606,7 +616,8 @@ exports.approveRider = async (req, res) => {
     realtime.notifyAdmin('rider', 'updated', rider.id);
     // Live dispatch room: an unapproved rider stops receiving delivery_request at once.
     realtime.setRiderOnline(rider.id, !!(rider.isApproved && rider.isOnline));
-    res.json({ ...rider.toJSON(), _id: rider.id });
+    clearCachedUser(rider.id);
+    res.json({ ...withoutPassword(rider), _id: rider.id });
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
@@ -622,7 +633,7 @@ exports.resetRiderSos = async (req, res) => {
     await logAuditAction(req, rider.id, 'FLEET_SOS_RESET', { name: rider.name });
     res.json({ message: 'SOS reset successful' });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendServerError(res, error, '[ADMINCONTROLLER_ERROR]');
   }
 };
 
@@ -642,8 +653,9 @@ exports.updateRider = async (req, res) => {
       if (req.body[key] !== undefined) updateData[key] = req.body[key];
     }
     if (req.body.password && typeof req.body.password === 'string' && req.body.password.trim().length >= 6) {
-      const bcrypt = require('bcryptjs');
-      updateData.password = await bcrypt.hash(req.body.password, 10);
+      // Plain text: the DeliveryPartner beforeUpdate hook hashes it (hashing here too stored
+      // bcrypt(bcrypt(pw)) and locked the rider out).
+      updateData.password = req.body.password.trim();
     }
     await rider.update(updateData);
     broadcastSystemUpdate(req, 'RIDER_UPDATED', rider);
@@ -652,7 +664,7 @@ exports.updateRider = async (req, res) => {
     delete riderData.password;
     res.json({ ...riderData, _id: rider.id });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendServerError(res, error, '[ADMINCONTROLLER_ERROR]');
   }
 };
 
@@ -696,7 +708,7 @@ exports.getAllUsers = async (req, res) => {
       pages: Math.ceil(count / limit)
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendServerError(res, error, '[ADMINCONTROLLER_ERROR]');
   }
 };
 
@@ -709,7 +721,8 @@ exports.setEliteStatus = async (req, res) => {
     broadcastSystemUpdate(req, 'USER_ELITE_STATUS', { userId: req.params.userId, isElite: req.body.isElite });
     realtime.notifyAdmin('user', 'updated', user.id);
     await logAuditAction(req, user.id, 'ELITE_STATUS_CHANGE', { email: user.email, isElite: req.body.isElite });
-    res.json({ ...user.toJSON(), _id: user.id });
+    clearCachedUser(user.id);
+    res.json({ ...withoutPassword(user), _id: user.id });
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
@@ -722,16 +735,22 @@ exports.updateUserWallet = async (req, res) => {
     const user = await User.findByPk(req.params.userId);
     if (!user) return res.status(404).json({ message: 'User not found' });
     
+ 
     const delta = Number(amount);
-    if (isNaN(delta)) {
+    if (!Number.isFinite(delta) || delta === 0) {
       return res.status(400).json({ message: 'Invalid amount value' });
     }
-    const currentBalance = user.walletBalance || 0;
-    if (currentBalance + delta < 0) {
+    // Atomic, conditional adjustment: an order debit, tip or refund landing at the same moment is
+    // never overwritten (the old read-modify-write could wipe it out).
+    const [changed] = await User.update(
+      { walletBalance: User.sequelize.literal(`COALESCE("walletBalance", 0) + ${delta}`) },
+      { where: { id: user.id, ...(delta < 0 ? { walletBalance: { [Op.gte]: -delta } } : {}) } }
+    );
+    if (changed === 0) {
       return res.status(400).json({ message: 'Wallet balance cannot be negative' });
     }
-    const newBalance = Math.max(0, currentBalance + delta);
-    await user.update({ walletBalance: newBalance });
+    await user.reload({ attributes: ['id', 'walletBalance', 'email'] });
+    const newBalance = Number(user.walletBalance) || 0;
     
     await logAuditAction(req, user.id, 'WALLET_UPDATE', { email: user.email, added: amount, newBalance });
     broadcastSystemUpdate(req, 'USER_UPDATED', { userId: user.id, walletBalance: newBalance });
@@ -739,7 +758,7 @@ exports.updateUserWallet = async (req, res) => {
     
     res.json({ message: 'Wallet updated', walletBalance: newBalance });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendServerError(res, error, '[ADMINCONTROLLER_ERROR]');
   }
 };
 
@@ -762,7 +781,7 @@ exports.getAuditLogs = async (req, res) => {
       pages: Math.ceil(count / limit)
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendServerError(res, error, '[ADMINCONTROLLER_ERROR]');
   }
 };
 
@@ -785,7 +804,7 @@ exports.getGlobalConfig = async (req, res) => {
     const configs = await GlobalConfig.findAll();
     res.json(configs.map(c => ({ ...c.toJSON(), _id: c.id })));
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendServerError(res, error, '[ADMINCONTROLLER_ERROR]');
   }
 };
 
@@ -827,7 +846,7 @@ exports.getDashboardStats = async (req, res) => {
       localVendorCount: localVendorCount.toString()
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendServerError(res, error, '[ADMINCONTROLLER_ERROR]');
   }
 };
 
@@ -890,7 +909,7 @@ exports.getFinanceReport = async (req, res) => {
       pages: Math.ceil(count / limit)
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendServerError(res, error, '[ADMINCONTROLLER_ERROR]');
   }
 };
 
@@ -988,7 +1007,7 @@ exports.seedDatabase = async (req, res) => {
     res.json({ message: `Successfully synchronized ${restaurants.length} restaurants.` });
   } catch (error) {
     console.error('[SEED_ERROR]', error);
-    res.status(500).json({ message: `Database Sync failed: ${error.message}` });
+    sendServerError(res, error, '[ADMINCONTROLLER_ERROR]');
   }
 };
 
@@ -999,7 +1018,7 @@ exports.getVaultItems = async (req, res) => {
     const items = await VaultItem.findAll({ order: [['createdAt', 'DESC']] });
     res.json(items.map(i => ({ ...i.toJSON(), _id: i.id })));
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendServerError(res, error, '[ADMINCONTROLLER_ERROR]');
   }
 };
 
@@ -1140,7 +1159,7 @@ exports.getRewardsAnalytics = async (req, res) => {
       redemptionRate: totalSpinsEarned > 0 ? (totalSpinsUsed / totalSpinsEarned * 100).toFixed(1) : 0
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendServerError(res, error, '[ADMINCONTROLLER_ERROR]');
   }
 };
 
@@ -1167,6 +1186,14 @@ exports.deleteRestaurant = async (req, res) => {
       if (activeOrdersCount > 0) {
         return res.status(400).json({ 
           message: `This store has ${activeOrdersCount} active order(s). Finish or cancel them before deleting it.` 
+        });
+      }
+      // Deleting sets restaurantId to NULL on its orders, so money still owed to the store would
+      // drop out of Payouts. Settle first (or switch the store off instead of deleting it).
+      const unsettledCount = await Order.count({ where: { restaurantId: id, status: 'Delivered', payoutSettled: false } });
+      if (unsettledCount > 0) {
+        return res.status(400).json({
+          message: `This store has ${unsettledCount} delivered order(s) that are not settled yet. Settle its payout first, or switch the store off instead of deleting it.`
         });
       }
     }
@@ -1249,25 +1276,70 @@ exports.batchUpdateOrders = async (req, res) => {
     
     if (!targetStatus || !newStatus) return res.status(400).json({ message: 'Missing parameters' });
 
-    const ALLOWED_STATUSES = ['Pending', 'Accepted', 'Preparing', 'ReadyForPickup', 'Picking', 'PickedUp', 'ArrivedAtGate', 'Delivered', 'Cancelled'];
-    if (!ALLOWED_STATUSES.includes(targetStatus) || !ALLOWED_STATUSES.includes(newStatus)) {
-      return res.status(400).json({ message: 'Invalid targetStatus or newStatus value' });
-    }
-    if (['Delivered', 'Cancelled'].includes(targetStatus)) {
-      return res.status(400).json({ message: `Cannot batch transition from terminal status: ${targetStatus}` });
+    // Only transitions that go through the real per-order side effects are allowed in bulk:
+    //  • Pending → Accepted: conditional flip (never resurrects a cancelled order), acceptedAt,
+    //    customer/store status events, live rider pool and rider push.
+    //  • pre-pickup → Cancelled: cancelAndRefund (Wallet refund + coupon restore, exactly once).
+    // A raw bulk UPDATE skipped all of that (Wallet money kept, riders never told, no deliveredAt).
+    const CANCELLABLE_FROM = ['Pending', 'Accepted', 'Preparing', 'ReadyForPickup'];
+    const isAccept = targetStatus === 'Pending' && newStatus === 'Accepted';
+    const isCancel = newStatus === 'Cancelled' && CANCELLABLE_FROM.includes(targetStatus);
+    if (!isAccept && !isCancel) {
+      return res.status(400).json({ message: 'Bulk update supports only Pending → Accepted, or cancelling orders that have not been picked up. Update other orders one by one.' });
     }
 
-    const [updatedCount] = await Order.update(
-      { status: newStatus },
-      { where: { status: targetStatus } }
-    );
+    const io = req.app.get('io');
+    const emitStatus = (order, payload) => {
+      if (!io) return;
+      io.to(String(order.id)).emit('statusUpdated', payload);
+      io.to('admin-room').emit('statusUpdated', payload);
+      if (order.restaurantId) io.to(`restaurant_${order.restaurantId}`).emit('statusUpdated', payload);
+    };
+    const matched = await Order.findAll({ where: { status: targetStatus }, order: [['createdAt', 'ASC']], limit: 200 });
+    let updatedCount = 0;
+    for (const order of matched) {
+      try {
+        if (isAccept) {
+          const now = new Date();
+          const [n] = await Order.update({ status: 'Accepted', acceptedAt: now }, { where: { id: order.id, status: 'Pending' } });
+          if (n === 0) continue;
+          updatedCount++;
+          emitStatus(order, { id: order.id, status: 'Accepted' });
+          realtime.notifyAdmin('order', 'updated', order.id);
+          if (!order.deliveryPartnerId) {
+            realtime.deliveryRequest(order.id);
+            const restaurant = await getRestaurantModel().findByPk(order.restaurantId, { attributes: ['id', 'name', 'location'] });
+            await require('../utils/riderDispatch').pushNearestRiders({
+              restaurant,
+              orderId: order.id,
+              limit: 5,
+              title: '🛵 New Order Ready!',
+              body: `${restaurant?.name || 'A store'} has an order waiting for a rider.`,
+            });
+          }
+        } else {
+          const { cancelAndRefund } = require('./orderController');
+          const { cancelled, refunded } = await cancelAndRefund(order, { reason: 'Cancelled by Zenvy support', onlyFromStatuses: [targetStatus] });
+          if (!cancelled) continue;
+          updatedCount++;
+          emitStatus(order, { id: order.id, status: 'Cancelled', refundedToWallet: refunded });
+          if (io) io.to(String(order.id)).emit('orderCancelled', { orderId: order.id, reason: 'ADMIN' });
+          realtime.notifyAdmin('order', 'updated', order.id);
+          if (order.deliveryPartnerId) {
+            await getDeliveryPartnerModel().update({ currentOrderId: null }, { where: { id: order.deliveryPartnerId, currentOrderId: order.id } });
+          }
+        }
+      } catch (e) {
+        console.error('[BATCH_ORDER_UPDATE_ERROR]', order.id, e.message);
+      }
+    }
 
     broadcastSystemUpdate(req, 'BATCH_ORDER_UPDATE', { targetStatus, newStatus, count: updatedCount });
     await logAuditAction(req, 'global', 'BATCH_ORDER_UPDATE', `Updated ${updatedCount} orders from ${targetStatus} to ${newStatus}`);
 
     res.json({ message: `Successfully updated ${updatedCount} orders.`, count: updatedCount });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendServerError(res, error, '[ADMINCONTROLLER_ERROR]');
   }
 };
 
@@ -1282,7 +1354,7 @@ exports.getAllCoupons = async (req, res) => {
     });
     res.json(coupons.map(c => ({ ...c.toJSON(), _id: c.id })));
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendServerError(res, error, '[ADMINCONTROLLER_ERROR]');
   }
 };
 
@@ -1341,7 +1413,7 @@ exports.deleteCoupon = async (req, res) => {
     
     res.json({ message: 'Coupon successfully removed/revoked' });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendServerError(res, error, '[ADMINCONTROLLER_ERROR]');
   }
 };
 
@@ -1362,9 +1434,12 @@ exports.getRestaurantPayouts = async (req, res) => {
     deliveredOrders.forEach(o => {
       const rest = restMap[o.restaurantId];
       if (!rest) return;
-      const price = o.finalPrice || o.totalPrice || 0;
-      const commissionRate = rest.commissionRate || 10;
-      const commission = price * (commissionRate / 100);
+      // Store GMV is the item subtotal: finalPrice also contains the rider's delivery fee (and
+      // platform coupon discounts), which is not the store's money.
+      const price = Number(o.totalPrice) || 0;
+      // Same rule as getFinanceReport: the store's own rate (0% stays 0%) and 'flat' = ₹ per order.
+      const commissionRate = Number(rest.commissionRate) || 0;
+      const commission = rest.commissionType === 'flat' ? Math.min(commissionRate, price) : price * (commissionRate / 100);
       
       if (!payouts[rest.id]) {
         payouts[rest.id] = {
@@ -1390,7 +1465,7 @@ exports.getRestaurantPayouts = async (req, res) => {
       netPayout: Math.round(p.netPayout)
     })));
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendServerError(res, error, '[ADMINCONTROLLER_ERROR]');
   }
 };
 
@@ -1410,7 +1485,7 @@ exports.settleRestaurantPayout = async (req, res) => {
 
     res.json({ message: 'Restaurant payout marked as settled successfully', updatedOrdersCount: updatedCount });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendServerError(res, error, '[ADMINCONTROLLER_ERROR]');
   }
 };
 
@@ -1426,7 +1501,7 @@ exports.getDisputedOrders = async (req, res) => {
     });
     res.json(disputes.map(d => ({ ...d.toJSON(), _id: d.id, userId: d.user || { name: 'Student', phone: '' } })));
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendServerError(res, error, '[ADMINCONTROLLER_ERROR]');
   }
 };
 
@@ -1458,7 +1533,7 @@ exports.processManualRefund = async (req, res) => {
     
     res.json({ message: 'Refund successful', refundAmount, walletBalance: user.walletBalance });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendServerError(res, error, '[ADMINCONTROLLER_ERROR]');
   }
 };
 
@@ -1477,10 +1552,15 @@ exports.toggleUserBan = async (req, res) => {
     const action = user.isActive ? 'USER_UNBANNED' : 'USER_BANNED';
     await logAuditAction(req, user.id, action, { userId: user.id });
     realtime.notifyAdmin('user', 'updated', user.id);
+    // Apply the ban at once: drop the 60 s auth cache entry and close the user's live sockets.
+    clearCachedUser(user.id);
+    if (!user.isActive) {
+      try { req.app.get('io')?.in(`user_${user.id}`).disconnectSockets(true); } catch { /* best effort */ }
+    }
 
-    res.json({ message: `User account ${user.isActive ? 'reactivated' : 'suspended'}`, user });
+    res.json({ message: `User account ${user.isActive ? 'reactivated' : 'suspended'}`, user: withoutPassword(user) });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendServerError(res, error, '[ADMINCONTROLLER_ERROR]');
   }
 };
 
@@ -1492,10 +1572,11 @@ exports.broadcastPushNotification = async (req, res) => {
     const { getUserModel } = require('../models/User');
     const User = getUserModel();
     let whereClause = { isActive: true };
-    if (targetBlock && targetBlock !== 'All Campus Blocks') {
+    const isTargeted = !!(targetBlock && targetBlock !== 'All Campus Blocks');
+    if (isTargeted) {
       whereClause.hostelBlock = targetBlock;
     }
-    const activeUsers = await User.findAll({ where: whereClause });
+    const activeUsers = await User.findAll({ where: whereClause, attributes: ['id', 'fcmTokens'] });
     
     let allTokens = [];
     activeUsers.forEach(user => {
@@ -1527,22 +1608,32 @@ exports.broadcastPushNotification = async (req, res) => {
         { recipients: activeUsers.map((u) => u.id) });
     }
     
-    // Fallback: Always broadcast to 'all' topic as well
-    const { sendPushToTopic } = require('../utils/push');
-    await sendPushToTopic('all', title, body, { type: 'global_broadcast', targetBlock: targetBlock || 'all', category: category || 'announcement' });
+    // Campus-wide only: also reach devices subscribed to the 'all' topic. A block-targeted
+    // broadcast must not go to the whole campus.
+    if (!isTargeted) {
+      const { sendPushToTopic } = require('../utils/push');
+      await sendPushToTopic('all', title, body, { type: 'global_broadcast', targetBlock: 'all', category: category || 'announcement' });
+    }
 
     // Broadcast via Socket.io so active users get live toast & save to notification history
     try {
       const io = req.app.get('io');
       if (io) {
-        io.emit('global_announcement', {
+        const announcement = {
           title,
           body,
           message: `${title}: ${body}`,
           targetBlock: targetBlock || 'All Campus Blocks',
           category: category || 'announcement',
           type: 'info'
-        });
+        };
+        if (isTargeted) {
+          // Only the targeted block's students (each signed-in user socket is in user_<id>).
+          const rooms = activeUsers.map((u) => `user_${u.id}`);
+          if (rooms.length > 0) io.to(rooms).emit('global_announcement', announcement);
+        } else {
+          io.emit('global_announcement', announcement);
+        }
       }
     } catch (sockErr) {
       console.error('Failed to emit admin broadcast socket announcement:', sockErr);
@@ -1554,7 +1645,7 @@ exports.broadcastPushNotification = async (req, res) => {
     res.json({ message: `Push notification broadcasted successfully to approximately ${activeUsers.length} active devices.` });
   } catch (error) {
     console.error('Broadcast push failed:', error);
-    res.status(500).json({ message: error.message });
+    sendServerError(res, error, '[ADMINCONTROLLER_ERROR]');
   }
 };
 
@@ -1589,7 +1680,7 @@ exports.getRecentReviews = async (req, res) => {
 
     res.json(mapped);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendServerError(res, error, '[ADMINCONTROLLER_ERROR]');
   }
 };
 
@@ -1607,7 +1698,7 @@ exports.deleteReview = async (req, res) => {
     if (order.restaurantId) realtime.publish('store', 'updated', order.restaurantId, { storeId: order.restaurantId, scope: 'reviews' });
     res.json({ message: 'Review successfully removed from the ecosystem.' });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendServerError(res, error, '[ADMINCONTROLLER_ERROR]');
   }
 };
 
@@ -1644,12 +1735,25 @@ exports.getRiderPayouts = async (req, res) => {
       payouts[rid].totalDeliveryFees += fee;
     });
 
+    // Customer tips are credited to DeliveryPartner.walletBalance (rateOrder) and were invisible
+    // here. Show the unpaid tip balance too, including riders with tips but no unsettled orders.
+    riders.forEach((r) => {
+      const tips = Number(r.walletBalance) || 0;
+      if (tips <= 0) return;
+      if (!payouts[r.id]) {
+        payouts[r.id] = { riderId: r.id, riderName: r.name, riderPhone: r.phone || '', totalDeliveries: 0, totalDeliveryFees: 0 };
+      }
+      payouts[r.id].unsettledTips = tips;
+    });
+
     res.json(Object.values(payouts).map(p => ({
       ...p,
-      totalDeliveryFees: Math.round(p.totalDeliveryFees)
+      totalDeliveryFees: Math.round(p.totalDeliveryFees),
+      unsettledTips: Math.round(p.unsettledTips || 0),
+      totalPayout: Math.round(p.totalDeliveryFees + (p.unsettledTips || 0))
     })));
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendServerError(res, error, '[ADMINCONTROLLER_ERROR]');
   }
 };
 
@@ -1664,12 +1768,24 @@ exports.settleRiderPayout = async (req, res) => {
       { riderPayoutSettled: true },
       { where: { deliveryPartnerId: riderId, status: 'Delivered', riderPayoutSettled: false } }
     );
+    // Tips are cleared only when the admin says they were paid too (body.includeTips === true),
+    // and only by the amount they saw, atomically, so a tip arriving now is not wiped.
+    let tipsSettled = 0;
+    const tipsSeen = Number(req.body.tipsAmount);
+    if (req.body.includeTips === true && Number.isFinite(tipsSeen) && tipsSeen > 0) {
+      const DeliveryPartner = getDeliveryPartnerModel();
+      const [n] = await DeliveryPartner.update(
+        { walletBalance: DeliveryPartner.sequelize.literal(`"walletBalance" - ${tipsSeen}`) },
+        { where: { id: riderId, walletBalance: { [Op.gte]: tipsSeen } } }
+      );
+      if (n > 0) tipsSettled = tipsSeen;
+    }
 
-    await logAuditAction(req, riderId, 'RIDER_PAYOUT_SETTLED', { riderId, updatedOrdersCount: updatedCount });
+    await logAuditAction(req, riderId, 'RIDER_PAYOUT_SETTLED', { riderId, updatedOrdersCount: updatedCount, tipsSettled });
 
-    res.json({ message: 'Rider payout marked as settled successfully', updatedOrdersCount: updatedCount });
+    res.json({ message: 'Rider payout marked as settled successfully', updatedOrdersCount: updatedCount, tipsSettled });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendServerError(res, error, '[ADMINCONTROLLER_ERROR]');
   }
 };
 

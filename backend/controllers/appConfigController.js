@@ -1,4 +1,5 @@
 const AppConfig = require('../models/AppConfig');
+const { sendServerError } = require('../utils/httpErrors');
 
 exports.getConfig = async (req, res) => {
   try {
@@ -75,6 +76,6 @@ exports.updateConfig = async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating config:', error);
-    res.status(500).json({ success: false, message: 'Failed to update config', error: error.message });
+    sendServerError(res, error, '[APPCONFIGCONTROLLER_ERROR]');
   }
 };

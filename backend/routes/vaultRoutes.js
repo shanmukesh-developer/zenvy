@@ -14,6 +14,7 @@ const endOfIstDay = () => {
 };
 class ClaimError extends Error { constructor(status, message) { super(message); this.status = status; } }
 const { Op } = require('sequelize');
+const { sendServerError } = require('../utils/httpErrors');
 
 // @desc    Get all active vault items
 // @route   GET /api/vault
@@ -28,7 +29,7 @@ router.get('/', async (req, res) => {
     });
     res.json(items);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    sendServerError(res, error, '[VAULTROUTES_ERROR]');
   }
 });
 

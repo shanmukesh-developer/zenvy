@@ -1,5 +1,6 @@
 const { getConversationModel } = require('../../../models/Conversation');
 const { getUserModel } = require('../../../models/User');
+const { cleanImageRef } = require('../campusHelpers');
 
 // Generate unambiguous 6-character code (No 0/O/1/I/L) per Section 3.3
 const generateJoinCode = () => {
@@ -15,25 +16,49 @@ const generateJoinCode = () => {
 // @route   POST /api/campus/groups
 const createGroup = async (req, res) => {
   try {
-    const { name, description, type = 'study', groupAvatar, onlyAdminsCanSend } = req.body;
-    if (!name || !name.trim()) {
+    const { name, description, type = 'study', groupAvatar, onlyAdminsCanSend, discoverable } = req.body;
+    if (!name || typeof name !== 'string' || !name.trim()) {
       return res.status(400).json({ message: 'Group name is required' });
+    }
+    // groupAvatar column is 255 chars: only a /api/campus/media/<id> path or a short https URL.
+    let cleanAvatar = null;
+    if (groupAvatar) {
+      cleanAvatar = cleanImageRef(groupAvatar, { maxDataUrlChars: 0 });
+      if (!cleanAvatar || cleanAvatar.length > 255) {
+        return res.status(400).json({ code: 'BAD_IMAGE', message: 'Upload the group photo first (POST /api/campus/media).' });
+      }
     }
 
     const Conversation = getConversationModel();
     const joinCode = generateJoinCode();
 
     const group = await Conversation.create({
-      name: name.trim(),
-      description: description ? description.trim() : '',
+      name: name.trim().slice(0, 80),
+      description: description ? String(description).trim().slice(0, 250) : '',
       isGroup: true,
-      type,
-      groupAvatar: groupAvatar || null,
+      type: ['class', 'club', 'study', 'ride', 'group', 'hostel', 'secret'].includes(type) ? type : 'study',
+      groupAvatar: cleanAvatar,
       joinCode,
       participants: [req.user.id],
       adminIds: [req.user.id],
       onlyAdminsCanSend: !!onlyAdminsCanSend,
     });
+
+    if (discoverable) {
+      try {
+        const { getCampusGroupSettingModel } = require('../models/CampusGroupSetting');
+        const { getCampusProfileModel } = require('../models/CampusProfile');
+        const mine = await getCampusProfileModel().findOne({ where: { userId: req.user.id }, attributes: ['campusId'] });
+        await getCampusGroupSettingModel().create({
+          conversationId: group.id,
+          campusId: mine ? mine.campusId : null,
+          discoverable: true,
+          updatedBy: req.user.id,
+        });
+      } catch (e) {
+        console.warn('[CREATE_GROUP_DISCOVERABLE_WARN]', e.message);
+      }
+    }
 
     console.log(`👥 [CAMPUS_GROUP] Created "${group.name}" (Code: ${joinCode}) by ${req.user.name}`);
 

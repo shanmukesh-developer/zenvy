@@ -26,6 +26,7 @@ const viewerIsAdmin = (req) => {
 
 // Push + live alert to admins about a booking (real channels; WhatsApp only if a provider is set up).
 const realtime = require('../utils/realtime');
+const { sendServerError } = require('../utils/httpErrors');
 const notifyAdminsOfBooking = async (req, text, data) => {
   try {
     const io = req.app.get('io');
@@ -52,7 +53,7 @@ router.get('/', async (req, res) => {
     });
     res.json(pgs);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    sendServerError(res, err, '[PGROUTES_ERROR]');
   }
 });
 
@@ -307,7 +308,7 @@ router.post('/', protect, admin, async (req, res) => {
     realtime.publish('pg', 'created', pg.id);
     res.status(201).json(pg);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    sendServerError(res, err, '[PGROUTES_ERROR]');
   }
 });
 
@@ -320,7 +321,7 @@ router.get('/admin/admin-all', protect, admin, async (req, res) => {
     });
     res.json(pgs);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    sendServerError(res, err, '[PGROUTES_ERROR]');
   }
 });
 
@@ -342,7 +343,7 @@ router.put('/:id', protect, admin, async (req, res) => {
     realtime.publish('pg', 'updated', pg.id);
     res.json(pg);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    sendServerError(res, err, '[PGROUTES_ERROR]');
   }
 });
 
@@ -356,7 +357,7 @@ router.delete('/:id', protect, admin, async (req, res) => {
     realtime.publish('pg', 'deleted', req.params.id);
     res.json({ message: 'PG deleted successfully.' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    sendServerError(res, err, '[PGROUTES_ERROR]');
   }
 });
 
@@ -369,7 +370,7 @@ router.get('/:id/rooms-all', protect, admin, async (req, res) => {
     });
     res.json(rooms);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    sendServerError(res, err, '[PGROUTES_ERROR]');
   }
 });
 
@@ -385,7 +386,7 @@ router.post('/:id/rooms', protect, admin, async (req, res) => {
     realtime.publish('pg', 'updated', req.params.id, { scope: 'room' });
     res.status(201).json(room);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    sendServerError(res, err, '[PGROUTES_ERROR]');
   }
 });
 
@@ -405,7 +406,7 @@ router.put('/:id/rooms/:roomId', protect, admin, async (req, res) => {
     realtime.publish('pg', 'updated', req.params.id, { scope: 'room' });
     res.json(room);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    sendServerError(res, err, '[PGROUTES_ERROR]');
   }
 });
 
@@ -421,7 +422,7 @@ router.delete('/:id/rooms/:roomId', protect, admin, async (req, res) => {
     realtime.publish('pg', 'updated', req.params.id, { scope: 'room' });
     res.json({ message: 'Room deleted successfully.' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    sendServerError(res, err, '[PGROUTES_ERROR]');
   }
 });
 

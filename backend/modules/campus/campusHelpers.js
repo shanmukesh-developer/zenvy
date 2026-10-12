@@ -1,0 +1,147 @@
+// Small shared helpers for the campus module: push, public URLs, avatars, legacy DM decryption.
+const crypto = require('crypto');
+const { Op } = require('sequelize');
+
+// ── Public URLs ─────────────────────────────────────────────────────────────
+// Absolute origin of this API (Render sits behind a proxy; app has trust proxy = 1).
+const publicBase = (req) => {
+  const env = String(process.env.PUBLIC_API_URL || '').trim().replace(/\/+$/, '');
+  if (env) return env;
+  if (!req) return '';
+  return `${req.protocol}://${req.get('host')}`;
+};
+
+const MEDIA_PATH_RE = /^\/api\/campus\/media\/[0-9a-f-]{36}$/i;
+
+/** Turns a stored relative campus media path into an absolute URL; anything else is returned as is. */
+const absolutize = (req, url) => {
+  if (typeof url !== 'string' || !url) return url || null;
+  if (url.startsWith('/api/')) return publicBase(req) + url;
+  return url;
+};
+
+/**
+ * Accepts a client-supplied image reference: a campus media path (/api/campus/media/<id>),
+ * an https/http URL, or (legacy) a data:image URL up to maxDataUrlChars. Returns the cleaned
+ * value or null when it is not acceptable.
+ */
+const cleanImageRef = (value, { maxDataUrlChars = 7 * 1024 * 1024 } = {}) => {
+  if (typeof value !== 'string') return null;
+  const v = value.trim();
+  if (!v) return null;
+  if (MEDIA_PATH_RE.test(v)) return v;
+  // Absolute form of our own media path, or any other hosted image.
+  if (/^https?:\/\/[^\s"'<>]{3,2000}$/i.test(v) && v.length <= 2048) return v;
+  if (/^data:image\/(jpeg|jpg|png|webp|gif);base64,[A-Za-z0-9+/=\s]+$/i.test(v) && v.length <= maxDataUrlChars) return v;
+  return null;
+};
+
+// Avatar for a user: data: URLs are not sent inline any more (they made chat lists megabytes);
+// they are served by GET /api/campus/avatar/:userId instead.
+const avatarUrlFor = (req, user) => {
+  if (!user) return null;
+  const img = user.profileImage;
+  if (!img || typeof img !== 'string') return null;
+  if (img.startsWith('data:')) {
+    const v = crypto.createHash('sha1').update(img.slice(-64) + String(img.length)).digest('hex').slice(0, 10);
+    return `${publicBase(req)}/api/campus/avatar/${user.id}?v=${v}`;
+  }
+  return absolutize(req, img);
+};
+
+// ── Legacy friend-DM encryption ─────────────────────────────────────────────
+// /api/friends/message stores 'iv_hex:cipher_hex'. Campus screens must show the real text.
+const ENC_RE = /^[0-9a-f]{32}:[0-9a-f]+$/i;
+const readableText = (text) => {
+  if (typeof text !== 'string' || !ENC_RE.test(text)) return text;
+  try {
+    const { decryptText } = require('../../utils/crypto');
+    const out = decryptText(text);
+    if (typeof out === 'string' && out.startsWith('[Decryption Failed')) return 'Message unavailable';
+    return out;
+  } catch {
+    return 'Message unavailable';
+  }
+};
+
+// ── Blocks ──────────────────────────────────────────────────────────────────
+/** True when either user has blocked the other (Friendship.status = 'blocked'). */
+const isBlockedBetween = async (a, b) => {
+  if (!a || !b) return false;
+  try {
+    const { getFriendshipModel } = require('../../models/Friendship');
+    const Friendship = getFriendshipModel();
+    if (!Friendship) return false;
+    const row = await Friendship.findOne({
+      where: {
+        status: 'blocked',
+        [Op.or]: [{ requesterId: a, recipientId: b }, { requesterId: b, recipientId: a }],
+      },
+      attributes: ['id'],
+    });
+    return !!row;
+  } catch {
+    return false;
+  }
+};
+
+/** Set of user ids that are blocked with `userId` in either direction. */
+const blockedIdsFor = async (userId) => {
+  const out = new Set();
+  try {
+    const { getFriendshipModel } = require('../../models/Friendship');
+    const Friendship = getFriendshipModel();
+    if (!Friendship) return out;
+    const rows = await Friendship.findAll({
+      where: { status: 'blocked', [Op.or]: [{ requesterId: userId }, { recipientId: userId }] },
+      attributes: ['requesterId', 'recipientId'],
+    });
+    rows.forEach((r) => out.add(r.requesterId === userId ? r.recipientId : r.requesterId));
+  } catch { /* none */ }
+  return out;
+};
+
+// ── Push ────────────────────────────────────────────────────────────────────
+const tokensOf = (user) => {
+  let list = user && user.fcmTokens;
+  if (typeof list === 'string') {
+    try { list = JSON.parse(list); } catch { list = [list]; }
+  }
+  return Array.isArray(list) ? list.map((t) => (typeof t === 'string' ? t : t && t.token)).filter(Boolean) : [];
+};
+
+/**
+ * Push to a set of users. Never throws.
+ * opts.persist=false keeps it out of the in-app notification list (chat bubbles, calls).
+ */
+const pushToUsers = async (userIds, title, body, data = {}, opts = {}) => {
+  try {
+    const ids = [...new Set((userIds || []).filter(Boolean).map(String))].slice(0, 500);
+    if (!ids.length) return;
+    const { getUserModel } = require('../../models/User');
+    const { sendPushToTokens } = require('../../utils/push');
+    const User = getUserModel();
+    if (!User) return;
+    const users = await User.findAll({ where: { id: { [Op.in]: ids } }, attributes: ['id', 'fcmTokens'] });
+    const tokens = [];
+    users.forEach((u) => tokens.push(...tokensOf(u)));
+    await sendPushToTokens(tokens, title, body, data, {
+      recipients: users.map((u) => u.id),
+      ...(opts.persist === false ? { persist: false } : {}),
+    });
+  } catch (err) {
+    console.warn('[CAMPUS_PUSH_WARN]', err.message);
+  }
+};
+
+module.exports = {
+  publicBase,
+  absolutize,
+  cleanImageRef,
+  avatarUrlFor,
+  readableText,
+  isBlockedBetween,
+  blockedIdsFor,
+  pushToUsers,
+  MEDIA_PATH_RE,
+};

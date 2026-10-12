@@ -121,7 +121,19 @@ const updateTicket = async (req, res) => {
     const previousStatus = ticket.status;
     const previousResponse = ticket.adminResponse;
     if (status) ticket.status = status;
-    if (adminResponse) ticket.adminResponse = adminResponse;
+    if (adminResponse && typeof adminResponse === 'string' && adminResponse.trim()) {
+      // Append, never overwrite: a second reply used to wipe the first one the customer had read.
+      const thread = Array.isArray(ticket.responses) ? [...ticket.responses] : [];
+      if (thread.length === 0 && previousResponse) {
+        thread.push({ text: String(previousResponse), at: new Date(ticket.updatedAt || Date.now()).toISOString(), by: 'support' });
+      }
+      thread.push({ text: adminResponse.trim().slice(0, 2000), at: new Date().toISOString(), by: 'support' });
+      ticket.responses = thread.slice(-50);
+      const stamp = (iso) => new Date(iso).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+      ticket.adminResponse = thread.length === 1
+        ? thread[0].text
+        : thread.map((r) => `[${stamp(r.at)}] ${r.text}`).join('\n\n');
+    }
 
     await ticket.save();
     realtime.notifyAdmin('ticket', 'updated', ticket.id);

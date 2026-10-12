@@ -4,7 +4,8 @@ const { getUserModel } = require('../models/User');
 const { sendPushToTokens } = require('../utils/push');
 
 const initStreakNudge = () => {
-  // Run daily at 18:00 (6:00 PM) to catch users before their streak resets at midnight
+  // Daily at 18:00 IST (Render runs in UTC), while campus ordering is still open (closes 21:00 IST),
+  // so the student can still act on it before the streak resets at midnight.
   cron.schedule('0 18 * * *', async () => {
     console.log('[STREAK CRON] Running daily fire streak expiry checks...');
     try {
@@ -12,8 +13,8 @@ const initStreakNudge = () => {
     } catch (error) {
       console.error('[STREAK CRON] Error during streak nudge cycle:', error);
     }
-  });
-  console.log('⏰ [CRON] Daily streak nudge job scheduled at 6:00 PM');
+  }, { timezone: 'Asia/Kolkata' });
+  console.log('⏰ [CRON] Daily streak nudge job scheduled at 6:00 PM IST');
 };
 
 const runStreakNudgeLogic = async () => {
@@ -41,14 +42,15 @@ const runStreakNudgeLogic = async () => {
   const users = await User.findAll({
     where: {
       role: 'student',
-      isActive: 1,
+      isActive: true,
       streakCount: {
         [Op.gt]: 0
       },
       lastOrderDate: {
         [Op.ne]: null
       }
-    }
+    },
+    attributes: ['id', 'streakCount', 'lastOrderDate', 'fcmTokens']
   });
 
   console.log(`[STREAK CHECK] Scanning ${users.length} users with active streaks...`);
@@ -60,23 +62,24 @@ const runStreakNudgeLogic = async () => {
     // If their last order was yesterday, and they have not placed an order today yet,
     // their streak is expiring at midnight today (in a few hours)!
     if (userLastOrderStr === yesterdayStr) {
-      const tokens = user.fcmTokens ? JSON.parse(user.fcmTokens) : [];
+      // The User model getter already returns an array (JSON.parse here threw and aborted the loop).
+      const tokens = Array.isArray(user.fcmTokens) ? user.fcmTokens : [];
       if (tokens.length > 0) {
-        console.log(`[STREAK NUDGE] Nudging ${user.name} (${user.phone}) - Last order: ${userLastOrderStr}`);
-        
-        await sendPushToTokens(
-          user.fcmTokens,
-          'Maintain your streak! 🔥',
-          `Your daily fire streak of ${user.streakCount} days is expiring in a few hours. Place an order now to keep it alive!`,
-          {
-            type: 'streak_nudge',
-            streakCount: String(user.streakCount)
-          },
-          { recipients: [user.id] }
-        );
-        nudgedCount++;
-      } else {
-        console.log(`[STREAK NUDGE] User ${user.name} has expiring streak but no registered push tokens.`);
+        try {
+          await sendPushToTokens(
+            tokens,
+            'Maintain your streak! 🔥',
+            `Your daily fire streak of ${user.streakCount} days is expiring in a few hours. Place an order now to keep it alive!`,
+            {
+              type: 'streak_nudge',
+              streakCount: String(user.streakCount)
+            },
+            { recipients: [user.id] }
+          );
+          nudgedCount++;
+        } catch (pushErr) {
+          console.warn(`[STREAK NUDGE] Push failed for user ${user.id}:`, pushErr.message);
+        }
       }
     }
   }

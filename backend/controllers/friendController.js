@@ -7,6 +7,9 @@ const { encryptText, decryptText } = require('../utils/crypto');
 const { sendPushToTokens } = require('../utils/push');
 const { Op } = require('sequelize');
 
+// Campus friends list cap (was 10 "close friends", which blocked normal classmates from connecting).
+const MAX_FRIENDS = 200;
+
 // Helper to calculate / update streaks
 const updateFriendshipStreak = async (friendship) => {
   const now = new Date();
@@ -31,6 +34,19 @@ const updateFriendshipStreak = async (friendship) => {
 
   friendship.lastInteractionAt = now;
   await friendship.save();
+};
+
+// Friend chats live in the same Conversations as Campus Chats. Mirror REST events to the /campus
+// socket namespace so the Campus Chats screen updates live (plain text only, never ciphertext).
+const emitToCampus = (req, rooms, event, payload) => {
+  try {
+    const io = req.app.get('io');
+    if (!io) return;
+    const nsp = io.of('/campus');
+    rooms.forEach((room) => nsp.to(room).emit(event, payload));
+  } catch (err) {
+    console.warn('[FRIEND_CAMPUS_EMIT_WARN]', err.message);
+  }
 };
 
 // Helper to push notifications to specific user ID
@@ -165,7 +181,7 @@ exports.sendFriendRequest = async (req, res) => {
         }
       });
       if (!targetUser) {
-        return res.status(404).json({ message: `No student found with Orbit Code: ${codeToFind}` });
+        return res.status(404).json({ code: 'USER_NOT_FOUND', message: `No one found with friend code ${codeToFind}. Check the code and try again.` });
       }
       recipientId = targetUser.id;
     }
@@ -173,7 +189,12 @@ exports.sendFriendRequest = async (req, res) => {
     if (!recipientId) return res.status(400).json({ message: 'recipientId or valid friendCode is required.' });
 
     if (recipientId === req.user.id) {
-      return res.status(400).json({ message: 'You cannot connect with your own Orbit Pass.' });
+      return res.status(400).json({ message: 'That is your own friend code.' });
+    }
+
+    const recipient = await User.findByPk(recipientId, { attributes: ['id', 'isActive'] });
+    if (!recipient || recipient.isActive === false) {
+      return res.status(404).json({ code: 'USER_NOT_FOUND', message: 'This student is not on Zenvy.' });
     }
 
     // Check existing
@@ -187,7 +208,17 @@ exports.sendFriendRequest = async (req, res) => {
     });
 
     if (existing) {
-      return res.status(400).json({ message: `Friendship already exists with status: ${existing.status}` });
+      if (existing.status === 'accepted') {
+        return res.status(409).json({ code: 'ALREADY_FRIENDS', message: 'You are already friends.', friendshipId: existing.id });
+      }
+      if (existing.status === 'pending' && existing.requesterId === req.user.id) {
+        return res.status(409).json({ code: 'REQUEST_ALREADY_SENT', message: 'Request already sent. Waiting for them to accept.', friendshipId: existing.id });
+      }
+      if (existing.status === 'pending') {
+        return res.status(409).json({ code: 'REQUEST_INCOMING', message: 'They already sent you a request. Accept it to connect.', friendshipId: existing.id });
+      }
+      // Blocked (either side): do not reveal who blocked whom.
+      return res.status(403).json({ code: 'CANNOT_REQUEST', message: 'You cannot send a request to this person.' });
     }
 
     // Strict check: count accepted friends for sender
@@ -200,8 +231,8 @@ exports.sendFriendRequest = async (req, res) => {
         ]
       }
     });
-    if (requesterFriendsCount >= 10) {
-      return res.status(400).json({ message: 'Your orbit is full (10 close friends max).' });
+    if (requesterFriendsCount >= MAX_FRIENDS) {
+      return res.status(400).json({ code: 'FRIEND_LIMIT', message: `You can have up to ${MAX_FRIENDS} friends. Remove someone to add more.` });
     }
 
     const friendship = await Friendship.create({
@@ -232,7 +263,7 @@ exports.sendFriendRequest = async (req, res) => {
       recipientId,
       `🎉 Orbit Link Request [${friendship.vibe || 'Roomie'}]`,
       `${req.user.name} wants to connect with vibe "${friendship.vibe || 'Roomie'}"!`,
-      { type: 'FRIEND_REQUEST', requesterId: req.user.id }
+      { type: 'FRIEND_REQUEST', requesterId: req.user.id, friendshipId: friendship.id, screen: 'friend_requests' }
     );
 
     res.status(201).json({ message: 'Friend request sent.', friendship });
@@ -258,6 +289,10 @@ exports.acceptFriendRequest = async (req, res) => {
     if (friendship.recipientId !== req.user.id) {
       return res.status(403).json({ message: 'Only recipient can accept friend requests.' });
     }
+    if (friendship.status !== 'pending') {
+      // Never let "accept" turn a blocked pair back into friends.
+      return res.status(400).json({ code: 'NOT_PENDING', message: friendship.status === 'accepted' ? 'You are already friends.' : 'This request is no longer available.' });
+    }
 
     // Strict check: count accepted friends for requester
     const requesterFriendsCount = await Friendship.count({
@@ -269,8 +304,8 @@ exports.acceptFriendRequest = async (req, res) => {
         ]
       }
     });
-    if (requesterFriendsCount >= 10) {
-      return res.status(400).json({ message: 'The requester has reached the maximum limit of 10 close friends.' });
+    if (requesterFriendsCount >= MAX_FRIENDS) {
+      return res.status(400).json({ code: 'FRIEND_LIMIT', message: `They already have ${MAX_FRIENDS} friends, so this request can't be accepted.` });
     }
 
     // Strict check: count accepted friends for recipient (current user)
@@ -283,8 +318,8 @@ exports.acceptFriendRequest = async (req, res) => {
         ]
       }
     });
-    if (recipientFriendsCount >= 10) {
-      return res.status(400).json({ message: 'Your orbit is full (10 close friends max).' });
+    if (recipientFriendsCount >= MAX_FRIENDS) {
+      return res.status(400).json({ code: 'FRIEND_LIMIT', message: `You can have up to ${MAX_FRIENDS} friends. Remove someone to add more.` });
     }
 
     friendship.status = 'accepted';
@@ -312,6 +347,7 @@ exports.acceptFriendRequest = async (req, res) => {
     if (!conversation) {
       conversation = await Conversation.create({
         isGroup: false,
+        type: 'dm',
         participants
       });
     }
@@ -321,10 +357,12 @@ exports.acceptFriendRequest = async (req, res) => {
       try {
         const Message = getMessageModel();
         if (Message) {
+          const requester = await getUserModel().findByPk(friendship.requesterId, { attributes: ['name'] });
           const encrypted = encryptText(`⚡ [Orbit Link • ${friendship.vibe || 'Roomie'}] ${friendship.icebreaker}`);
           await Message.create({
             conversationId: conversation.id,
             senderId: friendship.requesterId,
+            senderName: requester ? requester.name : null,
             text: encrypted
           });
         }
@@ -344,11 +382,19 @@ exports.acceptFriendRequest = async (req, res) => {
       });
     }
 
+    // Both chat lists in Campus get the new conversation without a refresh.
+    emitToCampus(req, [`user:${friendship.requesterId}`, `user:${friendship.recipientId}`], 'chat:updated', {
+      chatId: conversation.id,
+      lastMessage: friendship.icebreaker ? 'Orbit link note' : 'You are now friends',
+      lastSender: null,
+      time: new Date(),
+    });
+
     await sendPushToUser(
       friendship.requesterId,
       '🤝 Friend Request Accepted',
       `${req.user.name} accepted your Orbit request [${friendship.vibe || 'Roomie'}]!`,
-      { type: 'FRIEND_ACCEPTED', friendId: req.user.id }
+      { type: 'FRIEND_ACCEPTED', friendId: req.user.id, chatId: conversation.id, conversationId: conversation.id, screen: 'campus_chat' }
     );
 
     res.json({ message: 'Friend request accepted.', friendship, conversationId: conversation.id });
@@ -359,6 +405,14 @@ exports.acceptFriendRequest = async (req, res) => {
 };
 
 // 4. Get Friends List
+const friendsAvatarUrl = (req, user) => {
+  try {
+    return require('../modules/campus/campusHelpers').avatarUrlFor(req, user);
+  } catch {
+    return null;
+  }
+};
+
 exports.getFriends = async (req, res) => {
   try {
     const Friendship = getFriendshipModel();
@@ -411,7 +465,9 @@ exports.getFriends = async (req, res) => {
         icebreaker: fs.icebreaker || null,
         friendCode: friend.friendCode || null,
         phone: friend.phone,
-        profileImage: friend.profileImage,
+        // Base64 photos made this list several MB; send a short avatar link instead.
+        profileImage: friend.profileImage && !String(friend.profileImage).startsWith('data:') ? friend.profileImage : null,
+        avatarUrl: friendsAvatarUrl(req, friend),
         streakCount: fs.streakCount || 0,
         lastInteractionAt: fs.lastInteractionAt,
         theme: fs.theme || 'friendship',
@@ -616,6 +672,26 @@ exports.sendFriendMessage = async (req, res) => {
       text // Decrypted on sender's response
     };
 
+    // Campus Chats (same conversation) see the plain text live too.
+    emitToCampus(req, [`chat:${conversationId}`], 'message:new', {
+      id: message.id,
+      chatId: conversationId,
+      senderId: req.user.id,
+      senderName: req.user.name,
+      text,
+      type: 'text',
+      createdAt: message.createdAt,
+      deliveryStatus: 'sent',
+    });
+    if (otherUserId) {
+      emitToCampus(req, [`user:${otherUserId}`], 'chat:updated', {
+        chatId: conversationId,
+        lastMessage: text.length > 80 ? `${text.slice(0, 80)}...` : text,
+        lastSender: req.user.name,
+        time: new Date(),
+      });
+    }
+
     const io = req.app.get('io');
     if (io) {
       io.to(`conversation-${conversationId}`).emit('new_friend_message', decryptedMessage);
@@ -626,7 +702,7 @@ exports.sendFriendMessage = async (req, res) => {
           otherUserId,
           `${req.user.name}`,
           previewText,
-          { type: 'NEW_CHAT_MESSAGE', conversationId }
+          { type: 'NEW_CHAT_MESSAGE', conversationId, chatId: conversationId, screen: 'campus_chat' }
         );
       }
     }
@@ -706,6 +782,10 @@ exports.removeFriend = async (req, res) => {
 
     if (friendship.requesterId !== req.user.id && friendship.recipientId !== req.user.id) {
       return res.status(403).json({ message: 'Not authorized to remove this friend' });
+    }
+    if (friendship.status === 'blocked') {
+      // Removing a blocked row would silently lift the block; only the blocker may unblock.
+      return res.status(400).json({ code: 'BLOCKED', message: 'Use unblock to change a blocked contact.' });
     }
 
     await friendship.destroy();
@@ -1024,5 +1104,88 @@ exports.markStatusAsSeen = async (req, res) => {
   } catch (error) {
     console.error('[MARK_STATUS_SEEN_ERROR]', error);
     res.status(500).json({ message: 'Server error marking status as seen.' });
+  }
+};
+
+// ── Request inbox (consistent REST shape) ──────────────────────────────────
+// GET /api/friends/requests -> { incoming: [...], outgoing: [...] }
+exports.getFriendRequests = async (req, res) => {
+  try {
+    const Friendship = getFriendshipModel();
+    const User = getUserModel();
+    if (!Friendship || !User) return res.status(500).json({ message: 'Models not loaded' });
+
+    const rows = await Friendship.findAll({
+      where: {
+        status: 'pending',
+        [Op.or]: [{ recipientId: req.user.id }, { requesterId: req.user.id }]
+      },
+      order: [['createdAt', 'DESC']],
+      limit: 200
+    });
+    const otherIds = [...new Set(rows.map(r => (r.requesterId === req.user.id ? r.recipientId : r.requesterId)))];
+    const users = otherIds.length
+      ? await User.findAll({ where: { id: { [Op.in]: otherIds } }, attributes: ['id', 'name', 'profileImage', 'friendCode'] })
+      : [];
+    const byId = {};
+    users.forEach(u => { byId[u.id] = u; });
+    let avatarUrlFor = null;
+    try { avatarUrlFor = require('../modules/campus/campusHelpers').avatarUrlFor; } catch { /* optional */ }
+
+    const shape = (r, other) => ({
+      friendshipId: r.id,
+      vibe: r.vibe || 'Roomie',
+      icebreaker: r.icebreaker || null,
+      createdAt: r.createdAt,
+      user: other ? {
+        id: other.id,
+        name: other.name,
+        friendCode: other.friendCode || null,
+        avatarUrl: avatarUrlFor ? avatarUrlFor(req, other) : null
+      } : null
+    });
+
+    const incoming = [];
+    const outgoing = [];
+    for (const r of rows) {
+      const mine = r.requesterId === req.user.id;
+      const other = byId[mine ? r.recipientId : r.requesterId];
+      if (!other) continue;
+      (mine ? outgoing : incoming).push(shape(r, other));
+    }
+    res.json({ incoming, outgoing });
+  } catch (error) {
+    console.error('[GET_FRIEND_REQUESTS_ERROR]', error);
+    res.status(500).json({ message: 'Server error fetching requests.' });
+  }
+};
+
+// POST /api/friends/requests/:id/accept  and  /requests/:id/decline
+exports.acceptFriendRequestById = (req, res) => {
+  req.body = { ...(req.body || {}), friendshipId: req.params.id };
+  return exports.acceptFriendRequest(req, res);
+};
+exports.declineFriendRequestById = (req, res) => {
+  req.body = { ...(req.body || {}), friendshipId: req.params.id };
+  return exports.declineFriendRequest(req, res);
+};
+
+// DELETE /api/friends/requests/:id -> the sender withdraws their own pending request
+exports.cancelFriendRequest = async (req, res) => {
+  try {
+    const Friendship = getFriendshipModel();
+    if (!Friendship) return res.status(500).json({ message: 'Model not loaded' });
+    const friendship = await Friendship.findByPk(req.params.id);
+    if (!friendship || friendship.requesterId !== req.user.id || friendship.status !== 'pending') {
+      return res.status(404).json({ message: 'Request not found.' });
+    }
+    const recipientId = friendship.recipientId;
+    await friendship.destroy();
+    const io = req.app.get('io');
+    if (io) io.to(`user_${recipientId}`).emit('friend_request_cancelled', { friendshipId: req.params.id });
+    res.json({ message: 'Request withdrawn.' });
+  } catch (error) {
+    console.error('[CANCEL_FRIEND_REQUEST_ERROR]', error);
+    res.status(500).json({ message: 'Server error withdrawing request.' });
   }
 };

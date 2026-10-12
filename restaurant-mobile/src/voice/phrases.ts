@@ -23,6 +23,7 @@ export type VoiceEvent =
   | { kind: 'storeClosed'; orders: number; sales: number }
   | { kind: 'offline' }
   | { kind: 'online' }
+  | { kind: 'itemAdded' }
   | { kind: 'test' };
 
 const CAMPUS_SPOKEN: Record<string, Record<VoiceLang, string>> = {
@@ -106,9 +107,24 @@ export function phrase(e: VoiceEvent, lang: VoiceLang): string {
       if (lang === 'te') return 'మళ్ళీ కనెక్ట్ అయ్యింది.';
       if (lang === 'hi') return 'फिर से कनेक्ट हो गया.';
       return 'Connected again.';
+    case 'itemAdded':
+      if (lang === 'te') return 'కొత్త ఐటమ్ యాడ్ అయ్యింది.';
+      if (lang === 'hi') return 'नया आइटम जुड़ गया.';
+      return 'New item added.';
     case 'test':
       if (lang === 'te') return 'జెన్వీ వాయిస్ పని చేస్తోంది. కొత్త ఆర్డర్ వస్తే ఇలా చెబుతాను.';
       if (lang === 'hi') return 'ज़ेनवी आवाज़ चालू है. नया ऑर्डर आने पर ऐसे बताऊंगी.';
       return 'Zenvy voice is working. I will announce new orders like this.';
   }
+}
+
+/** Text of the native heads-up notification for a new order (shown on the lock screen). */
+export function orderNotification(orderNum: string, amount: string, lang: VoiceLang): { title: string; body: string } {
+  if (lang === 'hi') {
+    return { title: `🔔 ज़ेनवी नया ऑर्डर! (₹${amount})`, body: `ऑर्डर #${orderNum}. खोलकर स्वीकार करें.` };
+  }
+  if (lang === 'en') {
+    return { title: `🔔 New Zenvy order! (₹${amount})`, body: `Order #${orderNum}. Open the app to accept.` };
+  }
+  return { title: `🔔 జెన్వీ కొత్త ఆర్డర్! (₹${amount})`, body: `ఆర్డర్ #${orderNum}. యాప్ తెరిచి యాక్సెప్ట్ చేయండి.` };
 }

@@ -1,5 +1,5 @@
 const express = require('express');
-const { protect, rider, admin } = require('../middleware/authMiddleware');
+const { protect, approvedRider, admin } = require('../middleware/authMiddleware');
 const {
   createBasket,
   payBasket,
@@ -15,7 +15,8 @@ const {
   startDelivery,
   completeDelivery,
   getActiveBaskets,
-  getAllBaskets
+  getAllBaskets,
+  cancelBasket
 } = require('../controllers/megaBasketController');
 
 const router = express.Router();
@@ -29,16 +30,17 @@ router.get('/', protect, getCustomerBaskets);
 router.get('/:id', protect, getBasket);
 router.post('/:id/pay', protect, payBasket);
 router.post('/:id/approve', protect, approvePrices);
+router.put('/:id/cancel', protect, cancelBasket); // owner before shopping starts, admin any time before delivery
 
 // Rider Endpoints
-router.get('/rider/pending', protect, rider, getPendingBaskets);
-router.get('/rider/active', protect, rider, getActiveBaskets);
-router.post('/:id/claim', protect, rider, claimBasket);
-router.post('/:id/start-shopping', protect, rider, startShopping);
-router.put('/:id/item-status', protect, rider, updateItemStatus);
-router.post('/:id/submit-bill', protect, rider, submitBill);
-router.post('/:id/purchase-completed', protect, rider, purchaseCompleted);
-router.post('/:id/start-delivery', protect, rider, startDelivery);
-router.post('/:id/complete-delivery', protect, rider, completeDelivery);
+router.get('/rider/pending', protect, approvedRider, getPendingBaskets);
+router.get('/rider/active', protect, approvedRider, getActiveBaskets);
+router.post('/:id/claim', protect, approvedRider, claimBasket);
+router.post('/:id/start-shopping', protect, approvedRider, startShopping);
+router.put('/:id/item-status', protect, approvedRider, updateItemStatus);
+router.post('/:id/submit-bill', protect, approvedRider, submitBill);
+router.post('/:id/purchase-completed', protect, approvedRider, purchaseCompleted);
+router.post('/:id/start-delivery', protect, approvedRider, startDelivery);
+router.post('/:id/complete-delivery', protect, approvedRider, completeDelivery);
 
 module.exports = router;

@@ -16,6 +16,7 @@ function OpenSwitch() {
   const [confirm, setConfirm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [readOnlyInfo, setReadOnlyInfo] = useState(false);
+  const [pausedInfo, setPausedInfo] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   if (!store) {
@@ -30,8 +31,10 @@ function OpenSwitch() {
       </Pressable>
     );
   }
-  const on = store.isOpenNow;
-  const live = store.isOpen;
+  // Store deactivated by Zenvy admin: the owner's switch has no effect, so show it as paused + read-only.
+  const paused = store.isActive === false;
+  const on = store.isOpenNow && !paused;
+  const live = store.isOpen && !paused;
 
   const change = async (open: boolean) => {
     if (saving) return;
@@ -44,6 +47,7 @@ function OpenSwitch() {
   };
 
   const onPress = () => {
+    if (paused) { setPausedInfo(true); return; }
     if (!openToggleSupported) { setReadOnlyInfo(true); return; }
     setErr(null);
     if (on) setConfirm(true);
@@ -60,12 +64,12 @@ function OpenSwitch() {
         disabled={saving}
         accessibilityRole="switch"
         accessibilityState={{ checked: on, busy: saving }}
-        accessibilityLabel={live ? 'Store open. Tap to close' : on ? 'Switched on but outside hours' : 'Store closed. Tap to open'}
+        accessibilityLabel={paused ? 'Store paused by Zenvy. Tap for support' : live ? 'Store open. Tap to close' : on ? 'Switched on but outside hours' : 'Store closed. Tap to open'}
         style={({ pressed }) => [styles.pill, { backgroundColor: live ? color.open : on ? color.warning : color.closed }, pressed && { opacity: 0.85 }]}
       >
         {saving ? <ActivityIndicator color={color.textInverse} style={{ flex: 1 }} /> : (
           <>
-            <Text style={[font.label, { color: color.textInverse, fontSize: 14 }]}>{on ? 'OPEN' : 'CLOSED'}</Text>
+            <Text style={[font.label, { color: color.textInverse, fontSize: 14 }]}>{paused ? 'PAUSED' : on ? 'OPEN' : 'CLOSED'}</Text>
             <View style={[styles.track, { alignItems: on ? 'flex-end' : 'flex-start' }]}>
               <View style={styles.knob} />
             </View>
@@ -89,6 +93,13 @@ function OpenSwitch() {
         </View>
       </Sheet>
 
+      <Sheet visible={pausedInfo} onClose={() => setPausedInfo(false)} title="Paused by Zenvy">
+        <Text style={[font.body, { color: color.textSecondary, marginBottom: space.md }]}>
+          Zenvy has paused your store, so customers can't order right now. Call Zenvy support to turn it back on.
+        </Text>
+        <Button label="Call Zenvy support" icon="call" onPress={() => Linking.openURL(`tel:+${SUPPORT_PHONE}`).catch(() => {})} />
+      </Sheet>
+
       <Sheet visible={readOnlyInfo} onClose={() => setReadOnlyInfo(false)} title="Store status">
         <Text style={[font.body, { color: color.textSecondary, marginBottom: space.md }]}>
           Opening and closing from the app is not available yet. Call Zenvy support to change it.
@@ -106,7 +117,10 @@ export function StoreBar() {
   let line = 'Checking status…';
   let lineColor: string = color.textMuted;
   if (store) {
-    if (store.isOpen) {
+    if (store.isActive === false) {
+      line = 'Paused by Zenvy — contact support';
+      lineColor = color.alertDark;
+    } else if (store.isOpen) {
       line = 'Accepting orders';
       lineColor = color.openDark;
     } else if (store.isOpenNow) {

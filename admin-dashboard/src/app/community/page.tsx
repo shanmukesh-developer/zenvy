@@ -199,7 +199,7 @@ export default function CommunityAdmin() {
       <header className="flex justify-between items-center flex-wrap gap-4">
         <div>
           <h1 className="text-3xl font-black tracking-tighter text-white">Community & <span className="text-purple-400">Celebrations</span></h1>
-          <p className="text-[11px] text-gray-500 uppercase tracking-widest mt-1">Moderate campus posts and birthday requests</p>
+          <p className="text-[11px] text-gray-500 uppercase tracking-widest mt-1">Moderate campus posts and birthday requests · shows the latest 50 posts</p>
         </div>
         <div className="flex gap-2">
           <button

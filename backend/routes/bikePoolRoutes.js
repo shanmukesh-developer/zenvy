@@ -6,6 +6,7 @@ const { getUserModel } = require('../models/User');
 const { Op } = require('sequelize');
 
 const { getPoolRequestModel } = require('../models/PoolRequest');
+const { sendServerError } = require('../utils/httpErrors');
 
 // Atomic seat claim: decrements only while a seat is left and the ride is open.
 const takeSeat = async (poolId) => {
@@ -77,7 +78,7 @@ router.post('/posts', protect, async (req, res) => {
     res.status(201).json(newPost);
   } catch (err) {
     console.error('[BIKEPOOL_CREATE_ERROR]', err);
-    res.status(500).json({ message: 'Failed to create bike pool post.', error: err.message });
+    sendServerError(res, err, '[BIKEPOOLROUTES_ERROR]');
   }
 });
 
@@ -137,7 +138,7 @@ router.get('/posts', protect, async (req, res) => {
     res.json(filteredPools);
   } catch (err) {
     console.error('[BIKEPOOL_LIST_ERROR]', err);
-    res.status(500).json({ message: 'Failed to fetch available pools.', error: err.message });
+    sendServerError(res, err, '[BIKEPOOLROUTES_ERROR]');
   }
 });
 
@@ -210,7 +211,7 @@ router.post('/posts/:id/join', protect, async (req, res) => {
     }
   } catch (err) {
     console.error('[BIKEPOOL_JOIN_ERROR]', err);
-    res.status(500).json({ message: 'Failed to join ride pool.', error: err.message });
+    sendServerError(res, err, '[BIKEPOOLROUTES_ERROR]');
   }
 });
 
@@ -265,7 +266,7 @@ router.post('/posts/:id/requests/:requestId/reject', protect, async (req, res) =
 
     res.json({ message: 'Request rejected.' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    sendServerError(res, err, '[BIKEPOOLROUTES_ERROR]');
   }
 });
 
@@ -347,7 +348,7 @@ router.post('/posts/:id/complete', protect, async (req, res) => {
     }
   } catch (err) {
     console.error('[BIKEPOOL_COMPLETE_ERROR]', err);
-    res.status(500).json({ message: 'Failed to complete ride splitting.', error: err.message });
+    sendServerError(res, err, '[BIKEPOOLROUTES_ERROR]');
   }
 });
 
@@ -478,7 +479,7 @@ router.get('/my-rides', protect, async (req, res) => {
     res.json(scrubbed);
   } catch (err) {
     console.error('[BIKEPOOL_MYRIDES_ERROR]', err);
-    res.status(500).json({ message: 'Failed to fetch your rides.', error: err.message });
+    sendServerError(res, err, '[BIKEPOOLROUTES_ERROR]');
   }
 });
 
@@ -495,7 +496,7 @@ router.post('/admin/:id/force-cancel', protect, admin, async (req, res) => {
     await pool.save();
     res.json({ message: 'Listing forcibly cancelled by Admin.', pool });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    sendServerError(res, err, '[BIKEPOOLROUTES_ERROR]');
   }
 });
 
@@ -508,7 +509,7 @@ router.post('/admin/:id/mark-paid', protect, admin, async (req, res) => {
     await pool.save();
     res.json({ message: 'Listing forcibly marked as Paid by Admin.', pool });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    sendServerError(res, err, '[BIKEPOOLROUTES_ERROR]');
   }
 });
 
@@ -526,7 +527,7 @@ router.get('/admin/all', protect, admin, async (req, res) => {
     });
     res.json(pools);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    sendServerError(res, err, '[BIKEPOOLROUTES_ERROR]');
   }
 });
 

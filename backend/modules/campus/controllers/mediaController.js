@@ -1,0 +1,257 @@
+// Campus media: one upload endpoint for every campus image (ID cards, chat photos, lost & found,
+// avatars, posts). Bytes are stored in the CampusMedia table and served from a short URL, so
+// nothing large travels through JSON lists or the socket any more.
+const crypto = require('crypto');
+const multer = require('multer');
+const { getCampusMediaModel } = require('../models/CampusMedia');
+const { getUserModel } = require('../../../models/User');
+const { publicBase } = require('../campusHelpers');
+
+const MAX_BYTES = 5 * 1024 * 1024;
+const PURPOSES = new Set(['id_card', 'chat', 'lost_found', 'avatar', 'post', 'other']);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Per-user upload budget (in memory; resets on restart, which is fine for abuse control).
+const WINDOW_MS = 60 * 60 * 1000;
+const MAX_PER_WINDOW = 60;
+const uploadLog = new Map(); // userId -> timestamps[]
+const overBudget = (userId) => {
+  const now = Date.now();
+  const list = (uploadLog.get(userId) || []).filter((t) => now - t < WINDOW_MS);
+  if (list.length >= MAX_PER_WINDOW) {
+    uploadLog.set(userId, list);
+    return true;
+  }
+  list.push(now);
+  uploadLog.set(userId, list);
+  return false;
+};
+
+/** Detects the real image type from the first bytes (never trust the client's MIME). */
+const sniffImage = (buf) => {
+  if (!buf || buf.length < 12) return null;
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47 && buf[4] === 0x0d && buf[5] === 0x0a && buf[6] === 0x1a && buf[7] === 0x0a) return 'image/png';
+  if (buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
+  const head6 = buf.toString('ascii', 0, 6);
+  if (head6 === 'GIF87a' || head6 === 'GIF89a') return 'image/gif';
+  return null;
+};
+
+const multerUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_BYTES, files: 1, fields: 10 },
+});
+
+/** multipart field 'image' (optional). Turns multer errors into clear JSON. */
+const parseUpload = (req, res, next) => {
+  const ct = String(req.headers['content-type'] || '');
+  if (!ct.toLowerCase().startsWith('multipart/form-data')) return next();
+  multerUpload.single('image')(req, res, (err) => {
+    if (!err) return next();
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ code: 'FILE_TOO_LARGE', message: 'That photo is larger than 5 MB. Please pick a smaller one.' });
+    }
+    if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+      return res.status(400).json({ code: 'BAD_FIELD', message: "Send the photo in the form field named 'image'." });
+    }
+    console.warn('[CAMPUS_MEDIA_MULTER]', err.code || err.message);
+    return res.status(400).json({ code: 'BAD_UPLOAD', message: 'Could not read that photo. Please try again.' });
+  });
+};
+
+/** Reads base64 / data URL from a JSON body. */
+const bufferFromBase64 = (raw) => {
+  if (typeof raw !== 'string' || !raw) return null;
+  let b64 = raw.trim();
+  const m = b64.match(/^data:([a-z0-9.+/-]+);base64,(.*)$/is);
+  if (m) b64 = m[2];
+  b64 = b64.replace(/\s+/g, '');
+  if (!/^[A-Za-z0-9+/=_-]+$/.test(b64)) return null;
+  // Rough pre-check so a huge string is not decoded just to be rejected.
+  if (Math.floor(b64.length * 3 / 4) > MAX_BYTES + 4) return 'too_large';
+  return Buffer.from(b64.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+};
+
+// @desc    Upload one image
+// @route   POST /api/campus/media   (multipart 'image' or JSON { image: base64|dataUrl, purpose })
+const uploadMedia = async (req, res) => {
+  try {
+    const Media = getCampusMediaModel();
+    if (!Media) return res.status(503).json({ message: 'Uploads are starting up. Please try again in a moment.' });
+
+    let buf = null;
+    if (req.file && req.file.buffer) buf = req.file.buffer;
+    else if (req.body && (req.body.image || req.body.base64)) buf = bufferFromBase64(req.body.image || req.body.base64);
+
+    if (buf === 'too_large') {
+      return res.status(413).json({ code: 'FILE_TOO_LARGE', message: 'That photo is larger than 5 MB. Please pick a smaller one.' });
+    }
+    if (!buf || !buf.length) {
+      return res.status(400).json({ code: 'NO_IMAGE', message: "No photo received. Send it as multipart field 'image' or JSON { image }." });
+    }
+    if (buf.length > MAX_BYTES) {
+      return res.status(413).json({ code: 'FILE_TOO_LARGE', message: 'That photo is larger than 5 MB. Please pick a smaller one.' });
+    }
+    const mime = sniffImage(buf);
+    if (!mime) {
+      return res.status(415).json({ code: 'UNSUPPORTED_TYPE', message: 'Only JPEG, PNG, WEBP or GIF photos are allowed.' });
+    }
+    if (overBudget(String(req.user.id))) {
+      return res.status(429).json({ code: 'TOO_MANY_UPLOADS', message: 'Too many uploads this hour. Please try again later.' });
+    }
+
+    const purposeRaw = String((req.body && req.body.purpose) || 'other').toLowerCase();
+    const purpose = PURPOSES.has(purposeRaw) ? purposeRaw : 'other';
+    const sha256 = crypto.createHash('sha256').update(buf).digest('hex');
+
+    // Same user, same bytes, same purpose -> reuse (retries after a timeout do not duplicate).
+    let row = await Media.findOne({ where: { ownerId: req.user.id, sha256, purpose }, attributes: ['id', 'mime', 'size'] });
+    if (!row) {
+      row = await Media.create({
+        ownerId: req.user.id,
+        purpose,
+        mime,
+        size: buf.length,
+        sha256,
+        isPrivate: purpose === 'id_card',
+        bytes: buf,
+      });
+    }
+
+    const path = `/api/campus/media/${row.id}`;
+    res.status(201).json({
+      id: row.id,
+      url: path,
+      absoluteUrl: publicBase(req) + path,
+      // Same shape as the old /api/upload so existing callers keep working.
+      imageUrl: publicBase(req) + path,
+      mime: row.mime || mime,
+      size: row.size || buf.length,
+    });
+  } catch (err) {
+    console.error('[CAMPUS_MEDIA_UPLOAD_ERR]', err.message);
+    res.status(500).json({ message: 'Could not save that photo. Please try again.' });
+  }
+};
+
+const sendBytes = (req, res, { bytes, mime, etag, maxAge, isPrivate }) => {
+  res.set({
+    'Content-Type': mime,
+    'Content-Length': String(bytes.length),
+    'Cache-Control': isPrivate ? 'private, max-age=86400' : `public, max-age=${maxAge}, immutable`,
+    ETag: etag,
+    'X-Content-Type-Options': 'nosniff',
+    'Content-Security-Policy': "default-src 'none'",
+    'Cross-Origin-Resource-Policy': 'cross-origin',
+  });
+  if (req.headers['if-none-match'] === etag) return res.status(304).end();
+  return res.status(200).end(bytes);
+};
+
+// @desc    Serve an uploaded image (public by unguessable id; ID cards are owner/admin only)
+// @route   GET /api/campus/media/:id
+const serveMedia = async (req, res) => {
+  try {
+    const id = String(req.params.id || '');
+    if (!UUID_RE.test(id)) return res.status(404).json({ message: 'Not found' });
+    const etag = `"m-${id}"`;
+    const Media = getCampusMediaModel();
+    const row = await Media.findByPk(id);
+    if (!row) return res.status(404).json({ message: 'Not found' });
+
+    if (row.isPrivate) {
+      // ID cards: only the owner or an admin (Bearer token), or a short-lived signed link
+      // (?exp=&sig=) handed out by authenticated endpoints so an <img> tag can load it.
+      let allowed = verifySignature(id, req.query.exp, req.query.sig);
+      if (!allowed) {
+        const viewer = await viewerFrom(req);
+        allowed = !!viewer && (String(viewer.id) === String(row.ownerId) || String(viewer.role || '').toLowerCase() === 'admin');
+      }
+      if (!allowed) return res.status(404).json({ message: 'Not found' });
+    }
+    if (req.headers['if-none-match'] === etag) {
+      res.set('ETag', etag);
+      return res.status(304).end();
+    }
+    const bytes = Buffer.isBuffer(row.bytes) ? row.bytes : Buffer.from(row.bytes || []);
+    return sendBytes(req, res, { bytes, mime: row.mime, etag, maxAge: 31536000, isPrivate: row.isPrivate });
+  } catch (err) {
+    console.error('[CAMPUS_MEDIA_SERVE_ERR]', err.message);
+    res.status(500).json({ message: 'Could not load that photo.' });
+  }
+};
+
+// ── Signed links for private media ───────────────────────────────────────────
+const SIGN_TTL_S = 60 * 60;
+const signKey = () => crypto.createHash('sha256').update(`campus-media:${process.env.JWT_SECRET || ''}`).digest();
+const sigFor = (id, exp) => crypto.createHmac('sha256', signKey()).update(`${id}.${exp}`).digest('hex').slice(0, 32);
+const verifySignature = (id, exp, sig) => {
+  if (!process.env.JWT_SECRET || typeof exp !== 'string' || typeof sig !== 'string' || sig.length !== 32) return false;
+  const e = Number(exp);
+  if (!Number.isFinite(e) || e < Math.floor(Date.now() / 1000)) return false;
+  const want = Buffer.from(sigFor(id, e));
+  const got = Buffer.from(sig);
+  return want.length === got.length && crypto.timingSafeEqual(want, got);
+};
+
+/**
+ * For responses to authorised viewers: returns an absolute URL that works in an <img> for an hour.
+ * Non-media URLs (https, legacy data:) are returned unchanged.
+ */
+const signedMediaUrl = (req, url) => {
+  if (typeof url !== 'string') return url || null;
+  const m = url.match(/\/api\/campus\/media\/([0-9a-f-]{36})(?:\?.*)?$/i);
+  if (!m || !(url.startsWith('/api/') || url.startsWith(publicBase(req)))) return url;
+  const exp = Math.floor(Date.now() / 1000) + SIGN_TTL_S;
+  return `${publicBase(req)}/api/campus/media/${m[1]}?exp=${exp}&sig=${sigFor(m[1], exp)}`;
+};
+
+// Optional auth for private media: Authorization: Bearer <jwt>.
+const viewerFrom = async (req) => {
+  try {
+    const jwt = require('jsonwebtoken');
+    const header = String(req.headers.authorization || '');
+    const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+    if (!token || !process.env.JWT_SECRET) return null;
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const User = getUserModel();
+    const user = await User.findByPk(decoded.id, { attributes: ['id', 'role', 'isActive'] });
+    if (user && user.isActive !== false) return user;
+    // Admin dashboard tokens may belong to a separate admin table; trust the signed role claim.
+    if (decoded && String(decoded.role || '').toLowerCase() === 'admin') return { id: decoded.id, role: 'admin' };
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+// @desc    A user's profile photo as an image (legacy data: URL avatars, decoded once and cached)
+// @route   GET /api/campus/avatar/:userId
+const serveAvatar = async (req, res) => {
+  try {
+    const userId = String(req.params.userId || '');
+    if (!UUID_RE.test(userId)) return res.status(404).json({ message: 'Not found' });
+    const User = getUserModel();
+    const user = await User.findByPk(userId, { attributes: ['id', 'profileImage'] });
+    const img = user && typeof user.profileImage === 'string' ? user.profileImage : '';
+    if (!img) return res.status(404).json({ message: 'No photo' });
+    if (/^https?:\/\//i.test(img) || img.startsWith('/api/')) {
+      res.set('Cache-Control', 'public, max-age=3600');
+      return res.redirect(302, img);
+    }
+    const m = img.match(/^data:([a-z0-9.+/-]+);base64,(.*)$/is);
+    if (!m) return res.status(404).json({ message: 'No photo' });
+    const bytes = Buffer.from(m[2].replace(/\s+/g, ''), 'base64');
+    const mime = sniffImage(bytes);
+    if (!mime) return res.status(404).json({ message: 'No photo' });
+    const etag = `"a-${crypto.createHash('sha1').update(bytes).digest('hex').slice(0, 16)}"`;
+    // ?v= changes whenever the photo changes, so a long cache is safe.
+    return sendBytes(req, res, { bytes, mime, etag, maxAge: req.query.v ? 604800 : 300, isPrivate: false });
+  } catch (err) {
+    console.error('[CAMPUS_AVATAR_ERR]', err.message);
+    res.status(500).json({ message: 'Could not load that photo.' });
+  }
+};
+
+module.exports = { parseUpload, uploadMedia, serveMedia, serveAvatar, sniffImage, signedMediaUrl };

@@ -1,17 +1,35 @@
 const failedLogins = new Map();
 
-// Clean up expired entries every 15 minutes to prevent memory leaks
+const LOCK_WINDOW_MS = 15 * 60 * 1000;
+
+// Clean up expired locks AND stale partial counts every 15 minutes (the map must not grow forever).
 setInterval(() => {
   const now = Date.now();
   for (const [key, record] of failedLogins.entries()) {
-    if (record.lockTime && now > record.lockTime) {
+    if ((record.lockTime && now > record.lockTime) || (!record.lockTime && now - (record.lastAt || 0) > LOCK_WINDOW_MS)) {
       failedLogins.delete(key);
     }
   }
-}, 15 * 60 * 1000);
+}, LOCK_WINDOW_MS).unref?.();
+
+// One key per account, however it is typed: '+91 98…', '098…' and '98…' are the same rider, and
+// 'Pizza ', 'pizza' and 'PIZZA' the same store. Falls back to the IP only when no identifier is sent.
+const lockoutKey = (req) => {
+  const body = req.body || {};
+  const raw = body.phone || body.email || body.id || body.name || body.identifier;
+  const scope = req.baseUrl || '';
+  if (!raw) return `${scope}|ip:${req.ip}`;
+  const text = String(raw).trim().toLowerCase();
+  const digits = text.replace(/\D/g, '');
+  if (!text.includes('@') && digits.length >= 10 && /^[+\d\s()-]+$/.test(text)) {
+    const { normalizePhone } = require('../utils/phoneUtils');
+    return `${scope}|phone:${normalizePhone(text)}`;
+  }
+  return `${scope}|id:${text.replace(/\s+/g, ' ')}`;
+};
 
 const accountLockout = (req, res, next) => {
-  const key = String(req.body.phone || req.body.email || req.body.id || req.ip);
+  const key = lockoutKey(req);
   const record = failedLogins.get(key);
 
   if (record && record.count >= 5) {
@@ -33,6 +51,7 @@ const accountLockout = (req, res, next) => {
     } else if (statusCode === 401 || statusCode === 400) {
       const current = failedLogins.get(key) || { count: 0, lockTime: 0 };
       current.count += 1;
+      current.lastAt = Date.now();
       if (current.count >= 5) {
         current.lockTime = Date.now() + 15 * 60 * 1000; // 15 mins lock
       }

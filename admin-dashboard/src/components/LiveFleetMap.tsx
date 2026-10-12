@@ -23,6 +23,26 @@ interface LiveFleetMapProps {
   checkpoints: Checkpoint[];
 }
 
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** Only http(s) image URLs are allowed into the popup (blocks javascript:/data: payloads). */
+function safeImageUrl(value: unknown): string | null {
+  if (typeof value !== 'string' || !value) return null;
+  try {
+    const u = new URL(value, window.location.origin);
+    return u.protocol === 'http:' || u.protocol === 'https:' ? u.href : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function LiveFleetMap({ riders, checkpoints }: LiveFleetMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -115,7 +135,7 @@ export default function LiveFleetMap({ riders, checkpoints }: LiveFleetMapProps)
     checkpoints.forEach(cp => {
       const marker = L.marker([cp.lat, cp.lng], { icon: nodeIcon })
         .addTo(map)
-        .bindPopup(`<div class="p-3"><p class="text-[10px] font-black uppercase text-blue-400 tracking-widest">${cp.name}</p></div>`, {
+        .bindPopup(`<div class="p-3"><p class="text-[10px] font-black uppercase text-blue-400 tracking-widest">${escapeHtml(cp.name)}</p></div>`, {
           className: 'custom-popup'
         });
       checkpointMarkersRef.current.push(marker);
@@ -151,25 +171,30 @@ export default function LiveFleetMap({ riders, checkpoints }: LiveFleetMapProps)
       const cpData = checkpoints.find(c => c.name === rider.currentCheckpoint);
       const pos: [number, number] = cpData ? [cpData.lat, cpData.lng] : CAMPUS_CENTER;
 
+      // Every rider-supplied value is escaped: these strings arrive over the socket exactly as the
+      // rider client sent them and Leaflet renders popup content as HTML.
+      const name = escapeHtml(rider.riderName || 'Rider');
+      const initial = escapeHtml((rider.riderName || 'R').charAt(0));
+      const photo = safeImageUrl(rider.photoUrl);
       const popupHtml = `
         <div class="p-4 bg-slate-900 min-w-[160px]">
           <div class="flex items-center gap-3 mb-3">
             <div class="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center font-black overflow-hidden">
-              ${rider.photoUrl ? `<img src="${rider.photoUrl}" alt="${rider.riderName}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 8px;" />` : rider.riderName?.[0] || 'R'}
+              ${photo ? `<img src="${escapeHtml(photo)}" alt="${name}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 8px;" />` : initial}
             </div>
             <div>
-              <h4 class="text-xs font-black text-white">${rider.riderName}</h4>
+              <h4 class="text-xs font-black text-white">${name}</h4>
               <p class="text-[8px] text-gray-500 uppercase font-black">Captain Active</p>
             </div>
           </div>
           <div class="space-y-1">
             <div class="flex justify-between text-[8px] font-black uppercase">
               <span class="text-gray-600">Sector</span>
-              <span class="text-blue-400">${rider.currentCheckpoint || 'Hub'}</span>
+              <span class="text-blue-400">${escapeHtml(rider.currentCheckpoint || 'Hub')}</span>
             </div>
             <div class="flex justify-between text-[8px] font-black uppercase">
               <span class="text-gray-600">Orders</span>
-              <span class="text-white">${rider.activeOrderCount}</span>
+              <span class="text-white">${escapeHtml(String(Number(rider.activeOrderCount) || 0))}</span>
             </div>
           </div>
         </div>

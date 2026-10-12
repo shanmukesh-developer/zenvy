@@ -1,4 +1,5 @@
 const { getUserModel } = require('../models/User');
+const { sendServerError } = require('../utils/httpErrors');
 
 // @desc    Check spin eligibility
 const checkSpinEntry = async (req, res) => {
@@ -18,7 +19,7 @@ const checkSpinEntry = async (req, res) => {
       prizes: SPIN_PRIZES
     });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    sendServerError(res, error, '[REWARDCONTROLLER_ERROR]');
   }
 };
 
@@ -152,7 +153,7 @@ const getUserCoupons = async (req, res) => {
       };
     }));
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    sendServerError(res, error, '[REWARDCONTROLLER_ERROR]');
   }
 };
 
@@ -178,7 +179,7 @@ const validateCoupon = async (req, res) => {
 
     res.json({ valid: true, coupon });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    sendServerError(res, error, '[REWARDCONTROLLER_ERROR]');
   }
 };
 

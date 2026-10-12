@@ -3,6 +3,87 @@ const { getCampusProfileModel } = require('../models/CampusProfile');
 const { getVerificationModel } = require('../models/Verification');
 const { getUserModel } = require('../../../models/User');
 const realtime = require('../../../utils/realtime');
+const crypto = require('crypto');
+const { Op } = require('sequelize');
+const { isMailerConfigured, sendVerificationCode } = require('../../../utils/mailer');
+const { cleanImageRef, pushToUsers } = require('../campusHelpers');
+const { signedMediaUrl } = require('./mediaController');
+
+// ── Email OTP settings ─────────────────────────────────────────────────────────
+const OTP_TTL_MS = 10 * 60 * 1000;
+const OTP_MAX_ATTEMPTS = 5;
+const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
+const OTP_DAILY_CAP_PER_USER = 8;
+const OTP_DAILY_CAP_PER_EMAIL = 10;
+const VERIFY_REWARD_POINTS = 150;
+
+const otpHashFor = (userId, email, code) =>
+  crypto.createHmac('sha256', `campus-otp:${process.env.JWT_SECRET || ''}`)
+    .update(`${userId}|${String(email).toLowerCase()}|${String(code)}`)
+    .digest('hex');
+
+const envDomains = () => String(process.env.COLLEGE_EMAIL_DOMAINS || '')
+  .split(',').map((d) => d.trim().toLowerCase().replace(/^@/, '')).filter(Boolean);
+
+const domainMatches = (domain, allowed) => allowed.some((d) => domain === d || domain.endsWith(`.${d}`));
+
+/**
+ * Finds the campus for a college email and whether the domain is allowed.
+ * Allowed domains: COLLEGE_EMAIL_DOMAINS (comma list) when set, otherwise every active campus's emailDomains.
+ */
+const resolveEmailCampus = async (domain, campusId) => {
+  await ensureDefaultCampuses();
+  const Campus = getCampusModel();
+  const campuses = await Campus.findAll({ where: { isActive: true } });
+  const fromEnv = envDomains();
+  const allowedList = fromEnv.length ? fromEnv : [...new Set(campuses.flatMap((c) => c.emailDomains || []).map((d) => String(d).toLowerCase()))];
+  const allowed = domainMatches(domain, allowedList);
+  let campus = campuses.find((c) => domainMatches(domain, (c.emailDomains || []).map((d) => String(d).toLowerCase()))) || null;
+  if (!campus && campusId) campus = campuses.find((c) => String(c.id) === String(campusId)) || null;
+  if (!campus) campus = campuses.find((c) => c.code === 'SRMAP') || null;
+  return { allowed, campus, allowedList };
+};
+
+/** Tells the student's open apps (campus + main namespace) that their verification changed, and pushes. */
+const notifyStudentVerification = async (req, userId, payload, push) => {
+  try {
+    const io = req.app && req.app.get('io');
+    if (io) {
+      io.of('/campus').to(`user:${userId}`).emit('profile:updated', payload);
+      io.to(`user_${userId}`).emit('campus:verification', payload);
+    }
+  } catch (err) {
+    console.warn('[CAMPUS_VERIFY_NOTIFY_WARN]', err.message);
+  }
+  if (push) {
+    await pushToUsers([userId], push.title, push.body, {
+      type: 'CAMPUS_VERIFICATION',
+      status: payload.verificationStatus,
+      screen: 'campus_verification',
+    });
+  }
+};
+
+/** Latest ID-card request for the app (shows pending / rejection note). */
+const latestVerificationFor = async (req, userId) => {
+  const Verification = getVerificationModel();
+  if (!Verification) return null;
+  const row = await Verification.findOne({
+    where: { userId, type: 'id_card', status: { [Op.in]: ['pending', 'approved', 'rejected'] } },
+    order: [['createdAt', 'DESC']],
+  });
+  if (!row) return null;
+  const img = row.idCardImageUrl && !String(row.idCardImageUrl).startsWith('data:') ? row.idCardImageUrl : null;
+  return {
+    id: row.id,
+    type: row.type,
+    status: row.status,
+    reviewNotes: row.reviewNotes || null,
+    idCardImageUrl: img ? signedMediaUrl(req, img) : null,
+    submittedAt: row.createdAt,
+    reviewedAt: row.status === 'pending' ? null : row.updatedAt,
+  };
+};
 
 // Helper to seed default campuses if none exist
 const ensureDefaultCampuses = async () => {
@@ -115,11 +196,24 @@ const getCampusProfile = async (req, res) => {
       profileImage: req.user.profileImage,
       statusEmoji: req.user.statusEmoji,
       statusText: req.user.statusText,
+      // Lets Campus > Me show and share the student's own friend code.
+      friendCode: req.user.friendCode || null,
     };
 
+    // ID-card photos used to be stored as multi-MB data: URLs and were sent on every open.
+    const profileJson = profile.toJSON ? profile.toJSON() : { ...profile };
+    const idImg = profileJson.idCardImageUrl;
+    profileJson.hasIdCard = !!idImg;
+    profileJson.idCardImageUrl = idImg && !String(idImg).startsWith('data:') ? signedMediaUrl(req, idImg) : null;
+
+    let lastVerification = null;
+    try { lastVerification = await latestVerificationFor(req, req.user.id); } catch { /* optional */ }
+
     res.json({
-      profile,
-      user: userData
+      profile: profileJson,
+      user: userData,
+      lastVerification,
+      verificationMethods: { email: isMailerConfigured(), idCard: true },
     });
   } catch (error) {
     console.error('[GET_CAMPUS_PROFILE_ERR]', error);
@@ -150,7 +244,33 @@ const updateCampusProfile = async (req, res) => {
       dob,
       bio,
       interests
-    } = req.body;
+    } = req.body || {};
+
+    // Friendly 400s instead of Postgres length / type errors (which surfaced as a 500).
+    const LIMITS = { collegeId: 50, branch: 50, hostelBlock: 50, roomNumber: 50, section: 20, bio: 250 };
+    const LABELS = { collegeId: 'College ID', branch: 'Branch', hostelBlock: 'Hostel block', roomNumber: 'Room number', section: 'Section', bio: 'Bio' };
+    for (const [field, max] of Object.entries(LIMITS)) {
+      const v = req.body?.[field];
+      if (v === undefined || v === null) continue;
+      if (typeof v !== 'string' && typeof v !== 'number') {
+        return res.status(400).json({ code: 'INVALID_FIELD', field, message: `${LABELS[field]} is not valid.` });
+      }
+      if (String(v).length > max) {
+        return res.status(400).json({ code: 'FIELD_TOO_LONG', field, message: `${LABELS[field]} can be at most ${max} characters.` });
+      }
+    }
+    if (year !== undefined && year !== null && year !== '') {
+      const y = Number(year);
+      if (!Number.isInteger(y) || y < 1 || y > 6) {
+        return res.status(400).json({ code: 'INVALID_YEAR', field: 'year', message: 'Year must be between 1 and 6.' });
+      }
+    }
+    if (dob !== undefined && dob !== null && dob !== '' && Number.isNaN(new Date(dob).getTime())) {
+      return res.status(400).json({ code: 'INVALID_DOB', field: 'dob', message: 'Enter a valid date of birth.' });
+    }
+    if (interests !== undefined && interests !== null && (!Array.isArray(interests) || interests.length > 30)) {
+      return res.status(400).json({ code: 'INVALID_INTERESTS', field: 'interests', message: 'Pick up to 30 interests.' });
+    }
 
     // A verified student's campus and college id are tied to the verification (admins can change them).
     const isVerified = profile.verificationStatus === 'verified';
@@ -217,139 +337,318 @@ const updateCampusProfile = async (req, res) => {
   }
 };
 
+// @desc    Which verification methods work right now (email needs BREVO_API_KEY)
+// @route   GET /api/campus/verify/methods
+const getVerificationMethods = async (req, res) => {
+  try {
+    await ensureDefaultCampuses();
+    const Campus = getCampusModel();
+    const campuses = Campus ? await Campus.findAll({ where: { isActive: true } }) : [];
+    const fromEnv = envDomains();
+    const emailDomains = fromEnv.length ? fromEnv : [...new Set(campuses.flatMap((c) => c.emailDomains || []))];
+    res.json({
+      email: isMailerConfigured(),
+      idCard: true,
+      emailDomains,
+      otpTtlSeconds: OTP_TTL_MS / 1000,
+      resendCooldownSeconds: OTP_RESEND_COOLDOWN_MS / 1000,
+    });
+  } catch (error) {
+    console.error('[VERIFY_METHODS_ERR]', error.message);
+    res.status(500).json({ message: 'Could not load verification options' });
+  }
+};
+
+// @desc    The student's own verification state (+ rejection note)
+// @route   GET /api/campus/verify/status
+const getVerificationStatus = async (req, res) => {
+  try {
+    const CampusProfile = getCampusProfileModel();
+    const profile = await CampusProfile.findOne({ where: { userId: req.user.id } });
+    res.json({
+      verificationStatus: profile ? profile.verificationStatus : 'unverified',
+      collegeEmail: profile ? profile.collegeEmail : null,
+      verifiedAt: profile ? profile.verifiedAt : null,
+      lastVerification: await latestVerificationFor(req, req.user.id),
+      methods: { email: isMailerConfigured(), idCard: true },
+    });
+  } catch (error) {
+    console.error('[VERIFY_STATUS_ERR]', error.message);
+    res.status(500).json({ message: 'Could not load verification status' });
+  }
+};
+
 // @desc    Request college email verification OTP
-// @route   POST /api/campus/verify/email-otp
+// @route   POST /api/campus/verify/email-otp   { email, campusId? }
 const requestEmailOtp = async (req, res) => {
   try {
-    const { email, campusId } = req.body;
-    if (!email || !email.includes('@')) {
-      return res.status(400).json({ message: 'Valid college email is required' });
+    const email = String((req.body && req.body.email) || '').trim().toLowerCase();
+    const campusId = req.body && req.body.campusId;
+    if (email.length > 120 || !/^[^\s@]{1,64}@[a-z0-9.-]+\.[a-z]{2,}$/i.test(email)) {
+      return res.status(400).json({ code: 'INVALID_EMAIL', message: 'Enter a valid college email address.' });
     }
+    const domain = email.split('@')[1];
 
-    const Campus = getCampusModel();
-    let campus = null;
-    if (campusId) {
-      campus = await Campus.findByPk(campusId);
-    } else {
-      campus = await Campus.findOne({ where: { code: 'SRMAP' } });
-    }
-
-    const domain = email.split('@')[1].toLowerCase();
-    const allowed = campus && campus.emailDomains && campus.emailDomains.includes(domain);
+    const { allowed, campus, allowedList } = await resolveEmailCampus(domain, campusId);
     if (!allowed) {
-      return res.status(400).json({ 
-        message: `Email domain '@${domain}' is not authorized for ${campus ? campus.name : 'this campus'}. Allowed: ${campus ? campus.emailDomains.join(', ') : 'none'}` 
+      return res.status(400).json({
+        code: 'DOMAIN_NOT_ALLOWED',
+        message: `@${domain} is not a supported college email.${allowedList.length ? ` Use ${allowedList.map((d) => '@' + d).join(', ')}` : ''} or verify with your ID card.`,
+        allowedDomains: allowedList,
       });
     }
 
-    // No email provider is configured on the server, so a code could never reach the
-    // student's inbox. Be honest instead of pretending a mail was sent: point them to
-    // the ID-card verification flow (POST /api/campus/verify/upload-id).
-    return res.status(503).json({
-      code: 'EMAIL_VERIFICATION_UNAVAILABLE',
-      message: 'College email verification is not available yet. Please verify with a photo of your student ID card instead.'
+    if (!isMailerConfigured()) {
+      return res.status(503).json({
+        code: 'EMAIL_NOT_CONFIGURED',
+        message: 'Email verification is not switched on yet. Please verify with a photo of your student ID card.',
+        fallback: 'id_card',
+      });
+    }
+
+    const CampusProfile = getCampusProfileModel();
+    const profile = await CampusProfile.findOne({ where: { userId: req.user.id } });
+    if (profile && profile.verificationStatus === 'verified') {
+      return res.status(400).json({ code: 'ALREADY_VERIFIED', message: 'You are already verified.' });
+    }
+
+    // One college email = one Zenvy account.
+    const taken = await CampusProfile.findOne({
+      where: { collegeEmail: email, verificationStatus: 'verified', userId: { [Op.ne]: req.user.id } },
+      attributes: ['id'],
+    });
+    if (taken) {
+      return res.status(409).json({ code: 'EMAIL_IN_USE', message: 'This college email is already verified on another Zenvy account.' });
+    }
+
+    const Verification = getVerificationModel();
+    const now = Date.now();
+    const dayAgo = new Date(now - 24 * 60 * 60 * 1000);
+
+    const last = await Verification.findOne({
+      where: { userId: req.user.id, type: 'email_otp', status: { [Op.ne]: 'failed' } },
+      order: [['createdAt', 'DESC']],
+    });
+    const sinceLast = last ? now - new Date(last.createdAt).getTime() : Infinity;
+    if (sinceLast < OTP_RESEND_COOLDOWN_MS) {
+      const retryAfter = Math.ceil((OTP_RESEND_COOLDOWN_MS - sinceLast) / 1000);
+      return res.status(429).json({ code: 'OTP_COOLDOWN', message: `Please wait ${retryAfter}s before asking for a new code.`, retryAfter });
+    }
+    const [sentByUser, sentToEmail] = await Promise.all([
+      Verification.count({ where: { userId: req.user.id, type: 'email_otp', createdAt: { [Op.gt]: dayAgo } } }),
+      Verification.count({ where: { collegeEmail: email, type: 'email_otp', createdAt: { [Op.gt]: dayAgo } } }),
+    ]);
+    if (sentByUser >= OTP_DAILY_CAP_PER_USER || sentToEmail >= OTP_DAILY_CAP_PER_EMAIL) {
+      return res.status(429).json({ code: 'OTP_DAILY_LIMIT', message: 'Too many codes today. Try again tomorrow, or verify with your ID card.' });
+    }
+
+    // Any older unused code stops working.
+    await Verification.update(
+      { status: 'expired' },
+      { where: { userId: req.user.id, type: 'email_otp', status: 'pending' } }
+    );
+
+    const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+    const record = await Verification.create({
+      userId: req.user.id,
+      campusId: campus ? campus.id : null,
+      type: 'email_otp',
+      collegeEmail: email,
+      otp: null,
+      otpHash: otpHashFor(req.user.id, email, code),
+      otpExpiresAt: new Date(now + OTP_TTL_MS),
+      attempts: 0,
+      status: 'pending',
+    });
+
+    const sent = await sendVerificationCode({
+      to: email,
+      code,
+      name: req.user.name,
+      campusName: campus ? campus.name : null,
+      minutes: OTP_TTL_MS / 60000,
+    });
+    if (!sent.ok) {
+      await record.update({ status: 'failed', otpHash: null });
+      return res.status(502).json({
+        code: 'EMAIL_SEND_FAILED',
+        message: 'We could not send the email right now. Please try again in a minute, or verify with your ID card.',
+      });
+    }
+
+    res.json({
+      message: `We sent a 6-digit code to ${email}. It expires in 10 minutes.`,
+      email,
+      campusId: campus ? campus.id : null,
+      expiresInSeconds: OTP_TTL_MS / 1000,
+      resendAfterSeconds: OTP_RESEND_COOLDOWN_MS / 1000,
     });
   } catch (error) {
-    console.error('[REQUEST_EMAIL_OTP_ERR]', error);
+    console.error('[REQUEST_EMAIL_OTP_ERR]', error.message);
     res.status(500).json({ message: 'Failed to send verification email' });
   }
 };
 
 // @desc    Confirm college email OTP
-// @route   POST /api/campus/verify/confirm-otp
+// @route   POST /api/campus/verify/confirm-otp   { email, otp }
 const confirmEmailOtp = async (req, res) => {
   try {
-    const { email, otp } = req.body;
-    if (!email || !otp) {
-      return res.status(400).json({ message: 'Email and OTP code are required' });
+    const email = String((req.body && req.body.email) || '').trim().toLowerCase();
+    const otp = String((req.body && (req.body.otp || req.body.code)) || '').replace(/\D/g, '');
+    if (!email || otp.length !== 6) {
+      return res.status(400).json({ code: 'INVALID_INPUT', message: 'Enter the 6-digit code from your email.' });
     }
 
     const Verification = getVerificationModel();
-    const { Op } = require('sequelize');
-
     const record = await Verification.findOne({
-      where: {
-        userId: req.user.id,
-        collegeEmail: email.toLowerCase(),
-        otp: otp.trim(),
-        status: 'pending',
-        otpExpiresAt: { [Op.gt]: new Date() }
-      },
-      order: [['createdAt', 'DESC']]
+      where: { userId: req.user.id, collegeEmail: email, type: 'email_otp', status: 'pending' },
+      order: [['createdAt', 'DESC']],
     });
-
-    if (!record) {
-      return res.status(400).json({ message: 'Invalid or expired verification code' });
+    if (!record || !record.otpHash || record.consumedAt) {
+      return res.status(400).json({ code: 'OTP_NOT_FOUND', message: 'No active code for this email. Ask for a new one.' });
+    }
+    if (!record.otpExpiresAt || new Date(record.otpExpiresAt).getTime() < Date.now()) {
+      await record.update({ status: 'expired' });
+      return res.status(400).json({ code: 'OTP_EXPIRED', message: 'This code has expired. Ask for a new one.' });
+    }
+    if ((record.attempts || 0) >= OTP_MAX_ATTEMPTS) {
+      await record.update({ status: 'expired' });
+      return res.status(429).json({ code: 'OTP_LOCKED', message: 'Too many wrong tries. Ask for a new code.' });
     }
 
-    record.status = 'approved';
-    await record.save();
+    const want = Buffer.from(record.otpHash, 'hex');
+    const got = Buffer.from(otpHashFor(req.user.id, email, otp), 'hex');
+    const ok = want.length === got.length && crypto.timingSafeEqual(want, got);
+    if (!ok) {
+      // Atomic increment so parallel guesses cannot get around the limit.
+      await Verification.increment('attempts', { by: 1, where: { id: record.id } });
+      await record.reload({ attributes: ['id', 'attempts'] });
+      const left = Math.max(0, OTP_MAX_ATTEMPTS - (record.attempts || 0));
+      if (left === 0) await Verification.update({ status: 'expired' }, { where: { id: record.id } });
+      return res.status(left === 0 ? 429 : 400).json({
+        code: left === 0 ? 'OTP_LOCKED' : 'OTP_INVALID',
+        message: left === 0 ? 'Too many wrong tries. Ask for a new code.' : `Wrong code. ${left} ${left === 1 ? 'try' : 'tries'} left.`,
+        attemptsLeft: left,
+      });
+    }
 
     const CampusProfile = getCampusProfileModel();
-    let profile = await CampusProfile.findOne({ where: { userId: req.user.id } });
-    if (!profile) {
-      profile = await CampusProfile.create({ userId: req.user.id });
+    const taken = await CampusProfile.findOne({
+      where: { collegeEmail: email, verificationStatus: 'verified', userId: { [Op.ne]: req.user.id } },
+      attributes: ['id'],
+    });
+    if (taken) {
+      return res.status(409).json({ code: 'EMAIL_IN_USE', message: 'This college email is already verified on another Zenvy account.' });
     }
+
+    // Single use: only the request that flips pending -> approved wins.
+    const [claimed] = await Verification.update(
+      { status: 'approved', consumedAt: new Date() },
+      { where: { id: record.id, status: 'pending', consumedAt: null } }
+    );
+    if (!claimed) {
+      return res.status(400).json({ code: 'OTP_NOT_FOUND', message: 'This code was already used. Ask for a new one.' });
+    }
+
+    let profile = await CampusProfile.findOne({ where: { userId: req.user.id } });
+    if (!profile) profile = await CampusProfile.create({ userId: req.user.id });
 
     const alreadyVerified = profile.verificationStatus === 'verified';
     await profile.update({
-      collegeEmail: email.toLowerCase(),
+      collegeEmail: email,
+      campusId: record.campusId || profile.campusId,
       verificationStatus: 'verified',
       verifiedAt: new Date(),
-      // Verification reward is granted once per profile, not on every re-verification
-      buddyPoints: (profile.buddyPoints || 0) + (alreadyVerified ? 0 : 150)
+      buddyPoints: (profile.buddyPoints || 0) + (alreadyVerified ? 0 : VERIFY_REWARD_POINTS),
     });
 
+    // Any pending ID-card request is no longer needed.
+    await Verification.update(
+      { status: 'approved', reviewNotes: 'Verified by college email' },
+      { where: { userId: req.user.id, type: 'id_card', status: 'pending' } }
+    );
+
     realtime.notifyAdmin('verification', 'updated', record.id, { scope: 'email' });
+    await notifyStudentVerification(req, req.user.id, { verificationStatus: 'verified', method: 'email' }, null);
+
+    const Campus = getCampusModel();
+    const fresh = await CampusProfile.findByPk(profile.id, { include: Campus ? [{ model: Campus, as: 'campus' }] : [] });
+    const out = fresh.toJSON();
+    out.hasIdCard = !!out.idCardImageUrl;
+    out.idCardImageUrl = null;
     res.json({
-      message: 'Campus verification successful! Welcome to Campus Buddy.',
+      message: 'You are verified! Welcome to Zenvy Campus.',
       verificationStatus: 'verified',
-      profile
+      pointsAwarded: alreadyVerified ? 0 : VERIFY_REWARD_POINTS,
+      profile: out,
     });
   } catch (error) {
-    console.error('[CONFIRM_EMAIL_OTP_ERR]', error);
+    console.error('[CONFIRM_EMAIL_OTP_ERR]', error.message);
     res.status(500).json({ message: 'Verification failed' });
   }
 };
 
 // @desc    Upload ID card photo for manual verification
-// @route   POST /api/campus/verify/upload-id
+// @route   POST /api/campus/verify/upload-id   { idCardImageUrl, campusId?, collegeId? }
+// idCardImageUrl: '/api/campus/media/<id>' from POST /api/campus/media (purpose=id_card), or a legacy data:image URL.
 const submitIdCard = async (req, res) => {
   try {
-    const { idCardImageUrl, campusId, collegeId } = req.body;
+    const { campusId } = req.body || {};
+    const idCardImageUrl = cleanImageRef(req.body && req.body.idCardImageUrl);
     if (!idCardImageUrl) {
-      return res.status(400).json({ message: 'ID card image is required' });
+      return res.status(400).json({ code: 'ID_IMAGE_REQUIRED', message: 'Add a clear photo of your student ID card.' });
     }
-
-    const Verification = getVerificationModel();
-    const verification = await Verification.create({
-      userId: req.user.id,
-      campusId,
-      type: 'id_card',
-      idCardImageUrl,
-      status: 'pending'
-    });
+    const collegeId = req.body && req.body.collegeId != null ? String(req.body.collegeId).trim().slice(0, 50) : null;
 
     const CampusProfile = getCampusProfileModel();
     let profile = await CampusProfile.findOne({ where: { userId: req.user.id } });
-    if (!profile) {
-      profile = await CampusProfile.create({ userId: req.user.id });
+    if (!profile) profile = await CampusProfile.create({ userId: req.user.id });
+    if (profile.verificationStatus === 'verified') {
+      return res.status(400).json({ code: 'ALREADY_VERIFIED', message: 'You are already verified.' });
+    }
+
+    let validCampusId = profile.campusId;
+    if (campusId) {
+      const c = await getCampusModel().findByPk(campusId);
+      if (!c) return res.status(400).json({ code: 'INVALID_CAMPUS', message: 'Pick your campus again.' });
+      validCampusId = c.id;
+    }
+
+    // One open request per student: a re-submit replaces the photo of the pending one.
+    const Verification = getVerificationModel();
+    let verification = await Verification.findOne({
+      where: { userId: req.user.id, type: 'id_card', status: 'pending' },
+      order: [['createdAt', 'DESC']],
+    });
+    let action = 'created';
+    if (verification) {
+      await verification.update({ idCardImageUrl, campusId: validCampusId, reviewNotes: null });
+      action = 'updated';
+    } else {
+      verification = await Verification.create({
+        userId: req.user.id,
+        campusId: validCampusId,
+        type: 'id_card',
+        idCardImageUrl,
+        status: 'pending',
+      });
     }
 
     await profile.update({
-      campusId: campusId || profile.campusId,
+      campusId: validCampusId,
       collegeId: collegeId || profile.collegeId,
       idCardImageUrl,
-      verificationStatus: 'pending'
+      verificationStatus: 'pending',
     });
 
-    realtime.notifyAdmin('verification', 'created', verification.id);
+    realtime.notifyAdmin('verification', action, verification.id);
     res.json({
-      message: 'ID card submitted for verification. Admin review usually takes 2-4 hours.',
-      verificationStatus: 'pending'
+      message: 'ID card submitted. An admin usually reviews it within a few hours. We will notify you.',
+      verificationStatus: 'pending',
+      requestId: verification.id,
     });
   } catch (error) {
-    console.error('[SUBMIT_ID_CARD_ERR]', error);
+    console.error('[SUBMIT_ID_CARD_ERR]', error.message);
     res.status(500).json({ message: 'Failed to submit ID card' });
   }
 };
@@ -363,11 +662,13 @@ const getVerificationRequests = async (req, res) => {
     }
 
     const { status = 'pending' } = req.query;
+    const type = req.query.type ? String(req.query.type) : null;
     const Verification = getVerificationModel();
     const User = getUserModel();
 
+    // Admins review ID cards; email OTP rows are automatic (pass ?type=email_otp to see them).
     const rows = await Verification.findAll({
-      where: { status },
+      where: { status: String(status), type: type || 'id_card' },
       order: [['createdAt', 'ASC']],
       limit: 100,
     });
@@ -387,7 +688,7 @@ const getVerificationRequests = async (req, res) => {
         userPhone: byId[r.userId] ? byId[r.userId].phone : null,
         type: r.type,
         collegeEmail: r.collegeEmail,
-        idCardImageUrl: r.idCardImageUrl,
+        idCardImageUrl: signedMediaUrl(req, r.idCardImageUrl),
         status: r.status,
         reviewNotes: r.reviewNotes,
         createdAt: r.createdAt,
@@ -421,9 +722,10 @@ const reviewVerification = async (req, res) => {
       return res.status(400).json({ message: `Request already ${record.status}` });
     }
 
+    const cleanNotes = typeof notes === 'string' ? notes.trim().slice(0, 250) : '';
     record.status = action === 'approve' ? 'approved' : 'rejected';
     record.reviewedBy = req.user.id;
-    record.reviewNotes = notes || null;
+    record.reviewNotes = cleanNotes || null;
     await record.save();
 
     const CampusProfile = getCampusProfileModel();
@@ -437,13 +739,28 @@ const reviewVerification = async (req, res) => {
       await profile.update({
         verificationStatus: 'verified',
         verifiedAt: new Date(),
-        buddyPoints: (profile.buddyPoints || 0) + (alreadyVerified ? 0 : 150),
+        campusId: record.campusId || profile.campusId,
+        buddyPoints: (profile.buddyPoints || 0) + (alreadyVerified ? 0 : VERIFY_REWARD_POINTS),
       });
-    } else {
+    } else if (profile.verificationStatus !== 'verified') {
+      // A late rejection of an old request never un-verifies a student verified another way.
       await profile.update({ verificationStatus: 'rejected' });
     }
 
     realtime.notifyAdmin('verification', 'updated', record.id);
+    await notifyStudentVerification(
+      req,
+      record.userId,
+      {
+        verificationStatus: profile.verificationStatus,
+        method: 'id_card',
+        requestId: record.id,
+        reviewNotes: action === 'reject' ? record.reviewNotes : null,
+      },
+      action === 'approve'
+        ? { title: 'You are verified on Zenvy Campus', body: 'Your student ID was approved. Welcome to Zenvy Campus!' }
+        : { title: 'Your ID card needs another look', body: record.reviewNotes ? `Reason: ${record.reviewNotes}. Please upload a clearer photo.` : 'Please upload a clearer photo of your student ID card.' }
+    );
     res.json({
       message: action === 'approve' ? 'Student verified' : 'Verification rejected',
       verificationStatus: profile.verificationStatus,
@@ -464,4 +781,6 @@ module.exports = {
   submitIdCard,
   getVerificationRequests,
   reviewVerification,
+  getVerificationMethods,
+  getVerificationStatus,
 };

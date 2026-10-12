@@ -38,6 +38,8 @@ export function errorMessage(err: unknown, fallback = 'Something went wrong. Ple
 export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   body?: unknown;
+  /** multipart body (photo upload). Sent as-is; fetch sets the boundary header. */
+  form?: FormData;
   timeoutMs?: number;
   /** false for login: a 401 there means a wrong password, not an expired session. */
   auth?: boolean;
@@ -46,9 +48,9 @@ export interface RequestOptions {
 }
 
 export async function apiFetch<T = any>(path: string, opts: RequestOptions = {}): Promise<T> {
-  const { method = 'GET', body, timeoutMs = 15000, auth = true, no401Logout = false } = opts;
+  const { method = 'GET', body, form, timeoutMs = 15000, auth = true, no401Logout = false } = opts;
   const headers: Record<string, string> = { Accept: 'application/json' };
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (body !== undefined && !form) headers['Content-Type'] = 'application/json';
   const token = auth ? getToken() : null;
   if (auth && token) headers.Authorization = `Bearer ${token}`;
 
@@ -59,7 +61,7 @@ export async function apiFetch<T = any>(path: string, opts: RequestOptions = {})
     res = await fetch(`${API_URL}${path}`, {
       method,
       headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: form ?? (body !== undefined ? JSON.stringify(body) : undefined),
       signal: controller.signal,
     });
   } catch (e: any) {

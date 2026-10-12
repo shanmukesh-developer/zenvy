@@ -18,6 +18,7 @@ const authLimiter = rateLimit({
 const { accountLockout } = require('../middleware/lockoutMiddleware');
 
 const { body, validationResult } = require('express-validator');
+const { sendServerError } = require('../utils/httpErrors');
 
 // Validation Error Handler
 const validate = (req, res, next) => {
@@ -74,9 +75,10 @@ router.get('/products', async (req, res) => {
     const { getMenuItemModel } = require('../models/MenuItem');
     const MenuItem = getMenuItemModel();
     const items = await MenuItem.findAll({ where: { isAvailable: true }, order: [['createdAt', 'DESC']] });
-    res.json(items);
+    const { stripItemSecrets } = require('../utils/publicFields');
+    res.json(items.map((m) => stripItemSecrets(m.toJSON())));
   } catch (_err) {
-    res.status(500).json({ message: 'Failed to fetch products', error: _err.message });
+    sendServerError(res, _err, '[USERROUTES_ERROR]');
   }
 });
 
@@ -188,7 +190,7 @@ router.get('/products/:id/reviews', async (req, res) => {
       reviews: allReviews
     });
   } catch (err) {
-    res.status(500).json({ message: 'Failed to fetch reviews', error: err.message });
+    sendServerError(res, err, '[USERROUTES_ERROR]');
   }
 });
 
@@ -261,7 +263,7 @@ router.get('/orders', protect, async (req, res) => {
     const orders = await Order.findAll({ where: { userId: req.user.id }, order: [['createdAt', 'DESC']], limit });
     res.json(orders);
   } catch (_err) {
-    res.status(500).json({ message: 'Failed to fetch orders', error: _err.message });
+    sendServerError(res, _err, '[USERROUTES_ERROR]');
   }
 });
 
@@ -284,7 +286,7 @@ router.get('/rewards', protect, async (req, res) => {
       spinEligible: spinsAvailable > 0
     });
   } catch (_err) {
-    res.status(500).json({ message: 'Failed to fetch rewards', error: _err.message });
+    sendServerError(res, _err, '[USERROUTES_ERROR]');
   }
 });
 

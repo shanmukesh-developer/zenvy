@@ -40,6 +40,83 @@ const istDayWindow = (ymd) => {
 };
 const daysFromToday = (ymd) => Math.round((Date.parse(`${ymd}T00:00:00Z`) - Date.parse(`${istTodayYmd()}T00:00:00Z`)) / 86400000);
 
+// Push + live toast to every active student for one approved birthday. Never throws.
+const announceBirthday = async (io, celebration) => {
+  try {
+    const { getUserModel } = require('../models/User');
+    const User = getUserModel();
+    if (User) {
+      const activeUsers = await User.findAll({ where: { isActive: true }, attributes: ['id', 'fcmTokens'] });
+      let allTokens = [];
+      activeUsers.forEach(user => {
+        let tokenList = user.fcmTokens;
+        if (typeof tokenList === 'string') {
+          try { tokenList = JSON.parse(tokenList); } catch { tokenList = [tokenList]; }
+        }
+        if (Array.isArray(tokenList)) {
+          tokenList.forEach(t => {
+            const tokenStr = typeof t === 'string' ? t : t?.token;
+            if (tokenStr) allTokens.push(tokenStr);
+          });
+        }
+      });
+      allTokens = [...new Set(allTokens.filter(Boolean))];
+      if (allTokens.length > 0) {
+        await sendPushToTokens(
+          allTokens,
+          `🎉 Celebrate ${celebration.candidateName}'s Birthday! 🎂`,
+          `Tap here to wish them and join the campus celebration! 🎁✨`,
+          {
+            type: 'BIRTHDAY_ALERT',
+            celebrationId: String(celebration.id),
+            candidateName: celebration.candidateName
+          },
+          {
+            recipients: activeUsers.map((u) => u.id),
+            android: { notification: { color: '#FF1493', sound: 'default' } }
+          }
+        );
+      }
+    }
+  } catch (pushErr) {
+    console.error('Failed to send direct birthday push to tokens:', pushErr.message);
+  }
+  try {
+    if (io) {
+      io.emit('global_announcement', {
+        message: `🎉 Celebrate ${celebration.candidateName}'s Birthday! 🎂 Tap here to wish them and join the campus celebration! 🎁✨`,
+        type: 'promo'
+      });
+    }
+  } catch (sockErr) {
+    console.error('Failed to emit birthday socket announcement:', sockErr.message);
+  }
+};
+
+// Hourly (server.js): approved birthdays whose day (IST) has come and that were approved earlier,
+// announced once from 08:00 IST so nobody is woken at midnight.
+const announceDueBirthdays = async (io) => {
+  const BirthdayCelebration = getBirthdayCelebrationModel();
+  if (!BirthdayCelebration) return 0;
+  const istHour = new Date(Date.now() + IST_OFFSET_MS).getUTCHours();
+  if (istHour < 8) return 0;
+  const due = await BirthdayCelebration.findAll({
+    // approvedAt before today: same-day approvals were already announced by the approve route.
+    where: { status: 'approved', birthdayDate: istTodayYmd(), announcedAt: null, approvedAt: { [Op.lt]: istDayWindow(istTodayYmd()).start } },
+    limit: 20,
+  });
+  let count = 0;
+  for (const celebration of due) {
+    const [claimed] = await BirthdayCelebration.update({ announcedAt: new Date() }, { where: { id: celebration.id, announcedAt: null } });
+    if (claimed === 0) continue;
+    count++;
+    await announceBirthday(io, celebration);
+    require('../utils/realtime').publish('announcement', 'created', celebration.id, { scope: 'birthday' });
+  }
+  if (count) console.log(`[BIRTHDAY] Announced ${count} birthday(s) for today`);
+  return count;
+};
+
 // POST /api/birthdays - Submit birthday celebration request
 router.post('/', protect, async (req, res) => {
   try {
@@ -145,66 +222,11 @@ router.put('/:id/approve', protect, admin, async (req, res) => {
       expiresAt: expiresAt
     });
 
-    // Fetch all active users' FCM tokens and broadcast push notifications directly to everyone
-    try {
-      const { getUserModel } = require('../models/User');
-      const User = getUserModel();
-      if (User && isToday) {
-        const activeUsers = await User.findAll({ where: { isActive: true } });
-        let allTokens = [];
-        activeUsers.forEach(user => {
-          if (user.fcmTokens) {
-            let tokenList = user.fcmTokens;
-            if (typeof tokenList === 'string') {
-              try { tokenList = JSON.parse(tokenList); } catch { tokenList = [tokenList]; }
-            }
-            if (Array.isArray(tokenList)) {
-              tokenList.forEach(t => {
-                const tokenStr = typeof t === 'string' ? t : t?.token;
-                if (tokenStr) allTokens.push(tokenStr);
-              });
-            }
-          }
-        });
-        allTokens = [...new Set(allTokens.filter(Boolean))];
-
-        if (allTokens.length > 0) {
-          await sendPushToTokens(
-            allTokens,
-            `🎉 Celebrate ${celebration.candidateName}'s Birthday! 🎂`,
-            `Tap here to wish them and join the campus celebration! 🎁✨`,
-            {
-              type: 'BIRTHDAY_ALERT',
-              celebrationId: String(celebration.id),
-              candidateName: celebration.candidateName
-            },
-            {
-              recipients: activeUsers.map((u) => u.id),
-              android: {
-                notification: {
-                  color: '#FF1493',
-                  sound: 'default'
-                }
-              }
-            }
-          );
-        }
-      }
-    } catch (pushErr) {
-      console.error('Failed to send direct birthday push to tokens:', pushErr);
-    }
-
-    // Broadcast via Socket.io so active users get live toast & save to notification history
-    try {
-      const io = req.app.get('io');
-      if (io && isToday) {
-        io.emit('global_announcement', {
-          message: `🎉 Celebrate ${celebration.candidateName}'s Birthday! 🎂 Tap here to wish them and join the campus celebration! 🎁✨`,
-          type: 'promo'
-        });
-      }
-    } catch (sockErr) {
-      console.error('Failed to emit birthday socket announcement:', sockErr);
+    // Birthday is today: announce now (exactly once). Future dates are announced on the day by
+    // announceDueBirthdays (hourly job in server.js).
+    if (isToday) {
+      const [claimed] = await BirthdayCelebration.update({ announcedAt: now }, { where: { id: celebration.id, announcedAt: null } });
+      if (claimed > 0) await announceBirthday(req.app.get('io'), celebration);
     }
 
     require('../utils/realtime').publish('announcement', 'created', celebration.id, { scope: 'birthday' });
@@ -305,3 +327,4 @@ router.get('/:id/wishes', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.announceDueBirthdays = announceDueBirthdays;

@@ -11,6 +11,8 @@ const clearPublicRestaurantsCache = () => {
 };
 
 // Restaurant row as the partner app may see it (no password hash) + the live open state.
+const { stripStoreSecrets, stripItemSecrets } = require('../utils/publicFields');
+
 const publicStoreJson = (restaurant) => {
   const json = restaurant.toJSON();
   delete json.password;
@@ -51,17 +53,15 @@ const restaurantLogin = async (req, res) => {
     if (isUuid) {
       restaurant = await Restaurant.findByPk(id);
     } else {
-      // Fallback: Try finding by name (case-insensitive for better UX)
-      const { Op } = require('sequelize');
-      const dialect = Restaurant.sequelize.getDialect();
-      const operator = dialect === 'postgres' ? Op.iLike : Op.like;
-      
-      restaurant = await Restaurant.findOne({ 
-        where: { name: { [operator]: id } } 
+      // Exact store name, case-insensitive. Never a LIKE pattern: '%' used to log into any store.
+      const { fn, col, where: sqlWhere } = require('sequelize');
+      restaurant = await Restaurant.findOne({
+        where: sqlWhere(fn('lower', col('name')), id.toLowerCase())
       });
     }
 
-    if (!restaurant) return res.status(404).json({ message: 'Restaurant not found' });
+    // Same reply for an unknown store and a wrong password (no store-name probing).
+    if (!restaurant) return res.status(401).json({ message: 'Invalid credentials' });
     
     if (!restaurant.password) {
       return res.status(401).json({ message: 'No password set for this account. Contact the admin to configure credentials.' });
@@ -143,7 +143,7 @@ const getRestaurants = async (req, res) => {
 
     const augmentedRestaurants = restaurants.map(r => {
       const rJson = r.toJSON();
-      delete rJson.password;
+      stripStoreSecrets(rJson);
       rJson._id = rJson.id; // Map UUIDs to expected legacy Mongo _id formats
       rJson.imageUrl = cleanImageUrl(rJson.imageUrl || rJson.image);
       rJson.image = rJson.imageUrl;
@@ -154,7 +154,7 @@ const getRestaurants = async (req, res) => {
         .filter(m => m.restaurantId === r.id)
         .map(m => {
           const item = m.toJSON();
-          delete item.password;
+          stripItemSecrets(item);
           // Ensure tags is an array (SQLite might return it as a string)
           if (typeof item.tags === 'string') {
             try { item.tags = JSON.parse(item.tags); } catch { item.tags = []; }
@@ -178,7 +178,7 @@ const getRestaurantMenu = async (req, res) => {
   try {
     const MenuItem = getMenuItemModel();
     const menu = await MenuItem.findAll({ where: { restaurantId: req.params.id } });
-    res.json(menu);
+    res.json(menu.map((m) => stripItemSecrets(m.toJSON())));
   } catch (error) {
     console.error('[MENU_ERROR]', error);
     res.status(500).json({ message: 'Server Error' });
@@ -378,12 +378,12 @@ const getLocalVendors = async (req, res) => {
       : [];
 
     const augmented = vendors.map(v => {
-      const vJson = v.toJSON();
+      const vJson = stripStoreSecrets(v.toJSON());
       vJson._id = vJson.id;
       vJson.menu = allMenuItems
         .filter(m => m.restaurantId === v.id)
         .map(m => {
-          const item = m.toJSON();
+          const item = stripItemSecrets(m.toJSON());
           if (typeof item.tags === 'string') {
             try { item.tags = JSON.parse(item.tags); } catch { item.tags = []; }
           }
@@ -500,7 +500,7 @@ const getMenuItemById = async (req, res) => {
       const rest = await Restaurant.findByPk(item.restaurantId);
       if (rest) restaurantName = rest.name;
     }
-    const itemData = item.toJSON ? item.toJSON() : item;
+    const itemData = stripItemSecrets(item.toJSON ? item.toJSON() : { ...item });
     itemData.restaurantName = restaurantName;
     res.json(itemData);
   } catch (error) {

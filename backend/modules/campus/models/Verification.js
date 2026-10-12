@@ -36,12 +36,25 @@ const initVerificationModel = (sequelize) => {
       type: DataTypes.DATE,
       allowNull: true,
     },
+    // HMAC-SHA256 of the email OTP (the plain code is never stored). The legacy 'otp' column stays unused.
+    otpHash: {
+      type: DataTypes.STRING(128),
+      allowNull: true,
+    },
+    attempts: {
+      type: DataTypes.INTEGER,
+      defaultValue: 0,
+    },
+    consumedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
     idCardImageUrl: {
       type: DataTypes.TEXT,
       allowNull: true,
     },
     status: {
-      type: DataTypes.STRING(20), // 'pending' | 'approved' | 'rejected'
+      type: DataTypes.STRING(20), // 'pending' | 'approved' | 'rejected' | 'expired' | 'failed'
       defaultValue: 'pending',
     },
     reviewedBy: {

@@ -26,7 +26,9 @@ export function NewOrderAlert() {
   const b = busy[order.id];
 
   return (
-    <Modal visible animationType="fade" onRequestClose={() => silence([order.id])} statusBarTranslucent>
+    // Hardware back only steps out of the accept / reject picker. It never silences the order: an
+    // accidental press in a busy kitchen must not stop the ringing (only the explicit Later button does).
+    <Modal visible animationType="fade" onRequestClose={() => { if (mode !== 'view') setMode('view'); }} statusBarTranslucent>
       <View style={[styles.root, { paddingTop: insets.top + space.sm, paddingBottom: insets.bottom + space.sm }]}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           <View style={styles.head}>

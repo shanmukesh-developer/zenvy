@@ -76,6 +76,13 @@ const creditCustomerForDelivery = async (User, order) => {
   const points = Math.max(0, Math.floor(Number(order.finalPrice || order.totalPrice || 0) / 100) * 10);
   const hour = istHour();
   const lateNight = hour >= 22 || hour < 4;
+  // Daily streak is earned on delivery, not on placing the order: place-then-cancel orders used
+  // to build streaks that unlock streak-gated Vault deals.
+  try {
+    await require('../middleware/rewardEngine').updateStreak(order.userId);
+  } catch (streakErr) {
+    console.warn('[STREAK_UPDATE_WARN]', streakErr.message);
+  }
   const { literal } = require('sequelize');
   const bump = (col, by) => literal(`COALESCE("${col}", 0) + ${Number(by)}`);
   await User.update(
