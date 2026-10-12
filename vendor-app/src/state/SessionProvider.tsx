@@ -2,6 +2,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { configureHttp } from '../lib/http';
 import { clearSession, loadSession, pickProfile, saveProfile, saveSession } from '../lib/storage';
+import { unregisterStorePush } from '../lib/push';
 import { stopKitchenService } from '../voice/kitchenService';
 import { stopVoice } from '../voice/voice';
 import type { StoreProfile } from '../types';
@@ -32,6 +33,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const signOut = useCallback(async (msg?: string) => {
     stopVoice();
     stopKitchenService();
+    // Own logout (token still valid): stop order pushes to this phone. A forced logout skips it
+    // (the token is already rejected; the server moves the push token on the next login anyway).
+    if (!msg && tokenRef.current) {
+      await Promise.race([unregisterStorePush(), new Promise((r) => setTimeout(r, 4000))]);
+    }
     tokenRef.current = null;
     setToken(null);
     setRestaurant(null);

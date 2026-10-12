@@ -77,14 +77,12 @@ const friendlyUploadError = (e: unknown) => {
   return msg;
 };
 
-export function ItemForm({ mode, categories, onClose, onSave, onDelete, onHide, onDuplicate }: {
+export function ItemForm({ mode, categories, onClose, onSave, onDelete, onDuplicate }: {
   mode: FormMode | null;
   categories: string[];
   onClose: () => void;
   onSave: (input: ItemInput, editing: MenuItem | null) => Promise<MenuItem>;
   onDelete: (item: MenuItem) => Promise<DeleteResult>;
-  /** Fallback when delete is not available: mark out of stock until turned back on. */
-  onHide: (item: MenuItem) => Promise<boolean>;
   onDuplicate: (item: MenuItem) => void;
 }) {
   const insets = useSafeAreaInsets();
@@ -99,7 +97,7 @@ export function ItemForm({ mode, categories, onClose, onSave, onDelete, onHide, 
   const [newCat, setNewCat] = useState(false);
   const [confirm, setConfirm] = useState<null | 'delete' | 'discard'>(null);
   const [deleting, setDeleting] = useState(false);
-  const [deleteErr, setDeleteErr] = useState<{ text: string; unsupported?: boolean } | null>(null);
+  const [deleteErr, setDeleteErr] = useState<{ text: string } | null>(null);
   const savingRef = useRef(false);
   const priceRef = useRef<TextInput>(null);
   const scrollRef = useRef<ScrollView>(null);
@@ -199,15 +197,7 @@ export function ItemForm({ mode, categories, onClose, onSave, onDelete, onHide, 
     const res = await onDelete(editing);
     if (res.ok) { onClose(); return; }
     setDeleting(false);
-    setDeleteErr({ text: res.error, unsupported: res.unsupported });
-  };
-
-  const doHide = async () => {
-    if (!editing || deleting) return;
-    setDeleting(true);
-    const ok = await onHide(editing);
-    setDeleting(false);
-    if (ok) onClose();
+    setDeleteErr({ text: res.error });
   };
 
   const title = !mode ? '' : mode.kind === 'edit' ? 'Edit item' : mode.kind === 'duplicate' ? 'Copy of item' : 'Add new item';
@@ -399,11 +389,7 @@ export function ItemForm({ mode, categories, onClose, onSave, onDelete, onHide, 
                   {deleteErr ? <Text style={styles.err}>{deleteErr.text}</Text> : null}
                   <View style={{ flexDirection: 'row', gap: space.xs }}>
                     <Button label="Cancel" variant="secondary" size="secondary" onPress={() => { setConfirm(null); setDeleteErr(null); }} disabled={deleting} style={{ flex: 1 }} />
-                    {deleteErr?.unsupported ? (
-                      <Button label="Hide it" variant="reject" size="secondary" icon="eye-off" onPress={doHide} loading={deleting} style={{ flex: 1 }} />
-                    ) : (
-                      <Button label="Yes, delete" variant="reject" size="secondary" icon="trash" onPress={doDelete} loading={deleting} style={{ flex: 1 }} />
-                    )}
+                    <Button label="Yes, delete" variant="reject" size="secondary" icon="trash" onPress={doDelete} loading={deleting} style={{ flex: 1 }} />
                   </View>
                 </View>
               ) : (

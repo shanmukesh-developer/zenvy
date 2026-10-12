@@ -281,6 +281,7 @@ async function speakItem(item: QueueItem) {
       voice: voiceIds[lang],
       rate: Platform.OS === 'android' ? 0.92 : 0.95,
       pitch: 1.0,
+      volume: 1.0, // full volume: the voice may be the only sound (ring blocked)
       onDone: () => { if (current === item) finishCurrent(); },
       onStopped: () => { if (current === item) finishCurrent(); },
       onError: () => { if (current === item) finishCurrent(); },

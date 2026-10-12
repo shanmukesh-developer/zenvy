@@ -282,7 +282,7 @@ export const ProximityRoomModal: React.FC<ProximityRoomModalProps> = ({
               </Text>
             </View>
             <Text style={styles.headerSubtitle}>
-              {roomMeta?.subtitle || 'Location-bound live chat'}
+              {roomMeta?.subtitle || 'Open campus spot chat'}
             </Text>
           </View>
           <View style={styles.liveBadge}>
@@ -319,7 +319,7 @@ export const ProximityRoomModal: React.FC<ProximityRoomModalProps> = ({
         <View style={styles.geofenceBanner}>
           <ShieldCheck size={14} color={CampusColors.accentDeep} />
           <Text style={styles.geofenceText}>
-            Location-bound room: Messages are shared only with students currently in this campus zone.
+            Open room for this campus spot. Anyone on Campus can read and post here, so keep it friendly and never share private details.
           </Text>
         </View>
 
@@ -352,7 +352,7 @@ export const ProximityRoomModal: React.FC<ProximityRoomModalProps> = ({
                 <MapPin size={32} color={CampusColors.muted} />
                 <Text style={styles.emptyTitle}>No messages yet</Text>
                 <Text style={styles.emptySubtitle}>
-                  Be the first to say something in this zone!
+                  Be the first to say something here!
                 </Text>
               </View>
             )}
@@ -402,7 +402,7 @@ export const ProximityRoomModal: React.FC<ProximityRoomModalProps> = ({
         <View style={styles.inputBar}>
           <TextInput
             style={styles.input}
-            placeholder={`Message this zone...`}
+            placeholder="Message this spot..."
             placeholderTextColor={CampusColors.muted}
             value={inputText}
             onChangeText={handleTextChange}

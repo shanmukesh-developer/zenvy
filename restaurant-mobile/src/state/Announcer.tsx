@@ -8,6 +8,7 @@ import { useEffect, useRef } from 'react';
 import { AppState, Platform, Vibration } from 'react-native';
 import { RING_REPEAT_MS } from '../config';
 import { TIMED_OUT_REASON } from '../lib/model';
+import { playRing, RING_SOUND_MS } from '../lib/push';
 import { cancelNativeOrderAlert, nativeOrderAlert } from '../voice/kitchenService';
 import { announce, cancelAnnouncements, forgetAnnouncement, getVoiceSnapshot, voiceEnabled } from '../voice/voice';
 import { useStore } from './StoreProvider';
@@ -17,20 +18,33 @@ const RING_PATTERN = [0, 600, 250, 600, 250, 600];
 const PRE_PICKUP = ['Pending', 'Accepted', 'Preparing', 'ReadyForPickup'];
 const BEFORE_HANDOVER = ['Pending', 'Accepted', 'Preparing', 'ReadyForPickup', 'Picking'];
 
-function ring(o: Order) {
+/**
+ * One ring: vibration + the bundled loud ring sound (alarm channel, independent of the TTS engine), then
+ * the voice. If the ring sound cannot play (notifications blocked, web), the voice is forced on at full
+ * volume so a new order is never silent. `stillWaiting` stops a late voice for an order already handled.
+ */
+function ring(o: Order, stillWaiting: (id: string) => boolean) {
   if (Platform.OS !== 'web') Vibration.vibrate(RING_PATTERN);
   const amount = String(Math.round(o.totalPrice || 0));
-  if (voiceEnabled()) {
+  const speak = (force: boolean) => {
+    if (!stillWaiting(o.id)) return;
     forgetAnnouncement(`new:${o.id}`);
     announce(
       `new:${o.id}`,
       { kind: 'newOrder', campus: o.campus, items: o.itemCount, total: o.totalPrice },
-      { urgent: true, dedupeMs: 0, native: { orderNum: o.shortId, amount } },
+      { urgent: true, dedupeMs: 0, force, native: { orderNum: o.shortId, amount } },
     );
-  } else if (AppState.currentState !== 'active') {
-    // Voice off: still wake the phone with the native heads-up notification (no speech).
-    nativeOrderAlert('', o.shortId, amount, getVoiceSnapshot().settings.lang);
-  }
+  };
+  playRing(`New order #${o.shortId}`).then((rang) => {
+    if (!rang) {
+      speak(true); // no ring sound: the voice is the sound
+    } else if (voiceEnabled()) {
+      setTimeout(() => speak(false), RING_SOUND_MS); // voice right after the ring, never on top of it
+    } else if (AppState.currentState !== 'active') {
+      // Voice off: still wake the phone with the native heads-up notification (no speech).
+      nativeOrderAlert('', o.shortId, amount, getVoiceSnapshot().settings.lang);
+    }
+  });
 }
 
 export function Announcer() {
@@ -43,6 +57,7 @@ export function Announcer() {
   const rung = useRef<Map<string, string>>(new Map());
   const alertKey = alertOrders.map((o) => `${o.id}:${o.partial ? 'p' : 'f'}`).join(',');
   const hasAlerts = alertOrders.length > 0;
+  const isWaiting = (id: string) => alertRef.current.some((o) => o.id === id);
 
   useEffect(() => {
     const current = new Set(alertRef.current.map((o) => o.id));
@@ -59,7 +74,7 @@ export function Announcer() {
     const fresh = alertRef.current.filter((o) => !rung.current.has(o.id));
     for (const o of fresh.slice().reverse()) {
       rung.current.set(o.id, o.shortId);
-      ring(o);
+      ring(o, isWaiting);
     }
   }, [alertKey]);
 
@@ -70,7 +85,7 @@ export function Announcer() {
     }
     const t = setInterval(() => {
       const oldest = alertRef.current[0];
-      if (oldest) ring(oldest);
+      if (oldest) ring(oldest, isWaiting);
     }, RING_REPEAT_MS);
     return () => clearInterval(t);
   }, [hasAlerts]);

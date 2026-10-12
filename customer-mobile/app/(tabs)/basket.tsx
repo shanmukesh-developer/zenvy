@@ -12,6 +12,7 @@ import AmbientBackground from '../../components/AmbientBackground';
 import { StaggeredSection, FloatingPulse, BounceIn } from '../../components/AnimatedSection';
 import DopaminePressable, { ActionPressable } from '../../components/DopaminePressable';
 import SafeImage from '../../components/SafeImage';
+import { stallPayCopy } from '../../utils/localVendor';
 
 export default function BasketScreen() {
   const { isDark, colors } = useTheme();
@@ -57,6 +58,10 @@ export default function BasketScreen() {
     : quoteError?.code === 'BOOKING_ONLY_ITEMS' && Array.isArray(quoteError.body?.bookingOnlyItems)
       ? quoteError.body.bookingOnlyItems.map((n: any) => ({ name: String(n || '') }))
       : [];
+  // CampusBites stall basket: the stall delivers it, cash to the stall
+  const stallLine = cart.find((i) => i.isStall && !isCustomRequest(i));
+  const isStallBasket = quote ? quote.fulfilment === 'VENDOR' : !!stallLine;
+  const stallName = quote?.store?.name || stallLine?.restaurantName || 'the stall';
   const checkoutLabel = quote && !quoteLoading
     ? `PROCEED TO CHECKOUT • ₹${quote.finalPrice}`
     : `PROCEED TO CHECKOUT • ${totalItems} ITEM${totalItems === 1 ? '' : 'S'}`;
@@ -121,7 +126,7 @@ export default function BasketScreen() {
                   <View style={s.joinInputRow}>
                     <TextInput
                       style={[s.joinInput, { color: txt, borderColor: border, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F1F4F8' }]}
-                      placeholder="ENTER ROOM CODE (e.g. ZN-8B2A)"
+                      placeholder="ENTER ROOM CODE (e.g. ZN-8B2A4KQ7)"
                       placeholderTextColor={txtSec}
                       value={inputCode}
                       onChangeText={setInputCode}
@@ -363,6 +368,9 @@ export default function BasketScreen() {
                       <Text style={[s.billLabel, { color: txt, fontSize: 13, fontWeight: '900' }]}>TO PAY</Text>
                       <Text style={{ fontSize: 22, fontWeight: '900', color: goldColor }}>₹{quote.finalPrice}</Text>
                     </View>
+                    {isStallBasket && (
+                      <Text style={{ fontSize: 10, color: txtSec, fontWeight: '600' }}>🏪 {stallPayCopy(stallName)}. {stallName} delivers it — no Zenvy rider.</Text>
+                    )}
                     {customCount > 0 && (
                       <Text style={{ fontSize: 10, color: txtSec, fontWeight: '600' }}>+ your Mega Basket shopping list, paid in cash on delivery.</Text>
                     )}
@@ -393,7 +401,7 @@ export default function BasketScreen() {
                   CAMPUS DELIVERY INSTRUCTIONS
                 </Text>
                 <Text style={{ fontSize: 9, color: txtSec, fontWeight: '600', marginBottom: 8 }}>
-                  Sent to your rider with the delivery address.
+                  {isStallBasket ? `Sent to ${stallName} with the delivery address.` : 'Sent to your rider with the delivery address.'}
                 </Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                   {DELIVERY_INSTRUCTIONS.map(pref => {

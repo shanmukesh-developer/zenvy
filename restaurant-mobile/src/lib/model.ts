@@ -194,13 +194,23 @@ export function normalizeMenuItem(raw: any): MenuItem | null {
     isAvailable: raw.isAvailable !== false,
     outOfStockUntil: raw.outOfStockUntil || null,
     tags: Array.isArray(raw.tags) ? raw.tags.filter((t: unknown): t is string => typeof t === 'string') : [],
+    dietType: raw.dietType === 'veg' || raw.dietType === 'nonveg' || raw.dietType === 'egg' ? raw.dietType : null,
+    originalPrice: mrpOf(raw),
   };
+}
+
+function mrpOf(raw: any): number | null {
+  let specs = raw?.specs;
+  if (typeof specs === 'string') { try { specs = JSON.parse(specs); } catch { specs = null; } }
+  const v = num(raw?.originalPrice) ?? num(specs?.originalPrice);
+  return v !== null && v > 0 ? v : null;
 }
 
 export const isEggTag = (t: string) => t.trim().toLowerCase() === 'egg';
 
 /** Veg / non-veg / egg for the form and the row mark. */
-export function dietOf(item: Pick<MenuItem, 'isVegetarian' | 'tags'>): Diet | null {
+export function dietOf(item: Pick<MenuItem, 'isVegetarian' | 'tags' | 'dietType'>): Diet | null {
+  if (item.dietType) return item.dietType;
   if (item.tags.some(isEggTag)) return 'egg';
   if (item.isVegetarian === true) return 'veg';
   if (item.isVegetarian === false) return 'nonveg';

@@ -15,6 +15,10 @@ const initMenuItemModel = (sequelize) => {
     category: { type: DataTypes.STRING },
     tags: { type: DataTypes.JSON, defaultValue: [] },
     isVegetarian: { type: DataTypes.BOOLEAN, defaultValue: true },
+    // 'veg' | 'nonveg' | 'egg'. Null on older rows: readers fall back to isVegetarian.
+    dietType: { type: DataTypes.STRING(8), allowNull: true },
+    // MRP / original price shown struck through (>= price). Null = no MRP.
+    originalPrice: { type: DataTypes.FLOAT, allowNull: true },
     isAvailable: { type: DataTypes.BOOLEAN, defaultValue: true },
     outOfStockUntil: { type: DataTypes.DATE, allowNull: true },
     isEliteOnly: { type: DataTypes.BOOLEAN, defaultValue: false },

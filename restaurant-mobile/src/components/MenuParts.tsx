@@ -55,6 +55,11 @@ function MenuRowBase({ item, pending, onToggle, onEditPrice, onEdit }: {
             <Text style={[font.body, { color: color.text, fontWeight: '800' }]}>{rupees(item.price)}</Text>
             <Ionicons name="pencil" size={14} color={color.info} />
           </Pressable>
+          {item.originalPrice && item.originalPrice > item.price ? (
+            <Text style={[font.small, { color: color.textMuted, textDecorationLine: 'line-through' }]} accessibilityLabel={`MRP ${rupees(item.originalPrice)}`}>
+              {rupees(item.originalPrice)}
+            </Text>
+          ) : null}
           {!on && item.outOfStockUntil ? <Text style={[font.small, { color: color.textMuted }]}>Back {clockIST(item.outOfStockUntil)}</Text> : null}
         </View>
       </View>

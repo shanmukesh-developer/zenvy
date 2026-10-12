@@ -7,6 +7,7 @@ import { API_URL } from '../constants/api';
 import { useCart } from '../context/CartContext';
 import { apiFetch } from '../utils/auth';
 import { isLocalVendorType } from '../utils/localVendor';
+import { isCustomizable } from './CustomizeDrawer';
 
 // Grocery search runs against the DB catalogue (GET /api/catalogue/items?type=grocery&q=…)
 const toGroceryResult = (it: any) => ({
@@ -136,12 +137,40 @@ export default function SearchOverlay({ isOpen, onClose, searchMode = 'food' }: 
     const rest = item?.restaurantId && typeof item.restaurantId === 'object' ? item.restaurantId : null;
     const restId = rest?._id || rest?.id || (typeof item?.restaurantId === 'string' ? item.restaurantId : null);
     const vType = String(rest?.vendorType || '').toUpperCase();
-    // CampusBites stall dishes open the stall page (call / WhatsApp the vendor — never the basket)
+    // Dishes (CampusBites stall dishes too) open their kitchen / stall page
     if (restId && (!vType || FOOD_VENDOR_TYPES.includes(vType) || isLocalVendorType(vType))) {
       router.push(`/restaurant/${restId}` as any);
       return;
     }
     router.push(`/products/${item._id || item.id}` as any);
+  };
+
+  /** CampusBites stall dish from the food search: ADD straight to the basket (the stall delivers, COD). */
+  const stallOf = (item: any) => {
+    const rest = item?.restaurantId && typeof item.restaurantId === 'object' ? item.restaurantId : null;
+    if (!rest || !isLocalVendorType(rest.vendorType)) return null;
+    const id = String(rest._id || rest.id || '');
+    return id ? { id, name: String(rest.name || '') } : null;
+  };
+  const addStallDish = (item: any) => {
+    const stall = stallOf(item);
+    const itemId = String(item?._id || item?.id || '');
+    if (!stall || !itemId) return;
+    if (isCustomizable(item)) {
+      onClose();
+      router.push(`/products/${itemId}` as any);
+      return;
+    }
+    addToCart({
+      id: itemId,
+      name: String(item.name || ''),
+      price: Number(item.price) || 0,
+      basePrice: Number(item.price) || 0,
+      image: item.imageUrl || item.image || '',
+      restaurantId: stall.id,
+      restaurantName: stall.name,
+      isStall: true,
+    });
   };
 
   const cardBg = isDark ? COLORS.bgCard : '#FFF';
@@ -319,6 +348,24 @@ export default function SearchOverlay({ isOpen, onClose, searchMode = 'food' }: 
                           <Text style={s.gridCardPrice}>₹{item.price}</Text>
                           <Text style={s.gridCardRestName} numberOfLines={1}>{item.restaurantId?.name || ''}</Text>
                         </View>
+                        {!!stallOf(item) && (() => {
+                          const itemId = String(item._id || item.id);
+                          const stallQty = cart.reduce((a, c) => (String(c.id) === itemId ? a + c.quantity : a), 0);
+                          const soldOut = item.isAvailable === false;
+                          return (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }}>
+                              <Text style={{ fontSize: 8, fontWeight: '800', color: '#F97316' }}>🏪 STALL · CASH</Text>
+                              <TouchableOpacity
+                                style={[s.addBtn, soldOut && { opacity: 0.5 }]}
+                                disabled={soldOut}
+                                accessibilityLabel={`Add ${item.name} to your basket`}
+                                onPress={() => addStallDish(item)}
+                              >
+                                <Text style={s.addBtnText}>{soldOut ? 'SOLD OUT' : stallQty > 0 ? `ADD + (${stallQty})` : 'ADD +'}</Text>
+                              </TouchableOpacity>
+                            </View>
+                          );
+                        })()}
                       </View>
                     </TouchableOpacity>
                   );

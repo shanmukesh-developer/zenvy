@@ -4,7 +4,9 @@ import { useRouter } from 'expo-router';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
 import { API_URL, ZENVY_SUPPORT_WHATSAPP } from '../constants/api';
-import { isLocalVendor, vendorCallNumber, vendorWhatsappNumber, callVendor, whatsappVendor } from '../utils/localVendor';
+import { isLocalVendor, vendorCallNumber, callVendor, stallPayCopy } from '../utils/localVendor';
+import { useCart } from '../context/CartContext';
+import { isCustomizable } from './CustomizeDrawer';
 
 const CAMPUSES = [
   { code: 'ALL', label: 'All Campuses', emoji: '🌐' },
@@ -21,6 +23,41 @@ export default function CampusBitesSection({ restaurants }: CampusBitesSectionPr
   const { isDark } = useTheme();
   const [selectedCampus, setSelectedCampus] = useState('ALL');
   const [stallSearch, setStallSearch] = useState('');
+  const { addToCart, quantityOf } = useCart();
+  const [addedKey, setAddedKey] = useState<string | null>(null);
+
+  /** ADD a stall dish straight to the basket (customisable dishes open their page first). */
+  const addStallItem = (vendor: any, item: any, open: boolean) => {
+    const itemId = String(item?.id || item?._id || '');
+    const vendorId = String(vendor?._id || vendor?.id || '');
+    if (!itemId || !vendorId) return;
+    if (!open) {
+      Alert.alert('Closed right now', `${vendor.name || 'This stall'} is not taking orders right now. Try again when it opens.`);
+      return;
+    }
+    if (item.isAvailable === false) {
+      Alert.alert('Sold out', `${item.name} is sold out right now.`);
+      return;
+    }
+    if (isCustomizable(item)) {
+      router.push(`/products/${itemId}` as any);
+      return;
+    }
+    const added = addToCart({
+      id: itemId,
+      name: String(item.name || ''),
+      price: Number(item.price) || 0,
+      basePrice: Number(item.price) || 0,
+      image: item.imageUrl || item.image || '',
+      restaurantId: vendorId,
+      restaurantName: String(vendor.name || ''),
+      isStall: true,
+    });
+    if (added) {
+      setAddedKey(itemId);
+      setTimeout(() => setAddedKey((k) => (k === itemId ? null : k)), 900);
+    }
+  };
 
   // 1. Check if there are any local vendors
   const allVendors = useMemo(() => (Array.isArray(restaurants) ? restaurants : []).filter(isLocalVendor), [restaurants]);
@@ -127,7 +164,7 @@ export default function CampusBitesSection({ restaurants }: CampusBitesSectionPr
             LOCAL <Text style={{ color: COLORS.gold }}>VENDOR STALLS</Text>
           </Text>
           <Text style={[s.sectionDesc, { color: txtSec }]}>
-            DISCOVER FOOD STALLS NEAR YOUR CAMPUS. BROWSE MENUS & PRICES HERE, THEN ORDER DIRECTLY FROM THE STALL BY CALL OR WHATSAPP — THE VENDOR DELIVERS.
+            FOOD STALLS NEAR YOUR CAMPUS. ORDER RIGHT HERE ON ZENVY — THE STALL DELIVERS IT TO YOU AND YOU PAY THEM IN CASH.
           </Text>
         </View>
       </View>
@@ -253,6 +290,33 @@ export default function CampusBitesSection({ restaurants }: CampusBitesSectionPr
                 </View>
               </View>
 
+              {/* Quick ADD: a few of the stall's dishes */}
+              {Array.isArray(vendor.menu) && vendor.menu.some((m: any) => m && m.isAvailable !== false) && (
+                <View style={s.dishList}>
+                  {vendor.menu.filter((m: any) => m && m.isAvailable !== false).slice(0, 3).map((m: any) => {
+                    const mId = String(m.id || m._id || '');
+                    const inBasket = quantityOf(mId);
+                    const justAdded = addedKey === mId;
+                    return (
+                      <View key={mId} style={[s.dishRow, { borderColor: border }]}>
+                        <Text style={[s.dishName, { color: txt }]} numberOfLines={1}>{m.name}</Text>
+                        <Text style={[s.dishPrice, { color: txt }]}>₹{Number(m.price) || 0}</Text>
+                        <TouchableOpacity
+                          style={[s.addBtn, !isOpen && { opacity: 0.5 }, justAdded && { backgroundColor: '#EF4F5F' }]}
+                          accessibilityLabel={`Add ${m.name} from ${vendor.name || 'the stall'} to your basket`}
+                          onPress={() => addStallItem(vendor, m, isOpen)}
+                        >
+                          <Text style={[s.addBtnText, justAdded && { color: '#fff' }]}>
+                            {justAdded ? '✓ ADDED' : !isOpen ? 'CLOSED' : inBasket > 0 ? `ADD + (${inBasket})` : 'ADD +'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })}
+                  <Text style={[s.payNote, { color: txtSec }]}>💵 {stallPayCopy(vendor.name)} · the stall delivers</Text>
+                </View>
+              )}
+
               {/* Bottom Actions Row */}
               <View style={[s.bottomRow, { borderTopColor: border }]}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -282,7 +346,7 @@ export default function CampusBitesSection({ restaurants }: CampusBitesSectionPr
                   {!!vendorCallNumber(vendor) && (
                     <TouchableOpacity
                       style={[s.actionBtn, s.callBtn]}
-                      accessibilityLabel={`Call ${vendor.name || 'the stall'} to order`}
+                      accessibilityLabel={`Call ${vendor.name || 'the stall'}`}
                       onPress={() => {
                         trackClick(vendor._id || vendor.id);
                         callVendor(vendor);
@@ -292,18 +356,16 @@ export default function CampusBitesSection({ restaurants }: CampusBitesSectionPr
                     </TouchableOpacity>
                   )}
 
-                  {!!vendorWhatsappNumber(vendor) && (
-                    <TouchableOpacity
-                      style={[s.actionBtn, s.orderBtn]}
-                      accessibilityLabel={`Order from ${vendor.name || 'the stall'} on WhatsApp`}
-                      onPress={() => {
-                        trackClick(vendor._id || vendor.id);
-                        whatsappVendor(vendor);
-                      }}
-                    >
-                      <Text style={s.orderText}>💬 WHATSAPP</Text>
-                    </TouchableOpacity>
-                  )}
+<TouchableOpacity
+                    style={[s.actionBtn, s.orderBtn]}
+                    accessibilityLabel={`Order from ${vendor.name || 'the stall'} on Zenvy`}
+                    onPress={() => {
+                      trackClick(vendor._id || vendor.id);
+                      router.push(`/restaurant/${vendor._id || vendor.id}` as any);
+                    }}
+                  >
+                    <Text style={s.orderText}>🛒 ORDER</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             </TouchableOpacity>
@@ -314,7 +376,7 @@ export default function CampusBitesSection({ restaurants }: CampusBitesSectionPr
 
       {/* Footer disclaimer */}
       <Text style={[s.disclaimer, { color: txtSec }]}>
-        Zenvy only lists these stalls. You order directly with the vendor by call or WhatsApp, and the vendor delivers — Zenvy takes no order, payment or rider.
+        Stall orders are placed on Zenvy and delivered by the stall itself. Pay the stall in cash on delivery — no coupons or add-ons on stall orders.
       </Text>
     </View>
   );
@@ -370,6 +432,13 @@ const s = StyleSheet.create({
   callText: { color: '#3B82F6', fontSize: 7, fontWeight: '900', letterSpacing: 1 },
   orderBtn: { backgroundColor: 'rgba(16,185,129,0.1)', borderColor: 'rgba(16,185,129,0.2)' },
   orderText: { color: '#10B981', fontSize: 7, fontWeight: '900', letterSpacing: 1 },
+  dishList: { marginTop: 10, gap: 6 },
+  dishRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, borderTopWidth: StyleSheet.hairlineWidth },
+  dishName: { flex: 1, fontSize: 11, fontWeight: '700' },
+  dishPrice: { fontSize: 11, fontWeight: '900' },
+  addBtn: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: '#EF4F5F', backgroundColor: '#FFF5F6', minWidth: 64, alignItems: 'center' },
+  addBtnText: { color: '#EF4F5F', fontSize: 9, fontWeight: '900', letterSpacing: 0.5 },
+  payNote: { fontSize: 9, fontWeight: '700', marginTop: 2 },
 
   disclaimer: { fontSize: 7, fontWeight: '700', letterSpacing: 0.5, textAlign: 'center', marginTop: 12, lineHeight: 10 }
 });

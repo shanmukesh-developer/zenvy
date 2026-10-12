@@ -31,6 +31,16 @@
           "cameraPermission": "Zenvy Vendor uses the camera to take pictures of your items.",
           "microphonePermission": false
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#0B0D12",
+          "sounds": [
+            "./assets/sounds/alert.wav"
+          ],
+          "defaultChannel": "delivery-alerts-v2"
+        }
       ]
     ]
   }

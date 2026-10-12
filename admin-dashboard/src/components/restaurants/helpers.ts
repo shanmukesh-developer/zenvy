@@ -33,7 +33,7 @@ export function weeklyFromStore(oh?: OperatingHours | null): Weekly {
   return base;
 }
 
-/** True when every day is open with the same window (what the server stores today). */
+/** True when every day is open with the same window (then only { start, end } is sent). */
 export const isUniform = (w: Weekly) => {
   const first = w.mon;
   return DAYS.every(d => w[d].open && w[d].start === first.start && w[d].end === first.end);
@@ -134,8 +134,7 @@ export const mapsUrl = (lat: number, lon: number) => `https://www.google.com/map
 // ─── Images: resize in the browser, then upload ──────────────────────────────
 /**
  * Scales an image down to fit maxW × maxH (cover crop when `crop` is set) and re-encodes it as JPEG
- * (or WEBP for logos with transparency) under ~600 KB. Uploads are stored as data URLs in the DB,
- * so smaller is much better for the customer app.
+ * (or WEBP for logos with transparency) under ~600 KB. Smaller images load much faster in the customer app.
  */
 export async function resizeImage(file: File, opts: { maxW: number; maxH: number; crop?: boolean; keepAlpha?: boolean }): Promise<File> {
   if (!/^image\/(jpe?g|png|webp)$/.test(file.type)) throw new Error('Use a JPEG, PNG or WEBP image.');

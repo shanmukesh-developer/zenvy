@@ -56,6 +56,10 @@ const protect = async (req, res, next) => {
     // Check cache first (avoids DB hit for 500+ concurrent users)
     const cached = getCachedUser(decoded.id);
     if (cached) {
+      // Partner sessions from before a password reset (older tokenVersion) are signed out.
+      if (cached.role === 'restaurant' && (Number(decoded.tv) || 0) !== (Number(cached.tokenVersion) || 0)) {
+        return res.status(401).json({ message: 'Your password was changed. Please sign in again.', code: 'SESSION_REVOKED' });
+      }
       req.user = cached;
       return next();
     }
@@ -64,10 +68,14 @@ const protect = async (req, res, next) => {
        const { getRestaurantModel } = require('../models/Restaurant');
        const Restaurant = getRestaurantModel();
        if (Restaurant) {
-         const dbRest = await Restaurant.findByPk(decoded.id);
+         const dbRest = await Restaurant.findByPk(decoded.id, { attributes: ['id', 'name', 'tokenVersion'] });
          if (!dbRest) return res.status(401).json({ message: 'Restaurant not found' });
+         const tokenVersion = Number(dbRest.tokenVersion) || 0;
+         setCachedUser(decoded.id, { id: dbRest.id, role: 'restaurant', name: dbRest.name, tokenVersion });
+         if ((Number(decoded.tv) || 0) !== tokenVersion) {
+           return res.status(401).json({ message: 'Your password was changed. Please sign in again.', code: 'SESSION_REVOKED' });
+         }
          req.user = { id: dbRest.id, role: 'restaurant', name: dbRest.name };
-         setCachedUser(decoded.id, req.user);
          return next();
        }
     }

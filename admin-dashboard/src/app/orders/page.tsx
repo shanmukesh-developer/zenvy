@@ -29,7 +29,11 @@ interface Order {
   _id: string;
   id?: string;
   user?: { name?: string; phone?: string } | null;
-  restaurant?: { name?: string } | null;
+  restaurantId?: string | null;
+  restaurant?: { name?: string; vendorType?: string | null; whatsappNumber?: string | null } | null;
+  /** 'VENDOR' = CampusBites stall delivers itself (COD to the stall, no rider, no PIN). null / 'ZENVY' = Zenvy rider. */
+  fulfilment?: string | null;
+  outForDeliveryAt?: string | null;
   items: OrderItem[];
   totalPrice: number;
   finalPrice?: number | null;
@@ -54,12 +58,22 @@ interface Order {
 
 type Notice = { kind: 'success' | 'error'; text: string } | null;
 
-const STATUS_FILTERS = ['All', 'Pending', 'Accepted', 'Preparing', 'ReadyForPickup', 'PickedUp', 'ArrivedAtGate', 'Delivered', 'Cancelled'];
+const STATUS_FILTERS = ['All', 'Pending', 'Accepted', 'Preparing', 'ReadyForPickup', 'PickedUp', 'ArrivedAtGate', 'OutForDelivery', 'Delivered', 'Cancelled'];
 const STATUS_LABELS: Record<string, string> = {
   ReadyForPickup: 'Ready',
   PickedUp: 'Picked up',
   ArrivedAtGate: 'At gate',
+  OutForDelivery: 'Out for delivery',
 };
+type FulfilmentFilter = 'All' | 'ZENVY' | 'VENDOR';
+const FULFILMENT_FILTERS: { value: FulfilmentFilter; label: string }[] = [
+  { value: 'All', label: 'All deliveries' },
+  { value: 'ZENVY', label: 'Zenvy riders' },
+  { value: 'VENDOR', label: 'Stall delivers' },
+];
+/** Stall (CampusBites) order: the stall delivers it, cash to the stall, no rider and no PIN. */
+const isVendorOrder = (o: Order) => o.fulfilment === 'VENDOR';
+const stallName = (o: Order) => o.restaurant?.name || 'the stall';
 const TERMINAL = ['Delivered', 'Cancelled'];
 const PIN_LOCK_ATTEMPTS = 5;
 
@@ -105,7 +119,8 @@ const getStatusStyle = (status: string) => {
     case 'ReadyForPickup': return 'bg-violet-500/10 text-violet-400 border-violet-500/20';
     case 'Picking':
     case 'PickedUp':
-    case 'ArrivedAtGate': return 'bg-orange-500/10 text-orange-400 border-orange-500/20';
+    case 'ArrivedAtGate':
+    case 'OutForDelivery': return 'bg-orange-500/10 text-orange-400 border-orange-500/20';
     case 'Delivered': return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
     case 'Cancelled': return 'bg-red-500/10 text-red-500 border-red-500/20';
     default: return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
@@ -137,7 +152,7 @@ const OrderRow = memo(({ order, busy, fresh, onSelect }: {
   onSelect: (o: Order) => void;
 }) => {
   const id = orderId(order);
-  const pinLocked = (order.deliveryPinAttempts || 0) >= PIN_LOCK_ATTEMPTS && !TERMINAL.includes(order.status);
+  const pinLocked = !isVendorOrder(order) && (order.deliveryPinAttempts || 0) >= PIN_LOCK_ATTEMPTS && !TERMINAL.includes(order.status);
   return (
     <tr className={`hover:bg-white/[0.02] transition-colors cursor-pointer ${fresh ? FRESH_ROW_CLASS : ''}`} onClick={() => onSelect(order)}>
       <td className="p-4">
@@ -150,6 +165,9 @@ const OrderRow = memo(({ order, busy, fresh, onSelect }: {
       </td>
       <td className="p-4">
         <p className="text-xs text-gray-300 font-bold">{order.restaurant?.name || '—'}</p>
+        {isVendorOrder(order) && (
+          <p className="mt-0.5 text-[8px] font-black uppercase tracking-wider text-amber-400" title="The stall delivers this order itself and collects cash. No Zenvy rider, no delivery PIN.">Stall delivers · COD to stall</p>
+        )}
         <p className="text-[10px] text-gray-500 max-w-[220px] truncate">
           {(order.items || []).map(i => `${i.name || 'Item'} ×${i.quantity}`).join(', ') || '—'}
         </p>
@@ -197,6 +215,19 @@ export default function OrdersPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('All');
+  const [filterFulfilment, setFilterFulfilment] = useState<FulfilmentFilter>('All');
+  // ?store=<id> (from Stores → a store → "All orders").
+  const [storeFilter, setStoreFilter] = useState<string | null>(null);
+  useEffect(() => {
+    const sid = new URLSearchParams(window.location.search).get('store');
+    if (sid) setStoreFilter(sid);
+  }, []);
+  const clearStoreFilter = () => {
+    setStoreFilter(null);
+    const url = new URL(window.location.href);
+    url.searchParams.delete('store');
+    window.history.replaceState(window.history.state, '', url.toString());
+  };
   const [notice, setNotice] = useState<Notice>(null);
 
   const requestSeq = useRef(0);
@@ -217,6 +248,8 @@ export default function OrdersPage() {
     if (showSpinner) setLoading(true);
     try {
       const params = new URLSearchParams({ page: String(page), limit: '50', status: filterStatus });
+      if (filterFulfilment !== 'All') params.set('fulfilment', filterFulfilment);
+      if (storeFilter) params.set('restaurantId', storeFilter);
       const data = await requestJson<{ orders?: Order[]; total?: number; pages?: number }>(`${API_URL}/api/admin/orders?${params}`);
       if (seq !== requestSeq.current) return; // a newer request (filter/page change) superseded this one
       setOrders(Array.isArray(data.orders) ? data.orders : []);
@@ -231,7 +264,7 @@ export default function OrdersPage() {
     } finally {
       if (seq === requestSeq.current && showSpinner) setLoading(false);
     }
-  }, [filterStatus]);
+  }, [filterStatus, filterFulfilment, storeFilter]);
 
   /** Coalesces bursts of socket events into one quiet refresh. */
   const scheduleRefresh = useCallback(() => {
@@ -332,14 +365,17 @@ export default function OrdersPage() {
   };
 
   const acceptOrder = (o: Order) => {
-    if (!confirm(`Accept order ${shortId(orderId(o))} on behalf of ${o.restaurant?.name || 'the store'} and send it to riders?`)) return;
+    const question = isVendorOrder(o)
+      ? `Accept order ${shortId(orderId(o))} on behalf of ${stallName(o)}? Only do this after confirming with the stall: the stall delivers it itself (no rider).`
+      : `Accept order ${shortId(orderId(o))} on behalf of ${o.restaurant?.name || 'the store'} and send it to riders?`;
+    if (!confirm(question)) return;
     runAction(o, 'Order accepted', `${API_URL}/api/orders/${orderId(o)}/restaurant-accept`, {}, 'Accepted');
   };
 
   const setStatus = (o: Order, status: string) => {
     const id = shortId(orderId(o));
     if (status === 'Delivered') {
-      const cash = o.paymentMethod === 'COD' ? `\n\nThis is a Cash on Delivery order: confirm ${rupees(grandTotal(o))} was collected.` : '';
+      const cash = o.paymentMethod === 'COD' ? `\n\nThis is a Cash on Delivery order: confirm ${rupees(grandTotal(o))} was collected${isVendorOrder(o) ? ` by ${stallName(o)}` : ''}.` : '';
       if (!confirm(`Mark order ${id} as delivered? The customer is notified and rewards are credited.${cash}`)) return;
     } else if (!confirm(`Change order ${id} to "${statusLabel(status)}"?`)) {
       return;
@@ -371,7 +407,9 @@ export default function OrdersPage() {
   const instructions = selectedOrder ? parseJson<string[]>(selectedOrder.deliveryInstructions as string[] | string | null) : null;
   const selectedBusy = !!selectedOrder && busyId === orderId(selectedOrder);
   const selectedOpen = !!selectedOrder && !TERMINAL.includes(selectedOrder.status);
-  const selectedPinLocked = !!selectedOrder && (selectedOrder.deliveryPinAttempts || 0) >= PIN_LOCK_ATTEMPTS && selectedOpen;
+  const selectedVendor = !!selectedOrder && isVendorOrder(selectedOrder);
+  const selectedPinLocked = !!selectedOrder && !selectedVendor && (selectedOrder.deliveryPinAttempts || 0) >= PIN_LOCK_ATTEMPTS && selectedOpen;
+  const stallWa = selectedOrder?.restaurant?.whatsappNumber ? String(selectedOrder.restaurant.whatsappNumber).replace(/\D/g, '') : '';
 
   return (
     <div className="space-y-8 animate-fade-in relative pb-20">
@@ -387,6 +425,25 @@ export default function OrdersPage() {
         >
           ↻ Refresh ({totalOrders})
         </button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        {FULFILMENT_FILTERS.map(f => (
+          <button
+            key={f.value}
+            onClick={() => setFilterFulfilment(f.value)}
+            aria-pressed={filterFulfilment === f.value}
+            className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${filterFulfilment === f.value ? 'bg-amber-500 text-black border-amber-500' : 'bg-white/5 text-gray-500 border-white/10 hover:text-white'}`}
+          >
+            {f.label}
+          </button>
+        ))}
+        {storeFilter && (
+          <span className="ml-2 flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-emerald-300">
+            One store{orders[0]?.restaurant?.name ? `: ${orders[0].restaurant.name}` : ''}
+            <button onClick={clearStoreFilter} className="text-emerald-200 hover:text-white" aria-label="Show all stores">✕</button>
+          </span>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -522,7 +579,18 @@ export default function OrdersPage() {
                     </ul>
                   )}
                   <p className="text-[10px] text-gray-500 mt-2">Store: {selectedOrder.restaurant?.name || '—'}</p>
-                  <p className="text-[10px] text-gray-500">Rider: {selectedOrder.deliveryPartnerId ? 'Assigned' : 'Not assigned yet'}</p>
+                  {selectedVendor ? (
+                    <div className="mt-2 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
+                      <p className="text-[9px] font-black uppercase tracking-widest text-amber-400">Delivered by the stall</p>
+                      <p className="mt-1 text-[11px] text-gray-300">{stallName(selectedOrder)} delivers this order itself and collects the cash. No Zenvy rider, no delivery PIN.</p>
+                      {selectedOrder.outForDeliveryAt && <p className="mt-1 text-[10px] text-gray-500">Left the stall {new Date(selectedOrder.outForDeliveryAt).toLocaleString([], { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>}
+                      {stallWa && (
+                        <a href={`https://wa.me/${stallWa.length === 10 ? `91${stallWa}` : stallWa}`} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-[10px] font-bold text-emerald-400 underline">WhatsApp the stall ↗</a>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-gray-500">Rider: {selectedOrder.deliveryPartnerId ? 'Assigned' : 'Not assigned yet'}</p>
+                  )}
                 </div>
                 <div>
                   <h5 className="text-[9px] font-black text-blue-500 uppercase tracking-[0.2em] mb-2">Payment</h5>
@@ -594,13 +662,16 @@ export default function OrdersPage() {
               <div className="space-y-3 pt-4 border-t border-white/5">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Support actions</span>
-                  <span className="text-[9px] text-gray-500">The customer, store and rider apps update automatically</span>
+                  <span className="text-[9px] text-gray-500">{selectedVendor ? 'The customer and Zenvy Vendor apps update automatically' : 'The customer, store and rider apps update automatically'}</span>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                   {selectedOrder.status === 'Pending' && (
-                    <button disabled={selectedBusy} onClick={() => acceptOrder(selectedOrder)} className="py-2.5 px-2 bg-sky-500/10 text-sky-400 border border-sky-500/20 rounded-xl text-[9px] font-black uppercase tracking-wider hover:bg-sky-500/20 disabled:opacity-30 transition-all">Accept & dispatch</button>
+                    <button disabled={selectedBusy} onClick={() => acceptOrder(selectedOrder)} className="py-2.5 px-2 bg-sky-500/10 text-sky-400 border border-sky-500/20 rounded-xl text-[9px] font-black uppercase tracking-wider hover:bg-sky-500/20 disabled:opacity-30 transition-all">{selectedVendor ? 'Accept for stall' : 'Accept & dispatch'}</button>
                   )}
-                  {!['Pending', 'PickedUp', 'ArrivedAtGate'].includes(selectedOrder.status) && (
+                  {selectedVendor && ['Accepted', 'Preparing', 'ReadyForPickup'].includes(selectedOrder.status) && (
+                    <button disabled={selectedBusy} onClick={() => setStatus(selectedOrder, 'OutForDelivery')} className="py-2.5 px-2 bg-orange-500/10 text-orange-400 border border-orange-500/20 rounded-xl text-[9px] font-black uppercase tracking-wider hover:bg-orange-500/20 disabled:opacity-30 transition-all">Out for delivery</button>
+                  )}
+                  {!selectedVendor && !['Pending', 'PickedUp', 'ArrivedAtGate'].includes(selectedOrder.status) && (
                     <button disabled={selectedBusy} onClick={() => setStatus(selectedOrder, 'PickedUp')} className="py-2.5 px-2 bg-orange-500/10 text-orange-400 border border-orange-500/20 rounded-xl text-[9px] font-black uppercase tracking-wider hover:bg-orange-500/20 disabled:opacity-30 transition-all">Mark picked up</button>
                   )}
                   {selectedOrder.status !== 'Pending' && (

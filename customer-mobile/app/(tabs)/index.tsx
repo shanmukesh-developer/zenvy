@@ -149,7 +149,7 @@ const isPureVegRestaurant = (r: any): boolean => {
 
 // Restaurant types shown in the Home food list and the Classics explorer
 const HOME_FOOD_TYPES = ['FOOD', 'RESTAURANT', 'CAFE', 'BAKERY', 'SWEETS', 'DESSERT', 'DESSERTS', 'DRINKS', 'MESS'];
-// CampusBites stalls are display-only (call / WhatsApp the vendor) and live in their own section, never the orderable grid
+// CampusBites stalls live in their own section (CampusBitesSection: ADD to basket, the stall delivers, COD), not this grid
 const isHomeFoodVendor = (r: any): boolean => {
   if (isLocalVendor(r)) return false;
   const t = String(r?.vendorType || '').toUpperCase();
@@ -691,8 +691,6 @@ export default function HomeScreen() {
                 router.push('/mega-basket' as any);
               } else if (slide.id === 'campus-buddy') {
                 router.push('/friends' as any);
-              } else if (slide.id === 'after-dark') {
-                router.push({ pathname: '/(tabs)/others', params: { tab: 'afterdark' } } as any);
               } else if (slide.id === 'ride') {
                 router.push({ pathname: '/(tabs)/others', params: { tab: 'rides' } } as any);
               } else if (slide.id === 'stays') {

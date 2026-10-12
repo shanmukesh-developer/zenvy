@@ -1,5 +1,6 @@
 import { API_URL } from '../../constants/api';
 import { getToken } from '../../utils/auth';
+import { prepareAndUploadImage, MediaPurpose } from '../../utils/imageUpload';
 import {
   CampusItem,
   CampusProfileData,
@@ -11,6 +12,9 @@ import {
 export interface CampusProfileResponse {
   profile: CampusProfileData;
   user: CampusUserData;
+  /** Latest ID-card request (pending / rejected with the reviewer's note). */
+  lastVerification?: CampusLastVerification | null;
+  verificationMethods?: { email: boolean; idCard: boolean };
 }
 
 export const CAMPUS_NO_SESSION_ERROR =
@@ -35,6 +39,19 @@ export const isCampusAuthError = (err: any) => {
   return msg === CAMPUS_NO_SESSION_ERROR || msg === CAMPUS_SESSION_EXPIRED_ERROR;
 };
 
+/** Error with the server's machine-readable code (e.g. EMAIL_NOT_CONFIGURED) and extra fields. */
+export class CampusApiError extends Error {
+  status: number;
+  code: string;
+  data: any;
+  constructor(message: string, status = 0, code = '', data: any = null) {
+    super(message);
+    this.status = status;
+    this.code = code;
+    this.data = data;
+  }
+}
+
 /**
  * Parse a fetch Response and throw a short, friendly Error on failure.
  * Never surfaces raw HTML / "JSON Parse error" text (e.g. a Render 502 page during a cold start).
@@ -42,23 +59,32 @@ export const isCampusAuthError = (err: any) => {
 const jsonOrThrow = async (res: Response, fallback: string) => {
   const json: any = await res.json().catch(() => null);
   if (!res.ok) {
-    if (res.status === 401) throw new Error(CAMPUS_SESSION_EXPIRED_ERROR);
-    if (res.status >= 502 && res.status <= 504) {
-      throw new Error('Campus is waking up. Please try again in a few seconds.');
+    const code = json && typeof json.code === 'string' ? json.code : '';
+    if (res.status === 401) throw new CampusApiError(CAMPUS_SESSION_EXPIRED_ERROR, 401, code || 'AUTH', json);
+    // A structured JSON error from our own API (e.g. 502 EMAIL_SEND_FAILED) keeps its own message;
+    // only a bare gateway error (Render cold start / HTML page) is reported as "waking up".
+    if (res.status >= 502 && res.status <= 504 && !(json && typeof json.message === 'string' && code)) {
+      throw new CampusApiError('Campus is waking up. Please try again in a few seconds.', res.status, code || 'SERVER_BUSY', json);
     }
     const serverMsg = json && typeof json.message === 'string' ? json.message : '';
-    throw new Error(serverMsg && serverMsg.length < 160 ? serverMsg : fallback);
+    throw new CampusApiError(serverMsg && serverMsg.length < 160 ? serverMsg : fallback, res.status, code, json);
   }
-  if (json === null) throw new Error(fallback);
+  if (json === null) throw new CampusApiError(fallback, res.status);
   return json;
 };
 
-/** fetch() that maps network failures (offline, DNS, timeout) to a friendly message. */
+const CAMPUS_TIMEOUT_MS = 30000;
+
+/** fetch() with a timeout; network failures (offline, DNS, timeout) become a friendly message. */
 const campusFetch = async (url: string, init?: RequestInit): Promise<Response> => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), CAMPUS_TIMEOUT_MS);
   try {
-    return await fetch(url, init);
+    return await fetch(url, { ...(init || {}), signal: controller.signal });
   } catch {
-    throw new Error(CAMPUS_NETWORK_ERROR);
+    throw new CampusApiError(CAMPUS_NETWORK_ERROR, 0, 'NETWORK');
+  } finally {
+    clearTimeout(timer);
   }
 };
 
@@ -110,11 +136,12 @@ export const confirmCollegeEmailOtp = async (email: string, otp: string) => {
 };
 
 export const uploadIdCardForVerification = async (idCardImageUrl: string, campusId?: string, collegeId?: string) => {
-  // The picker gives a device-local file:// URI the admin can never open: upload the photo
-  // first and send the hosted image URL instead.
+  // Device-local photos are compressed and uploaded first (private id_card media); the request
+  // carries only the short media link.
   let imageUrl = idCardImageUrl;
-  if (!/^(https?:|data:)/i.test(imageUrl)) {
-    imageUrl = await uploadCampusImage(imageUrl);
+  if (!/^(https?:|\/api\/)/i.test(imageUrl)) {
+    const uploaded = await prepareAndUploadImage({ uri: imageUrl }, 'id_card', { maxEdge: 1600, quality: 0.75 });
+    imageUrl = uploaded.url;
   }
   const headers = await getAuthHeaders();
   const res = await campusFetch(`${API_URL}/api/campus/verify/upload-id`, {
@@ -123,6 +150,235 @@ export const uploadIdCardForVerification = async (idCardImageUrl: string, campus
     body: JSON.stringify({ idCardImageUrl: imageUrl, campusId, collegeId }),
   });
   return jsonOrThrow(res, "Couldn't submit your ID card. Please try again.");
+};
+
+export interface CampusVerificationMethods {
+  email: boolean;
+  idCard: boolean;
+  emailDomains?: string[];
+  otpTtlSeconds?: number;
+  resendCooldownSeconds?: number;
+}
+
+export interface CampusLastVerification {
+  id: string;
+  type?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  reviewNotes?: string | null;
+  idCardImageUrl?: string | null;
+  submittedAt?: string | null;
+  reviewedAt?: string | null;
+}
+
+export interface CampusVerificationStatus {
+  verificationStatus: CampusProfileData['verificationStatus'];
+  collegeEmail?: string | null;
+  verifiedAt?: string | null;
+  lastVerification: CampusLastVerification | null;
+  methods?: CampusVerificationMethods;
+}
+
+export const fetchVerificationMethods = async (): Promise<CampusVerificationMethods> => {
+  const headers = await getAuthHeaders();
+  const res = await campusFetch(`${API_URL}/api/campus/verify/methods`, { headers });
+  const json = await jsonOrThrow(res, "Couldn't load verification options.");
+  return { ...json, email: !!json.email, idCard: json.idCard !== false };
+};
+
+export const fetchVerificationStatus = async (): Promise<CampusVerificationStatus> => {
+  const headers = await getAuthHeaders();
+  const res = await campusFetch(`${API_URL}/api/campus/verify/status`, { headers });
+  return jsonOrThrow(res, "Couldn't load your verification status.");
+};
+
+// ── People search + 1:1 chats ────────────────────────────────────────────────
+export type CampusFriendshipStatus = 'none' | 'accepted' | 'pending_out' | 'pending_in' | 'blocked';
+
+export interface CampusPerson {
+  userId: string;
+  name: string;
+  avatarUrl?: string | null;
+  branch?: string | null;
+  year?: number | null;
+  verified?: boolean;
+  friendshipStatus: CampusFriendshipStatus;
+  friendshipId?: string | null;
+}
+
+export interface CampusClub {
+  id: string;
+  name: string;
+  description?: string | null;
+  type?: string;
+  avatarUrl?: string | null;
+  memberCount?: number;
+  isMember?: boolean;
+}
+
+export const searchCampus = async (
+  q: string,
+  type: 'all' | 'people' | 'clubs' = 'all'
+): Promise<{ people: CampusPerson[]; clubs: CampusClub[]; needsCampus?: boolean; needsVerification?: boolean }> => {
+  const headers = await getAuthHeaders();
+  const params = new URLSearchParams({ q, type });
+  const res = await campusFetch(`${API_URL}/api/campus/search?${params.toString()}`, { headers });
+  const json = await jsonOrThrow(res, "Couldn't search right now.");
+  return {
+    people: json.people || [],
+    clubs: json.clubs || [],
+    needsCampus: !!json.needsCampus,
+    needsVerification: !!json.needsVerification,
+  };
+};
+
+export const openCampusDm = async (userId: string): Promise<{ chatId: string; name: string }> => {
+  const headers = await getAuthHeaders();
+  const res = await campusFetch(`${API_URL}/api/campus/dm`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ userId }),
+  });
+  const json = await jsonOrThrow(res, "Couldn't open the chat. Please try again.");
+  return { chatId: json.chatId || json.chat?.id, name: json.chat?.name || 'Chat' };
+};
+
+export const setGroupDiscoverable = async (groupId: string, discoverable: boolean) => {
+  const headers = await getAuthHeaders();
+  const res = await campusFetch(`${API_URL}/api/campus/groups/${encodeURIComponent(groupId)}/discoverable`, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify({ discoverable }),
+  });
+  return jsonOrThrow(res, "Couldn't update the group.");
+};
+
+export const joinOpenGroup = async (groupId: string): Promise<CampusGroup & { alreadyMember?: boolean }> => {
+  const headers = await getAuthHeaders();
+  const res = await campusFetch(`${API_URL}/api/campus/groups/${encodeURIComponent(groupId)}/join-open`, {
+    method: 'POST',
+    headers,
+  });
+  const json = await jsonOrThrow(res, "Couldn't join the club. Please try again.");
+  const message: string = json.message || '';
+  return { ...(json.group || { id: groupId }), alreadyMember: /already/i.test(message) };
+};
+
+// ── Friends (/api/friends) ───────────────────────────────────────────────────
+export interface FriendRequestItem {
+  friendshipId: string;
+  vibe?: string;
+  icebreaker?: string | null;
+  createdAt?: string;
+  user: { id: string; name: string; friendCode?: string | null; avatarUrl?: string | null } | null;
+}
+
+export interface FriendItem {
+  friendshipId: string;
+  friendId: string;
+  name: string;
+  friendCode?: string | null;
+  avatarUrl?: string | null;
+  profileImage?: string | null;
+  vibe?: string;
+  streakCount?: number;
+  conversationId?: string | null;
+}
+
+export interface BlockedItem {
+  friendshipId: string;
+  user: { id: string; name: string };
+}
+
+export const fetchFriendRequests = async (): Promise<{ incoming: FriendRequestItem[]; outgoing: FriendRequestItem[] }> => {
+  const headers = await getAuthHeaders();
+  const res = await campusFetch(`${API_URL}/api/friends/requests`, { headers });
+  const json = await jsonOrThrow(res, "Couldn't load friend requests.");
+  return {
+    incoming: (json.incoming || []).filter((r: FriendRequestItem) => r && r.user),
+    outgoing: (json.outgoing || []).filter((r: FriendRequestItem) => r && r.user),
+  };
+};
+
+export const fetchFriends = async (): Promise<FriendItem[]> => {
+  const headers = await getAuthHeaders();
+  const res = await campusFetch(`${API_URL}/api/friends`, { headers });
+  const json = await jsonOrThrow(res, "Couldn't load your friends.");
+  return Array.isArray(json) ? json : [];
+};
+
+export const sendFriendRequest = async (data: { friendCode?: string; recipientId?: string; icebreaker?: string }) => {
+  const headers = await getAuthHeaders();
+  const res = await campusFetch(`${API_URL}/api/friends/request`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(data),
+  });
+  return jsonOrThrow(res, "Couldn't send the request. Please try again.");
+};
+
+export const acceptFriendRequest = async (friendshipId: string): Promise<{ conversationId?: string }> => {
+  const headers = await getAuthHeaders();
+  const res = await campusFetch(`${API_URL}/api/friends/requests/${encodeURIComponent(friendshipId)}/accept`, {
+    method: 'POST',
+    headers,
+  });
+  return jsonOrThrow(res, "Couldn't accept the request. Please try again.");
+};
+
+export const declineFriendRequest = async (friendshipId: string) => {
+  const headers = await getAuthHeaders();
+  const res = await campusFetch(`${API_URL}/api/friends/requests/${encodeURIComponent(friendshipId)}/decline`, {
+    method: 'POST',
+    headers,
+  });
+  return jsonOrThrow(res, "Couldn't decline the request. Please try again.");
+};
+
+export const cancelFriendRequest = async (friendshipId: string) => {
+  const headers = await getAuthHeaders();
+  const res = await campusFetch(`${API_URL}/api/friends/requests/${encodeURIComponent(friendshipId)}`, {
+    method: 'DELETE',
+    headers,
+  });
+  return jsonOrThrow(res, "Couldn't withdraw the request. Please try again.");
+};
+
+export const removeFriend = async (friendshipId: string) => {
+  const headers = await getAuthHeaders();
+  const res = await campusFetch(`${API_URL}/api/friends/${encodeURIComponent(friendshipId)}`, {
+    method: 'DELETE',
+    headers,
+  });
+  return jsonOrThrow(res, "Couldn't remove this friend. Please try again.");
+};
+
+export const blockCampusUser = async (userId: string) => {
+  const headers = await getAuthHeaders();
+  const res = await campusFetch(`${API_URL}/api/friends/block`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ userId }),
+  });
+  return jsonOrThrow(res, "Couldn't block this person. Please try again.");
+};
+
+export const unblockCampusUser = async (userId: string) => {
+  const headers = await getAuthHeaders();
+  const res = await campusFetch(`${API_URL}/api/friends/unblock`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ userId }),
+  });
+  return jsonOrThrow(res, "Couldn't unblock. Please try again.");
+};
+
+export const fetchBlockedUsers = async (): Promise<BlockedItem[]> => {
+  const headers = await getAuthHeaders();
+  const res = await campusFetch(`${API_URL}/api/friends/blocked`, { headers });
+  const json = await jsonOrThrow(res, "Couldn't load blocked people.");
+  return (Array.isArray(json) ? json : [])
+    .filter((b: any) => b && b.user)
+    .map((b: any) => ({ friendshipId: b.friendshipId, user: { id: b.user.id, name: b.user.name } }));
 };
 
 // Chats (Phase 2). Messaging itself is socket-driven; these load list + history.
@@ -158,12 +414,14 @@ export interface CampusGroup {
   joinCode?: string;
   isAdmin?: boolean;
   memberCount?: number;
+  /** Public on campus (admins only see this flag). */
+  discoverable?: boolean;
 }
 
 export const fetchMyGroups = async (): Promise<CampusGroup[]> => {
   const headers = await getAuthHeaders();
   const res = await campusFetch(`${API_URL}/api/campus/groups/mine`, { headers });
-  const json = await jsonOrThrow(res, 'Failed to load groups');
+  const json = await jsonOrThrow(res, "Couldn't load your groups.");
   return json.groups || [];
 };
 
@@ -172,6 +430,7 @@ export const createCampusGroup = async (data: {
   description?: string;
   type?: string;
   onlyAdminsCanSend?: boolean;
+  discoverable?: boolean;
 }): Promise<CampusGroup> => {
   const headers = await getAuthHeaders();
   const res = await campusFetch(`${API_URL}/api/campus/groups`, {
@@ -179,7 +438,7 @@ export const createCampusGroup = async (data: {
     headers,
     body: JSON.stringify(data),
   });
-  const json = await jsonOrThrow(res, 'Failed to create group');
+  const json = await jsonOrThrow(res, "Couldn't create the group. Please try again.");
   return json.group;
 };
 
@@ -208,7 +467,7 @@ export const resetCampusGroupCode = async (groupId: string): Promise<string> => 
     method: 'POST',
     headers,
   });
-  const json = await jsonOrThrow(res, 'Failed to reset code');
+  const json = await jsonOrThrow(res, "Couldn't reset the code.");
   return json.joinCode;
 };
 
@@ -392,37 +651,14 @@ export const fetchLostFound = async (type?: 'lost' | 'found'): Promise<CampusLos
   return json.items || [];
 };
 
-export const uploadCampusImage = async (localUri: string): Promise<string> => {
-  const token = await getToken();
-  if (!token) throw new Error(CAMPUS_NO_SESSION_ERROR);
-
-  const form = new FormData();
-  const filename = `lnf-${Date.now()}.jpg`;
-
-  if (
-    localUri.startsWith('data:') ||
-    localUri.startsWith('blob:') ||
-    localUri.startsWith('http://') ||
-    localUri.startsWith('https://')
-  ) {
-    const blob = await fetch(localUri).then((r) => r.blob());
-    form.append('image', blob, filename);
-  } else {
-    form.append('image', {
-      uri: localUri,
-      name: filename,
-      type: 'image/jpeg',
-    } as any);
-  }
-
-  const res = await campusFetch(`${API_URL}/api/upload`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
-    body: form,
-  });
-  const json = await jsonOrThrow(res, 'Failed to upload photo');
-  if (!json.imageUrl) throw new Error('Upload did not return an image');
-  return json.imageUrl;
+/**
+ * Compress + upload a local photo (file:// URI or data URL) to campus media storage and
+ * return the short /api/campus/media/<id> link. Already-hosted links are returned as is.
+ */
+export const uploadCampusImage = async (localUri: string, purpose: MediaPurpose = 'other'): Promise<string> => {
+  if (/^(https?:|\/api\/)/i.test(localUri)) return localUri;
+  const uploaded = await prepareAndUploadImage({ uri: localUri }, purpose);
+  return uploaded.url;
 };
 
 export const createLostFoundItem = async (data: {

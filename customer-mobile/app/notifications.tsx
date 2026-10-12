@@ -11,6 +11,7 @@ import DopaminePressable from '../components/DopaminePressable';
 import { LinearGradient } from 'expo-linear-gradient';
 import { apiFetch } from '../utils/auth';
 import { useLiveSync } from '../utils/useLiveSync';
+import { campusHrefForNotification } from '../modules/campus/campusLinks';
 
 interface NotificationItem {
   id: string;
@@ -21,6 +22,8 @@ interface NotificationItem {
   read: boolean;
   isVeg?: boolean;
   orderId?: string;
+  /** Routing info from the push (chatId, screen, ...) for campus / friends notifications. */
+  data?: any;
 }
 
 const LOCAL_KEY = 'zenvy_notifications';
@@ -38,6 +41,7 @@ const fromServer = (n: any): NotificationItem => ({
   type: n.type || 'info',
   read: !!n.read,
   orderId: n.orderId || n.data?.orderId || undefined,
+  data: n.data && typeof n.data === 'object' ? n.data : undefined,
 });
 
 const markLocalAllRead = () => {
@@ -223,10 +227,9 @@ export default function NotificationsScreen() {
       router.push('/(tabs)/orders' as any);
     } else if (n.type === 'SPIN_EARNED' || n.type === 'WALL_WINNER_REWARD') {
       router.push('/rewards' as any);
-    } else if (n.type === 'BIRTHDAY_ALERT') {
-      router.push('/community' as any);
-    } else if (['FRIEND_REQUEST', 'FRIEND_ACCEPTED', 'FRIEND_NUDGE', 'NEW_CHAT_MESSAGE', 'friend_accepted', 'chat_message'].includes(n.type)) {
-      router.push('/friends' as any);
+    } else if (campusHrefForNotification(n.type, n.data)) {
+      // Friend requests, chats, verification results, birthdays and The Wall open the right Campus screen
+      router.push(campusHrefForNotification(n.type, n.data) as any);
     } else if (n.type === 'PROMO' || n.type === 'SURGE' || n.type === 'abandoned_cart' || n.type === 'streak_nudge') {
       router.push('/(tabs)' as any);
     }
@@ -261,6 +264,7 @@ export default function NotificationsScreen() {
       case 'info': case 'global_broadcast': return '📢';
       case 'friend_accepted': case 'FRIEND_ACCEPTED': case 'FRIEND_REQUEST': return '🤝';
       case 'FRIEND_NUDGE': return '👋';
+      case 'CAMPUS_VERIFICATION': return '🎓';
       case 'chat_message': case 'NEW_CHAT_MESSAGE': return '💬';
       case 'ORDER_UPDATE': case 'ORDER_STATUS': return '🛵';
       case 'GATE_ARRIVAL': return '🛎️';

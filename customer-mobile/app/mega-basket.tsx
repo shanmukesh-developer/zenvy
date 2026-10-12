@@ -22,7 +22,7 @@ interface BasketItem {
 
 interface MegaBasket {
   id: string;
-  status: 'Created' | 'PaidEstimate' | 'PartnerAssigned' | 'Shopping' | 'PriceApprovalPending' | 'Approved' | 'Purchased' | 'Delivering' | 'Delivered';
+  status: 'Created' | 'PaidEstimate' | 'PartnerAssigned' | 'Shopping' | 'PriceApprovalPending' | 'Approved' | 'Purchased' | 'Delivering' | 'Delivered' | 'Cancelled';
   estimatedTotal: number;
   actualTotal?: number | null;
   shoppingFee: number;
@@ -122,8 +122,9 @@ export default function MegaBasketScreen() {
     () => baskets.find((b) => String(b.id) === String(selectedBasketId)) || null,
     [baskets, selectedBasketId]
   );
-  const activeBaskets = useMemo(() => baskets.filter((b) => b.status !== 'Delivered'), [baskets]);
-  const pastBaskets = useMemo(() => baskets.filter((b) => b.status === 'Delivered'), [baskets]);
+  const isFinished = (status: MegaBasket['status']) => status === 'Delivered' || status === 'Cancelled';
+  const activeBaskets = useMemo(() => baskets.filter((b) => !isFinished(b.status)), [baskets]);
+  const pastBaskets = useMemo(() => baskets.filter((b) => isFinished(b.status)), [baskets]);
 
   const fetchBaskets = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoadingBaskets(true);
@@ -351,7 +352,8 @@ export default function MegaBasketScreen() {
       Approved: 'Prices Approved by You',
       Purchased: 'Items Purchased, Packing',
       Delivering: 'Rider is en route 🚀',
-      Delivered: 'Completed & Delivered 🎉'
+      Delivered: 'Completed & Delivered 🎉',
+      Cancelled: 'Cancelled'
     };
     return labels[status] || status;
   };

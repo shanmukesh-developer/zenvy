@@ -146,7 +146,23 @@ const emitToRiders = (event, orderId) => {
     console.error('[REALTIME_RIDER_EMIT_ERROR]', err.message);
   }
 };
-const deliveryRequest = (orderId) => emitToRiders(DELIVERY_REQUEST_EVENT, orderId);
+// Stall orders (Order.fulfilment = 'VENDOR') are delivered by the stall itself and must never reach
+// riders: the order's fulfilment is checked before the event goes out (defence in depth for every caller).
+const deliveryRequest = (orderId) => {
+  const id = safeId(orderId);
+  if (!ioRef || id === null) return;
+  Promise.resolve()
+    .then(() => {
+      const { getOrderModel } = require('../models/Order');
+      const Order = getOrderModel();
+      return Order ? Order.findByPk(id, { attributes: ['id', 'fulfilment'] }) : null;
+    })
+    .then((order) => {
+      if (order && order.fulfilment === 'VENDOR') return;
+      emitToRiders(DELIVERY_REQUEST_EVENT, id);
+    })
+    .catch((err) => console.error('[REALTIME_DELIVERY_REQUEST_ERROR]', err.message));
+};
 const deliveryRequestGone = (orderId) => emitToRiders(DELIVERY_REQUEST_GONE_EVENT, orderId);
 
 module.exports = {

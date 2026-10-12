@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAdminAuth } from '@/utils/useAdminAuth';
 import { useLiveSync, useFreshIds, FRESH_ROW_CLASS } from '@/lib/useLiveSync';
 import {
-  Product, STATUS_META, Store, StoreStatus, adminRequest, formatINR, isLocalVendorType, storeId, storeStatus, vendorLabel,
+  STATUS_META, Store, StoreStatus, adminRequest, formatINR, isLocalVendorType, storeId, storeStatus, vendorLabel,
 } from './catalogue';
 import {
   Button, Callout, Chip, ConfirmModal, EmptyState, Field, INPUT, MenuButton, Modal, Skeleton, Thumb, Toggle,
@@ -12,7 +12,7 @@ import {
 import { StoreWizard, StepKey } from '@/components/restaurants/StoreWizard';
 import { StoreDrawer, DrawerTab } from '@/components/restaurants/StoreDrawer';
 import { useStoreStats } from '@/components/restaurants/useStoreStats';
-import { duplicateItemPayload, duplicatePayload, patchStore, removeStoreBanner } from '@/components/restaurants/storeActions';
+import { bulkUpdateStores, duplicateStore, patchStore, removeStoreBanner } from '@/components/restaurants/storeActions';
 import { summarizeWeekly, weeklyFromStore } from '@/components/restaurants/helpers';
 
 const FILTERS_KEY = 'zenvy.admin.storeFilters.v1';
@@ -146,7 +146,7 @@ function StoresScreen() {
       if (filters.status !== 'all' && storeStatus(s) !== filters.status) return false;
       return !q || [s.name, s.location, s.campus, vendorLabel(type), ...(s.tags || [])].some(v => String(v || '').toLowerCase().includes(q));
     });
-    const attention = (s: Store) => (storeStatus(s) === 'draft' ? 0 : !s.imageUrl || (s.itemCount ?? 0) === 0 ? 1 : storeStatus(s) === 'inactive' ? 2 : 3);
+    const attention = (s: Store) => (storeStatus(s) === 'draft' ? 0 : !s.imageUrl || (s.itemCount ?? 0) === 0 || (!s.hasPassword && !s.isOffline) ? 1 : storeStatus(s) === 'inactive' ? 2 : 3);
     const by: Record<SortKey, (a: Store, b: Store) => number> = {
       name: (a, b) => a.name.localeCompare(b.name),
       newest: (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime(),
@@ -202,12 +202,12 @@ function StoresScreen() {
     } else if ((store.itemCount ?? 0) === 0) {
       setConfirm({
         title: `Publish ${store.name} without a menu?`,
-        body: <p>Customers will see an empty store{local ? '' : ' and cannot order'}. Add items first for a better first impression.</p>,
+        body: <p>Customers will see an empty store and cannot order{local ? ' from the stall' : ''}. Add items first for a better first impression.</p>,
         action: 'Publish anyway',
         run: async () => { const saved = await patchStore(storeId(store), { isActive: true }); merge(saved); setConfirm(null); toast.success(`${store.name} is live.`); },
       });
     } else {
-      quickPatch(store, { isActive: true }, `${store.name} is live${local ? ' as a display-only stall' : ''}.`, { isActive: false });
+      quickPatch(store, { isActive: true }, `${store.name} is live${local && !store.hasPassword ? '. Set a Zenvy Vendor password so the stall can take orders' : ''}.`, { isActive: false });
     }
   };
   const toggleOpen = (store: Store) => {
@@ -248,23 +248,33 @@ function StoresScreen() {
       action: active ? 'Publish all' : 'Hide all',
       danger: !active,
       run: async () => {
-        let ok = 0;
-        for (let i = 0; i < targets.length; i += 4) {
-          await Promise.all(targets.slice(i, i + 4).map(async s => {
-            try {
-              await patchStore(storeId(s), { isActive: active });
-              if (!active) await removeStoreBanner(storeId(s));
-              ok++;
-            } catch { /* counted */ }
-          }));
+        // One server call (all-or-nothing per store row; max 300).
+        const result = await bulkUpdateStores(targets.map(storeId).slice(0, 300), { isActive: active });
+        let bannerErrors = 0;
+        if (!active) {
+          for (const s of targets) if (await removeStoreBanner(storeId(s))) bannerErrors++;
         }
         setConfirm(null);
         setSelected(new Set());
         await loadStores(true);
-        if (ok === targets.length) toast.success(`${ok} store${ok === 1 ? '' : 's'} ${active ? 'published' : 'hidden'}.`);
-        else toast.error(`${ok} of ${targets.length} updated. Try the rest again.`);
+        const ok = Number(result?.count) || 0;
+        if (ok === targets.length && !bannerErrors) toast.success(`${ok} store${ok === 1 ? '' : 's'} ${active ? 'published' : 'hidden'}.`);
+        else if (ok === targets.length) toast.error(`${ok} stores hidden, but ${bannerErrors} Home banner(s) were not removed.`);
+        else toast.error(`${ok} of ${targets.length} updated. The rest were not found; refresh and try again.`);
       },
     });
+  };
+  const bulkSetOpen = async (open: boolean) => {
+    const targets = stores.filter(s => selected.has(storeId(s)) && (s.isOpenNow !== false) !== open);
+    if (!targets.length) { toast.info(`All selected stores are already ${open ? 'taking orders' : 'paused'}.`); return; }
+    try {
+      const result = await bulkUpdateStores(targets.map(storeId).slice(0, 300), { isOpenNow: open });
+      setSelected(new Set());
+      await loadStores(true);
+      toast.success(`${Number(result?.count) || 0} store${targets.length === 1 ? '' : 's'} ${open ? 'taking orders again' : 'paused'}.`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not update the stores.');
+    }
   };
 
   const deleteStore = async (store: Store) => {
@@ -324,7 +334,7 @@ function StoresScreen() {
         ))}
         <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3" title="Non-cancelled orders placed today (IST)">
           <p className="text-[11px] text-gray-500">Orders today</p>
-          <p className="mt-0.5 text-2xl font-black">{stats.loading ? <Skeleton className="mt-1 h-6 w-10" /> : stats.totals.todayOrders}{!stats.coverage.todayComplete && <span className="text-sm text-gray-500">+</span>}</p>
+          <p className="mt-0.5 text-2xl font-black">{stats.loading ? <Skeleton className="mt-1 h-6 w-10" /> : stats.totals.todayOrders}</p>
         </div>
         <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3" title="Item subtotal of today's non-cancelled orders">
           <p className="text-[11px] text-gray-500">Sales today</p>
@@ -359,6 +369,8 @@ function StoresScreen() {
           <span className="font-semibold text-emerald-100">{selected.size} selected</span>
           <Button size="sm" onClick={() => bulkSetActive(true)}>Publish</Button>
           <Button size="sm" variant="danger" onClick={() => bulkSetActive(false)}>Hide</Button>
+          <Button size="sm" onClick={() => bulkSetOpen(false)}>Pause orders</Button>
+          <Button size="sm" onClick={() => bulkSetOpen(true)}>Resume orders</Button>
           <button type="button" onClick={() => setSelected(new Set())} className="ml-auto text-xs font-semibold text-gray-400 hover:text-white">Clear selection</button>
         </div>
       )}
@@ -414,7 +426,9 @@ function StoresScreen() {
                         <span className="truncate font-bold group-hover:text-emerald-200">{store.name}</span>
                         <Chip tone={STATUS_TONE[status]} dot title={status === 'closed' && store.closedReason ? store.closedReason : STATUS_META[status].help}>{status === 'closed' && store.isOpenNow === false ? 'Paused' : STATUS_META[status].label}</Chip>
                         {store.isFeatured && <Chip tone="amber">✨ {store.featuredBadge || 'Featured'}</Chip>}
-                        {store.isOffline && <Chip title="No partner app; Zenvy handles orders">Managed</Chip>}
+                        {store.isOffline && !local && <Chip title="No partner app; Zenvy handles orders">Managed</Chip>}
+                        {local && <Chip tone="sky" title="Customers pay the stall cash; the stall delivers with Zenvy Vendor">Stall · COD</Chip>}
+                        {!store.hasPassword && !(store.isOffline && !local) && <Chip tone="amber" title={local ? 'The stall cannot see its orders until it can sign in to Zenvy Vendor' : 'The partner cannot sign in to accept orders'}>No login</Chip>}
                       </span>
                       <span className="mt-0.5 block truncate text-xs text-gray-400">
                         {vendorLabel(store.vendorType)} · {[store.location, store.campus].filter(Boolean).join(' · ')}
@@ -424,15 +438,15 @@ function StoresScreen() {
                   </button>
 
                   <dl className="grid w-full grid-cols-4 gap-2 text-center sm:w-[260px]">
-                    <div title={local ? 'Local stalls take orders directly' : 'Non-cancelled orders today (IST)'}><dt className="text-[10px] text-gray-500">Orders</dt><dd className="text-sm font-bold">{local ? '—' : stats.loading ? '…' : st.todayOrders}</dd></div>
-                    <div title="Item subtotal today"><dt className="text-[10px] text-gray-500">Sales</dt><dd className="text-sm font-bold text-emerald-300">{local ? '—' : stats.loading ? '…' : formatINR(st.todayRevenue)}</dd></div>
+                    <div title="Non-cancelled orders today (IST)"><dt className="text-[10px] text-gray-500">Orders</dt><dd className="text-sm font-bold">{stats.loading ? '…' : st.todayOrders}</dd></div>
+                    <div title="Item subtotal today"><dt className="text-[10px] text-gray-500">Sales</dt><dd className="text-sm font-bold text-emerald-300">{stats.loading ? '…' : formatINR(st.todayRevenue)}</dd></div>
                     <div><dt className="text-[10px] text-gray-500">Rating</dt><dd className="text-sm font-bold">{rating > 0 ? `${rating.toFixed(1)}★` : <span className="text-gray-500">New</span>}</dd></div>
                     <div><dt className="text-[10px] text-gray-500">Menu</dt><dd className={cx('text-sm font-bold', (store.itemCount ?? 0) === 0 && 'text-amber-300')}>{store.itemCount ?? 0}</dd></div>
                   </dl>
 
                   <div className="flex w-full items-center justify-around gap-3 sm:w-[230px]" onClick={e => e.stopPropagation()}>
                     <Toggle size="sm" srOnlyLabel label={`${store.name} visible to customers`} checked={store.isActive} disabled={isBusy} onChange={() => toggleActive(store)} />
-                    {local ? <span className="w-9 text-center text-[10px] text-gray-600">—</span> : <Toggle size="sm" srOnlyLabel label={`${store.name} taking orders`} checked={store.isOpenNow !== false} disabled={isBusy || !store.isActive} onChange={() => toggleOpen(store)} />}
+                    <Toggle size="sm" srOnlyLabel label={`${store.name} taking orders`} checked={store.isOpenNow !== false} disabled={isBusy || !store.isActive} onChange={() => toggleOpen(store)} />
                     {local ? <span className="w-9 text-center text-[10px] text-gray-600">—</span> : <Toggle size="sm" tone="amber" srOnlyLabel label={`${store.name} featured`} checked={!!store.isFeatured} disabled={isBusy} onChange={() => toggleFeatured(store)} />}
                   </div>
 
@@ -442,7 +456,8 @@ function StoresScreen() {
                       { label: 'Edit details', onSelect: () => openWizard('edit', id) },
                       { label: 'Menu', onSelect: () => setDrawer({ id, tab: 'menu' }) },
                       { label: 'Hours', onSelect: () => setDrawer({ id, tab: 'hours' }) },
-                      ...(local ? [] : [{ label: 'Partner login', onSelect: () => setDrawer({ id, tab: 'login' as DrawerTab }) }, { label: 'Promote', onSelect: () => setDrawer({ id, tab: 'promote' as DrawerTab }) }]),
+                      { label: local ? 'Vendor login' : 'Partner login', onSelect: () => setDrawer({ id, tab: 'login' as DrawerTab }) },
+                      ...(local ? [] : [{ label: 'Promote', onSelect: () => setDrawer({ id, tab: 'promote' as DrawerTab }) }]),
                       'divider',
                       { label: 'Duplicate store', onSelect: () => setDuplicating(store) },
                       { label: 'Delete…', onSelect: () => setDeleting(store), danger: true },
@@ -454,7 +469,6 @@ function StoresScreen() {
           </ul>
           <p className="border-t border-white/5 px-4 py-2 text-[11px] text-gray-500">
             Toggles: <b>Live</b> = visible to customers · <b>Open</b> = taking orders (off pauses the store) · <b>Featured</b> = promoted on Home.
-            {!stats.coverage.todayComplete && ` Today's numbers come from the latest ${stats.coverage.scanned} orders.`}
           </p>
         </section>
       )}
@@ -495,8 +509,6 @@ function StoresScreen() {
           onDuplicate={() => setDuplicating(drawerStore)}
           onDelete={() => setDeleting(drawerStore)}
           stats={stats.statsFor(drawer.id)}
-          orders={stats.ordersFor(drawer.id)}
-          coverage={stats.coverage}
           busy={!!busy[drawer.id]}
         />
       )}
@@ -537,7 +549,6 @@ function DuplicateModal({ store, existingNames, onClose, onDone }: { store: Stor
   const [name, setName] = useState(`${store.name} (copy)`);
   const [copyMenu, setCopyMenu] = useState((store.itemCount ?? 0) > 0);
   const [running, setRunning] = useState(false);
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [error, setError] = useState('');
   const taken = existingNames.includes(name.trim().toLowerCase());
 
@@ -546,24 +557,9 @@ function DuplicateModal({ store, existingNames, onClose, onDone }: { store: Stor
     setRunning(true);
     setError('');
     try {
-      const copy = await adminRequest<Store>('/api/admin/restaurants', { method: 'POST', body: JSON.stringify(duplicatePayload(store, name.trim())) });
-      let failed = 0;
-      if (copyMenu) {
-        const items = await adminRequest<Product[]>(`/api/admin/menu-items?restaurantId=${encodeURIComponent(storeId(store))}`);
-        const list = Array.isArray(items) ? items : [];
-        setProgress({ done: 0, total: list.length });
-        let done = 0;
-        for (let i = 0; i < list.length; i += 3) {
-          await Promise.all(list.slice(i, i + 3).map(async p => {
-            try { await adminRequest('/api/admin/menu-items/new', { method: 'POST', body: JSON.stringify(duplicateItemPayload(p, storeId(copy))) }); }
-            catch { failed++; }
-            done++;
-            setProgress({ done, total: list.length });
-          }));
-        }
-      }
-      if (failed) toast.error(`${copy.name} created as a draft, but ${failed} menu item(s) could not be copied.`);
-      else toast.success(`${copy.name} created as a draft. Set a partner password before publishing.`);
+      // One server call: the store and (optionally) its whole menu are copied in a single transaction.
+      const copy = await duplicateStore(storeId(store), name.trim(), copyMenu);
+      toast.success(`${copy.name} created as a draft${copy.itemCount ? ` with ${copy.itemCount} items` : ''}. Set a login password before publishing.`);
       onDone(copy);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not duplicate the store.');
@@ -574,14 +570,14 @@ function DuplicateModal({ store, existingNames, onClose, onDone }: { store: Stor
   return (
     <Modal title={`Duplicate ${store.name}`} description="Creates a hidden draft with the same details. Good for a second branch or a similar stall." size="md" onClose={running ? () => undefined : onClose} footer={<>
       <Button onClick={onClose} disabled={running}>Cancel</Button>
-      <Button variant="primary" loading={running} disabled={!name.trim() || taken} onClick={run}>{progress ? `Copying menu ${progress.done}/${progress.total}…` : 'Duplicate'}</Button>
+      <Button variant="primary" loading={running} disabled={!name.trim() || taken} onClick={run}>{running ? 'Copying…' : 'Duplicate'}</Button>
     </>}>
       <div className="space-y-4">
         <Field label="New store name" required help={taken ? undefined : 'Must be different, since partners can sign in with the store name.'} error={taken ? 'A store already has this name.' : null}>
           {({ id, msgId, invalid }) => <input id={id} data-autofocus aria-describedby={msgId} aria-invalid={invalid} className={INPUT} value={name} maxLength={120} onChange={e => setName(e.target.value)} />}
         </Field>
         <Toggle checked={copyMenu} onChange={setCopyMenu} disabled={(store.itemCount ?? 0) === 0} label={`Copy the menu (${store.itemCount ?? 0} items)`} description="Prices, photos, categories and stock are copied." />
-        <p className="text-xs text-gray-500">Not copied: partner password, rating, promotion, orders and payouts.</p>
+        <p className="text-xs text-gray-500">Not copied: login password and phone, signed-in phones, rating, promotion, orders and payouts.</p>
         {error && <Callout tone="red">{error}</Callout>}
       </div>
     </Modal>

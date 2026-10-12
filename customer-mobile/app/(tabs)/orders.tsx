@@ -13,6 +13,7 @@ import { apiFetch } from '../../utils/auth';
 import AmbientBackground from '../../components/AmbientBackground';
 import { StaggeredSection, BounceIn, FloatingPulse, PulseGlow } from '../../components/AnimatedSection';
 import { ActionPressable } from '../../components/DopaminePressable';
+import { isVendorFulfilled } from '../../utils/localVendor';
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -63,6 +64,7 @@ const STATUS_LABEL: Record<string, string> = {
   ReadyForPickup: 'Ready for pickup',
   Picking: 'Rider at store',
   PickedUp: 'Out for delivery',
+  OutForDelivery: 'Out for delivery',
   ArrivedAtGate: 'Rider at gate',
   Delivered: 'Delivered',
   Cancelled: 'Cancelled',
@@ -97,6 +99,8 @@ const SERVICE_STATUS_LABEL: Record<string, string> = {
 };
 const serviceStatusLabel = (s?: string) => (s && SERVICE_STATUS_LABEL[s]) || (s ? s.replace(/_/g, ' ').toLowerCase() : 'Requested');
 const isServiceOpen = (s?: string) => s !== 'COMPLETED' && s !== 'CANCELLED';
+// The partner has the student's items: cancelling goes through support (the server refuses it too).
+const PICKED_UP_STATUSES = ['IN_PROGRESS', 'READY_FOR_DELIVERY'];
 const formatWhen = (iso?: string) => {
   if (!iso) return '';
   const d = new Date(iso);
@@ -167,6 +171,8 @@ export default function OrdersScreen() {
       items.forEach((item: any) => {
         const itemId = String(item.menuItemId || item.id || item._id || '');
         const live = itemId ? menuById.get(itemId) : null;
+        // Stall orders take no add-ons: skip the old order's add-on lines
+        if (item.isAddOn && isVendorFulfilled(order)) return;
         if (!live || live.isAvailable === false) {
           // Add-ons (EXTRAS) live in a different store; the basket offers them again at checkout.
           if (!item.isAddOn) dropped.push(item.name || 'An item');
@@ -195,6 +201,7 @@ export default function OrdersScreen() {
             restaurantName: targetRestaurantName,
             quantity: Math.min(Math.max(Number(item.quantity) || 1, 1), 20),
             customizations: item.customizations || undefined,
+            ...(isVendorFulfilled(order) ? { isStall: true } : {}),
         });
         if (added) addedAny = true;
       });
@@ -290,6 +297,8 @@ export default function OrdersScreen() {
             const res = await apiFetch(ENDPOINTS.servicesCancel(id), { method: 'POST', body: JSON.stringify({ reason: 'Cancelled by customer' }) });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) {
+              // The server sends the current booking back (e.g. already picked up): show its real stage.
+              if (data?.booking) applyBooking(id, data.booking);
               Alert.alert('Could not cancel', data?.message || 'Please try again in a moment.');
               return;
             }
@@ -383,6 +392,46 @@ export default function OrdersScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, activeIdsKey]);
 
+  // Admin / partner stage changes and quotes arrive live (server: serviceStatusUpdate to this user's room).
+  useEffect(() => {
+    if (!user) return;
+    let socket: any;
+    try {
+      socket = connectSocket();
+    } catch {
+      return;
+    }
+    const onServiceStatus = (payload: any) => {
+      const pid = String(payload?.id || '');
+      if (!pid || !mountedRef.current) return;
+      setBookings(prev => prev.map(x => (
+        String(x.id || x._id) === pid
+          ? {
+              ...x,
+              ...(payload.status ? { status: payload.status } : {}),
+              ...(payload.quotedAmount != null ? { quotedAmount: payload.quotedAmount } : {}),
+              ...(payload.finalAmount != null ? { finalAmount: payload.finalAmount } : {}),
+            }
+          : x
+      )));
+      // Pull the full booking (timeline note) for an open card, and the list for a new booking.
+      apiFetch(ENDPOINTS.servicesDetail(pid))
+        .then(async (res) => {
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data?.booking || !mountedRef.current) return;
+          setBookings(prev => (prev.some(x => String(x.id || x._id) === pid)
+            ? prev.map(x => (String(x.id || x._id) === pid ? { ...x, ...data.booking } : x))
+            : [data.booking, ...prev]));
+          setBookingDetail(prev => ({ ...prev, [pid]: data.booking }));
+        })
+        .catch(() => {});
+    };
+    socket.on('serviceStatusUpdate', onServiceStatus);
+    return () => {
+      socket.off('serviceStatusUpdate', onServiceStatus);
+    };
+  }, [user]);
+
   const onRefresh = async () => {
     setRefreshing(true);
     await (filter === 'SERVICES' ? fetchBookings() : fetchOrders('silent'));
@@ -474,7 +523,11 @@ export default function OrdersScreen() {
       const detail = bookingDetail[bid] || b;
       const isOpen = isServiceOpen(b.status);
       const isExpanded = expanded === bid;
-      const amount = Number(b.finalAmount || b.quotedAmount || 0) || 0;
+      // A fresh quote is what the student is asked to accept; otherwise the final (or estimated) amount.
+      const amount = Number((b.status === 'DIAGNOSED_QUOTED' ? b.quotedAmount : (b.finalAmount || b.quotedAmount)) || 0) || 0;
+      const spec = detail.specifications && typeof detail.specifications === 'object' ? detail.specifications : {};
+      const qty = Number(spec.quantity) || 0;
+      const qtyText = qty > 0 ? `${qty} ${spec.unit === 'kg' ? 'kg (approx.)' : qty === 1 ? 'item' : 'items'}` : '';
       const history: any[] = Array.isArray(detail.trackingHistory) ? detail.trackingHistory : [];
       const busy = bookingBusyId === bid;
       const color = b.status === 'COMPLETED' ? COLORS.emerald : b.status === 'CANCELLED' ? '#EF4444' : goldColor;
@@ -484,7 +537,7 @@ export default function OrdersScreen() {
             <View style={st.cardHeader}>
               <View style={{ flex: 1, marginRight: 8 }}>
                 <Text style={{ fontSize: 10, color: txtSec, fontWeight: '700', letterSpacing: 1.5 }}>
-                  🛠️ <Text style={{ color: goldColor, fontWeight: '800' }}>BOOKING #{bid.slice(-6).toUpperCase()}</Text>
+                  🛠️ <Text style={{ color: goldColor, fontWeight: '800' }}>BOOKING #{bid.slice(-8).toUpperCase()}</Text>
                 </Text>
                 <Text style={[st.restaurantName, { color: txt }]} numberOfLines={2}>{b.title || 'Service booking'}</Text>
                 <Text style={{ fontSize: 10, color: txtSec, fontWeight: '600' }}>
@@ -504,6 +557,11 @@ export default function OrdersScreen() {
               <View style={[st.details, { borderTopColor: border }]}>
                 {detail.description ? (
                   <Text style={{ fontSize: 11, color: txtSec, fontWeight: '600', marginBottom: 8 }}>{detail.description}</Text>
+                ) : null}
+                {qtyText || detail.hostelBlock || detail.roomNumber ? (
+                  <Text style={{ fontSize: 11, color: txt, fontWeight: '700', marginBottom: 8 }}>
+                    {[qtyText, [detail.hostelBlock, detail.roomNumber ? `Room ${detail.roomNumber}` : ''].filter(Boolean).join(', ')].filter(Boolean).join(' • ')}
+                  </Text>
                 ) : null}
                 {history.map((h: any, i: number) => (
                   <View key={`h-${i}`} style={{ flexDirection: 'row', gap: 8, paddingVertical: 4 }}>
@@ -525,7 +583,7 @@ export default function OrdersScreen() {
                     </LinearGradient>
                   </ActionPressable>
                 )}
-                {isOpen && (
+                {isOpen && !PICKED_UP_STATUSES.includes(b.status) && (
                   <TouchableOpacity
                     disabled={busy}
                     style={{ marginTop: 12, paddingVertical: 12, borderRadius: 16, borderWidth: 1, borderColor: '#EF4444', alignItems: 'center' }}

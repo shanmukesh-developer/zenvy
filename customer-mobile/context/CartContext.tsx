@@ -40,6 +40,8 @@ export interface CartItem {
   restaurantName: string;
   /** Checkout add-ons (EXTRAS store): they ride along with the main store's order. */
   isAddOn?: boolean;
+  /** CampusBites stall item (vendorType LOCAL_VENDOR): the stall delivers it, cash on delivery to the stall. */
+  isStall?: boolean;
   isCake?: boolean;
   customName?: string;
   customizations?: Customizations;
@@ -225,6 +227,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             setRoomMessage('No live basket with this code yet. Ask your roommate to open their basket, or check the code.');
             return;
           }
+          // The host opened a fresh room: share the basket they already have, so a roommate who
+          // joins sees it straight away (the server only replays the last cart_change it received).
+          if (role === 'host' && ack && ack.exists === false && !isIncomingUpdateRef.current) {
+            lastSyncedCartRef.current = cartRef.current;
+            socket.emit('cart_change', { roomCode: code, cart: cartRef.current });
+          }
           setRoomStatus('live');
           setRoomMessage(null);
         });
@@ -261,7 +269,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const handleHostRoom = async () => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let code = 'ZN-';
-    for (let i = 0; i < 4; i++) {
+    // 8 characters (~1e12 codes) so live baskets can't be found by guessing codes.
+    for (let i = 0; i < 8; i++) {
       code += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     setRoomCode(code);
@@ -276,7 +285,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     let formatted = inputCode.trim().toUpperCase().replace(/\s+/g, '');
     if (!formatted.startsWith('ZN-')) formatted = `ZN-${formatted.replace(/^ZN/, '')}`;
     if (!ROOM_CODE_RE.test(formatted)) {
-      Alert.alert('Check the code', 'Room codes look like ZN-8B2A. Please check with your roommate and try again.');
+      Alert.alert('Check the code', 'Room codes look like ZN-8B2A4KQ7. Please check with your roommate and try again.');
       return;
     }
     setRoomCode(formatted);
@@ -390,6 +399,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       return false;
     }
 
+    // CampusBites stall orders are paid in cash to the stall: no checkout add-ons ride along (ADDONS_NOT_FOR_STALL).
+    if (line.isAddOn && current.some((i) => i.isStall && !isCustomRequest(i))) {
+      const stallName = current.find((i) => i.isStall)?.restaurantName || 'the stall';
+      Alert.alert('Not for stall orders', `Add-ons can't be added to an order from ${stallName}. You pay the stall in cash for just their items.`);
+      return false;
+    }
+
     // One store per order (Swiggy-style "Replace basket?")
     const newStore = storeKeyOf(line);
     const otherStoreLine = newStore
@@ -433,9 +449,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       return false;
     }
 
+    // A stall item drops any leftover checkout add-ons (stall orders take none).
+    const withoutStallAddOns = (list: CartItem[]) => (line.isStall ? list.filter((i) => !i.isAddOn) : list);
     // Update the ref now so another add in the same tick sees this line, then queue the real update.
-    cartRef.current = mergeInto(current, line);
-    setCart((prev) => mergeInto(prev, line));
+    cartRef.current = mergeInto(withoutStallAddOns(current), line);
+    setCart((prev) => mergeInto(withoutStallAddOns(prev), line));
     return true;
   };
 
@@ -523,7 +541,9 @@ export interface QuoteLine {
 
 export interface OrderQuote {
   currency: string;
-  store: { id: string; name: string; vendorType: string; isOffline: boolean; zone?: string; location?: string };
+  store: { id: string; name: string; vendorType: string; isOffline: boolean; zone?: string; location?: string; whatsappNumber?: string | null; minOrderValue?: number };
+  /** 'VENDOR' = a CampusBites stall delivers it (cash to the stall, no rider, no PIN). */
+  fulfilment?: 'VENDOR' | 'ZENVY';
   lines: QuoteLine[];
   subtotal: number;
   deliveryFee: number;

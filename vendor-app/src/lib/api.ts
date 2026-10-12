@@ -70,34 +70,16 @@ export function setAvailability(itemId: string, isAvailable: boolean) {
   );
 }
 
-/** Thrown when the server has no open/close route. */
-export class OpenToggleUnsupported extends Error {}
-
+/** PUT /api/restaurants/:id/open { isOpenNow } → { isOpenNow, isOpen, opensAt, closedReason, operatingHours }. */
 export async function setOpen(id: string, isOpenNow: boolean): Promise<StoreState> {
-  try {
-    const raw = await apiFetch(`/api/restaurants/${enc(id)}/open`, { method: 'PUT', body: { isOpenNow } });
-    return normalizeStore(raw);
-  } catch (e) {
-    if (e instanceof ApiError && e.status === 404 && !/not found/i.test(e.message)) {
-      throw new OpenToggleUnsupported('Shop open/close is not available yet');
-    }
-    throw e;
-  }
+  const raw = await apiFetch(`/api/restaurants/${enc(id)}/open`, { method: 'PUT', body: { isOpenNow } });
+  return normalizeStore(raw);
 }
 
-/** Thrown when the server has no vendor hours route yet (contract §6). */
-export class HoursUnsupported extends Error {}
-
+/** PUT /api/restaurants/:id/hours { operatingHours: { start, end } } (start === end = open all day). */
 export async function setHours(id: string, hours: OperatingHours): Promise<StoreState> {
-  try {
-    const raw = await apiFetch(`/api/restaurants/${enc(id)}/hours`, { method: 'PUT', body: { operatingHours: hours } });
-    return normalizeStore(raw);
-  } catch (e) {
-    if (e instanceof ApiError && (e.status === 405 || (e.status === 404 && e.code === 'NOT_FOUND'))) {
-      throw new HoursUnsupported('Changing hours is not available yet');
-    }
-    throw e;
-  }
+  const raw = await apiFetch(`/api/restaurants/${enc(id)}/hours`, { method: 'PUT', body: { operatingHours: hours } });
+  return normalizeStore(raw);
 }
 
 // ── Menu items (add / edit / delete) ────────────────────────────────────────
@@ -109,6 +91,10 @@ export interface MenuItemBody {
   description: string | null;
   imageUrl: string | null;
   isVegetarian: boolean;
+  /** veg / nonveg (the server keeps isVegetarian in step). */
+  dietType: 'veg' | 'nonveg' | 'egg';
+  /** Create honours it in the same write; on edit sent only when it changed. */
+  isAvailable?: boolean;
 }
 
 export async function createMenuItem(body: MenuItemBody): Promise<MenuItem> {
@@ -123,19 +109,9 @@ export async function updateMenuItem(itemId: string, body: Partial<MenuItemBody>
   return normalizeMenuItem(raw);
 }
 
-/** Thrown when the server has no vendor delete route yet (contract §6). */
-export class DeleteUnsupported extends Error {}
-
+/** DELETE /api/restaurants/menu/:itemId → 200 { id }; 404 { code: 'ITEM_NOT_FOUND' } = already gone. */
 export async function deleteMenuItem(itemId: string): Promise<void> {
-  try {
-    await apiFetch(`/api/restaurants/menu/${enc(itemId)}`, { method: 'DELETE', no401Logout: true });
-  } catch (e) {
-    // Unknown route → the API's catch-all { code: 'NOT_FOUND' }. A real "item not found" has no such code.
-    if (e instanceof ApiError && (e.status === 405 || (e.status === 404 && e.code === 'NOT_FOUND'))) {
-      throw new DeleteUnsupported('Deleting items is not available yet');
-    }
-    throw e;
-  }
+  await apiFetch(`/api/restaurants/menu/${enc(itemId)}`, { method: 'DELETE', no401Logout: true });
 }
 
 /** POST /api/upload (multipart field "image", JPEG/PNG/WEBP, max 2 MB). Returns the URL to save on the item. */
@@ -152,4 +128,17 @@ export async function uploadPhoto(uri: string, mimeType = 'image/jpeg'): Promise
   const res = await apiFetch<{ imageUrl?: string }>('/api/upload', { method: 'POST', form, no401Logout: true, timeoutMs: 60000 });
   if (!res?.imageUrl) throw new ApiError(500, "The photo didn't upload. Please try again.", res);
   return res.imageUrl;
+}
+
+// ── Push (new orders / cancellations while the app is closed) ───────────────
+/** POST /api/restaurants/fcm-token: this phone gets the stall's order pushes (moves off any other store). */
+export function registerPushToken(token: string, app: 'restaurant' | 'vendor' = 'vendor') {
+  return apiFetch<{ ok: boolean; registered: boolean; devices: number }>(
+    '/api/restaurants/fcm-token', { method: 'POST', body: { token, app }, no401Logout: true },
+  );
+}
+
+/** POST /api/restaurants/fcm-token/remove (on logout, while the token is still valid). */
+export function removePushToken(token: string) {
+  return apiFetch('/api/restaurants/fcm-token/remove', { method: 'POST', body: { token }, no401Logout: true, timeoutMs: 8000 });
 }

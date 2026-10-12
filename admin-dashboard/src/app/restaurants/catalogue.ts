@@ -13,7 +13,7 @@ export interface BrandTheme {
 export interface OperatingHours {
   start?: string;
   end?: string;
-  /** Per-day hours. Only kept once the backend stores it (see admin_restaurant_backend_todo.md). */
+  /** Per-day hours (IST). The server opens / closes the store by today's window. */
   weekly?: Record<string, { open?: boolean; start?: string; end?: string }>;
 }
 
@@ -50,6 +50,18 @@ export interface Store {
   brandTheme?: BrandTheme | string | null;
   clickCount?: number;
   itemCount?: number;
+  /** Partner / vendor login phone (10 digits). `phone` and `partnerPhone` are the same column. */
+  phone?: string | null;
+  partnerPhone?: string | null;
+  /** A partner password is set (the hash is never sent). */
+  hasPassword?: boolean;
+  /** Phones with the partner / vendor app registered for push. */
+  pushDevices?: number;
+  /** First time the store went live. null = never published (a draft). */
+  publishedAt?: string | null;
+  packagingFee?: number | null;
+  minOrderValue?: number | null;
+  logoUrl?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -68,17 +80,30 @@ export interface Product {
   outOfStockUntil?: string | null;
   isEliteOnly?: boolean;
   isVegetarian?: boolean;
+  /** 'veg' | 'nonveg' | 'egg'. null on older rows: fall back to isVegetarian. */
+  dietType?: DietType | null;
+  /** MRP (crossed-out price), kept in step with specs.originalPrice. */
+  originalPrice?: number | null;
   tags?: string[];
   specs?: Record<string, unknown> | null;
   createdAt?: string;
 }
+
+export type DietType = 'veg' | 'nonveg' | 'egg';
+export const dietOf = (p: Pick<Product, 'dietType' | 'isVegetarian'>): DietType =>
+  p.dietType === 'veg' || p.dietType === 'nonveg' || p.dietType === 'egg' ? p.dietType : p.isVegetarian === false ? 'nonveg' : 'veg';
+/** MRP from the column, else the older specs.originalPrice. */
+export const mrpOf = (p: Pick<Product, 'originalPrice' | 'specs'>): number | null => {
+  const n = Number(p.originalPrice ?? readSpecs(p.specs).originalPrice);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
 
 export type VendorGroup = 'Food' | 'Shops' | 'Services' | 'Campus';
 
 /** Canonical store types the backend understands (see backend/utils/vendorTypes.js). */
 export const VENDOR_TYPES: { value: string; label: string; group: VendorGroup; hint: string }[] = [
   { value: 'RESTAURANT', label: 'Restaurant', group: 'Food', hint: 'Cooked food. Orders, payment and Zenvy riders.' },
-  { value: 'LOCAL_VENDOR', label: 'Local stall (CampusBites)', group: 'Campus', hint: 'Display-only. Customers call or WhatsApp the stall; no Zenvy order.' },
+  { value: 'LOCAL_VENDOR', label: 'Local stall (CampusBites)', group: 'Campus', hint: 'Customers order in Zenvy and pay the stall cash. The stall delivers with the Zenvy Vendor app; no rider.' },
   { value: 'GROCERY', label: 'Grocery / Kirana', group: 'Shops', hint: 'Packaged goods, Mega Basket and late-night mart.' },
   { value: 'PHARMACY', label: 'Pharmacy', group: 'Shops', hint: 'Medicines and health essentials.' },
   { value: 'STATIONERY', label: 'Stationery', group: 'Shops', hint: 'Books, pens, study kits.' },
@@ -97,7 +122,7 @@ export const VENDOR_TYPES: { value: string; label: string; group: VendorGroup; h
 /** Store types whose products are services the customer BOOKS (POST /api/services/book), never orders. */
 export const BOOKING_ONLY_VENDOR_TYPES = ['REPAIRS', 'PRINT', 'LAUNDRY', 'TAILORING'];
 export const isBookingOnlyStore = (type?: string | null) => BOOKING_ONLY_VENDOR_TYPES.includes(String(type || '').toUpperCase());
-/** CampusBites stalls are display-only listings (mirror of backend LOCAL_VENDOR_TYPES). */
+/** CampusBites stalls: orders are placed in Zenvy, COD to the stall, the stall delivers (mirror of backend LOCAL_VENDOR_TYPES). */
 export const isLocalVendorType = (type?: string | null) => ['LOCAL_VENDOR', 'LOCAL', 'STALL'].includes(String(type || '').toUpperCase());
 
 const LEGACY_LABELS: Record<string, string> = {
@@ -153,18 +178,17 @@ export type StoreStatus = 'live' | 'closed' | 'draft' | 'inactive';
 
 /**
  * Live = active and open now. Closed now = active but outside hours / paused by the store.
- * Draft = inactive and has no products yet (setup not finished). Inactive = switched off with a catalogue.
- * The backend has no explicit draft flag yet (see admin_restaurant_backend_todo.md).
+ * Draft = never published (publishedAt is null). Inactive = was live once, now switched off.
  */
 export const storeStatus = (s: Store): StoreStatus => {
-  if (!s.isActive) return (s.itemCount ?? 0) === 0 ? 'draft' : 'inactive';
+  if (!s.isActive) return s.publishedAt ? 'inactive' : 'draft';
   return s.isOpen === false ? 'closed' : 'live';
 };
 
 export const STATUS_META: Record<StoreStatus, { label: string; tone: 'green' | 'amber' | 'slate' | 'red'; help: string }> = {
   live: { label: 'Live', tone: 'green', help: 'Visible in the app and open right now.' },
   closed: { label: 'Closed now', tone: 'amber', help: 'Visible in the app, but outside its hours or paused by the store.' },
-  draft: { label: 'Draft', tone: 'slate', help: 'Hidden from customers and has no products yet. Finish setup, then publish.' },
+  draft: { label: 'Draft', tone: 'slate', help: 'Never published: hidden from customers. Finish setup, then publish.' },
   inactive: { label: 'Inactive', tone: 'red', help: 'Switched off: hidden from customers and not taking orders.' },
 };
 

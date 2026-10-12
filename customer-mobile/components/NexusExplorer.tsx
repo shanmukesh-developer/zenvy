@@ -74,7 +74,8 @@ export default function NexusExplorer({ restaurants, activeCategory, onSelectIte
     try {
       const added = await addToCart({
         id: itemId,
-        name: item.cleanName || item.name,
+        // Full menu name, so the basket line keeps the variant (e.g. "Chicken Biryani (Half)")
+        name: item.name || item.cleanName,
         price: Number(item.price) || 0,
         image: item.image || item.imageUrl || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=300',
         restaurantId: item.restaurantId,
@@ -121,7 +122,7 @@ export default function NexusExplorer({ restaurants, activeCategory, onSelectIte
           ...item,
           id: safeId,
           _id: safeId,
-          name: cleanName,
+          name: (item.name || '').trim() || cleanName,
           cleanName,
           isVegetarian: isVeg,
           restaurantName: res.name,
@@ -158,7 +159,8 @@ export default function NexusExplorer({ restaurants, activeCategory, onSelectIte
     // Deduplicate repeated dishes within one kitchen only: the same dish from two kitchens is two real choices
     const uniqueByName = new Map<string, any>();
     itemsSource.forEach(item => {
-      const dishName = (item.cleanName || item.name || '').toLowerCase().trim();
+      // Full name (not cleanName): Half / Full variants of one dish are separate choices.
+      const dishName = (item.name || item.cleanName || '').toLowerCase().trim();
       if (!dishName) return;
       const key = `${item.restaurantId}|${dishName}`;
       if (!uniqueByName.has(key)) {
@@ -375,7 +377,7 @@ export default function NexusExplorer({ restaurants, activeCategory, onSelectIte
 
                   <View style={s.info}>
                     <View style={s.titleRow}>
-                      <Text style={[s.name, { color: txt }]} numberOfLines={1}>{item.cleanName || item.name}</Text>
+                      <Text style={[s.name, { color: txt }]} numberOfLines={1}>{item.name || item.cleanName}</Text>
                       <Text style={s.price}>₹{item.price}</Text>
                     </View>
                     <TouchableOpacity 

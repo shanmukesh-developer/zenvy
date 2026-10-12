@@ -27,14 +27,13 @@ import {
   ImagePlus,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import * as ImagePicker from 'expo-image-picker';
+import { pickImageAsset, prepareAndUploadImage, alertUploadError, resolveMediaUrl } from '../../../utils/imageUpload';
 import { CampusColors, CampusLayout } from '../../../constants/campusTheme';
 import {
   CampusLostFoundItem,
   fetchLostFound,
   createLostFoundItem,
   resolveLostFoundItem,
-  uploadCampusImage,
 } from '../campusApi';
 import { CampusUserData } from '../../../types/campus';
 
@@ -42,12 +41,15 @@ interface LostFoundModalProps {
   visible: boolean;
   onClose: () => void;
   currentUser: CampusUserData | null;
+  /** Short code of the student's campus (e.g. from the campus profile). */
+  campusCode?: string | null;
 }
 
 export const LostFoundModal: React.FC<LostFoundModalProps> = ({
   visible,
   onClose,
   currentUser,
+  campusCode,
 }) => {
   const [filter, setFilter] = useState<'all' | 'lost' | 'found'>('all');
   const [items, setItems] = useState<CampusLostFoundItem[]>([]);
@@ -63,7 +65,9 @@ export const LostFoundModal: React.FC<LostFoundModalProps> = ({
   const [location, setLocation] = useState('');
   const [claimContact, setClaimContact] = useState('');
   const [description, setDescription] = useState('');
-  const [itemImage, setItemImage] = useState<string | null>(null);
+  const [itemImage, setItemImage] = useState<{ uri: string; width?: number; height?: number } | null>(null);
+  // The uploaded copy of the current photo, so a retry after a failed post doesn't upload twice.
+  const uploadedRef = React.useRef<{ localUri: string; url: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
@@ -101,43 +105,11 @@ export const LostFoundModal: React.FC<LostFoundModalProps> = ({
   };
 
   const pickItemImage = async (fromCamera: boolean) => {
-    try {
-      if (fromCamera) {
-        const cam = await ImagePicker.requestCameraPermissionsAsync();
-        if (!cam.granted) {
-          Alert.alert('Camera needed', 'Allow camera access to photograph the item.');
-          return;
-        }
-      } else {
-        const lib = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!lib.granted) {
-          Alert.alert('Photos needed', 'Allow gallery access to attach an item photo.');
-          return;
-        }
-      }
-
-      const options: ImagePicker.ImagePickerOptions = {
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        quality: 0.35,
-        base64: true,
-      };
-      const result = fromCamera
-        ? await ImagePicker.launchCameraAsync(options)
-        : await ImagePicker.launchImageLibraryAsync(options);
-
-      if (result.canceled || !result.assets?.[0]) return;
-      const asset = result.assets[0];
-      const mime = asset.mimeType || 'image/jpeg';
-      if (asset.base64) {
-        setItemImage(`data:${mime};base64,${asset.base64}`);
-      } else if (asset.uri) {
-        setItemImage(asset.uri);
-      }
-      Haptics.selectionAsync();
-    } catch {
-      Alert.alert('Photo failed', 'Could not attach an image. Try another photo.');
-    }
+    const asset = await pickImageAsset({ source: fromCamera ? 'camera' : 'library', allowsEditing: true });
+    if (!asset) return;
+    setItemImage({ uri: asset.uri, width: asset.width, height: asset.height });
+    uploadedRef.current = null;
+    Haptics.selectionAsync();
   };
 
   const handlePickPhoto = () => {
@@ -156,7 +128,21 @@ export const LostFoundModal: React.FC<LostFoundModalProps> = ({
     }
     try {
       setSubmitting(true);
-      const imageUrl = itemImage ? await uploadCampusImage(itemImage) : undefined;
+      let imageUrl: string | undefined;
+      if (itemImage) {
+        if (uploadedRef.current?.localUri === itemImage.uri) {
+          imageUrl = uploadedRef.current.url;
+        } else {
+          try {
+            const up = await prepareAndUploadImage(itemImage, 'lost_found');
+            uploadedRef.current = { localUri: itemImage.uri, url: up.url };
+            imageUrl = up.url;
+          } catch (e: any) {
+            alertUploadError(e, handleCreate);
+            return;
+          }
+        }
+      }
       const created = await createLostFoundItem({
         type: itemType,
         title: title.trim(),
@@ -170,7 +156,7 @@ export const LostFoundModal: React.FC<LostFoundModalProps> = ({
       setCreateModalVisible(false);
       resetCreateForm();
     } catch (e: any) {
-      Alert.alert('Post Failed', e?.message || 'Could not post item');
+      Alert.alert("Couldn't post", e?.message || 'Please try again in a moment.');
     } finally {
       setSubmitting(false);
     }
@@ -227,7 +213,7 @@ export const LostFoundModal: React.FC<LostFoundModalProps> = ({
           </TouchableOpacity>
           <View style={styles.headerTitleWrap}>
             <Text style={styles.headerTitle}>Lost & Found Desk</Text>
-            <Text style={styles.headerSubtitle}>SRMAP Campus Recovery</Text>
+            <Text style={styles.headerSubtitle}>{campusCode ? `${campusCode} Campus Recovery` : 'Campus Recovery'}</Text>
           </View>
           <TouchableOpacity
             style={styles.postBtn}
@@ -355,10 +341,10 @@ export const LostFoundModal: React.FC<LostFoundModalProps> = ({
                     {item.imageUrl ? (
                       <TouchableOpacity
                         activeOpacity={0.9}
-                        onPress={() => setPreviewImage(item.imageUrl || null)}
+                        onPress={() => setPreviewImage(resolveMediaUrl(item.imageUrl))}
                       >
                         <Image
-                          source={{ uri: item.imageUrl }}
+                          source={{ uri: resolveMediaUrl(item.imageUrl) || undefined }}
                           style={styles.itemPhoto}
                           contentFit="cover"
                         />
@@ -479,7 +465,7 @@ export const LostFoundModal: React.FC<LostFoundModalProps> = ({
                 <Text style={styles.photoOptional}>Optional — a picture helps others recognise the item</Text>
                 {itemImage ? (
                   <View style={styles.photoPreviewWrap}>
-                    <Image source={{ uri: itemImage }} style={styles.photoPreview} contentFit="cover" />
+                    <Image source={{ uri: itemImage.uri }} style={styles.photoPreview} contentFit="cover" />
                     <View style={styles.photoPreviewActions}>
                       <TouchableOpacity style={styles.photoChangeBtn} onPress={handlePickPhoto}>
                         <Camera size={14} color={CampusColors.accent} />

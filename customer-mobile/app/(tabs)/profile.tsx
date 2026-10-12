@@ -28,6 +28,7 @@ import AmbientBackground from '../../components/AmbientBackground';
 import { StaggeredSection } from '../../components/AnimatedSection';
 import { apiFetch } from '../../utils/auth';
 import { API_URL, ENDPOINTS } from '../../constants/api';
+import { usePhoneOtp, PhoneProof } from '../../utils/phoneOtp';
 let Notifications: any = null;
 try {
   Notifications = require('expo-notifications');
@@ -35,7 +36,7 @@ try {
   console.warn('expo-notifications not available:', e.message);
 }
 import Constants from 'expo-constants';
-import * as ImagePicker from 'expo-image-picker';
+import { pickAndUploadImage, alertUploadError } from '../../utils/imageUpload';
 
 const PHONE_RE = /^[6-9]\d{9}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -139,8 +140,10 @@ export default function ProfileScreen() {
   // Phone change verification (OTP to the NEW number)
   const [otpSent, setOtpSent] = useState(false);
   const [otpCode, setOtpCode] = useState('');
-  const [sendingOtp, setSendingOtp] = useState(false);
-  const [resendIn, setResendIn] = useState(0);
+  // Firebase phone auth first (free), Zenvy SMS only as the fallback — same as login.
+  const phoneOtp = usePhoneOtp('change_phone');
+  const sendingOtp = phoneOtp.sending;
+  const resendIn = phoneOtp.countdown;
 
   // Location suggestions
   const [suggestions, setSuggestions] = useState<any[]>([]);
@@ -171,15 +174,6 @@ export default function ProfileScreen() {
   const milestonePct = nextMilestone
     ? Math.min(100, Math.max(0, Math.round(((completedOrders - prevThreshold) / Math.max(1, nextMilestone.threshold - prevThreshold)) * 100)))
     : allBadgesUnlocked ? 100 : 0;
-
-  // Resend countdown for the phone-change OTP
-  useEffect(() => {
-    if (resendIn <= 0) return;
-    const t = setTimeout(() => {
-      if (mountedRef.current) setResendIn((v) => Math.max(0, v - 1));
-    }, 1000);
-    return () => clearTimeout(t);
-  }, [resendIn]);
 
   const fetchData = useCallback(async (mode: 'focus' | 'pull' = 'focus') => {
     if (mode === 'pull') setRefreshing(true);
@@ -339,6 +333,7 @@ export default function ProfileScreen() {
     setIsEditing(false);
     setOtpSent(false);
     setOtpCode('');
+    phoneOtp.reset();
     setShowSuggestions(false);
   };
 
@@ -374,30 +369,15 @@ export default function ProfileScreen() {
     setShowSuggestions(false);
   };
 
+  // Same pipeline as Campus: compress to 640 px JPEG, upload to Zenvy media, store the short https link.
   const handleUploadLocalImage = async () => {
+    if (uploadingImage) return;
     try {
-      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (permissionResult.granted === false) {
-        Alert.alert('Photo access needed', 'Allow access to your photos to pick a profile picture.');
-        return;
-      }
-
       setUploadingImage(true);
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.15,
-        base64: true,
-      });
-
-      if (!result.canceled && result.assets && result.assets.length > 0 && result.assets[0].base64) {
-        const asset = result.assets[0];
-        if (mountedRef.current) setEditProfileImage(`data:image/jpeg;base64,${asset.base64}`);
-      }
+      const up = await pickAndUploadImage('avatar', { allowsEditing: true, aspect: [1, 1], maxEdge: 640 });
+      if (up && mountedRef.current) setEditProfileImage(up.absoluteUrl);
     } catch (err) {
-      console.warn('Profile image selection error:', err);
-      if (mountedRef.current) Alert.alert('Couldn’t use that photo', 'Please try a different picture.');
+      if (mountedRef.current) alertUploadError(err, handleUploadLocalImage, "Photo didn't upload");
     } finally {
       if (mountedRef.current) setUploadingImage(false);
     }
@@ -412,27 +392,14 @@ export default function ProfileScreen() {
       Alert.alert('Check your number', 'Enter a valid 10-digit Indian mobile number.');
       return;
     }
-    setSendingOtp(true);
-    try {
-      const res = await apiFetch(`${API_URL}/api/users/send-otp`, {
-        method: 'POST',
-        body: JSON.stringify({ phone: normalizedEditPhone, purpose: 'change_phone' }),
-      });
-      const data = await res.json().catch(() => ({} as any));
-      if (!mountedRef.current) return;
-      if (res.ok) {
-        setOtpSent(true);
-        setOtpCode('');
-        setResendIn(Number(data?.resendAfter) || 60);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      } else {
-        if (data?.retryAfter) setResendIn(Number(data.retryAfter) || 0);
-        Alert.alert('Couldn’t send the code', data?.message || 'Please try again in a minute.');
-      }
-    } catch {
-      if (mountedRef.current) Alert.alert('No connection', 'Check your internet and try again.');
-    } finally {
-      if (mountedRef.current) setSendingOtp(false);
+    const r = await phoneOtp.send(normalizedEditPhone);
+    if (!mountedRef.current) return;
+    if (r.ok) {
+      setOtpSent(true);
+      setOtpCode('');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    } else {
+      Alert.alert('Couldn’t send the code', r.message || 'Please try again in a minute.');
     }
   };
 
@@ -461,7 +428,8 @@ export default function ProfileScreen() {
         sendPhoneOtp();
         return;
       }
-      if (!/^\d{6}$/.test(otpCode)) {
+      // In Firebase mode Android may have verified the number in the background (no code typed).
+      if (phoneOtp.mode !== 'firebase' && !/^\d{6}$/.test(otpCode)) {
         Alert.alert('Enter the code', `Type the 6-digit code we sent to +91 ${normalizedEditPhone}.`);
         return;
       }
@@ -476,14 +444,22 @@ export default function ProfileScreen() {
       city: editCity.trim().slice(0, 60),
       profileImage: editProfileImage || null,
     };
-    if (phoneChanged) body.otp = otpCode;
 
     savingRef.current = true;
     setSavingProfile(true);
     try {
+      let proof: PhoneProof | null = null;
+      if (phoneChanged) {
+        try {
+          proof = await phoneOtp.getProof(otpCode);
+        } catch (e: any) {
+          if (mountedRef.current) Alert.alert('Couldn’t verify the code', e?.message || 'Please try again.');
+          return;
+        }
+      }
       const response = await apiFetch(`${API_URL}/api/users/profile`, {
         method: 'PUT',
-        body: JSON.stringify(body),
+        body: JSON.stringify(proof ? { ...body, ...proof } : body),
       });
       const data = await response.json().catch(() => ({} as any));
       if (!mountedRef.current) return;
@@ -498,7 +474,9 @@ export default function ProfileScreen() {
         if (data?.code === 'OTP_EXPIRED' || data?.code === 'OTP_LOCKED') {
           setOtpSent(false);
           setOtpCode('');
+          phoneOtp.reset();
         }
+        if (phoneChanged) phoneOtp.allowAutoRetry();
         Alert.alert('Couldn’t save', data?.message || 'Please check your details and try again.');
       }
     } catch (e: any) {

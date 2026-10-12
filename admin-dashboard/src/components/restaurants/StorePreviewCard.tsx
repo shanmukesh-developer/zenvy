@@ -17,6 +17,7 @@ export interface PreviewData {
   promoOffer?: string | null;
   isLocal?: boolean;
   whatsappNumber?: string | null;
+  logoUrl?: string | null;
   brand?: { primaryColor?: string; secondaryColor?: string; accentColor?: string; logoUrl?: string } | null;
 }
 
@@ -70,7 +71,11 @@ export function StorePreviewCard({ data, showToggle = true }: { data: PreviewDat
           </div>
           <div className="px-2.5 pb-2.5 pt-2">
             <div className="flex items-center justify-between gap-2">
-              <p className={cx('truncate text-[13px] font-extrabold', dark ? 'text-white' : 'text-zinc-900')}>{data.name || 'Store name'}</p>
+              {(data.logoUrl || data.brand?.logoUrl) && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={(data.logoUrl || data.brand?.logoUrl) as string} alt="" className="h-5 w-5 shrink-0 rounded-full border border-white/10 bg-white object-cover" />
+              )}
+              <p className={cx('min-w-0 flex-1 truncate text-[13px] font-extrabold', dark ? 'text-white' : 'text-zinc-900')}>{data.name || 'Store name'}</p>
               <span className="flex shrink-0 items-center gap-0.5 rounded-md bg-emerald-600 px-1.5 py-0.5 text-[9px] font-black text-white">
                 {rating > 0 ? <>{rating.toFixed(1)} ★</> : 'NEW'}
               </span>
@@ -80,21 +85,18 @@ export function StorePreviewCard({ data, showToggle = true }: { data: PreviewDat
               <p className={cx('mt-1.5 flex items-center gap-1 truncate border-t border-dashed pt-1.5 text-[9.5px] font-bold', dark ? 'border-white/15 text-zinc-400' : 'border-black/10 text-zinc-500')}>🏷️ {offer}</p>
             )}
             {data.isLocal && (
-              <div className="mt-2 flex gap-1.5">
-                <span className="flex-1 rounded-md bg-emerald-600/90 py-1 text-center text-[9px] font-black text-white">WhatsApp</span>
-                <span className={cx('flex-1 rounded-md py-1 text-center text-[9px] font-black', dark ? 'bg-white/10 text-white' : 'bg-black/5 text-zinc-800')}>Call</span>
-              </div>
+              <p className={cx('mt-1.5 truncate text-[9.5px] font-bold', dark ? 'text-emerald-300' : 'text-emerald-700')}>Cash on delivery · stall delivers</p>
             )}
           </div>
         </div>
       </div>
       {data.isLocal && (
-        <p className="text-xs text-gray-500">Local stalls appear in the CampusBites section. Customers tap WhatsApp / Call{data.whatsappNumber ? ` (${formatWhatsapp(data.whatsappNumber)})` : ''} and order directly.</p>
+        <p className="text-xs text-gray-500">Local stalls appear in the CampusBites section. Customers order in Zenvy and pay cash; the stall gets the order in Zenvy Vendor{data.whatsappNumber ? ` and can be reached on ${formatWhatsapp(data.whatsappNumber)}` : ''}.</p>
       )}
       {data.brand && (
         <div className="flex items-center gap-2 text-xs text-gray-500">
           <span className="h-4 w-4 rounded" style={{ background: `linear-gradient(135deg, ${data.brand.primaryColor || '#1A0000'}, ${data.brand.secondaryColor || '#111'})` }} />
-          Store page uses the brand colours{data.brand.logoUrl ? ' and logo' : ''}.
+          Store page uses the brand colours.
         </div>
       )}
     </div>

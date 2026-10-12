@@ -7,6 +7,7 @@ import { FALLBACK_POLL_MS, SAFETY_POLL_MS } from '../config';
 import * as api from '../lib/api';
 import { ApiError, NetworkError, errorMessage } from '../lib/http';
 import { isEggTag, normalizeOrder, rupees, stageFor, TIMEOUT_REASON_TEXT, todayNumbers } from '../lib/model';
+import { onOrderPush, onPushTokenChange, registerStorePush } from '../lib/push';
 import { startKitchenService } from '../voice/kitchenService';
 import { announce, cancelAnnouncements, detectVoices } from '../voice/voice';
 import { useToast } from '../ui/Toast';
@@ -16,7 +17,7 @@ import type { ConnStatus, ItemInput, MenuItem, Order, StoreProfile, StoreState }
 
 export type StockChange = { isAvailable: true } | { isAvailable: false } | { outOfStockUntil: string };
 export type BusyKind = 'accept' | 'reject' | 'ready';
-export type DeleteResult = { ok: true } | { ok: false; unsupported?: boolean; error: string };
+export type DeleteResult = { ok: true } | { ok: false; error: string };
 
 interface StoreCtx {
   restaurant: StoreProfile;
@@ -216,6 +217,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     refreshStore();
     refreshMenu();
     startKitchenService();
+    // Order pushes while the app is closed (FCM via the server). Best effort: never blocks the app.
+    registerStorePush(rid);
+    const offToken = onPushTokenChange(rid);
+    const offPush = onOrderPush((d) => {
+      if (d?.type === 'NEW_ORDER' || d?.type === 'ORDER_CANCELLED' || d?.orderId) scheduleOrders(300);
+    });
+    return () => { offToken(); offPush(); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // After every (re)connect: refetch what may have been missed while offline (events are not replayed).
@@ -491,43 +499,26 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       description: input.description || null,
       imageUrl: input.imageUrl,
       isVegetarian: input.diet === 'veg',
+      dietType: input.diet,
+      originalPrice: input.originalPrice,
     };
+    // Stock: always on create; on edit only when it changed (keeps an "out of stock until" timer intact).
+    if (!editing || input.isAvailable !== editing.isAvailable) body.isAvailable = input.isAvailable;
+    // Older egg dishes carry an "egg" tag: drop it when the dish is no longer egg (dietType is the truth now).
+    if (editing && input.diet !== 'egg' && editing.tags.some(isEggTag)) body.tags = editing.tags.filter((t) => !isEggTag(t));
+    // One write: name, price, MRP, food type and stock are saved together (never half-saved).
     let saved: MenuItem;
     if (editing) {
       const res = await api.updateMenuItem(editing.id, body);
-      saved = { ...editing, ...(res || {}), ...body, category: input.category || 'Other', description: input.description || null, tags: res?.tags ?? editing.tags };
+      saved = res || {
+        ...editing, ...body, category: input.category || 'Other', description: input.description || null,
+        tags: body.tags ?? editing.tags, isAvailable: body.isAvailable ?? editing.isAvailable,
+      };
     } else {
-      saved = await api.createMenuItem(body); // the server always creates it in stock
+      saved = await api.createMenuItem(body);
     }
     upsertLocal(saved);
-
-    // Follow-ups. The item itself is saved by now, so a failure here is a warning, not an error.
-    const warnings: string[] = [];
-    const wantEgg = input.diet === 'egg';
-    if (wantEgg !== saved.tags.some(isEggTag)) {
-      const tags = wantEgg ? [...saved.tags.filter((t) => !isEggTag(t)), 'egg'] : saved.tags.filter((t) => !isEggTag(t));
-      try {
-        await api.setMenuTags(saved.id, tags);
-        saved = { ...saved, tags };
-      } catch {
-        warnings.push('the egg mark');
-      }
-    }
-    if (input.isAvailable !== saved.isAvailable) {
-      try {
-        const res = await api.setAvailability(saved.id, { isAvailable: input.isAvailable });
-        saved = { ...saved, isAvailable: typeof res?.isAvailable === 'boolean' ? res.isAvailable : input.isAvailable, outOfStockUntil: null };
-      } catch {
-        warnings.push(input.isAvailable ? 'in stock' : 'out of stock');
-      }
-    }
-    upsertLocal(saved);
-
-    if (warnings.length) {
-      toast.show(`${saved.name} saved, but we couldn't set ${warnings.join(' and ')}. Try again from the menu.`, 'error');
-    } else {
-      toast.show(editing ? `${saved.name} saved` : `${saved.name} added to your menu`, 'success');
-    }
+    toast.show(editing ? `${saved.name} saved` : `${saved.name} added to your menu`, 'success');
     if (!editing) announce(`menu:add:${saved.id}`, { kind: 'itemAdded' }, { dedupeMs: 0 });
     return saved;
   }, [toast, upsertLocal]);
@@ -536,9 +527,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     try {
       await api.deleteMenuItem(item.id);
     } catch (e) {
-      if (e instanceof api.DeleteUnsupported) {
-        return { ok: false, unsupported: true, error: "Deleting items isn't switched on for your store yet. You can hide it instead, or ask Zenvy support to delete it." };
-      }
       if (!(e instanceof ApiError && e.status === 404)) return { ok: false, error: errorMessage(e, "Couldn't delete the item. Try again.") };
       // 404 for the item itself: it is already gone, just drop it from the list.
     }

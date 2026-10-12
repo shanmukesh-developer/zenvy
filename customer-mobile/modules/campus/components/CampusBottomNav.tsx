@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { MessageSquare, Flame, GraduationCap, User } from 'lucide-react-native';
+import { MessageSquare, Newspaper, School, User } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { CampusColors, CampusLayout } from '../../../constants/campusTheme';
 import { CampusTab } from '../../../types/campus';
@@ -9,18 +9,21 @@ interface CampusBottomNavProps {
   activeTab: CampusTab;
   onSelectTab: (tab: CampusTab) => void;
   unreadCount?: number;
+  /** Pending friend requests (shown on Me). */
+  meBadge?: number;
 }
 
 export const CampusBottomNav: React.FC<CampusBottomNavProps> = ({
   activeTab,
   onSelectTab,
   unreadCount = 0,
+  meBadge = 0,
 }) => {
   const tabs: { key: CampusTab; label: string; icon: typeof MessageSquare }[] = [
     { key: 'chats', label: 'Chats', icon: MessageSquare },
-    { key: 'pulse', label: 'Pulse', icon: Flame },
-    { key: 'study', label: 'Study', icon: GraduationCap },
-    { key: 'you', label: 'You', icon: User },
+    { key: 'feed', label: 'Feed', icon: Newspaper },
+    { key: 'campus', label: 'Campus', icon: School },
+    { key: 'me', label: 'Me', icon: User },
   ];
 
   return (
@@ -50,13 +53,14 @@ export const CampusBottomNav: React.FC<CampusBottomNavProps> = ({
                 color={isActive ? CampusColors.accent : CampusColors.muted}
                 strokeWidth={isActive ? 2.2 : 1.8}
               />
-              {tab.key === 'chats' && unreadCount > 0 && (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>
-                    {unreadCount > 99 ? '99+' : unreadCount}
-                  </Text>
-                </View>
-              )}
+              {(() => {
+                const n = tab.key === 'chats' ? unreadCount : tab.key === 'me' ? meBadge : 0;
+                return n > 0 ? (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{n > 99 ? '99+' : n}</Text>
+                  </View>
+                ) : null;
+              })()}
             </View>
             <Text style={[styles.tabLabel, isActive && styles.activeTabLabel]}>
               {tab.label}
@@ -75,7 +79,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: CampusColors.line,
     paddingVertical: 8,
-    paddingBottom: 20, // accounts for home bar indicator
+    paddingBottom: 8, // the shell's SafeAreaView already pads for the home indicator
     justifyContent: 'space-around',
     alignItems: 'center',
     shadowColor: '#000',

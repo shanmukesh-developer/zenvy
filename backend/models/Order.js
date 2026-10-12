@@ -32,7 +32,7 @@ const initOrderModel = (sequelize) => {
       type: DataTypes.STRING,
       defaultValue: 'Pending',
       validate: {
-        isIn: [['Pending', 'Accepted', 'Preparing', 'ReadyForPickup', 'Picking', 'PickedUp', 'ArrivedAtGate', 'Delivered', 'Cancelled']]
+        isIn: [['Pending', 'Accepted', 'Preparing', 'ReadyForPickup', 'Picking', 'PickedUp', 'ArrivedAtGate', 'OutForDelivery', 'Delivered', 'Cancelled']]
       }
     },
     cancellationReason: { type: DataTypes.STRING },
@@ -56,6 +56,11 @@ const initOrderModel = (sequelize) => {
     // Kitchen timestamps (restaurant partner app: real prep time + "ready by"). Null on older rows.
     acceptedAt: { type: DataTypes.DATE, allowNull: true },
     readyAt: { type: DataTypes.DATE, allowNull: true },
+    // Who delivers: 'ZENVY' (rider pool) or 'VENDOR' (CampusBites stall delivers it itself: no rider,
+    // no delivery PIN, COD to the stall). Older rows: null = 'ZENVY'.
+    fulfilment: { type: DataTypes.STRING(16), allowNull: true, defaultValue: 'ZENVY' },
+    // Stall orders: when the vendor left with the order (status OutForDelivery).
+    outForDeliveryAt: { type: DataTypes.DATE, allowNull: true },
     // Client Idempotency-Key for POST /api/orders (unique per user, see config/db.js index), so a
     // retry after a restart or after minutes still returns the same order instead of a second one.
     idempotencyKey: { type: DataTypes.STRING(120), allowNull: true },
@@ -105,7 +110,8 @@ const initOrderModel = (sequelize) => {
     indexes: [
       { fields: ['userId'] },
       { fields: ['status'] },
-      { fields: ['createdAt'] }
+      { fields: ['createdAt'] },
+      { fields: ['restaurantId', 'createdAt'] }
     ],
     hooks: {
       beforeCreate: (order) => {

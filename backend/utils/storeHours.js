@@ -34,6 +34,60 @@ const readHours = (restaurant) => {
   return hours && typeof hours === 'object' ? hours : null;
 };
 
+const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+const DAY_NAMES = { mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday' };
+// IST weekday index, mon = 0 … sun = 6.
+const istDayIndex = (now = new Date()) => (new Date(now.getTime() + IST_OFFSET_MS).getUTCDay() + 6) % 7;
+
+// Per-day hours: operatingHours.weekly = { mon: { open, start, end }, … }. Null when absent / unusable.
+const readWeekly = (hours) => {
+  const w = hours && hours.weekly;
+  if (!w || typeof w !== 'object') return null;
+  const out = {};
+  let any = false;
+  for (const k of DAY_KEYS) {
+    const d = w[k];
+    if (!d || typeof d !== 'object') { out[k] = { open: false }; continue; }
+    const start = toMinutes(d.start);
+    const end = toMinutes(d.end);
+    const open = d.open !== false && start !== null && end !== null;
+    out[k] = open ? { open: true, start, end, startText: d.start, endText: d.end } : { open: false };
+    if (open) any = true;
+  }
+  return any ? out : null;
+};
+
+// Is `nowMin` inside a day's window? start===end means all day. Overnight windows spill past midnight.
+const inWindow = (day, nowMin) => {
+  if (!day || !day.open) return false;
+  if (day.start === day.end) return true;
+  return day.start < day.end ? (nowMin >= day.start && nowMin < day.end) : nowMin >= day.start;
+};
+const spillsInto = (prevDay, nowMin) => !!prevDay && prevDay.open && prevDay.start !== prevDay.end
+  && prevDay.end < prevDay.start && nowMin < prevDay.end;
+
+const weeklyOpenState = (weekly, name, now) => {
+  const today = istDayIndex(now);
+  const nowMin = istMinutesNow(now);
+  const day = weekly[DAY_KEYS[today]];
+  const prev = weekly[DAY_KEYS[(today + 6) % 7]];
+  if (spillsInto(prev, nowMin)) return { isOpen: true, closesAt: prev.endText };
+  if (inWindow(day, nowMin)) return { isOpen: true, ...(day.start !== day.end ? { closesAt: day.endText } : {}) };
+  // Next opening: later today, else the next open day.
+  if (day && day.open && nowMin < day.start) {
+    return { isOpen: false, reason: 'outside_hours', opensAt: day.startText, message: `${name} is closed right now — it opens at ${formatTime(day.startText)}.` };
+  }
+  for (let i = 1; i <= 7; i++) {
+    const key = DAY_KEYS[(today + i) % 7];
+    const d = weekly[key];
+    if (d && d.open) {
+      const when = i === 1 ? 'tomorrow' : `on ${DAY_NAMES[key]}`;
+      return { isOpen: false, reason: 'outside_hours', opensAt: d.startText, opensOn: key, message: `${name} is closed right now — it opens ${when} at ${formatTime(d.startText)}.` };
+    }
+  }
+  return { isOpen: false, reason: 'outside_hours', message: `${name} is closed right now.` };
+};
+
 // → { isOpen, reason?, opensAt?, closesAt?, message? }
 const getStoreOpenState = (restaurant, now = new Date()) => {
   if (!restaurant) return { isOpen: false, reason: 'not_found', message: 'This store is no longer on Zenvy.' };
@@ -52,6 +106,8 @@ const getStoreOpenState = (restaurant, now = new Date()) => {
       message: `${name} is closed right now. Please check back a little later.`
     };
   }
+  const weekly = readWeekly(hours);
+  if (weekly) return weeklyOpenState(weekly, name, now);
   if (start === null || end === null || start === end) return { isOpen: true }; // no hours / open 24h
 
   const nowMin = istMinutesNow(now);
@@ -80,4 +136,46 @@ const getCampusServiceability = (now = new Date()) => {
   };
 };
 
-module.exports = { getStoreOpenState, getCampusServiceability, formatTime };
+// Validate + normalise operatingHours from admin / partner input:
+// { start: 'HH:MM', end: 'HH:MM', weekly?: { mon: { open, start, end }, … sun } }.
+// start === end means open all day. Throws Error(message) with a customer-friendly message.
+const HHMM_STRICT = /^([01]?\d|2[0-3]):([0-5]\d)$/;
+const normHHMM = (v) => {
+  const m = HHMM_STRICT.exec(String(v || '').trim());
+  return m ? `${m[1].padStart(2, '0')}:${m[2]}` : null;
+};
+const normalizeOperatingHours = (input) => {
+  const h = input && typeof input === 'object' ? input : {};
+  let start = normHHMM(h.start);
+  let end = normHHMM(h.end);
+  let weekly = null;
+  if (h.weekly !== undefined && h.weekly !== null) {
+    if (typeof h.weekly !== 'object' || Array.isArray(h.weekly)) throw new Error('Weekly hours must list mon to sun.');
+    weekly = {};
+    let openDays = 0;
+    for (const key of DAY_KEYS) {
+      const d = h.weekly[key];
+      if (!d || typeof d !== 'object' || d.open === false || d.open === 'false') { weekly[key] = { open: false }; continue; }
+      const ds = normHHMM(d.start);
+      const de = normHHMM(d.end);
+      if (!ds || !de) throw new Error(`Operating hours for ${DAY_NAMES[key]} must be 24-hour times.`);
+      weekly[key] = { open: true, start: ds, end: de };
+      openDays++;
+    }
+    if (!openDays) throw new Error('Pick at least one day when the store is open.');
+    // start/end = the most common open window (older apps read only these).
+    if (!start || !end) {
+      const counts = new Map();
+      for (const key of DAY_KEYS) if (weekly[key].open) {
+        const k = `${weekly[key].start}-${weekly[key].end}`;
+        counts.set(k, (counts.get(k) || 0) + 1);
+      }
+      const [best] = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+      [start, end] = best.split('-');
+    }
+  }
+  if (!start || !end) throw new Error('Operating hours must be 24-hour times like 09:00 and 22:00.');
+  return weekly ? { start, end, weekly } : { start, end };
+};
+
+module.exports = { getStoreOpenState, getCampusServiceability, formatTime, DAY_KEYS, normalizeOperatingHours };

@@ -1,9 +1,11 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Product, Store, adminRequest, isBookingOnlyStore, isLocalVendorType, readSpecs, storeId } from '@/app/restaurants/catalogue';
+import { DietType, Product, Store, adminRequest, dietOf, isBookingOnlyStore, isLocalVendorType, mrpOf, readSpecs, storeId } from '@/app/restaurants/catalogue';
 import { useLiveSync, useFreshIds, FRESH_ROW_CLASS, LiveEvent } from '@/lib/useLiveSync';
 import { parseCsv, timeAgo } from './helpers';
 import { ImagePicker, TagInput } from './inputs';
+import { bulkUpdateItems, duplicateItemPayload } from './storeActions';
+import { API_URL } from '@/lib/config';
 import {
   Button, Callout, Chip, ConfirmModal, EmptyState, Field, INPUT, MenuButton, Modal, Segmented, Skeleton, Toggle, cx, FOCUS_RING, useToast,
 } from './ui';
@@ -124,10 +126,7 @@ export function MenuManager({ store }: { store: Store }) {
     try {
       const saved = await adminRequest<Product>('/api/admin/menu-items/new', {
         method: 'POST',
-        body: JSON.stringify({
-          restaurantId: id, name: `${p.name} (copy)`.slice(0, 200), price: p.price, category: p.category || null, description: p.description || null,
-          imageUrl: p.imageUrl || p.image || null, isAvailable: p.isAvailable, isVegetarian: p.isVegetarian ?? true, isEliteOnly: !!p.isEliteOnly, tags: p.tags || [], specs,
-        }),
+        body: JSON.stringify({ ...duplicateItemPayload(p, id), name: `${p.name} (copy)`.slice(0, 200), specs }),
       });
       setProducts(prev => [...prev, saved]);
       markFresh([itemId(saved)]);
@@ -155,15 +154,17 @@ export function MenuManager({ store }: { store: Store }) {
   const selectedItems = products.filter(p => selected.has(itemId(p)));
   const bulkPatch = async (patch: Record<string, unknown>, label: string) => {
     const items = selectedItems;
-    let ok = 0;
-    await inBatches(items, 4, async p => {
-      try {
-        const saved = await adminRequest<Product>(`/api/admin/menu-items/${itemId(p)}`, { method: 'POST', body: JSON.stringify(patch) });
-        update(p, saved); ok++;
-      } catch { /* counted below */ }
-    });
-    if (ok === items.length) toast.success(`${label}: ${ok} item${ok === 1 ? '' : 's'}.`);
-    else toast.error(`${label}: ${ok} of ${items.length} updated. Try the rest again.`);
+    try {
+      // One server call for every selected item (max 300), all in one transaction.
+      const result = await bulkUpdateItems(items.map(itemId).slice(0, 300), patch);
+      const ok = Number(result?.count) || 0;
+      setProducts(prev => prev.map(p => (selected.has(itemId(p)) ? { ...p, ...(patch as Partial<Product>) } : p)));
+      if (ok === items.length) toast.success(`${label}: ${ok} item${ok === 1 ? '' : 's'}.`);
+      else toast.error(`${label}: ${ok} of ${items.length} updated. Reloading the menu.`);
+      load(true);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not update the items.');
+    }
     setSelected(new Set());
   };
   const [moveTo, setMoveTo] = useState<string | null>(null);
@@ -219,7 +220,7 @@ export function MenuManager({ store }: { store: Store }) {
 
   return (
     <div className="space-y-4">
-      {local && <Callout tone="amber">Display-only stall: these prices are shown to customers, who order directly from the stall by WhatsApp or call.</Callout>}
+      {local && <Callout tone="amber">Stall menu: customers order these in Zenvy and pay the stall cash on delivery. The stall can also mark items in or out of stock from Zenvy Vendor.</Callout>}
       {bookingOnly && <Callout tone="sky">Booking-only service: these prices are what service bookings are charged (print jobs use the per-page and binding rows).</Callout>}
 
       {/* Toolbar */}
@@ -260,7 +261,7 @@ export function MenuManager({ store }: { store: Store }) {
         <EmptyState
           icon="🍽️"
           title="No menu yet"
-          body={`Customers cannot ${local ? 'see prices' : 'order'} until ${store.name} has items. Add them one by one, or paste a whole menu from a spreadsheet.`}
+          body={`Customers cannot order until ${store.name} has items. Add them one by one, or paste a whole menu from a spreadsheet.`}
           action={<><Button variant="primary" onClick={() => setEditing('new')}>+ Add first item</Button><Button onClick={() => setCsvOpen(true)}>Paste a menu (CSV)</Button></>}
         />
       ) : !loadError && grouped.length === 0 ? (
@@ -316,7 +317,7 @@ export function MenuManager({ store }: { store: Store }) {
               </section>
             );
           })}
-          <p className="px-1 text-[11px] text-gray-600">Item order is saved now; the customer app shows it once the server sorts menus by it (pending server update).</p>
+          <p className="px-1 text-[11px] text-gray-600">The customer app and partner apps show categories and items in this order.</p>
         </div>
       )}
 
@@ -370,10 +371,17 @@ export function MenuManager({ store }: { store: Store }) {
   );
 }
 
-function VegMark({ veg }: { veg: boolean }) {
+const DIET_META: Record<DietType, { label: string; border: string; dot: string }> = {
+  veg: { label: 'Vegetarian', border: 'border-emerald-500', dot: 'bg-emerald-500' },
+  egg: { label: 'Contains egg', border: 'border-amber-400', dot: 'bg-amber-400' },
+  nonveg: { label: 'Non-vegetarian', border: 'border-red-500', dot: 'bg-red-500' },
+};
+
+function DietMark({ diet }: { diet: DietType }) {
+  const m = DIET_META[diet];
   return (
-    <span title={veg ? 'Vegetarian' : 'Non-vegetarian'} aria-label={veg ? 'Vegetarian' : 'Non-vegetarian'} className={cx('inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border', veg ? 'border-emerald-500' : 'border-red-500')}>
-      <span className={cx('h-1.5 w-1.5 rounded-full', veg ? 'bg-emerald-500' : 'bg-red-500')} />
+    <span title={m.label} aria-label={m.label} className={cx('inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border', m.border)}>
+      <span className={cx('h-1.5 w-1.5 rounded-full', m.dot)} />
     </span>
   );
 }
@@ -384,7 +392,7 @@ function ItemRow({ p, fresh, busy, selected, onSelect, canUp, canDown, onMove, o
   onStock: (p: Product, isAvailable: boolean, until?: Date | null) => void;
 }) {
   const specs = readSpecs(p.specs);
-  const mrp = Number(specs.originalPrice);
+  const mrp = mrpOf(p) ?? NaN;
   const price = Number(p.price);
   const off = Number.isFinite(mrp) && mrp > price ? Math.round((1 - price / mrp) * 100) : 0;
   const until = p.outOfStockUntil ? new Date(p.outOfStockUntil) : null;
@@ -407,7 +415,7 @@ function ItemRow({ p, fresh, busy, selected, onSelect, canUp, canDown, onMove, o
         )}
         <span className="min-w-0">
           <span className="flex items-center gap-1.5">
-            <VegMark veg={p.isVegetarian !== false} />
+            <DietMark diet={dietOf(p)} />
             <span className={cx('truncate font-semibold', p.isAvailable ? 'text-white' : 'text-gray-400')}>{p.name}</span>
           </span>
           <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
@@ -460,18 +468,18 @@ function ItemEditor({ initial, storeName, categories, bookingOnly, nextSortOrder
   const specs = readSpecs(initial?.specs);
   const blank = () => ({
     name: '', price: '', mrp: '', weight: '', category: categories[0] || '', description: '', imageUrl: '',
-    isAvailable: true, isVegetarian: true, isEliteOnly: false, tags: [] as string[],
+    isAvailable: true, diet: 'veg' as DietType, isEliteOnly: false, tags: [] as string[],
   });
   const [form, setForm] = useState(() => initial ? {
     name: initial.name || '',
     price: String(initial.price ?? ''),
-    mrp: specs.originalPrice != null ? String(specs.originalPrice) : '',
+    mrp: mrpOf(initial) != null ? String(mrpOf(initial)) : '',
     weight: typeof specs.weight === 'string' ? specs.weight : '',
     category: initial.category || '',
     description: initial.description || '',
     imageUrl: initial.imageUrl || initial.image || '',
     isAvailable: initial.isAvailable ?? true,
-    isVegetarian: initial.isVegetarian ?? true,
+    diet: dietOf(initial),
     isEliteOnly: !!initial.isEliteOnly,
     tags: (initial.tags || []).map(String),
   } : blank());
@@ -509,11 +517,13 @@ function ItemEditor({ initial, storeName, categories, bookingOnly, nextSortOrder
         description: form.description.trim() || null,
         imageUrl: form.imageUrl.trim() || null,
         isAvailable: form.isAvailable,
-        isVegetarian: form.isVegetarian,
+        dietType: form.diet,
+        isVegetarian: form.diet === 'veg',
         isEliteOnly: form.isEliteOnly,
         tags: form.tags,
+        // MRP: column + specs.originalPrice are kept in step by the server; null clears it.
+        originalPrice: form.mrp.trim() === '' ? null : Number(form.mrp),
         specs: {
-          originalPrice: form.mrp.trim() === '' ? null : Number(form.mrp),
           weight: form.weight.trim() || null,
           ...(initial ? {} : { sortOrder: nextSortOrder }),
         },
@@ -569,9 +579,10 @@ function ItemEditor({ initial, storeName, categories, bookingOnly, nextSortOrder
             </Field>
             <div className="space-y-1.5">
               <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">Food type</p>
-              <Segmented label="Food type" value={form.isVegetarian ? 'veg' : 'nonveg'} onChange={v => set({ isVegetarian: v === 'veg' })} options={[
-                { value: 'veg', label: <span className="flex items-center gap-1.5"><VegMark veg /> Veg</span> },
-                { value: 'nonveg', label: <span className="flex items-center gap-1.5"><VegMark veg={false} /> Non-veg</span> },
+              <Segmented<DietType> label="Food type" value={form.diet} onChange={diet => set({ diet })} options={[
+                { value: 'veg', label: <span className="flex items-center gap-1.5"><DietMark diet="veg" /> Veg</span> },
+                { value: 'egg', label: <span className="flex items-center gap-1.5"><DietMark diet="egg" /> Egg</span> },
+                { value: 'nonveg', label: <span className="flex items-center gap-1.5"><DietMark diet="nonveg" /> Non-veg</span> },
               ]} />
             </div>
           </div>
@@ -602,7 +613,8 @@ function ItemEditor({ initial, storeName, categories, bookingOnly, nextSortOrder
 const CSV_TEMPLATE = `name,price,mrp,category,veg,in_stock,weight,description,image
 Chicken Dum Biryani,220,,Biryani,no,yes,Full,Hyderabadi style with raita,
 Paneer Butter Masala,180,200,Curries,yes,yes,,Rich tomato gravy,
-Masala Dosa,60,,Tiffins,yes,yes,,,`;
+Masala Dosa,60,,Tiffins,yes,yes,,,
+Egg Fried Rice,110,,Chinese,egg,yes,,,`;
 
 const COLUMN_ALIASES: Record<string, string> = {
   name: 'name', item: 'name', 'item name': 'name', product: 'name',
@@ -617,6 +629,28 @@ const COLUMN_ALIASES: Record<string, string> = {
 };
 const DEFAULT_ORDER = ['name', 'price', 'mrp', 'category', 'veg', 'in_stock', 'weight', 'description', 'image'];
 
+interface BulkError extends Error { rows?: { index: number; message: string }[] }
+
+/** POST /api/admin/menu-items/bulk. Throws a BulkError with per-row messages when the server refuses the batch. */
+async function fetchBulk(restaurantId: string, items: Record<string, unknown>[]): Promise<Product[]> {
+
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}/api/admin/menu-items/bulk`, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ restaurantId, items }) });
+  } catch {
+    throw Object.assign(new Error('Could not reach the server. Check your connection and try again.'), { rows: [] }) as BulkError;
+  }
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    const msg = res.status === 401 ? 'Your session has expired. Please sign in again.'
+      : res.status >= 500 ? `The server could not complete this request (${res.status}). Please try again.`
+      : (data && typeof data.message === 'string' ? data.message : `Request failed (${res.status}).`);
+    const rows = Array.isArray(data?.errors) ? (data.errors as { index: number; message: string }[]) : [];
+    throw Object.assign(new Error(msg), { rows }) as BulkError;
+  }
+  return Array.isArray(data?.items) ? (data.items as Product[]) : [];
+}
+
 interface CsvRow { line: number; data: Record<string, unknown>; errors: string[]; duplicate: boolean; status?: 'done' | 'failed'; failReason?: string }
 
 const yes = (v: string, fallback: boolean) => {
@@ -625,6 +659,12 @@ const yes = (v: string, fallback: boolean) => {
   if (['yes', 'y', 'true', '1', 'veg', 'v', 'in', 'available'].includes(s)) return true;
   if (['no', 'n', 'false', '0', 'non-veg', 'nonveg', 'non veg', 'nv', 'egg', 'out'].includes(s)) return false;
   return fallback;
+};
+/** "veg" column: yes / no / egg (also veg, non-veg, nv, e). */
+const dietFromCell = (v: string): DietType => {
+  const s = v.trim().toLowerCase();
+  if (['egg', 'e', 'eggetarian', 'contains egg'].includes(s)) return 'egg';
+  return yes(s, true) ? 'veg' : 'nonveg';
 };
 
 function CsvImportModal({ storeId: sid, existing, onClose, onImported }: {
@@ -672,8 +712,9 @@ function CsvImportModal({ storeId: sid, existing, onClose, onImported }: {
         duplicate,
         data: {
           name, price: Math.round(price * 100) / 100, category: get('category') || null, description: get('description') || null,
-          imageUrl: image || null, isVegetarian: yes(get('veg'), true), isAvailable: yes(get('in_stock'), true), isEliteOnly: false, tags: [],
-          specs: { ...(mrp !== null && Number.isFinite(mrp) ? { originalPrice: mrp } : {}), ...(get('weight') ? { weight: get('weight') } : {}) },
+          imageUrl: image || null, dietType: dietFromCell(get('veg')), isAvailable: yes(get('in_stock'), true), isEliteOnly: false, tags: [],
+          ...(mrp !== null && Number.isFinite(mrp) ? { originalPrice: mrp } : {}),
+          specs: { ...(get('weight') ? { weight: get('weight') } : {}) },
         },
       };
     });
@@ -688,26 +729,34 @@ function CsvImportModal({ storeId: sid, existing, onClose, onImported }: {
     if (!importable.length || importing) return;
     setImporting(true);
     setProgress(0);
-    const added: Product[] = [];
-    const results = new Map<number, { status: 'done' | 'failed'; failReason?: string }>();
     let order = existing.reduce((m, p) => Math.max(m, Number.isFinite(sortOrderOf(p)) ? sortOrderOf(p) : 0), 0);
     const queue = importable.map(r => ({ r, sortOrder: (order += 10) }));
-    await inBatches(queue, 3, async ({ r, sortOrder }) => {
+    const added: Product[] = [];
+    const results = new Map<number, { status: 'done' | 'failed'; failReason?: string }>();
+    // POST /api/admin/menu-items/bulk is all-or-nothing (max 300 rows per call): a call with a bad row saves none
+    // and returns per-row errors, which are marked below.
+    for (let i = 0; i < queue.length; i += 300) {
+      const chunk = queue.slice(i, i + 300);
       try {
-        const data = r.data as { specs: Record<string, unknown> };
-        const saved = await adminRequest<Product>('/api/admin/menu-items/new', { method: 'POST', body: JSON.stringify({ ...r.data, specs: { ...data.specs, sortOrder }, restaurantId: sid }) });
-        added.push(saved);
-        results.set(r.line, { status: 'done' });
+        const res = await fetchBulk(sid, chunk.map(({ r, sortOrder }) => {
+          const data = r.data as { specs: Record<string, unknown> };
+          return { ...r.data, specs: { ...data.specs, sortOrder } };
+        }));
+        added.push(...res);
+        chunk.forEach(({ r }) => results.set(r.line, { status: 'done' }));
       } catch (e) {
-        results.set(r.line, { status: 'failed', failReason: e instanceof Error ? e.message : 'Failed' });
+        const err = e as BulkError;
+        const byIndex = new Map((err.rows || []).map(x => [x.index, x.message]));
+        chunk.forEach(({ r }, idx) => results.set(r.line, { status: 'failed', failReason: byIndex.get(idx) || (byIndex.size ? 'Not saved (another row has an error)' : err.message || 'Failed') }));
       }
-    }, setProgress);
+      setProgress(Math.min(queue.length, i + chunk.length));
+    }
     setRows(prev => (prev || []).map(r => (results.has(r.line) ? { ...r, ...results.get(r.line) } : r)));
     setImporting(false);
     if (added.length) onImported(added);
     const failed = queue.length - added.length;
     if (!failed) { toast.success(`${added.length} item${added.length === 1 ? '' : 's'} added to the menu.`); onClose(); }
-    else toast.error(`${added.length} added, ${failed} failed. Failed rows are marked below; fix and import again.`);
+    else toast.error(`${added.length} added, ${failed} not saved. Rows are marked below; fix them and import again.`);
   };
 
   const loadFile = async (file?: File | null) => {
@@ -739,7 +788,7 @@ function CsvImportModal({ storeId: sid, existing, onClose, onImported }: {
       {!rows ? (
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400">
-            <span>Columns: <b className="text-gray-200">name, price</b> (required), mrp, category, veg (yes/no), in_stock (yes/no), weight, description, image (link).</span>
+            <span>Columns: <b className="text-gray-200">name, price</b> (required), mrp, category, veg (yes / no / egg), in_stock (yes/no), weight, description, image (link).</span>
             <button type="button" className="font-semibold text-emerald-300 hover:underline" onClick={() => setText(CSV_TEMPLATE)}>Insert example</button>
             <a className="font-semibold text-emerald-300 hover:underline" download="zenvy-menu-template.csv" href={`data:text/csv;charset=utf-8,${encodeURIComponent(CSV_TEMPLATE)}`}>Download template</a>
           </div>
@@ -776,16 +825,16 @@ function CsvImportModal({ storeId: sid, existing, onClose, onImported }: {
                 </thead>
                 <tbody className="divide-y divide-white/5">
                   {rows.map(r => {
-                    const d = r.data as { name: string; price: number; category: string | null; isVegetarian: boolean; isAvailable: boolean; specs: { originalPrice?: number } };
+                    const d = r.data as { name: string; price: number; category: string | null; dietType: DietType; isAvailable: boolean; originalPrice?: number };
                     const skipped = skipDupes && r.duplicate && !r.errors.length;
                     return (
                       <tr key={r.line} className={cx(r.errors.length ? 'bg-red-500/5' : skipped ? 'opacity-50' : '', r.status === 'done' && 'bg-emerald-500/5')}>
                         <td className="p-2 text-gray-500">{r.line}</td>
                         <td className="p-2 font-semibold text-white">{d.name || <span className="text-red-300">—</span>}</td>
                         <td className="p-2 text-right">{Number.isFinite(d.price) ? `₹${d.price}` : '—'}</td>
-                        <td className="p-2 text-right text-gray-400">{d.specs.originalPrice ? `₹${d.specs.originalPrice}` : '—'}</td>
+                        <td className="p-2 text-right text-gray-400">{d.originalPrice ? `₹${d.originalPrice}` : '—'}</td>
                         <td className="p-2 text-gray-300">{d.category || '—'}</td>
-                        <td className="p-2"><VegMark veg={d.isVegetarian} /></td>
+                        <td className="p-2"><DietMark diet={d.dietType} /></td>
                         <td className="p-2">{d.isAvailable ? 'In' : 'Out'}</td>
                         <td className="p-2">
                           {r.status === 'done' ? <Chip tone="green">Added</Chip>

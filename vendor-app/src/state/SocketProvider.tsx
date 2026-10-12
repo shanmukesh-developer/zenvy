@@ -71,7 +71,9 @@ export function SocketProvider({ token, restaurantId, onAuthError, children }: {
       if (reason === 'io server disconnect') s.connect();
     });
     s.on('connect_error', (err: any) => {
-      if (/authentication error/i.test(String(err?.message || ''))) {
+      // 'Please retry' = a passing server hiccup (DB busy), not a bad token: keep retrying, never log out.
+      const msg = String(err?.message || '');
+      if (/authentication error/i.test(msg) && !/please retry/i.test(msg)) {
         clearOffline();
         authErrRef.current();
         return;

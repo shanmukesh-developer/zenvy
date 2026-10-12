@@ -141,7 +141,11 @@ const emitWithAck = <T = any>(event: string, payload: any): Promise<T> =>
     const s = connectCampusSocket();
     s.timeout(ACK_TIMEOUT_MS).emit(event, payload, (err: any, res: any) => {
       if (err) reject(new Error(ACK_TIMEOUT_MESSAGE));
-      else if (res && res.error) reject(new Error(res.error));
+      else if (res && res.error) {
+        const e: any = new Error(String(res.error));
+        if (res.code) e.code = res.code;
+        reject(e);
+      }
       else resolve(res);
     });
   });

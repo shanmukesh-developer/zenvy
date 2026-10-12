@@ -191,8 +191,18 @@ export const CampusCallModal: React.FC<CampusCallModalProps> = ({
       setCallStatus(data.reason === 'busy' ? `${peerName} is on another call` : 'Call declined');
       later(() => hangupRef.current(false), 1400);
     };
-    const onEnded = (data: { callId: string }) => {
+    const onEnded = (data: { callId: string; reason?: string }) => {
       if (data.callId !== callIdRef.current) return;
+      // Tell the caller why an unanswered call stopped instead of just closing.
+      const why = data.reason === 'missed' ? 'No answer'
+        : data.reason === 'busy' ? `${peerName} is on another call`
+        : data.reason === 'declined' ? 'Call declined'
+        : null;
+      if (why) {
+        setCallStatus(why);
+        later(() => hangupRef.current(false), 1400);
+        return;
+      }
       hangupRef.current(false);
     };
     const onSignal = (data: { callId: string; payload: any }) => {

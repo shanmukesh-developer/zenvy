@@ -3,7 +3,7 @@
 const { Op } = require('sequelize');
 const { getMenuItemModel } = require('../models/MenuItem');
 const { getRestaurantModel } = require('../models/Restaurant');
-const { isLocalVendorStore } = require('./vendorTypes');
+const { isLocalVendorStore, isServiceVendorType } = require('./vendorTypes');
 const { getOrderModel } = require('../models/Order');
 const { getUserModel } = require('../models/User');
 const { getGlobalConfigModel } = require('../models/GlobalConfig');
@@ -119,14 +119,16 @@ const computeOrderQuote = async ({ user, items, couponCode }) => {
 
   const isElite = !!(user && (user.isElite || (Array.isArray(user.badges) && user.badges.some(b => typeof b === 'string' && b.includes('Elite')))));
   const bookingOnly = [];
-  const localVendorStores = new Map();
   for (const line of lines) {
     const dbItem = itemMap.get(line.id);
     const store = dbItem && restMap.get(dbItem.restaurantId);
     if (!dbItem || !store) { problems.push({ id: line.id, name: line.label, reason: 'not_found' }); continue; }
-    if (isLocalVendorStore(store)) { localVendorStores.set(store.id, store); continue; }
-    const specs = dbItem.specs && typeof dbItem.specs === 'object' ? dbItem.specs : {};
-    if (specs.bookingOnly) { bookingOnly.push(dbItem.name); continue; }
+    // Service stores (laundry, print, repairs, tailoring) are booked via /api/services/book, never ordered,
+    // even when an older product row has no specs.bookingOnly flag. specs may be a JSON string on SQLite.
+    let specs = dbItem.specs;
+    if (typeof specs === 'string') { try { specs = JSON.parse(specs); } catch { specs = {}; } }
+    specs = specs && typeof specs === 'object' ? specs : {};
+    if (specs.bookingOnly || isServiceVendorType(store.vendorType)) { bookingOnly.push(dbItem.name); continue; }
     if (!isItemAvailable(dbItem) || !(Number(dbItem.price) > 0)) { problems.push({ id: dbItem.id, name: dbItem.name, reason: 'out_of_stock' }); continue; }
     if (store.isActive === false) { problems.push({ id: dbItem.id, name: dbItem.name, reason: 'store_unavailable' }); continue; }
     if (dbItem.isEliteOnly && !isElite) { problems.push({ id: dbItem.id, name: dbItem.name, reason: 'elite_only' }); continue; }
@@ -134,13 +136,6 @@ const computeOrderQuote = async ({ user, items, couponCode }) => {
     line.store = store;
   }
 
-  // CampusBites stalls are display-only: the customer orders straight from the vendor.
-  if (localVendorStores.size) {
-    const stalls = [...localVendorStores.values()];
-    throw new PricingError(400, 'LOCAL_VENDOR_DIRECT_ORDER',
-      `Order this directly from the stall by call or WhatsApp.${stalls.length === 1 ? ` ${stalls[0].name} takes the order and delivers it themselves.` : ''}`,
-      { stores: stalls.map(st => ({ id: st.id, name: st.name, whatsappNumber: st.whatsappNumber || null })) });
-  }
   if (bookingOnly.length) {
     throw new PricingError(400, 'BOOKING_ONLY_ITEMS', `${bookingOnly.join(', ')} ${bookingOnly.length > 1 ? 'are services' : 'is a service'} — please book ${bookingOnly.length > 1 ? 'them' : 'it'} from the service page instead of the basket.`, { bookingOnlyItems: bookingOnly });
   }
@@ -166,7 +161,17 @@ const computeOrderQuote = async ({ user, items, couponCode }) => {
       { stores: [...mainStores.values()].map(s => ({ id: s.id, name: s.name })) });
   }
   const store = [...mainStores.values()][0];
-  const openState = getStoreOpenState(store);
+  // CampusBites stall: ordered inside Zenvy, cash to the vendor, the vendor delivers (no rider).
+  const isStall = isLocalVendorStore(store);
+  if (isStall && lines.some(l => (l.store.vendorType || '').toUpperCase() === ADDON_VENDOR_TYPE)) {
+    throw new PricingError(400, 'ADDONS_NOT_FOR_STALL', `Add-ons can't be added to a ${store.name} order. Please remove them and try again.`);
+  }
+  if (isStall && couponCode) {
+    throw new PricingError(400, 'COUPON_NOT_FOR_STALL', `Coupons can't be used on ${store.name} orders — you pay the stall in cash. Remove the coupon to continue.`);
+  }
+  const openState = isStall && store.isOffline
+    ? { isOpen: false, message: `${store.name} is not taking orders on Zenvy right now.` }
+    : getStoreOpenState(store);
   if (!openState.isOpen) {
     throw new PricingError(400, 'STORE_CLOSED', openState.message, { storeId: store.id, opensAt: openState.opensAt || null });
   }
@@ -199,8 +204,16 @@ const computeOrderQuote = async ({ user, items, couponCode }) => {
   });
 
   // 4. Fees
-  const deliveryFee = money(await readConfigNumber('delivery_fee', DEFAULT_DELIVERY_FEE));
-  const packagingFee = 0; // no packaging charge on Zenvy today
+  // Stalls deliver themselves: no Zenvy delivery fee.
+  const deliveryFee = isStall ? 0 : money(await readConfigNumber('delivery_fee', DEFAULT_DELIVERY_FEE));
+  // Per-store packaging fee and minimum order (admin-set, 0 = none).
+  const packagingFee = money(Math.min(500, Math.max(0, Number(store.packagingFee) || 0)));
+  const minOrderValue = money(Math.max(0, Number(store.minOrderValue) || 0));
+  if (minOrderValue > 0 && subtotal < minOrderValue) {
+    throw new PricingError(400, 'MIN_ORDER_NOT_MET',
+      `${store.name} needs a minimum order of ₹${minOrderValue}. Add ₹${money(minOrderValue - subtotal)} more to continue.`,
+      { minOrderValue, storeName: store.name, storeId: store.id, subtotal });
+  }
   const taxes = 0;        // prices are inclusive of taxes
 
   // 5. Discounts (all real, all server-side)
@@ -212,7 +225,7 @@ const computeOrderQuote = async ({ user, items, couponCode }) => {
   };
 
   // Batching: another live order from the same store to the same hostel block shares the ride.
-  if (user && user.hostelBlock) {
+  if (!isStall && user && user.hostelBlock) {
     try {
       const Order = getOrderModel();
       const User = getUserModel();
@@ -224,7 +237,8 @@ const computeOrderQuote = async ({ user, items, couponCode }) => {
     } catch { /* batching is a bonus, never block an order on it */ }
   }
 
-  const perks = calculateBadgePerks(user);
+  // Zenvy-funded perks never apply to stall orders (the stall collects the cash).
+  const perks = isStall ? { deliveryDiscount: 0, orderDiscount: 0 } : calculateBadgePerks(user);
   if (perks.deliveryDiscount > 0) addDeliveryDiscount('perk_delivery', `${perks.status} delivery perk`, Math.round(deliveryFee * perks.deliveryDiscount));
 
   let coupon = null;
@@ -257,7 +271,9 @@ const computeOrderQuote = async ({ user, items, couponCode }) => {
 
   return {
     currency: 'INR',
-    store: { id: store.id, name: store.name, vendorType: store.vendorType, isOffline: !!store.isOffline, zone: store.zone, location: store.location },
+    store: { id: store.id, name: store.name, vendorType: store.vendorType, isOffline: !!store.isOffline, zone: store.zone, location: store.location, ...(isStall ? { whatsappNumber: store.whatsappNumber || null } : {}), minOrderValue },
+    fulfilment: isStall ? 'VENDOR' : 'ZENVY',
+    paymentMethods: isStall ? ['COD'] : ['COD', 'Wallet'],
     lines: pricedLines,
     subtotal,
     deliveryFee,

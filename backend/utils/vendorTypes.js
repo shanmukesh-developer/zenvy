@@ -32,11 +32,16 @@ const resolveVendorTypes = (type) => {
 
 const isStoreVendorType = (vendorType) => STORE_VENDOR_TYPES.includes(String(vendorType || '').toUpperCase());
 
-// CampusBites local vendors are DISPLAY-ONLY listings: customers order directly with the stall
-// (call / WhatsApp) and the vendor delivers. Zenvy takes no order, payment or rider for them.
+// CampusBites local vendors (2026-10-12 model): customers order stall items INSIDE Zenvy, cash on
+// delivery paid to the vendor, and the vendor delivers it themselves (Order.fulfilment = 'VENDOR':
+// no rider pool, no delivery PIN). Vendors use the Zenvy Vendor app.
 const LOCAL_VENDOR_TYPES = ['LOCAL_VENDOR', 'LOCAL', 'STALL'];
 const isLocalVendorStore = (store) => !!store && (
   LOCAL_VENDOR_TYPES.includes(String(store.vendorType || '').toUpperCase()) || store.isLocalVendor === true
 );
 
-module.exports = { STORE_VENDOR_TYPES, resolveVendorTypes, isStoreVendorType, LOCAL_VENDOR_TYPES, isLocalVendorStore };
+// Service stores are booked through /api/services/book, never ordered through the basket.
+const SERVICE_VENDOR_TYPES = ['REPAIRS', 'PRINT', 'LAUNDRY', 'TAILORING'];
+const isServiceVendorType = (vendorType) => SERVICE_VENDOR_TYPES.includes(String(vendorType || '').toUpperCase());
+
+module.exports = { SERVICE_VENDOR_TYPES, isServiceVendorType, STORE_VENDOR_TYPES, resolveVendorTypes, isStoreVendorType, LOCAL_VENDOR_TYPES, isLocalVendorStore };

@@ -47,12 +47,11 @@ const PRESETS: { label: string; start: string; end: string }[] = [
   { label: 'All day', start: '00:00', end: '00:00' },
 ];
 
-function HoursSheet({ visible, onClose, start, end }: { visible: boolean; onClose: () => void; start?: string; end?: string }) {
+function HoursSheet({ visible, onClose, start, end, weekly }: { visible: boolean; onClose: () => void; start?: string; end?: string; weekly?: boolean }) {
   const { setHours } = useStore();
   const [s, setS] = useState(start ? formatHHMM(start) : '');
   const [e, setE] = useState(end ? formatHHMM(end) : '');
   const [err, setErr] = useState<string | null>(null);
-  const [unsupported, setUnsupported] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const save = async () => {
@@ -64,7 +63,7 @@ function HoursSheet({ visible, onClose, start, end }: { visible: boolean; onClos
     const res = await setHours({ start: ps, end: pe });
     setSaving(false);
     if (res.ok) onClose();
-    else { setErr(res.error || "Couldn't save the hours."); setUnsupported(!!res.unsupported); }
+    else setErr(res.error || "Couldn't save the hours.");
   };
 
   return (
@@ -93,7 +92,12 @@ function HoursSheet({ visible, onClose, start, end }: { visible: boolean; onClos
           </View>
         </View>
         <Text style={[font.small, { color: color.textMuted }]}>Same open and close time = open all day. Outside these hours customers can't order even if the switch is ON.</Text>
-        {err ? <Text style={[font.body, { color: unsupported ? color.warning : color.alertDark, fontWeight: '700' }]}>{err}</Text> : null}
+        {weekly ? (
+          <Text style={[font.small, { color: color.warning, fontWeight: '700' }]}>
+            Zenvy set different hours for some days. Saving here uses these same hours every day.
+          </Text>
+        ) : null}
+        {err ? <Text style={[font.body, { color: color.alertDark, fontWeight: '700' }]}>{err}</Text> : null}
         <Button label="SAVE HOURS" onPress={save} loading={saving} />
       </ScrollView>
     </Sheet>
@@ -196,7 +200,7 @@ export default function ShopScreen() {
 
       {toggle.sheets}
       {hoursOpen ? (
-        <HoursSheet visible onClose={() => setHoursOpen(false)} start={hours?.start} end={hours?.end} />
+        <HoursSheet visible onClose={() => setHoursOpen(false)} start={hours?.start} end={hours?.end} weekly={!!hours?.weekly} />
       ) : null}
     </ScrollView>
   );

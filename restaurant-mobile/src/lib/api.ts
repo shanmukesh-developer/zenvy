@@ -84,6 +84,14 @@ export interface MenuItemBody {
   description: string | null;
   imageUrl: string | null;
   isVegetarian: boolean;
+  /** veg / nonveg / egg (the server keeps isVegetarian in step). */
+  dietType: 'veg' | 'nonveg' | 'egg';
+  /** MRP >= price; null clears it. */
+  originalPrice: number | null;
+  /** Create honours it in the same write (an out-of-stock dish is never live for a moment). */
+  isAvailable?: boolean;
+  /** Sent only to drop an old "egg" tag when the dish is no longer egg. */
+  tags?: string[];
 }
 
 export async function createMenuItem(body: MenuItemBody): Promise<MenuItem> {
@@ -98,24 +106,9 @@ export async function updateMenuItem(itemId: string, body: Partial<MenuItemBody>
   return normalizeMenuItem(raw);
 }
 
-/** Replaces the item's tags (used for the "egg" mark). */
-export function setMenuTags(itemId: string, tags: string[]) {
-  return apiFetch(`/api/restaurants/menu/${enc(itemId)}/tags`, { method: 'PUT', body: { tags }, no401Logout: true });
-}
-
-/** Thrown when the server has no vendor delete route yet. */
-export class DeleteUnsupported extends Error {}
-
+/** DELETE /api/restaurants/menu/:itemId → 200 { id }; 404 { code: 'ITEM_NOT_FOUND' } = already gone. */
 export async function deleteMenuItem(itemId: string): Promise<void> {
-  try {
-    await apiFetch(`/api/restaurants/menu/${enc(itemId)}`, { method: 'DELETE', no401Logout: true });
-  } catch (e) {
-    // Unknown route → the API's catch-all { code: 'NOT_FOUND' }. A real "item not found" has no such code.
-    if (e instanceof ApiError && (e.status === 405 || (e.status === 404 && e.code === 'NOT_FOUND'))) {
-      throw new DeleteUnsupported('Deleting items is not available yet');
-    }
-    throw e;
-  }
+  await apiFetch(`/api/restaurants/menu/${enc(itemId)}`, { method: 'DELETE', no401Logout: true });
 }
 
 /** POST /api/upload (multipart field "image", JPEG/PNG/WEBP, max 2 MB). Returns the URL to save on the item. */
@@ -132,4 +125,17 @@ export async function uploadPhoto(uri: string, mimeType = 'image/jpeg'): Promise
   const res = await apiFetch<{ imageUrl?: string }>('/api/upload', { method: 'POST', form, no401Logout: true, timeoutMs: 60000 });
   if (!res?.imageUrl) throw new ApiError(500, "The photo didn't upload. Please try again.", res);
   return res.imageUrl;
+}
+
+// ── Push (new orders / cancellations while the app is closed) ───────────────
+/** POST /api/restaurants/fcm-token: this phone gets the store's order pushes (moves off any other store). */
+export function registerPushToken(token: string, app: 'restaurant' | 'vendor' = 'restaurant') {
+  return apiFetch<{ ok: boolean; registered: boolean; devices: number }>(
+    '/api/restaurants/fcm-token', { method: 'POST', body: { token, app }, no401Logout: true },
+  );
+}
+
+/** POST /api/restaurants/fcm-token/remove (on logout, while the token is still valid). */
+export function removePushToken(token: string) {
+  return apiFetch('/api/restaurants/fcm-token/remove', { method: 'POST', body: { token }, no401Logout: true, timeoutMs: 8000 });
 }

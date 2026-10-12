@@ -158,7 +158,6 @@ export default function MenuScreen() {
         onClose={() => setForm(null)}
         onSave={saveItem}
         onDelete={deleteItem}
-        onHide={setStock}
         onDuplicate={(item) => setForm({ kind: 'duplicate', item })}
       />
 

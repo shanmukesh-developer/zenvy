@@ -9,7 +9,9 @@ export type OrderStatus =
   | 'PickedUp'
   | 'ArrivedAtGate'
   | 'Delivered'
-  | 'Cancelled';
+  | 'Cancelled'
+  /** A status this app version does not know. The raw value is in RiderOrder.rawStatus. */
+  | 'Unknown';
 
 export type PaymentMethod = 'COD' | 'Wallet' | 'UPI' | 'Card';
 
@@ -23,6 +25,13 @@ export interface RiderOrder {
   id: string;
   shortId: string;
   status: OrderStatus;
+  /** Status string exactly as the server sent it (kept so an unknown status is never shown as something else). */
+  rawStatus: string | null;
+  /**
+   * Has the kitchen packed the food? true / false from the server's readyAt (or status ReadyForPickup);
+   * null when the server did not say.
+   */
+  kitchenReady: boolean | null;
   restaurantName: string | null;
   restaurantAddress: string | null;
   restaurantPhone: string | null;

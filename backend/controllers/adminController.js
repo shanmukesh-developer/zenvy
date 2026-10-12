@@ -8,8 +8,9 @@ const { getGlobalConfigModel } = require('../models/GlobalConfig');
 const { getVerificationLogModel } = require('../models/VerificationLog');
 const { Op } = require('sequelize');
 
-const { getStoreOpenState } = require('../utils/storeHours');
-const { STORE_VENDOR_TYPES, isLocalVendorStore } = require('../utils/vendorTypes');
+const { getStoreOpenState, normalizeOperatingHours } = require('../utils/storeHours');
+const { STORE_VENDOR_TYPES, isLocalVendorStore, isServiceVendorType } = require('../utils/vendorTypes');
+const { sortMenuItems } = require('../utils/menuSort');
 
 // Public restaurant listing cache: short TTL + cleared on every admin/vendor menu or status change.
 let cachedRestaurantsResponse = null;
@@ -24,7 +25,7 @@ exports.clearRestaurantsCache = clearRestaurantsCache;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const realtime = require('../utils/realtime');
-const { stripStoreSecrets, stripItemSecrets } = require('../utils/publicFields');
+const { stripStoreSecrets, stripItemSecrets, applyFeaturedExpiry } = require('../utils/publicFields');
 const { clearCachedUser } = require('../middleware/authMiddleware');
 const { sendServerError } = require('../utils/httpErrors');
 
@@ -133,9 +134,12 @@ exports.getRestaurants = async (req, res) => {
       menuByRestaurant[m.restaurantId].push(item);
     }
 
+    for (const id of Object.keys(menuByRestaurant)) menuByRestaurant[id] = sortMenuItems(menuByRestaurant[id]);
+
     const result = restaurants.map(r => {
       const rObj = r.toJSON();
       stripStoreSecrets(rObj);
+      applyFeaturedExpiry(rObj);
       const openState = getStoreOpenState(r);
       let tags = rObj.tags || [];
       if (typeof tags === 'string') {
@@ -179,6 +183,7 @@ exports.getRestaurantById = async (req, res) => {
     const menu = await MenuItem.findAll({ where: { restaurantId: restaurant.id } });
     const resObj = restaurant.toJSON();
     stripStoreSecrets(resObj);
+    applyFeaturedExpiry(resObj);
     let tags = resObj.tags || [];
     if (typeof tags === 'string') {
       try { tags = JSON.parse(tags); } catch { tags = []; }
@@ -196,7 +201,7 @@ exports.getRestaurantById = async (req, res) => {
       isOpen: openState.isOpen,
       opensAt: openState.opensAt || null,
       closedReason: openState.isOpen ? null : (openState.message || null),
-      menu: menu.map(m => {
+      menu: sortMenuItems(menu).map(m => {
         const mObj = stripItemSecrets(m.toJSON());
         let mTags = mObj.tags || [];
         if (typeof mTags === 'string') {
@@ -243,25 +248,30 @@ exports.getMenuItemById = async (req, res) => {
     if (typeof tags === 'string') {
       try { tags = JSON.parse(tags); } catch { tags = []; }
     }
-    const specs = itemObj.specs && typeof itemObj.specs === 'object' ? itemObj.specs : {};
+    const specs = readItemSpecs(itemObj.specs);
     const now = new Date();
     const inStock = !!itemObj.isAvailable || !!(itemObj.outOfStockUntil && new Date(itemObj.outOfStockUntil) <= now);
     const openState = restaurant ? getStoreOpenState(restaurant) : { isOpen: false };
+    // Service stores (laundry, print, repairs, tailoring) are booked, never ordered, flag or not.
+    const bookingOnly = !!specs.bookingOnly || (!!restaurant && isServiceVendorType(restaurant.vendorType));
+    const stall = isLocalVendorStore(restaurant);
     res.json({
       ...itemObj,
       _id: item.id,
       id: item.id,
       tags,
       image: itemObj.imageUrl || itemObj.image,
-      originalPrice: specs.originalPrice || null,
+      originalPrice: itemObj.originalPrice || specs.originalPrice || null,
+      dietType: itemObj.dietType || (itemObj.isVegetarian === false ? 'nonveg' : 'veg'),
       weight: specs.weight || null,
       rating: specs.rating || null,
       ratingCount: specs.ratingCount || 0,
       isAvailable: inStock,
-      bookingOnly: !!specs.bookingOnly,
-      // CampusBites stalls are display-only: customers order from the vendor by call / WhatsApp.
-      orderable: inStock && !specs.bookingOnly && !!restaurant && !isLocalVendorStore(restaurant) && restaurant.isActive !== false && openState.isOpen,
-      directOrderOnly: isLocalVendorStore(restaurant),
+      bookingOnly,
+      // CampusBites stalls are ordered in Zenvy: cash to the stall, the stall delivers it.
+      orderable: inStock && !bookingOnly && !!restaurant && restaurant.isActive !== false && !(stall && restaurant.isOffline) && openState.isOpen,
+      directOrderOnly: false,
+      ...(stall ? { fulfilment: 'VENDOR', paymentMethods: ['COD'], whatsappNumber: restaurant.whatsappNumber || null } : {}),
       restaurantName: restaurant ? restaurant.name : null,
       restaurantId: restaurant ? restaurant.id : null,
       vendorType: restaurant ? restaurant.vendorType : null,
@@ -323,12 +333,23 @@ const RESTAURANT_FIELDS = [
   'name', 'location', 'imageUrl', 'vendorType', 'deliveryTime', 'commissionRate', 'commissionType',
   'tags', 'operatingHours', 'isActive', 'isOffline', 'isOpenNow', 'zone', 'lat', 'lon',
   'isFeatured', 'featuredUntil', 'featuredBadge', 'promoOffer', 'campus', 'whatsappNumber',
-  'subscriptionTier', 'stallDescription', 'brandTheme'
+  'subscriptionTier', 'stallDescription', 'brandTheme',
+  // 2026-10-12: partner login phone (alias partnerPhone), per-store fees, logo without brand theme
+  'phone', 'packagingFee', 'minOrderValue', 'logoUrl'
 ];
 const MENU_ITEM_FIELDS = [
   'name', 'price', 'description', 'imageUrl', 'category', 'tags', 'isVegetarian', 'isAvailable',
-  'outOfStockUntil', 'isEliteOnly', 'customCommission', 'specs', 'ownerName', 'ownerPhone'
+  'outOfStockUntil', 'isEliteOnly', 'customCommission', 'specs', 'ownerName', 'ownerPhone',
+  'dietType', 'originalPrice'
 ];
+const DIET_TYPES = ['veg', 'nonveg', 'egg'];
+// 10-digit Indian mobile from any common spelling (+91…, 91…, spaces). null when empty; false when invalid.
+const tenDigitPhone = (v) => {
+  const digits = String(v || '').replace(/\D/g, '');
+  if (!digits) return null;
+  const ten = digits.length === 12 && digits.startsWith('91') ? digits.slice(2) : (digits.length === 11 && digits.startsWith('0') ? digits.slice(1) : digits);
+  return /^[6-9]\d{9}$/.test(ten) ? ten : false;
+};
 const HHMM_RE = /^([01]?\d|2[0-3]):([0-5]\d)$/;
 const toBool = (v) => v === true || v === 'true' || v === 1 || v === '1';
 const cleanTags = (tags) => (Array.isArray(tags) ? tags : String(tags || '').split(','))
@@ -336,13 +357,39 @@ const cleanTags = (tags) => (Array.isArray(tags) ? tags : String(tags || '').spl
 
 const publicRestaurant = (r) => {
   const json = r && typeof r.toJSON === 'function' ? r.toJSON() : { ...(r || {}) };
+  const hasPassword = !!json.password;
+  const pushDevices = Array.isArray(json.fcmTokens) ? json.fcmTokens.length : 0;
   delete json.password;
-  return { ...json, _id: json.id };
+  delete json.fcmTokens;
+  delete json.tokenVersion;
+  return {
+    ...json,
+    _id: json.id,
+    partnerPhone: json.phone || null, // admin UI name for the same login phone
+    hasPassword,
+    pushDevices,
+    // Older live stores were published before publishedAt existed.
+    publishedAt: json.publishedAt || (json.isActive ? json.createdAt : null) || null,
+  };
 };
 
 const pickRestaurantFields = (body = {}, { creating = false } = {}) => {
   const out = {};
   for (const key of RESTAURANT_FIELDS) if (body[key] !== undefined) out[key] = body[key];
+  if (out.phone === undefined && body.partnerPhone !== undefined) out.phone = body.partnerPhone;
+  if (out.phone !== undefined) {
+    const ten = tenDigitPhone(out.phone);
+    if (ten === false) throw new AdminInputError('Login phone must be a 10-digit Indian mobile number.');
+    out.phone = ten; // null clears it
+  }
+  for (const [key, max, label] of [['packagingFee', 500, 'Packaging fee'], ['minOrderValue', 5000, 'Minimum order']]) {
+    if (out[key] === undefined) continue;
+    if (out[key] === null || out[key] === '') { out[key] = 0; continue; }
+    const n = Number(out[key]);
+    if (!Number.isFinite(n) || n < 0 || n > max) throw new AdminInputError(`${label} must be between ₹0 and ₹${max}.`);
+    out[key] = Math.round(n * 100) / 100;
+  }
+  if (out.logoUrl !== undefined) out.logoUrl = String(out.logoUrl || '').trim() || null;
 
   if (creating || out.name !== undefined) {
     out.name = String(out.name || '').trim();
@@ -372,11 +419,12 @@ const pickRestaurantFields = (body = {}, { creating = false } = {}) => {
     out.commissionRate = n;
   }
   if (out.operatingHours !== undefined) {
-    const h = out.operatingHours || {};
-    const s = HHMM_RE.exec(String(h.start || '').trim());
-    const e = HHMM_RE.exec(String(h.end || '').trim());
-    if (!s || !e) throw new AdminInputError('Operating hours must be 24-hour times like 09:00 and 22:00.');
-    out.operatingHours = { start: `${s[1].padStart(2, '0')}:${s[2]}`, end: `${e[1].padStart(2, '0')}:${e[2]}` };
+    // { start, end } plus optional per-day `weekly: { mon: { open, start, end }, … }` (kept, validated).
+    try {
+      out.operatingHours = normalizeOperatingHours(out.operatingHours);
+    } catch (err) {
+      throw new AdminInputError(err.message);
+    }
   }
   if (out.whatsappNumber !== undefined) {
     const digits = String(out.whatsappNumber || '').replace(/\D/g, '');
@@ -425,6 +473,18 @@ const pickMenuItemFields = (body = {}, existing = null) => {
   for (const key of ['isVegetarian', 'isAvailable', 'isEliteOnly']) if (out[key] !== undefined) out[key] = toBool(out[key]);
   if (out.outOfStockUntil === '') out.outOfStockUntil = null;
   if (out.isAvailable === true) out.outOfStockUntil = null;
+  if (out.dietType !== undefined) {
+    out.dietType = out.dietType === null || out.dietType === '' ? null : String(out.dietType).toLowerCase().replace(/[^a-z]/g, '');
+    if (out.dietType === 'nonvegetarian') out.dietType = 'nonveg';
+    if (out.dietType !== null && !DIET_TYPES.includes(out.dietType)) throw new AdminInputError("Food type must be 'veg', 'nonveg' or 'egg'.");
+    if (out.dietType) out.isVegetarian = out.dietType === 'veg';
+  }
+  if (out.originalPrice !== undefined) {
+    // Column + specs.originalPrice are kept in step (older readers use specs).
+    const mrpRaw = out.originalPrice;
+    delete out.originalPrice;
+    out.specs = { ...readItemSpecs(out.specs), originalPrice: mrpRaw === null || mrpRaw === '' ? null : mrpRaw };
+  }
 
   if (out.specs !== undefined) {
     const incoming = readItemSpecs(out.specs);
@@ -441,12 +501,31 @@ const pickMenuItemFields = (body = {}, existing = null) => {
       merged.originalPrice = Math.round(mrp * 100) / 100;
     }
     out.specs = merged;
+    out.originalPrice = merged.originalPrice !== undefined ? merged.originalPrice : null;
   }
   return out;
 };
 
+// Partner sign-in uses the exact store name and the login phone, so both must be unique.
+// Throws a 409-style AdminConflictError. `selfId` is excluded (edits).
+class AdminConflictError extends Error {}
+const assertUniqueStore = async ({ name, phone }, selfId = null) => {
+  const Restaurant = getRestaurantModel();
+  const { fn, col, where: sqlWhere } = require('sequelize');
+  const notSelf = selfId ? { id: { [Op.ne]: selfId } } : {};
+  if (name) {
+    const clash = await Restaurant.findOne({ where: { [Op.and]: [sqlWhere(fn('lower', col('name')), String(name).trim().toLowerCase()), notSelf] }, attributes: ['id', 'name'] });
+    if (clash) throw new AdminConflictError(`Another store is already called "${clash.name}". Partners sign in with the store name, so pick a different one.`);
+  }
+  if (phone) {
+    const clash = await Restaurant.findOne({ where: { phone, ...notSelf }, attributes: ['id', 'name'] });
+    if (clash) throw new AdminConflictError(`This phone number already signs in to ${clash.name}.`);
+  }
+};
+
 const sendAdminError = (res, error, fallback) => {
   if (error instanceof AdminInputError) return res.status(400).json({ message: error.message });
+  if (error instanceof AdminConflictError) return res.status(409).json({ message: error.message, code: 'CONFLICT' });
   if (error && error.name === 'SequelizeValidationError') return res.status(400).json({ message: error.errors?.[0]?.message || fallback });
   console.error('[ADMIN_CATALOGUE_ERROR]', error);
   return res.status(500).json({ message: fallback });
@@ -458,7 +537,8 @@ exports.getAllRestaurants = async (req, res) => {
     const MenuItem = getMenuItemModel();
     const { fn, col } = require('sequelize');
     const [restaurants, counts] = await Promise.all([
-      Restaurant.findAll({ attributes: { exclude: ['password'] }, order: [['name', 'ASC']] }),
+      // password is read only to report hasPassword (never sent).
+      Restaurant.findAll({ order: [['name', 'ASC']] }),
       MenuItem.findAll({ attributes: ['restaurantId', [fn('COUNT', col('id')), 'count']], group: ['restaurantId'], raw: true })
     ]);
     const countBy = new Map(counts.map((c) => [c.restaurantId, Number(c.count) || 0]));
@@ -486,7 +566,7 @@ exports.getAllMenuItems = async (req, res) => {
       where.restaurantId = req.query.restaurantId;
     }
     const items = await MenuItem.findAll({ where, order: [['category', 'ASC'], ['name', 'ASC']] });
-    res.json(items.map(i => ({ ...i.toJSON(), _id: i.id })));
+    res.json(sortMenuItems(items).map(i => ({ ...i.toJSON(), _id: i.id })));
   } catch (error) {
     sendAdminError(res, error, 'Could not load products.');
   }
@@ -499,6 +579,7 @@ exports.createRestaurant = async (req, res) => {
     if (req.body.password && typeof req.body.password === 'string' && req.body.password.trim().length >= 6) {
       data.password = req.body.password.trim(); // hashed by the model hook
     }
+    await assertUniqueStore({ name: data.name, phone: data.phone });
     const restaurant = await Restaurant.create(data);
     clearRestaurantsCache();
     broadcastSystemUpdate(req, 'RESTAURANT_CREATED', publicRestaurant(restaurant));
@@ -521,7 +602,13 @@ exports.updateRestaurant = async (req, res) => {
     if (req.body.password && typeof req.body.password === 'string' && req.body.password.trim().length >= 6) {
       updateData.password = req.body.password.trim(); // hashed by the model hook
     }
+    await assertUniqueStore({
+      name: updateData.name !== undefined && updateData.name.toLowerCase() !== String(restaurant.name || '').toLowerCase() ? updateData.name : null,
+      phone: updateData.phone && updateData.phone !== restaurant.phone ? updateData.phone : null,
+    }, restaurant.id);
+    // A password change bumps tokenVersion (model hook): signed-in partner apps are signed out.
     await restaurant.update(updateData);
+    if (updateData.password) clearCachedUser(restaurant.id);
     clearRestaurantsCache();
     broadcastSystemUpdate(req, 'RESTAURANT_UPDATED', publicRestaurant(restaurant));
     realtime.publish('store', 'updated', restaurant.id, { storeId: restaurant.id });
@@ -557,7 +644,7 @@ exports.upsertMenuItem = async (req, res) => {
     if (io) {
       io.emit('inventory_updated', { itemId: menuItem.id, restaurantId: menuItem.restaurantId, isAvailable: menuItem.isAvailable });
     }
-    await logAuditAction(req, menuItem.id, 'UPSERT_MENU_ITEM', { name: menuItem.name, price: menuItem.price });
+    await logAuditAction(req, menuItem.id, 'UPSERT_MENU_ITEM', { name: menuItem.name, price: menuItem.price, restaurantId: menuItem.restaurantId });
     res.json({ ...menuItem.toJSON(), _id: menuItem.id });
   } catch (error) {
     sendAdminError(res, error, 'Could not save the product.');
@@ -574,7 +661,7 @@ exports.deleteMenuItem = async (req, res) => {
     clearRestaurantsCache();
     broadcastSystemUpdate(req, 'MENU_ITEM_DELETED', { id: req.params.id, restaurantId: item.restaurantId });
     realtime.publish('product', 'deleted', req.params.id, { storeId: item.restaurantId });
-    await logAuditAction(req, req.params.id, 'DELETE_MENU_ITEM', { id: req.params.id, name: item.name });
+    await logAuditAction(req, req.params.id, 'DELETE_MENU_ITEM', { id: req.params.id, name: item.name, restaurantId: item.restaurantId });
     res.json({ message: 'Product deleted.' });
   } catch (error) {
     sendAdminError(res, error, 'Could not delete the product.');
@@ -769,7 +856,22 @@ exports.getAuditLogs = async (req, res) => {
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const offset = (page - 1) * limit;
 
+    // ?targetId=a,b,c  and/or  ?storeId=<uuid> (the store, its current menu items, and deleted items
+    // whose audit details carry the store id).
+    const where = {};
+    const targetIds = String(req.query.targetId || '').split(',').map((t) => t.trim()).filter(Boolean).slice(0, 200);
+    const or = [];
+    if (targetIds.length) or.push({ targetId: { [Op.in]: targetIds } });
+    const storeId = String(req.query.storeId || '').trim();
+    if (storeId) {
+      if (!UUID_RE.test(storeId)) return res.json({ logs: [], total: 0, pages: 0 });
+      const itemIds = (await getMenuItemModel().findAll({ where: { restaurantId: storeId }, attributes: ['id'], raw: true })).map((i) => i.id);
+      or.push({ targetId: { [Op.in]: [storeId, ...itemIds] } });
+      or.push({ details: { [Op.like]: `%"restaurantId":"${storeId}"%` } });
+    }
+    if (or.length) where[Op.or] = or;
     const { count, rows: logs } = await VerificationLog.findAndCountAll({
+      where,
       order: [['timestamp', 'DESC']],
       limit,
       offset
@@ -1306,7 +1408,8 @@ exports.batchUpdateOrders = async (req, res) => {
           updatedCount++;
           emitStatus(order, { id: order.id, status: 'Accepted' });
           realtime.notifyAdmin('order', 'updated', order.id);
-          if (!order.deliveryPartnerId) {
+          // Stall orders (fulfilment VENDOR) are delivered by the stall: no rider pool / pushes.
+          if (!order.deliveryPartnerId && order.fulfilment !== 'VENDOR') {
             realtime.deliveryRequest(order.id);
             const restaurant = await getRestaurantModel().findByPk(order.restaurantId, { attributes: ['id', 'name', 'location'] });
             await require('../utils/riderDispatch').pushNearestRiders({
@@ -1324,6 +1427,7 @@ exports.batchUpdateOrders = async (req, res) => {
           updatedCount++;
           emitStatus(order, { id: order.id, status: 'Cancelled', refundedToWallet: refunded });
           if (io) io.to(String(order.id)).emit('orderCancelled', { orderId: order.id, reason: 'ADMIN' });
+          if (io && order.restaurantId) io.to(`restaurant_${order.restaurantId}`).emit('orderCancelled', { orderId: order.id, reason: 'ADMIN' });
           realtime.notifyAdmin('order', 'updated', order.id);
           if (order.deliveryPartnerId) {
             await getDeliveryPartnerModel().update({ currentOrderId: null }, { where: { id: order.deliveryPartnerId, currentOrderId: order.id } });
@@ -1789,4 +1893,238 @@ exports.settleRiderPayout = async (req, res) => {
   }
 };
 
+// ─── 2026-10-12 Admin store wizard backend (RB-3, RB-5, RB-11) ────────────────
 
+// IST day bounds [from, to) for "today" defaults.
+const istDayRange = (now = new Date()) => {
+  const IST = 5.5 * 60 * 60 * 1000;
+  const ist = new Date(now.getTime() + IST);
+  const startUtc = Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate()) - IST;
+  return { from: new Date(startUtc), to: new Date(startUtc + 24 * 60 * 60 * 1000) };
+};
+const parseDateParam = (v) => {
+  if (!v) return null;
+  const d = new Date(String(v));
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+// @route GET /api/admin/restaurants/stats?from=<ISO>&to=<ISO>   (default: today, IST)
+// → [{ restaurantId, orders, cancelled, gmv, lastOrderAt }]  (gmv = item total of non-cancelled orders)
+exports.getRestaurantStats = async (req, res) => {
+  try {
+    const Order = getOrderModel();
+    const { fn, col, literal } = require('sequelize');
+    const day = istDayRange();
+    const from = parseDateParam(req.query.from) || day.from;
+    const to = parseDateParam(req.query.to) || day.to;
+    if (from >= to) return res.status(400).json({ message: "'from' must be before 'to'." });
+    const where = { createdAt: { [Op.gte]: from, [Op.lt]: to } };
+    if (req.query.restaurantId) {
+      if (!UUID_RE.test(String(req.query.restaurantId))) return res.json([]);
+      where.restaurantId = String(req.query.restaurantId);
+    }
+    const rows = await Order.findAll({
+      where,
+      attributes: [
+        'restaurantId',
+        [fn('COUNT', col('id')), 'total'],
+        [fn('SUM', literal(`CASE WHEN "status" = 'Cancelled' THEN 1 ELSE 0 END`)), 'cancelled'],
+        [fn('SUM', literal(`CASE WHEN "status" <> 'Cancelled' THEN "totalPrice" ELSE 0 END`)), 'gmv'],
+        [fn('MAX', col('createdAt')), 'lastOrderAt'],
+      ],
+      group: ['restaurantId'],
+      raw: true,
+    });
+    res.set('Cache-Control', 'no-store');
+    res.json(rows.filter((r) => r.restaurantId).map((r) => {
+      const total = Number(r.total) || 0;
+      const cancelled = Number(r.cancelled) || 0;
+      return {
+        restaurantId: r.restaurantId,
+        orders: total - cancelled,
+        cancelled,
+        gmv: Math.round((Number(r.gmv) || 0) * 100) / 100,
+        lastOrderAt: r.lastOrderAt ? new Date(r.lastOrderAt).toISOString() : null,
+      };
+    }));
+  } catch (error) {
+    sendAdminError(res, error, 'Could not load store stats.');
+  }
+};
+
+const BULK_MAX = 300;
+const BULK_STORE_PATCH = ['isActive', 'isOpenNow', 'isFeatured'];
+const BULK_ITEM_PATCH = ['isAvailable', 'outOfStockUntil', 'category', 'price', 'isVegetarian', 'dietType', 'isEliteOnly', 'specs'];
+const readIds = (ids) => (Array.isArray(ids) ? [...new Set(ids.map(String))] : []).filter((id) => UUID_RE.test(id)).slice(0, BULK_MAX);
+
+// @route POST /api/admin/menu-items/bulk { restaurantId, items: [...] }
+// Validates every row first; inserts all in one transaction only when every row is valid.
+exports.bulkCreateMenuItems = async (req, res) => {
+  try {
+    const MenuItem = getMenuItemModel();
+    const Restaurant = getRestaurantModel();
+    const restaurantId = String((req.body || {}).restaurantId || '');
+    const items = Array.isArray((req.body || {}).items) ? req.body.items : [];
+    if (!UUID_RE.test(restaurantId) || !(await Restaurant.findByPk(restaurantId, { attributes: ['id'] }))) {
+      return res.status(400).json({ message: 'Pick the store these products belong to.' });
+    }
+    if (!items.length) return res.status(400).json({ message: 'Add at least one product.' });
+    if (items.length > BULK_MAX) return res.status(400).json({ message: `You can add up to ${BULK_MAX} products at a time.` });
+    const rows = [];
+    const errors = [];
+    items.forEach((raw, index) => {
+      try {
+        rows.push({ ...pickMenuItemFields(raw || {}), restaurantId });
+      } catch (err) {
+        errors.push({ index, name: raw && raw.name ? String(raw.name).slice(0, 80) : null, message: err instanceof AdminInputError ? err.message : 'Invalid product.' });
+      }
+    });
+    if (errors.length) return res.status(400).json({ message: `${errors.length} row(s) need fixing. Nothing was saved.`, errors });
+    const { getSequelize } = require('../config/db');
+    const created = await getSequelize().transaction((t) => MenuItem.bulkCreate(rows, { transaction: t }));
+    clearRestaurantsCache();
+    realtime.publish('product', 'updated', null, { storeId: restaurantId, scope: 'bulk' });
+    broadcastSystemUpdate(req, 'MENU_UPDATED', { id: null, restaurantId });
+    await logAuditAction(req, restaurantId, 'BULK_CREATE_MENU_ITEMS', { restaurantId, count: created.length });
+    res.status(201).json({ message: `${created.length} products added.`, count: created.length, items: created.map((i) => ({ ...i.toJSON(), _id: i.id })) });
+  } catch (error) {
+    sendAdminError(res, error, 'Could not add the products.');
+  }
+};
+
+// @route POST /api/admin/menu-items/bulk-update { ids, patch }
+exports.bulkUpdateMenuItems = async (req, res) => {
+  try {
+    const MenuItem = getMenuItemModel();
+    const ids = readIds((req.body || {}).ids);
+    const rawPatch = (req.body || {}).patch || {};
+    if (!ids.length) return res.status(400).json({ message: 'Pick at least one product.' });
+    const patchIn = {};
+    for (const k of BULK_ITEM_PATCH) if (rawPatch[k] !== undefined) patchIn[k] = rawPatch[k];
+    if (!Object.keys(patchIn).length) return res.status(400).json({ message: `Nothing to change. Allowed: ${BULK_ITEM_PATCH.join(', ')}.` });
+    const items = await MenuItem.findAll({ where: { id: { [Op.in]: ids } } });
+    const { getSequelize } = require('../config/db');
+    const storeIds = new Set();
+    await getSequelize().transaction(async (t) => {
+      for (const item of items) {
+        // Same validation as a single edit (name/price only when sent; specs merged per item).
+        const patch = pickMenuItemFields(patchIn, item);
+        if (patchIn.name === undefined) delete patch.name;
+        if (patchIn.price === undefined) delete patch.price;
+        await item.update(patch, { transaction: t });
+        storeIds.add(item.restaurantId);
+      }
+    });
+    clearRestaurantsCache();
+    for (const sid of storeIds) realtime.publish('product', 'updated', null, { storeId: sid, scope: 'bulk' });
+    await logAuditAction(req, [...storeIds][0] || 'global', 'BULK_UPDATE_MENU_ITEMS', { count: items.length, fields: Object.keys(patchIn), restaurantId: storeIds.size === 1 ? [...storeIds][0] : null });
+    res.json({ message: `${items.length} products updated.`, count: items.length, notFound: ids.length - items.length });
+  } catch (error) {
+    sendAdminError(res, error, 'Could not update the products.');
+  }
+};
+
+// @route POST /api/admin/restaurants/bulk-update { ids, patch: { isActive?, isOpenNow?, isFeatured? } }
+exports.bulkUpdateRestaurants = async (req, res) => {
+  try {
+    const Restaurant = getRestaurantModel();
+    const ids = readIds((req.body || {}).ids);
+    const rawPatch = (req.body || {}).patch || {};
+    if (!ids.length) return res.status(400).json({ message: 'Pick at least one store.' });
+    const patch = {};
+    for (const k of BULK_STORE_PATCH) if (rawPatch[k] !== undefined) patch[k] = toBool(rawPatch[k]);
+    if (!Object.keys(patch).length) return res.status(400).json({ message: `Nothing to change. Allowed: ${BULK_STORE_PATCH.join(', ')}.` });
+    const stores = await Restaurant.findAll({ where: { id: { [Op.in]: ids } } });
+    for (const store of stores) await store.update(patch); // instance hooks (publishedAt) run
+    clearRestaurantsCache();
+    const io = req.app.get('io');
+    for (const store of stores) {
+      realtime.publish('store', 'updated', store.id, { storeId: store.id });
+      if (io && patch.isOpenNow !== undefined) io.emit('store_status_changed', { restaurantId: store.id, isOpen: getStoreOpenState(store).isOpen });
+    }
+    await logAuditAction(req, 'global', 'BULK_UPDATE_RESTAURANTS', { count: stores.length, patch });
+    res.json({ message: `${stores.length} stores updated.`, count: stores.length, notFound: ids.length - stores.length });
+  } catch (error) {
+    sendAdminError(res, error, 'Could not update the stores.');
+  }
+};
+
+// @route POST /api/admin/restaurants/:id/duplicate { name, copyMenu }
+// The copy starts as a draft (isActive false) with no partner password / login phone / push devices.
+exports.duplicateRestaurant = async (req, res) => {
+  try {
+    const Restaurant = getRestaurantModel();
+    const MenuItem = getMenuItemModel();
+    if (!UUID_RE.test(String(req.params.id))) return res.status(404).json({ message: 'Store not found.' });
+    const source = await Restaurant.findByPk(req.params.id);
+    if (!source) return res.status(404).json({ message: 'Store not found.' });
+    const name = String((req.body || {}).name || '').trim();
+    if (!name) return res.status(400).json({ message: 'Give the copy a name.' });
+    if (name.length > 120) return res.status(400).json({ message: 'Store name must be 120 characters or fewer.' });
+    await assertUniqueStore({ name });
+    const copyMenu = (req.body || {}).copyMenu !== false && (req.body || {}).copyMenu !== 'false';
+    const src = source.toJSON();
+    for (const k of ['id', 'createdAt', 'updatedAt', 'password', 'phone', 'fcmTokens', 'tokenVersion', 'publishedAt', 'clickCount', 'rating', 'isFeatured', 'featuredUntil']) delete src[k];
+    const { getSequelize } = require('../config/db');
+    const { copy, count } = await getSequelize().transaction(async (t) => {
+      const created = await Restaurant.create({ ...src, name, isActive: false }, { transaction: t });
+      let n = 0;
+      if (copyMenu) {
+        const items = await MenuItem.findAll({ where: { restaurantId: source.id }, transaction: t });
+        const rows = items.map((i) => {
+          const j = i.toJSON();
+          delete j.id; delete j.createdAt; delete j.updatedAt;
+          const specs = readItemSpecs(j.specs);
+          delete specs.rating; delete specs.ratingCount; // reviews belong to the original items
+          return { ...j, specs, restaurantId: created.id };
+        });
+        if (rows.length) await MenuItem.bulkCreate(rows, { transaction: t });
+        n = rows.length;
+      }
+      return { copy: created, count: n };
+    });
+    clearRestaurantsCache();
+    realtime.notifyAdmin('store', 'created', copy.id, { storeId: copy.id });
+    await logAuditAction(req, copy.id, 'DUPLICATE_RESTAURANT', { from: source.id, name, items: count, restaurantId: copy.id });
+    res.status(201).json({ ...publicRestaurant(copy), itemCount: count });
+  } catch (error) {
+    sendAdminError(res, error, 'Could not duplicate the store.');
+  }
+};
+
+// RB-5: promotions whose featuredUntil passed are switched off (row + Home banner) and pushed live.
+// Runs every 10 minutes from server.js. Returns the number of stores changed. Never throws.
+exports.expireFeaturedStores = async () => {
+  try {
+    const Restaurant = getRestaurantModel();
+    if (!Restaurant) return 0;
+    const expired = await Restaurant.findAll({ where: { isFeatured: true, featuredUntil: { [Op.lt]: new Date() } } });
+    if (!expired.length) return 0;
+    for (const store of expired) {
+      await store.update({ isFeatured: false, featuredBadge: null, promoOffer: null });
+    }
+    try {
+      const AppConfig = require('../models/AppConfig');
+      const config = await AppConfig.findOne();
+      if (config) {
+        const banners = Array.isArray(config.banners) ? config.banners : [];
+        const paths = new Set(expired.map((s) => `/restaurant/${s.id}`));
+        const kept = banners.filter((b) => !(b && paths.has(String(b.redirectUrl || b.link || '').trim())));
+        if (kept.length !== banners.length) {
+          config.banners = kept;
+          await config.save();
+          realtime.publish('config', 'updated', 'app', { scope: 'banners' });
+        }
+      }
+    } catch (bannerErr) {
+      console.warn('[FEATURED_EXPIRY_BANNER_WARN]', bannerErr.message);
+    }
+    clearRestaurantsCache();
+    for (const store of expired) realtime.publish('store', 'updated', store.id, { storeId: store.id });
+    console.log(`[FEATURED_EXPIRY] Ended ${expired.length} expired promotion(s).`);
+    return expired.length;
+  } catch (err) {
+    console.warn('[FEATURED_EXPIRY_ERROR]', err.message);
+    return 0;
+  }
+};

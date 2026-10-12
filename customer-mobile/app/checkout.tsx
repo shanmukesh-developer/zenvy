@@ -32,6 +32,7 @@ import { useTheme } from '../context/ThemeContext';
 import { apiFetch } from '../utils/auth';
 import { StaggeredSection, FloatingPulse, BounceIn } from '../components/AnimatedSection';
 import DopaminePressable, { ActionPressable } from '../components/DopaminePressable';
+import { stallErrorMessage, stallPayCopy } from '../utils/localVendor';
 
 type CampusKey = 'srmap' | 'vitap' | 'amrita';
 type PayMethod = 'COD' | 'Wallet';
@@ -122,6 +123,9 @@ export default function CheckoutScreen() {
 
   const { quote, loading: quoteLoading, error: quoteError, refresh: refreshQuote } = useBasketQuote(couponCode, !!user);
   const { serviceability, refresh: refreshServiceability } = useServiceability();
+  // CampusBites stall basket: the stall delivers, cash on delivery to the stall, no coupons / add-ons.
+  const isStallOrder = hasOrder && (quote ? quote.fulfilment === 'VENDOR' : orderLines.some((i) => i.isStall));
+  const stallName = (isStallOrder && (quote?.store?.name || orderLines.find((i) => i.isStall)?.restaurantName)) || 'the stall';
   const isClosed = (quote?.serviceability?.open === false) || serviceability?.open === false;
   const closedMessage = quote?.serviceability?.message || serviceability?.message ||
     `Campus kitchens are closed for the night. Ordering opens again at ${serviceability?.reopensAt || quote?.serviceability?.reopensAt || '6:00 AM'}.`;
@@ -204,10 +208,15 @@ export default function CheckoutScreen() {
     }
   }, [quoteError, couponCode]);
 
-  // Wallet is not possible when the balance is short
+  // Stall orders take no coupon (COUPON_NOT_FOR_STALL): drop it quietly, the coupon section is hidden for them.
   useEffect(() => {
-    if (paymentMethod === 'Wallet' && quote && quote.canPayWithWallet === false) setPaymentMethod('COD');
-  }, [quote, paymentMethod]);
+    if (couponCode && (isStallOrder || quoteError?.code === 'COUPON_NOT_FOR_STALL')) setCouponCode(null);
+  }, [quoteError, couponCode, isStallOrder]);
+
+  // Wallet is not possible when the balance is short, or for a stall (cash to the stall only)
+  useEffect(() => {
+    if (paymentMethod === 'Wallet' && ((quote && quote.canPayWithWallet === false) || isStallOrder)) setPaymentMethod('COD');
+  }, [quote, paymentMethod, isStallOrder]);
 
   // "Pairs well with your order": real add-ons from the catalogue
   const dishTypesKey = useMemo(() => {
@@ -251,9 +260,15 @@ export default function CheckoutScreen() {
   }, [dishTypesKey]);
 
   const suggestions = useMemo(() => {
+    if (isStallOrder) return [];
     const inCart = new Set(cart.map((i) => String(i.id)));
     return extras.filter((e) => !inCart.has(e.id)).slice(0, 8);
-  }, [extras, cart]);
+  }, [extras, cart, isStallOrder]);
+  const addOnLines = useMemo(() => orderLines.filter((i) => i.isAddOn), [orderLines]);
+  const removeAddOns = () => {
+    const keys = new Set(addOnLines.map((l) => l.cartKey));
+    setCart((prev) => prev.filter((i) => !keys.has(i.cartKey)));
+  };
 
   const customEstimate = customLines.reduce((acc, i) => acc + (Number(i.price) || 0) * i.quantity, 0);
   const campusLabel = CAMPUSES.find((c) => c.key === campus)?.label || 'SRM AP';
@@ -263,10 +278,12 @@ export default function CheckoutScreen() {
     [instructionIds]
   );
 
-  const buildDeliveryAddress = () => {
+  // Food orders carry the notes as deliveryInstructions (both partner apps show them), so they are
+  // left out of the address there. Mega Basket has no instructions field: keep them in its address.
+  const buildDeliveryAddress = (withNotes = false) => {
     const parts = [`${campusLabel} - ${address.trim()}`];
     if (landmark.trim()) parts.push(`Landmark: ${landmark.trim()}`);
-    if (deliveryNotes.length) parts.push(`Note: ${deliveryNotes.join(', ')}`);
+    if (withNotes && deliveryNotes.length) parts.push(`Note: ${deliveryNotes.join(', ')}`);
     return parts.join(' · ').slice(0, 480);
   };
 
@@ -290,6 +307,13 @@ export default function CheckoutScreen() {
     ]);
   };
 
+  const offerRemoveStallAddOns = (message: string) => {
+    Alert.alert('Remove add-ons', message || `Add-ons can't be added to a ${stallName} order.`, [
+      { text: 'Keep editing', style: 'cancel' },
+      ...(addOnLines.length ? [{ text: 'Remove add-ons', style: 'destructive' as const, onPress: removeAddOns }] : []),
+    ]);
+  };
+
   const canPlace = !placing && !isClosed && !!user && address.trim().length >= 3 &&
     (hasOrder ? (!!quote && !quoteLoading) : hasCustom);
 
@@ -304,12 +328,17 @@ export default function CheckoutScreen() {
       return;
     }
     if (address.trim().length < 3) {
-      Alert.alert('Where should we deliver?', 'Add your hostel block and room number (e.g. Ganga, Room 304) so the rider can find you.');
+      Alert.alert('Where should we deliver?', `Add your hostel block and room number (e.g. Ganga, Room 304) so ${isStallOrder ? stallName : 'the rider'} can find you.`);
       return;
     }
     if (hasOrder && (!quote || quoteLoading)) {
       if (quoteLoading) Alert.alert('One moment', 'We are updating your bill. Try again in a second.');
       else if (quoteError?.code === 'ITEMS_UNAVAILABLE' || quoteError?.code === 'BOOKING_ONLY_ITEMS') offerRemoveUnavailable(quoteError.message, quoteError.body);
+      else if (quoteError?.code === 'ADDONS_NOT_FOR_STALL') offerRemoveStallAddOns(quoteError.message);
+      else if (quoteError && stallErrorMessage(quoteError.code, quoteError.message, stallName)) {
+        const m = stallErrorMessage(quoteError.code, quoteError.message, stallName)!;
+        Alert.alert(m.title, m.message);
+      }
       else if (quoteError) Alert.alert('We could not get your bill', quoteError.message, [{ text: 'OK', style: 'cancel' }, { text: 'Retry', onPress: refreshQuote }]);
       return;
     }
@@ -318,7 +347,9 @@ export default function CheckoutScreen() {
     if (hasOrder && quote) {
       const n = orderLines.reduce((a, i) => a + i.quantity, 0);
       lines.push(`${n} item${n === 1 ? '' : 's'} from ${quote.store?.name || 'your store'} • ${rupees(quote.finalPrice)}`);
-      lines.push(`💳 ${paymentMethod === 'Wallet' ? 'Zenvy Wallet' : 'Cash on Delivery'}`);
+      lines.push(isStallOrder
+        ? `💵 ${stallPayCopy(stallName)} (${stallName} delivers it, no Zenvy rider)`
+        : `💳 ${paymentMethod === 'Wallet' ? 'Zenvy Wallet' : 'Cash on Delivery'}`);
     }
     if (hasCustom) {
       lines.push(`🛍️ Mega Basket shopping list (${customLines.length}) • est. ${rupees(customEstimate)} + fees, cash on delivery`);
@@ -349,13 +380,13 @@ export default function CheckoutScreen() {
             headers: { 'Idempotency-Key': idempotencyKeyRef.current },
             body: JSON.stringify({
               items: orderLines.map(toOrderLine),
-              paymentMethod,
+              paymentMethod: isStallOrder ? 'COD' : paymentMethod,
               deliveryAddress,
               campus,
               deliverySlot: 'ASAP',
               ...(deliveryNotes.length ? { deliveryInstructions: deliveryNotes } : {}),
               idempotencyKey: idempotencyKeyRef.current,
-              ...(couponCode ? { couponCode } : {}),
+              ...(couponCode && !isStallOrder ? { couponCode } : {}),
             }),
           });
         } catch {
@@ -373,7 +404,18 @@ export default function CheckoutScreen() {
           const message = (data && typeof data.message === 'string' && data.message) || 'We could not place your order. Please try again.';
           if (res.status !== 409) idempotencyKeyRef.current = newIdempotencyKey();
           if (code === 'ITEMS_UNAVAILABLE' || code === 'BOOKING_ONLY_ITEMS') offerRemoveUnavailable(message, data);
-          else if (code === 'INSUFFICIENT_WALLET') {
+          else if (code === 'STALL_COD_ONLY') {
+            setPaymentMethod('COD');
+            Alert.alert('Cash only', `${message} Payment is now set to cash. Tap Place order again.`);
+          } else if (code === 'COUPON_NOT_FOR_STALL') {
+            setCouponCode(null);
+            Alert.alert('Coupon removed', `Coupons can't be used on ${stallName} orders, so we removed it. Tap Place order again.`);
+          } else if (code === 'ADDONS_NOT_FOR_STALL') {
+            offerRemoveStallAddOns(message);
+          } else if (stallErrorMessage(code, message, stallName)) {
+            const m = stallErrorMessage(code, message, stallName)!;
+            Alert.alert(m.title, m.message);
+          } else if (code === 'INSUFFICIENT_WALLET') {
             Alert.alert('Not enough Wallet balance', message, [
               { text: 'OK', style: 'cancel' },
               { text: 'Pay cash instead', onPress: () => setPaymentMethod('COD') },
@@ -406,7 +448,7 @@ export default function CheckoutScreen() {
                 unit: 'pcs',
                 priceEstimated: Number(i.price) || 0,
               })),
-              deliveryAddress,
+              deliveryAddress: buildDeliveryAddress(true),
               paymentMethod: 'COD',
             }),
           });
@@ -590,14 +632,14 @@ export default function CheckoutScreen() {
           )}
           <TextInput
             style={[s.input, { backgroundColor: cardBg, color: txt, borderColor: border }]}
-            placeholder="Landmark or note for the rider (optional)"
+            placeholder={isStallOrder ? `Landmark or note for ${stallName} (optional)` : 'Landmark or note for the rider (optional)'}
             placeholderTextColor={txtSec}
             value={landmark}
             onChangeText={setLandmark}
             maxLength={120}
           />
           {deliveryNotes.length > 0 && (
-            <Text style={[s.helperText, { color: txtSec }]}>📝 Rider note: {deliveryNotes.join(', ')}</Text>
+            <Text style={[s.helperText, { color: txtSec }]}>📝 {isStallOrder ? 'Note for the stall' : 'Rider note'}: {deliveryNotes.join(', ')}</Text>
           )}
         </StaggeredSection>
 
@@ -636,8 +678,26 @@ export default function CheckoutScreen() {
           </StaggeredSection>
         )}
 
+        {/* Stall order: how it works (+ leftover add-ons to remove) */}
+        {isStallOrder && (
+          <View style={[s.noticeCard, { marginTop: 20, backgroundColor: isDark ? 'rgba(249,115,22,0.10)' : 'rgba(249,115,22,0.07)', borderColor: 'rgba(249,115,22,0.3)' }]}>
+            <Text style={{ fontSize: 20 }}>🏪</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[s.noticeTitle, { color: txt }]}>{stallName} delivers this order</Text>
+              <Text style={[s.noticeSub, { color: txtSec }]}>
+                {stallPayCopy(stallName)}. No Zenvy rider or delivery PIN. Coupons and add-ons don't apply to stall orders.
+              </Text>
+              {addOnLines.length > 0 && (
+                <TouchableOpacity style={[s.smallBtn, { marginTop: 10 }]} onPress={removeAddOns}>
+                  <Text style={s.smallBtnText}>REMOVE {addOnLines.length} ADD-ON{addOnLines.length === 1 ? '' : 'S'}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        )}
+
         {/* Coupons */}
-        {hasOrder && (
+        {hasOrder && !isStallOrder && (
           <StaggeredSection delay={210} direction="up">
             <View style={{ marginTop: 20 }}>
               <Text style={[s.sectionTitle, { color: txt, marginBottom: 10 }]}>YOUR COUPONS</Text>
@@ -677,7 +737,9 @@ export default function CheckoutScreen() {
         <StaggeredSection delay={290} direction="up">
           <Text style={[s.sectionTitle, { color: txt, marginTop: 24 }]}>PAYMENT METHOD</Text>
           <View style={s.payRowNew}>
-            {([
+            {(isStallOrder ? [
+              { key: 'COD' as PayMethod, title: 'CASH ON DELIVERY', desc: stallPayCopy(stallName), icon: '💵', enabled: true },
+            ] : [
               { key: 'COD' as PayMethod, title: 'CASH ON DELIVERY', desc: 'Pay the rider in cash when it arrives', icon: '💵', enabled: true },
               {
                 key: 'Wallet' as PayMethod,
@@ -748,6 +810,10 @@ export default function CheckoutScreen() {
                   <TouchableOpacity style={s.smallBtn} onPress={() => { const u = unavailableFrom(quoteError.body); removeItems(u); }}>
                     <Text style={s.smallBtnText}>REMOVE UNAVAILABLE ITEMS</Text>
                   </TouchableOpacity>
+                ) : quoteError.code === 'ADDONS_NOT_FOR_STALL' ? (
+                  <TouchableOpacity style={s.smallBtn} onPress={removeAddOns}>
+                    <Text style={s.smallBtnText}>REMOVE ADD-ONS</Text>
+                  </TouchableOpacity>
                 ) : (
                   <TouchableOpacity style={s.smallBtn} onPress={refreshQuote}>
                     <Text style={s.smallBtnText}>TRY AGAIN</Text>
@@ -787,9 +853,12 @@ export default function CheckoutScreen() {
                   </View>
                 ))}
                 <View style={[s.billRow, { borderTopWidth: 1, borderTopColor: border, paddingTop: 12, marginTop: 8 }]}>
-                  <Text style={{ fontSize: 14, fontWeight: '900', color: txt }}>TO PAY</Text>
+                  <Text style={{ fontSize: 14, fontWeight: '900', color: txt }}>{isStallOrder ? 'PAY THE STALL' : 'TO PAY'}</Text>
                   <Text style={{ fontSize: 22, fontWeight: '900', color: COLORS.red }}>{rupees(quote.finalPrice)}</Text>
                 </View>
+                {isStallOrder && (
+                  <Text style={[s.helperText, { color: txtSec, marginTop: 6 }]}>💵 {stallPayCopy(stallName)}.</Text>
+                )}
                 {quote.totalDiscount > 0 && (
                   <Text style={[s.savingsText]}>🎉 You save {rupees(quote.totalDiscount)} on this order</Text>
                 )}

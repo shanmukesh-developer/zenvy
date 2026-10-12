@@ -1,125 +1,72 @@
-# dependencies
+# ---- Dependencies ----
 node_modules/
 .pnp
 .pnp.js
 
-# Firebase credentials (NEVER commit)
-customer-mobile/android/app/google-services.json
-customer-mobile/ios/GoogleService-Info.plist
-
-# Backend test scripts with secrets
-backend/test_live_*.js
-backend/check_live_*.js
-backend/send_live_*.js
-.pnp.js
-
-# testing
-coverage
-
-# next.js
-.next/
-out/
-
-# production
-build/
-
-# misc
-.DS_Store
+# ---- Secrets / env (never commit) ----
+.env*
+!.env.example
 *.pem
+*.keystore
+*.jks
+backend/firebase-key.json
+customer-mobile/ios/GoogleService-Info.plist
+customer-mobile/android/app/google-services.json
 
-# debug
+# ---- Local databases ----
+*.sqlite*
+*.db-journal
+
+# ---- Build output ----
+build/
+dist/
+out/
+.next/
+.expo/
+.expo-shared/
+web-build/
+**/android/app/build/
+**/android/build/
+**/android/.gradle/
+*.tsbuildinfo
+next-env.d.ts
+.vercel
+
+# ---- Generated binaries ----
+*.apk
+*.aab
+bundle.js
+
+# ---- Logs ----
+logs/
+*.log
+logs.txt
+*.err
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-
-# local env files
-.env
-.env*.local
-backend/.env
-backend/firebase-key.json
-backend/local_dev.sqlite
-frontend/public/assets/*.png
-!frontend/public/assets/placeholder.png
-!frontend/public/assets/placeholder_premium.png
-!admin-dashboard/public/assets/placeholder.png
-!frontend/public/assets/kfc_logo.png
-!frontend/public/assets/dominos_logo.png
-!frontend/public/assets/mcdonalds_logo.png
-!frontend/public/assets/kfc_takeover_banner.png
-!frontend/public/assets/dominos_takeover_banner.png
-!frontend/public/assets/mcdonalds_takeover_banner.png
-!frontend/public/assets/3d-basket.png
-!frontend/public/assets/3d-bike.png
-!frontend/public/assets/3d-burger.png
-!frontend/public/assets/3d-hostel.png
-!frontend/public/assets/gmaps_icon.png
-!frontend/public/assets/gpay_logo.png
-!frontend/public/assets/phonepe_logo.png
-!frontend/public/assets/upi_qr.png
-!frontend/public/assets/creamy_alfredo.png
-!frontend/public/assets/garlic_breadsticks.png
-!frontend/public/assets/margherita_classica.png
-!frontend/public/assets/kfc_3d_bucket.png
-!frontend/public/assets/kfc_vintage_legend.png
-!frontend/public/assets/kaju_katli_elite.png
-!frontend/public/assets/whey_protein_bowl.png
-!frontend/public/assets/subway_fresh_sandwich_*.png
-!frontend/public/assets/zenvy_*.png
-
-# vercel
-.vercel
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
-
-# build logs
-*.log
-*.err
 lint_output.txt
 
-# ---- Anti-script guard ----
-# Never commit auto-modifying or forensic scripts
-sync_all_ports.js
+# ---- Scratch / one-off output ----
+scratch/
 tmp/
 *.auto.js
 *.sync.js
+coverage/
 
-# Backend log/output junk
-backend/socket_debug.txt
-backend/server_debug.txt
-backend/backend_logs*.txt
-backend/simulation_results*.txt
-backend/error_report*.txt
-backend/token.txt
-backend/out*.txt
-backend/e2e*.txt
-backend/e2e*.log
-backend/seed_log.txt
-backend/fail.log
+# ---- Runtime uploads (Render disk is ephemeral; real media goes to cloud storage) ----
+backend/uploads/
 
-# Frontend forensic output blobs
-frontend/extracted-*
-frontend/recovered_*
-frontend/diff*.txt
-a p p - r e l e a s e . a p k  
- a p p - r e l e a s e . a p k  
- app-release.apk
+# ---- Screenshots dumped in the repo root ----
+/curr_screen.png
+/customer_*.png
+/phone_*.png
 
-# Generated binaries
-*.apk
-**/*.apk
+# ---- Backend scripts that hit production with secrets ----
+backend/test_live_*.js
+backend/check_live_*.js
+backend/send_live_*.js
 
-# Temporary scratch & test scripts
-test_toggle_bug.js
-backend/test_direct_push.js
-backend/test_rider_push.js
-backend/scripts/inspect_tokens.js
-backend/check_shanmukh.js
-backend/test_get_friends.js
-scratch/
-*.patch
-bundle.js
-*.png
-!frontend/public/assets/*.png
-!customer-mobile/assets/**/*.png
+# ---- OS / editor ----
+.DS_Store
+Thumbs.db

@@ -297,6 +297,10 @@ const authPartner = async (req, res) => {
 };
 
 // @desc    Accept an order
+// CampusBites stall orders (fulfilment 'VENDOR') are delivered by the stall: never in the rider pool,
+// never claimable. Old rows have fulfilment NULL (= Zenvy rider delivery).
+const NOT_STALL_ORDER = { [Op.and]: [{ [Op.or]: [{ fulfilment: null }, { fulfilment: { [Op.ne]: 'VENDOR' } }] }] };
+
 const acceptOrder = async (req, res) => {
   try {
     const DeliveryPartner = getDeliveryPartnerModel();
@@ -324,7 +328,7 @@ const acceptOrder = async (req, res) => {
     // 2. Atomic Claim: Only orders already accepted by restaurant/system can be claimed
     const [updatedRows] = await Order.update(
       { deliveryPartnerId: req.user.id },
-      { where: { id: req.params.orderId, deliveryPartnerId: null, status: { [Op.in]: ['Accepted', 'Preparing', 'ReadyForPickup'] } } }
+      { where: { id: req.params.orderId, deliveryPartnerId: null, status: { [Op.in]: ['Accepted', 'Preparing', 'ReadyForPickup'] }, ...NOT_STALL_ORDER } }
     );
 
     if (updatedRows === 0) {
@@ -407,7 +411,8 @@ const getPendingOrders = async (req, res) => {
     const orders = await Order.findAll({
       where: { 
         status: { [Op.in]: ['Accepted', 'Preparing', 'ReadyForPickup'] },
-        deliveryPartnerId: null
+        deliveryPartnerId: null,
+        ...NOT_STALL_ORDER
       }, 
       order: [['createdAt', 'DESC']],
       limit: 100

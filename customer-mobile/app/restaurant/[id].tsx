@@ -24,11 +24,13 @@ import { saveRecentlyViewed } from '../../components/RecentlyViewed';
 import DopaminePressable, { CartPressable, ActionPressable, CardPressable } from '../../components/DopaminePressable';
 import { StaggeredSection, FloatingPulse } from '../../components/AnimatedSection';
 import SafeImage from '../../components/SafeImage';
-import { isLocalVendor as isLocalVendorStore, vendorCallNumber, vendorWhatsappNumber, callVendor, whatsappVendor, DIRECT_ORDER_COPY } from '../../utils/localVendor';
+import { isLocalVendor as isLocalVendorStore, vendorCallNumber, callVendor, STALL_ORDER_COPY, stallPayCopy } from '../../utils/localVendor';
 import { useLiveSync, affectsStore } from '../../utils/useLiveSync';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const LOAD_TIMEOUT_MS = 20000;
+// Booking-only service stores (backend utils/vendorTypes.js) and the shelf that books them.
+const SERVICE_CATEGORY_BY_VENDOR: Record<string, string> = { REPAIRS: 'repairs', PRINT: 'print', LAUNDRY: 'laundry', TAILORING: 'tailoring' };
 
 const formatOpensAt = (hhmm?: string | null) => {
   if (!hhmm || !/^\d{1,2}:\d{2}$/.test(hhmm)) return null;
@@ -89,6 +91,13 @@ export default function RestaurantDetail() {
       const data = await res.json().catch(() => null);
       if (!mountedRef.current) return;
       if (res.ok && data && (data.id || data._id)) {
+        // Laundry / print / repairs / tailoring are booked (pickup slot, room, price estimate), not
+        // ordered like food: open the booking shelf instead of a menu with ADD buttons.
+        const serviceCategory = SERVICE_CATEGORY_BY_VENDOR[String(data.vendorType || '').toUpperCase()];
+        if (serviceCategory) {
+          router.replace(`/category/${serviceCategory}` as any);
+          return;
+        }
         setRestaurant({ ...data, menu: Array.isArray(data.menu) ? data.menu.filter(Boolean) : [] });
         setLoadError(null);
         saveRecentlyViewed({
@@ -114,7 +123,7 @@ export default function RestaurantDetail() {
         setRefreshing(false);
       }
     }
-  }, [id]);
+  }, [id, router]);
 
   useEffect(() => {
     loadRestaurant('initial');
@@ -215,10 +224,10 @@ export default function RestaurantDetail() {
 
   const ratingNum = Number(restaurant.rating);
   const hasRating = Number.isFinite(ratingNum) && ratingNum > 0;
-  // CampusBites stalls are display-only: no basket — the customer calls / WhatsApps the vendor, who delivers.
+  // CampusBites stalls are ordered here (basket -> COD to the stall); the stall delivers itself, no rider.
   const isLocalVendor = isLocalVendorStore(restaurant);
   const vendorCall = isLocalVendor ? vendorCallNumber(restaurant) : null;
-  const vendorWa = isLocalVendor ? vendorWhatsappNumber(restaurant) : null;
+  const stallOffline = isLocalVendor && restaurant.isOffline === true;
   const deliveryTimeText = isLocalVendor ? null : (restaurant.time || (Number(restaurant.deliveryTime) > 0 ? `${restaurant.deliveryTime} min` : null));
   const heroImg = restaurant.imageUrl || restaurant.image || null;
   const isOpen = restaurant.isOpen !== false;
@@ -252,13 +261,13 @@ export default function RestaurantDetail() {
 
   const blockedReason = (item: any): string | null => {
     if (!isOpen) return closedText;
+    if (stallOffline) return `${restaurant.name} is not taking orders on Zenvy right now.`;
     if (item.isAvailable === false) return `${item.name} is sold out right now.`;
     if (item.isEliteOnly && !isUserElite) return `${item.name} is for Zenvy Elite members.`;
     return null;
   };
 
   const handleAddToCart = (item: any) => {
-    if (isLocalVendor) return; // never basket a CampusBites stall's item
     const reason = blockedReason(item);
     if (reason) {
       Alert.alert('Not available', reason);
@@ -277,6 +286,7 @@ export default function RestaurantDetail() {
       image: item.image || item.imageUrl || '',
       restaurantId: String(restaurant.id || restaurant._id || id),
       restaurantName: restaurant.name,
+      ...(isLocalVendor ? { isStall: true } : {}),
     });
     if (added) flashAdded(itemId);
   };
@@ -294,6 +304,7 @@ export default function RestaurantDetail() {
       restaurantId: String(restaurant.id || restaurant._id || id),
       restaurantName: restaurant.name,
       customizations,
+      ...(isLocalVendor ? { isStall: true } : {}),
     });
     setCustomizingItem(null);
     if (added) flashAdded(itemId);
@@ -390,27 +401,14 @@ export default function RestaurantDetail() {
               )}
             </View>
 
-            {isLocalVendor && (!!vendorCall || !!vendorWa) && (
-              <View style={{ flexDirection: 'row', gap: 6 }}>
-                {!!vendorCall && (
-                  <TouchableOpacity
-                    style={[st.contactBtn, { backgroundColor: '#256FEF' }]}
-                    accessibilityLabel={`Call ${restaurant.name} to order`}
-                    onPress={() => callVendor(restaurant)}
-                  >
-                    <Text style={st.contactBtnText}>📞 CALL</Text>
-                  </TouchableOpacity>
-                )}
-                {!!vendorWa && (
-                  <TouchableOpacity
-                    style={[st.contactBtn, { backgroundColor: '#10B981' }]}
-                    accessibilityLabel={`Order from ${restaurant.name} on WhatsApp`}
-                    onPress={() => whatsappVendor(restaurant)}
-                  >
-                    <Text style={st.contactBtnText}>💬 WHATSAPP</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+            {isLocalVendor && !!vendorCall && (
+              <TouchableOpacity
+                style={[st.contactBtn, { backgroundColor: '#256FEF' }]}
+                accessibilityLabel={`Call ${restaurant.name}`}
+                onPress={() => callVendor(restaurant)}
+              >
+                <Text style={st.contactBtnText}>📞 CALL STALL</Text>
+              </TouchableOpacity>
             )}
           </View>
         </View>
@@ -419,7 +417,7 @@ export default function RestaurantDetail() {
           <View style={[st.noticeBar, { backgroundColor: isDark ? 'rgba(249,115,22,0.12)' : 'rgba(249,115,22,0.08)', borderColor: 'rgba(249,115,22,0.3)' }]}>
             <Text style={{ fontSize: 16 }}>🏪</Text>
             <Text style={{ flex: 1, color: txt, fontSize: 11, fontWeight: '700', lineHeight: 16 }}>
-              {vendorCall || vendorWa ? DIRECT_ORDER_COPY : 'This stall orders directly, not through Zenvy. Its contact number is not listed yet — please visit the stall.'}
+              {stallOffline ? `${restaurant.name} is not taking orders on Zenvy right now.` : `${STALL_ORDER_COPY} ${stallPayCopy(restaurant.name)}.`}
             </Text>
           </View>
         )}
@@ -427,7 +425,7 @@ export default function RestaurantDetail() {
         {!isOpen && (
           <View style={[st.noticeBar, { backgroundColor: isDark ? 'rgba(99,102,241,0.14)' : 'rgba(99,102,241,0.08)', borderColor: 'rgba(99,102,241,0.3)' }]}>
             <Text style={{ fontSize: 16 }}>🌙</Text>
-            <Text style={{ flex: 1, color: txt, fontSize: 11, fontWeight: '700' }}>{closedText}. {isLocalVendor ? 'You can browse the menu and contact the stall when it opens.' : 'You can browse the menu and order when it opens.'}</Text>
+            <Text style={{ flex: 1, color: txt, fontSize: 11, fontWeight: '700' }}>{closedText}. You can browse the menu and order when it opens.</Text>
           </View>
         )}
 
@@ -499,7 +497,7 @@ export default function RestaurantDetail() {
             return (
               <StaggeredSection key={itemId} delay={Math.min(i, 10) * 60} direction="up">
               <CardPressable
-                onPress={() => { if (!isLocalVendor) router.push(`/products/${itemId}` as any); }}
+                onPress={() => router.push(`/products/${itemId}` as any)}
                 style={[st.menuCard, { backgroundColor: cardBg, borderColor: border }, (soldOut || eliteLocked) && { opacity: 0.6 }]}
               >
                 <View style={st.menuInfo}>
@@ -534,18 +532,7 @@ export default function RestaurantDetail() {
                     </View>
                   )}
                   <View style={st.floatingAddWrap} pointerEvents="box-none">
-                    {isLocalVendor ? (
-                      vendorWa || vendorCall ? (
-                        <TouchableOpacity
-                          style={[st.menuAddBtn, { backgroundColor: vendorWa ? '#ECFDF5' : '#EFF6FF', borderColor: vendorWa ? '#10B981' : '#256FEF' }, soldOut && { opacity: 0.5 }]}
-                          disabled={soldOut}
-                          accessibilityLabel={`Order ${item.name} directly from ${restaurant.name}`}
-                          onPress={() => (vendorWa ? whatsappVendor(restaurant, item.name) : callVendor(restaurant))}
-                        >
-                          <Text style={[st.menuAddBtnText, { color: vendorWa ? '#059669' : '#256FEF' }]}>{soldOut ? 'SOLD OUT' : vendorWa ? '💬 ORDER' : '📞 CALL'}</Text>
-                        </TouchableOpacity>
-                      ) : null
-                    ) : soldOut ? (
+                    {soldOut ? (
                       <View style={[st.menuAddBtn, { backgroundColor: '#E5E7EB', borderColor: '#9CA3AF' }]}>
                         <Text style={[st.menuAddBtnText, { color: '#6B7280' }]}>SOLD OUT</Text>
                       </View>
@@ -575,7 +562,7 @@ export default function RestaurantDetail() {
                           isAdded
                             ? { backgroundColor: '#EF4F5F', borderColor: '#EF4F5F' }
                             : { backgroundColor: '#FFF5F6', borderColor: '#EF4F5F' },
-                          (!isOpen || eliteLocked) && { backgroundColor: '#F3F4F6', borderColor: '#9CA3AF' },
+                          (!isOpen || eliteLocked || stallOffline) && { backgroundColor: '#F3F4F6', borderColor: '#9CA3AF' },
                         ]}
                         onPress={() => handleAddToCart(item)}
                         sound="addToCart"
@@ -583,9 +570,9 @@ export default function RestaurantDetail() {
                         <Text style={[
                           st.menuAddBtnText,
                           isAdded ? { color: '#fff' } : { color: '#EF4F5F' },
-                          (!isOpen || eliteLocked) && { color: '#6B7280' },
+                          (!isOpen || eliteLocked || stallOffline) && { color: '#6B7280' },
                         ]}>
-                          {isAdded ? '✓ ADDED' : !isOpen ? 'CLOSED' : eliteLocked ? '👑 ELITE' : customizable && qtyInCart > 0 ? `ADD + (${qtyInCart})` : 'ADD +'}
+                          {isAdded ? '✓ ADDED' : !isOpen || stallOffline ? 'CLOSED' : eliteLocked ? '👑 ELITE' : customizable && qtyInCart > 0 ? `ADD + (${qtyInCart})` : 'ADD +'}
                         </Text>
                       </CartPressable>
                     )}

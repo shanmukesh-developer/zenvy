@@ -8,7 +8,7 @@ import { Badge, Btn, Card, IconBtn, Label, Row } from '../ui/kit';
 import { Sheet } from '../ui/Sheet';
 import { PinPad } from '../ui/PinPad';
 import { useRider } from '../state/RiderStore';
-import { canUnassign, firstName, isDialable, stepFor, stepIndex, storeStatusLabel } from '../services/orderModel';
+import { atStoreKitchenLabel, canUnassign, firstName, isDialable, stepFor, stepIndex, storeStatusLabel } from '../services/orderModel';
 import * as links from '../services/links';
 import { rupees } from '../services/format';
 import { CashBox, Instructions, ItemChecklist, ItemsLine, PaymentPill, Place, StepBar, cashToCollect, distanceTo } from './parts';
@@ -131,12 +131,22 @@ export function DeliveryScreen({ orderId, onClose }: { orderId: string; onClose:
   } else if (step === 'AT_STORE') {
     title = 'Pick up order';
     const allTicked = order.items.length === 0 || ticked.size >= order.items.length;
+    const kitchen = atStoreKitchenLabel(order);
     body = (
       <>
         <View style={{ gap: 2 }}>
           <Text style={[T.h2, { color: C.ink }]}>{order.restaurantName ?? 'Store'}</Text>
           <Text style={[T.body, { color: C.ink2 }]}>Tick every item before you leave.</Text>
         </View>
+        {kitchen ? (
+          <View style={styles.chips}>
+            <Badge
+              tone={order.kitchenReady ? 'green' : 'blue'}
+              icon={order.kitchenReady ? 'check-circle' : 'chef-hat'}
+              label={kitchen}
+            />
+          </View>
+        ) : null}
         <ItemChecklist order={order} ticked={ticked} onToggle={toggleTick} />
         <Instructions items={order.instructions} />
         {callStore ? <Btn title="Call store" icon="phone" variant="outline" size="mid" onPress={callStore} /> : null}
@@ -240,6 +250,22 @@ export function DeliveryScreen({ orderId, onClose }: { orderId: string; onClose:
         />
       );
     }
+  } else if (step === 'UNKNOWN') {
+    // A status this app version does not know: never guess a step; send the rider to support.
+    title = 'Contact support';
+    body = (
+      <Card style={{ gap: S.md }}>
+        <Text style={[T.body, { color: C.ink }]}>
+          This order has a status this app does not recognise{order.rawStatus ? ` ("${order.rawStatus}")` : ''}. Please contact Zenvy support before you do anything with it.
+        </Text>
+        <Btn
+          title="Get help from support"
+          icon="lifebuoy"
+          size="mid"
+          onPress={() => r.setOverlay({ kind: 'support', prefill: `${helpPrefill}order shows status ${order.rawStatus ?? 'unknown'}.` })}
+        />
+      </Card>
+    );
   } else {
     title = 'Delivered';
   }

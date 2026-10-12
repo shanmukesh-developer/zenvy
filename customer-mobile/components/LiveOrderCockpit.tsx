@@ -22,6 +22,7 @@ export interface CockpitRider {
   totalRatings?: number | null;
   vehicleType?: string | null;
   vehicleNumber?: string | null;
+  completedDeliveries?: number | null;
 }
 
 interface LiveOrderCockpitProps {
@@ -36,6 +37,11 @@ interface LiveOrderCockpitProps {
   estMinutes?: number | null;
   /** Optional share handler (status text only; never the PIN). */
   onShare?: () => void;
+  /**
+   * CampusBites stall order (fulfilment 'VENDOR'): the stall delivers it itself — no rider, no PIN.
+   * Steps: placed -> accepted -> out for delivery -> delivered.
+   */
+  vendor?: { name?: string | null; onCall?: (() => void) | null } | null;
 }
 
 // Real order statuses only. No invented times or checkpoints.
@@ -45,6 +51,13 @@ const MILESTONES = [
   { id: 3, label: 'Being prepared', sub: 'Your order is being packed', icon: '🍳' },
   { id: 4, label: 'Out for delivery', sub: 'Your rider has picked up the order', icon: '🛵' },
   { id: 5, label: 'At your gate', sub: 'Your rider is waiting with your order', icon: '🏠' },
+];
+
+// Stall orders: the stall accepts, then brings it over itself.
+const vendorMilestones = (stall: string) => [
+  { id: 1, label: 'Order placed', sub: `Waiting for ${stall} to accept`, icon: '📝' },
+  { id: 2, label: 'Accepted', sub: `${stall} accepted your order`, icon: '✅' },
+  { id: 4, label: 'Out for delivery', sub: `${stall} is bringing your order`, icon: '🏪' },
 ];
 
 const initials = (name?: string) =>
@@ -65,7 +78,10 @@ export default function LiveOrderCockpit({
   riderInfo,
   estMinutes,
   onShare,
+  vendor,
 }: LiveOrderCockpitProps) {
+  const isVendor = !!vendor;
+  const stallName = String(vendor?.name || 'the stall');
   const [copiedPin, setCopiedPin] = useState(false);
   const [photoFailed, setPhotoFailed] = useState(false);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -81,7 +97,12 @@ export default function LiveOrderCockpit({
   const ratingCount = Number(rider?.totalRatings) || 0;
   const ratingAvg = Number(rider?.averageRating);
   const hasRating = ratingCount > 0 && Number.isFinite(ratingAvg) && ratingAvg > 0;
-  const vehicleLine = [rider?.vehicleType, rider?.vehicleNumber].filter(Boolean).join(' • ');
+  const deliveriesDone = Number(rider?.completedDeliveries) || 0;
+  const vehicleLine = [
+    rider?.vehicleType,
+    rider?.vehicleNumber,
+    deliveriesDone > 0 ? `${deliveriesDone} ${deliveriesDone === 1 ? 'delivery' : 'deliveries'}` : null,
+  ].filter(Boolean).join(' • ');
 
   const handleCallRider = () => {
     if (!rider?.phone) return;
@@ -101,8 +122,12 @@ export default function LiveOrderCockpit({
   const progressPercent = Math.min(100, Math.max(10, (Math.min(status, 6) / 6) * 100));
   const shortId = (orderId || '').slice(-6).toUpperCase();
 
-  const title =
-    status >= 6 ? 'Order delivered 🎉'
+  const title = isVendor
+    ? (status >= 6 ? `Delivered by ${stallName} 🎉`
+      : status >= 4 ? `${stallName} is on the way 🏪`
+      : status >= 2 ? 'Order accepted ✅'
+      : `Waiting for ${stallName} ⏳`)
+    : status >= 6 ? 'Order delivered 🎉'
     : status === 5 ? 'Your rider is at the gate 🔔'
     : status === 4 ? 'On the way to you 🛵'
     : status === 3 ? 'Being prepared 🍳'
@@ -110,7 +135,8 @@ export default function LiveOrderCockpit({
     : 'Waiting for the store ⏳';
 
   const subtitle =
-    status === 5 ? 'Share your delivery PIN at handover'
+    isVendor ? (status >= 6 ? 'Thanks for ordering with Zenvy' : `Pay ${stallName} in cash when it arrives`)
+    : status === 5 ? 'Share your delivery PIN at handover'
     : [restaurantName, hostelAddress].filter(Boolean).join(' ➔ ');
 
   const showEstimate = !!estMinutes && estMinutes > 0 && status >= 2 && status <= 4;
@@ -150,7 +176,7 @@ export default function LiveOrderCockpit({
             )}
           </View>
           <View style={[styles.etaPulseIconBox, { backgroundColor: COLORS.gold }]}>
-            <Text style={{ fontSize: 22 }}>{status >= 6 ? '🎉' : status === 5 ? '🏠' : status === 4 ? '🛵' : '🍳'}</Text>
+            <Text style={{ fontSize: 22 }}>{status >= 6 ? '🎉' : isVendor ? (status >= 4 ? '🏪' : '⏳') : status === 5 ? '🏠' : status === 4 ? '🛵' : '🍳'}</Text>
           </View>
         </View>
 
@@ -159,9 +185,32 @@ export default function LiveOrderCockpit({
         </View>
       </LinearGradient>
 
-      {/* ── RIDER (real data only) ── */}
+      {/* ── RIDER (real data only) — or the stall that delivers a stall order ── */}
       <View style={[styles.riderSection, { borderBottomColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }]}>
-        {rider ? (
+        {isVendor ? (
+          <>
+            <View style={[styles.riderPhoto, styles.initialsAvatar, { backgroundColor: isDark ? '#262626' : '#FFF7ED', borderColor: 'transparent' }]}>
+              <Text style={{ fontSize: 20 }}>🏪</Text>
+            </View>
+            <View style={{ flex: 1, paddingHorizontal: 12 }}>
+              <Text style={[styles.riderName, { color: txt }]} numberOfLines={1}>Delivered by {stallName}</Text>
+              <Text style={[styles.vehicleText, { color: txtSec }]}>
+                {status >= 6 ? 'Thanks for ordering with Zenvy' : 'No Zenvy rider or PIN — the stall brings it to you'}
+              </Text>
+            </View>
+            {!!vendor?.onCall && status < 6 && (
+              <View style={styles.actionButtonsCol}>
+                <TouchableOpacity
+                  style={[styles.actionRoundBtn, { backgroundColor: '#256FEF' }]}
+                  onPress={vendor.onCall}
+                  accessibilityLabel={`Call ${stallName}`}
+                >
+                  <Text style={{ fontSize: 16 }}>📞</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </>
+        ) : rider ? (
           <>
             <View style={styles.riderAvatarWrapper}>
               {rider.photoUrl && !photoFailed ? (
@@ -215,7 +264,7 @@ export default function LiveOrderCockpit({
       </View>
 
       {/* ── DELIVERY PIN ── */}
-      {!!deliveryPin && status < 6 && (
+      {!!deliveryPin && !isVendor && status < 6 && (
         <View style={[styles.pinBox, { backgroundColor: isDark ? 'rgba(212,175,55,0.08)' : '#FFFBEB', borderColor: isDark ? 'rgba(212,175,55,0.3)' : '#FDE68A' }]}>
           <View style={{ flex: 1 }}>
             <Text style={[styles.pinHeading, { color: COLORS.gold }]}>DELIVERY PIN</Text>
@@ -232,7 +281,7 @@ export default function LiveOrderCockpit({
       <View style={styles.milestonesContainer}>
         <Text style={[styles.milestonesSectionTitle, { color: txtSec }]}>ORDER PROGRESS</Text>
 
-        {MILESTONES.map((m, idx) => {
+        {(isVendor ? vendorMilestones(stallName) : MILESTONES).map((m, idx, list) => {
           const isDone = status > m.id || status >= 6;
           const isCurrent = status === m.id;
           const isPending = !isDone && !isCurrent;
@@ -250,7 +299,7 @@ export default function LiveOrderCockpit({
                 >
                   <Text style={{ fontSize: 12 }}>{m.icon}</Text>
                 </View>
-                {idx < MILESTONES.length - 1 && (
+                {idx < list.length - 1 && (
                   <View
                     style={[
                       styles.timelineLine,

@@ -1,4 +1,4 @@
-import { Product, Store, adminRequest, readSpecs, storeAppPath, storeId, vendorLabel } from '@/app/restaurants/catalogue';
+import { Product, Store, adminRequest, dietOf, mrpOf, readSpecs, storeAppPath, storeId, vendorLabel } from '@/app/restaurants/catalogue';
 
 type Banner = Record<string, unknown>;
 
@@ -52,31 +52,25 @@ export async function upsertStoreBanner(store: Store, badge: string, offer: stri
   await adminRequest('/api/config', { method: 'PUT', body: JSON.stringify({ banners: next }) });
 }
 
-/** Store fields copied by "Duplicate store" (never the password, rating, clicks or featured state). */
-export function duplicatePayload(store: Store, name: string): Record<string, unknown> {
-  return {
-    name,
-    location: store.location,
-    vendorType: store.vendorType || 'RESTAURANT',
-    imageUrl: store.imageUrl || null,
-    deliveryTime: store.deliveryTime ?? null,
-    commissionRate: store.commissionRate ?? 10,
-    commissionType: store.commissionType || 'percentage',
-    tags: store.tags || [],
-    operatingHours: store.operatingHours || { start: '09:00', end: '22:00' },
-    isOffline: !!store.isOffline,
-    isOpenNow: store.isOpenNow !== false,
-    zone: store.zone || undefined,
-    lat: store.lat ?? null,
-    lon: store.lon ?? null,
-    campus: store.campus || null,
-    whatsappNumber: store.whatsappNumber || null,
-    stallDescription: store.stallDescription || null,
-    brandTheme: store.brandTheme || null,
-    isActive: false,
-  };
+/**
+ * POST /api/admin/restaurants/:id/duplicate. The copy is a draft (hidden) without password, login phone,
+ * push devices, rating or promotion. Store names must be unique (409 with a friendly message).
+ */
+export async function duplicateStore(id: string, name: string, copyMenu: boolean): Promise<Store> {
+  return adminRequest<Store>(`/api/admin/restaurants/${id}/duplicate`, { method: 'POST', body: JSON.stringify({ name, copyMenu }) });
 }
 
+/** POST /api/admin/restaurants/bulk-update (max 300 ids). */
+export async function bulkUpdateStores(ids: string[], patch: { isActive?: boolean; isOpenNow?: boolean; isFeatured?: boolean }) {
+  return adminRequest<{ count: number; notFound: number; message?: string }>('/api/admin/restaurants/bulk-update', { method: 'POST', body: JSON.stringify({ ids, patch }) });
+}
+
+/** POST /api/admin/menu-items/bulk-update (max 300 ids). */
+export async function bulkUpdateItems(ids: string[], patch: Record<string, unknown>) {
+  return adminRequest<{ count: number; notFound: number; message?: string }>('/api/admin/menu-items/bulk-update', { method: 'POST', body: JSON.stringify({ ids, patch }) });
+}
+
+/** Item fields for "Duplicate item" (same store). */
 export function duplicateItemPayload(p: Product, restaurantId: string): Record<string, unknown> {
   return {
     restaurantId,
@@ -86,9 +80,10 @@ export function duplicateItemPayload(p: Product, restaurantId: string): Record<s
     description: p.description || null,
     imageUrl: p.imageUrl || p.image || null,
     isAvailable: p.isAvailable,
-    isVegetarian: p.isVegetarian ?? true,
+    dietType: dietOf(p),
     isEliteOnly: !!p.isEliteOnly,
     tags: p.tags || [],
     specs: readSpecs(p.specs),
+    originalPrice: mrpOf(p),
   };
 }

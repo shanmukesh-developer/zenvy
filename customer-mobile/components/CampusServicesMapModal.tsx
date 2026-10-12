@@ -68,7 +68,7 @@ const CAMPUS_SERVICES_MAP: ServicePillar[] = [
     title: 'Laundry & Ironing',
     category: 'HOUSEKEEPING',
     tagline: 'Book a wash, dry clean or ironing pickup',
-    howToAccess: 'Others tab ➔ "Tech & Repairs" ➔ "Wash & Dry Clean".',
+    howToAccess: 'Others tab ➔ "Tech & Repairs" ➔ "Wash, Dry Clean & Ironing".',
     keyFeatures: [
       'Pick a service and see its price before booking',
       'Doorstep pickup from your hostel',

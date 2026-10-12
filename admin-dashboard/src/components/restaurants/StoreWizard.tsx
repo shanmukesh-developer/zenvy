@@ -5,7 +5,7 @@ import {
   isValidIndianMobile, readBrandTheme, storeId, tenDigits, vendorLabel,
 } from '@/app/restaurants/catalogue';
 import {
-  Weekly, generatePassword, isOpenByHours, isUniform, mapsUrl, operatingHoursPayload, parseMapLink, passwordStrength,
+  Weekly, generatePassword, isOpenByHours, mapsUrl, operatingHoursPayload, parseMapLink, passwordStrength,
   primaryWindow, round6, summarizeWeekly, timeAgo, validateWeekly, weeklyFromStore, uniformWeekly,
 } from './helpers';
 import { ImagePicker, TagInput, WeeklyHoursEditor } from './inputs';
@@ -37,6 +37,10 @@ export interface WizardState {
   deliveryTime: string;
   managedByZenvy: boolean;
   password: string;
+  /** Partner / vendor app login phone (Restaurant.phone). Empty = none (stalls can still use the WhatsApp number). */
+  loginPhone: string;
+  packagingFee: string;
+  minOrderValue: string;
   commissionType: 'percentage' | 'flat';
   commissionRate: string;
 }
@@ -47,7 +51,7 @@ const STEP_META: Record<StepKey, { title: string; sub: string }> = {
   location: { title: 'Location & contact', sub: 'Address, map pin, WhatsApp' },
   branding: { title: 'Branding', sub: 'Cover photo, logo, colours' },
   hours: { title: 'Hours & delivery', sub: 'Weekly hours, delivery time' },
-  login: { title: 'Partner login', sub: 'Restaurant app access' },
+  login: { title: 'Partner login', sub: 'App sign-in: phone + password' },
   commission: { title: 'Commission & payouts', sub: 'What Zenvy keeps' },
   review: { title: 'Review & publish', sub: 'Preview and go live' },
 };
@@ -59,7 +63,7 @@ const emptyState = (): WizardState => ({
   location: '', zone: '', lat: '', lon: '', whatsapp: '',
   imageUrl: '', brandOn: false, logoUrl: '', primaryColor: '#E23744', secondaryColor: '#111111', accentColor: '#FFC72C',
   weekly: uniformWeekly('09:00', '22:00'), isOpenNow: true, deliveryTime: '30',
-  managedByZenvy: false, password: '', commissionType: 'percentage', commissionRate: '10',
+  managedByZenvy: false, password: '', loginPhone: '', packagingFee: '', minOrderValue: '', commissionType: 'percentage', commissionRate: '10',
 });
 
 export function stateFromStore(s: Store): WizardState {
@@ -77,7 +81,7 @@ export function stateFromStore(s: Store): WizardState {
     whatsapp: tenDigits(s.whatsappNumber),
     imageUrl: s.imageUrl || '',
     brandOn: !!brand,
-    logoUrl: typeof brand?.logoUrl === 'string' ? brand.logoUrl : '',
+    logoUrl: s.logoUrl || (typeof brand?.logoUrl === 'string' ? brand.logoUrl : ''),
     primaryColor: brand?.primaryColor || '#E23744',
     secondaryColor: brand?.secondaryColor || '#111111',
     accentColor: brand?.accentColor || '#FFC72C',
@@ -86,6 +90,9 @@ export function stateFromStore(s: Store): WizardState {
     deliveryTime: s.deliveryTime != null ? String(s.deliveryTime) : '',
     managedByZenvy: !!s.isOffline,
     password: '',
+    loginPhone: tenDigits(s.partnerPhone || s.phone),
+    packagingFee: s.packagingFee ? String(s.packagingFee) : '',
+    minOrderValue: s.minOrderValue ? String(s.minOrderValue) : '',
     commissionType: s.commissionType === 'flat' ? 'flat' : 'percentage',
     commissionRate: String(s.commissionRate ?? 10),
   };
@@ -93,6 +100,12 @@ export function stateFromStore(s: Store): WizardState {
 
 const HEX = /^#[0-9a-f]{6}$/i;
 type Errors = Partial<Record<keyof WizardState | 'coords', string>>;
+
+const feeError = (raw: string, max: number, label: string) => {
+  if (raw.trim() === '') return null;
+  const n = Number(raw);
+  return !Number.isFinite(n) || n < 0 || n > max ? `${label} must be between ₹0 and ₹${max.toLocaleString('en-IN')}.` : null;
+};
 
 function validateStep(step: StepKey, s: WizardState, mode: 'create' | 'edit'): Errors {
   const e: Errors = {};
@@ -109,7 +122,7 @@ function validateStep(step: StepKey, s: WizardState, mode: 'create' | 'edit'): E
     if (hasLat !== hasLon) e.coords = 'Enter both latitude and longitude, or leave both empty.';
     else if (hasLat && (!Number.isFinite(Number(s.lat)) || Math.abs(Number(s.lat)) > 90 || !Number.isFinite(Number(s.lon)) || Math.abs(Number(s.lon)) > 180)) e.coords = 'Latitude must be −90…90 and longitude −180…180.';
     if (s.whatsapp.trim() && !isValidIndianMobile(s.whatsapp)) e.whatsapp = 'Use a 10-digit Indian mobile number starting with 6–9.';
-    if (local && !s.whatsapp.trim()) e.whatsapp = 'Local stalls are contacted on WhatsApp / call, so this number is required.';
+    if (local && !s.whatsapp.trim()) e.whatsapp = 'Customers reach the stall about their order on this number, so it is required.';
   }
   if (step === 'branding' && s.brandOn) {
     if (!HEX.test(s.primaryColor) || !HEX.test(s.secondaryColor) || !HEX.test(s.accentColor)) e.primaryColor = 'Colours must be hex values like #E23744.';
@@ -121,11 +134,17 @@ function validateStep(step: StepKey, s: WizardState, mode: 'create' | 'edit'): E
       const n = Number(s.deliveryTime);
       if (!Number.isInteger(n) || n < 5 || n > 240) e.deliveryTime = 'Whole minutes between 5 and 240, or leave empty to hide it.';
     }
+    const pf = feeError(s.packagingFee, 500, 'Packaging fee');
+    if (pf) e.packagingFee = pf;
+    const mo = feeError(s.minOrderValue, 5000, 'Minimum order');
+    if (mo) e.minOrderValue = mo;
   }
-  if (step === 'login' && !local) {
+  if (step === 'login') {
     const pw = s.password.trim();
+    if (s.loginPhone.trim() && !isValidIndianMobile(s.loginPhone)) e.loginPhone = 'Use a 10-digit Indian mobile number starting with 6–9.';
     if (pw && pw.length < 6) e.password = 'At least 6 characters (12+ recommended).';
-    if (mode === 'create' && !s.managedByZenvy && !pw) e.password = 'Generate a password so the partner can sign in, or switch on "Managed by Zenvy".';
+    else if (mode === 'create' && local && !pw) e.password = 'Generate a password so the stall can sign in to the Zenvy Vendor app and take orders.';
+    else if (mode === 'create' && !local && !s.managedByZenvy && !pw) e.password = 'Generate a password so the partner can sign in, or switch on "Managed by Zenvy".';
   }
   if (step === 'commission' && !local) {
     const n = Number(s.commissionRate);
@@ -150,6 +169,10 @@ export function buildPayload(s: WizardState, existing: Store | null): Record<str
     whatsappNumber: s.whatsapp.trim() ? tenDigits(s.whatsapp) : null,
     imageUrl: s.imageUrl.trim() || null,
     brandTheme: s.brandOn ? { ...prevBrand, primaryColor: s.primaryColor, secondaryColor: s.secondaryColor, accentColor: s.accentColor, fontColor: (prevBrand.fontColor as string) || '#FFFFFF', logoUrl: s.logoUrl || undefined } : null,
+    logoUrl: s.logoUrl.trim() || null,
+    phone: s.loginPhone.trim() ? tenDigits(s.loginPhone) : null,
+    packagingFee: s.packagingFee.trim() === '' ? 0 : Math.round(Number(s.packagingFee) * 100) / 100,
+    minOrderValue: s.minOrderValue.trim() === '' ? 0 : Math.round(Number(s.minOrderValue) * 100) / 100,
     operatingHours: operatingHoursPayload(s.weekly),
     isOpenNow: s.isOpenNow,
     deliveryTime: local || s.deliveryTime.trim() === '' ? null : Number(s.deliveryTime),
@@ -158,7 +181,7 @@ export function buildPayload(s: WizardState, existing: Store | null): Record<str
     commissionRate: local ? Number(existing?.commissionRate ?? 0) : Number(s.commissionRate),
   };
   if (s.zone.trim()) body.zone = s.zone.trim();
-  if (!local && s.password.trim()) body.password = s.password.trim();
+  if (s.password.trim()) body.password = s.password.trim();
   return body;
 }
 
@@ -190,7 +213,7 @@ export function StoreWizard({ mode, initial, startStep, stores, onClose, onSaved
 
   const local = isLocalVendorType(state.vendorType);
   const steps = useMemo<StepKey[]>(() => (local
-    ? ['basics', 'location', 'branding', 'hours', 'review']
+    ? ['basics', 'location', 'branding', 'hours', 'login', 'review']
     : ['basics', 'location', 'branding', 'hours', 'login', 'commission', 'review']), [local]);
   const index = Math.max(0, steps.indexOf(step));
   const set = (patch: Partial<WizardState>) => setState(prev => ({ ...prev, ...patch }));
@@ -260,18 +283,19 @@ export function StoreWizard({ mode, initial, startStep, stores, onClose, onSaved
       if (kind !== 'save') body.isActive = kind === 'publish';
       const path = initial ? `/api/admin/restaurants/${storeId(initial)}` : '/api/admin/restaurants';
       const saved = await adminRequest<Store>(path, { method: 'POST', body: JSON.stringify(body) });
-      const sentWeekly = !isUniform(state.weekly);
-      if (sentWeekly && !(saved?.operatingHours && saved.operatingHours.weekly)) {
-        const w = primaryWindow(state.weekly);
-        toast.info(`Saved. The server keeps one daily window for now (${w.start}–${w.end}); per-day hours apply after the server update.`);
-      }
       const result: WizardResult = { store: saved, password: body.password ? String(body.password) : null, published: kind === 'publish' || (kind === 'save' && !!initial?.isActive) };
       if (mode === 'create') clearDraft();
       onSaved(result);
       if (mode === 'create' || result.password) setDone(result);
       else onClose();
     } catch (e) {
-      setSaveError(e instanceof Error ? e.message : 'Could not save the store.');
+      const msg = e instanceof Error ? e.message : 'Could not save the store.';
+      // 409s from the server: duplicate store name or login phone. Jump to the field.
+      if (/already called/i.test(msg)) { goto('basics'); setErrors({ name: msg }); }
+      else if (/phone number already signs in|^Login phone/i.test(msg)) { goto('login'); setErrors({ loginPhone: msg }); }
+      else if (/^Packaging fee/i.test(msg)) { goto('hours'); setErrors({ packagingFee: msg }); }
+      else if (/^Minimum order/i.test(msg)) { goto('hours'); setErrors({ minOrderValue: msg }); }
+      setSaveError(msg);
     } finally {
       setSaving(null);
     }
@@ -290,7 +314,7 @@ export function StoreWizard({ mode, initial, startStep, stores, onClose, onSaved
       deliveryTime: !local && state.deliveryTime ? Number(state.deliveryTime) || null : null,
       isOpen: state.isOpenNow && isOpenByHours(state.weekly), opensAt: primaryWindow(state.weekly).start,
       rating: initial?.rating ?? null, isFeatured: initial?.isFeatured, featuredBadge: initial?.featuredBadge, promoOffer: initial?.promoOffer,
-      isLocal: local, whatsappNumber: state.whatsapp,
+      isLocal: local, whatsappNumber: state.whatsapp, logoUrl: state.logoUrl,
       brand: state.brandOn ? { primaryColor: state.primaryColor, secondaryColor: state.secondaryColor, accentColor: state.accentColor, logoUrl: state.logoUrl } : null,
     }} />
   );
@@ -355,7 +379,7 @@ export function StoreWizard({ mode, initial, startStep, stores, onClose, onSaved
                   );
                 })}
               </ol>
-              {local && <p className="mt-4 px-2 text-[11px] leading-relaxed text-gray-500">Partner login and commission are skipped: local stalls take orders themselves.</p>}
+              {local && <p className="mt-4 px-2 text-[11px] leading-relaxed text-gray-500">Commission is skipped: customers pay the stall cash on delivery and the stall delivers itself.</p>}
             </nav>
 
             {/* Step body */}
@@ -424,10 +448,10 @@ export function StoreWizard({ mode, initial, startStep, stores, onClose, onSaved
 
 const STEP_HELP: Record<StepKey, string> = {
   basics: 'Who is this partner? The type decides how customers buy from them.',
-  location: 'Where riders pick up, and how customers or Zenvy reach the store.',
+  location: 'Where riders pick up (or the stall sets off from), and how customers or Zenvy reach the store.',
   branding: 'Photos sell. A clear cover photo is the single biggest boost to orders.',
-  hours: 'When customers can order. Outside these hours the app shows "Closed — opens at …".',
-  login: 'How the partner signs in to the Zenvy restaurant app to accept orders.',
+  hours: 'When customers can order, and the bill rules. Outside these hours the app shows "Closed — opens at …".',
+  login: 'How the partner signs in to accept orders: the Zenvy Restaurant app, or Zenvy Vendor for stalls.',
   commission: 'What Zenvy keeps from each order. Payouts are settled from the Finance page.',
   review: 'Check everything once. Save as a draft to add the menu first, or publish straight away.',
 };
@@ -452,7 +476,7 @@ function BasicsStep({ s, set, errors, stores, editingId }: StepProps & { stores:
           <input id={id} data-autofocus aria-describedby={msgId} aria-invalid={invalid} className={INPUT} maxLength={120} value={s.name} onChange={e => set({ name: e.target.value })} placeholder="e.g. Sri Sai Tiffins" />
         )}
       </Field>
-      {dupe && <Callout tone="amber">Another store is already called “{dupe.name}”. Partners can sign in with the store name, so use a distinct name (e.g. add the block or campus).</Callout>}
+      {dupe && <Callout tone="amber">Another store is already called “{dupe.name}”. Store names must be unique (partners can sign in with the name), so the server will refuse this one. Add the block or campus.</Callout>}
 
       <fieldset>
         <legend className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">Store type <span className="text-red-400" aria-hidden>*</span></legend>
@@ -488,7 +512,7 @@ function BasicsStep({ s, set, errors, stores, editingId }: StepProps & { stores:
       </fieldset>
 
       {isLocalVendorType(s.vendorType) && (
-        <Callout tone="amber" title="Display-only listing">Zenvy shows the stall and its prices. Customers order directly by WhatsApp or call and the stall delivers itself. Zenvy takes no order, payment or rider.</Callout>
+        <Callout tone="amber" title="Stall orders in Zenvy">Customers order the stall&apos;s items in Zenvy and pay the stall cash on delivery. The stall gets the order (customer name, phone and room) in the Zenvy Vendor app and delivers it itself. No Zenvy rider, no delivery PIN, no coupons.</Callout>
       )}
       {isBookingOnlyStore(s.vendorType) && (
         <Callout tone="sky" title="Booking-only service">Customers book this service from the app; it is never added to the basket.</Callout>
@@ -592,7 +616,7 @@ function LocationStep({ s, set, errors, stores }: StepProps & { stores: Store[] 
         required={isLocalVendorType(s.vendorType)}
         optional={!isLocalVendorType(s.vendorType)}
         error={errors.whatsapp}
-        help={isLocalVendorType(s.vendorType) ? 'Customers tap WhatsApp or Call on this number to order.' : 'Zenvy support and riders use it to reach the store. Not shown to customers for regular stores.'}
+        help={isLocalVendorType(s.vendorType) ? 'Customers can WhatsApp or call the stall about their order. The vendor can also sign in to Zenvy Vendor with this number.' : 'Zenvy support and riders use it to reach the store. Not shown to customers for regular stores.'}
         aside={wa.length === 10 && isValidIndianMobile(wa) ? <a className="text-[11px] font-semibold text-emerald-300 hover:underline" href={`https://wa.me/91${wa}`} target="_blank" rel="noreferrer">Test on WhatsApp ↗</a> : null}
       >
         {({ id, msgId, invalid }) => (
@@ -614,19 +638,22 @@ function BrandingStep({ s, set, errors }: StepProps) {
         <ImagePicker value={s.imageUrl} onChange={imageUrl => set({ imageUrl })} preset="cover" label="Cover photo" hint="Food or storefront, landscape, bright. JPEG / PNG / WEBP." />
         <p className="mt-2 text-xs text-gray-500">Used on the Home card, the store page header and Home banners. Avoid text-heavy menus or logos only.</p>
       </div>
+      <div className="grid gap-5 md:grid-cols-[180px_1fr]">
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">Logo <span className="normal-case tracking-normal text-gray-600">optional</span></p>
+          <ImagePicker value={s.logoUrl} onChange={logoUrl => set({ logoUrl })} preset="logo" label="Logo" hint="Square, transparent PNG works best." aspect="aspect-square" />
+        </div>
+        <p className="self-center text-xs leading-relaxed text-gray-500">Shown next to the store name in listings and on the store page. It does not need a brand kit.</p>
+      </div>
       <section className="space-y-4 rounded-xl border border-white/10 p-4">
         <Toggle
           checked={s.brandOn}
           onChange={brandOn => set({ brandOn })}
-          label="Use a brand kit (logo + colours)"
-          description="For chains and well-known brands. The store page in the app switches to the brand's colours and shows the logo. Leave off for a standard Zenvy-styled page."
+          label="Use brand colours"
+          description="For chains and well-known brands. The store page in the app switches to the brand's colours. Leave off for a standard Zenvy-styled page."
         />
         {s.brandOn && (
-          <div className="grid gap-5 md:grid-cols-[180px_1fr]">
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">Logo</p>
-              <ImagePicker value={s.logoUrl} onChange={logoUrl => set({ logoUrl })} preset="logo" label="Logo" hint="Square, transparent PNG works best." aspect="aspect-square" />
-            </div>
+          <div>
             <div className="space-y-4">
               {([['primaryColor', 'Primary'], ['secondaryColor', 'Secondary'], ['accentColor', 'Accent (buttons)']] as const).map(([key, label]) => (
                 <Field key={key} label={label} error={key === 'primaryColor' ? errors.primaryColor : undefined}>
@@ -678,6 +705,20 @@ function HoursStep({ s, set, errors }: StepProps) {
           )}
         </Field>
       )}
+      <section className="space-y-4 rounded-xl border border-white/10 p-4" aria-labelledby="bill-rules-title">
+        <div>
+          <h4 id="bill-rules-title" className="text-sm font-bold">Bill rules <span className="font-normal text-gray-500">(optional)</span></h4>
+          <p className="text-xs text-gray-500">Added to the bill the server charges. Leave empty for none.</p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Packaging fee (₹ per order)" optional error={errors.packagingFee} help="₹0–500. Shown as its own line on the bill.">
+            {({ id, msgId, invalid }) => <input id={id} aria-describedby={msgId} aria-invalid={invalid} inputMode="decimal" className={cx(INPUT, 'max-w-[160px]')} value={s.packagingFee} onChange={e => set({ packagingFee: e.target.value.replace(/[^\d.]/g, '') })} placeholder="0" />}
+          </Field>
+          <Field label="Minimum order (₹)" optional error={errors.minOrderValue} help="₹0–5,000 item subtotal. Smaller baskets are refused with a clear message.">
+            {({ id, msgId, invalid }) => <input id={id} aria-describedby={msgId} aria-invalid={invalid} inputMode="decimal" className={cx(INPUT, 'max-w-[160px]')} value={s.minOrderValue} onChange={e => set({ minOrderValue: e.target.value.replace(/[^\d.]/g, '') })} placeholder="0" />}
+          </Field>
+        </div>
+      </section>
     </div>
   );
 }
@@ -686,37 +727,53 @@ function LoginStep({ s, set, errors, mode, initial }: StepProps & { mode: 'creat
   const [show, setShow] = useState(true);
   const strength = passwordStrength(s.password);
   const id = initial ? storeId(initial) : null;
+  const local = isLocalVendorType(s.vendorType);
+  const app = local ? 'Zenvy Vendor' : 'Zenvy Restaurant';
+  const effectivePhone = s.loginPhone.trim() ? tenDigits(s.loginPhone) : local ? tenDigits(s.whatsapp) : '';
+  const phoneOk = !!effectivePhone && isValidIndianMobile(effectivePhone);
   return (
     <div className="space-y-6">
-      <section className="rounded-xl border border-white/10 p-4">
-        <Toggle
-          checked={s.managedByZenvy}
-          onChange={managedByZenvy => set({ managedByZenvy })}
-          label="Managed by Zenvy (no partner app)"
-          description="For shops without a smartphone. Orders skip the kitchen-accept step and the Zenvy team / rider handles them. You can still set a password later."
-        />
-      </section>
+      {!local && (
+        <section className="rounded-xl border border-white/10 p-4">
+          <Toggle
+            checked={s.managedByZenvy}
+            onChange={managedByZenvy => set({ managedByZenvy })}
+            label="Managed by Zenvy (no partner app)"
+            description="For shops without a smartphone. Orders skip the kitchen-accept step and the Zenvy team / rider handles them. You can still set a password later."
+          />
+        </section>
+      )}
+      {local && (
+        <Callout tone="sky" title="The stall needs this to take orders">
+          Stall orders reach only the {app} app (customer name, phone, room and items). Without a login the stall never sees them and orders time out after 15 minutes.
+        </Callout>
+      )}
 
-      {!s.managedByZenvy || s.password ? (
-        <section className="space-y-4">
-          <div className="grid gap-4 rounded-xl border border-white/10 bg-white/[0.02] p-4 sm:grid-cols-2">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Partner signs in with</p>
-              <p className="mt-1 text-sm text-white">{id ? <>Store ID <code className="rounded bg-white/5 px-1 text-xs text-emerald-300">{id}</code></> : 'The Store ID (shown after you create the store)'}</p>
-              <p className="mt-0.5 text-xs text-gray-500">or the exact store name: “{s.name.trim() || '…'}”</p>
-            </div>
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Partner contact</p>
-              <p className="mt-1 text-sm text-white">{s.whatsapp ? `+91 ${formatWhatsapp(s.whatsapp)}` : 'Not set (Location step)'}</p>
-              <p className="mt-0.5 text-xs text-gray-500">Phone-number login is not available yet; share the ID + password with this number.</p>
-            </div>
-          </div>
+      {local || !s.managedByZenvy || s.password ? (
+        <section className="space-y-5">
+          <Field
+            label="Login phone"
+            optional
+            error={errors.loginPhone}
+            help={local
+              ? `The vendor signs in to ${app} with this number. Leave empty to use the WhatsApp number from the Location step.`
+              : `The partner signs in to ${app} with this number (or the Store ID). Each number can sign in to one store only.`}
+          >
+            {({ id: fid, msgId, invalid }) => (
+              <div className="flex max-w-sm">
+                <span className="flex items-center rounded-l-lg border border-r-0 border-white/10 bg-white/5 px-3 text-sm text-gray-400">+91</span>
+                <input id={fid} aria-describedby={msgId} aria-invalid={invalid} inputMode="tel" autoComplete="off" className={cx(INPUT, 'rounded-l-none')} value={s.loginPhone} onChange={e => set({ loginPhone: e.target.value.replace(/[^\d+\s-]/g, '') })} placeholder={local && s.whatsapp ? formatWhatsapp(s.whatsapp) : '98765 43210'} />
+              </div>
+            )}
+          </Field>
           <Field
             label={mode === 'edit' ? 'Reset password' : 'Password'}
-            required={mode === 'create' && !s.managedByZenvy}
+            required={mode === 'create' && (local || !s.managedByZenvy)}
             optional={mode === 'edit'}
             error={errors.password}
-            help={mode === 'edit' ? 'Leave empty to keep the current password. A new one works immediately; the old one stops working. Apps already signed in stay signed in.' : 'Generate a strong one. It is shown once after saving so you can share it; Zenvy only stores a hash.'}
+            help={mode === 'edit'
+              ? `Leave empty to keep the current password${initial?.hasPassword === false ? ' (none is set yet)' : ''}. A new one works immediately, the old one stops working, and phones already signed in are signed out.`
+              : 'Generate a strong one. It is shown once after saving so you can share it; Zenvy only stores a hash.'}
             aside={s.password ? <span className={cx('text-[11px] font-semibold', strength.score >= 3 ? 'text-emerald-300' : strength.score === 2 ? 'text-amber-300' : 'text-red-300')}>{strength.label}</span> : null}
           >
             {({ id: fid, msgId, invalid }) => (
@@ -728,6 +785,20 @@ function LoginStep({ s, set, errors, mode, initial }: StepProps & { mode: 'creat
               </div>
             )}
           </Field>
+          <div className="grid gap-4 rounded-xl border border-white/10 bg-white/[0.02] p-4 sm:grid-cols-2">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Signs in to {app} with</p>
+              <p className="mt-1 text-sm text-white">{phoneOk ? `Phone +91 ${formatWhatsapp(effectivePhone)}` : 'No login phone yet'}</p>
+              <p className="mt-0.5 text-xs text-gray-500">
+                {id ? <>or Store ID <code className="rounded bg-white/5 px-1 text-emerald-300">{id}</code></> : 'or the Store ID (shown after saving)'}{local ? '' : ` or the exact name “${s.name.trim() || '…'}”`}
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Password</p>
+              <p className="mt-1 text-sm text-white">{s.password ? 'Will be set when you save (shown once)' : initial?.hasPassword ? 'Set (unchanged)' : 'Not set'}</p>
+              {initial && <p className="mt-0.5 text-xs text-gray-500">{initial.pushDevices ? `App installed on ${initial.pushDevices} phone${initial.pushDevices === 1 ? '' : 's'}` : 'App not signed in on any phone yet'}</p>}
+            </div>
+          </div>
         </section>
       ) : (
         <Callout tone="sky">No partner login will be created. Switch the toggle off (or edit the store later) to give the partner app access.</Callout>
@@ -787,15 +858,25 @@ function ReviewStep({ s, issues, goto, mode, initial, preview }: {
     { ok: s.tags.length > 0, text: 'Cuisines / categories tagged', step: 'basics', optional: true },
     { ok: !!s.whatsapp, text: 'Contact number', step: 'location', optional: !local },
     { ok: !!s.lat && !!s.lon, text: 'Map pin for riders', step: 'location', optional: true },
-    ...(local ? [] : [{ ok: s.managedByZenvy || !!s.password || mode === 'edit', text: 'Partner can sign in (or managed by Zenvy)', step: 'login' as StepKey }]),
+    local
+      ? { ok: !!s.password || (mode === 'edit' && !!initial?.hasPassword), text: 'Stall can sign in to Zenvy Vendor', step: 'login' as StepKey }
+      : { ok: s.managedByZenvy || !!s.password || (mode === 'edit' && !!initial?.hasPassword), text: 'Partner can sign in (or managed by Zenvy)', step: 'login' as StepKey },
+  ];
+  const loginPhone = s.loginPhone.trim() ? `+91 ${formatWhatsapp(s.loginPhone)}` : local && s.whatsapp ? `WhatsApp number (+91 ${formatWhatsapp(s.whatsapp)})` : 'Not set';
+  const password = s.password ? 'Will be set (shown once after saving)' : mode === 'edit' ? (initial?.hasPassword ? 'Unchanged' : 'Not set') : 'Not set';
+  const fees: [string, ReactNode][] = [
+    ['Packaging fee', Number(s.packagingFee) > 0 ? `₹${s.packagingFee} per order` : 'None'],
+    ['Minimum order', Number(s.minOrderValue) > 0 ? `₹${s.minOrderValue}` : 'None'],
   ];
   const rows: { step: StepKey; items: [string, ReactNode][] }[] = [
     { step: 'basics', items: [['Name', s.name || '—'], ['Type', vendorLabel(s.vendorType)], ['Campus', s.campus || '—'], ['Tags', s.tags.join(', ') || '—']] },
     { step: 'location', items: [['Address', s.location || '—'], ['Zone', s.zone || 'Default'], ['Map pin', s.lat && s.lon ? `${s.lat}, ${s.lon}` : 'Not set'], ['WhatsApp', s.whatsapp ? `+91 ${formatWhatsapp(s.whatsapp)}` : '—']] },
-    { step: 'branding', items: [['Cover photo', s.imageUrl ? 'Added' : 'Missing'], ['Brand kit', s.brandOn ? `On${s.logoUrl ? ' with logo' : ''}` : 'Off']] },
-    { step: 'hours', items: [['Hours', summarizeWeekly(s.weekly)], ['Accepting orders', s.isOpenNow ? 'Yes' : 'Paused'], ...(local ? [] : [['Delivery time', s.deliveryTime ? `${s.deliveryTime} min` : 'Hidden'] as [string, ReactNode]])] },
+    { step: 'branding', items: [['Cover photo', s.imageUrl ? 'Added' : 'Missing'], ['Logo', s.logoUrl ? 'Added' : 'None'], ['Brand colours', s.brandOn ? 'On' : 'Off']] },
+    { step: 'hours', items: [['Hours', summarizeWeekly(s.weekly)], ['Accepting orders', s.isOpenNow ? 'Yes' : 'Paused'], ...(local ? [] : [['Delivery time', s.deliveryTime ? `${s.deliveryTime} min` : 'Hidden'] as [string, ReactNode]]), ...fees] },
+    { step: 'login', items: local
+      ? [['App', 'Zenvy Vendor'], ['Login phone', loginPhone], ['Password', password], ['Payment', 'Cash on delivery to the stall']]
+      : [['Mode', s.managedByZenvy ? 'Managed by Zenvy' : 'Zenvy Restaurant app'], ['Login phone', loginPhone], ['Password', password]] },
     ...(local ? [] : [
-      { step: 'login' as StepKey, items: [['Mode', s.managedByZenvy ? 'Managed by Zenvy' : 'Partner app'], ['Password', s.password ? 'Will be set (shown once after saving)' : mode === 'edit' ? 'Unchanged' : 'Not set']] as [string, ReactNode][] },
       { step: 'commission' as StepKey, items: [['Commission', s.commissionType === 'flat' ? `₹${s.commissionRate} per order` : `${s.commissionRate}% of order`]] as [string, ReactNode][] },
     ]),
   ];
@@ -843,7 +924,7 @@ function ReviewStep({ s, issues, goto, mode, initial, preview }: {
           </section>
         ))}
         {mode === 'create' ? (
-          <Callout tone="sky"><b>Save as draft</b> keeps the store hidden while you add the menu. <b>Publish now</b> makes it visible to customers immediately{local ? ' as a display-only stall' : ' and it starts taking orders during its hours'}.</Callout>
+          <Callout tone="sky"><b>Save as draft</b> keeps the store hidden while you add the menu. <b>Publish now</b> makes it visible to customers immediately and it starts taking orders during its hours{local ? ' (the stall accepts and delivers them in Zenvy Vendor)' : ''}.</Callout>
         ) : (
           <p className="text-xs text-gray-500">Saving keeps the store {initial?.isActive ? 'live' : 'hidden'}; switch it on or off from the store list or the store page.</p>
         )}
@@ -856,7 +937,10 @@ function ReviewStep({ s, issues, goto, mode, initial, preview }: {
 function SuccessPanel({ result, mode, onOpenStore, onClose }: { result: WizardResult; mode: 'create' | 'edit'; onOpenStore: (id: string, tab?: string) => void; onClose: () => void }) {
   const id = storeId(result.store);
   const [ack, setAck] = useState(!result.password);
-  const loginText = `Zenvy partner app login\nStore: ${result.store.name}\nStore ID: ${id}${result.password ? `\nPassword: ${result.password}` : ''}\nOpen the Zenvy Restaurant app and sign in with the Store ID and password.`;
+  const local = isLocalVendorType(result.store.vendorType);
+  const app = local ? 'Zenvy Vendor' : 'Zenvy Restaurant';
+  const phone = tenDigits(result.store.partnerPhone || result.store.phone || (local ? result.store.whatsappNumber : '') || '');
+  const loginText = `${app} app login\nStore: ${result.store.name}${phone ? `\nPhone: ${phone}` : ''}\nStore ID: ${id}${result.password ? `\nPassword: ${result.password}` : ''}\nOpen the ${app} app and sign in with ${phone ? 'your phone number' : 'the Store ID'} and the password.`;
   return (
     <div className="flex-1 overflow-y-auto px-5 py-8 sm:px-10">
       <div className="mx-auto max-w-2xl space-y-6">
@@ -869,13 +953,14 @@ function SuccessPanel({ result, mode, onOpenStore, onClose }: { result: WizardRe
               : 'The new password is active now.'}
           </p>
         </div>
-        {(result.password || mode === 'create') && !isLocalVendorType(result.store.vendorType) && (
+        {(result.password || mode === 'create') && (
           <section className="space-y-3 rounded-xl border border-amber-400/25 bg-amber-400/5 p-4" aria-labelledby="creds-title">
             <div className="flex items-center justify-between gap-2">
-              <h4 id="creds-title" className="font-bold text-amber-100">Partner login details</h4>
+              <h4 id="creds-title" className="font-bold text-amber-100">{app} login details</h4>
               <Chip tone="amber">{result.password ? 'Shown once' : 'No password set'}</Chip>
             </div>
             <dl className="space-y-2 text-sm">
+              {phone && <div className="flex flex-wrap items-center gap-2"><dt className="w-24 text-gray-400">Phone</dt><dd className="flex-1"><code className="select-all text-emerald-300">{phone}</code></dd><CopyButton text={phone} /></div>}
               <div className="flex flex-wrap items-center gap-2"><dt className="w-24 text-gray-400">Store ID</dt><dd className="flex-1"><code className="select-all break-all text-emerald-300">{id}</code></dd><CopyButton text={id} /></div>
               {result.password && <div className="flex flex-wrap items-center gap-2"><dt className="w-24 text-gray-400">Password</dt><dd className="flex-1"><code className="select-all font-mono text-white">{result.password}</code></dd><CopyButton text={result.password} /></div>}
             </dl>

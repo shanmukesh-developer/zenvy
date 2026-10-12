@@ -1,34 +1,33 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import {
-  View,
-  StyleSheet,
-  StatusBar,
-  Modal,
-  Text,
-  TouchableOpacity,
-  TextInput,
-  Alert,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-} from 'react-native';
+import { View, StyleSheet, StatusBar, Modal, Alert, Platform, BackHandler } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { X, Link2, KeyRound, Users, WifiOff, LogIn } from 'lucide-react-native';
+import { LogIn, Car, Bike } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import { CampusColors, CampusLayout } from '../../constants/campusTheme';
-import { CampusProfileData, CampusUserData, CampusItem, CampusTab } from '../../types/campus';
-import { fetchCampuses, fetchCampusProfile, isCampusAuthError, joinCampusGroup } from './campusApi';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { CampusColors } from '../../constants/campusTheme';
+import { CampusProfileData, CampusUserData, CampusItem, CampusTab as CampusTabKey } from '../../types/campus';
+import {
+  fetchCampuses,
+  fetchCampusProfile,
+  fetchChats,
+  isCampusAuthError,
+  joinCampusGroup,
+  CampusLastVerification,
+  CampusGroup,
+} from './campusApi';
 import { useAuth } from '../../context/AuthContext';
+import { CampusLink } from './campusLinks';
+import { useFriendRequests } from './useFriendRequests';
 import { CampusHeader } from './components/CampusHeader';
 import { CampusBottomNav } from './components/CampusBottomNav';
 import { VerificationModal } from './components/VerificationModal';
 import { ChatsTab } from './tabs/ChatsTab';
-import { PulseTab } from './tabs/PulseTab';
-import { StudyTab } from './tabs/StudyTab';
-import { YouTab } from './tabs/YouTab';
+import { FeedTab, FeedSegment } from './tabs/FeedTab';
+import { CampusTab, CampusSegment } from './tabs/CampusTab';
+import { MeTab } from './tabs/MeTab';
 import { ChatDetailScreen } from './components/ChatDetailScreen';
-import { GroupsScreen } from './components/GroupsScreen';
+import { GroupsScreen, CreateGroupSheet } from './components/GroupsScreen';
 import { ClassworkScreen } from './components/ClassworkScreen';
 import { LostFoundModal } from './components/LostFoundModal';
 import { RidePoolModal } from './components/RidePoolModal';
@@ -37,84 +36,106 @@ import { NightQuestionModal } from './components/NightQuestionModal';
 import { BranchWarsModal } from './components/BranchWarsModal';
 import { StudySyncModal } from './components/StudySyncModal';
 import { AssignmentPortalModal } from './components/AssignmentPortalModal';
-import { CampusSearchModal } from './components/CampusSearchModal';
 import { ProximityRoomModal } from './components/ProximityRoomModal';
+import { NewChatSheet } from './components/NewChatSheet';
+import { FriendsScreen, AddFriendSheet } from './components/FriendsScreen';
 import { CampusCallModal, IncomingCampusCallOverlay, CampusCallSession, IncomingCampusCall } from './components/CampusCallModal';
 import { QrScannerModal } from './components/QrScannerModal';
 import { connectCampusSocket, disconnectCampusSocket, rejectCampusCall } from './campusSocketClient';
+import { EmptyState, ErrorState, SkeletonRows, Sheet, ListRow, S } from './ui';
 
+// The campus socket is shared by every mounted shell (a notification can open a second one on top).
+// It is closed only when the last shell unmounts, so a later logout/login never reuses the old identity.
+let mountedShells = 0;
 let pendingSocketTeardown: ReturnType<typeof setTimeout> | null = null;
+
+const BANNER_KEY = 'campus_verify_banner_hidden_until';
+const BANNER_SNOOZE_MS = 7 * 24 * 60 * 60 * 1000;
+
+const TAB_TITLES: Record<CampusTabKey, string> = {
+  chats: 'Chats',
+  feed: 'Campus feed',
+  campus: 'Around campus',
+  me: 'Me',
+};
+
+/** Overlays that can be open on top of the tabs. Only one at a time, so back / Android back is predictable. */
+type Overlay =
+  | null
+  | 'verify'
+  | 'newChat'
+  | 'createGroup'
+  | 'join'
+  | 'addFriend'
+  | 'friends'
+  | 'groups'
+  | 'classwork'
+  | 'lostFound'
+  | 'rides'
+  | 'ridePool'
+  | 'whispers'
+  | 'nightQuestion'
+  | 'branchWars'
+  | 'studySync';
 
 interface CampusShellProps {
   onBack?: () => void;
+  /** Deep link from a notification or another screen (tab, chat, friend requests, verification). */
+  link?: CampusLink | null;
 }
 
-export const CampusShell: React.FC<CampusShellProps> = ({ onBack }) => {
+export const CampusShell: React.FC<CampusShellProps> = ({ onBack, link }) => {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<CampusTab>('chats');
+  const [activeTab, setActiveTab] = useState<CampusTabKey>('chats');
+  const [feedSegment, setFeedSegment] = useState<FeedSegment>('posts');
+  const [campusSegment, setCampusSegment] = useState<CampusSegment>('around');
   const [profile, setProfile] = useState<CampusProfileData | null>(null);
   const [user, setUser] = useState<CampusUserData | null>(null);
+  const [lastVerification, setLastVerification] = useState<CampusLastVerification | null>(null);
   const [campuses, setCampuses] = useState<CampusItem[]>([]);
   const [loading, setLoading] = useState(true);
   // null = ok; 'auth' = must sign in; otherwise a friendly network/server message.
   const [loadError, setLoadError] = useState<string | null>(null);
   const mountedRef = useRef(true);
 
-  // Modals
-  const [verifyModalVisible, setVerifyModalVisible] = useState(false);
-  const [joinModalVisible, setJoinModalVisible] = useState(false);
-  const [joinCode, setJoinCode] = useState('');
-  const [joinLoading, setJoinLoading] = useState(false);
-
-  // Active chat view state (Phase 2 entry point)
+  const [overlay, setOverlay] = useState<Overlay>(null);
   const [selectedChat, setSelectedChat] = useState<{ id: string; name: string } | null>(null);
-
-  // Phase 3 screens
-  const [groupsOpen, setGroupsOpen] = useState(false);
-  const [classworkOpen, setClassworkOpen] = useState(false);
-
-  // Phase 4 & Interactive Community Modals
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [lostFoundOpen, setLostFoundOpen] = useState(false);
-  const [ridePoolOpen, setRidePoolOpen] = useState(false);
-  const [whispersOpen, setWhispersOpen] = useState(false);
-  const [nightQuestionOpen, setNightQuestionOpen] = useState(false);
-  const [branchWarsOpen, setBranchWarsOpen] = useState(false);
-  const [studySyncOpen, setStudySyncOpen] = useState(false);
   const [selectedAssignmentId, setSelectedAssignmentId] = useState<string | null>(null);
-  // Bumped when the turn-in portal closes so StudyTab shows the new submission status.
-  const [studyRefreshKey, setStudyRefreshKey] = useState(0);
   const [proximityRoomSlug, setProximityRoomSlug] = useState<string | null>(null);
   const [activeCall, setActiveCall] = useState<CampusCallSession | null>(null);
   const [incomingCall, setIncomingCall] = useState<IncomingCampusCall | null>(null);
-  const [qrScannerOpen, setQrScannerOpen] = useState(false);
   const activeCallRef = useRef<CampusCallSession | null>(null);
   activeCallRef.current = activeCall;
+
+  const [studyRefreshKey, setStudyRefreshKey] = useState(0);
+  const [groupsRefreshKey, setGroupsRefreshKey] = useState(0);
+  const [bannerHidden, setBannerHidden] = useState(true);
 
   // Live unread total reported by ChatsTab (drives the bottom-nav badge)
   const [totalUnread, setTotalUnread] = useState(0);
   // Bumped to make ChatsTab silently reload (after a join, or when a chat closes).
   const [chatsRefreshKey, setChatsRefreshKey] = useState(0);
-  const activeTabRef = useRef<CampusTab>(activeTab);
+  const activeTabRef = useRef<CampusTabKey>(activeTab);
   activeTabRef.current = activeTab;
   const selectedChatIdRef = useRef<string | null>(null);
   selectedChatIdRef.current = selectedChat?.id ?? null;
 
   useEffect(() => {
     mountedRef.current = true;
+    mountedShells += 1;
     if (pendingSocketTeardown) {
       clearTimeout(pendingSocketTeardown);
       pendingSocketTeardown = null;
     }
     return () => {
       mountedRef.current = false;
-      // Every campus socket consumer lives inside this shell. Drop the connection when the
-      // user leaves Campus so a later logout/login never reuses the previous identity.
+      mountedShells = Math.max(0, mountedShells - 1);
+      if (mountedShells > 0) return;
       // Deferred so child cleanups (leave chat, end call) run against the old socket first;
-      // cancelled if the shell remounts right away (StrictMode / fast refresh).
+      // cancelled if a shell remounts right away (StrictMode / fast refresh).
       pendingSocketTeardown = setTimeout(() => {
         pendingSocketTeardown = null;
-        disconnectCampusSocket();
+        if (mountedShells === 0) disconnectCampusSocket();
       }, 0);
     };
   }, []);
@@ -126,6 +147,7 @@ export const CampusShell: React.FC<CampusShellProps> = ({ onBack }) => {
       setProfile(null);
       setUser(null);
       setSelectedChat(null);
+      setOverlay(null);
       setLoadError('auth');
       setLoading(false);
     }
@@ -143,6 +165,7 @@ export const CampusShell: React.FC<CampusShellProps> = ({ onBack }) => {
     if (profileRes.status === 'fulfilled') {
       setProfile(profileRes.value.profile);
       setUser(profileRes.value.user);
+      setLastVerification(profileRes.value.lastVerification || null);
       setLoadError(null);
     } else if (!opts?.silent) {
       const err: any = profileRes.reason;
@@ -164,11 +187,69 @@ export const CampusShell: React.FC<CampusShellProps> = ({ onBack }) => {
     }, [loadData])
   );
 
-  // Only open the campus socket once we know the student is signed in (profile loaded);
-  // a signed-out visitor would otherwise keep a rejected socket retrying in the background.
+  // Only open sockets / friend inbox once we know the student is signed in (profile loaded).
   const hasProfile = !!profile;
+  const requests = useFriendRequests(hasProfile);
 
-  // Keep the Chats badge live while the user is on Pulse / Study / You (ChatsTab is unmounted then).
+  // Verification banner: one dismissible prompt for signed-in, unverified students (snoozed for a week).
+  useEffect(() => {
+    if (!hasProfile) return;
+    AsyncStorage.getItem(BANNER_KEY)
+      .then((v) => {
+        if (mountedRef.current) setBannerHidden(!!v && Number(v) > Date.now());
+      })
+      .catch(() => {
+        if (mountedRef.current) setBannerHidden(false);
+      });
+  }, [hasProfile]);
+
+  const dismissBanner = () => {
+    setBannerHidden(true);
+    AsyncStorage.setItem(BANNER_KEY, String(Date.now() + BANNER_SNOOZE_MS)).catch(() => {});
+  };
+
+  // iOS can't present a modal while another one is still sliding away: wait for the dismissal.
+  const afterModalDismiss = useCallback((fn: () => void) => {
+    setTimeout(() => {
+      if (mountedRef.current) fn();
+    }, Platform.OS === 'ios' ? 450 : 0);
+  }, []);
+
+  const overlayRef = useRef<Overlay>(null);
+  overlayRef.current = overlay;
+
+  /** Close whatever is open, then open the next overlay. */
+  const switchTo = useCallback(
+    (next: Overlay) => {
+      const cur = overlayRef.current;
+      if (cur && cur !== next) {
+        setOverlay(null);
+        afterModalDismiss(() => setOverlay(next));
+      } else {
+        setOverlay(next);
+      }
+    },
+    [afterModalDismiss]
+  );
+
+  const openChat = useCallback(
+    (id: string, name: string) => {
+      const hadOverlay = overlayRef.current !== null;
+      setOverlay(null);
+      setChatsRefreshKey((k) => k + 1);
+      if (hadOverlay) afterModalDismiss(() => setSelectedChat({ id, name }));
+      else setSelectedChat({ id, name });
+    },
+    [afterModalDismiss]
+  );
+
+  const closeChat = useCallback(() => {
+    setSelectedChat(null);
+    // Pick up our own last message + server-side read receipts in the list.
+    setChatsRefreshKey((k) => k + 1);
+  }, []);
+
+  // Keep the Chats badge live while the user is on another tab (ChatsTab is unmounted then).
   useEffect(() => {
     if (!hasProfile) return;
     const socket = connectCampusSocket();
@@ -178,47 +259,39 @@ export const CampusShell: React.FC<CampusShellProps> = ({ onBack }) => {
       if (selectedChatIdRef.current === data.chatId) return; // being read right now
       setTotalUnread((n) => n + 1);
     };
+    // Admin approved / rejected the ID card, or the email code succeeded on another device.
+    const onProfileUpdated = (data: any) => {
+      if (!data || !data.verificationStatus) return;
+      setProfile((p) => (p ? { ...p, verificationStatus: data.verificationStatus } : p));
+      loadData({ silent: true });
+      // A late rejection of an old request for an already-verified student changes nothing: stay quiet.
+      if (data.method === 'id_card' && !(data.decision === 'reject' && data.verificationStatus === 'verified')) {
+        Haptics.notificationAsync(
+          data.verificationStatus === 'verified' ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Warning
+        ).catch(() => {});
+        if (data.verificationStatus === 'verified') {
+          Alert.alert('You are verified', 'Your college ID was approved. +150 Buddy Points added.');
+        } else if (data.verificationStatus === 'rejected' || data.reviewNotes) {
+          Alert.alert(
+            'ID card not approved',
+            data.reviewNotes ? `Reason: ${data.reviewNotes}` : 'Please upload a clearer photo of the front of your ID card.',
+            [
+              { text: 'Later', style: 'cancel' },
+              { text: 'Try again', onPress: () => switchTo('verify') },
+            ]
+          );
+        }
+      }
+    };
     socket.on('chat:updated', onChatUpdated);
+    socket.on('profile:updated', onProfileUpdated);
     return () => {
       socket.off('chat:updated', onChatUpdated);
+      socket.off('profile:updated', onProfileUpdated);
     };
-  }, [hasProfile]);
+  }, [hasProfile, loadData, switchTo]);
 
-  // iOS can't present a modal while another one is still sliding away: wait for the dismissal.
-  const afterModalDismiss = useCallback((fn: () => void) => {
-    setTimeout(() => {
-      if (mountedRef.current) fn();
-    }, Platform.OS === 'ios' ? 450 : 0);
-  }, []);
-
-  const closeChat = useCallback(() => {
-    setSelectedChat(null);
-    // Pick up our own last message + server-side read receipts in the list.
-    setChatsRefreshKey((k) => k + 1);
-  }, []);
-
-  const onJoinedGroup = useCallback(
-    (group: { id?: string; name?: string; alreadyMember?: boolean }) => {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setJoinCode('');
-      setJoinModalVisible(false);
-      setChatsRefreshKey((k) => k + 1);
-      setActiveTab('chats');
-      const name = group.name || 'the group';
-      const title = group.alreadyMember ? 'Already a member' : 'You’re in! 🎉';
-      const body = group.alreadyMember
-        ? `You're already part of ${name}.`
-        : `Welcome to ${name}. Say hi to everyone!`;
-      Alert.alert(title, body, [
-        { text: 'Later', style: 'cancel' },
-        ...(group.id
-          ? [{ text: 'Open chat', onPress: () => setSelectedChat({ id: group.id as string, name }) }]
-          : []),
-      ]);
-    },
-    []
-  );
-
+  // Incoming campus calls.
   useEffect(() => {
     if (!hasProfile) return;
     const socket = connectCampusSocket();
@@ -228,7 +301,7 @@ export const CampusShell: React.FC<CampusShellProps> = ({ onBack }) => {
         rejectCampusCall(data.callId, 'busy');
         return;
       }
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       setIncomingCall(data);
     };
     const onEnded = (data: { callId: string }) => {
@@ -242,269 +315,364 @@ export const CampusShell: React.FC<CampusShellProps> = ({ onBack }) => {
     };
   }, [hasProfile]);
 
-  const handleJoinGroupByCode = async () => {
-    if (joinLoading) return;
-    const code = joinCode.replace(/\s+/g, '').toUpperCase();
-    if (code.length !== 6) {
-      Alert.alert('Check the code', 'Join codes are 6 characters, like K7X9QP.');
-      return;
+  // Deep links (notifications, Home cards): apply once the profile is loaded.
+  const linkKey = link ? JSON.stringify(link) : '';
+  const appliedLinkRef = useRef('');
+  useEffect(() => {
+    if (!link || !hasProfile || appliedLinkRef.current === linkKey) return;
+    appliedLinkRef.current = linkKey;
+    if (link.tab) setActiveTab(link.tab);
+    if (link.segment === 'posts' || link.segment === 'wall' || link.segment === 'pulse') setFeedSegment(link.segment);
+    if (link.segment === 'around' || link.segment === 'study') setCampusSegment(link.segment);
+    if (link.chatId) {
+      const chatId = link.chatId;
+      if (link.chatName) {
+        openChat(chatId, link.chatName);
+      } else {
+        // Notifications carry only the id: look up the chat's name so the header is right.
+        fetchChats()
+          .then((list) => list.find((c) => String(c.id) === String(chatId))?.name || 'Chat')
+          .catch(() => 'Chat')
+          .then((name) => {
+            if (mountedRef.current) openChat(chatId, name);
+          });
+      }
+    } else if (link.screen === 'requests' || link.screen === 'friends') {
+      setActiveTab('me');
+      switchTo('friends');
+    } else if (link.screen === 'verification') {
+      setActiveTab('me');
+      switchTo('verify');
+    } else if (link.screen === 'groups') {
+      switchTo('groups');
     }
-    setJoinLoading(true);
-    try {
-      const group = await joinCampusGroup(code);
-      if (!mountedRef.current) return;
-      onJoinedGroup(group);
-    } catch (e: any) {
-      Alert.alert("Couldn't join", e?.message || 'Please check the code and try again.');
-    } finally {
-      if (mountedRef.current) setJoinLoading(false);
-    }
-  };
+  }, [link, linkKey, hasProfile, openChat, switchTo]);
 
-  // Full-screen states when the campus profile can't be loaded: never show invented defaults.
+  // Android back: close the open sheet first (Modals handle that), then go back to Chats, then leave.
+  // Only while this screen is focused, so back on a screen pushed on top (Co-ride, Sign in) is not hijacked.
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (overlayRef.current || selectedChatIdRef.current) return false; // the open Modal handles it
+        if (activeTabRef.current !== 'chats') {
+          setActiveTab('chats');
+          return true;
+        }
+        return false;
+      });
+      return () => sub.remove();
+    }, [])
+  );
+
+  const onJoinedGroup = useCallback(
+    (group: { id?: string; name?: string; alreadyMember?: boolean }) => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      setGroupsRefreshKey((k) => k + 1);
+      setActiveTab('chats');
+      const name = group.name || 'the group';
+      if (group.id) {
+        openChat(group.id, name);
+        if (group.alreadyMember) {
+          afterModalDismiss(() => Alert.alert('Already a member', `You're already part of ${name}.`));
+        }
+      } else {
+        setOverlay(null);
+        setChatsRefreshKey((k) => k + 1);
+        afterModalDismiss(() => Alert.alert(group.alreadyMember ? 'Already a member' : "You're in!", `Welcome to ${name}.`));
+      }
+    },
+    [openChat, afterModalDismiss]
+  );
+
+  const onGroupCreated = useCallback(
+    (group: CampusGroup) => {
+      setGroupsRefreshKey((k) => k + 1);
+      setActiveTab('chats');
+      openChat(group.id, group.name);
+    },
+    [openChat]
+  );
+
+  // ── Signed out / unreachable ────────────────────────────────────────────────
   if (!loading && loadError && !profile) {
     const needsSignIn = loadError === 'auth';
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
         <StatusBar barStyle="dark-content" />
-        <CampusHeader
-          profile={null}
-          user={null}
-          onOpenVerify={() => {}}
-          onOpenJoinGroup={() => {}}
-          onSearchPress={() => {}}
-          onBack={onBack}
-        />
+        <CampusHeader profile={null} title="Campus" onBack={onBack} />
         <View style={styles.centerContainer}>
-          <View style={styles.stateIconWrap}>
-            {needsSignIn ? (
-              <LogIn size={28} color={CampusColors.accent} />
-            ) : (
-              <WifiOff size={28} color={CampusColors.accent} />
-            )}
-          </View>
-          <Text style={styles.stateTitle}>
-            {needsSignIn ? 'Sign in to use Campus' : "Couldn't reach Campus"}
-          </Text>
-          <Text style={styles.stateSubtitle}>
-            {needsSignIn
-              ? 'Sign in to your Zenvy account to see your classes, chats and campus feed.'
-              : loadError}
-          </Text>
-          <TouchableOpacity
-            style={styles.stateBtn}
-            activeOpacity={0.85}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              if (needsSignIn) router.push('/login');
-              else loadData();
-            }}
-          >
-            <Text style={styles.stateBtnText}>{needsSignIn ? 'Sign in' : 'Try again'}</Text>
-          </TouchableOpacity>
+          {needsSignIn ? (
+            <EmptyState
+              icon={<LogIn size={22} color={CampusColors.accent} />}
+              title="Sign in to use Campus"
+              subtitle="Chat with classmates, join your class and club groups, and see what's happening on campus."
+              actionLabel="Sign in"
+              onAction={() => router.push('/login')}
+            />
+          ) : (
+            <ErrorState message={loadError} onRetry={() => loadData()} />
+          )}
         </View>
       </SafeAreaView>
     );
   }
 
+  const isVerified = profile?.verificationStatus === 'verified';
+  const isRejected = profile?.verificationStatus === 'rejected';
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <StatusBar barStyle="dark-content" />
 
-      {/* Header */}
       <CampusHeader
         profile={profile}
-        user={user}
-        onOpenVerify={() => setVerifyModalVisible(true)}
-        onOpenJoinGroup={() => setJoinModalVisible(true)}
-        onSearchPress={() => setSearchOpen(true)}
+        title={TAB_TITLES[activeTab]}
         onBack={onBack}
+        onPlus={profile ? () => switchTo('newChat') : undefined}
+        onOpenVerify={() => switchTo('verify')}
+        // Me has its own verification card; elsewhere show one dismissible banner (rejections always show).
+        showVerifyBanner={!!profile && !isVerified && activeTab !== 'me' && (isRejected || !bannerHidden)}
+        onDismissVerifyBanner={dismissBanner}
       />
 
-      {/* Main Tab Content */}
       <View style={styles.tabContent}>
         {loading ? (
-          <View style={styles.centerContainer}>
-            <ActivityIndicator size="large" color={CampusColors.accent} />
+          <View style={{ padding: S.lg }}>
+            <SkeletonRows rows={6} />
           </View>
         ) : (
           <>
             {activeTab === 'chats' && (
               <ChatsTab
-                profile={profile}
-                user={user}
                 onSelectChat={(id, name) => setSelectedChat({ id, name })}
-                onOpenJoinGroup={() => setJoinModalVisible(true)}
-                onOpenGroups={() => setGroupsOpen(true)}
+                onOpenNewChat={() => switchTo('newChat')}
+                onOpenJoinGroup={() => switchTo('join')}
+                onOpenGroups={() => switchTo('groups')}
+                onOpenRequests={() => switchTo('friends')}
+                incomingRequests={requests.incoming.length}
                 onUnreadChange={setTotalUnread}
-                onOpenProximityRoom={(roomSlug) => setProximityRoomSlug(roomSlug)}
                 activeChatId={selectedChat?.id ?? null}
                 refreshKey={chatsRefreshKey}
               />
             )}
 
-            {activeTab === 'pulse' && (
-              <PulseTab
+            {activeTab === 'feed' && (
+              <FeedTab
                 profile={profile}
                 user={user}
-                onOpenWhispers={() => setWhispersOpen(true)}
-                onOpenNightQuestion={() => setNightQuestionOpen(true)}
-                onOpenBranchWars={() => setBranchWarsOpen(true)}
-                onOpenLostFound={() => setLostFoundOpen(true)}
-                onOpenRidePool={() => setRidePoolOpen(true)}
+                segment={feedSegment}
+                onChangeSegment={setFeedSegment}
+                onOpenWhispers={() => switchTo('whispers')}
+                onOpenNightQuestion={() => switchTo('nightQuestion')}
+                onOpenBranchWars={() => switchTo('branchWars')}
               />
             )}
 
-            {activeTab === 'study' && (
-              <StudyTab
+            {activeTab === 'campus' && (
+              <CampusTab
                 profile={profile}
                 user={user}
-                onOpenStudySync={() => setStudySyncOpen(true)}
+                segment={campusSegment}
+                onChangeSegment={setCampusSegment}
+                onOpenLostFound={() => switchTo('lostFound')}
+                onOpenRides={() => switchTo('rides')}
+                onOpenRoom={(slug) => setProximityRoomSlug(slug)}
+                onOpenStudySync={() => switchTo('studySync')}
                 onOpenAssignment={(id) => setSelectedAssignmentId(id)}
-                onOpenClasswork={() => setClassworkOpen(true)}
-                refreshKey={studyRefreshKey}
+                onOpenClasswork={() => switchTo('classwork')}
+                studyRefreshKey={studyRefreshKey}
               />
             )}
 
-            {activeTab === 'you' && (
-              <YouTab
+            {activeTab === 'me' && (
+              <MeTab
                 profile={profile}
                 user={user}
-                onOpenVerify={() => setVerifyModalVisible(true)}
+                campuses={campuses}
+                lastVerification={lastVerification}
+                incomingRequests={requests.incoming.length}
+                onOpenVerify={() => switchTo('verify')}
+                onOpenFriends={() => switchTo('friends')}
                 onProfileUpdated={(updated) => setProfile(updated)}
+                onUserUpdated={(patch) => setUser((u) => (u ? { ...u, ...patch } : u))}
+                onRefresh={async () => {
+                  await Promise.all([loadData({ silent: true }), requests.reload()]);
+                }}
               />
             )}
           </>
         )}
       </View>
 
-      {/* Bottom Navigation */}
       <CampusBottomNav
         activeTab={activeTab}
         onSelectTab={setActiveTab}
         unreadCount={totalUnread}
+        meBadge={requests.incoming.length}
       />
 
-      {/* Verification Modal */}
+      {/* ── Sheets & pages (one at a time) ─────────────────────────────────── */}
       <VerificationModal
-        visible={verifyModalVisible}
+        visible={overlay === 'verify'}
         onClose={() => {
-          setVerifyModalVisible(false);
+          setOverlay(null);
           // Pick up a 'pending review' / verified status without a manual reload.
           loadData({ silent: true });
         }}
         profile={profile}
         campuses={campuses}
-        onVerifiedSuccess={(updated) => {
-          setProfile(updated);
+        onVerifiedSuccess={(updated) => setProfile((p) => ({ ...(p || ({} as CampusProfileData)), ...updated }))}
+        onSubmitted={() => loadData({ silent: true })}
+      />
+
+      <NewChatSheet
+        visible={overlay === 'newChat'}
+        onClose={() => setOverlay(null)}
+        onOpenChat={openChat}
+        onCreateGroup={() => switchTo('createGroup')}
+        onJoinWithCode={() => switchTo('join')}
+        onAddFriendByCode={() => switchTo('addFriend')}
+        onOpenProfile={() => {
+          setOverlay(null);
+          setActiveTab('me');
+        }}
+        onOpenVerify={() => switchTo('verify')}
+        onFriendsChanged={() => requests.reload()}
+      />
+
+      <CreateGroupSheet
+        visible={overlay === 'createGroup'}
+        onClose={() => setOverlay(null)}
+        onCreated={(g) => {
+          onGroupCreated(g);
+          const code = g.joinCode;
+          if (code) {
+            afterModalDismiss(() =>
+              Alert.alert('Group created', `Invite people with code ${code}. You can find it any time in Groups.`)
+            );
+          }
         }}
       />
 
-      {/* Join Group Modal (Section 3.3) */}
-      <Modal visible={joinModalVisible} animationType="slide" transparent onRequestClose={() => setJoinModalVisible(false)}>
-        <KeyboardAvoidingView
-          style={styles.modalOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHeader}>
-              <View style={styles.modalHeaderTitle}>
-                <Users size={20} color={CampusColors.accent} />
-                <Text style={styles.modalTitleText}>Join a Group</Text>
-              </View>
-              <TouchableOpacity onPress={() => setJoinModalVisible(false)}>
-                <X size={20} color={CampusColors.muted} />
-              </TouchableOpacity>
-            </View>
+      <AddFriendSheet
+        visible={overlay === 'addFriend'}
+        onClose={() => setOverlay(null)}
+        myCode={user?.friendCode}
+        onDone={() => requests.reload()}
+      />
 
-            <Text style={styles.modalInstruction}>
-              Enter a 6-character Classroom or Club code provided by your teacher, CR, or club admin:
-            </Text>
+      <QrScannerModal
+        visible={overlay === 'join'}
+        onClose={() => setOverlay(null)}
+        onScanCode={async (raw) => {
+          const code = String(raw || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+          try {
+            const group = await joinCampusGroup(code);
+            if (!mountedRef.current) return;
+            onJoinedGroup(group);
+          } catch (e: any) {
+            Alert.alert("Couldn't join", e?.message || 'Please check the code and try again.');
+          }
+        }}
+      />
 
-            <View style={styles.joinInputWrap}>
-              <KeyRound size={18} color={CampusColors.muted} />
-              <TextInput
-                style={styles.joinInput}
-                placeholder="e.g. K7X9QP"
-                placeholderTextColor={CampusColors.muted}
-                value={joinCode}
-                onChangeText={(t) => setJoinCode(t.replace(/[^a-zA-Z0-9]/g, '').toUpperCase())}
-                autoCapitalize="characters"
-                autoCorrect={false}
-                autoFocus
-                maxLength={6}
-                returnKeyType="go"
-                onSubmitEditing={handleJoinGroupByCode}
-              />
-            </View>
+      <FriendsScreen
+        visible={overlay === 'friends'}
+        onClose={() => setOverlay(null)}
+        myCode={user?.friendCode}
+        myName={user?.name}
+        requests={requests}
+        onOpenChat={openChat}
+      />
 
-            <TouchableOpacity
-              style={[styles.joinBtn, joinLoading && { opacity: 0.6 }]}
-              onPress={handleJoinGroupByCode}
-              disabled={joinLoading}
-            >
-              {joinLoading ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.joinBtnText}>Join Group</Text>
-              )}
-            </TouchableOpacity>
-
-            <View style={styles.dividerRow}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>OR</Text>
-              <View style={styles.dividerLine} />
-            </View>
-
-            <TouchableOpacity
-              style={styles.scanQrBtn}
-              onPress={() => {
-                setJoinModalVisible(false);
-                afterModalDismiss(() => setQrScannerOpen(true));
-              }}
-            >
-              <Link2 size={18} color={CampusColors.ink} />
-              <Text style={styles.scanQrText}>Paste an invite link</Text>
-            </TouchableOpacity>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      {/* Phase 3: Groups screen */}
-      <Modal
-        visible={groupsOpen}
-        animationType="slide"
-        onRequestClose={() => {
-          setGroupsOpen(false);
+      <GroupsScreen
+        visible={overlay === 'groups'}
+        onClose={() => {
+          setOverlay(null);
           setChatsRefreshKey((k) => k + 1);
         }}
-      >
+        onOpenChat={openChat}
+        onCreateGroup={() => switchTo('createGroup')}
+        onJoinWithCode={() => switchTo('join')}
+        refreshKey={groupsRefreshKey}
+      />
+
+      <Modal visible={overlay === 'classwork'} animationType="slide" onRequestClose={() => setOverlay(null)}>
         <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-        <GroupsScreen
-          onBack={() => {
-            setGroupsOpen(false);
-            // Groups created or joined here should show up in Chats right away.
-            setChatsRefreshKey((k) => k + 1);
-          }}
-          onOpenChat={(id, name) => {
-            setGroupsOpen(false);
-            setChatsRefreshKey((k) => k + 1);
-            afterModalDismiss(() => setSelectedChat({ id, name }));
+          <ClassworkScreen currentUser={user} onBack={() => setOverlay(null)} />
+        </SafeAreaView>
+      </Modal>
+
+      <LostFoundModal
+        visible={overlay === 'lostFound'}
+        onClose={() => setOverlay(null)}
+        currentUser={user}
+        campusCode={profile?.campus?.code || null}
+      />
+
+      {/* Rides: one entry for campus cab/auto pools and the main app's bike co-ride. */}
+      <Sheet visible={overlay === 'rides'} onClose={() => setOverlay(null)} title="Rides" icon={<Car size={20} color={CampusColors.accent} />}>
+        <ListRow
+          left={<View style={styles.rowIcon}><Car size={18} color={CampusColors.accentDeep} /></View>}
+          title="Cab & auto pools"
+          subtitle="Share a cab or auto with students on your campus and split the fare"
+          onPress={() => switchTo('ridePool')}
+        />
+        <ListRow
+          last
+          left={<View style={styles.rowIcon}><Bike size={18} color={CampusColors.accentDeep} /></View>}
+          title="Bike co-ride"
+          subtitle="Ride pillion with a student going your way and split the fuel"
+          onPress={() => {
+            setOverlay(null);
+            afterModalDismiss(() => router.push({ pathname: '/(tabs)/others', params: { tab: 'coride' } } as any));
           }}
         />
-        </SafeAreaView>
-      </Modal>
+      </Sheet>
 
-      {/* Phase 3: Classwork screen */}
-      <Modal visible={classworkOpen} animationType="slide" onRequestClose={() => setClassworkOpen(false)}>
-        <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-          <ClassworkScreen currentUser={user} onBack={() => setClassworkOpen(false)} />
-        </SafeAreaView>
-      </Modal>
+      <RidePoolModal visible={overlay === 'ridePool'} onClose={() => setOverlay(null)} currentUser={user} />
 
-      {/* Active Chat Detail View Modal (Phase 2 core messaging) */}
+      <CampusWhispersModal
+        visible={overlay === 'whispers'}
+        onClose={() => setOverlay(null)}
+        isVerified={isVerified}
+        isPendingVerification={profile?.verificationStatus === 'pending'}
+        onRequestVerify={() => switchTo('verify')}
+      />
+
+      <NightQuestionModal visible={overlay === 'nightQuestion'} onClose={() => setOverlay(null)} />
+
+      <BranchWarsModal
+        visible={overlay === 'branchWars'}
+        onClose={() => setOverlay(null)}
+        userBranch={profile?.branch || undefined}
+      />
+
+      <StudySyncModal visible={overlay === 'studySync'} onClose={() => setOverlay(null)} />
+
+      {selectedAssignmentId && (
+        <AssignmentPortalModal
+          visible={!!selectedAssignmentId}
+          onClose={() => {
+            setSelectedAssignmentId(null);
+            setStudyRefreshKey((k) => k + 1);
+          }}
+          assignmentId={selectedAssignmentId}
+        />
+      )}
+
+      {proximityRoomSlug && (
+        <ProximityRoomModal
+          visible={!!proximityRoomSlug}
+          onClose={() => setProximityRoomSlug(null)}
+          roomSlug={proximityRoomSlug}
+          currentUser={user}
+        />
+      )}
+
+      {/* Chat (opened from the list, search, friends, groups or a notification) */}
       {selectedChat && (
-        <Modal visible={true} animationType="slide" onRequestClose={closeChat}>
+        <Modal visible animationType="slide" onRequestClose={closeChat}>
           <ChatDetailScreen
             chatId={selectedChat.id}
             chatName={selectedChat.name}
@@ -520,92 +688,6 @@ export const CampusShell: React.FC<CampusShellProps> = ({ onBack }) => {
             }}
           />
         </Modal>
-      )}
-
-      {/* Phase 4: Lost & Found Modal */}
-      <LostFoundModal
-        visible={lostFoundOpen}
-        onClose={() => setLostFoundOpen(false)}
-        currentUser={user}
-      />
-
-      {/* Phase 4: Ride Pool Modal */}
-      <RidePoolModal
-        visible={ridePoolOpen}
-        onClose={() => setRidePoolOpen(false)}
-        currentUser={user}
-      />
-
-      {/* Pulse: Campus Whispers Anonymous Feed */}
-      <CampusWhispersModal
-        visible={whispersOpen}
-        onClose={() => setWhispersOpen(false)}
-        isVerified={profile?.verificationStatus === 'verified'}
-        isPendingVerification={profile?.verificationStatus === 'pending'}
-        onRequestVerify={() => {
-          // Close the feed first: the verification sheet is a sibling modal.
-          setWhispersOpen(false);
-          afterModalDismiss(() => setVerifyModalVisible(true));
-        }}
-      />
-
-      {/* Pulse: The 9 PM Question Night Room */}
-      <NightQuestionModal
-        visible={nightQuestionOpen}
-        onClose={() => setNightQuestionOpen(false)}
-      />
-
-      {/* Pulse: Branch Wars Leaderboard */}
-      <BranchWarsModal
-        visible={branchWarsOpen}
-        onClose={() => setBranchWarsOpen(false)}
-        userBranch={profile?.branch || undefined}
-      />
-
-      {/* Study: Study Sync Pomodoro Focus Room */}
-      <StudySyncModal
-        visible={studySyncOpen}
-        onClose={() => setStudySyncOpen(false)}
-      />
-
-      {/* Study: Assignment Turn-In Portal (real assignment by id) */}
-      {selectedAssignmentId && (
-        <AssignmentPortalModal
-          visible={!!selectedAssignmentId}
-          onClose={() => {
-            setSelectedAssignmentId(null);
-            setStudyRefreshKey((k) => k + 1);
-          }}
-          assignmentId={selectedAssignmentId}
-        />
-      )}
-
-      {/* Header: Universal Campus Search */}
-      <CampusSearchModal
-        visible={searchOpen}
-        onClose={() => setSearchOpen(false)}
-        onSelectResult={(item) => {
-          setSearchOpen(false);
-          afterModalDismiss(() => {
-            if (item.type === 'member' || item.type === 'group') {
-              setSelectedChat({ id: item.id, name: item.title });
-            } else if (item.type === 'lost') {
-              setLostFoundOpen(true);
-            } else if (item.type === 'ride') {
-              setRidePoolOpen(true);
-            }
-          });
-        }}
-      />
-
-      {/* Proximity: Location-bound Live Chat — Phase 5 */}
-      {proximityRoomSlug && (
-        <ProximityRoomModal
-          visible={!!proximityRoomSlug}
-          onClose={() => setProximityRoomSlug(null)}
-          roomSlug={proximityRoomSlug}
-          currentUser={user}
-        />
       )}
 
       {incomingCall && !activeCall && (
@@ -629,35 +711,7 @@ export const CampusShell: React.FC<CampusShellProps> = ({ onBack }) => {
         />
       )}
 
-      {activeCall && (
-        <CampusCallModal
-          visible={!!activeCall}
-          onClose={() => setActiveCall(null)}
-          session={activeCall}
-        />
-      )}
-
-      {/* QR Code Scanner */}
-      <QrScannerModal
-        visible={qrScannerOpen}
-        onClose={() => setQrScannerOpen(false)}
-        onScanCode={async (raw) => {
-          setQrScannerOpen(false);
-          // QR may carry just the code or a link ending in it.
-          const code = String(raw || '').trim().split(/[/=?#]/).pop()?.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() || '';
-          if (code.length !== 6) {
-            Alert.alert("That QR isn't a group code", 'Ask your CR or club admin to show the classroom QR again.');
-            return;
-          }
-          try {
-            const group = await joinCampusGroup(code);
-            if (!mountedRef.current) return;
-            onJoinedGroup(group);
-          } catch (e: any) {
-            Alert.alert("Couldn't join", e?.message || 'Please try again.');
-          }
-        }}
-      />
+      {activeCall && <CampusCallModal visible={!!activeCall} onClose={() => setActiveCall(null)} session={activeCall} />}
     </SafeAreaView>
   );
 };
@@ -672,214 +726,15 @@ const styles = StyleSheet.create({
   },
   centerContainer: {
     flex: 1,
-    alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 32,
+    paddingHorizontal: S.xl,
   },
-  stateIconWrap: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+  rowIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: CampusColors.accentSoft,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
-  },
-  stateTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: CampusColors.ink,
-    marginBottom: 6,
-    textAlign: 'center',
-  },
-  stateSubtitle: {
-    fontSize: 14,
-    color: CampusColors.muted,
-    lineHeight: 20,
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  stateBtn: {
-    height: CampusLayout.primaryCtaHeight,
-    paddingHorizontal: 28,
-    borderRadius: CampusLayout.radius.pill,
-    backgroundColor: CampusColors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stateBtnText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalSheet: {
-    backgroundColor: CampusColors.card,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 32,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingBottom: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: CampusColors.line,
-    marginBottom: 14,
-  },
-  modalHeaderTitle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  modalTitleText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: CampusColors.ink,
-  },
-  modalInstruction: {
-    fontSize: 14,
-    color: CampusColors.muted,
-    lineHeight: 20,
-    marginBottom: 16,
-  },
-  joinInputWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: CampusColors.paper,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: CampusColors.line,
-    paddingHorizontal: 14,
-    height: 48,
-    gap: 10,
-    marginBottom: 16,
-  },
-  joinInput: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: '700',
-    color: CampusColors.ink,
-    letterSpacing: 2,
-  },
-  joinBtn: {
-    height: CampusLayout.primaryCtaHeight,
-    borderRadius: CampusLayout.radius.pill,
-    backgroundColor: CampusColors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  joinBtnText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 18,
-    gap: 10,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: CampusColors.line,
-  },
-  dividerText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: CampusColors.muted,
-  },
-  scanQrBtn: {
-    height: 48,
-    borderRadius: CampusLayout.radius.pill,
-    backgroundColor: CampusColors.paper,
-    borderWidth: 1,
-    borderColor: CampusColors.line,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  scanQrText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: CampusColors.ink,
-  },
-  chatModalSafe: {
-    flex: 1,
-    backgroundColor: CampusColors.paper,
-  },
-  chatModalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: CampusColors.card,
-    borderBottomWidth: 1,
-    borderBottomColor: CampusColors.line,
-    gap: 12,
-  },
-  backBtn: {
-    padding: 4,
-  },
-  chatModalInfo: {
-    flex: 1,
-  },
-  chatModalTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: CampusColors.ink,
-  },
-  chatModalSubtitle: {
-    fontSize: 12,
-    color: CampusColors.accent,
-  },
-  chatPlaceholderContent: {
-    flex: 1,
-    padding: 16,
-    justifyContent: 'flex-start',
-  },
-  chatEncryptedNotice: {
-    backgroundColor: '#FAF5EE',
-    padding: 10,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#EFE5D5',
-  },
-  chatEncryptedText: {
-    fontSize: 11,
-    color: CampusColors.muted,
-    textAlign: 'center',
-  },
-  sampleMessageBubble: {
-    backgroundColor: CampusColors.card,
-    borderRadius: 14,
-    borderTopLeftRadius: 2,
-    padding: 12,
-    maxWidth: '80%',
-    borderWidth: 1,
-    borderColor: CampusColors.line,
-    alignSelf: 'flex-start',
-  },
-  sampleMessageText: {
-    fontSize: 14,
-    color: CampusColors.ink,
-    lineHeight: 20,
-    marginBottom: 4,
-  },
-  sampleMessageTime: {
-    fontSize: 10,
-    color: CampusColors.muted,
-    alignSelf: 'flex-end',
   },
 });

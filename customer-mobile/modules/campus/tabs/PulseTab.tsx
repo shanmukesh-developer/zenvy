@@ -50,6 +50,11 @@ interface PulseTabProps {
   onOpenBranchWars: () => void;
   onOpenLostFound?: () => void;
   onOpenRidePool?: () => void;
+  /** 'feed' = social (9 PM, Whispers, Branch Wars); 'campus' = utilities (today, Lost & Found, Rides). */
+  mode?: 'feed' | 'campus';
+  /** Extra sections rendered at the end (e.g. campus spots). */
+  footer?: React.ReactNode;
+  header?: React.ReactNode;
 }
 
 export const PulseTab: React.FC<PulseTabProps> = ({
@@ -60,7 +65,11 @@ export const PulseTab: React.FC<PulseTabProps> = ({
   onOpenBranchWars,
   onOpenLostFound,
   onOpenRidePool,
+  mode = 'feed',
+  footer,
+  header,
 }) => {
+  const isFeed = mode === 'feed';
   const [refreshing, setRefreshing] = useState(false);
 
   // Pulse live data (all backend-backed)
@@ -84,11 +93,14 @@ export const PulseTab: React.FC<PulseTabProps> = ({
   }, []);
 
   const loadPulse = useCallback(async () => {
+    // Each mode only loads what it shows.
+    const skip = Promise.reject(new Error('skipped'));
+    skip.catch(() => {});
     const [q, bw, td, ws] = await Promise.allSettled([
-      fetchDailyQuestion(),
-      fetchBranchWars(),
-      fetchPulseToday(),
-      fetchWhispers('All'),
+      isFeed ? fetchDailyQuestion() : skip,
+      isFeed ? fetchBranchWars() : skip,
+      isFeed ? skip : fetchPulseToday(),
+      isFeed ? fetchWhispers('All') : skip,
     ]);
     if (!mountedRef.current) return;
     if (q.status === 'fulfilled') {
@@ -111,9 +123,9 @@ export const PulseTab: React.FC<PulseTabProps> = ({
       const top = [...(ws.value.whispers || [])].sort((a, b) => b.hearts - a.hearts)[0] || null;
       setTopWhisper(top);
     }
-    setPulseError([q, bw, td, ws].every((r) => r.status === 'rejected'));
+    setPulseError((isFeed ? [q, bw, ws] : [td]).every((r) => r.status === 'rejected'));
     setPulseLoaded(true);
-  }, []);
+  }, [isFeed]);
 
   // Only the counts are needed here; failures stay quiet (the card just hides the number).
   const loadCounts = useCallback(async () => {
@@ -134,12 +146,12 @@ export const PulseTab: React.FC<PulseTabProps> = ({
 
   useEffect(() => {
     loadPulse();
-    loadCounts();
-  }, [loadPulse, loadCounts]);
+    if (!isFeed) loadCounts();
+  }, [loadPulse, loadCounts, isFeed]);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([loadCounts(), loadPulse()]);
+    await Promise.all([isFeed ? Promise.resolve() : loadCounts(), loadPulse()]);
     if (mountedRef.current) setRefreshing(false);
   };
 
@@ -152,6 +164,7 @@ export const PulseTab: React.FC<PulseTabProps> = ({
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={CampusColors.accent} />}
     >
+      {header}
       {pulseError && (
         <TouchableOpacity
           style={styles.offlineBanner}
@@ -162,11 +175,12 @@ export const PulseTab: React.FC<PulseTabProps> = ({
           }}
           activeOpacity={0.8}
         >
-          <Text style={styles.offlineBannerText}>Couldn't refresh Pulse. Tap to try again.</Text>
+          <Text style={styles.offlineBannerText}>Couldn't refresh. Tap to try again.</Text>
         </TouchableOpacity>
       )}
 
       {/* 1. The 9 PM Question Night Card (Section 1.2 & Section 7.1) */}
+      {isFeed && (
       <TouchableOpacity
         style={styles.nightCard}
         onPress={() => {
@@ -201,8 +215,10 @@ export const PulseTab: React.FC<PulseTabProps> = ({
           </View>
         </View>
       </TouchableOpacity>
+      )}
 
       {/* 2. Branch Wars Leaderboard (Section 7.2) */}
+      {isFeed && (
       <View style={styles.sectionCard}>
         <View style={styles.sectionHeader}>
           <View style={styles.titleRow}>
@@ -255,7 +271,10 @@ export const PulseTab: React.FC<PulseTabProps> = ({
         </View>
       </View>
 
+      )}
+
       {/* 3. Today on Campus (Section 5) */}
+      {!isFeed && (
       <View style={styles.sectionCard}>
         <View style={styles.sectionHeader}>
           <View style={styles.titleRow}>
@@ -337,10 +356,13 @@ export const PulseTab: React.FC<PulseTabProps> = ({
         })()}
       </View>
 
-      {/* Smart Campus Services (Lost & Found & Ride Pool) */}
+      )}
+
+      {/* Campus services: Lost & Found and Rides (one entry for campus cab pools + bike co-ride) */}
+      {!isFeed && (
       <View style={styles.sectionCard}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Smart Campus Services</Text>
+          <Text style={styles.sectionTitle}>Campus services</Text>
         </View>
         <View style={styles.utilitiesRow}>
           <TouchableOpacity
@@ -371,15 +393,17 @@ export const PulseTab: React.FC<PulseTabProps> = ({
             <View style={[styles.utilityIconWrap, { backgroundColor: CampusColors.accentSoft }]}>
               <Car size={18} color={CampusColors.accentDeep} />
             </View>
-            <Text style={styles.utilityTitle}>Campus Ride Pool</Text>
+            <Text style={styles.utilityTitle}>Rides</Text>
             <Text style={styles.utilitySubtitle}>
-              {rideLabel !== null ? `${rideLabel} open • split cabs` : 'Split cabs with batchmates'}
+              {rideLabel !== null ? `${rideLabel} open • cab pools & bike co-ride` : 'Cab pools & bike co-ride'}
             </Text>
           </TouchableOpacity>
         </View>
       </View>
+      )}
 
       {/* 4. Campus Whispers Highlights (Section 7.3) */}
+      {isFeed && (
       <View style={styles.sectionCard}>
         <View style={styles.sectionHeader}>
           <View style={styles.titleRow}>
@@ -417,6 +441,8 @@ export const PulseTab: React.FC<PulseTabProps> = ({
           <Text style={styles.boardEmpty}>No whispers yet. Be the first to post one.</Text>
         )}
       </View>
+      )}
+      {footer}
     </ScrollView>
   );
 };

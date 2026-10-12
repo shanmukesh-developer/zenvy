@@ -29,7 +29,7 @@ function LinkRow({ icon, label, sub, onPress }: { icon: IconName; label: string;
 const LANGS: VoiceLang[] = ['te', 'hi', 'en'];
 
 export default function SettingsScreen() {
-  const { restaurant, store, setOpen, openToggleSupported } = useStore();
+  const { restaurant, store, setOpen } = useStore();
   const { signOut } = useSession();
   const voice = useVoice();
   const [confirmOut, setConfirmOut] = useState(false);
@@ -37,7 +37,7 @@ export default function SettingsScreen() {
   const [closeErr, setCloseErr] = useState<string | null>(null);
   // Logging out stops the ringing but not the shop: offer to close it first, or orders keep coming in
   // with nobody to accept them (each one auto-cancels after the accept window).
-  const canCloseOnLogout = !!store?.isOpenNow && store?.isActive !== false && openToggleSupported;
+  const canCloseOnLogout = !!store?.isOpenNow && store?.isActive !== false;
   const closeOut = () => { setConfirmOut(false); setCloseErr(null); };
   const closeAndSignOut = async () => {
     if (closing) return;

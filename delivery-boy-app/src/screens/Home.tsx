@@ -7,7 +7,7 @@ import { Banner, Btn, Card, EmptyState, ErrorState, IconBtn, Skeleton } from '..
 import { Sheet } from '../ui/Sheet';
 import { useRider } from '../state/RiderStore';
 import { useVoice } from '../voice/useVoice';
-import { firstName, stepIndex, storeStatusLabel } from '../services/orderModel';
+import { firstName, stepFor, stepIndex, storeStatusLabel } from '../services/orderModel';
 import { minutesAgo, rupees } from '../services/format';
 import { OFFER_SECONDS } from '../config';
 import { ItemsLine, PaymentPill, distanceTo } from './parts';
@@ -204,7 +204,7 @@ function ActiveCard({ order, syncing, onOpen }: { order: RiderOrder; syncing: bo
           </View>
         ) : null}
       </View>
-      <Text style={[T.h2, { color: C.ink }]}>{STEP_TEXT[idx]}</Text>
+      <Text style={[T.h2, { color: C.ink }]}>{stepFor(order.status) === 'UNKNOWN' ? 'Contact support' : STEP_TEXT[idx]}</Text>
       <Text style={[T.body, { color: C.ink2 }]} numberOfLines={2}>
         {idx <= 1 ? order.restaurantName ?? 'Store' : order.dropAddress ?? 'Customer'}
       </Text>

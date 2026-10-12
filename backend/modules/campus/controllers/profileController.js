@@ -754,12 +754,15 @@ const reviewVerification = async (req, res) => {
       {
         verificationStatus: profile.verificationStatus,
         method: 'id_card',
+        decision: action,
         requestId: record.id,
         reviewNotes: action === 'reject' ? record.reviewNotes : null,
       },
       action === 'approve'
         ? { title: 'You are verified on Zenvy Campus', body: 'Your student ID was approved. Welcome to Zenvy Campus!' }
-        : { title: 'Your ID card needs another look', body: record.reviewNotes ? `Reason: ${record.reviewNotes}. Please upload a clearer photo.` : 'Please upload a clearer photo of your student ID card.' }
+        : profile.verificationStatus === 'verified'
+        ? null // already verified another way: an old request's rejection is not news
+        : { title: 'Your ID card needs another look', body: record.reviewNotes ? `Reason: ${record.reviewNotes.replace(/[.!\s]+$/, '')}. Please upload a clearer photo.` : 'Please upload a clearer photo of your student ID card.' }
     );
     res.json({
       message: action === 'approve' ? 'Student verified' : 'Verification rejected',

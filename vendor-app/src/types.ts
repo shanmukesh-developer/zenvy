@@ -1,4 +1,9 @@
-export interface OperatingHours { start?: string; end?: string }
+export interface OperatingHours {
+  start?: string;
+  end?: string;
+  /** Day-by-day hours set by Zenvy (mon..sun). The app's simple hours replace them when saved. */
+  weekly?: Record<string, { open?: boolean; start?: string; end?: string }> | null;
+}
 
 /** Whitelisted stall profile kept in the session (never the password hash). */
 export interface StoreProfile {

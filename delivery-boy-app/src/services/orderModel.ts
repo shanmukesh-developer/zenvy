@@ -62,7 +62,16 @@ const STATUSES: OrderStatus[] = [
 
 function toStatus(v: unknown): OrderStatus {
   const s = String(v || '');
-  return (STATUSES as string[]).includes(s) ? (s as OrderStatus) : 'Accepted';
+  // Never default an unknown status to a real step: it would show a working "Reached store" button.
+  return (STATUSES as string[]).includes(s) ? (s as OrderStatus) : 'Unknown';
+}
+
+/** true / false only when the server told us; null otherwise. */
+function toKitchenReady(raw: any, status: OrderStatus): boolean | null {
+  if (status === 'ReadyForPickup') return true;
+  if (status === 'Accepted' || status === 'Preparing') return false;
+  if (raw && Object.prototype.hasOwnProperty.call(raw, 'readyAt')) return !!cleanText(raw.readyAt);
+  return null;
 }
 
 function toPaymentMethod(v: unknown): PaymentMethod | null {
@@ -144,11 +153,14 @@ export function normalizeOrder(raw: any): RiderOrder {
 
   const { instructions, address } = toInstructions(raw);
   const distance = toNumber(raw?.distance);
+  const status = toStatus(raw?.status);
 
   return {
     id,
     shortId: id.replace(/-/g, '').slice(-6).toUpperCase(),
-    status: toStatus(raw?.status),
+    status,
+    rawStatus: cleanText(raw?.status),
+    kitchenReady: toKitchenReady(raw, status),
     restaurantName: cleanText(raw?.restaurant ?? raw?.restaurantName),
     restaurantAddress: cleanText(raw?.restaurantAddress),
     restaurantPhone: isDialable(raw?.restaurantPhone) ? String(raw.restaurantPhone) : null,
@@ -180,7 +192,8 @@ export function normalizeOrders(list: unknown): RiderOrder[] {
 
 // ── Delivery steps ─────────────────────────────────────────────────────────
 
-export type StepKey = 'TO_STORE' | 'AT_STORE' | 'TO_DROP' | 'AT_DROP' | 'DONE';
+/** UNKNOWN: a status this app does not understand. Read-only; the rider is sent to support. */
+export type StepKey = 'TO_STORE' | 'AT_STORE' | 'TO_DROP' | 'AT_DROP' | 'DONE' | 'UNKNOWN';
 
 export const STEPS: { key: StepKey; title: string }[] = [
   { key: 'TO_STORE', title: 'Go to store' },
@@ -200,6 +213,8 @@ export function stepFor(status: OrderStatus): StepKey {
       return 'AT_DROP';
     case 'Delivered':
       return 'DONE';
+    case 'Unknown':
+      return 'UNKNOWN';
     default:
       return 'TO_STORE';
   }
@@ -234,6 +249,13 @@ export function storeStatusLabel(status: OrderStatus): string | null {
   if (status === 'ReadyForPickup') return 'Ready for pickup';
   if (status === 'Preparing') return 'Kitchen preparing';
   if (status === 'Accepted') return 'Store accepted';
+  return null;
+}
+
+/** Kitchen state while the rider waits at the store ('Picking'). null when the server did not say. */
+export function atStoreKitchenLabel(o: RiderOrder): string | null {
+  if (o.kitchenReady === true) return 'Food packed';
+  if (o.kitchenReady === false) return 'Kitchen preparing';
   return null;
 }
 

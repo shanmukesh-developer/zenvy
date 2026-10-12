@@ -152,29 +152,51 @@ app.set('trust proxy', 1);
 
 const rateLimit = require('express-rate-limit');
 
-// ── Global API Shield (DDoS Protection — Scaled for 500-1000 campus users) ──────────────────────
+// Who is calling, for rate limits: the signed-in account (JWT signature VERIFIED, so a forged id
+// cannot dodge the limit) or, when signed out / invalid token, the client IP. Cached on req.
+const rateLimitIdentity = (req) => {
+  if (req._rlIdentity) return req._rlIdentity;
+  let identity = null;
+  try {
+    const auth = req.headers.authorization || '';
+    // cookie-parser runs after this limiter, so read the raw Cookie header when needed.
+    const rawCookie = /(?:^|;\s*)token=([^;]+)/.exec(String(req.headers.cookie || ''));
+    const cookieToken = (req.cookies && req.cookies.token) || (rawCookie ? decodeURIComponent(rawCookie[1]) : null);
+    let token = auth.startsWith('Bearer ') && !auth.includes('cookie-managed') ? auth.slice(7) : cookieToken;
+    if (token && process.env.JWT_SECRET) {
+      token = String(token).replace(/['"]+/g, '').trim();
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      if (decoded && decoded.id) identity = { key: `user:${decoded.id}`, user: true };
+    }
+  } catch { /* expired / invalid token: treat as signed out */ }
+  if (!identity) {
+    const ip = rateLimit.ipKeyGenerator ? rateLimit.ipKeyGenerator(req.ip) : req.ip;
+    identity = { key: `ip:${ip}`, user: false };
+  }
+  req._rlIdentity = identity;
+  return identity;
+};
+
+// ── Global API Shield (per user, not per IP) ──────────────────────────────────────────────────
+// A whole campus shares one Wi-Fi NAT IP, so a per-IP cap throttled everyone at once. Signed-in
+// requests are limited per account; signed-out requests per IP with a much higher cap.
+const RL_USER_MAX = Math.max(100, Number(process.env.RATE_LIMIT_USER_MAX) || 1500);   // per account / 15 min
+const RL_IP_MAX = Math.max(1000, Number(process.env.RATE_LIMIT_IP_MAX) || 20000);     // per IP (signed out) / 15 min
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 2000, // 2000 requests per IP per 15 min — generous for shared campus Wi-Fi
+  limit: (req) => (rateLimitIdentity(req).user ? RL_USER_MAX : RL_IP_MAX),
+  keyGenerator: (req) => rateLimitIdentity(req).key,
   skip: (req, res) => !isProductionEnv(),
-  message: { message: 'Too many requests from this IP, please try again after 15 minutes.' },
+  message: { message: 'Too many requests, please slow down and try again in a few minutes.', code: 'RATE_LIMITED' },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
-// ── Order Spam Shield (Per-User via JWT, not just IP) ─────────────────────────────────────────
+// ── Order Spam Shield (Per-User via verified JWT, IP only when signed out) ────────────────────
 const orderRateLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 5, // 5 order submissions per minute per signed-in user (IP only when signed out)
-  keyGenerator: (req) => {
-    try {
-      const auth = req.headers.authorization || '';
-      const token = auth.startsWith('Bearer ') ? auth.slice(7) : (req.cookies && req.cookies.token);
-      const decoded = token ? jwt.decode(token) : null;
-      if (decoded && decoded.id) return `user:${decoded.id}`;
-    } catch { /* fall back to IP */ }
-    return rateLimit.ipKeyGenerator ? rateLimit.ipKeyGenerator(req.ip) : req.ip;
-  },
+  keyGenerator: (req) => rateLimitIdentity(req).key,
   skip: (req, res) => !isProductionEnv(),
   message: { message: 'Too many orders in a minute. Please wait a moment and try again.', code: 'TOO_MANY_ORDERS' },
   standardHeaders: true,
@@ -317,8 +339,11 @@ async function loadSocketAccount(decoded) {
   }
   if (tokenRole === 'restaurant' || tokenRole === 'vendor') {
     const { getRestaurantModel } = require('./models/Restaurant');
-    const r = await getRestaurantModel().findByPk(id, { attributes: ['id'] });
-    return r ? { id: r.id, role: 'restaurant', suspended: false } : null;
+    const r = await getRestaurantModel().findByPk(id, { attributes: ['id', 'tokenVersion'] });
+    if (!r) return null;
+    // A partner password reset bumps tokenVersion and signs every old session out (RB-12).
+    if ((Number(decoded.tv) || 0) !== (Number(r.tokenVersion) || 0)) return null;
+    return { id: r.id, role: 'restaurant', suspended: false };
   }
   const { getUserModel } = require('./models/User');
   const u = await getUserModel().findByPk(id, { attributes: ['id', 'role', 'isActive'] });
@@ -1143,6 +1168,17 @@ const initializeApp = async () => {
     };
     setTimeout(runAutoCancel, 30 * 1000);
     setInterval(runAutoCancel, 2 * 60 * 1000);
+
+    // Promotions past their featuredUntil end on their own (store row + Home banner), every 10 min.
+    const runFeaturedExpiry = async () => {
+      try {
+        await require('./controllers/adminController').expireFeaturedStores();
+      } catch (e) {
+        console.warn('[FEATURED_EXPIRY] Error:', e.message);
+      }
+    };
+    setTimeout(runFeaturedExpiry, 45 * 1000);
+    setInterval(runFeaturedExpiry, 10 * 60 * 1000);
     
 
     // Serve uploaded files statically
@@ -1189,8 +1225,32 @@ const initializeApp = async () => {
         return res.status(400).json({ message: 'No file uploaded' });
       }
       
-      // Persist as delivery proof only for the order's assigned rider (or an admin)
+      // Menu / store / profile photos: keep the bytes in the media table and hand back a short URL
+      // (data: URLs bloat every listing and are dropped by the public restaurant listing). Delivery
+      // proof (orderId) keeps the data URL on the order. Any failure falls back to the data URL.
       const { orderId } = req.body;
+      if (!orderId) {
+        try {
+          const crypto = require('crypto');
+          const { getCampusMediaModel } = require('./modules/campus/models/CampusMedia');
+          const { sniffImage } = require('./modules/campus/controllers/mediaController');
+          const { publicBase } = require('./modules/campus/campusHelpers');
+          const Media = getCampusMediaModel();
+          const m = /^data:[^;]+;base64,(.*)$/s.exec(imageUrl);
+          const buf = m ? Buffer.from(m[1].replace(/\s+/g, ''), 'base64') : null;
+          const mime = buf ? sniffImage(buf) : null;
+          if (Media && buf && mime) {
+            const sha256 = crypto.createHash('sha256').update(buf).digest('hex');
+            let row = await Media.findOne({ where: { ownerId: req.user.id, sha256, purpose: 'other' }, attributes: ['id'] });
+            if (!row) row = await Media.create({ ownerId: req.user.id, purpose: 'other', mime, size: buf.length, sha256, isPrivate: false, bytes: buf });
+            return res.json({ imageUrl: `${publicBase(req)}/api/campus/media/${row.id}`, mediaId: row.id });
+          }
+        } catch (mediaErr) {
+          console.warn('[UPLOAD_MEDIA_FALLBACK]', mediaErr.message);
+        }
+      }
+
+      // Persist as delivery proof only for the order's assigned rider (or an admin)
       if (orderId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(orderId))) {
         try {
           const { getOrderModel } = require('./models/Order');
@@ -1405,14 +1465,17 @@ const initializeApp = async () => {
         }
       });
 
-      socket.on('joinRestaurant', async (restaurantId) => {
+      socket.on('joinRestaurant', async (restaurantId, ack) => {
+        const reply = (payload) => { if (typeof ack === 'function') { try { ack(payload); } catch { /* ignore */ } } };
         const rid = String(restaurantId || '').trim();
         const role = String(socket.user?.role || '').toLowerCase();
         if (rid && ((role === 'restaurant' && socket.user.id === rid) || role === 'admin')) {
           await socket.join(`restaurant_${rid}`);
           log(`[JOIN_RESTAURANT] ${socket.id} -> restaurant_${rid}`);
+          reply({ ok: true, room: `restaurant_${rid}` });
         } else {
           console.warn(`[SOCKET_AUTH_DENIED] ${socket.user?.id} tried to join restaurant_${rid}`);
+          reply({ ok: false, message: 'Not allowed to join this store.' });
         }
       });
 

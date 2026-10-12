@@ -2,7 +2,10 @@ const { getRestaurantModel } = require('../models/Restaurant');
 const { getMenuItemModel } = require('../models/MenuItem');
 const { getOrderModel } = require('../models/Order');
 const jwt = require('jsonwebtoken');
-const { getStoreOpenState } = require('../utils/storeHours');
+const { Op } = require('sequelize');
+const { getStoreOpenState, normalizeOperatingHours } = require('../utils/storeHours');
+const { isLocalVendorStore, LOCAL_VENDOR_TYPES } = require('../utils/vendorTypes');
+const { sortMenuItems } = require('../utils/menuSort');
 
 // Customers' restaurant listing is cached in adminController; any vendor change must clear it.
 const realtime = require('../utils/realtime');
@@ -11,15 +14,21 @@ const clearPublicRestaurantsCache = () => {
 };
 
 // Restaurant row as the partner app may see it (no password hash) + the live open state.
-const { stripStoreSecrets, stripItemSecrets } = require('../utils/publicFields');
+const { stripStoreSecrets, stripItemSecrets, applyFeaturedExpiry } = require('../utils/publicFields');
 
 const publicStoreJson = (restaurant) => {
   const json = restaurant.toJSON();
+  const pushDevices = Array.isArray(json.fcmTokens) ? json.fcmTokens.length : 0;
   delete json.password;
+  delete json.fcmTokens;
+  delete json.tokenVersion;
   const state = getStoreOpenState(restaurant);
   return {
     ...json,
     _id: json.id,
+    partnerPhone: json.phone || null,
+    pushDevices,
+    isLocalVendor: isLocalVendorStore(restaurant),
     isOpen: state.isOpen,
     opensAt: state.opensAt || null,
     closedReason: state.isOpen ? null : (state.message || null),
@@ -31,26 +40,65 @@ const validPrice = (price) => {
   return Number.isFinite(n) && n > 0 && n <= 100000;
 };
 
-// @desc    Restaurant Login
-// @route   POST /api/restaurants/login
-const restaurantLogin = async (req, res) => {
-  const rawId = req.body.id || req.body.email || req.body.name || req.body.identifier;
-  const id = rawId ? rawId.toString().trim() : '';
-  const { password } = req.body;
+// Last 10 digits of an Indian mobile (+91…, 91…, 0…, spaces). null when it is not one.
+const tenDigits = (v) => {
+  const d = String(v || '').replace(/\D/g, '');
+  const t = d.length === 12 && d.startsWith('91') ? d.slice(2) : (d.length === 11 && d.startsWith('0') ? d.slice(1) : d);
+  return /^\d{10}$/.test(t) ? t : null;
+};
+const PHONE_LIKE = /^[+\d\s()-]{10,16}$/;
 
-  if (!id || !password) {
-    return res.status(400).json({ message: 'Restaurant ID / Email and password are required' });
+// Partner-side changes also leave an audit row (admin Activity tab, source 'partner'). Never throws.
+const partnerAudit = async (req, targetId, action, details) => {
+  try {
+    const { getVerificationLogModel } = require('../models/VerificationLog');
+    await getVerificationLogModel().create({
+      adminId: req.user && req.user.id ? String(req.user.id) : 'partner',
+      targetId: String(targetId),
+      action,
+      details: JSON.stringify({ ...details, source: String(req.user?.role || '').toLowerCase() === 'admin' ? 'admin' : 'partner' }).slice(0, 250),
+    });
+  } catch (err) {
+    console.warn('[PARTNER_AUDIT_WARN]', err.message);
+  }
+};
+
+// @desc    Restaurant / vendor login
+// @route   POST /api/restaurants/login
+// Body: { phone, password, app? } (login phone; a stall may also use its WhatsApp number)
+//    or { id | name | identifier, password, app? } (store UUID, exact store name, or a 10-digit phone)
+const restaurantLogin = async (req, res) => {
+  const body = req.body || {};
+  const rawId = body.id || body.email || body.name || body.identifier;
+  const id = rawId ? rawId.toString().trim() : '';
+  const rawPhone = body.phone || body.partnerPhone;
+  const { password } = body;
+  const appKind = String(body.app || '').toLowerCase();
+
+  let phone = rawPhone ? tenDigits(rawPhone) : null;
+  if (!phone && id && PHONE_LIKE.test(id)) phone = tenDigits(id);
+
+  if ((!id && !rawPhone) || !password || typeof password !== 'string') {
+    return res.status(400).json({ message: 'Phone (or Store ID) and password are required' });
   }
 
   try {
-    // UUID basic validation
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    const isUuid = uuidRegex.test(id);
-
     const Restaurant = getRestaurantModel();
-    let restaurant;
+    let restaurant = null;
 
-    if (isUuid) {
+    if (phone) {
+      restaurant = await Restaurant.findOne({ where: { phone } });
+      if (!restaurant) {
+        // A stall created before login phones existed signs in with its WhatsApp number.
+        const stalls = await Restaurant.findAll({
+          where: { vendorType: { [Op.in]: LOCAL_VENDOR_TYPES }, whatsappNumber: { [Op.ne]: null } },
+        });
+        restaurant = stalls.find((s) => tenDigits(s.whatsappNumber) === phone) || null;
+      }
+    } else if (rawPhone) {
+      restaurant = null; // not a phone number: same reply as a wrong password
+    } else if (uuidRegex.test(id)) {
       restaurant = await Restaurant.findByPk(id);
     } else {
       // Exact store name, case-insensitive. Never a LIKE pattern: '%' used to log into any store.
@@ -62,19 +110,24 @@ const restaurantLogin = async (req, res) => {
 
     // Same reply for an unknown store and a wrong password (no store-name probing).
     if (!restaurant) return res.status(401).json({ message: 'Invalid credentials' });
-    
+
     if (!restaurant.password) {
       return res.status(401).json({ message: 'No password set for this account. Contact the admin to configure credentials.' });
     }
     const isMatch = await restaurant.comparePassword(password);
     if (!isMatch) return res.status(401).json({ message: 'Invalid credentials' });
 
+    if (appKind === 'vendor' && !isLocalVendorStore(restaurant)) {
+      return res.status(403).json({ code: 'NOT_A_VENDOR_ACCOUNT', message: 'This is a restaurant account. Use the Zenvy Restaurant app.' });
+    }
+
     const secret = process.env.JWT_SECRET;
     if (!secret) {
       console.error('[AUTH_FATAL] JWT_SECRET is not configured.');
       return res.status(500).json({ message: 'Server configuration error' });
     }
-    const token = jwt.sign({ id: restaurant.id, role: 'restaurant' }, secret, { expiresIn: '30d' });
+    // `tv` = tokenVersion: a password reset bumps it and signs out every older session.
+    const token = jwt.sign({ id: restaurant.id, role: 'restaurant', tv: Number(restaurant.tokenVersion) || 0 }, secret, { expiresIn: '30d' });
     res.cookie('token', token, { httpOnly: true, secure: true, sameSite: 'none', maxAge: 30 * 24 * 60 * 60 * 1000 });
     // Never send the password hash; include the live open/closed state for the partner app header.
     res.json({ restaurant: publicStoreJson(restaurant), token });
@@ -83,6 +136,10 @@ const restaurantLogin = async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 };
+
+// Customer contact on a stall order is shown to the owning stall only; it is hidden again 24 h after
+// the order finished (Delivered / Cancelled).
+const CONTACT_TTL_MS = 24 * 60 * 60 * 1000;
 
 // @desc    Get orders for restaurant
 // @route   GET /api/restaurants/:id/orders
@@ -97,25 +154,47 @@ const getRestaurantOrders = async (req, res) => {
 
     const { getUserModel } = require('../models/User');
     const { getDeliveryPartnerModel } = require('../models/DeliveryPartner');
-    
+
     const Order = getOrderModel();
     const User = getUserModel();
     const DeliveryPartner = getDeliveryPartnerModel();
+    const store = await getRestaurantModel().findByPk(req.params.id, { attributes: ['id', 'vendorType'] });
+    const storeIsStall = isLocalVendorStore(store);
 
     const orders = await Order.findAll({
       where: { restaurantId: req.params.id },
       include: [
-        { model: User, as: 'user', attributes: ['name', 'phone'] },
+        { model: User, as: 'user', attributes: ['name', 'phone', 'hostelBlock', 'roomNumber'] },
         { model: DeliveryPartner, as: 'deliveryPartner', attributes: ['name', 'phone'] }
       ],
       order: [['createdAt', 'DESC']],
       limit: 200 // the partner app shows recent orders; an all-time list grows without bound
     });
+    const now = Date.now();
     // The delivery PIN is only for the customer (the rider asks for it at the door).
     res.json(orders.map(o => {
       // The customer's exact pin (dropLat/dropLng) is for the assigned rider only, not the kitchen.
-      const { deliveryPin, deliveryPinAttempts, dropLat, dropLng, ...rest } = o.toJSON();
-      return { ...rest, _id: o.id };
+      const { deliveryPin, deliveryPinAttempts, dropLat, dropLng, idempotencyKey, user, ...rest } = o.toJSON();
+      const isStallOrder = rest.fulfilment === 'VENDOR' || storeIsStall;
+      if (!isStallOrder) {
+        return { ...rest, user: user ? { name: user.name, phone: user.phone } : null, _id: o.id };
+      }
+      const finishedAt = ['Delivered', 'Cancelled'].includes(rest.status) ? new Date(rest.deliveredAt || rest.updatedAt).getTime() : null;
+      const hidePhone = finishedAt !== null && now - finishedAt > CONTACT_TTL_MS;
+      const customer = user ? {
+        name: user.name || 'Customer',
+        phone: hidePhone ? null : (user.phone || null),
+        hostelBlock: user.hostelBlock || null,
+        roomNumber: user.roomNumber || null,
+      } : null;
+      return {
+        ...rest,
+        fulfilment: 'VENDOR',
+        outForDeliveryAt: rest.outForDeliveryAt || null,
+        customer,
+        user: customer ? { name: customer.name, phone: customer.phone } : null,
+        _id: o.id,
+      };
     }));
   } catch (error) {
     console.error('[GET_ORDERS_ERROR]', error);
@@ -130,10 +209,10 @@ const getRestaurants = async (req, res) => {
     const Restaurant = getRestaurantModel();
     const MenuItem = getMenuItemModel();
     const restaurants = await Restaurant.findAll({ where: { isActive: true } });
-    
+
     // Stitch all valid menu items into the restaurants array for catalog rendering
-    const allMenuItems = await MenuItem.findAll({ where: { isAvailable: true } });
-    
+    const allMenuItems = sortMenuItems(await MenuItem.findAll({ where: { isAvailable: true } }));
+
     const fallbackImage = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400';
     const cleanImageUrl = (url) => {
       if (!url || typeof url !== 'string') return fallbackImage;
@@ -144,6 +223,7 @@ const getRestaurants = async (req, res) => {
     const augmentedRestaurants = restaurants.map(r => {
       const rJson = r.toJSON();
       stripStoreSecrets(rJson);
+      applyFeaturedExpiry(rJson);
       rJson._id = rJson.id; // Map UUIDs to expected legacy Mongo _id formats
       rJson.imageUrl = cleanImageUrl(rJson.imageUrl || rJson.image);
       rJson.image = rJson.imageUrl;
@@ -172,13 +252,13 @@ const getRestaurants = async (req, res) => {
   }
 };
 
-// @desc    Get menu for a specific restaurant
+// @desc    Get menu for a specific restaurant (admin / partner menu order: specs.sortOrder)
 // @route   GET /api/restaurants/:id/menu
 const getRestaurantMenu = async (req, res) => {
   try {
     const MenuItem = getMenuItemModel();
     const menu = await MenuItem.findAll({ where: { restaurantId: req.params.id } });
-    res.json(menu.map((m) => stripItemSecrets(m.toJSON())));
+    res.json(sortMenuItems(menu).map((m) => stripItemSecrets(m.toJSON())));
   } catch (error) {
     console.error('[MENU_ERROR]', error);
     res.status(500).json({ message: 'Server Error' });
@@ -191,12 +271,15 @@ const createRestaurant = async (req, res) => {
   const { name, location, imageUrl, deliveryTime, commissionRate, isOffline, password } = req.body;
   try {
     const Restaurant = getRestaurantModel();
-    const restaurant = await Restaurant.create({ name, location, imageUrl, deliveryTime, commissionRate, isOffline, password });
+    const cleanName = String(name || '').trim();
+    if (!cleanName) return res.status(400).json({ message: 'Store name is required.' });
+    const { fn, col, where: sqlWhere } = require('sequelize');
+    const clash = await Restaurant.findOne({ where: sqlWhere(fn('lower', col('name')), cleanName.toLowerCase()), attributes: ['id', 'name'] });
+    if (clash) return res.status(409).json({ message: `Another store is already called "${clash.name}".`, code: 'CONFLICT' });
+    const restaurant = await Restaurant.create({ name: cleanName, location, imageUrl, deliveryTime, commissionRate, isOffline, password });
     clearPublicRestaurantsCache();
     realtime.publish('store', 'created', restaurant.id, { storeId: restaurant.id });
-    const json = restaurant.toJSON();
-    delete json.password;
-    res.status(201).json(json);
+    res.status(201).json(publicStoreJson(restaurant));
   } catch (error) {
     console.error('[CREATE_RESTAURANT_ERROR]', error);
     res.status(400).json({ message: 'Invalid restaurant data' });
@@ -209,7 +292,7 @@ const toggleMenuItemAvailability = async (req, res) => {
   try {
     const MenuItem = getMenuItemModel();
     const item = await MenuItem.findByPk(req.params.itemId);
-    if (!item) return res.status(404).json({ message: 'This menu item no longer exists. Pull to refresh your menu.' });
+    if (!item) return res.status(404).json({ message: 'This menu item no longer exists. Pull to refresh your menu.', code: 'ITEM_NOT_FOUND' });
 
     // Security: Only the restaurant that owns the item or an admin can toggle it
     const isOwner = item.restaurantId === req.user.id;
@@ -243,6 +326,7 @@ const toggleMenuItemAvailability = async (req, res) => {
     const io = req.app.get('io');
     if (io) io.emit('inventory_updated', { itemId: item.id, restaurantId: item.restaurantId, isAvailable: item.isAvailable });
     realtime.publish('product', 'updated', item.id, { storeId: item.restaurantId, scope: 'stock' });
+    partnerAudit(req, item.id, 'PARTNER_STOCK_TOGGLE', { restaurantId: item.restaurantId, isAvailable: item.isAvailable });
 
     res.json({ message: 'Item availability updated', _id: item.id, id: item.id, isAvailable: item.isAvailable, outOfStockUntil: item.outOfStockUntil || null });
   } catch (error) {
@@ -254,11 +338,10 @@ const toggleMenuItemAvailability = async (req, res) => {
 // @desc    Update menu item tags (Dietary etc)
 // @route   PUT /api/restaurants/menu/:itemId/tags
 const updateMenuItemTags = async (req, res) => {
-  const { tags } = req.body;
   try {
     const MenuItem = getMenuItemModel();
     const item = await MenuItem.findByPk(req.params.itemId);
-    if (!item) return res.status(404).json({ message: 'This menu item no longer exists. Pull to refresh your menu.' });
+    if (!item) return res.status(404).json({ message: 'This menu item no longer exists. Pull to refresh your menu.', code: 'ITEM_NOT_FOUND' });
 
     // Security check
     const isOwner = item.restaurantId === req.user.id;
@@ -268,62 +351,153 @@ const updateMenuItemTags = async (req, res) => {
        return res.status(403).json({ message: 'Not authorized to manage this asset' });
     }
 
+    const tags = cleanItemTags((req.body || {}).tags);
+    if (tags === false) return res.status(400).json({ message: 'Tags must be a list of short words.' });
     item.tags = tags;
+    // An "egg" tag also sets the food type (older app builds send egg dishes this way).
+    if (tags.map((t) => t.toLowerCase()).includes('egg') && !item.dietType) {
+      item.dietType = 'egg';
+      item.isVegetarian = false;
+    }
     await item.save();
     clearPublicRestaurantsCache();
     realtime.publish('product', 'updated', item.id, { storeId: item.restaurantId });
 
     res.json({ message: 'Item tags updated', _id: item.id, tags: item.tags });
-  } catch {
+  } catch (error) {
+    console.error('[UPDATE_MENU_TAGS_ERROR]', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
 
-// @desc    Create Menu Item (Restaurant Portal)
+// ── Menu item input (partner app + vendor app) ───────────────────
+const DIET_TYPES = ['veg', 'nonveg', 'egg'];
+const cleanText = (v) => String(v === null || v === undefined ? '' : v).replace(/[<>]/g, '').replace(/\s+/g, ' ').trim();
+// false = invalid input; otherwise a clean array of up to 20 tags of up to 30 chars.
+const cleanItemTags = (tags) => {
+  if (tags === undefined || tags === null) return [];
+  if (!Array.isArray(tags)) return false;
+  return [...new Set(tags.filter((t) => typeof t === 'string').map((t) => cleanText(t).slice(0, 30)).filter(Boolean))].slice(0, 20);
+};
+const readSpecs = (specs) => {
+  if (typeof specs === 'string') { try { specs = JSON.parse(specs); } catch { specs = {}; } }
+  return specs && typeof specs === 'object' && !Array.isArray(specs) ? specs : {};
+};
+
+class ItemInputError extends Error {}
+// Validates and normalises the fields that were sent. `existing` = the row being edited (null on create).
+const pickItemInput = (body = {}, existing = null) => {
+  const out = {};
+  const creating = !existing;
+  if (creating || body.name !== undefined) {
+    const name = cleanText(body.name);
+    if (!name) throw new ItemInputError('Item name is required');
+    if (name.length < 2 || name.length > 80) throw new ItemInputError('Item name must be 2 to 80 characters.');
+    out.name = name;
+  }
+  if (creating || body.price !== undefined) {
+    if (!validPrice(body.price)) throw new ItemInputError('Please enter a price greater than ₹0');
+    out.price = Math.round(Number(body.price) * 100) / 100;
+  }
+  if (body.category !== undefined) {
+    const category = cleanText(body.category);
+    if (category.length > 40) throw new ItemInputError('Category must be 40 characters or fewer.');
+    out.category = category || null;
+  }
+  if (body.description !== undefined) {
+    const description = String(body.description === null ? '' : body.description).replace(/[<>]/g, '').trim();
+    if (description.length > 300) throw new ItemInputError('Description must be 300 characters or fewer.');
+    out.description = description || null;
+  }
+  if (body.imageUrl !== undefined) out.imageUrl = body.imageUrl ? String(body.imageUrl).trim() : null;
+  if (body.isVegetarian !== undefined) out.isVegetarian = body.isVegetarian === true || body.isVegetarian === 'true';
+  if (body.dietType !== undefined) {
+    const d = body.dietType === null || body.dietType === '' ? null : String(body.dietType).toLowerCase().replace(/[^a-z]/g, '');
+    const diet = d === 'nonvegetarian' ? 'nonveg' : d;
+    if (diet !== null && !DIET_TYPES.includes(diet)) throw new ItemInputError("Food type must be veg, nonveg or egg.");
+    out.dietType = diet;
+    if (diet) out.isVegetarian = diet === 'veg';
+  } else if (out.isVegetarian !== undefined && existing && existing.dietType) {
+    // Veg switch from an older app build: keep dietType in step.
+    out.dietType = out.isVegetarian ? 'veg' : (existing.dietType === 'veg' ? 'nonveg' : existing.dietType);
+  }
+  if (body.isAvailable !== undefined) {
+    out.isAvailable = body.isAvailable === true || body.isAvailable === 'true';
+    if (out.isAvailable) out.outOfStockUntil = null;
+  } else if (creating) {
+    out.isAvailable = true;
+  }
+  if (body.isEliteOnly !== undefined) out.isEliteOnly = body.isEliteOnly === true || body.isEliteOnly === 'true';
+  if (body.tags !== undefined) {
+    const tags = cleanItemTags(body.tags);
+    if (tags === false) throw new ItemInputError('Tags must be a list of short words.');
+    out.tags = tags;
+    if (tags.map((t) => t.toLowerCase()).includes('egg') && out.dietType === undefined && !(existing && existing.dietType)) {
+      out.dietType = 'egg';
+      out.isVegetarian = false;
+    }
+  }
+  const mrpSent = body.originalPrice !== undefined ? body.originalPrice : body.mrp;
+  if (mrpSent !== undefined) {
+    const specs = readSpecs(existing && existing.specs);
+    if (mrpSent === null || mrpSent === '' || Number(mrpSent) === 0) {
+      out.originalPrice = null;
+      delete specs.originalPrice;
+    } else {
+      const mrp = Number(mrpSent);
+      const price = out.price !== undefined ? out.price : Number(existing && existing.price);
+      if (!Number.isFinite(mrp) || mrp <= 0 || mrp > 100000) throw new ItemInputError('MRP must be between ₹1 and ₹1,00,000.');
+      if (Number.isFinite(price) && mrp < price) throw new ItemInputError('MRP cannot be lower than the selling price.');
+      out.originalPrice = Math.round(mrp * 100) / 100;
+      specs.originalPrice = out.originalPrice; // older readers use specs.originalPrice
+    }
+    out.specs = specs;
+  } else if (out.price !== undefined && existing && Number(existing.originalPrice) > 0 && Number(existing.originalPrice) < out.price) {
+    throw new ItemInputError('The new price is above the MRP. Update the MRP too.');
+  }
+  return out;
+};
+
+// @desc    Create Menu Item (Restaurant Portal / Vendor app)
 // @route   POST /api/restaurants/menu
 const createMenuItem = async (req, res) => {
   try {
-    const { name, price, description, imageUrl, category, isVegetarian } = req.body;
     const MenuItem = getMenuItemModel();
-    
+
     const restaurantId = req.user.role?.toLowerCase() === 'restaurant' ? req.user.id : req.body.restaurantId;
     if (!restaurantId) return res.status(400).json({ message: 'Restaurant ID required' });
-    
+
     const isOwner = restaurantId === req.user.id;
     const isAdmin = req.user.role?.toLowerCase() === 'admin';
     if (!isOwner && !isAdmin) {
        return res.status(403).json({ message: 'Not authorized to create items for this restaurant' });
     }
-    if (!name || !String(name).trim()) return res.status(400).json({ message: 'Item name is required' });
-    if (!validPrice(price)) return res.status(400).json({ message: 'Please enter a price greater than ₹0' });
-
-    const newItem = await MenuItem.create({
-      restaurantId,
-      name,
-      price,
-      description,
-      imageUrl,
-      category,
-      isVegetarian,
-      isAvailable: true
-    });
+    let data;
+    try {
+      data = pickItemInput(req.body || {});
+    } catch (err) {
+      if (err instanceof ItemInputError) return res.status(400).json({ message: err.message });
+      throw err;
+    }
+    // Honour isAvailable / tags / food type in ONE write: an "out of stock" or egg dish is never live for a moment.
+    const newItem = await MenuItem.create({ ...data, restaurantId });
 
     clearPublicRestaurantsCache();
     realtime.publish('product', 'created', newItem.id, { storeId: newItem.restaurantId });
-    res.status(201).json(newItem);
+    res.status(201).json(stripItemSecrets(newItem.toJSON()));
   } catch (error) {
     console.error('[CREATE_MENU_ITEM_ERROR]', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
 
-// @desc    Update Menu Item (Restaurant Portal)
+// @desc    Update Menu Item (Restaurant Portal / Vendor app)
 // @route   PUT /api/restaurants/menu/:itemId
 const updateMenuItem = async (req, res) => {
   try {
     const MenuItem = getMenuItemModel();
     const item = await MenuItem.findByPk(req.params.itemId);
-    if (!item) return res.status(404).json({ message: 'Menu item not found' });
+    if (!item) return res.status(404).json({ message: 'This menu item no longer exists.', code: 'ITEM_NOT_FOUND' });
 
     // Security check
     const isOwner = item.restaurantId === req.user.id;
@@ -333,31 +507,60 @@ const updateMenuItem = async (req, res) => {
        return res.status(403).json({ message: 'Not authorized to manage this asset' });
     }
 
-    const { name, price, description, imageUrl, category, isVegetarian, isAvailable, isEliteOnly } = req.body;
-    const updateData = {};
-    if (name !== undefined) updateData.name = name;
-    if (price !== undefined) {
-      if (!validPrice(price)) return res.status(400).json({ message: 'Please enter a price greater than ₹0' });
-      updateData.price = Number(price);
+    let updateData;
+    try {
+      updateData = pickItemInput(req.body || {}, item);
+    } catch (err) {
+      if (err instanceof ItemInputError) return res.status(400).json({ message: err.message });
+      throw err;
     }
-    if (description !== undefined) updateData.description = description;
-    if (imageUrl !== undefined) updateData.imageUrl = imageUrl;
-    if (category !== undefined) updateData.category = category;
-    if (isVegetarian !== undefined) updateData.isVegetarian = isVegetarian;
-    if (isAvailable !== undefined) updateData.isAvailable = isAvailable;
-    if (isEliteOnly !== undefined) updateData.isEliteOnly = isEliteOnly;
 
     await item.update(updateData);
     clearPublicRestaurantsCache();
     realtime.publish('product', 'updated', item.id, { storeId: item.restaurantId });
-    res.json(item);
-  } catch {
+    res.json(stripItemSecrets(item.toJSON()));
+  } catch (error) {
+    console.error('[UPDATE_MENU_ITEM_ERROR]', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
 
+// @desc    Delete a menu item (partner / vendor app). Past orders keep their own copy of the
+//          item name and price, so a hard delete is safe; a basket holding it gets
+//          "no longer available" from the quote.
+// @route   DELETE /api/restaurants/menu/:itemId
+const deleteMenuItem = async (req, res) => {
+  try {
+    const MenuItem = getMenuItemModel();
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const item = uuidRegex.test(String(req.params.itemId || '')) ? await MenuItem.findByPk(req.params.itemId) : null;
+    // Not 'NOT_FOUND': the apps read that code as "route missing" (the /api catch-all).
+    if (!item) return res.status(404).json({ message: 'This menu item no longer exists.', code: 'ITEM_NOT_FOUND' });
+
+    const isOwner = item.restaurantId === req.user.id;
+    const isAdmin = req.user.role?.toLowerCase() === 'admin';
+    if (!isOwner && !isAdmin) {
+      console.warn(`[SECURITY_WARN] User ${req.user.id} attempted to delete menu item ${item.id}`);
+      return res.status(403).json({ message: 'Not authorized to manage this asset' });
+    }
+
+    const { id, restaurantId, name } = item;
+    await item.destroy();
+    clearPublicRestaurantsCache();
+    realtime.publish('product', 'deleted', id, { storeId: restaurantId });
+    const io = req.app.get('io');
+    if (io) io.emit('systemUpdate', { type: 'MENU_ITEM_DELETED', data: { id, restaurantId } });
+    partnerAudit(req, id, 'DELETE_MENU_ITEM', { id, name: String(name || '').slice(0, 60), restaurantId });
+    res.json({ message: 'Item deleted', id });
+  } catch (error) {
+    console.error('[DELETE_MENU_ITEM_ERROR]', error);
+    res.status(500).json({ message: 'Could not delete the item right now. Please try again.' });
+  }
+};
+
 // ── CampusBites: Get Local Vendors ───────────────────────────
-// @desc    Get all LOCAL_VENDOR stalls, optionally filtered by campus
+// @desc    Get all LOCAL_VENDOR stalls, optionally filtered by campus. Stalls are ordered inside
+//          Zenvy (cash to the stall, the stall delivers it).
 // @route   GET /api/restaurants/local-vendors
 const getLocalVendors = async (req, res) => {
   try {
@@ -365,21 +568,26 @@ const getLocalVendors = async (req, res) => {
     const MenuItem = getMenuItemModel();
     const { campus } = req.query;
 
-    const where = { vendorType: 'LOCAL_VENDOR', isActive: true };
-    if (campus) where.campus = campus;
+    const where = { vendorType: { [Op.in]: LOCAL_VENDOR_TYPES }, isActive: true };
+    if (campus) where.campus = String(campus);
 
     const vendors = await Restaurant.findAll({ where, order: [['subscriptionTier', 'DESC'], ['rating', 'DESC']] });
     const vendorIds = vendors.map(v => v.id);
 
     // Batch-fetch menu items for all local vendors
-    const { Op } = require('sequelize');
     const allMenuItems = vendorIds.length > 0
-      ? await MenuItem.findAll({ where: { restaurantId: { [Op.in]: vendorIds } } })
+      ? sortMenuItems(await MenuItem.findAll({ where: { restaurantId: { [Op.in]: vendorIds } } }))
       : [];
 
     const augmented = vendors.map(v => {
-      const vJson = stripStoreSecrets(v.toJSON());
+      const vJson = applyFeaturedExpiry(stripStoreSecrets(v.toJSON()));
       vJson._id = vJson.id;
+      const open = getStoreOpenState(v);
+      vJson.isOpen = open.isOpen && !v.isOffline;
+      vJson.opensAt = open.opensAt || null;
+      vJson.closedReason = vJson.isOpen ? null : (open.message || `${v.name} is not taking orders on Zenvy right now.`);
+      vJson.fulfilment = 'VENDOR';
+      vJson.paymentMethods = ['COD'];
       vJson.menu = allMenuItems
         .filter(m => m.restaurantId === v.id)
         .map(m => {
@@ -446,6 +654,27 @@ const toggleRestaurantOffline = async (req, res) => {
   }
 };
 
+// Open-state payload shared by /open and /hours (and the store_status_changed socket event).
+const storeStatusPayload = (restaurant) => {
+  const state = getStoreOpenState(restaurant);
+  return {
+    restaurantId: restaurant.id,
+    isOpenNow: restaurant.isOpenNow,
+    isOpen: state.isOpen,
+    opensAt: state.opensAt || null,
+    closedReason: state.isOpen ? null : (state.message || null),
+    operatingHours: restaurant.operatingHours || null,
+  };
+};
+const emitStoreStatus = (req, restaurant, payload) => {
+  const io = req.app.get('io');
+  if (io) {
+    io.to(`restaurant_${restaurant.id}`).emit('store_status_changed', payload);
+    io.emit('store_status_changed', { restaurantId: restaurant.id, isOpen: payload.isOpen });
+  }
+  realtime.publish('store', 'updated', restaurant.id, { storeId: restaurant.id, scope: 'status' });
+};
+
 // @desc    Store opens / closes for new orders (partner app header switch). This is NOT the
 //          isOffline flag (which means "no phone at the shop" and sends orders straight to riders).
 // @route   PUT /api/restaurants/:id/open  { isOpenNow: boolean }
@@ -465,25 +694,73 @@ const setRestaurantOpen = async (req, res) => {
     await restaurant.save();
     clearPublicRestaurantsCache();
 
-    const state = getStoreOpenState(restaurant);
-    const payload = {
-      restaurantId: restaurant.id,
-      isOpenNow: restaurant.isOpenNow,
-      isOpen: state.isOpen,
-      opensAt: state.opensAt || null,
-      closedReason: state.isOpen ? null : (state.message || null),
-      operatingHours: restaurant.operatingHours || null,
-    };
-    const io = req.app.get('io');
-    if (io) {
-      io.to(`restaurant_${restaurant.id}`).emit('store_status_changed', payload);
-      io.emit('store_status_changed', { restaurantId: restaurant.id, isOpen: state.isOpen });
-    }
-    realtime.publish('store', 'updated', restaurant.id, { storeId: restaurant.id, scope: 'status' });
+    const payload = storeStatusPayload(restaurant);
+    emitStoreStatus(req, restaurant, payload);
+    partnerAudit(req, restaurant.id, 'PARTNER_OPEN_SWITCH', { restaurantId: restaurant.id, isOpenNow: raw });
     res.json(payload);
   } catch (error) {
     console.error('[SET_OPEN_ERROR]', error);
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Shop hours from the partner / vendor app.
+// @route   PUT /api/restaurants/:id/hours  { operatingHours: { start: 'HH:MM', end: 'HH:MM', weekly? } }
+//          start === end = open all day. `weekly` (mon..sun { open, start, end }) is optional.
+const setRestaurantHours = async (req, res) => {
+  try {
+    const isOwner = req.user.id === req.params.id;
+    const isAdmin = req.user.role?.toLowerCase() === 'admin';
+    if (!isOwner && !isAdmin) return res.status(403).json({ message: 'Not authorized to change store hours' });
+    const input = (req.body || {}).operatingHours || req.body || {};
+    const strictHHMM = /^\d{2}:\d{2}$/;
+    if (!input.weekly && (!strictHHMM.test(String(input.start || '')) || !strictHHMM.test(String(input.end || '')))) {
+      return res.status(400).json({ message: 'Please set opening and closing times like 09:00 and 22:00.' });
+    }
+    let hours;
+    try {
+      hours = normalizeOperatingHours(input);
+    } catch (err) {
+      return res.status(400).json({ message: err.message });
+    }
+
+    const Restaurant = getRestaurantModel();
+    const restaurant = await Restaurant.findByPk(req.params.id);
+    if (!restaurant) return res.status(404).json({ message: 'Restaurant not found' });
+    restaurant.operatingHours = hours;
+    await restaurant.save();
+    clearPublicRestaurantsCache();
+
+    const payload = storeStatusPayload(restaurant);
+    emitStoreStatus(req, restaurant, payload);
+    partnerAudit(req, restaurant.id, 'PARTNER_HOURS', { restaurantId: restaurant.id, start: hours.start, end: hours.end, weekly: !!hours.weekly });
+    res.json(payload);
+  } catch (error) {
+    console.error('[SET_HOURS_ERROR]', error);
+    res.status(500).json({ message: 'Could not save your hours right now. Please try again.' });
+  }
+};
+
+// @desc    Register / unregister this phone for new-order pushes while the app is closed.
+// @route   POST /api/restaurants/fcm-token  { token | fcmToken, app?: 'restaurant'|'vendor', remove?: true }
+// @route   POST /api/restaurants/fcm-token/remove  { token }
+const saveStoreFcmToken = async (req, res) => {
+  try {
+    if (String(req.user?.role || '').toLowerCase() !== 'restaurant') {
+      return res.status(403).json({ message: 'Only a signed-in store can register for order alerts.' });
+    }
+    const body = req.body || {};
+    const token = typeof (body.token || body.fcmToken) === 'string' ? (body.token || body.fcmToken).trim() : '';
+    if (token.length < 20 || token.length > 4096) return res.status(400).json({ message: 'A valid push token is required.' });
+    const remove = body.remove === true || body.remove === 'true' || /\/remove$/.test(req.path);
+    const app = ['restaurant', 'vendor'].includes(String(body.app || '').toLowerCase()) ? String(body.app).toLowerCase() : null;
+    const { registerStoreToken } = require('../utils/storePush');
+    const devices = await registerStoreToken(req.user.id, token, { app, remove });
+    if (devices === null) return res.status(404).json({ message: 'Store not found' });
+    res.json({ ok: true, registered: !remove, devices });
+  } catch (error) {
+    console.error('[STORE_FCM_TOKEN_ERROR]', error);
+    res.status(500).json({ message: 'Could not save the push token. Please try again.' });
   }
 };
 
@@ -494,7 +771,7 @@ const getMenuItemById = async (req, res) => {
     const MenuItem = getMenuItemModel();
     const Restaurant = getRestaurantModel();
     const item = await MenuItem.findByPk(req.params.itemId);
-    if (!item) return res.status(404).json({ message: 'Menu item not found' });
+    if (!item) return res.status(404).json({ message: 'Menu item not found', code: 'ITEM_NOT_FOUND' });
     let restaurantName = 'Campus Restaurant';
     if (item.restaurantId) {
       const rest = await Restaurant.findByPk(item.restaurantId);
@@ -509,19 +786,23 @@ const getMenuItemById = async (req, res) => {
   }
 };
 
-module.exports = { 
-  getRestaurants, 
-  getRestaurantMenu, 
-  createRestaurant, 
-  restaurantLogin, 
-  getRestaurantOrders, 
+module.exports = {
+  getRestaurants,
+  getRestaurantMenu,
+  createRestaurant,
+  restaurantLogin,
+  getRestaurantOrders,
   toggleMenuItemAvailability,
   updateMenuItemTags,
   createMenuItem,
   updateMenuItem,
+  deleteMenuItem,
   getLocalVendors,
   incrementClickCount,
   toggleRestaurantOffline,
   setRestaurantOpen,
-  getMenuItemById
+  setRestaurantHours,
+  saveStoreFcmToken,
+  getMenuItemById,
+  publicStoreJson
 };

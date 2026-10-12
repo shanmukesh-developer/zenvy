@@ -54,8 +54,8 @@ export function WeeklyHoursEditor({ value, onChange, error }: { value: Weekly; o
       </div>
       <p className="text-xs text-gray-400"><span className="font-semibold text-gray-300">Summary:</span> {summarizeWeekly(value)}. Times are IST.</p>
       {!isUniform(value) && (
-        <p className="rounded-lg border border-amber-400/25 bg-amber-400/5 p-2.5 text-xs leading-relaxed text-amber-100">
-          Different hours per day need a server update that is not live yet. Until then the app uses the most common window every day; your per-day schedule is sent and will apply automatically once the server keeps it.
+        <p className="text-xs leading-relaxed text-gray-500">
+          Per-day hours: the app opens and closes the store by each day&apos;s window, and shows the next open day when it is closed.
         </p>
       )}
       {error && <p role="alert" className="text-xs text-red-300">{error}</p>}

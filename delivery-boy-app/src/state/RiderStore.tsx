@@ -323,6 +323,7 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
     if (!queued.length) return serverActive;
     const data = serverActive.data.map((o) => {
       let status = o.status;
+      if (status === 'Unknown') return o; // never overlay a guessed step on a status we do not understand
       for (const a of queued) {
         if (a.orderId !== o.id) continue;
         const s = queue.QUEUE_STATUS[a.type];
@@ -494,7 +495,11 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
         hardLogoutRef.current();
         return;
       }
-      for (const d of r.dropped) showToast(`Couldn't sync: ${d.message}`, 'error');
+      for (const d of r.dropped) {
+        // A step that raced a delivery / release we already finished is stale, not a real failure.
+        if (finishedIds.current.has(d.action.orderId)) continue;
+        showToast(`Couldn't sync: ${d.message}`, 'error');
+      }
       if (r.done.length || r.dropped.length) await refreshActive();
     },
     [refreshActive, showToast],
@@ -661,6 +666,7 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
 
   // ── Push ───────────────────────────────────────────────────────────────
   const riderId = profile?.id;
+  const launchOpen = useRef<{ id: string; after: number } | null>(null); // order id from a cold-start push tap
   useEffect(() => {
     if (!inMain || !riderId) return;
     push.registerForPush(riderId);
@@ -678,12 +684,37 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
       }
       refetchSoon();
     });
+    // App was launched from a killed state by tapping a push: the listener above never sees that tap.
+    // Active orders may not be loaded yet, so open the order once a fresh fetch contains it.
+    push.takeLaunchPushTap().then((data) => {
+      if (!data) return;
+      const id = data.orderId ? String(data.orderId) : null;
+      setOverlay(null);
+      setTab('home');
+      if (id) {
+        launchOpen.current = { id, after: Date.now() };
+        refreshActive();
+      } else refetchSoon();
+    });
     return () => {
       offToken();
       offRecv();
       offTap();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inMain, riderId, refetchSoon]);
+
+  // Route a launch tap once the order shows up in a fresh active list (or give up: it is no longer ours).
+  useEffect(() => {
+    const want = launchOpen.current;
+    if (!want) return;
+    if (active.data.some((o) => o.id === want.id)) {
+      launchOpen.current = null;
+      setDeliveryId(want.id);
+    } else if ((active.updatedAt ?? 0) >= want.after || Date.now() - want.after > 60000) {
+      launchOpen.current = null;
+    }
+  }, [active]);
 
   // ── Duty ───────────────────────────────────────────────────────────────
   const setDuty = useCallback(
@@ -752,6 +783,12 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
         setDeliveryId(order.id);
         return true;
       } catch (e) {
+        // Too many orders on hand: the offer is still valid, so keep it in the list.
+        if (e instanceof ApiError && e.status === 409 && e.code === 'MAX_ACTIVE') {
+          showToast('You are carrying the most orders allowed. Deliver one, then take this order.', 'info');
+          refreshPending();
+          return false;
+        }
         if (!isUnapprovedError(e)) showToast(errorMessage(e), 'error');
         // Taken by another rider / no longer available: hide it. Server or network trouble: keep it.
         if (e instanceof ApiError && (e.status === 400 || e.status === 404 || e.status === 409)) {
@@ -816,6 +853,9 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
       const cash = cashOf(order) || null;
       const done = (earning: number | null): DeliverResult => {
         finishedIds.current.add(order.id);
+        // Steps still queued for this order (e.g. an offline "Reached customer") are now stale: a late
+        // replay would only fail with "already delivered" and show a false "Couldn't sync" error.
+        queue.removeForOrder(order.id).catch(() => {});
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         announce('delivered', { amount: earning }, { dedupeKey: `delivered:${order.id}`, chime: 'money' });
         afterDelivered();

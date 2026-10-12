@@ -27,6 +27,7 @@ import { apiFetch, readJson } from '../../utils/auth';
 import { StaggeredSection } from '../../components/AnimatedSection';
 import ConfettiCannon from 'react-native-confetti-cannon';
 import LiveOrderCockpit from '../../components/LiveOrderCockpit';
+import { isVendorFulfilled, vendorCallNumber, callVendor, stallPayCopy } from '../../utils/localVendor';
 
 const MAX_TIP = 500;
 
@@ -42,7 +43,8 @@ const statusToStep = (s: string | undefined | null, prev: number): number => {
     case 'Preparing':
     case 'ReadyForPickup':
     case 'Picking': return 3;
-    case 'PickedUp': return 4;
+    case 'PickedUp':
+    case 'OutForDelivery': return 4; // OutForDelivery: a CampusBites stall is bringing it itself
     case 'ArrivedAtGate': return 5;
     case 'Delivered': return 6;
     case 'Cancelled': return -1;
@@ -78,6 +80,8 @@ interface OrderInfo {
   rating?: number | null;
   refundedToWallet?: number;
   cancellationReason?: string | null;
+  /** 'VENDOR' = a CampusBites stall delivers it itself (no rider, no PIN, cash to the stall). */
+  fulfilment?: string | null;
   deliveryPartner?: {
     id: string;
     _id?: string;
@@ -89,8 +93,22 @@ interface OrderInfo {
     vehicleType?: string;
     vehicleNumber?: string;
     bio?: string;
+    completedDeliveries?: number;
   };
+  dropLat?: number | null;
+  dropLng?: number | null;
 }
+
+type RiderFix = { lat: number; lng: number; at: number };
+
+/** Straight-line distance in km (haversine). */
+const distanceKm = (aLat: number, aLng: number, bLat: number, bLng: number) => {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(bLat - aLat);
+  const dLng = toRad(bLng - aLng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
+  return 6371 * 2 * Math.asin(Math.min(1, Math.sqrt(h)));
+};
 
 export default function TrackingScreen() {
   const params = useLocalSearchParams<{ id: string | string[] }>();
@@ -108,6 +126,9 @@ export default function TrackingScreen() {
   const [gateNotification, setGateNotification] = useState<string | null>(null);
   const [cancelSecondsLeft, setCancelSecondsLeft] = useState(0);
   const [zoomPin, setZoomPin] = useState(false);
+  // Rider's live GPS position, relayed by the server to this order's room ('riderLocation').
+  const [riderFix, setRiderFix] = useState<RiderFix | null>(null);
+  const [nowTick, setNowTick] = useState(Date.now());
   const [showCancelConfirmation, setShowCancelConfirmation] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [cancelMessage, setCancelMessage] = useState<string | null>(null);
@@ -149,11 +170,16 @@ export default function TrackingScreen() {
   };
 
   const storeName = orderInfo?.restaurant?.name || orderInfo?.restaurantName || '';
+  // CampusBites stall order: the stall accepts and delivers it itself
+  const isVendorOrder = isVendorFulfilled(orderInfo);
+  const stallLabel = storeName || 'the stall';
+  const stallCallable = isVendorOrder && !!vendorCallNumber(orderInfo?.restaurant);
+  const callStall = () => { if (orderInfo?.restaurant) callVendor(orderInfo.restaurant); };
   const estMinutes = orderInfo?.estDuration && orderInfo.estDuration > 0 ? orderInfo.estDuration : null;
 
   // Share the order status (text only: never the delivery PIN, no link to a page that does not exist)
   const handleShareTracking = async () => {
-    const stageText = status === 1 ? 'waiting for the store to confirm' : status === 2 ? 'confirmed' : status === 3 ? 'being prepared' : status === 4 ? 'out for delivery' : status === 5 ? 'at the gate' : 'delivered';
+    const stageText = status === 1 ? 'waiting for the store to confirm' : status === 2 ? 'confirmed' : status === 3 ? 'being prepared' : status === 4 ? (isVendorOrder ? `on the way from ${stallLabel}` : 'out for delivery') : status === 5 ? 'at the gate' : 'delivered';
     try {
       await Share.share({
         message: `My Zenvy order${storeName ? ` from ${storeName}` : ''} is ${stageText}.${estMinutes && status >= 2 && status <= 4 ? ` The store estimated about ${estMinutes} min.` : ''}`,
@@ -267,7 +293,16 @@ export default function TrackingScreen() {
     socket.on('connect', handleConnect);
     socket.on('disconnect', handleDisconnect);
     socket.on('driverAtGate', handleGate);
+    const handleRiderLocation = (data: { orderId?: string; lat?: number; lng?: number; ts?: number }) => {
+      if (!data || (data.orderId && String(data.orderId) !== String(orderId))) return;
+      const lat = Number(data.lat);
+      const lng = Number(data.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return;
+      setRiderFix({ lat, lng, at: Number(data.ts) || Date.now() });
+    };
+
     socket.on('statusUpdated', handleStatus);
+    socket.on('riderLocation', handleRiderLocation);
     if (socket.connected) setIsConnected(true);
 
     fetchOrder();
@@ -299,9 +334,18 @@ export default function TrackingScreen() {
       socket.off('disconnect', handleDisconnect);
       socket.off('driverAtGate', handleGate);
       socket.off('statusUpdated', handleStatus);
+      socket.off('riderLocation', handleRiderLocation);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderId, fetchOrder]);
+
+  // Keep the "updated Xs ago" line fresh while a live rider position is shown.
+  useEffect(() => {
+    if (!riderFix) return;
+    setNowTick(Date.now());
+    const t = setInterval(() => setNowTick(Date.now()), 10000);
+    return () => clearInterval(t);
+  }, [riderFix]);
 
   // Countdown for the 2-minute cancel window
   useEffect(() => {
@@ -379,7 +423,8 @@ export default function TrackingScreen() {
     }
   };
 
-  const tipAmount = Math.min(MAX_TIP, parseInt(ratingTip.replace(/\D/g, ''), 10) || 0);
+  // Stall orders have no rider: no rider tip / rating
+  const tipAmount = isVendorOrder ? 0 : Math.min(MAX_TIP, parseInt(ratingTip.replace(/\D/g, ''), 10) || 0);
 
   // Submit Rating handler (the server stores the item reviews itself)
   const handleSubmitRating = async () => {
@@ -433,7 +478,18 @@ export default function TrackingScreen() {
     router.push({ pathname: '/support', params: { orderId: String(orderId || '') } } as any);
   };
 
-  const rider = orderInfo?.deliveryPartner || null;
+  const rider = isVendorOrder ? null : (orderInfo?.deliveryPartner || null);
+
+  // Live distance line: only from a real, recent GPS fix and a real drop pin on the order.
+  const dropLat = Number(orderInfo?.dropLat);
+  const dropLng = Number(orderInfo?.dropLng);
+  const hasDrop = orderInfo?.dropLat != null && orderInfo?.dropLng != null && Number.isFinite(dropLat) && Number.isFinite(dropLng);
+  const fixAgeSec = riderFix ? Math.max(0, Math.round((nowTick - riderFix.at) / 1000)) : null;
+  const liveFix = riderFix && fixAgeSec !== null && fixAgeSec <= 120 && status >= 3 && status <= 5 ? riderFix : null;
+  const riderKm = liveFix && hasDrop ? distanceKm(liveFix.lat, liveFix.lng, dropLat, dropLng) : null;
+  const riderDistanceText = riderKm === null
+    ? null
+    : riderKm < 1 ? `${Math.max(10, Math.round(riderKm * 1000 / 10) * 10)} m away` : `${riderKm.toFixed(1)} km away`;
 
   const bg = isDark ? COLORS.bgDark : COLORS.bgLight;
   const cardBg = isDark ? COLORS.bgCard : COLORS.bgLightCard;
@@ -582,6 +638,7 @@ export default function TrackingScreen() {
             orderId={orderInfo?._id || orderId || ''}
             riderInfo={rider}
             estMinutes={estMinutes}
+            vendor={isVendorOrder ? { name: stallLabel, onCall: stallCallable ? callStall : null } : null}
           />
         </StaggeredSection>
 
@@ -589,11 +646,17 @@ export default function TrackingScreen() {
         <StaggeredSection delay={50} direction="up">
           <View style={[s.currentStageCard, { backgroundColor: cardBg, borderColor: COLORS.goldBorder }]}>
             <Text style={s.stageEmoji}>
-              {status === 1 ? '⏳' : status === 2 ? '✅' : status === 3 ? '🍳' : status === 4 ? '🛵' : status === 5 ? '🔔' : '🎉'}
+              {status === 1 ? '⏳' : status === 2 ? '✅' : status === 3 ? '🍳' : status === 4 ? (isVendorOrder ? '🏪' : '🛵') : status === 5 ? '🔔' : '🎉'}
             </Text>
             <View style={{ flex: 1 }}>
               <Text style={[s.stageLabel, { color: txtSec }]}>CURRENT STATUS</Text>
               <Text style={[s.stageText, { color: txt }]}>
+                {isVendorOrder ? (
+                  status === 1 ? `Waiting for ${stallLabel} to accept`
+                  : status <= 3 ? `${stallLabel} accepted your order`
+                  : status <= 5 ? `Out for delivery — ${stallLabel} is bringing it. Keep cash ready.`
+                  : `Delivered by ${stallLabel}. Enjoy!`
+                ) : <>
                 {status === 1 && `Waiting for ${storeName || 'the store'} to accept`}
                 {status === 2 && (rider ? `${rider.name || 'Your rider'} will pick up your order` : 'Order confirmed — assigning a rider')}
                 {status === 3 && (orderInfo?.status === 'Picking'
@@ -604,7 +667,14 @@ export default function TrackingScreen() {
                 {status === 4 && 'Your rider is on the way'}
                 {status === 5 && 'Your rider has arrived at your gate!'}
                 {status >= 6 && 'Order delivered. Enjoy!'}
+                </>}
               </Text>
+              {!!liveFix && (
+                <Text style={{ fontSize: 11, fontWeight: '700', color: txtSec, marginTop: 4 }}>
+                  📍 {riderDistanceText ? `${rider?.name || 'Your rider'} is ${riderDistanceText}` : 'Live rider location on'}
+                  {fixAgeSec !== null ? (fixAgeSec < 15 ? ' · live' : ` · updated ${fixAgeSec}s ago`) : ''}
+                </Text>
+              )}
             </View>
             {status === 5 ? (
               <View style={s.etaChip}>
@@ -749,7 +819,7 @@ export default function TrackingScreen() {
         )}
 
         {/* ── DELIVERY PIN ── */}
-        {!!orderInfo?.deliveryPin && status < 6 && (
+        {!!orderInfo?.deliveryPin && !isVendorOrder && status < 6 && (
           <StaggeredSection delay={170} direction="up">
             <View style={[s.pinCard, { backgroundColor: cardBg, borderColor: status >= 4 ? COLORS.gold : border }]}>
               <View style={s.pinHeader}>
@@ -776,15 +846,27 @@ export default function TrackingScreen() {
         {/* ── QUICK ACTION BUTTONS ── */}
         <StaggeredSection delay={230} direction="up">
           <View style={s.actionRow}>
-            <TouchableOpacity
-              style={[s.actionBtn, { backgroundColor: cardBg, borderColor: border }, !(rider?.phone && status < 6) && { opacity: 0.5 }]}
-              disabled={!(rider?.phone && status < 6)}
-              onPress={callRider}
-              accessibilityLabel="Call your rider"
-            >
-              <Text style={{ fontSize: 16 }}>📞</Text>
-              <Text style={[s.actionBtnText, { color: txt }]}>{rider ? 'CALL RIDER' : 'NO RIDER YET'}</Text>
-            </TouchableOpacity>
+            {isVendorOrder ? (
+              <TouchableOpacity
+                style={[s.actionBtn, { backgroundColor: cardBg, borderColor: border }, !stallCallable && { opacity: 0.5 }]}
+                disabled={!stallCallable}
+                onPress={callStall}
+                accessibilityLabel={`Call ${stallLabel}`}
+              >
+                <Text style={{ fontSize: 16 }}>📞</Text>
+                <Text style={[s.actionBtnText, { color: txt }]}>CALL STALL</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[s.actionBtn, { backgroundColor: cardBg, borderColor: border }, !(rider?.phone && status < 6) && { opacity: 0.5 }]}
+                disabled={!(rider?.phone && status < 6)}
+                onPress={callRider}
+                accessibilityLabel="Call your rider"
+              >
+                <Text style={{ fontSize: 16 }}>📞</Text>
+                <Text style={[s.actionBtnText, { color: txt }]}>{rider ? 'CALL RIDER' : 'NO RIDER YET'}</Text>
+              </TouchableOpacity>
+            )}
 
             <TouchableOpacity style={[s.actionBtn, { backgroundColor: cardBg, borderColor: border }]} onPress={openHelp}>
               <Text style={{ fontSize: 16 }}>🛟</Text>
@@ -853,7 +935,7 @@ export default function TrackingScreen() {
               <View style={[s.summaryDivider, { backgroundColor: border }]} />
               <View style={s.summaryRow}>
                 <Text style={[s.summaryTotalLabel, { color: txt }]}>
-                  {orderInfo.paymentMethod === 'Wallet' ? 'Paid from Zenvy Wallet' : 'To pay (Cash on Delivery)'}
+                  {isVendorOrder ? stallPayCopy(stallLabel) : orderInfo.paymentMethod === 'Wallet' ? 'Paid from Zenvy Wallet' : 'To pay (Cash on Delivery)'}
                 </Text>
                 <Text style={[s.summaryTotal, { color: txt }]}>
                   ₹{Number(orderInfo.finalPrice ?? orderInfo.totalPrice ?? 0) || 0}
@@ -938,7 +1020,7 @@ export default function TrackingScreen() {
                 </TouchableOpacity>
               </View>
               <Text style={[s.ratingModalDesc, { color: txtSec }]}>
-                {storeName ? `How was your order from ${storeName}?` : 'How was your order?'}
+                {isVendorOrder ? `How was your order from ${stallLabel}? (rates the stall's food and delivery)` : storeName ? `How was your order from ${storeName}?` : 'How was your order?'}
               </Text>
 
               {/* Stars Row */}
@@ -963,8 +1045,8 @@ export default function TrackingScreen() {
                 onChangeText={setRatingReview}
               />
 
-              {/* Tip for the rider (paid from the Zenvy Wallet) */}
-              {!!rider && (
+              {/* Tip for the rider (paid from the Zenvy Wallet) — never on stall orders */}
+              {!!rider && !isVendorOrder && (
                 <>
                   <View style={{ flexDirection: 'row', gap: 8, width: '100%', marginTop: 12 }}>
                     {[10, 20, 30].map(v => {

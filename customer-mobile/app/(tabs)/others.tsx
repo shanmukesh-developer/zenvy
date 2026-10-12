@@ -416,7 +416,7 @@ export default function OthersScreen() {
         setActiveTab('pg');
       } else if (tab === 'promos' || tab === 'offers') {
         setActiveTab('promos');
-      } else if (tab === 'food' || tab === 'basket' || tab === 'afterdark') {
+      } else if (tab === 'food' || tab === 'basket') {
         setActiveTab('food');
       }
     }

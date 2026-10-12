@@ -60,6 +60,11 @@ const CATEGORY_META: Record<string, { title: string; subtitle: string; icon: str
 
 const SERVICE_CATEGORIES = ['tailoring', 'repairs', 'print', 'laundry'];
 
+// Laundry is priced per kg or per piece / pair: the student says how much, the server multiplies
+// the catalogue price by it (backend routes/serviceRoutes.js priceServiceBooking). Keep MAX in sync.
+const MAX_SERVICE_QTY = 50;
+const laundryUnit = (name: string): 'kg' | 'pcs' => (/per\s*kg|\bkg\b/i.test(name) ? 'kg' : 'pcs');
+
 // Pickup slots still ahead of us (a 4–6 PM slot is not offered at 8 PM).
 const upcomingPickupSlots = (now = new Date()): string[] => {
   const h = now.getHours();
@@ -125,7 +130,7 @@ export default function CategoryDetailScreen() {
   // Dedicated Service Booking Modal States
   const [selectedService, setSelectedService] = useState<CatalogueItem | null>(null);
   const [serviceModalVisible, setServiceModalVisible] = useState(false);
-  const [garmentType, setGarmentType] = useState('Jeans / Trousers');
+  const [serviceQty, setServiceQty] = useState('1');
   const [serviceNotes, setServiceNotes] = useState('');
   const [pickupSlots, setPickupSlots] = useState<string[]>(() => upcomingPickupSlots());
   const [pickupSlot, setPickupSlot] = useState<string>(() => upcomingPickupSlots()[0]);
@@ -165,7 +170,11 @@ export default function CategoryDetailScreen() {
   }, [items]);
 
   // Price shown in the booking sheet (and sent as the quote): the card price, or the print formula
+  const isLaundry = categoryId === 'laundry';
+  const qtyUnit = selectedService ? laundryUnit(selectedService.name) : 'pcs';
+  const qtyNum = Math.min(MAX_SERVICE_QTY, Math.max(1, parseInt(serviceQty, 10) || 1));
   const calculatedServicePrice = useMemo(() => {
+    if (categoryId === 'laundry') return Math.round((selectedService?.price || 0) * qtyNum * 100) / 100;
     if (categoryId !== 'print') return selectedService?.price || 0;
     const pages = Math.min(5000, Math.max(1, parseInt(pageCount, 10) || 1));
     const numCopies = Math.min(500, Math.max(1, parseInt(copies, 10) || 1));
@@ -173,7 +182,7 @@ export default function CategoryDetailScreen() {
     const printTotal = pages * costPerPage * numCopies;
     const bindingCost = bindingType === 'spiral' ? (printRates.spiral ?? 0) : bindingType === 'hardbound' ? (printRates.hardbound ?? 0) : 0;
     return Math.round((printTotal + bindingCost) * 100) / 100;
-  }, [categoryId, selectedService, pageCount, printColor, bindingType, copies, printRates]);
+  }, [categoryId, selectedService, qtyNum, pageCount, printColor, bindingType, copies, printRates]);
 
   // Photo / screenshot attachment (images only: there is no document picker in this build)
   const handlePickDocument = async () => {
@@ -312,6 +321,10 @@ export default function CategoryDetailScreen() {
 
   const handleAction = (item: CatalogueItem) => {
     if (isServiceCategory || item.bookingOnly) {
+      if (!item.inStock) {
+        Alert.alert('Not taking bookings right now', `${item.name} is paused for now. Please pick another service or check back later.`);
+        return;
+      }
       if (!user) {
         Alert.alert('Sign in to book', 'Sign in so the partner knows where to pick up and whom to call.', [
           { text: 'Not now', style: 'cancel' },
@@ -321,6 +334,7 @@ export default function CategoryDetailScreen() {
       }
       setSelectedService(item);
       setServiceNotes('');
+      setServiceQty('1');
       const slots = upcomingPickupSlots();
       setPickupSlots(slots);
       setPickupSlot((prev) => (slots.includes(prev) ? prev : slots[0]));
@@ -386,7 +400,8 @@ export default function CategoryDetailScreen() {
         title: selectedService.name.slice(0, 200),
         description: (notes ? `[Notes: ${notes}] - ${selectedService.desc}` : selectedService.desc).slice(0, 2000),
         specifications: {
-          garmentType: categoryId === 'tailoring' ? garmentType : undefined,
+          quantity: isLaundry ? qtyNum : undefined,
+          unit: isLaundry ? qtyUnit : undefined,
           pageCount: categoryId === 'print' ? pageCount : undefined,
           printColor: categoryId === 'print' ? printColor : undefined,
           printSides: categoryId === 'print' ? printSides : undefined,
@@ -428,9 +443,11 @@ export default function CategoryDetailScreen() {
         const estimateLine = Number.isFinite(serverAmount) && serverAmount > 0
           ? `Estimate: ₹${serverAmount} (pay on delivery)`
           : Number.isFinite(serverAmount) ? 'Estimate: the partner will quote a price' : `Estimate: ₹${finalAmount} (pay on delivery)`;
+        const qtyLine = isLaundry ? `\nQuantity: ${qtyNum} ${qtyUnit === 'kg' ? 'kg (approx.)' : qtyNum === 1 ? 'item' : 'items'}` : '';
+        // Same short id as My Orders → Services and the admin dashboard (last 8 characters).
         Alert.alert(
           'Booking confirmed 🎉',
-          `Booking #${String(data.booking.id || '').substring(0, 8).toUpperCase()}\n\n${selectedService.name}\n${estimateLine}\nPickup: ${pickupSlot}\nAt: ${block}, Room ${room}\n\nThe partner will call you on ${contactPhone} before pickup and confirm the final price.`,
+          `Booking #${String(data.booking.id || '').slice(-8).toUpperCase()}\n\n${selectedService.name}${qtyLine}\n${estimateLine}\nPickup: ${pickupSlot}\nAt: ${block}, Room ${room}\n\nThe partner will call you on ${contactPhone} before pickup and confirm the final price.`,
           [
             { text: 'Done', style: 'cancel' },
             { text: 'View booking', onPress: () => router.push({ pathname: '/(tabs)/orders', params: { segment: 'services' } } as any) },
@@ -444,7 +461,9 @@ export default function CategoryDetailScreen() {
           { text: 'Sign in', onPress: () => router.push('/login' as any) },
         ]);
       } else {
-        Alert.alert('Booking not placed', (data && typeof data.message === 'string' && res.status < 500 && data.message) || 'We could not book this service right now. Please try again.');
+        // The service was paused / removed since this shelf loaded: refresh it so the card shows that.
+        if (data && data.code === 'SERVICE_UNAVAILABLE') fetchCategoryItems('silent');
+        Alert.alert('Booking not placed',(data && typeof data.message === 'string' && res.status < 500 && data.message) || 'We could not book this service right now. Please try again.');
       }
     } finally {
       submittingRef.current = false;
@@ -579,7 +598,7 @@ export default function CategoryDetailScreen() {
             const line = isService ? undefined : lineFor(item.id);
             const storeClosed = !isService && stores[item.storeId] && !stores[item.storeId].isOpen;
             // A closed store's items are "CLOSED", not "SOLD OUT" (the server's orderable is false for both)
-            const soldOut = !isService && !item.inStock;
+            const soldOut = !item.inStock;
             return (
               <View style={[s.card, { backgroundColor: cardBg, borderColor: border }]}>
                 <View style={s.imageBox}>
@@ -597,10 +616,10 @@ export default function CategoryDetailScreen() {
                   )}
                   {soldOut && (
                     <View style={[s.discountBadge, { backgroundColor: '#374151', left: undefined, right: 8 }]}>
-                      <Text style={s.discountText}>SOLD OUT</Text>
+                      <Text style={s.discountText}>{isService ? 'PAUSED' : 'SOLD OUT'}</Text>
                     </View>
                   )}
-                  {isService && (
+                  {isService && !soldOut && (
                     <View style={{ position: 'absolute', top: 6, right: 6, backgroundColor: 'rgba(0,0,0,0.7)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
                       <Text style={{ color: '#FCD34D', fontSize: 7.5, fontWeight: '900', letterSpacing: 0.5 }}>DOORSTEP</Text>
                     </View>
@@ -640,7 +659,7 @@ export default function CategoryDetailScreen() {
                         disabled={soldOut}
                         activeOpacity={0.85}
                       >
-                        <Text style={s.addBtnText}>{isService ? 'BOOK ➔' : soldOut ? 'SOLD OUT' : storeClosed ? 'CLOSED' : 'ADD +'}</Text>
+                        <Text style={s.addBtnText}>{isService ? (soldOut ? 'UNAVAILABLE' : 'BOOK ➔') : soldOut ? 'SOLD OUT' : storeClosed ? 'CLOSED' : 'ADD +'}</Text>
                       </TouchableOpacity>
                     )}
                   </View>
@@ -715,7 +734,7 @@ export default function CategoryDetailScreen() {
               <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
                 <View style={{ backgroundColor: isDark ? '#27272A' : '#F8FAFC', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, borderWidth: 1, borderColor: border }}>
                   <Text style={{ fontSize: 8, fontWeight: '800', color: txtSec }}>
-                    {categoryId === 'print' ? 'ESTIMATE' : 'STARTS AT'}
+                    {categoryId === 'print' || isLaundry ? 'ESTIMATE' : 'STARTS AT'}
                   </Text>
                   <Text style={{ fontSize: 16, fontWeight: '900', color: '#10B981', marginTop: 1 }}>
                     ₹{calculatedServicePrice}
@@ -931,6 +950,35 @@ export default function CategoryDetailScreen() {
                 </View>
               )}
 
+
+              {/* ── LAUNDRY QUANTITY (per kg / per piece) ── */}
+              {isLaundry && selectedService && (
+                <View style={{ backgroundColor: isDark ? '#222226' : '#F8FAFC', borderRadius: 16, padding: 12, marginBottom: 14, borderWidth: 1, borderColor: border }}>
+                  <Text style={{ fontSize: 10, fontWeight: '900', color: txt, letterSpacing: 1, marginBottom: 8 }}>
+                    {qtyUnit === 'kg' ? '⚖️ APPROX. WEIGHT (KG)' : '👕 NUMBER OF ITEMS / PAIRS'}
+                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <TouchableOpacity
+                      onPress={() => setServiceQty(String(Math.max(1, qtyNum - 1)))}
+                      disabled={qtyNum <= 1}
+                      style={{ width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#18181B' : '#FFF', borderWidth: 1, borderColor: border, opacity: qtyNum <= 1 ? 0.4 : 1 }}
+                    >
+                      <Text style={{ fontSize: 18, fontWeight: '900', color: txt }}>−</Text>
+                    </TouchableOpacity>
+                    <Text style={{ fontSize: 16, fontWeight: '900', color: txt, minWidth: 28, textAlign: 'center' }}>{qtyNum}</Text>
+                    <TouchableOpacity
+                      onPress={() => setServiceQty(String(Math.min(MAX_SERVICE_QTY, qtyNum + 1)))}
+                      disabled={qtyNum >= MAX_SERVICE_QTY}
+                      style={{ width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#18181B' : '#FFF', borderWidth: 1, borderColor: border, opacity: qtyNum >= MAX_SERVICE_QTY ? 0.4 : 1 }}
+                    >
+                      <Text style={{ fontSize: 18, fontWeight: '900', color: txt }}>+</Text>
+                    </TouchableOpacity>
+                    <Text style={{ flex: 1, fontSize: 10, fontWeight: '700', color: txtSec }}>
+                      ₹{selectedService.price} × {qtyNum}{qtyUnit === 'kg' ? ' kg' : ''}. {qtyUnit === 'kg' ? 'The partner weighs your clothes at pickup and confirms the final price.' : 'The partner confirms the count at pickup.'}
+                    </Text>
+                  </View>
+                </View>
+              )}
 
               {/* Pickup Time Slot */}
               <View style={{ marginBottom: 14 }}>

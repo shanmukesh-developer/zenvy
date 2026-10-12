@@ -1,10 +1,10 @@
 import { Alert, Linking } from 'react-native';
 
 /**
- * CampusBites local vendors are DISPLAY-ONLY listings. Zenvy shows the stall and its prices;
- * the customer orders directly with the vendor (call / WhatsApp) and the vendor delivers.
- * Zenvy takes no order, payment or rider for them, so their items are never added to the basket.
- * Mirrors backend utils/vendorTypes.js (isLocalVendorStore).
+ * CampusBites local vendors (stalls) are ordered INSIDE Zenvy: the item goes in the basket, the order is
+ * cash on delivery to the stall, and the stall delivers it themselves (no rider, no delivery PIN).
+ * The stall sees and manages the order in the Zenvy Vendor app. Mirrors backend utils/vendorTypes.js
+ * (isLocalVendorStore) and the order's `fulfilment: 'VENDOR'`.
  */
 export const LOCAL_VENDOR_TYPES = ['LOCAL_VENDOR', 'LOCAL', 'STALL'];
 
@@ -45,4 +45,34 @@ export const whatsappVendor = (vendor: any, itemName?: string) => {
     .catch(() => Alert.alert("Couldn't open WhatsApp", 'Make sure WhatsApp is installed, or call the stall instead.'));
 };
 
-export const DIRECT_ORDER_COPY = 'Order directly from the stall by call or WhatsApp. The vendor takes your order and delivers it themselves — no Zenvy basket, payment or rider.';
+/** Shown on stall pages: how a stall order works. */
+export const STALL_ORDER_COPY = 'Order here on Zenvy. The stall delivers it to you themselves — pay them in cash on delivery.';
+
+/** "Pay cash to <stall> on delivery" */
+export const stallPayCopy = (stallName?: string | null) => `Pay cash to ${String(stallName || 'the stall').trim() || 'the stall'} on delivery`;
+
+/** True when an order (GET /api/orders/:id or a list row) is delivered by the stall itself. */
+export const isVendorFulfilled = (order: any): boolean =>
+  !!order && (String(order.fulfilment || '').toUpperCase() === 'VENDOR'
+    || (!order.fulfilment && String(order.category || '').toUpperCase() === 'LOCAL_VENDOR'));
+
+/** Friendly copy for the backend's stall error codes; null when the code is not a stall one. */
+export const stallErrorMessage = (code: any, serverMessage?: string | null, stallName?: string | null): { title: string; message: string } | null => {
+  const name = String(stallName || 'This stall');
+  switch (String(code || '')) {
+    case 'STALL_COD_ONLY':
+      return { title: 'Cash only', message: serverMessage || `${name} takes cash on delivery only. Pay the stall when your order arrives.` };
+    case 'COUPON_NOT_FOR_STALL':
+      return { title: 'Coupon not applied', message: serverMessage || `Coupons can't be used on ${name} orders — you pay the stall in cash.` };
+    case 'ADDONS_NOT_FOR_STALL':
+      return { title: 'Remove add-ons', message: serverMessage || `Add-ons can't be added to a ${name} order.` };
+    case 'MULTIPLE_STORES':
+      return { title: 'One place per order', message: serverMessage || "A stall order can only have that stall's items. Place the other items as a separate order." };
+    case 'STORE_CLOSED':
+      return { title: 'Closed right now', message: serverMessage || `${name} is not taking orders right now. Try again when it opens.` };
+    case 'MIN_ORDER_NOT_MET':
+      return { title: 'Add a little more', message: serverMessage || `${name} has a minimum order value. Add a few more items.` };
+    default:
+      return null;
+  }
+};

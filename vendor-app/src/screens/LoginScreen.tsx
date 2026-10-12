@@ -17,7 +17,8 @@ import { Button } from '../ui/kit';
 type ServerState = 'checking' | 'up' | 'waking';
 
 const LOCAL_TYPES = ['LOCAL_VENDOR', 'LOCAL', 'STALL'];
-const isLocalVendor = (r: any) => !!r && (LOCAL_TYPES.includes(String(r.vendorType || '').toUpperCase()) || r.isLocalVendor === true);
+// The server already refuses restaurant accounts (403 NOT_A_VENDOR_ACCOUNT with app: 'vendor'); this guards older replies.
+const isLocalVendor = (r: any) => !!r && (typeof r.isLocalVendor === 'boolean' ? r.isLocalVendor : LOCAL_TYPES.includes(String(r.vendorType || '').toUpperCase()));
 
 /** Turns server replies into words a stall owner understands. */
 function friendly(e: unknown, serverWaking: boolean): string {

@@ -32,10 +32,10 @@ import {
   Trash2,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import * as ImagePicker from 'expo-image-picker';
+import { pickImageAsset, prepareAndUploadImage, resolveMediaUrl, ImageUploadError } from '../../../utils/imageUpload';
 import { CampusColors, CampusLayout } from '../../../constants/campusTheme';
 import { CampusUserData } from '../../../types/campus';
-import { fetchChatMessages, uploadCampusImage } from '../campusApi';
+import { fetchChatMessages } from '../campusApi';
 import { PollsSheet } from './PollsSheet';
 import {
   connectCampusSocket,
@@ -437,79 +437,66 @@ export const ChatDetailScreen: React.FC<ChatDetailScreenProps> = ({
     }
   };
 
+  // Pick -> compress (1280 px JPEG) -> upload to campus media -> send only the short URL over the socket.
+  const sendPhotoAsset = async (asset: { uri: string; width?: number; height?: number }) => {
+    const clientMsgId = `client-${Date.now()}`;
+    const optimisticMsg: ChatMessage = {
+      id: clientMsgId,
+      senderId: currentUser?.id || 'me',
+      senderName: currentUser?.name || 'You',
+      text: '',
+      type: 'image',
+      mediaUrl: asset.uri,
+      deliveryStatus: 'clock',
+      createdAt: new Date(),
+    };
+    setSendingPhoto(true);
+    setMessages((prev) => [...prev, optimisticMsg]);
+    try {
+      const uploaded = await prepareAndUploadImage(asset, 'chat');
+      const res = await sendCampusMessage(chatId, {
+        type: 'image',
+        mediaUrl: uploaded.url,
+        text: '',
+        clientMsgId,
+      });
+      if (!mountedRef.current) return;
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      // Keep showing the local file for our own bubble (already on the phone, no re-download).
+      setMessages((prev) =>
+        prev.map((m) => (m.id === clientMsgId ? { ...m, id: res.id, deliveryStatus: 'sent' } : m))
+      );
+    } catch (e: any) {
+      if (!mountedRef.current) return;
+      setMessages((prev) => prev.filter((m) => m.id !== clientMsgId));
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      const message =
+        e?.code === 'BLOCKED'
+          ? "You can't send messages in this chat."
+          : e?.message && String(e.message).length < 160
+          ? e.message
+          : "We couldn't send your photo. Check your connection and try again.";
+      const canRetry = !(e instanceof ImageUploadError && !e.retryable) && e?.code !== 'BLOCKED' && e?.code !== 'BAD_MEDIA';
+      Alert.alert(
+        'Photo not sent',
+        message,
+        canRetry
+          ? [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Retry', onPress: () => sendPhotoAsset(asset) },
+            ]
+          : undefined
+      );
+    } finally {
+      if (mountedRef.current) setSendingPhoto(false);
+    }
+  };
+
   const pickAndSendPhoto = async (fromCamera: boolean) => {
     if (sendingPhoto) return;
-    try {
-      const perm = fromCamera
-        ? await ImagePicker.requestCameraPermissionsAsync()
-        : await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) {
-        Alert.alert(
-          fromCamera ? 'Camera access needed' : 'Photo access needed',
-          fromCamera
-            ? 'Allow camera access in Settings to share a photo.'
-            : 'Allow photo access in Settings to share a picture.'
-        );
-        return;
-      }
-      const options: ImagePicker.ImagePickerOptions = {
-        mediaTypes: ['images'],
-        quality: 0.5,
-        // Native uploads stream the file URI; base64 is only needed on web.
-        base64: Platform.OS === 'web',
-      };
-      const result = fromCamera
-        ? await ImagePicker.launchCameraAsync(options)
-        : await ImagePicker.launchImageLibraryAsync(options);
-      if (result.canceled || !result.assets?.[0]) return;
-      const asset = result.assets[0];
-      const localUri =
-        Platform.OS !== 'web' && asset.uri
-          ? asset.uri
-          : asset.base64
-            ? `data:${asset.mimeType || 'image/jpeg'};base64,${asset.base64}`
-            : asset.uri;
-      if (!localUri) return;
-
-      const clientMsgId = `client-${Date.now()}`;
-      const optimisticMsg: ChatMessage = {
-        id: clientMsgId,
-        senderId: currentUser?.id || 'me',
-        senderName: currentUser?.name || 'You',
-        text: '',
-        type: 'image',
-        mediaUrl: asset.uri || localUri,
-        deliveryStatus: 'clock',
-        createdAt: new Date(),
-      };
-      setSendingPhoto(true);
-      setMessages((prev) => [...prev, optimisticMsg]);
-      try {
-        const url = await uploadCampusImage(localUri);
-        const res = await sendCampusMessage(chatId, {
-          type: 'image',
-          mediaUrl: url,
-          text: '',
-          clientMsgId,
-        });
-        if (!mountedRef.current) return;
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === clientMsgId ? { ...m, id: res.id, mediaUrl: url, deliveryStatus: 'sent' } : m
-          )
-        );
-      } catch {
-        if (!mountedRef.current) return;
-        setMessages((prev) => prev.filter((m) => m.id !== clientMsgId));
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
-        Alert.alert('Photo not sent', "We couldn't send your photo. Check your connection and try again.");
-      } finally {
-        if (mountedRef.current) setSendingPhoto(false);
-      }
-    } catch {
-      Alert.alert('Photo not sent', 'Could not open that photo. Please try another one.');
-    }
+    const asset = await pickImageAsset({ source: fromCamera ? 'camera' : 'library' });
+    if (!asset || !mountedRef.current) return;
+    await sendPhotoAsset(asset);
   };
 
   const handleAddReaction = (emoji: string) => {
@@ -681,7 +668,7 @@ export const ChatDetailScreen: React.FC<ChatDetailScreenProps> = ({
                   {/* Photo */}
                   {item.type === 'image' && !!item.mediaUrl && !item.isDeletedForEveryone && (
                     <View>
-                      <Image source={{ uri: item.mediaUrl }} style={styles.photo} resizeMode="cover" />
+                      <Image source={{ uri: resolveMediaUrl(item.mediaUrl) || undefined }} style={styles.photo} resizeMode="cover" />
                       {item.deliveryStatus === 'clock' && (
                         <View style={styles.photoUploading}>
                           <ActivityIndicator color="#FFFFFF" />

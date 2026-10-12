@@ -191,6 +191,22 @@ const getMyGroups = async (req, res) => {
 
     const mine = groups.filter((g) => (g.participants || []).includes(req.user.id));
 
+    // Which of my admin groups are public on campus (for the "Public on campus" switch).
+    let publicIds = new Set();
+    try {
+      const adminIds = mine.filter((g) => (g.adminIds || []).includes(req.user.id)).map((g) => g.id);
+      if (adminIds.length) {
+        const { getCampusGroupSettingModel } = require('../models/CampusGroupSetting');
+        const rows = await getCampusGroupSettingModel().findAll({
+          where: { conversationId: adminIds, discoverable: true },
+          attributes: ['conversationId'],
+        });
+        publicIds = new Set(rows.map((r) => String(r.conversationId)));
+      }
+    } catch (e) {
+      console.warn('[GET_MY_GROUPS_DISCOVERABLE_WARN]', e.message);
+    }
+
     res.json({
       groups: mine.map((g) => ({
         id: g.id,
@@ -201,6 +217,7 @@ const getMyGroups = async (req, res) => {
         joinCode: (g.adminIds || []).includes(req.user.id) ? g.joinCode : undefined,
         isAdmin: (g.adminIds || []).includes(req.user.id),
         memberCount: (g.participants || []).length,
+        discoverable: publicIds.has(String(g.id)),
       })),
     });
   } catch (err) {

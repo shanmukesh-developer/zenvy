@@ -40,6 +40,28 @@ const initRestaurantModel = (sequelize) => {
     isActive: { type: DataTypes.BOOLEAN, defaultValue: true },
     isOffline: { type: DataTypes.BOOLEAN, defaultValue: false }, // For shops without a smartphone
     password: { type: DataTypes.STRING, allowNull: true }, // For restaurant portal login
+    // Partner / vendor login phone (10 digits, unique when set). Same field as the admin's "partnerPhone".
+    phone: { type: DataTypes.STRING, allowNull: true },
+    // Bumped on every partner password change: older partner JWTs (claim `tv`) stop working.
+    tokenVersion: { type: DataTypes.INTEGER, allowNull: true, defaultValue: 0 },
+    // Partner / vendor app push tokens ([{ token, app, at }]) for new-order alerts while the app is closed.
+    fcmTokens: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      defaultValue: '[]',
+      get() {
+        const val = this.getDataValue('fcmTokens');
+        try { const arr = val ? JSON.parse(val) : []; return Array.isArray(arr) ? arr : []; } catch { return []; }
+      },
+      set(val) { this.setDataValue('fcmTokens', JSON.stringify(Array.isArray(val) ? val : [])); }
+    },
+    // First time the store went live (isActive true). Null = draft, never published.
+    publishedAt: { type: DataTypes.DATE, allowNull: true },
+    // Per-store packaging fee (₹0-500) and minimum order value (₹0-5000), used in the server bill.
+    packagingFee: { type: DataTypes.FLOAT, allowNull: true, defaultValue: 0 },
+    minOrderValue: { type: DataTypes.FLOAT, allowNull: true, defaultValue: 0 },
+    // Store logo without switching on the branded theme (brandTheme).
+    logoUrl: { type: DataTypes.TEXT, allowNull: true },
     isFeatured: { type: DataTypes.BOOLEAN, defaultValue: false },
     featuredUntil: { type: DataTypes.DATE, allowNull: true },
     featuredBadge: { type: DataTypes.STRING, allowNull: true, defaultValue: 'Sponsored' },
@@ -71,6 +93,18 @@ const initRestaurantModel = (sequelize) => {
 
   Restaurant.beforeCreate(hashPassword);
   Restaurant.beforeUpdate(hashPassword);
+  // Password change (not the first one) revokes every signed-in partner session.
+  Restaurant.beforeUpdate((restaurant) => {
+    if (restaurant.changed('password') && restaurant.previous('password')) {
+      restaurant.tokenVersion = (Number(restaurant.tokenVersion) || 0) + 1;
+    }
+  });
+  // Draft → published: stamp the first time the store goes live.
+  const stampPublished = (restaurant) => {
+    if (restaurant.isActive !== false && !restaurant.publishedAt) restaurant.publishedAt = new Date();
+  };
+  Restaurant.beforeCreate(stampPublished);
+  Restaurant.beforeUpdate((restaurant) => { if (restaurant.changed('isActive')) stampPublished(restaurant); });
   Restaurant.beforeBulkCreate(async (restaurants) => {
     for (const rest of restaurants) {
       if (rest.password) {

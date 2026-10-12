@@ -467,7 +467,14 @@ const connectDB = async () => {
           { name: 'promoOffer', type: 'VARCHAR(255)' },
           { name: 'clickCount', type: 'INTEGER DEFAULT 0' },
           { name: 'isOffline', type: 'BOOLEAN DEFAULT 0' },
-          { name: 'brandTheme', type: 'TEXT' }
+          { name: 'brandTheme', type: 'TEXT' },
+          { name: 'phone', type: 'VARCHAR(255)' },
+          { name: 'tokenVersion', type: 'INTEGER DEFAULT 0' },
+          { name: 'fcmTokens', type: "TEXT DEFAULT '[]'" },
+          { name: 'publishedAt', type: 'DATETIME' },
+          { name: 'packagingFee', type: 'FLOAT DEFAULT 0' },
+          { name: 'minOrderValue', type: 'FLOAT DEFAULT 0' },
+          { name: 'logoUrl', type: 'TEXT' }
         ];
         for (const col of restCols) {
           try {
@@ -482,7 +489,9 @@ const connectDB = async () => {
           { name: 'customCommission', type: 'FLOAT' },
           { name: 'specs', type: 'TEXT' },
           { name: 'ownerName', type: 'VARCHAR(255)' },
-          { name: 'ownerPhone', type: 'VARCHAR(255)' }
+          { name: 'ownerPhone', type: 'VARCHAR(255)' },
+          { name: 'dietType', type: 'VARCHAR(8)' },
+          { name: 'originalPrice', type: 'FLOAT' }
         ];
         for (const col of itemCols) {
           try {
@@ -519,7 +528,9 @@ const connectDB = async () => {
           { name: 'acceptedAt', type: 'DATETIME' },
           { name: 'readyAt', type: 'DATETIME' },
           { name: 'dropLat', type: 'FLOAT' },
-          { name: 'dropLng', type: 'FLOAT' }
+          { name: 'dropLng', type: 'FLOAT' },
+          { name: 'fulfilment', type: "VARCHAR(16) DEFAULT 'ZENVY'" },
+          { name: 'outForDeliveryAt', type: 'DATETIME' }
         ];
         for (const col of orderCols) {
           try {
@@ -625,6 +636,33 @@ const connectDB = async () => {
         } catch (err) {
           console.warn(`⚠️ [DB_MIGRATION_WARN] Orders.${col}:`, err.message);
         }
+      }
+      // 2026-10-12 Zenvy Vendor (stall orders) + admin store wizard + partner push columns.
+      // All nullable, all idempotent (ADD COLUMN IF NOT EXISTS), never altering existing data.
+      const pgNewCols = [
+        ['Orders', 'fulfilment', "VARCHAR(16) DEFAULT 'ZENVY'"],
+        ['Orders', 'outForDeliveryAt', 'TIMESTAMP WITH TIME ZONE'],
+        ['Restaurants', 'phone', 'VARCHAR(255)'],
+        ['Restaurants', 'tokenVersion', 'INTEGER DEFAULT 0'],
+        ['Restaurants', 'fcmTokens', "TEXT DEFAULT '[]'"],
+        ['Restaurants', 'publishedAt', 'TIMESTAMP WITH TIME ZONE'],
+        ['Restaurants', 'packagingFee', 'DOUBLE PRECISION DEFAULT 0'],
+        ['Restaurants', 'minOrderValue', 'DOUBLE PRECISION DEFAULT 0'],
+        ['Restaurants', 'logoUrl', 'TEXT'],
+        ['MenuItems', 'dietType', 'VARCHAR(8)'],
+        ['MenuItems', 'originalPrice', 'DOUBLE PRECISION'],
+      ];
+      for (const [table, col, type] of pgNewCols) {
+        try {
+          await sequelize.query(`ALTER TABLE "${table}" ADD COLUMN IF NOT EXISTS "${col}" ${type};`);
+        } catch (err) {
+          console.warn(`⚠️ [DB_MIGRATION_WARN] ${table}.${col}:`, err.message);
+        }
+      }
+      try {
+        await sequelize.query('CREATE INDEX IF NOT EXISTS "orders_restaurant_id_created_at" ON "Orders" ("restaurantId", "createdAt");');
+      } catch (err) {
+        console.warn('⚠️ [DB_MIGRATION_WARN] Orders restaurantId+createdAt index:', err.message);
       }
 
       // Critical Migrations: Ensure image columns can hold Base64 data

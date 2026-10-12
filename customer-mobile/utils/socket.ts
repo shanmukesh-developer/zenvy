@@ -17,8 +17,11 @@ export const getSocket = (): Socket => {
       withCredentials: true,
       autoConnect: false,          // <── KEY: don't connect on creation
       reconnection: true,
-      reconnectionAttempts: 10,
+      // Never give up: a Render cold start / redeploy can take well over a minute, and screens
+      // already mounted (useLiveSync) only get data:changed again once this socket is back.
+      reconnectionAttempts: Infinity,
       reconnectionDelay: 2000,
+      reconnectionDelayMax: 10000,
       timeout: 45000,
       auth: (cb) => {
         getToken().then(token => cb({ token })).catch(() => cb({}));

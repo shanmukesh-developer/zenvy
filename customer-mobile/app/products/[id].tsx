@@ -24,7 +24,7 @@ import { useAuth } from '../../context/AuthContext';
 import CustomizeDrawer, { isCustomizable } from '../../components/CustomizeDrawer';
 import { apiFetch } from '../../utils/auth';
 import { useLiveSync, affectsProduct, affectsStore } from '../../utils/useLiveSync';
-import { isLocalVendorType, vendorCallNumber, vendorWhatsappNumber, callVendor, whatsappVendor, DIRECT_ORDER_COPY } from '../../utils/localVendor';
+import { isLocalVendorType, vendorCallNumber, callVendor, stallPayCopy } from '../../utils/localVendor';
 import { useTheme } from '../../context/ThemeContext';
 import AdSlot from '../../components/AdSlot';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -250,10 +250,15 @@ export default function ProductDetailScreen() {
         restaurantId: data.restaurantId || null,
         vendorType: data.vendorType || null,
         isAvailable: data.isAvailable !== false,
-        orderable: data.orderable !== false && !!data.restaurantId && !data.directOrderOnly && !isLocalVendorType(data.vendorType),
-        bookingOnly: !!data.bookingOnly,
-        // CampusBites stall item: display-only, ordered directly from the vendor
-        directOrderOnly: !!data.directOrderOnly || isLocalVendorType(data.vendorType),
+        // A laundry / print / repairs / tailoring product is always a booking, even when the
+        // store's product row was added without the bookingOnly flag.
+        orderable: data.orderable !== false && !!data.restaurantId && !data.directOrderOnly
+          && !data.bookingOnly && !SERVICE_CATEGORY_BY_VENDOR[String(data.vendorType || '').toUpperCase()],
+        bookingOnly: !!data.bookingOnly || !!SERVICE_CATEGORY_BY_VENDOR[String(data.vendorType || '').toUpperCase()],
+        // Legacy flag (older servers): the item could only be ordered off Zenvy
+        directOrderOnly: !!data.directOrderOnly,
+        // CampusBites stall item: ordered here, the stall delivers it (cash on delivery to the stall)
+        isStall: isLocalVendorType(data.vendorType) || String(data.fulfilment || '').toUpperCase() === 'VENDOR',
         isVaultItem: !!data.isVaultItem,
         storeIsOpen: data.storeIsOpen !== false,
         storeClosedReason: data.storeClosedReason || null,
@@ -305,7 +310,7 @@ export default function ProductDetailScreen() {
    */
   const addWithStoreCheck = (payload: any) => {
     const isAddOn = String(product?.vendorType || '').toUpperCase() === 'EXTRAS';
-    addToCart(isAddOn ? { ...payload, isAddOn: true } : payload);
+    addToCart(isAddOn ? { ...payload, isAddOn: true } : product?.isStall ? { ...payload, isStall: true } : payload);
   };
 
   const handleToggleTag = (tag: string) => {
@@ -419,11 +424,12 @@ export default function ProductDetailScreen() {
   const eliteLocked = product.isEliteOnly && !(user as any)?.isElite;
   const canAdd = product.orderable && !!product.restaurantId && !eliteLocked && !product.directOrderOnly;
   const directOrder = !!product.directOrderOnly;
-  const stallWa = directOrder ? vendorWhatsappNumber(store) : null;
-  const stallCall = directOrder ? vendorCallNumber(store) : null;
+  const isStall = !!product.isStall;
+  const stallName: string = store?.name || product.restaurantName || 'the stall';
+  const stallCall = isStall ? vendorCallNumber(store) : null;
   const customizable = isCustomizable({ specs: product.specs });
   const unavailableReason: string = directOrder
-    ? DIRECT_ORDER_COPY
+    ? 'Order this from the stall directly'
     : product.isVaultItem
     ? 'Daily deal — claim it from Home'
     : eliteLocked
@@ -617,6 +623,26 @@ export default function ProductDetailScreen() {
             ) : null}
           </View>
 
+          {isStall && (
+            <View style={[styles.priceGuaranteeCard, { backgroundColor: isDark ? 'rgba(249,115,22,0.10)' : '#FFF7ED', borderColor: isDark ? 'rgba(249,115,22,0.3)' : '#FED7AA' }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                <Text style={{ fontSize: 16 }}>🏪</Text>
+                <Text style={[styles.priceGuaranteeSub, { color: isDark ? '#FDBA74' : '#9A3412', flex: 1 }]}>
+                  {`${stallName} delivers this itself. ${stallPayCopy(stallName)}.`}
+                </Text>
+                {!!stallCall && (
+                  <TouchableOpacity
+                    onPress={() => callVendor(store)}
+                    accessibilityLabel={`Call ${stallName}`}
+                    style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: '#256FEF' }}
+                  >
+                    <Text style={{ color: '#fff', fontSize: 10, fontWeight: '900' }}>📞 CALL STALL</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          )}
+
           {!canAdd && (
             <View style={[styles.priceGuaranteeCard, { backgroundColor: isDark ? 'rgba(239,68,68,0.08)' : '#FEF2F2', borderColor: isDark ? 'rgba(239,68,68,0.25)' : '#FECACA' }]}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
@@ -689,7 +715,7 @@ export default function ProductDetailScreen() {
               <Text style={[styles.pdpSectionTitle, { color: isDark ? '#FFF' : '#0F172A', marginBottom: 2 }]}>
                 More from {store?.name || product.restaurantName}
               </Text>
-              <Text style={styles.sectionSub}>{directOrder ? 'Order directly from the stall' : 'Add to the same order'}</Text>
+              <Text style={styles.sectionSub}>{directOrder ? 'Order directly from the stall' : isStall ? `Add to the same ${stallName} order` : 'Add to the same order'}</Text>
             </View>
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingVertical: 4 }}>
@@ -904,7 +930,7 @@ export default function ProductDetailScreen() {
                   <Text style={styles.bottomPriceStrikethrough}>₹{product.originalPrice}</Text>
                 ) : null}
               </View>
-              <Text style={styles.bottomPriceSub}>{directOrder ? 'Price listed by the stall' : 'Final bill at checkout'}</Text>
+              <Text style={styles.bottomPriceSub} numberOfLines={1}>{directOrder ? 'Price listed by the stall' : isStall ? stallPayCopy(stallName) : 'Final bill at checkout'}</Text>
             </View>
 
             {canAdd ? (
@@ -922,18 +948,7 @@ export default function ProductDetailScreen() {
                   <Text style={styles.bottomAddPlusText}>+</Text>
                 </LinearGradient>
               </TouchableOpacity>
-            ) : directOrder && (stallWa || stallCall) ? (
-              <TouchableOpacity
-                activeOpacity={0.86}
-                style={styles.bottomAddCtaBtn}
-                accessibilityLabel={`Order ${product.name} directly from ${store?.name || 'the stall'}`}
-                onPress={() => (stallWa ? whatsappVendor(store, product.name) : callVendor(store))}
-              >
-                <LinearGradient colors={stallWa ? ['#10B981', '#059669'] : ['#3B82F6', '#2563EB']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.bottomCtaGradient}>
-                  <Text style={styles.bottomAddCtaText}>{stallWa ? '💬 ORDER ON WHATSAPP' : '📞 CALL THE STALL'}</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            ) : directOrder && product.restaurantId ? (
+            ) : (directOrder || isStall) && product.restaurantId ? (
               <TouchableOpacity activeOpacity={0.86} style={styles.bottomAddCtaBtn} onPress={() => router.push(`/restaurant/${product.restaurantId}` as any)}>
                 <LinearGradient colors={['#F97316', '#EA580C']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.bottomCtaGradient}>
                   <Text style={styles.bottomAddCtaText}>VIEW STALL</Text>

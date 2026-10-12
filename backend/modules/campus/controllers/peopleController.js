@@ -54,8 +54,10 @@ const searchCampus = async (req, res) => {
     const campusId = myProfile ? myProfile.campusId : null;
     const pattern = `%${escapeLike(q)}%`;
 
+    // Only verified students can browse classmates (stops non-students listing a campus by name).
+    const iAmVerified = !!myProfile && myProfile.verificationStatus === 'verified';
     let people = [];
-    if (type !== 'clubs' && campusId) {
+    if (type !== 'clubs' && campusId && iAmVerified) {
       const blocked = await blockedIdsFor(me);
       const profiles = await CampusProfile.findAll({
         where: { campusId, verificationStatus: 'verified', userId: { [Op.ne]: me } },
@@ -115,7 +117,7 @@ const searchCampus = async (req, res) => {
       }
     }
 
-    res.json({ people, clubs, campusId, needsCampus: !campusId });
+    res.json({ people, clubs, campusId, needsCampus: !campusId, needsVerification: !!campusId && !iAmVerified && type !== 'clubs' });
   } catch (err) {
     console.error('[CAMPUS_SEARCH_ERR]', err.message);
     res.status(500).json({ message: 'Search failed. Please try again.' });
@@ -161,10 +163,16 @@ const openDm = async (req, res) => {
       if (!isFriend) {
         const CampusProfile = getCampusProfileModel();
         const [mine, theirs] = await Promise.all([
-          CampusProfile.findOne({ where: { userId: me }, attributes: ['campusId'] }),
+          CampusProfile.findOne({ where: { userId: me }, attributes: ['campusId', 'verificationStatus'] }),
           CampusProfile.findOne({ where: { userId: otherId }, attributes: ['campusId', 'verificationStatus'] }),
         ]);
         const sameCampus = mine && theirs && mine.campusId && mine.campusId === theirs.campusId;
+        if (sameCampus && theirs.verificationStatus === 'verified' && mine.verificationStatus !== 'verified') {
+          return res.status(403).json({
+            code: 'VERIFY_FIRST',
+            message: 'Verify your college first to message classmates. Friends can always chat.',
+          });
+        }
         if (!sameCampus || theirs.verificationStatus !== 'verified') {
           return res.status(403).json({
             code: 'NOT_CONNECTED',

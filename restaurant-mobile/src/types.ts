@@ -84,7 +84,11 @@ export interface MenuItem {
   isVegetarian: boolean | null;
   isAvailable: boolean;
   outOfStockUntil: string | null;
-  /** Free-form server tags. "egg" marks an egg dish (the server has no egg field; isVegetarian is false). */
+  /** Server food type (MenuItem.dietType). null on older items: fall back to isVegetarian / the "egg" tag. */
+  dietType: Diet | null;
+  /** MRP (strike-through price), >= price. null = none. */
+  originalPrice: number | null;
+  /** Free-form server tags. Older egg dishes were marked with an "egg" tag before dietType existed. */
   tags: string[];
 }
 
@@ -99,6 +103,8 @@ export interface ItemInput {
   description: string;
   imageUrl: string | null;
   isAvailable: boolean;
+  /** MRP; null = none. */
+  originalPrice: number | null;
 }
 
 export type ConnStatus = 'connecting' | 'online' | 'reconnecting' | 'offline';

@@ -4,7 +4,8 @@ const { Op } = require('sequelize');
 const { getRestaurantModel } = require('../models/Restaurant');
 const { getMenuItemModel } = require('../models/MenuItem');
 const { getStoreOpenState } = require('../utils/storeHours');
-const { STORE_VENDOR_TYPES, resolveVendorTypes, isLocalVendorStore } = require('../utils/vendorTypes');
+const { STORE_VENDOR_TYPES, resolveVendorTypes, isLocalVendorStore, isServiceVendorType } = require('../utils/vendorTypes');
+const { sortMenuItems } = require('../utils/menuSort');
 
 const MAX_LIMIT = 200;
 
@@ -38,6 +39,9 @@ const shapeStore = (store, itemCount) => {
     isOpen: open.isOpen,
     opensAt: open.opensAt || null,
     closedReason: open.isOpen ? null : (open.message || null),
+    logoUrl: s.logoUrl || null,
+    packagingFee: Number(s.packagingFee) || 0,
+    minOrderValue: Number(s.minOrderValue) || 0,
     ...(itemCount !== undefined ? { itemCount } : {})
   };
 };
@@ -48,7 +52,11 @@ const shapeItem = (item, store) => {
   const now = new Date();
   const inStock = !!i.isAvailable || !!(i.outOfStockUntil && new Date(i.outOfStockUntil) <= now);
   const price = Number(i.price);
-  const originalPrice = Number(specs.originalPrice) > price ? Number(specs.originalPrice) : null;
+  const mrp = Number(i.originalPrice) || Number(specs.originalPrice);
+  const originalPrice = mrp > price ? mrp : null;
+  // Service stores (laundry, print, repairs, tailoring) are booked, never ordered, flag or not.
+  const bookingOnly = !!specs.bookingOnly || (!!store && isServiceVendorType(store.vendorType));
+  const stall = isLocalVendorStore(store);
   let tags = i.tags || [];
   if (typeof tags === 'string') { try { tags = JSON.parse(tags); } catch { tags = []; } }
   const open = store ? getStoreOpenState(store) : { isOpen: false };
@@ -69,19 +77,21 @@ const shapeItem = (item, store) => {
     imageUrl: i.imageUrl || null,
     image: i.imageUrl || null,
     isVegetarian: i.isVegetarian !== false,
+    dietType: i.dietType || (i.isVegetarian === false ? 'nonveg' : 'veg'),
     isAvailable: inStock,
     outOfStockUntil: inStock ? null : (i.outOfStockUntil || null),
     rating: specs.rating || null,
     ratingCount: specs.ratingCount || 0,
-    bookingOnly: !!specs.bookingOnly,
+    bookingOnly,
     extraFor: Array.isArray(specs.extraFor) ? specs.extraFor : undefined,
     restaurantId: i.restaurantId,
     storeId: i.restaurantId,
     storeName: store ? store.name : null,
     vendorType: store ? store.vendorType : null,
-    // CampusBites stalls are display-only: customers order from the vendor by call / WhatsApp.
-    orderable: inStock && !specs.bookingOnly && !!store && !isLocalVendorStore(store) && store.isActive !== false && open.isOpen,
-    directOrderOnly: isLocalVendorStore(store)
+    // CampusBites stalls are ordered in Zenvy (cash to the stall, the stall delivers).
+    orderable: inStock && !bookingOnly && !!store && store.isActive !== false && !(stall && store.isOffline) && open.isOpen,
+    directOrderOnly: false,
+    ...(stall ? { fulfilment: 'VENDOR', paymentMethods: ['COD'] } : {})
   };
 };
 
@@ -170,7 +180,8 @@ const getItems = async (req, res) => {
     const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
     const { count, rows } = await MenuItem.findAndCountAll({ where, order: [['category', 'ASC'], ['name', 'ASC']], limit, offset });
 
-    let items = rows.map(r => shapeItem(r, storeMap.get(r.restaurantId)));
+    // One store's shelf follows the admin's menu order (specs.sortOrder).
+    let items = (req.query.storeId ? sortMenuItems(rows) : rows).map(r => shapeItem(r, storeMap.get(r.restaurantId)));
     // Add-ons for a dish type, e.g. ?type=extras&for=cake
     const forType = typeof req.query.for === 'string' ? req.query.for.trim().toLowerCase() : '';
     if (forType) items = items.filter(i => Array.isArray(i.extraFor) && i.extraFor.includes(forType));

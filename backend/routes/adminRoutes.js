@@ -40,7 +40,12 @@ const {
   toggleUserBan,
   getRecentReviews,
   deleteReview,
-  getRiderPayouts
+  getRiderPayouts,
+  getRestaurantStats,
+  bulkCreateMenuItems,
+  bulkUpdateMenuItems,
+  bulkUpdateRestaurants,
+  duplicateRestaurant
 } = require('../controllers/adminController');
 const { getAllOrders } = require('../controllers/orderController');
 const { protect, admin } = require('../middleware/authMiddleware');
@@ -68,6 +73,12 @@ router.put('/orders/batch-update', batchUpdateOrders);
 
 // Restaurant & Menu Control
 router.get('/restaurants', getAllRestaurants);
+// Static paths first: they must not be captured by POST /restaurants/:id or /menu-items/:id.
+router.get('/restaurants/stats', getRestaurantStats);
+router.post('/restaurants/bulk-update', bulkUpdateRestaurants);
+router.post('/restaurants/:id/duplicate', duplicateRestaurant);
+router.post('/menu-items/bulk', bulkCreateMenuItems);
+router.post('/menu-items/bulk-update', bulkUpdateMenuItems);
 router.post('/restaurants', createRestaurant);
 router.post('/restaurants/:id', updateRestaurant);
 router.get('/menu-items', getAllMenuItems);

@@ -41,6 +41,29 @@ const broadcastOrderStatus = (req, orderOrId, payload) => {
   }
 };
 
+const isVendorFulfilled = (order) => !!order && order.fulfilment === 'VENDOR';
+
+// Push to the store's partner/vendor app devices (works while the app is closed). Never throws.
+// Item count + amount only: no customer name / phone / address in a lock-screen notification.
+const pushStoreNewOrder = async (restaurant, order) => {
+  try {
+    const { pushToStore } = require('../utils/storePush');
+    const items = normalizeItems(order.items);
+    const count = items.reduce((s, i) => s + (Number(i.quantity) || 1), 0);
+    await pushToStore(restaurant, 'New order 🔔', `${count} item${count === 1 ? '' : 's'} · ₹${money(order.finalPrice)}${order.paymentMethod === 'COD' ? ' (cash)' : ''}`, { orderId: order.id, type: 'NEW_ORDER' });
+  } catch (err) {
+    console.warn('[STORE_PUSH_WARN]', err.message);
+  }
+};
+const pushStoreCancelled = async (restaurantId, order, text) => {
+  try {
+    const { pushToStore } = require('../utils/storePush');
+    await pushToStore(restaurantId, 'Order cancelled', text || 'An order was cancelled.', { orderId: order.id, type: 'ORDER_CANCELLED' });
+  } catch (err) {
+    console.warn('[STORE_PUSH_WARN]', err.message);
+  }
+};
+
 const isAdminUser = (user) => !!(user && user.role && String(user.role).toLowerCase() === 'admin');
 
 // ── Campus / address resolution ─────────────────────────────────
@@ -80,9 +103,9 @@ const quoteOrder = async (req, res) => {
     res.json({
       ...quote,
       serviceability: getCampusServiceability(),
-      paymentMethods: ['COD', 'Wallet'],
+      paymentMethods: quote.paymentMethods || ['COD', 'Wallet'],
       walletBalance,
-      canPayWithWallet: walletBalance >= quote.finalPrice
+      canPayWithWallet: quote.fulfilment !== 'VENDOR' && walletBalance >= quote.finalPrice
     });
   } catch (err) {
     if (err instanceof PricingError) return sendPricingError(res, err);
@@ -197,6 +220,12 @@ const createOrder = async (req, res) => {
 
     const Restaurant = getRestaurantModel();
     const restaurant = await Restaurant.findByPk(quote.store.id);
+    // CampusBites stall: cash to the vendor on delivery, the vendor delivers (no rider, no PIN).
+    const isVendorOrder = quote.fulfilment === 'VENDOR';
+    if (isVendorOrder && paymentMethod !== 'COD') {
+      if (idemClaimed) recentOrderKeys.delete(idemKey);
+      return res.status(400).json({ code: 'STALL_COD_ONLY', message: `${restaurant.name} takes cash on delivery only.`, allowed: ['COD'] });
+    }
 
     let isSurge = false;
     try {
@@ -269,11 +298,14 @@ const createOrder = async (req, res) => {
           upiUTR: null,
           upiScreenshot: null,
           upiStatus: null,
-          category: (restaurant.vendorType || 'RESTAURANT').toUpperCase() === 'RESTAURANT' ? 'Food' : restaurant.vendorType,
-          status: restaurant.isOffline ? 'Accepted' : 'Pending',
-          ...(restaurant.isOffline ? { acceptedAt: new Date() } : {}),
+          category: isVendorOrder ? 'LOCAL_VENDOR' : ((restaurant.vendorType || 'RESTAURANT').toUpperCase() === 'RESTAURANT' ? 'Food' : restaurant.vendorType),
+          // A stall never skips its own acceptance (no rider fallback); an isOffline stall is closed (quote).
+          status: !isVendorOrder && restaurant.isOffline ? 'Accepted' : 'Pending',
+          ...(!isVendorOrder && restaurant.isOffline ? { acceptedAt: new Date() } : {}),
+          fulfilment: isVendorOrder ? 'VENDOR' : 'ZENVY',
           idempotencyKey: idemRaw || null,
-          deliveryPin: String(crypto.randomInt(1000, 10000))
+          // The stall hands the order over itself: no delivery PIN.
+          deliveryPin: isVendorOrder ? null : String(crypto.randomInt(1000, 10000))
         }, { transaction: t });
       });
     } catch (err) {
@@ -344,6 +376,40 @@ const createOrder = async (req, res) => {
     });
     require('../utils/realtime').notifyAdmin('order', 'created', createdOrder.id, { storeId: createdOrder.restaurantId });
 
+    const storeOrderPayload = {
+      id: createdOrder.id,
+      items: normalizeItems(createdOrder.items),
+      totalPrice: createdOrder.totalPrice,
+      address: createdOrder.deliveryAddress,
+      // Same field names as GET /api/restaurants/:id/orders so the kitchen can render the card at once.
+      _id: createdOrder.id,
+      status: createdOrder.status,
+      createdAt: createdOrder.createdAt,
+      finalPrice: createdOrder.finalPrice,
+      deliveryFee: createdOrder.deliveryFee,
+      paymentMethod: createdOrder.paymentMethod,
+      paymentStatus: createdOrder.paymentStatus,
+      deliveryAddress: createdOrder.deliveryAddress,
+      deliveryInstructions: createdOrder.deliveryInstructions || null,
+      estDuration: createdOrder.estDuration || null,
+    };
+
+    if (isVendorOrder) {
+      // Stall order: ONLY the owning stall's room gets the customer's contact details. Never riders.
+      io.to(`restaurant_${restaurant.id}`).emit('restaurant_newOrder', {
+        ...storeOrderPayload,
+        fulfilment: 'VENDOR',
+        customer: {
+          name: currentUser.name || 'Customer',
+          phone: currentUser.phone || null,
+          hostelBlock: currentUser.hostelBlock || null,
+          roomNumber: currentUser.roomNumber || null,
+        },
+      });
+      await pushStoreNewOrder(restaurant, createdOrder);
+      return;
+    }
+
     if (restaurant.isOffline || createdOrder.status === 'Accepted') {
       // Shops without a vendor app go straight to riders.
       io.to('admin-room').emit('newOrder', riderPayload);
@@ -357,23 +423,8 @@ const createOrder = async (req, res) => {
         body: restaurant.isOffline ? `Pick up and deliver an order from ${restaurant.name}.` : `New order from ${restaurant.name} is ready for pickup!`,
       });
     } else {
-      io.to(`restaurant_${restaurant.id}`).emit('restaurant_newOrder', {
-        id: createdOrder.id,
-        items: normalizeItems(createdOrder.items),
-        totalPrice: createdOrder.totalPrice,
-        address: createdOrder.deliveryAddress,
-        // Same field names as GET /api/restaurants/:id/orders so the kitchen can render the card at once.
-        _id: createdOrder.id,
-        status: createdOrder.status,
-        createdAt: createdOrder.createdAt,
-        finalPrice: createdOrder.finalPrice,
-        deliveryFee: createdOrder.deliveryFee,
-        paymentMethod: createdOrder.paymentMethod,
-        paymentStatus: createdOrder.paymentStatus,
-        deliveryAddress: createdOrder.deliveryAddress,
-        deliveryInstructions: createdOrder.deliveryInstructions || null,
-        estDuration: createdOrder.estDuration || null,
-      });
+      io.to(`restaurant_${restaurant.id}`).emit('restaurant_newOrder', storeOrderPayload);
+      await pushStoreNewOrder(restaurant, createdOrder);
     }
   } catch (error) {
     // Once the order row exists the key must keep pointing at it (a retry returns the same order).
@@ -399,6 +450,10 @@ const restaurantAcceptOrder = async (req, res) => {
     
     if (!isAdmin && !(isVendor && isOwner)) {
       return res.status(403).json({ message: 'Not authorized to accept this order' });
+    }
+    if (isVendorFulfilled(order)) {
+      req.body = { ...(req.body || {}), status: 'Accepted' };
+      return vendorUpdateOrderStatus(req, res, order);
     }
 
     if (order.status !== 'Pending') return res.status(400).json({ message: 'Order is not pending' });
@@ -487,7 +542,7 @@ const getOrderById = async (req, res) => {
 
     const order = await Order.findByPk(id, {
       include: [
-        { model: Restaurant, as: 'restaurant', attributes: ['name', 'location', 'imageUrl'] },
+        { model: Restaurant, as: 'restaurant', attributes: ['id', 'name', 'location', 'imageUrl', 'vendorType', 'whatsappNumber'] },
         { 
           model: DeliveryPartner, 
           as: 'deliveryPartner', 
@@ -724,21 +779,38 @@ const getAllOrders = async (req, res) => {
     const Order = getOrderModel();
     const User = getUserModel();
     const Restaurant = getRestaurantModel();
-    const { page = 1, limit = 50, status } = req.query;
-    const offset = (parseInt(page) - 1) * parseInt(limit);
+    const { status } = req.query;
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 500);
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const offset = (page - 1) * limit;
 
     const where = {};
     if (status && status !== 'All') where.status = status;
+    // ?restaurantId=<uuid>&from=<ISO>&to=<ISO>&fulfilment=VENDOR|ZENVY
+    if (req.query.restaurantId) {
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(req.query.restaurantId))) {
+        return res.json({ orders: [], total: 0, pages: 0 });
+      }
+      where.restaurantId = String(req.query.restaurantId);
+    }
+    const from = req.query.from ? new Date(String(req.query.from)) : null;
+    const to = req.query.to ? new Date(String(req.query.to)) : null;
+    if ((from && Number.isNaN(from.getTime())) || (to && Number.isNaN(to.getTime()))) {
+      return res.status(400).json({ message: "'from' and 'to' must be dates (ISO format)." });
+    }
+    if (from || to) where.createdAt = { ...(from ? { [Op.gte]: from } : {}), ...(to ? { [Op.lt]: to } : {}) };
+    if (req.query.fulfilment === 'VENDOR') where.fulfilment = 'VENDOR';
+    else if (req.query.fulfilment === 'ZENVY') where[Op.and] = [{ [Op.or]: [{ fulfilment: null }, { fulfilment: { [Op.ne]: 'VENDOR' } }] }];
 
     const { count, rows: orders } = await Order.findAndCountAll({ 
       where,
       attributes: { exclude: ['deliveryPin'] }, // the customer's handover PIN is never shown to admins
       order: [['createdAt', 'DESC']], 
-      limit: parseInt(limit),
-      offset: parseInt(offset),
+      limit,
+      offset,
       include: [
         { model: User, as: 'user', attributes: ['name', 'phone'] },
-        { model: Restaurant, as: 'restaurant', attributes: ['name'] }
+        { model: Restaurant, as: 'restaurant', attributes: ['id', 'name', 'vendorType', 'whatsappNumber'] } // admin only: stall contact for VENDOR orders
       ]
     });
 
@@ -803,7 +875,7 @@ const cancelAndRefund = async (order, { reason = null, onlyFromStatuses = null, 
     return true;
   });
   // An unclaimed order leaves every online rider's pool (ids only; harmless if it was never listed).
-  if (cancelled && !order.deliveryPartnerId) realtime.deliveryRequestGone(order.id);
+  if (cancelled && !order.deliveryPartnerId && !isVendorFulfilled(order)) realtime.deliveryRequestGone(order.id);
   if (cancelled && refunded > 0) console.log(`[REFUND] ₹${refunded} refunded to wallet for user ${order.userId} (order ${order.id})`);
   return { cancelled, refunded };
 };
@@ -830,6 +902,8 @@ const autoCancelStalePendingOrders = async (io) => {
     where: {
       status: { [Op.in]: UNCLAIMED_STATUSES },
       deliveryPartnerId: null,
+      // Stall orders are delivered by the stall itself: never "no rider" cancelled.
+      [Op.and]: [{ [Op.or]: [{ fulfilment: null }, { fulfilment: { [Op.ne]: 'VENDOR' } }] }],
       createdAt: { [Op.lt]: unclaimedCutoff },
       [Op.or]: [{ acceptedAt: null }, { acceptedAt: { [Op.lt]: unclaimedCutoff } }],
     },
@@ -852,6 +926,7 @@ const autoCancelStalePendingOrders = async (io) => {
         io.to(String(order.id)).emit('statusUpdated', payload);
         io.to('admin-room').emit('statusUpdated', payload);
         if (order.restaurantId) io.to(`restaurant_${order.restaurantId}`).emit('statusUpdated', payload);
+        if (order.restaurantId) io.to(`restaurant_${order.restaurantId}`).emit('orderCancelled', { orderId: order.id, reason: code });
         io.to(String(order.id)).emit('orderCancelled', { orderId: order.id, reason: code });
         io.to('admin-room').emit('orderCancelled', { orderId: order.id, reason: code });
       }
@@ -871,6 +946,7 @@ const autoCancelStalePendingOrders = async (io) => {
       } catch (pushErr) {
         console.warn('[AUTO_CANCEL_PUSH_WARN]', pushErr.message);
       }
+      if (order.restaurantId) pushStoreCancelled(order.restaurantId, order, code === 'STORE_TIMEOUT' ? 'An order was cancelled because it was not accepted in time.' : 'An order was cancelled: no delivery partner was available.');
     } catch (e) {
       console.error('[AUTO_CANCEL_ERROR]', order.id, e.message);
     }
@@ -921,12 +997,15 @@ const cancelOrder = async (req, res) => {
       }
       return res.status(400).json({ message: 'This order is already cancelled.', code: 'ALREADY_CANCELLED' });
     }
-    const statusPayload = { id: order.id, status: 'Cancelled' };
+    const cancelCode = ownerCancel ? 'CUSTOMER_CANCELLED' : 'ADMIN_CANCELLED';
+    const statusPayload = { id: order.id, status: 'Cancelled', reason: cancelCode };
     broadcastOrderStatus(req, order, statusPayload);
     const io = req.app.get('io');
     if (io) {
-      io.to(String(order.id)).emit('orderCancelled', { orderId: order.id });
-      io.to('admin-room').emit('orderCancelled', { orderId: order.id });
+      io.to(String(order.id)).emit('orderCancelled', { orderId: order.id, reason: cancelCode });
+      io.to('admin-room').emit('orderCancelled', { orderId: order.id, reason: cancelCode });
+      // The store / stall app drops the card (and stops ringing) at once.
+      if (order.restaurantId) io.to(`restaurant_${order.restaurantId}`).emit('orderCancelled', { orderId: order.id, reason: cancelCode });
       // The assigned rider must stop (they may not be in the order room right now).
       if (order.deliveryPartnerId) io.to(`rider_${order.deliveryPartnerId}`).emit('orderCancelled', { orderId: order.id });
     }
@@ -935,6 +1014,8 @@ const cancelOrder = async (req, res) => {
         await getDeliveryPartnerModel().update({ currentOrderId: null }, { where: { id: order.deliveryPartnerId, currentOrderId: order.id } });
       } catch (riderErr) { console.warn('[CANCEL_RIDER_RELEASE_WARN]', riderErr.message); }
     }
+
+    if (order.restaurantId) pushStoreCancelled(order.restaurantId, order, ownerCancel ? 'The customer cancelled an order.' : 'An order was cancelled by Zenvy support.');
 
     res.json({
       message: refunded > 0 ? `Order cancelled. ₹${refunded} is back in your Wallet.` : 'Order cancelled.',
@@ -953,7 +1034,7 @@ const updateOrderStatus = async (req, res) => {
   try {
     let { status } = req.body;
     if (status === 'Ready for Pickup') status = 'ReadyForPickup';
-    const allowedStatuses = ['Pending', 'Accepted', 'Preparing', 'ReadyForPickup', 'Picking', 'PickedUp', 'ArrivedAtGate', 'Delivered', 'Cancelled'];
+    const allowedStatuses = ['Pending', 'Accepted', 'Preparing', 'ReadyForPickup', 'Picking', 'PickedUp', 'ArrivedAtGate', 'OutForDelivery', 'Delivered', 'Cancelled'];
     if (!allowedStatuses.includes(status)) {
       return res.status(400).json({ message: `Invalid status. Must be one of: ${allowedStatuses.join(', ')}` });
     }
@@ -967,6 +1048,14 @@ const updateOrderStatus = async (req, res) => {
 
     if (order.status === 'Cancelled') {
       return res.status(400).json({ message: 'This order was cancelled (and refunded if paid by Wallet). It cannot be reopened — ask the customer to order again.' });
+    }
+    // Stall orders never take rider steps; rider orders never take the stall's OutForDelivery step.
+    const RIDER_STEPS = ['Picking', 'PickedUp', 'ArrivedAtGate'];
+    if (isVendorFulfilled(order) && RIDER_STEPS.includes(status)) {
+      return res.status(400).json({ message: 'This order is delivered by the stall (no rider). Use Accepted, OutForDelivery or Delivered.' });
+    }
+    if (!isVendorFulfilled(order) && status === 'OutForDelivery') {
+      return res.status(400).json({ message: 'OutForDelivery is only for stall-delivered orders. Use PickedUp for rider orders.' });
     }
 
     let justDelivered = false;
@@ -1013,13 +1102,14 @@ const updateOrderStatus = async (req, res) => {
     const prevStatus = order.status;
     if (status !== 'Delivered') {
       // Conditional write: never overwrite a cancel (and its refund) that landed after we read the order.
-      const [n] = await Order.update({ status }, { where: { id: order.id, status: { [Op.notIn]: ['Cancelled'] } } });
+      const extra = status === 'OutForDelivery' ? { outForDeliveryAt: new Date() } : {};
+      const [n] = await Order.update({ status, ...extra }, { where: { id: order.id, status: { [Op.notIn]: ['Cancelled'] } } });
       if (n === 0) return res.status(400).json({ message: 'This order was cancelled and cannot be updated.' });
       order.status = status;
     } else {
       order.status = 'Delivered';
     }
-    if (!order.deliveryPartnerId) {
+    if (!order.deliveryPartnerId && !isVendorFulfilled(order)) {
       const wasClaimable = realtime.CLAIMABLE_STATUSES.includes(prevStatus);
       const isClaimable = realtime.CLAIMABLE_STATUSES.includes(order.status);
       if (isClaimable && !wasClaimable) realtime.deliveryRequest(order.id);
@@ -1047,6 +1137,7 @@ const updateOrderStatus = async (req, res) => {
           'Preparing': 'Kitchen is cooking! 🍳',
           'ReadyForPickup': 'Order ready! 📦',
           'PickedUp': 'Out for Delivery! 🛵',
+          'OutForDelivery': 'On the way 🛵',
           'Delivered': 'Enjoy your meal! 🎉',
           'Cancelled': 'Order Cancelled 🛑'
         };
@@ -1055,6 +1146,7 @@ const updateOrderStatus = async (req, res) => {
           'Preparing': 'Your order has been sent to the kitchen.',
           'ReadyForPickup': 'The merchant prepared your order and is waiting for a rider.',
           'PickedUp': 'Rider has picked up your order and is heading your way.',
+          'OutForDelivery': 'The stall is bringing your order. Keep the cash ready.',
           'Delivered': 'Your order has been delivered successfully.',
           'Cancelled': 'Your order was cancelled by the store/system.'
         };
@@ -1255,6 +1347,9 @@ const restaurantReadyOrder = async (req, res) => {
     if (!isAdmin && !(isVendor && isOwner)) {
       return res.status(403).json({ message: 'Not authorized to update this order' });
     }
+    if (isVendorFulfilled(order)) {
+      return res.status(400).json({ message: 'Stall orders go Accepted, then Out for delivery, then Delivered. Tap "Out for delivery" when you leave with it.' });
+    }
 
     // B7: a rider may already be at the counter ('Picking') while the kitchen is still cooking.
     // Record the ready time and ping the rider, but keep the rider's step.
@@ -1295,6 +1390,17 @@ const restaurantReadyOrder = async (req, res) => {
 //          Admins keep the full updateOrderStatus; a restaurant may only move ITS OWN orders
 //          through the kitchen steps (accept → preparing → ready) or decline a new order.
 const restaurantUpdateOrderStatus = async (req, res) => {
+  // Stall (fulfilment VENDOR) orders have their own flow: Pending -> Accepted -> OutForDelivery -> Delivered.
+  try {
+    const Order = getOrderModel();
+    const order = await Order.findByPk(req.params.id);
+    if (!order) return res.status(404).json({ message: 'Order not found' });
+    if (order.restaurantId !== req.user.id) return res.status(403).json({ message: 'Not authorized to update this order' });
+    if (isVendorFulfilled(order)) return vendorUpdateOrderStatus(req, res, order);
+  } catch (error) {
+    console.error('[REST_STATUS_ERROR]', error);
+    return res.status(500).json({ message: 'Could not update the order right now. Please try again.' });
+  }
   let status = String((req.body || {}).status || '');
   if (status === 'Ready for Pickup' || status === 'Ready') status = 'ReadyForPickup';
   if (status === 'Rejected' || status === 'Declined') status = 'Cancelled';
@@ -1354,6 +1460,90 @@ const restaurantUpdateOrderStatus = async (req, res) => {
   } catch (error) {
     console.error('[REST_STATUS_ERROR]', error);
     res.status(500).json({ message: 'Could not update the order right now. Please try again.' });
+  }
+};
+
+
+// @desc    Zenvy Vendor app (CampusBites stall) moves ITS OWN fulfilment='VENDOR' order.
+//          Pending -> Accepted -> OutForDelivery -> Delivered, or Cancelled/Rejected with a reason.
+//          No rider, no PIN, no rider pool events. Every write is conditional on the current status.
+const VENDOR_FLOW = {
+  Accepted: { from: ['Pending'], stamp: 'acceptedAt' },
+  OutForDelivery: { from: ['Accepted', 'Preparing', 'ReadyForPickup'], stamp: 'outForDeliveryAt' },
+  Delivered: { from: ['OutForDelivery', 'Accepted', 'Preparing', 'ReadyForPickup', 'PickedUp', 'ArrivedAtGate'], stamp: 'deliveredAt' },
+};
+const VENDOR_CANCELLABLE = ['Pending', 'Accepted', 'Preparing', 'ReadyForPickup', 'OutForDelivery'];
+const VENDOR_STALE_MSG = 'This order was just cancelled or updated. Please refresh.';
+
+const vendorUpdateOrderStatus = async (req, res, order) => {
+  try {
+    const Order = getOrderModel();
+    let status = String((req.body || {}).status || '').trim();
+    if (status === 'Rejected' || status === 'Declined') status = 'Cancelled';
+    if (status === 'Out for delivery' || status === 'OnTheWay') status = 'OutForDelivery';
+    const store = await getRestaurantModel().findByPk(order.restaurantId, { attributes: ['id', 'name'] });
+    const stall = (store && store.name) || 'The stall';
+    const notifyCustomer = async (title, body) => {
+      try {
+        const customer = await getUserModel().findByPk(order.userId, { attributes: ['id', 'fcmTokens'] });
+        if (customer) await sendPushToTokens(customer.fcmTokens, title, body, { orderId: order.id, type: 'ORDER_UPDATE' }, { recipients: [customer.id] });
+      } catch (pushErr) { console.warn('[VENDOR_STATUS_PUSH_WARN]', pushErr.message); }
+    };
+
+    if (status === 'Cancelled') {
+      const reason = typeof (req.body || {}).reason === 'string' ? req.body.reason.replace(/[<>]/g, '').trim().slice(0, 250) : '';
+      if (!reason) return res.status(400).json({ message: 'Please tell the customer why you are cancelling.' });
+      const { cancelled } = await cancelAndRefund(order, { reason, onlyFromStatuses: VENDOR_CANCELLABLE });
+      if (!cancelled) return res.status(400).json({ message: VENDOR_STALE_MSG });
+      broadcastOrderStatus(req, order, { id: order.id, status: 'Cancelled', reason });
+      const io = req.app.get('io');
+      if (io) {
+        io.to(String(order.id)).emit('orderCancelled', { orderId: order.id, reason: 'STORE_DECLINED' });
+        io.to('admin-room').emit('orderCancelled', { orderId: order.id, reason: 'STORE_DECLINED' });
+      }
+      await notifyCustomer('Order cancelled', `${stall} cancelled: ${reason}`);
+      return res.json({ message: 'Order cancelled', orderId: order.id, status: 'Cancelled' });
+    }
+
+    const step = VENDOR_FLOW[status];
+    if (!step) return res.status(400).json({ message: 'A stall can accept an order, mark it out for delivery, mark it delivered or cancel it.' });
+    const fields = { status, [step.stamp]: new Date(), ...(status === 'Delivered' && order.paymentMethod === 'COD' ? { paymentStatus: 'Completed' } : {}) };
+    const [n] = await Order.update(fields, { where: { id: order.id, status: { [Op.in]: step.from } } });
+    if (n === 0) {
+      const fresh = await Order.findByPk(order.id, { attributes: ['id', 'status'] });
+      if (fresh && fresh.status === status) {
+        return res.json({ message: `Order is already ${status === 'OutForDelivery' ? 'out for delivery' : status.toLowerCase()}`, orderId: order.id, status });
+      }
+      return res.status(400).json({ message: VENDOR_STALE_MSG });
+    }
+    Object.assign(order, fields);
+
+    let newBadges = [];
+    if (status === 'Delivered') {
+      // Exactly once: only the request whose conditional update flipped the order gets here.
+      try {
+        const { creditCustomerForDelivery } = require('../services/BadgeService');
+        const result = await creditCustomerForDelivery(getUserModel(), order);
+        newBadges = (result && result.newBadges) || [];
+      } catch (creditErr) {
+        console.error('[DELIVERY_CREDIT_ERROR]', order.id, creditErr.message);
+      }
+    }
+    broadcastOrderStatus(req, order, { id: order.id, status, ...(status === 'Delivered' ? { newBadges } : {}) });
+    if (status === 'Delivered') {
+      const io = req.app.get('io');
+      if (io) io.to('admin-room').emit('admin_delivery_complete', { orderId: order.id });
+    }
+
+    if (status === 'Accepted') await notifyCustomer('Order accepted 👍', `${stall} accepted your order.`);
+    else if (status === 'OutForDelivery') await notifyCustomer('On the way 🛵', `${stall} is bringing your order. Keep ₹${money(order.finalPrice)} cash ready.`);
+    else await notifyCustomer('Delivered 🎉', `Delivered by ${stall}. Enjoy!`);
+
+    const labels = { Accepted: 'Order accepted', OutForDelivery: 'Order is out for delivery', Delivered: 'Order delivered' };
+    return res.json({ message: labels[status], orderId: order.id, status });
+  } catch (error) {
+    console.error('[VENDOR_STATUS_ERROR]', error);
+    return res.status(500).json({ message: 'Could not update the order right now. Please try again.' });
   }
 };
 

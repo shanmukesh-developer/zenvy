@@ -6,6 +6,7 @@ import { API_URL } from '../constants/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BlurView } from 'expo-blur';
 import { useAuth } from '../context/AuthContext';
+import { campusHrefForNotification } from '../modules/campus/campusLinks';
 
 let Notifications: any = null;
 try {
@@ -38,7 +39,7 @@ const NOTIF_HISTORY_KEY = 'zenvy_notifications';
 const MAX_HISTORY = 100;
 
 /** Adds one item to the on-device notification inbox (newest first, no duplicates by id). */
-const saveToHistory = async (item: { id: string; title: string; body: string; type: string; orderId?: string }) => {
+const saveToHistory = async (item: { id: string; title: string; body: string; type: string; orderId?: string; data?: any }) => {
   try {
     const stored = await AsyncStorage.getItem(NOTIF_HISTORY_KEY);
     let notifs: any[] = [];
@@ -196,14 +197,10 @@ export default function GlobalAnnouncement() {
           try { nav.push(path as any); } catch (e) { console.warn('Notification nav failed:', e); }
         }, delayMs);
 
-        if (data.type === 'call') {
-          if (actionIdentifier === 'ANSWER' || actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER) {
-            await AsyncStorage.setItem('zenvy_auto_answer_call', JSON.stringify({
-              callerName: data.callerName || 'Incoming call',
-              mode: data.mode || 'audio'
-            }));
-            go('/community');
-          }
+        const campusHref = campusHrefForNotification(data.type, data);
+        if (campusHref) {
+          // Campus chats, calls, friend requests, verification results, birthdays and The Wall
+          go(campusHref);
         } else if (data.type === 'BIRTHDAY_ALERT') {
           go('/community');
         } else if (data.type === 'promo' || data.type === 'offer') {
@@ -258,6 +255,7 @@ export default function GlobalAnnouncement() {
           body: body || '',
           type: data?.type || 'info',
           ...(data?.orderId ? { orderId: String(data.orderId) } : {}),
+          ...(data?.screen || data?.chatId ? { data: { screen: data.screen, chatId: data.chatId, kind: data.kind, friendshipId: data.friendshipId } } : {}),
         });
       });
     } catch (e) {

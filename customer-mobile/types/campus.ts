@@ -36,6 +36,8 @@ export interface CampusProfileData {
   interests: string[];
   buddyPoints: number;
   campus?: CampusItem;
+  /** True when an ID-card photo is on file (the image itself is only sent as a signed link). */
+  hasIdCard?: boolean;
 }
 
 export interface CampusUserData {
@@ -45,9 +47,10 @@ export interface CampusUserData {
   profileImage?: string;
   statusEmoji?: string;
   statusText?: string;
+  friendCode?: string | null;
 }
 
-export type CampusTab = 'chats' | 'pulse' | 'study' | 'you';
+export type CampusTab = 'chats' | 'feed' | 'campus' | 'me';
 
 export type CampusChatType = 'dm' | 'class' | 'club' | 'study' | 'ride' | 'secret';
 
@@ -65,6 +68,7 @@ export interface CampusChatListItem {
   lastSender?: string | null;
   lastMessageAt?: string | Date | null;
   unreadCount: number;
+  peerId?: string | null;
 }
 
 export interface CampusChatListResponse {

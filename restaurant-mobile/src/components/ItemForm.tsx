@@ -10,7 +10,7 @@ import * as api from '../lib/api';
 import { errorMessage } from '../lib/http';
 import { dietOf } from '../lib/model';
 import { pickPhoto, PhotoSource } from '../lib/photo';
-import type { DeleteResult, StockChange } from '../state/StoreProvider';
+import type { DeleteResult } from '../state/StoreProvider';
 import { color, font, radius, space, touch } from '../theme';
 import { Button, Chip, IconButton } from '../ui/kit';
 import type { Diet, ItemInput, MenuItem } from '../types';
@@ -28,16 +28,18 @@ interface Draft {
   description: string;
   imageUrl: string | null;
   isAvailable: boolean;
+  /** MRP text ('' = none). */
+  mrp: string;
 }
 
-type Field = 'name' | 'price' | 'category';
+type Field = 'name' | 'price' | 'category' | 'mrp';
 
 const NAME_MAX = 80;
 const DESC_MAX = 300;
 
 function draftFor(mode: FormMode | null): Draft {
   if (!mode || mode.kind === 'add') {
-    return { name: '', price: '', category: mode?.category || '', diet: 'veg', description: '', imageUrl: null, isAvailable: true };
+    return { name: '', price: '', category: mode?.category || '', diet: 'veg', description: '', imageUrl: null, isAvailable: true, mrp: '' };
   }
   const it = mode.item;
   return {
@@ -48,6 +50,7 @@ function draftFor(mode: FormMode | null): Draft {
     description: it.description || '',
     imageUrl: it.imageUrl,
     isAvailable: mode.kind === 'duplicate' ? true : it.isAvailable,
+    mrp: it.originalPrice ? String(it.originalPrice) : '',
   };
 }
 
@@ -65,6 +68,12 @@ function validate(d: Draft): Partial<Record<Field, string>> {
   else if (name.length < 2) errs.name = 'Name is too short.';
   if (!d.price.trim()) errs.price = 'Type the price.';
   else if (parsePrice(d.price) === null) errs.price = 'Price must be between ₹1 and ₹1,00,000 (like 120 or 99.50).';
+  if (d.mrp.trim()) {
+    const mrp = parsePrice(d.mrp);
+    const price = parsePrice(d.price);
+    if (mrp === null) errs.mrp = 'MRP must be between ₹1 and ₹1,00,000, or leave it empty.';
+    else if (price !== null && mrp < price) errs.mrp = 'MRP cannot be lower than the selling price.';
+  }
   if (d.category.trim().length > 40) errs.category = 'Category name is too long (40 letters max).';
   return errs;
 }
@@ -76,14 +85,12 @@ const friendlyUploadError = (e: unknown) => {
   return msg;
 };
 
-export function ItemForm({ mode, categories, onClose, onSave, onDelete, onHide, onDuplicate }: {
+export function ItemForm({ mode, categories, onClose, onSave, onDelete, onDuplicate }: {
   mode: FormMode | null;
   categories: string[];
   onClose: () => void;
   onSave: (input: ItemInput, editing: MenuItem | null) => Promise<MenuItem>;
   onDelete: (item: MenuItem) => Promise<DeleteResult>;
-  /** Fallback when delete is not available: mark out of stock until turned back on. */
-  onHide: (item: MenuItem, change: StockChange) => Promise<boolean>;
   onDuplicate: (item: MenuItem) => void;
 }) {
   const insets = useSafeAreaInsets();
@@ -98,7 +105,7 @@ export function ItemForm({ mode, categories, onClose, onSave, onDelete, onHide, 
   const [newCat, setNewCat] = useState(false);
   const [confirm, setConfirm] = useState<null | 'delete' | 'discard'>(null);
   const [deleting, setDeleting] = useState(false);
-  const [deleteErr, setDeleteErr] = useState<{ text: string; unsupported?: boolean } | null>(null);
+  const [deleteErr, setDeleteErr] = useState<{ text: string } | null>(null);
   const savingRef = useRef(false);
   const priceRef = useRef<TextInput>(null);
   const scrollRef = useRef<ScrollView>(null);
@@ -176,6 +183,11 @@ export function ItemForm({ mode, categories, onClose, onSave, onDelete, onHide, 
       description: draft.description.trim(),
       imageUrl: draft.imageUrl,
       isAvailable: draft.isAvailable,
+      // Same as the price: no MRP strike-through. Empty = clear it.
+      originalPrice: (() => {
+        const mrp = draft.mrp.trim() ? parsePrice(draft.mrp) : null;
+        return mrp !== null && mrp > (parsePrice(draft.price) as number) ? mrp : null;
+      })(),
     };
     savingRef.current = true;
     setSaving(true);
@@ -198,15 +210,7 @@ export function ItemForm({ mode, categories, onClose, onSave, onDelete, onHide, 
     const res = await onDelete(editing);
     if (res.ok) { onClose(); return; }
     setDeleting(false);
-    setDeleteErr({ text: res.error, unsupported: res.unsupported });
-  };
-
-  const doHide = async () => {
-    if (!editing || deleting) return;
-    setDeleting(true);
-    const ok = await onHide(editing, { isAvailable: false });
-    setDeleting(false);
-    if (ok) onClose();
+    setDeleteErr({ text: res.error });
   };
 
   const title = !mode ? '' : mode.kind === 'edit' ? 'Edit item' : mode.kind === 'duplicate' ? 'Copy of item' : 'Add new item';
@@ -301,6 +305,27 @@ export function ItemForm({ mode, categories, onClose, onSave, onDelete, onHide, 
             />
           </View>
           {show('price') ? <Text style={styles.err}>{show('price')}</Text> : null}
+
+          {/* MRP (optional strike-through price) */}
+          <Text style={styles.label}>MRP (OPTIONAL)</Text>
+          <View style={[styles.priceBox, { minHeight: touch.secondary + 4 }, show('mrp') ? styles.inputBad : null]}>
+            <Text style={[font.h3, { color: color.textMuted }]}>₹</Text>
+            <TextInput
+              value={draft.mrp}
+              onChangeText={(t) => set('mrp', t.replace(/[^\d.]/g, ''))}
+              onBlur={() => setTouched((x) => ({ ...x, mrp: true }))}
+              placeholder="Higher price shown crossed out"
+              placeholderTextColor={color.textMuted}
+              keyboardType="decimal-pad"
+              maxLength={9}
+              style={[font.body, { flex: 1, color: color.text, paddingVertical: 0 }]}
+              editable={!saving}
+              accessibilityLabel="MRP in rupees, optional"
+            />
+          </View>
+          {show('mrp') ? <Text style={styles.err}>{show('mrp')}</Text> : (
+            <Text style={styles.hint}>Leave empty if there is no MRP. Customers see it crossed out next to your price.</Text>
+          )}
 
           {/* Veg / non-veg / egg */}
           <Text style={styles.label}>TYPE *</Text>
@@ -399,11 +424,7 @@ export function ItemForm({ mode, categories, onClose, onSave, onDelete, onHide, 
                   {deleteErr ? <Text style={styles.err}>{deleteErr.text}</Text> : null}
                   <View style={{ flexDirection: 'row', gap: space.xs }}>
                     <Button label="Cancel" variant="secondary" size="secondary" onPress={() => { setConfirm(null); setDeleteErr(null); }} disabled={deleting} style={{ flex: 1 }} />
-                    {deleteErr?.unsupported ? (
-                      <Button label="Hide it" variant="reject" size="secondary" icon="eye-off" onPress={doHide} loading={deleting} style={{ flex: 1 }} />
-                    ) : (
-                      <Button label="Yes, delete" variant="reject" size="secondary" icon="trash" onPress={doDelete} loading={deleting} style={{ flex: 1 }} />
-                    )}
+                    <Button label="Yes, delete" variant="reject" size="secondary" icon="trash" onPress={doDelete} loading={deleting} style={{ flex: 1 }} />
                   </View>
                 </View>
               ) : (

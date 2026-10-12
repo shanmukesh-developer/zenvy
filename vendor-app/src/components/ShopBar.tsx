@@ -15,10 +15,10 @@ const callSupport = () => Linking.openURL(`tel:+${SUPPORT_PHONE}`).catch(() => {
 
 /** Open / close logic + its confirm and info sheets. Render `sheets` once wherever the hook is used. */
 export function useOpenToggle() {
-  const { store, storeError, openToggleSupported, setOpen, refreshStore, orders } = useStore();
+  const { store, storeError, setOpen, refreshStore, orders } = useStore();
   const [confirm, setConfirm] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [info, setInfo] = useState<null | 'paused' | 'readOnly'>(null);
+  const [info, setInfo] = useState<null | 'paused'>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const paused = store?.isActive === false;
@@ -38,7 +38,6 @@ export function useOpenToggle() {
   const press = () => {
     if (!store) { refreshStore(); return; }
     if (paused) { setInfo('paused'); return; }
-    if (!openToggleSupported) { setInfo('readOnly'); return; }
     setErr(null);
     if (on) setConfirm(true);
     else change(true);
@@ -64,11 +63,9 @@ export function useOpenToggle() {
           <Button label="Stay open" variant="secondary" size="secondary" onPress={() => setConfirm(false)} disabled={saving} />
         </View>
       </Sheet>
-      <Sheet visible={info !== null} onClose={() => setInfo(null)} title={info === 'paused' ? 'Paused by Zenvy' : 'Shop status'}>
+      <Sheet visible={info !== null} onClose={() => setInfo(null)} title="Paused by Zenvy">
         <Text style={[font.body, { color: color.textSecondary, marginBottom: space.md }]}>
-          {info === 'paused'
-            ? "Zenvy has paused your shop, so customers can't order right now. Call Zenvy support to turn it back on."
-            : 'Opening and closing from the app is not available yet. Call Zenvy support to change it.'}
+          Zenvy has paused your shop, so customers can't order right now. Call Zenvy support to turn it back on.
         </Text>
         <Button label="Call Zenvy support" icon="call" onPress={callSupport} />
       </Sheet>

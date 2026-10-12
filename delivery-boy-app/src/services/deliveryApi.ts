@@ -48,8 +48,16 @@ export async function saveFcmToken(fcmToken: string): Promise<void> {
   await apiFetch('/delivery/fcm-token', { method: 'POST', body: { fcmToken, appVersion: APP_PUSH_VERSION } });
 }
 
+/**
+ * Stall (local vendor) orders are delivered by the stall itself: no rider, no PIN. The server already
+ * keeps them out of the pool; this filter makes sure one can never show up in the app either.
+ */
+const isStallOrder = (raw: any) =>
+  String(raw?.fulfilment ?? '').toUpperCase() === 'VENDOR' || String(raw?.category ?? '').toUpperCase() === 'LOCAL_VENDOR';
+
 export async function fetchPending(): Promise<RiderOrder[]> {
-  return normalizeOrders(await apiFetch<any[]>('/delivery/orders/pending'));
+  const rows = await apiFetch<any[]>('/delivery/orders/pending');
+  return normalizeOrders(Array.isArray(rows) ? rows.filter((r) => !isStallOrder(r)) : rows);
 }
 
 export async function fetchActive(): Promise<RiderOrder[]> {

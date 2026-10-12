@@ -1,0 +1,1060 @@
+diff --git a/customer-mobile/app/friends.tsx b/customer-mobile/app/friends.tsx
+index 2ac26eb..d813bb4 100644
+--- a/customer-mobile/app/friends.tsx
++++ b/customer-mobile/app/friends.tsx
+@@ -1,5 +1,7 @@
+ import * as Haptics from 'expo-haptics';
+ import React, { useState, useEffect, useRef } from 'react';
++import AsyncStorage from '@react-native-async-storage/async-storage';
++import * as LocalAuthentication from 'expo-local-authentication';
+ import {
+   View,
+   Text,
+@@ -25,6 +27,8 @@ import { Image } from 'expo-image';
+ import { useRouter } from 'expo-router';
+ import { LinearGradient } from 'expo-linear-gradient';
+ import * as Contacts from 'expo-contacts';
++import { Ionicons } from '@expo/vector-icons';
++import Svg, { Line, Circle } from 'react-native-svg';
+ import QRCode from 'react-native-qrcode-svg';
+ import Clipboard from '@react-native-clipboard/clipboard';
+ import { COLORS, SHADOWS } from '../constants/theme';
+@@ -35,6 +39,23 @@ import { useTheme } from '../context/ThemeContext';
+ import { connectSocket } from '../utils/socket';
+ import { FloatingPulse } from '../components/AnimatedSection';
+ import DopaminePressable from '../components/DopaminePressable';
++import GroveScreen from '../components/grove/GroveScreen';
++import { mapFriends, type BackendFriend } from '../components/grove/mapFriendData';
++
++// Helpers for Grove UI
++const getInitials = (name: string) => {
++  if (!name) return '??';
++  const parts = name.split(' ');
++  return parts.length > 1 ? `${parts[0][0]}${parts[1][0]}`.toUpperCase() : name.substring(0,2).toUpperCase();
++};
++const getFirstName = (name: string) => {
++  return name ? name.split(' ')[0] : 'Unknown';
++};
++const getThemeColorForNode = (node: any) => {
++  if (!node) return '#FF1493'; // Fallback for "YOU"
++  const theme = CHAT_THEMES.find(t => t.name === node.theme);
++  return theme ? theme.accent : '#3b82f6';
++};
+ 
+ const { width: SW, height: SH } = Dimensions.get('window');
+ 
+@@ -61,7 +82,7 @@ const VIOLET_ACCENT = '#6E5BFF';
+ const EMBER_ORANGE = '#FF7A59';
+ 
+ const ZENVY_STICKERS = [
+-  '⚡', '🔥', '🏆', '🎁', '🚀', '🤫', '💖', '💀', '🎉', '🍔', '🍕', '🍦'
++  '🍃', '🌿', '🌱', '🌸', '🌳', '🌰', '🍄', '✨', '⚡', '🔥', '🏆', '🎁', '🚀', '🤫', '💖', '💀', '🎉'
+ ];
+ 
+ const CAMPUS_TRUTHS = [
+@@ -211,10 +232,10 @@ const CAMPUS_DARES = [
+ ];
+ 
+ const CHAT_THEMES = [
+-  { name: 'friendship', colors: ['#140D07', '#25170B', '#160E08'], accent: '#FF7A59' },
+-  { name: 'crazy', colors: ['#0F0C20', '#1C0B36', '#09151B'], accent: '#a855f7' },
+-  { name: 'love', colors: ['#1F080F', '#350A19', '#1C060E'], accent: '#ec4899' },
+-  { name: 'graphite', colors: ['#0E1116', '#171B22', '#0E1116'], accent: '#6E5BFF' }
++  { name: 'grove', label: 'Enchanted Grove', colors: ['#071610', '#0f2b1f', '#06130d'], accent: '#10B981' },
++  { name: 'autumn', label: 'Oak & Amber', colors: ['#1a1007', '#2b1b0e', '#130a04'], accent: '#F59E0B' },
++  { name: 'blossom', label: 'Cherry Blossom', colors: ['#1a0c16', '#2d1425', '#12070e'], accent: '#F472B6' },
++  { name: 'nightfall', label: 'Starry Canopy', colors: ['#080f1e', '#121e38', '#060a14'], accent: '#818CF8' }
+ ];
+ 
+ const STATUS_GRADIENTS: readonly (readonly [string, string])[] = [
+@@ -256,46 +277,6 @@ const getAvatarUrl = (profileImage: string | null, id: string) => {
+   return placeholders[index];
+ };
+ 
+-// Reusable hook for orbit calculations in polar coordinates
+-function useOrbitLayout(
+-  center: { x: number; y: number },
+-  items: any[],
+-  minRadius: number,
+-  maxRadius: number,
+-  isPending: boolean = false
+-) {
+-  return React.useMemo(() => {
+-    if (!items || items.length === 0) return [];
+-    
+-    return items.map((item, idx) => {
+-      // Offset starting angle to make it look organic
+-      const baseAngle = -Math.PI / 2;
+-      const angle = baseAngle + (idx * 2 * Math.PI) / items.length;
+-      
+-      let radius = maxRadius;
+-      if (!isPending) {
+-        // Higher streaks = closer to center (smaller radius)
+-        const streak = item.streakCount || 0;
+-        const streakWeight = Math.min(streak / 20, 1);
+-        radius = maxRadius - (maxRadius - minRadius) * streakWeight;
+-      } else {
+-        // Pending items populate the outer orbit
+-        radius = maxRadius + 45;
+-      }
+-      
+-      const x = center.x + radius * Math.cos(angle);
+-      const y = center.y + radius * Math.sin(angle);
+-      
+-      return {
+-        ...item,
+-        x,
+-        y,
+-        angle,
+-        radius,
+-      };
+-    });
+-  }, [center.x, center.y, items, minRadius, maxRadius, isPending]);
+-}
+ 
+ const DEFAULT_CAMPUS_FRIENDS = [
+   {
+@@ -448,6 +429,55 @@ export default function FriendsScreen() {
+   const { isDark } = useTheme();
+   const myUserId = user?.id || user?._id || 'self';
+ 
++  // Chat Locks State
++  const [lockedChats, setLockedChats] = useState<string[]>([]);
++
++  useEffect(() => {
++    const loadLockedChats = async () => {
++      try {
++        const stored = await AsyncStorage.getItem('zenvy_locked_chats');
++        if (stored) {
++          setLockedChats(JSON.parse(stored));
++        }
++      } catch (e) {
++        console.warn("Failed to load locked chats", e);
++      }
++    };
++    loadLockedChats();
++  }, []);
++
++  const toggleChatLock = async (friendId: string) => {
++    const isCurrentlyLocked = lockedChats.includes(friendId);
++    
++    // Require authentication to toggle lock status
++    let authSuccess = false;
++    if (Platform.OS === 'web') {
++      // Mock authentication on web since biometrics aren't supported
++      authSuccess = window.confirm(isCurrentlyLocked ? 'Authenticate to unlock chat (Web Mock)' : 'Authenticate to lock chat (Web Mock)');
++    } else {
++      const result = await LocalAuthentication.authenticateAsync({
++        promptMessage: isCurrentlyLocked ? 'Authenticate to unlock chat' : 'Authenticate to lock chat',
++        fallbackLabel: 'Use Passcode',
++      });
++      authSuccess = result.success;
++    }
++
++    if (authSuccess) {
++      const newLockedChats = isCurrentlyLocked 
++        ? lockedChats.filter(id => id !== friendId) 
++        : [...lockedChats, friendId];
++      
++      setLockedChats(newLockedChats);
++      AsyncStorage.setItem('zenvy_locked_chats', JSON.stringify(newLockedChats));
++      
++      if (isCurrentlyLocked) {
++        Alert.alert('Chat Unlocked', 'This chat is now visible without authentication.');
++      } else {
++        Alert.alert('Chat Locked', 'This chat will now require authentication to open.');
++      }
++    }
++  };
++
+   // Core list state
+   const [friends, setFriends] = useState<any[]>(DEFAULT_CAMPUS_FRIENDS);
+   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
+@@ -576,7 +606,7 @@ export default function FriendsScreen() {
+   };
+   
+   // Theme state updates instantly
+-  const [chatTheme, setChatTheme] = useState<string>('graphite');
++  const [chatTheme, setChatTheme] = useState<string>('grove');
+   const chatScrollRef = useRef<ScrollView>(null);
+ 
+   // Orbit Center position configuration
+@@ -584,10 +614,6 @@ export default function FriendsScreen() {
+   const MIN_RADIUS = 75;
+   const MAX_RADIUS = 135;
+ 
+-  // Compute orbits using hook
+-  const friendNodes = useOrbitLayout(centerPoint, friends, MIN_RADIUS, MAX_RADIUS, false);
+-  const pendingNodes = useOrbitLayout(centerPoint, pendingRequests, MIN_RADIUS, MAX_RADIUS, true);
+-
+   // Load friends and pending requests on load (with 30s fallback poll alongside live WebSockets)
+   useEffect(() => {
+     loadFriendsData();
+@@ -807,6 +833,57 @@ export default function FriendsScreen() {
+     }
+   };
+ 
++  // Grove callbacks: nudge/water/open-chat by friend ID (doesn't require chat to be open)
++  const handleGroveNudge = async (friendId: string) => {
++    const friend = friends.find((f: any) => f.friendId === friendId);
++    if (!friend) return;
++    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
++    try {
++      const res = await apiFetch(`${API_URL}/api/friends/nudge`, {
++        method: 'POST',
++        headers: { 'Content-Type': 'application/json' },
++        body: JSON.stringify({ friendshipId: friend.friendshipId })
++      });
++      if (res.ok) {
++        const data = await res.json();
++        Alert.alert('Nudge Sent! ⚡', `Streak maintained at ${data.streakCount} days!`);
++        loadFriendsData();
++      }
++    } catch (e) {
++      console.error('[GROVE_NUDGE_ERROR]', e);
++    }
++  };
++
++  const handleGroveWater = async (friendId: string) => {
++    // "Watering" a branch is the same as nudging — it maintains the streak
++    await handleGroveNudge(friendId);
++  };
++
++  const handleGroveOpenChat = async (friendId: string) => {
++    const friend = friends.find((f: any) => f.friendId === friendId);
++    if (!friend) return;
++    if (lockedChats.includes(friendId)) {
++      let authSuccess = false;
++      if (Platform.OS === 'web') {
++        authSuccess = window.confirm('Unlock Chat (Web Mock)');
++      } else {
++        const result = await LocalAuthentication.authenticateAsync({
++          promptMessage: 'Unlock Chat',
++          fallbackLabel: 'Use Passcode',
++        });
++        authSuccess = result.success;
++      }
++      if (!authSuccess) return;
++    }
++    setActiveChat(friend);
++    setChatTheme(friend.theme || 'graphite');
++  };
++
++  // Map backend friends to grove's Friend type for the tree
++  const groveFriends = React.useMemo(() => {
++    return mapFriends(friends as BackendFriend[], myUserId).treeFriends;
++  }, [friends, myUserId]);
++
+   const handleRemoveFriend = async () => {
+     if (!activeChat) return;
+     Alert.alert(
+@@ -1321,217 +1398,22 @@ export default function FriendsScreen() {
+         </TouchableOpacity>
+       )}
+ 
+-      {/* Top Header Navigation */}
+-      <View style={s.topHeader}>
+-        <TouchableOpacity 
+-          style={s.backButton} 
+-          onPress={() => {
+-            if (router.canGoBack()) {
+-              router.back();
+-            } else {
+-              router.replace('/(tabs)' as any);
+-            }
+-          }}
+-        >
+-          <Text style={s.backText}>← CLOSE CIRCLE</Text>
+-        </TouchableOpacity>
+-        <TouchableOpacity style={s.syncButtonTrigger} onPress={() => setShowSyncModal(true)}>
+-          <Text style={s.syncButtonText}>➕ SCAN & ADD</Text>
++      {/* SKIA GROVE TREE — procedural friend tree */}
++      <GroveScreen
++        friends={groveFriends}
++        currentUserId={myUserId}
++        onMessage={handleGroveOpenChat}
++        onNudge={handleGroveNudge}
++        onWater={handleGroveWater}
++      />
++
++      {/* Pending requests badge (floating) */}
++      {pendingRequests.length > 0 && (
++        <TouchableOpacity style={[s.pendingBannerBadge, { position: 'absolute', top: 110, right: 20, zIndex: 100 }]} onPress={() => setShowSyncModal(true)}>
++          <Text style={s.pendingBannerBadgeText}>{pendingRequests.length} INCOMING</Text>
+         </TouchableOpacity>
+-      </View>
+-
+-      {/* Dynamic Instagram-style Stories (Status) Row */}
+-      <View style={s.storiesWrapper}>
+-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.storiesScrollContent}>
+-          {/* YOU Avatar */}
+-          <TouchableOpacity
+-            style={s.storyItem}
+-            onPress={() => {
+-              if (user?.statusText || user?.statusEmoji) {
+-                setActiveStatusView({
+-                  name: 'Your Status',
+-                  profileImage: user?.profileImage,
+-                  statusText: user?.statusText,
+-                  statusEmoji: user?.statusEmoji,
+-                  isSelf: true
+-                });
+-              } else {
+-                setStatusText('');
+-                setStatusEmoji('');
+-                setShowStatusModal(true);
+-              }
+-            }}
+-          >
+-            {user?.statusText || user?.statusEmoji ? (
+-              <View>
+-                <LinearGradient
+-                  colors={['#6E5BFF', '#FF7A59', '#FF1493']}
+-                  start={{ x: 0, y: 0 }}
+-                  end={{ x: 1, y: 1 }}
+-                  style={s.storyAvatarOutline}
+-                >
+-                  <Image
+-                    source={{ uri: getAvatarUrl(user?.profileImage || null, myUserId || 'self') }}
+-                    style={[s.storyAvatar, { borderWidth: 2, borderColor: '#07090C' }]}
+-                  />
+-                </LinearGradient>
+-                {user?.statusEmoji && (
+-                  <View style={s.storyEmojiBadge}>
+-                    <Text style={s.storyEmojiBadgeText}>{user.statusEmoji}</Text>
+-                  </View>
+-                )}
+-              </View>
+-            ) : (
+-              <View style={[s.storyAvatarOutline, s.storyUserOutline]}>
+-                <Image
+-                  source={{ uri: getAvatarUrl(user?.profileImage || null, myUserId || 'self') }}
+-                  style={s.storyAvatar}
+-                />
+-                <View style={s.storyUserAddBadge}>
+-                  <Text style={s.storyUserAddText}>+</Text>
+-                </View>
+-              </View>
+-            )}
+-            <Text style={s.storyName} numberOfLines={1}>Your Status</Text>
+-          </TouchableOpacity>
+-
+-          {/* Friends Avatars */}
+-          {friends.map((friend) => {
+-            const hasStatus = !!(friend.statusText || friend.statusEmoji);
+-            const isSeen = friend.statusSeenBy && friend.statusSeenBy.includes(myUserId);
+-
+-            return (
+-              <TouchableOpacity
+-                key={friend.friendshipId}
+-                style={s.storyItem}
+-                onPress={() => {
+-                  if (hasStatus) {
+-                    setActiveStatusView(friend);
+-                  } else {
+-                    setActiveChat(friend);
+-                    setChatTheme(friend.theme || 'graphite');
+-                  }
+-                }}
+-              >
+-                {hasStatus ? (
+-                  <LinearGradient
+-                    colors={isSeen ? ['#444752', '#2E323A'] : ['#6E5BFF', '#FF7A59', '#FF1493']}
+-                    start={{ x: 0, y: 0 }}
+-                    end={{ x: 1, y: 1 }}
+-                    style={s.storyAvatarOutline}
+-                  >
+-                    <Image
+-                      source={{ uri: getAvatarUrl(friend.profileImage, friend.friendId) }}
+-                      style={[s.storyAvatar, { borderWidth: 2, borderColor: '#07090C' }]}
+-                    />
+-                  </LinearGradient>
+-                ) : (
+-                  <View style={[s.storyAvatarOutline, { padding: 0 }]}>
+-                    <Image
+-                      source={{ uri: getAvatarUrl(friend.profileImage, friend.friendId) }}
+-                      style={s.storyAvatar}
+-                    />
+-                  </View>
+-                )}
+-                {friend.statusEmoji && hasStatus && (
+-                  <View style={s.storyEmojiBadge}>
+-                    <Text style={s.storyEmojiBadgeText}>{friend.statusEmoji}</Text>
+-                  </View>
+-                )}
+-                <Text style={s.storyName} numberOfLines={1}>{friend.name}</Text>
+-              </TouchableOpacity>
+-            );
+-          })}
+-        </ScrollView>
+-      </View>
+-
+-      {/* WhatsApp/Insta Direct Chat List */}
+-      <View style={s.chatListWrapper}>
+-        <View style={s.chatListHeader}>
+-          <Text style={s.chatListTitle}>CHATS</Text>
+-          {pendingRequests.length > 0 && (
+-            <TouchableOpacity style={s.pendingBannerBadge} onPress={() => setShowSyncModal(true)}>
+-              <Text style={s.pendingBannerBadgeText}>{pendingRequests.length} INCOMING</Text>
+-            </TouchableOpacity>
+-          )}
+-        </View>
+-
+-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
+-          {friends.length === 0 ? (
+-            <View style={s.emptyChatListContainer}>
+-              <Text style={{ fontSize: 48, marginBottom: 16 }}>🛸</Text>
+-              <Text style={s.emptyChatListTitle}>Your Orbit is Empty</Text>
+-              <Text style={s.emptyChatListSub}>Connect with campus friends to start secure messaging and sharing statuses!</Text>
+-              <TouchableOpacity
+-                style={{
+-                  marginTop: 24,
+-                  backgroundColor: '#6E5BFF',
+-                  paddingVertical: 14,
+-                  paddingHorizontal: 28,
+-                  borderRadius: 30,
+-                  flexDirection: 'row',
+-                  alignItems: 'center',
+-                  shadowColor: '#6E5BFF',
+-                  shadowOffset: { width: 0, height: 4 },
+-                  shadowOpacity: 0.3,
+-                  shadowRadius: 8,
+-                }}
+-                onPress={() => setShowSyncModal(true)}
+-              >
+-                <Text style={{ color: '#FFF', fontSize: 16, fontWeight: '800', letterSpacing: 0.5 }}>
+-                  🔍 FIND FRIENDS
+-                </Text>
+-              </TouchableOpacity>
+-            </View>
+-          ) : (
+-            friends.map((friend) => (
+-              <TouchableOpacity
+-                key={friend.friendshipId}
+-                style={s.chatListItem}
+-                activeOpacity={0.7}
+-                onPress={() => {
+-                  setActiveChat(friend);
+-                  setChatTheme(friend.theme || 'graphite');
+-                }}
+-              >
+-                {/* Left side: Avatar */}
+-                <View style={s.chatListAvatarContainer}>
+-                  <Image
+-                    source={{ uri: getAvatarUrl(friend.profileImage, friend.friendId) }}
+-                    style={s.chatListAvatar}
+-                  />
+-                  {friend.statusEmoji && (
+-                    <View style={s.chatListEmojiBadge}>
+-                      <Text style={{ fontSize: 10 }}>{friend.statusEmoji}</Text>
+-                    </View>
+-                  )}
+-                </View>
++      )}
+ 
+-                {/* Center side: Names and Status */}
+-                <View style={s.chatListMiddle}>
+-                  <View style={s.chatListNameRow}>
+-                    <Text style={s.chatListFriendName} numberOfLines={1}>{friend.name}</Text>
+-                    {friend.streakCount > 0 && (
+-                      <Text style={s.chatListStreakText}>🔥 {friend.streakCount}</Text>
+-                    )}
+-                  </View>
+-                  <Text style={s.chatListStatusText} numberOfLines={1}>
+-                    {friend.statusText ? `💬 ${friend.statusText}` : 'Tap to start chatting...'}
+-                  </Text>
+-                </View>
+-
+-                {/* Right side: Time/Arrow */}
+-                <View style={s.chatListRight}>
+-                  <Text style={s.chatListTimeText}>
+-                    {friend.lastInteractionAt ? new Date(friend.lastInteractionAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+-                  </Text>
+-                  <View style={[s.themeDotIndicator, { backgroundColor: CHAT_THEMES.find(t => t.name === (friend.theme || 'graphite'))?.accent || '#6E5BFF' }]} />
+-                </View>
+-              </TouchableOpacity>
+-            ))
+-          )}
+-        </ScrollView>
+-      </View>
+ 
+       {/* SLIDE-UP BOTTOM SHEET FOR SECURE CHATS */}
+       {activeChat && (
+@@ -1545,39 +1427,76 @@ export default function FriendsScreen() {
+                 <View style={s.bottomSheetDimmer} />
+               </TouchableWithoutFeedback>
+               
+-              <View style={[s.bottomSheetContent, { backgroundColor: getActiveThemeColors()[0] }]}>
+-                {/* Top Grab Handle decor */}
+-                <View style={s.bottomSheetGrabHandle} />
++              <View style={[s.bottomSheetContent, {
++                backgroundColor: '#071610',
++                borderWidth: 1.5,
++                borderColor: getActiveThemeAccent() + '55',
++                shadowColor: getActiveThemeAccent(),
++                shadowOffset: { width: 0, height: -10 },
++                shadowOpacity: 0.35,
++                shadowRadius: 24,
++                position: 'relative',
++              }]}>
++                {/* Enchanted Grove Canopy Gradient & Ambient Botanical Glow */}
++                <LinearGradient
++                  colors={getActiveThemeColors() as unknown as readonly [string, string, ...string[]]}
++                  style={StyleSheet.absoluteFill}
++                  start={{ x: 0.1, y: 0 }}
++                  end={{ x: 0.4, y: 1 }}
++                />
++                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: 0.15, overflow: 'hidden', pointerEvents: 'none' }}>
++                   <View style={{ position: 'absolute', top: -50, right: -40, width: 220, height: 220, borderRadius: 110, backgroundColor: getActiveThemeAccent(), opacity: 0.25 }} />
++                   <View style={{ position: 'absolute', top: 120, left: -60, width: 200, height: 200, borderRadius: 100, backgroundColor: '#34D399', opacity: 0.15 }} />
++                   <View style={{ position: 'absolute', bottom: 100, right: -20, width: 180, height: 180, borderRadius: 90, backgroundColor: '#F59E0B', opacity: 0.1 }} />
++                </View>
++
++                {/* Top Grab Handle - Organic Botanical Leaf Pill */}
++                <View style={{ alignItems: 'center', marginBottom: 8, marginTop: 2 }}>
++                  <View style={[s.bottomSheetGrabHandle, { backgroundColor: getActiveThemeAccent(), width: 44, height: 5, borderRadius: 3, shadowColor: getActiveThemeAccent(), shadowOpacity: 0.8, shadowRadius: 6 }]} />
++                </View>
+ 
+                 {/* Header Row: Navigation & Actions */}
+-                <View style={s.chatHeaderRow}>
+-                  <TouchableOpacity style={s.chatCloseBtn} onPress={handleCloseChat}>
+-                    <Text style={s.chatCloseText}>✕ CLOSE</Text>
++                <View style={[s.chatHeaderRow, { borderBottomColor: 'rgba(52, 211, 153, 0.12)', paddingBottom: 10 }]}>
++                  <TouchableOpacity style={[s.chatCloseBtn, { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.06)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' }]} onPress={handleCloseChat}>
++                    <Ionicons name="close" size={16} color="#A7F3D0" />
++                    <Text style={[s.chatCloseText, { color: '#A7F3D0' }]}>CLOSE</Text>
+                   </TouchableOpacity>
+ 
+-                  <View style={s.chatHeaderActions}>
+-                    <TouchableOpacity style={s.nudgeActionBtn} onPress={handleSendNudge}>
+-                      <Text style={s.nudgeActionText}>⚡ NUDGE</Text>
++                  <View style={[s.chatHeaderActions, { gap: 10, alignItems: 'center' }]}>
++                    {/* Lock Chat Toggle */}
++                    <TouchableOpacity 
++                      style={{ padding: 7, borderRadius: 14, backgroundColor: lockedChats.includes(activeChat.friendId) ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: lockedChats.includes(activeChat.friendId) ? '#EF4444' : 'rgba(255,255,255,0.12)' }} 
++                      onPress={() => toggleChatLock(activeChat.friendId)}
++                    >
++                      <Ionicons name={lockedChats.includes(activeChat.friendId) ? "lock-closed" : "lock-open-outline"} size={16} color={lockedChats.includes(activeChat.friendId) ? "#EF4444" : "#A7F3D0"} />
+                     </TouchableOpacity>
+-                    <TouchableOpacity style={s.removeActionBtn} onPress={handleRemoveFriend}>
+-                      <Text style={s.removeActionText}>🗑️</Text>
++                    
++                    {/* Botanical Nudge / Nourish */}
++                    <TouchableOpacity style={[s.nudgeActionBtn, { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(16, 185, 129, 0.16)', borderWidth: 1, borderColor: '#10B981', borderRadius: 14, paddingVertical: 6, paddingHorizontal: 12 }]} onPress={handleSendNudge}>
++                      <Text style={{ fontSize: 13 }}>🌿</Text>
++                      <Text style={[s.nudgeActionText, { color: '#34D399', fontWeight: '900' }]}>NUDGE</Text>
++                    </TouchableOpacity>
++
++                    {/* Trash */}
++                    <TouchableOpacity style={{ padding: 6 }} onPress={handleRemoveFriend}>
++                      <Ionicons name="trash-outline" size={17} color="rgba(255,255,255,0.45)" />
+                     </TouchableOpacity>
+                   </View>
+                 </View>
+ 
+                 {/* Friend Display Profile Section */}
+-                <View style={s.friendProfileSection}>
++                <View style={[s.friendProfileSection, { borderBottomColor: 'rgba(52, 211, 153, 0.12)', backgroundColor: 'rgba(0, 0, 0, 0.18)', paddingVertical: 12 }]}>
+                   {isEditingNickname ? (
+                     <View style={s.nameEditRowInline}>
+                       <TextInput
+-                        style={s.nicknameInputField}
++                        style={[s.nicknameInputField, { borderColor: getActiveThemeAccent(), borderWidth: 1 }]}
+                         value={nicknameInput}
+                         onChangeText={setNicknameInput}
+                         placeholder="Set nickname..."
+                         placeholderTextColor="rgba(255,255,255,0.4)"
+                         autoFocus
+                       />
+-                      <TouchableOpacity style={s.nicknameSaveBtn} onPress={handleSaveNickname}>
++                      <TouchableOpacity style={[s.nicknameSaveBtn, { backgroundColor: getActiveThemeAccent() }]} onPress={handleSaveNickname}>
+                         <Text style={s.nicknameSaveBtnText}>Save</Text>
+                       </TouchableOpacity>
+                       <TouchableOpacity style={s.nicknameCancelBtn} onPress={() => setIsEditingNickname(false)}>
+@@ -1593,16 +1512,17 @@ export default function FriendsScreen() {
+                           setIsEditingNickname(true);
+                         }}
+                       >
+-                        <Text style={s.chatHeaderTitle} numberOfLines={1}>{activeChat?.name}</Text>
++                        <Text style={{ fontSize: 16, marginRight: 6 }}>🍃</Text>
++                        <Text style={[s.chatHeaderTitle, { letterSpacing: 0.4 }]} numberOfLines={1}>{activeChat?.name}</Text>
+                         <Text style={{ fontSize: 10, marginLeft: 6 }}>✏️</Text>
+                       </TouchableOpacity>
+-                      <Text style={s.chatHeaderSubtitle}>
+-                        {activeChat?.nickname ? `REAL: ${activeChat?.originalName || activeChat?.name}` : 'SECURE END-TO-END LINK'}
++                      <Text style={[s.chatHeaderSubtitle, { color: '#6EE7B7' }]}>
++                        {activeChat?.nickname ? `🌱 REAL: ${activeChat?.originalName || activeChat?.name}` : '🌿 GROVE BRANCH COMPANION'}
+                       </Text>
+                     </View>
+                   )}
+ 
+-                  {/* Active Chat theme selector */}
++                  {/* Active Tree Theme selector dots */}
+                   <View style={s.themeDotsRow}>
+                     {CHAT_THEMES.map(themeItem => (
+                       <TouchableOpacity
+@@ -1610,7 +1530,7 @@ export default function FriendsScreen() {
+                         style={[
+                           s.themeDot,
+                           { backgroundColor: themeItem.accent },
+-                          chatTheme === themeItem.name && s.activeThemeDot
++                          chatTheme === themeItem.name && [s.activeThemeDot, { borderColor: '#A7F3D0', shadowColor: themeItem.accent, shadowOpacity: 0.8, shadowRadius: 4 }]
+                         ]}
+                         onPress={() => handleThemeDotPress(themeItem.name)}
+                       />
+@@ -1618,12 +1538,18 @@ export default function FriendsScreen() {
+                   </View>
+                 </View>
+ 
+-              {/* Streak Banner */}
+-              <View style={[s.streakBanner, { borderBottomColor: 'rgba(255,255,255,0.06)' }]}>
+-                <Text style={s.streakBannerText}>
+-                  STREAK COUNT: <Text style={s.monoText}>🔥{activeChat?.streakCount || 0}</Text>
+-                </Text>
+-                <Text style={s.streakBannerSub}>🔒 Private Chat</Text>
++              {/* Botanical Branch Streak Banner */}
++              <View style={[s.streakBanner, { borderBottomColor: 'rgba(52, 211, 153, 0.12)', backgroundColor: 'rgba(6, 78, 59, 0.25)', paddingVertical: 10 }]}>
++                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
++                  <Text style={{ fontSize: 14 }}>🌳</Text>
++                  <Text style={[s.streakBannerText, { color: '#FBBF24' }]}>
++                    BRANCH STRENGTH: <Text style={s.monoText}>🔥{activeChat?.streakCount || 0}d roots</Text>
++                  </Text>
++                </View>
++                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(16, 185, 129, 0.15)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(52, 211, 153, 0.2)' }}>
++                  <Text style={{ fontSize: 10 }}>🍃</Text>
++                  <Text style={[s.streakBannerSub, { color: '#34D399', fontSize: 10.5 }]}>Whispering Leaves</Text>
++                </View>
+               </View>
+ 
+               {/* Message scroll views */}
+@@ -1635,8 +1561,8 @@ export default function FriendsScreen() {
+               >
+                 {chatMessages.length === 0 ? (
+                   <View style={s.messagesEmptyContainer}>
+-                    <Text style={s.emptySymbol}>🤫</Text>
+-                    <Text style={s.emptyInstruction}>No chats yet. Make the first move.</Text>
++                    <Text style={s.emptySymbol}>🌱</Text>
++                    <Text style={[s.emptyInstruction, { color: '#A7F3D0' }]}>Branch is quiet. Send a leaf whisper.</Text>
+                   </View>
+                 ) : (
+                   chatMessages.map((msg, index) => {
+@@ -1644,6 +1570,9 @@ export default function FriendsScreen() {
+                     const isSticker = ZENVY_STICKERS.includes(msg.text);
+                     const isTruth = msg.text.startsWith('[TRUTH]');
+                     const isDare = msg.text.startsWith('[DARE]');
++                    const isSpin = msg.text.startsWith('[SPIN]');
++                    const isVibe = msg.text.startsWith('[VIBE]');
++                    const isWhisper = msg.text.startsWith('[WHISPER]');
+ 
+                     return (
+                       <View key={msg.id || index} style={[s.msgRow, isMe ? s.msgRowMe : s.msgRowThem]}>
+@@ -1659,26 +1588,38 @@ export default function FriendsScreen() {
+                             <Text style={s.stickerMessageChar}>{msg.text}</Text>
+                           </View>
+                         ) : isTruth ? (
+-                          <View style={[s.gameCard, { backgroundColor: '#8E2DE2', borderBottomRightRadius: isMe ? 2 : 16, borderBottomLeftRadius: isMe ? 16 : 2 }]}>
++                          <LinearGradient colors={['#8E2DE2', '#4A00E0']} style={[s.gameCard, { borderBottomRightRadius: isMe ? 2 : 16, borderBottomLeftRadius: isMe ? 16 : 2, borderWidth: 1, borderColor: '#00F2FE' }]}>
+                             <Text style={s.gameCardTag}>💡 CAMPUS TRUTH</Text>
+                             <Text style={s.gameCardQuestion}>"{msg.text.replace('[TRUTH]', '').trim()}"</Text>
+-                          </View>
++                          </LinearGradient>
+                         ) : isDare ? (
+-                          <View style={[s.gameCard, { backgroundColor: '#DD2476', borderBottomRightRadius: isMe ? 2 : 16, borderBottomLeftRadius: isMe ? 16 : 2 }]}>
++                          <LinearGradient colors={['#DD2476', '#FF512F']} style={[s.gameCard, { borderBottomRightRadius: isMe ? 2 : 16, borderBottomLeftRadius: isMe ? 16 : 2, borderWidth: 1, borderColor: '#FF1493' }]}>
+                             <Text style={s.gameCardTag}>😈 CAMPUS DARE</Text>
+                             <Text style={s.gameCardQuestion}>"{msg.text.replace('[DARE]', '').trim()}"</Text>
+-                          </View>
++                          </LinearGradient>
++                        ) : isSpin ? (
++                          <LinearGradient colors={['#11998e', '#38ef7d']} style={[s.gameCard, { borderBottomRightRadius: isMe ? 2 : 16, borderBottomLeftRadius: isMe ? 16 : 2, borderWidth: 1, borderColor: '#00FF00' }]}>
++                            <Text style={s.gameCardTag}>🍾 SPIN THE BOTTLE</Text>
++                            <Text style={s.gameCardQuestion}>{msg.text.replace('[SPIN]', '').trim()}</Text>
++                          </LinearGradient>
++                        ) : isVibe ? (
++                          <LinearGradient colors={['#00B4DB', '#0083B0']} style={[s.gameCard, { borderBottomRightRadius: isMe ? 2 : 16, borderBottomLeftRadius: isMe ? 16 : 2, borderWidth: 1, borderColor: '#00F2FE' }]}>
++                            <Text style={s.gameCardTag}>🎯 VIBE CHECK</Text>
++                            <Text style={s.gameCardQuestion}>{msg.text.replace('[VIBE]', '').trim()}</Text>
++                          </LinearGradient>
+                         ) : (
+-                          <View
++                          <LinearGradient
++                            colors={isMe ? [getActiveThemeAccent(), getActiveThemeAccent() + '99'] : ['rgba(255,255,255,0.05)', 'rgba(255,255,255,0.02)']}
+                             style={[
+                               s.msgBubble,
+-                              isMe ? [s.msgBubbleMe, { backgroundColor: getActiveThemeAccent() }] : s.msgBubbleThem
++                              isMe ? s.msgBubbleMe : s.msgBubbleThem,
++                              { borderWidth: 1, borderColor: isMe ? getActiveThemeAccent() : 'rgba(255,255,255,0.1)' }
+                             ]}
+                           >
+-                            <Text style={[s.msgBodyText, isMe ? s.msgBodyTextMe : s.msgBodyTextThem]}>
+-                              {msg.text}
++                            <Text style={[s.msgBodyText, isMe ? s.msgBodyTextMe : s.msgBodyTextThem, isWhisper && { fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', letterSpacing: 2, opacity: 0.8 }]}>
++                              {isWhisper ? msg.text.replace('[WHISPER]', '⚠️ ENCRYPTED:\n') : msg.text}
+                             </Text>
+-                          </View>
++                          </LinearGradient>
+                         )}
+                       </View>
+                     );
+@@ -1703,12 +1644,12 @@ export default function FriendsScreen() {
+                 </View>
+               )}
+ 
+-              {/* Expressive games drawer */}
++              {/* Sci-Fi Mini-Game Holo-Deck */}
+               {showGames && (
+-                <View style={s.stickerSelectionPanel}>
++                <View style={[s.stickerSelectionPanel, { backgroundColor: 'rgba(0,0,0,0.8)', borderTopWidth: 1, borderTopColor: '#00F2FE' }]}>
+                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.stickerHorizontalScroll}>
+                     <TouchableOpacity
+-                      style={[s.stickerBubbleBtn, { width: 110, backgroundColor: '#8E2DE2', flexDirection: 'row', gap: 6, paddingHorizontal: 12, height: 44, borderRadius: 22 }]}
++                      style={[s.stickerBubbleBtn, { width: 110, backgroundColor: 'rgba(142, 45, 226, 0.3)', borderWidth: 1, borderColor: '#8E2DE2', flexDirection: 'row', gap: 6, paddingHorizontal: 12, height: 44, borderRadius: 22 }]}
+                       onPress={() => {
+                         const uniqueTruth = getUniqueQuestion('truth');
+                         handleSendMessage(`[TRUTH] ${uniqueTruth}`);
+@@ -1719,7 +1660,7 @@ export default function FriendsScreen() {
+                     </TouchableOpacity>
+ 
+                     <TouchableOpacity
+-                      style={[s.stickerBubbleBtn, { width: 110, backgroundColor: '#DD2476', flexDirection: 'row', gap: 6, paddingHorizontal: 12, height: 44, borderRadius: 22 }]}
++                      style={[s.stickerBubbleBtn, { width: 110, backgroundColor: 'rgba(221, 36, 118, 0.3)', borderWidth: 1, borderColor: '#DD2476', flexDirection: 'row', gap: 6, paddingHorizontal: 12, height: 44, borderRadius: 22 }]}
+                       onPress={() => {
+                         const uniqueDare = getUniqueQuestion('dare');
+                         handleSendMessage(`[DARE] ${uniqueDare}`);
+@@ -1728,20 +1669,58 @@ export default function FriendsScreen() {
+                       <Text style={{ fontSize: 20 }}>😈</Text>
+                       <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '900' }}>DARE</Text>
+                     </TouchableOpacity>
++
++                    <TouchableOpacity
++                      style={[s.stickerBubbleBtn, { width: 140, backgroundColor: 'rgba(17, 153, 142, 0.3)', borderWidth: 1, borderColor: '#11998e', flexDirection: 'row', gap: 6, paddingHorizontal: 12, height: 44, borderRadius: 22 }]}
++                      onPress={() => {
++                        const outcomes = [
++                          "You have to pay for the next Canteen trip! 💸",
++                          "You must wear your shirt backwards for an hour. 👕",
++                          "You owe me a plate of Midnight Maggi! 🍜",
++                          "You have to proxy my attendance tomorrow. 📝"
++                        ];
++                        const randomOutcome = outcomes[Math.floor(Math.random() * outcomes.length)];
++                        handleSendMessage(`[SPIN] The bottle landed on YOU!\nOutcome: ${randomOutcome}`);
++                      }}
++                    >
++                      <Text style={{ fontSize: 20 }}>🍾</Text>
++                      <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '900' }}>SPIN BOTTLE</Text>
++                    </TouchableOpacity>
++
++                    <TouchableOpacity
++                      style={[s.stickerBubbleBtn, { width: 130, backgroundColor: 'rgba(0, 180, 219, 0.3)', borderWidth: 1, borderColor: '#00B4DB', flexDirection: 'row', gap: 6, paddingHorizontal: 12, height: 44, borderRadius: 22 }]}
++                      onPress={() => {
++                        const matchPct = Math.floor(Math.random() * 50) + 50;
++                        handleSendMessage(`[VIBE] Vibe Match: ${matchPct}%\nWe both crave midnight snacks! 🍕`);
++                      }}
++                    >
++                      <Text style={{ fontSize: 20 }}>🎯</Text>
++                      <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '900' }}>VIBE CHECK</Text>
++                    </TouchableOpacity>
++
++                    <TouchableOpacity
++                      style={[s.stickerBubbleBtn, { width: 120, backgroundColor: 'rgba(255, 0, 0, 0.3)', borderWidth: 1, borderColor: '#FF0000', flexDirection: 'row', gap: 6, paddingHorizontal: 12, height: 44, borderRadius: 22 }]}
++                      onPress={() => {
++                        handleSendMessage(`[WHISPER] What happens in hostel stays in hostel...`);
++                      }}
++                    >
++                      <Text style={{ fontSize: 20 }}>🤫</Text>
++                      <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '900' }}>WHISPER</Text>
++                    </TouchableOpacity>
+                   </ScrollView>
+                 </View>
+               )}
+ 
+               {/* Quick reactions & typing status overlay */}
+-              <View style={s.chatInputTopAccessory}>
++              <View style={[s.chatInputTopAccessory, { borderTopColor: 'rgba(52, 211, 153, 0.1)' }]}>
+                 {isFriendTyping ? (
+                   <View style={s.typingIndicatorWrap}>
+-                    <Text style={s.typingIndicatorText}>{activeChat?.nickname || activeChat?.name} is typing...</Text>
++                    <Text style={[s.typingIndicatorText, { color: '#6EE7B7' }]}>🌱 {activeChat?.nickname || activeChat?.name} is typing a whisper...</Text>
+                   </View>
+                 ) : (
+                   <View style={s.quickReactionsRow}>
+-                    {['❤️', '🔥', '😂', '😮', '😢', '👍'].map((emoji) => (
+-                      <TouchableOpacity key={emoji} onPress={() => handleSendMessage(emoji)} style={s.quickReactionBtn}>
++                    {['🍃', '🌿', '❤️', '🔥', '😂', '✨', '👍'].map((emoji) => (
++                      <TouchableOpacity key={emoji} onPress={() => handleSendMessage(emoji)} style={[s.quickReactionBtn, { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 16, padding: 5, marginHorizontal: 2 }]}>
+                         <Text style={s.quickReactionEmoji}>{emoji}</Text>
+                       </TouchableOpacity>
+                     ))}
+@@ -1750,41 +1729,41 @@ export default function FriendsScreen() {
+               </View>
+ 
+               {/* Chat Input controls */}
+-              <View style={s.chatInputContainer}>
++              <View style={[s.chatInputContainer, { borderTopColor: 'rgba(52, 211, 153, 0.15)', backgroundColor: 'rgba(4, 18, 12, 0.75)' }]}>
+                 <TouchableOpacity
+-                  style={[s.stickerTriggerButton, showStickers && s.stickerTriggerButtonActive]}
++                  style={[s.stickerTriggerButton, { backgroundColor: 'rgba(16, 185, 129, 0.12)', borderColor: 'rgba(52, 211, 153, 0.25)', borderWidth: 1 }, showStickers && s.stickerTriggerButtonActive]}
+                   onPress={() => {
+                     setShowStickers(!showStickers);
+                     setShowGames(false);
+                   }}
+                 >
+-                  <Text style={{ fontSize: 20 }}>🎭</Text>
++                  <Text style={{ fontSize: 18 }}>🍃</Text>
+                 </TouchableOpacity>
+ 
+                 <TouchableOpacity
+-                  style={s.stickerTriggerButton}
++                  style={[s.stickerTriggerButton, { backgroundColor: 'rgba(245, 158, 11, 0.12)', borderColor: 'rgba(245, 158, 11, 0.25)', borderWidth: 1 }]}
+                   onPress={() => {
+                     setShowGiftModal(true);
+                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                   }}
+                 >
+-                  <Text style={{ fontSize: 20 }}>🎁</Text>
++                  <Text style={{ fontSize: 18 }}>🎁</Text>
+                 </TouchableOpacity>
+ 
+                 <TouchableOpacity
+-                  style={[s.stickerTriggerButton, showGames && s.stickerTriggerButtonActive]}
++                  style={[s.stickerTriggerButton, { backgroundColor: 'rgba(129, 140, 248, 0.12)', borderColor: 'rgba(129, 140, 248, 0.25)', borderWidth: 1 }, showGames && s.stickerTriggerButtonActive]}
+                   onPress={() => {
+                     setShowGames(!showGames);
+                     setShowStickers(false);
+                   }}
+                 >
+-                  <Text style={{ fontSize: 20 }}>🎮</Text>
++                  <Text style={{ fontSize: 18 }}>🎲</Text>
+                 </TouchableOpacity>
+ 
+                 <TextInput
+-                  style={s.chatTextInputField}
+-                  placeholder="Type a message..."
+-                  placeholderTextColor="rgba(255,255,255,0.3)"
++                  style={[s.chatTextInputField, { backgroundColor: 'rgba(255, 255, 255, 0.06)', borderWidth: 1, borderColor: 'rgba(52, 211, 153, 0.25)', borderRadius: 16 }]}
++                  placeholder="Whisper to branch..."
++                  placeholderTextColor="rgba(167, 243, 208, 0.45)"
+                   value={draftMessage}
+                   onChangeText={handleInputChange}
+                   onSubmitEditing={() => handleSendMessage()}
+@@ -1792,13 +1771,22 @@ export default function FriendsScreen() {
+ 
+                 <TouchableOpacity
+                   disabled={sendingMessage || !draftMessage.trim()}
+-                  style={[s.sendMessageBtn, { backgroundColor: getActiveThemeAccent() }]}
++                  style={[
++                    s.sendMessageBtn,
++                    {
++                      backgroundColor: draftMessage.trim() ? getActiveThemeAccent() : 'rgba(255,255,255,0.08)',
++                      borderRadius: 16,
++                      shadowColor: getActiveThemeAccent(),
++                      shadowOpacity: draftMessage.trim() ? 0.7 : 0,
++                      shadowRadius: 10
++                    }
++                  ]}
+                   onPress={() => handleSendMessage()}
+                 >
+                   {sendingMessage ? (
+-                    <ActivityIndicator size="small" color="#000" />
++                    <ActivityIndicator size="small" color="#FFF" />
+                   ) : (
+-                    <Text style={s.sendMessageBtnText}>SEND</Text>
++                    <Text style={[s.sendMessageBtnText, { color: draftMessage.trim() ? '#04160e' : 'rgba(255,255,255,0.3)', fontWeight: '900' }]}>SEND</Text>
+                   )}
+                 </TouchableOpacity>
+               </View>
+@@ -3774,5 +3762,193 @@ const s = StyleSheet.create({
+     fontSize: 14,
+     fontWeight: '900',
+     letterSpacing: 1
++  },
++  orbitContainer: {
++    flex: 1,
++    backgroundColor: '#07090C',
++    overflow: 'hidden',
++    position: 'relative'
++  },
++  radarPulseRing1: {
++    position: 'absolute',
++    width: 160,
++    height: 160,
++    borderRadius: 80,
++    borderWidth: 1,
++    borderColor: '#00F2FE',
++    left: SW/2 - 80,
++    top: (SH*0.4) - 80,
++    opacity: 0.3,
++    shadowColor: '#00F2FE',
++    shadowOffset: { width: 0, height: 0 },
++    shadowOpacity: 1,
++    shadowRadius: 10
++  },
++  radarPulseRing2: {
++    position: 'absolute',
++    width: 260,
++    height: 260,
++    borderRadius: 130,
++    borderWidth: 1,
++    borderColor: '#FF7A59',
++    left: SW/2 - 130,
++    top: (SH*0.4) - 130,
++    opacity: 0.15,
++    borderStyle: 'dashed'
++  },
++  radarPulseRing3: {
++    position: 'absolute',
++    width: 380,
++    height: 380,
++    borderRadius: 190,
++    borderWidth: 1,
++    borderColor: '#6E5BFF',
++    left: SW/2 - 190,
++    top: (SH*0.4) - 190,
++    opacity: 0.08
++  },
++  emptyOrbitContainer: {
++    position: 'absolute',
++    top: '50%',
++    left: 0,
++    right: 0,
++    alignItems: 'center',
++    transform: [{ translateY: -100 }]
++  },
++  orbitFindBtn: {
++    marginTop: 24,
++    backgroundColor: '#6E5BFF',
++    paddingVertical: 14,
++    paddingHorizontal: 28,
++    borderRadius: 30,
++    shadowColor: '#6E5BFF',
++    shadowOffset: { width: 0, height: 4 },
++    shadowOpacity: 0.3,
++    shadowRadius: 8,
++  },
++  orbitFindBtnText: {
++    color: '#FFF',
++    fontSize: 14,
++    fontWeight: '900',
++    letterSpacing: 1
++  },
++  orbitNode: {
++    position: 'absolute',
++    width: 60,
++    height: 60,
++    justifyContent: 'center',
++    alignItems: 'center',
++    zIndex: 10
++  },
++  polaroidCard: {
++    backgroundColor: '#FAF9F6', // Off-white photo paper
++    padding: 6,
++    paddingBottom: 20,
++    borderRadius: 4,
++    shadowColor: '#000',
++    shadowOffset: { width: 0, height: 8 },
++    shadowOpacity: 0.5,
++    shadowRadius: 10,
++    alignItems: 'center',
++    width: 60,
++  },
++  polaroidImage: {
++    width: 48,
++    height: 48,
++    backgroundColor: '#3b82f6',
++    justifyContent: 'center',
++    alignItems: 'center',
++    borderRadius: 2,
++    borderWidth: 1,
++    borderColor: 'rgba(0,0,0,0.1)'
++  },
++  polaroidInitials: {
++    color: '#FFF',
++    fontSize: 20,
++    fontWeight: '800',
++    letterSpacing: 1
++  },
++  polaroidName: {
++    color: '#333',
++    fontSize: 10,
++    fontWeight: '800',
++    marginTop: 6,
++    textTransform: 'uppercase'
++  },
++  orbitEmojiBadge: {
++    position: 'absolute',
++    top: -5,
++    right: -5,
++    backgroundColor: '#FFF',
++    borderRadius: 10,
++    width: 20,
++    height: 20,
++    justifyContent: 'center',
++    alignItems: 'center',
++    shadowColor: '#000',
++    shadowOpacity: 0.2,
++    shadowRadius: 3,
++    zIndex: 12
++  },
++  orbitStreakBadge: {
++    position: 'absolute',
++    bottom: -32,
++    backgroundColor: 'rgba(255,122,89,0.2)',
++    paddingHorizontal: 6,
++    paddingVertical: 2,
++    borderRadius: 6,
++    borderWidth: 1,
++    borderColor: '#FF7A59'
++  },
++  orbitStreakText: {
++    color: '#FF7A59',
++    fontSize: 8,
++    fontWeight: '900'
++  },
++  centerNode: {
++    position: 'absolute',
++    width: 80,
++    height: 80,
++    justifyContent: 'center',
++    alignItems: 'center',
++    zIndex: 20
++  },
++  centerAvatarOutline: {
++    padding: 3,
++    borderRadius: 40,
++    shadowColor: '#6E5BFF',
++    shadowOffset: { width: 0, height: 0 },
++    shadowOpacity: 1,
++    shadowRadius: 15
++  },
++  centerAvatar: {
++    width: 70,
++    height: 70,
++    borderRadius: 35,
++    borderWidth: 2,
++    borderColor: '#07090C'
++  },
++  centerNodePulse: {
++    position: 'absolute',
++    width: 90,
++    height: 90,
++    borderRadius: 45,
++    borderWidth: 2,
++    borderColor: '#FF1493',
++    opacity: 0.5,
++    zIndex: -1
++  },
++  centerNodeLabel: {
++    position: 'absolute',
++    bottom: -15,
++    color: '#FFF',
++    fontSize: 10,
++    fontWeight: '900',
++    letterSpacing: 1,
++    backgroundColor: 'rgba(0,0,0,0.8)',
++    paddingHorizontal: 8,
++    paddingVertical: 2,
++    borderRadius: 8,
++    overflow: 'hidden'
+   }
+ });
+
+

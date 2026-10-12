@@ -7,6 +7,7 @@ import { FALLBACK_POLL_MS, SAFETY_POLL_MS } from '../config';
 import * as api from '../lib/api';
 import { ApiError, NetworkError, errorMessage } from '../lib/http';
 import { normalizeOrder, rupees, stageOf, TIMEOUT_REASON_TEXT, todayNumbers } from '../lib/model';
+import { onOrderPush, onPushTokenChange, registerStorePush } from '../lib/push';
 import { startKitchenService } from '../voice/kitchenService';
 import { announce, cancelAnnouncements, detectVoices } from '../voice/voice';
 import { useToast } from '../ui/Toast';
@@ -15,14 +16,13 @@ import { useSession } from './SessionProvider';
 import type { ConnStatus, ItemInput, MenuItem, OperatingHours, Order, StoreProfile, StoreState } from '../types';
 
 export type BusyKind = 'accept' | 'reject' | 'out' | 'delivered' | 'cancel';
-export type DeleteResult = { ok: true } | { ok: false; unsupported?: boolean; error: string };
-export type Result = { ok: boolean; error?: string; unsupported?: boolean };
+export type DeleteResult = { ok: true } | { ok: false; error: string };
+export type Result = { ok: boolean; error?: string };
 
 interface StoreCtx {
   restaurant: StoreProfile;
   store: StoreState | null;
   storeError: string | null;
-  openToggleSupported: boolean;
   orders: Order[];
   ordersLoaded: boolean;
   ordersError: string | null;
@@ -70,7 +70,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const [store, setStore] = useState<StoreState | null>(null);
   const [storeError, setStoreError] = useState<string | null>(null);
-  const [openToggleSupported, setOpenToggleSupported] = useState(true);
   const [orders, setOrders] = useState<Order[]>([]);
   const [ordersLoaded, setOrdersLoaded] = useState(false);
   const [ordersError, setOrdersError] = useState<string | null>(null);
@@ -212,6 +211,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     refreshStore();
     refreshMenu();
     startKitchenService();
+    // Order pushes while the app is closed (FCM via the server). Best effort: never blocks the app.
+    registerStorePush(rid);
+    const offToken = onPushTokenChange(rid);
+    const offPush = onOrderPush((d) => {
+      if (d?.type === 'NEW_ORDER' || d?.type === 'ORDER_CANCELLED' || d?.orderId) scheduleOrders(300);
+    });
+    return () => { offToken(); offPush(); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // After every (re)connect: refetch what may have been missed while offline (events are not replayed).
@@ -419,12 +425,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       }
       return { ok: true };
     } catch (e) {
-      if (e instanceof api.OpenToggleUnsupported) {
-        setOpenToggleSupported(false);
-        const msg = 'Opening and closing from the app is not available yet. Call Zenvy support to change it.';
-        toast.show(msg, 'info');
-        return { ok: false, error: msg, unsupported: true };
-      }
       if (e instanceof ApiError && e.status === 401) return { ok: false };
       const msg = errorMessage(e, "Couldn't change shop status.");
       toast.show(msg, 'error');
@@ -443,9 +443,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       toast.show('Shop hours saved', 'success');
       return { ok: true };
     } catch (e) {
-      if (e instanceof api.HoursUnsupported) {
-        return { ok: false, unsupported: true, error: 'Changing hours from the app is not switched on yet. Call Zenvy support to change them.' };
-      }
       return { ok: false, error: errorMessage(e, "Couldn't save the hours. Try again.") };
     }
   }, [rid, updateProfile, toast]);
@@ -491,32 +488,23 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       description: input.description || null,
       imageUrl: input.imageUrl,
       isVegetarian: input.isVegetarian,
+      dietType: input.isVegetarian ? 'veg' : 'nonveg',
     };
+    // Availability: always on create (same write: a "not available" item is never live for a moment);
+    // on edit only when it changed.
+    if (!editing || input.isAvailable !== editing.isAvailable) body.isAvailable = input.isAvailable;
     let saved: MenuItem;
     if (editing) {
       const res = await api.updateMenuItem(editing.id, body);
-      saved = { ...editing, ...(res || {}), ...body, category: input.category || 'Other', description: input.description || null };
+      saved = res || {
+        ...editing, ...body, category: input.category || 'Other', description: input.description || null,
+        isAvailable: body.isAvailable ?? editing.isAvailable,
+      };
     } else {
-      saved = await api.createMenuItem(body); // the server always creates it available
+      saved = await api.createMenuItem(body);
     }
     upsertLocal(saved);
-
-    // The item itself is saved by now, so a failed availability change is a warning, not an error.
-    let warn = false;
-    if (input.isAvailable !== saved.isAvailable) {
-      try {
-        const res = await api.setAvailability(saved.id, input.isAvailable);
-        saved = { ...saved, isAvailable: typeof res?.isAvailable === 'boolean' ? res.isAvailable : input.isAvailable };
-        upsertLocal(saved);
-      } catch {
-        warn = true;
-      }
-    }
-    if (warn) {
-      toast.show(`${saved.name} saved, but we couldn't mark it ${input.isAvailable ? 'available' : 'not available'}. Use the switch in the menu.`, 'error');
-    } else {
-      toast.show(editing ? `${saved.name} saved` : `${saved.name} added to your menu`, 'success');
-    }
+    toast.show(editing ? `${saved.name} saved` : `${saved.name} added to your menu`, 'success');
     if (!editing) announce(`menu:add:${saved.id}`, { kind: 'itemAdded' }, { dedupeMs: 0 });
     return saved;
   }, [toast, upsertLocal]);
@@ -525,9 +513,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     try {
       await api.deleteMenuItem(item.id);
     } catch (e) {
-      if (e instanceof api.DeleteUnsupported) {
-        return { ok: false, unsupported: true, error: "Deleting items isn't switched on yet. You can hide it instead (mark it not available)." };
-      }
       if (!(e instanceof ApiError && e.status === 404)) return { ok: false, error: errorMessage(e, "Couldn't delete the item. Try again.") };
       // 404 for the item itself: it is already gone, just drop it from the list.
     }
@@ -539,11 +524,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const retryConnection = useCallback(() => { retry(); refreshOrdersRef.current({ pull: true }); }, [retry]);
 
   const value = useMemo<StoreCtx>(() => ({
-    restaurant, store, storeError, openToggleSupported, orders, ordersLoaded, ordersError, refreshing, lastSyncedAt,
+    restaurant, store, storeError, orders, ordersLoaded, ordersError, refreshing, lastSyncedAt,
     menu, menuError, menuLoading, menuPending, conn, alertOrders, busy, actionErrors, retryConnection, refreshOrders, refreshStore,
     refreshMenu, accept, reject, outForDelivery, delivered, cancel, setOpen, setHours, setStock, saveItem, deleteItem,
   }), [
-    restaurant, store, storeError, openToggleSupported, orders, ordersLoaded, ordersError, refreshing, lastSyncedAt,
+    restaurant, store, storeError, orders, ordersLoaded, ordersError, refreshing, lastSyncedAt,
     menu, menuError, menuLoading, menuPending, conn, alertOrders, busy, actionErrors, retryConnection, refreshOrders, refreshStore,
     refreshMenu, accept, reject, outForDelivery, delivered, cancel, setOpen, setHours, setStock, saveItem, deleteItem,
   ]);

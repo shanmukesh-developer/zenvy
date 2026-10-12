@@ -1,123 +1,182 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  TextInput,
-  ActivityIndicator,
-  Alert,
-  Share,
-  RefreshControl,
-} from 'react-native';
-import { ArrowLeft, Users, Plus, KeyRound, RefreshCw, MessageSquare, Share2 } from 'lucide-react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, Share, RefreshControl, ScrollView, Switch } from 'react-native';
+import { Users, Plus, KeyRound, MoreVertical, Globe2 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import { router } from 'expo-router';
-import { CampusColors, CampusLayout } from '../../../constants/campusTheme';
+import { CampusColors } from '../../../constants/campusTheme';
 import {
   CampusGroup,
-  CAMPUS_NO_SESSION_ERROR,
   fetchMyGroups,
   createCampusGroup,
-  joinCampusGroup,
   resetCampusGroupCode,
+  setGroupDiscoverable,
 } from '../campusApi';
+import { ScreenModal, Sheet, Avatar, ListRow, EmptyState, ErrorState, SkeletonRows, Button, T, S, R, ui } from '../ui';
 
+const TYPE_OPTIONS: { key: string; label: string; hint: string }[] = [
+  { key: 'study', label: 'Study group', hint: 'Friends, projects, lab partners' },
+  { key: 'club', label: 'Club', hint: 'Clubs, teams and societies' },
+  { key: 'hostel', label: 'Hostel', hint: 'Your block or floor' },
+  { key: 'class', label: 'Class', hint: 'Your section or course' },
+];
+
+const TYPE_LABEL: Record<string, string> = {
+  class: 'Class',
+  club: 'Club',
+  study: 'Study group',
+  hostel: 'Hostel',
+  ride: 'Ride group',
+  group: 'Group',
+};
+
+const shareInvite = (name: string, code?: string) => {
+  if (!code) return;
+  Share.share({
+    message: `Join "${name}" on Zenvy Campus with code ${code}. Open Zenvy > Campus > + > Join with code.`,
+  }).catch(() => {});
+};
+
+// ── Create group ────────────────────────────────────────────────────────────
+export const CreateGroupSheet: React.FC<{
+  visible: boolean;
+  onClose: () => void;
+  onCreated: (group: CampusGroup) => void;
+}> = ({ visible, onClose, onCreated }) => {
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [type, setType] = useState('study');
+  const [isPublic, setIsPublic] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (visible) {
+      setName('');
+      setDescription('');
+      setType('study');
+      setIsPublic(false);
+      setError(null);
+    }
+  }, [visible]);
+
+  const submit = async () => {
+    if (busy) return;
+    const n = name.trim();
+    if (n.length < 2) {
+      setError('Give your group a name (at least 2 characters).');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const group = await createCampusGroup({ name: n, description: description.trim() || undefined, type, discoverable: isPublic });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      onCreated({ ...group, discoverable: isPublic, isAdmin: true });
+    } catch (e: any) {
+      setError(e?.message || "Couldn't create the group. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Sheet visible={visible} onClose={() => !busy && onClose()} title="New group" icon={<Users size={20} color={CampusColors.accent} />}>
+      {error && (
+        <View style={ui.errorBox}>
+          <Text style={ui.errorText}>{error}</Text>
+        </View>
+      )}
+      <Text style={[ui.label, { marginTop: 0 }]}>Group name</Text>
+      <TextInput
+        style={ui.input}
+        value={name}
+        onChangeText={setName}
+        placeholder="e.g. CSE-B Night Owls"
+        placeholderTextColor={CampusColors.muted}
+        maxLength={80}
+        autoFocus
+        editable={!busy}
+      />
+      <Text style={ui.label}>About (optional)</Text>
+      <TextInput
+        style={ui.input}
+        value={description}
+        onChangeText={setDescription}
+        placeholder="What is this group for?"
+        placeholderTextColor={CampusColors.muted}
+        maxLength={250}
+        editable={!busy}
+      />
+      <Text style={ui.label}>Type</Text>
+      <View style={styles.chips}>
+        {TYPE_OPTIONS.map((o) => {
+          const active = o.key === type;
+          return (
+            <TouchableOpacity key={o.key} style={[styles.chip, active && styles.chipActive]} onPress={() => setType(o.key)} disabled={busy}>
+              <Text style={[styles.chipText, active && styles.chipTextActive]}>{o.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+      <Text style={[T.small, { marginTop: 6 }]}>{TYPE_OPTIONS.find((o) => o.key === type)?.hint}</Text>
+
+      <View style={styles.switchRow}>
+        <Globe2 size={18} color={CampusColors.accentDeep} />
+        <View style={{ flex: 1 }}>
+          <Text style={T.h3}>Public on campus</Text>
+          <Text style={T.small}>Students on your campus can find it in search and join without a code.</Text>
+        </View>
+        <Switch value={isPublic} onValueChange={setIsPublic} disabled={busy} trackColor={{ true: CampusColors.accent }} />
+      </View>
+
+      <Button label="Create group" onPress={submit} loading={busy} style={{ marginTop: S.xl }} />
+    </Sheet>
+  );
+};
+
+// ── My groups page ──────────────────────────────────────────────────────────
 interface GroupsScreenProps {
-  onBack: () => void;
+  visible: boolean;
+  onClose: () => void;
   onOpenChat: (chatId: string, chatName: string) => void;
+  onCreateGroup: () => void;
+  onJoinWithCode: () => void;
+  /** Bump to reload (after a create / join elsewhere). */
+  refreshKey?: number;
 }
 
-export const GroupsScreen: React.FC<GroupsScreenProps> = ({ onBack, onOpenChat }) => {
+export const GroupsScreen: React.FC<GroupsScreenProps> = ({ visible, onClose, onOpenChat, onCreateGroup, onJoinWithCode, refreshKey }) => {
   const [groups, setGroups] = useState<CampusGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [createName, setCreateName] = useState('');
-  const [joinCode, setJoinCode] = useState('');
-  const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const mounted = useRef(true);
 
-  const shareInvite = (name: string, code?: string) => {
-    if (!code) return;
-    Share.share({
-      message: `Join "${name}" on Zenvy Campus Buddy with code ${code}. Open Campus Buddy → Groups → Join code.`,
-    }).catch(() => {});
-  };
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
     try {
       const data = await fetchMyGroups();
+      if (!mounted.current) return;
       setGroups(data);
+      setError(null);
     } catch (e: any) {
-      setError(e?.message || 'Failed to load groups');
+      if (mounted.current) setError(e?.message || "Couldn't load your groups.");
     } finally {
-      setLoading(false);
+      if (mounted.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (visible) load();
+  }, [visible, refreshKey, load]);
 
-  const handleCreate = async () => {
-    if (busy) return;
-    const name = createName.trim();
-    if (!name) return;
-    setBusy(true);
-    try {
-      const group = await createCampusGroup({ name, type: 'study' });
-      setCreateName('');
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      if (group.joinCode) {
-        Alert.alert('Group created 🎉', `Invite friends with code ${group.joinCode}.`, [
-          { text: 'Later', style: 'cancel' },
-          { text: 'Share invite', onPress: () => shareInvite(group.name || name, group.joinCode) },
-        ]);
-      } else {
-        Alert.alert('Group created 🎉', `"${name}" is ready.`);
-      }
-      load();
-    } catch (e: any) {
-      Alert.alert('Create failed', e?.message || 'Could not create group');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleJoin = async () => {
-    if (busy) return;
-    const code = joinCode.trim().toUpperCase();
-    if (!code) return;
-    if (code.length !== 6) {
-      Alert.alert('Check the code', 'Join codes are 6 characters, like K7X9QP.');
-      return;
-    }
-    setBusy(true);
-    try {
-      const joined = await joinCampusGroup(code);
-      setJoinCode('');
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      Alert.alert(
-        joined.alreadyMember ? 'Already a member' : "You're in! 🎉",
-        joined.name
-          ? joined.alreadyMember
-            ? `You're already part of ${joined.name}.`
-            : `You joined ${joined.name}.`
-          : 'Group joined.'
-      );
-      load();
-    } catch (e: any) {
-      Alert.alert('Join failed', e?.message || 'Could not join group');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleResetCode = (group: CampusGroup) => {
-    Alert.alert('Reset join code?', 'The old code stops working immediately.', [
+  const resetCode = (group: CampusGroup) => {
+    Alert.alert('Reset join code?', 'The old code stops working right away.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Reset',
@@ -125,217 +184,141 @@ export const GroupsScreen: React.FC<GroupsScreenProps> = ({ onBack, onOpenChat }
         onPress: async () => {
           try {
             const newCode = await resetCampusGroupCode(group.id);
+            setGroups((prev) => prev.map((g) => (g.id === group.id ? { ...g, joinCode: newCode } : g)));
             Alert.alert('New join code', newCode, [
               { text: 'OK', style: 'cancel' },
               { text: 'Share', onPress: () => shareInvite(group.name, newCode) },
             ]);
-            load();
           } catch (e: any) {
-            Alert.alert('Reset failed', e?.message || 'Could not reset code');
+            Alert.alert("Couldn't reset the code", e?.message || 'Please try again.');
           }
         },
       },
     ]);
   };
 
+  const togglePublic = async (group: CampusGroup) => {
+    const next = !group.discoverable;
+    setGroups((prev) => prev.map((g) => (g.id === group.id ? { ...g, discoverable: next } : g)));
+    try {
+      await setGroupDiscoverable(group.id, next);
+      Haptics.selectionAsync().catch(() => {});
+    } catch (e: any) {
+      setGroups((prev) => prev.map((g) => (g.id === group.id ? { ...g, discoverable: !next } : g)));
+      Alert.alert("Couldn't update the group", e?.message || 'Please try again.');
+    }
+  };
+
+  const manage = (group: CampusGroup) => {
+    Alert.alert(group.name, group.joinCode ? `Join code: ${group.joinCode}` : undefined, [
+      ...(group.joinCode ? [{ text: 'Share invite', onPress: () => shareInvite(group.name, group.joinCode) }] : []),
+      { text: group.discoverable ? 'Make private' : 'Make public on campus', onPress: () => togglePublic(group) },
+      { text: 'Reset join code', style: 'destructive' as const, onPress: () => resetCode(group) },
+      { text: 'Cancel', style: 'cancel' as const },
+    ]);
+  };
+
   return (
-    <View style={styles.safeArea}>
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={onBack}>
-          <ArrowLeft size={22} color={CampusColors.ink} />
+    <ScreenModal
+      visible={visible}
+      onClose={onClose}
+      title="Groups & classrooms"
+      subtitle={groups.length ? `${groups.length} group${groups.length === 1 ? '' : 's'}` : undefined}
+      right={
+        <TouchableOpacity onPress={onCreateGroup} style={ui.iconBtn} accessibilityLabel="New group">
+          <Plus size={22} color={CampusColors.accent} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>My Groups</Text>
-        <View style={{ width: 30 }} />
-      </View>
-
-      <View style={styles.actionRow}>
-        <View style={styles.createWrap}>
-          <TextInput
-            style={styles.input}
-            placeholder="New group name"
-            placeholderTextColor={CampusColors.muted}
-            value={createName}
-            onChangeText={setCreateName}
+      }
+    >
+      <ScrollView
+        contentContainerStyle={{ padding: S.lg, paddingBottom: 40 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            tintColor={CampusColors.accent}
+            onRefresh={async () => {
+              setRefreshing(true);
+              await load();
+              if (mounted.current) setRefreshing(false);
+            }}
           />
-          <TouchableOpacity style={styles.smallBtn} onPress={handleCreate} disabled={busy}>
-            <Plus size={16} color="#FFFFFF" />
-          </TouchableOpacity>
+        }
+      >
+        <View style={{ flexDirection: 'row', gap: S.sm, marginBottom: S.lg }}>
+          <Button label="New group" onPress={onCreateGroup} icon={<Plus size={16} color="#FFFFFF" />} style={{ flex: 1 }} />
+          <Button label="Join with code" variant="secondary" onPress={onJoinWithCode} icon={<KeyRound size={16} color={CampusColors.ink} />} style={{ flex: 1 }} />
         </View>
-        <View style={styles.createWrap}>
-          <TextInput
-            style={styles.input}
-            placeholder="Join code"
-            placeholderTextColor={CampusColors.muted}
-            value={joinCode}
-            onChangeText={(t) => setJoinCode(t.replace(/[^a-zA-Z0-9]/g, '').toUpperCase())}
-            autoCapitalize="characters"
-            autoCorrect={false}
-            maxLength={6}
-          />
-          <TouchableOpacity style={styles.smallBtn} onPress={handleJoin} disabled={busy}>
-            <KeyRound size={16} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
-      </View>
 
-      {loading ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color={CampusColors.accent} />
-        </View>
-      ) : error ? (
-        <View style={styles.center}>
-          <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity style={styles.retryBtn} onPress={load}>
-            <Text style={styles.retryText}>Retry</Text>
-          </TouchableOpacity>
-          {(error === CAMPUS_NO_SESSION_ERROR || /session has expired/i.test(error)) && (
-            <TouchableOpacity style={styles.retryBtn} onPress={() => router.push('/login')}>
-              <Text style={styles.retryText}>Sign In</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      ) : groups.length === 0 ? (
-        <View style={styles.center}>
-          <Users size={40} color={CampusColors.muted} />
-          <Text style={styles.emptyText}>No groups yet. Create one or join with a code.</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={groups}
-          keyExtractor={(g) => g.id}
-          contentContainerStyle={styles.list}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={async () => {
-                setRefreshing(true);
-                try {
-                  const data = await fetchMyGroups();
-                  setGroups(data);
-                } catch {
-                  // keep the current list; a full reload shows the error state
-                } finally {
-                  setRefreshing(false);
-                }
+        {loading ? (
+          <SkeletonRows rows={4} />
+        ) : error && groups.length === 0 ? (
+          <View style={ui.card}>
+            <ErrorState
+              message={error}
+              onRetry={() => {
+                setLoading(true);
+                load();
               }}
-              tintColor={CampusColors.accent}
-              colors={[CampusColors.accent]}
             />
-          }
-          renderItem={({ item }) => (
-            <View style={styles.groupCard}>
-              <TouchableOpacity
-                style={styles.groupMain}
-                onPress={() => onOpenChat(item.id, item.name)}
-                activeOpacity={0.85}
-              >
-                <View style={styles.avatar}>
-                  <MessageSquare size={18} color={CampusColors.accentDeep} />
-                </View>
-                <View style={styles.groupInfo}>
-                  <Text style={styles.groupName} numberOfLines={1}>{item.name}</Text>
-                  <Text style={styles.groupMeta}>
-                    {[
-                      typeof item.memberCount === 'number'
-                        ? `${item.memberCount} member${item.memberCount === 1 ? '' : 's'}`
-                        : null,
-                      item.type || 'group',
-                      item.isAdmin && item.joinCode ? `Code ${item.joinCode}` : null,
-                    ]
-                      .filter(Boolean)
-                      .join(' • ')}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-              {item.isAdmin && !!item.joinCode && (
-                <TouchableOpacity
-                  style={styles.resetBtn}
-                  onPress={() => shareInvite(item.name, item.joinCode)}
-                  accessibilityLabel="Share invite code"
-                >
-                  <Share2 size={15} color={CampusColors.accent} />
-                </TouchableOpacity>
-              )}
-              {item.isAdmin && (
-                <TouchableOpacity
-                  style={styles.resetBtn}
-                  onPress={() => handleResetCode(item)}
-                  accessibilityLabel="Reset join code"
-                >
-                  <RefreshCw size={15} color={CampusColors.muted} />
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
-        />
-      )}
-    </View>
+          </View>
+        ) : groups.length === 0 ? (
+          <View style={ui.card}>
+            <EmptyState
+              icon={<Users size={22} color={CampusColors.accent} />}
+              title="No groups yet"
+              subtitle="Create a study group, or join your class or club with the code your CR or club admin shared."
+              actionLabel="Join with code"
+              onAction={onJoinWithCode}
+            />
+          </View>
+        ) : (
+          <View style={ui.card}>
+            {groups.map((g, i) => (
+              <ListRow
+                key={g.id}
+                last={i === groups.length - 1}
+                left={<Avatar name={g.name} uri={g.groupAvatar} size={44} rounded={false} bg={CampusColors.accentSoft} />}
+                title={g.name}
+                subtitle={[
+                  TYPE_LABEL[g.type || ''] || 'Group',
+                  typeof g.memberCount === 'number' ? `${g.memberCount} member${g.memberCount === 1 ? '' : 's'}` : null,
+                  g.discoverable ? 'Public' : null,
+                  g.isAdmin && g.joinCode ? `Code ${g.joinCode}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' • ')}
+                onPress={() => onOpenChat(g.id, g.name)}
+                right={
+                  g.isAdmin ? (
+                    <TouchableOpacity onPress={() => manage(g)} hitSlop={10} style={{ padding: 6 }} accessibilityLabel={`Manage ${g.name}`}>
+                      <MoreVertical size={18} color={CampusColors.muted} />
+                    </TouchableOpacity>
+                  ) : undefined
+                }
+              />
+            ))}
+          </View>
+        )}
+      </ScrollView>
+    </ScreenModal>
   );
 };
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: CampusColors.paper },
-  header: {
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: S.sm },
+  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: R.pill, borderWidth: 1, borderColor: CampusColors.chipBorder, backgroundColor: CampusColors.card },
+  chipActive: { backgroundColor: CampusColors.ink, borderColor: CampusColors.ink },
+  chipText: { fontSize: 13, fontWeight: '600', color: CampusColors.ink },
+  chipTextActive: { color: '#FFFFFF', fontWeight: '800' },
+  switchRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    backgroundColor: CampusColors.card,
-    borderBottomWidth: 1,
-    borderBottomColor: CampusColors.line,
-  },
-  backBtn: { padding: 4, width: 30 },
-  headerTitle: { fontSize: 17, fontWeight: '700', color: CampusColors.ink },
-  actionRow: { paddingHorizontal: 16, paddingVertical: 12, gap: 10 },
-  createWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  input: {
-    flex: 1,
-    backgroundColor: CampusColors.card,
+    gap: S.md,
+    marginTop: S.lg,
+    padding: S.md,
+    borderRadius: R.md,
+    backgroundColor: CampusColors.paper,
     borderWidth: 1,
     borderColor: CampusColors.line,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    height: 44,
-    fontSize: 14,
-    color: CampusColors.ink,
   },
-  smallBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: CampusColors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 10 },
-  errorText: { color: CampusColors.ink, fontSize: 14, textAlign: 'center' },
-  retryBtn: { backgroundColor: CampusColors.accent, paddingHorizontal: 20, paddingVertical: 8, borderRadius: 16 },
-  retryText: { color: '#FFFFFF', fontWeight: '700' },
-  emptyText: { color: CampusColors.muted, fontSize: 13, textAlign: 'center' },
-  list: { padding: 16, gap: 10 },
-  groupCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: CampusColors.card,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: CampusColors.line,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 8,
-  },
-  groupMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: CampusColors.accentSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  groupInfo: { flex: 1 },
-  groupName: { fontSize: 15, fontWeight: '700', color: CampusColors.ink },
-  groupMeta: { fontSize: 12, color: CampusColors.muted, marginTop: 2 },
-  resetBtn: { padding: 8 },
 });

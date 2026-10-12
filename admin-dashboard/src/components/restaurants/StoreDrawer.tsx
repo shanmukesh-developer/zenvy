@@ -1,12 +1,12 @@
 "use client";
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import {
-  Product, STATUS_META, Store, adminRequest, formatINR, formatTime, formatWhatsapp, isLocalVendorType, readBrandTheme,
-  storeId, storeStatus, vendorLabel,
+  STATUS_META, Store, adminRequest, formatINR, formatWhatsapp, isLocalVendorType, isValidIndianMobile, readBrandTheme,
+  storeId, storeStatus, tenDigits, vendorLabel,
 } from '@/app/restaurants/catalogue';
 import { useLiveSync } from '@/lib/useLiveSync';
 import {
-  Weekly, generatePassword, isUniform, mapsUrl, operatingHoursPayload, passwordStrength, primaryWindow, summarizeWeekly,
+  Weekly, generatePassword, mapsUrl, operatingHoursPayload, passwordStrength, summarizeWeekly,
   timeAgo, validateWeekly, weeklyFromStore,
 } from './helpers';
 import { WeeklyHoursEditor } from './inputs';
@@ -14,7 +14,7 @@ import { MenuManager } from './MenuManager';
 import { StorePreviewCard } from './StorePreviewCard';
 import { StepKey } from './StoreWizard';
 import { hasStoreBanner, patchStore, removeStoreBanner, upsertStoreBanner } from './storeActions';
-import { StatsCoverage, StoreOrder, StoreStats, useStorePayout } from './useStoreStats';
+import { StoreOrder, StoreStats, useStoreOrders, useStorePayout } from './useStoreStats';
 import {
   Button, Callout, Chip, ConfirmModal, CopyButton, Drawer, EmptyState, Field, INPUT, MenuButton, Skeleton, Tabs, Thumb, Toggle,
   cx, useToast,
@@ -24,7 +24,7 @@ export type DrawerTab = 'overview' | 'menu' | 'hours' | 'login' | 'promote' | 'a
 
 const STATUS_TONE = { live: 'green', closed: 'amber', draft: 'slate', inactive: 'red' } as const;
 
-export function StoreDrawer({ store, tab, onTab, onClose, onEdit, onChanged, onToggleActive, onToggleOpen, onDuplicate, onDelete, stats, orders, coverage, busy }: {
+export function StoreDrawer({ store, tab, onTab, onClose, onEdit, onChanged, onToggleActive, onToggleOpen, onDuplicate, onDelete, stats, busy }: {
   store: Store;
   tab: DrawerTab;
   onTab: (t: DrawerTab) => void;
@@ -36,18 +36,19 @@ export function StoreDrawer({ store, tab, onTab, onClose, onEdit, onChanged, onT
   onDuplicate: () => void;
   onDelete: () => void;
   stats: StoreStats;
-  orders: StoreOrder[];
-  coverage: StatsCoverage;
   busy: boolean;
 }) {
   const titleId = useId();
   const status = storeStatus(store);
   const local = isLocalVendorType(store.vendorType);
+  const { orders, state: ordersState } = useStoreOrders(storeId(store));
+  const noLogin = !store.hasPassword && !store.isOffline;
   const tabs: { value: DrawerTab; label: string; badge?: React.ReactNode }[] = [
     { value: 'overview', label: 'Overview' },
     { value: 'menu', label: 'Menu', badge: <span className="rounded bg-white/10 px-1.5 text-[10px] text-gray-300">{store.itemCount ?? 0}</span> },
     { value: 'hours', label: 'Hours' },
-    ...(local ? [] : [{ value: 'login' as DrawerTab, label: 'Partner login' }, { value: 'promote' as DrawerTab, label: 'Promote' }]),
+    { value: 'login', label: local ? 'Vendor login' : 'Partner login', badge: noLogin ? <span className="rounded bg-amber-500/20 px-1.5 text-[10px] text-amber-300">!</span> : undefined },
+    ...(local ? [] : [{ value: 'promote' as DrawerTab, label: 'Promote' }]),
     { value: 'activity', label: 'Activity' },
   ];
   const current = tabs.some(t => t.value === tab) ? tab : 'overview';
@@ -63,6 +64,8 @@ export function StoreDrawer({ store, tab, onTab, onClose, onEdit, onChanged, onT
               <Chip tone={STATUS_TONE[status]} dot title={STATUS_META[status].help}>{STATUS_META[status].label}</Chip>
               {store.isFeatured && <Chip tone="amber">✨ {store.featuredBadge || 'Featured'}</Chip>}
               {store.isOffline && <Chip>Managed by Zenvy</Chip>}
+              {local && <Chip tone="sky" title="Customers pay the stall cash; the stall delivers">Stall delivers · COD</Chip>}
+              {noLogin && <Chip tone="amber" title={local ? 'The stall cannot see its orders until it can sign in to Zenvy Vendor' : 'The partner cannot accept orders in the app'}>No login yet</Chip>}
             </div>
             <p className="mt-1 truncate text-sm text-gray-400">{vendorLabel(store.vendorType)} · {[store.location, store.campus].filter(Boolean).join(' · ')}</p>
             {status === 'closed' && store.closedReason && <p className="mt-0.5 text-xs text-amber-300/80">{store.closedReason}</p>}
@@ -80,14 +83,14 @@ export function StoreDrawer({ store, tab, onTab, onClose, onEdit, onChanged, onT
         </div>
         <div className="mt-4 flex flex-wrap gap-x-8 gap-y-3">
           <Toggle size="sm" checked={store.isActive} disabled={busy} onChange={onToggleActive} label={store.isActive ? 'Visible to customers' : 'Hidden from customers'} />
-          {!local && <Toggle size="sm" checked={store.isOpenNow !== false} disabled={busy || !store.isActive} onChange={onToggleOpen} label={store.isOpenNow === false ? 'Paused (not taking orders)' : 'Taking orders'} />}
+          <Toggle size="sm" checked={store.isOpenNow !== false} disabled={busy || !store.isActive} onChange={onToggleOpen} label={store.isOpenNow === false ? 'Paused (not taking orders)' : 'Taking orders'} />
         </div>
         <div className="mt-3">
           <Tabs label="Store sections" tabs={tabs} value={current} onChange={onTab} />
         </div>
       </header>
       <div className="flex-1 overflow-y-auto px-5 py-5" role="tabpanel" id={`panel-${current}`} aria-labelledby={`tab-${current}`}>
-        {current === 'overview' && <OverviewTab store={store} stats={stats} orders={orders} coverage={coverage} onTab={onTab} onEdit={onEdit} onPublish={onToggleActive} />}
+        {current === 'overview' && <OverviewTab store={store} stats={stats} orders={orders} ordersState={ordersState} onTab={onTab} onEdit={onEdit} onPublish={onToggleActive} />}
         {current === 'menu' && <MenuManager store={store} />}
         {current === 'hours' && <HoursTab store={store} onChanged={onChanged} />}
         {current === 'login' && <LoginTab store={store} onChanged={onChanged} />}
@@ -110,14 +113,16 @@ function Stat({ label, value, sub, tone }: { label: string; value: React.ReactNo
 }
 
 const STATUS_COLOR: Record<string, 'green' | 'amber' | 'red' | 'sky' | 'slate'> = {
-  Delivered: 'green', Cancelled: 'red', Pending: 'amber', Accepted: 'sky', Preparing: 'sky', ReadyForPickup: 'sky', Picking: 'sky', PickedUp: 'sky', ArrivedAtGate: 'sky',
+  Delivered: 'green', Cancelled: 'red', Pending: 'amber', Accepted: 'sky', Preparing: 'sky', ReadyForPickup: 'sky', Picking: 'sky', PickedUp: 'sky', ArrivedAtGate: 'sky', OutForDelivery: 'sky',
 };
+const STATUS_TEXT: Record<string, string> = { ReadyForPickup: 'Ready', PickedUp: 'Picked up', ArrivedAtGate: 'At gate', OutForDelivery: 'Out for delivery' };
 
-function OverviewTab({ store, stats, orders, coverage, onTab, onEdit, onPublish }: {
-  store: Store; stats: StoreStats; orders: StoreOrder[]; coverage: StatsCoverage; onTab: (t: DrawerTab) => void; onEdit: (s?: StepKey) => void; onPublish: () => void;
+function OverviewTab({ store, stats, orders, ordersState, onTab, onEdit, onPublish }: {
+  store: Store; stats: StoreStats; orders: StoreOrder[]; ordersState: 'loading' | 'ok' | 'error'; onTab: (t: DrawerTab) => void; onEdit: (s?: StepKey) => void; onPublish: () => void;
 }) {
   const local = isLocalVendorType(store.vendorType);
-  const payout = useStorePayout(storeId(store));
+  // Stall orders are cash to the stall: nothing for Zenvy to settle.
+  const payout = useStorePayout(storeId(store), !local);
   const weekly = weeklyFromStore(store.operatingHours);
   const rating = Number(store.rating) || 0;
   const checks: { ok: boolean; text: string; fix: () => void; fixLabel: string }[] = [
@@ -126,13 +131,14 @@ function OverviewTab({ store, stats, orders, coverage, onTab, onEdit, onPublish 
     { ok: !!store.whatsappNumber || !local, text: local ? 'WhatsApp number for orders' : 'Contact number', fix: () => onEdit('location'), fixLabel: 'Add number' },
     { ok: store.lat != null && store.lon != null, text: 'Map pin for riders', fix: () => onEdit('location'), fixLabel: 'Set pin' },
     { ok: (store.tags || []).length > 0, text: 'Cuisine tags', fix: () => onEdit('basics'), fixLabel: 'Add tags' },
+    { ok: !!store.hasPassword || (!local && !!store.isOffline), text: local ? 'Stall can sign in to Zenvy Vendor' : 'Partner can sign in (or managed by Zenvy)', fix: () => onTab('login'), fixLabel: 'Set password' },
   ];
   const todo = checks.filter(c => !c.ok);
   const recent = orders.slice(0, 8);
   return (
     <div className="space-y-6">
       {!store.isActive && (
-        <Callout tone={todo.length ? 'amber' : 'green'} title={storeStatus(store) === 'draft' ? 'This store is a draft' : 'This store is hidden'}>
+        <Callout tone={todo.length ? 'amber' : 'green'} title={storeStatus(store) === 'draft' ? 'This store is a draft (never published)' : `This store is hidden${store.publishedAt ? ` (first published ${new Date(store.publishedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })})` : ''}`}>
           <span className="flex flex-wrap items-center justify-between gap-3">
             <span>{todo.length ? `Finish ${todo.length} thing${todo.length === 1 ? '' : 's'} below, then publish.` : 'Everything looks ready. Publish to make it visible to customers.'}</span>
             <Button size="sm" variant="primary" onClick={onPublish}>Publish now</Button>
@@ -140,20 +146,13 @@ function OverviewTab({ store, stats, orders, coverage, onTab, onEdit, onPublish 
         </Callout>
       )}
       <section aria-label="Store numbers" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Stat label="Orders today" value={stats.todayOrders} sub={stats.cancelledToday ? `${stats.cancelledToday} cancelled` : 'IST calendar day'} />
+        <Stat label="Sales today" value={formatINR(stats.todayRevenue)} tone="green" sub="Item subtotal, excl. cancelled" />
+        <Stat label="Last 7 days" value={stats.weekOrders} sub={formatINR(stats.weekRevenue)} />
         {local ? (
-          <>
-            <Stat label="Customer taps (all time)" value={(store.clickCount ?? 0).toLocaleString('en-IN')} sub="Call / WhatsApp / open taps" />
-            <Stat label="Menu items" value={store.itemCount ?? 0} />
-            <Stat label="Rating" value={rating > 0 ? `${rating.toFixed(1)} ★` : 'New'} />
-            <Stat label="Listed" value={store.createdAt ? timeAgo(store.createdAt) : '—'} />
-          </>
+          <Stat label="Customer taps (all time)" value={(store.clickCount ?? 0).toLocaleString('en-IN')} sub={`Rating ${rating > 0 ? `${rating.toFixed(1)} ★` : 'New'} · cash paid to the stall`} />
         ) : (
-          <>
-            <Stat label="Orders today" value={stats.todayOrders} sub={stats.cancelledToday ? `${stats.cancelledToday} cancelled` : coverage.todayComplete ? 'IST calendar day' : `From latest ${coverage.scanned} orders`} />
-            <Stat label="Sales today" value={formatINR(stats.todayRevenue)} tone="green" sub="Item subtotal, excl. cancelled" />
-            <Stat label="Last 7 days" value={stats.weekOrders} sub={<>{formatINR(stats.weekRevenue)}{coverage.weekComplete ? '' : ` · latest ${coverage.scanned} orders only`}</>} />
-            <Stat label="Unsettled payout" value={payout.state === 'loading' ? <Skeleton className="h-7 w-20" /> : payout.state === 'error' ? '—' : formatINR(payout.row?.netPayout || 0)} tone="amber" sub={payout.row ? `${payout.row.totalOrders} delivered orders · ${formatINR(payout.row.totalCommission)} commission` : 'Settle from Finance → Payouts'} />
-          </>
+          <Stat label="Unsettled payout" value={payout.state === 'loading' ? <Skeleton className="h-7 w-20" /> : payout.state === 'error' ? '—' : formatINR(payout.row?.netPayout || 0)} tone="amber" sub={payout.row ? `${payout.row.totalOrders} delivered orders · ${formatINR(payout.row.totalCommission)} commission` : 'Settle from Finance → Payouts'} />
         )}
       </section>
 
@@ -187,25 +186,36 @@ function OverviewTab({ store, stats, orders, coverage, onTab, onEdit, onPublish 
               <DD k="Hours" v={summarizeWeekly(weekly)} />
               {!local && <DD k="Delivery time" v={store.deliveryTime ? `${store.deliveryTime} min` : 'Hidden'} />}
               {!local && <DD k="Commission" v={store.commissionType === 'flat' ? `₹${store.commissionRate ?? 0} per order` : `${store.commissionRate ?? 0}% of order`} />}
-              <DD k="Partner app" v={store.isOffline ? 'Managed by Zenvy (no app)' : 'Partner accepts orders in the app'} />
+              <DD k="Packaging fee" v={Number(store.packagingFee) > 0 ? `₹${store.packagingFee} per order` : 'None'} />
+              <DD k="Minimum order" v={Number(store.minOrderValue) > 0 ? `₹${store.minOrderValue}` : 'None'} />
+              <DD k={local ? 'Vendor app' : 'Partner app'} v={store.isOffline && !local ? 'Managed by Zenvy (no app)' : `${local ? 'Zenvy Vendor' : 'Zenvy Restaurant'} · ${store.hasPassword ? 'login set' : 'no password yet'} · ${store.pushDevices ? `${store.pushDevices} phone${store.pushDevices === 1 ? '' : 's'}` : 'not signed in on any phone'}`} />
+              <DD k="Login phone" v={store.partnerPhone ? `+91 ${formatWhatsapp(store.partnerPhone)}` : local && store.whatsappNumber ? 'WhatsApp number' : 'Not set'} />
+              {local && <DD k="Delivery" v="Stall delivers itself · cash on delivery · no rider or PIN" />}
+              <DD k="Published" v={store.publishedAt ? new Date(store.publishedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Never (draft)'} />
               <DD k="Added" v={store.createdAt ? new Date(store.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'} />
             </dl>
           </section>
 
-          {!local && (
             <section className="rounded-xl border border-white/10" aria-labelledby="recent-title">
               <div className="flex items-center justify-between border-b border-white/5 px-4 py-2.5">
                 <h3 id="recent-title" className="text-sm font-bold">Recent orders</h3>
-                {stats.lastOrderAt && <span className="text-xs text-gray-500">Last order {timeAgo(stats.lastOrderAt)}</span>}
+                <span className="flex items-center gap-3 text-xs text-gray-500">
+                  {stats.lastOrderAt && <span>Last order {timeAgo(stats.lastOrderAt)}</span>}
+                  <a href={`/orders?store=${encodeURIComponent(storeId(store))}`} className="font-semibold text-emerald-300 hover:underline">All orders →</a>
+                </span>
               </div>
-              {recent.length === 0 ? (
-                <p className="px-4 py-6 text-center text-sm text-gray-500">No orders in the latest {coverage.scanned} platform orders.{store.isActive ? '' : ' Publish the store to start receiving orders.'}</p>
+              {ordersState === 'loading' ? (
+                <div className="space-y-2 p-4" role="status" aria-label="Loading orders">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-6" />)}</div>
+              ) : ordersState === 'error' ? (
+                <p className="px-4 py-6 text-center text-sm text-gray-500">Could not load this store&apos;s orders.</p>
+              ) : recent.length === 0 ? (
+                <p className="px-4 py-6 text-center text-sm text-gray-500">No orders yet.{store.isActive ? '' : ' Publish the store to start receiving orders.'}</p>
               ) : (
                 <ul className="divide-y divide-white/5">
                   {recent.map(o => (
                     <li key={o._id} className="flex flex-wrap items-center gap-3 px-4 py-2.5 text-sm">
                       <code className="text-xs text-gray-500">#{String(o._id || o.id).slice(0, 8)}</code>
-                      <Chip tone={STATUS_COLOR[o.status] || 'slate'}>{o.status}</Chip>
+                      <Chip tone={STATUS_COLOR[o.status] || 'slate'}>{STATUS_TEXT[o.status] || o.status}</Chip>
                       <span className="text-gray-400">{o.paymentMethod || ''}</span>
                       <span className="ml-auto font-semibold">{formatINR(Number(o.totalPrice) || 0)}</span>
                       <span className="w-20 text-right text-xs text-gray-500">{timeAgo(o.createdAt)}</span>
@@ -214,14 +224,13 @@ function OverviewTab({ store, stats, orders, coverage, onTab, onEdit, onPublish 
                 </ul>
               )}
             </section>
-          )}
         </div>
         <div>
           <StorePreviewCard data={{
             name: store.name, imageUrl: store.imageUrl, tags: store.tags || [], description: store.stallDescription,
             deliveryTime: store.deliveryTime, isOpen: store.isOpen !== false && store.isActive, opensAt: store.opensAt,
             rating: store.rating, isFeatured: store.isFeatured, featuredBadge: store.featuredBadge, promoOffer: store.promoOffer,
-            isLocal: local, whatsappNumber: store.whatsappNumber, brand: readBrandTheme(store.brandTheme),
+            isLocal: local, whatsappNumber: store.whatsappNumber, logoUrl: store.logoUrl, brand: readBrandTheme(store.brandTheme),
           }} />
         </div>
       </div>
@@ -256,10 +265,7 @@ function HoursTab({ store, onChanged }: { store: Store; onChanged: (s: Store) =>
     try {
       const saved = await patchStore(storeId(store), { operatingHours: operatingHoursPayload(weekly), ...(local ? {} : { deliveryTime: d }) });
       onChanged(saved);
-      if (!isUniform(weekly) && !saved?.operatingHours?.weekly) {
-        const p = primaryWindow(weekly);
-        toast.info(`Saved. The server keeps one daily window for now (${formatTime(p.start)}–${formatTime(p.end)}); per-day hours apply after the server update.`);
-      } else toast.success('Hours saved.');
+      toast.success('Hours saved. The app opens and closes the store by them.');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not save the hours.');
     } finally {
@@ -287,13 +293,38 @@ function HoursTab({ store, onChanged }: { store: Store; onChanged: (s: Store) =>
 function LoginTab({ store, onChanged }: { store: Store; onChanged: (s: Store) => void }) {
   const toast = useToast();
   const id = storeId(store);
+  const local = isLocalVendorType(store.vendorType);
+  const app = local ? 'Zenvy Vendor' : 'Zenvy Restaurant';
+  const savedPhone = tenDigits(store.partnerPhone || store.phone);
+  const signInPhone = savedPhone || (local ? tenDigits(store.whatsappNumber) : '');
+  const [phone, setPhone] = useState(savedPhone);
+  const [phoneSaving, setPhoneSaving] = useState(false);
+  const [phoneError, setPhoneError] = useState('');
   const [pw, setPw] = useState('');
   const [saving, setSaving] = useState(false);
   const [shown, setShown] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [confirmManaged, setConfirmManaged] = useState<boolean | null>(null);
   const strength = passwordStrength(pw);
-  const loginText = (password: string) => `Zenvy partner app login\nStore: ${store.name}\nStore ID: ${id}\nPassword: ${password}\nOpen the Zenvy Restaurant app and sign in with the Store ID and password.`;
+  useEffect(() => { setPhone(savedPhone); }, [savedPhone]);
+  const phoneDirty = tenDigits(phone) !== savedPhone;
+  const loginText = (password: string) => `${app} app login\nStore: ${store.name}${signInPhone ? `\nPhone: ${signInPhone}` : ''}\nStore ID: ${id}\nPassword: ${password}\nOpen the ${app} app and sign in with ${signInPhone ? 'your phone number' : 'the Store ID'} and the password.`;
+
+  const savePhone = async () => {
+    const ten = tenDigits(phone);
+    if (ten && !isValidIndianMobile(ten)) return setPhoneError('Use a 10-digit Indian mobile number starting with 6–9.');
+    setPhoneSaving(true);
+    setPhoneError('');
+    try {
+      const saved = await patchStore(id, { phone: ten || null });
+      onChanged(saved);
+      toast.success(ten ? `${store.name} now signs in with +91 ${formatWhatsapp(ten)}.` : 'Login phone removed.');
+    } catch (e) {
+      setPhoneError(e instanceof Error ? e.message : 'Could not save the login phone.');
+    } finally {
+      setPhoneSaving(false);
+    }
+  };
 
   const reset = async () => {
     if (pw.trim().length < 6) return setError('At least 6 characters (12+ recommended).');
@@ -304,7 +335,7 @@ function LoginTab({ store, onChanged }: { store: Store; onChanged: (s: Store) =>
       onChanged(saved);
       setShown(pw.trim());
       setPw('');
-      toast.success('New partner password is active.');
+      toast.success(`New password is active. Phones signed in to ${app} were signed out.`);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not set the password.');
     } finally {
@@ -314,27 +345,55 @@ function LoginTab({ store, onChanged }: { store: Store; onChanged: (s: Store) =>
   return (
     <div className="max-w-3xl space-y-6">
       <section className="space-y-3 rounded-xl border border-white/10 bg-white/[0.02] p-4" aria-labelledby="signin-title">
-        <h3 id="signin-title" className="text-sm font-bold">How the partner signs in</h3>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 id="signin-title" className="text-sm font-bold">How the {local ? 'stall' : 'partner'} signs in</h3>
+          <span className="flex flex-wrap gap-1.5">
+            <Chip tone={store.hasPassword ? 'green' : 'amber'}>{store.hasPassword ? 'Password set' : 'No password yet'}</Chip>
+            <Chip tone={store.pushDevices ? 'green' : 'slate'} title="Phones with the app signed in that receive order alerts">{store.pushDevices ? `${store.pushDevices} phone${store.pushDevices === 1 ? '' : 's'} signed in` : 'No phone signed in'}</Chip>
+          </span>
+        </div>
         <ol className="list-decimal space-y-1 pl-5 text-sm text-gray-300">
-          <li>Open the <b>Zenvy Restaurant</b> app.</li>
-          <li>Enter the Store ID below (or the exact store name “{store.name}”).</li>
+          <li>Open the <b>{app}</b> app.</li>
+          <li>Enter {signInPhone ? <>the phone number <b>{formatWhatsapp(signInPhone)}</b>{savedPhone ? '' : ' (the stall’s WhatsApp number)'} or </> : null}the Store ID below{local ? '' : ` (or the exact store name “${store.name}”)`}.</li>
           <li>Enter the password you shared.</li>
         </ol>
         <div className="flex flex-wrap items-center gap-2 pt-1">
           <code className="flex-1 select-all break-all rounded-lg border border-white/10 bg-[#111318] px-3 py-2 text-xs text-emerald-300">{id}</code>
           <CopyButton text={id} label="Copy Store ID" />
         </div>
-        <p className="text-xs text-gray-500">Zenvy stores only a hash, so the current password cannot be shown. Reset it to share a new one. Phone-number login is not available yet.</p>
+        <p className="text-xs text-gray-500">Zenvy stores only a hash, so the current password cannot be shown. Reset it to share a new one.</p>
+        {local && !store.hasPassword && <Callout tone="amber">Stall orders reach only the Zenvy Vendor app. Until the stall can sign in, its orders wait and are cancelled after 15 minutes.</Callout>}
       </section>
 
-      <section className="rounded-xl border border-white/10 p-4">
-        <Toggle
-          checked={!!store.isOffline}
-          onChange={v => setConfirmManaged(v)}
-          label="Managed by Zenvy (no partner app)"
-          description="Orders skip the partner's accept step; the Zenvy team / rider handles them. Turn off once the partner uses the app."
-        />
+      <section className="space-y-3">
+        <Field
+          label="Login phone"
+          optional
+          error={phoneError || null}
+          help={local ? 'The vendor signs in with this number. Empty = the stall’s WhatsApp number works instead.' : 'The partner can sign in with this number instead of the Store ID. One number per store.'}
+        >
+          {({ id: fid, msgId, invalid }) => (
+            <div className="flex flex-wrap gap-2">
+              <div className="flex min-w-[220px] flex-1">
+                <span className="flex items-center rounded-l-lg border border-r-0 border-white/10 bg-white/5 px-3 text-sm text-gray-400">+91</span>
+                <input id={fid} aria-describedby={msgId} aria-invalid={invalid} inputMode="tel" autoComplete="off" className={cx(INPUT, 'rounded-l-none')} value={phone} onChange={e => { setPhone(e.target.value.replace(/[^\d+\s-]/g, '')); setPhoneError(''); }} placeholder={local && store.whatsappNumber ? formatWhatsapp(store.whatsappNumber) : '98765 43210'} />
+              </div>
+              <Button variant="primary" loading={phoneSaving} disabled={!phoneDirty} onClick={savePhone}>{phoneDirty ? (tenDigits(phone) ? 'Save phone' : 'Remove phone') : 'Saved'}</Button>
+            </div>
+          )}
+        </Field>
       </section>
+
+      {!local && (
+        <section className="rounded-xl border border-white/10 p-4">
+          <Toggle
+            checked={!!store.isOffline}
+            onChange={v => setConfirmManaged(v)}
+            label="Managed by Zenvy (no partner app)"
+            description="Orders skip the partner's accept step; the Zenvy team / rider handles them. Turn off once the partner uses the app."
+          />
+        </section>
+      )}
 
       {shown ? (
         <section className="space-y-3 rounded-xl border border-amber-400/25 bg-amber-400/5 p-4" aria-live="polite">
@@ -344,7 +403,7 @@ function LoginTab({ store, onChanged }: { store: Store; onChanged: (s: Store) =>
             <CopyButton text={shown} />
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <CopyButton text={loginText(shown)} label="Copy message for the partner" variant="amber" size="md" />
+            <CopyButton text={loginText(shown)} label={`Copy message for the ${local ? 'stall' : 'partner'}`} variant="amber" size="md" />
             {store.whatsappNumber && <a className="text-xs font-semibold text-emerald-300 hover:underline" target="_blank" rel="noreferrer" href={`https://wa.me/${store.whatsappNumber}?text=${encodeURIComponent(loginText(shown))}`}>Send on WhatsApp ↗</a>}
             <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setShown(null)}>I have shared it</Button>
           </div>
@@ -352,9 +411,9 @@ function LoginTab({ store, onChanged }: { store: Store; onChanged: (s: Store) =>
       ) : (
         <section className="space-y-3">
           <Field
-            label="Reset password"
+            label={store.hasPassword ? 'Reset password' : 'Set password'}
             error={error || null}
-            help="The new password works immediately and the old one stops working. Apps already signed in stay signed in."
+            help={store.hasPassword ? `The new password works immediately, the old one stops working, and phones already signed in to ${app} are signed out.` : `Needed to sign in to ${app}.`}
             aside={pw ? <span className={cx('text-[11px] font-semibold', strength.score >= 3 ? 'text-emerald-300' : strength.score === 2 ? 'text-amber-300' : 'text-red-300')}>{strength.label}</span> : null}
           >
             {({ id: fid, msgId, invalid }) => (
@@ -456,7 +515,7 @@ function PromoteTab({ store, onChanged, onEdit }: { store: Store; onChanged: (s:
       <div className="space-y-5">
         <Callout tone={store.isFeatured ? 'green' : 'sky'} title={store.isFeatured ? `Promoted${store.featuredUntil ? ` until ${new Date(store.featuredUntil).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}` : ''}` : 'Not promoted'}>
           Promoted stores get a gold border and badge and rise in the Home feed. Only describe offers the store really gives.
-          {expired && <span className="mt-1 block text-amber-200">The end date has passed. The server does not end promotions automatically yet, so end it here.</span>}
+          {expired && <span className="mt-1 block text-amber-200">The end date has passed. The server ends it (and removes its Home banner) within 10 minutes.</span>}
         </Callout>
         <Field label="Badge text" help="Short, 1–3 words.">
           {({ id: fid, msgId }) => (
@@ -471,7 +530,7 @@ function PromoteTab({ store, onChanged, onEdit }: { store: Store; onChanged: (s:
         <Field label="Offer ribbon" optional help="e.g. “Free drink above ₹299”. Shown on the card and as a line under the name.">
           {({ id: fid, msgId }) => <input id={fid} aria-describedby={msgId} className={INPUT} maxLength={80} value={offer} onChange={e => setOffer(e.target.value)} />}
         </Field>
-        <Field label="Promote until" optional help="Reminder date shown here and on the list. Leave empty for no end date.">
+        <Field label="Promote until" optional help="The promotion and its Home banner end automatically at this time (checked every 10 minutes). Leave empty for no end date.">
           {({ id: fid, msgId }) => <input id={fid} aria-describedby={msgId} type="datetime-local" className={cx(INPUT, 'max-w-[260px]')} value={until} onChange={e => setUntil(e.target.value)} />}
         </Field>
         <div className="rounded-xl border border-white/10 p-4">
@@ -504,6 +563,12 @@ function PromoteTab({ store, onChanged, onEdit }: { store: Store; onChanged: (s:
 interface AuditLog { _id: string; adminId?: string; targetId?: string; action: string; details?: string; timestamp?: string }
 const ACTION_TEXT: Record<string, string> = {
   CREATE_RESTAURANT: 'Store created',
+  DUPLICATE_RESTAURANT: 'Store created as a copy',
+  BULK_CREATE_MENU_ITEMS: 'Menu items added in bulk',
+  BULK_UPDATE_MENU_ITEMS: 'Menu items updated in bulk',
+  PARTNER_STOCK_TOGGLE: 'Stock changed in the partner app',
+  PARTNER_OPEN_SWITCH: 'Opened / paused in the partner app',
+  PARTNER_HOURS: 'Hours changed in the partner app',
   UPDATE_RESTAURANT: 'Store details updated',
   RESTAURANT_DELETE: 'Store deleted',
   UPSERT_MENU_ITEM: 'Menu item saved',
@@ -515,22 +580,20 @@ const FIELD_TEXT: Record<string, string> = {
   isFeatured: 'promotion', featuredBadge: 'badge', promoOffer: 'offer', featuredUntil: 'promotion end', whatsappNumber: 'WhatsApp',
   deliveryTime: 'delivery time', commissionRate: 'commission', commissionType: 'commission type', isOffline: 'managed by Zenvy',
   stallDescription: 'description', vendorType: 'type', lat: 'map pin', lon: 'map pin',
+  phone: 'login phone', packagingFee: 'packaging fee', minOrderValue: 'minimum order', logoUrl: 'logo', tags: 'tags',
+  location: 'address', campus: 'campus', zone: 'zone', name: 'name',
 };
 
 function ActivityTab({ store, orders }: { store: Store; orders: StoreOrder[] }) {
   const id = storeId(store);
   const [logs, setLogs] = useState<AuditLog[]>([]);
-  const [items, setItems] = useState<Map<string, string>>(new Map());
   const [state, setState] = useState<'loading' | 'ok' | 'error'>('loading');
   const [error, setError] = useState('');
   const load = useCallback(async () => {
     try {
-      const [audit, products] = await Promise.all([
-        adminRequest<{ logs?: AuditLog[] }>('/api/admin/audit?limit=200'),
-        adminRequest<Product[]>(`/api/admin/menu-items?restaurantId=${encodeURIComponent(id)}`).catch(() => [] as Product[]),
-      ]);
+      // The server returns this store's entries: the store, its menu items, and deleted items.
+      const audit = await adminRequest<{ logs?: AuditLog[] }>(`/api/admin/audit?storeId=${encodeURIComponent(id)}&limit=200`);
       setLogs(Array.isArray(audit?.logs) ? audit!.logs! : []);
-      setItems(new Map((Array.isArray(products) ? products : []).map(p => [p._id || p.id || '', p.name])));
       setState('ok');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load activity.');
@@ -543,8 +606,6 @@ function ActivityTab({ store, orders }: { store: Store; orders: StoreOrder[] }) 
   const entries = useMemo(() => {
     const out: { at: string; title: string; detail?: string; kind: 'admin' | 'order' }[] = [];
     for (const l of logs) {
-      const target = String(l.targetId || '');
-      if (target !== id && !items.has(target)) continue;
       let parsed: Record<string, unknown> = {};
       try { parsed = l.details ? JSON.parse(l.details) : {}; } catch { parsed = {}; }
       let detail = '';
@@ -552,22 +613,24 @@ function ActivityTab({ store, orders }: { store: Store; orders: StoreOrder[] }) 
         const names = Array.from(new Set((parsed.fields as string[]).map(f => FIELD_TEXT[f] || f)));
         detail = `Changed: ${names.slice(0, 6).join(', ')}${names.length > 6 ? '…' : ''}`;
       } else if (l.action === 'UPSERT_MENU_ITEM') {
-        detail = `${parsed.name || items.get(target) || 'Item'}${parsed.price != null ? ` · ₹${parsed.price}` : ''}`;
-      } else if (typeof parsed.name === 'string') detail = parsed.name;
+        detail = `${parsed.name || 'Item'}${parsed.price != null ? ` · ₹${parsed.price}` : ''}`;
+      } else if (typeof parsed.count === 'number') detail = `${parsed.count} item${parsed.count === 1 ? '' : 's'}`;
+      else if (typeof parsed.name === 'string') detail = parsed.name;
+      else if (typeof parsed.isAvailable === 'boolean') detail = parsed.isAvailable ? 'In stock' : 'Out of stock';
       out.push({ at: l.timestamp || '', title: ACTION_TEXT[l.action] || l.action.replace(/_/g, ' ').toLowerCase(), detail, kind: 'admin' });
     }
     for (const o of orders.slice(0, 30)) {
       out.push({ at: o.createdAt, title: `Order #${String(o._id || o.id).slice(0, 8)} · ${o.status}`, detail: `${formatINR(Number(o.totalPrice) || 0)}${o.paymentMethod ? ` · ${o.paymentMethod}` : ''}`, kind: 'order' });
     }
     return out.filter(e => e.at).sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()).slice(0, 80);
-  }, [logs, items, orders, id]);
+  }, [logs, orders]);
 
   if (state === 'loading') return <div className="space-y-3" role="status" aria-label="Loading activity">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-12" />)}</div>;
   if (state === 'error') return <Callout tone="red"><span className="flex justify-between gap-3">{error}<button type="button" className="font-bold underline" onClick={() => { setState('loading'); load(); }}>Retry</button></span></Callout>;
   if (!entries.length) return <EmptyState icon="🕘" title="No activity yet" body="Admin changes to this store and its menu, and its orders, will show up here." />;
   return (
     <div className="max-w-3xl">
-      <p className="mb-4 text-xs text-gray-500">Admin changes from the latest 200 audit entries, plus recent orders. Changes made in the partner app (stock, open/close) are not in the audit log.</p>
+      <p className="mb-4 text-xs text-gray-500">Admin and partner-app changes to this store and its menu (latest 200), plus its recent orders.</p>
       <ol className="relative space-y-4 border-l border-white/10 pl-5">
         {entries.map((e, i) => (
           <li key={i} className="relative">

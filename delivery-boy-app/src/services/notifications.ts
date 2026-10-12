@@ -144,11 +144,43 @@ export function onPushReceived(cb: (data: Record<string, any>) => void): () => v
   return () => sub.remove();
 }
 
+// Ids of notification taps already routed, so the launch tap and the listener never both act on one tap.
+const handledTaps = new Set<string>();
+let launchTapChecked = false;
+
 export function onPushTapped(cb: (data: Record<string, any>) => void): () => void {
   const sub = Notifications.addNotificationResponseReceivedListener((r) => {
     const data = (r.notification.request.content.data as any) || {};
     if (data.chime === true) return;
+    const key = r.notification.request.identifier;
+    if (key) {
+      if (handledTaps.has(key)) return;
+      handledTaps.add(key);
+    }
     cb(data);
   });
   return () => sub.remove();
+}
+
+/**
+ * The tap that launched a killed app is not delivered to listeners registered later. Read it once per app
+ * run (null when the app was not opened from a notification, or it was already routed).
+ */
+export async function takeLaunchPushTap(): Promise<Record<string, any> | null> {
+  if (launchTapChecked) return null;
+  launchTapChecked = true;
+  try {
+    const r = await Notifications.getLastNotificationResponseAsync();
+    if (!r) return null;
+    const data = (r.notification.request.content.data as any) || {};
+    if (data.chime === true) return null;
+    const key = r.notification.request.identifier;
+    if (key) {
+      if (handledTaps.has(key)) return null;
+      handledTaps.add(key);
+    }
+    return data;
+  } catch {
+    return null;
+  }
 }

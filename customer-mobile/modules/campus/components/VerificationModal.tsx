@@ -1,24 +1,34 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
+import { Image } from 'expo-image';
 import {
-  View,
-  Text,
-  StyleSheet,
-  Modal,
-  TouchableOpacity,
-  TextInput,
-  ActivityIndicator,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
-  Alert,
-} from 'react-native';
-import { X, Mail, ShieldCheck, Camera, CheckCircle2, Sparkles, AlertCircle } from 'lucide-react-native';
+  Mail,
+  ShieldCheck,
+  Camera,
+  CheckCircle2,
+  Sparkles,
+  AlertCircle,
+  Clock,
+  ImageIcon,
+  ChevronRight,
+  ChevronLeft,
+} from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import * as ImagePicker from 'expo-image-picker';
-import { CampusColors, CampusLayout } from '../../../constants/campusTheme';
+import type { ImagePickerAsset } from 'expo-image-picker';
+import { CampusColors } from '../../../constants/campusTheme';
 import { CampusProfileData, CampusItem } from '../../../types/campus';
 import { getToken } from '../../../utils/auth';
-import { requestCollegeEmailOtp, confirmCollegeEmailOtp, uploadIdCardForVerification } from '../campusApi';
+import { pickImageAsset, compressImage, uploadImageFile } from '../../../utils/imageUpload';
+import {
+  requestCollegeEmailOtp,
+  confirmCollegeEmailOtp,
+  uploadIdCardForVerification,
+  fetchVerificationStatus,
+  CampusVerificationStatus,
+  CampusVerificationMethods,
+  CampusApiError,
+} from '../campusApi';
+import { Sheet, Button, ErrorState, T, S, R, ui } from '../ui';
 
 interface VerificationModalProps {
   visible: boolean;
@@ -26,7 +36,17 @@ interface VerificationModalProps {
   profile: CampusProfileData | null;
   campuses: CampusItem[];
   onVerifiedSuccess: (updatedProfile: CampusProfileData) => void;
+  /** Called after an ID card is submitted so the shell can refresh the profile. */
+  onSubmitted?: () => void;
 }
+
+type Step = 'choose' | 'email' | 'otp' | 'id_card' | 'done';
+
+const formatWhen = (v?: string | null) => {
+  if (!v) return '';
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? '' : d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+};
 
 export const VerificationModal: React.FC<VerificationModalProps> = ({
   visible,
@@ -34,589 +54,561 @@ export const VerificationModal: React.FC<VerificationModalProps> = ({
   profile,
   campuses,
   onVerifiedSuccess,
+  onSubmitted,
 }) => {
-  const [tab, setTab] = useState<'email' | 'id_card'>('id_card');
-  const [email, setEmail] = useState('');
-  const [otp, setOtp] = useState('');
-  const [step, setStep] = useState<'email_input' | 'email_input_disabled' | 'otp_input' | 'success'>('email_input');
-  const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [idCardUri, setIdCardUri] = useState<string | null>(null);
+  const [status, setStatus] = useState<CampusVerificationStatus | null>(null);
+  const [statusLoading, setStatusLoading] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [step, setStep] = useState<Step>('choose');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [busyLabel, setBusyLabel] = useState('');
 
-  // Each time the sheet opens, start clean (no stale error from a previous attempt).
+  // Email OTP
+  const [email, setEmail] = useState('');
+  const [sentTo, setSentTo] = useState('');
+  const [otp, setOtp] = useState('');
+  const [cooldown, setCooldown] = useState(0);
+  const [emailUnavailable, setEmailUnavailable] = useState(false);
+
+  // ID card
+  const [asset, setAsset] = useState<ImagePickerAsset | null>(null);
+  const [campusId, setCampusId] = useState<string | undefined>(undefined);
+  const [collegeId, setCollegeId] = useState('');
+  const uploadedRef = useRef<{ localUri: string; url: string } | null>(null);
+  const mounted = useRef(true);
+
   useEffect(() => {
-    if (visible) setErrorMsg(null);
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  const methods: CampusVerificationMethods | undefined = status?.methods;
+  const emailEnabled = !!methods?.email && !emailUnavailable;
+
+  const loadStatus = useCallback(async () => {
+    setStatusLoading(true);
+    setStatusError(null);
+    try {
+      const token = await getToken();
+      if (!token) throw new CampusApiError('Sign in to your Zenvy account to verify.', 401, 'AUTH');
+      const s = await fetchVerificationStatus();
+      if (!mounted.current) return;
+      setStatus(s);
+    } catch (e: any) {
+      if (mounted.current) setStatusError(e?.message || "Couldn't load your verification status.");
+    } finally {
+      if (mounted.current) setStatusLoading(false);
+    }
+  }, []);
+
+  // Fresh state every time the sheet opens; reload when the status changes live (admin review).
+  useEffect(() => {
+    if (!visible) return;
+    setStep('choose');
+    setError(null);
+    setOtp('');
+    setAsset(null);
+    uploadedRef.current = null;
+    setCampusId(profile?.campusId || campuses[0]?.id);
+    setCollegeId(profile?.collegeId || '');
+    loadStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
-  // Already verified / under review: show the status instead of the upload form, so a
-  // re-submission can't knock a verified student back to "pending".
-  const status = profile?.verificationStatus;
-  const lockedStatus = status === 'verified' || status === 'pending' ? status : null;
+  useEffect(() => {
+    if (visible) loadStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.verificationStatus]);
 
-  const currentCampus = campuses.find((c) => c.id === profile?.campusId) || campuses[0];
-  const primaryDomain = currentCampus?.emailDomains?.[0] || 'srmap.edu.in';
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
 
-  // Verification endpoints are protected; without a session token they 401.
-  const ensureSignedIn = async (): Promise<boolean> => {
-    const token = await getToken();
-    if (!token) {
-      setErrorMsg('You are not signed in. Log in to your Zenvy account first, then verify your college email.');
-      return false;
-    }
-    return true;
-  };
+  const verificationStatus = status?.verificationStatus || profile?.verificationStatus || 'unverified';
+  const last = status?.lastVerification || null;
+  const rejectedReason = last?.status === 'rejected' ? last.reviewNotes || null : null;
+  const isRejected = verificationStatus === 'rejected' || (last?.status === 'rejected' && verificationStatus !== 'verified');
+  const isPending = verificationStatus === 'pending';
+  const campusName =
+    profile?.campus?.name || campuses.find((c) => c.id === profile?.campusId)?.name || '';
+  const domains = (methods?.emailDomains && methods.emailDomains.length
+    ? methods.emailDomains
+    : campuses.flatMap((c) => c.emailDomains || [])
+  ).filter(Boolean);
 
-  const handleSendOtp = async () => {
-    setErrorMsg(null);
-    if (!email.trim()) {
-      setErrorMsg('Please enter your college email');
+  // ── Email OTP ─────────────────────────────────────────────────────────────
+  const handleSendOtp = async (override?: string) => {
+    if (busy) return;
+    setError(null);
+    const full = (override ?? email).trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(full)) {
+      setError(domains[0] ? `Enter your full college email, like name@${domains[0]}.` : 'Enter your full college email.');
       return;
     }
-    if (!(await ensureSignedIn())) return;
-
-    let fullEmail = email.trim().toLowerCase();
-    if (!fullEmail.includes('@')) {
-      fullEmail = `${fullEmail}@${primaryDomain}`;
-    }
-
+    setBusy(true);
+    setBusyLabel('Sending code…');
     try {
-      setLoading(true);
-      const res = await requestCollegeEmailOtp(fullEmail, currentCampus?.id);
-      setLoading(false);
+      const res = await requestCollegeEmailOtp(full);
+      if (!mounted.current) return;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setStep('otp_input');
-    } catch (err: any) {
-      setLoading(false);
+      setSentTo(res?.email || full);
+      setOtp('');
+      setCooldown(Number(res?.resendAfterSeconds) || methods?.resendCooldownSeconds || 60);
+      setStep('otp');
+    } catch (e: any) {
+      if (!mounted.current) return;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      setErrorMsg(err.message || 'Failed to send verification email');
+      const code = e?.code;
+      if (code === 'EMAIL_NOT_CONFIGURED') {
+        setEmailUnavailable(true);
+        setStep('id_card');
+        setError("Email codes aren't available right now. Please verify with your college ID card instead.");
+      } else if (code === 'OTP_COOLDOWN') {
+        const wait = Number(e?.data?.retryAfter) || 60;
+        setCooldown(wait);
+        setSentTo(full);
+        setStep('otp');
+        setError(`A code was sent recently. You can ask for a new one in ${wait}s.`);
+      } else if (code === 'DOMAIN_NOT_ALLOWED') {
+        const allowed: string[] = e?.data?.allowedDomains || domains;
+        setError(allowed.length ? `Use your college email ending in ${allowed.map((d) => '@' + d).join(', ')}.` : e.message);
+      } else {
+        setError(e?.message || "Couldn't send the code. Please try again.");
+      }
+    } finally {
+      if (mounted.current) setBusy(false);
     }
   };
 
   const handleVerifyOtp = async () => {
-    setErrorMsg(null);
-    if (!otp.trim()) {
-      setErrorMsg('Please enter the 6-digit OTP');
+    if (busy) return;
+    setError(null);
+    if (!/^\d{6}$/.test(otp.trim())) {
+      setError('Enter the 6-digit code from the email.');
       return;
     }
-    if (!(await ensureSignedIn())) return;
-
-    let fullEmail = email.trim().toLowerCase();
-    if (!fullEmail.includes('@')) {
-      fullEmail = `${fullEmail}@${primaryDomain}`;
-    }
-
+    setBusy(true);
+    setBusyLabel('Checking…');
     try {
-      setLoading(true);
-      const res = await confirmCollegeEmailOtp(fullEmail, otp.trim());
-      setLoading(false);
+      const res = await confirmCollegeEmailOtp(sentTo, otp.trim());
+      if (!mounted.current) return;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setStep('success');
-      if (res.profile) {
-        onVerifiedSuccess(res.profile);
-      }
-    } catch (err: any) {
-      setLoading(false);
+      if (res?.profile) onVerifiedSuccess(res.profile);
+      setStatus((s) => (s ? { ...s, verificationStatus: 'verified' } : s));
+      setStep('done');
+    } catch (e: any) {
+      if (!mounted.current) return;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      setErrorMsg(err.message || 'Invalid or expired OTP');
-    }
-  };
-
-  const handlePickIdCard = async () => {
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        setIdCardUri(result.assets[0].uri);
+      const left = e?.data?.attemptsLeft;
+      if (e?.code === 'OTP_INVALID' && typeof left === 'number') {
+        setError(`That code is not right. ${left} ${left === 1 ? 'try' : 'tries'} left.`);
+      } else if (e?.code === 'OTP_LOCKED' || e?.code === 'OTP_EXPIRED' || e?.code === 'OTP_NOT_FOUND') {
+        const msg = String(e.message || 'This code can no longer be used.');
+        setError(/new (code|one)/i.test(msg) ? msg : `${msg} Ask for a new code.`);
+        setCooldown(0);
+      } else {
+        setError(e?.message || 'That code is invalid or has expired.');
       }
-    } catch (e) {
-      Alert.alert('Permission needed', 'Please allow gallery access to upload student ID.');
+    } finally {
+      if (mounted.current) setBusy(false);
     }
   };
 
-  const handleSubmitIdCard = async () => {
-    if (loading) return;
-    if (!idCardUri) {
-      setErrorMsg('Please select your ID card image first');
+  // ── ID card ───────────────────────────────────────────────────────────────
+  const pickId = async (source: 'library' | 'camera') => {
+    setError(null);
+    const a = await pickImageAsset({ source, allowsEditing: true });
+    if (a && mounted.current) {
+      setAsset(a);
+      uploadedRef.current = null;
+    }
+  };
+
+  const handleSubmitId = async () => {
+    if (busy) return;
+    setError(null);
+    if (!asset) {
+      setError('Add a photo of the front of your college ID card first.');
       return;
     }
-    if (!(await ensureSignedIn())) return;
-
+    setBusy(true);
     try {
-      setLoading(true);
-      await uploadIdCardForVerification(idCardUri, currentCampus?.id, profile?.collegeId);
-      setLoading(false);
+      let url = uploadedRef.current?.localUri === asset.uri ? uploadedRef.current.url : '';
+      if (!url) {
+        setBusyLabel('Compressing photo…');
+        const small = await compressImage(asset.uri, { width: asset.width, height: asset.height, maxEdge: 1600, quality: 0.75 });
+        setBusyLabel('Uploading photo…');
+        const up = await uploadImageFile(small, 'id_card');
+        url = up.url;
+        uploadedRef.current = { localUri: asset.uri, url };
+      }
+      setBusyLabel('Submitting…');
+      await uploadIdCardForVerification(url, campusId, collegeId.trim() || undefined);
+      if (!mounted.current) return;
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setIdCardUri(null);
-      // Close first (the shell reloads the profile -> "Pending"), even if the alert is dismissed with Back.
-      onClose();
-      Alert.alert('ID Submitted ✅', "Your student ID is under review. We'll unlock your campus features as soon as it's approved.");
-    } catch (err: any) {
-      setLoading(false);
-      setErrorMsg(err.message || 'Failed to submit ID card');
+      setAsset(null);
+      onSubmitted?.();
+      await loadStatus();
+      setStep('choose');
+    } catch (e: any) {
+      if (!mounted.current) return;
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setError(e?.message || "Couldn't submit your ID card. Please try again.");
+    } finally {
+      if (mounted.current) setBusy(false);
     }
   };
+
+  // ── Render pieces ─────────────────────────────────────────────────────────
+  const renderVerified = () => (
+    <View style={styles.center}>
+      <CheckCircle2 size={56} color={CampusColors.accentDeep} strokeWidth={2} />
+      <Text style={[T.h1, { marginTop: S.md, textAlign: 'center' }]}>
+        {step === 'done' ? 'You are verified!' : "You're verified"}
+      </Text>
+      <Text style={[T.muted, { textAlign: 'center', marginTop: 6 }]}>
+        {step === 'done'
+          ? '+150 Buddy Points added. Whispers and verified-only features are now unlocked.'
+          : `Your student identity is confirmed${campusName ? ` for ${campusName}` : ''}.`}
+        {status?.collegeEmail ? `\n${status.collegeEmail}` : ''}
+      </Text>
+      <Button label="Done" onPress={onClose} style={{ alignSelf: 'stretch', marginTop: S.xl }} />
+    </View>
+  );
+
+  const renderPendingCard = () => (
+    <View style={[styles.statusCard, { backgroundColor: CampusColors.warmSoft }]}>
+      <Clock size={20} color={CampusColors.warmDeep} />
+      <View style={{ flex: 1 }}>
+        <Text style={[T.h3, { color: CampusColors.warmDeep }]}>ID card under review</Text>
+        <Text style={[T.muted, { color: CampusColors.warmDeep }]}>
+          Submitted {formatWhen(last?.submittedAt) || 'recently'}. Our team usually reviews it within a few hours. You'll get a
+          notification as soon as it's done.
+        </Text>
+      </View>
+    </View>
+  );
+
+  const renderChoose = () => (
+    <View>
+      {isPending && renderPendingCard()}
+      {isRejected && !isPending && (
+        <View style={ui.errorBox}>
+          <AlertCircle size={16} color="#A3321A" />
+          <Text style={ui.errorText}>
+            Your last ID card was not approved.
+            {rejectedReason ? `\nReason: ${rejectedReason}` : '\nPlease upload a clear photo of the front of your ID card.'}
+          </Text>
+        </View>
+      )}
+      {!isPending && (
+        <View style={styles.reward}>
+          <Sparkles size={16} color={CampusColors.warm} />
+          <Text style={[T.body, { flex: 1 }]}>
+            Verify once to earn <Text style={{ fontWeight: '800' }}>150 Buddy Points</Text>, post Whispers and show the verified badge.
+          </Text>
+        </View>
+      )}
+
+      <Text style={[T.kicker, { marginTop: S.lg, marginBottom: S.sm }]}>
+        {isPending ? 'Want it faster?' : 'Choose how to verify'}
+      </Text>
+
+      <TouchableOpacity
+        style={[styles.option, !emailEnabled && styles.optionDisabled]}
+        activeOpacity={0.8}
+        onPress={() => {
+          setError(null);
+          if (emailEnabled) setStep('email');
+        }}
+        disabled={!emailEnabled}
+      >
+        <View style={[styles.optionIcon, { backgroundColor: CampusColors.accentSoft }]}>
+          <Mail size={20} color={CampusColors.accentDeep} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={T.h3}>Verify with college email</Text>
+          <Text style={T.muted}>
+            {emailEnabled
+              ? `Instant. We email a 6-digit code${domains.length ? ` to your @${domains[0]} address` : ''}.`
+              : "Not available right now. Use your ID card below; it's reviewed by our team."}
+          </Text>
+        </View>
+        {emailEnabled && <ChevronRight size={18} color={CampusColors.muted} />}
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.option}
+        activeOpacity={0.8}
+        onPress={() => {
+          setError(null);
+          setStep('id_card');
+        }}
+      >
+        <View style={[styles.optionIcon, { backgroundColor: CampusColors.warmSoft }]}>
+          <Camera size={20} color={CampusColors.warmDeep} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={T.h3}>{isPending ? 'Replace my ID card photo' : 'Upload college ID card'}</Text>
+          <Text style={T.muted}>A clear photo of the front side. Only our review team can see it.</Text>
+        </View>
+        <ChevronRight size={18} color={CampusColors.muted} />
+      </TouchableOpacity>
+    </View>
+  );
+
+  const backRow = (to: Step) => (
+    <TouchableOpacity
+      onPress={() => {
+        setError(null);
+        setStep(to);
+      }}
+      style={styles.backRow}
+      hitSlop={8}
+    >
+      <ChevronLeft size={16} color={CampusColors.accent} />
+      <Text style={{ color: CampusColors.accent, fontWeight: '700', fontSize: 13 }}>All options</Text>
+    </TouchableOpacity>
+  );
+
+  const renderEmail = () => (
+    <View>
+      {backRow('choose')}
+      <Text style={T.body}>Enter your official college email. We'll send a 6-digit code to it.</Text>
+      <Text style={ui.label}>College email</Text>
+      <TextInput
+        style={ui.input}
+        placeholder={domains[0] ? `rollnumber@${domains[0]}` : 'you@college.edu.in'}
+        placeholderTextColor={CampusColors.muted}
+        value={email}
+        onChangeText={setEmail}
+        autoCapitalize="none"
+        autoCorrect={false}
+        keyboardType="email-address"
+        textContentType="emailAddress"
+        returnKeyType="send"
+        onSubmitEditing={() => handleSendOtp()}
+        editable={!busy}
+      />
+      {domains.length > 0 && <Text style={[T.small, { marginTop: 6 }]}>Accepted: {domains.map((d) => '@' + d).join(', ')}</Text>}
+      <Button label={busy ? busyLabel : 'Send code'} onPress={() => handleSendOtp()} loading={busy} style={{ marginTop: S.xl }} />
+    </View>
+  );
+
+  const renderOtp = () => (
+    <View>
+      {backRow('email')}
+      <Text style={T.body}>
+        Enter the 6-digit code we sent to <Text style={{ fontWeight: '800' }}>{sentTo}</Text>. Check your spam folder if you
+        don't see it. The code works for 10 minutes.
+      </Text>
+      <TextInput
+        style={[ui.input, styles.otpInput]}
+        placeholder="••••••"
+        placeholderTextColor={CampusColors.muted}
+        value={otp}
+        onChangeText={(t) => setOtp(t.replace(/\D/g, '').slice(0, 6))}
+        keyboardType="number-pad"
+        textContentType="oneTimeCode"
+        autoComplete="one-time-code"
+        maxLength={6}
+        autoFocus
+        editable={!busy}
+        onSubmitEditing={handleVerifyOtp}
+      />
+      <Button label={busy ? busyLabel : 'Verify'} onPress={handleVerifyOtp} loading={busy} disabled={otp.length !== 6} style={{ marginTop: S.lg }} />
+      <TouchableOpacity
+        style={{ alignSelf: 'center', marginTop: S.lg, padding: S.sm }}
+        disabled={cooldown > 0 || busy}
+        onPress={() => {
+          setEmail(sentTo);
+          handleSendOtp(sentTo);
+        }}
+      >
+        <Text style={{ fontSize: 14, fontWeight: '700', color: cooldown > 0 ? CampusColors.muted : CampusColors.accent }}>
+          {cooldown > 0 ? `Resend code in ${cooldown}s` : 'Resend code'}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  const renderIdCard = () => (
+    <View>
+      {backRow('choose')}
+      <Text style={T.body}>Take or choose a clear photo of the front of your college ID (name, photo and roll number visible).</Text>
+
+      {campuses.length > 1 && (
+        <>
+          <Text style={ui.label}>Your campus</Text>
+          <View style={styles.chips}>
+            {campuses.map((c) => {
+              const active = c.id === campusId;
+              return (
+                <TouchableOpacity
+                  key={c.id}
+                  style={[styles.chip, active && styles.chipActive]}
+                  onPress={() => setCampusId(c.id)}
+                  disabled={busy}
+                >
+                  <Text style={[styles.chipText, active && styles.chipTextActive]}>{c.code || c.name}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </>
+      )}
+
+      <Text style={ui.label}>Roll number (optional)</Text>
+      <TextInput
+        style={ui.input}
+        value={collegeId}
+        onChangeText={setCollegeId}
+        placeholder="e.g. AP21110010123"
+        placeholderTextColor={CampusColors.muted}
+        autoCapitalize="characters"
+        maxLength={50}
+        editable={!busy}
+      />
+
+      {asset ? (
+        <View style={styles.preview}>
+          <Image source={{ uri: asset.uri }} style={styles.previewImg} contentFit="cover" />
+          <TouchableOpacity style={styles.changeBtn} onPress={() => pickId('library')} disabled={busy}>
+            <Text style={styles.changeText}>Change photo</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={styles.pickRow}>
+          <TouchableOpacity style={styles.pickCard} onPress={() => pickId('camera')} activeOpacity={0.8}>
+            <Camera size={26} color={CampusColors.accent} />
+            <Text style={[T.h3, { marginTop: 6 }]}>Take photo</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.pickCard} onPress={() => pickId('library')} activeOpacity={0.8}>
+            <ImageIcon size={26} color={CampusColors.accent} />
+            <Text style={[T.h3, { marginTop: 6 }]}>From gallery</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      <Button
+        label={busy ? busyLabel : isPending ? 'Replace and resubmit' : 'Submit for review'}
+        onPress={handleSubmitId}
+        loading={busy}
+        disabled={!asset}
+        style={{ marginTop: S.xl }}
+      />
+      {busy && <Text style={[T.small, { textAlign: 'center', marginTop: S.sm }]}>{busyLabel}</Text>}
+    </View>
+  );
+
+  let body: React.ReactNode;
+  if (statusLoading && !status) {
+    body = (
+      <View style={[styles.center, { paddingVertical: 48 }]}>
+        <ActivityIndicator color={CampusColors.accent} />
+        <Text style={[T.muted, { marginTop: S.md }]}>Checking your status…</Text>
+      </View>
+    );
+  } else if (statusError && !status) {
+    body = <ErrorState message={statusError} onRetry={loadStatus} />;
+  } else if (verificationStatus === 'verified' || step === 'done') {
+    body = renderVerified();
+  } else {
+    body = (
+      <>
+        {error && (
+          <View style={ui.errorBox}>
+            <AlertCircle size={16} color="#A3321A" />
+            <Text style={ui.errorText}>{error}</Text>
+          </View>
+        )}
+        {step === 'choose' && renderChoose()}
+        {step === 'email' && renderEmail()}
+        {step === 'otp' && renderOtp()}
+        {step === 'id_card' && renderIdCard()}
+      </>
+    );
+  }
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={styles.overlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <View style={styles.sheet}>
-          {/* Header */}
-          <View style={styles.sheetHeader}>
-            <View style={styles.headerTitleWrap}>
-              <ShieldCheck size={20} color={CampusColors.accent} strokeWidth={2.2} />
-              <Text style={styles.sheetTitle}>Student Verification</Text>
-            </View>
-            <TouchableOpacity
-              style={styles.closeBtn}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                onClose();
-              }}
-            >
-              <X size={20} color={CampusColors.muted} />
-            </TouchableOpacity>
-          </View>
-
-          {lockedStatus ? (
-            <View style={styles.successContainer}>
-              {lockedStatus === 'verified' ? (
-                <CheckCircle2 size={56} color="#1E3FB0" strokeWidth={2} />
-              ) : (
-                <ShieldCheck size={56} color={CampusColors.warm} strokeWidth={2} />
-              )}
-              <Text style={styles.successTitle}>
-                {lockedStatus === 'verified' ? "You're verified" : 'ID under review'}
-              </Text>
-              <Text style={styles.successSubtitle}>
-                {lockedStatus === 'verified'
-                  ? `Your student identity is confirmed${currentCampus?.name ? ` for ${currentCampus.name}` : ''}. Classwork and Whispers are unlocked.`
-                  : "We've got your student ID photo. Our team usually reviews it within a few hours, and we'll unlock Classwork and Whispers as soon as it's approved."}
-              </Text>
-              <TouchableOpacity style={[styles.primaryCta, { alignSelf: 'stretch' }]} onPress={onClose} activeOpacity={0.8}>
-                <Text style={styles.primaryCtaText}>Done</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-          <>
-          {status === 'rejected' && (
-            <View style={styles.errorBox}>
-              <AlertCircle size={16} color="#A3321A" />
-              <Text style={styles.errorText}>
-                We couldn't approve your last ID photo. Please upload a clear photo of the front of your student ID.
-              </Text>
-            </View>
-          )}
-
-          {/* Reward Callout */}
-          <View style={styles.rewardCard}>
-            <Sparkles size={18} color="#B4561A" strokeWidth={2} />
-            <Text style={styles.rewardText}>
-              Earn <Text style={styles.bold}>150 Buddy Points</Text> & unlock Classwork & Whispers.
-            </Text>
-          </View>
-
-          {/* Tabs */}
-          <View style={styles.tabRow}>
-            <TouchableOpacity
-              style={[styles.tabItem, tab === 'email' && styles.activeTabItem]}
-              onPress={() => setTab('email')}
-            >
-              <Mail size={16} color={tab === 'email' ? CampusColors.accent : CampusColors.muted} />
-              <Text style={[styles.tabText, tab === 'email' && styles.activeTabText]}>
-                College Email (Soon)
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.tabItem, tab === 'id_card' && styles.activeTabItem]}
-              onPress={() => setTab('id_card')}
-            >
-              <Camera size={16} color={tab === 'id_card' ? CampusColors.accent : CampusColors.muted} />
-              <Text style={[styles.tabText, tab === 'id_card' && styles.activeTabText]}>
-                ID Card Photo
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {errorMsg && (
-            <View style={styles.errorBox}>
-              <AlertCircle size={16} color="#A3321A" />
-              <Text style={styles.errorText}>{errorMsg}</Text>
-            </View>
-          )}
-
-          <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-            {tab === 'email' ? (
-              step === 'email_input' ? (
-                <View style={styles.stepContainer}>
-                  <Text style={styles.instruction}>
-                    College email verification is not available yet. Please verify with a photo of your student ID card instead.
-                  </Text>
-                  <TouchableOpacity
-                    style={styles.primaryCta}
-                    onPress={() => {
-                      setErrorMsg(null);
-                      setTab('id_card');
-                    }}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.primaryCtaText}>Verify with ID Card</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : step === 'email_input_disabled' ? (
-                <View style={styles.stepContainer}>
-                  <Text style={styles.instruction}>
-                    Enter your official university email address:
-                  </Text>
-                  <View style={styles.inputWrap}>
-                    <TextInput
-                      style={styles.input}
-                      placeholder={`e.g. rollnumber@${primaryDomain}`}
-                      placeholderTextColor={CampusColors.muted}
-                      value={email}
-                      onChangeText={setEmail}
-                      autoCapitalize="none"
-                      keyboardType="email-address"
-                    />
-                  </View>
-
-                  <TouchableOpacity
-                    style={[styles.primaryCta, loading && styles.disabledCta]}
-                    onPress={handleSendOtp}
-                    disabled={loading}
-                    activeOpacity={0.8}
-                  >
-                    {loading ? (
-                      <ActivityIndicator color="#FFFFFF" />
-                    ) : (
-                      <Text style={styles.primaryCtaText}>Send Verification Code</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              ) : step === 'otp_input' ? (
-                <View style={styles.stepContainer}>
-                  <Text style={styles.instruction}>
-                    Enter the 6-digit code sent to:
-                  </Text>
-                  <Text style={styles.targetEmail}>
-                    {email.includes('@') ? email : `${email}@${primaryDomain}`}
-                  </Text>
-
-
-                  <View style={styles.inputWrap}>
-                    <TextInput
-                      style={[styles.input, styles.otpInput]}
-                      placeholder="• • • • • •"
-                      placeholderTextColor={CampusColors.muted}
-                      value={otp}
-                      onChangeText={setOtp}
-                      keyboardType="number-pad"
-                      maxLength={6}
-                    />
-                  </View>
-
-                  <TouchableOpacity
-                    style={[styles.primaryCta, loading && styles.disabledCta]}
-                    onPress={handleVerifyOtp}
-                    disabled={loading}
-                    activeOpacity={0.8}
-                  >
-                    {loading ? (
-                      <ActivityIndicator color="#FFFFFF" />
-                    ) : (
-                      <Text style={styles.primaryCtaText}>Verify & Unlock</Text>
-                    )}
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.resendBtn}
-                    onPress={() => setStep('email_input')}
-                  >
-                    <Text style={styles.resendText}>Change Email / Resend</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <View style={styles.successContainer}>
-                  <CheckCircle2 size={56} color="#1E3FB0" strokeWidth={2} />
-                  <Text style={styles.successTitle}>You are Verified!</Text>
-                  <Text style={styles.successSubtitle}>
-                    Welcome to {currentCampus?.name || 'Campus Buddy'}. +150 Buddy Points have been added to your balance.
-                  </Text>
-                  <TouchableOpacity
-                    style={styles.primaryCta}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      onClose();
-                    }}
-                  >
-                    <Text style={styles.primaryCtaText}>Start Exploring</Text>
-                  </TouchableOpacity>
-                </View>
-              )
-            ) : (
-              <View style={styles.stepContainer}>
-                <Text style={styles.instruction}>
-                  Upload a clear photo of your student ID card (front side showing name, photo, and roll number):
-                </Text>
-
-                <TouchableOpacity
-                  style={styles.uploadCard}
-                  onPress={handlePickIdCard}
-                  activeOpacity={0.8}
-                >
-                  <Camera size={32} color={CampusColors.accent} strokeWidth={1.8} />
-                  <Text style={styles.uploadCardTitle}>
-                    {idCardUri ? 'Change ID Card Photo' : 'Select ID Card Photo'}
-                  </Text>
-                  <Text style={styles.uploadCardSubtitle}>
-                    {idCardUri ? 'Image selected ✓' : 'JPG or PNG format'}
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.primaryCta, (!idCardUri || loading) && styles.disabledCta]}
-                  onPress={handleSubmitIdCard}
-                  disabled={!idCardUri || loading}
-                  activeOpacity={0.8}
-                >
-                  {loading ? (
-                    <ActivityIndicator color="#FFFFFF" />
-                  ) : (
-                    <Text style={styles.primaryCtaText}>Submit for Verification</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            )}
-          </ScrollView>
-          </>
-          )}
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+    <Sheet
+      visible={visible}
+      onClose={() => {
+        if (busy) return;
+        onClose();
+      }}
+      title="College verification"
+      icon={<ShieldCheck size={20} color={CampusColors.accent} />}
+    >
+      {body}
+    </Sheet>
   );
 };
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    backgroundColor: CampusColors.card,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 32,
-    maxHeight: '90%',
-  },
-  sheetHeader: {
+  center: { alignItems: 'center', paddingVertical: S.xl },
+  statusCard: { flexDirection: 'row', gap: S.md, padding: S.lg, borderRadius: R.md, alignItems: 'flex-start' },
+  reward: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingBottom: 12,
-  },
-  headerTitleWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  sheetTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: CampusColors.ink,
-  },
-  closeBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: CampusColors.paper,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  rewardCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    gap: S.sm,
     backgroundColor: CampusColors.warmSoft,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 12,
-    gap: 8,
-    marginBottom: 16,
+    padding: S.md,
+    borderRadius: R.md,
   },
-  rewardText: {
-    fontSize: 13,
-    color: CampusColors.warmDeep,
-    flex: 1,
-  },
-  bold: {
-    fontWeight: '700',
-  },
-  tabRow: {
-    flexDirection: 'row',
-    backgroundColor: CampusColors.paper,
-    borderRadius: CampusLayout.radius.pill,
-    padding: 3,
-    marginBottom: 16,
-  },
-  tabItem: {
-    flex: 1,
+  option: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    borderRadius: CampusLayout.radius.pill,
-    gap: 6,
-  },
-  activeTabItem: {
-    backgroundColor: CampusColors.card,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  tabText: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: CampusColors.muted,
-  },
-  activeTabText: {
-    fontWeight: '700',
-    color: CampusColors.ink,
-  },
-  errorBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FDECEB',
-    padding: 10,
-    borderRadius: 10,
-    gap: 8,
-    marginBottom: 12,
-  },
-  errorText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#A3321A',
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 20,
-  },
-  stepContainer: {
-    paddingVertical: 8,
-  },
-  instruction: {
-    fontSize: 14,
-    color: CampusColors.ink,
-    marginBottom: 12,
-  },
-  targetEmail: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: CampusColors.accent,
-    marginBottom: 12,
-  },
-  previewBox: {
-    backgroundColor: CampusColors.accentSoft,
-    padding: 8,
-    borderRadius: 8,
-    marginBottom: 12,
-  },
-  previewText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: CampusColors.accentDeep,
-  },
-  inputWrap: {
-    backgroundColor: CampusColors.paper,
-    borderRadius: 12,
+    gap: S.md,
+    padding: S.lg,
+    borderRadius: R.card,
     borderWidth: 1,
     borderColor: CampusColors.line,
+    backgroundColor: CampusColors.card,
+    marginBottom: S.md,
+  },
+  optionDisabled: { opacity: 0.6, backgroundColor: CampusColors.paper },
+  optionIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  backRow: { flexDirection: 'row', alignItems: 'center', gap: 2, marginBottom: S.md, alignSelf: 'flex-start' },
+  otpInput: { marginTop: S.lg, height: 56, fontSize: 26, fontWeight: '800', letterSpacing: 10, textAlign: 'center' },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: S.sm },
+  chip: {
     paddingHorizontal: 14,
-    marginBottom: 16,
+    paddingVertical: 8,
+    borderRadius: R.pill,
+    borderWidth: 1,
+    borderColor: CampusColors.chipBorder,
+    backgroundColor: CampusColors.card,
   },
-  input: {
-    height: 48,
-    fontSize: 15,
-    color: CampusColors.ink,
-  },
-  otpInput: {
-    fontSize: 22,
-    fontWeight: '700',
-    letterSpacing: 8,
-    textAlign: 'center',
-  },
-  primaryCta: {
-    height: CampusLayout.primaryCtaHeight,
-    borderRadius: CampusLayout.radius.pill,
-    backgroundColor: CampusColors.accent,
+  chipActive: { backgroundColor: CampusColors.ink, borderColor: CampusColors.ink },
+  chipText: { fontSize: 13, fontWeight: '600', color: CampusColors.ink },
+  chipTextActive: { color: '#FFFFFF', fontWeight: '800' },
+  pickRow: { flexDirection: 'row', gap: S.md, marginTop: S.lg },
+  pickCard: {
+    flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
-  disabledCta: {
-    opacity: 0.6,
-  },
-  primaryCtaText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  resendBtn: {
-    alignItems: 'center',
-    marginTop: 14,
-    paddingVertical: 6,
-  },
-  resendText: {
-    fontSize: 13,
-    color: CampusColors.muted,
-    textDecorationLine: 'underline',
-  },
-  uploadCard: {
-    backgroundColor: CampusColors.paper,
-    borderRadius: 16,
+    paddingVertical: S.xl,
+    borderRadius: R.card,
     borderWidth: 1.5,
-    borderColor: CampusColors.line,
     borderStyle: 'dashed',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 32,
-    marginBottom: 20,
+    borderColor: CampusColors.chipBorder,
+    backgroundColor: CampusColors.paper,
   },
-  uploadCardTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: CampusColors.ink,
-    marginTop: 8,
+  preview: { marginTop: S.lg, borderRadius: R.card, overflow: 'hidden', backgroundColor: CampusColors.placeholderFill },
+  previewImg: { width: '100%', height: 200 },
+  changeBtn: {
+    position: 'absolute',
+    right: S.sm,
+    bottom: S.sm,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: R.pill,
   },
-  uploadCardSubtitle: {
-    fontSize: 12,
-    color: CampusColors.muted,
-    marginTop: 2,
-  },
-  successContainer: {
-    alignItems: 'center',
-    paddingVertical: 24,
-  },
-  successTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: CampusColors.ink,
-    marginTop: 16,
-  },
-  successSubtitle: {
-    fontSize: 14,
-    color: CampusColors.muted,
-    textAlign: 'center',
-    marginVertical: 12,
-    lineHeight: 20,
-  },
+  changeText: { color: '#FFFFFF', fontWeight: '700', fontSize: 12 },
 });
