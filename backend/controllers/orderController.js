@@ -265,6 +265,9 @@ const createOrder = async (req, res) => {
 
     const Restaurant = getRestaurantModel();
     const restaurant = await Restaurant.findByPk(quote.store.id);
+    // Rider-purchase store: marked offline, or has no partner login (nobody can tap Accept), so the
+    // rider goes there, buys the items and delivers. Its orders skip store acceptance and go to riders.
+    const riderBuys = !!restaurant && (!!restaurant.isOffline || !restaurant.password);
     // CampusBites stall: cash to the vendor on delivery, the vendor delivers (no rider, no PIN).
     const isVendorOrder = quote.fulfilment === 'VENDOR';
     if (isVendorOrder && paymentMethod !== 'COD') {
@@ -345,8 +348,8 @@ const createOrder = async (req, res) => {
           upiStatus: null,
           category: isVendorOrder ? 'LOCAL_VENDOR' : ((restaurant.vendorType || 'RESTAURANT').toUpperCase() === 'RESTAURANT' ? 'Food' : restaurant.vendorType),
           // A stall never skips its own acceptance (no rider fallback); an isOffline stall is closed (quote).
-          status: !isVendorOrder && restaurant.isOffline ? 'Accepted' : 'Pending',
-          ...(!isVendorOrder && restaurant.isOffline ? { acceptedAt: new Date() } : {}),
+          status: !isVendorOrder && riderBuys ? 'Accepted' : 'Pending',
+          ...(!isVendorOrder && riderBuys ? { acceptedAt: new Date() } : {}),
           fulfilment: isVendorOrder ? 'VENDOR' : 'ZENVY',
           idempotencyKey: idemRaw || null,
           // The stall hands the order over itself: no delivery PIN.
@@ -461,7 +464,7 @@ const createOrder = async (req, res) => {
       return;
     }
 
-    if (restaurant.isOffline || createdOrder.status === 'Accepted') {
+    if (riderBuys || createdOrder.status === 'Accepted') {
       // Shops without a vendor app go straight to riders.
       io.to('admin-room').emit('newOrder', riderPayload);
       realtime.deliveryRequest(createdOrder.id);
@@ -470,8 +473,8 @@ const createOrder = async (req, res) => {
         restaurant,
         orderId: createdOrder.id,
         limit: 20,
-        title: restaurant.isOffline ? '🛒 New pickup order!' : '🛵 New order ready!',
-        body: restaurant.isOffline ? `Pick up and deliver an order from ${restaurant.name}.` : `New order from ${restaurant.name} is ready for pickup!`,
+        title: riderBuys ? '🛒 New pickup order!' : '🛵 New order ready!',
+        body: riderBuys ? `Pick up and deliver an order from ${restaurant.name}.` : `New order from ${restaurant.name} is ready for pickup!`,
       });
     } else {
       // Rider delivers: the kitchen gets the campus label, never the room address (same as the list).
