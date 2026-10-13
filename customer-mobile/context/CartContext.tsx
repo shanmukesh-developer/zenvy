@@ -682,7 +682,7 @@ export function useServiceability() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`${API_URL}/api/orders/serviceability`);
+        const res = await apiFetch(`${API_URL}/api/orders/serviceability`);
         const data = await res.json().catch(() => null);
         if (!cancelled && res.ok && data && typeof data.open === 'boolean') setState(data);
       } catch {

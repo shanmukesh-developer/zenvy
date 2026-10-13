@@ -3,7 +3,8 @@
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import NetworkStatus from '@/components/NetworkStatus';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useVisibleInterval } from '@/lib/useVisibleInterval';
 import { API_URL } from '@/lib/config';
 import { logout } from '@/lib/session';
 import { useAdminAuth } from '@/utils/useAdminAuth';
@@ -40,20 +41,20 @@ export default function NexusLayoutClient({
     router.replace(`/login${next}`);
   }, [isLoginPage, auth.status, pathname, router]);
 
+  const fetchHealth = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/admin/health`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setSystemHealth(data);
+    } catch { /* ignore */ }
+  }, []);
   useEffect(() => {
     if (isLoginPage || !isAuthed) return;
-    const fetchHealth = async () => {
-      try {
-        const res = await fetch(`${API_URL}/api/admin/health`);
-        if (!res.ok) return;
-        const data = await res.json();
-        setSystemHealth(data);
-      } catch { /* ignore */ }
-    };
     fetchHealth();
-    const timer = setInterval(fetchHealth, 120000); // Check every 2 minutes (was 30s)
-    return () => clearInterval(timer);
-  }, [isLoginPage, isAuthed]);
+  }, [isLoginPage, isAuthed, fetchHealth]);
+  // Every 2 minutes, paused while the tab is hidden.
+  useVisibleInterval(fetchHealth, 120000, !isLoginPage && isAuthed);
 
   if (isLoginPage) {
     return <>{children}</>;

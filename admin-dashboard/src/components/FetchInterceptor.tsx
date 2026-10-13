@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { API_ORIGIN } from '@/lib/config';
 import { clearSession, getAuthState, getToken, verifySession } from '@/lib/session';
+import { cachedGet, invalidateRequestCache, isCacheablePath } from '@/lib/requestCache';
 
 // Responses from these paths are handled by the auth code itself.
 const AUTH_PATHS = ['/api/users/login', '/api/users/logout', '/api/admin/me', '/api/users/profile'];
@@ -24,10 +25,26 @@ const isPlaceholder = (value: string | null) => {
   return v === '' || v === 'cookie-managed' || v === 'null' || v === 'undefined';
 };
 
+const abortError = () => new DOMException('The operation was aborted.', 'AbortError');
+
+/** Resolves/rejects with `p`, or rejects as soon as the caller's own signal aborts. */
+const withCallerSignal = <T,>(p: Promise<T>, signal?: AbortSignal | null): Promise<T> => {
+  if (!signal) return p;
+  if (signal.aborted) return Promise.reject(abortError());
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(abortError());
+    signal.addEventListener('abort', onAbort, { once: true });
+    p.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
+  });
+};
+
 /**
  * Attaches the admin Bearer token to requests for the backend origin only
  * (never to third-party URLs) and reacts to auth failures:
  * 401 -> session dropped; 403 -> session re-checked with the server.
+ *
+ * Backend GETs also go through the read cache (lib/requestCache: in-flight dedupe + a few seconds of
+ * fresh cache); any other method invalidates that cache. `cache: 'reload'` skips the fresh cache.
  */
 export default function FetchInterceptor() {
   useEffect(() => {
@@ -48,7 +65,21 @@ export default function FetchInterceptor() {
         init = { ...init, headers };
       }
 
-      const response = await originalFetch(input, init);
+      const method = String(init?.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
+      let response: Response;
+      if (isBackend && url && method === 'GET' && !(input instanceof Request) && isCacheablePath(url.pathname)) {
+        // Shared request: the caller's AbortSignal must not cancel it for the other callers.
+        const shared: RequestInit = { ...init, signal: undefined };
+        response = await withCallerSignal(
+          cachedGet(url, getToken(), () => originalFetch(input, shared), init?.cache === 'reload'),
+          init?.signal,
+        );
+      } else {
+        if (isBackend && method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') invalidateRequestCache();
+        response = await originalFetch(input, init);
+        // Invalidate again once the write has landed (reads issued meanwhile may predate it).
+        if (isBackend && method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') invalidateRequestCache();
+      }
 
       if (isBackend && url && !AUTH_PATHS.some((p) => url.pathname.startsWith(p))) {
         if (response.status === 401 && getToken()) {

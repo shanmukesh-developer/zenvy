@@ -1,3 +1,4 @@
+import { useIsFocused } from 'expo-router';
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import { COLORS } from '../constants/theme';
@@ -27,9 +28,12 @@ export default function CampusLiveTicker() {
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  // Paused while the Home tab is hidden (tabs stay mounted)
+  const focused = useIsFocused();
 
   // Pulse animation for the live indicator
   useEffect(() => {
+    if (!focused) return;
     const pulse = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, {
@@ -46,10 +50,11 @@ export default function CampusLiveTicker() {
     );
     pulse.start();
     return () => pulse.stop();
-  }, []);
+  }, [focused]);
 
   // Auto-cycle ticker items with smooth animation
   useEffect(() => {
+    if (!focused) return;
     let alive = true;
     const interval = setInterval(() => {
       // Animate out
@@ -85,7 +90,7 @@ export default function CampusLiveTicker() {
     }, 4000);
 
     return () => { alive = false; clearInterval(interval); };
-  }, []);
+  }, [focused]);
 
   const currentItem = DEFAULT_TICKER_ITEMS[currentIndex];
 

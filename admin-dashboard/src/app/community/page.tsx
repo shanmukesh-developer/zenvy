@@ -189,7 +189,7 @@ export default function CommunityAdmin() {
       {post.content && <p className="text-sm text-white leading-relaxed whitespace-pre-wrap break-words line-clamp-6">{post.content}</p>}
       {post.imageUrl && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={getImageUrl(post.imageUrl)} alt="Post attachment" className="w-full max-h-56 object-cover rounded-xl border border-white/10 bg-neutral-900" />
+        <img src={getImageUrl(post.imageUrl)} loading="lazy" decoding="async" alt="Post attachment" className="w-full max-h-56 object-cover rounded-xl border border-white/10 bg-neutral-900" />
       )}
     </>
   );
@@ -325,7 +325,7 @@ export default function CommunityAdmin() {
                       <div className="flex gap-4">
                         {b.candidatePhotoUrl ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={getImageUrl(b.candidatePhotoUrl)} alt={b.candidateName} className="w-16 h-16 rounded-xl object-cover border border-white/15 bg-neutral-900" />
+                          <img src={getImageUrl(b.candidatePhotoUrl)} loading="lazy" decoding="async" alt={b.candidateName} className="w-16 h-16 rounded-xl object-cover border border-white/15 bg-neutral-900" />
                         ) : (
                           <div className="w-16 h-16 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-lg">🎂</div>
                         )}
@@ -374,7 +374,7 @@ export default function CommunityAdmin() {
                     <div className="flex gap-3 items-center">
                       {b.candidatePhotoUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={getImageUrl(b.candidatePhotoUrl)} alt={b.candidateName} className="w-12 h-12 rounded-full object-cover border-2 border-purple-500/30" />
+                        <img src={getImageUrl(b.candidatePhotoUrl)} loading="lazy" decoding="async" alt={b.candidateName} className="w-12 h-12 rounded-full object-cover border-2 border-purple-500/30" />
                       ) : (
                         <div className="w-12 h-12 rounded-full bg-purple-500/20 flex items-center justify-center text-md">🎂</div>
                       )}

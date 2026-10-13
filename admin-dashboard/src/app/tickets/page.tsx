@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAdminAuth } from '@/utils/useAdminAuth';
 import { API_URL } from '@/lib/config';
 import { useAdminSocket } from '@/components/AdminSocketProvider';
 import { useLiveSync, useFreshIds, liveLabel, FRESH_ROW_CLASS } from '@/lib/useLiveSync';
+import { ListPager, usePagedRows } from '@/components/ListPager';
 
 type TicketStatus = 'Open' | 'In Progress' | 'Resolved' | 'Closed';
 
@@ -149,8 +150,13 @@ export default function SupportTickets() {
   };
 
   const isActive = (t: Ticket) => t.status === 'Open' || t.status === 'In Progress';
-  const activeCount = tickets.filter(isActive).length;
-  const visible = tickets.filter(t => (filter === 'all' ? true : filter === 'active' ? isActive(t) : t.status === filter));
+  const activeCount = useMemo(() => tickets.filter(isActive).length, [tickets]);
+  const visible = useMemo(
+    () => tickets.filter(t => (filter === 'all' ? true : filter === 'active' ? isActive(t) : t.status === filter)),
+    [tickets, filter],
+  );
+  // 30 ticket cards per page: typing a reply re-renders the list, so keep it short.
+  const pager = usePagedRows(visible, 30, filter);
 
   if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Checking access…</div>;
 
@@ -187,7 +193,7 @@ export default function SupportTickets() {
       <div className="grid gap-4">
         {loading && tickets.length === 0 ? (
           <div className="p-12 text-center text-zinc-500 animate-pulse font-bold">Loading tickets…</div>
-        ) : visible.map(ticket => {
+        ) : pager.visible.map(ticket => {
           const sla = getSlaStatus(ticket.slaBreachAt);
           const saving = savingId === ticket.id;
           const draft = replies[ticket.id] ?? '';
@@ -285,6 +291,7 @@ export default function SupportTickets() {
             </div>
           );
         })}
+        <ListPager page={pager.page} pages={pager.pages} total={pager.total} pageSize={pager.pageSize} onPage={pager.setPage} noun="tickets" />
         {!loading && !loadError && visible.length === 0 && (
           <div className="p-12 text-center text-zinc-500 bg-zinc-900/50 rounded-2xl border border-zinc-800/50">
             {tickets.length === 0 ? 'No support tickets yet.' : 'No tickets match this filter.'}

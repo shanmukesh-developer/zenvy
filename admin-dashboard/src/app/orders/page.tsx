@@ -4,6 +4,7 @@ import { useAdminSocket } from '@/components/AdminSocketProvider';
 import { useAdminAuth } from '@/utils/useAdminAuth';
 import { API_URL } from '@/lib/config';
 import { useLiveSync, useFreshIds, liveLabel, FRESH_ROW_CLASS } from '@/lib/useLiveSync';
+import { useVisibleInterval } from '@/lib/useVisibleInterval';
 
 // ─── Types (shape of GET /api/admin/orders) ───────────────────
 interface OrderItem {
@@ -204,7 +205,7 @@ OrderRow.displayName = 'OrderRow';
 
 export default function OrdersPage() {
   const { isAuthed } = useAdminAuth();
-  const { socket, notifyLive } = useAdminSocket();
+  const { socket, isConnected, notifyLive } = useAdminSocket();
   const { mark: markFresh, isFresh } = useFreshIds();
   const [orders, setOrders] = useState<Order[]>([]);
   const [totalOrders, setTotalOrders] = useState(0);
@@ -218,9 +219,12 @@ export default function OrdersPage() {
   const [filterFulfilment, setFilterFulfilment] = useState<FulfilmentFilter>('All');
   // ?store=<id> (from Stores → a store → "All orders").
   const [storeFilter, setStoreFilter] = useState<string | null>(null);
+  // The first load waits until ?store= has been read, so a store link does not fetch twice.
+  const [filtersReady, setFiltersReady] = useState(false);
   useEffect(() => {
     const sid = new URLSearchParams(window.location.search).get('store');
     if (sid) setStoreFilter(sid);
+    setFiltersReady(true);
   }, []);
   const clearStoreFilter = () => {
     setStoreFilter(null);
@@ -275,17 +279,12 @@ export default function OrdersPage() {
   useEffect(() => () => { if (refreshTimer.current) clearTimeout(refreshTimer.current); }, []);
 
   useEffect(() => {
-    if (isAuthed) fetchOrders(1, true);
-  }, [isAuthed, fetchOrders]);
+    if (isAuthed && filtersReady) fetchOrders(1, true);
+  }, [isAuthed, filtersReady, fetchOrders]);
 
-  // Background polling fallback in case a socket event is missed.
-  useEffect(() => {
-    if (!isAuthed) return;
-    const timer = setInterval(() => {
-      if (!document.hidden) fetchOrders(pageRef.current, false);
-    }, 20000);
-    return () => clearInterval(timer);
-  }, [isAuthed, fetchOrders]);
+  // Background polling fallback in case a socket event is missed: 20 s while the live socket is down,
+  // 60 s while it is up (socket events already trigger refreshes); paused in a hidden tab.
+  useVisibleInterval(() => fetchOrders(pageRef.current, false), isConnected ? 60000 : 20000, isAuthed && filtersReady);
 
   // Live updates from the admin socket room.
   useEffect(() => {

@@ -1,29 +1,39 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Image, ImageProps, ImageSourcePropType, View, Animated, StyleSheet } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, StyleSheet, StyleProp, ImageStyle, ImageSourcePropType } from 'react-native';
+import { Image, ImageProps } from 'expo-image';
 
 const LUXURY_FALLBACKS: Record<string, string> = {
-  avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=600&q=75',
-  rider: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=600&q=75',
-  food: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800&q=85',
-  biryani: 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=800&q=85',
-  burger: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=800&q=85',
-  pizza: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=800&q=85',
-  grocery: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=800&q=85',
-  fruits: 'https://images.unsplash.com/photo-1619566636858-adf3ef46400b?w=800&q=85',
-  electronics: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?w=800&q=85',
-  stationery: 'https://images.unsplash.com/photo-1456735190827-d1262f71b8a3?w=800&q=85',
-  laundry: 'https://images.unsplash.com/photo-1582735689369-4fe89db7114c?w=800&q=85',
-  rides: 'https://images.unsplash.com/photo-1485965120184-e220f721d03e?w=800&q=85',
+  avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&q=70',
+  rider: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&q=70',
+  food: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&q=70',
+  biryani: 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=400&q=70',
+  burger: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&q=70',
+  pizza: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=400&q=70',
+  grocery: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=400&q=70',
+  fruits: 'https://images.unsplash.com/photo-1619566636858-adf3ef46400b?w=400&q=70',
+  electronics: 'https://images.unsplash.com/photo-1583863788434-e58a36330cf0?w=400&q=70',
+  stationery: 'https://images.unsplash.com/photo-1456735190827-d1262f71b8a3?w=400&q=70',
+  laundry: 'https://images.unsplash.com/photo-1582735689369-4fe89db7114c?w=400&q=70',
+  rides: 'https://images.unsplash.com/photo-1485965120184-e220f721d03e?w=400&q=70',
 };
 
 const DEFAULT_FALLBACK_URI = LUXURY_FALLBACKS.food;
 
-function optimizeUri(uriString?: string | null): string {
+/**
+ * Ask image CDNs for a phone-sized rendition (a raw Unsplash/Pexels URL is a multi-MB original).
+ * Other hosts are returned unchanged.
+ */
+export function optimizeImageUri(uriString?: string | null, width = 400): string {
   if (!uriString || typeof uriString !== 'string') return '';
   if (uriString.startsWith('data:')) return uriString;
+  const w = Math.max(64, Math.round(width));
   if (uriString.includes('images.unsplash.com')) {
     const base = uriString.split('?')[0];
-    return `${base}?auto=format&fit=crop&w=600&q=75`;
+    return `${base}?auto=format&fit=crop&w=${w}&q=70`;
+  }
+  if (uriString.includes('images.pexels.com')) {
+    const base = uriString.split('?')[0];
+    return `${base}?auto=compress&cs=tinysrgb&w=${w}`;
   }
   return uriString;
 }
@@ -32,107 +42,63 @@ function getSmartFallback(uriString?: string | null): string {
   if (!uriString) return DEFAULT_FALLBACK_URI;
   if (uriString.startsWith('data:image')) return LUXURY_FALLBACKS.avatar;
   const lower = uriString.toLowerCase();
-  if (lower.includes('avatar') || lower.includes('profile') || lower.includes('user')) {
-    return LUXURY_FALLBACKS.avatar;
-  }
-  if (lower.includes('rider') || lower.includes('driver') || lower.includes('captain')) {
-    return LUXURY_FALLBACKS.rider;
-  }
+  if (lower.includes('avatar') || lower.includes('profile') || lower.includes('user')) return LUXURY_FALLBACKS.avatar;
+  if (lower.includes('rider') || lower.includes('driver') || lower.includes('captain')) return LUXURY_FALLBACKS.rider;
   for (const [key, fallback] of Object.entries(LUXURY_FALLBACKS)) {
-    if (lower.includes(key)) return optimizeUri(fallback);
+    if (lower.includes(key)) return fallback;
   }
   return DEFAULT_FALLBACK_URI;
 }
 
-interface SafeImageProps extends Omit<ImageProps, 'source'> {
+interface SafeImageProps extends Omit<ImageProps, 'source' | 'style' | 'onError'> {
   source?: ImageSourcePropType | { uri?: string | null } | null;
+  style?: StyleProp<ImageStyle>;
   fallbackUri?: string;
+  /** Fade-in on load, ms. */
   fadeInDuration?: number;
+  /** Width requested from Unsplash/Pexels (default 400; use ~800 for full-width heroes). */
+  maxWidth?: number;
+  onError?: (e: any) => void;
 }
 
+/**
+ * Image with a fallback, backed by expo-image: memory + disk cache (no re-download when a list
+ * re-renders or a screen re-opens), downsampled CDN URLs and a cheap native fade-in.
+ */
 export default function SafeImage({
   source,
   fallbackUri,
   style,
   onError,
-  fadeInDuration = 280,
+  fadeInDuration = 200,
+  maxWidth = 400,
   ...props
 }: SafeImageProps) {
-  const [hasError, setHasError] = useState(false);
-  const [isLoaded, setIsLoaded] = useState(true);
-  const fadeAnim = useRef(new Animated.Value(1)).current;
-
   const rawUri = typeof source === 'object' && source && 'uri' in source ? (source.uri || '') : '';
-  const isBase64OrLocal = typeof source === 'number' || rawUri.startsWith('data:');
   const resolvedFallback = fallbackUri || getSmartFallback(rawUri);
+  const [hasError, setHasError] = useState(false);
 
-  const [imgSource, setImgSource] = useState<ImageSourcePropType>(() => {
-    if (typeof source === 'number') return source;
-    if (rawUri) return { uri: optimizeUri(rawUri) };
-    return { uri: resolvedFallback };
-  });
+  useEffect(() => { setHasError(false); }, [rawUri]);
 
-  const uriKey = typeof source === 'number' 
-    ? String(source) 
-    : (rawUri.startsWith('data:') ? `base64_${rawUri.slice(0, 40)}_${rawUri.length}` : rawUri);
-
-  useEffect(() => {
-    setHasError(false);
-
-    if (!source) {
-      setImgSource({ uri: resolvedFallback });
-      setIsLoaded(true);
-      fadeAnim.setValue(1);
-      return;
-    }
-
-    if (typeof source === 'number') {
-      setImgSource(source);
-      setIsLoaded(true);
-      fadeAnim.setValue(1);
-    } else if (typeof source === 'object' && 'uri' in source) {
-      if (!source.uri || typeof source.uri !== 'string' || source.uri.trim() === '') {
-        setImgSource({ uri: resolvedFallback });
-        setIsLoaded(true);
-        fadeAnim.setValue(1);
-      } else {
-        const optimized = optimizeUri(source.uri);
-        setImgSource({ uri: optimized });
-        setIsLoaded(true);
-        fadeAnim.setValue(1);
-      }
-    } else {
-      setImgSource({ uri: resolvedFallback });
-      setIsLoaded(true);
-      fadeAnim.setValue(1);
-    }
-  }, [uriKey, resolvedFallback]);
-
-  const handleLoad = () => {
-    setIsLoaded(true);
-    fadeAnim.setValue(1);
-  };
-
-  const handleError = (e: any) => {
-    if (!hasError) {
-      setHasError(true);
-      setImgSource({ uri: resolvedFallback });
-      setIsLoaded(true);
-      fadeAnim.setValue(1);
-    }
-    if (onError) {
-      onError(e);
-    }
-  };
+  let imgSource: any;
+  if (typeof source === 'number') imgSource = source;
+  else if (hasError || !rawUri.trim()) imgSource = { uri: resolvedFallback };
+  else imgSource = { uri: optimizeImageUri(rawUri, maxWidth) };
 
   return (
-    <View style={[style, styles.container, { overflow: 'hidden' }]}>
-      <Animated.Image
+    <View style={[style as any, styles.container]}>
+      <Image
+        cachePolicy="memory-disk"
+        contentFit="cover"
+        transition={fadeInDuration}
+        recyclingKey={typeof imgSource === 'number' ? String(imgSource) : imgSource.uri}
         {...props}
         source={imgSource}
-        style={[style, StyleSheet.absoluteFill, { opacity: fadeAnim }]}
-        onLoad={handleLoad}
-        onError={handleError}
+        style={[style as any, StyleSheet.absoluteFill]}
+        onError={(e) => {
+          if (!hasError) setHasError(true);
+          onError?.(e);
+        }}
       />
     </View>
   );
@@ -141,5 +107,28 @@ export default function SafeImage({
 const styles = StyleSheet.create({
   container: {
     backgroundColor: 'rgba(128, 128, 128, 0.08)',
+    overflow: 'hidden',
   },
 });
+
+type CachedImageProps = Omit<ImageProps, 'source' | 'style'> & {
+  source?: ImageSourcePropType | { uri?: string | null } | null;
+  style?: StyleProp<ImageStyle>;
+  /** Width requested from Unsplash/Pexels (default 400). */
+  maxWidth?: number;
+};
+
+/**
+ * Drop-in for react-native's <Image> in lists: expo-image with memory + disk cache and
+ * downsampled CDN URLs. Honors resizeMode given as a prop or inside style.
+ */
+export function CachedImage({ source, style, maxWidth = 400, resizeMode, contentFit, ...props }: CachedImageProps) {
+  const flat: any = StyleSheet.flatten(style) || {};
+  const mode = resizeMode || flat.resizeMode;
+  const fit = contentFit || (mode === 'contain' ? 'contain' : mode === 'stretch' ? 'fill' : mode === 'center' ? 'none' : 'cover');
+  let src: any = source;
+  if (source && typeof source === 'object' && !Array.isArray(source) && 'uri' in source) {
+    src = { uri: optimizeImageUri(source.uri || '', maxWidth) || undefined };
+  }
+  return <Image cachePolicy="memory-disk" transition={150} {...props} contentFit={fit} source={src} style={style as any} />;
+}

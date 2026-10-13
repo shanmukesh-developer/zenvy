@@ -110,7 +110,7 @@ export default function PromoCarousel({ offers, containerStyle }: PromoCarouselP
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: fadeAnim, overflow: 'hidden', borderRadius: 24 }]}>
         {/* Background Image */}
         <View style={StyleSheet.absoluteFill}>
-          <SafeImage source={{ uri: currentOffer.imageUrl }} style={s.bgImage} />
+          <SafeImage source={{ uri: currentOffer.imageUrl }} style={s.bgImage} maxWidth={800} />
           <LinearGradient 
             colors={isDark 
               ? ['rgba(10, 10, 11, 0.95)', 'rgba(10, 10, 11, 0.75)', 'rgba(10, 10, 11, 0.25)'] 

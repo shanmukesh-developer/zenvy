@@ -76,19 +76,23 @@ export default function SOSAlertModal() {
     let cancelled = false;
     (async () => {
       try {
-        const active: SOSData[] = [];
-        for (let page = 1; page <= 20; page++) {
-          const data = await adminRequest<{ riders?: any[]; pages?: number }>(`/api/admin/riders?limit=100&page=${page}`);
-          const chunk = Array.isArray(data?.riders) ? data.riders : [];
-          chunk.filter(r => r?.isSosActive).forEach(r => active.push({
-            riderId: String(r.id || r._id),
-            riderName: r.name,
-            riderPhone: r.phone,
-            timestamp: r.sosAt || r.updatedAt,
-            location: r.liveLocation || null,
-          }));
-          if (chunk.length < 100 || page >= (Number(data?.pages) || 1)) break;
+        // Same URLs as the dashboard's rider list, so the read cache shares one request per page.
+        // Page 1 gives the page count; the remaining pages load in parallel.
+        const riderPage = (page: number) => adminRequest<{ riders?: any[]; pages?: number }>(`/api/admin/riders?limit=100&page=${page}`);
+        const first = await riderPage(1);
+        const all: any[] = Array.isArray(first?.riders) ? [...first.riders] : [];
+        const pages = Math.min(20, Number(first?.pages) || 1);
+        if (all.length >= 100 && pages > 1) {
+          const rest = await Promise.all(Array.from({ length: pages - 1 }, (_, i) => riderPage(i + 2)));
+          rest.forEach(d => { if (Array.isArray(d?.riders)) all.push(...d.riders); });
         }
+        const active: SOSData[] = all.filter(r => r?.isSosActive).map(r => ({
+          riderId: String(r.id || r._id),
+          riderName: r.name,
+          riderPhone: r.phone,
+          timestamp: r.sosAt || r.updatedAt,
+          location: r.liveLocation || null,
+        }));
         if (cancelled || !active.length) return;
         setQueue(prev => {
           const known = new Set(prev.map(s => s.riderId));

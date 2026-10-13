@@ -69,6 +69,8 @@ interface HighClassPromoCarouselProps {
   featuredRestaurants?: any[];
   onSelectRestaurant?: (id: string) => void;
   onSelectSlide?: (slide: PromoSlide) => void;
+  /** False while the carousel is scrolled off-screen: auto-advance and card animations pause. */
+  visible?: boolean;
 }
 
 const GAP = 10;
@@ -346,10 +348,13 @@ export default function HighClassPromoCarousel({
   featuredRestaurants = [],
   onSelectRestaurant,
   onSelectSlide,
+  visible = true,
 }: HighClassPromoCarouselProps) {
   const router = useRouter();
   const { isDark } = useTheme();
-  const isFocused = useIsFocused();
+  const screenFocused = useIsFocused();
+  // "Focused" here = on screen: tab focused AND not scrolled out of view
+  const isFocused = screenFocused && visible;
   const appActive = useAppActive();
   const reduceMotion = useReduceMotion();
 

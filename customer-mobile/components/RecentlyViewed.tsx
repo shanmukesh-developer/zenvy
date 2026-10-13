@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
+// expo-image (memory + disk cache, downsampled CDN URLs) in place of react-native's Image
+import { CachedImage as Image } from './SafeImage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { COLORS, SHADOWS } from '../constants/theme';

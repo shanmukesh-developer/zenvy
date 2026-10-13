@@ -224,9 +224,16 @@ export default function ProfileScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Tab switches re-focus Profile constantly: refetch the three cards at most every 20 s
+  // (pull-to-refresh always refetches; a different account always refetches).
+  const lastProfileLoad = useRef<{ user: string; at: number }>({ user: '', at: 0 });
   useFocusEffect(
     useCallback(() => {
-      if (userId) fetchData('focus');
+      if (!userId) return;
+      const now = Date.now();
+      if (lastProfileLoad.current.user === String(userId) && now - lastProfileLoad.current.at < 20000) return;
+      lastProfileLoad.current = { user: String(userId), at: now };
+      fetchData('focus');
     }, [userId, fetchData])
   );
 

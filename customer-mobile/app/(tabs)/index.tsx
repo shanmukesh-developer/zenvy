@@ -1,9 +1,11 @@
 import * as Haptics from 'expo-haptics';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, RefreshControl, Image, FlatList, Dimensions, Platform, Modal, ActivityIndicator, Alert, Animated, Linking, BackHandler, Vibration } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, RefreshControl, FlatList, Dimensions, Platform, Modal, ActivityIndicator, Alert, Animated, Linking, BackHandler, Vibration } from 'react-native';
+// expo-image (memory + disk cache, downsampled CDN URLs) in place of react-native's Image
+import { CachedImage as Image } from '../../components/SafeImage';
 import { useLiveSync, hasType } from '../../utils/useLiveSync';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter, usePathname, useFocusEffect } from 'expo-router';
+import { useRouter, usePathname, useFocusEffect, useIsFocused } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS, SHADOWS, RADIUS } from '../../constants/theme';
 import { API_URL, ENDPOINTS } from '../../constants/api';
@@ -12,6 +14,7 @@ import { useCart } from '../../context/CartContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useDietary } from '../../context/DietaryContext';
 import { apiFetch } from '../../utils/auth';
+import { readCache, writeCache, peekCache, RESTAURANTS_CACHE_KEY } from '../../utils/swrCache';
 import NexusExplorer from '../../components/NexusExplorer';
 import SearchOverlay from '../../components/SearchOverlay';
 import PromoCarousel from '../../components/PromoCarousel';
@@ -30,7 +33,9 @@ import SafeImage from '../../components/SafeImage';
 
 const VaultTimerBadge = ({ pulseAnim }: { pulseAnim: any }) => {
   const [vaultTimer, setVaultTimer] = useState('00:00:00');
+  const isFocused = useIsFocused();
   useEffect(() => {
+    if (!isFocused) return; // 1 s ticker only while the Home tab is on screen
     const iv = setInterval(() => {
       // Daily deals reset at midnight IST (coupons are valid until then)
       const IST_OFFSET = 5.5 * 3600000;
@@ -43,7 +48,7 @@ const VaultTimerBadge = ({ pulseAnim }: { pulseAnim: any }) => {
       setVaultTimer(`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`);
     }, 1000);
     return () => clearInterval(iv);
-  }, []);
+  }, [isFocused]);
   
   return (
     <View style={StyleSheet.create({ vaultTimerWrap: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 } }).vaultTimerWrap}>
@@ -52,6 +57,43 @@ const VaultTimerBadge = ({ pulseAnim }: { pulseAnim: any }) => {
     </View>
   );
 };
+
+// Swiggy/Zomato style rotating search placeholder. Lives in its own component so the 3.5 s tick
+// re-renders one TextInput instead of the whole home screen (it used to re-filter every restaurant).
+const SEARCH_PLACEHOLDERS = [
+  "Search 'Biryani'...",
+  "Search 'Pizza'...",
+  "Search 'Dosa & Chai'...",
+  "Search 'Cold Coffee & Shakes'...",
+  "Search 'Burgers & Fries'...",
+];
+const RotatingSearchInput = React.memo(function RotatingSearchInput({ search, color, placeholderColor, inputStyle }: { search: string; color: string; placeholderColor: string; inputStyle: any }) {
+  const isFocused = useIsFocused();
+  const [placeholderIndex, setPlaceholderIndex] = useState(0);
+  const placeholderFade = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (!isFocused) return; // tab hidden: no timers, no animations
+    const interval = setInterval(() => {
+      Animated.timing(placeholderFade, { toValue: 0, duration: 250, useNativeDriver: true }).start(() => {
+        setPlaceholderIndex(prev => (prev + 1) % SEARCH_PLACEHOLDERS.length);
+        Animated.timing(placeholderFade, { toValue: 1, duration: 300, useNativeDriver: true }).start();
+      });
+    }, 3500);
+    return () => clearInterval(interval);
+  }, [isFocused, placeholderFade]);
+  return (
+    <Animated.View style={{ flex: 1, opacity: placeholderFade }}>
+      <TextInput
+        style={[inputStyle, { color }]}
+        placeholder={SEARCH_PLACEHOLDERS[placeholderIndex]}
+        placeholderTextColor={placeholderColor}
+        value={search}
+        editable={false}
+        pointerEvents="none"
+      />
+    </Animated.View>
+  );
+});
 
 const { width: SW } = Dimensions.get('window');
 
@@ -203,6 +245,32 @@ export default function HomeScreen() {
   const { isDark, toggleTheme, colors } = useTheme();
   const { triggerTransition } = useWorldTransition();
   const scrollRef = useRef<ScrollView>(null);
+  // The promo carousel pauses its auto-advance and card animations once it is scrolled off-screen
+  const carouselBottom = useRef(0);
+  const [carouselVisible, setCarouselVisible] = useState(true);
+  const carouselVisibleRef = useRef(true);
+  // The restaurant grid renders in pages of 12 (it sits inside this ScrollView, so it cannot be a
+  // virtualized list): first paint mounts 12 cards instead of ~60, more mount as the user nears the end.
+  const GRID_PAGE = 12;
+  const [gridLimit, setGridLimit] = useState(GRID_PAGE);
+  const growingGrid = useRef(false);
+  const gridBottom = useRef(0);
+  const onHomeScroll = useCallback((e: any) => {
+    const ne = e?.nativeEvent || {};
+    const y = ne.contentOffset?.y || 0;
+    // Near the bottom of the grid (not of the page: other sections follow it)
+    const nearEnd = gridBottom.current > 0 && y + (ne.layoutMeasurement?.height || 0) > gridBottom.current - 900;
+    if (nearEnd && !growingGrid.current) {
+      growingGrid.current = true;
+      setGridLimit((n) => n + GRID_PAGE);
+      setTimeout(() => { growingGrid.current = false; }, 250);
+    }
+    const visible = carouselBottom.current <= 0 || y < carouselBottom.current;
+    if (visible !== carouselVisibleRef.current) {
+      carouselVisibleRef.current = visible;
+      setCarouselVisible(visible);
+    }
+  }, []);
   const nexusY = useRef(0);
   const gridY = useRef(0);
   const pendingNexusScroll = useRef(false);
@@ -211,7 +279,7 @@ export default function HomeScreen() {
     if (alreadyMounted && nexusY.current > 0) scrollRef.current?.scrollTo({ y: nexusY.current, animated: true });
     else pendingNexusScroll.current = true;
   };
-  const [restaurants, setRestaurants] = useState<any[]>([]);
+  const [restaurants, setRestaurants] = useState<any[]>(() => peekCache<any[]>(RESTAURANTS_CACHE_KEY) || []);
   const [filter, setFilter] = useState('all');
   const [classicFilter, setClassicFilter] = useState('');
   const [search, setSearch] = useState('');
@@ -221,7 +289,7 @@ export default function HomeScreen() {
   useEffect(() => {
     setVegOnly(dietMode === 'veg' || dietMode === 'eggarian');
   }, [dietMode]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !peekCache(RESTAURANTS_CACHE_KEY));
   const [refreshing, setRefreshing] = useState(false);
   const [classics, setClassics] = useState<any[]>(CLASSICS);
   const [showWakeup, setShowWakeup] = useState(false);
@@ -251,6 +319,7 @@ export default function HomeScreen() {
   const [favorites, setFavorites] = useState<string[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [unreadNonce, setUnreadNonce] = useState(0);
+  const lastUnreadCheck = useRef<{ key: string; at: number }>({ key: '', at: 0 });
 
   useEffect(() => {
     const pulseLoop = Animated.loop(
@@ -269,35 +338,6 @@ export default function HomeScreen() {
     );
     pulseLoop.start();
     return () => pulseLoop.stop();
-  }, []);
-
-  // Swiggy/Zomato style dynamic search placeholders
-  const SEARCH_PLACEHOLDERS = [
-    "Search 'Biryani'...",
-    "Search 'Pizza'...",
-    "Search 'Dosa & Chai'...",
-    "Search 'Cold Coffee & Shakes'...",
-    "Search 'Burgers & Fries'..."
-  ];
-  const [placeholderIndex, setPlaceholderIndex] = useState(0);
-  const placeholderFade = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      Animated.timing(placeholderFade, {
-        toValue: 0,
-        duration: 250,
-        useNativeDriver: true
-      }).start(() => {
-        setPlaceholderIndex(prev => (prev + 1) % SEARCH_PLACEHOLDERS.length);
-        Animated.timing(placeholderFade, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: true
-        }).start();
-      });
-    }, 3500);
-    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -447,24 +487,16 @@ export default function HomeScreen() {
         image: sanitizeImage(r.imageUrl || r.image)
       }));
       setRestaurants(cleaned);
-      // Cache for instant load next time
-      AsyncStorage.setItem('zenvy_cached_restaurants', JSON.stringify(cleaned)).catch(() => {});
+      // Cache for instant load next time (memory for this session, storage for the next app start)
+      writeCache(RESTAURANTS_CACHE_KEY, cleaned);
       setLoadError(false);
       setShowWakeup(false); // Connected — hide any banner
     } catch (e: any) {
       console.warn('[ZENVY_SYNC] Restaurants failed to load:', e?.message || e);
-      // Load cached restaurants as instant fallback
-      let hadCache = false;
-      try {
-        const cached = await AsyncStorage.getItem('zenvy_cached_restaurants');
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setRestaurants(parsed);
-            hadCache = true;
-          }
-        }
-      } catch {}
+      // Keep whatever is on screen (the cached list); only an empty screen is an error
+      const cached = await readCache<any[]>(RESTAURANTS_CACHE_KEY);
+      const hadCache = !!(cached && Array.isArray(cached.data) && cached.data.length > 0);
+      if (hadCache) setRestaurants((cur) => (cur.length ? cur : cached!.data));
       setLoadError(!hadCache);
       setShowWakeup(true);
     } finally {
@@ -473,7 +505,21 @@ export default function HomeScreen() {
     }
   }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  // Stale-while-revalidate: paint the last good list at once (cold app start included), then refresh.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!peekCache(RESTAURANTS_CACHE_KEY)) {
+        const cached = await readCache<any[]>(RESTAURANTS_CACHE_KEY);
+        if (!cancelled && cached && Array.isArray(cached.data) && cached.data.length > 0) {
+          setRestaurants((cur) => (cur.length ? cur : cached.data));
+          setLoading(false);
+        }
+      }
+      if (!cancelled) fetchData();
+    })();
+    return () => { cancelled = true; };
+  }, [fetchData]);
 
   useFocusEffect(
     useCallback(() => {
@@ -505,7 +551,13 @@ export default function HomeScreen() {
           console.warn('Unread count error:', e);
         }
       };
-      checkUnread();
+      // Tab switches re-focus Home constantly: re-check at most every 30 s (announcements and
+      // user/nonce changes still re-check at once through the deps key).
+      const checkKey = `${user?._id || user?.id || 'guest'}|${unreadNonce}`;
+      if (lastUnreadCheck.current.key !== checkKey || Date.now() - lastUnreadCheck.current.at > 30000) {
+        lastUnreadCheck.current = { key: checkKey, at: Date.now() };
+        checkUnread();
+      }
       return () => { active = false; };
     }, [user, unreadNonce])
   );
@@ -556,7 +608,10 @@ export default function HomeScreen() {
     },
   });
 
-  const filtered = restaurants
+  useEffect(() => { setGridLimit(GRID_PAGE); }, [vegOnly, filter, search, classicFilter]);
+
+  // Memoized: the list is only re-filtered when its inputs change, not on every render
+  const filtered = React.useMemo(() => restaurants
     .filter(isHomeFoodVendor)
     .filter(r => {
       if (vegOnly) {
@@ -591,7 +646,7 @@ export default function HomeScreen() {
       if (aMatch && !bMatch) return -1;
       if (!aMatch && bMatch) return 1;
       return 0;
-    });
+    }), [restaurants, vegOnly, filter, search, classicFilter]);
 
   const cardBg = isDark ? 'rgba(255, 255, 255, 0.08)' : colors.card;
   const txt = colors.text;
@@ -616,7 +671,7 @@ export default function HomeScreen() {
         onWakeupComplete={() => setShowWakeup(false)}
       />
       <AmbientBackground />
-      <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchData(); }} tintColor={goldColor} />}>
+      <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} scrollEventThrottle={200} onScroll={onHomeScroll} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchData(); }} tintColor={goldColor} />}>
 
         {/* ── NAVBAR (SWIGGY & ZOMATO ELEVATED HEADER) ── */}
         <StaggeredSection delay={0} direction="down">
@@ -661,7 +716,7 @@ export default function HomeScreen() {
             </DopaminePressable>
             <DopaminePressable 
               style={[s.navBtn, { backgroundColor: cardBg, borderColor: goldBorderColor }, s.profileBtn, { borderColor: goldColor }, goldGlowShadow]} 
-              onPress={() => router.push('/notifications' as any)}
+              onPress={() => { lastUnreadCheck.current.at = 0; router.push('/notifications' as any); }}
               sound="click"
               activeScale={0.9}
             >
@@ -674,7 +729,9 @@ export default function HomeScreen() {
 
         {/* ── HIGH-CLASS SWIGGY/ZOMATO PROMO CAROUSEL (WITH MINIATURE ANIMATIONS & ADMIN SPOTLIGHT) ── */}
         <StaggeredSection delay={100} direction="up">
+          <View onLayout={(e) => { carouselBottom.current = e.nativeEvent.layout.y + e.nativeEvent.layout.height; }}>
           <HighClassPromoCarousel 
+            visible={carouselVisible}
             featuredRestaurants={restaurants}
             onSelectRestaurant={(id) => router.push(`/restaurant/${id}` as any)}
             onSelectSlide={(slide) => {
@@ -705,6 +762,7 @@ export default function HomeScreen() {
               }
             }}
           />
+          </View>
         </StaggeredSection>
 
         {/* ── LIVE CAMPUS TICKER (SWIGGY / ZOMATO DEALS & PULSE) ── */}
@@ -764,16 +822,7 @@ export default function HomeScreen() {
             style={[s.searchWrap, { backgroundColor: cardBg, borderColor: isDark ? goldBorderColor : COLORS.borderLight, flex: 1, marginBottom: 0 }]}
           >
             <Text style={{ fontSize: 16 }}>🔍</Text>
-            <Animated.View style={{ flex: 1, opacity: placeholderFade }}>
-              <TextInput 
-                style={[s.searchInput, { color: txt }]} 
-                placeholder={SEARCH_PLACEHOLDERS[placeholderIndex]} 
-                placeholderTextColor={txtSec} 
-                value={search} 
-                editable={false}
-                pointerEvents="none"
-              />
-            </Animated.View>
+            <RotatingSearchInput search={search} color={txt} placeholderColor={txtSec} inputStyle={s.searchInput} />
             {!!search && (
               <TouchableOpacity
                 onPress={() => setSearch('')}
@@ -941,7 +990,7 @@ export default function HomeScreen() {
         </ScrollView>
 
         {/* ── RESTAURANT GRID ── */}
-        <View style={s.grid}>
+        <View style={s.grid} onLayout={(e) => { gridBottom.current = e.nativeEvent.layout.y + e.nativeEvent.layout.height; }}>
           {loading ? (
             <>
               <View style={{ width: '48.5%' }}><RestaurantCardSkeleton /></View>
@@ -998,7 +1047,7 @@ export default function HomeScreen() {
               )}
             </View>
           ) : (
-            filtered.map((r, i) => {
+            filtered.slice(0, gridLimit).map((r, i) => {
             const id = r._id || r.id;
             // Real data only: no invented ratings, ETAs, offers or prices
             const rating = Number(r.rating) || 0;

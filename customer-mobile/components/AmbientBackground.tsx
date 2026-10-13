@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useMemo } from 'react';
 import { View, StyleSheet, Animated, Dimensions, Platform, Easing, Image } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../context/ThemeContext';
+import { useIsFocused } from 'expo-router';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 
@@ -115,8 +116,10 @@ const AmbientBackground = React.memo(function AmbientBackground({ isStatic = Pla
     })),
   []);
 
+  // Every tab mounts its own background and tabs stay mounted: only the visible one animates
+  const focused = useIsFocused();
   useEffect(() => {
-    if (isStatic) return;
+    if (isStatic || !focused) return;
 
     const activeAnims: Animated.CompositeAnimation[] = [];
 
@@ -217,7 +220,7 @@ const AmbientBackground = React.memo(function AmbientBackground({ isStatic = Pla
     return () => {
       activeAnims.forEach(anim => anim.stop());
     };
-  }, [isStatic]);
+  }, [isStatic, focused]);
 
   // ── Theme Colors ──
   const gradientColors: [string, string] = isDark

@@ -8,6 +8,9 @@ import { API_URL } from '@/lib/config';
 import { adminRequest as apiRequest } from '@/lib/api';
 import Link from 'next/link';
 import { useLiveSync, useFreshIds, liveLabel, FRESH_ROW_CLASS } from '@/lib/useLiveSync';
+import { useVisibleInterval } from '@/lib/useVisibleInterval';
+import { peekCachedJson } from '@/lib/requestCache';
+import ListImage from '@/components/ListImage';
 
 // "Needs attention" counters on the overview, kept live by realtime events.
 type InboxKey = 'tickets' | 'verifications' | 'pgBookings' | 'wallPending' | 'serviceRequests';
@@ -33,6 +36,12 @@ const CHECKPOINTS = [
 ];
 
 const ORDER_FEED_LIMIT = 40;
+const ORDERS_PATH = `/api/orders?limit=${ORDER_FEED_LIMIT}`;
+const BASKETS_PATH = '/api/mega-basket/admin/all';
+const STATS_PATH = '/api/admin/stats';
+/** Fallback polling: frequent only while the live socket is down; slow safety net otherwise. */
+const POLL_OFFLINE_MS = 15000;
+const POLL_LIVE_MS = 60000;
 
 /** fetch against the one backend; throws an Error carrying the server's friendly `message`. */
 const errMsg = (err: unknown, fallback: string) => (err instanceof Error && err.message ? err.message : fallback);
@@ -139,6 +148,32 @@ const needsUpiCheck = (o: LiveOrder) => o.kind === 'order' && o.paymentMethod ==
 
 const shortId = (id?: string) => (id ? `#${String(id).slice(-6).toUpperCase()}` : '');
 
+const toStats = (data: any): AdminStat[] => [
+  { label: 'Delivered Revenue', value: data?.revenue || '₹0', hint: 'All delivered orders' },
+  { label: 'Active Pipeline', value: data?.activeRevenue || '₹0', hint: `${data?.activeOrders || 0} open orders` },
+  { label: 'Approved Riders', value: data?.activeFleet || '0', hint: 'Fleet size' },
+  { label: 'Commission', value: data?.commission || '₹0', hint: 'Estimate at 10%' },
+  { label: 'Local Vendors', value: data?.localVendorCount || '0', hint: 'Active CampusBites stalls' },
+];
+
+const mergeFeed = (ordersData: { orders?: any[] } | null, basketsData: any[] | null): LiveOrder[] => {
+  const orders = (Array.isArray(ordersData?.orders) ? ordersData!.orders! : []).map(mapOrder);
+  const baskets = (Array.isArray(basketsData) ? basketsData : []).map(mapBasket);
+  return [...orders, ...baskets]
+    .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+    .slice(0, ORDER_FEED_LIMIT);
+};
+
+/** Last numbers/feed this tab loaded (stale-while-revalidate): painted at once, then refreshed. */
+const peekStats = () => {
+  const d = peekCachedJson<any>(STATS_PATH, API_URL);
+  return d ? toStats(d) : null;
+};
+const peekFeed = () => {
+  const o = peekCachedJson<{ orders?: any[] }>(ORDERS_PATH, API_URL);
+  return o ? mergeFeed(o, peekCachedJson<any[]>(BASKETS_PATH, API_URL)) : null;
+};
+
 // ─── Memoized Components for Performance ───────────────────
 const OrderItem = memo(({ order, onVerify, fresh }: { order: LiveOrder, onVerify: (o: LiveOrder) => void, fresh?: boolean }) => {
   const upi = needsUpiCheck(order);
@@ -173,10 +208,7 @@ const OrderItem = memo(({ order, onVerify, fresh }: { order: LiveOrder, onVerify
           {order.deliveryPartnerName ? (
             <>
               <div className="w-5 h-5 rounded-full overflow-hidden border border-white/10 bg-slate-800 flex items-center justify-center text-[10px]">
-                {order.deliveryPartnerPhoto ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={getImageUrl(order.deliveryPartnerPhoto)} width={20} height={20} alt="" className="object-cover w-5 h-5" />
-                ) : '👤'}
+                <ListImage thumb src={getImageUrl(order.deliveryPartnerPhoto)} width={20} height={20} className="object-cover w-5 h-5" fallback="👤" />
               </div>
               <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest truncate max-w-[100px]">
                 {order.deliveryPartnerName}
@@ -251,15 +283,15 @@ export default function AdminHome() {
   const [inbox, setInbox] = useState<Inbox>({ tickets: null, verifications: null, pgBookings: null, wallPending: null, serviceRequests: null });
   const [freshInbox, setFreshInbox] = useState<Partial<Record<InboxKey, boolean>>>({});
 
-  const [stats, setStats] = useState<AdminStat[] | null>(null);
+  const [stats, setStats] = useState<AdminStat[] | null>(peekStats);
   const [statsError, setStatsError] = useState<string | null>(null);
 
-  const [liveOrders, setLiveOrders] = useState<LiveOrder[]>([]);
+  const [liveOrders, setLiveOrders] = useState<LiveOrder[]>(() => peekFeed() || []);
   const [ordersError, setOrdersError] = useState<string | null>(null);
   const [riders, setRiders] = useState<Record<string, RiderPosition>>({});
   const [operationalEvents, setOperationalEvents] = useState<OperationalEvent[]>([]);
   const [interceptedChats, setInterceptedChats] = useState<InterceptedChat[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => peekFeed() === null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
 
@@ -271,14 +303,8 @@ export default function AdminHome() {
 
   const fetchStats = useCallback(async () => {
     try {
-      const data = await apiRequest<any>('/api/admin/stats');
-      setStats([
-        { label: 'Delivered Revenue', value: data?.revenue || '₹0', hint: 'All delivered orders' },
-        { label: 'Active Pipeline', value: data?.activeRevenue || '₹0', hint: `${data?.activeOrders || 0} open orders` },
-        { label: 'Approved Riders', value: data?.activeFleet || '0', hint: 'Fleet size' },
-        { label: 'Commission', value: data?.commission || '₹0', hint: 'Estimate at 10%' },
-        { label: 'Local Vendors', value: data?.localVendorCount || '0', hint: 'Active CampusBites stalls' },
-      ]);
+      const data = await apiRequest<any>(STATS_PATH);
+      setStats(toStats(data));
       setStatsError(null);
     } catch (err) {
       setStatsError(errMsg(err, 'Could not load dashboard numbers.'));
@@ -288,15 +314,10 @@ export default function AdminHome() {
   const fetchOrders = useCallback(async () => {
     try {
       const [ordersData, basketsData] = await Promise.all([
-        apiRequest<{ orders?: any[] }>(`/api/orders?limit=${ORDER_FEED_LIMIT}`),
-        apiRequest<any[]>('/api/mega-basket/admin/all').catch(() => [] as any[]),
+        apiRequest<{ orders?: any[] }>(ORDERS_PATH),
+        apiRequest<any[]>(BASKETS_PATH).catch(() => [] as any[]),
       ]);
-      const orders = (Array.isArray(ordersData?.orders) ? ordersData.orders : []).map(mapOrder);
-      const baskets = (Array.isArray(basketsData) ? basketsData : []).map(mapBasket);
-      const merged = [...orders, ...baskets]
-        .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
-        .slice(0, ORDER_FEED_LIMIT);
-      setLiveOrders(merged);
+      setLiveOrders(mergeFeed(ordersData, basketsData));
       setOrdersError(null);
     } catch (err) {
       setOrdersError(errMsg(err, 'Could not load recent orders.'));
@@ -308,14 +329,15 @@ export default function AdminHome() {
   // Seed the rider list from the database; sockets keep it live afterwards.
   const fetchRiders = useCallback(async () => {
     try {
-      // Page through every rider (100 per page, capped) so riders beyond the newest 100 are on the map too.
-      const list: any[] = [];
-      for (let page = 1; page <= 20; page++) {
-        const data = await apiRequest<{ riders?: any[]; pages?: number }>(`/api/admin/riders?limit=100&page=${page}`);
-        const chunk = Array.isArray(data?.riders) ? data.riders : [];
-        list.push(...chunk);
-        const pages = Number(data?.pages) || 1;
-        if (chunk.length < 100 || page >= pages) break;
+      // Every rider (100 per page, capped at 20 pages) so riders beyond the newest 100 are on the map too.
+      // Page 1 tells us the page count; the rest are fetched in parallel instead of one after another.
+      const riderPage = (page: number) => apiRequest<{ riders?: any[]; pages?: number }>(`/api/admin/riders?limit=100&page=${page}`);
+      const first = await riderPage(1);
+      const list: any[] = Array.isArray(first?.riders) ? [...first.riders] : [];
+      const pages = Math.min(20, Number(first?.pages) || 1);
+      if (list.length >= 100 && pages > 1) {
+        const rest = await Promise.all(Array.from({ length: pages - 1 }, (_, i) => riderPage(i + 2)));
+        rest.forEach(d => { if (Array.isArray(d?.riders)) list.push(...d.riders); });
       }
       setRiders(prev => {
         const next: Record<string, RiderPosition> = { ...prev };
@@ -466,21 +488,25 @@ export default function AdminHome() {
     setOperationalEvents(prev => prev.filter(e => e.id !== eventId));
   }, []);
 
+  // Initial load: all independent reads in parallel (stats, feed, riders, inbox), once per sign-in.
+  // Kept apart from the socket effect below so a socket (re)connect does not reload everything.
   useEffect(() => {
     if (!isAuthed) return;
     fetchStats();
     fetchOrders();
     fetchRiders();
+    fetchInbox();
+  }, [isAuthed, fetchStats, fetchOrders, fetchRiders, fetchInbox]);
 
-    // Polling fallback so the feed never desyncs if a socket event is missed.
-    const pollInterval = setInterval(() => {
-      fetchOrders();
-      throttledFetchStats();
-    }, 15000);
+  // Polling fallback so the feed never desyncs if a socket event is missed: every 15 s while the live
+  // socket is down, every 60 s while it is up (events already refresh the feed), never in a hidden tab.
+  useVisibleInterval(() => {
+    fetchOrders();
+    throttledFetchStats();
+  }, isConnected ? POLL_LIVE_MS : POLL_OFFLINE_MS, isAuthed);
 
-    if (!socket) {
-      return () => clearInterval(pollInterval);
-    }
+  useEffect(() => {
+    if (!isAuthed || !socket) return;
 
     const prependOrder = (entry: LiveOrder) => {
       setLiveOrders(prev => (prev.some(o => o.id === entry.id) ? prev : [entry, ...prev].slice(0, ORDER_FEED_LIMIT)));
@@ -675,7 +701,6 @@ export default function AdminHome() {
     socket.on('admin_intercept_chat', handleInterceptChat);
 
     return () => {
-      clearInterval(pollInterval);
       socket.off('admin_newOrder', handleIncomingOrder);
       socket.off('admin_newMegaBasket', handleIncomingMegaBasket);
       socket.off('statusUpdated', handleStatusUpdated);
@@ -693,11 +718,7 @@ export default function AdminHome() {
       socket.off('admin_intercept_chat', handleInterceptChat);
       if (riderUpdateTimeout) clearTimeout(riderUpdateTimeout);
     };
-  }, [isAuthed, socket, fetchStats, fetchOrders, fetchRiders, throttledFetchStats]);
-
-  useEffect(() => {
-    if (isAuthed) fetchInbox();
-  }, [isAuthed, fetchInbox]);
+  }, [isAuthed, socket, throttledFetchStats]);
 
   // Realtime sync (`admin:changed` / `data:changed`, ids only): refetch just the widgets that changed.
   useLiveSync(LIVE_HOME_TYPES, (events, { reconnect }) => {

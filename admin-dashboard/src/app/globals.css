@@ -30,7 +30,8 @@ body {
     @apply bg-white/[0.02] backdrop-blur-md border border-white/5;
     -webkit-backdrop-filter: blur(12px);
     transform: translateZ(0);
-    will-change: transform;
+    /* No will-change here: .glass is used on hundreds of rows/cards and each one became its own
+       permanently-promoted compositor layer, which made scrolling long lists stutter. */
   }
   
   .glass-card {

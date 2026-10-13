@@ -1,7 +1,8 @@
 "use client";
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAdminAuth } from '@/utils/useAdminAuth';
 import { API_URL } from '@/lib/config';
+import { useVisibleInterval } from '@/lib/useVisibleInterval';
 
 interface BlockStats {
   name: string;
@@ -34,16 +35,16 @@ export default function BlockWarsHUD() {
     }
   }, []);
 
+  const signalRef = useRef({ cancelled: false });
   useEffect(() => {
     if (!isAuthed) return;
     const signal = { cancelled: false };
+    signalRef.current = signal;
     fetchStats(signal);
-    const timer = setInterval(() => fetchStats(signal), REFRESH_MS);
-    return () => {
-      signal.cancelled = true;
-      clearInterval(timer);
-    };
+    return () => { signal.cancelled = true; };
   }, [isAuthed, fetchStats]);
+  // Auto-refresh, paused while the tab is hidden.
+  useVisibleInterval(() => fetchStats(signalRef.current), REFRESH_MS, isAuthed);
 
   const total = stats.reduce((acc, curr) => acc + curr.count, 0);
   const maxCount = Math.max(...stats.map(s => s.count), 1);

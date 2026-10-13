@@ -4,6 +4,7 @@ import { useAdminAuth } from '@/utils/useAdminAuth';
 import { useAdminSocket } from '@/components/AdminSocketProvider';
 import dynamic from 'next/dynamic';
 import { API_URL } from '@/lib/config';
+import { useVisibleInterval } from '@/lib/useVisibleInterval';
 
 const LiveRiderMap = dynamic(() => import('@/components/LiveRiderMap'), { ssr: false, loading: () => <div className="h-[600px] w-full rounded-[40px] bg-blue-900/10 animate-pulse border border-blue-500/20 flex items-center justify-center text-blue-500 font-black tracking-widest uppercase text-xl">Booting God-Mode Map...</div> });
 
@@ -105,7 +106,7 @@ RiderRow.displayName = 'RiderRow';
 
 export default function FleetManagement() {
   const { isAuthed } = useAdminAuth();
-  const { socket } = useAdminSocket();
+  const { socket, isConnected } = useAdminSocket();
 
   const [activeTab, setActiveTab] = useState<'roster' | 'payouts' | 'map'>('roster');
 
@@ -132,7 +133,7 @@ export default function FleetManagement() {
   const fetchRiders = async (page = 1, showSkeleton = true) => {
     try {
       if (showSkeleton) setLoading(true);
-      const res = await fetch(`${API_URL}/api/admin/riders?page=${page}&t=${Date.now()}`, { credentials: 'include', cache: 'no-store' });
+      const res = await fetch(`${API_URL}/api/admin/riders?page=${page}`, { credentials: 'include', cache: 'no-store' });
       if (!res.ok) throw new Error(await readError(res, 'Could not load riders.'));
       const data = await res.json();
       setRiders(Array.isArray(data.riders) ? data.riders : []);
@@ -148,7 +149,7 @@ export default function FleetManagement() {
 
   const fetchPayouts = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/admin/fleet/payouts?t=${Date.now()}`, { credentials: 'include', cache: 'no-store' });
+      const res = await fetch(`${API_URL}/api/admin/fleet/payouts`, { credentials: 'include', cache: 'no-store' });
       if (!res.ok) throw new Error(await readError(res, 'Could not load rider payouts.'));
       const data = await res.json();
       setPayouts(Array.isArray(data) ? data : []);
@@ -166,15 +167,12 @@ export default function FleetManagement() {
     fetchPayouts();
   }, [isAuthed]);
 
-  // 20-second polling fallback alongside socket events
-  useEffect(() => {
-    if (!isAuthed) return;
-    const timer = setInterval(() => {
-      fetchRiders(currentPage, false);
-      fetchPayouts();
-    }, 20000);
-    return () => clearInterval(timer);
-  }, [currentPage, isAuthed]);
+  // Polling fallback alongside socket events: 20 s while the live socket is down, 60 s while it is up;
+  // paused while the tab is hidden.
+  useVisibleInterval(() => {
+    fetchRiders(currentPage, false);
+    fetchPayouts();
+  }, isConnected ? 60000 : 20000, isAuthed);
 
   // Real-time fleet socket events
   useEffect(() => {
@@ -200,9 +198,15 @@ export default function FleetManagement() {
       setRiders(prev => prev.map(r => String(r._id) === riderId ? { ...r, isSosActive: true } : r));
     };
 
+    // Deliveries often complete in bursts: one quiet refresh per 1.5 s window instead of one per event.
+    let deliveryTimer: ReturnType<typeof setTimeout> | null = null;
     const handleDeliveryComplete = () => {
-      fetchRiders(currentPage, false);
-      fetchPayouts();
+      if (deliveryTimer) return;
+      deliveryTimer = setTimeout(() => {
+        deliveryTimer = null;
+        fetchRiders(currentPage, false);
+        fetchPayouts();
+      }, 1500);
     };
 
     socket.on('admin_rider_online', handleRiderOnline);
@@ -217,6 +221,7 @@ export default function FleetManagement() {
       socket.off('admin_rider_status', handleRiderStatus);
       socket.off('sos_received', handleSos);
       socket.off('admin_delivery_complete', handleDeliveryComplete);
+      if (deliveryTimer) clearTimeout(deliveryTimer);
     };
   }, [socket, currentPage]);
 

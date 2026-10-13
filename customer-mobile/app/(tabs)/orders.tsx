@@ -121,6 +121,21 @@ export default function OrdersScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<'ALL' | 'ACTIVE' | 'PAST' | 'SERVICES'>('ALL');
+  // Order history renders 15 cards at a time (it lives inside a ScrollView with the filters and
+  // bookings, so it is paged rather than virtualized); more mount as the user nears the end.
+  const ORDER_PAGE = 15;
+  const [orderLimit, setOrderLimit] = useState(ORDER_PAGE);
+  useEffect(() => { setOrderLimit(ORDER_PAGE); }, [filter]);
+  const growingOrders = useRef(false);
+  const onOrdersScroll = useCallback((e: any) => {
+    const ne = e?.nativeEvent || {};
+    const nearEnd = (ne.contentOffset?.y || 0) + (ne.layoutMeasurement?.height || 0) > (ne.contentSize?.height || 0) - 800;
+    if (nearEnd && !growingOrders.current) {
+      growingOrders.current = true;
+      setOrderLimit((n) => n + ORDER_PAGE);
+      setTimeout(() => { growingOrders.current = false; }, 250);
+    }
+  }, []);
   const [bookings, setBookings] = useState<any[]>([]);
   const [bookingsLoading, setBookingsLoading] = useState(false);
   const [bookingsError, setBookingsError] = useState<string | null>(null);
@@ -610,6 +625,8 @@ export default function OrdersScreen() {
       <AmbientBackground />
       <ScrollView
         showsVerticalScrollIndicator={false}
+        scrollEventThrottle={250}
+        onScroll={onOrdersScroll}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={goldColor} colors={[COLORS.red, COLORS.gold]} />
         }
@@ -726,7 +743,7 @@ export default function OrdersScreen() {
           if (filter === 'ACTIVE') return o.status !== 'Delivered' && o.status !== 'Cancelled';
           if (filter === 'PAST') return o.status === 'Delivered' || o.status === 'Cancelled';
           return true;
-        }).map((o, idx) => {
+        }).slice(0, orderLimit).map((o, idx) => {
           const id = (o._id || o.id || '').slice(-6).toUpperCase();
           const isExpanded = expanded === (o._id || o.id);
           const orderItems: any[] = parseItems(o.items);

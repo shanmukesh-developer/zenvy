@@ -1,5 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Image, Linking, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Linking, ActivityIndicator, Alert } from 'react-native';
+// expo-image (memory + disk cache, downsampled CDN URLs) in place of react-native's Image
+import { CachedImage as Image } from './SafeImage';
 import { useRouter } from 'expo-router';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';

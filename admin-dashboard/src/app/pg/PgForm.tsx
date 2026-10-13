@@ -182,7 +182,7 @@ export function PgForm({ initial, onCancel, onSave }: {
             {form.images.map((url, i) => (
               <div key={`${i}-${url.slice(-12)}`} className="relative">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={url} alt={`Photo ${i + 1}`} className="h-20 w-28 rounded-lg border border-white/10 object-cover" />
+                <img src={url} loading="lazy" decoding="async" alt={`Photo ${i + 1}`} className="h-20 w-28 rounded-lg border border-white/10 object-cover" />
                 <button type="button" onClick={() => set({ images: form.images.filter((_, j) => j !== i) })} className="absolute right-1 top-1 rounded bg-black/70 px-1.5 text-xs text-red-300" aria-label={`Remove photo ${i + 1}`}>Remove</button>
               </div>
             ))}

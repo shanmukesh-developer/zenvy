@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAdminAuth } from '@/utils/useAdminAuth';
 import { adminRequest as request } from '@/lib/api';
+import ListImage from '@/components/ListImage';
 
 // Vault = limited daily deals. Claiming one (POST /api/vault/claim/:id in the app) creates a real coupon valid until
 // midnight IST, one claim per deal per person per day, and takes one unit of stock.
@@ -166,8 +167,7 @@ export default function VaultPage() {
             return (
               <article key={item._id} className="flex flex-wrap items-center gap-4 p-4">
                 {item.imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={item.imageUrl} alt="" className="h-14 w-14 rounded-lg border border-white/10 object-cover" />
+                  <ListImage thumb src={item.imageUrl} className="h-14 w-14 rounded-lg border border-white/10 object-cover" fallback={<div aria-hidden className="h-14 w-14 rounded-lg border border-white/10 bg-slate-900" />} />
                 ) : <div aria-hidden className="h-14 w-14 rounded-lg border border-white/10 bg-slate-900" />}
                 <div className="min-w-[200px] flex-1">
                   <div className="flex flex-wrap items-center gap-2">

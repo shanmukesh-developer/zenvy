@@ -1,12 +1,15 @@
 import * as Haptics from 'expo-haptics';
 import React, { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Dimensions, Platform, TextInput, ActivityIndicator, Alert, Modal, Linking, Animated, Vibration, RefreshControl, BackHandler, KeyboardAvoidingView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Platform, TextInput, ActivityIndicator, Alert, Modal, Linking, Animated, Vibration, RefreshControl, BackHandler, KeyboardAvoidingView } from 'react-native';
+// expo-image (memory + disk cache, downsampled CDN URLs) in place of react-native's Image
+import { CachedImage as Image } from '../../components/SafeImage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { COLORS, SHADOWS, RADIUS } from '../../constants/theme';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { apiFetch, readJson, SERVER_BUSY_MESSAGE, NETWORK_ERROR_MESSAGE } from '../../utils/auth';
+import { readCache, writeCache } from '../../utils/swrCache';
 import { ENDPOINTS, API_URL, ZENVY_SUPPORT_PHONE } from '../../constants/api';
 import { useCart, isCustomRequest } from '../../context/CartContext';
 import PromoCarousel from '../../components/PromoCarousel';
@@ -237,10 +240,23 @@ type CatalogueItem = {
 
 // Store types sold on the Food & Basket tab, and the booking-only service types (for "From ₹X" prices).
 const SHOP_TYPES = ['grocery', 'toys', 'seeds', 'electronics'];
+const OTHERS_CATALOGUE_KEY = 'others:catalogue';
+/** Re-focusing the tab within this window reuses what is on screen (live sync covers edits). */
+const FOCUS_REFRESH_MS = 60000;
 const SERVICE_TYPES = ['repairs', 'tailoring', 'print', 'laundry', 'home'];
 const PRODUCT_FALLBACK_IMG = 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=400&q=80';
 // Custom "please buy this for me" requests keep using the Mega Basket shopping flow (POST /api/mega-basket).
 const MEGA_BASKET_VENDOR = 'mega-basket-vendor';
+
+const toCatalogueList = (rawItems: any[]): CatalogueItem[] => {
+  const seen = new Set<string>();
+  const items: CatalogueItem[] = [];
+  rawItems.forEach((raw: any) => {
+    const item = toCatalogueItem(raw);
+    if (item && !item.bookingOnly && !seen.has(item.id)) { seen.add(item.id); items.push(item); }
+  });
+  return items;
+};
 
 const toCatalogueItem = (raw: any): CatalogueItem | null => {
   if (!raw || !raw.id || !raw.name) return null;
@@ -441,6 +457,19 @@ export default function OthersScreen() {
   const [catalogueStatus, setCatalogueStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [serviceFromPrice, setServiceFromPrice] = useState<Record<string, number>>({});
 
+  const catalogueFromNetRef = useRef(false);
+  // Stale-while-revalidate: the last good catalogue paints at once, the network refresh follows.
+  useEffect(() => {
+    let cancelled = false;
+    readCache<any[]>(OTHERS_CATALOGUE_KEY).then((cached) => {
+      if (cancelled || !cached || !Array.isArray(cached.data) || !isMountedRef.current) return;
+      if (catalogueFromNetRef.current) return; // the network already answered
+      setCatalogue(toCatalogueList(cached.data));
+      setCatalogueStatus('ready');
+    });
+    return () => { cancelled = true; };
+  }, []);
+
   const fetchCatalogue = useCallback(async () => {
     setCatalogueStatus(prev => (prev === 'ready' ? prev : 'loading'));
     try {
@@ -453,16 +482,13 @@ export default function OthersScreen() {
       }));
       const ok = settled.filter((r): r is PromiseFulfilledResult<any[]> => r.status === 'fulfilled');
       if (!ok.length) throw (settled[0] as PromiseRejectedResult)?.reason || new Error('catalogue unavailable');
-      const results = ok.map(r => r.value);
-      const seen = new Set<string>();
-      const items: CatalogueItem[] = [];
-      results.flat().forEach((raw: any) => {
-        const item = toCatalogueItem(raw);
-        if (item && !item.bookingOnly && !seen.has(item.id)) { seen.add(item.id); items.push(item); }
-      });
+      const raw = ok.map(r => r.value).flat();
       if (!isMountedRef.current) return;
-      setCatalogue(items);
+      catalogueFromNetRef.current = true;
+      setCatalogue(toCatalogueList(raw));
       setCatalogueStatus('ready');
+      // Only a complete response is cached (a partial one would hide a store on the next open)
+      if (ok.length === settled.length) writeCache(OTHERS_CATALOGUE_KEY, raw);
     } catch (err) {
       console.warn('[OTHERS_CATALOGUE]', err);
       if (isMountedRef.current) setCatalogueStatus(prev => (prev === 'ready' ? prev : 'error'));
@@ -978,19 +1004,30 @@ export default function OthersScreen() {
   }, []);
 
   // Load whatever the visible tab needs (on focus, on tab change and on pull-to-refresh).
-  const loadActiveTab = useCallback(() => {
-    const jobs: Promise<any>[] = [fetchServiceability()];
-    if (activeTab === 'food') jobs.push(fetchCatalogue());
-    else if (activeTab === 'services') jobs.push(fetchServicePrices(), fetchCatalogue());
-    else if (activeTab === 'pg') jobs.push(fetchPGs());
-    else if (activeTab === 'coride' && myId) jobs.push(fetchRides(), fetchMyRides());
-    else if (activeTab === 'promos') jobs.push(fetchRewards());
+  // force = pull-to-refresh. Otherwise a job that ran less than FOCUS_REFRESH_MS ago is skipped:
+  // every tab switch used to refire 5-10 requests (serviceability + one per store type).
+  const lastLoadRef = useRef<Record<string, number>>({});
+  const loadActiveTab = useCallback((force = false) => {
+    const jobs: Promise<any>[] = [];
+    // Throttled: shared listings that live sync keeps fresh. Per-user data (rides, rewards) always reloads.
+    const run = (name: string, job: () => Promise<any>, throttle = true) => {
+      const now = Date.now();
+      if (throttle && !force && now - (lastLoadRef.current[name] || 0) < FOCUS_REFRESH_MS) return;
+      lastLoadRef.current[name] = now;
+      jobs.push(job());
+    };
+    run('serviceability', fetchServiceability);
+    if (activeTab === 'food') run('catalogue', fetchCatalogue);
+    else if (activeTab === 'services') { run('servicePrices', fetchServicePrices); run('catalogue', fetchCatalogue); }
+    else if (activeTab === 'pg') run('pg', () => fetchPGs());
+    else if (activeTab === 'coride' && myId) { run('rides', fetchRides, false); run('myRides', fetchMyRides, false); }
+    else if (activeTab === 'promos') run('rewards', fetchRewards, false);
     return Promise.all(jobs);
   }, [activeTab, myId, fetchServiceability, fetchCatalogue, fetchServicePrices, fetchPGs, fetchRides, fetchMyRides, fetchRewards]);
 
   useFocusEffect(
     useCallback(() => {
-      loadActiveTab();
+      loadActiveTab(false);
     }, [loadActiveTab])
   );
 
@@ -1011,7 +1048,7 @@ export default function OthersScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await loadActiveTab();
+      await loadActiveTab(true);
     } finally {
       if (isMountedRef.current) setRefreshing(false);
     }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { API_URL } from '@/lib/config';
 import { useAdminAuth } from '@/utils/useAdminAuth';
 import { useAdminSocket } from '@/components/AdminSocketProvider';
@@ -66,10 +66,32 @@ export default function ServiceBookingsPage() {
 
   const { socket } = useAdminSocket();
 
+  // The block filter is free text: query the server once typing pauses, not on every keystroke.
+  const [blockQuery, setBlockQuery] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setBlockQuery(hostelBlock.trim()), 400);
+    return () => clearTimeout(t);
+  }, [hostelBlock]);
+
+  // Live reloads: the legacy socket events and `admin:changed` both fire for one change, so bursts are
+  // coalesced into one quiet reload (no spinner) instead of one full reload per event.
+  const quietReload = useRef(false);
+  const liveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const liveRefresh = useRef(() => {});
+  liveRefresh.current = () => {
+    if (liveTimer.current) return;
+    liveTimer.current = setTimeout(() => {
+      liveTimer.current = null;
+      quietReload.current = true;
+      setRefreshCount(count => count + 1);
+    }, 800);
+  };
+  useEffect(() => () => { if (liveTimer.current) clearTimeout(liveTimer.current); }, []);
+
   // Reload when a booking is created or cancelled by a customer.
   useEffect(() => {
     if (!socket) return;
-    const onChange = () => setRefreshCount(count => count + 1);
+    const onChange = () => liveRefresh.current();
     socket.on('newServiceBooking', onChange);
     socket.on('serviceCancelled', onChange);
     socket.on('serviceQuoteAccepted', onChange);
@@ -81,19 +103,23 @@ export default function ServiceBookingsPage() {
   }, [socket]);
 
   // Realtime sync: the backend sends `admin:changed` { type: 'service_booking' } for bookings.
-  useLiveSync(['service_booking'], () => setRefreshCount(count => count + 1), { enabled: isAuthed });
+  useLiveSync(['service_booking'], () => liveRefresh.current(), { enabled: isAuthed });
 
   const replaceBooking = (updated: ServiceBooking) => setBookings(prev => prev.map(b => (b.id === updated.id ? { ...b, ...updated } : b)));
 
   useEffect(() => {
     const controller = new AbortController();
+    const quiet = quietReload.current;
+    quietReload.current = false;
     const loadBookings = async () => {
-      setLoading(true);
-      setError('');
+      if (!quiet) {
+        setLoading(true);
+        setError('');
+      }
       const params = new URLSearchParams();
       if (status) params.set('status', status);
       if (serviceType) params.set('serviceType', serviceType);
-      if (hostelBlock.trim()) params.set('hostelBlock', hostelBlock.trim());
+      if (blockQuery) params.set('hostelBlock', blockQuery);
       try {
         const response = await fetch(`${API_URL}/api/services/admin/all?${params.toString()}`, {
           credentials: 'include',
@@ -111,7 +137,7 @@ export default function ServiceBookingsPage() {
     };
     loadBookings();
     return () => controller.abort();
-  }, [status, serviceType, hostelBlock, refreshCount]);
+  }, [status, serviceType, blockQuery, refreshCount]);
 
   const filtered = bookings.filter(booking => {
     const query = search.trim().toLowerCase();
@@ -221,7 +247,7 @@ function Attachment({ url, id }: { url: string; id: string }) {
       <div className="space-y-2">
         <p className="text-xs uppercase tracking-wider text-gray-500">Attachment</p>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={url} alt="Photo attached by the customer" className="max-h-64 rounded border border-white/10 object-contain" />
+        <img src={url} loading="lazy" decoding="async" alt="Photo attached by the customer" className="max-h-64 rounded border border-white/10 object-contain" />
         <a className="inline-block font-bold text-emerald-300 underline" href={url} download={`booking-${id.slice(-8)}.${ext === 'jpeg' ? 'jpg' : ext}`}>Download photo</a>
       </div>
     );

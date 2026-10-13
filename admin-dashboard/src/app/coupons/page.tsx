@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo, useDeferredValue } from 'react';
 import { useAdminAuth } from '@/utils/useAdminAuth';
 import { API_URL } from '@/lib/config';
 import { useLiveSync } from '@/lib/useLiveSync';
+import { ListPager, usePagedRows } from '@/components/ListPager';
 
 interface User {
   id: string;
@@ -77,6 +78,8 @@ export default function CouponManagement() {
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const inFlight = useRef(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const showCreateModalRef = useRef(false);
+  showCreateModalRef.current = showCreateModal;
   const [filter, setFilter] = useState<Filter>('all');
   const [listSearch, setListSearch] = useState('');
   const [notice, setNotice] = useState<Notice>(null);
@@ -114,17 +117,26 @@ export default function CouponManagement() {
   }, []);
 
   useEffect(() => {
-    if (isAuthed) {
-      fetchCoupons();
+    if (isAuthed) fetchCoupons();
+  }, [isAuthed, fetchCoupons]);
+
+  // The customer list (up to 500 users) is only needed by the "New coupon" form: load it when the
+  // form opens instead of on every visit to this page.
+  const usersLoaded = useRef(false);
+  useEffect(() => {
+    if (isAuthed && showCreateModal && !usersLoaded.current) {
+      usersLoaded.current = true;
       fetchUsers();
     }
-  }, [isAuthed, fetchCoupons, fetchUsers]);
+  }, [isAuthed, showCreateModal, fetchUsers]);
 
-  // Realtime sync: coupon changes (Vault coupons have their own page) and user changes.
+  // Realtime sync: coupon changes (Vault coupons have their own page). User changes only matter
+  // while the form's customer list is loaded and open (each user event used to refetch 500 users).
   useLiveSync(['coupon', 'user'], (events, { reconnect }) => {
     if (reconnect || events.some(e => e.type === 'coupon' && e.scope !== 'vault')) fetchCoupons();
-    if (reconnect || events.some(e => e.type === 'user')) fetchUsers();
-  }, { enabled: isAuthed });
+    if (showCreateModalRef.current && (reconnect || events.some(e => e.type === 'user'))) fetchUsers();
+    else if (events.some(e => e.type === 'user')) usersLoaded.current = false; // reload next time the form opens
+  }, { enabled: isAuthed, debounceMs: 1000 });
 
   // Older accounts are found with a server-side search (name, phone or email) and merged in.
   useEffect(() => {
@@ -248,16 +260,23 @@ export default function CouponManagement() {
   };
 
   const term = userSearch.trim().toLowerCase();
-  const filteredUsers = term
+  const filteredUsers = useMemo(() => (term
     ? users.filter(u => u.name?.toLowerCase().includes(term) || u.phone?.toLowerCase().includes(term))
-    : [];
+    : []), [users, term]);
 
-  const listTerm = listSearch.trim().toLowerCase();
-  const visibleCoupons = coupons.filter(c =>
+  // Deferred so typing stays responsive while the (possibly long) table filters behind it.
+  const listTerm = useDeferredValue(listSearch.trim().toLowerCase());
+  const visibleCouponsAll = useMemo(() => coupons.filter(c =>
     (filter === 'all' || couponState(c) === filter) &&
     (!listTerm || c.code.toLowerCase().includes(listTerm) || c.user?.name?.toLowerCase().includes(listTerm) || c.user?.phone?.includes(listTerm))
+  ), [coupons, filter, listTerm]);
+  const counts = useMemo(
+    () => coupons.reduce((acc, c) => { acc[couponState(c)]++; return acc; }, { active: 0, used: 0, expired: 0 }),
+    [coupons],
   );
-  const counts = coupons.reduce((acc, c) => { acc[couponState(c)]++; return acc; }, { active: 0, used: 0, expired: 0 });
+  // Only 50 rows are rendered at a time.
+  const couponPager = usePagedRows(visibleCouponsAll, 50, `${filter}|${listTerm}`);
+  const visibleCoupons = couponPager.visible;
 
   if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Checking access…</div>;
 
@@ -317,7 +336,7 @@ export default function CouponManagement() {
             <p className="text-xs text-red-400 font-bold">{loadError}</p>
             <button onClick={fetchCoupons} className="mt-3 px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black uppercase text-gray-300 hover:text-white">Try again</button>
           </div>
-        ) : visibleCoupons.length === 0 ? (
+        ) : visibleCouponsAll.length === 0 ? (
           <div className="py-20 text-center text-gray-500 text-xs">
             {coupons.length === 0 ? 'No coupons yet. Create one with "New coupon".' : 'No coupons match this filter.'}
           </div>
@@ -381,6 +400,7 @@ export default function CouponManagement() {
                 })}
               </tbody>
             </table>
+            <ListPager page={couponPager.page} pages={couponPager.pages} total={couponPager.total} pageSize={couponPager.pageSize} onPage={couponPager.setPage} noun="coupons" />
           </div>
         )}
       </div>

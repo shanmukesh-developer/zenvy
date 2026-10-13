@@ -26,6 +26,7 @@ import { StaggeredSection, FloatingPulse } from '../../components/AnimatedSectio
 import SafeImage from '../../components/SafeImage';
 import { isLocalVendor as isLocalVendorStore, vendorCallNumber, callVendor, STALL_ORDER_COPY, stallPayCopy } from '../../utils/localVendor';
 import { useLiveSync, affectsStore } from '../../utils/useLiveSync';
+import { peekCache, readCache, writeCache, peekCachedRestaurant } from '../../utils/swrCache';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const LOAD_TIMEOUT_MS = 20000;
@@ -46,6 +47,13 @@ const parseJson = (v: any) => {
   try { return JSON.parse(v); } catch { return null; }
 };
 
+const seedRestaurant = (id: string): any => {
+  if (!UUID_RE.test(id)) return null;
+  const hit = peekCache<any>(`restaurant:${id}`) || peekCachedRestaurant(id);
+  if (!hit || SERVICE_CATEGORY_BY_VENDOR[String(hit.vendorType || '').toUpperCase()]) return null;
+  return { ...hit, menu: Array.isArray(hit.menu) ? hit.menu.filter(Boolean) : [] };
+};
+
 const isVegItem = (item: any) =>
   item?.isVegetarian === true || String(item?.isVegetarian).toLowerCase() === 'true' || Number(item?.isVegetarian) === 1;
 
@@ -58,8 +66,10 @@ export default function RestaurantDetail() {
   const { isDark, colors } = useTheme();
   const { dietMode, setDietMode, isItemAllowed } = useDietary();
 
-  const [restaurant, setRestaurant] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  // Instant first paint: this store's last good response, or its entry in the cached home list
+  // (which carries the menu). The network refresh below replaces it a moment later.
+  const [restaurant, setRestaurant] = useState<any>(() => seedRestaurant(id));
+  const [loading, setLoading] = useState(() => !seedRestaurant(id));
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<{ notFound: boolean; message: string } | null>(null);
   const [activeCategory, setActiveCategory] = useState('All');
@@ -75,6 +85,8 @@ export default function RestaurantDetail() {
   }, []);
 
   const isUserElite = !!(user as any)?.isElite;
+  const restaurantRef = useRef<any>(restaurant);
+  restaurantRef.current = restaurant;
 
   const loadRestaurant = useCallback(async (mode: 'initial' | 'refresh' | 'silent' = 'initial') => {
     if (!UUID_RE.test(id)) {
@@ -83,7 +95,19 @@ export default function RestaurantDetail() {
       setLoading(false);
       return;
     }
-    if (mode === 'initial') setLoading(true);
+    if (mode === 'initial') {
+      let seeded = !!restaurantRef.current;
+      if (!seeded) {
+        const cached = await readCache<any>(`restaurant:${id}`);
+        if (cached?.data && mountedRef.current) {
+          setRestaurant(cached.data);
+          seeded = true;
+        }
+      }
+      // With something on screen the refresh runs silently (no spinner); errors keep the cached menu
+      if (seeded) mode = 'silent';
+      else setLoading(true);
+    }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), LOAD_TIMEOUT_MS);
     try {
@@ -98,7 +122,9 @@ export default function RestaurantDetail() {
           router.replace(`/category/${serviceCategory}` as any);
           return;
         }
-        setRestaurant({ ...data, menu: Array.isArray(data.menu) ? data.menu.filter(Boolean) : [] });
+        const fresh = { ...data, menu: Array.isArray(data.menu) ? data.menu.filter(Boolean) : [] };
+        setRestaurant(fresh);
+        writeCache(`restaurant:${id}`, fresh);
         setLoadError(null);
         saveRecentlyViewed({
           id: data._id || data.id,
@@ -118,7 +144,7 @@ export default function RestaurantDetail() {
       }
     } finally {
       clearTimeout(timer);
-      if (mountedRef.current && mode !== 'silent') {
+      if (mountedRef.current) {
         setLoading(false);
         setRefreshing(false);
       }
@@ -335,7 +361,7 @@ export default function RestaurantDetail() {
         {/* Hero Banner */}
         <View style={st.hero}>
           {heroImg ? (
-            <SafeImage source={{ uri: heroImg }} style={st.heroImg} />
+            <SafeImage source={{ uri: heroImg }} style={st.heroImg} maxWidth={800} />
           ) : (
             <View style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#1A1A1F' : '#FDE8EA' }}>
               <Text style={{ fontSize: 64 }}>{isLocalVendor ? '🏪' : '🍽️'}</Text>

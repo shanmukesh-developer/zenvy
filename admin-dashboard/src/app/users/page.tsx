@@ -166,8 +166,9 @@ export default function UserManagement() {
 
   // The search runs on the server (name, phone or email across ALL users), not just the loaded page.
   const searchRef = useRef('');
-  const fetchUsers = useCallback(async (page = 1) => {
-    setLoading(true);
+  // quiet = background refresh (realtime event): keep the table on screen instead of a spinner.
+  const fetchUsers = useCallback(async (page = 1, quiet = false) => {
+    if (!quiet) setLoading(true);
     setLoadError(null);
     try {
       const q = searchRef.current.trim();
@@ -179,16 +180,18 @@ export default function UserManagement() {
       setUserPages(Math.max(1, data.pages || 1));
       setUserPage(page);
     } catch (err) {
-      setLoadError(err instanceof TypeError ? 'Could not reach the server. Check your connection.' : (err as Error).message || FRIENDLY_FALLBACK);
+      if (!quiet) setLoadError(err instanceof TypeError ? 'Could not reach the server. Check your connection.' : (err as Error).message || FRIENDLY_FALLBACK);
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, []);
 
+  const logsLoaded = useRef(false);
   const fetchLogs = useCallback(async (page = 1) => {
     setLogsLoading(true);
     setLogsError(null);
     try {
+      logsLoaded.current = true;
       const res = await fetch(`${API_URL}/api/admin/audit?page=${page}`, { cache: 'no-store' });
       if (!res.ok) throw new Error(await readError(res, 'Could not load the audit log.'));
       const data = await res.json();
@@ -214,11 +217,15 @@ export default function UserManagement() {
   useEffect(() => {
     if (!isAuthed) return;
     fetchUsers(1);
-    fetchLogs(1);
-  }, [isAuthed, fetchUsers, fetchLogs]);
+  }, [isAuthed, fetchUsers]);
 
-  // Realtime sync: another admin (or the app) changed a user; refetch the page being shown.
-  useLiveSync(['user'], () => { fetchUsers(userPage); }, { enabled: isAuthed });
+  // The audit log is a separate tab: load it the first time that tab is opened, not on every visit.
+  useEffect(() => {
+    if (isAuthed && activeTab === 'audit' && !logsLoaded.current) fetchLogs(1);
+  }, [isAuthed, activeTab, fetchLogs]);
+
+  // Realtime sync: another admin (or the app) changed a user; quietly refetch the page being shown.
+  useLiveSync(['user'], () => { fetchUsers(userPage, true); }, { enabled: isAuthed, debounceMs: 1000 });
 
   // Debounced server-side search: typing re-queries page 1 with ?search=.
   useEffect(() => {
@@ -245,7 +252,7 @@ export default function UserManagement() {
       const data = await res.json().catch(() => ({}));
       onSuccess(data);
       setNotice({ kind: 'ok', text: successText });
-      fetchLogs(logPage);
+      if (logsLoaded.current) fetchLogs(logPage);
       return true;
     } catch (err) {
       setNotice({ kind: 'error', text: err instanceof TypeError ? 'Could not reach the server. Nothing was changed.' : (err as Error).message || failText });
@@ -314,6 +321,14 @@ export default function UserManagement() {
     );
   };
 
+  // Stable handler identities so the memoized UserCards do not all re-render on every keystroke
+  // in the search box (the handlers themselves change every render).
+  const handlersRef = useRef({ toggleElite, toggleBan, adjustWallet });
+  handlersRef.current = { toggleElite, toggleBan, adjustWallet };
+  const onToggleElite = useCallback((u: User) => handlersRef.current.toggleElite(u), []);
+  const onToggleBan = useCallback((u: User) => handlersRef.current.toggleBan(u), []);
+  const onAdjustWallet = useCallback((u: User, amount: number) => handlersRef.current.adjustWallet(u, amount), []);
+
   const filteredUsers = users;
 
   if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Checking access…</div>;
@@ -362,9 +377,9 @@ export default function UserManagement() {
                   user={user}
                   busy={busyId === user._id}
                   isSelf={!!me?.id && String(me.id) === String(user._id)}
-                  onToggleElite={toggleElite}
-                  onToggleBan={toggleBan}
-                  onAdjustWallet={adjustWallet}
+                  onToggleElite={onToggleElite}
+                  onToggleBan={onToggleBan}
+                  onAdjustWallet={onAdjustWallet}
                 />
               ))}
             </div>

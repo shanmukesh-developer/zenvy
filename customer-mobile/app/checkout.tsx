@@ -30,6 +30,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { apiFetch } from '../utils/auth';
+import { readCache, writeCache } from '../utils/swrCache';
 import { StaggeredSection, FloatingPulse, BounceIn } from '../components/AnimatedSection';
 import DopaminePressable, { ActionPressable } from '../components/DopaminePressable';
 import { stallErrorMessage, stallPayCopy } from '../utils/localVendor';
@@ -165,21 +166,28 @@ export default function CheckoutScreen() {
   // Hostel blocks per campus come from the campus directory (admin-managed)
   useEffect(() => {
     let cancelled = false;
+    const apply = (data: any[]) => {
+      const map: Record<string, string[]> = {};
+      data.forEach((c: any) => {
+        const code = String(c?.code || '').toUpperCase().replace(/[^A-Z]/g, '');
+        const match = CAMPUSES.find((k) => code.startsWith(k.code));
+        const blocks = c?.settings?.hostelBlocks;
+        if (match && Array.isArray(blocks)) {
+          map[match.key] = blocks.filter((b: any) => typeof b === 'string' && b.trim()).slice(0, 16);
+        }
+      });
+      setCampusBlocks(map);
+    };
     (async () => {
+      // The campus directory rarely changes: chips paint from the last good copy, then refresh
+      const cached = await readCache<any[]>('campus:campuses');
+      if (!cancelled && cached && Array.isArray(cached.data)) apply(cached.data);
       try {
-        const res = await fetch(`${API_URL}/api/campus/campuses`);
+        const res = await apiFetch(`${API_URL}/api/campus/campuses`);
         const data = await res.json().catch(() => null);
         if (cancelled || !res.ok || !Array.isArray(data)) return;
-        const map: Record<string, string[]> = {};
-        data.forEach((c: any) => {
-          const code = String(c?.code || '').toUpperCase().replace(/[^A-Z]/g, '');
-          const match = CAMPUSES.find((k) => code.startsWith(k.code));
-          const blocks = c?.settings?.hostelBlocks;
-          if (match && Array.isArray(blocks)) {
-            map[match.key] = blocks.filter((b: any) => typeof b === 'string' && b.trim()).slice(0, 16);
-          }
-        });
-        setCampusBlocks(map);
+        writeCache('campus:campuses', data);
+        apply(data);
       } catch {
         // Chips are a shortcut only; the address field always works.
       }

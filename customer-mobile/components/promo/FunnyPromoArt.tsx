@@ -31,6 +31,7 @@ import Svg, {
   Text as SvgText,
 } from 'react-native-svg';
 import { Image } from 'expo-image';
+import { optimizeImageUri } from '../SafeImage';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared types & keyframe helpers
@@ -2207,7 +2208,7 @@ export const PolaroidArt = memo(function PolaroidArt({ active, size = 320, reduc
         ]}
       >
         <View style={{ width: 92, height: 86, borderRadius: 2, overflow: 'hidden', backgroundColor: '#E5E7EB' }}>
-          <Image source={{ uri: imageUrl }} style={{ width: 92, height: 86 }} contentFit="cover" onError={() => setFailed(true)} />
+          <Image source={{ uri: optimizeImageUri(imageUrl, 200) }} cachePolicy="memory-disk" style={{ width: 92, height: 86 }} contentFit="cover" onError={() => setFailed(true)} />
           {/* print vignette + moving sheen across the glossy photo */}
           <Svg width={92} height={86} viewBox="0 0 92 86" style={A({ left: 0, top: 0 })}>
             <Defs>

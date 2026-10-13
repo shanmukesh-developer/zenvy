@@ -3,6 +3,10 @@ import React, { useEffect, useState, createContext, useContext, useRef, useCallb
 import { io, Socket } from 'socket.io-client';
 import { SOCKET_URL } from '@/lib/config';
 import { getToken, subscribe } from '@/lib/session';
+import { invalidateRequestCache } from '@/lib/requestCache';
+
+// High-frequency events that do not change anything the REST reads return.
+const NON_DATA_EVENTS = new Set(['admin_rider_location', 'admin_intercept_chat']);
 
 
 interface SocketContextType {
@@ -77,7 +81,14 @@ export default function AdminSocketProvider({ children }: { children: React.Reac
       socket.emit('joinAdmin');
     };
 
+    // Any data event means some REST read may now be out of date: drop the short read cache so the
+    // refetch the page does in response gets fresh data (see lib/requestCache).
+    socket.onAny((event: string) => {
+      if (!NON_DATA_EVENTS.has(event)) invalidateRequestCache();
+    });
+
     socket.on('connect', () => {
+      invalidateRequestCache(); // events sent while offline are not replayed
       setIsConnected(true);
       joinAdminRoom();
     });

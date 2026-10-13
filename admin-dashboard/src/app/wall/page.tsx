@@ -6,6 +6,7 @@ import { API_URL } from '@/lib/config';
 import { adminRequest as apiRequest } from '@/lib/api';
 import { useAdminSocket } from '@/components/AdminSocketProvider';
 import { useLiveSync, useFreshIds, liveLabel, FRESH_ROW_CLASS } from '@/lib/useLiveSync';
+import ListImage from '@/components/ListImage';
 
 /** fetch against the one backend; throws an Error carrying the server's friendly `message`. */
 const errMsg = (err: unknown, fallback: string) => (err instanceof Error && err.message ? err.message : fallback);
@@ -547,6 +548,8 @@ export default function WallAdmin() {
                   <div className="relative aspect-square bg-neutral-900">
                     <img
                       src={getImageUrl(sub.imageUrl)}
+                      loading="lazy"
+                      decoding="async"
                       alt="Submission"
                       className="w-full h-full object-cover"
                       onError={(e) => { (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><rect fill="%23111" width="200" height="200"/><text fill="%23333" x="50%" y="50%" text-anchor="middle" dy=".3em" font-size="40">📷</text></svg>'; }}
@@ -565,11 +568,12 @@ export default function WallAdmin() {
                   <div className="p-4 space-y-3">
                     <div className="flex justify-between items-center">
                       <div className="flex items-center gap-2">
-                        {sub.user?.profileImage ? (
-                          <img src={getImageUrl(sub.user.profileImage)} alt="" className="w-7 h-7 rounded-full object-cover border border-white/15" />
-                        ) : (
-                          <div className="w-7 h-7 rounded-full bg-amber-500/20 flex items-center justify-center text-[10px]">👤</div>
-                        )}
+                        <ListImage
+                          thumb
+                          src={getImageUrl(sub.user?.profileImage ?? null)}
+                          className="w-7 h-7 rounded-full object-cover border border-white/15"
+                          fallback={<div className="w-7 h-7 rounded-full bg-amber-500/20 flex items-center justify-center text-[10px]">👤</div>}
+                        />
                         <span className="text-xs font-bold text-white">{sub.user?.name || 'Unknown'}</span>
                       </div>
                       <span className="text-[9px] text-gray-500">{formatDate(sub.createdAt)}</span>
@@ -628,6 +632,8 @@ export default function WallAdmin() {
                     <div className="h-48 bg-neutral-900 relative">
                       <img
                         src={getImageUrl(entry.winningSubmission.imageUrl)}
+                        loading="lazy"
+                        decoding="async"
                         alt="Winner"
                         className="w-full h-full object-cover opacity-80"
                       />

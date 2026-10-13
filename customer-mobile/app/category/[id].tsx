@@ -25,6 +25,7 @@ import { useCart, MAX_ITEM_QTY, newIdempotencyKey } from '../../context/CartCont
 import { API_URL } from '../../constants/api';
 import { apiFetch } from '../../utils/auth';
 import { useLiveSync } from '../../utils/useLiveSync';
+import { readCache, writeCache } from '../../utils/swrCache';
 import SafeImage from '../../components/SafeImage';
 import { ShimmerCard } from '../../components/ShimmerLoader';
 
@@ -231,6 +232,42 @@ export default function CategoryDetailScreen() {
     if (u?.phone) setContactPhone((prev) => prev || u.phone);
   }, [user]);
 
+  const applyCatalogue = useCallback((data: any) => {
+    const storeMap: Record<string, StoreInfo> = {};
+    (Array.isArray(data.stores) ? data.stores : []).forEach((st: any) => {
+      const sid = String(st?.id || st?._id || '');
+      if (sid) storeMap[sid] = {
+        id: sid,
+        name: String(st.name || ''),
+        isOpen: st.isOpen !== false,
+        opensAt: st.opensAt || null,
+        closedReason: st.closedReason || null,
+      };
+    });
+    setStores(storeMap);
+    setItems(data.items.map((it: any) => {
+      const price = Number(it.price) || 0;
+      const original = Number(it.originalPrice) || 0;
+      return {
+        id: String(it.id || it._id),
+        name: String(it.name || ''),
+        price,
+        originalPrice: original > price ? original : null,
+        discountPercent: original > price ? (Number(it.discountPercent) || Math.round((1 - price / original) * 100)) : null,
+        image: it.imageUrl || it.image || null,
+        emoji: it.emoji || null,
+        desc: String(it.description || ''),
+        weight: it.weight || null,
+        restaurantId: String(it.restaurantId || it.storeId || ''),
+        restaurantName: String(it.storeName || ''),
+        storeId: String(it.storeId || it.restaurantId || ''),
+        bookingOnly: !!it.bookingOnly,
+        orderable: it.orderable !== false && it.isAvailable !== false,
+        inStock: it.isAvailable !== false,
+      } as CatalogueItem;
+    }));
+  }, []);
+
   // 'silent' = live-sync background refresh: keep what is on screen, no spinner, no error screen
   const fetchCategoryItems = useCallback(async (mode: 'initial' | 'refresh' | 'silent' = 'initial') => {
     if (!CATEGORY_META[categoryId]) {
@@ -238,58 +275,37 @@ export default function CategoryDetailScreen() {
       setLoading(false);
       return;
     }
-    if (mode === 'initial') setLoading(true);
+    const url = `${API_URL}/api/catalogue/items?type=${encodeURIComponent(categoryId)}&includeUnavailable=true`;
+    const cacheKey = `catalogue:${categoryId}:all`;
+    if (mode === 'initial') {
+      // Stale-while-revalidate: show the last good shelf at once, refresh silently behind it
+      const cached = await readCache<any>(cacheKey);
+      if (cached?.data && Array.isArray(cached.data.items) && mountedRef.current) {
+        applyCatalogue(cached.data);
+        setLoading(false);
+        mode = 'silent';
+      } else setLoading(true);
+    }
     try {
-      const res = await fetch(`${API_URL}/api/catalogue/items?type=${encodeURIComponent(categoryId)}&includeUnavailable=true`);
+      const res = await apiFetch(url);
       const data = await res.json().catch(() => null);
       if (!mountedRef.current) return;
       if (!res.ok || !data || !Array.isArray(data.items)) {
         if (mode !== 'silent') setLoadError((data && typeof data.message === 'string' && data.message) || 'We could not load this store right now.');
         return;
       }
-      const storeMap: Record<string, StoreInfo> = {};
-      (Array.isArray(data.stores) ? data.stores : []).forEach((st: any) => {
-        const sid = String(st?.id || st?._id || '');
-        if (sid) storeMap[sid] = {
-          id: sid,
-          name: String(st.name || ''),
-          isOpen: st.isOpen !== false,
-          opensAt: st.opensAt || null,
-          closedReason: st.closedReason || null,
-        };
-      });
-      setStores(storeMap);
-      setItems(data.items.map((it: any) => {
-        const price = Number(it.price) || 0;
-        const original = Number(it.originalPrice) || 0;
-        return {
-          id: String(it.id || it._id),
-          name: String(it.name || ''),
-          price,
-          originalPrice: original > price ? original : null,
-          discountPercent: original > price ? (Number(it.discountPercent) || Math.round((1 - price / original) * 100)) : null,
-          image: it.imageUrl || it.image || null,
-          emoji: it.emoji || null,
-          desc: String(it.description || ''),
-          weight: it.weight || null,
-          restaurantId: String(it.restaurantId || it.storeId || ''),
-          restaurantName: String(it.storeName || ''),
-          storeId: String(it.storeId || it.restaurantId || ''),
-          bookingOnly: !!it.bookingOnly,
-          orderable: it.orderable !== false && it.isAvailable !== false,
-          inStock: it.isAvailable !== false,
-        } as CatalogueItem;
-      }));
+      applyCatalogue(data);
+      writeCache(cacheKey, data);
       setLoadError(null);
     } catch {
       if (mountedRef.current && mode !== 'silent') setLoadError("Can't reach Zenvy right now. Check your internet and try again.");
     } finally {
-      if (mountedRef.current && mode !== 'silent') {
+      if (mountedRef.current) {
         setLoading(false);
         setRefreshing(false);
       }
     }
-  }, [categoryId]);
+  }, [categoryId, applyCatalogue]);
 
   useEffect(() => {
     fetchCategoryItems('initial');
@@ -307,9 +323,9 @@ export default function CategoryDetailScreen() {
   };
 
   const q = searchQuery.trim().toLowerCase();
-  const filteredItems = q
+  const filteredItems = useMemo(() => (q
     ? items.filter(item => item.name.toLowerCase().includes(q) || item.desc.toLowerCase().includes(q))
-    : items;
+    : items), [items, q]);
 
   // A closed store (outside its hours) can be browsed but not ordered from
   const closedStore = useMemo(() => Object.values(stores).find((st) => !st.isOpen) || null, [stores]);
@@ -605,6 +621,10 @@ export default function CategoryDetailScreen() {
           data={filteredItems}
           keyExtractor={(item) => item.id}
           numColumns={2}
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          windowSize={7}
+          removeClippedSubviews={Platform.OS === 'android'}
           contentContainerStyle={s.listContent}
           columnWrapperStyle={s.columnWrapper}
           showsVerticalScrollIndicator={false}
@@ -620,7 +640,7 @@ export default function CategoryDetailScreen() {
               <View style={[s.card, { backgroundColor: cardBg, borderColor: border }]}>
                 <View style={s.imageBox}>
                   {item.image ? (
-                    <SafeImage source={{ uri: item.image }} style={[s.cardImg, soldOut && { opacity: 0.45 }]} />
+                    <SafeImage source={{ uri: item.image }} style={[s.cardImg, soldOut && { opacity: 0.45 }]} maxWidth={300} />
                   ) : (
                     <View style={{ width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#1F1F23' : '#F3F4F6' }}>
                       <Text style={{ fontSize: 40 }}>{item.emoji || meta.icon}</Text>

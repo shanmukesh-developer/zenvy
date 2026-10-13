@@ -313,6 +313,7 @@ export default function TrackingScreen() {
     // and never once the order is delivered or cancelled.
     const poll = setInterval(() => {
       if (isTerminalStep(statusRef.current)) return;
+      if (AppState.currentState !== 'active') return; // the foreground listener below re-syncs on return
       const since = Date.now() - lastFetchRef.current;
       if (since < (socket.connected ? 30000 : 10000)) return;
       fetchOrder();

@@ -8,6 +8,7 @@
  * renders, and the session is dropped on 401 / failed re-checks.
  */
 import { API_URL } from './config';
+import { clearRequestCache, setPeekTokenSource } from './requestCache';
 
 export type AuthStatus = 'checking' | 'authed' | 'denied' | 'error';
 
@@ -63,6 +64,7 @@ export function getToken(): string | null {
   loadToken();
   return memoryToken;
 }
+setPeekTokenSource(getToken);
 
 export function getAuthState(): AuthState {
   return state;
@@ -82,6 +84,7 @@ export function subscribe(listener: () => void): () => void {
 /** Called after a successful admin login. */
 export function startSession(token: string, user: AdminUser) {
   loadToken();
+  clearRequestCache();
   memoryToken = token;
   try {
     window.sessionStorage.setItem(TOKEN_KEY, token);
@@ -94,6 +97,7 @@ export function startSession(token: string, user: AdminUser) {
 /** Drops the local session. `message` is shown on the login page. */
 export function clearSession(message: string | null = null) {
   loadToken();
+  clearRequestCache(); // cached admin data never outlives the session that loaded it
   memoryToken = null;
   inflight = null;
   try {

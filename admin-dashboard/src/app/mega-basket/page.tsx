@@ -110,25 +110,41 @@ export default function MegaBasketAdminPage() {
 
   // Reload when a customer creates a new basket, or a basket's status changes (the backend sends
   // `statusUpdated` { id, status } to admin-room; orders use the same event, so only known basket ids count).
+  // Bursts of events become one quiet reload (no spinner) per 800 ms window.
+  const quietReload = useRef(false);
   useEffect(() => {
     if (!socket) return;
-    const onNew = () => setRefreshCount(count => count + 1);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const bump = () => {
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        quietReload.current = true;
+        setRefreshCount(count => count + 1);
+      }, 800);
+    };
+    const onNew = () => bump();
     const onStatus = (payload: { id?: string | number } | undefined) => {
-      if (payload?.id != null && basketIdsRef.current.has(String(payload.id))) setRefreshCount(count => count + 1);
+      if (payload?.id != null && basketIdsRef.current.has(String(payload.id))) bump();
     };
     socket.on('admin_newMegaBasket', onNew);
     socket.on('statusUpdated', onStatus);
     return () => {
       socket.off('admin_newMegaBasket', onNew);
       socket.off('statusUpdated', onStatus);
+      if (timer) clearTimeout(timer);
     };
   }, [socket]);
 
   useEffect(() => {
     const controller = new AbortController();
+    const quiet = quietReload.current;
+    quietReload.current = false;
     const loadBaskets = async () => {
-      setLoading(true);
-      setError('');
+      if (!quiet) {
+        setLoading(true);
+        setError('');
+      }
       try {
         const response = await fetch(`${API_URL}/api/mega-basket/admin/all`, {
           credentials: 'include',

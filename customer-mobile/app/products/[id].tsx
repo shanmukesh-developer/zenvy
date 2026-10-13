@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Image,
   Dimensions,
   Platform,
   ActivityIndicator,
@@ -16,6 +15,9 @@ import {
   Share,
   KeyboardAvoidingView,
 } from 'react-native';
+// expo-image (memory + disk cache, downsampled CDN URLs) in place of react-native's Image
+import { CachedImage as Image } from '../../components/SafeImage';
+import { peekCache, readCache, writeCache, peekCachedRestaurant } from '../../utils/swrCache';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS, SHADOWS, RADIUS } from '../../constants/theme';
@@ -180,35 +182,60 @@ export default function ProductDetailScreen() {
     }
   }, []);
 
+  const applyStore = useCallback((data: any, productId: string) => {
+    setStore(data);
+    const menu = Array.isArray(data?.menu) ? data.menu : [];
+    setMoreItems(
+      menu
+        .filter((m: any) => m && (m.id || m._id) && (m.id || m._id) !== productId && m.isAvailable !== false)
+        .slice(0, 10)
+    );
+  }, []);
+
   const loadStoreAndMore = useCallback(async (restaurantId: string, productId: string) => {
+    // The store is usually already cached (home list / store screen): show it while it refreshes
+    const cachedStore = peekCache<any>(`restaurant:${restaurantId}`) || peekCachedRestaurant(restaurantId);
+    if (cachedStore && mountedRef.current) applyStore(cachedStore, productId);
     try {
       const res = await apiFetch(`/api/users/restaurants/${encodeURIComponent(restaurantId)}`);
       if (!res.ok) return;
       const data = await res.json();
       if (!mountedRef.current) return;
-      setStore(data);
-      const menu = Array.isArray(data?.menu) ? data.menu : [];
-      setMoreItems(
-        menu
-          .filter((m: any) => m && (m.id || m._id) && (m.id || m._id) !== productId && m.isAvailable !== false)
-          .slice(0, 10)
-      );
+      applyStore(data, productId);
+      if (data && (data.id || data._id)) writeCache(`restaurant:${restaurantId}`, data);
     } catch (e) {
       console.warn('[ProductDetail] store load failed:', e);
     }
-  }, []);
+  }, [applyStore]);
 
   // silent = live-sync background refresh: keep the page on screen, no spinner, no error screen
   const loadProduct = useCallback(async (opts?: { silent?: boolean }) => {
-    const silent = !!opts?.silent;
-    if (!silent) {
-      setLoadState('loading');
-      setLoadMessage('');
-    }
+    let silent = !!opts?.silent;
+    let storeRequested: string | null = null;
     if (!cleanId || !UUID_RE.test(cleanId)) {
       setProduct(null);
       setLoadState('notfound');
       return;
+    }
+    if (!silent) {
+      // Reviews only need the id: load them alongside the product, not after it
+      loadReviews(cleanId);
+      // Stale-while-revalidate: the last good copy of this product paints at once
+      const cached = await readCache<any>(`product:${cleanId}`);
+      if (!mountedRef.current) return;
+      if (cached?.data && cached.data.id) {
+        setProduct(cached.data);
+        setActiveImgIndex(0);
+        setLoadState('ready');
+        if (cached.data.restaurantId) {
+          storeRequested = String(cached.data.restaurantId);
+          loadStoreAndMore(cached.data.restaurantId, cached.data.id);
+        }
+        silent = true;
+      } else {
+        setLoadState('loading');
+        setLoadMessage('');
+      }
     }
     try {
       const res = await apiFetch(`/api/users/products/${encodeURIComponent(cleanId)}`);
@@ -268,11 +295,11 @@ export default function ProductDetailScreen() {
         isEliteOnly: !!data.isEliteOnly,
       };
       setProduct(resolved);
+      writeCache(`product:${cleanId}`, resolved);
       if (silent) setActiveImgIndex((i) => (i < images.length ? i : 0));
       else setActiveImgIndex(0);
       setLoadState('ready');
-      if (!silent) loadReviews(resolved.id);
-      if (resolved.restaurantId) loadStoreAndMore(resolved.restaurantId, resolved.id);
+      if (resolved.restaurantId && String(resolved.restaurantId) !== storeRequested) loadStoreAndMore(resolved.restaurantId, resolved.id);
     } catch (err) {
       console.warn('[ProductDetail] load failed:', err);
       if (mountedRef.current && !silent) setLoadState('error');

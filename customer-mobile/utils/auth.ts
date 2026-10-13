@@ -104,12 +104,39 @@ const fetchWithTimeout = async (url: string, options: RequestInit = {}): Promise
   }
 };
 
+// Identical GETs already on the wire share one request (several screens/components ask for the same
+// list on mount). Each caller gets its own clone so every body can be read independently.
+const inflightGets = new Map<string, Promise<Response>>();
+
 // ── Authenticated Fetch ───────────────────────────────────────────────────────
 export const apiFetch = async (
   url: string,
   options: RequestInit = {}
 ): Promise<Response> => {
-  const token = await getToken();
+  const method = String(options.method || 'GET').toUpperCase();
+  if (method === 'GET' && !options.signal && !options.body) {
+    const token = await getToken();
+    const fullUrl = url.startsWith('http') ? url : `${API_URL}${url}`;
+    const key = `${token || ''}|${fullUrl}|${JSON.stringify(options.headers || {})}`;
+    let shared = inflightGets.get(key);
+    if (!shared) {
+      shared = apiFetchRaw(url, options, token);
+      inflightGets.set(key, shared);
+      const clear = () => { if (inflightGets.get(key) === shared) inflightGets.delete(key); };
+      shared.then(clear, clear);
+    }
+    const res = await shared;
+    return res.clone();
+  }
+  return apiFetchRaw(url, options);
+};
+
+const apiFetchRaw = async (
+  url: string,
+  options: RequestInit = {},
+  knownToken?: string | null
+): Promise<Response> => {
+  const token = knownToken !== undefined ? knownToken : await getToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string>),
