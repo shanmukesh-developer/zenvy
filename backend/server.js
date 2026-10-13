@@ -1070,6 +1070,16 @@ const initializeApp = async () => {
       console.warn('⚠️ [DEMO_CLEANUP] not started:', cleanupErr.message);
     }
 
+    // 🍽️ Remove the template dishes a deleted bulk seed copied into every store (backed up first).
+    try {
+      const { runTemplateMenuCleanup } = require('./scripts/remove_template_menu_items');
+      runTemplateMenuCleanup()
+        .then((r) => console.log('🍽️ [TEMPLATE_MENU_CLEANUP]', JSON.stringify(r)))
+        .catch((err) => console.warn('⚠️ [TEMPLATE_MENU_CLEANUP] failed:', err.message));
+    } catch (menuErr) {
+      console.warn('⚠️ [TEMPLATE_MENU_CLEANUP] not started:', menuErr.message);
+    }
+
     // 🖼️ Legacy base64 images -> CampusMedia short URLs (idempotent, batched, background).
     // Starts a minute after boot so it never competes with startup; set
     // DISABLE_BASE64_MIGRATION=true to switch it off.
