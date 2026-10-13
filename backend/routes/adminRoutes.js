@@ -62,6 +62,20 @@ router.get('/me', (req, res) => {
   res.json({ id, name: name || 'Admin', phone: phone || null, email: email || null, role });
 });
 
+// Mailer check: sends one demo email through Brevo so the admin can confirm BREVO_API_KEY/MAIL_FROM work.
+router.post('/mail/test', async (req, res) => {
+  const { sendMail, isMailerConfigured } = require('../utils/mailer');
+  if (!isMailerConfigured()) return res.status(503).json({ ok: false, reason: 'not_configured' });
+  const to = String(req.body?.to || '').trim();
+  const result = await sendMail({
+    to,
+    subject: 'Zenvy test email',
+    text: 'This is a test email from Zenvy. If you can read this, email delivery (Brevo) is working.',
+    html: '<div style="font-family:Arial,sans-serif;font-size:15px;line-height:22px"><h2 style="margin:0 0 12px">Zenvy test email</h2><p>If you can read this, email delivery (Brevo) is working. College verification codes will arrive the same way.</p></div>',
+  });
+  res.status(result.ok ? 200 : 502).json(result);
+});
+
 // Admin Broadcast Push
 router.post('/broadcast-push', broadcastPushNotification);
 
