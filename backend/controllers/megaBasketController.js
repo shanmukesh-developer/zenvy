@@ -61,9 +61,32 @@ const serverError = (res, tag, error) => {
 
 // @desc    Create a new Mega Basket
 // @route   POST /api/mega-basket
+// Retry key (customer-3), same pattern as createOrder: a repeat returns the first basket with
+// duplicate: true; 409 only while the first request is still running.
+const BASKET_KEY_WINDOW_MS = 24 * 60 * 60 * 1000;
 const createBasket = async (req, res) => {
+  const { readIdempotencyKey, claim } = require('../utils/idempotency');
+  const basketKey = readIdempotencyKey(req, (req.body || {}).idempotencyKey);
+  const slot = claim('mega-basket', req.user.id, basketKey);
+  if (slot.state === 'busy') {
+    return res.status(409).json({ code: 'BASKET_IN_PROGRESS', message: 'Your list is still being placed. Hang tight.' });
+  }
+  if (slot.state === 'done') return res.status(slot.status).json({ ...slot.body, duplicate: true });
+  const replayBasket = async (id) => {
+    const MegaBasket = getMegaBasketModel();
+    const existing = await MegaBasket.findByPk(id, { include: [{ model: getMegaBasketItemModel(), as: 'items' }] });
+    return existing ? res.status(200).json({ ...existing.toJSON(), duplicate: true }) : null;
+  };
   try {
-    const { items, deliveryAddress, paymentMethod, upiUTR } = req.body;
+    const { items, deliveryAddress, paymentMethod, upiUTR } = req.body || {};
+    // Survives restarts: the key is stored on the basket itself.
+    if (basketKey) {
+      const stored = await getMegaBasketModel().findOne({
+        where: { userId: req.user.id, idempotencyKey: basketKey, createdAt: { [Op.gt]: new Date(Date.now() - BASKET_KEY_WINDOW_MS) } },
+        attributes: ['id'],
+      });
+      if (stored && await replayBasket(stored.id)) return;
+    }
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: 'No items provided in basket' });
@@ -130,9 +153,12 @@ const createBasket = async (req, res) => {
     const MegaBasketItem = getMegaBasketItemModel();
 
     // Basket + items in one transaction: a failure never leaves an empty basket behind.
-    const basket = await MegaBasket.sequelize.transaction(async (t) => {
+    let basket;
+    try {
+    basket = await MegaBasket.sequelize.transaction(async (t) => {
     const created = await MegaBasket.create({
       userId: req.user.id,
+      idempotencyKey: basketKey || null,
       status: initialStatus,
       estimatedTotal,
       actualTotal: null,
@@ -153,6 +179,14 @@ const createBasket = async (req, res) => {
     await MegaBasketItem.bulkCreate(itemsWithBasketId, { transaction: t });
     return created;
     });
+    } catch (createErr) {
+      // Same key raced in from another process: the unique index kept one basket, return it.
+      if (basketKey && createErr && createErr.name === 'SequelizeUniqueConstraintError') {
+        const winner = await MegaBasket.findOne({ where: { userId: req.user.id, idempotencyKey: basketKey }, attributes: ['id'] });
+        if (winner && await replayBasket(winner.id)) return;
+      }
+      throw createErr;
+    }
 
     // Fetch the full basket representation to return
     const createdBasket = await MegaBasket.findByPk(basket.id, {
@@ -172,9 +206,13 @@ const createBasket = async (req, res) => {
       });
     }
 
-    res.status(201).json(createdBasket);
+    const body = createdBasket.toJSON();
+    slot.finish(200, body); // a repeat is answered 200 + duplicate:true
+    res.status(201).json(body);
   } catch (error) {
     serverError(res, '[MEGA_BASKET_ERROR]', error);
+  } finally {
+    slot.release(); // no-op after finish(); frees the key after a refusal so a retry can run
   }
 };
 

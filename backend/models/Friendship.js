@@ -46,6 +46,11 @@ const initFriendshipModel = (sequelize) => {
     icebreaker: {
       type: DataTypes.TEXT,
       allowNull: true
+    },
+    // Who blocked (status 'blocked'). Only this user can unblock; the block applies both ways.
+    blockedBy: {
+      type: DataTypes.UUID,
+      allowNull: true
     }
   }, {
     timestamps: true,

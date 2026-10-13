@@ -67,6 +67,9 @@ const initServiceBookingModel = (sequelize) => {
       type: DataTypes.STRING,
       defaultValue: 'COD',
     },
+    // Client retry key (Idempotency-Key / specifications.clientRequestId), unique per user
+    // (partial index in config/sweepMigrations.js). Never sent back to other users.
+    idempotencyKey: { type: DataTypes.STRING(120), allowNull: true },
     pickupSlot: { type: DataTypes.STRING },
     hostelBlock: { type: DataTypes.STRING },
     roomNumber: { type: DataTypes.STRING },

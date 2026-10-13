@@ -44,8 +44,14 @@ const resolveEmailCampus = async (domain, campusId) => {
   return { allowed, campus, allowedList };
 };
 
+// Friends caches eligibility (verification, campus, DOB) for 30 s; drop it when any of these change.
+const clearFriendsEligibility = (userId) => {
+  try { require('../../friends/services/eligibility').clearEligibility(userId); } catch { /* optional */ }
+};
+
 /** Tells the student's open apps (campus + main namespace) that their verification changed, and pushes. */
 const notifyStudentVerification = async (req, userId, payload, push) => {
+  clearFriendsEligibility(userId);
   try {
     const io = req.app && req.app.get('io');
     if (io) {
@@ -286,7 +292,21 @@ const updateCampusProfile = async (req, res) => {
       }
     }
 
+    // Zenvy Friends: once Connect is activated (or an admin confirmed it) the DOB cannot change.
+    if (dob !== undefined && profile.dobLockedAt && !isAdminCaller) {
+      const current = profile.dob ? String(profile.dob).slice(0, 10) : '';
+      const next = dob ? new Date(dob).toISOString().slice(0, 10) : '';
+      if (next !== current) {
+        return res.status(400).json({
+          code: 'DOB_LOCKED',
+          field: 'dob',
+          message: 'Your date of birth is locked. Contact Zenvy support if it is wrong.'
+        });
+      }
+    }
+
     let isAdult = profile.isAdult;
+    if (dob === null || dob === '') isAdult = false; // unknown age is treated as under 18
     if (dob) {
       const birthDate = new Date(dob);
       const today = new Date();
@@ -311,6 +331,8 @@ const updateCampusProfile = async (req, res) => {
       bio: bio !== undefined ? bio : profile.bio,
       interests: interests !== undefined ? interests : profile.interests,
     });
+
+    clearFriendsEligibility(req.user.id);
 
     // Also sync hostelBlock and roomNumber to User model for food delivery
     if (hostelBlock || roomNumber) {
@@ -643,6 +665,7 @@ const submitIdCard = async (req, res) => {
       idCardImageUrl,
       verificationStatus: 'pending',
     });
+    clearFriendsEligibility(req.user.id);
 
     realtime.notifyAdmin('verification', action, verification.id);
     res.json({

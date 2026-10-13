@@ -1,28 +1,32 @@
 import React from 'react';
 import { View } from 'react-native';
-import { CampusColors } from '../../../constants/campusTheme';
-import { CampusProfileData, CampusUserData } from '../../../types/campus';
-import { CommunityFeed } from '../feed/CommunityFeed';
-import { PulseTab } from './PulseTab';
-import { Segmented, S } from '../ui';
+import { CampusColors } from '../../../../constants/campusTheme';
+import { CampusProfileData, CampusUserData } from '../../../../types/campus';
+import { CommunityFeed } from '../../feed/CommunityFeed';
+import { PulseTab } from '../../tabs/PulseTab';
+import { Segmented, S } from '../../ui';
 
-export type FeedSegment = 'posts' | 'wall' | 'pulse';
+/** Old campus feed segments (deep links: ?segment=posts|wall|pulse). */
+export type LegacyFeedSegment = 'posts' | 'wall' | 'pulse';
 
-interface FeedTabProps {
+export const isLegacyFeedSegment = (v: unknown): v is LegacyFeedSegment => v === 'posts' || v === 'wall' || v === 'pulse';
+
+export interface LegacyPulseProps {
   profile: CampusProfileData | null;
   user: CampusUserData | null;
-  segment: FeedSegment;
-  onChangeSegment: (s: FeedSegment) => void;
+  segment: LegacyFeedSegment;
+  onChangeSegment: (s: LegacyFeedSegment) => void;
   onOpenWhispers: () => void;
   onOpenNightQuestion: () => void;
   onOpenBranchWars: () => void;
 }
 
 /**
- * Feed = everything social on campus in one place:
- * Posts (community posts, reviews, birthdays), The Wall (photo contest), Pulse (Whispers, 9 PM question, Branch Wars).
+ * The campus feed that used to be the Feed tab, kept whole inside Friends > Pulse:
+ * Posts (community posts, reviews, birthdays), The Wall (photo contest), and Whispers & 9 PM
+ * (9 PM question, Branch Wars, Today). Phase 2 folds these into Pulse's Campus Moments strip.
  */
-export const FeedTab: React.FC<FeedTabProps> = ({
+export const LegacyPulse: React.FC<LegacyPulseProps> = ({
   profile,
   user,
   segment,

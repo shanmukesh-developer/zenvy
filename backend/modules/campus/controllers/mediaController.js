@@ -8,7 +8,9 @@ const { getUserModel } = require('../../../models/User');
 const { publicBase } = require('../campusHelpers');
 
 const MAX_BYTES = 5 * 1024 * 1024;
-const PURPOSES = new Set(['id_card', 'chat', 'lost_found', 'avatar', 'post', 'other']);
+const PURPOSES = new Set(['id_card', 'chat', 'lost_found', 'avatar', 'post', 'other', 'connect', 'forum', 'task', 'liveness_selfie']);
+// Served only to the owner, admins, or through a signed link (Connect photos are shown via signed URLs).
+const PRIVATE_PURPOSES = new Set(['id_card', 'connect', 'liveness_selfie']);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Per-user upload budget (in memory; resets on restart, which is fine for abuse control).
@@ -118,7 +120,7 @@ const uploadMedia = async (req, res) => {
         mime,
         size: buf.length,
         sha256,
-        isPrivate: purpose === 'id_card',
+        isPrivate: PRIVATE_PURPOSES.has(purpose),
         bytes: buf,
       });
     }
@@ -132,6 +134,10 @@ const uploadMedia = async (req, res) => {
       imageUrl: publicBase(req) + path,
       mime: row.mime || mime,
       size: row.size || buf.length,
+      purpose,
+      isPrivate: PRIVATE_PURPOSES.has(purpose),
+      // Private uploads (ID card, Connect, liveness) need a signed link to show in an <img> (1 h).
+      ...(PRIVATE_PURPOSES.has(purpose) ? { previewUrl: signedMediaUrl(req, path) } : {}),
     });
   } catch (err) {
     console.error('[CAMPUS_MEDIA_UPLOAD_ERR]', err.message);

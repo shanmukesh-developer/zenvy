@@ -274,7 +274,9 @@ require('./utils/realtime').init(io);
 // ── Startup readiness ──────────────────────
 // The HTTP server listens immediately (Render needs an open port within seconds); the database
 // connect/sync/migrations/imports run afterwards. Until they finish, /api/* answers 503 and new
-// sockets are refused (socket.io clients retry on their own).
+// sockets are refused with connect_error data { code: 'SERVER_STARTING', retryAfter }. A middleware
+// refusal is NOT retried by socket.io itself (socket.active becomes false): clients must call
+// socket.connect() again after retryAfter seconds (the partner apps do).
 let dbReady = false;
 const STARTUP_RETRY_AFTER_SECONDS = 10;
 io.use((socket, next) => {
@@ -553,6 +555,9 @@ app.use('/api', (req, res, next) => {
 const initializeApp = async () => {
   try {
     await connectDB();
+    try {
+      await require('./config/sweepMigrations').runSweepMigrations(require('./config/db').getSequelize());
+    } catch (e) { console.warn('[SWEEP_MIGRATION_WARN]', e.message); }
     try { initWallCron(); } catch (e) { console.error('[WALL_CRON_INIT_ERR]', e); }
 
     app.get('/auth-helper', (req, res) => {
@@ -1612,23 +1617,52 @@ const initializeApp = async () => {
         }
       });
       
+      // Legacy socket SOS (newer rider apps use POST /api/delivery/sos, which also pushes admins).
       socket.on('sos_alert', (data = {}) => {
         if (socket.user && socket.user.role && socket.user.role.toLowerCase() === 'rider' && data?.riderId === socket.user.id) {
           log(`[CRITICAL SOS] Triggered by ${data.riderName} (ID: ${data.riderId}) at ${data.timestamp}`);
           io.to('admin-room').emit('sos_received', data);
+          // Keep it on the rider row so an admin who opens the dashboard later still sees it.
+          try {
+            const { getDeliveryPartnerModel } = require('./models/DeliveryPartner');
+            getDeliveryPartnerModel().update({ isSosActive: true, sosAt: new Date() }, { where: { id: socket.user.id } })
+              .catch((e) => console.warn('[SOS_PERSIST_WARN]', e.message));
+          } catch (e) { console.warn('[SOS_PERSIST_WARN]', e.message); }
         } else {
           console.warn(`[SOCKET_DENIED] Unauthorized sos_alert attempt by user ${socket.user?.id}`);
         }
       });
 
-      socket.on('admin_broadcast', (data = {}) => {
-        // 🛡️ Permission Check: Admin Only
-        if (socket.user && socket.user.role && socket.user.role.toLowerCase() === 'admin') {
-          log(`[MEGAPHONE] Admin broadcast: "${data.message}" (type: ${data.type})`);
-          io.emit('global_announcement', data);
+      // Banner to every connected app. The dashboard waits for the ack ({ ok }) before it shows
+      // success. Only { message (1-300 chars), type } is relayed, never the raw client payload.
+      const BANNER_TYPES = ['info', 'warning', 'promo', 'emergency'];
+      socket.on('admin_broadcast', async (data = {}, ack) => {
+        const reply = typeof ack === 'function' ? ack : () => {};
+        try {
+          // 🛡️ Permission Check: Admin Only (role loaded from the live account at connect)
+          if (!(socket.user && socket.user.role && socket.user.role.toLowerCase() === 'admin')) {
+            console.warn(`[SOCKET_BROADCAST_DENIED] Unauthorized broadcast by ${socket.user?.id}`);
+            return reply({ ok: false, code: 'FORBIDDEN', message: 'Only admins can send banners. Sign in again.' });
+          }
+          const message = typeof data?.message === 'string' ? data.message.replace(/[<>]/g, '').trim() : '';
+          if (!message) return reply({ ok: false, code: 'INVALID_INPUT', message: 'Write the banner message first.' });
+          if (message.length > 300) return reply({ ok: false, code: 'INVALID_INPUT', message: 'Banner messages can be at most 300 characters.' });
+          const type = BANNER_TYPES.includes(data?.type) ? data.type : null;
+          if (!type) return reply({ ok: false, code: 'INVALID_INPUT', message: `Banner type must be one of ${BANNER_TYPES.join(', ')}.` });
+          const banner = { message, type, timestamp: new Date().toISOString() };
+          log(`[MEGAPHONE] Admin broadcast by ${socket.user.id}: "${message}" (type: ${type})`);
+          io.emit('global_announcement', banner);
           require('./utils/realtime').publish('announcement', 'created', null, { scope: 'broadcast' });
-        } else {
-          console.warn(`[SOCKET_BROADCAST_DENIED] Unauthorized broadcast by ${socket.user?.id}`);
+          try {
+            const { getVerificationLogModel } = require('./models/VerificationLog');
+            await getVerificationLogModel().create({ adminId: String(socket.user.id), targetId: 'global', action: 'ADMIN_BANNER_BROADCAST', details: JSON.stringify({ type, message }) });
+          } catch (auditErr) {
+            console.warn('[MEGAPHONE_AUDIT_WARN]', auditErr.message);
+          }
+          reply({ ok: true, sentAt: banner.timestamp });
+        } catch (err) {
+          console.error('[MEGAPHONE_ERROR]', err.message);
+          reply({ ok: false, message: 'Could not send the banner. Please try again.' });
         }
       });
 

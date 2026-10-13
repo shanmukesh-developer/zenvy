@@ -11,6 +11,7 @@ const { normalizePhone } = require('../utils/phoneUtils');
 // ─────────────────────────────────────────────────────────────────────────────
 
 const SESSION_COOKIE_MAX_AGE = 30 * 24 * 60 * 60 * 1000;
+const ADMIN_SESSION_TTL = /^\d+[smhd]$/.test(String(process.env.ADMIN_SESSION_TTL || '')) ? process.env.ADMIN_SESSION_TTL : '12h';
 
 // `tv` = tokenVersion: a password change bumps it and protect() rejects older sessions.
 const generateToken = (id, role, tokenVersion = 0) => {
@@ -19,7 +20,10 @@ const generateToken = (id, role, tokenVersion = 0) => {
     console.error('[AUTH_FATAL] JWT_SECRET is not configured.');
     return null;
   }
-  return jwt.sign({ id, role, tv: Number(tokenVersion) || 0 }, secret, { expiresIn: '30d' });
+  // Admin sessions are short (admin-7): a leaked dashboard token is useless after ADMIN_SESSION_TTL
+  // (default 12 h) instead of 30 days. Customers keep 30-day phone sessions.
+  const isAdminRole = String(role || '').toLowerCase() === 'admin';
+  return jwt.sign({ id, role, tv: Number(tokenVersion) || 0 }, secret, { expiresIn: isAdminRole ? ADMIN_SESSION_TTL : '30d' });
 };
 
 // Indian mobile numbers only (10 digits, starting 6-9)
@@ -113,7 +117,16 @@ const sendSession = async (res, user, status = 200, { skipCookie = false } = {})
   await ensureFriendCode(user);
   const token = generateToken(user.id, user.role, user.tokenVersion);
   if (!token) return res.status(500).json({ message: 'Server configuration error. Please try again later.' });
-  if (!skipCookie) setSessionCookie(res, token);
+  if (!skipCookie) {
+    if (String(user.role || '').toLowerCase() === 'admin') {
+      // Cookie never outlives the (short) admin token.
+      const decoded = jwt.decode(token);
+      const maxAge = decoded && decoded.exp ? Math.max(0, decoded.exp * 1000 - Date.now()) : SESSION_COOKIE_MAX_AGE;
+      res.cookie('token', token, { httpOnly: true, secure: true, sameSite: 'none', maxAge });
+    } else {
+      setSessionCookie(res, token);
+    }
+  }
   return res.status(status).json({ ...sanitizeUser(user), token });
 };
 
@@ -978,11 +991,18 @@ const logoutUser = async (req, res) => {
     let raw = null;
     if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) raw = req.headers.authorization.split(' ')[1];
     else if (req.cookies?.token) raw = req.cookies.token;
-    if (fcmToken && raw && process.env.JWT_SECRET) {
+    if (raw && process.env.JWT_SECRET) {
       const decoded = jwt.verify(raw.replace(/['"]+/g, '').trim(), process.env.JWT_SECRET);
       const User = getUserModel();
       const user = decoded && decoded.id ? await User.findByPk(decoded.id) : null;
-      if (user) {
+      // Admin logout ends every admin session of this account (admin-7): bump tokenVersion only
+      // when the presented token is still current, so a stale token cannot sign others out.
+      if (user && String(user.role || '').toLowerCase() === 'admin'
+        && (Number(decoded.tv) || 0) === (Number(user.tokenVersion) || 0)) {
+        await User.increment('tokenVersion', { by: 1, where: { id: user.id } });
+        require('../middleware/authMiddleware').clearCachedUser(user.id);
+      }
+      if (user && fcmToken) {
         const list = Array.isArray(user.fcmTokens) ? user.fcmTokens : [];
         const filtered = list.filter(t => t && (typeof t === 'string' ? t : t.token) !== fcmToken);
         if (filtered.length !== list.length) {

@@ -16,6 +16,10 @@ const runCampusMigrations = async (sequelize) => {
     { name: 'adminIds', type: "TEXT DEFAULT '[]'" },
     { name: 'pinnedMessageIds', type: "TEXT DEFAULT '[]'" },
     { name: 'onlyAdminsCanSend', type: "BOOLEAN DEFAULT 0" },
+    // Zenvy Friends linked chats (task / connect) and closing.
+    { name: 'refType', type: "VARCHAR(16)" },
+    { name: 'refId', type: "UUID" },
+    { name: 'closedAt', type: "DATETIME" },
   ];
 
   for (const col of conversationCols) {

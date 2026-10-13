@@ -242,6 +242,15 @@ router.get('/recommendations', protect, async (req, res) => {
 // POST /api/features/gift - Send a gift (meal voucher) to another user
 const giftError = (msg) => Object.assign(new Error(msg), { expose: true });
 router.post('/gift', protect, async (req, res) => {
+  // Retry key (customer-1): the app sends the same key for the same recipient + amount until the
+  // server answers. A repeat never charges the wallet twice.
+  const { readIdempotencyKey, claim } = require('../utils/idempotency');
+  const giftKey = readIdempotencyKey(req, (req.body || {}).idempotencyKey);
+  const slot = claim('gift', req.user.id, giftKey);
+  if (slot.state === 'busy') {
+    return res.status(409).json({ code: 'GIFT_IN_PROGRESS', message: 'Your gift is still being sent. Hang tight.' });
+  }
+  if (slot.state === 'done') return res.status(slot.status).json({ ...slot.body, duplicate: true });
   try {
     const { message } = req.body || {};
     const { normalizePhone } = require('../utils/phoneUtils');
@@ -261,10 +270,20 @@ router.post('/gift', protect, async (req, res) => {
 
     let updatedSender;
     let recipientName;
+    let replayed = false;
 
     await sequelize.transaction(async (t) => {
       const sender = await User.findByPk(req.user.id, { transaction: t, lock: true });
       if (!sender) throw giftError('Sender not found');
+      // Same key as the last gift that went through (e.g. a retry after a restart): answer with
+      // that gift instead of sending another one. Checked under the sender's row lock.
+      if (giftKey && sender.lastGiftKey === giftKey) {
+        const recipient = await User.findOne({ where: { phone: recipientPhone }, attributes: ['name'], transaction: t });
+        updatedSender = sender;
+        recipientName = recipient ? recipient.name : 'your friend';
+        replayed = true;
+        return;
+      }
       if (!sender.isElite) throw giftError('Only Elite members can send gifts');
 
       const now = new Date();
@@ -292,6 +311,7 @@ router.post('/gift', protect, async (req, res) => {
 
       sender.walletBalance = (sender.walletBalance || 0) - amount;
       sender.eliteGiftsUsedThisMonth = (sender.eliteGiftsUsedThisMonth || 0) + 1;
+      if (giftKey) sender.lastGiftKey = giftKey;
       await sender.save({ transaction: t });
 
       recipient.walletBalance = (recipient.walletBalance || 0) + amount;
@@ -312,16 +332,20 @@ router.post('/gift', protect, async (req, res) => {
       }
     });
 
-    console.log(`[GIFT] ${updatedSender.name} → ${recipientName}: ₹${amount}`);
-    res.json({
+    if (!replayed) console.log(`[GIFT] ${updatedSender.name} → ${recipientName}: ₹${amount}`);
+    const body = {
       message: `₹${amount} gift sent to ${recipientName}! 🎁`,
-      remainingGifts: 3 - updatedSender.eliteGiftsUsedThisMonth,
+      remainingGifts: Math.max(0, 3 - (updatedSender.eliteGiftsUsedThisMonth || 0)),
       newBalance: updatedSender.walletBalance
-    });
+    };
+    slot.finish(200, body);
+    res.json(replayed ? { ...body, duplicate: true } : body);
   } catch (error) {
     console.error('[GIFT_ERROR]', error);
     if (error.expose) return res.status(400).json({ message: error.message });
     res.status(500).json({ message: 'Could not send the gift right now. Your wallet was not charged.' });
+  } finally {
+    slot.release(); // no-op after finish(); frees the key after any refusal so a retry can run
   }
 });
 

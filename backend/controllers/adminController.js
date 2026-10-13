@@ -90,7 +90,7 @@ const logAuditAction = async (req, targetId, action, details) => {
       adminId: req.user?.id ? req.user.id.toString() : 'admin_default',
       targetId: targetId ? targetId.toString() : 'global',
       action,
-      details: typeof details === 'string' ? details : JSON.stringify(details),
+      details: String(typeof details === 'string' ? details : JSON.stringify(details) ?? '').slice(0, 8000),
     });
   } catch (error) {
     console.error('[AUDIT_LOG_ERROR]', error);
@@ -627,9 +627,29 @@ exports.updateRestaurant = async (req, res) => {
       name: updateData.name !== undefined && updateData.name.toLowerCase() !== String(restaurant.name || '').toLowerCase() ? updateData.name : null,
       phone: updateData.phone && updateData.phone !== restaurant.phone ? updateData.phone : null,
     }, restaurant.id);
+    // Switching a store between stall (Zenvy Vendor app, vendor-delivered) and restaurant / shop
+    // (Zenvy Restaurant app, rider-delivered) changes which app and which order flow it uses.
+    // Refuse while orders are still open, and sign the old partner app out after the switch.
+    let stallSwitched = false;
+    if (updateData.vendorType !== undefined) {
+      const wasStall = isLocalVendorStore(restaurant);
+      const willBeStall = isLocalVendorStore({ vendorType: updateData.vendorType, isLocalVendor: restaurant.isLocalVendor });
+      if (wasStall !== willBeStall) {
+        const open = await getOrderModel().count({ where: { restaurantId: restaurant.id, status: { [Op.notIn]: ['Delivered', 'Cancelled'] } } });
+        if (open > 0) {
+          return res.status(409).json({
+            code: 'STORE_TYPE_HAS_OPEN_ORDERS',
+            openOrders: open,
+            message: `This store has ${open} open order${open === 1 ? '' : 's'}. Finish or cancel them before changing it ${willBeStall ? 'to a stall' : 'from a stall'}.`,
+          });
+        }
+        stallSwitched = true;
+      }
+    }
+    if (stallSwitched && !updateData.password) updateData.tokenVersion = (Number(restaurant.tokenVersion) || 0) + 1;
     // A password change bumps tokenVersion (model hook): signed-in partner apps are signed out.
     await restaurant.update(updateData);
-    if (updateData.password) clearCachedUser(restaurant.id);
+    if (updateData.password || stallSwitched) clearCachedUser(restaurant.id);
     clearRestaurantsCache();
     broadcastSystemUpdate(req, 'RESTAURANT_UPDATED', publicRestaurant(restaurant));
     realtime.publish('store', 'updated', restaurant.id, { storeId: restaurant.id });
@@ -694,14 +714,16 @@ exports.deleteMenuItem = async (req, res) => {
 exports.getAllRiders = async (req, res) => {
   try {
     const DeliveryPartner = getDeliveryPartnerModel();
-    const { page = 1, limit = 50 } = req.query;
-    const offset = (parseInt(page) - 1) * parseInt(limit);
+    // Clamped like getAllUsers: a huge or negative limit / page can never dump or break the query.
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 100);
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const offset = (page - 1) * limit;
 
-    const { count, rows: riders } = await DeliveryPartner.findAndCountAll({ 
-      attributes: { exclude: ['password'] },
-      limit: parseInt(limit),
-      offset: parseInt(offset),
-      order: [['createdAt', 'DESC']]
+    const { count, rows: riders } = await DeliveryPartner.findAndCountAll({
+      attributes: { exclude: ['password', 'tokenVersion', 'fcmTokens'] },
+      limit,
+      offset,
+      order: [['createdAt', 'DESC'], ['id', 'ASC']]
     });
 
     res.json({
@@ -717,10 +739,22 @@ exports.getAllRiders = async (req, res) => {
 exports.approveRider = async (req, res) => {
   try {
     const DeliveryPartner = getDeliveryPartnerModel();
+    const isApproved = req.body ? req.body.isApproved : undefined;
+    if (typeof isApproved !== 'boolean') return res.status(400).json({ message: 'isApproved must be true or false.', code: 'INVALID_INPUT' });
     const rider = await DeliveryPartner.findByPk(req.params.id);
     if (!rider) return res.status(404).json({ message: 'Rider not found' });
-    await rider.update({ isApproved: req.body.isApproved });
-    broadcastSystemUpdate(req, 'RIDER_STATUS_CHANGED', { id: req.params.id, isApproved: req.body.isApproved });
+    if (!isApproved && rider.isApproved) {
+      // Deactivating a rider mid-delivery strands the customer's order: finish or reassign it first.
+      const active = rider.currentOrderId ? 1 : await getOrderModel().count({
+        where: { deliveryPartnerId: rider.id, status: { [Op.notIn]: ['Delivered', 'Cancelled'] } },
+      });
+      if (active > 0) {
+        return res.status(409).json({ code: 'RIDER_HAS_ACTIVE_ORDER', message: `${rider.name || 'This rider'} is carrying an order. Reassign or finish it before deactivating.` });
+      }
+    }
+    await rider.update(isApproved ? { isApproved } : { isApproved, isOnline: false });
+    await logAuditAction(req, rider.id, isApproved ? 'FLEET_RIDER_APPROVED' : 'FLEET_RIDER_DEACTIVATED', { name: rider.name });
+    broadcastSystemUpdate(req, 'RIDER_STATUS_CHANGED', { id: req.params.id, isApproved });
     realtime.notifyAdmin('rider', 'updated', rider.id);
     // Live dispatch room: an unapproved rider stops receiving delivery_request at once.
     realtime.setRiderOnline(rider.id, !!(rider.isApproved && rider.isOnline));
@@ -764,9 +798,19 @@ exports.updateRider = async (req, res) => {
       // Plain text: the DeliveryPartner beforeUpdate hook hashes it (hashing here too stored
       // bcrypt(bcrypt(pw)) and locked the rider out).
       updateData.password = req.body.password.trim();
+      // Every session of this rider is revoked: take them off duty so the pool stops ringing a
+      // phone that can no longer accept (they go online again after signing in).
+      updateData.isOnline = false;
     }
     await rider.update(updateData);
-    if (updateData.password) clearCachedUser(rider.id); // tokenVersion was bumped: old sessions end now
+    if (updateData.password) {
+      clearCachedUser(rider.id); // tokenVersion was bumped: old sessions end now
+      realtime.setRiderOnline(rider.id, false);
+      // Old sockets were authenticated with the revoked token: drop them (they cannot reconnect).
+      try { const io = req.app.get('io'); if (io) io.in(`rider_${rider.id}`).disconnectSockets(true); } catch (e) { console.warn('[RIDER_REVOKE_SOCKET_WARN]', e.message); }
+    } else if (updateData.isOnline !== undefined) {
+      realtime.setRiderOnline(rider.id, rider.isOnline === true && rider.isApproved === true);
+    }
     broadcastSystemUpdate(req, 'RIDER_UPDATED', rider);
     realtime.notifyAdmin('rider', 'updated', rider.id);
     const riderData = rider.toJSON();
@@ -826,10 +870,12 @@ exports.setEliteStatus = async (req, res) => {
     const User = getUserModel();
     const user = await User.findByPk(req.params.userId);
     if (!user) return res.status(404).json({ message: 'User not found' });
-    await user.update({ isElite: req.body.isElite });
-    broadcastSystemUpdate(req, 'USER_ELITE_STATUS', { userId: req.params.userId, isElite: req.body.isElite });
+    const isElite = req.body ? req.body.isElite : undefined;
+    if (typeof isElite !== 'boolean') return res.status(400).json({ message: 'isElite must be true or false.', code: 'INVALID_INPUT' });
+    await user.update({ isElite });
+    broadcastSystemUpdate(req, 'USER_ELITE_STATUS', { userId: req.params.userId, isElite });
     realtime.notifyAdmin('user', 'updated', user.id);
-    await logAuditAction(req, user.id, 'ELITE_STATUS_CHANGE', { email: user.email, isElite: req.body.isElite });
+    await logAuditAction(req, user.id, 'ELITE_STATUS_CHANGE', { email: user.email, isElite });
     clearCachedUser(user.id);
     res.json({ ...withoutPassword(user), _id: user.id });
   } catch (error) {
@@ -1421,11 +1467,23 @@ exports.batchUpdateOrders = async (req, res) => {
     };
     const matched = await Order.findAll({ where: { status: targetStatus }, order: [['createdAt', 'ASC']], limit: 200 });
     let updatedCount = 0;
+    const skipped = { stall: 0, unpaidUpi: 0 };
+    // Bulk accept never touches stall orders (the stall confirms and delivers them itself) or
+    // legacy UPI orders whose payment nobody has verified (same rule as the dashboard).
+    const unverifiedUpi = (o) => o.paymentMethod === 'UPI' && o.upiStatus !== 'Verified' && o.paymentStatus !== 'Completed';
     for (const order of matched) {
       try {
         if (isAccept) {
+          if (order.fulfilment === 'VENDOR') { skipped.stall++; continue; }
+          if (unverifiedUpi(order)) { skipped.unpaidUpi++; continue; }
           const now = new Date();
-          const [n] = await Order.update({ status: 'Accepted', acceptedAt: now }, { where: { id: order.id, status: 'Pending' } });
+          const [n] = await Order.update({ status: 'Accepted', acceptedAt: now }, {
+            where: {
+              id: order.id,
+              status: 'Pending',
+              [Op.and]: [{ [Op.or]: [{ fulfilment: null }, { fulfilment: { [Op.ne]: 'VENDOR' } }] }],
+            },
+          });
           if (n === 0) continue;
           updatedCount++;
           emitStatus(order, { id: order.id, status: 'Accepted' });
@@ -1463,7 +1521,7 @@ exports.batchUpdateOrders = async (req, res) => {
     broadcastSystemUpdate(req, 'BATCH_ORDER_UPDATE', { targetStatus, newStatus, count: updatedCount });
     await logAuditAction(req, 'global', 'BATCH_ORDER_UPDATE', `Updated ${updatedCount} orders from ${targetStatus} to ${newStatus}`);
 
-    res.json({ message: `Successfully updated ${updatedCount} orders.`, count: updatedCount });
+    res.json({ message: `Successfully updated ${updatedCount} orders.`, count: updatedCount, ...(isAccept ? { skipped } : {}) });
   } catch (error) {
     sendServerError(res, error, '[ADMINCONTROLLER_ERROR]');
   }
@@ -1544,14 +1602,22 @@ exports.deleteCoupon = async (req, res) => {
 };
 
 // ─── Finance & Operations (Payouts & Refunds) ────────────────
+// Delivered at or before `upTo` (older rows without deliveredAt fall back to updatedAt).
+const deliveredUpTo = (upTo) => ({
+  [Op.and]: [{ [Op.or]: [{ deliveredAt: { [Op.lte]: upTo } }, { deliveredAt: null, updatedAt: { [Op.lte]: upTo } }] }],
+});
+
 exports.getRestaurantPayouts = async (req, res) => {
   try {
     const Order = getOrderModel();
     const Restaurant = getRestaurantModel();
     
-    // Group only Delivered, unsettled orders to calculate real earnings
-    const deliveredOrders = await Order.findAll({ 
-      where: { status: 'Delivered', payoutSettled: false }
+    // Group only Delivered, unsettled orders to calculate real earnings. `asOf` is sent back as
+    // `upTo` when settling, so a delivery finished after this list was built stays unpaid.
+    const asOf = new Date();
+    const deliveredOrders = await Order.findAll({
+      where: { status: 'Delivered', payoutSettled: false, ...deliveredUpTo(asOf) },
+      attributes: ['id', 'restaurantId', 'totalPrice'],
     });
     const restaurants = await Restaurant.findAll();
     const restMap = restaurants.reduce((acc, r) => ({ ...acc, [r.id]: r }), {});
@@ -1586,6 +1652,7 @@ exports.getRestaurantPayouts = async (req, res) => {
 
     res.json(Object.values(payouts).map(p => ({
       ...p,
+      asOf: asOf.toISOString(),
       totalGMV: Math.round(p.totalGMV),
       totalCommission: Math.round(p.totalCommission),
       netPayout: Math.round(p.netPayout)
@@ -1598,16 +1665,34 @@ exports.getRestaurantPayouts = async (req, res) => {
 exports.settleRestaurantPayout = async (req, res) => {
   try {
     const Order = getOrderModel();
-    const { restaurantId } = req.body;
-    if (!restaurantId) return res.status(400).json({ message: 'restaurantId is required' });
+    const { restaurantId } = req.body || {};
+    if (!restaurantId || !UUID_RE.test(String(restaurantId))) return res.status(400).json({ message: 'restaurantId is required' });
 
-    // Mark all delivered, unpaid orders for this restaurant as settled
-    const [updatedCount] = await Order.update(
-      { payoutSettled: true },
-      { where: { restaurantId, status: 'Delivered', payoutSettled: false } }
-    );
+    // Settle only what the admin saw: deliveries up to `upTo` (the list's `asOf`). Without it
+    // (older dashboards) everything delivered so far is settled, as before.
+    const upToRaw = req.body.upTo || req.body.asOf;
+    const upTo = upToRaw ? new Date(String(upToRaw)) : null;
+    if (upToRaw && Number.isNaN(upTo.getTime())) return res.status(400).json({ message: 'upTo must be a date.', code: 'INVALID_INPUT' });
+    const where = { restaurantId, status: 'Delivered', payoutSettled: false, ...(upTo ? deliveredUpTo(upTo) : {}) };
 
-    await logAuditAction(req, restaurantId, 'RESTAURANT_PAYOUT_SETTLED', { restaurantId, updatedOrdersCount: updatedCount });
+    const { getSequelize } = require('../config/db');
+    const result = await getSequelize().transaction(async (t) => {
+      // The screen showed `expectedOrders`: if that changed (another admin settled some, or a
+      // late-arriving row), refuse and let the admin reload instead of paying a different amount.
+      const expected = req.body.expectedOrders;
+      if (expected !== undefined && expected !== null) {
+        const n = await Order.count({ where, transaction: t });
+        if (Number(expected) !== n) return { mismatch: n };
+      }
+      const [updatedCount] = await Order.update({ payoutSettled: true }, { where, transaction: t });
+      return { updatedCount };
+    });
+    if (result.mismatch !== undefined) {
+      return res.status(409).json({ code: 'PAYOUT_CHANGED', currentOrders: result.mismatch, message: `This payout now covers ${result.mismatch} order${result.mismatch === 1 ? '' : 's'}, not ${req.body.expectedOrders}. Refresh and check it before settling.` });
+    }
+    const updatedCount = result.updatedCount;
+
+    await logAuditAction(req, restaurantId, 'RESTAURANT_PAYOUT_SETTLED', { restaurantId, updatedOrdersCount: updatedCount, upTo: upTo ? upTo.toISOString() : null });
 
     res.json({ message: 'Restaurant payout marked as settled successfully', updatedOrdersCount: updatedCount });
   } catch (error) {
@@ -1696,10 +1781,20 @@ exports.toggleUserBan = async (req, res) => {
   try {
     const { getUserModel } = require('../models/User');
     const User = getUserModel();
+    const wanted = req.body ? req.body.isActive : undefined;
+    if (wanted !== undefined && typeof wanted !== 'boolean') return res.status(400).json({ message: 'isActive must be true or false.', code: 'INVALID_INPUT' });
     const user = await User.findByPk(req.params.userId);
     if (!user) return res.status(404).json({ message: 'User not found' });
+    const next = wanted !== undefined ? wanted : !user.isActive;
+    // Suspending yourself or another admin would lock admins out of the dashboard.
+    if (!next && String(user.id) === String(req.user && req.user.id)) {
+      return res.status(403).json({ message: 'You cannot suspend your own account.', code: 'SELF_ACTION' });
+    }
+    if (!next && String(user.role || '').toLowerCase() === 'admin') {
+      return res.status(403).json({ message: 'Admin accounts cannot be suspended here.', code: 'ADMIN_PROTECTED' });
+    }
 
-    user.isActive = req.body.isActive !== undefined ? req.body.isActive : !user.isActive;
+    user.isActive = next;
     await user.save();
     
     const action = user.isActive ? 'USER_UNBANNED' : 'USER_BANNED';

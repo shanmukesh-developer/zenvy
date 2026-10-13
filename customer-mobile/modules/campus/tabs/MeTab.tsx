@@ -15,6 +15,7 @@ import {
   Settings,
   Bell,
   School,
+  Lock,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
@@ -46,6 +47,8 @@ interface MeTabProps {
   incomingRequests: number;
   onOpenVerify: () => void;
   onOpenFriends: () => void;
+  /** Me › Friends privacy & safety (settings, notifications, muted / blocked, reports, appeals, guidelines). */
+  onOpenFriendsSafety?: () => void;
   onProfileUpdated: (updated: CampusProfileData) => void;
   onUserUpdated: (patch: Partial<CampusUserData>) => void;
   onRefresh: () => Promise<void>;
@@ -59,6 +62,7 @@ export const MeTab: React.FC<MeTabProps> = ({
   incomingRequests,
   onOpenVerify,
   onOpenFriends,
+  onOpenFriendsSafety,
   onProfileUpdated,
   onUserUpdated,
   onRefresh,
@@ -278,12 +282,22 @@ export const MeTab: React.FC<MeTabProps> = ({
           }
         />
         <ListRow
-          last
+          last={!onOpenFriendsSafety}
           left={<View style={styles.rowIcon}><Copy size={18} color={CampusColors.accentDeep} /></View>}
           title={user?.friendCode ? `Friend code: ${user.friendCode}` : 'Friend code'}
           subtitle={user?.friendCode ? 'Tap to copy and share with classmates' : 'Not available yet'}
           onPress={user?.friendCode ? copyCode : undefined}
         />
+        {onOpenFriendsSafety ? (
+          <ListRow
+            last
+            left={<View style={styles.rowIcon}><Lock size={18} color={CampusColors.accentDeep} /></View>}
+            title="Friends privacy & safety"
+            subtitle="Who sees you, notifications, muted and blocked people, reports and appeals"
+            onPress={onOpenFriendsSafety}
+            right={<ChevronRight size={18} color={CampusColors.muted} />}
+          />
+        ) : null}
       </View>
 
       {/* Details */}

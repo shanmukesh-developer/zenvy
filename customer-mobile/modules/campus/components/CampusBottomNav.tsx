@@ -1,9 +1,10 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { MessageSquare, Newspaper, School, User } from 'lucide-react-native';
+import { MessageSquare, Users, School, User } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { CampusColors, CampusLayout } from '../../../constants/campusTheme';
 import { CampusTab } from '../../../types/campus';
+import { FriendsChrome } from '../friends/friendsTheme';
 
 interface CampusBottomNavProps {
   activeTab: CampusTab;
@@ -11,6 +12,8 @@ interface CampusBottomNavProps {
   unreadCount?: number;
   /** Pending friend requests (shown on Me). */
   meBadge?: number;
+  /** 'dark' while the Friends tab is open. */
+  tone?: 'light' | 'dark';
 }
 
 export const CampusBottomNav: React.FC<CampusBottomNavProps> = ({
@@ -18,16 +21,20 @@ export const CampusBottomNav: React.FC<CampusBottomNavProps> = ({
   onSelectTab,
   unreadCount = 0,
   meBadge = 0,
+  tone = 'light',
 }) => {
+  const dark = tone === 'dark';
+  const activeColor = dark ? FriendsChrome.accent : CampusColors.accent;
+  const idleColor = dark ? FriendsChrome.muted : CampusColors.muted;
   const tabs: { key: CampusTab; label: string; icon: typeof MessageSquare }[] = [
     { key: 'chats', label: 'Chats', icon: MessageSquare },
-    { key: 'feed', label: 'Feed', icon: Newspaper },
+    { key: 'friends', label: 'Friends', icon: Users },
     { key: 'campus', label: 'Campus', icon: School },
     { key: 'me', label: 'Me', icon: User },
   ];
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, dark && styles.containerDark]} accessibilityRole="tablist">
       {tabs.map((tab) => {
         const isActive = activeTab === tab.key;
         const IconComponent = tab.icon;
@@ -47,22 +54,22 @@ export const CampusBottomNav: React.FC<CampusBottomNavProps> = ({
             accessibilityLabel={`${tab.label} tab`}
             activeOpacity={0.7}
           >
-            <View style={[styles.iconWrapper, isActive && styles.activeIconWrapper]}>
+            <View style={[styles.iconWrapper, isActive && styles.activeIconWrapper, isActive && dark && { backgroundColor: FriendsChrome.accentSoft }]}>
               <IconComponent
                 size={22}
-                color={isActive ? CampusColors.accent : CampusColors.muted}
+                color={isActive ? activeColor : idleColor}
                 strokeWidth={isActive ? 2.2 : 1.8}
               />
               {(() => {
                 const n = tab.key === 'chats' ? unreadCount : tab.key === 'me' ? meBadge : 0;
                 return n > 0 ? (
-                  <View style={styles.badge}>
+                  <View style={[styles.badge, dark && { borderColor: FriendsChrome.surface }]}>
                     <Text style={styles.badgeText}>{n > 99 ? '99+' : n}</Text>
                   </View>
                 ) : null;
               })()}
             </View>
-            <Text style={[styles.tabLabel, isActive && styles.activeTabLabel]}>
+            <Text style={[styles.tabLabel, { color: idleColor }, isActive && styles.activeTabLabel, isActive && { color: activeColor }]}>
               {tab.label}
             </Text>
           </TouchableOpacity>
@@ -88,6 +95,7 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 8,
   },
+  containerDark: { backgroundColor: FriendsChrome.surface, borderTopColor: FriendsChrome.line, shadowOpacity: 0 },
   tabButton: {
     alignItems: 'center',
     justifyContent: 'center',

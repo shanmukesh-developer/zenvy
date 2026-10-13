@@ -364,6 +364,7 @@ exports.acceptFriendRequest = async (req, res) => {
     let conversation = await Conversation.findOne({
       where: {
         isGroup: false,
+        refType: null, // never reuse a Friends task / Connect chat as the friend DM
         participants: JSON.stringify(participants) // Keep order check simple
       }
     });
@@ -373,6 +374,7 @@ exports.acceptFriendRequest = async (req, res) => {
       conversation = await Conversation.findOne({
         where: {
           isGroup: false,
+          refType: null,
           participants: JSON.stringify([friendship.recipientId, friendship.requesterId])
         }
       });
@@ -477,6 +479,7 @@ exports.getFriends = async (req, res) => {
       let conversation = await Conversation.findOne({
         where: {
           isGroup: false,
+          refType: null,
           participants: JSON.stringify([req.user.id, friendId])
         }
       });
@@ -484,6 +487,7 @@ exports.getFriends = async (req, res) => {
         conversation = await Conversation.findOne({
           where: {
             isGroup: false,
+            refType: null,
             participants: JSON.stringify([friendId, req.user.id])
           }
         });
@@ -624,11 +628,11 @@ exports.sendFriendMessage = async (req, res) => {
         const participants = [friendship.requesterId, friendship.recipientId];
         // Find or create conversation
         conversation = await Conversation.findOne({
-          where: { isGroup: false, participants: JSON.stringify(participants) }
+          where: { isGroup: false, refType: null, participants: JSON.stringify(participants) }
         });
         if (!conversation) {
           conversation = await Conversation.findOne({
-            where: { isGroup: false, participants: JSON.stringify([friendship.recipientId, friendship.requesterId]) }
+            where: { isGroup: false, refType: null, participants: JSON.stringify([friendship.recipientId, friendship.requesterId]) }
           });
         }
         if (!conversation) {
@@ -650,6 +654,10 @@ exports.sendFriendMessage = async (req, res) => {
     const members = Array.isArray(conversation.participants) ? conversation.participants : [];
     if (!members.includes(req.user.id)) {
       return res.status(403).json({ message: 'Not a participant of this conversation.' });
+    }
+    // Friends task / Connect chats and closed chats are only reachable through the guarded campus socket.
+    if (conversation.refType || conversation.closedAt) {
+      return res.status(403).json({ code: 'CHAT_CLOSED', message: 'You cannot message this chat from here.' });
     }
     // 1:1 chats need a live (accepted, not blocked) friendship.
     if (!conversation.isGroup) {
@@ -867,11 +875,19 @@ exports.declineFriendRequest = async (req, res) => {
   }
 };
 
+// Friends list queries cache block sets for 30 s; drop them so a block / unblock applies at once.
+const clearFriendsBlockCache = (...ids) => {
+  try { require('../modules/friends/services/blocks').clearBlocks(...ids); } catch { /* optional */ }
+};
+
 // 9c. Block a user
 exports.blockUser = async (req, res) => {
   try {
-    const { userId } = req.body;
+    const { userId } = req.body || {};
     if (!userId) return res.status(400).json({ message: 'userId is required.' });
+    if (typeof userId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
+      return res.status(400).json({ message: 'userId is not valid.' });
+    }
     if (userId === req.user.id) return res.status(400).json({ message: 'You cannot block yourself.' });
 
     const Friendship = getFriendshipModel();
@@ -887,6 +903,11 @@ exports.blockUser = async (req, res) => {
       }
     });
 
+    if (friendship && friendship.status === 'blocked' && friendship.blockedBy && friendship.blockedBy !== req.user.id) {
+      // Already blocked by the other person: the block applies both ways; keep their row as is.
+      clearFriendsBlockCache(req.user.id, userId);
+      return res.json({ message: 'User blocked successfully.', friendshipId: friendship.id });
+    }
     if (friendship) {
       friendship.status = 'blocked';
       friendship.blockedBy = req.user.id;
@@ -900,6 +921,7 @@ exports.blockUser = async (req, res) => {
       });
     }
 
+    clearFriendsBlockCache(req.user.id, userId);
     res.json({ message: 'User blocked successfully.', friendshipId: friendship.id });
   } catch (error) {
     console.error('[BLOCK_USER_ERROR]', error);
@@ -910,8 +932,9 @@ exports.blockUser = async (req, res) => {
 // 9d. Unblock a user
 exports.unblockUser = async (req, res) => {
   try {
-    const { userId } = req.body;
+    const { userId } = req.body || {};
     if (!userId) return res.status(400).json({ message: 'userId is required.' });
+    if (typeof userId !== 'string') return res.status(400).json({ message: 'userId is not valid.' });
 
     const Friendship = getFriendshipModel();
     if (!Friendship) return res.status(500).json({ message: 'Model not loaded' });
@@ -932,6 +955,7 @@ exports.unblockUser = async (req, res) => {
     }
 
     await friendship.destroy();
+    clearFriendsBlockCache(req.user.id, userId);
 
     res.json({ message: 'User unblocked successfully.' });
   } catch (error) {

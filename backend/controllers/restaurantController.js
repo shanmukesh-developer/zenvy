@@ -56,7 +56,7 @@ const partnerAudit = async (req, targetId, action, details) => {
       adminId: req.user && req.user.id ? String(req.user.id) : 'partner',
       targetId: String(targetId),
       action,
-      details: JSON.stringify({ ...details, source: String(req.user?.role || '').toLowerCase() === 'admin' ? 'admin' : 'partner' }).slice(0, 250),
+      details: JSON.stringify({ ...details, source: String(req.user?.role || '').toLowerCase() === 'admin' ? 'admin' : 'partner' }).slice(0, 4000),
     });
   } catch (err) {
     console.warn('[PARTNER_AUDIT_WARN]', err.message);
@@ -130,6 +130,10 @@ const restaurantLogin = async (req, res) => {
     if (appKind === 'vendor' && !isLocalVendorStore(restaurant)) {
       return res.status(403).json({ code: 'NOT_A_VENDOR_ACCOUNT', message: 'This is a restaurant account. Use the Zenvy Restaurant app.' });
     }
+    // Stalls deliver their own orders and use the Zenvy Vendor app (the restaurant app has no stall flow).
+    if (appKind === 'restaurant' && isLocalVendorStore(restaurant)) {
+      return res.status(403).json({ code: 'USE_VENDOR_APP', message: 'This is a stall account. Use the Zenvy Vendor app.' });
+    }
 
     const secret = process.env.JWT_SECRET;
     if (!secret) {
@@ -150,6 +154,8 @@ const restaurantLogin = async (req, res) => {
 // Customer contact on a stall order is shown to the owning stall only; it is hidden again 24 h after
 // the order finished (Delivered / Cancelled).
 const CONTACT_TTL_MS = 24 * 60 * 60 * 1000;
+// Rider-delivered orders: the kitchen sees only the customer's first name and the campus.
+const { customerFirstName: firstName, campusLabel } = require('../utils/publicFields');
 
 // @desc    Get orders for restaurant
 // @route   GET /api/restaurants/:id/orders
@@ -168,8 +174,6 @@ const getRestaurantOrders = async (req, res) => {
     const Order = getOrderModel();
     const User = getUserModel();
     const DeliveryPartner = getDeliveryPartnerModel();
-    const store = await getRestaurantModel().findByPk(req.params.id, { attributes: ['id', 'vendorType'] });
-    const storeIsStall = isLocalVendorStore(store);
 
     const orders = await Order.findAll({
       where: { restaurantId: req.params.id },
@@ -185,9 +189,17 @@ const getRestaurantOrders = async (req, res) => {
     res.json(orders.map(o => {
       // The customer's exact pin (dropLat/dropLng) is for the assigned rider only, not the kitchen.
       const { deliveryPin, deliveryPinAttempts, dropLat, dropLng, idempotencyKey, user, ...rest } = o.toJSON();
-      const isStallOrder = rest.fulfilment === 'VENDOR' || storeIsStall;
+      // Decided per order, never from the store's current type: a store switched between stall and
+      // restaurant keeps showing its older orders with the flow they were placed with.
+      const isStallOrder = rest.fulfilment === 'VENDOR';
       if (!isStallOrder) {
-        return { ...rest, user: user ? { name: user.name, phone: user.phone } : null, _id: o.id };
+        // Zenvy rider delivers: the kitchen needs a name for the bag, not the customer's phone or room.
+        return {
+          ...rest,
+          deliveryAddress: campusLabel(rest.deliveryAddress),
+          user: user ? { name: firstName(user.name) } : null,
+          _id: o.id,
+        };
       }
       const finishedAt = ['Delivered', 'Cancelled'].includes(rest.status) ? new Date(rest.deliveredAt || rest.updatedAt).getTime() : null;
       const hidePhone = finishedAt !== null && now - finishedAt > CONTACT_TTL_MS;

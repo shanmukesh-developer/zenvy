@@ -40,6 +40,7 @@ const { initOtpCodeModel } = require('../models/OtpCode');
 const { initCatalogueImportLedgerModel } = require('../models/CatalogueImportLedger');
 const { initNotificationModel } = require('../models/Notification');
 const { initCampusModels } = require('../modules/campus/models');
+const { initFriendsModels } = require('../modules/friends');
 
 const initializeAllModels = (instance) => {
   initUserModel(instance);
@@ -78,6 +79,8 @@ const initializeAllModels = (instance) => {
   initOtpCodeModel(instance);
   initCatalogueImportLedgerModel(instance);
   initNotificationModel(instance);
+  // Zenvy Friends tables (after Users / campus / chat models they reference).
+  initFriendsModels(instance);
 
   // Define Associations
   const Restaurant = instance.models.Restaurant;
@@ -590,6 +593,13 @@ const connectDB = async () => {
           console.warn('⚠️ [CAMPUS_MIGRATION_WARN]', mErr.message);
         }
       }
+      // Zenvy Friends: idempotent indexes / columns / checks (every dialect).
+      try {
+        const { runFriendsMigrations } = require('../modules/friends/migrations/friendsMigrations');
+        await runFriendsMigrations(sequelize);
+      } catch (fErr) {
+        console.warn('⚠️ [FRIENDS_MIGRATION_WARN]', fErr.message);
+      }
     } else {
       // Production: no sync({ alter: true }) on every boot. Sequelize v6 alter re-adds UNIQUE
       // constraints each run (duplicate *_key indexes pile up), slows startup (API is 503 until
@@ -615,6 +625,13 @@ const connectDB = async () => {
         await runCampusMigrations(sequelize);
       } catch (mErr) {
         console.warn('⚠️ [CAMPUS_MIGRATION_WARN]', mErr.message);
+      }
+      // Zenvy Friends: idempotent indexes / columns / CHECK constraints (additive only).
+      try {
+        const { runFriendsMigrations } = require('../modules/friends/migrations/friendsMigrations');
+        await runFriendsMigrations(sequelize);
+      } catch (fErr) {
+        console.warn('⚠️ [FRIENDS_MIGRATION_WARN]', fErr.message);
       }
       
       // Auto-check for empty DB to help user identify missing data

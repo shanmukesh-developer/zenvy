@@ -14,7 +14,23 @@ import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { API_URL } from '../constants/api';
 import { getToken } from './auth';
 
-export type MediaPurpose = 'id_card' | 'chat' | 'lost_found' | 'avatar' | 'post' | 'other';
+/**
+ * Server-side media purposes (POST /api/campus/media). `id_card`, `connect` and `liveness_selfie`
+ * are private: the server only serves them to the owner / admins, or through a 1 h signed `previewUrl`.
+ */
+export type MediaPurpose =
+  | 'id_card'
+  | 'chat'
+  | 'lost_found'
+  | 'avatar'
+  | 'post'
+  | 'other'
+  | 'connect'
+  | 'forum'
+  | 'task'
+  | 'liveness_selfie';
+
+export const PRIVATE_MEDIA_PURPOSES: readonly MediaPurpose[] = ['id_card', 'connect', 'liveness_selfie'];
 
 export interface UploadedImage {
   /** Short relative path, e.g. /api/campus/media/<id>. Store this for campus features. */
@@ -23,6 +39,12 @@ export interface UploadedImage {
   absoluteUrl: string;
   /** Local compressed file, handy for an instant preview. */
   localUri: string;
+  /** Media id (when the server returns it). */
+  id?: string;
+  /** True for private purposes (id_card, connect, liveness_selfie). */
+  isPrivate?: boolean;
+  /** Private uploads only: a signed link valid for about 1 hour, for showing the photo right away. */
+  previewUrl?: string;
 }
 
 export interface PickOptions {
@@ -193,7 +215,11 @@ export const uploadImageFile = async (
   if (!url) throw new ImageUploadError("Couldn't upload the photo. Please try again.");
   // Build the absolute link from the API host this app talks to (always https in production).
   const absoluteUrl: string = (url.startsWith('/') ? resolveMediaUrl(url) : null) || json.absoluteUrl || json.imageUrl || url;
-  return { url, absoluteUrl, localUri: file.uri };
+  const out: UploadedImage = { url, absoluteUrl, localUri: file.uri };
+  if (typeof json?.id === 'string') out.id = json.id;
+  if (typeof json?.isPrivate === 'boolean') out.isPrivate = json.isPrivate;
+  if (typeof json?.previewUrl === 'string' && json.previewUrl) out.previewUrl = json.previewUrl;
+  return out;
 };
 
 /** Compress + upload a local image (for example one picked earlier for a preview). */

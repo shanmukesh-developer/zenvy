@@ -62,6 +62,9 @@ const initUserModel = (sequelize) => {
     // F13: Elite Gifting
     eliteGiftsUsedThisMonth: { type: DataTypes.INTEGER, defaultValue: 0 },
     lastGiftResetDate: { type: DataTypes.DATE, allowNull: true },
+    // Idempotency-Key of the last gift this user sent (POST /api/features/gift): a retry with the
+    // same key returns the first result instead of charging the wallet again.
+    lastGiftKey: { type: DataTypes.STRING(120), allowNull: true },
     // Co-Ride Bike Pooling
     gender: { type: DataTypes.STRING, defaultValue: 'Prefer not to say' },
     genderPreference: { type: DataTypes.STRING, defaultValue: 'Any' },

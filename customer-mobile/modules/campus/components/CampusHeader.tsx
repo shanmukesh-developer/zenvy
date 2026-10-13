@@ -4,6 +4,7 @@ import { ShieldCheck, Plus, ArrowLeft, Sparkles, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { CampusColors, CampusLayout } from '../../../constants/campusTheme';
 import { CampusProfileData } from '../../../types/campus';
+import { FriendsChrome } from '../friends/friendsTheme';
 
 interface CampusHeaderProps {
   profile: CampusProfileData | null;
@@ -15,6 +16,8 @@ interface CampusHeaderProps {
   /** Show the one dismissible verification banner (signed-in, unverified students only). */
   showVerifyBanner?: boolean;
   onDismissVerifyBanner?: () => void;
+  /** 'dark' while the Friends tab is open (Zenvy Friends dark theme). */
+  tone?: 'light' | 'dark';
 }
 
 export const CampusHeader: React.FC<CampusHeaderProps> = ({
@@ -25,14 +28,16 @@ export const CampusHeader: React.FC<CampusHeaderProps> = ({
   onOpenVerify,
   showVerifyBanner,
   onDismissVerifyBanner,
+  tone = 'light',
 }) => {
+  const dark = tone === 'dark';
   const isVerified = profile?.verificationStatus === 'verified';
   const isPending = profile?.verificationStatus === 'pending';
   const isRejected = profile?.verificationStatus === 'rejected';
   const campusCode = profile?.campus?.code || null;
 
   return (
-    <View style={styles.header}>
+    <View style={[styles.header, dark && styles.headerDark]}>
       <View style={styles.topRow}>
         {onBack && (
           <TouchableOpacity
@@ -44,29 +49,29 @@ export const CampusHeader: React.FC<CampusHeaderProps> = ({
             accessibilityLabel="Back"
             activeOpacity={0.7}
           >
-            <ArrowLeft size={22} color={CampusColors.ink} strokeWidth={2.2} />
+            <ArrowLeft size={22} color={dark ? FriendsChrome.ink : CampusColors.ink} strokeWidth={2.2} />
           </TouchableOpacity>
         )}
         <View style={styles.titleContainer}>
-          <Text style={styles.title} numberOfLines={1}>{title}</Text>
+          <Text style={[styles.title, dark && { color: FriendsChrome.ink }]} numberOfLines={1} accessibilityRole="header">{title}</Text>
           {campusCode && (
-            <View style={styles.campusBadge}>
-              <Text style={styles.campusBadgeText}>{campusCode}</Text>
-              {isVerified && <ShieldCheck size={11} color={CampusColors.accentDeep} strokeWidth={2.4} />}
+            <View style={[styles.campusBadge, dark && { backgroundColor: FriendsChrome.accentSoft }]}>
+              <Text style={[styles.campusBadgeText, dark && { color: FriendsChrome.accent }]}>{campusCode}</Text>
+              {isVerified && <ShieldCheck size={11} color={dark ? FriendsChrome.accent : CampusColors.accentDeep} strokeWidth={2.4} />}
             </View>
           )}
         </View>
 
         {onPlus && (
           <TouchableOpacity
-            style={[styles.iconButton, styles.primaryButton]}
+            style={[styles.iconButton, styles.primaryButton, dark && { backgroundColor: FriendsChrome.accent }]}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
               onPlus();
             }}
             accessibilityLabel="New chat, group or join"
           >
-            <Plus size={20} color="#FFFFFF" strokeWidth={2.4} />
+            <Plus size={20} color={dark ? FriendsChrome.accentInk : '#FFFFFF'} strokeWidth={2.4} />
           </TouchableOpacity>
         )}
       </View>
@@ -103,6 +108,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: CampusColors.line,
   },
+  headerDark: { backgroundColor: FriendsChrome.bg, borderBottomColor: FriendsChrome.line },
   topRow: { flexDirection: 'row', alignItems: 'center', gap: CampusLayout.spacing.sm, minHeight: 48 },
   titleContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
   title: { fontSize: 22, fontWeight: '800', color: CampusColors.ink, letterSpacing: -0.3, flexShrink: 1 },

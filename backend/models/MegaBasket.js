@@ -36,6 +36,9 @@ const initMegaBasketModel = (sequelize) => {
       type: DataTypes.ENUM('Pending', 'Completed', 'Failed'),
       defaultValue: 'Pending'
     },
+    // Client retry key (Idempotency-Key / body.idempotencyKey), unique per user (partial index in
+    // config/sweepMigrations.js).
+    idempotencyKey: { type: DataTypes.STRING(120), allowNull: true },
     paymentMethod: {
       type: DataTypes.ENUM('COD', 'UPI'),
       defaultValue: 'COD'

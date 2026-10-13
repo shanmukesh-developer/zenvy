@@ -23,7 +23,10 @@ import { CampusHeader } from './components/CampusHeader';
 import { CampusBottomNav } from './components/CampusBottomNav';
 import { VerificationModal } from './components/VerificationModal';
 import { ChatsTab } from './tabs/ChatsTab';
-import { FeedTab, FeedSegment } from './tabs/FeedTab';
+import { FriendsTab, clearFriendsEligibilityCache } from './friends/FriendsTab';
+import { LegacyFeedSegment, isLegacyFeedSegment } from './friends/pulse/LegacyPulse';
+import { FriendsSafetyScreen } from './friends/shared/FriendsSafetyScreen';
+import { FriendsColors } from './friends/friendsTheme';
 import { CampusTab, CampusSegment } from './tabs/CampusTab';
 import { MeTab } from './tabs/MeTab';
 import { ChatDetailScreen } from './components/ChatDetailScreen';
@@ -54,7 +57,7 @@ const BANNER_SNOOZE_MS = 7 * 24 * 60 * 60 * 1000;
 
 const TAB_TITLES: Record<CampusTabKey, string> = {
   chats: 'Chats',
-  feed: 'Campus feed',
+  friends: 'Friends',
   campus: 'Around campus',
   me: 'Me',
 };
@@ -76,7 +79,8 @@ type Overlay =
   | 'whispers'
   | 'nightQuestion'
   | 'branchWars'
-  | 'studySync';
+  | 'studySync'
+  | 'friendsSafety';
 
 interface CampusShellProps {
   onBack?: () => void;
@@ -87,7 +91,8 @@ interface CampusShellProps {
 export const CampusShell: React.FC<CampusShellProps> = ({ onBack, link }) => {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<CampusTabKey>('chats');
-  const [feedSegment, setFeedSegment] = useState<FeedSegment>('posts');
+  // Friends > Pulse: the old campus feed's segment (posts | wall | pulse), kept across tab switches.
+  const [pulseSegment, setPulseSegment] = useState<LegacyFeedSegment>('posts');
   const [campusSegment, setCampusSegment] = useState<CampusSegment>('around');
   const [profile, setProfile] = useState<CampusProfileData | null>(null);
   const [user, setUser] = useState<CampusUserData | null>(null);
@@ -144,6 +149,7 @@ export const CampusShell: React.FC<CampusShellProps> = ({ onBack, link }) => {
   const { user: authUser } = useAuth();
   useEffect(() => {
     if (!authUser) {
+      clearFriendsEligibilityCache();
       setProfile(null);
       setUser(null);
       setSelectedChat(null);
@@ -322,7 +328,7 @@ export const CampusShell: React.FC<CampusShellProps> = ({ onBack, link }) => {
     if (!link || !hasProfile || appliedLinkRef.current === linkKey) return;
     appliedLinkRef.current = linkKey;
     if (link.tab) setActiveTab(link.tab);
-    if (link.segment === 'posts' || link.segment === 'wall' || link.segment === 'pulse') setFeedSegment(link.segment);
+    if (isLegacyFeedSegment(link.segment)) setPulseSegment(link.segment);
     if (link.segment === 'around' || link.segment === 'study') setCampusSegment(link.segment);
     if (link.chatId) {
       const chatId = link.chatId;
@@ -345,6 +351,9 @@ export const CampusShell: React.FC<CampusShellProps> = ({ onBack, link }) => {
       switchTo('verify');
     } else if (link.screen === 'groups') {
       switchTo('groups');
+    } else if (link.screen === 'friends_safety') {
+      setActiveTab('me');
+      switchTo('friendsSafety');
     }
   }, [link, linkKey, hasProfile, openChat, switchTo]);
 
@@ -419,10 +428,13 @@ export const CampusShell: React.FC<CampusShellProps> = ({ onBack, link }) => {
 
   const isVerified = profile?.verificationStatus === 'verified';
   const isRejected = profile?.verificationStatus === 'rejected';
+  // Zenvy Friends uses the dark theme: header, bottom nav and status bar follow while it is open.
+  const chromeTone: 'light' | 'dark' = activeTab === 'friends' && !loading ? 'dark' : 'light';
+  const friendsLinkKey = link && link.tab === 'friends' ? linkKey : '';
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-      <StatusBar barStyle="dark-content" />
+    <SafeAreaView style={[styles.safeArea, chromeTone === 'dark' && { backgroundColor: FriendsColors.bg }]} edges={['top', 'bottom']}>
+      <StatusBar barStyle={chromeTone === 'dark' ? 'light-content' : 'dark-content'} />
 
       <CampusHeader
         profile={profile}
@@ -433,6 +445,7 @@ export const CampusShell: React.FC<CampusShellProps> = ({ onBack, link }) => {
         // Me has its own verification card; elsewhere show one dismissible banner (rejections always show).
         showVerifyBanner={!!profile && !isVerified && activeTab !== 'me' && (isRejected || !bannerHidden)}
         onDismissVerifyBanner={dismissBanner}
+        tone={chromeTone}
       />
 
       <View style={styles.tabContent}>
@@ -456,15 +469,21 @@ export const CampusShell: React.FC<CampusShellProps> = ({ onBack, link }) => {
               />
             )}
 
-            {activeTab === 'feed' && (
-              <FeedTab
+            {activeTab === 'friends' && (
+              <FriendsTab
                 profile={profile}
                 user={user}
-                segment={feedSegment}
-                onChangeSegment={setFeedSegment}
+                linkSub={link && link.tab === 'friends' ? link.sub || null : null}
+                linkId={link && link.tab === 'friends' ? link.id || null : null}
+                linkKey={friendsLinkKey}
+                pulseSegment={pulseSegment}
+                onChangePulseSegment={setPulseSegment}
                 onOpenWhispers={() => switchTo('whispers')}
                 onOpenNightQuestion={() => switchTo('nightQuestion')}
                 onOpenBranchWars={() => switchTo('branchWars')}
+                onOpenVerify={() => switchTo('verify')}
+                onOpenSafety={() => switchTo('friendsSafety')}
+                onOpenChat={openChat}
               />
             )}
 
@@ -493,6 +512,7 @@ export const CampusShell: React.FC<CampusShellProps> = ({ onBack, link }) => {
                 incomingRequests={requests.incoming.length}
                 onOpenVerify={() => switchTo('verify')}
                 onOpenFriends={() => switchTo('friends')}
+                onOpenFriendsSafety={() => switchTo('friendsSafety')}
                 onProfileUpdated={(updated) => setProfile(updated)}
                 onUserUpdated={(patch) => setUser((u) => (u ? { ...u, ...patch } : u))}
                 onRefresh={async () => {
@@ -509,6 +529,7 @@ export const CampusShell: React.FC<CampusShellProps> = ({ onBack, link }) => {
         onSelectTab={setActiveTab}
         unreadCount={totalUnread}
         meBadge={requests.incoming.length}
+        tone={chromeTone}
       />
 
       {/* ── Sheets & pages (one at a time) ─────────────────────────────────── */}
@@ -649,6 +670,13 @@ export const CampusShell: React.FC<CampusShellProps> = ({ onBack, link }) => {
       />
 
       <StudySyncModal visible={overlay === 'studySync'} onClose={() => setOverlay(null)} />
+
+      <FriendsSafetyScreen
+        visible={overlay === 'friendsSafety'}
+        onClose={() => setOverlay(null)}
+        onOpenBlocked={() => switchTo('friends')}
+        onOpenVerify={() => switchTo('verify')}
+      />
 
       {selectedAssignmentId && (
         <AssignmentPortalModal

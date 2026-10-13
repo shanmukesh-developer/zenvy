@@ -5,6 +5,9 @@ const { getConversationModel } = require('../../models/Conversation');
 const { getUserModel } = require('../../models/User');
 const { getProximityRoomModel, getProximityMessageModel } = require('./models/ProximityRoom');
 const { cleanImageRef, isBlockedBetween, pushToUsers } = require('./campusHelpers');
+// Zenvy Friends: linked-chat rules (task / Connect / closed chats) and the Friends socket events.
+const { conversationGuard } = require('../friends/guards');
+const { registerFriendsSocket } = require('../friends/socket');
 
 const MESSAGE_TYPES = new Set(['text', 'image', 'voice', 'audio', 'video', 'file', 'poll', 'location', 'sticker', 'gif']);
 const MAX_TEXT = 4000;
@@ -192,8 +195,15 @@ const initCampusSocket = (io) => {
     socket.on('chat:join', async (data, ack) => {
       const chatId = data?.chatId;
       if (!chatId) return;
-      if (!(await isMember(chatId))) {
+      let conversation = null;
+      try { conversation = await getConversationModel().findByPk(chatId); } catch { conversation = null; }
+      if (!conversation || !(conversation.participants || []).includes(userId)) {
         if (typeof ack === 'function') ack({ error: 'Not a member of this chat' });
+        return;
+      }
+      const guard = await conversationGuard(conversation, userId, 'join');
+      if (!guard.ok) {
+        if (typeof ack === 'function') ack({ error: guard.error, code: guard.code });
         return;
       }
       socket.join(`chat:${chatId}`);
@@ -257,6 +267,13 @@ const initCampusSocket = (io) => {
         const participants = conversation.participants || [];
         if (!participants.includes(userId)) {
           if (ack) ack({ error: 'Not a member of this chat' });
+          return;
+        }
+
+        // Friends linked chats (task / Connect) and closed chats have their own rules.
+        const guard = await conversationGuard(conversation, userId, 'send');
+        if (!guard.ok) {
+          if (ack) ack({ error: guard.error, code: guard.code });
           return;
         }
 
@@ -678,6 +695,12 @@ const initCampusSocket = (io) => {
           return;
         }
 
+        const callGuard = await conversationGuard(conversation, userId, 'call');
+        if (!callGuard.ok) {
+          if (ack) ack({ error: callGuard.error, code: callGuard.code });
+          return;
+        }
+
         const calleeIds = participants.filter((p) => p !== userId);
         if (!calleeIds.length) {
           if (ack) ack({ error: 'No one to call' });
@@ -841,6 +864,9 @@ const initCampusSocket = (io) => {
     });
 
     // Disconnect
+    // Friends (Spaces etc.) events share this authenticated socket and the crash shield above.
+    registerFriendsSocket(campusNsp, socket);
+
     socket.on('disconnect', async () => {
       // Socket.IO already removed this socket from its rooms: tell the others the new live count.
       for (const roomSlug of joinedProximityRooms) announceProximity(roomSlug, 'left');

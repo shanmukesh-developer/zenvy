@@ -12,7 +12,9 @@ import { useAdminSocket } from '@/components/AdminSocketProvider';
  */
 export type LiveType =
   | 'store' | 'product' | 'config' | 'announcement' | 'coupon' | 'pg' | 'wall' | 'campus'
-  | 'order' | 'ticket' | 'verification' | 'pg_booking' | 'wall_submission' | 'service_booking' | 'rider' | 'user';
+  | 'order' | 'ticket' | 'verification' | 'pg_booking' | 'wall_submission' | 'service_booking' | 'rider' | 'user'
+  // Zenvy Friends moderation (admin room only)
+  | 'friends_report' | 'friends_appeal' | 'friends_review';
 
 export interface LiveEvent {
   type: LiveType | string;

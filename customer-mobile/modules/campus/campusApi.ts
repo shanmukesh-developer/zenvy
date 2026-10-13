@@ -20,7 +20,8 @@ export interface CampusProfileResponse {
 export const CAMPUS_NO_SESSION_ERROR =
   'You are not signed in. Log in to your Zenvy account to use Campus Buddy.';
 
-const getAuthHeaders = async () => {
+/** JSON + Bearer headers for the signed-in user (throws CAMPUS_NO_SESSION_ERROR when signed out). */
+export const getAuthHeaders = async () => {
   const token = await getToken();
   if (!token) throw new Error(CAMPUS_NO_SESSION_ERROR);
   return {
@@ -56,7 +57,7 @@ export class CampusApiError extends Error {
  * Parse a fetch Response and throw a short, friendly Error on failure.
  * Never surfaces raw HTML / "JSON Parse error" text (e.g. a Render 502 page during a cold start).
  */
-const jsonOrThrow = async (res: Response, fallback: string) => {
+export const jsonOrThrow = async (res: Response, fallback: string) => {
   const json: any = await res.json().catch(() => null);
   if (!res.ok) {
     const code = json && typeof json.code === 'string' ? json.code : '';
@@ -73,10 +74,10 @@ const jsonOrThrow = async (res: Response, fallback: string) => {
   return json;
 };
 
-const CAMPUS_TIMEOUT_MS = 30000;
+export const CAMPUS_TIMEOUT_MS = 30000;
 
 /** fetch() with a timeout; network failures (offline, DNS, timeout) become a friendly message. */
-const campusFetch = async (url: string, init?: RequestInit): Promise<Response> => {
+export const campusFetch = async (url: string, init?: RequestInit): Promise<Response> => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), CAMPUS_TIMEOUT_MS);
   try {

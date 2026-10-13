@@ -23,8 +23,10 @@ const initVerificationLogModel = (sequelize) => {
       type: DataTypes.STRING,
       allowNull: false
     },
+    // TEXT: JSON details often exceed 255 chars (Postgres VARCHAR(255) rejected the insert and the
+    // audit row was lost). Existing tables are widened in config/sweepMigrations.js.
     details: {
-      type: DataTypes.STRING
+      type: DataTypes.TEXT
     },
     timestamp: {
       type: DataTypes.DATE,

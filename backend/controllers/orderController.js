@@ -458,7 +458,10 @@ const createOrder = async (req, res) => {
         body: restaurant.isOffline ? `Pick up and deliver an order from ${restaurant.name}.` : `New order from ${restaurant.name} is ready for pickup!`,
       });
     } else {
-      io.to(`restaurant_${restaurant.id}`).emit('restaurant_newOrder', storeOrderPayload);
+      // Rider delivers: the kitchen gets the campus label, never the room address (same as the list).
+      const { campusLabel, customerFirstName } = require('../utils/publicFields');
+      const label = campusLabel(createdOrder.deliveryAddress);
+      io.to(`restaurant_${restaurant.id}`).emit('restaurant_newOrder', { ...storeOrderPayload, address: label, deliveryAddress: label, user: { name: customerFirstName(currentUser.name) } });
       await pushStoreNewOrder(restaurant, createdOrder);
     }
   } catch (error) {

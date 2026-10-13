@@ -24,4 +24,15 @@ const applyFeaturedExpiry = (json, now = new Date()) => {
   return json;
 };
 
-module.exports = { stripStoreSecrets, stripItemSecrets, applyFeaturedExpiry, STORE_SECRET_FIELDS, ITEM_SECRET_FIELDS };
+// Rider-delivered (fulfilment ZENVY) orders as the kitchen sees them: the customer's first name
+// and the campus only. The rider gets the exact address; stall orders keep full contact (vendor delivers).
+const customerFirstName = (name) => String(name || '').trim().split(/\s+/)[0].slice(0, 40) || 'Customer';
+const campusLabel = (address) => {
+  const a = String(address || '').toLowerCase();
+  if (/\bsrm\b/.test(a)) return 'SRM AP campus';
+  if (/\bvit\b/.test(a)) return 'VIT AP campus';
+  if (a.includes('amrita')) return 'Amrita campus';
+  return 'Delivered by a Zenvy rider';
+};
+
+module.exports = { stripStoreSecrets, stripItemSecrets, applyFeaturedExpiry, STORE_SECRET_FIELDS, ITEM_SECRET_FIELDS, customerFirstName, campusLabel };

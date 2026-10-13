@@ -62,9 +62,19 @@ const getChats = async (req, res) => {
     });
 
     // Op.like on serialized JSON can false-positive on UUID substrings; verify real membership.
+    // Zenvy Friends linked chats: ?scope=connect lists only open Connect chats (Friends > Connect);
+    // the default Chats list hides Connect chats and closed task chats.
+    const scope = req.query && req.query.scope === 'connect' ? 'connect' : 'chats';
     const mine = conversations
       .map((c) => ({ ...c, participants: parseJson(c.participants, []) }))
-      .filter((c) => (c.participants || []).includes(userId));
+      .filter((c) => (c.participants || []).includes(userId))
+      .filter((c) => {
+        const ref = c.refType || null;
+        if (scope === 'connect') return ref === 'connect' && !c.closedAt;
+        if (ref === 'connect') return false;
+        if (ref && c.closedAt) return false;
+        return true;
+      });
 
     // Batch-resolve DM peers (name + avatar) in one query.
     const peerIds = new Set();
@@ -131,6 +141,9 @@ const getChats = async (req, res) => {
         lastSender: lastMsg ? (lastMsg.senderId === userId ? 'You' : lastMsg.senderName) : null,
         lastMessageAt: c.lastMessageAt,
         unreadCount,
+        refType: c.refType || null,
+        refId: c.refId || null,
+        closedAt: c.closedAt || null,
       });
     });
 

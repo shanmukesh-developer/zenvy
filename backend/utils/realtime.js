@@ -26,7 +26,9 @@ const DEBOUNCE_MS = 400;
 const BULK_THRESHOLD = 20;
 
 const PUBLIC_TYPES = new Set(['store', 'product', 'config', 'announcement', 'coupon', 'pg', 'wall', 'campus']);
-const ADMIN_TYPES = new Set([...PUBLIC_TYPES, 'order', 'ticket', 'verification', 'pg_booking', 'wall_submission', 'service_booking', 'rider', 'user']);
+const ADMIN_TYPES = new Set([...PUBLIC_TYPES, 'order', 'ticket', 'verification', 'pg_booking', 'wall_submission', 'service_booking', 'rider', 'user',
+  // Zenvy Friends moderation queue (admin /moderation page)
+  'friends_report', 'friends_appeal', 'friends_review']);
 const ACTIONS = new Set(['created', 'updated', 'deleted']);
 const CACHE_TYPES = new Set(['store', 'product']);
 

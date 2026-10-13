@@ -130,6 +130,8 @@ const findDm = async (a, b) => {
   const candidates = await Conversation.findAll({
     where: {
       isGroup: false,
+      // Friends task / Connect chats between the same two people are never reused as their DM.
+      refType: null,
       [Op.or]: [
         { participants: JSON.stringify([a, b]) },
         { participants: JSON.stringify([b, a]) },

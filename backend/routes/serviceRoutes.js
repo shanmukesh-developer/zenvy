@@ -111,11 +111,36 @@ const saveIfUnchanged = async (ServiceBooking, booking, changes, extraWhere = {}
 const staleBooking = (res) => res.status(409).json({ success: false, message: 'This booking was just updated. Please refresh and try again.' });
 
 // Create a new Service Booking (Laptop Repair, Printout, Laundry, Auto Ride, Room Shift)
+// Retry key (customer-2): Idempotency-Key header or specifications.clientRequestId. A repeat
+// returns the first booking (duplicate: true); 409 only while the first one is still being saved.
+const BOOKING_KEY_WINDOW_MS = 24 * 60 * 60 * 1000;
 router.post('/book', protect, async (req, res) => {
+  const { readIdempotencyKey, claim } = require('../utils/idempotency');
+  const rawSpecs = (req.body || {}).specifications;
+  const bookingKey = readIdempotencyKey(req, rawSpecs && typeof rawSpecs === 'object' ? rawSpecs.clientRequestId : undefined, (req.body || {}).idempotencyKey);
+  const slot = claim('service-book', req.user.id, bookingKey);
+  if (slot.state === 'busy') {
+    return res.status(409).json({ success: false, code: 'BOOKING_IN_PROGRESS', message: 'Your booking is still being saved. Hang tight.' });
+  }
+  if (slot.state === 'done') return res.status(slot.status).json({ ...slot.body, duplicate: true });
   try {
     const ServiceBooking = getServiceBookingModel();
     if (!ServiceBooking) {
       return res.status(500).json({ success: false, message: 'ServiceBooking model not initialized' });
+    }
+    const replayBooking = (booking) => res.status(200).json({
+      success: true,
+      duplicate: true,
+      message: 'Service booked successfully! Our executive will connect with you.',
+      booking,
+    });
+    // Survives restarts: the key is stored on the booking itself.
+    if (bookingKey) {
+      const { Op } = require('sequelize');
+      const existing = await ServiceBooking.findOne({
+        where: { userId: req.user.id, idempotencyKey: bookingKey, createdAt: { [Op.gt]: new Date(Date.now() - BOOKING_KEY_WINDOW_MS) } },
+      });
+      if (existing) return replayBooking(existing);
     }
 
     const {
@@ -171,6 +196,7 @@ router.post('/book', protect, async (req, res) => {
 
     // Store the quantity the server actually priced (not whatever the client sent).
     const specs = specifications && typeof specifications === 'object' && !Array.isArray(specifications) ? { ...specifications } : {};
+    delete specs.clientRequestId; // kept in the idempotencyKey column instead
     if (priced.quantity) specs.quantity = priced.quantity;
     if (specs.unit !== undefined && !['kg', 'pcs'].includes(specs.unit)) delete specs.unit;
     if (priced.item) specs.serviceName = priced.item.name;
@@ -196,8 +222,11 @@ router.post('/book', protect, async (req, res) => {
       cleanAttachment = img.value;
     }
 
-    const booking = await ServiceBooking.create({
+    let booking;
+    try {
+      booking = await ServiceBooking.create({
       userId: req.user.id,
+      idempotencyKey: bookingKey || null,
       serviceType,
       title: cleanText(title, 200) || title,
       description: typeof description === 'string' ? description.replace(/[<>]/g, '') : description,
@@ -215,7 +244,15 @@ router.post('/book', protect, async (req, res) => {
       deliveryAddress: cleanText(deliveryAddress, 300) || [block, room ? `Room ${room}` : ''].filter(Boolean).join(', '),
       contactPhone: sanitizedPhone,
       trackingHistory: initialTracking,
-    });
+      });
+    } catch (createErr) {
+      // Same key raced in from another process: the unique index kept one row, return it.
+      if (bookingKey && createErr && createErr.name === 'SequelizeUniqueConstraintError') {
+        const winner = await ServiceBooking.findOne({ where: { userId: req.user.id, idempotencyKey: bookingKey } });
+        if (winner) return replayBooking(winner);
+      }
+      throw createErr;
+    }
 
     // If socket.io is available, broadcast new service notification to admins/partners
     if (req.app.get('io')) {
@@ -231,14 +268,18 @@ router.post('/book', protect, async (req, res) => {
     }
     require('../utils/realtime').notifyAdmin('service_booking', 'created', booking.id);
 
-    return res.status(201).json({
+    const body = {
       success: true,
       message: 'Service booked successfully! Our executive will connect with you.',
-      booking,
-    });
+      booking: booking.toJSON(),
+    };
+    slot.finish(200, body); // a repeat is answered 200 + duplicate:true
+    return res.status(201).json(body);
   } catch (error) {
     console.error('Error creating service booking:', error);
     return res.status(500).json({ success: false, message: 'We could not book this service right now. Please try again.' });
+  } finally {
+    slot.release(); // no-op after finish(); frees the key after a refusal so a retry can run
   }
 });
 

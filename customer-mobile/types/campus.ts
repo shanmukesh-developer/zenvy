@@ -50,7 +50,14 @@ export interface CampusUserData {
   friendCode?: string | null;
 }
 
-export type CampusTab = 'chats' | 'feed' | 'campus' | 'me';
+export type CampusTab = 'chats' | 'friends' | 'campus' | 'me';
+
+/** Zenvy Friends sub-tabs, in display order. */
+export type FriendsSubTab = 'pulse' | 'spaces' | 'forum' | 'tasks' | 'connect';
+export const FRIENDS_SUB_TABS: readonly FriendsSubTab[] = ['pulse', 'spaces', 'forum', 'tasks', 'connect'];
+
+/** Chat link to what created it (GET /api/campus/chats). null/absent = ordinary chat. */
+export type CampusChatRefType = 'task' | 'connect';
 
 export type CampusChatType = 'dm' | 'class' | 'club' | 'study' | 'ride' | 'secret';
 
@@ -69,6 +76,11 @@ export interface CampusChatListItem {
   lastMessageAt?: string | Date | null;
   unreadCount: number;
   peerId?: string | null;
+  /** Set when the chat belongs to a Friends task or a Connect match. */
+  refType?: CampusChatRefType | null;
+  refId?: string | null;
+  /** Closed chats keep their history but refuse new messages and calls (CHAT_CLOSED). */
+  closedAt?: string | null;
 }
 
 export interface CampusChatListResponse {

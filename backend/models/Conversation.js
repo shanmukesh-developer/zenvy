@@ -83,6 +83,21 @@ const initConversationModel = (sequelize) => {
     onlyAdminsCanSend: {
       type: DataTypes.BOOLEAN,
       defaultValue: false
+    },
+    // Zenvy Friends: what created this chat. null = ordinary DM / group; 'task' | 'connect' are linked
+    // chats that findDm never reuses and that the conversation guard authorises (modules/friends/guards).
+    refType: {
+      type: DataTypes.STRING(16),
+      allowNull: true
+    },
+    refId: {
+      type: DataTypes.UUID,
+      allowNull: true
+    },
+    // Set when a linked chat closes (task done + 7 days, Connect unmatch). No new messages after this.
+    closedAt: {
+      type: DataTypes.DATE,
+      allowNull: true
     }
   }, { timestamps: true });
 

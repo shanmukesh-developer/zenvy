@@ -46,6 +46,9 @@ const initDeliveryPartnerModel = (sequelize) => {
     },
     isFcmActive: { type: DataTypes.BOOLEAN, defaultValue: false },
     isSosActive: { type: DataTypes.BOOLEAN, defaultValue: false },
+    // Last SOS from the rider app (POST /api/delivery/sos). Nullable; added by addMissingColumns.
+    sosAt: { type: DataTypes.DATE, allowNull: true },
+    sosLocation: { type: DataTypes.JSON, allowNull: true }, // { lat, lng, accuracy? } at the time of the SOS
     isApproved: { type: DataTypes.BOOLEAN, defaultValue: false },
     // Bumped on every password change: sessions signed with an older `tv` are revoked.
     tokenVersion: { type: DataTypes.INTEGER, allowNull: true, defaultValue: 0 },

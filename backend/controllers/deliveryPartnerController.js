@@ -1259,10 +1259,97 @@ const notifyArrivalAtGate = async (req, res) => {
   }
 };
 
+// @desc    Remove this phone's push token from the signed-in rider (logout / account switch)
+// @route   POST /api/delivery/fcm-token/remove   { fcmToken | token }
+const removeFcmToken = async (req, res) => {
+  const { cleanFcmToken } = require('../utils/fcmToken');
+  const fcmToken = cleanFcmToken((req.body || {}).fcmToken || (req.body || {}).token);
+  if (!fcmToken) return res.status(400).json({ message: 'A valid push token is required' });
+  try {
+    const DeliveryPartner = getDeliveryPartnerModel();
+    const partner = await DeliveryPartner.findByPk(req.user.id, { attributes: ['id', 'fcmTokens'] });
+    if (!partner) return res.status(404).json({ message: 'Partner not found' });
+    const list = Array.isArray(partner.fcmTokens) ? partner.fcmTokens : [];
+    const filtered = list.filter((t) => (typeof t === 'string' ? t : t && t.token) !== fcmToken);
+    if (filtered.length !== list.length) {
+      partner.fcmTokens = filtered;
+      partner.changed('fcmTokens', true);
+      await partner.save();
+    }
+    // Idempotent: removing a token that is not there is still a success.
+    res.json({ removed: list.length - filtered.length, devices: filtered.length });
+  } catch (error) {
+    serverError(res, '[RIDER_FCM_REMOVE_ERROR]', error);
+  }
+};
+
+// @desc    Rider SOS: stored on the rider row (so an admin who opens the dashboard later still sees
+//          it), sent live to the admin room and pushed to admin devices.
+// @route   POST /api/delivery/sos   { lat?, lng?, accuracy?, note? }
+const SOS_REPEAT_MS = 30 * 1000;
+const triggerSos = async (req, res) => {
+  try {
+    const DeliveryPartner = getDeliveryPartnerModel();
+    const partner = await DeliveryPartner.findByPk(req.user.id, { attributes: ['id', 'name', 'phone', 'isSosActive', 'sosAt', 'liveLocation', 'currentOrderId'] });
+    if (!partner) return res.status(401).json({ message: 'Rider account not found' });
+
+    const body = req.body || {};
+    const lat = Number(body.lat);
+    const lng = Number(body.lng);
+    const hasFix = Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && !(lat === 0 && lng === 0);
+    const live = partner.liveLocation && typeof partner.liveLocation === 'object' ? partner.liveLocation : null;
+    const location = hasFix
+      ? { lat, lng, ...(Number.isFinite(Number(body.accuracy)) ? { accuracy: Math.round(Number(body.accuracy)) } : {}) }
+      : (live && Number.isFinite(Number(live.lat)) && Number.isFinite(Number(live.lng)) ? { lat: Number(live.lat), lng: Number(live.lng), stale: true } : null);
+    const note = typeof body.note === 'string' ? body.note.replace(/[<>]/g, '').trim().slice(0, 200) : '';
+    const now = new Date();
+
+    // A repeated tap within 30 s refreshes the location but does not re-page every admin.
+    const repeat = partner.isSosActive && partner.sosAt && now - new Date(partner.sosAt) < SOS_REPEAT_MS;
+    await DeliveryPartner.update({ isSosActive: true, sosAt: repeat ? partner.sosAt : now, ...(location ? { sosLocation: location } : {}) }, { where: { id: partner.id } });
+
+    const payload = {
+      riderId: partner.id,
+      riderName: partner.name,
+      riderPhone: partner.phone || null,
+      timestamp: (repeat ? new Date(partner.sosAt) : now).toISOString(),
+      lat: location ? location.lat : undefined,
+      lng: location ? location.lng : undefined,
+      location,
+      orderId: partner.currentOrderId || null,
+      note: note || undefined,
+    };
+    const io = req.app.get('io');
+    if (io) io.to('admin-room').emit('sos_received', payload);
+    console.error(`[CRITICAL SOS] Rider ${partner.id} (${partner.name}) at ${payload.timestamp}${location ? ` ${location.lat},${location.lng}` : ''}`);
+
+    if (!repeat) {
+      try {
+        const admins = await getUserModel().findAll({ where: { role: 'admin', isActive: { [Op.ne]: false } }, attributes: ['id', 'fcmTokens'] });
+        const tokens = admins.flatMap((a) => (Array.isArray(a.fcmTokens) ? a.fcmTokens : []));
+        if (tokens.length) {
+          await sendPushToTokens(tokens, '🚨 Rider SOS', `${partner.name || 'A rider'} needs help${partner.phone ? ` · ${partner.phone}` : ''}`, { type: 'RIDER_SOS', riderId: String(partner.id) }, { recipients: admins.map((a) => a.id) });
+        }
+      } catch (pushErr) {
+        console.warn('[RIDER_SOS_PUSH_WARN]', pushErr.message);
+      }
+      try {
+        const { getVerificationLogModel } = require('../models/VerificationLog');
+        await getVerificationLogModel().create({ adminId: String(partner.id), targetId: String(partner.id), action: 'RIDER_SOS', details: JSON.stringify({ location, orderId: payload.orderId, note: note || undefined }) });
+      } catch (logErr) {
+        console.warn('[RIDER_SOS_AUDIT_WARN]', logErr.message);
+      }
+    }
+    res.json({ ok: true, sosActive: true, sosAt: payload.timestamp, repeat: !!repeat });
+  } catch (error) {
+    serverError(res, '[RIDER_SOS_ERROR]', error);
+  }
+};
+
 module.exports = { 
   registerPartner, authPartner, acceptOrder, getPendingOrders, getActiveOrders, 
   updateOrderStatus, toggleOnline, getOrderHistory, saveFcmToken, getLeaderboard,
   getRiderProfile, updateRiderProfile, getPublicRiderProfile, getTodayStats,
   cancelOrderByRider, changePassword, notifyArrivalAtGate,
-  getWeekStats, createRiderTicket, getRiderTickets
+  getWeekStats, createRiderTicket, getRiderTickets, removeFcmToken, triggerSos
 };

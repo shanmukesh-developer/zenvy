@@ -179,4 +179,15 @@ router.put('/admin/events/:id', protect, admin, pulseAdmin.updateEvent);
 router.delete('/admin/events/:id', protect, admin, pulseAdmin.deleteEvent);
 router.put('/admin/daily-question', protect, admin, pulseAdmin.upsertDailyQuestion);
 
+// ── Zenvy Friends (Campus Buddy > Friends) ────────────────────────────────────
+// Mounted last so the existing /pulse/* routes above keep answering first. Each sub-tab router is a
+// FEATURE_OFF stub until its phase ships (modules/friends/routes/*Routes.js).
+router.use('/friends', require('../friends/routes/friendsRoutes'));
+router.use('/mod', require('../friends/routes/modRoutes'));
+router.use('/pulse', require('../friends/routes/pulseRoutes'));
+router.use('/forum', require('../friends/routes/forumRoutes'));
+router.use('/tasks', require('../friends/routes/tasksRoutes'));
+router.use('/connect', require('../friends/routes/connectRoutes'));
+router.use('/spaces', require('../friends/routes/spacesRoutes'));
+
 module.exports = router;

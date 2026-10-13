@@ -99,6 +99,11 @@ const initCampusProfileModel = (sequelize) => {
     buddyPoints: {
       type: DataTypes.INTEGER,
       defaultValue: 100, // Welcome gift points
+    },
+    // Set when Connect is activated or an admin confirms the DOB; PUT /profile then refuses DOB changes.
+    dobLockedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
     }
   }, { timestamps: true });
 
