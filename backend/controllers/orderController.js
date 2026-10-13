@@ -289,6 +289,12 @@ const createOrder = async (req, res) => {
       if (idemClaimed) recentOrderKeys.delete(idemKey);
       return res.status(400).json({ code: 'STALL_COD_ONLY', message: `${restaurant.name} takes cash on delivery only.`, allowed: ['COD'] });
     }
+    // Rider-purchase store: the rider pays the shop and is repaid by the customer's cash, so these
+    // orders are cash on delivery only (same code as stalls so every app build already handles it).
+    if (!isVendorOrder && riderBuys && paymentMethod !== 'COD') {
+      if (idemClaimed) recentOrderKeys.delete(idemKey);
+      return res.status(400).json({ code: 'STALL_COD_ONLY', message: `${restaurant.name} is a buy-at-store shop and takes cash on delivery only.`, allowed: ['COD'] });
+    }
 
     let isSurge = false;
     try {
