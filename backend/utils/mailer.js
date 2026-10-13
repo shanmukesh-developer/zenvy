@@ -69,9 +69,10 @@ const sendMail = async ({ to, subject, html, text }) => {
     }
     // Brevo error bodies contain a code/message, never our key; log only the code.
     let code = '';
-    try { code = (await res.json()).code || ''; } catch { /* ignore */ }
-    console.warn(`[MAILER] Brevo rejected (${res.status}${code ? ` ${code}` : ''}) for ${maskEmail(recipient)}`);
-    return { ok: false, reason: `rejected_${res.status}` };
+    let detail = '';
+    try { const body = await res.json(); code = body.code || ''; detail = String(body.message || '').slice(0, 200); } catch { /* ignore */ }
+    console.warn(`[MAILER] Brevo rejected (${res.status}${code ? ` ${code}` : ''}${detail ? `: ${detail}` : ''}) for ${maskEmail(recipient)}`);
+    return { ok: false, reason: `rejected_${res.status}`, code, detail };
   } catch (err) {
     const timedOut = err && err.name === 'AbortError';
     console.warn(`[MAILER] ${timedOut ? 'timeout' : 'network error'} for ${maskEmail(recipient)}`);
