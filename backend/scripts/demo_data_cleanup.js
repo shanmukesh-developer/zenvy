@@ -53,13 +53,14 @@ const runDemoDataCleanup = async () => {
       }
     }
     // The demo admin (published password "admin123") would give anyone full admin powers.
-    // While it still matches the published password its password is rotated to a random value
-    // and its sessions are revoked (model hook bumps tokenVersion). To regain access set DEMO_ADMIN_NEW_PASSWORD (12+ chars) in
-    // Render env and restart once, then remove the variable.
+    // By owner decision it is NOT rotated automatically: startup only logs a warning. Set
+    // DEMO_ADMIN_AUTO_ROTATE=true to rotate it, or DEMO_ADMIN_NEW_PASSWORD (12+ chars) in Render
+    // env and restart once to choose a new password, then remove the variable.
     const demoAdmin = await User.findOne({ where: { phone: '9999999999', role: 'admin', isActive: true } });
     if (demoAdmin) {
       const wanted = String(process.env.DEMO_ADMIN_NEW_PASSWORD || '');
-      if (await safeCompare(demoAdmin, 'admin123')) {
+      // Owner decision (2026-10-13): never auto-change the admin password; only warn.
+      if (String(process.env.DEMO_ADMIN_AUTO_ROTATE || '') === 'true' && (await safeCompare(demoAdmin, 'admin123'))) {
         demoAdmin.password = wanted.length >= 12 ? wanted : require('crypto').randomBytes(24).toString('base64url');
         await demoAdmin.save();
         result.demoAdminWarning = true;
@@ -68,6 +69,9 @@ const runDemoDataCleanup = async () => {
         demoAdmin.password = wanted;
         await demoAdmin.save();
         console.warn('🔐 [DEMO_CLEANUP] Admin 9999999999 password set from DEMO_ADMIN_NEW_PASSWORD. Remove that env variable now.');
+      } else if (await safeCompare(demoAdmin, 'admin123')) {
+        result.demoAdminWarning = true;
+        console.warn('⚠️ [DEMO_CLEANUP] Admin 9999999999 still uses the published password "admin123". Change it when convenient.');
       }
     }
 
