@@ -17,7 +17,8 @@
 // • deliveryRequestGone(orderId) → `delivery_request_gone { orderId }` (claimed / cancelled / left the pool).
 //
 // Store/product events also clear the in-memory public restaurant listing cache immediately (not
-// debounced) so the refetch a client makes on receipt already sees fresh data.
+// debounced) so the refetch a client makes on receipt already sees fresh data. config / campus /
+// vault ('coupon') events clear their utils/responseCache groups the same way.
 
 const ADMIN_ROOM = 'admin-room';
 const PUBLIC_EVENT = 'data:changed';
@@ -40,6 +41,15 @@ const init = (io) => { ioRef = io || null; };
 
 const clearListingCache = () => {
   try { require('../controllers/adminController').clearRestaurantsCache(); } catch (e) { console.error('[REALTIME_CACHE_CLEAR]', e.message); }
+};
+
+// Other public GET caches (utils/responseCache) keyed by the realtime type that changes them.
+// Vault deals are published as type 'coupon' (scope 'vault').
+const RESPONSE_CACHE_GROUPS = { config: ['config'], announcement: ['config'], campus: ['campus'], coupon: ['vault'] };
+const clearResponseCache = (type) => {
+  const groups = RESPONSE_CACHE_GROUPS[type];
+  if (!groups) return;
+  try { require('./responseCache').invalidate(...groups); } catch (e) { console.error('[REALTIME_CACHE_CLEAR]', e.message); }
 };
 
 // Only plain id-like strings / numbers survive; anything else becomes null.
@@ -104,6 +114,7 @@ const publish = (type, action, id, extra = {}) => {
   try {
     if (!PUBLIC_TYPES.has(type)) return;
     if (CACHE_TYPES.has(type)) clearListingCache();
+    else clearResponseCache(type);
     enqueue('public', buildEvent(type, action, id, extra));
   } catch (err) {
     console.error('[REALTIME_PUBLISH_ERROR]', err.message);

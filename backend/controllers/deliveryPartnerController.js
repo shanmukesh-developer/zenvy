@@ -16,7 +16,7 @@ const MAX_PIN_ATTEMPTS = 5; // wrong delivery PINs before the handover is locked
 const MAX_ACTIVE_ORDERS = Math.max(1, parseInt(process.env.RIDER_MAX_ACTIVE_ORDERS, 10) || 3); // orders one rider may hold
 
 // What the rider earns for an order (shared with the admin/support "mark delivered" path).
-const { riderPayout, pushNearestRiders } = require('../utils/riderDispatch');
+const { riderPayout, pushNearestRiders, refreshRiderCurrentOrder } = require('../utils/riderDispatch');
 
 const normalizeItems = (items) => {
   if (typeof items === 'string') {
@@ -278,7 +278,22 @@ const authPartner = async (req, res) => {
 // never claimable. Old rows have fulfilment NULL (= Zenvy rider delivery).
 const NOT_STALL_ORDER = { [Op.and]: [{ [Op.or]: [{ fulfilment: null }, { fulfilment: { [Op.ne]: 'VENDOR' } }] }] };
 
-const acceptOrder = async (req, res) => {
+// One claim at a time per rider (in this process): the active-order count and the claim then
+// cannot interleave, so a burst of taps on several cards never takes more than the limit.
+// The re-count after the claim (below) still guards against several server processes.
+const riderClaimChains = new Map();
+const withRiderClaimLock = (riderId, fn) => {
+  const prev = riderClaimChains.get(riderId) || Promise.resolve();
+  const run = prev.catch(() => {}).then(fn);
+  const tail = run.catch(() => {});
+  riderClaimChains.set(riderId, tail);
+  tail.then(() => { if (riderClaimChains.get(riderId) === tail) riderClaimChains.delete(riderId); });
+  return run;
+};
+
+const acceptOrder = (req, res) => withRiderClaimLock(String(req.user.id), () => acceptOrderLocked(req, res));
+
+const acceptOrderLocked = async (req, res) => {
   try {
     const DeliveryPartner = getDeliveryPartnerModel();
     const Order = getOrderModel();
@@ -326,16 +341,36 @@ const acceptOrder = async (req, res) => {
       return res.status(400).json({ message: 'Order was already claimed by another rider or is not yet accepted by the merchant.' });
     }
 
+    // The count above and the claim are two statements: parallel claims by the same rider (several
+    // taps on different cards) could each pass the check. Re-count now that this claim is in and
+    // undo it if the rider went over the limit (only the claim fields are reverted, conditionally).
+    const heldNow = await Order.count({
+      where: { deliveryPartnerId: req.user.id, status: { [Op.notIn]: ['Delivered', 'Cancelled'] } },
+    });
+    if (heldNow > MAX_ACTIVE_ORDERS) {
+      await Order.update(
+        { deliveryPartnerId: null },
+        { where: { id: req.params.orderId, deliveryPartnerId: req.user.id, status: { [Op.in]: ['Accepted', 'Preparing', 'ReadyForPickup'] } } }
+      );
+      return res.status(409).json({
+        code: 'MAX_ACTIVE',
+        message: `You already have ${MAX_ACTIVE_ORDERS} active orders. Deliver one before taking another.`,
+      });
+    }
+
     // Since we successfully updated, we fetch the updated order object
     const updatedOrder = await Order.findByPk(req.params.orderId);
     realtime.deliveryRequestGone(updatedOrder.id); // other riders drop it from their pool at once
     
     // (Status advancement is strictly controlled by the Restaurant Portal until picked up)
     
-    if (partner) { 
-      partner.currentOrderId = updatedOrder.id; 
-      await partner.save(); 
-    }
+    // Taking an order means the rider is on duty: a rider the presence job had marked offline (socket
+    // dropped while the app stayed open) is put back online so dispatch and the admin map see them.
+    await DeliveryPartner.update(
+      { currentOrderId: updatedOrder.id, ...(partner.isOnline ? {} : { isOnline: true }) },
+      { where: { id: partner.id } }
+    );
+    if (!partner.isOnline) realtime.setRiderOnline(partner.id, true);
 
     const io = req.app.get('io');
     if (io) {
@@ -592,7 +627,7 @@ const updateOrderStatus = async (req, res) => {
       const DeliveryPartner = getDeliveryPartnerModel();
       const User = getUserModel();
       await DeliveryPartner.increment({ totalEarnings: earnings, zenPoints: 5 }, { where: { id: req.user.id } });
-      await DeliveryPartner.update({ currentOrderId: null }, { where: { id: req.user.id } });
+      await refreshRiderCurrentOrder(req.user.id); // may still carry other orders
       // Atomic increments: a stale read-modify-save here used to overwrite concurrent spin/redeem points.
       let customer = null;
       try {
@@ -683,7 +718,6 @@ const updateOrderStatus = async (req, res) => {
 const cancelOrderByRider = async (req, res) => {
   try {
     const Order = getOrderModel();
-    const DeliveryPartner = getDeliveryPartnerModel();
 
     const order = await Order.findByPk(req.params.orderId);
     if (!order) return res.status(404).json({ message: 'Order not found' });
@@ -707,12 +741,8 @@ const cancelOrderByRider = async (req, res) => {
     order.status = nextStatus;
     realtime.leaveOrderRoom(req.user.id, order.id); // no more status / chat / GPS for the old rider
 
-    // Clear rider's current task
-    const partner = await DeliveryPartner.findByPk(req.user.id);
-    if (partner) {
-      partner.currentOrderId = null;
-      await partner.save();
-    }
+    // The rider's current task is one of the orders they still carry (or none).
+    await refreshRiderCurrentOrder(req.user.id);
 
     const io = req.app.get('io');
     if (io) {

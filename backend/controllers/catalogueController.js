@@ -8,6 +8,9 @@ const { STORE_VENDOR_TYPES, resolveVendorTypes, isLocalVendorStore, isServiceVen
 const { sortMenuItems } = require('../utils/menuSort');
 
 const MAX_LIMIT = 200;
+// Columns never part of a public store / product (secrets and push tokens): not selected at all.
+const STORE_EXCLUDE = ['password', 'fcmTokens', 'tokenVersion', 'commissionRate', 'commissionType', 'phone'];
+const ITEM_EXCLUDE = ['customCommission', 'ownerName', 'ownerPhone'];
 
 const likeOp = (model) => (model.sequelize.getDialect() === 'postgres' ? Op.iLike : Op.like);
 // Wildcards are dropped (LIKE escape syntax differs between Postgres and SQLite).
@@ -125,7 +128,7 @@ const getStores = async (req, res) => {
     const types = resolveVendorTypes(req.query.type);
     const where = types ? { isActive: true, vendorType: { [Op.in]: types } } : storeWhere(null);
     if (req.query.campus) where.campus = String(req.query.campus);
-    const stores = await Restaurant.findAll({ where, order: [['name', 'ASC']] });
+    const stores = await Restaurant.findAll({ where, order: [['name', 'ASC']], attributes: { exclude: STORE_EXCLUDE } });
     const ids = stores.map(s => s.id);
     const counts = {};
     if (ids.length) {
@@ -160,7 +163,7 @@ const getItems = async (req, res) => {
       if (!UUID_RE.test(String(req.query.storeId))) return res.json({ items: [], total: 0, stores: [] });
       storeFilter.id = String(req.query.storeId);
     }
-    const stores = await Restaurant.findAll({ where: storeFilter });
+    const stores = await Restaurant.findAll({ where: storeFilter, attributes: { exclude: STORE_EXCLUDE } });
     if (!stores.length) return res.json({ items: [], total: 0, stores: [] });
     const storeMap = new Map(stores.map(s => [s.id, s]));
 
@@ -178,7 +181,7 @@ const getItems = async (req, res) => {
 
     const limit = Math.min(MAX_LIMIT, Math.max(1, parseInt(req.query.limit, 10) || MAX_LIMIT));
     const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
-    const { count, rows } = await MenuItem.findAndCountAll({ where, order: [['category', 'ASC'], ['name', 'ASC']], limit, offset });
+    const { count, rows } = await MenuItem.findAndCountAll({ where, attributes: { exclude: ITEM_EXCLUDE }, order: [['category', 'ASC'], ['name', 'ASC']], limit, offset });
 
     // One store's shelf follows the admin's menu order (specs.sortOrder).
     let items = (req.query.storeId ? sortMenuItems(rows) : rows).map(r => shapeItem(r, storeMap.get(r.restaurantId)));

@@ -18,7 +18,9 @@ const { sendServerError } = require('../utils/httpErrors');
 
 // @desc    Get all active vault items
 // @route   GET /api/vault
-router.get('/', async (req, res) => {
+// Short server cache + ETag; cleared when a deal is claimed or the admin edits deals.
+const responseCache = require('../utils/responseCache');
+router.get('/', responseCache.cacheGet('vault', { ttlMs: 30 * 1000 }), async (req, res) => {
   try {
     const VaultItem = getVaultItemModel();
     const items = await VaultItem.findAll({ 

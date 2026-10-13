@@ -57,4 +57,27 @@ const pushNearestRiders = async ({ restaurant, orderId, title, body, limit = 5, 
   }
 };
 
-module.exports = { BASE_DELIVERY_FEE, riderPayout, RIDER_FRESH_MS, isRiderFresh, riderFixAgeMs, rankOnlineRiders, pushNearestRiders };
+// A rider may hold several orders. currentOrderId must point at one they still carry (the oldest),
+// or be null when they carry none: the presence job (server.js) never sets a rider offline while
+// currentOrderId is set, so clearing it while other orders are still on the bike is a bug.
+// Call after any order leaves a rider (delivered, cancelled, released). Never throws.
+const refreshRiderCurrentOrder = async (riderId) => {
+  if (!riderId) return null;
+  try {
+    const { Op } = require('sequelize');
+    const { getOrderModel } = require('../models/Order');
+    const next = await getOrderModel().findOne({
+      where: { deliveryPartnerId: riderId, status: { [Op.notIn]: ['Delivered', 'Cancelled'] } },
+      attributes: ['id'],
+      order: [['createdAt', 'ASC']],
+    });
+    const currentOrderId = next ? next.id : null;
+    await getDeliveryPartnerModel().update({ currentOrderId }, { where: { id: riderId } });
+    return currentOrderId;
+  } catch (err) {
+    console.warn('[RIDER_CURRENT_ORDER_WARN]', err.message);
+    return null;
+  }
+};
+
+module.exports = { BASE_DELIVERY_FEE, riderPayout, RIDER_FRESH_MS, isRiderFresh, riderFixAgeMs, rankOnlineRiders, pushNearestRiders, refreshRiderCurrentOrder };

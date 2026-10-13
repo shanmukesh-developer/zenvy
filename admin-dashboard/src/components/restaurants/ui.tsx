@@ -597,7 +597,7 @@ export function Thumb({ src, alt, size = 'md', rounded = 'rounded-lg' }: { src?:
   const [broken, setBroken] = useState(false);
   return src && !broken ? (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={src} alt={alt} loading="lazy" onError={() => setBroken(true)} className={cx(dim, rounded, 'shrink-0 border border-white/10 bg-slate-900 object-cover')} />
+    <img src={src} alt={alt} loading="lazy" decoding="async" onError={() => setBroken(true)} className={cx(dim, rounded, 'shrink-0 border border-white/10 bg-slate-900 object-cover')} />
   ) : (
     <div aria-hidden className={cx(dim, rounded, 'flex shrink-0 items-center justify-center border border-white/10 bg-gradient-to-br from-slate-800 to-slate-900 font-bold text-gray-500')}>
       {(alt || '?').trim().slice(0, 1).toUpperCase()}

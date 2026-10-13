@@ -4,8 +4,11 @@ const { getTypes, getStores, getItems } = require('../controllers/catalogueContr
 const router = express.Router();
 
 // Public, read-only. Prices here are the prices the server charges.
-router.get('/types', getTypes);
-router.get('/stores', getStores);
-router.get('/items', getItems);
+// Short server cache + ETag (key includes the query string), cleared on every store / product write.
+const { cacheGet } = require('../utils/responseCache');
+const catalogCache = cacheGet('catalog', { ttlMs: 30 * 1000 });
+router.get('/types', catalogCache, getTypes);
+router.get('/stores', catalogCache, getStores);
+router.get('/items', catalogCache, getItems);
 
 module.exports = router;

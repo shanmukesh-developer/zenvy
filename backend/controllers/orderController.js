@@ -5,13 +5,18 @@ const { getDeliveryPartnerModel } = require('../models/DeliveryPartner');
 const { sendPushToTokens } = require('../utils/push');
 const { getMenuItemModel } = require('../models/MenuItem');
 const { sendWhatsAppMessage, formatOrderMessage } = require('../utils/whatsappUtil');
-const { Op } = require('sequelize');
+const { Op, Transaction } = require('sequelize');
 const crypto = require('crypto');
 const { computeOrderQuote, PricingError, activeCouponWhere, normalizePaymentMethod, PAYMENT_UNAVAILABLE_MESSAGE, money } = require('../utils/orderPricing');
 const { getCampusServiceability } = require('../utils/storeHours');
 const { getHaversineDistance } = require('../utils/distance');
 const realtime = require('../utils/realtime');
-const { pushNearestRiders, riderPayout } = require('../utils/riderDispatch');
+const { pushNearestRiders, riderPayout, refreshRiderCurrentOrder } = require('../utils/riderDispatch');
+
+// Money transactions (wallet debit / refund, coupon claim). IMMEDIATE takes the SQLite write lock up
+// front: a DEFERRED transaction that reads then writes fails with SQLITE_BUSY when a parallel request
+// (double-tapped cancel, auto-cancel job) holds the lock. PostgreSQL ignores the type (row locks apply).
+const MONEY_TX = { type: Transaction.TYPES.IMMEDIATE };
 
 // An order just entered the rider pool by a path other than restaurant-accept: push the nearest riders too.
 // Fire-and-forget; never throws.
@@ -106,6 +111,16 @@ const pushStoreCancelled = async (restaurantId, order, text) => {
     await pushToStore(restaurantId, 'Order cancelled', text || 'An order was cancelled.', { orderId: order.id, type: 'ORDER_CANCELLED' });
   } catch (err) {
     console.warn('[STORE_PUSH_WARN]', err.message);
+  }
+};
+
+// Order-status push to the customer who placed the order. Never throws.
+const pushCustomer = async (order, title, body) => {
+  try {
+    const customer = await getUserModel().findByPk(order.userId, { attributes: ['id', 'fcmTokens'] });
+    if (customer) await sendPushToTokens(customer.fcmTokens, title, body, { orderId: order.id, type: 'ORDER_UPDATE' }, { recipients: [customer.id] });
+  } catch (err) {
+    console.warn('[CUSTOMER_PUSH_WARN]', err.message);
   }
 };
 
@@ -292,7 +307,7 @@ const createOrder = async (req, res) => {
     const sequelize = getSequelize();
     let createdOrder;
     try {
-      createdOrder = await sequelize.transaction(async (t) => {
+      createdOrder = await sequelize.transaction(MONEY_TX, async (t) => {
         if (quote.coupon) {
           const { getCouponModel } = require('../models/Coupon');
           const Coupon = getCouponModel();
@@ -412,7 +427,7 @@ const createOrder = async (req, res) => {
       totalPrice: createdOrder.totalPrice,
       finalPrice: createdOrder.finalPrice,
       paymentMethod: createdOrder.paymentMethod,
-      earnings: `₹${createdOrder.deliveryFee}`,
+      earnings: `₹${riderPayout(createdOrder)}`,
       distance: createdOrder.distance,
       createdAt: createdOrder.createdAt,
       deliverySlot: createdOrder.deliverySlot
@@ -513,14 +528,23 @@ const restaurantAcceptOrder = async (req, res) => {
       return vendorUpdateOrderStatus(req, res, order);
     }
 
-    if (order.status !== 'Pending') return res.status(400).json({ message: 'Order is not pending' });
+    // A retried / double-tapped accept (the first one landed but the phone lost the reply) is not an
+    // error: answer with the order as it is. Only a cancelled order is refused.
+    const alreadyAccepted = (o) => (o.status === 'Cancelled'
+      ? res.status(400).json({ code: 'ORDER_CANCELLED', message: 'This order was cancelled (by the customer or support), so it cannot be accepted.' })
+      : res.json({ message: 'Order already accepted', orderId: o.id, status: o.status, alreadyAccepted: true }));
+    if (order.status !== 'Pending') return alreadyAccepted(order);
 
     const est = parseInt((req.body || {}).estDuration, 10);
     const acceptFields = { status: 'Accepted', acceptedAt: new Date(), ...(Number.isFinite(est) && est > 0 && est <= 240 ? { estDuration: est } : {}) };
     // Conditional flip: a customer cancel (with Wallet refund) or the auto-cancel job may have
     // won the race since we read the order; never resurrect a cancelled order.
     const [accepted] = await Order.update(acceptFields, { where: { id: order.id, status: 'Pending' } });
-    if (accepted === 0) return res.status(400).json({ message: 'This order is no longer pending (it may have been cancelled by the customer).' });
+    if (accepted === 0) {
+      const fresh = await Order.findByPk(order.id, { attributes: ['id', 'status'] });
+      if (fresh) return alreadyAccepted(fresh);
+      return res.status(404).json({ message: 'Order not found' });
+    }
     Object.assign(order, acceptFields);
 
     const statusPayload = { 
@@ -547,7 +571,7 @@ const restaurantAcceptOrder = async (req, res) => {
           items: normalizeItems(order.items),
           totalPrice: order.totalPrice,
           finalPrice: order.finalPrice,
-          earnings: `₹${order.deliveryFee || 30}`,
+          earnings: `₹${riderPayout(order)}`,
           distance: order.distance
         });
       }
@@ -566,6 +590,7 @@ const restaurantAcceptOrder = async (req, res) => {
     }
 
     res.json({ message: 'Order picked up/accepted by restaurant', orderId: order.id });
+    await pushCustomer(order, 'Order Confirmed! 👍', `${restaurant?.name || 'The store'} accepted your order${order.estDuration ? ` (about ${order.estDuration} min)` : ''}.`);
   } catch (error) {
     console.error('[RESTAURANT_ACCEPT_ERROR]', error);
     res.status(500).json({ message: 'Server error' });
@@ -640,7 +665,7 @@ const getOrderById = async (req, res) => {
       const otherOrders = await Order.count({
         where: {
           deliveryPartnerId: order.deliveryPartnerId,
-          status: ['Accepted', 'PickedUp', 'Preparing'],
+          status: { [Op.notIn]: ['Delivered', 'Cancelled'] },
           id: { [Op.ne]: order.id }
         }
       });
@@ -786,7 +811,7 @@ const rateOrder = async (req, res) => {
           try {
             const { getSequelize } = require('../config/db');
             const sequelize = getSequelize();
-            await sequelize.transaction(async (t) => {
+            await sequelize.transaction(MONEY_TX, async (t) => {
               const [debited] = await User.update(
                 { walletBalance: sequelize.literal(`"walletBalance" - ${Number(tip)}`) },
                 { where: { id: req.user.id, walletBalance: { [Op.gte]: tip } }, transaction: t }
@@ -908,11 +933,13 @@ const cancelAndRefund = async (order, { reason = null, onlyFromStatuses = null, 
 
   // Status flip + refund in one transaction. The conditional update means two parallel
   // cancels can never both pass, so the Wallet is refunded exactly once.
-  const cancelled = await sequelize.transaction(async (t) => {
+  let riderId = order.deliveryPartnerId || null;
+  const cancelled = await sequelize.transaction(MONEY_TX, async (t) => {
     // Lock and re-read the row: the refund must use the price at cancel time (a bill approval
     // may have changed finalPrice after the caller loaded `order`).
     const fresh = await Order.findByPk(order.id, { transaction: t, lock: t.LOCK.UPDATE });
     if (!fresh) return false;
+    riderId = fresh.deliveryPartnerId || null; // a claim may have landed after the caller read the order
     const statusWhere = Array.isArray(onlyFromStatuses)
       ? { [Op.in]: onlyFromStatuses }
       : { [Op.notIn]: ['Cancelled', 'Delivered'] };
@@ -941,8 +968,11 @@ const cancelAndRefund = async (order, { reason = null, onlyFromStatuses = null, 
     }
     return true;
   });
+  // Callers notify / free the rider that really holds the order now, not the one they read earlier.
+  if (cancelled) order.deliveryPartnerId = riderId;
   // An unclaimed order leaves every online rider's pool (ids only; harmless if it was never listed).
-  if (cancelled && !order.deliveryPartnerId && !isVendorFulfilled(order)) realtime.deliveryRequestGone(order.id);
+  if (cancelled && !riderId && !isVendorFulfilled(order)) realtime.deliveryRequestGone(order.id);
+  if (cancelled && riderId) await refreshRiderCurrentOrder(riderId);
   if (cancelled && refunded > 0) console.log(`[REFUND] ₹${refunded} refunded to wallet for user ${order.userId} (order ${order.id})`);
   return { cancelled, refunded };
 };
@@ -1076,12 +1106,6 @@ const cancelOrder = async (req, res) => {
       // The assigned rider must stop (they may not be in the order room right now).
       if (order.deliveryPartnerId) io.to(`rider_${order.deliveryPartnerId}`).emit('orderCancelled', { orderId: order.id });
     }
-    if (order.deliveryPartnerId) {
-      try {
-        await getDeliveryPartnerModel().update({ currentOrderId: null }, { where: { id: order.deliveryPartnerId, currentOrderId: order.id } });
-      } catch (riderErr) { console.warn('[CANCEL_RIDER_RELEASE_WARN]', riderErr.message); }
-    }
-
     if (order.restaurantId) pushStoreCancelled(order.restaurantId, order, ownerCancel ? 'The customer cancelled an order.' : 'An order was cancelled by Zenvy support.');
 
     res.json({
@@ -1177,7 +1201,7 @@ const updateOrderStatus = async (req, res) => {
       try {
         const DeliveryPartner = getDeliveryPartnerModel();
         await DeliveryPartner.increment({ totalEarnings: riderPayout(order), zenPoints: 5 }, { where: { id: order.deliveryPartnerId } });
-        await DeliveryPartner.update({ currentOrderId: null }, { where: { id: order.deliveryPartnerId, currentOrderId: order.id } });
+        await refreshRiderCurrentOrder(order.deliveryPartnerId);
       } catch (riderErr) {
         console.error('[DELIVERY_RIDER_CREDIT_ERROR]', order.id, riderErr.message);
       }
@@ -1187,6 +1211,8 @@ const updateOrderStatus = async (req, res) => {
     if (status !== 'Delivered') {
       // Conditional write: never overwrite a cancel (and its refund) that landed after we read the order.
       const extra = status === 'OutForDelivery' ? { outForDeliveryAt: new Date() } : {};
+      // Leaving 'Pending' = the store side accepted (by admin): start the no-rider clock now.
+      if (order.status === 'Pending' && status !== 'Pending' && !order.acceptedAt) extra.acceptedAt = new Date();
       const allowedFrom = Object.keys(ADMIN_STATUS_RANK).filter((s) => s !== 'Delivered' && ADMIN_STATUS_RANK[s] <= targetRank);
       const [n] = await Order.update({ status, ...extra }, { where: { id: order.id, status: { [Op.in]: allowedFrom } } });
       if (n === 0) return res.status(409).json({ message: 'This order was just updated (cancelled, delivered or moved on). Please refresh.' });
@@ -1455,8 +1481,12 @@ const restaurantReadyOrder = async (req, res) => {
       return res.json({ message: 'Rider notified that the food is packed', orderId: order.id, status: 'Picking' });
     }
 
+    // Retry / double tap, or the rider already took the food: not an error, report the real status.
+    if (['ReadyForPickup', 'PickedUp', 'ArrivedAtGate', 'Delivered'].includes(order.status)) {
+      return res.json({ message: order.status === 'ReadyForPickup' ? 'Order is already marked ready' : 'The rider has already picked up this order', orderId: order.id, status: order.status, alreadyApplied: true });
+    }
     if (order.status !== 'Accepted' && order.status !== 'Preparing') {
-       return res.status(400).json({ message: 'Order must be Accepted or Preparing to mark as Ready' });
+       return res.status(400).json({ message: order.status === 'Cancelled' ? 'This order was cancelled.' : 'Accept the order before marking it ready.' });
     }
 
     // Conditional flip so a concurrent customer cancel is never overwritten.
@@ -1475,6 +1505,7 @@ const restaurantReadyOrder = async (req, res) => {
     }
 
     res.json({ message: 'Order marked as Ready for Pickup', orderId: order.id });
+    await pushCustomer(order, 'Order ready! 📦', order.deliveryPartnerId ? 'Your order is packed. Your rider is picking it up.' : 'Your order is packed and waiting for a rider.');
   } catch (error) {
     console.error('[RESTAURANT_READY_ERROR]', error);
     res.status(500).json({ message: 'Server error' });
@@ -1511,8 +1542,16 @@ const restaurantUpdateOrderStatus = async (req, res) => {
     if (order.restaurantId !== req.user.id) return res.status(403).json({ message: 'Not authorized to update this order' });
 
     if (status === 'Preparing') {
-      const prevStatus = order.status;
-      const [n] = await Order.update({ status: 'Preparing' }, { where: { id: order.id, status: { [Op.in]: ['Pending', 'Accepted'] } } });
+      // A store may skip "Accept" and start cooking: that is when the order enters the rider pool, so
+      // acceptedAt is stamped then (the 30-min no-rider auto-cancel counts from acceptedAt).
+      let prevStatus = order.status;
+      let [n] = prevStatus === 'Pending'
+        ? await Order.update({ status: 'Preparing', acceptedAt: new Date() }, { where: { id: order.id, status: 'Pending' } })
+        : [0];
+      if (n === 0) {
+        [n] = await Order.update({ status: 'Preparing' }, { where: { id: order.id, status: 'Accepted' } });
+        if (n === 1) prevStatus = 'Accepted';
+      }
       if (n === 0) return res.status(400).json({ message: 'This order was just cancelled or updated. Please refresh.' });
       order.status = 'Preparing';
       if (prevStatus === 'Pending' && !order.deliveryPartnerId) { realtime.deliveryRequest(order.id); pushPoolOrder(order); }
@@ -1539,9 +1578,6 @@ const restaurantUpdateOrderStatus = async (req, res) => {
       io.to(String(order.id)).emit('orderCancelled', { orderId: order.id, reason: 'STORE_DECLINED' });
       io.to('admin-room').emit('orderCancelled', { orderId: order.id, reason: 'STORE_DECLINED' });
       if (order.deliveryPartnerId) io.to(`rider_${order.deliveryPartnerId}`).emit('orderCancelled', { orderId: order.id, reason: 'STORE_DECLINED' });
-    }
-    if (order.deliveryPartnerId) {
-      try { await getDeliveryPartnerModel().update({ currentOrderId: null }, { where: { id: order.deliveryPartnerId, currentOrderId: order.id } }); } catch { /* best effort */ }
     }
     try {
       const customer = await getUserModel().findByPk(order.userId, { attributes: ['id', 'fcmTokens'] });
@@ -1771,7 +1807,7 @@ const approveBill = async (req, res) => {
     let diff = 0;
 
     try {
-      await sequelize.transaction(async (t) => {
+      await sequelize.transaction(MONEY_TX, async (t) => {
         // Lock and re-read: a cancel running in parallel either finishes first (we see Cancelled)
         // or waits for us (and then refunds the new finalPrice). Never two refunds on stale data.
         const fresh = await Order.findByPk(order.id, { transaction: t, lock: t.LOCK.UPDATE });

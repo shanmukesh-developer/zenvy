@@ -25,7 +25,8 @@ const orderValidation = [
 ];
 
 router.post('/quote', protect, quoteOrder);            // server bill for a basket (no side effects)
-router.get('/serviceability', getServiceability);      // is campus ordering open right now?
+// is campus ordering open right now? (clock-based, no DB: cached briefly for the ETag / 304)
+router.get('/serviceability', require('../utils/responseCache').cacheGet('serviceability', { ttlMs: 15 * 1000 }), getServiceability);
 router.post('/', protect, orderValidation, validate, createOrder);
 router.get('/', protect, admin, getAllOrders);
 router.get('/myorders', protect, getMyOrders);

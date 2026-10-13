@@ -16,6 +16,20 @@ const clearPublicRestaurantsCache = () => {
 // Restaurant row as the partner app may see it (no password hash) + the live open state.
 const { stripStoreSecrets, stripItemSecrets, applyFeaturedExpiry } = require('../utils/publicFields');
 
+// Columns that public listings strip anyway (stripStoreSecrets / stripItemSecrets): not selected at all.
+const PUBLIC_STORE_EXCLUDE = ['password', 'fcmTokens', 'tokenVersion', 'commissionRate', 'commissionType', 'phone'];
+const PUBLIC_ITEM_EXCLUDE = ['customCommission', 'ownerName', 'ownerPhone'];
+// Menu rows grouped by store id, keeping their (already sorted) order: O(items) instead of a
+// per-store filter over every item.
+const groupByRestaurant = (items) => {
+  const map = new Map();
+  for (const m of items) {
+    const list = map.get(m.restaurantId);
+    if (list) list.push(m); else map.set(m.restaurantId, [m]);
+  }
+  return map;
+};
+
 const publicStoreJson = (restaurant) => {
   const json = restaurant.toJSON();
   const pushDevices = Array.isArray(json.fcmTokens) ? json.fcmTokens.length : 0;
@@ -238,16 +252,20 @@ const getRestaurants = async (req, res) => {
     const MenuItem = getMenuItemModel();
     // Legacy inline base64 photos are nulled in SQL (never loaded into memory on the home feed).
     const { dataUrlSafeColumns } = require('../utils/imageStore');
-    const restaurants = await Restaurant.findAll({
-      where: { isActive: true },
-      attributes: { exclude: ['imageUrl', 'logoUrl'], include: dataUrlSafeColumns('Restaurant', ['imageUrl', 'logoUrl']) },
-    });
-
-    // Stitch all valid menu items into the restaurants array for catalog rendering
-    const allMenuItems = sortMenuItems(await MenuItem.findAll({
-      where: { isAvailable: true },
-      attributes: { exclude: ['imageUrl'], include: dataUrlSafeColumns('MenuItem', ['imageUrl']) },
-    }));
+    // Both queries are independent: run them together (one DB round trip of wall time, not two).
+    const [restaurants, menuRows] = await Promise.all([
+      Restaurant.findAll({
+        where: { isActive: true },
+        attributes: { exclude: ['imageUrl', 'logoUrl', ...PUBLIC_STORE_EXCLUDE], include: dataUrlSafeColumns('Restaurant', ['imageUrl', 'logoUrl']) },
+      }),
+      // Stitch all valid menu items into the restaurants array for catalog rendering
+      MenuItem.findAll({
+        where: { isAvailable: true },
+        attributes: { exclude: ['imageUrl', ...PUBLIC_ITEM_EXCLUDE], include: dataUrlSafeColumns('MenuItem', ['imageUrl']) },
+      }),
+    ]);
+    const allMenuItems = sortMenuItems(menuRows);
+    const menuByStore = groupByRestaurant(allMenuItems);
 
     const fallbackImage = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400';
     const cleanImageUrl = (url) => {
@@ -266,8 +284,7 @@ const getRestaurants = async (req, res) => {
       const openState = getStoreOpenState(r);
       rJson.isOpen = openState.isOpen;
       rJson.opensAt = openState.opensAt || null;
-      rJson.menu = allMenuItems
-        .filter(m => m.restaurantId === r.id)
+      rJson.menu = (menuByStore.get(r.id) || [])
         .map(m => {
           const item = m.toJSON();
           stripItemSecrets(item);
@@ -294,7 +311,7 @@ const getRestaurants = async (req, res) => {
 const getRestaurantMenu = async (req, res) => {
   try {
     const MenuItem = getMenuItemModel();
-    const menu = await MenuItem.findAll({ where: { restaurantId: req.params.id } });
+    const menu = await MenuItem.findAll({ where: { restaurantId: req.params.id }, attributes: { exclude: PUBLIC_ITEM_EXCLUDE } });
     res.json(sortMenuItems(menu).map((m) => stripItemSecrets(m.toJSON())));
   } catch (error) {
     console.error('[MENU_ERROR]', error);
@@ -624,7 +641,7 @@ const getLocalVendors = async (req, res) => {
     const { dataUrlSafeColumns } = require('../utils/imageStore');
     const vendors = await Restaurant.findAll({
       where,
-      attributes: { exclude: ['imageUrl', 'logoUrl'], include: dataUrlSafeColumns('Restaurant', ['imageUrl', 'logoUrl']) },
+      attributes: { exclude: ['imageUrl', 'logoUrl', ...PUBLIC_STORE_EXCLUDE], include: dataUrlSafeColumns('Restaurant', ['imageUrl', 'logoUrl']) },
       order: [['subscriptionTier', 'DESC'], ['rating', 'DESC']],
     });
     const vendorIds = vendors.map(v => v.id);
@@ -633,9 +650,10 @@ const getLocalVendors = async (req, res) => {
     const allMenuItems = vendorIds.length > 0
       ? sortMenuItems(await MenuItem.findAll({
         where: { restaurantId: { [Op.in]: vendorIds } },
-        attributes: { exclude: ['imageUrl'], include: dataUrlSafeColumns('MenuItem', ['imageUrl']) },
+        attributes: { exclude: ['imageUrl', ...PUBLIC_ITEM_EXCLUDE], include: dataUrlSafeColumns('MenuItem', ['imageUrl']) },
       }))
       : [];
+    const menuByVendor = groupByRestaurant(allMenuItems);
 
     const augmented = vendors.map(v => {
       const vJson = applyFeaturedExpiry(stripStoreSecrets(v.toJSON()));
@@ -646,8 +664,7 @@ const getLocalVendors = async (req, res) => {
       vJson.closedReason = vJson.isOpen ? null : (open.message || `${v.name} is not taking orders on Zenvy right now.`);
       vJson.fulfilment = 'VENDOR';
       vJson.paymentMethods = ['COD'];
-      vJson.menu = allMenuItems
-        .filter(m => m.restaurantId === v.id)
+      vJson.menu = (menuByVendor.get(v.id) || [])
         .map(m => {
           const item = stripItemSecrets(m.toJSON());
           if (typeof item.tags === 'string') {
@@ -832,7 +849,7 @@ const getMenuItemById = async (req, res) => {
     if (!item) return res.status(404).json({ message: 'Menu item not found', code: 'ITEM_NOT_FOUND' });
     let restaurantName = 'Campus Restaurant';
     if (item.restaurantId) {
-      const rest = await Restaurant.findByPk(item.restaurantId);
+      const rest = await Restaurant.findByPk(item.restaurantId, { attributes: ['id', 'name'] });
       if (rest) restaurantName = rest.name;
     }
     const itemData = stripItemSecrets(item.toJSON ? item.toJSON() : { ...item });

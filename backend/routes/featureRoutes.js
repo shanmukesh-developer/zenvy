@@ -85,7 +85,8 @@ router.get('/referral/my-code', protect, async (req, res) => {
 // ═══════════════════════════════════════════════════════
 
 // GET /api/features/challenges/active - Get active weekly challenge
-router.get('/challenges/active', async (req, res) => {
+// Weekly block leaderboard (same for everyone): 60 s server cache + ETag.
+router.get('/challenges/active', require('../utils/responseCache').cacheGet('challenges', { ttlMs: 60 * 1000 }), async (req, res) => {
   try {
     const { getOrderModel } = require('../models/Order');
     const { getUserModel } = require('../models/User');
@@ -98,14 +99,17 @@ router.get('/challenges/active', async (req, res) => {
     startOfWeek.setDate(now.getDate() - now.getDay());
     startOfWeek.setHours(0, 0, 0, 0);
 
+    // Only the columns the leaderboard needs (full order rows carry photos / addresses).
     const orders = await Order.findAll({
-      where: { status: 'Delivered', createdAt: { [Op.gte]: startOfWeek } }
+      where: { status: 'Delivered', createdAt: { [Op.gte]: startOfWeek } },
+      attributes: ['userId', 'finalPrice', 'totalPrice'],
+      raw: true,
     });
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const userIds = [...new Set(orders.map(o => o.userId))].filter(id => id && uuidRegex.test(id));
     let users = [];
     if (userIds.length > 0) {
-      users = await User.findAll({ where: { id: { [Op.in]: userIds } } });
+      users = await User.findAll({ where: { id: { [Op.in]: userIds } }, attributes: ['id', 'hostelBlock'], raw: true });
     }
     const userBlockMap = {};
     users.forEach(u => userBlockMap[u.id] = u.hostelBlock);

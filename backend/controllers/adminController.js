@@ -17,14 +17,21 @@ let cachedRestaurantsResponse = null;
 let cachedRestaurantsAt = 0;
 const RESTAURANTS_CACHE_TTL_MS = 60 * 1000;
 const extraCacheClears = [];
+const responseCache = require('../utils/responseCache');
 const clearRestaurantsCache = () => {
   cachedRestaurantsResponse = null;
   cachedRestaurantsAt = 0;
+  try { responseCache.invalidate('catalog'); } catch { /* never break a write */ }
   for (const fn of extraCacheClears) { try { fn(); } catch { /* never break a write */ } }
 };
 exports.clearRestaurantsCache = clearRestaurantsCache;
 // Other listing caches (GET /api/restaurants) register here so every store/product change clears them.
 exports.onRestaurantsCacheClear = (fn) => { if (typeof fn === 'function') extraCacheClears.push(fn); };
+
+// Columns public store / menu reads never return (stripStoreSecrets / stripItemSecrets drop them
+// after the fact): leaving them out of the SELECT saves the DB round-trip payload and parsing.
+const STORE_LISTING_EXCLUDE = ['password', 'fcmTokens', 'tokenVersion', 'commissionRate', 'commissionType', 'phone'];
+const ITEM_LISTING_EXCLUDE = ['customCommission', 'ownerName', 'ownerPhone'];
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -113,11 +120,12 @@ exports.getRestaurants = async (req, res) => {
     const { Op } = require('sequelize');
 
     // Batch-fetch all restaurants and their menu items in 2 queries (eliminates N+1)
-    const restaurants = await Restaurant.findAll({ where: { isActive: true } });
+    // Secrets are stripped from the response anyway: never read them (or push tokens) per listing.
+    const restaurants = await Restaurant.findAll({ where: { isActive: true }, attributes: { exclude: STORE_LISTING_EXCLUDE } });
     const restaurantIds = restaurants.map(r => r.id);
 
     const allMenuItems = restaurantIds.length > 0
-      ? await MenuItem.findAll({ where: { restaurantId: { [Op.in]: restaurantIds } } })
+      ? await MenuItem.findAll({ where: { restaurantId: { [Op.in]: restaurantIds } }, attributes: { exclude: ITEM_LISTING_EXCLUDE } })
       : [];
 
     // Index menu items by restaurantId for O(1) lookup
@@ -185,9 +193,9 @@ exports.getRestaurantById = async (req, res) => {
     const Restaurant = getRestaurantModel();
     const MenuItem = getMenuItemModel();
     if (!UUID_RE.test(String(req.params.id || ''))) return res.status(404).json({ message: 'Restaurant not found' });
-    const restaurant = await Restaurant.findByPk(req.params.id);
+    const restaurant = await Restaurant.findByPk(req.params.id, { attributes: { exclude: STORE_LISTING_EXCLUDE } });
     if (!restaurant) return res.status(404).json({ message: 'Restaurant not found' });
-    const menu = await MenuItem.findAll({ where: { restaurantId: restaurant.id } });
+    const menu = await MenuItem.findAll({ where: { restaurantId: restaurant.id }, attributes: { exclude: ITEM_LISTING_EXCLUDE } });
     const resObj = restaurant.toJSON();
     stripStoreSecrets(resObj);
     applyFeaturedExpiry(resObj);
@@ -249,7 +257,7 @@ exports.getMenuItemById = async (req, res) => {
       });
     }
 
-    const restaurant = await Restaurant.findByPk(item.restaurantId);
+    const restaurant = await Restaurant.findByPk(item.restaurantId, { attributes: { exclude: STORE_LISTING_EXCLUDE } });
     const itemObj = stripItemSecrets(item.toJSON());
     let tags = itemObj.tags || [];
     if (typeof tags === 'string') {
@@ -347,6 +355,22 @@ const mediaizeImageFields = async (out, req, keys, purpose) => {
     if (!r.ok) throw new AdminInputError(`${key === 'logoUrl' ? 'Logo' : 'Photo'}: ${r.message}`);
     out[key] = r.value;
   }
+  return out;
+};
+
+// brandTheme can carry photos too (logo / banner): never store them inline (see healStoreImages).
+const mediaizeBrandTheme = async (out, req) => {
+  const brand = out.brandTheme;
+  if (!brand || typeof brand !== 'object' || Array.isArray(brand)) return out;
+  const { storeImageRef, isDataUrl } = require('../utils/imageStore');
+  const next = { ...brand };
+  for (const [k, v] of Object.entries(next)) {
+    if (!isDataUrl(v)) continue;
+    const r = await storeImageRef(v, { req, ownerId: req.user && req.user.id, purpose: 'store' });
+    if (!r.ok) throw new AdminInputError(`Brand image: ${r.message}`);
+    next[k] = r.value;
+  }
+  out.brandTheme = next;
   return out;
 };
 
@@ -552,6 +576,61 @@ const sendAdminError = (res, error, fallback) => {
   return res.status(500).json({ message: fallback });
 };
 
+// ── Legacy inline photos in admin lists ──────────────────────────────────────
+// Old rows can still hold inline base64 photos (data:image/...;base64, several MB each) in imageUrl /
+// logoUrl / brandTheme.*: the startup migration skips values it cannot move and the public lists hide
+// them, but the admin lists shipped them raw. With a few dozen such stores GET /api/admin/restaurants
+// was hundreds of MB and the /restaurants page crashed the browser tab (renderer out of memory), again
+// on every live refresh. Now each inline photo is moved to the media table the first time a list sees
+// it (conditional write: a concurrent edit wins) and the short URL is returned; a value that cannot be
+// moved is left in the row but never sent in a list (null in the payload).
+const LIST_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
+const BRAND_IMAGE_KEYS = ['logoUrl', 'bannerUrl', 'coverUrl', 'imageUrl', 'heroImage', 'backgroundImage', 'backgroundUrl'];
+const healInlineImage = async (Model, row, column, value, req, ownerId, purpose) => {
+  const { storeImageRef, isDataUrl } = require('../utils/imageStore');
+  if (!isDataUrl(value)) return value;
+  try {
+    const r = await storeImageRef(value, { req, ownerId, purpose, maxBytes: LIST_IMAGE_MAX_BYTES });
+    if (!r.ok || !r.value || isDataUrl(r.value)) return null;
+    if (column) await Model.update({ [column]: r.value }, { where: { id: row.id, [column]: value } });
+    return r.value;
+  } catch (err) {
+    console.warn('[ADMIN_INLINE_IMAGE_WARN]', Model.name, row.id, column, err.message);
+    return null;
+  }
+};
+// Returns the row's JSON with every inline photo replaced (moved) or removed.
+const healStoreImages = async (restaurant, req) => {
+  const { isDataUrl } = require('../utils/imageStore');
+  const json = restaurant.toJSON();
+  const Restaurant = getRestaurantModel();
+  let changed = false;
+  for (const col of ['imageUrl', 'logoUrl']) {
+    if (!isDataUrl(json[col])) continue;
+    json[col] = await healInlineImage(Restaurant, restaurant, col, json[col], req, restaurant.id, 'store');
+    changed = true;
+  }
+  const brand = json.brandTheme && typeof json.brandTheme === 'object' ? { ...json.brandTheme } : null;
+  if (brand && BRAND_IMAGE_KEYS.some((k) => isDataUrl(brand[k]))) {
+    let allMoved = true;
+    for (const k of BRAND_IMAGE_KEYS) {
+      if (!isDataUrl(brand[k])) continue;
+      const moved = await healInlineImage(Restaurant, restaurant, null, brand[k], req, restaurant.id, 'store');
+      if (moved) brand[k] = moved; else { delete brand[k]; allMoved = false; }
+    }
+    if (allMoved) {
+      try { await Restaurant.update({ brandTheme: brand }, { where: { id: restaurant.id } }); } catch (err) { console.warn('[ADMIN_INLINE_IMAGE_WARN] brandTheme', restaurant.id, err.message); }
+    }
+    json.brandTheme = brand;
+    changed = true;
+  }
+  if (changed) {
+    // Keep publicRestaurant's input shape (toJSON) without the heavy values.
+    return { toJSON: () => json };
+  }
+  return restaurant;
+};
+
 exports.getAllRestaurants = async (req, res) => {
   try {
     const Restaurant = getRestaurantModel();
@@ -563,10 +642,18 @@ exports.getAllRestaurants = async (req, res) => {
       MenuItem.findAll({ attributes: ['restaurantId', [fn('COUNT', col('id')), 'count']], group: ['restaurantId'], raw: true })
     ]);
     const countBy = new Map(counts.map((c) => [c.restaurantId, Number(c.count) || 0]));
-    res.json(restaurants.map((r) => {
+    let healed = false;
+    const rows = [];
+    for (const r of restaurants) {
+      const h = await healStoreImages(r, req);
+      if (h !== r) healed = true;
+      rows.push([r, h]);
+    }
+    if (healed) clearRestaurantsCache();
+    res.json(rows.map(([r, h]) => {
       const open = getStoreOpenState(r);
       return {
-        ...publicRestaurant(r),
+        ...publicRestaurant(h),
         itemCount: countBy.get(r.id) || 0,
         isOpen: !!open.isOpen,
         opensAt: open.opensAt || null,
@@ -587,7 +674,19 @@ exports.getAllMenuItems = async (req, res) => {
       where.restaurantId = req.query.restaurantId;
     }
     const items = await MenuItem.findAll({ where, order: [['category', 'ASC'], ['name', 'ASC']] });
-    res.json(sortMenuItems(items).map(i => ({ ...i.toJSON(), _id: i.id })));
+    const { isDataUrl } = require('../utils/imageStore');
+    const out = [];
+    let healed = false;
+    for (const i of sortMenuItems(items)) {
+      const json = i.toJSON();
+      if (isDataUrl(json.imageUrl)) {
+        json.imageUrl = await healInlineImage(MenuItem, i, 'imageUrl', json.imageUrl, req, i.restaurantId, 'menu');
+        healed = true;
+      }
+      out.push({ ...json, _id: i.id });
+    }
+    if (healed) clearRestaurantsCache();
+    res.json(out);
   } catch (error) {
     sendAdminError(res, error, 'Could not load products.');
   }
@@ -596,7 +695,7 @@ exports.getAllMenuItems = async (req, res) => {
 exports.createRestaurant = async (req, res) => {
   try {
     const Restaurant = getRestaurantModel();
-    const data = await mediaizeImageFields(pickRestaurantFields(req.body, { creating: true }), req, ['imageUrl', 'logoUrl'], 'store');
+    const data = await mediaizeBrandTheme(await mediaizeImageFields(pickRestaurantFields(req.body, { creating: true }), req, ['imageUrl', 'logoUrl'], 'store'), req);
     if (req.body.password && typeof req.body.password === 'string' && req.body.password.trim().length >= 6) {
       data.password = req.body.password.trim(); // hashed by the model hook
     }
@@ -619,7 +718,7 @@ exports.updateRestaurant = async (req, res) => {
     const restaurant = await Restaurant.findByPk(req.params.id);
     if (!restaurant) return res.status(404).json({ message: 'Store not found.' });
 
-    const updateData = await mediaizeImageFields(pickRestaurantFields(req.body), req, ['imageUrl', 'logoUrl'], 'store');
+    const updateData = await mediaizeBrandTheme(await mediaizeImageFields(pickRestaurantFields(req.body), req, ['imageUrl', 'logoUrl'], 'store'), req);
     if (req.body.password && typeof req.body.password === 'string' && req.body.password.trim().length >= 6) {
       updateData.password = req.body.password.trim(); // hashed by the model hook
     }

@@ -61,10 +61,11 @@ router.post('/fcm-token/remove', protect, removeFcmToken);
 router.get('/profile', protect, getUserProfile);
 router.put('/profile', protect, updateUserProfile);
 
-// Public Asset Discovery
-router.get('/config', require('../controllers/adminController').getGlobalConfig);
-router.get('/restaurants', require('../controllers/adminController').getRestaurants);
-router.get('/restaurants/:id', require('../controllers/adminController').getRestaurantById);
+// Public Asset Discovery (short server cache + ETag; cleared on every store / product / config write)
+const { cacheGet } = require('../utils/responseCache');
+router.get('/config', cacheGet('config', { ttlMs: 60 * 1000 }), require('../controllers/adminController').getGlobalConfig);
+router.get('/restaurants', cacheGet('catalog', { ttlMs: 30 * 1000 }), require('../controllers/adminController').getRestaurants);
+router.get('/restaurants/:id', cacheGet('catalog', { ttlMs: 30 * 1000 }), require('../controllers/adminController').getRestaurantById);
 router.get('/search', require('../controllers/searchController').globalSearch);
 
 // ── BUG FIX: GET /products (all items) ──
@@ -252,7 +253,7 @@ router.post('/products/:id/reviews', protect, async (req, res) => {
   }
 });
 
-router.get('/products/:id', require('../controllers/adminController').getMenuItemById);
+router.get('/products/:id', cacheGet('catalog', { ttlMs: 30 * 1000 }), require('../controllers/adminController').getMenuItemById);
 
 // ── BUG FIX: GET /orders (customer's own orders) ──
 router.get('/orders', protect, async (req, res) => {

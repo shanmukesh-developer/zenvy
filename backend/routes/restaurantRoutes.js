@@ -15,12 +15,15 @@ const authLimiter = rateLimit({
 const { accountLockout } = require('../middleware/lockoutMiddleware');
 
 // ── CampusBites: Local Vendor Public Routes (MUST be before /:id) ────
-router.get('/local-vendors', getLocalVendors);
+// Public reads: short server cache + ETag, cleared on every store / product write.
+const { cacheGet } = require('../utils/responseCache');
+const catalogCache = cacheGet('catalog', { ttlMs: 30 * 1000 });
+router.get('/local-vendors', catalogCache, getLocalVendors);
 router.post('/:id/click', incrementClickCount);
-router.get('/menu/item/:itemId', getMenuItemById);
+router.get('/menu/item/:itemId', catalogCache, getMenuItemById);
 
-router.get('/', getRestaurants);
-router.get('/:id/menu', getRestaurantMenu);
+router.get('/', catalogCache, getRestaurants);
+router.get('/:id/menu', catalogCache, getRestaurantMenu);
 router.post('/login', authLimiter, accountLockout, restaurantLogin);
 router.get('/:id/orders', protect, vendor, getRestaurantOrders); 
 router.put('/:id/offline', protect, vendor, toggleRestaurantOffline);

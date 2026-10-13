@@ -76,7 +76,8 @@ const {
 } = require('./controllers/pulseController');
 
 // Campuses
-router.get('/campuses', getCampuses);
+// Campus list changes almost never: 5 min server cache + ETag (realtime 'campus' publishes clear it).
+router.get('/campuses', require('../../utils/responseCache').cacheGet('campus', { ttlMs: 5 * 60 * 1000 }), getCampuses);
 
 // Media: one upload for every campus image; served from a short URL with long cache headers.
 // GET is public by unguessable id (ID cards need the owner/admin token or a signed link).

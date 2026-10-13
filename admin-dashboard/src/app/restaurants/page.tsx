@@ -329,16 +329,16 @@ function StoresScreen() {
             className={cx('rounded-xl border p-3 text-left transition-colors', filters.status === k.key ? 'border-emerald-500/50 bg-emerald-500/[0.06]' : 'border-white/10 bg-white/[0.02] hover:border-white/20', FOCUS_RING)}
           >
             <p className="text-[11px] text-gray-500">{k.label}</p>
-            <p className={cx('mt-0.5 text-2xl font-black', k.tone)}>{loading ? <Skeleton className="mt-1 h-6 w-10" /> : k.value}</p>
+            <div className={cx('mt-0.5 text-2xl font-black', k.tone)}>{loading ? <Skeleton className="mt-1 h-6 w-10" /> : k.value}</div>
           </button>
         ))}
         <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3" title="Non-cancelled orders placed today (IST)">
           <p className="text-[11px] text-gray-500">Orders today</p>
-          <p className="mt-0.5 text-2xl font-black">{stats.loading ? <Skeleton className="mt-1 h-6 w-10" /> : stats.totals.todayOrders}</p>
+          <div className="mt-0.5 text-2xl font-black">{stats.loading ? <Skeleton className="mt-1 h-6 w-10" /> : stats.totals.todayOrders}</div>
         </div>
         <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3" title="Item subtotal of today's non-cancelled orders">
           <p className="text-[11px] text-gray-500">Sales today</p>
-          <p className="mt-0.5 text-2xl font-black text-emerald-300">{stats.loading ? <Skeleton className="mt-1 h-6 w-16" /> : formatINR(stats.totals.todayRevenue)}</p>
+          <div className="mt-0.5 text-2xl font-black text-emerald-300">{stats.loading ? <Skeleton className="mt-1 h-6 w-16" /> : formatINR(stats.totals.todayRevenue)}</div>
         </div>
       </section>
       {stats.error && <Callout tone="amber">Order numbers are unavailable right now: {stats.error}</Callout>}

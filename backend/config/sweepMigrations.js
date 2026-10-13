@@ -38,6 +38,21 @@ const runSweepMigrations = async (sequelize) => {
     'CREATE UNIQUE INDEX IF NOT EXISTS "mega_baskets_user_idempotency_key" ON "MegaBaskets" ("userId", "idempotencyKey") WHERE "idempotencyKey" IS NOT NULL;');
   await step('service_bookings_user_idempotency_key',
     'CREATE UNIQUE INDEX IF NOT EXISTS "service_bookings_user_idempotency_key" ON "ServiceBookings" ("userId", "idempotencyKey") WHERE "idempotencyKey" IS NOT NULL;');
+
+  // Read-path indexes (perf pass). Names follow Sequelize's own convention so a model-declared
+  // index of the same columns is recognised as existing. Plain IF NOT EXISTS: no-op once built.
+  // • My orders: WHERE "userId" = ? ORDER BY "createdAt" DESC LIMIT 50.
+  await step('orders_user_id_created_at',
+    'CREATE INDEX IF NOT EXISTS "orders_user_id_created_at" ON "Orders" ("userId", "createdAt");');
+  // • Notifications list (declared in the model; created here too in case the table predates it).
+  await step('notifications_user_id_created_at',
+    'CREATE INDEX IF NOT EXISTS "notifications_user_id_created_at" ON "Notifications" ("userId", "createdAt");');
+  // • Unread badge: COUNT(*) WHERE "userId" = ? AND "readAt" IS NULL (polled by the apps).
+  await step('notifications_user_unread',
+    'CREATE INDEX IF NOT EXISTS "notifications_user_unread" ON "Notifications" ("userId") WHERE "readAt" IS NULL;');
+  // • Store menus: WHERE "restaurantId" IN (...) [AND "isAvailable"] for listings and the cart.
+  await step('menu_items_restaurant_id',
+    'CREATE INDEX IF NOT EXISTS "menu_items_restaurant_id" ON "MenuItems" ("restaurantId");');
 };
 
 module.exports = { runSweepMigrations };

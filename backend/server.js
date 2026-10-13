@@ -385,12 +385,9 @@ const {
   auditLogger
 } = require('./middleware/securityMiddleware');
 
-// Layer 0: Helmet (CSP, HSTS, XSS Protection headers)
-app.use((req, res, next) => {
-  if (req.path === '/auth-helper') {
-    return next(); // Auth helper manages its own CSP for Firebase & reCAPTCHA
-  }
-  return helmet({
+// Layer 0: Helmet (CSP, HSTS, XSS Protection headers). Built ONCE: constructing helmet (and
+// validating its CSP directives) on every request cost CPU on each call.
+const helmetMiddleware = helmet({
     crossOriginResourcePolicy: false, // Allows cross-origin image loading
     contentSecurityPolicy: {
       directives: {
@@ -407,7 +404,12 @@ app.use((req, res, next) => {
         upgradeInsecureRequests: [],
       },
     },
-  })(req, res, next);
+  });
+app.use((req, res, next) => {
+  if (req.path === '/auth-helper') {
+    return next(); // Auth helper manages its own CSP for Firebase & reCAPTCHA
+  }
+  return helmetMiddleware(req, res, next);
 });
 
 // Layer 1: Request Trace ID (unique ID for every request — essential for incident response)
