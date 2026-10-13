@@ -17,6 +17,7 @@ interface Rider {
   isSosActive: boolean;
   vehicleType?: string;
   completedDeliveries?: number;
+  currentOrderId?: string | null;
 }
 
 type Notice = { kind: 'ok' | 'error'; text: string } | null;
@@ -38,6 +39,10 @@ interface Payout {
   riderId: string;
   totalDeliveries: number;
   totalDeliveryFees: number;
+  /** Customer tips credited to the rider and not yet paid out. */
+  unsettledTips?: number;
+  /** When the server built this list; sent back as `upTo` so later deliveries are not settled with it. */
+  asOf?: string;
   riderName?: string;
   riderPhone?: string;
 }
@@ -217,19 +222,32 @@ export default function FleetManagement() {
 
   const handleMarkSettled = async (p: Payout, riderName: string) => {
     if (settlingId) return;
-    if (!confirm(`Mark ₹${p.totalDeliveryFees} (${p.totalDeliveries} deliveries) as paid out to ${riderName}?\nOnly do this after the money has actually been paid.`)) return;
+    const tips = Math.max(0, Number(p.unsettledTips) || 0);
+    const total = (Number(p.totalDeliveryFees) || 0) + tips;
+    if (!confirm(`Mark ₹${total} as paid out to ${riderName}?\n• ₹${p.totalDeliveryFees} delivery fees (${p.totalDeliveries} deliveries)${tips ? `\n• ₹${tips} customer tips` : ''}\n\nDeliveries completed after this list loaded are not included. Only do this after the money has actually been paid.`)) return;
     setSettlingId(p.riderId);
     setNotice(null);
     try {
       const res = await fetch(`${API_URL}/api/admin/finance/settle-rider`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ riderId: p.riderId }),
+        // Settle only what this screen showed: deliveries up to the list's `asOf`, plus the tips seen.
+        body: JSON.stringify({
+          riderId: p.riderId,
+          ...(p.asOf ? { upTo: p.asOf } : {}),
+          ...(tips > 0 ? { includeTips: true, tipsAmount: tips } : {}),
+        }),
         credentials: 'include'
       });
       if (!res.ok) throw new Error(await readError(res, 'Could not settle this payout.'));
       const data = await res.json().catch(() => ({}));
-      setNotice({ kind: 'ok', text: `Payout for ${riderName} marked as settled${typeof data.updatedOrdersCount === 'number' ? ` (${data.updatedOrdersCount} orders)` : ''}.` });
+      const settledOrders = typeof data.updatedOrdersCount === 'number' ? data.updatedOrdersCount : null;
+      const mismatch = settledOrders !== null && settledOrders !== p.totalDeliveries;
+      const tipsNote = tips > 0 && Number(data.tipsSettled) !== tips ? ' Tips were NOT cleared (the balance changed); check the rider\'s tips again.' : '';
+      setNotice({
+        kind: mismatch || tipsNote ? 'error' : 'ok',
+        text: `Payout for ${riderName} marked as settled${settledOrders !== null ? ` (${settledOrders} of ${p.totalDeliveries} orders shown)` : ''}.${mismatch ? ' The count differs from what was shown; recheck this rider\'s payouts.' : ''}${tipsNote}`,
+      });
       setPayouts(prev => prev.filter(x => x.riderId !== p.riderId));
       fetchPayouts();
     } catch (err) {
@@ -242,6 +260,11 @@ export default function FleetManagement() {
   const handleToggleApproval = async (rider: Rider) => {
     if (busyId) return;
     const approve = !rider.isApproved;
+    if (!approve && rider.currentOrderId) {
+      // A deactivated rider is locked out of the delivery routes, so their active order would get stuck.
+      setNotice({ kind: 'error', text: `${rider.name} is delivering order #${String(rider.currentOrderId).slice(-6).toUpperCase()} right now. Reassign or finish that order (Orders page) before deactivating them.` });
+      return;
+    }
     if (!confirm(approve
       ? `Approve ${rider.name} as a delivery partner? They will be able to go online and take orders.`
       : `Deactivate ${rider.name}? They will no longer be able to take orders.`)) return;
@@ -459,7 +482,10 @@ export default function FleetManagement() {
                         {p.riderPhone && <span className="block text-[8px] text-gray-500 font-mono mt-0.5">{p.riderPhone}</span>}
                       </td>
                       <td className="px-8 py-4 text-sm text-gray-300 font-mono">{p.totalDeliveries}</td>
-                      <td className="px-8 py-4 text-lg font-black text-emerald-400">₹{p.totalDeliveryFees}</td>
+                      <td className="px-8 py-4 text-lg font-black text-emerald-400">
+                        ₹{p.totalDeliveryFees}
+                        {(Number(p.unsettledTips) || 0) > 0 && <span className="block text-[10px] font-bold text-amber-300">+ ₹{p.unsettledTips} tips</span>}
+                      </td>
                       <td className="px-8 py-4">
                         <button disabled={!!settlingId} onClick={() => handleMarkSettled(p, riderName)} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[9px] font-black uppercase disabled:opacity-40">{settlingId === p.riderId ? 'Settling…' : 'Mark Settled'}</button>
                       </td>

@@ -308,8 +308,15 @@ export default function AdminHome() {
   // Seed the rider list from the database; sockets keep it live afterwards.
   const fetchRiders = useCallback(async () => {
     try {
-      const data = await apiRequest<{ riders?: any[] }>('/api/admin/riders?limit=100');
-      const list = Array.isArray(data?.riders) ? data.riders : [];
+      // Page through every rider (100 per page, capped) so riders beyond the newest 100 are on the map too.
+      const list: any[] = [];
+      for (let page = 1; page <= 20; page++) {
+        const data = await apiRequest<{ riders?: any[]; pages?: number }>(`/api/admin/riders?limit=100&page=${page}`);
+        const chunk = Array.isArray(data?.riders) ? data.riders : [];
+        list.push(...chunk);
+        const pages = Number(data?.pages) || 1;
+        if (chunk.length < 100 || page >= pages) break;
+      }
       setRiders(prev => {
         const next: Record<string, RiderPosition> = { ...prev };
         list.filter(r => r.isApproved).forEach(r => {
@@ -392,16 +399,32 @@ export default function AdminHome() {
 
   const handleAcceptAllPending = async () => {
     if (batchRunning) return;
-    if (!confirm('Move EVERY order in "Pending" to "Accepted"? This skips the store\'s own accept step and does not notify stores. Use it only when stores cannot accept in their app. It cannot be undone.')) return;
+    if (!confirm('Accept every pending Zenvy-delivered order on behalf of its store and send it to riders?\n\nSkipped (handle them one by one on the Orders page):\n• Stall orders: the stall must confirm first, it delivers them itself.\n• Legacy UPI orders whose payment is not verified yet.\n\nUse this only when stores cannot accept in their app. It cannot be undone.')) return;
     setBatchRunning(true);
     setActionError(null);
     setActionNotice(null);
     try {
-      const data = await apiRequest<{ count?: number; message?: string }>('/api/admin/orders/batch-update', {
-        method: 'PUT',
-        body: JSON.stringify({ targetStatus: 'Pending', newStatus: 'Accepted' }),
-      });
-      setActionNotice(typeof data?.count === 'number' ? `${data.count} pending order${data.count === 1 ? '' : 's'} moved to Accepted.` : (data?.message || 'Done.'));
+      // Accepted one by one through the normal accept endpoint (same checks, rider pool and pushes as
+      // a single accept) instead of the bulk status flip, so nothing unpaid or stall-owned slips through.
+      const data = await apiRequest<{ orders?: any[] }>('/api/orders?status=Pending&fulfilment=ZENVY&limit=200');
+      const pending = (Array.isArray(data?.orders) ? data.orders : []).filter(o => o?.status === 'Pending');
+      const eligible = pending.filter(o => o.fulfilment !== 'VENDOR' && !(o.paymentMethod === 'UPI' && o.upiStatus !== 'Verified' && o.paymentStatus !== 'Completed'));
+      const skippedUpi = pending.length - eligible.length;
+      let accepted = 0;
+      let failed = 0;
+      for (const o of eligible) {
+        try {
+          await apiRequest(`/api/orders/${encodeURIComponent(String(o.id || o._id))}/restaurant-accept`, { method: 'PUT', body: JSON.stringify({}) });
+          accepted++;
+        } catch {
+          failed++;
+        }
+      }
+      const parts = [`${accepted} pending order${accepted === 1 ? '' : 's'} accepted.`];
+      if (skippedUpi) parts.push(`${skippedUpi} skipped (UPI payment not verified).`);
+      if (failed) parts.push(`${failed} could not be accepted (already changed or refused); check the Orders page.`);
+      parts.push('Stall orders were not touched.');
+      if (failed) setActionError(parts.join(' ')); else setActionNotice(parts.join(' '));
       fetchOrders();
       fetchStats();
     } catch (err) {
@@ -421,10 +444,22 @@ export default function AdminHome() {
     if (!confirm('Show this banner in the app to everyone who is online right now?')) return;
     setBroadcasting(true);
     setActionError(null);
-    socket.emit('admin_broadcast', { message, type: megaType });
-    setActionNotice('Banner sent to everyone currently online. Students who are offline will not see it.');
-    setMegaMsg('');
-    setTimeout(() => setBroadcasting(false), 800);
+    const payload = { message: message.slice(0, 300), type: megaType };
+    // Success is shown only when the server acknowledges it. The server drops a broadcast from a
+    // socket that is not signed in as admin (e.g. an expired session) without relaying it.
+    socket.timeout(8000).emit('admin_broadcast', payload, (err: unknown, ack?: { ok?: boolean; message?: string }) => {
+      setBroadcasting(false);
+      if (err) {
+        setActionError('The server did not confirm the banner, so it may not have been shown. Refresh the page (sign in again if asked) and try once more.');
+        return;
+      }
+      if (!ack || ack.ok !== true) {
+        setActionError(ack?.message || 'The server refused the banner. Sign in again and retry.');
+        return;
+      }
+      setActionNotice('Banner sent to everyone currently online. Students who are offline will not see it.');
+      setMegaMsg('');
+    });
   };
 
   const handleResolveEvent = useCallback((eventId: string) => {

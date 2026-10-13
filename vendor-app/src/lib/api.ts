@@ -66,7 +66,7 @@ export async function getMenu(id: string): Promise<MenuItem[]> {
 /** 404 = item deleted. */
 export function setAvailability(itemId: string, isAvailable: boolean) {
   return apiFetch<{ isAvailable?: boolean }>(
-    `/api/restaurants/menu/${enc(itemId)}/toggle`, { method: 'PUT', body: { isAvailable }, no401Logout: true },
+    `/api/restaurants/menu/${enc(itemId)}/toggle`, { method: 'PUT', body: { isAvailable } },
   );
 }
 

@@ -7,7 +7,7 @@ import { FALLBACK_POLL_MS, SAFETY_POLL_MS } from '../config';
 import * as api from '../lib/api';
 import { ApiError, NetworkError, errorMessage } from '../lib/http';
 import { normalizeOrder, rupees, stageOf, TIMEOUT_REASON_TEXT, todayNumbers } from '../lib/model';
-import { onOrderPush, onPushTokenChange, registerStorePush } from '../lib/push';
+import { onOrderPush, onPushTokenChange, registerStorePush, type PushState } from '../lib/push';
 import { startKitchenService } from '../voice/kitchenService';
 import { announce, cancelAnnouncements, detectVoices } from '../voice/voice';
 import { useToast } from '../ui/Toast';
@@ -33,6 +33,8 @@ interface StoreCtx {
   menuLoading: boolean;
   menuPending: Record<string, boolean>;
   conn: ConnStatus;
+  /** Closed-app order alerts: 'blocked' / 'unavailable' = new orders ring only while the app is open. */
+  pushState: PushState;
   /** Pending orders not yet accepted / rejected, oldest first. */
   alertOrders: Order[];
   busy: Record<string, BusyKind>;
@@ -69,6 +71,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const toast = useToast();
 
   const [store, setStore] = useState<StoreState | null>(null);
+  const [pushState, setPushState] = useState<PushState>('unknown');
   const [storeError, setStoreError] = useState<string | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [ordersLoaded, setOrdersLoaded] = useState(false);
@@ -211,14 +214,24 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     refreshStore();
     refreshMenu();
     startKitchenService();
-    // Order pushes while the app is closed (FCM via the server). Best effort: never blocks the app.
-    registerStorePush(rid);
+    // Order pushes while the app is closed (FCM via the server). Best effort: never blocks the app, but
+    // a phone that cannot get them shows a banner so the store knows to keep the app open.
+    registerStorePush(rid).then((st) => { if (alive.current) setPushState(st); });
     const offToken = onPushTokenChange(rid);
     const offPush = onOrderPush((d) => {
       if (d?.type === 'NEW_ORDER' || d?.type === 'ORDER_CANCELLED' || d?.orderId) scheduleOrders(300);
     });
     return () => { offToken(); offPush(); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Back from the phone's settings (or any resume): retry closed-app alerts if they were off.
+  useEffect(() => {
+    if (pushState === 'ok' || pushState === 'unknown') return;
+    const sub = AppState.addEventListener('change', (st) => {
+      if (st === 'active') registerStorePush(rid).then((r) => { if (alive.current) setPushState(r); });
+    });
+    return () => sub.remove();
+  }, [pushState, rid]);
 
   // After every (re)connect: refetch what may have been missed while offline (events are not replayed).
   useEffect(() => {
@@ -525,11 +538,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<StoreCtx>(() => ({
     restaurant, store, storeError, orders, ordersLoaded, ordersError, refreshing, lastSyncedAt,
-    menu, menuError, menuLoading, menuPending, conn, alertOrders, busy, actionErrors, retryConnection, refreshOrders, refreshStore,
+    menu, menuError, menuLoading, menuPending, conn, pushState, alertOrders, busy, actionErrors, retryConnection, refreshOrders, refreshStore,
     refreshMenu, accept, reject, outForDelivery, delivered, cancel, setOpen, setHours, setStock, saveItem, deleteItem,
   }), [
     restaurant, store, storeError, orders, ordersLoaded, ordersError, refreshing, lastSyncedAt,
-    menu, menuError, menuLoading, menuPending, conn, alertOrders, busy, actionErrors, retryConnection, refreshOrders, refreshStore,
+    menu, menuError, menuLoading, menuPending, conn, pushState, alertOrders, busy, actionErrors, retryConnection, refreshOrders, refreshStore,
     refreshMenu, accept, reject, outForDelivery, delivered, cancel, setOpen, setHours, setStock, saveItem, deleteItem,
   ]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

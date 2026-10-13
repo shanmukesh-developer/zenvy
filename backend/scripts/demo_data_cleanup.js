@@ -6,6 +6,7 @@
 //  • The invented PG listings (real competitor brand names, fake owners and phones) are hidden.
 // A row is only touched while it still looks exactly like the demo seed (same phone AND the
 // published password, or same PG name AND seeded email), so real accounts are never affected.
+const TEST_PHONE = '1234567890';
 const DEMO_RIDER_PHONES = ['8765432100', '8765432101', '8765432102'];
 const DEMO_STUDENT_PHONES = ['9876543210', '9876543211', '9876543212', '9876543213'];
 const DEMO_PGS = [
@@ -51,11 +52,37 @@ const runDemoDataCleanup = async () => {
         result.studentsSuspended++;
       }
     }
-    // The demo admin is never switched off automatically (the owner may still use it), but it is flagged loudly.
+    // The demo admin (published password "admin123") would give anyone full admin powers.
+    // While it still matches the published password its password is rotated to a random value
+    // and its sessions are revoked (model hook bumps tokenVersion). To regain access set DEMO_ADMIN_NEW_PASSWORD (12+ chars) in
+    // Render env and restart once, then remove the variable.
     const demoAdmin = await User.findOne({ where: { phone: '9999999999', role: 'admin', isActive: true } });
-    if (demoAdmin && (await safeCompare(demoAdmin, 'admin123'))) {
-      result.demoAdminWarning = true;
-      console.warn('🚨 [DEMO_CLEANUP] Admin 9999999999 still uses the published password "admin123". Change it in the dashboard now.');
+    if (demoAdmin) {
+      const wanted = String(process.env.DEMO_ADMIN_NEW_PASSWORD || '');
+      if (await safeCompare(demoAdmin, 'admin123')) {
+        demoAdmin.password = wanted.length >= 12 ? wanted : require('crypto').randomBytes(24).toString('base64url');
+        await demoAdmin.save();
+        result.demoAdminWarning = true;
+        console.warn(`🚨 [DEMO_CLEANUP] Admin 9999999999 used the published password; it was rotated${wanted.length >= 12 ? ' to DEMO_ADMIN_NEW_PASSWORD' : ' to a random value (set DEMO_ADMIN_NEW_PASSWORD in env and restart to choose one)'}.`);
+      } else if (wanted.length >= 12 && !(await safeCompare(demoAdmin, wanted))) {
+        demoAdmin.password = wanted;
+        await demoAdmin.save();
+        console.warn('🔐 [DEMO_CLEANUP] Admin 9999999999 password set from DEMO_ADMIN_NEW_PASSWORD. Remove that env variable now.');
+      }
+    }
+
+    // E2E test logins (scripts/init_test_accounts.js, password "testpassword").
+    const testUser = await User.findOne({ where: { phone: TEST_PHONE, isActive: true } });
+    if (testUser && String(testUser.role || '').toLowerCase() !== 'admin' && (await safeCompare(testUser, 'testpassword'))) {
+      await testUser.update({ isActive: false });
+      result.studentsSuspended++;
+    }
+  }
+  if (DeliveryPartner) {
+    const testRider = await DeliveryPartner.findOne({ where: { phone: TEST_PHONE } });
+    if (testRider && (testRider.isApproved || testRider.isOnline) && (await safeCompare(testRider, 'testpassword'))) {
+      await testRider.update({ isApproved: false, isOnline: false });
+      result.ridersDisabled++;
     }
   }
 

@@ -21,7 +21,12 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.srm.hostelbitesdelivery",
-      "buildNumber": "1"
+      "buildNumber": "1",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "location"
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -40,12 +45,18 @@
         "android.permission.ACCESS_NETWORK_STATE",
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.CAMERA",
-        "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
         "android.permission.POST_NOTIFICATIONS"
-      ]
+      ],
+      "blockedPermissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ],
+      "allowBackup": false
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -56,6 +67,15 @@
         "expo-status-bar",
         {
           "style": "light"
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Zenvy Rider uses your location to show the customer where their order is and to measure distance to the store.",
+          "locationAlwaysAndWhenInUsePermission": "While you are on duty or delivering, Zenvy Rider keeps sharing your location when you switch to Google Maps, so the customer's live map keeps moving.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
       ],
       [
@@ -71,11 +91,11 @@
           "android": {
             "compileSdkVersion": 36,
             "targetSdkVersion": 35,
-            "buildToolsVersion": "36.0.0",
-            "usesCleartextTraffic": true
+            "buildToolsVersion": "36.0.0"
           }
         }
-      ]
+      ],
+      "expo-secure-store"
     ]
   }
 }

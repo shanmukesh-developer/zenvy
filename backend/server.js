@@ -17,6 +17,19 @@ const { initWallCron } = require('./cron/wallCron');
 const { isProduction: isProductionEnv } = require('./utils/env'); // single production check (RENDER / NODE_ENV)
 // xss-clean removed due to Express 5 query getter incompatibility; custom safeXssMiddleware used instead.
 
+// Secret hygiene: a JWT secret that was ever committed (or is short) lets anyone forge
+// customer/admin/store tokens. Shout at boot so the owner rotates it in Render env.
+(() => {
+  const s = process.env.JWT_SECRET || '';
+  const KNOWN_LEAKED = ['super_secret_zenvy_token_2026'];
+  if (s && (KNOWN_LEAKED.includes(s) || s.length < 32)) {
+    console.error('🚨 [SECURITY] JWT_SECRET is weak or was committed to git. Set a random value of 32+ bytes in Render env (this signs everyone out).');
+  }
+  if (isProductionEnv() && !process.env.OTP_SECRET) {
+    console.warn('⚠️ [SECURITY] OTP_SECRET is not set; OTP hashes fall back to JWT_SECRET. Set a separate random OTP_SECRET in Render env.');
+  }
+})();
+
 // ── Global Bulletproof Shield (Prevents any Node.js Crash in Dev, Restarts in Prod) ──────────────
 process.on('uncaughtException', (err) => {
   console.error('🔥 [CRITICAL] Uncaught Exception:', err.message);
@@ -334,8 +347,10 @@ async function loadSocketAccount(decoded) {
   const tokenRole = String(decoded.role || '').toLowerCase();
   if (tokenRole === 'rider') {
     const { getDeliveryPartnerModel } = require('./models/DeliveryPartner');
-    const p = await getDeliveryPartnerModel().findByPk(id, { attributes: ['id'] });
-    return p ? { id: p.id, role: 'rider', suspended: false } : null;
+    const p = await getDeliveryPartnerModel().findByPk(id, { attributes: ['id', 'tokenVersion'] });
+    if (!p) return null;
+    if ((Number(decoded.tv) || 0) !== (Number(p.tokenVersion) || 0)) return null; // password changed
+    return { id: p.id, role: 'rider', suspended: false };
   }
   if (tokenRole === 'restaurant' || tokenRole === 'vendor') {
     const { getRestaurantModel } = require('./models/Restaurant');
@@ -346,8 +361,9 @@ async function loadSocketAccount(decoded) {
     return { id: r.id, role: 'restaurant', suspended: false };
   }
   const { getUserModel } = require('./models/User');
-  const u = await getUserModel().findByPk(id, { attributes: ['id', 'role', 'isActive'] });
+  const u = await getUserModel().findByPk(id, { attributes: ['id', 'role', 'isActive', 'tokenVersion'] });
   if (!u) return null;
+  if ((Number(decoded.tv) || 0) !== (Number(u.tokenVersion) || 0)) return null; // password changed
   return { id: u.id, role: u.role || 'student', suspended: u.isActive === false };
 }
 
@@ -1049,6 +1065,22 @@ const initializeApp = async () => {
       console.warn('⚠️ [DEMO_CLEANUP] not started:', cleanupErr.message);
     }
 
+    // 🖼️ Legacy base64 images -> CampusMedia short URLs (idempotent, batched, background).
+    // Starts a minute after boot so it never competes with startup; set
+    // DISABLE_BASE64_MIGRATION=true to switch it off.
+    if (String(process.env.DISABLE_BASE64_MIGRATION || '').toLowerCase() !== 'true') {
+      setTimeout(() => {
+        try {
+          const { runBase64MediaMigration } = require('./scripts/migrate_base64_to_media');
+          runBase64MediaMigration()
+            .then((r) => console.log('🖼️ [BASE64_MIGRATION]', JSON.stringify(r)))
+            .catch((err) => console.warn('⚠️ [BASE64_MIGRATION] failed:', err.message));
+        } catch (migErr) {
+          console.warn('⚠️ [BASE64_MIGRATION] not started:', migErr.message);
+        }
+      }, 60 * 1000).unref?.();
+    }
+
     // 👤 Owner-configured admin bootstrap (idempotent). Creates the admin account from
     // ADMIN_PHONE + ADMIN_PASSWORD (Render env) only if that phone has no account yet.
     // Never overwrites an existing account's password; no default credentials exist.
@@ -1192,7 +1224,7 @@ const initializeApp = async () => {
       storage, 
       limits: { fileSize: 2 * 1024 * 1024 }, // Enforce 2MB size limit server-side
       fileFilter: (req, file, cb) => {
-        const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+        const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']; // bytes are sniffed again
         if (allowedTypes.includes(file.mimetype)) {
           cb(null, true);
         } else {
@@ -1210,56 +1242,47 @@ const initializeApp = async () => {
         next();
       });
     }, async (req, res) => {
-      let imageUrl = '';
-      if (req.file) {
-        const mimetype = req.file.mimetype;
-        const base64Data = req.file.buffer.toString('base64');
-        imageUrl = `data:${mimetype};base64,${base64Data}`;
-      } else if (req.body.image) {
-        // Enforce size check on direct base64 body uploads too
-        if (Buffer.byteLength(req.body.image, 'base64') > 2 * 1024 * 1024) {
-          return res.status(400).json({ message: 'Image size exceeds 2MB limit' });
-        }
-        imageUrl = req.body.image.startsWith('data:') ? req.body.image : `data:image/jpeg;base64,${req.body.image}`;
-      } else {
-        return res.status(400).json({ message: 'No file uploaded' });
-      }
-      
-      // Menu / store / profile photos: keep the bytes in the media table and hand back a short URL
-      // (data: URLs bloat every listing and are dropped by the public restaurant listing). Delivery
-      // proof (orderId) keeps the data URL on the order. Any failure falls back to the data URL.
-      const { orderId } = req.body;
-      if (!orderId) {
-        try {
-          const crypto = require('crypto');
-          const { getCampusMediaModel } = require('./modules/campus/models/CampusMedia');
-          const { sniffImage } = require('./modules/campus/controllers/mediaController');
-          const { publicBase } = require('./modules/campus/campusHelpers');
-          const Media = getCampusMediaModel();
-          const m = /^data:[^;]+;base64,(.*)$/s.exec(imageUrl);
-          const buf = m ? Buffer.from(m[1].replace(/\s+/g, ''), 'base64') : null;
-          const mime = buf ? sniffImage(buf) : null;
-          if (Media && buf && mime) {
-            const sha256 = crypto.createHash('sha256').update(buf).digest('hex');
-            let row = await Media.findOne({ where: { ownerId: req.user.id, sha256, purpose: 'other' }, attributes: ['id'] });
-            if (!row) row = await Media.create({ ownerId: req.user.id, purpose: 'other', mime, size: buf.length, sha256, isPrivate: false, bytes: buf });
-            return res.json({ imageUrl: `${publicBase(req)}/api/campus/media/${row.id}`, mediaId: row.id });
+      // Every upload is sniffed (JPEG / PNG / WEBP / GIF only) and stored in the CampusMedia table;
+      // rows only ever get the short media URL. No inline data: URL is returned or stored any more.
+      const { storeImageRef, saveImageBytes, publicBase: mediaBase } = require('./utils/imageStore');
+      const { orderId } = req.body || {};
+      const isProof = !!orderId;
+      let imageUrl = null;
+      try {
+        if (req.file && req.file.buffer) {
+          const saved = await saveImageBytes(req.file.buffer, { ownerId: req.user.id, purpose: isProof ? 'delivery_proof' : 'other' });
+          imageUrl = `${mediaBase(req)}/api/campus/media/${saved.id}`;
+        } else if (req.body && req.body.image !== undefined) {
+          if (typeof req.body.image !== 'string' || !req.body.image.trim()) {
+            return res.status(400).json({ message: 'No file uploaded' });
           }
-        } catch (mediaErr) {
-          console.warn('[UPLOAD_MEDIA_FALLBACK]', mediaErr.message);
+          const raw = req.body.image.trim();
+          // Bare base64 (older clients) or a data URL; existing hosted URLs are not "uploads".
+          const r = await storeImageRef(/^data:/i.test(raw) ? raw : `data:image/jpeg;base64,${raw}`, {
+            req, ownerId: req.user.id, purpose: isProof ? 'delivery_proof' : 'other', maxBytes: 2 * 1024 * 1024, allowExternal: false,
+          });
+          if (!r.ok) return res.status(r.status || 400).json({ code: r.code, message: r.message });
+          imageUrl = r.value;
+        } else {
+          return res.status(400).json({ message: 'No file uploaded' });
         }
+      } catch (mediaErr) {
+        const status = mediaErr.status && mediaErr.status < 500 ? mediaErr.status : 503;
+        if (status >= 500) console.error('[UPLOAD_MEDIA_ERROR]', mediaErr.message);
+        return res.status(status).json({ code: mediaErr.code || 'UPLOAD_FAILED', message: status === 415 ? mediaErr.message : 'Could not save that photo. Please try again.' });
       }
+      const mediaId = (imageUrl.match(/\/api\/campus\/media\/([0-9a-f-]{36})/i) || [])[1] || null;
 
       // Persist as delivery proof only for the order's assigned rider (or an admin)
       if (orderId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(orderId))) {
         try {
           const { getOrderModel } = require('./models/Order');
           const Order = getOrderModel();
-          const order = await Order.findByPk(orderId);
+          const order = await Order.findByPk(orderId, { attributes: ['id', 'deliveryPartnerId', 'status'] });
           const role = String(req.user?.role || '').toLowerCase();
           const mayAttachProof = order && (role === 'admin' || (order.deliveryPartnerId && order.deliveryPartnerId === req.user?.id));
-          if (mayAttachProof) {
-            await order.update({ proofImage: imageUrl, proofTimestamp: new Date() });
+          if (mayAttachProof && order.status !== 'Cancelled') {
+            await Order.update({ proofImage: imageUrl, proofTimestamp: new Date() }, { where: { id: order.id } });
           } else if (order) {
             console.warn(`[UPLOAD_PROOF_DENIED] ${req.user?.id} is not the rider of order ${orderId}`);
           }
@@ -1267,8 +1290,8 @@ const initializeApp = async () => {
           console.error('[UPLOAD_PERSIST_ERROR]', err);
         }
       }
-      
-      res.json({ imageUrl });
+
+      res.json({ imageUrl, mediaId });
     });
 
     // Basic Health Check

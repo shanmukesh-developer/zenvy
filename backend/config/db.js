@@ -530,7 +530,8 @@ const connectDB = async () => {
           { name: 'dropLat', type: 'FLOAT' },
           { name: 'dropLng', type: 'FLOAT' },
           { name: 'fulfilment', type: "VARCHAR(16) DEFAULT 'ZENVY'" },
-          { name: 'outForDeliveryAt', type: 'DATETIME' }
+          { name: 'outForDeliveryAt', type: 'DATETIME' },
+          { name: 'refundedAt', type: 'DATETIME' }
         ];
         for (const col of orderCols) {
           try {
@@ -539,6 +540,12 @@ const connectDB = async () => {
           } catch (_err) {}
         }
         
+        for (const t of ['Users', 'DeliveryPartners']) {
+          try {
+            await sequelize.query(`ALTER TABLE "${t}" ADD COLUMN "tokenVersion" INTEGER DEFAULT 0;`);
+          } catch (_err) {}
+        }
+
         // WallEvents migration
         try {
           await sequelize.query('ALTER TABLE "WallEvents" ADD COLUMN "bannerText" TEXT;');
@@ -651,6 +658,11 @@ const connectDB = async () => {
         ['Restaurants', 'logoUrl', 'TEXT'],
         ['MenuItems', 'dietType', 'VARCHAR(8)'],
         ['MenuItems', 'originalPrice', 'DOUBLE PRECISION'],
+        // 2026-10-13 security sweep: session revocation for customers/admins/riders and a
+        // one-shot manual refund marker.
+        ['Users', 'tokenVersion', 'INTEGER DEFAULT 0'],
+        ['DeliveryPartners', 'tokenVersion', 'INTEGER DEFAULT 0'],
+        ['Orders', 'refundedAt', 'TIMESTAMP WITH TIME ZONE'],
       ];
       for (const [table, col, type] of pgNewCols) {
         try {
@@ -788,6 +800,19 @@ async function ensureOrderIdempotencyIndex(db) {
     await db.query('CREATE UNIQUE INDEX IF NOT EXISTS "orders_user_idempotency_key" ON "Orders" ("userId", "idempotencyKey") WHERE "idempotencyKey" IS NOT NULL;');
   } catch (err) {
     console.warn('⚠️ [DB_MIGRATION_WARN] Orders idempotency index:', err.message);
+  }
+  // 2026-10-13 race guards (check-then-insert flows). If old duplicate rows exist the index
+  // cannot be built; the routes also guard in code, so this only logs.
+  const uniques = [
+    ['pool_requests_pool_passenger_unique', 'CREATE UNIQUE INDEX IF NOT EXISTS "pool_requests_pool_passenger_unique" ON "PoolRequests" ("poolId", "passengerId");'],
+    ['pg_bookings_open_unique', `CREATE UNIQUE INDEX IF NOT EXISTS "pg_bookings_open_unique" ON "PGBookings" ("userId", "hostelId") WHERE "status" IN ('Pending', 'Confirmed');`],
+  ];
+  for (const [name, sql] of uniques) {
+    try {
+      await db.query(sql);
+    } catch (err) {
+      console.warn(`⚠️ [DB_MIGRATION_WARN] ${name}:`, err.message);
+    }
   }
 }
 

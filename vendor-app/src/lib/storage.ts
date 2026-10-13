@@ -1,6 +1,7 @@
 // AsyncStorage wrappers: session (JWT + whitelisted stall profile), saved login phone, voice settings.
 // Every read/write is guarded: storage failures never crash the app (it keeps working from memory).
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import { STORAGE } from '../config';
 import type { StoreProfile } from '../types';
 
@@ -20,6 +21,26 @@ export async function safeRemove(keys: string[]): Promise<void> {
   }
 }
 
+/** The bearer token lives in expo-secure-store (Android Keystore), not AsyncStorage, so it is never copied
+ * into Google auto-backup / adb backup. SecureStore keys allow only [A-Za-z0-9._-]. */
+const SECURE_TOKEN_KEY = 'zenvy_vendor_token';
+
+async function secureGetToken(): Promise<string | null> {
+  try { return await SecureStore.getItemAsync(SECURE_TOKEN_KEY); } catch { return null; }
+}
+/** Stores the token; falls back to AsyncStorage only when SecureStore is unavailable (web / keystore error). */
+async function saveToken(token: string): Promise<void> {
+  try {
+    await SecureStore.setItemAsync(SECURE_TOKEN_KEY, token);
+    await safeRemove([STORAGE.token]);
+  } catch {
+    await safeSet(STORAGE.token, token);
+  }
+}
+async function clearToken(): Promise<void> {
+  try { await SecureStore.deleteItemAsync(SECURE_TOKEN_KEY); } catch { /* ignore */ }
+}
+
 /** Only the fields the app needs; never the password hash. */
 export function pickProfile(raw: any): StoreProfile | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -36,8 +57,10 @@ export function pickProfile(raw: any): StoreProfile | null {
 }
 
 export async function loadSession(): Promise<{ token: string | null; restaurant: StoreProfile | null }> {
-  const t = await safeGet(STORAGE.token);
+  const secure = await secureGetToken();
+  const t = secure || (await safeGet(STORAGE.token));
   const token = t ? t.replace(/['"]+/g, '').trim() || null : null;
+  if (token && !secure) await saveToken(token); // move a token an older build left in AsyncStorage
   const raw = await safeGet(STORAGE.vendor);
   let restaurant: StoreProfile | null = null;
   if (raw) {
@@ -48,7 +71,7 @@ export async function loadSession(): Promise<{ token: string | null; restaurant:
 }
 
 export async function saveSession(token: string, restaurant: StoreProfile): Promise<void> {
-  await safeSet(STORAGE.token, token);
+  await saveToken(token);
   await safeSet(STORAGE.vendor, JSON.stringify(restaurant));
 }
 
@@ -58,6 +81,7 @@ export async function saveProfile(restaurant: StoreProfile): Promise<void> {
 
 export async function clearSession(): Promise<void> {
   await safeRemove([STORAGE.token, STORAGE.vendor]);
+  await clearToken();
 }
 
 export async function loadSavedPhone(): Promise<string | null> {

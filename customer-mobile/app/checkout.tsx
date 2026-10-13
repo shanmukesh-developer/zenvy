@@ -113,6 +113,9 @@ export default function CheckoutScreen() {
   const [placing, setPlacing] = useState(false);
   const placingRef = useRef(false);
   const idempotencyKeyRef = useRef<string>(newIdempotencyKey());
+  // Separate key for the Mega Basket shopping list, tied to its exact contents and kept across retries
+  // until the server answers, so a timed-out request that was processed is not created twice.
+  const basketKeyRef = useRef<{ sig: string; key: string } | null>(null);
   const mountedRef = useRef(true);
   useEffect(() => () => { mountedRef.current = false; }, []);
 
@@ -438,21 +441,30 @@ export default function CheckoutScreen() {
 
       // 2. Mega Basket shopping list (free-text requests a rider buys for you; cash on delivery)
       if (hasCustom) {
+        const basketBody = {
+          items: customLines.map((i) => ({
+            name: String(i.name || '').replace(/^\[Custom Request\]\s*/i, ''),
+            quantity: i.quantity,
+            unit: 'pcs',
+            priceEstimated: Number(i.price) || 0,
+          })),
+          deliveryAddress: buildDeliveryAddress(true),
+          paymentMethod: 'COD',
+        };
+        const basketSig = JSON.stringify(basketBody);
+        if (!basketKeyRef.current || basketKeyRef.current.sig !== basketSig) {
+          basketKeyRef.current = { sig: basketSig, key: newIdempotencyKey() };
+        }
+        const basketKey = basketKeyRef.current.key;
         try {
           const res = await apiFetch(`${API_URL}/api/mega-basket`, {
             method: 'POST',
-            body: JSON.stringify({
-              items: customLines.map((i) => ({
-                name: String(i.name || '').replace(/^\[Custom Request\]\s*/i, ''),
-                quantity: i.quantity,
-                unit: 'pcs',
-                priceEstimated: Number(i.price) || 0,
-              })),
-              deliveryAddress: buildDeliveryAddress(true),
-              paymentMethod: 'COD',
-            }),
+            headers: { 'Idempotency-Key': basketKey },
+            body: JSON.stringify({ ...basketBody, idempotencyKey: basketKey }),
           });
           const data = await res.json().catch(() => null);
+          // The server answered: this attempt is settled (409 = the same key is still being processed).
+          if (res.status !== 409 && basketKeyRef.current?.key === basketKey) basketKeyRef.current = null;
           if (res.ok) {
             placedBasket = true;
             const keys = new Set(customLines.map((l) => l.cartKey));
@@ -463,8 +475,10 @@ export default function CheckoutScreen() {
               placedOrderId ? `${message} Your shopping list is still in your basket — try again from there.` : message);
           }
         } catch {
-          Alert.alert(placedOrderId ? 'Order placed, shopping list not sent' : 'Shopping list not sent',
-            `${friendlyNetworkMessage}${placedOrderId ? ' Your shopping list is still in your basket.' : ''}`);
+          // The list may have reached the server before the connection dropped; the same key is reused
+          // on retry, but tell the user to check first instead of claiming it was not sent.
+          Alert.alert(placedOrderId ? 'Order placed, shopping list not confirmed' : 'Couldn’t confirm your shopping list',
+            `We couldn't confirm whether your shopping list was sent. Check Mega Basket → My lists before trying again.${placedOrderId ? ' Your shopping list is still in your basket.' : ''}`);
         }
       }
 

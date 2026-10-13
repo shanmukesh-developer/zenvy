@@ -60,6 +60,9 @@ const formatDate = (value: string) => {
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
 };
 
+// The admin can cancel any basket that has not been delivered yet (same rule as the backend).
+const ADMIN_CANCELLABLE = new Set(['Created', 'PaidEstimate', 'PartnerAssigned', 'Shopping', 'PriceApprovalPending', 'Approved', 'Purchased', 'Delivering']);
+
 const STATUSES = ['Created', 'PaidEstimate', 'PartnerAssigned', 'Shopping', 'PriceApprovalPending', 'Approved', 'Purchased', 'Delivering', 'Delivered', 'Cancelled'];
 
 export default function MegaBasketAdminPage() {
@@ -71,6 +74,35 @@ export default function MegaBasketAdminPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
+
+  const cancelBasket = async (basket: MegaBasket) => {
+    if (cancellingId) return;
+    const who = basket.user?.name || 'the student';
+    const shopping = ['Shopping', 'PriceApprovalPending', 'Approved', 'Purchased', 'Delivering'].includes(basket.status);
+    if (!confirm(`Cancel ${who}'s basket #${basket.id.slice(-8).toUpperCase()}?${shopping ? ' The shopper has already started; tell them to stop before you cancel.' : ''} This cannot be undone.`)) return;
+    setCancellingId(basket.id);
+    setNotice(null);
+    try {
+      const response = await fetch(`${API_URL}/api/mega-basket/${encodeURIComponent(basket.id)}/cancel`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'Cancelled by Zenvy support' }),
+        credentials: 'include',
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 401) throw new Error('Your session has expired. Please sign in again.');
+      if (!response.ok) throw new Error(data.message || `Could not cancel this basket (${response.status}).`);
+      setBaskets(prev => prev.map(b => (b.id === basket.id ? { ...b, status: 'Cancelled' } : b)));
+      setNotice({ kind: 'ok', text: `Basket #${basket.id.slice(-8).toUpperCase()} cancelled.` });
+      setRefreshCount(count => count + 1);
+    } catch (err) {
+      setNotice({ kind: 'error', text: err instanceof TypeError ? 'Could not reach the server. Check your connection and try again.' : err instanceof Error ? err.message : 'Could not cancel this basket.' });
+    } finally {
+      setCancellingId(null);
+    }
+  };
   const { socket } = useAdminSocket();
 
   const basketIdsRef = useRef<Set<string>>(new Set());
@@ -134,7 +166,7 @@ export default function MegaBasketAdminPage() {
         <div>
           <p className="text-xs font-bold uppercase tracking-widest text-amber-400">Multi-item shopping</p>
           <h1 className="mt-1 text-2xl font-black">Mega Basket</h1>
-          <p className="mt-2 text-sm text-gray-400">Read-only overview of customer baskets, shopping progress, payment and shopper assignment. New baskets are cash on delivery; older UPI baskets are shown for reference.</p>
+          <p className="mt-2 text-sm text-gray-400">Customer baskets, shopping progress, payment and shopper assignment. Stuck baskets can be cancelled before delivery. New baskets are cash on delivery; older UPI baskets are shown for reference.</p>
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm text-gray-400">{filtered.length} of {baskets.length} baskets{baskets.length >= ADMIN_LIST_LIMIT ? ` (latest ${ADMIN_LIST_LIMIT})` : ''}</span>
@@ -153,6 +185,7 @@ export default function MegaBasketAdminPage() {
         </label>
       </section>
 
+      {notice && <div role={notice.kind === 'error' ? 'alert' : 'status'} className={`flex items-center justify-between gap-3 border p-4 text-sm ${notice.kind === 'error' ? 'border-red-500/30 bg-red-500/10 text-red-300' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'}`}>{notice.text}<button type="button" onClick={() => setNotice(null)} className="font-bold underline">Dismiss</button></div>}
       {error && <div role="alert" className="flex items-center justify-between gap-3 border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">{error}<button type="button" onClick={() => setRefreshCount(count => count + 1)} className="font-bold underline">Retry</button></div>}
       {loading ? <div role="status" className="border border-white/10 p-8 text-sm text-gray-400">Loading Mega Baskets...</div> : filtered.length === 0 ? (
         <div className="border border-white/10 p-10 text-center"><h2 className="font-bold">No matching baskets</h2><p className="mt-2 text-sm text-gray-400">Recent customer baskets will appear here.</p></div>
@@ -171,7 +204,12 @@ export default function MegaBasketAdminPage() {
                     </div>
                     <p className="mt-2 text-xs text-gray-500">#{basket.id.slice(-8).toUpperCase()} · {formatDate(basket.createdAt)}</p>
                   </div>
+                  <div className="flex flex-wrap gap-2">
+                  {ADMIN_CANCELLABLE.has(basket.status) && (
+                    <button type="button" disabled={!!cancellingId} onClick={() => cancelBasket(basket)} className="border border-red-500/30 px-3 py-2 text-xs font-bold text-red-300 hover:bg-red-500/10 disabled:opacity-50">{cancellingId === basket.id ? 'Cancelling...' : 'Cancel basket'}</button>
+                  )}
                   <button type="button" aria-expanded={expandedId === basket.id} onClick={() => setExpandedId(current => current === basket.id ? null : basket.id)} className="border border-white/10 px-3 py-2 text-xs font-bold text-gray-300 hover:text-white">{expandedId === basket.id ? 'Hide items' : `View ${itemCount} items`}</button>
+                  </div>
                 </div>
                 <div className="mt-4 grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
                   <div><p className="text-xs uppercase tracking-wider text-gray-500">Student</p><p className="mt-1">{basket.user?.phone || 'Phone unavailable'}</p></div>

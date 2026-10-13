@@ -15,6 +15,10 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const WINDOW_MS = 60 * 60 * 1000;
 const MAX_PER_WINDOW = 60;
 const uploadLog = new Map(); // userId -> timestamps[]
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, list] of uploadLog) if (!list.length || now - list[list.length - 1] >= WINDOW_MS) uploadLog.delete(k);
+}, 10 * 60 * 1000).unref?.();
 const overBudget = (userId) => {
   const now = Date.now();
   const list = (uploadLog.get(userId) || []).filter((t) => now - t < WINDOW_MS);
@@ -216,15 +220,18 @@ const viewerFrom = async (req) => {
     if (!token || !process.env.JWT_SECRET) return null;
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const User = getUserModel();
-    const user = await User.findByPk(decoded.id, { attributes: ['id', 'role', 'isActive'] });
-    if (user && user.isActive !== false) return user;
-    // Admin dashboard tokens may belong to a separate admin table; trust the signed role claim.
-    if (decoded && String(decoded.role || '').toLowerCase() === 'admin') return { id: decoded.id, role: 'admin' };
+    const user = await User.findByPk(decoded.id, { attributes: ['id', 'role', 'isActive', 'tokenVersion'] });
+    // Live account only (never the token's role claim), and not a session revoked by a password change.
+    if (user && user.isActive !== false && (Number(decoded.tv) || 0) === (Number(user.tokenVersion) || 0)) return user;
     return null;
   } catch {
     return null;
   }
 };
+
+// Hosts a stored https avatar may redirect to (Google / Firebase sign-in photos, our CDN).
+const AVATAR_REDIRECT_HOSTS = ['googleusercontent.com', 'firebasestorage.googleapis.com', 'res.cloudinary.com', 'gravatar.com']
+  .concat(String(process.env.AVATAR_REDIRECT_HOSTS || '').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean));
 
 // @desc    A user's profile photo as an image (legacy data: URL avatars, decoded once and cached)
 // @route   GET /api/campus/avatar/:userId
@@ -236,9 +243,21 @@ const serveAvatar = async (req, res) => {
     const user = await User.findByPk(userId, { attributes: ['id', 'profileImage'] });
     const img = user && typeof user.profileImage === 'string' ? user.profileImage : '';
     if (!img) return res.status(404).json({ message: 'No photo' });
-    if (/^https?:\/\//i.test(img) || img.startsWith('/api/')) {
+    // Redirect only to our own media rows or well-known photo hosts (never an open redirect).
+    const { mediaIdOf } = require('../../../utils/imageStore');
+    const mid = mediaIdOf(img);
+    if (mid) {
       res.set('Cache-Control', 'public, max-age=3600');
-      return res.redirect(302, img);
+      return res.redirect(302, `/api/campus/media/${mid}`);
+    }
+    if (/^https:\/\//i.test(img)) {
+      let host = '';
+      try { host = new URL(img).hostname.toLowerCase(); } catch { host = ''; }
+      if (AVATAR_REDIRECT_HOSTS.some((h) => host === h || host.endsWith(`.${h}`))) {
+        res.set('Cache-Control', 'public, max-age=3600');
+        return res.redirect(302, img);
+      }
+      return res.status(404).json({ message: 'No photo' });
     }
     const m = img.match(/^data:([a-z0-9.+/-]+);base64,(.*)$/is);
     if (!m) return res.status(404).json({ message: 'No photo' });

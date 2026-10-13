@@ -110,24 +110,45 @@ export async function playRing(text = 'New order waiting'): Promise<boolean> {
 
 let currentToken: string | null = null;
 
+/**
+ * Closed-app order alerts:
+ *  'ok'          token registered with the server
+ *  'blocked'     notification permission refused: alerts only while the app is open
+ *  'unavailable' this build / phone has no FCM device token (no google-services.json, no Play services)
+ *  'unknown'     web, or a network / server hiccup (retried on the next start; no banner)
+ */
+export type PushState = 'ok' | 'blocked' | 'unavailable' | 'unknown';
+
 /** Ask permission, then send this phone's FCM token to the server (once per store + token). */
-export async function registerStorePush(storeId: string): Promise<void> {
-  if (!isNative || !storeId) return;
+export async function registerStorePush(storeId: string): Promise<PushState> {
+  if (!isNative || !storeId) return 'unknown';
   try {
     await ensureChannels();
-    if (!(await hasPermission(true))) return;
+    if (!(await hasPermission(true))) return 'blocked';
+  } catch {
+    return 'unknown';
+  }
+  let token = '';
+  try {
     // The server sends through FCM, so only the native device token is useful. Without
     // google-services.json in the build this throws: order alerts then work only while the app runs.
     const device = await Notifications.getDevicePushTokenAsync();
-    const token = typeof device?.data === 'string' ? device.data : '';
-    if (!token) return;
-    currentToken = token;
+    token = typeof device?.data === 'string' ? device.data : '';
+  } catch (err) {
+    console.warn('[PUSH_TOKEN]', (err as any)?.message || err);
+    return 'unavailable';
+  }
+  if (!token) return 'unavailable';
+  currentToken = token;
+  try {
     const marker = `${storeId}:${token}`;
-    if ((await safeGet(REGISTERED_KEY)) === marker) return;
+    if ((await safeGet(REGISTERED_KEY)) === marker) return 'ok';
     await registerPushToken(token, APP);
     await safeSet(REGISTERED_KEY, marker);
+    return 'ok';
   } catch (err) {
     console.warn('[PUSH_REGISTER]', (err as any)?.message || err);
+    return 'unknown';
   }
 }
 

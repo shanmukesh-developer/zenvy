@@ -5,7 +5,7 @@ import { View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { BottomNav, MainTab } from '../components/Nav';
 import { NewOrderAlert } from '../components/NewOrderAlert';
-import { ConnBanner, ShopBar, VoiceOffBanner } from '../components/ShopBar';
+import { ConnBanner, PushOffBanner, ShopBar, VoiceOffBanner } from '../components/ShopBar';
 import { Announcer } from '../state/Announcer';
 import { useStore } from '../state/StoreProvider';
 import { color } from '../theme';
@@ -37,6 +37,7 @@ export default function MainScreen({ navigation }: NativeStackScreenProps<RootSt
       <ShopBar />
       <ConnBanner />
       <VoiceOffBanner onFix={() => go('settings')} />
+      <PushOffBanner />
       <View style={{ flex: 1 }}>
         {pane('orders', <OrdersScreen onOpenOrder={openOrder} />)}
         {pane('menu', <MenuScreen />)}

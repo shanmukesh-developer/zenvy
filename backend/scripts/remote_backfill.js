@@ -1,7 +1,14 @@
 const { Sequelize } = require('sequelize');
 
 async function run() {
-  const dbUrl = 'postgresql://hostelbites_user:b7Wz3ybgQuTcyIVAJb0R4ZDw6H1FfEEY@dpg-d7id3okvikkc73efva60-a.virginia-postgres.render.com/hostelbites?ssl=true';
+  // Never hardcode a database URL here (a production URL was once committed in
+  // this file and must be treated as public: rotate the Render DB password).
+  require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
+  const dbUrl = process.env.REMOTE_DATABASE_URL || process.env.DATABASE_URL;
+  if (!dbUrl || !/^postgres(ql)?:\/\//.test(dbUrl)) {
+    console.error('Set REMOTE_DATABASE_URL (or DATABASE_URL) to a Postgres URL in the environment.');
+    process.exit(1);
+  }
   const sequelize = new Sequelize(dbUrl, {
     dialect: 'postgres',
     dialectOptions: {

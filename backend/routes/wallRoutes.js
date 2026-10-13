@@ -23,6 +23,13 @@ const optionalUser = (req) => {
   }
 };
 const isAdminUser = (u) => !!u && String(u.role || '').toLowerCase() === 'admin';
+// Same as optionalUser, but the role comes from the live account (never the token claim).
+const optionalViewer = async (req) => {
+  const decoded = optionalUser(req);
+  if (!decoded) return null;
+  const { isLiveAdminRequest } = require('../middleware/authMiddleware');
+  return { id: decoded.id, role: (await isLiveAdminRequest(req)) ? 'admin' : 'student' };
+};
 
 // A contest is open only while it is ACTIVE and its end time has not passed (the cron that
 // finalizes it runs every 5 minutes, so the end time is checked here too).
@@ -38,6 +45,10 @@ const publicEvent = (event, viewer) => {
 
 // Simple in-memory rate limiting for /like endpoint per user (max 30 per min)
 const likeRateLimitMap = new Map();
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, list] of likeRateLimitMap) if (!list.length || now - list[list.length - 1] >= 60000) likeRateLimitMap.delete(k);
+}, 5 * 60 * 1000).unref?.();
 const checkLikeRateLimit = (userId) => {
   const now = Date.now();
   const userLogs = likeRateLimitMap.get(userId) || [];
@@ -163,7 +174,7 @@ router.get('/events/active', async (req, res) => {
     // Extract current user's liked submission IDs if token provided
     let userLikedSubmissionIds = [];
     let userSubmission = null;
-    const viewer = optionalUser(req);
+    const viewer = await optionalViewer(req);
     if (viewer) {
       try {
         const decoded = viewer;
@@ -204,7 +215,7 @@ router.get('/events/history', async (req, res) => {
     const User = getUserModel();
     if (!WallEvent || !WallSubmission) return res.status(500).json({ message: 'Models not initialized.' });
 
-    const viewer = optionalUser(req);
+    const viewer = await optionalViewer(req);
     const pastEvents = await WallEvent.findAll({
       where: { status: 'ENDED' },
       order: [['endTime', 'DESC']],
@@ -251,17 +262,18 @@ router.post('/events/:id/submit', protect, async (req, res) => {
     if (!WallEvent || !WallSubmission) return res.status(500).json({ message: 'Models not initialized.' });
 
     let eventId = req.params.id;
-    const { imageUrl } = req.body;
+    const { imageUrl: rawImage } = req.body || {};
 
-    if (!imageUrl || typeof imageUrl !== 'string') {
+    if (!rawImage || typeof rawImage !== 'string') {
       return res.status(400).json({ message: 'Image payload is required.' });
     }
-    if (!/^(https?:\/\/|data:image\/)/i.test(imageUrl)) {
-      return res.status(400).json({ message: 'Please pick a photo from your gallery or camera.' });
+    // Sniffed and stored in the media table (max 4 MB); the submission keeps the short URL.
+    const { storeImageRef } = require('../utils/imageStore');
+    const img = await storeImageRef(rawImage, { req, ownerId: req.user.id, purpose: 'wall', maxBytes: 4 * 1024 * 1024 });
+    if (!img.ok || !img.value) {
+      return res.status(img.status || 400).json({ code: img.code === 'FILE_TOO_LARGE' ? 'IMAGE_TOO_LARGE' : img.code, message: img.ok ? 'Please pick a photo from your gallery or camera.' : img.message });
     }
-    if (imageUrl.length > 4 * 1024 * 1024) {
-      return res.status(413).json({ code: 'IMAGE_TOO_LARGE', message: 'That photo is too large. Please pick a smaller one.' });
-    }
+    const imageUrl = img.value;
 
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     let event = UUID_RE.test(String(eventId || '')) ? await WallEvent.findByPk(eventId) : null;

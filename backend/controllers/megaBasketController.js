@@ -344,10 +344,25 @@ const updateItemStatus = async (req, res) => {
       if (!Number.isFinite(p) || p < 0 || p > 100000) return res.status(400).json({ message: 'Please enter a valid price.' });
     }
 
+    if (photoProofUrl !== undefined) {
+      const { storeImageRef, sendImageError } = require('../utils/imageStore');
+      const img = await storeImageRef(photoProofUrl, { req, ownerId: req.user.id, purpose: 'basket' });
+      if (!img.ok) return sendImageError(res, img);
+      item.photoProofUrl = img.value;
+    }
+    const prevStatus = item.status;
+    const prevPrice = item.priceActual;
     if (status !== undefined) item.status = status;
     if (priceActual !== undefined) item.priceActual = priceActual === null ? null : Number(priceActual);
-    if (photoProofUrl !== undefined) item.photoProofUrl = photoProofUrl;
+    const billChanged = item.status !== prevStatus || Number(item.priceActual) !== Number(prevPrice);
     await item.save();
+
+    // The customer was shown a bill: any price / availability change after that withdraws it, so
+    // the rider must resubmit and the customer approves the new total (never a stale one).
+    if (billChanged && basket.status === 'PriceApprovalPending') {
+      const [reopened] = await MegaBasket.update({ status: 'Shopping' }, { where: { id: basket.id, status: 'PriceApprovalPending' } });
+      if (reopened) broadcastBasketStatus(req, basket.id, { id: basket.id, status: 'Shopping' });
+    }
 
     const io = req.app.get('io');
     if (io) {
@@ -392,9 +407,15 @@ const submitBill = async (req, res) => {
       }
     });
 
+    actualTotal = Math.round(actualTotal * 100) / 100;
+    // Conditional: never revive a basket that was approved / cancelled after our read.
+    const [submitted] = await MegaBasket.update(
+      { actualTotal, status: 'PriceApprovalPending' },
+      { where: { id: basket.id, status: { [Op.in]: ['PartnerAssigned', 'Shopping', 'PriceApprovalPending'] } } }
+    );
+    if (!submitted) return res.status(409).json({ message: 'This basket was just updated. Please refresh.' });
     basket.actualTotal = actualTotal;
     basket.status = 'PriceApprovalPending';
-    await basket.save();
 
     broadcastBasketStatus(req, basket.id, { id: basket.id, status: basket.status, actualTotal });
     const io = req.app.get('io');
@@ -426,7 +447,16 @@ const approvePrices = async (req, res) => {
       return res.status(400).json({ message: 'No approval request pending' });
     }
 
-    const [approved] = await MegaBasket.update({ status: 'Approved' }, { where: { id: basket.id, status: 'PriceApprovalPending' } });
+    // Bound to the exact bill: the client may send the total it showed (actualTotal); the update
+    // also requires the stored total to be the one we just read.
+    const seen = req.body && (req.body.actualTotal ?? req.body.expectedTotal);
+    if (seen !== undefined && seen !== null && Math.abs(Number(seen) - Number(basket.actualTotal)) > 0.009) {
+      return res.status(409).json({ code: 'BILL_CHANGED', message: 'The bill changed. Please check the new total and approve again.', actualTotal: basket.actualTotal });
+    }
+    const [approved] = await MegaBasket.update(
+      { status: 'Approved' },
+      { where: { id: basket.id, status: 'PriceApprovalPending', actualTotal: basket.actualTotal } }
+    );
     if (approved === 0) return res.status(409).json({ message: 'The bill was just updated. Please refresh and check it again.' });
     basket.status = 'Approved';
 
@@ -536,14 +566,15 @@ const getActiveBaskets = async (req, res) => {
       where: {
         deliveryPartnerId: req.user.id,
         status: {
-          [Op.ne]: 'Delivered'
+          [Op.notIn]: ['Delivered', 'Cancelled']
         }
       },
       include: [
         { model: MegaBasketItem, as: 'items' },
         { model: User, as: 'user', attributes: ['name', 'phone', 'hostelBlock', 'roomNumber'] }
       ],
-      order: [['createdAt', 'DESC']]
+      order: [['createdAt', 'DESC']],
+      limit: 50
     });
 
     res.json(baskets.map(withoutPin));

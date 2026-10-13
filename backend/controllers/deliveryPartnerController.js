@@ -140,13 +140,14 @@ const serverError = (res, tag, error) => {
   if (!res.headersSent) res.status(500).json({ message: 'Something went wrong on our side. Please try again in a moment.' });
 };
 
-const generateToken = (id) => {
+// `tv` = tokenVersion: a password change bumps it and protect() rejects older sessions.
+const generateToken = (id, tokenVersion = 0) => {
   const secret = process.env.JWT_SECRET;
   if (!secret) {
     console.error('[AUTH_FATAL] JWT_SECRET is not configured.');
     return null; // The calling logic should handle this gracefully
   }
-  return jwt.sign({ id, role: 'rider' }, secret, { expiresIn: '30d' });
+  return jwt.sign({ id, role: 'rider', tv: Number(tokenVersion) || 0 }, secret, { expiresIn: '30d' });
 };
 
 // @desc    Register a new delivery partner.
@@ -161,35 +162,9 @@ const registerPartner = async (req, res) => {
       return res.status(400).json({ message: 'Enter a valid 10-digit mobile number.' });
     }
 
-    // Check if request is made by an Admin (also avoids overwriting their session cookie)
-    let skipCookie = false;
-    let authHeader = req.headers.authorization;
-    let tokenToCheck = null;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      tokenToCheck = authHeader.split(' ')[1].replace(/['"]+/g, '').trim();
-    } else if (req.cookies?.token) {
-      tokenToCheck = req.cookies.token.replace(/['"]+/g, '').trim();
-    }
-
-    if (tokenToCheck) {
-      try {
-        const decoded = jwt.verify(tokenToCheck, process.env.JWT_SECRET);
-        if (decoded.role === 'admin') {
-          skipCookie = true;
-        } else {
-          const { getUserModel } = require('../models/User');
-          const User = getUserModel();
-          if (User) {
-            const dbUser = await User.findByPk(decoded.id);
-            if (dbUser && dbUser.role && dbUser.role.toLowerCase() === 'admin') {
-              skipCookie = true;
-            }
-          }
-        }
-      } catch (err) {
-        console.warn('[DELIVERY_PARTNER_AUTH_CHECK_WARN] Token verify failed:', err.message);
-      }
-    }
+    // Check if request is made by a live Admin (DB role, not the token claim). Also avoids
+    // overwriting their session cookie.
+    const skipCookie = await require('../middleware/authMiddleware').isLiveAdminRequest(req);
     const isAdminRequest = skipCookie;
 
     // Validate before the phone proof so a bad form never burns the customer's OTP (and never 500s).
@@ -219,7 +194,7 @@ const registerPartner = async (req, res) => {
       vehicleType,
       isApproved: isAdminRequest
     });
-    const token = generateToken(partner.id);
+    const token = generateToken(partner.id, partner.tokenVersion);
 
     if (!skipCookie) {
       res.cookie('token', token, { httpOnly: true, secure: true, sameSite: 'none', maxAge: 30 * 24 * 60 * 60 * 1000 });
@@ -253,7 +228,7 @@ const authPartner = async (req, res) => {
     }
 
     // ── 3. Return partner data and JWT token ────────────────────────────────
-    const token = generateToken(partner.id);
+    const token = generateToken(partner.id, partner.tokenVersion);
     res.cookie('token', token, { httpOnly: true, secure: true, sameSite: 'none', maxAge: 30 * 24 * 60 * 60 * 1000 });
 
     // ── Streak Computation (IST) ───────────────────────────────────────
@@ -422,8 +397,9 @@ const getPendingOrders = async (req, res) => {
     const restIds = [...new Set(orders.map(o => o.restaurantId))];
     
     const [users, restaurants] = await Promise.all([
-      User.findAll({ where: { id: userIds } }),
-      Restaurant.findAll({ where: { id: restIds } })
+      // Only what the pool card needs (never password hashes or base64 profile photos).
+      User.findAll({ where: { id: userIds }, attributes: ['id', 'name', 'hostelBlock', 'roomNumber', 'address'] }),
+      Restaurant.findAll({ where: { id: restIds }, attributes: ['id', 'name', 'location', 'whatsappNumber', 'lat', 'lon'] })
     ]);
 
     const userMap = Object.fromEntries(users.map(u => [u.id, u]));
@@ -727,6 +703,7 @@ const cancelOrderByRider = async (req, res) => {
     if (released === 0) return res.status(409).json({ message: 'This order was just cancelled or updated. Please refresh.' });
     order.deliveryPartnerId = null;
     order.status = nextStatus;
+    realtime.leaveOrderRoom(req.user.id, order.id); // no more status / chat / GPS for the old rider
 
     // Clear rider's current task
     const partner = await DeliveryPartner.findByPk(req.user.id);
@@ -745,7 +722,9 @@ const cancelOrderByRider = async (req, res) => {
       if (order.restaurantId) io.to(`restaurant_${order.restaurantId}`).emit('statusUpdated', payload);
       io.to('admin-room').emit('order_unassigned', { orderId: order.id, reason: 'Rider emergency cancel' });
       // Re-list for dispatch (riders poll the available-orders list; admins see it live)
-      io.to('admin-room').emit('newOrder', { ...order.toJSON(), id: order.id, _id: order.id });
+      const relisted = { ...order.toJSON(), id: order.id, _id: order.id };
+      delete relisted.deliveryPin; delete relisted.deliveryPinAttempts;
+      io.to('admin-room').emit('newOrder', relisted);
     }
     realtime.deliveryRequest(order.id); // back in the pool for every online rider
     // Riders with the app in the background only hear about it by push (never the rider who released it).
@@ -809,10 +788,11 @@ const toggleOnline = async (req, res) => {
 
 // @desc    Save FCM Token for partner
 const saveFcmToken = async (req, res) => {
-  const fcmToken = req.body.fcmToken || req.body.token;
-  const appVersion = req.body.appVersion || 'native-1.0.0';
+  const { cleanFcmToken, cleanAppVersion, tokenLikePattern } = require('../utils/fcmToken');
+  const fcmToken = cleanFcmToken(req.body.fcmToken || req.body.token);
+  const appVersion = cleanAppVersion(req.body.appVersion) || 'native-1.0.0';
   if (!fcmToken) {
-    return res.status(400).json({ message: 'Token is required' });
+    return res.status(400).json({ message: 'A valid push token is required' });
   }
   try {
     const DeliveryPartner = getDeliveryPartnerModel();
@@ -831,11 +811,14 @@ const saveFcmToken = async (req, res) => {
       // so the previous rider's order alerts stop ringing on this phone.
       try {
         const others = await DeliveryPartner.findAll({
-          where: { id: { [Op.ne]: partner.id }, fcmTokens: { [Op.like]: `%${fcmToken}%` } },
+          where: { id: { [Op.ne]: partner.id }, fcmTokens: { [Op.like]: tokenLikePattern(fcmToken) } },
           attributes: ['id', 'fcmTokens']
         });
         for (const other of others) {
-          other.fcmTokens = (Array.isArray(other.fcmTokens) ? other.fcmTokens : []).filter(t => (typeof t === 'string' ? t : t?.token) !== fcmToken);
+          const list = Array.isArray(other.fcmTokens) ? other.fcmTokens : [];
+          const filtered = list.filter(t => (typeof t === 'string' ? t : t?.token) !== fcmToken);
+          if (filtered.length === list.length) continue; // only rows that really held this token
+          other.fcmTokens = filtered;
           other.changed('fcmTokens', true);
           await other.save();
         }
@@ -1067,7 +1050,12 @@ const updateRiderProfile = async (req, res) => {
       if (ec && !/^\d{10}$/.test(ec)) return res.status(400).json({ code: 'INVALID_PHONE', message: 'Enter a 10-digit emergency contact number.' });
       partner.emergencyContact = ec || null;
     }
-    if (photoUrl !== undefined) partner.photoUrl = photoUrl;
+    if (photoUrl !== undefined) {
+      const { storeImageRef, sendImageError } = require('../utils/imageStore');
+      const img = await storeImageRef(photoUrl, { req, ownerId: partner.id, purpose: 'avatar', maxBytes: 2 * 1024 * 1024 });
+      if (!img.ok) return sendImageError(res, img);
+      partner.photoUrl = img.value;
+    }
 
     await partner.save();
 
@@ -1183,9 +1171,16 @@ const changePassword = async (req, res) => {
     if (!isMatch) {
       return res.status(400).json({ message: 'Invalid current password' });
     }
-    partner.password = newPassword;
+    if (typeof newPassword !== 'string' || newPassword.length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters' });
+    }
+    partner.password = newPassword; // model hooks hash it and bump tokenVersion
     await partner.save();
-    res.json({ message: 'Password updated successfully' });
+    // Older sessions (other phones, a stolen token) are revoked; this device gets a fresh token.
+    require('../middleware/authMiddleware').clearCachedUser(partner.id);
+    const token = generateToken(partner.id, partner.tokenVersion);
+    if (token) res.cookie('token', token, { httpOnly: true, secure: true, sameSite: 'none', maxAge: 30 * 24 * 60 * 60 * 1000 });
+    res.json({ message: 'Password updated successfully', token });
   } catch (error) {
     serverError(res, '[RIDER_ERROR]', error);
   }

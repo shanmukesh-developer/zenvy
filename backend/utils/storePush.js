@@ -57,11 +57,14 @@ const registerStoreToken = async (restaurantId, token, { app = null, remove = fa
     try {
       const { Op } = require('sequelize');
       const others = await Restaurant.findAll({
-        where: { id: { [Op.ne]: store.id }, fcmTokens: { [Op.like]: `%${token}%` } },
+        where: { id: { [Op.ne]: store.id }, fcmTokens: { [Op.like]: require('./fcmToken').tokenLikePattern(token) } },
         attributes: ['id', 'fcmTokens'],
       });
       for (const other of others) {
-        other.fcmTokens = (other.fcmTokens || []).filter((t) => tokenOf(t) !== token);
+        const before = other.fcmTokens || [];
+        const after = before.filter((t) => tokenOf(t) !== token);
+        if (after.length === before.length) continue;
+        other.fcmTokens = after;
         other.changed('fcmTokens', true);
         await other.save({ fields: ['fcmTokens'], hooks: false });
       }

@@ -16,11 +16,15 @@ const { sortMenuItems } = require('../utils/menuSort');
 let cachedRestaurantsResponse = null;
 let cachedRestaurantsAt = 0;
 const RESTAURANTS_CACHE_TTL_MS = 60 * 1000;
+const extraCacheClears = [];
 const clearRestaurantsCache = () => {
   cachedRestaurantsResponse = null;
   cachedRestaurantsAt = 0;
+  for (const fn of extraCacheClears) { try { fn(); } catch { /* never break a write */ } }
 };
 exports.clearRestaurantsCache = clearRestaurantsCache;
+// Other listing caches (GET /api/restaurants) register here so every store/product change clears them.
+exports.onRestaurantsCacheClear = (fn) => { if (typeof fn === 'function') extraCacheClears.push(fn); };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -75,6 +79,9 @@ exports.getSystemHealth = async (req, res) => {
     res.status(500).json({ message: 'Health Check Failed' });
   }
 };
+
+// Order columns that may hold inline base64 photos or secrets: never needed in admin lists.
+const HEAVY_ORDER_COLUMNS = ['proofImage', 'itemPhotoUrl', 'billProofUrl', 'upiScreenshot', 'deliveryPin'];
 
 const logAuditAction = async (req, targetId, action, details) => {
   try {
@@ -329,6 +336,20 @@ exports.searchAll = async (req, res) => {
 
 class AdminInputError extends Error {}
 
+// Image fields from the dashboard (imageUrl / logoUrl): a media URL or hosted https image is
+// kept; inline base64 is sniffed and moved to the media table (short URL stored); anything else
+// (data:text/html, SVG, huge strings) is rejected.
+const mediaizeImageFields = async (out, req, keys, purpose) => {
+  const { storeImageRef } = require('../utils/imageStore');
+  for (const key of keys) {
+    if (out[key] === undefined) continue;
+    const r = await storeImageRef(out[key], { req, ownerId: req.user && req.user.id, purpose });
+    if (!r.ok) throw new AdminInputError(`${key === 'logoUrl' ? 'Logo' : 'Photo'}: ${r.message}`);
+    out[key] = r.value;
+  }
+  return out;
+};
+
 const RESTAURANT_FIELDS = [
   'name', 'location', 'imageUrl', 'vendorType', 'deliveryTime', 'commissionRate', 'commissionType',
   'tags', 'operatingHours', 'isActive', 'isOffline', 'isOpenNow', 'zone', 'lat', 'lon',
@@ -575,7 +596,7 @@ exports.getAllMenuItems = async (req, res) => {
 exports.createRestaurant = async (req, res) => {
   try {
     const Restaurant = getRestaurantModel();
-    const data = pickRestaurantFields(req.body, { creating: true });
+    const data = await mediaizeImageFields(pickRestaurantFields(req.body, { creating: true }), req, ['imageUrl', 'logoUrl'], 'store');
     if (req.body.password && typeof req.body.password === 'string' && req.body.password.trim().length >= 6) {
       data.password = req.body.password.trim(); // hashed by the model hook
     }
@@ -598,7 +619,7 @@ exports.updateRestaurant = async (req, res) => {
     const restaurant = await Restaurant.findByPk(req.params.id);
     if (!restaurant) return res.status(404).json({ message: 'Store not found.' });
 
-    const updateData = pickRestaurantFields(req.body);
+    const updateData = await mediaizeImageFields(pickRestaurantFields(req.body), req, ['imageUrl', 'logoUrl'], 'store');
     if (req.body.password && typeof req.body.password === 'string' && req.body.password.trim().length >= 6) {
       updateData.password = req.body.password.trim(); // hashed by the model hook
     }
@@ -629,13 +650,13 @@ exports.upsertMenuItem = async (req, res) => {
       if (!UUID_RE.test(String(id))) return res.status(404).json({ message: 'Product not found.' });
       menuItem = await MenuItem.findByPk(id);
       if (!menuItem) return res.status(404).json({ message: 'Product not found.' });
-      await menuItem.update(pickMenuItemFields(req.body, menuItem));
+      await menuItem.update(await mediaizeImageFields(pickMenuItemFields(req.body, menuItem), req, ['imageUrl'], 'menu'));
     } else {
       const restaurantId = String(req.body.restaurantId || '');
       if (!UUID_RE.test(restaurantId) || !(await Restaurant.findByPk(restaurantId, { attributes: ['id'] }))) {
         return res.status(400).json({ message: 'Pick the store this product belongs to.' });
       }
-      menuItem = await MenuItem.create({ ...pickMenuItemFields(req.body), restaurantId });
+      menuItem = await MenuItem.create({ ...(await mediaizeImageFields(pickMenuItemFields(req.body), req, ['imageUrl'], 'menu')), restaurantId });
     }
     clearRestaurantsCache();
     realtime.publish('product', id && id !== 'new' ? 'updated' : 'created', menuItem.id, { storeId: menuItem.restaurantId });
@@ -745,6 +766,7 @@ exports.updateRider = async (req, res) => {
       updateData.password = req.body.password.trim();
     }
     await rider.update(updateData);
+    if (updateData.password) clearCachedUser(rider.id); // tokenVersion was bumped: old sessions end now
     broadcastSystemUpdate(req, 'RIDER_UPDATED', rider);
     realtime.notifyAdmin('rider', 'updated', rider.id);
     const riderData = rider.toJSON();
@@ -1162,9 +1184,9 @@ exports.upsertVaultItem = async (req, res) => {
       if (!UUID_RE.test(String(id))) return res.status(404).json({ message: 'Deal not found.' });
       item = await VaultItem.findByPk(id);
       if (!item) return res.status(404).json({ message: 'Deal not found.' });
-      await item.update(pickVaultFields(req.body, item));
+      await item.update(await mediaizeImageFields(pickVaultFields(req.body, item), req, ['imageUrl'], 'vault'));
     } else {
-      item = await VaultItem.create(pickVaultFields(req.body));
+      item = await VaultItem.create(await mediaizeImageFields(pickVaultFields(req.body), req, ['imageUrl'], 'vault'));
     }
     broadcastSystemUpdate(req, 'VAULT_UPDATED', item);
     realtime.publish('coupon', id && id !== 'new' ? 'updated' : 'created', item.id, { scope: 'vault' });
@@ -1598,9 +1620,13 @@ exports.getDisputedOrders = async (req, res) => {
     const Order = getOrderModel();
     const User = require('../models/User').getUserModel();
     
+    // Bounded and without the photo columns (proof / bill / item photos can be inline base64).
+    const limit = Math.min(500, Math.max(1, parseInt(req.query.limit, 10) || 200));
     const disputes = await Order.findAll({
       where: { status: 'Cancelled' },
+      attributes: { exclude: HEAVY_ORDER_COLUMNS },
       order: [['createdAt', 'DESC']],
+      limit,
       include: [{ model: User, as: 'user', attributes: ['name', 'phone'] }]
     });
     res.json(disputes.map(d => ({ ...d.toJSON(), _id: d.id, userId: d.user || { name: 'Student', phone: '' } })));
@@ -1624,18 +1650,41 @@ exports.processManualRefund = async (req, res) => {
     const already = VerificationLog ? await VerificationLog.findOne({ where: { targetId: String(order.id), action: 'MANUAL_REFUND_PROCESSED' } }) : null;
     if (already) return res.status(400).json({ message: 'This order has already been refunded.' });
 
-    const user = await User.findByPk(order.userId);
+    // Only money that was actually received can be refunded (a rejected / never-paid UPI order
+    // was cancelled without any payment).
+    const paid = order.paymentStatus === 'Completed' || order.upiStatus === 'Verified';
+    if (!paid) return res.status(400).json({ code: 'NOT_PAID', message: 'This order was never paid, so there is nothing to refund.' });
+
+    const user = await User.findByPk(order.userId, { attributes: ['id'] });
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    const refundAmount = order.finalPrice || order.totalPrice;
-    
-    // Perform manual wallet refund (atomic increment)
-    await User.increment('walletBalance', { by: refundAmount, where: { id: user.id } });
-    await user.reload();
-    
-    await logAuditAction(req, order.id, 'MANUAL_REFUND_PROCESSED', { amount: refundAmount, userId: user.id });
-    
-    res.json({ message: 'Refund successful', refundAmount, walletBalance: user.walletBalance });
+    const refundAmount = Math.max(0, Math.round((Number(order.finalPrice || order.totalPrice) || 0) * 100) / 100);
+    if (!refundAmount) return res.status(400).json({ message: 'Nothing to refund on this order.' });
+
+    // One transaction: flip refundedAt NULL -> now (only one concurrent click can win), credit the
+    // wallet and write the audit row together.
+    const { getSequelize } = require('../config/db');
+    const won = await getSequelize().transaction(async (t) => {
+      const [flipped] = await Order.update(
+        { refundedAt: new Date() },
+        { where: { id: order.id, refundedAt: null, status: 'Cancelled', paymentMethod: { [Op.notIn]: ['COD', 'Wallet'] } }, transaction: t }
+      );
+      if (!flipped) return false;
+      await User.increment('walletBalance', { by: refundAmount, where: { id: user.id }, transaction: t });
+      if (VerificationLog) {
+        await VerificationLog.create({
+          adminId: req.user?.id ? String(req.user.id) : 'admin_default',
+          targetId: String(order.id),
+          action: 'MANUAL_REFUND_PROCESSED',
+          details: JSON.stringify({ amount: refundAmount, userId: user.id }),
+        }, { transaction: t });
+      }
+      return true;
+    });
+    if (!won) return res.status(409).json({ message: 'This order has already been refunded.' });
+
+    const fresh = await User.findByPk(user.id, { attributes: ['walletBalance'] });
+    res.json({ message: 'Refund successful', refundAmount, walletBalance: fresh ? fresh.walletBalance : undefined });
   } catch (error) {
     sendServerError(res, error, '[ADMINCONTROLLER_ERROR]');
   }
@@ -1810,34 +1859,42 @@ exports.getRiderPayouts = async (req, res) => {
   try {
     const Order = getOrderModel();
     const DeliveryPartner = getDeliveryPartnerModel();
-    
-    // Group only Delivered, unsettled rider orders
-    const deliveredOrders = await Order.findAll({ 
-      where: { status: 'Delivered', riderPayoutSettled: false }
+    const { fn, col } = require('sequelize');
+    // The admin settles exactly what this screen shows: everything delivered up to `asOf`.
+    const asOf = new Date();
+
+    // Aggregated in SQL (no full order rows / photos in memory). NULL riderPayoutSettled (rows
+    // from before the default existed) counts as unsettled.
+    const grouped = await Order.findAll({
+      where: { status: 'Delivered', riderPayoutSettled: { [Op.not]: true }, deliveryPartnerId: { [Op.ne]: null } },
+      attributes: [
+        'deliveryPartnerId',
+        [fn('COUNT', col('id')), 'totalDeliveries'],
+        [fn('SUM', col('deliveryFee')), 'totalDeliveryFees'],
+      ],
+      group: ['deliveryPartnerId'],
+      raw: true,
     });
 
-    const riders = await DeliveryPartner.findAll();
-    const riderMap = riders.reduce((acc, r) => ({ ...acc, [r.id]: r }), {});
+    const riderIds = new Set(grouped.map((g) => String(g.deliveryPartnerId)));
+    const riders = await DeliveryPartner.findAll({
+      where: { [Op.or]: [{ id: { [Op.in]: [...riderIds] } }, { walletBalance: { [Op.gt]: 0 } }] },
+      attributes: ['id', 'name', 'phone', 'walletBalance'],
+    });
+    const riderMap = new Map(riders.map((r) => [String(r.id), r]));
 
     const payouts = {};
-    deliveredOrders.forEach(o => {
-      if (!o.deliveryPartnerId) return;
-      const fee = o.deliveryFee || 0;
-      const rid = o.deliveryPartnerId;
-      const rider = riderMap[rid];
-      
-      if (!payouts[rid]) {
-        payouts[rid] = {
-          riderId: rid,
-          riderName: rider ? rider.name : 'Unknown Rider',
-          riderPhone: rider ? rider.phone : '',
-          totalDeliveries: 0,
-          totalDeliveryFees: 0,
-        };
-      }
-      payouts[rid].totalDeliveries += 1;
-      payouts[rid].totalDeliveryFees += fee;
-    });
+    for (const g of grouped) {
+      const rid = String(g.deliveryPartnerId);
+      const rider = riderMap.get(rid);
+      payouts[rid] = {
+        riderId: g.deliveryPartnerId,
+        riderName: rider ? rider.name : 'Unknown Rider',
+        riderPhone: rider ? rider.phone : '',
+        totalDeliveries: Number(g.totalDeliveries) || 0,
+        totalDeliveryFees: Number(g.totalDeliveryFees) || 0,
+      };
+    }
 
     // Customer tips are credited to DeliveryPartner.walletBalance (rateOrder) and were invisible
     // here. Show the unpaid tip balance too, including riders with tips but no unsettled orders.
@@ -1852,6 +1909,7 @@ exports.getRiderPayouts = async (req, res) => {
 
     res.json(Object.values(payouts).map(p => ({
       ...p,
+      asOf: asOf.toISOString(), // send back as `upTo` when settling
       totalDeliveryFees: Math.round(p.totalDeliveryFees),
       unsettledTips: Math.round(p.unsettledTips || 0),
       totalPayout: Math.round(p.totalDeliveryFees + (p.unsettledTips || 0))
@@ -1864,14 +1922,24 @@ exports.getRiderPayouts = async (req, res) => {
 exports.settleRiderPayout = async (req, res) => {
   try {
     const Order = getOrderModel();
-    const { riderId } = req.body;
+    const { riderId } = req.body || {};
     if (!riderId) return res.status(400).json({ message: 'riderId is required' });
 
-    // Mark all delivered, unpaid orders for this rider as settled
-    const [updatedCount] = await Order.update(
-      { riderPayoutSettled: true },
-      { where: { deliveryPartnerId: riderId, status: 'Delivered', riderPayoutSettled: false } }
-    );
+    // Settle only what the admin saw: explicit orderIds, or every delivery up to `upTo` (the
+    // `asOf` the payout list returned). A delivery completed after the screen loaded stays unpaid.
+    const where = { deliveryPartnerId: riderId, status: 'Delivered', riderPayoutSettled: { [Op.not]: true } };
+    const ids = Array.isArray(req.body.orderIds) ? req.body.orderIds.map(String).filter((x) => /^[0-9a-f-]{36}$/i.test(x)).slice(0, 5000) : null;
+    const upToRaw = req.body.upTo || req.body.asOf;
+    const upTo = upToRaw ? new Date(String(upToRaw)) : null;
+    if (ids && ids.length) {
+      where.id = { [Op.in]: ids };
+    } else if (upTo && !Number.isNaN(upTo.getTime())) {
+      where[Op.or] = [{ deliveredAt: { [Op.lte]: upTo } }, { deliveredAt: null, updatedAt: { [Op.lte]: upTo } }];
+    } else {
+      // Older dashboards send neither: settle up to now (previous behaviour) and say so in the audit log.
+      where[Op.or] = [{ deliveredAt: { [Op.lte]: new Date() } }, { deliveredAt: null }];
+    }
+    const [updatedCount] = await Order.update({ riderPayoutSettled: true }, { where });
     // Tips are cleared only when the admin says they were paid too (body.includeTips === true),
     // and only by the amount they saw, atomically, so a tip arriving now is not wiped.
     let tipsSettled = 0;
@@ -1885,7 +1953,7 @@ exports.settleRiderPayout = async (req, res) => {
       if (n > 0) tipsSettled = tipsSeen;
     }
 
-    await logAuditAction(req, riderId, 'RIDER_PAYOUT_SETTLED', { riderId, updatedOrdersCount: updatedCount, tipsSettled });
+    await logAuditAction(req, riderId, 'RIDER_PAYOUT_SETTLED', { riderId, updatedOrdersCount: updatedCount, tipsSettled, upTo: upTo && !Number.isNaN(upTo.getTime()) ? upTo.toISOString() : null, orderIds: ids ? ids.length : 0 });
 
     res.json({ message: 'Rider payout marked as settled successfully', updatedOrdersCount: updatedCount, tipsSettled });
   } catch (error) {
@@ -1979,6 +2047,13 @@ exports.bulkCreateMenuItems = async (req, res) => {
         errors.push({ index, name: raw && raw.name ? String(raw.name).slice(0, 80) : null, message: err instanceof AdminInputError ? err.message : 'Invalid product.' });
       }
     });
+    for (let i = 0; i < rows.length; i++) {
+      try {
+        await mediaizeImageFields(rows[i], req, ['imageUrl'], 'menu');
+      } catch (err) {
+        errors.push({ index: i, name: rows[i].name || null, message: err instanceof AdminInputError ? err.message : 'Invalid photo.' });
+      }
+    }
     if (errors.length) return res.status(400).json({ message: `${errors.length} row(s) need fixing. Nothing was saved.`, errors });
     const { getSequelize } = require('../config/db');
     const created = await getSequelize().transaction((t) => MenuItem.bulkCreate(rows, { transaction: t }));

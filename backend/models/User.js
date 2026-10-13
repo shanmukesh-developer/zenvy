@@ -25,6 +25,8 @@ const initUserModel = (sequelize) => {
     zenPoints: { type: DataTypes.INTEGER, defaultValue: 0 },
     isElite: { type: DataTypes.BOOLEAN, defaultValue: false },
     isActive: { type: DataTypes.BOOLEAN, defaultValue: true },
+    // Bumped on every password change: sessions signed with an older `tv` are revoked.
+    tokenVersion: { type: DataTypes.INTEGER, allowNull: true, defaultValue: 0 },
     address: { type: DataTypes.STRING, allowNull: true },
     city: { type: DataTypes.STRING, defaultValue: 'Amaravathi' },
     profileImage: { type: DataTypes.TEXT, allowNull: true },
@@ -113,6 +115,12 @@ const initUserModel = (sequelize) => {
     }
     if (!user.friendCode) {
       user.friendCode = generateFriendCode();
+    }
+  });
+  // A password change (reset, change, admin set) revokes every older session.
+  User.beforeUpdate((user) => {
+    if (user.changed('password') && user.previous('password')) {
+      user.tokenVersion = (Number(user.tokenVersion) || 0) + 1;
     }
   });
   User.beforeUpdate(hashPassword);

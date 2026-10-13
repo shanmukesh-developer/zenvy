@@ -169,6 +169,29 @@ export function ConnBanner() {
   );
 }
 
+/** Closed-app order alerts are off on this phone: new orders only ring while the app is open. */
+export function PushOffBanner() {
+  const { pushState } = useStore();
+  if (pushState !== 'blocked' && pushState !== 'unavailable') return null;
+  const blocked = pushState === 'blocked';
+  const text = blocked
+    ? 'Notifications are blocked. New orders ring only while this app is open.'
+    : 'Alerts with the app closed are not available on this phone. Keep this app open to hear new orders.';
+  return (
+    <Pressable
+      onPress={blocked ? () => { Linking.openSettings().catch(() => {}); } : undefined}
+      disabled={!blocked}
+      accessibilityRole={blocked ? 'button' : 'text'}
+      accessibilityLabel={blocked ? `${text} Open settings` : text}
+      style={[styles.banner, { backgroundColor: color.alertTint }]}
+    >
+      <Ionicons name="notifications-off" size={22} color={color.alert} />
+      <Text style={[font.body, { color: color.alertDark, fontWeight: '800', flex: 1 }]}>{text}</Text>
+      {blocked ? <Text style={[font.label, { color: color.alertDark }]}>FIX</Text> : null}
+    </Pressable>
+  );
+}
+
 export function VoiceOffBanner({ onFix }: { onFix: () => void }) {
   const v = useVoice();
   if (!v.loaded || v.settings.enabled) return null;

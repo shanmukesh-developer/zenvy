@@ -83,6 +83,8 @@ const initOrderModel = (sequelize) => {
     proofTimestamp: { type: DataTypes.DATE },
     payoutSettled: { type: DataTypes.BOOLEAN, defaultValue: false },
     riderPayoutSettled: { type: DataTypes.BOOLEAN, defaultValue: false },
+    // Set once when an admin manual refund is credited (idempotency guard; nullable).
+    refundedAt: { type: DataTypes.DATE, allowNull: true },
     
     // Mega Basket & Kirana pre-purchase approval properties
     isPurchasingApprovedByCustomer: { type: DataTypes.BOOLEAN, defaultValue: false },

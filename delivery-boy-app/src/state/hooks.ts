@@ -71,5 +71,10 @@ export function useDismissedOrders() {
       return next;
     });
   }, []);
-  return { dismiss, dismissed };
+  /** Logout / account switch: the next rider on this phone must see every pool order. */
+  const resetDismissed = useCallback(() => {
+    setDismissed({});
+    setItem(DISMISSED_KEY, '{}');
+  }, []);
+  return { dismiss, dismissed, resetDismissed };
 }

@@ -31,6 +31,8 @@ interface Payout {
   totalGMV: number;
   totalCommission: number;
   netPayout: number;
+  /** When the server built this list (newer backends); sent back as `upTo` when settling. */
+  asOf?: string;
 }
 
 interface Dispute {
@@ -43,6 +45,8 @@ interface Dispute {
   paymentStatus?: string;
   upiStatus?: string | null;
   cancellationReason?: string | null;
+  /** Set once a manual refund has been paid (the server refuses a second one). */
+  refundedAt?: string | null;
   createdAt: string;
 }
 
@@ -69,8 +73,10 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 const csvCell = (v: unknown) => {
-  const s = String(v ?? '');
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  let s = String(v ?? '');
+  // Spreadsheet formula injection: a store name like "=HYPERLINK(...)" must stay plain text in Excel / Sheets.
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 
 /** How a cancelled order is (or is not) refunded under the COD + Wallet model. */
@@ -79,9 +85,14 @@ const refundState = (d: Dispute): { refundable: boolean; note: string } => {
     case 'COD': return { refundable: false, note: 'Cash on Delivery: nothing was paid, no refund needed.' };
     case 'Wallet': return { refundable: false, note: 'Wallet: refunded automatically when the order was cancelled.' };
     case 'UPI':
-      if (d.upiStatus === 'Rejected') return { refundable: false, note: 'Legacy UPI: payment was rejected, nothing to refund.' };
-      return { refundable: true, note: d.paymentStatus === 'Completed' ? 'Legacy UPI: payment was verified.' : 'Legacy UPI: payment was never verified. Check the bank statement first.' };
-    case 'Card': return { refundable: true, note: 'Legacy card payment.' };
+    case 'Card': {
+      const label = d.paymentMethod === 'UPI' ? 'Legacy UPI' : 'Legacy card';
+      if (d.refundedAt) return { refundable: false, note: `${label}: already refunded to the Wallet on ${new Date(d.refundedAt).toLocaleDateString()}.` };
+      if (d.upiStatus === 'Rejected') return { refundable: false, note: `${label}: payment was rejected, nothing to refund.` };
+      // Same rule as the server: only money that was actually received can be refunded.
+      if (d.paymentStatus === 'Completed' || d.upiStatus === 'Verified') return { refundable: true, note: `${label}: payment was verified.` };
+      return { refundable: false, note: `${label}: payment was never verified, so there is nothing to refund. Verify the payment first if the money did arrive.` };
+    }
     default: return { refundable: false, note: 'Unknown payment method.' };
   }
 };
@@ -131,6 +142,8 @@ export default function FinanceConsole() {
 
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const inFlight = useRef(false);
+  /** Browser time just before the payout list was requested (fallback `upTo` until the server sends `asOf`). */
+  const payoutsLoadedAt = useRef<string>(new Date().toISOString());
   const [notice, setNotice] = useState<Notice>(null);
   const [search, setSearch] = useState('');
 
@@ -151,7 +164,9 @@ export default function FinanceConsole() {
   const fetchPayouts = useCallback(async () => {
     setPayoutsLoading(true);
     try {
+      const loadedAt = new Date().toISOString();
       const data = await requestJson<Payout[]>(`${API_URL}/api/admin/finance/payouts`);
+      payoutsLoadedAt.current = loadedAt;
       setPayouts(Array.isArray(data) ? data : []);
       setPayoutsError(null);
     } catch (err) {
@@ -226,15 +241,20 @@ export default function FinanceConsole() {
   };
 
   const handleMarkSettled = (p: Payout) => {
-    if (!confirm(`Mark ${rupees(p.netPayout)} for ${p.restaurantName} (${p.totalOrders} delivered orders) as paid out?\n\nOnly do this after the money has been transferred to the store.`)) return;
+    if (!confirm(`Mark ${rupees(p.netPayout)} for ${p.restaurantName} (${p.totalOrders} delivered orders) as paid out?\n\nOrders delivered after this list loaded are not included. Only do this after the money has been transferred to the store.`)) return;
     runAction(p.restaurantId, async () => {
       const data = await requestJson<{ message?: string; updatedOrdersCount?: number }>(`${API_URL}/api/admin/finance/settle-restaurant`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ restaurantId: p.restaurantId }),
+        // Upper bound: settle only the orders this screen showed (delivered up to the list's `asOf`).
+        body: JSON.stringify({ restaurantId: p.restaurantId, upTo: p.asOf || payoutsLoadedAt.current, expectedOrders: p.totalOrders }),
       });
       fetchPayouts();
-      return `${p.restaurantName}: ${data?.updatedOrdersCount ?? p.totalOrders} orders marked as settled.`;
+      const settled = data?.updatedOrdersCount;
+      if (typeof settled === 'number' && settled !== p.totalOrders) {
+        throw new Error(`${p.restaurantName}: ${settled} orders were marked as settled, but ${p.totalOrders} were shown. Recheck this store's payout before paying anything more.`);
+      }
+      return `${p.restaurantName}: ${settled ?? p.totalOrders} orders marked as settled.`;
     });
   };
 
@@ -445,6 +465,7 @@ export default function FinanceConsole() {
                       <span className="text-[9px] font-black text-gray-500 uppercase">Order value</span>
                       <span className="text-lg font-black text-white">{rupees(d.finalPrice ?? d.totalPrice)}</span>
                     </div>
+                    {d.refundedAt && <span className="text-[9px] font-black uppercase text-emerald-400">Refunded</span>}
                     {state.refundable && (
                       <button
                         onClick={() => handleRefund(d)}

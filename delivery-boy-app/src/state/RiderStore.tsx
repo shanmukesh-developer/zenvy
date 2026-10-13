@@ -135,7 +135,7 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
 
   const connected = useNetwork();
   const appActive = useAppActive();
-  const { dismiss, dismissed } = useDismissedOrders();
+  const { dismiss, dismissed, resetDismissed } = useDismissedOrders();
 
   const tokenRef = useRef<string | null>(null);
   const profileRef = useRef<RiderProfile | null>(null);
@@ -181,7 +181,8 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
     inFlightIds.current = new Set();
     seenOffers.current = new Set();
     autoOpened.current = false;
-  }, []);
+    resetDismissed();
+  }, [resetDismissed]);
 
   const hardLogout = useCallback(async () => {
     tokenRef.current = null;
@@ -287,11 +288,12 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     if (tokenRef.current) {
-      try {
-        await api.setOnline(false);
-      } catch {
-        // best effort
-      }
+      // Go off duty before the token is dropped, or dispatch keeps counting + pinging this rider.
+      // Raced so a slow / asleep server never blocks logging out.
+      await Promise.race([
+        api.setOnline(false).catch(() => undefined),
+        new Promise((resolve) => setTimeout(resolve, 4000)),
+      ]);
     }
     await hardLogout();
   }, [hardLogout]);
@@ -530,6 +532,7 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
   const wasActive = useRef(appActive);
   useEffect(() => {
     if (appActive && !wasActive.current && inMain) {
+      sock.ensureSocketConnected();
       refreshOrders();
       refreshToday();
       if (queued.length) runFlush(true);
@@ -614,6 +617,11 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
       },
       onDeliveryRequestGone: ({ orderId }) => {
         setPending((p) => (p.data.some((o) => o.id === orderId) ? { ...p, data: p.data.filter((o) => o.id !== orderId) } : p));
+      },
+      onAuthError: () => {
+        if (!tokenRef.current) return;
+        hardLogoutRef.current();
+        setToast({ id: Date.now(), text: 'Your session expired. Please log in again.', kind: 'error' });
       },
       onConnectionChange: (up) => {
         if (!up) return;

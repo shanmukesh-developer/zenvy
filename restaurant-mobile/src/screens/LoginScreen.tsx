@@ -6,7 +6,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SUPPORT_PHONE } from '../config';
-import { health, login } from '../lib/api';
+import { health, isStallAccount, login } from '../lib/api';
 import { ApiError, NetworkError } from '../lib/http';
 import { loadSavedId, setSavedId } from '../lib/storage';
 import { useSession } from '../state/SessionProvider';
@@ -62,10 +62,16 @@ export default function LoginScreen() {
     try {
       const data = await login(id, password);
       if (!data?.token || !data?.restaurant) throw new Error('bad response');
+      if (isStallAccount(data.restaurant)) {
+        setError('This is a stall account. Please log in with the Zenvy Vendor app.');
+        return;
+      }
       await setSavedId(remember ? id : null);
       await signIn(data.token, data.restaurant);
     } catch (e) {
-      if (e instanceof ApiError) {
+      if (e instanceof ApiError && e.code === 'USE_VENDOR_APP') {
+        setError('This is a stall account. Please log in with the Zenvy Vendor app.');
+      } else if (e instanceof ApiError) {
         setError(e.message);
         if (e.status === 429) {
           setLockedUntil(Date.now() + 60000);

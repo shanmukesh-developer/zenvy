@@ -17,7 +17,20 @@ export async function health(): Promise<boolean> {
 }
 
 export function login(id: string, password: string): Promise<{ restaurant: any; token: string }> {
-  return apiFetch('/api/restaurants/login', { method: 'POST', body: { id, password }, auth: false, timeoutMs: 45000 });
+  // app:'restaurant' lets the server refuse stall (local vendor) accounts, which belong in Zenvy Vendor.
+  return apiFetch('/api/restaurants/login', { method: 'POST', body: { id, password, app: 'restaurant' }, auth: false, timeoutMs: 45000 });
+}
+
+const STALL_TYPES = new Set(['LOCAL_VENDOR', 'LOCAL', 'STALL', 'STALLS']);
+
+/**
+ * Stall accounts deliver their own orders (Out for delivery / Delivered), which this app cannot do, so their
+ * orders would get stuck here. They must use the Zenvy Vendor app.
+ */
+export function isStallAccount(raw: any): boolean {
+  if (!raw || typeof raw !== 'object') return false;
+  if (raw.isLocalVendor === true) return true;
+  return STALL_TYPES.has(String(raw.vendorType ?? '').trim().toUpperCase());
 }
 
 /** Store profile + live open state (public, no-cache on the server). */
@@ -49,10 +62,10 @@ export async function getMenu(id: string): Promise<MenuItem[]> {
   return (Array.isArray(rows) ? rows : []).map(normalizeMenuItem).filter((m): m is MenuItem => !!m);
 }
 
-/** Always an explicit value: { isAvailable } or { outOfStockUntil: ISO }. 404 = item deleted. */
+/** Always an explicit value: { isAvailable } or { outOfStockUntil: ISO }. 404 = item deleted; 401 logs out. */
 export function setAvailability(itemId: string, body: { isAvailable: boolean } | { outOfStockUntil: string }) {
   return apiFetch<{ isAvailable?: boolean; outOfStockUntil?: string | null }>(
-    `/api/restaurants/menu/${enc(itemId)}/toggle`, { method: 'PUT', body, no401Logout: true },
+    `/api/restaurants/menu/${enc(itemId)}/toggle`, { method: 'PUT', body },
   );
 }
 

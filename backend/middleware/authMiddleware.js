@@ -56,11 +56,12 @@ const protect = async (req, res, next) => {
     // Check cache first (avoids DB hit for 500+ concurrent users)
     const cached = getCachedUser(decoded.id);
     if (cached) {
-      // Partner sessions from before a password reset (older tokenVersion) are signed out.
-      if (cached.role === 'restaurant' && (Number(decoded.tv) || 0) !== (Number(cached.tokenVersion) || 0)) {
+      // Sessions from before a password change (older tokenVersion) are signed out.
+      if ((Number(decoded.tv) || 0) !== (Number(cached.tokenVersion) || 0)) {
         return res.status(401).json({ message: 'Your password was changed. Please sign in again.', code: 'SESSION_REVOKED' });
       }
-      req.user = cached;
+      const { tokenVersion: _tv, ...user } = cached;
+      req.user = user;
       return next();
     }
     
@@ -84,10 +85,14 @@ const protect = async (req, res, next) => {
        const { getDeliveryPartnerModel } = require('../models/DeliveryPartner');
        const DeliveryPartner = getDeliveryPartnerModel();
        if (DeliveryPartner) {
-         const dbRider = await DeliveryPartner.findByPk(decoded.id);
+         const dbRider = await DeliveryPartner.findByPk(decoded.id, { attributes: ['id', 'name', 'tokenVersion'] });
          if (!dbRider) return res.status(401).json({ message: 'Rider not found' });
+         const tokenVersion = Number(dbRider.tokenVersion) || 0;
+         setCachedUser(decoded.id, { id: dbRider.id, role: 'rider', name: dbRider.name, tokenVersion });
+         if ((Number(decoded.tv) || 0) !== tokenVersion) {
+           return res.status(401).json({ message: 'Your password was changed. Please sign in again.', code: 'SESSION_REVOKED' });
+         }
          req.user = { id: dbRider.id, role: 'rider', name: dbRider.name };
-         setCachedUser(decoded.id, req.user);
          return next();
        }
     }
@@ -95,9 +100,12 @@ const protect = async (req, res, next) => {
     const { getUserModel } = require('../models/User');
     const User = getUserModel();
     if (User) {
-      const dbUser = await User.findByPk(decoded.id);
+      const dbUser = await User.findByPk(decoded.id, { attributes: ['id', 'role', 'name', 'phone', 'email', 'hostelBlock', 'roomNumber', 'isActive', 'tokenVersion'] });
       if (!dbUser) return res.status(401).json({ message: 'User not found' });
       if (dbUser.isActive === false) return res.status(403).json({ message: 'Account suspended. Please contact support.' });
+      if ((Number(decoded.tv) || 0) !== (Number(dbUser.tokenVersion) || 0)) {
+        return res.status(401).json({ message: 'Your password was changed. Please sign in again.', code: 'SESSION_REVOKED' });
+      }
       const userPayload = {
         id: dbUser.id,
         role: dbUser.role || 'student',
@@ -109,7 +117,7 @@ const protect = async (req, res, next) => {
         isActive: dbUser.isActive
       };
       req.user = userPayload;
-      setCachedUser(decoded.id, userPayload);
+      setCachedUser(decoded.id, { ...userPayload, tokenVersion: Number(dbUser.tokenVersion) || 0 });
     } else {
       req.user = decoded;
     }
@@ -167,4 +175,29 @@ const approvedRider = async (req, res, next) => {
   }
 };
 
-module.exports = { protect, admin, rider, vendor, approvedRider, clearCachedUser };
+/**
+ * Optional-auth helper: true only when the request carries a valid token for a LIVE admin
+ * account (DB role 'admin', not suspended, current tokenVersion). The JWT role claim alone is
+ * never trusted: a demoted or banned admin's 30-day token must not keep admin powers.
+ */
+const isLiveAdminRequest = async (req) => {
+  try {
+    let raw = null;
+    const h = req.headers && req.headers.authorization;
+    if (h && h.startsWith('Bearer ')) raw = h.split(' ')[1];
+    else if (req.cookies && req.cookies.token) raw = req.cookies.token;
+    if (!raw || !process.env.JWT_SECRET) return false;
+    const decoded = jwt.verify(String(raw).replace(/['"]+/g, '').trim(), process.env.JWT_SECRET);
+    if (!decoded || !decoded.id) return false;
+    const { getUserModel } = require('../models/User');
+    const User = getUserModel();
+    if (!User) return false;
+    const u = await User.findByPk(decoded.id, { attributes: ['id', 'role', 'isActive', 'tokenVersion'] });
+    return !!u && String(u.role || '').toLowerCase() === 'admin' && u.isActive !== false
+      && (Number(decoded.tv) || 0) === (Number(u.tokenVersion) || 0);
+  } catch {
+    return false;
+  }
+};
+
+module.exports = { protect, admin, rider, vendor, approvedRider, clearCachedUser, isLiveAdminRequest };

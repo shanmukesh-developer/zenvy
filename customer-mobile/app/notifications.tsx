@@ -12,6 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { apiFetch } from '../utils/auth';
 import { useLiveSync } from '../utils/useLiveSync';
 import { campusHrefForNotification } from '../modules/campus/campusLinks';
+import { safeId } from '../utils/ids';
 
 interface NotificationItem {
   id: string;
@@ -219,8 +220,8 @@ export default function NotificationsScreen() {
     }
 
     // 2. Contextual navigation
-    if (n.orderId) {
-      router.push(`/tracking/${n.orderId}` as any);
+    if (safeId(n.orderId)) {
+      router.push(`/tracking/${safeId(n.orderId)}` as any);
     } else if (n.type === 'SUPPORT_TICKET') {
       router.push('/support' as any);
     } else if (n.type === 'ORDER_STATUS' || n.type === 'ORDER_UPDATE') {

@@ -67,6 +67,7 @@ const partnerAudit = async (req, targetId, action, details) => {
 // @route   POST /api/restaurants/login
 // Body: { phone, password, app? } (login phone; a stall may also use its WhatsApp number)
 //    or { id | name | identifier, password, app? } (store UUID, exact store name, or a 10-digit phone)
+const { isAccountLocked, recordAccountFailure, clearAccountFailures } = require('../middleware/lockoutMiddleware');
 const restaurantLogin = async (req, res) => {
   const body = req.body || {};
   const rawId = body.id || body.email || body.name || body.identifier;
@@ -114,8 +115,17 @@ const restaurantLogin = async (req, res) => {
     if (!restaurant.password) {
       return res.status(401).json({ message: 'No password set for this account. Contact the admin to configure credentials.' });
     }
+    // Lock per store (however it was identified) so rotating body fields cannot bypass the limit.
+    const lockKey = `store-login:${restaurant.id}`;
+    if (isAccountLocked(lockKey)) {
+      return res.status(429).json({ message: 'Account locked due to too many failed login attempts. Try again in 15 minutes.' });
+    }
     const isMatch = await restaurant.comparePassword(password);
-    if (!isMatch) return res.status(401).json({ message: 'Invalid credentials' });
+    if (!isMatch) {
+      recordAccountFailure(lockKey);
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+    clearAccountFailures(lockKey);
 
     if (appKind === 'vendor' && !isLocalVendorStore(restaurant)) {
       return res.status(403).json({ code: 'NOT_A_VENDOR_ACCOUNT', message: 'This is a restaurant account. Use the Zenvy Restaurant app.' });
@@ -204,14 +214,28 @@ const getRestaurantOrders = async (req, res) => {
 
 // @desc    Get all active restaurants
 // @route   GET /api/restaurants
+// Home catalogue cache: the full listing is rebuilt at most every HOME_CACHE_MS, and any store /
+// product change (admin, partner app, realtime publish) clears it at once.
+const HOME_CACHE_MS = 15 * 1000;
+let homeCache = { at: 0, body: null };
+try { require('./adminController').onRestaurantsCacheClear(() => { homeCache = { at: 0, body: null }; }); } catch { /* circular load: cache just expires */ }
 const getRestaurants = async (req, res) => {
   try {
+    if (homeCache.body && Date.now() - homeCache.at < HOME_CACHE_MS) return res.json(homeCache.body);
     const Restaurant = getRestaurantModel();
     const MenuItem = getMenuItemModel();
-    const restaurants = await Restaurant.findAll({ where: { isActive: true } });
+    // Legacy inline base64 photos are nulled in SQL (never loaded into memory on the home feed).
+    const { dataUrlSafeColumns } = require('../utils/imageStore');
+    const restaurants = await Restaurant.findAll({
+      where: { isActive: true },
+      attributes: { exclude: ['imageUrl', 'logoUrl'], include: dataUrlSafeColumns('Restaurant', ['imageUrl', 'logoUrl']) },
+    });
 
     // Stitch all valid menu items into the restaurants array for catalog rendering
-    const allMenuItems = sortMenuItems(await MenuItem.findAll({ where: { isAvailable: true } }));
+    const allMenuItems = sortMenuItems(await MenuItem.findAll({
+      where: { isAvailable: true },
+      attributes: { exclude: ['imageUrl'], include: dataUrlSafeColumns('MenuItem', ['imageUrl']) },
+    }));
 
     const fallbackImage = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400';
     const cleanImageUrl = (url) => {
@@ -245,6 +269,7 @@ const getRestaurants = async (req, res) => {
       return rJson;
     });
 
+    homeCache = { at: Date.now(), body: augmentedRestaurants };
     res.json(augmentedRestaurants);
   } catch (error) {
     console.error('[RESTAURANT_ERROR]', error);
@@ -276,7 +301,10 @@ const createRestaurant = async (req, res) => {
     const { fn, col, where: sqlWhere } = require('sequelize');
     const clash = await Restaurant.findOne({ where: sqlWhere(fn('lower', col('name')), cleanName.toLowerCase()), attributes: ['id', 'name'] });
     if (clash) return res.status(409).json({ message: `Another store is already called "${clash.name}".`, code: 'CONFLICT' });
-    const restaurant = await Restaurant.create({ name: cleanName, location, imageUrl, deliveryTime, commissionRate, isOffline, password });
+    const { storeImageRef } = require('../utils/imageStore');
+    const img = await storeImageRef(imageUrl || null, { req, ownerId: req.user && req.user.id, purpose: 'store' });
+    if (!img.ok) return res.status(img.status || 400).json({ message: img.message });
+    const restaurant = await Restaurant.create({ name: cleanName, location, imageUrl: img.value, deliveryTime, commissionRate, isOffline, password });
     clearPublicRestaurantsCache();
     realtime.publish('store', 'created', restaurant.id, { storeId: restaurant.id });
     res.status(201).json(publicStoreJson(restaurant));
@@ -385,6 +413,15 @@ const readSpecs = (specs) => {
 };
 
 class ItemInputError extends Error {}
+// Item photos: media URL / hosted https kept; inline base64 sniffed and moved to the media table.
+const mediaizeItemImage = async (out, req) => {
+  if (out.imageUrl === undefined) return out;
+  const { storeImageRef } = require('../utils/imageStore');
+  const r = await storeImageRef(out.imageUrl, { req, ownerId: req.user && req.user.id, purpose: 'menu' });
+  if (!r.ok) throw new ItemInputError(r.message);
+  out.imageUrl = r.value;
+  return out;
+};
 // Validates and normalises the fields that were sent. `existing` = the row being edited (null on create).
 const pickItemInput = (body = {}, existing = null) => {
   const out = {};
@@ -474,7 +511,7 @@ const createMenuItem = async (req, res) => {
     }
     let data;
     try {
-      data = pickItemInput(req.body || {});
+      data = await mediaizeItemImage(pickItemInput(req.body || {}), req);
     } catch (err) {
       if (err instanceof ItemInputError) return res.status(400).json({ message: err.message });
       throw err;
@@ -509,7 +546,7 @@ const updateMenuItem = async (req, res) => {
 
     let updateData;
     try {
-      updateData = pickItemInput(req.body || {}, item);
+      updateData = await mediaizeItemImage(pickItemInput(req.body || {}, item), req);
     } catch (err) {
       if (err instanceof ItemInputError) return res.status(400).json({ message: err.message });
       throw err;
@@ -571,12 +608,21 @@ const getLocalVendors = async (req, res) => {
     const where = { vendorType: { [Op.in]: LOCAL_VENDOR_TYPES }, isActive: true };
     if (campus) where.campus = String(campus);
 
-    const vendors = await Restaurant.findAll({ where, order: [['subscriptionTier', 'DESC'], ['rating', 'DESC']] });
+    // Public list: legacy inline base64 photos are nulled in SQL (media URLs pass through).
+    const { dataUrlSafeColumns } = require('../utils/imageStore');
+    const vendors = await Restaurant.findAll({
+      where,
+      attributes: { exclude: ['imageUrl', 'logoUrl'], include: dataUrlSafeColumns('Restaurant', ['imageUrl', 'logoUrl']) },
+      order: [['subscriptionTier', 'DESC'], ['rating', 'DESC']],
+    });
     const vendorIds = vendors.map(v => v.id);
 
     // Batch-fetch menu items for all local vendors
     const allMenuItems = vendorIds.length > 0
-      ? sortMenuItems(await MenuItem.findAll({ where: { restaurantId: { [Op.in]: vendorIds } } }))
+      ? sortMenuItems(await MenuItem.findAll({
+        where: { restaurantId: { [Op.in]: vendorIds } },
+        attributes: { exclude: ['imageUrl'], include: dataUrlSafeColumns('MenuItem', ['imageUrl']) },
+      }))
       : [];
 
     const augmented = vendors.map(v => {
@@ -751,7 +797,7 @@ const saveStoreFcmToken = async (req, res) => {
     }
     const body = req.body || {};
     const token = typeof (body.token || body.fcmToken) === 'string' ? (body.token || body.fcmToken).trim() : '';
-    if (token.length < 20 || token.length > 4096) return res.status(400).json({ message: 'A valid push token is required.' });
+    if (!require('../utils/fcmToken').FCM_TOKEN_RE.test(token)) return res.status(400).json({ message: 'A valid push token is required.' });
     const remove = body.remove === true || body.remove === 'true' || /\/remove$/.test(req.path);
     const app = ['restaurant', 'vendor'].includes(String(body.app || '').toLowerCase()) ? String(body.app).toLowerCase() : null;
     const { registerStoreToken } = require('../utils/storePush');

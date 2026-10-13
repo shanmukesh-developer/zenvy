@@ -12,13 +12,14 @@ const { normalizePhone } = require('../utils/phoneUtils');
 
 const SESSION_COOKIE_MAX_AGE = 30 * 24 * 60 * 60 * 1000;
 
-const generateToken = (id, role) => {
+// `tv` = tokenVersion: a password change bumps it and protect() rejects older sessions.
+const generateToken = (id, role, tokenVersion = 0) => {
   const secret = process.env.JWT_SECRET;
   if (!secret) {
     console.error('[AUTH_FATAL] JWT_SECRET is not configured.');
     return null;
   }
-  return jwt.sign({ id, role }, secret, { expiresIn: '30d' });
+  return jwt.sign({ id, role, tv: Number(tokenVersion) || 0 }, secret, { expiresIn: '30d' });
 };
 
 // Indian mobile numbers only (10 digits, starting 6-9)
@@ -110,7 +111,7 @@ const sendSession = async (res, user, status = 200, { skipCookie = false } = {})
     return res.status(403).json({ code: 'ACCOUNT_SUSPENDED', message: 'This account has been suspended. Please contact Zenvy support.' });
   }
   await ensureFriendCode(user);
-  const token = generateToken(user.id, user.role);
+  const token = generateToken(user.id, user.role, user.tokenVersion);
   if (!token) return res.status(500).json({ message: 'Server configuration error. Please try again later.' });
   if (!skipCookie) setSessionCookie(res, token);
   return res.status(status).json({ ...sanitizeUser(user), token });
@@ -219,13 +220,20 @@ const consumeOtp = async (phone, purpose, otp) => {
   if (!record || new Date(record.expiresAt).getTime() <= Date.now()) {
     return { ok: false, status: 400, body: { code: 'OTP_EXPIRED', message: 'This code has expired. Tap "Resend" to get a new one.' } };
   }
-  if ((record.attempts || 0) >= OTP_MAX_ATTEMPTS) {
+  // Reserve one attempt atomically BEFORE comparing: parallel guesses cannot all read the same
+  // count and slip past the limit (only OTP_MAX_ATTEMPTS conditional increments can succeed).
+  const { Op: OpA, literal } = require('sequelize');
+  const [reserved] = await OtpCode.update(
+    { attempts: literal('COALESCE("attempts", 0) + 1') },
+    { where: { id: record.id, consumedAt: null, [OpA.or]: [{ attempts: null }, { attempts: { [OpA.lt]: OTP_MAX_ATTEMPTS } }] } }
+  );
+  if (!reserved) {
     return { ok: false, status: 429, body: { code: 'OTP_LOCKED', message: 'Too many wrong attempts. Please request a new code.' } };
   }
 
   if (!safeEqualHex(record.codeHash, hashOtp(phone, purpose, code))) {
-    await OtpCode.increment('attempts', { where: { id: record.id } });
-    const attemptsLeft = Math.max(0, OTP_MAX_ATTEMPTS - (record.attempts || 0) - 1);
+    const fresh = await OtpCode.findByPk(record.id, { attributes: ['attempts'] });
+    const attemptsLeft = Math.max(0, OTP_MAX_ATTEMPTS - (Number(fresh && fresh.attempts) || OTP_MAX_ATTEMPTS));
     if (attemptsLeft === 0) {
       await OtpCode.update({ consumedAt: new Date() }, { where: { id: record.id } });
       return { ok: false, status: 429, body: { code: 'OTP_LOCKED', message: 'Too many wrong attempts. Please request a new code.' } };
@@ -410,28 +418,9 @@ const registerUser = async (req, res) => {
       createdUser = user;
     });
 
-    // Don't overwrite an admin's session cookie when an admin registers someone
-    let skipCookie = false;
-    const authHeader = req.headers.authorization;
-    let tokenToCheck = null;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      tokenToCheck = authHeader.split(' ')[1].replace(/['"]+/g, '').trim();
-    } else if (req.cookies?.token) {
-      tokenToCheck = req.cookies.token.replace(/['"]+/g, '').trim();
-    }
-    if (tokenToCheck) {
-      try {
-        const decoded = jwt.verify(tokenToCheck, process.env.JWT_SECRET);
-        if (decoded.role === 'admin') {
-          skipCookie = true;
-        } else if (decoded.id) {
-          const dbUser = await User.findByPk(decoded.id);
-          if (dbUser && dbUser.role && dbUser.role.toLowerCase() === 'admin') skipCookie = true;
-        }
-      } catch (err) {
-        // Stale/foreign token — ignore
-      }
-    }
+    // Don't overwrite an admin's session cookie when a live admin registers someone (DB role,
+    // never the token's role claim).
+    const skipCookie = await require('../middleware/authMiddleware').isLiveAdminRequest(req);
 
     console.log(`[REGISTER] New account for ${maskPhone(cleanPhone)} via ${proof.method}`);
     return sendSession(res, createdUser, 201, { skipCookie });
@@ -495,11 +484,14 @@ const authUser = async (req, res) => {
 // @desc    Save FCM Token for this device
 // @route   POST /api/users/fcm-token
 const saveFcmToken = async (req, res) => {
-  const { fcmToken, appVersion, platform } = req.body || {};
+  const { cleanFcmToken, cleanAppVersion, cleanPlatform } = require('../utils/fcmToken');
+  const fcmToken = cleanFcmToken((req.body || {}).fcmToken);
+  const appVersion = cleanAppVersion((req.body || {}).appVersion);
+  const platform = cleanPlatform((req.body || {}).platform);
   const userId = req.user.id;
 
-  if (!fcmToken || typeof fcmToken !== 'string') {
-    return res.status(400).json({ message: 'fcmToken is required' });
+  if (!fcmToken) {
+    return res.status(400).json({ message: 'A valid fcmToken is required' });
   }
 
   try {
@@ -521,7 +513,7 @@ const saveFcmToken = async (req, res) => {
     // A device belongs to whoever is signed in on it now: detach it from every other account
     try {
       const { Op } = require('sequelize');
-      const others = await User.findAll({ where: { id: { [Op.ne]: userId }, fcmTokens: { [Op.like]: `%${fcmToken}%` } } });
+      const others = await User.findAll({ where: { id: { [Op.ne]: userId }, fcmTokens: { [Op.like]: require('../utils/fcmToken').tokenLikePattern(fcmToken) } } });
       for (const other of others) {
         const list = Array.isArray(other.fcmTokens) ? other.fcmTokens : [];
         const filtered = list.filter(t => t && (typeof t === 'string' ? t : t.token) !== fcmToken);
@@ -650,17 +642,24 @@ const updateUserProfile = async (req, res) => {
         user.email = cleanEmail;
       }
     }
-    const trimmed = (v) => (typeof v === 'string' ? v.trim() : v);
+    // Free-text fields are bounded (a 10 MB JSON body used to land in the row as is).
+    const trimmed = (v, max = 500) => (typeof v === 'string' ? v.trim().slice(0, max) : (v === null ? null : undefined));
     if (req.body.statusText !== undefined) user.statusText = trimmed(req.body.statusText);
-    if (req.body.statusEmoji !== undefined) user.statusEmoji = req.body.statusEmoji;
+    if (req.body.statusEmoji !== undefined) user.statusEmoji = trimmed(req.body.statusEmoji, 16);
     if (req.body.about !== undefined) user.about = trimmed(req.body.about);
     if (req.body.hostelBlock !== undefined) user.hostelBlock = trimmed(req.body.hostelBlock);
     if (req.body.roomNumber !== undefined) user.roomNumber = trimmed(req.body.roomNumber);
     if (req.body.address !== undefined) user.address = trimmed(req.body.address);
     if (req.body.city !== undefined) user.city = trimmed(req.body.city);
-    if (req.body.profileImage !== undefined) user.profileImage = req.body.profileImage || null;
-    if (req.body.gender !== undefined) user.gender = req.body.gender;
-    if (req.body.genderPreference !== undefined) user.genderPreference = req.body.genderPreference;
+    if (req.body.profileImage !== undefined) {
+      // Only a media URL / hosted https image; inline base64 is moved to the media table.
+      const { storeImageRef, sendImageError } = require('../utils/imageStore');
+      const img = await storeImageRef(req.body.profileImage, { req, ownerId: user.id, purpose: 'avatar', maxBytes: 2 * 1024 * 1024 });
+      if (!img.ok) return sendImageError(res, img);
+      user.profileImage = img.value;
+    }
+    if (req.body.gender !== undefined) user.gender = trimmed(req.body.gender, 40);
+    if (req.body.genderPreference !== undefined) user.genderPreference = trimmed(req.body.genderPreference, 40);
 
     await user.save();
     // The session token is NOT re-issued here: the app keeps its SecureStore token.
@@ -700,8 +699,10 @@ const resetPassword = async (req, res) => {
     const proof = await verifyPhoneProof({ phone: cleanPhone, firebaseToken, otp, purpose: 'reset_password' });
     if (!proof.ok) return res.status(proof.status).json(proof.body);
 
-    user.password = newPassword; // hashed by the model's beforeUpdate hook
+    user.password = newPassword; // hashed by the model's beforeUpdate hook (also bumps tokenVersion)
     await user.save();
+    // Every session signed before the reset (including a stolen token) is now revoked.
+    require('../middleware/authMiddleware').clearCachedUser(user.id);
 
     res.json({ message: 'Password reset successful' });
   } catch (error) {
@@ -833,7 +834,9 @@ const googleComplete = async (req, res) => {
 
 // @desc    Send a real SMS OTP (Fast2SMS)
 // @route   POST /api/users/send-otp
+const otpSendInFlight = new Set();
 const sendOtp = async (req, res) => {
+  let releaseOtpLock = () => {};
   try {
     const { phone } = req.body || {};
     const cleanPhone = normalizePhone(phone);
@@ -856,6 +859,15 @@ const sendOtp = async (req, res) => {
     if (purpose === 'change_phone' && await User.findOne({ where: { phone: cleanPhone } })) {
       return res.status(409).json({ code: 'PHONE_TAKEN', message: 'This number is already linked to another Zenvy account.' });
     }
+
+    // One send at a time per phone: the cooldown / daily-cap checks below are read-then-create,
+    // so a parallel burst could otherwise send many SMS to one number (SMS bombing, credit drain).
+    if (otpSendInFlight.has(cleanPhone)) {
+      res.set('Retry-After', String(Math.round(OTP_RESEND_COOLDOWN_MS / 1000)));
+      return res.status(429).json({ code: 'OTP_COOLDOWN', retryAfter: Math.round(OTP_RESEND_COOLDOWN_MS / 1000), message: 'A code is already on its way. Please wait a moment.' });
+    }
+    otpSendInFlight.add(cleanPhone);
+    releaseOtpLock = () => otpSendInFlight.delete(cleanPhone);
 
     const OtpCode = await getOtpModel();
     const { Op } = require('sequelize');
@@ -922,6 +934,8 @@ const sendOtp = async (req, res) => {
   } catch (error) {
     console.error('[SEND_OTP_ERROR]', error.message);
     res.status(500).json({ message: "We couldn't send the code right now. Please try again." });
+  } finally {
+    releaseOtpLock();
   }
 };
 

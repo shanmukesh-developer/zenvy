@@ -42,6 +42,8 @@ export default function SearchOverlay({ isOpen, onClose, searchMode = 'food' }: 
     items: [],
   });
   const [searchError, setSearchError] = useState(false);
+  // Bumped by the Retry button to re-run the same search.
+  const [retryTick, setRetryTick] = useState(0);
   const requestIdRef = useRef(0);
 
   const inputRef = useRef<TextInput>(null);
@@ -61,9 +63,12 @@ export default function SearchOverlay({ isOpen, onClose, searchMode = 'food' }: 
 
     const requestId = ++requestIdRef.current;
     const controller = new AbortController();
+    let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
     const delayDebounceFn = setTimeout(async () => {
       setLoading(true);
       setSearchError(false);
+      // apiFetch skips its own timeout when a signal is passed, so cap a stalled request here.
+      timeoutTimer = setTimeout(() => controller.abort(), 15000);
       try {
         const url = searchMode === 'grocery'
           ? `${API_URL}/api/catalogue/items?type=grocery&q=${encodeURIComponent(trimmed)}&limit=40`
@@ -88,22 +93,26 @@ export default function SearchOverlay({ isOpen, onClose, searchMode = 'food' }: 
           });
         }
       } catch (err: any) {
-        if (err?.name === 'AbortError' || requestId !== requestIdRef.current) return;
-        console.error('[SEARCH_ERROR]', err);
+        // A cleanup abort (query changed / overlay closed) bumps requestIdRef, so only a stale request
+        // returns here; a timeout abort keeps the same id and is shown as an error with Retry.
+        if (requestId !== requestIdRef.current) return;
+        if (err?.name !== 'AbortError') console.error('[SEARCH_ERROR]', err);
         setResults({ restaurants: [], items: [] });
         setSearchError(true);
       } finally {
+        if (timeoutTimer) clearTimeout(timeoutTimer);
         if (requestId === requestIdRef.current) setLoading(false);
       }
     }, searchMode === 'grocery' ? 250 : 300);
 
     return () => {
       clearTimeout(delayDebounceFn);
-      controller.abort();
+      if (timeoutTimer) clearTimeout(timeoutTimer);
       requestIdRef.current++;
+      controller.abort();
       setLoading(false);
     };
-  }, [query, isOpen, searchMode]);
+  }, [query, isOpen, searchMode, retryTick]);
 
   // Focus input when opened
   useEffect(() => {
@@ -214,6 +223,15 @@ export default function SearchOverlay({ isOpen, onClose, searchMode = 'food' }: 
           {results.restaurants.length === 0 && results.items.length === 0 && query.length > 1 && !loading && (
             <View style={s.emptyState}>
               <Text style={s.emptyText}>{searchError ? "Couldn't search right now. Check your connection and try again." : `No results found for "${query}" 😕`}</Text>
+              {searchError && (
+                <TouchableOpacity
+                  onPress={() => setRetryTick((t) => t + 1)}
+                  accessibilityRole="button"
+                  style={{ marginTop: 12, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20, borderWidth: 1, borderColor: border }}
+                >
+                  <Text style={{ color: isDark ? '#FFF' : '#1E293B', fontWeight: '700' }}>Retry</Text>
+                </TouchableOpacity>
+              )}
             </View>
           )}
 

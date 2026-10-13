@@ -192,21 +192,50 @@ router.post('/posts/:id/join', protect, async (req, res) => {
     if (pool.availableSeats <= 0) {
       return res.status(400).json({ message: 'This ride is full.' });
     }
-    // A passenger who withdrew earlier may ask again (their old request row is reused).
-    const upsertRequest = (status) => existingRequest
-      ? existingRequest.update({ status })
-      : PoolRequest.create({ poolId: pool.id, passengerId: currentUser.id, status });
+    // Claim ONE request row first (a double tap must never take two seats or earn karma twice):
+    // reuse a withdrawn row only via a conditional flip, otherwise insert (unique on
+    // poolId + passengerId, see config/db.js); whoever loses the race gets "already requested".
+    const alreadyRequested = () => res.status(400).json({ message: 'You have already requested to join this ride.' });
+    let requestId;
+    if (existingRequest) {
+      const [reopened] = await PoolRequest.update(
+        { status: 'Pending' },
+        { where: { id: existingRequest.id, status: 'Cancelled' } }
+      );
+      if (!reopened) return alreadyRequested();
+      requestId = existingRequest.id;
+    } else {
+      try {
+        const created = await PoolRequest.create({ poolId: pool.id, passengerId: currentUser.id, status: 'Pending' });
+        requestId = created.id;
+      } catch (createErr) {
+        if (createErr && createErr.name === 'SequelizeUniqueConstraintError') return alreadyRequested();
+        throw createErr;
+      }
+      // Without the unique index (old DB with duplicate rows) keep only the oldest live row.
+      const live = await PoolRequest.findAll({
+        where: { poolId: pool.id, passengerId: currentUser.id, status: { [Op.ne]: 'Cancelled' } },
+        order: [['createdAt', 'ASC'], ['id', 'ASC']],
+        attributes: ['id'],
+      });
+      if (live.length > 1 && String(live[0].id) !== String(requestId)) {
+        await PoolRequest.update({ status: 'Cancelled' }, { where: { id: requestId } });
+        return alreadyRequested();
+      }
+    }
 
     if (pool.autoApprove) {
-      // Take the seat atomically first: two students tapping at once can never overbook.
+      // Take the seat atomically: two students tapping at once can never overbook.
       const taken = await takeSeat(pool.id);
-      if (!taken) return res.status(400).json({ message: 'This ride just filled up.' });
-      await upsertRequest('Approved');
+      if (!taken) {
+        await PoolRequest.update({ status: 'Cancelled' }, { where: { id: requestId, status: 'Pending' } });
+        return res.status(400).json({ message: 'This ride just filled up.' });
+      }
+      await PoolRequest.update({ status: 'Approved' }, { where: { id: requestId } });
       await finishSeatTaken(pool.id, currentUser.id);
       await pool.reload();
       return res.json({ message: 'Successfully joined ride!', pool });
     } else {
-      await upsertRequest('Pending');
       return res.json({ message: 'Request sent to host for approval.', pool });
     }
   } catch (err) {
@@ -322,7 +351,11 @@ router.post('/posts/:id/complete', protect, async (req, res) => {
           transaction: t
         });
 
+        // One karma reward per passenger, however many request rows they have.
+        const paidPassengers = new Set([String(pool.creatorId)]);
         for (const req of approvedRequests) {
+          if (paidPassengers.has(String(req.passengerId))) continue;
+          paidPassengers.add(String(req.passengerId));
           const passenger = await User.findByPk(req.passengerId, { transaction: t, lock: true });
           if (passenger) {
             passenger.karmaPoints = (passenger.karmaPoints || 0) + karmaReward;
@@ -375,8 +408,9 @@ router.post('/posts/:id/cancel', protect, async (req, res) => {
     }
 
     if (pool.creatorId === req.user.id) {
+      const [closed] = await BikePool.update({ status: 'Cancelled' }, { where: { id: pool.id, status: { [Op.notIn]: ['Completed', 'Cancelled'] } } });
+      if (!closed) return res.status(409).json({ message: 'This ride was just completed or cancelled. Please refresh.' });
       pool.status = 'Cancelled';
-      await pool.save();
       await PoolRequest.update(
         { status: 'Cancelled' },
         { where: { poolId: pool.id, status: { [Op.in]: ['Pending', 'Approved'] } } }
@@ -392,8 +426,12 @@ router.post('/posts/:id/cancel', protect, async (req, res) => {
     }
 
     const wasApproved = myRequest.status === 'Approved';
-    myRequest.status = 'Cancelled';
-    await myRequest.save();
+    // Conditional: a double tap can release the seat only once.
+    const [withdrawn] = await PoolRequest.update(
+      { status: 'Cancelled' },
+      { where: { id: myRequest.id, status: myRequest.status } }
+    );
+    if (!withdrawn) return res.status(409).json({ message: 'Your request was just updated. Please refresh.' });
 
     if (wasApproved) {
       const { literal } = require('sequelize');

@@ -13,6 +13,19 @@ const MAX_INLINE_DATA_URL = 900 * 1024;
 
 // Push for people who are not in the Campus screen right now, at most one per chat every 20 s.
 const PUSH_GAP_MS = 20 * 1000;
+const CALL_INVITES_PER_MIN = 10;
+const callInviteLog = new Map(); // userId -> [ms]
+const takeCallInvite = (userId) => {
+  const now = Date.now();
+  const recent = (callInviteLog.get(userId) || []).filter((t) => now - t < 60 * 1000);
+  if (recent.length >= CALL_INVITES_PER_MIN) { callInviteLog.set(userId, recent); return false; }
+  recent.push(now);
+  callInviteLog.set(userId, recent);
+  if (callInviteLog.size > 20000) {
+    for (const [k, list] of callInviteLog) if (!list.length || now - list[list.length - 1] > 60 * 1000) callInviteLog.delete(k);
+  }
+  return true;
+};
 const lastPushAt = new Map(); // `${userId}:${chatId}` -> ms
 const shouldPush = (uid, chatId) => {
   const key = `${uid}:${chatId}`;
@@ -104,6 +117,9 @@ const initCampusSocket = (io) => {
       }
       if (user.isActive === false) {
         return next(new Error('Account suspended'));
+      }
+      if ((Number(decoded.tv) || 0) !== (Number(user.tokenVersion) || 0)) {
+        return next(new Error('Session expired. Please sign in again.'));
       }
 
       socket.user = {
@@ -218,7 +234,10 @@ const initCampusSocket = (io) => {
         const msgType = MESSAGE_TYPES.has(type) ? type : 'text';
         let cleanMedia = null;
         if (mediaUrl) {
-          cleanMedia = cleanImageRef(mediaUrl, { maxDataUrlChars: MAX_INLINE_DATA_URL });
+          // Inline base64 photos are moved to the media table; the message keeps the short URL.
+          const { storeImageRef } = require('../../utils/imageStore');
+          const img = await storeImageRef(mediaUrl, { ownerId: userId, purpose: 'chat', maxBytes: MAX_INLINE_DATA_URL });
+          cleanMedia = img.ok ? img.value : null;
           if (!cleanMedia) {
             if (ack) ack({ error: 'That photo could not be sent. Please try again.', code: 'BAD_MEDIA' });
             return;
@@ -662,6 +681,17 @@ const initCampusSocket = (io) => {
         const calleeIds = participants.filter((p) => p !== userId);
         if (!calleeIds.length) {
           if (ack) ack({ error: 'No one to call' });
+          return;
+        }
+
+        // 1:1 calls follow the same block rule as messages: a blocked person cannot ring.
+        if (!conversation.isGroup && await isBlockedBetween(userId, calleeIds[0])) {
+          if (ack) ack({ error: 'You cannot call this person', code: 'BLOCKED' });
+          return;
+        }
+        // Ring spam guard: at most CALL_INVITES_PER_MIN invites per caller per minute.
+        if (!takeCallInvite(userId)) {
+          if (ack) ack({ error: 'Too many calls. Please wait a minute.', code: 'RATE_LIMITED' });
           return;
         }
 

@@ -52,11 +52,15 @@ function formatDetails(details: string | null): string {
   return details;
 }
 
+const isAdminRole = (u: User) => String(u.role || '').toLowerCase() === 'admin';
+
 const money = (n: number | null | undefined) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
-const UserCard = memo(({ user, busy, onToggleElite, onToggleBan, onAdjustWallet }: {
+const UserCard = memo(({ user, busy, isSelf, onToggleElite, onToggleBan, onAdjustWallet }: {
   user: User;
   busy: boolean;
+  /** The signed-in admin's own account. */
+  isSelf: boolean;
   onToggleElite: (user: User) => void;
   onToggleBan: (user: User) => void;
   onAdjustWallet: (user: User, amount: number) => Promise<boolean>;
@@ -87,6 +91,14 @@ const UserCard = memo(({ user, busy, onToggleElite, onToggleBan, onAdjustWallet 
           >
             {user.isElite ? 'Elite' : 'Standard'}
           </button>
+          {(isSelf || isAdminRole(user)) ? (
+            <span
+              className="px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border bg-white/5 text-gray-600 border-white/10"
+              title={isSelf ? 'You cannot suspend your own account.' : 'Admin accounts cannot be suspended from the dashboard.'}
+            >
+              {isSelf ? 'You' : 'Admin'}
+            </span>
+          ) : (
           <button
             disabled={busy}
             onClick={() => onToggleBan(user)}
@@ -94,6 +106,7 @@ const UserCard = memo(({ user, busy, onToggleElite, onToggleBan, onAdjustWallet 
           >
             {!user.isActive ? 'Suspended · Reactivate' : 'Suspend'}
           </button>
+          )}
         </div>
       </div>
       <h4 className="text-xl font-black text-white uppercase tracking-tight line-clamp-1">{user.name || 'Unnamed user'}</h4>
@@ -131,7 +144,7 @@ const UserCard = memo(({ user, busy, onToggleElite, onToggleBan, onAdjustWallet 
 UserCard.displayName = 'UserCard';
 
 export default function UserManagement() {
-  const { isAuthed } = useAdminAuth();
+  const { isAuthed, user: me } = useAdminAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [totalUsers, setTotalUsers] = useState(0);
   const [userPages, setUserPages] = useState(1);
@@ -260,6 +273,10 @@ export default function UserManagement() {
 
   const toggleBan = (user: User) => {
     const suspend = user.isActive;
+    if (suspend && (isAdminRole(user) || (me?.id && String(me.id) === String(user._id)))) {
+      setNotice({ kind: 'error', text: 'Admin accounts (including your own) cannot be suspended from the dashboard, so the console can never lock itself out.' });
+      return;
+    }
     if (!confirm(suspend
       ? `Suspend ${user.name || user.phone || 'this user'}? They will not be able to use Zenvy until reactivated.`
       : `Reactivate ${user.name || user.phone || 'this user'}?`)) return;
@@ -344,6 +361,7 @@ export default function UserManagement() {
                   key={user._id}
                   user={user}
                   busy={busyId === user._id}
+                  isSelf={!!me?.id && String(me.id) === String(user._id)}
                   onToggleElite={toggleElite}
                   onToggleBan={toggleBan}
                   onAdjustWallet={adjustWallet}

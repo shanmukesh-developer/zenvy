@@ -1264,7 +1264,7 @@ export default function HomeScreen() {
       </Modal>
 
       {/* ── BLOCKWARS ARENA MODAL ── */}
-      <Modal visible={showBlockModal} animationType="slide" transparent={true}>
+      <Modal visible={showBlockModal} animationType="slide" transparent={true} onRequestClose={() => setShowBlockModal(false)}>
         <View style={s.modalOverlay}>
           <View style={[s.modalContentBox, { backgroundColor: sheetBg }]}>
             <Text style={[s.modalTitle, { color: txt }]}>🏆 BLOCKWARS ARENA</Text>

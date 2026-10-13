@@ -24,6 +24,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { connectSocket } from '../../utils/socket';
 import { apiFetch, readJson } from '../../utils/auth';
+import { safeId } from '../../utils/ids';
 import { StaggeredSection } from '../../components/AnimatedSection';
 import ConfettiCannon from 'react-native-confetti-cannon';
 import LiveOrderCockpit from '../../components/LiveOrderCockpit';
@@ -112,7 +113,8 @@ const distanceKm = (aLat: number, aLng: number, bLat: number, bLng: number) => {
 
 export default function TrackingScreen() {
   const params = useLocalSearchParams<{ id: string | string[] }>();
-  const orderId = Array.isArray(params.id) ? params.id[0] : params.id;
+  // Reject anything that is not a plain id (deep links / push data could carry '../' paths).
+  const orderId = safeId(Array.isArray(params.id) ? params.id[0] : params.id);
   const router = useRouter();
   const { isDark } = useTheme();
   const { user, refreshUser } = useAuth();
@@ -195,7 +197,7 @@ export default function TrackingScreen() {
     fetchingRef.current = true;
     lastFetchRef.current = Date.now();
     try {
-      const res = await apiFetch(`${API_URL}/api/orders/${orderId}`);
+      const res = await apiFetch(`${API_URL}/api/orders/${encodeURIComponent(orderId)}`);
       if (!res.ok) {
         const errData = (await readJson(res)) || {};
         if (!mountedRef.current) return;
@@ -360,9 +362,10 @@ export default function TrackingScreen() {
   // Cancel order handler
   const handleCancelOrder = async () => {
     if (cancelling) return;
+    if (!orderId) return;
     setCancelling(true);
     try {
-      const res = await apiFetch(`${API_URL}/api/orders/${orderId}/cancel`, { method: 'PUT', body: JSON.stringify({}) });
+      const res = await apiFetch(`${API_URL}/api/orders/${encodeURIComponent(orderId)}/cancel`, { method: 'PUT', body: JSON.stringify({}) });
       const data = (await readJson(res)) || {};
       if (!mountedRef.current) return;
       setShowCancelConfirmation(false);
@@ -384,9 +387,10 @@ export default function TrackingScreen() {
 
   const handleApprovePurchase = async () => {
     if (approving) return;
+    if (!orderId) return;
     setApproving(true);
     try {
-      const res = await apiFetch(`${API_URL}/api/orders/${orderId}/approve-purchase`, { method: 'PUT' });
+      const res = await apiFetch(`${API_URL}/api/orders/${encodeURIComponent(orderId)}/approve-purchase`, { method: 'PUT' });
       const data = (await readJson(res)) || {};
       if (!mountedRef.current) return;
       if (res.ok) {
@@ -404,9 +408,10 @@ export default function TrackingScreen() {
 
   const handleApproveBill = async () => {
     if (approving) return;
+    if (!orderId) return;
     setApproving(true);
     try {
-      const res = await apiFetch(`${API_URL}/api/orders/${orderId}/approve-bill`, { method: 'PUT' });
+      const res = await apiFetch(`${API_URL}/api/orders/${encodeURIComponent(orderId)}/approve-bill`, { method: 'PUT' });
       const data = (await readJson(res)) || {};
       if (!mountedRef.current) return;
       if (res.ok) {
@@ -429,9 +434,10 @@ export default function TrackingScreen() {
   // Submit Rating handler (the server stores the item reviews itself)
   const handleSubmitRating = async () => {
     if (submittingRating) return;
+    if (!orderId) return;
     setSubmittingRating(true);
     try {
-      const res = await apiFetch(`${API_URL}/api/orders/${orderId}/rate`, {
+      const res = await apiFetch(`${API_URL}/api/orders/${encodeURIComponent(orderId)}/rate`, {
         method: 'PUT',
         body: JSON.stringify({
           rating: ratingStars,

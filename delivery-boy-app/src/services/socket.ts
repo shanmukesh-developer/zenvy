@@ -17,11 +17,39 @@ export interface RiderSocketHandlers {
   onDeliveryRequestGone?: (p: { orderId: string }) => void;
   /** connected=true also fires after every reconnect: events sent while offline are not replayed, so refetch. */
   onConnectionChange?: (connected: boolean) => void;
+  /** The server refused the token for good (not a 'Please retry' hiccup): log out. */
+  onAuthError?: () => void;
 }
 
 let socket: Socket | null = null;
 let joined = new Set<string>();
 let handlers: RiderSocketHandlers = {};
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+let retryAttempt = 0;
+
+function clearRetry(): void {
+  if (retryTimer) clearTimeout(retryTimer);
+  retryTimer = null;
+}
+
+/**
+ * A refused handshake (server still starting, account lookup hiccup) makes socket.io-client destroy the
+ * socket, so it never reconnects by itself (socket.active === false). Schedule our own connect() with
+ * backoff + jitter, honouring the server's retryAfter hint when it sends one.
+ */
+function scheduleManualReconnect(s: Socket, err?: any): void {
+  if (retryTimer || s.active || s.connected) return;
+  const hintSec = Number(err?.data?.retryAfter);
+  const base = Number.isFinite(hintSec) && hintSec > 0
+    ? Math.min(hintSec * 1000, 60000)
+    : Math.min(2000 * 2 ** retryAttempt, 15000);
+  const delay = base + Math.floor(Math.random() * 1000);
+  retryAttempt = Math.min(retryAttempt + 1, 6);
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    if (socket === s && !s.connected && !s.active) s.connect();
+  }, delay);
+}
 
 export function setSocketHandlers(h: RiderSocketHandlers): void {
   handlers = h;
@@ -39,12 +67,29 @@ export function connectSocket(token: string): void {
     timeout: 15000,
   });
   socket = s;
+  retryAttempt = 0;
   s.on('connect', () => {
+    retryAttempt = 0;
+    clearRetry();
     // Rooms are per connection: re-join after every reconnect.
     joined.forEach((id) => s.emit('joinOrder', id));
     handlers.onConnectionChange?.(true);
   });
-  s.on('disconnect', () => handlers.onConnectionChange?.(false));
+  s.on('disconnect', (reason) => {
+    handlers.onConnectionChange?.(false);
+    // The server closed us on purpose (deploy, presence reset): socket.io will not retry by itself.
+    if (reason === 'io server disconnect' && socket === s) s.connect();
+  });
+  s.on('connect_error', (err: any) => {
+    const msg = String(err?.message || '');
+    if (/authentication error/i.test(msg) && !/please retry/i.test(msg)) {
+      clearRetry();
+      handlers.onAuthError?.();
+      return;
+    }
+    // Transport errors keep socket.active true (built-in reconnection runs); refused handshakes do not.
+    if (!s.active) scheduleManualReconnect(s, err);
+  });
   s.on('orderCancelled', (p: any) => {
     if (p?.orderId) handlers.onOrderCancelled?.({ orderId: String(p.orderId), reason: p.reason ? String(p.reason) : undefined });
   });
@@ -73,6 +118,7 @@ export function connectSocket(token: string): void {
 }
 
 export function disconnectSocket(): void {
+  clearRetry();
   socket?.removeAllListeners();
   socket?.disconnect();
   socket = null;
@@ -119,6 +165,14 @@ export function emitLocation(p: {
 export function emitDutyStatus(riderId: string, name: string, isOnline: boolean): void {
   if (!socket?.connected || !riderId) return;
   socket.emit('rider_status_change', { riderId, name, isOnline });
+}
+
+/** Foreground resume: reconnect at once if the socket gave up while the app was in the background. */
+export function ensureSocketConnected(): void {
+  if (socket && !socket.connected && !socket.active) {
+    clearRetry();
+    socket.connect();
+  }
 }
 
 export function isSocketConnected(): boolean {

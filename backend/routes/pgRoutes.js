@@ -10,19 +10,12 @@ const { Op } = require('sequelize');
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // Zenvy housing desk WhatsApp number (students can message it from the app). Override on Render.
 const PG_DESK_WHATSAPP = (process.env.PG_DESK_WHATSAPP || '9391955674').replace(/\D/g, '').slice(-10);
+const pgBookingInFlight = new Set();
 const ACTIVE_BOOKING = ['Pending', 'Confirmed'];
 
 // Optional auth for public PG endpoints (admins may view inactive listings).
-const viewerIsAdmin = (req) => {
-  const h = req.headers.authorization;
-  if (!h || !h.startsWith('Bearer ')) return false;
-  try {
-    const decoded = require('jsonwebtoken').verify(h.split(' ')[1], process.env.JWT_SECRET);
-    return String(decoded?.role || '').toLowerCase() === 'admin';
-  } catch {
-    return false;
-  }
-};
+// DB-verified (a demoted admin's token keeps no admin view).
+const viewerIsAdmin = (req) => require('../middleware/authMiddleware').isLiveAdminRequest(req);
 
 // Push + live alert to admins about a booking (real channels; WhatsApp only if a provider is set up).
 const realtime = require('../utils/realtime');
@@ -66,7 +59,7 @@ router.get('/:id', async (req, res) => {
     const pg = await PGHostel.findByPk(req.params.id, {
       include: [{ model: PGRoom, as: 'rooms', where: { isActive: true }, required: false }]
     });
-    if (!pg || (pg.isActive === false && !viewerIsAdmin(req))) return res.status(404).json({ message: 'PG not found.' });
+    if (!pg || (pg.isActive === false && !(await viewerIsAdmin(req)))) return res.status(404).json({ message: 'PG not found.' });
     res.json(pg);
   } catch (err) {
     console.error('[PG_DETAIL_ERROR]', err);
@@ -122,13 +115,30 @@ router.post('/:roomId/book', protect, async (req, res) => {
       });
     }
 
-    const booking = await PGBooking.create({
-      userId: req.user.id,
-      hostelId: room.hostelId,
-      roomId: room.id,
-      checkInDate,
-      status: 'Pending'
-    });
+    // In-process guard + partial unique index (config/db.js) so a double tap cannot create two
+    // Pending requests (two admin pushes, two WhatsApp messages).
+    const pgKey = `${req.user.id}:${room.hostelId}`;
+    if (pgBookingInFlight.has(pgKey)) {
+      return res.status(409).json({ code: 'BOOKING_EXISTS', message: 'Your booking request is already being sent.' });
+    }
+    pgBookingInFlight.add(pgKey);
+    let booking;
+    try {
+      booking = await PGBooking.create({
+        userId: req.user.id,
+        hostelId: room.hostelId,
+        roomId: room.id,
+        checkInDate,
+        status: 'Pending'
+      });
+    } catch (createErr) {
+      if (createErr && createErr.name === 'SequelizeUniqueConstraintError') {
+        return res.status(409).json({ code: 'BOOKING_EXISTS', message: "You already have a booking request here. We'll update you soon." });
+      }
+      throw createErr;
+    } finally {
+      pgBookingInFlight.delete(pgKey);
+    }
 
     const userName = user?.name || req.user.name || 'Zenvy Student';
     const userPhone = user?.phone || user?.mobile || req.user.phone || 'Not Provided';
@@ -291,6 +301,10 @@ async function changeBookingStatus(bookingId, nextStatus, mayChange) {
   });
 }
 
+// Listing photos: media URLs / hosted https kept, inline base64 moved to the media table (max 12).
+const cleanPgImages = (images, req) =>
+  require('../utils/imageStore').storeImageList(images, { req, ownerId: req.user && req.user.id, purpose: 'pg', maxItems: 12 });
+
 // POST Create a PG (Admin only: listings are curated by the Zenvy team)
 router.post('/', protect, admin, async (req, res) => {
   try {
@@ -300,10 +314,12 @@ router.post('/', protect, admin, async (req, res) => {
       amenities, images, description, messMenu, foodTimetable, rules, contactInfo, isActive
     } = req.body;
 
+    const imgs = await cleanPgImages(images, req);
+    if (!imgs.ok) return res.status(imgs.status || 400).json({ message: imgs.message });
     const pg = await PGHostel.create({
       ownerId: req.user.id,
       name, address, distanceFromCollege, genderType, baseRent, securityDeposit,
-      amenities, images, description, messMenu, foodTimetable, rules, contactInfo, isActive: isActive ?? true
+      amenities, images: imgs.value, description, messMenu, foodTimetable, rules, contactInfo, isActive: isActive ?? true
     });
     realtime.publish('pg', 'created', pg.id);
     res.status(201).json(pg);
@@ -336,9 +352,15 @@ router.put('/:id', protect, admin, async (req, res) => {
       name, address, distanceFromCollege, genderType, baseRent, securityDeposit,
       amenities, images, description, messMenu, foodTimetable, rules, contactInfo, isActive
     } = req.body;
+    let cleanImages;
+    if (images !== undefined) {
+      const imgs = await cleanPgImages(images, req);
+      if (!imgs.ok) return res.status(imgs.status || 400).json({ message: imgs.message });
+      cleanImages = imgs.value;
+    }
     await pg.update({
       name, address, distanceFromCollege, genderType, baseRent, securityDeposit,
-      amenities, images, description, messMenu, foodTimetable, rules, contactInfo, isActive
+      amenities, ...(cleanImages !== undefined ? { images: cleanImages } : {}), description, messMenu, foodTimetable, rules, contactInfo, isActive
     });
     realtime.publish('pg', 'updated', pg.id);
     res.json(pg);

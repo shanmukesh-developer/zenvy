@@ -41,7 +41,28 @@ export function SocketProvider({ token, restaurantId, onAuthError, children }: {
       timeout: 20000,
     });
     let offlineTimer: ReturnType<typeof setTimeout> | null = null;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let retryAttempt = 0;
     let everConnected = false;
+    const clearRetry = () => {
+      if (retryTimer) clearTimeout(retryTimer);
+      retryTimer = null;
+    };
+    // A refused handshake ('Server is starting, please retry' while the DB warms up after a deploy, or a
+    // failed account lookup) makes socket.io-client destroy the socket: s.active turns false and it never
+    // reconnects by itself. Reconnect ourselves with backoff + jitter, honouring the server's retryAfter.
+    const scheduleManualReconnect = (err: any) => {
+      if (retryTimer || s.active || s.connected) return;
+      const hintSec = Number(err?.data?.retryAfter);
+      const base = Number.isFinite(hintSec) && hintSec > 0
+        ? Math.min(hintSec * 1000, 60000)
+        : Math.min(2000 * 2 ** retryAttempt, 15000);
+      retryAttempt = Math.min(retryAttempt + 1, 6);
+      retryTimer = setTimeout(() => {
+        retryTimer = null;
+        if (!s.connected && !s.active) s.connect();
+      }, base + Math.floor(Math.random() * 1000));
+    };
     const armOffline = () => {
       if (offlineTimer) return;
       // The first connect gets longer: the Render server can take ~30-50 s to wake up.
@@ -55,6 +76,8 @@ export function SocketProvider({ token, restaurantId, onAuthError, children }: {
 
     s.on('connect', () => {
       clearOffline();
+      clearRetry();
+      retryAttempt = 0;
       everConnected = true;
       setStatus('online');
       // The catch-up refetch (driven by connectCount) must run only after the server has put us in the
@@ -75,20 +98,27 @@ export function SocketProvider({ token, restaurantId, onAuthError, children }: {
       const msg = String(err?.message || '');
       if (/authentication error/i.test(msg) && !/please retry/i.test(msg)) {
         clearOffline();
+        clearRetry();
         authErrRef.current();
         return;
       }
       setStatus((prev) => (prev === 'offline' ? 'offline' : prev === 'connecting' ? 'connecting' : 'reconnecting'));
       armOffline();
+      // Transport errors keep s.active true (built-in reconnection runs); refused handshakes do not.
+      if (!s.active) scheduleManualReconnect(err);
     });
 
     const appSub = AppState.addEventListener('change', (st) => {
-      if (st === 'active' && !s.connected) s.connect();
+      if (st === 'active' && !s.connected) {
+        clearRetry();
+        s.connect();
+      }
     });
 
     setSocket(s);
     return () => {
       clearOffline();
+      clearRetry();
       appSub.remove();
       s.removeAllListeners();
       s.disconnect();

@@ -21,7 +21,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { COLORS } from '../../constants/theme';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
-import { useCart, MAX_ITEM_QTY } from '../../context/CartContext';
+import { useCart, MAX_ITEM_QTY, newIdempotencyKey } from '../../context/CartContext';
 import { API_URL } from '../../constants/api';
 import { apiFetch } from '../../utils/auth';
 import { useLiveSync } from '../../utils/useLiveSync';
@@ -139,6 +139,9 @@ export default function CategoryDetailScreen() {
   const [contactPhone, setContactPhone] = useState<string>((user as any)?.phone || '');
   const [submittingBooking, setSubmittingBooking] = useState(false);
   const submittingRef = useRef(false);
+  // One key per booking attempt (made when the booking sheet opens, kept across retries until the
+  // server answers) so a timed-out request the server did process is not booked twice on retry.
+  const bookingKeyRef = useRef<string>(newIdempotencyKey());
 
   // Document Upload & Printout Specific States
   const [attachedFile, setAttachedFile] = useState<{
@@ -343,6 +346,7 @@ export default function CategoryDetailScreen() {
       setCopies('1');
       setPrintColor(/colou?r/i.test(item.name) ? 'color' : 'bw');
       setBindingType(/spiral/i.test(item.name) ? 'spiral' : /thesis|hard\s*bound/i.test(item.name) ? 'hardbound' : 'none');
+      bookingKeyRef.current = newIdempotencyKey();
       setServiceModalVisible(true);
       return;
     }
@@ -411,7 +415,8 @@ export default function CategoryDetailScreen() {
           serviceName: selectedService.name,
           catalogueItemId: selectedService.id,
           category: categoryId,
-          notes
+          notes,
+          clientRequestId: bookingKeyRef.current,
         },
         attachmentUrl: attachedFile?.base64 || undefined,
         quotedAmount: finalAmount,
@@ -427,13 +432,25 @@ export default function CategoryDetailScreen() {
       try {
         res = await apiFetch(`${API_URL}/api/services/book`, {
           method: 'POST',
+          headers: { 'Idempotency-Key': bookingKeyRef.current },
           body: JSON.stringify(payload)
         });
       } catch {
-        Alert.alert('Connection problem', "Can't reach Zenvy right now. Check your internet and try again.");
+        // The booking may have reached the server before the connection dropped: keep the same key
+        // for a retry and point the user at their bookings instead of implying nothing was placed.
+        Alert.alert(
+          'Couldn’t confirm the booking',
+          "We couldn't confirm whether your booking went through. Check Orders → Services before trying again.",
+          [
+            { text: 'OK', style: 'cancel' },
+            { text: 'Check bookings', onPress: () => router.push({ pathname: '/(tabs)/orders', params: { segment: 'services' } } as any) },
+          ]
+        );
         return;
       }
       const data = await res.json().catch(() => null);
+      // The server answered, so this attempt is settled; a later booking gets a fresh key.
+      if (res.status !== 409) bookingKeyRef.current = newIdempotencyKey();
 
       if (res.ok && data && data.booking) {
         if (mountedRef.current) setServiceModalVisible(false);

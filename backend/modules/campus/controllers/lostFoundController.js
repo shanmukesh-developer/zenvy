@@ -17,10 +17,13 @@ const createLostFound = async (req, res) => {
     }
 
     // Photo: '/api/campus/media/<id>' from POST /api/campus/media, an https URL, or a legacy data:image URL.
+    // Inline base64 is sniffed and moved to the media table (short URL on the row).
     let cleanImage = null;
     if (imageUrl) {
-      cleanImage = cleanImageRef(imageUrl, { maxDataUrlChars: 3 * 1024 * 1024 });
-      if (!cleanImage) return res.status(400).json({ code: 'BAD_IMAGE', message: 'That photo could not be attached. Please pick it again.' });
+      const { storeImageRef } = require('../../../utils/imageStore');
+      const img = await storeImageRef(imageUrl, { req, ownerId: req.user.id, purpose: 'lost_found', maxBytes: 3 * 1024 * 1024 });
+      if (!img.ok || !img.value) return res.status(img.status && img.status !== 500 ? img.status : 400).json({ code: img.code || 'BAD_IMAGE', message: img.message || 'That photo could not be attached. Please pick it again.' });
+      cleanImage = img.value;
     }
 
     const LostAndFound = getLostAndFoundModel();

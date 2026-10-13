@@ -43,6 +43,35 @@ const broadcastOrderStatus = (req, orderOrId, payload) => {
 
 const isVendorFulfilled = (order) => !!order && order.fulfilment === 'VENDOR';
 
+// Stall (VENDOR) orders are marked Delivered by the stall itself, with no PIN and no customer
+// confirmation, and they are COD. To stop a colluding stall + customer farming ZenPoints,
+// completedOrders (spins) and badges with fake orders, loyalty for stall orders needs the order
+// to have lived a few minutes and is capped per customer per IST day.
+const STALL_LOYALTY_DAILY = Math.max(0, parseInt(process.env.STALL_LOYALTY_DAILY, 10) || 2);
+const STALL_LOYALTY_MIN_AGE_MS = 5 * 60 * 1000;
+const stallLoyaltyAllowed = async (order) => {
+  if (!isVendorFulfilled(order)) return true;
+  try {
+    const created = new Date(order.createdAt).getTime();
+    if (!Number.isFinite(created) || Date.now() - created < STALL_LOYALTY_MIN_AGE_MS) return false;
+    // The IST day the order was delivered (rating later still counts against that day's cap).
+    const delivered = new Date(order.deliveredAt || Date.now()).getTime();
+    const istOffset = 5.5 * 60 * 60 * 1000;
+    const dayStart = new Date(Math.floor((delivered + istOffset) / 86400000) * 86400000 - istOffset);
+    const dayEnd = new Date(dayStart.getTime() + 86400000);
+    const sameDayStallOrders = await getOrderModel().findAll({
+      where: { userId: order.userId, fulfilment: 'VENDOR', status: 'Delivered', deliveredAt: { [Op.gte]: dayStart, [Op.lt]: dayEnd } },
+      attributes: ['id'],
+      order: [['deliveredAt', 'ASC'], ['id', 'ASC']],
+      limit: STALL_LOYALTY_DAILY,
+    });
+    // Only the first STALL_LOYALTY_DAILY stall orders of that day earn loyalty.
+    return sameDayStallOrders.some((o) => String(o.id) === String(order.id));
+  } catch {
+    return false;
+  }
+};
+
 // Push to the store's partner/vendor app devices (works while the app is closed). Never throws.
 // Item count + amount only: no customer name / phone / address in a lock-screen notification.
 const pushStoreNewOrder = async (restaurant, order) => {
@@ -311,6 +340,12 @@ const createOrder = async (req, res) => {
     } catch (err) {
       if (idemClaimed) recentOrderKeys.delete(idemKey);
       if (err instanceof PricingError) return sendPricingError(res, err);
+      // Same Idempotency-Key raced in from another tab / device / process: this transaction rolled
+      // back (nothing charged here) and the first order exists, so return it instead of a 500.
+      if (idemRaw && err && err.name === 'SequelizeUniqueConstraintError') {
+        const winner = await Order.findOne({ where: { userId: req.user.id, idempotencyKey: idemRaw } });
+        if (winner) return res.status(200).json({ ...winner.toJSON(), _id: winner.id, duplicate: true }); // owner: keeps the PIN
+      }
       throw err;
     }
     if (idemClaimed) recentOrderKeys.set(idemKey, { at: Date.now(), orderId: createdOrder.id });
@@ -705,8 +740,9 @@ const rateOrder = async (req, res) => {
     }
 
     // ── +10 ZenPoints for rating (once per order, guaranteed by the update above) ──
+    // Stall orders follow the same daily loyalty cap as their delivery credit.
     try {
-      await User.increment('zenPoints', { by: 10, where: { id: req.user.id } });
+      if (await stallLoyaltyAllowed(order)) await User.increment('zenPoints', { by: 10, where: { id: req.user.id } });
     } catch (zpErr) {
       console.warn('[RATING_ZP] ZenPoints award skipped:', zpErr.message);
     }
@@ -804,7 +840,12 @@ const getAllOrders = async (req, res) => {
 
     const { count, rows: orders } = await Order.findAndCountAll({ 
       where,
-      attributes: { exclude: ['deliveryPin'] }, // the customer's handover PIN is never shown to admins
+      // The customer's handover PIN is never shown to admins; legacy inline base64 photos are
+      // returned as null (media URLs pass through) so a 500-row page stays small.
+      attributes: {
+        exclude: ['deliveryPin', 'proofImage', 'itemPhotoUrl', 'billProofUrl', 'upiScreenshot'],
+        include: require('../utils/imageStore').dataUrlSafeColumns('Order', ['proofImage', 'itemPhotoUrl', 'billProofUrl']),
+      },
       order: [['createdAt', 'DESC']], 
       limit,
       offset,
@@ -846,6 +887,10 @@ const cancelAndRefund = async (order, { reason = null, onlyFromStatuses = null, 
   // Status flip + refund in one transaction. The conditional update means two parallel
   // cancels can never both pass, so the Wallet is refunded exactly once.
   const cancelled = await sequelize.transaction(async (t) => {
+    // Lock and re-read the row: the refund must use the price at cancel time (a bill approval
+    // may have changed finalPrice after the caller loaded `order`).
+    const fresh = await Order.findByPk(order.id, { transaction: t, lock: t.LOCK.UPDATE });
+    if (!fresh) return false;
     const statusWhere = Array.isArray(onlyFromStatuses)
       ? { [Op.in]: onlyFromStatuses }
       : { [Op.notIn]: ['Cancelled', 'Delivered'] };
@@ -854,8 +899,8 @@ const cancelAndRefund = async (order, { reason = null, onlyFromStatuses = null, 
       { where: { id: order.id, status: statusWhere, ...(requireUnclaimed ? { deliveryPartnerId: null } : {}) }, transaction: t }
     );
     if (n === 0) return false;
-    if (order.paymentMethod === 'Wallet') {
-      const amount = money(order.finalPrice != null ? order.finalPrice : order.totalPrice);
+    if (fresh.paymentMethod === 'Wallet') {
+      const amount = money(fresh.finalPrice != null ? fresh.finalPrice : fresh.totalPrice);
       if (amount > 0) {
         const User = getUserModel();
         await User.increment('walletBalance', { by: amount, where: { id: order.userId }, transaction: t });
@@ -863,7 +908,7 @@ const cancelAndRefund = async (order, { reason = null, onlyFromStatuses = null, 
       }
     }
     // Give back a coupon that was used on this order (if it has not expired).
-    let breakdown = order.priceBreakdown;
+    let breakdown = fresh.priceBreakdown;
     if (typeof breakdown === 'string') { try { breakdown = JSON.parse(breakdown); } catch { breakdown = null; } }
     if (breakdown && breakdown.couponCode) {
       const { getCouponModel } = require('../models/Coupon');
@@ -1028,6 +1073,12 @@ const cancelOrder = async (req, res) => {
   }
 };
 
+// Forward order of statuses for the admin endpoint (equal rank = alternative steps).
+const ADMIN_STATUS_RANK = {
+  Pending: 0, Accepted: 1, Preparing: 2, ReadyForPickup: 3, Picking: 4,
+  PickedUp: 5, OutForDelivery: 5, ArrivedAtGate: 6, Delivered: 7,
+};
+
 // @desc    Update order status (Admin)
 // @route   PUT /api/orders/:id/status
 const updateOrderStatus = async (req, res) => {
@@ -1058,6 +1109,17 @@ const updateOrderStatus = async (req, res) => {
       return res.status(400).json({ message: 'OutForDelivery is only for stall-delivered orders. Use PickedUp for rider orders.' });
     }
 
+    // Forward-only: a Delivered order is final, and no step may go backwards (re-delivering a
+    // regressed order used to credit points and rider earnings a second time).
+    if (order.status === 'Delivered' && status !== 'Delivered') {
+      return res.status(400).json({ code: 'ORDER_FINAL', message: 'This order is already delivered and cannot be moved back.' });
+    }
+    const targetRank = ADMIN_STATUS_RANK[status];
+    const currentRank = ADMIN_STATUS_RANK[order.status];
+    if (targetRank !== undefined && currentRank !== undefined && targetRank < currentRank) {
+      return res.status(400).json({ code: 'STATUS_REGRESSION', message: `This order is already ${order.status}; it cannot go back to ${status}.` });
+    }
+
     let justDelivered = false;
     if (status === 'Delivered') {
       // Only the request that actually flips the order to Delivered awards points (no double credit).
@@ -1080,7 +1142,7 @@ const updateOrderStatus = async (req, res) => {
       // Atomic increments (a stale read-modify-save here used to overwrite concurrent spin/redeem points).
       const { creditCustomerForDelivery } = require('../services/BadgeService');
       try {
-        const { newBadges } = await creditCustomerForDelivery(getUserModel(), order);
+        const { newBadges } = (await stallLoyaltyAllowed(order)) ? await creditCustomerForDelivery(getUserModel(), order) : { newBadges: [] };
         order.newBadges = newBadges;
       } catch (creditErr) {
         console.error('[DELIVERY_CREDIT_ERROR]', order.id, creditErr.message);
@@ -1103,8 +1165,9 @@ const updateOrderStatus = async (req, res) => {
     if (status !== 'Delivered') {
       // Conditional write: never overwrite a cancel (and its refund) that landed after we read the order.
       const extra = status === 'OutForDelivery' ? { outForDeliveryAt: new Date() } : {};
-      const [n] = await Order.update({ status, ...extra }, { where: { id: order.id, status: { [Op.notIn]: ['Cancelled'] } } });
-      if (n === 0) return res.status(400).json({ message: 'This order was cancelled and cannot be updated.' });
+      const allowedFrom = Object.keys(ADMIN_STATUS_RANK).filter((s) => s !== 'Delivered' && ADMIN_STATUS_RANK[s] <= targetRank);
+      const [n] = await Order.update({ status, ...extra }, { where: { id: order.id, status: { [Op.in]: allowedFrom } } });
+      if (n === 0) return res.status(409).json({ message: 'This order was just updated (cancelled, delivered or moved on). Please refresh.' });
       order.status = status;
     } else {
       order.status = 'Delivered';
@@ -1304,25 +1367,35 @@ const verifyUPIPayment = async (req, res) => {
     if (order.paymentMethod !== 'UPI') return res.status(400).json({ message: 'Not a UPI order' });
     if (order.upiStatus !== 'Pending') return res.status(400).json({ message: `This UPI payment is already ${String(order.upiStatus || 'resolved').toLowerCase()}.` });
 
+    const prevStatus = order.status;
     if (isVerified) {
+      // Conditional: only a still-pending UPI order that is not closed can be verified.
+      const nextStatus = order.status === 'Pending' ? 'Accepted' : order.status;
+      const [n] = await Order.update(
+        { upiStatus: 'Verified', paymentStatus: 'Completed', status: nextStatus, ...(nextStatus !== prevStatus ? { acceptedAt: new Date() } : {}) },
+        { where: { id: order.id, upiStatus: 'Pending', status: prevStatus } }
+      );
+      if (!n) return res.status(409).json({ message: 'This order was just updated. Please refresh.' });
       order.upiStatus = 'Verified';
       order.paymentStatus = 'Completed';
-      // Auto-accept if it was pending
-      if (order.status === 'Pending') {
-        order.status = 'Accepted';
-      }
+      order.status = nextStatus;
     } else {
+      // Rejected payment: cancel through the shared path (exactly once, coupon restored).
+      const [n] = await Order.update(
+        { upiStatus: 'Rejected' },
+        { where: { id: order.id, upiStatus: 'Pending', status: { [Op.notIn]: ['Delivered', 'Cancelled'] } } }
+      );
+      if (!n) return res.status(409).json({ message: 'This order was just updated. Please refresh.' });
       order.upiStatus = 'Rejected';
-      order.status = 'Cancelled';
+      const { cancelled } = await cancelAndRefund(order, { reason: 'UPI payment rejected' });
+      order.status = cancelled ? 'Cancelled' : order.status;
     }
-    
-    const prevStatus = order.previous('status');
-    await order.save();
+
     if (!order.deliveryPartnerId) {
       if (order.status === 'Accepted' && prevStatus === 'Pending') realtime.deliveryRequest(order.id);
       else if (order.status === 'Cancelled' && realtime.CLAIMABLE_STATUSES.includes(prevStatus)) realtime.deliveryRequestGone(order.id);
     }
-    
+
     const statusPayload = { id: order.id, status: order.status };
     broadcastOrderStatus(req, order, statusPayload);
 
@@ -1523,7 +1596,7 @@ const vendorUpdateOrderStatus = async (req, res, order) => {
       // Exactly once: only the request whose conditional update flipped the order gets here.
       try {
         const { creditCustomerForDelivery } = require('../services/BadgeService');
-        const result = await creditCustomerForDelivery(getUserModel(), order);
+        const result = (await stallLoyaltyAllowed(order)) ? await creditCustomerForDelivery(getUserModel(), order) : null;
         newBadges = (result && result.newBadges) || [];
       } catch (creditErr) {
         console.error('[DELIVERY_CREDIT_ERROR]', order.id, creditErr.message);
@@ -1565,15 +1638,28 @@ const loadOrderFor = async (req, res, who) => {
   return order;
 };
 
+// Bill / pre-purchase photo flow exists only for buy-for-me orders (the rider shops with cash and
+// the bill decides the price). On a normal food / store order the price is fixed by the menu, so
+// a rider + customer pair must never be able to "approve" a tiny bill and refund the Wallet.
+const BUY_FOR_ME_CATEGORIES = ['mega basket', 'mega_basket', 'megabasket', 'kirana', 'buy_for_me'];
+const isBuyForMeOrder = (order) => BUY_FOR_ME_CATEGORIES.includes(String((order && order.category) || '').trim().toLowerCase());
+const notBuyForMe = (res) => res.status(400).json({ code: 'NOT_BUY_FOR_ME', message: 'Bills can only be added to Mega Basket orders.' });
+
 // @desc    Rider uploads pre-purchase item photo / estimate for Mega Basket
 const uploadItemPhoto = async (req, res) => {
   try {
-    const { itemPhotoUrl } = req.body || {};
-    if (!itemPhotoUrl || typeof itemPhotoUrl !== 'string') return res.status(400).json({ message: 'Please attach the item photo.' });
+    const { itemPhotoUrl: rawPhoto } = req.body || {};
+    if (!rawPhoto || typeof rawPhoto !== 'string') return res.status(400).json({ message: 'Please attach the item photo.' });
     const order = await loadOrderFor(req, res, 'rider');
     if (!order) return;
-    order.itemPhotoUrl = itemPhotoUrl;
-    await order.save(); // status is unchanged ('Shopping' is not an order status)
+    if (!isBuyForMeOrder(order)) return notBuyForMe(res);
+    const { storeImageRef, sendImageError } = require('../utils/imageStore');
+    const img = await storeImageRef(rawPhoto, { req, ownerId: req.user.id, purpose: 'basket' });
+    if (!img.ok || !img.value) return sendImageError(res, img.ok ? { status: 400, message: 'Please attach the item photo.' } : img);
+    const itemPhotoUrl = img.value;
+    const [saved] = await getOrderModel().update({ itemPhotoUrl }, { where: { id: order.id, status: { [Op.notIn]: ['Cancelled', 'Delivered'] } } });
+    if (!saved) return res.status(409).json({ message: 'This order was just updated. Please refresh.' });
+    order.itemPhotoUrl = itemPhotoUrl; // status is unchanged ('Shopping' is not an order status)
 
     broadcastOrderStatus(req, order, {
       id: order.id,
@@ -1606,16 +1692,30 @@ const approvePurchase = async (req, res) => {
 // @desc    Rider uploads final store bill receipt & bill amount
 const uploadBillProof = async (req, res) => {
   try {
-    const { billProofUrl } = req.body || {};
+    const { billProofUrl: rawBill } = req.body || {};
     const billAmount = Number((req.body || {}).billAmount);
-    if (!billProofUrl || typeof billProofUrl !== 'string') return res.status(400).json({ message: 'Please attach a photo of the bill.' });
+    if (!rawBill || typeof rawBill !== 'string') return res.status(400).json({ message: 'Please attach a photo of the bill.' });
     if (!Number.isFinite(billAmount) || billAmount <= 0 || billAmount > 100000) return res.status(400).json({ message: 'Please enter the bill amount.' });
     const order = await loadOrderFor(req, res, 'rider');
     if (!order) return;
+    if (!isBuyForMeOrder(order)) return notBuyForMe(res);
     if (order.isBillApproved) return res.status(400).json({ message: 'The customer has already approved this bill.' });
+    // A bill far below what the customer ordered needs support to review it (refund abuse guard).
+    const subtotal = Number(order.totalPrice) || 0;
+    if (subtotal > 0 && billAmount < subtotal * 0.5) {
+      return res.status(400).json({ code: 'BILL_TOO_LOW', message: 'This bill is much lower than the order. Please contact Zenvy support to adjust it.' });
+    }
+    const { storeImageRef, sendImageError } = require('../utils/imageStore');
+    const img = await storeImageRef(rawBill, { req, ownerId: req.user.id, purpose: 'bill' });
+    if (!img.ok || !img.value) return sendImageError(res, img.ok ? { status: 400, message: 'Please attach a photo of the bill.' } : img);
+    const billProofUrl = img.value;
+    const [saved] = await getOrderModel().update(
+      { billProofUrl, billAmount: money(billAmount) },
+      { where: { id: order.id, status: { [Op.notIn]: ['Cancelled', 'Delivered'] }, isBillApproved: { [Op.not]: true } } }
+    );
+    if (!saved) return res.status(409).json({ message: 'This order was just updated. Please refresh.' });
     order.billProofUrl = billProofUrl;
     order.billAmount = money(billAmount);
-    await order.save();
 
     broadcastOrderStatus(req, order, {
       id: order.id,
@@ -1637,21 +1737,31 @@ const approveBill = async (req, res) => {
   try {
     const order = await loadOrderFor(req, res, 'customer');
     if (!order) return;
+    if (!isBuyForMeOrder(order)) return notBuyForMe(res);
     if (!(Number(order.billAmount) > 0)) return res.status(400).json({ message: 'The rider has not uploaded the bill yet.' });
-    if (order.isBillApproved) return res.json({ message: 'Bill already approved', order, amountPayable: order.finalPrice });
+    if (order.isBillApproved) return res.json({ message: 'Bill already approved', order: withoutPin(order), amountPayable: order.finalPrice });
 
-    const newFinal = money(Math.max(0, Number(order.billAmount) + Number(order.deliveryFee || 0) - Number(order.batchDiscount || 0) - Number(order.gateDiscount || 0)));
-    const diff = money(newFinal - Number(order.finalPrice || 0));
     const Order = getOrderModel();
     const User = getUserModel();
     const { getSequelize } = require('../config/db');
     const sequelize = getSequelize();
+    let newFinal = 0;
+    let diff = 0;
 
     try {
       await sequelize.transaction(async (t) => {
+        // Lock and re-read: a cancel running in parallel either finishes first (we see Cancelled)
+        // or waits for us (and then refunds the new finalPrice). Never two refunds on stale data.
+        const fresh = await Order.findByPk(order.id, { transaction: t, lock: t.LOCK.UPDATE });
+        if (!fresh || ['Cancelled', 'Delivered'].includes(fresh.status)) {
+          throw new PricingError(409, 'ORDER_CLOSED', `This order is already ${String(fresh ? fresh.status : 'closed').toLowerCase()}.`);
+        }
+        if (fresh.isBillApproved) throw new PricingError(409, 'ALREADY_APPROVED', 'Bill already approved.');
+        newFinal = money(Math.max(0, Number(fresh.billAmount) + Number(fresh.deliveryFee || 0) - Number(fresh.batchDiscount || 0) - Number(fresh.gateDiscount || 0)));
+        diff = money(newFinal - Number(fresh.finalPrice || 0));
         const [n] = await Order.update(
           { isBillApproved: true, finalPrice: newFinal },
-          { where: { id: order.id, isBillApproved: { [Op.not]: true } }, transaction: t } // older rows may hold NULL
+          { where: { id: order.id, isBillApproved: { [Op.not]: true }, status: { [Op.notIn]: ['Cancelled', 'Delivered'] } }, transaction: t } // older rows may hold NULL
         );
         if (n === 0) throw new PricingError(409, 'ALREADY_APPROVED', 'Bill already approved.');
         if (order.paymentMethod === 'Wallet' && diff > 0) {
@@ -1675,7 +1785,7 @@ const approveBill = async (req, res) => {
     const msg = order.paymentMethod === 'Wallet'
       ? (diff > 0 ? `Bill approved. ₹${diff} was taken from your Wallet.` : diff < 0 ? `Bill approved. ₹${-diff} was returned to your Wallet.` : 'Bill approved.')
       : `Bill approved. Pay ₹${newFinal} in cash when your order arrives.`;
-    res.json({ message: msg, order, amountPayable: newFinal });
+    res.json({ message: msg, order: withoutPin(order), amountPayable: newFinal });
   } catch (error) {
     console.error('[APPROVE_BILL_ERROR]', error);
     res.status(500).json({ message: 'Could not approve the bill right now. Please try again.' });

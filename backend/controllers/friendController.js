@@ -70,6 +70,23 @@ const sendPushToUser = async (userId, title, body, data = {}) => {
 };
 
 // 1. Scan/Search contacts
+const CONTACT_SYNC_MAX = 500;
+const CONTACT_SYNC_DAILY = 3000;
+const contactBudget = new Map(); // userId -> { day, used }
+const takeContactBudget = (userId, n) => {
+  const day = new Date().toISOString().slice(0, 10);
+  const key = String(userId);
+  const cur = contactBudget.get(key);
+  const rec = cur && cur.day === day ? cur : { day, used: 0 };
+  if (rec.used + n > CONTACT_SYNC_DAILY) return false;
+  rec.used += n;
+  contactBudget.set(key, rec);
+  if (contactBudget.size > 50000) {
+    for (const [k, v] of contactBudget) if (v.day !== day) contactBudget.delete(k);
+  }
+  return true;
+};
+
 exports.searchContacts = async (req, res) => {
   try {
     const { contacts, query } = req.body;
@@ -107,15 +124,24 @@ exports.searchContacts = async (req, res) => {
       });
     } else if (Array.isArray(contacts)) {
       // Normalize phone numbers
-      const cleanNumbers = contacts.map(num => normalizePhone(num)).filter(Boolean);
+      // Bounded: at most CONTACT_SYNC_MAX numbers per call and CONTACT_SYNC_DAILY per account per
+      // day, so one account cannot map the whole number range to Zenvy identities.
+      if (contacts.length > CONTACT_SYNC_MAX) {
+        return res.status(400).json({ code: 'TOO_MANY_CONTACTS', message: `Send at most ${CONTACT_SYNC_MAX} contacts at a time.` });
+      }
+      const cleanNumbers = [...new Set(contacts.filter((n) => typeof n === 'string' || typeof n === 'number').map(num => normalizePhone(String(num))).filter(Boolean))];
       if (cleanNumbers.length === 0) {
         return res.json([]);
       }
+      if (!takeContactBudget(req.user.id, cleanNumbers.length)) {
+        return res.status(429).json({ code: 'CONTACT_SYNC_LIMIT', message: 'Contact sync limit reached for today. Try again tomorrow.' });
+      }
 
-      // Query matching users
+      // Query matching users (students only: rider / admin / staff accounts are never discoverable)
       matchedUsers = await User.findAll({
         where: {
           phone: { [Op.in]: cleanNumbers },
+          role: 'student',
           id: { [Op.ne]: req.user.id } // Exclude self
         },
         attributes: ['id', 'name', 'phone', 'profileImage', 'friendCode']
@@ -125,16 +151,24 @@ exports.searchContacts = async (req, res) => {
     }
 
     // Check friendship status for each matched user
+    // One batched friendship lookup instead of one query per match.
     const results = [];
+    const matchedIds = matchedUsers.map((u) => u.id);
+    const friendships = matchedIds.length ? await Friendship.findAll({
+      where: {
+        [Op.or]: [
+          { requesterId: req.user.id, recipientId: { [Op.in]: matchedIds } },
+          { requesterId: { [Op.in]: matchedIds }, recipientId: req.user.id }
+        ]
+      }
+    }) : [];
+    const friendshipByPeer = new Map();
+    for (const f of friendships) {
+      const peer = String(f.requesterId) === String(req.user.id) ? f.recipientId : f.requesterId;
+      if (!friendshipByPeer.has(String(peer))) friendshipByPeer.set(String(peer), f);
+    }
     for (const matchedUser of matchedUsers) {
-      const friendship = await Friendship.findOne({
-        where: {
-          [Op.or]: [
-            { requesterId: req.user.id, recipientId: matchedUser.id },
-            { requesterId: matchedUser.id, recipientId: req.user.id }
-          ]
-        }
-      });
+      const friendship = friendshipByPeer.get(String(matchedUser.id)) || null;
 
       // Full number only for accepted friends, synced contacts (the caller already has it)
       // or an exact-number search; everyone else sees the last 4 digits.
@@ -944,6 +978,11 @@ exports.getBlockedUsers = async (req, res) => {
 // 10. Send Orbit Nudge
 const NUDGE_DAILY_LIMIT = 3;
 const nudgeLog = new Map(); // "<friendshipId>:<senderId>" -> [timestamps]
+// Sweep keys whose timestamps are all older than a day (the map must not grow forever).
+setInterval(() => {
+  const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+  for (const [k, list] of nudgeLog) if (!list.length || list[list.length - 1] <= dayAgo) nudgeLog.delete(k);
+}, 60 * 60 * 1000).unref?.();
 exports.sendFriendNudge = async (req, res) => {
   try {
     const { friendshipId } = req.body;

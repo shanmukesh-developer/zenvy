@@ -47,6 +47,8 @@ const initDeliveryPartnerModel = (sequelize) => {
     isFcmActive: { type: DataTypes.BOOLEAN, defaultValue: false },
     isSosActive: { type: DataTypes.BOOLEAN, defaultValue: false },
     isApproved: { type: DataTypes.BOOLEAN, defaultValue: false },
+    // Bumped on every password change: sessions signed with an older `tv` are revoked.
+    tokenVersion: { type: DataTypes.INTEGER, allowNull: true, defaultValue: 0 },
     loginStreak: { type: DataTypes.INTEGER, defaultValue: 0 },
     lastLoginDate: { type: DataTypes.DATEONLY, defaultValue: null }
   }, { 
@@ -64,6 +66,11 @@ const initDeliveryPartnerModel = (sequelize) => {
   };
   
   DeliveryPartner.beforeCreate(hashPassword);
+  DeliveryPartner.beforeUpdate((partner) => {
+    if (partner.changed('password') && partner.previous('password')) {
+      partner.tokenVersion = (Number(partner.tokenVersion) || 0) + 1;
+    }
+  });
   DeliveryPartner.beforeUpdate(hashPassword);
   DeliveryPartner.beforeBulkCreate(async (partners) => {
     for (const partner of partners) {

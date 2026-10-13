@@ -10,17 +10,8 @@ const { getBirthdayWishModel } = require('../models/BirthdayWish');
 const { protect, admin } = require('../middleware/authMiddleware');
 const { sendPushToTopic, sendPushToTokens } = require('../utils/push');
 
-// Helper: Store photo directly in the database as base64 data URI.
-// Render's filesystem is ephemeral — files in /uploads/ are lost on restart.
-// Storing in the DB column (TEXT type) ensures persistence across deploys.
-function processPhoto(base64Payload) {
-  if (!base64Payload) return null;
-  // If it's already a data URI or regular URL, keep it as-is
-  if (base64Payload.startsWith('data:image') || base64Payload.startsWith('http')) {
-    return base64Payload;
-  }
-  return null;
-}
+// Photos: utils/imageStore (bytes in the CampusMedia table, short URL on the row). Render's
+// filesystem is ephemeral, so nothing is written to /uploads/.
 
 // ── IST date helpers (community-n17) ──
 const IST_OFFSET_MS = 330 * 60 * 1000;
@@ -140,8 +131,11 @@ router.post('/', protect, async (req, res) => {
       return res.status(400).json({ code: 'INVALID_DATE', message: 'Pick the birthday date from today up to 60 days ahead.' });
     }
 
-    // Store photo as base64 data URI directly in database (survives server restarts)
-    const candidatePhotoUrl = processPhoto(candidatePhoto);
+    // The photo bytes go to the media table (sniffed, max 5 MB); the row keeps the short URL.
+    const { storeImageRef, sendImageError } = require('../utils/imageStore');
+    const photo = await storeImageRef(candidatePhoto || null, { req, ownerId: req.user.id, purpose: 'birthday' });
+    if (!photo.ok) return sendImageError(res, photo);
+    const candidatePhotoUrl = photo.value;
 
     // Create pending celebration
     const celebration = await BirthdayCelebration.create({

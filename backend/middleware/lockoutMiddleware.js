@@ -28,6 +28,27 @@ const lockoutKey = (req) => {
   return `${scope}|id:${text.replace(/\s+/g, ' ')}`;
 };
 
+// Account-level lock, keyed by the resolved account id (not by whatever body field the client
+// used). Controllers that accept several identifier fields (store login: phone, partnerPhone,
+// id, email, name, identifier) call these after resolving the account, so switching fields can
+// never reset the count.
+const MAX_FAILS = 5;
+const isAccountLocked = (key) => {
+  const record = failedLogins.get(key);
+  if (!record || record.count < MAX_FAILS) return false;
+  if (Date.now() < record.lockTime) return true;
+  failedLogins.delete(key);
+  return false;
+};
+const recordAccountFailure = (key) => {
+  const current = failedLogins.get(key) || { count: 0, lockTime: 0 };
+  current.count += 1;
+  current.lastAt = Date.now();
+  if (current.count >= MAX_FAILS) current.lockTime = Date.now() + LOCK_WINDOW_MS;
+  failedLogins.set(key, current);
+};
+const clearAccountFailures = (key) => failedLogins.delete(key);
+
 const accountLockout = (req, res, next) => {
   const key = lockoutKey(req);
   const record = failedLogins.get(key);
@@ -63,4 +84,4 @@ const accountLockout = (req, res, next) => {
   next();
 };
 
-module.exports = { accountLockout };
+module.exports = { accountLockout, isAccountLocked, recordAccountFailure, clearAccountFailures };

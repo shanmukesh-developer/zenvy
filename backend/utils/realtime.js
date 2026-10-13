@@ -165,8 +165,19 @@ const deliveryRequest = (orderId) => {
 };
 const deliveryRequestGone = (orderId) => emitToRiders(DELIVERY_REQUEST_GONE_EVENT, orderId);
 
+// A rider who released (or lost) an order must stop receiving its room traffic: live status,
+// order chat and the next rider's GPS. Every socket of that rider leaves the order room.
+const leaveOrderRoom = (riderId, orderId) => {
+  if (!ioRef || !riderId || !orderId) return;
+  try {
+    ioRef.in(`rider_${riderId}`).socketsLeave(String(orderId));
+  } catch (err) {
+    console.warn('[REALTIME_LEAVE_ROOM_WARN]', err.message);
+  }
+};
+
 module.exports = {
   init, publish, notifyAdmin, PUBLIC_EVENT, ADMIN_EVENT, ADMIN_ROOM,
-  setRiderOnline, deliveryRequest, deliveryRequestGone,
+  setRiderOnline, deliveryRequest, deliveryRequestGone, leaveOrderRoom,
   RIDERS_ONLINE_ROOM, DELIVERY_REQUEST_EVENT, DELIVERY_REQUEST_GONE_EVENT, CLAIMABLE_STATUSES,
 };

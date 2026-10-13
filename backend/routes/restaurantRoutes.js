@@ -5,9 +5,10 @@ const rateLimit = require('express-rate-limit');
 const router = express.Router();
 
 // ── Strict Auth Shield (Scaled for 500+ campus users on shared Wi-Fi) ──────────────────────
+// Store logins come from a few hundred stores, not students on shared Wi-Fi: keep this tight.
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 500, // 500+ students share same campus Wi-Fi IP → must allow bulk logins
+  max: 30,
   message: { message: 'Too many authentication attempts, please try again after 15 minutes.' }
 });
 

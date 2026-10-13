@@ -308,6 +308,8 @@ function LoginTab({ store, onChanged }: { store: Store; onChanged: (s: Store) =>
   const strength = passwordStrength(pw);
   useEffect(() => { setPhone(savedPhone); }, [savedPhone]);
   const phoneDirty = tenDigits(phone) !== savedPhone;
+  // WhatsApp link text never carries the password: a wa.me URL lands in browser history and link logs.
+  const waText = `${app} app login\nStore: ${store.name}${signInPhone ? `\nPhone: ${signInPhone}` : ''}\nStore ID: ${id}\nOpen the ${app} app and sign in with ${signInPhone ? 'your phone number' : 'the Store ID'}. Your password follows in a separate message.`;
   const loginText = (password: string) => `${app} app login\nStore: ${store.name}${signInPhone ? `\nPhone: ${signInPhone}` : ''}\nStore ID: ${id}\nPassword: ${password}\nOpen the ${app} app and sign in with ${signInPhone ? 'your phone number' : 'the Store ID'} and the password.`;
 
   const savePhone = async () => {
@@ -404,7 +406,7 @@ function LoginTab({ store, onChanged }: { store: Store; onChanged: (s: Store) =>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <CopyButton text={loginText(shown)} label={`Copy message for the ${local ? 'stall' : 'partner'}`} variant="amber" size="md" />
-            {store.whatsappNumber && <a className="text-xs font-semibold text-emerald-300 hover:underline" target="_blank" rel="noreferrer" href={`https://wa.me/${store.whatsappNumber}?text=${encodeURIComponent(loginText(shown))}`}>Send on WhatsApp ↗</a>}
+            {store.whatsappNumber && <a className="text-xs font-semibold text-emerald-300 hover:underline" target="_blank" rel="noreferrer" href={`https://wa.me/${store.whatsappNumber}?text=${encodeURIComponent(waText)}`} title="Sends the login details without the password. Paste the password separately.">Send login (no password) on WhatsApp ↗</a>}
             <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setShown(null)}>I have shared it</Button>
           </div>
         </section>

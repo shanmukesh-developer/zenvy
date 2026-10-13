@@ -1,7 +1,12 @@
 "use client";
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAdminAuth } from '@/utils/useAdminAuth';
 import { adminRequest as apiRequest } from '@/lib/api';
+import { useLiveSync } from '@/lib/useLiveSync';
+
+type EditableKey = 'maintenanceMode' | 'campusOpen' | 'banners' | 'categories';
+const EDITABLE_KEYS: EditableKey[] = ['maintenanceMode', 'campusOpen', 'banners', 'categories'];
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 interface Banner {
   imageUrl: string;
@@ -46,14 +51,21 @@ export default function CMSPage() {
   const [dirty, setDirty] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  /** The config as last loaded from the server: only fields that differ from it are saved. */
+  const baseline = useRef<AppConfig | null>(null);
+  /** Set when another tab / page (e.g. a store banner) changed the config while this one had edits. */
+  const [staleRemote, setStaleRemote] = useState(false);
 
   const fetchConfig = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const data = await apiRequest<{ config: AppConfig }>('/api/config');
-      setConfig(normalizeConfig(data?.config));
+      const next = normalizeConfig(data?.config);
+      baseline.current = next;
+      setConfig(next);
       setDirty(false);
+      setStaleRemote(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load the configuration.');
     } finally {
@@ -64,6 +76,15 @@ export default function CMSPage() {
   useEffect(() => {
     if (isAuthed) fetchConfig();
   }, [isAuthed, fetchConfig]);
+
+  // Config changed elsewhere (another admin tab, a store's Home banner added or removed): reload when
+  // there are no local edits, otherwise warn so a save cannot silently undo that change.
+  const dirtyRef = useRef(false);
+  dirtyRef.current = dirty;
+  useLiveSync(['config'], () => {
+    if (dirtyRef.current) setStaleRemote(true);
+    else fetchConfig();
+  }, { enabled: isAuthed });
 
   const edit = (next: AppConfig) => {
     setConfig(next);
@@ -77,16 +98,33 @@ export default function CMSPage() {
     setError(null);
     setNotice(null);
     try {
+      const base = baseline.current;
+      const changed = EDITABLE_KEYS.filter(k => !base || !same(config[k], base[k]));
+      if (!changed.length) {
+        setDirty(false);
+        setNotice('Nothing to save.');
+        return;
+      }
+      // Re-read the server copy: if a field this page is about to overwrite was changed elsewhere
+      // since it loaded, ask before replacing it (the server itself has no version check).
+      const latest = normalizeConfig((await apiRequest<{ config: AppConfig }>('/api/config'))?.config);
+      const conflicts = base ? changed.filter(k => !same(latest[k], base[k])) : [];
+      if (conflicts.length && !confirm(`Someone else changed ${conflicts.join(', ')} since this page loaded. Saving replaces their change with yours.
+
+Press Cancel, then Discard, to load their version first.`)) {
+        setStaleRemote(true);
+        return;
+      }
+      const body: Partial<Record<EditableKey, unknown>> = {};
+      changed.forEach(k => { body[k] = config[k]; });
       const data = await apiRequest<{ config: AppConfig }>('/api/config', {
         method: 'PUT',
-        body: JSON.stringify({
-          maintenanceMode: config.maintenanceMode,
-          campusOpen: config.campusOpen,
-          banners: config.banners,
-          categories: config.categories,
-        }),
+        body: JSON.stringify(body),
       });
-      setConfig(normalizeConfig(data?.config));
+      const saved = normalizeConfig(data?.config);
+      baseline.current = saved;
+      setConfig(saved);
+      setStaleRemote(false);
       setDirty(false);
       setNotice('Configuration saved.');
     } catch (err) {
@@ -163,6 +201,11 @@ export default function CMSPage() {
         but not shown to students. Ordering hours and the delivery fee are controlled elsewhere (Config page and backend env).
       </div>
 
+      {staleRemote && (
+        <div role="alert" className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm font-bold text-amber-300">
+          The app config was changed elsewhere while you were editing. Only the fields you edited will be saved, but use Discard to load the latest version if you are unsure.
+        </div>
+      )}
       {error && (
         <div className="mb-6 p-4 rounded-xl border border-red-500/30 bg-red-500/10 text-sm font-bold text-red-400">{error}</div>
       )}

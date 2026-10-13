@@ -17,6 +17,7 @@ try {
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { safeId } from '../utils/ids';
 
 const { width } = Dimensions.get('window');
 
@@ -214,7 +215,7 @@ export default function GlobalAnnouncement() {
         } else if (data.type === 'abandoned_cart') {
           go('/basket');
         } else if (ORDER_PUSH_TYPES.includes(data.type)) {
-          const orderIdStr = data.orderId || data.id;
+          const orderIdStr = safeId(data.orderId) || safeId(data.id);
           go(orderIdStr ? `/tracking/${orderIdStr}` : '/(tabs)/orders');
         } else if (CHAT_PUSH_TYPES.includes(data.type)) {
           go('/friends');

@@ -594,7 +594,10 @@ const confirmEmailOtp = async (req, res) => {
 const submitIdCard = async (req, res) => {
   try {
     const { campusId } = req.body || {};
-    const idCardImageUrl = cleanImageRef(req.body && req.body.idCardImageUrl);
+    // Private media only (owner + admins): inline base64 is moved to a private media row.
+    const { storeImageRef } = require('../../../utils/imageStore');
+    const idImg = await storeImageRef(req.body && req.body.idCardImageUrl, { req, ownerId: req.user.id, purpose: 'id_card', isPrivate: true, allowExternal: false });
+    const idCardImageUrl = idImg.ok ? idImg.value : null;
     if (!idCardImageUrl) {
       return res.status(400).json({ code: 'ID_IMAGE_REQUIRED', message: 'Add a clear photo of your student ID card.' });
     }

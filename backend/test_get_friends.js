@@ -1,9 +1,11 @@
 const jwt = require('jsonwebtoken');
 const http = require('http');
 
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
+if (!process.env.JWT_SECRET) { console.error('JWT_SECRET is not set'); process.exit(1); }
 const token = jwt.sign(
   { id: '41e5d9fb-4663-434c-9bcd-17456523b464', phone: '1276981697', role: 'customer' },
-  'super_secret_zenvy_token_2026',
+  process.env.JWT_SECRET,
   { expiresIn: '30d' }
 );
 

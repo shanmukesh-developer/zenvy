@@ -940,6 +940,8 @@ function SuccessPanel({ result, mode, onOpenStore, onClose }: { result: WizardRe
   const local = isLocalVendorType(result.store.vendorType);
   const app = local ? 'Zenvy Vendor' : 'Zenvy Restaurant';
   const phone = tenDigits(result.store.partnerPhone || result.store.phone || (local ? result.store.whatsappNumber : '') || '');
+  // WhatsApp link text never carries the password: a wa.me URL lands in browser history and link logs.
+  const waText = `${app} app login\nStore: ${result.store.name}${phone ? `\nPhone: ${phone}` : ''}\nStore ID: ${id}\nOpen the ${app} app and sign in with ${phone ? 'your phone number' : 'the Store ID'}. Your password follows in a separate message.`;
   const loginText = `${app} app login\nStore: ${result.store.name}${phone ? `\nPhone: ${phone}` : ''}\nStore ID: ${id}${result.password ? `\nPassword: ${result.password}` : ''}\nOpen the ${app} app and sign in with ${phone ? 'your phone number' : 'the Store ID'} and the password.`;
   return (
     <div className="flex-1 overflow-y-auto px-5 py-8 sm:px-10">
@@ -966,7 +968,7 @@ function SuccessPanel({ result, mode, onOpenStore, onClose }: { result: WizardRe
             </dl>
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/5 pt-3">
               <CopyButton text={loginText} label="Copy message for the partner" variant="amber" size="md" />
-              {result.store.whatsappNumber && <a className="text-xs font-semibold text-emerald-300 hover:underline" target="_blank" rel="noreferrer" href={`https://wa.me/${result.store.whatsappNumber}?text=${encodeURIComponent(loginText)}`}>Send on WhatsApp ↗</a>}
+              {result.store.whatsappNumber && <a className="text-xs font-semibold text-emerald-300 hover:underline" target="_blank" rel="noreferrer" href={`https://wa.me/${result.store.whatsappNumber}?text=${encodeURIComponent(waText)}`} title="Sends the login details without the password. Paste the password separately.">Send login (no password) on WhatsApp ↗</a>}
             </div>
             {result.password && (
               <label className="flex items-center gap-2 text-xs text-gray-300">

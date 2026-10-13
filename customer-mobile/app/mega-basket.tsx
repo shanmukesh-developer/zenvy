@@ -4,6 +4,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { COLORS, SHADOWS, RADIUS } from '../constants/theme';
 import { ENDPOINTS, API_URL } from '../constants/api';
 import { apiFetch } from '../utils/auth';
+import { newIdempotencyKey } from '../context/CartContext';
 import { connectSocket } from '../utils/socket';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -96,6 +97,9 @@ export default function MegaBasketScreen() {
   }, [user]);
   const [placing, setPlacing] = useState(false);
   const placingRef = useRef(false);
+  // Idempotency key for the shopping list, tied to its contents and kept across retries until the
+  // server answers, so a timed-out request that was processed is not created twice.
+  const placeKeyRef = useRef<{ sig: string; key: string } | null>(null);
 
   // Popular essentials (real catalogue items)
   const [quickItems, setQuickItems] = useState<QuickItem[]>([]);
@@ -278,16 +282,25 @@ export default function MegaBasketScreen() {
 
     placingRef.current = true;
     setPlacing(true);
+    const body = {
+      items: items.map(({ name, quantity, unit, priceEstimated }) => ({ name, quantity, unit, priceEstimated })),
+      deliveryAddress: deliveryAddress.trim(),
+      paymentMethod: 'COD',
+    };
+    const sig = JSON.stringify(body);
+    if (!placeKeyRef.current || placeKeyRef.current.sig !== sig) {
+      placeKeyRef.current = { sig, key: newIdempotencyKey() };
+    }
+    const idemKey = placeKeyRef.current.key;
     try {
       const res = await apiFetch(ENDPOINTS.megaBasketCreate, {
         method: 'POST',
-        body: JSON.stringify({
-          items: items.map(({ name, quantity, unit, priceEstimated }) => ({ name, quantity, unit, priceEstimated })),
-          deliveryAddress: deliveryAddress.trim(),
-          paymentMethod: 'COD',
-        })
+        headers: { 'Idempotency-Key': idemKey },
+        body: JSON.stringify({ ...body, idempotencyKey: idemKey })
       });
       const data = await res.json().catch(() => null);
+      // The server answered: this attempt is settled (409 = the same key is still being processed).
+      if (res.status !== 409 && placeKeyRef.current?.key === idemKey) placeKeyRef.current = null;
       if (!mountedRef.current) return;
 
       if (res.ok && data && data.id) {
@@ -300,7 +313,11 @@ export default function MegaBasketScreen() {
         Alert.alert('Not placed yet', (res.status < 500 && data && typeof data.message === 'string' && data.message) || 'We could not place your basket. Please try again.');
       }
     } catch {
-      Alert.alert('Connection problem', "Can't reach Zenvy right now. Check your internet and try again.");
+      if (!mountedRef.current) return;
+      // The list may have reached the server before the connection dropped: reload My lists and
+      // ask the user to check before retrying (a retry reuses the same key).
+      Alert.alert('Couldn’t confirm your list', "We couldn't confirm whether your shopping list was sent. Check My lists before trying again.");
+      fetchBaskets({ silent: true });
     } finally {
       placingRef.current = false;
       if (mountedRef.current) setPlacing(false);

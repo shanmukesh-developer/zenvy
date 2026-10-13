@@ -1,6 +1,7 @@
 // Logged-in store + token. Restores the saved session on launch; any 401 logs out with a message.
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { configureHttp } from '../lib/http';
+import { isStallAccount } from '../lib/api';
 import { clearSession, loadSession, pickProfile, saveProfile, saveSession } from '../lib/storage';
 import { unregisterStorePush } from '../lib/push';
 import { stopKitchenService } from '../voice/kitchenService';
@@ -57,6 +58,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     loadSession()
       .then(({ token: t, restaurant: r }) => {
         if (!alive) return;
+        if (t && isStallAccount(r)) {
+          // A stall session saved by an older build: its orders cannot be completed in this app.
+          clearSession();
+          setNotice('This is a stall account. Please log in with the Zenvy Vendor app.');
+          return;
+        }
         tokenRef.current = t;
         setToken(t);
         setRestaurant(r);

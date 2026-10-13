@@ -1,11 +1,54 @@
 // Session storage for the rider token, cached profile and small offline caches.
-// NOTE (open item): expo-secure-store is not installed, so the token stays in AsyncStorage under the
-// existing key. Swapping to SecureStore later only needs loadToken/saveToken/clearToken changed here.
+// The bearer token lives in expo-secure-store (Android Keystore), not AsyncStorage, so it is not copied
+// into backups. A token left in AsyncStorage by an older build is moved over on first read.
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import { KEYS } from '../config';
 import type { RiderProfile } from '../types';
 
 const CACHE_PREFIX = KEYS.cachePrefix;
+/** SecureStore keys allow only [A-Za-z0-9._-]. */
+const SECURE_TOKEN_KEY = 'zenvy_rider_token';
+
+async function secureGet(): Promise<string | null> {
+  try {
+    return await SecureStore.getItemAsync(SECURE_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** true when the token is now in SecureStore. */
+async function secureSet(token: string): Promise<boolean> {
+  try {
+    await SecureStore.setItemAsync(SECURE_TOKEN_KEY, token);
+    return true;
+  } catch {
+    return false; // no SecureStore (web) or keystore error
+  }
+}
+
+async function secureDelete(): Promise<void> {
+  try {
+    await SecureStore.deleteItemAsync(SECURE_TOKEN_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+async function loadToken(): Promise<string | null> {
+  const secure = await secureGet();
+  if (secure) return secure;
+  const legacy = await safeGet(KEYS.token);
+  if (legacy && (await secureSet(legacy))) {
+    try {
+      await AsyncStorage.removeItem(KEYS.token);
+    } catch {
+      // ignore
+    }
+  }
+  return legacy;
+}
 
 async function safeGet(key: string): Promise<string | null> {
   try {
@@ -24,7 +67,7 @@ async function safeSet(key: string, value: string): Promise<void> {
 }
 
 export async function loadSession(): Promise<{ token: string | null; profile: RiderProfile | null }> {
-  const [token, rawProfile] = await Promise.all([safeGet(KEYS.token), safeGet(KEYS.profile)]);
+  const [token, rawProfile] = await Promise.all([loadToken(), safeGet(KEYS.profile)]);
   let profile: RiderProfile | null = null;
   if (rawProfile) {
     try {
@@ -39,7 +82,15 @@ export async function loadSession(): Promise<{ token: string | null; profile: Ri
 }
 
 export async function saveToken(token: string): Promise<void> {
-  await safeSet(KEYS.token, token);
+  if (await secureSet(token)) {
+    try {
+      await AsyncStorage.removeItem(KEYS.token);
+    } catch {
+      // ignore
+    }
+  } else {
+    await safeSet(KEYS.token, token); // web / keystore failure: keep the session working
+  }
 }
 
 export async function saveProfile(profile: RiderProfile): Promise<void> {
@@ -50,10 +101,12 @@ export async function clearSession(): Promise<void> {
   try {
     const keys = await AsyncStorage.getAllKeys();
     const ours = keys.filter((k) => k.startsWith(CACHE_PREFIX));
-    await AsyncStorage.removeMany([KEYS.token, KEYS.profile, ...ours]);
+    // Also drop this phone's skipped-orders list so the next rider who logs in sees the full pool.
+    await AsyncStorage.removeMany([KEYS.token, KEYS.profile, KEYS.dismissed, ...ours]);
   } catch {
     // ignore
   }
+  await secureDelete();
 }
 
 /** Last good server result, shown when offline with a "Last updated" time. */

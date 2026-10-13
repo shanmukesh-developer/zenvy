@@ -131,8 +131,22 @@ export function onPushTokenChange(riderId: string): () => void {
   return () => sub.remove();
 }
 
+/**
+ * Logout: forget the local marker AND invalidate this phone's FCM token. The server still holds the old
+ * token (there is no rider token-removal route yet), but once FCM deletes it every push to it fails, so a
+ * logged-out phone stops getting this rider's order / tip / cancellation pushes. The next login asks FCM
+ * for a fresh token and registers that one.
+ */
 export async function forgetPushRegistration(): Promise<void> {
   await setItem(REGISTERED_KEY, '');
+  try {
+    await Promise.race([
+      Notifications.unregisterForNotificationsAsync(),
+      new Promise((resolve) => setTimeout(resolve, 4000)),
+    ]);
+  } catch {
+    // best effort: no Firebase on this build / no network
+  }
 }
 
 export function onPushReceived(cb: (data: Record<string, any>) => void): () => void {

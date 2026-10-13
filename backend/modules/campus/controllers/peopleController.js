@@ -246,8 +246,12 @@ const joinOpenGroup = async (req, res) => {
     const setting = await Setting.findByPk(id);
     if (!setting || !setting.discoverable) return res.status(403).json({ message: 'This group needs an invite code.' });
     if (setting.campusId) {
-      const mine = await getCampusProfileModel().findOne({ where: { userId: req.user.id }, attributes: ['campusId'] });
+      // campusId is self-set until verification, so a campus-only club needs a verified profile.
+      const mine = await getCampusProfileModel().findOne({ where: { userId: req.user.id }, attributes: ['campusId', 'verificationStatus'] });
       if (!mine || mine.campusId !== setting.campusId) return res.status(403).json({ message: 'This group is only for its own campus.' });
+      if (mine.verificationStatus !== 'verified') {
+        return res.status(403).json({ code: 'VERIFY_CAMPUS', message: 'Verify your campus profile to join this club.' });
+      }
     }
     const Conversation = getConversationModel();
     const { getSequelize } = require('../../../config/db');

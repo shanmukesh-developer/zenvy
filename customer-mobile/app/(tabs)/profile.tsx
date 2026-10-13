@@ -27,6 +27,7 @@ import { useDietary, DietPrefs } from '../../context/DietaryContext';
 import AmbientBackground from '../../components/AmbientBackground';
 import { StaggeredSection } from '../../components/AnimatedSection';
 import { apiFetch } from '../../utils/auth';
+import { newIdempotencyKey } from '../../context/CartContext';
 import { API_URL, ENDPOINTS } from '../../constants/api';
 import { usePhoneOtp, PhoneProof } from '../../utils/phoneOtp';
 let Notifications: any = null;
@@ -162,6 +163,9 @@ export default function ProfileScreen() {
   const [pushOn, setPushOn] = useState(false);
   const [sendingGift, setSendingGift] = useState(false);
   const giftRef = useRef(false);
+  // One Idempotency-Key per gift (recipient + amount), kept across retries until the server answers,
+  // so a timed-out request that did debit the wallet is not charged again on retry.
+  const giftKeyRef = useRef<{ sig: string; key: string } | null>(null);
 
   const initials = (user?.name || 'ZU').trim().substring(0, 2).toUpperCase() || 'ZU';
   const completedOrders = Number(user?.completedOrders) || 0;
@@ -492,12 +496,20 @@ export default function ProfileScreen() {
     if (giftRef.current) return;
     giftRef.current = true;
     setSendingGift(true);
+    const sig = `${phone}:${amt}`;
+    if (!giftKeyRef.current || giftKeyRef.current.sig !== sig) {
+      giftKeyRef.current = { sig, key: newIdempotencyKey() };
+    }
+    const idemKey = giftKeyRef.current.key;
     try {
       const res = await apiFetch(`${API_URL}/api/features/gift`, {
         method: 'POST',
-        body: JSON.stringify({ recipientPhone: phone, amount: amt }),
+        headers: { 'Idempotency-Key': idemKey },
+        body: JSON.stringify({ recipientPhone: phone, amount: amt, idempotencyKey: idemKey }),
       });
       const data = await res.json().catch(() => ({} as any));
+      // The server answered: this attempt is settled (a 409 means the same key is still in flight).
+      if (res.status !== 409 && giftKeyRef.current?.key === idemKey) giftKeyRef.current = null;
       if (!mountedRef.current) return;
       if (res.ok) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -508,7 +520,14 @@ export default function ProfileScreen() {
         Alert.alert('Couldn’t send the gift', data.message || 'Please try again.');
       }
     } catch {
-      if (mountedRef.current) Alert.alert('No connection', 'Your gift was not sent. Check your internet and try again.');
+      if (mountedRef.current) {
+        // The request may have reached the server before the connection dropped; never claim it failed.
+        Alert.alert(
+          'Couldn’t confirm the gift',
+          'We couldn’t confirm whether your gift went through. Check your Wallet balance before trying again.'
+        );
+        fetchData('focus');
+      }
     } finally {
       giftRef.current = false;
       if (mountedRef.current) setSendingGift(false);

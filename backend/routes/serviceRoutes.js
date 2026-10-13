@@ -85,6 +85,31 @@ router.param('id', (req, res, next, id) => {
 
 const BOOKING_STATUSES = ['REQUESTED', 'DIAGNOSED_QUOTED', 'CONFIRMED', 'IN_PROGRESS', 'READY_FOR_DELIVERY', 'COMPLETED', 'CANCELLED'];
 
+// Allowed partner/admin moves. COMPLETED and CANCELLED are final. Going back to
+// DIAGNOSED_QUOTED means "the student must approve a new price".
+const BOOKING_TRANSITIONS = {
+  REQUESTED: ['DIAGNOSED_QUOTED', 'CONFIRMED', 'IN_PROGRESS', 'CANCELLED'],
+  DIAGNOSED_QUOTED: ['DIAGNOSED_QUOTED', 'CANCELLED'],
+  CONFIRMED: ['DIAGNOSED_QUOTED', 'IN_PROGRESS', 'READY_FOR_DELIVERY', 'COMPLETED', 'CANCELLED'],
+  IN_PROGRESS: ['DIAGNOSED_QUOTED', 'READY_FOR_DELIVERY', 'COMPLETED', 'CANCELLED'],
+  READY_FOR_DELIVERY: ['COMPLETED', 'CANCELLED'],
+  COMPLETED: [],
+  CANCELLED: [],
+};
+const PRICE_LOCKED_AFTER_APPROVAL = ['CONFIRMED', 'IN_PROGRESS', 'READY_FOR_DELIVERY'];
+
+/**
+ * Writes `changes` only if the booking is still in the status we read (and matches
+ * `extraWhere`), so a cancel, a quote answer and a partner update can never overwrite each
+ * other. Returns the fresh row, or null when someone else changed the booking first.
+ */
+const saveIfUnchanged = async (ServiceBooking, booking, changes, extraWhere = {}) => {
+  const [n] = await ServiceBooking.update(changes, { where: { id: booking.id, status: booking.status, ...extraWhere } });
+  if (!n) return null;
+  return ServiceBooking.findByPk(booking.id);
+};
+const staleBooking = (res) => res.status(409).json({ success: false, message: 'This booking was just updated. Please refresh and try again.' });
+
 // Create a new Service Booking (Laptop Repair, Printout, Laundry, Auto Ride, Room Shift)
 router.post('/book', protect, async (req, res) => {
   try {
@@ -162,13 +187,22 @@ router.post('/book', protect, async (req, res) => {
 
     const finalAmt = priced.amount || 0;
 
+    // Photos go to the media table; the booking keeps only the short URL.
+    let cleanAttachment = null;
+    if (attachmentUrl) {
+      const { storeImageRef } = require('../utils/imageStore');
+      const img = await storeImageRef(attachmentUrl, { req, ownerId: req.user.id, purpose: 'service' });
+      if (!img.ok) return res.status(img.status || 400).json({ success: false, code: img.code, message: img.message });
+      cleanAttachment = img.value;
+    }
+
     const booking = await ServiceBooking.create({
       userId: req.user.id,
       serviceType,
       title: cleanText(title, 200) || title,
       description: typeof description === 'string' ? description.replace(/[<>]/g, '') : description,
       specifications: specs,
-      attachmentUrl: typeof attachmentUrl === 'string' && attachmentUrl ? attachmentUrl : null,
+      attachmentUrl: cleanAttachment,
       status: 'REQUESTED',
       quotedAmount: finalAmt,
       finalAmount: finalAmt,
@@ -216,9 +250,11 @@ router.get('/my-bookings', protect, async (req, res) => {
       return res.status(500).json({ success: false, message: 'ServiceBooking model not initialized' });
     }
 
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 100));
     const bookings = await ServiceBooking.findAll({
       where: { userId: req.user.id },
       order: [['createdAt', 'DESC']],
+      limit,
     });
 
     return res.json({ success: true, count: bookings.length, bookings });
@@ -252,7 +288,7 @@ router.get('/:id', protect, async (req, res) => {
 router.post('/:id/confirm-quote', protect, async (req, res) => {
   try {
     const ServiceBooking = getServiceBookingModel();
-    const booking = await ServiceBooking.findByPk(req.params.id);
+    let booking = await ServiceBooking.findByPk(req.params.id);
 
     if (!booking) {
       return res.status(404).json({ success: false, message: 'Booking not found' });
@@ -272,17 +308,24 @@ router.post('/:id/confirm-quote', protect, async (req, res) => {
     }
 
     const { acceptQuote } = req.body || {};
+    // The student approves the price they saw: optional body.quotedAmount must match, and the
+    // write below also requires the stored quote to be the one we just read.
+    const seenQuote = (req.body || {}).quotedAmount;
+    if (acceptQuote && seenQuote !== undefined && seenQuote !== null && Math.abs(Number(seenQuote) - Number(booking.quotedAmount)) > 0.009) {
+      return res.status(409).json({ success: false, code: 'QUOTE_CHANGED', message: 'The quote changed. Please check the new amount and approve again.', booking });
+    }
     const history = Array.isArray(booking.trackingHistory) ? [...booking.trackingHistory] : [];
+    let nextStatus;
 
     if (acceptQuote) {
-      booking.status = 'CONFIRMED';
+      nextStatus = 'CONFIRMED';
       history.push({
         stage: 'CONFIRMED',
         timestamp: new Date().toISOString(),
         note: `Student accepted estimated quotation of ₹${booking.quotedAmount}. Repair/Service scheduled.`,
       });
     } else {
-      booking.status = 'CANCELLED';
+      nextStatus = 'CANCELLED';
       history.push({
         stage: 'CANCELLED',
         timestamp: new Date().toISOString(),
@@ -290,8 +333,9 @@ router.post('/:id/confirm-quote', protect, async (req, res) => {
       });
     }
 
-    booking.trackingHistory = history;
-    await booking.save();
+    const saved = await saveIfUnchanged(ServiceBooking, booking, { status: nextStatus, trackingHistory: history }, { quotedAmount: booking.quotedAmount });
+    if (!saved) return staleBooking(res);
+    booking = saved;
 
     if (req.app.get('io')) {
       req.app.get('io').to('admin-room').emit(acceptQuote ? 'serviceQuoteAccepted' : 'serviceCancelled', { id: booking.id, serviceType: booking.serviceType });
@@ -309,7 +353,7 @@ router.post('/:id/confirm-quote', protect, async (req, res) => {
 router.patch('/:id/status', protect, async (req, res) => {
   try {
     const ServiceBooking = getServiceBookingModel();
-    const booking = await ServiceBooking.findByPk(req.params.id);
+    let booking = await ServiceBooking.findByPk(req.params.id);
 
     if (!booking) {
       return res.status(404).json({ success: false, message: 'Booking not found' });
@@ -333,27 +377,55 @@ router.patch('/:id/status', protect, async (req, res) => {
       return res.status(400).json({ success: false, message: `Status must be one of: ${BOOKING_STATUSES.join(', ')}` });
     }
 
-    if (status) booking.status = status;
+    const current = booking.status;
+    if (['COMPLETED', 'CANCELLED'].includes(current)) {
+      return res.status(400).json({ success: false, code: 'BOOKING_CLOSED', message: `This booking is already ${current.toLowerCase()} and cannot be changed.` });
+    }
+    let nextStatus = status && status !== current ? status : current;
+    if (nextStatus !== current && !(BOOKING_TRANSITIONS[current] || []).includes(nextStatus)) {
+      return res.status(400).json({ success: false, code: 'BAD_TRANSITION', message: `A booking that is ${current} cannot move to ${nextStatus}.` });
+    }
+
+    const changes = {};
     if (quotedAmount !== undefined && quotedAmount !== null) {
-      booking.quotedAmount = Number(quotedAmount);
+      changes.quotedAmount = Number(quotedAmount);
       // A new quote replaces the booking-time estimate, unless a final amount is set in the same update.
-      if (finalAmount === undefined || finalAmount === null) booking.finalAmount = Number(quotedAmount);
+      if (finalAmount === undefined || finalAmount === null) changes.finalAmount = Number(quotedAmount);
     }
-    if (finalAmount !== undefined && finalAmount !== null) booking.finalAmount = Number(finalAmount);
-    if (driverDetails) booking.driverDetails = driverDetails;
-    if (assignedPartnerId && isAdmin) booking.assignedPartnerId = assignedPartnerId;
+    if (finalAmount !== undefined && finalAmount !== null) changes.finalAmount = Number(finalAmount);
+    // After the student approved a price, any increase needs their approval again.
+    const raises = (changes.quotedAmount !== undefined && changes.quotedAmount > Number(booking.quotedAmount || 0) + 0.009)
+      || (changes.finalAmount !== undefined && changes.finalAmount > Number(booking.finalAmount || 0) + 0.009);
+    let needsReapproval = false;
+    if (raises && PRICE_LOCKED_AFTER_APPROVAL.includes(current)) {
+      if (current === 'READY_FOR_DELIVERY') {
+        return res.status(400).json({ success: false, code: 'PRICE_LOCKED', message: 'The price cannot be raised after the job is ready. Contact Zenvy support.' });
+      }
+      nextStatus = 'DIAGNOSED_QUOTED';
+      needsReapproval = true;
+      if (changes.quotedAmount === undefined) changes.quotedAmount = changes.finalAmount;
+    }
+    if (nextStatus !== current) changes.status = nextStatus;
+    if (driverDetails && typeof driverDetails === 'object' && !Array.isArray(driverDetails)) changes.driverDetails = driverDetails;
+    if (assignedPartnerId && isAdmin) changes.assignedPartnerId = assignedPartnerId;
 
-    const history = Array.isArray(booking.trackingHistory) ? [...booking.trackingHistory] : [];
-    if (status || note) {
+    if (status || note || needsReapproval) {
+      const history = Array.isArray(booking.trackingHistory) ? [...booking.trackingHistory] : [];
       history.push({
-        stage: status || booking.status,
+        stage: nextStatus,
         timestamp: new Date().toISOString(),
-        note: note || `Status updated to ${status || booking.status}`,
+        note: needsReapproval
+          ? `New price Rs ${changes.quotedAmount} needs the student's approval.${note ? ` ${note}` : ''}`
+          : (note || `Status updated to ${nextStatus}`),
       });
-      booking.trackingHistory = history;
+      changes.trackingHistory = history;
     }
 
-    await booking.save();
+    if (Object.keys(changes).length) {
+      const saved = await saveIfUnchanged(ServiceBooking, booking, changes);
+      if (!saved) return staleBooking(res);
+      booking = saved;
+    }
 
     // Socket notification
     if (req.app.get('io')) {
@@ -378,7 +450,7 @@ router.patch('/:id/status', protect, async (req, res) => {
 router.post('/:id/cancel', protect, async (req, res) => {
   try {
     const ServiceBooking = getServiceBookingModel();
-    const booking = await ServiceBooking.findByPk(req.params.id);
+    let booking = await ServiceBooking.findByPk(req.params.id);
 
     if (!booking) {
       return res.status(404).json({ success: false, message: 'Booking not found' });
@@ -413,9 +485,9 @@ router.post('/:id/cancel', protect, async (req, res) => {
       note: (typeof (req.body || {}).reason === 'string' && req.body.reason.trim()) ? req.body.reason.replace(/[<>]/g, '').trim().slice(0, 250) : 'Cancelled by user',
     });
 
-    booking.status = 'CANCELLED';
-    booking.trackingHistory = history;
-    await booking.save();
+    const saved = await saveIfUnchanged(ServiceBooking, booking, { status: 'CANCELLED', trackingHistory: history });
+    if (!saved) return staleBooking(res);
+    booking = saved;
 
     // Notify partner/admin via socket
     if (req.app.get('io')) {

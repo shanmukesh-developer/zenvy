@@ -93,11 +93,20 @@ router.post('/', protect, async (req, res) => {
       }
     }
 
+    // Photo: sniffed and stored in the media table; the post keeps only the short URL.
+    let cleanImage = null;
+    if (imageUrl) {
+      const { storeImageRef, sendImageError } = require('../utils/imageStore');
+      const img = await storeImageRef(imageUrl, { req, ownerId: req.user.id, purpose: 'post' });
+      if (!img.ok) return sendImageError(res, img);
+      cleanImage = img.value;
+    }
+
     if (parentId) {
       const parent = await CommunityPost.findByPk(parentId);
       if (!parent) return res.status(404).json({ message: 'Parent post not found.' });
-      parent.replyCount = (parent.replyCount || 0) + 1;
-      await parent.save();
+      const { literal } = require('sequelize');
+      await CommunityPost.update({ replyCount: literal('COALESCE("replyCount", 0) + 1') }, { where: { id: parent.id } });
     }
 
     // Reviews don't expire; regular posts expire in 48h
@@ -110,9 +119,10 @@ router.post('/', protect, async (req, res) => {
     const newPost = await CommunityPost.create({
       userId: req.user.id,
       userName: author?.name || req.user.name || 'Zenvy member',
-      userAvatar: author?.profileImage || null,
+      // Inline base64 avatars are never copied into posts: the short avatar URL is used instead.
+      userAvatar: author ? require('../modules/campus/campusHelpers').avatarUrlFor(req, { id: req.user.id, profileImage: author.profileImage }) : null,
       content: typeof content === 'string' ? content.trim() : '',
-      imageUrl: imageUrl || null,
+      imageUrl: cleanImage,
       parentId: parentId || null,
       likes: 0,
       likedBy: [],

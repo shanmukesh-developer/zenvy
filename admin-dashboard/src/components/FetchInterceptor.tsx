@@ -52,7 +52,11 @@ export default function FetchInterceptor() {
 
       if (isBackend && url && !AUTH_PATHS.some((p) => url.pathname.startsWith(p))) {
         if (response.status === 401 && getToken()) {
-          clearSession('Your session has expired. Please sign in again.');
+          // SESSION_REVOKED: the password was changed (tokenVersion bumped), so every old login ends.
+          const body = await response.clone().json().catch(() => null) as { code?: string } | null;
+          clearSession(body?.code === 'SESSION_REVOKED'
+            ? 'You were signed out because the account password changed. Please sign in again.'
+            : 'Your session has expired. Please sign in again.');
         } else if (response.status === 403 && getAuthState().status === 'authed') {
           // Might be a per-action rule; only log out if the admin role itself is gone.
           verifySession();

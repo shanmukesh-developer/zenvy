@@ -1,4 +1,9 @@
 require('dotenv').config();
+const { isProduction } = require('../utils/env');
+if (isProduction() && process.env.ALLOW_TEST_ACCOUNTS !== 'true') {
+  console.error('Refusing to create test accounts with a published password in production.');
+  process.exit(1);
+}
 const { connectDB, getSequelize } = require('../config/db');
 
 async function run() {
