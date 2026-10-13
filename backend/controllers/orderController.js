@@ -12,6 +12,22 @@ const { getCampusServiceability } = require('../utils/storeHours');
 const { getHaversineDistance } = require('../utils/distance');
 const realtime = require('../utils/realtime');
 const { pushNearestRiders, riderPayout } = require('../utils/riderDispatch');
+
+// An order just entered the rider pool by a path other than restaurant-accept: push the nearest riders too.
+// Fire-and-forget; never throws.
+const pushPoolOrder = (order) => {
+  (async () => {
+    const restaurant = await getRestaurantModel().findByPk(order.restaurantId);
+    await pushNearestRiders({
+      restaurant,
+      orderId: order.id,
+      limit: 5,
+      title: '🛵 New Order Ready!',
+      body: `${restaurant?.name || 'Restaurant'} has a new order for pickup. Closest to you!`,
+      data: { distance: order.distance },
+    });
+  })().catch((err) => console.error('[POOL_PUSH_ERROR]', err.message));
+};
 const { sendServerError } = require('../utils/httpErrors');
 
 const normalizeItems = (items) => {
@@ -1178,7 +1194,7 @@ const updateOrderStatus = async (req, res) => {
     if (!order.deliveryPartnerId && !isVendorFulfilled(order)) {
       const wasClaimable = realtime.CLAIMABLE_STATUSES.includes(prevStatus);
       const isClaimable = realtime.CLAIMABLE_STATUSES.includes(order.status);
-      if (isClaimable && !wasClaimable) realtime.deliveryRequest(order.id);
+      if (isClaimable && !wasClaimable) { realtime.deliveryRequest(order.id); pushPoolOrder(order); }
       else if (!isClaimable && wasClaimable) realtime.deliveryRequestGone(order.id);
     }
 
@@ -1395,7 +1411,7 @@ const verifyUPIPayment = async (req, res) => {
     }
 
     if (!order.deliveryPartnerId) {
-      if (order.status === 'Accepted' && prevStatus === 'Pending') realtime.deliveryRequest(order.id);
+      if (order.status === 'Accepted' && prevStatus === 'Pending') { realtime.deliveryRequest(order.id); pushPoolOrder(order); }
       else if (order.status === 'Cancelled' && realtime.CLAIMABLE_STATUSES.includes(prevStatus)) realtime.deliveryRequestGone(order.id);
     }
 
@@ -1496,7 +1512,7 @@ const restaurantUpdateOrderStatus = async (req, res) => {
       const [n] = await Order.update({ status: 'Preparing' }, { where: { id: order.id, status: { [Op.in]: ['Pending', 'Accepted'] } } });
       if (n === 0) return res.status(400).json({ message: 'This order was just cancelled or updated. Please refresh.' });
       order.status = 'Preparing';
-      if (prevStatus === 'Pending' && !order.deliveryPartnerId) realtime.deliveryRequest(order.id);
+      if (prevStatus === 'Pending' && !order.deliveryPartnerId) { realtime.deliveryRequest(order.id); pushPoolOrder(order); }
       broadcastOrderStatus(req, order, { id: order.id, status: 'Preparing' });
       try {
         const customer = await getUserModel().findByPk(order.userId, { attributes: ['id', 'fcmTokens'] });
