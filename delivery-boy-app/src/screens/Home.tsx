@@ -304,7 +304,9 @@ function OfferCard({
           <Text style={[T.body, { color: C.muted, paddingBottom: 8 }]}>you earn</Text>
         </View>
         <View style={{ gap: S.xs }}>
-          <Text style={[T.label, { color: C.muted }]}>PICKUP{distance ? ` · ${distance} away` : ''}</Text>
+          <Text style={[T.label, { color: order.buyAtStore ? C.amber : C.muted }]}>
+            {order.buyAtStore ? 'BUY AT STORE' : 'PICKUP'}{distance ? ` · ${distance} away` : ''}
+          </Text>
           <Text style={[T.h2, { color: C.ink }]} numberOfLines={2}>
             {order.restaurantName ?? 'Store'}
           </Text>
@@ -357,7 +359,7 @@ function SmallOffer({
     <Card style={{ gap: S.sm }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
         <Text style={[T.h3, { color: C.ink, flex: 1 }]} numberOfLines={1}>
-          {order.restaurantName ?? 'Store'}
+          {order.buyAtStore ? '🛒 ' : ''}{order.restaurantName ?? 'Store'}
         </Text>
         <Text style={[T.h2, { color: C.greenDark }]}>{order.earning !== null ? `+${rupees(order.earning)}` : ''}</Text>
       </View>

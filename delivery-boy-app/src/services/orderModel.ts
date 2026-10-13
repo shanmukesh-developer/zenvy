@@ -183,6 +183,7 @@ export function normalizeOrder(raw: any): RiderOrder {
     deliverySlot: cleanText(raw?.deliverySlot),
     hasDeliveryPin: raw?.hasDeliveryPin !== false,
     pinLocked: raw?.pinLocked === true,
+    buyAtStore: raw?.buyAtStore === true,
   };
 }
 

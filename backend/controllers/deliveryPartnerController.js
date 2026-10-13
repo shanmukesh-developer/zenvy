@@ -128,6 +128,8 @@ const riderOrderPayload = (order, restaurant, customer, { revealCustomer }) => {
     status: order.status,
     createdAt: order.createdAt,
     deliverySlot: order.deliverySlot || null,
+    // Rider-purchase store (offline, or no partner login): the rider buys the items at the counter.
+    buyAtStore: !!restaurant && (!!restaurant.isOffline || (restaurant.password !== undefined && !restaurant.password)),
   };
 };
 
@@ -399,7 +401,7 @@ const getPendingOrders = async (req, res) => {
     const [users, restaurants] = await Promise.all([
       // Only what the pool card needs (never password hashes or base64 profile photos).
       User.findAll({ where: { id: userIds }, attributes: ['id', 'name', 'hostelBlock', 'roomNumber', 'address'] }),
-      Restaurant.findAll({ where: { id: restIds }, attributes: ['id', 'name', 'location', 'whatsappNumber', 'lat', 'lon'] })
+      Restaurant.findAll({ where: { id: restIds }, attributes: ['id', 'name', 'location', 'whatsappNumber', 'lat', 'lon', 'isOffline', 'password'] })
     ]);
 
     const userMap = Object.fromEntries(users.map(u => [u.id, u]));

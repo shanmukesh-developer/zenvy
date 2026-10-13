@@ -56,6 +56,8 @@ export interface RiderOrder {
   deliverySlot: string | null;
   hasDeliveryPin: boolean;
   pinLocked: boolean;
+  /** Store has no partner app: the rider buys the items at the counter. */
+  buyAtStore: boolean;
 }
 
 export interface RiderProfile {

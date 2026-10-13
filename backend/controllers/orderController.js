@@ -473,8 +473,8 @@ const createOrder = async (req, res) => {
         restaurant,
         orderId: createdOrder.id,
         limit: 20,
-        title: riderBuys ? '🛒 New pickup order!' : '🛵 New order ready!',
-        body: riderBuys ? `Pick up and deliver an order from ${restaurant.name}.` : `New order from ${restaurant.name} is ready for pickup!`,
+        title: riderBuys ? '🛒 Buy & deliver order!' : '🛵 New order ready!',
+        body: riderBuys ? `Go to ${restaurant.name}, purchase the items at the counter and deliver.` : `New order from ${restaurant.name} is ready for pickup!`,
       });
     } else {
       // Rider delivers: the kitchen gets the campus label, never the room address (same as the list).

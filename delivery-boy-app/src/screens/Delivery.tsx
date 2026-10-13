@@ -129,14 +129,18 @@ export function DeliveryScreen({ orderId, onClose }: { orderId: string; onClose:
     );
     primary = <Btn title="Reached store" icon="storefront-check-outline" onPress={() => r.advance(order)} />;
   } else if (step === 'AT_STORE') {
-    title = 'Pick up order';
+    title = order.buyAtStore ? 'Buy at store' : 'Pick up order';
     const allTicked = order.items.length === 0 || ticked.size >= order.items.length;
     const kitchen = atStoreKitchenLabel(order);
     body = (
       <>
         <View style={{ gap: 2 }}>
           <Text style={[T.h2, { color: C.ink }]}>{order.restaurantName ?? 'Store'}</Text>
-          <Text style={[T.body, { color: C.ink2 }]}>Tick every item before you leave.</Text>
+          <Text style={[T.body, { color: order.buyAtStore ? C.amber : C.ink2 }]}>
+            {order.buyAtStore
+              ? 'This store has no Zenvy app. Order and pay for these items at the counter, keep the bill, then tick each item.'
+              : 'Tick every item before you leave.'}
+          </Text>
         </View>
         {kitchen ? (
           <View style={styles.chips}>
