@@ -17,7 +17,10 @@ import { summarizeWeekly, weeklyFromStore } from '@/components/restaurants/helpe
 
 const FILTERS_KEY = 'zenvy.admin.storeFilters.v1';
 const DRAFT_KEY = 'zenvy.admin.storeWizard.v1';
-type StatusFilter = 'all' | StoreStatus;
+/** 'hidden' = every store customers cannot see (never-published drafts + switched-off stores). */
+type StatusFilter = 'all' | 'hidden' | StoreStatus;
+const STATUS_FILTERS: StatusFilter[] = ['all', 'hidden', 'live', 'closed', 'draft', 'inactive'];
+const isHidden = (s: Store) => !s.isActive;
 type SortKey = 'name' | 'newest' | 'orders' | 'sales' | 'rating' | 'items' | 'attention';
 const SORTS: { value: SortKey; label: string }[] = [
   { value: 'name', label: 'Name A–Z' },
@@ -65,7 +68,16 @@ function StoresScreen() {
   useEffect(() => {
     try {
       const raw = localStorage.getItem(FILTERS_KEY);
-      if (raw) setFilters({ ...DEFAULT_FILTERS, ...JSON.parse(raw), search: '' });
+      if (raw) {
+        const saved = JSON.parse(raw) || {};
+        setFilters({
+          ...DEFAULT_FILTERS,
+          type: typeof saved.type === 'string' ? saved.type : 'ALL',
+          campus: typeof saved.campus === 'string' ? saved.campus : 'ALL',
+          status: STATUS_FILTERS.includes(saved.status) ? saved.status : 'all',
+          sort: SORTS.some(o => o.value === saved.sort) ? saved.sort : 'name',
+        });
+      }
       setHasDraft(!!localStorage.getItem(DRAFT_KEY));
     } catch { /* storage unavailable */ }
     const params = new URLSearchParams(window.location.search);
@@ -143,7 +155,7 @@ function StoresScreen() {
       const type = (s.vendorType || 'RESTAURANT').toUpperCase();
       if (filters.type !== 'ALL' && type !== filters.type) return false;
       if (filters.campus !== 'ALL' && (s.campus || '').trim() !== filters.campus) return false;
-      if (filters.status !== 'all' && storeStatus(s) !== filters.status) return false;
+      if (filters.status === 'hidden' ? !isHidden(s) : filters.status !== 'all' && storeStatus(s) !== filters.status) return false;
       return !q || [s.name, s.location, s.campus, vendorLabel(type), ...(s.tags || [])].some(v => String(v || '').toLowerCase().includes(q));
     });
     const attention = (s: Store) => (storeStatus(s) === 'draft' ? 0 : !s.imageUrl || (s.itemCount ?? 0) === 0 || (!s.hasPassword && !s.isOffline) ? 1 : storeStatus(s) === 'inactive' ? 2 : 3);
@@ -173,11 +185,17 @@ function StoresScreen() {
   };
   const quickPatch = (store: Store, patch: Record<string, unknown>, text: string, undo?: Record<string, unknown>) =>
     withBusy(storeId(store), async () => {
+      const id = storeId(store);
+      // Optimistic: flip the row right away, roll back the patched fields if the server refuses.
+      const before: Record<string, unknown> = {};
+      for (const k of Object.keys(patch)) before[k] = (store as unknown as Record<string, unknown>)[k];
+      setStores(prev => prev.map(s => (storeId(s) === id ? ({ ...s, ...patch } as Store) : s)));
       try {
-        const saved = await patchStore(storeId(store), patch);
+        const saved = await patchStore(id, patch);
         merge(saved);
         toast.success(text, undo ? { label: 'Undo', onClick: () => quickPatch({ ...store, ...saved }, undo, 'Change undone.') } : undefined);
       } catch (e) {
+        setStores(prev => prev.map(s => (storeId(s) === id ? ({ ...s, ...before } as Store) : s)));
         toast.error(e instanceof Error ? e.message : 'Could not update the store.');
       }
     });
@@ -293,8 +311,10 @@ function StoresScreen() {
 
   if (!isAuthed) return <div className="p-10 text-center text-sm text-gray-400" role="status">Checking your admin session…</div>;
 
+  const hiddenCount = statusCounts.draft + statusCounts.inactive;
   const kpis: { key: StatusFilter; label: string; value: number; tone: string; help: string }[] = [
     { key: 'all', label: 'All stores', value: stores.length, tone: 'text-white', help: 'Every store, stall and service partner.' },
+    { key: 'hidden', label: 'Hidden / Inactive', value: hiddenCount, tone: 'text-red-300', help: 'Not visible to customers: drafts (never published, e.g. newly imported stores) plus stores that were switched off. Review them and switch them on.' },
     { key: 'live', label: 'Live now', value: statusCounts.live, tone: 'text-emerald-300', help: STATUS_META.live.help },
     { key: 'closed', label: 'Closed now', value: statusCounts.closed, tone: 'text-amber-300', help: STATUS_META.closed.help },
     { key: 'draft', label: 'Drafts', value: statusCounts.draft, tone: 'text-gray-300', help: STATUS_META.draft.help },
@@ -318,7 +338,7 @@ function StoresScreen() {
       </header>
 
       {/* KPIs */}
-      <section aria-label="Summary" className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
+      <section aria-label="Summary" className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
         {kpis.map(k => (
           <button
             key={k.key}
@@ -341,6 +361,14 @@ function StoresScreen() {
           <div className="mt-0.5 text-2xl font-black text-emerald-300">{stats.loading ? <Skeleton className="mt-1 h-6 w-16" /> : formatINR(stats.totals.todayRevenue)}</div>
         </div>
       </section>
+      {!loading && hiddenCount > 0 && filters.status !== 'hidden' && (
+        <Callout tone="amber">
+          <span className="flex flex-wrap items-center justify-between gap-3">
+            <span><b>{hiddenCount} store{hiddenCount === 1 ? ' is' : 's are'} hidden</b> from customers ({statusCounts.draft} never published, {statusCounts.inactive} switched off). Review and switch them on with the Live toggle.</span>
+            <button type="button" onClick={() => setFilters({ ...DEFAULT_FILTERS, status: 'hidden', sort: filters.sort })} className="font-bold underline">Show hidden stores</button>
+          </span>
+        </Callout>
+      )}
       {stats.error && <Callout tone="amber">Order numbers are unavailable right now: {stats.error}</Callout>}
 
       {/* Toolbar */}

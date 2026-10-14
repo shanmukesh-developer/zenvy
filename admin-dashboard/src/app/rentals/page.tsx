@@ -63,6 +63,7 @@ export default function RentalsAdminPage() {
   const { isAuthed } = useAdminAuth();
   const [tab, setTab] = useState<Tab>('listings');
   const [summary, setSummary] = useState<Summary | null>(null);
+  const [summaryError, setSummaryError] = useState('');
   const [tick, setTick] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -81,7 +82,11 @@ export default function RentalsAdminPage() {
 
   useEffect(() => {
     if (!isAuthed) return;
-    adminRequest<Summary>('/api/admin/rentals/summary').then(setSummary).catch(() => {});
+    let alive = true;
+    adminRequest<Summary>('/api/admin/rentals/summary')
+      .then((s) => { if (alive) { setSummary(s); setSummaryError(''); } })
+      .catch((e) => { if (alive) setSummaryError(errText(e, 'Could not load the rentals summary.')); });
+    return () => { alive = false; };
   }, [isAuthed, tick]);
 
   const toggle = async () => {
@@ -123,6 +128,7 @@ export default function RentalsAdminPage() {
         </div>
       </header>
 
+      {summaryError && !summary && <div role="alert" className="border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{summaryError} The on/off switch and counts are unavailable until it loads.</div>}
       {toast && <div role="status" className="border border-sky-400/30 bg-sky-400/10 p-3 text-sm text-sky-200">{toast}</div>}
 
       <nav className="flex flex-wrap gap-2" aria-label="Rentals sections">
@@ -179,7 +185,13 @@ function Select({ value, onChange, options, name }: { value: string; onChange: (
     </label>
   );
 }
-function Doc({ url, name }: { url: string | null; name: string }) {
+/** Only http(s) or same-origin links are rendered as links/images (never javascript: or data: from user content). */
+const safeUrl = (u: string | null | undefined) => {
+  const v = String(u || '').trim();
+  return /^https?:\/\//i.test(v) || (v.startsWith('/') && !v.startsWith('//')) ? v : null;
+};
+function Doc({ url: rawUrl, name }: { url: string | null; name: string }) {
+  const url = safeUrl(rawUrl);
   if (!url) return <div className="flex h-32 items-center justify-center border border-dashed border-red-400/40 text-xs text-red-300">{name} missing</div>;
   return (
     <a href={url} target="_blank" rel="noreferrer" className="block border border-white/10" title={`Open ${name}`}>
@@ -255,10 +267,10 @@ function ListingCard({ l, onChanged }: { l: AdminListing; onChanged: () => void 
         </div>
       </div>
       <div className="mt-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        {l.photos.slice(0, 3).map((u, i) => <Doc key={u} url={u} name={`Photo ${i + 1}`} />)}
-        <Doc url={l.documents.rc} name="RC" />
-        <Doc url={l.documents.insurance} name="Insurance" />
-        <Doc url={l.documents.licence} name="Owner licence" />
+        {(l.photos || []).slice(0, 3).map((u, i) => <Doc key={u} url={u} name={`Photo ${i + 1}`} />)}
+        <Doc url={l.documents?.rc ?? null} name="RC" />
+        <Doc url={l.documents?.insurance ?? null} name="Insurance" />
+        <Doc url={l.documents?.licence ?? null} name="Owner licence" />
       </div>
       <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
         <div><dt className="text-xs uppercase tracking-wider text-gray-500">Price</dt><dd>{[l.pricePerHour ? `${inr(l.pricePerHour)}/hr` : null, l.pricePerDay ? `${inr(l.pricePerDay)}/day` : null].filter(Boolean).join(' · ') || '—'} · min {l.minHours} h</dd></div>
@@ -266,7 +278,7 @@ function ListingCard({ l, onChanged }: { l: AdminListing; onChanged: () => void 
         <div><dt className="text-xs uppercase tracking-wider text-gray-500">Vehicle</dt><dd>{[l.fuel, l.transmission, l.seats ? `${l.seats} seats` : null, l.vehicleType !== 'CAR' ? (l.helmetIncluded ? 'helmet incl.' : 'no helmet') : null].filter(Boolean).map((x) => label(String(x))).join(' · ')}</dd></div>
         <div><dt className="text-xs uppercase tracking-wider text-gray-500">Pickup</dt><dd>{l.pickupLocation || '—'}</dd></div>
         <div><dt className="text-xs uppercase tracking-wider text-gray-500">Hours</dt><dd>{weekly.length ? weekly.map(([d, w]) => `${DAYS[Number(d)]} ${w.start}-${w.end}`).join(', ') : 'Any time'}</dd></div>
-        <div><dt className="text-xs uppercase tracking-wider text-gray-500">Blocked</dt><dd>{l.blockedDates.length ? l.blockedDates.map((b) => (b.start === b.end ? b.start : `${b.start}→${b.end}`)).join(', ') : '—'}</dd></div>
+        <div><dt className="text-xs uppercase tracking-wider text-gray-500">Blocked</dt><dd>{l.blockedDates?.length ? l.blockedDates.map((b) => (b.start === b.end ? b.start : `${b.start}→${b.end}`)).join(', ') : '—'}</dd></div>
         <div><dt className="text-xs uppercase tracking-wider text-gray-500">Track record</dt><dd>{l.tripCount} trips · {l.ratingCount ? `★ ${l.ratingAvg.toFixed(1)} (${l.ratingCount})` : 'no ratings'}</dd></div>
         <div><dt className="text-xs uppercase tracking-wider text-gray-500">Fuel policy</dt><dd>{l.fuelPolicy || '—'}</dd></div>
       </dl>
@@ -333,7 +345,7 @@ function LicenceCard({ l, onChanged }: { l: AdminLicence; onChanged: () => void 
         <div className="flex flex-wrap items-center gap-2"><h2 className="text-lg font-bold">{l.user?.name || l.userId}</h2><Pill s={state} /></div>
         <p className="mt-1 text-sm text-gray-400">{l.user?.phone || ''}{l.user?.email ? ` · ${l.user.email}` : ''}</p>
         <p className="mt-3 font-mono text-base">{l.licenceNumber}</p>
-        <p className="mt-1 text-sm text-gray-400">Declared: {l.classes.join(', ') || '—'}{l.expiresOn ? ` · valid till ${l.expiresOn}` : ''} · submitted {when(l.submittedAt)}</p>
+        <p className="mt-1 text-sm text-gray-400">Declared: {(l.classes || []).join(', ') || '—'}{l.expiresOn ? ` · valid till ${l.expiresOn}` : ''} · submitted {when(l.submittedAt)}</p>
         {l.rejectionReason && <p className="mt-1 text-sm text-red-300">Rejected: {l.rejectionReason}</p>}
         <fieldset className="mt-4">
           <legend className="text-xs font-bold uppercase tracking-wider text-gray-400">Classes printed on the card</legend>
@@ -446,7 +458,7 @@ function ReportCard({ r, onChanged }: { r: AdminReport; onChanged: () => void })
         </div>
       </div>
       <p className="mt-3 whitespace-pre-wrap text-sm text-gray-200">{r.description}</p>
-      {r.photos.length > 0 && <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">{r.photos.map((u, i) => <Doc key={u} url={u} name={`Photo ${i + 1}`} />)}</div>}
+      {r.photos?.length > 0 && <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">{r.photos.map((u, i) => <Doc key={u} url={u} name={`Photo ${i + 1}`} />)}</div>}
       <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-white/10 pt-4">
         <select value={next} onChange={(e) => setNext(e.target.value)} className="border border-white/10 bg-[#111318] p-2 text-sm text-white" aria-label="Report status">
           {['OPEN', 'REVIEWING', 'RESOLVED', 'DISMISSED'].map((s) => <option key={s} value={s}>{label(s)}</option>)}
