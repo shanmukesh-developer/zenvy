@@ -26,7 +26,7 @@ import RecentlyViewed from '../../components/RecentlyViewed';
 import { useWorldTransition } from '../../context/WorldTransitionContext';
 import AmbientBackground from '../../components/AmbientBackground';
 import DopaminePressable, { CardPressable, ActionPressable } from '../../components/DopaminePressable';
-import { StaggeredSection, RestaurantCardSkeleton, PulseGlow, BounceIn } from '../../components/AnimatedSection';
+import { StaggeredSection, RestaurantCardSkeleton, PulseGlow, BounceIn, FloatingPulse } from '../../components/AnimatedSection';
 import ServerWakeupOverlay from '../../components/ServerWakeupOverlay';
 import ZenvyEcosystemGrid from '../../components/ZenvyEcosystemGrid';
 import SafeImage from '../../components/SafeImage';
@@ -1516,7 +1516,18 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* Social lives in one place: Campus Buddy > Friends (the Campus Buddy slide opens it). */}
+      {/* ── FLOATING CAMPUS BUDDY FAB: Friends, Wall, Pulse, Forum, chats ── */}
+      <FloatingPulse color={COLORS.red} style={s.fabBtnWrap}>
+        <DopaminePressable
+          style={s.fabBtn}
+          onPress={() => router.push('/friends' as any)}
+          sound="click"
+          activeScale={0.88}
+        >
+          <Text style={{ fontSize: 22 }}>💬</Text>
+          <View style={s.fabBadge} />
+        </DopaminePressable>
+      </FloatingPulse>
     </View>
   );
 }
@@ -1661,6 +1672,8 @@ const s = StyleSheet.create({
   scoreVal: { fontSize: 11, fontWeight: '900' },
 
   // Floating Community FAB
+  fabBtnWrap: { position: 'absolute', bottom: 20, right: 20, width: 54, height: 54, zIndex: 999 },
+  fabBtn: { width: 54, height: 54, borderRadius: 27, backgroundColor: COLORS.red, alignItems: 'center', justifyContent: 'center', ...SHADOWS.redGlow },
   fabBadge: { position: 'absolute', top: 3, right: 3, width: 10, height: 10, borderRadius: 5, backgroundColor: COLORS.gold, borderWidth: 1.5, borderColor: '#fff' },
 
   // Separate Hero Card & Premium Categories Grid
