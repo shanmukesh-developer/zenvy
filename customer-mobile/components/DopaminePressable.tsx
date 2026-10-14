@@ -90,7 +90,10 @@ export default function DopaminePressable({
     ]).start();
   }, [tilt, layout]);
 
-  const useNative = !tilt; // Use native driver if not using 3D tilt
+  // The 3D tilt is iOS-only (Android drops the rotation), so Android keeps the native-driver press scale
+  // and skips the per-finger-move JS springs entirely (they caused scroll/tap stutter on card grids).
+  const tiltOn = tilt && Platform.OS === 'ios';
+  const useNative = !tiltOn;
 
   const handlePressIn = useCallback((e: any) => {
     Animated.spring(scaleAnim, {
@@ -160,15 +163,15 @@ export default function DopaminePressable({
   const transformStyle = [
     ...(Platform.OS !== 'android' ? [{ perspective: 400 }] : []),
     { scale: scaleAnim },
-    ...(tilt && Platform.OS !== 'android' ? [{ rotateX }, { rotateY }] : []),
+    ...(tiltOn ? [{ rotateX }, { rotateY }] : []),
   ];
 
   // AnimatedTouchable is now hoisted to module scope for performance
 
   return (
     <AnimatedTouchable
-      onLayout={tilt ? handleLayout : undefined}
-      onTouchMove={tilt ? handleTouch : undefined}
+      onLayout={tiltOn ? handleLayout : undefined}
+      onTouchMove={tiltOn ? handleTouch : undefined}
       activeOpacity={activeOpacity}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}

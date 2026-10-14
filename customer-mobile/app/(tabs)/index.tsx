@@ -6,7 +6,7 @@ import { KeyboardAvoidingView } from '../../components/KeyboardAvoidingView';
 import { CachedImage as Image } from '../../components/SafeImage';
 import { useLiveSync, hasType } from '../../utils/useLiveSync';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter, usePathname, useFocusEffect, useIsFocused } from 'expo-router';
+import { useRouter, useFocusEffect, useIsFocused } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS, SHADOWS, RADIUS } from '../../constants/theme';
 import { API_URL, ENDPOINTS } from '../../constants/api';
@@ -565,38 +565,20 @@ export default function HomeScreen() {
     }, [user, unreadNonce])
   );
 
-  const pathname = usePathname();
-
-  useEffect(() => {
-    const backAction = () => {
-      if (pathname === '/' || pathname === '/(tabs)' || pathname === '/(tabs)/') {
-        Alert.alert(
-          "Exit Zenvy",
-          "Are you sure you want to close the application?",
-          [
-            {
-              text: "Cancel",
-              onPress: () => null,
-              style: "cancel"
-            },
-            { 
-              text: "Exit", 
-              onPress: () => BackHandler.exitApp() 
-            }
-          ]
-        );
+  // Exit prompt on Android back, only while Home is the focused screen. (usePathname re-rendered
+  // this whole screen on every navigation anywhere in the app.)
+  useFocusEffect(
+    useCallback(() => {
+      const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+        Alert.alert('Exit Zenvy', 'Are you sure you want to close the application?', [
+          { text: 'Cancel', onPress: () => null, style: 'cancel' },
+          { text: 'Exit', onPress: () => BackHandler.exitApp() },
+        ]);
         return true;
-      }
-      return false;
-    };
-
-    const backHandler = BackHandler.addEventListener(
-      "hardwareBackPress",
-      backAction
-    );
-
-    return () => backHandler.remove();
-  }, [pathname]);
+      });
+      return () => backHandler.remove();
+    }, [])
+  );
 
   // Live sync: admin / partner edits to stores, menus and config refresh the home feed in place
   // (silent refetch: the list stays on screen, no skeletons, scroll position untouched).
