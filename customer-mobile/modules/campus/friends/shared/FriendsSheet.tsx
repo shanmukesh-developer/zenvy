@@ -1,5 +1,6 @@
 import React from 'react';
-import { Modal, View, Text, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, ScrollView, Platform, StyleSheet } from 'react-native';
+import { KeyboardAvoidingView } from '../../../../components/KeyboardAvoidingView';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { X, ChevronLeft } from 'lucide-react-native';
 import { FriendsColors, FS, FT } from '../friendsTheme';
@@ -60,7 +61,9 @@ export const FriendsScreenModal: React.FC<{
   subtitle?: string;
   right?: React.ReactNode;
   children: React.ReactNode;
-}> = ({ visible, onClose, title, subtitle, right, children }) => (
+  /** Lift the content above the keyboard (off for screens that place their own KeyboardAvoidingView). */
+  avoidKeyboard?: boolean;
+}> = ({ visible, onClose, title, subtitle, right, children, avoidKeyboard = true }) => (
   <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
     <SafeAreaView style={{ flex: 1, backgroundColor: FriendsColors.bg }} edges={['top', 'bottom']}>
       <View style={styles.pageHeader}>
@@ -79,7 +82,7 @@ export const FriendsScreenModal: React.FC<{
         </View>
         {right}
       </View>
-      {children}
+      {avoidKeyboard ? <KeyboardAvoidingView style={{ flex: 1 }}>{children}</KeyboardAvoidingView> : children}
     </SafeAreaView>
   </Modal>
 );

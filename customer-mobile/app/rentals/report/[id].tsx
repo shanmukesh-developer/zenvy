@@ -1,6 +1,7 @@
 // Report a problem with a rental (damage, no-show, late return, safety…). Goes to the Zenvy admin team.
 import React, { useState } from 'react';
-import { View, Text, ScrollView, Alert, TouchableOpacity, Image, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, ScrollView, Alert, TouchableOpacity, Image, ActivityIndicator, Platform } from 'react-native';
+import { KeyboardAvoidingView } from '../../../components/KeyboardAvoidingView';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { pickAndUploadImage, alertUploadError } from '../../../utils/imageUpload';
 import { rentalsApi, REPORT_CATEGORIES } from '../../../modules/rentals/rentalsApi';
@@ -45,7 +46,7 @@ export default function ReportRental() {
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: p.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: p.bg }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <RHeader title="Report a problem" subtitle="Goes to the Zenvy team" />
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
         <Notice tone="warn">In an emergency or accident, call 112 first. Then tell us here so we can help and act on the account.</Notice>

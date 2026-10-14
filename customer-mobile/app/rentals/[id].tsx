@@ -1,6 +1,7 @@
 // Vehicle detail: photos, specs, availability, ratings, live price calculator and the booking request.
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, Dimensions, RefreshControl, Modal, TouchableOpacity, Alert } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, ScrollView, Dimensions, RefreshControl, Modal, TouchableOpacity, Alert, Platform } from 'react-native';
+import { KeyboardAvoidingView } from '../../components/KeyboardAvoidingView';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import SafeImage from '../../components/SafeImage';
 import {
@@ -85,8 +86,11 @@ export default function RentalDetail() {
     setConfirmOpen(true);
   };
 
+  // Ref lock: two taps in one frame must not send two booking requests.
+  const sendingRef = useRef(false);
   const sendRequest = async () => {
-    if (sending) return;
+    if (sendingRef.current) return;
+    sendingRef.current = true;
     setSending(true);
     try {
       const res = await rentalsApi.requestBooking({ listingId: id, startAt: startIso, endAt: endIso, note: note.trim() || undefined });
@@ -95,7 +99,7 @@ export default function RentalDetail() {
       router.replace(`/rentals/booking/${res.booking.id}` as any);
     } catch (e: any) {
       const err = e as RentalsError;
-      if (err.code === 'LICENCE_REQUIRED' || err.code === 'LICENCE_REJECTED' || err.code === 'LICENCE_EXPIRED') {
+      if (err.code === 'LICENCE_REQUIRED' || err.code === 'LICENCE_REJECTED' || err.code === 'LICENCE_EXPIRED' || err.code === 'LICENCE_CLASS_MISMATCH') {
         setConfirmOpen(false);
         Alert.alert('Driving licence', err.message, [{ text: 'Later', style: 'cancel' }, { text: 'Update licence', onPress: () => router.push('/rentals/licence' as any) }]);
       } else {
@@ -103,6 +107,7 @@ export default function RentalDetail() {
         if (err.code === 'SLOT_TAKEN') load();
       }
     } finally {
+      sendingRef.current = false;
       setSending(false);
     }
   };
@@ -225,7 +230,7 @@ export default function RentalDetail() {
       ) : null}
 
       <Modal visible={confirmOpen} transparent animationType="slide" onRequestClose={() => setConfirmOpen(false)}>
-        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' }}>
+        <KeyboardAvoidingView style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.45)' }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={{ backgroundColor: p.bg, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 18, paddingBottom: 30 }}>
             <Text style={{ fontSize: 17, fontWeight: '900', color: p.text }}>Send request to {l.owner?.name || 'the owner'}</Text>
             <Text style={{ fontSize: 12.5, color: p.sub, marginTop: 4, marginBottom: 12 }}>{fmtDateTime(startIso)} → {fmtDateTime(endIso)}</Text>
@@ -238,7 +243,7 @@ export default function RentalDetail() {
               <Btn label="Send request" loading={sending} onPress={sendRequest} style={{ flex: 2 }} />
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
       {l.isMine ? (
         <TouchableOpacity onPress={() => router.push('/rentals/my-listings' as any)} style={{ position: 'absolute', bottom: 24, alignSelf: 'center', backgroundColor: p.card, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10, borderWidth: 1, borderColor: p.border }} accessibilityRole="button">

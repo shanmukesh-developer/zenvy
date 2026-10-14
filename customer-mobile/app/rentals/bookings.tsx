@@ -1,5 +1,5 @@
 // My rental bookings: as renter (vehicles I rent) and as owner (requests for my vehicles), upcoming / past.
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, FlatList, RefreshControl, TouchableOpacity } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import SafeImage from '../../components/SafeImage';
@@ -16,13 +16,17 @@ export default function RentalBookings() {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Only the latest request may update the list (switching role / scope quickly must not show the other list).
+  const reqIdRef = useRef(0);
   const load = useCallback(async () => {
+    const my = ++reqIdRef.current;
     try {
       const res = await rentalsApi.bookings(role, scope);
-      setItems(res.bookings);
+      if (my !== reqIdRef.current) return;
+      setItems(Array.isArray(res?.bookings) ? res.bookings : []);
       setError(null);
     } catch (e: any) {
-      setError(e?.message || 'Could not load bookings.');
+      if (my === reqIdRef.current) setError(e?.message || 'Could not load bookings.');
     }
   }, [role, scope]);
   useEffect(() => { setItems(null); load(); }, [load]);
@@ -50,8 +54,10 @@ export default function RentalBookings() {
                 actionLabel={role === 'renter' ? 'Browse vehicles' : 'My vehicles'} onAction={() => router.push((role === 'renter' ? '/rentals' : '/rentals/my-listings') as any)} />
         }
         renderItem={({ item: b }) => {
-          const meta = BOOKING_STATUS_META[b.status];
+          const baseMeta = BOOKING_STATUS_META[b.status] || { ...BOOKING_STATUS_META.REQUESTED, label: String(b.status || 'Booking') };
           const needsAction = b.role === 'OWNER' && b.status === 'REQUESTED';
+          // The owner is the one who has to answer: never show them "waiting for owner".
+          const meta = needsAction ? { ...baseMeta, label: 'New request' } : baseMeta;
           return (
             <TouchableOpacity onPress={() => router.push(`/rentals/booking/${b.id}` as any)} accessibilityRole="button" accessibilityLabel={`${b.vehicleTitle}, ${meta.label}`}
               style={{ flexDirection: 'row', gap: 12, padding: 12, borderRadius: 18, borderWidth: 1, borderColor: needsAction ? p.warn : p.border, backgroundColor: p.card, marginBottom: 10 }}>

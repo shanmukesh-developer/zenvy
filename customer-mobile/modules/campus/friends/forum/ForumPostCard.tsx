@@ -108,7 +108,17 @@ export const PostMenu: React.FC<{
       icon: <Pencil size={18} color={FriendsColors.ink} />,
       onPress: async () => {
         onClose();
-        later(() => nav.openComposer({ edit: post }));
+        // List cards carry a 300-character excerpt: editing that would overwrite the full body.
+        let full: ForumPost = post;
+        if (post.bodyTruncated) {
+          try {
+            full = await fetchForumPost(post.id);
+          } catch (e: any) {
+            Alert.alert("Couldn't open the editor", e?.message || 'Please try again.');
+            return;
+          }
+        }
+        later(() => nav.openComposer({ edit: full }));
       },
     });
   }

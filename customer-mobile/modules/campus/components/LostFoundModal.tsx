@@ -12,6 +12,7 @@ import {
   Alert,
   Linking,
 } from 'react-native';
+import { KeyboardAvoidingView } from '../../../components/KeyboardAvoidingView';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import {
@@ -43,6 +44,8 @@ interface LostFoundModalProps {
   currentUser: CampusUserData | null;
   /** Short code of the student's campus (e.g. from the campus profile). */
   campusCode?: string | null;
+  /** Opens college verification (the board is for verified students of this campus only). */
+  onRequestVerify?: () => void;
 }
 
 export const LostFoundModal: React.FC<LostFoundModalProps> = ({
@@ -50,12 +53,24 @@ export const LostFoundModal: React.FC<LostFoundModalProps> = ({
   onClose,
   currentUser,
   campusCode,
+  onRequestVerify,
 }) => {
   const [filter, setFilter] = useState<'all' | 'lost' | 'found'>('all');
   const [items, setItems] = useState<CampusLostFoundItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // 403 VERIFICATION_REQUIRED: verified students of the same campus only
+  const [needsVerify, setNeedsVerify] = useState(false);
+  const verifyGate = (e: any) => {
+    if (e?.code !== 'VERIFICATION_REQUIRED') return false;
+    setNeedsVerify(true);
+    Alert.alert('Verify your college', 'This is only for verified students of your campus.', [
+      { text: 'Not now', style: 'cancel' },
+      ...(onRequestVerify ? [{ text: 'Verify now', onPress: onRequestVerify }] : []),
+    ]);
+    return true;
+  };
   const [searchQuery, setSearchQuery] = useState('');
 
   // Create form modal state
@@ -75,9 +90,11 @@ export const LostFoundModal: React.FC<LostFoundModalProps> = ({
     try {
       setLoading(true);
       setLoadError(null);
+      setNeedsVerify(false);
       const data = await fetchLostFound();
       setItems(data);
     } catch (e: any) {
+      if (e?.code === 'VERIFICATION_REQUIRED') setNeedsVerify(true);
       setLoadError(
         typeof e?.message === 'string' && e.message && !/^Failed/i.test(e.message)
           ? e.message
@@ -156,6 +173,7 @@ export const LostFoundModal: React.FC<LostFoundModalProps> = ({
       setCreateModalVisible(false);
       resetCreateForm();
     } catch (e: any) {
+      if (verifyGate(e)) return;
       Alert.alert("Couldn't post", e?.message || 'Please try again in a moment.');
     } finally {
       setSubmitting(false);
@@ -172,6 +190,7 @@ export const LostFoundModal: React.FC<LostFoundModalProps> = ({
       setItems((prev) => prev.map((i) => (i.id === item.id ? updated : i)));
       Alert.alert('Marked as resolved', 'Glad it worked out! The post is now closed.');
     } catch (e: any) {
+      if (verifyGate(e)) return;
       Alert.alert("Couldn't update the post", e?.message || 'Please try again in a moment.');
     } finally {
       resolvingRef.current.delete(item.id);
@@ -205,6 +224,7 @@ export const LostFoundModal: React.FC<LostFoundModalProps> = ({
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <KeyboardAvoidingView style={{ flex: 1 }}>
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
@@ -268,6 +288,16 @@ export const LostFoundModal: React.FC<LostFoundModalProps> = ({
         {loading && !refreshing ? (
           <View style={styles.centerContainer}>
             <ActivityIndicator size="large" color={CampusColors.accent} />
+          </View>
+        ) : needsVerify ? (
+          <View style={[styles.centerContainer, { paddingHorizontal: 32 }]}>
+            <Text style={styles.emptyTitle}>Verify your college to use this</Text>
+            <Text style={[styles.emptySubtitle, { textAlign: 'center', marginVertical: 8 }]}>Lost & Found is only for verified students of your campus.</Text>
+            {onRequestVerify ? (
+              <TouchableOpacity style={[styles.submitBtn, { paddingHorizontal: 28 }]} onPress={onRequestVerify} accessibilityRole="button">
+                <Text style={styles.submitBtnText}>Verify my college</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         ) : loadError && items.length === 0 ? (
           <View style={[styles.centerContainer, { paddingHorizontal: 32 }]}>
@@ -422,7 +452,7 @@ export const LostFoundModal: React.FC<LostFoundModalProps> = ({
           transparent
           onRequestClose={() => setCreateModalVisible(false)}
         >
-          <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView style={styles.modalOverlay}>
             <View style={styles.modalSheet}>
               <View style={styles.sheetHeader}>
                 <Text style={styles.sheetTitle}>Post Lost or Found Item</Text>
@@ -533,7 +563,7 @@ export const LostFoundModal: React.FC<LostFoundModalProps> = ({
                 </TouchableOpacity>
               </ScrollView>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
 
         <Modal visible={!!previewImage} transparent animationType="fade" onRequestClose={() => setPreviewImage(null)}>
@@ -545,6 +575,7 @@ export const LostFoundModal: React.FC<LostFoundModalProps> = ({
           </TouchableOpacity>
         </Modal>
       </View>
+      </KeyboardAvoidingView>
       </SafeAreaView>
     </Modal>
   );

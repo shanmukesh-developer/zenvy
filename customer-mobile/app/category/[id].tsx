@@ -13,8 +13,8 @@ import {
   TextInput,
   Modal,
   RefreshControl,
-  KeyboardAvoidingView,
 } from 'react-native';
+import { KeyboardAvoidingView } from '../../components/KeyboardAvoidingView';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';

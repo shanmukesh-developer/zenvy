@@ -10,6 +10,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import { KeyboardAvoidingView } from '../../../components/KeyboardAvoidingView';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   X,
@@ -133,6 +134,7 @@ export const NightQuestionModal: React.FC<NightQuestionModalProps> = ({
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <KeyboardAvoidingView style={{ flex: 1 }}>
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
@@ -255,6 +257,7 @@ export const NightQuestionModal: React.FC<NightQuestionModalProps> = ({
           </View>
         </ScrollView>
       </View>
+      </KeyboardAvoidingView>
       </SafeAreaView>
     </Modal>
   );

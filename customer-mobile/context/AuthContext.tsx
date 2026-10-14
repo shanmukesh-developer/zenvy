@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getUser, setUser as saveUser, removeToken, removeUser, getToken } from '../utils/auth';
+import { getUser, setUser as saveUser, removeToken, removeUser, getToken, onSessionInvalid } from '../utils/auth';
 
 // Per-user data kept on the device. Cleared on logout so the next account on a shared phone
 // never sees the previous user's addresses, favourites or alerts.
@@ -219,6 +219,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (stored) setUserState(normalizeUserId(stored));
     }
   };
+
+  // Session expired / revoked while the app is open: drop the stale profile (expired) or re-check
+  // it against /profile, which logs out on a real 401 (throttled so a burst of 401s checks once).
+  const refreshUserRef = useRef(refreshUser);
+  refreshUserRef.current = refreshUser;
+  const lastSessionCheckRef = useRef(0);
+  useEffect(() => onSessionInvalid((reason) => {
+    if (reason === 'expired') {
+      setUserState(null);
+      return;
+    }
+    const now = Date.now();
+    if (now - lastSessionCheckRef.current < 15000) return;
+    lastSessionCheckRef.current = now;
+    refreshUserRef.current().catch(() => {});
+  }), []);
 
   // Login / registration changes the identity: re-handshake the shared socket with the new token
   // (setToken always runs before setUser). Logout is handled explicitly in logout().

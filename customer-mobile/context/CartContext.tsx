@@ -595,6 +595,7 @@ export function useBasketQuote(couponCode: string | null | undefined, enabled: b
   const refresh = useCallback(() => setNonce((n) => n + 1), []);
   // Live-sync refreshes run silently: the current bill stays on screen (no "Calculating…" flash)
   const silentRef = useRef(false);
+  const lastQuoteSigRef = useRef<string | null>(null);
 
   // Live sync: an admin / store edit to a basket item's price or stock, or its store's status,
   // re-quotes the bill so the customer never checks out against a stale price.
@@ -622,8 +623,12 @@ export function useBasketQuote(couponCode: string | null | undefined, enabled: b
     }
     let cancelled = false;
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-    const silent = silentRef.current;
+    // A silent (live-sync) re-quote only keeps the old bill on screen when the basket and coupon are
+    // unchanged; if they changed in the same render, the old bill no longer matches and must not be placeable.
+    const requestSig = `${signature}|${couponCode || ''}`;
+    const silent = silentRef.current && lastQuoteSigRef.current === requestSig;
     silentRef.current = false;
+    lastQuoteSigRef.current = requestSig;
     if (!silent) setLoading(true);
     // The quote has its own abort signal, so apiFetch's default timeout does not apply: add one here
     // (a Render cold start must end in "try again", not an endless "Calculating your bill…").

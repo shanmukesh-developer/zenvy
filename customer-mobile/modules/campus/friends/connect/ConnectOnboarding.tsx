@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { KeyboardAvoidingView } from '../../../../components/KeyboardAvoidingView';
 import * as Haptics from 'expo-haptics';
 import { ChevronLeft, Sparkles } from 'lucide-react-native';
 import { FriendsColors, FS, FT, fui } from '../friendsTheme';
@@ -56,6 +57,7 @@ export const ConnectOnboarding: React.FC<{
   if (!profile) return null;
 
   return (
+    <KeyboardAvoidingView style={{ flex: 1 }}>
     <ScrollView style={fui.screen} contentContainerStyle={{ paddingBottom: 120 }} keyboardShouldPersistTaps="handled">
       <StepDots steps={ONBOARDING_STEPS} current={step === 'profile' ? 2 : 3} />
       <View style={{ padding: FS.lg }}>
@@ -98,6 +100,7 @@ export const ConnectOnboarding: React.FC<{
         )}
       </View>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 

@@ -1,6 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert, Modal, Dimensions, Platform, KeyboardAvoidingView, TouchableWithoutFeedback, Keyboard, Animated, Easing, AppState, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert, Modal, Dimensions, Platform, TouchableWithoutFeedback, Keyboard, Animated, Easing, AppState, RefreshControl } from 'react-native';
+import { KeyboardAvoidingView } from '../../../components/KeyboardAvoidingView';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { pickImageAsset, prepareAndUploadImage, alertUploadError } from '../../../utils/imageUpload';

@@ -2,11 +2,16 @@
  * One image pipeline for the student / friends / community section.
  *
  *   pick (expo-image-picker)  ->  compress (expo-image-manipulator, long edge <= 1280 px, JPEG 0.7)
- *   ->  upload multipart { uri, name, type } to POST /api/campus/media  ->  short URL
+ *   ->  upload to POST /api/campus/media  ->  short URL
  *
- * Never sends base64 over a socket and never puts a Blob in React Native FormData
- * (RN cannot serialise Blob parts). On web the compressed photo is sent as JSON base64,
- * which the same endpoint accepts.
+ * Transport (Expo SDK 57):
+ *   - Native: the global `fetch` is expo/fetch (WinterCG). It CANNOT send React Native's
+ *     `{ uri, name, type }` FormData file parts: it throws "Unsupported FormDataPart implementation"
+ *     before any request is made (that was the "Check your internet" failure on every photo).
+ *     So native uploads go multipart through XMLHttpRequest (still React Native's own networking,
+ *     which streams the local file), and fall back to JSON base64 through fetch if that fails.
+ *   - Web: JSON base64 through fetch (the same endpoint accepts it).
+ * Never sends base64 over a socket.
  */
 import { Alert, Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -133,7 +138,8 @@ export const compressImage = async (
   opts: { width?: number; height?: number; maxEdge?: number; quality?: number } = {}
 ): Promise<{ uri: string; base64?: string }> => {
   const maxEdge = opts.maxEdge || DEFAULT_MAX_EDGE;
-  const wantBase64 = Platform.OS === 'web';
+  // Native also keeps the base64 copy: it is the fallback body if the multipart upload fails.
+  const wantBase64 = true;
   try {
     let width = opts.width || 0;
     let height = opts.height || 0;
@@ -178,6 +184,67 @@ const friendlyStatusMessage = (status: number, json: any): ImageUploadError => {
   return new ImageUploadError(msg || "Couldn't upload the photo. Please try again.", code || 'UPLOAD_FAILED');
 };
 
+type UploadResult = { status: number; json: any };
+
+const logUpload = (stage: string, err: any) => {
+  // Shows the real cause in Metro / logcat (the user only sees the friendly message).
+  console.warn(`[imageUpload] ${stage} failed:`, err?.name || '', err?.code || '', err?.message || String(err));
+};
+
+/** Multipart through React Native's XMLHttpRequest (supports { uri, name, type } file parts). */
+const uploadMultipartXhr = (uri: string, purpose: MediaPurpose, token: string): Promise<UploadResult> =>
+  new Promise((resolve, reject) => {
+    const form = new FormData();
+    form.append('image', { uri, name: `${purpose}-${Date.now()}.jpg`, type: 'image/jpeg' } as any);
+    form.append('purpose', purpose);
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${API_URL}/api/campus/media`);
+    xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    xhr.setRequestHeader('Accept', 'application/json');
+    // No Content-Type: the networking layer adds multipart/form-data with its boundary.
+    xhr.timeout = UPLOAD_TIMEOUT_MS;
+    xhr.onload = () => {
+      let json: any = null;
+      try { json = xhr.responseText ? JSON.parse(xhr.responseText) : null; } catch { json = null; }
+      resolve({ status: xhr.status, json });
+    };
+    xhr.onerror = () => reject(Object.assign(new Error('XHR network error'), { code: 'XHR_ERROR' }));
+    xhr.ontimeout = () => reject(Object.assign(new Error('XHR timeout'), { code: 'XHR_TIMEOUT' }));
+    xhr.send(form as any);
+  });
+
+/** JSON { image: dataUrl, purpose } through fetch (works with expo/fetch and on web). */
+const uploadJson = async (dataUrl: string, purpose: MediaPurpose, token: string): Promise<UploadResult> => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${API_URL}/api/campus/media`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ image: dataUrl, purpose }),
+      signal: controller.signal,
+    });
+    const json: any = await res.json().catch(() => null);
+    return { status: res.status, json };
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+/** A data URL for the file: the base64 we already have, or a fresh JPEG encode of the local file. */
+const dataUrlFor = async (file: { uri: string; base64?: string }): Promise<string | null> => {
+  if (/^data:/i.test(file.uri)) return file.uri;
+  if (file.base64) return `data:image/jpeg;base64,${file.base64}`;
+  try {
+    const ref = await ImageManipulator.manipulate(file.uri).renderAsync();
+    const out = await ref.saveAsync({ compress: DEFAULT_QUALITY, format: SaveFormat.JPEG, base64: true });
+    return out.base64 ? `data:image/jpeg;base64,${out.base64}` : null;
+  } catch (e) {
+    logUpload('base64 encode', e);
+    return null;
+  }
+};
+
 /** Upload an already-compressed local image to /api/campus/media. */
 export const uploadImageFile = async (
   file: { uri: string; base64?: string },
@@ -186,36 +253,43 @@ export const uploadImageFile = async (
   const token = await getToken();
   if (!token) throw new ImageUploadError('Please sign in to upload photos.', 'AUTH', false);
 
-  let body: any;
-  const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
-  if (Platform.OS === 'web' || /^data:/i.test(file.uri)) {
-    const dataUrl = /^data:/i.test(file.uri)
-      ? file.uri
-      : file.base64
-      ? `data:image/jpeg;base64,${file.base64}`
-      : null;
-    if (!dataUrl) throw new ImageUploadError("Couldn't read that photo. Please pick another one.", 'READ_FAILED', false);
-    headers['Content-Type'] = 'application/json';
-    body = JSON.stringify({ image: dataUrl, purpose });
-  } else {
-    const form = new FormData();
-    form.append('image', { uri: file.uri, name: `${purpose}-${Date.now()}.jpg`, type: 'image/jpeg' } as any);
-    form.append('purpose', purpose);
-    body = form;
+  let result: UploadResult | null = null;
+  let lastErr: any = null;
+
+  // 1. Native: multipart via XHR (streams the file, no base64 in JS memory).
+  if (Platform.OS !== 'web' && !/^data:/i.test(file.uri)) {
+    try {
+      result = await uploadMultipartXhr(file.uri, purpose, token);
+    } catch (e) {
+      lastErr = e;
+      logUpload('multipart (XHR)', e);
+    }
   }
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
-  let res: Response;
-  try {
-    res = await fetch(`${API_URL}/api/campus/media`, { method: 'POST', headers, body, signal: controller.signal });
-  } catch {
-    throw new ImageUploadError("Couldn't upload. Check your internet and try again.", 'NETWORK');
-  } finally {
-    clearTimeout(timer);
+  // 2. Web, data URLs, or the native fallback: JSON base64 via fetch.
+  if (!result) {
+    const dataUrl = await dataUrlFor(file);
+    if (!dataUrl) {
+      throw lastErr
+        ? new ImageUploadError("Couldn't upload. Check your internet and try again.", 'NETWORK')
+        : new ImageUploadError("Couldn't read that photo. Please pick another one.", 'READ_FAILED', false);
+    }
+    try {
+      result = await uploadJson(dataUrl, purpose, token);
+    } catch (e) {
+      logUpload('JSON base64 (fetch)', e);
+      throw new ImageUploadError("Couldn't upload. Check your internet and try again.", 'NETWORK');
+    }
   }
-  const json: any = await res.json().catch(() => null);
-  if (!res.ok) throw friendlyStatusMessage(res.status, json);
+
+  const { status, json } = result;
+  if (status < 200 || status >= 300) {
+    if (status === 0) {
+      logUpload('upload', new Error('status 0 (no response)'));
+      throw new ImageUploadError("Couldn't upload. Check your internet and try again.", 'NETWORK');
+    }
+    throw friendlyStatusMessage(status, json);
+  }
   const url: string = json?.url || '';
   if (!url) throw new ImageUploadError("Couldn't upload the photo. Please try again.");
   // Build the absolute link from the API host this app talks to (always https in production).

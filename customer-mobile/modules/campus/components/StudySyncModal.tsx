@@ -9,6 +9,7 @@ import {
   TextInput,
   Alert,
 } from 'react-native';
+import { KeyboardAvoidingView } from '../../../components/KeyboardAvoidingView';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   X,
@@ -120,6 +121,7 @@ export const StudySyncModal: React.FC<StudySyncModalProps> = ({
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <KeyboardAvoidingView style={{ flex: 1 }}>
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
@@ -250,6 +252,7 @@ export const StudySyncModal: React.FC<StudySyncModalProps> = ({
           </View>
         </ScrollView>
       </View>
+      </KeyboardAvoidingView>
       </SafeAreaView>
     </Modal>
   );

@@ -11,6 +11,7 @@ import {
   RefreshControl,
   Alert,
 } from 'react-native';
+import { KeyboardAvoidingView } from '../../../components/KeyboardAvoidingView';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   X,
@@ -40,12 +41,15 @@ interface RidePoolModalProps {
   visible: boolean;
   onClose: () => void;
   currentUser: CampusUserData | null;
+  /** Opens college verification (the board is for verified students of this campus only). */
+  onRequestVerify?: () => void;
 }
 
 export const RidePoolModal: React.FC<RidePoolModalProps> = ({
   visible,
   onClose,
   currentUser,
+  onRequestVerify,
 }) => {
   const [rides, setRides] = useState<CampusRidePool[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,6 +62,17 @@ export const RidePoolModal: React.FC<RidePoolModalProps> = ({
   const [destination, setDestination] = useState('');
   const [departInMins, setDepartInMins] = useState(30);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // 403 VERIFICATION_REQUIRED: verified students of the same campus only
+  const [needsVerify, setNeedsVerify] = useState(false);
+  const verifyGate = (e: any) => {
+    if (e?.code !== 'VERIFICATION_REQUIRED') return false;
+    setNeedsVerify(true);
+    Alert.alert('Verify your college', 'This is only for verified students of your campus.', [
+      { text: 'Not now', style: 'cancel' },
+      ...(onRequestVerify ? [{ text: 'Verify now', onPress: onRequestVerify }] : []),
+    ]);
+    return true;
+  };
   const [totalSeats, setTotalSeats] = useState('3');
   const [farePerSeat, setFarePerSeat] = useState('80');
   const [vehicleType, setVehicleType] = useState<'Car' | 'Auto' | 'Bike'>('Car');
@@ -68,9 +83,11 @@ export const RidePoolModal: React.FC<RidePoolModalProps> = ({
     try {
       setLoading(true);
       setLoadError(null);
+      setNeedsVerify(false);
       const data = await fetchRidePools();
       setRides(data);
     } catch (e: any) {
+      if (e?.code === 'VERIFICATION_REQUIRED') setNeedsVerify(true);
       setLoadError(
         typeof e?.message === 'string' && e.message && !/^Failed/i.test(e.message)
           ? e.message
@@ -120,6 +137,7 @@ export const RidePoolModal: React.FC<RidePoolModalProps> = ({
       setCreateModalVisible(false);
       setDestination('');
     } catch (e: any) {
+      if (verifyGate(e)) return;
       Alert.alert('Post Failed', e?.message || 'Could not post ride pool');
     } finally {
       setSubmitting(false);
@@ -148,6 +166,7 @@ export const RidePoolModal: React.FC<RidePoolModalProps> = ({
         Alert.alert('Seat Booked!', `Your seat is confirmed with ${ride.creatorName}. Coordinate via campus chat.`);
       }
     } catch (e: any) {
+      if (verifyGate(e)) return;
       Alert.alert("Couldn't update your seat", e?.message || 'Please try again in a moment.');
     } finally {
       joinPendingRef.current.delete(ride.id);
@@ -162,6 +181,7 @@ export const RidePoolModal: React.FC<RidePoolModalProps> = ({
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <KeyboardAvoidingView style={{ flex: 1 }}>
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
@@ -209,6 +229,16 @@ export const RidePoolModal: React.FC<RidePoolModalProps> = ({
         {loading && !refreshing ? (
           <View style={styles.centerContainer}>
             <ActivityIndicator size="large" color={CampusColors.accent} />
+          </View>
+        ) : needsVerify ? (
+          <View style={[styles.centerContainer, { paddingHorizontal: 32 }]}>
+            <Text style={styles.emptyTitle}>Verify your college to use this</Text>
+            <Text style={[styles.emptySubtitle, { textAlign: 'center', marginVertical: 8 }]}>Ride pooling is only for verified students of your campus.</Text>
+            {onRequestVerify ? (
+              <TouchableOpacity style={[styles.submitBtn, { paddingHorizontal: 28 }]} onPress={onRequestVerify} accessibilityRole="button">
+                <Text style={styles.submitBtnText}>Verify my college</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         ) : loadError && rides.length === 0 ? (
           <View style={styles.centerContainer}>
@@ -339,7 +369,7 @@ export const RidePoolModal: React.FC<RidePoolModalProps> = ({
           transparent
           onRequestClose={() => setCreateModalVisible(false)}
         >
-          <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView style={styles.modalOverlay}>
             <View style={styles.modalSheet}>
               <View style={styles.sheetHeader}>
                 <Text style={styles.sheetTitle}>Offer Campus Ride</Text>
@@ -435,9 +465,10 @@ export const RidePoolModal: React.FC<RidePoolModalProps> = ({
                 </TouchableOpacity>
               </ScrollView>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
       </View>
+      </KeyboardAvoidingView>
       </SafeAreaView>
     </Modal>
   );

@@ -1,5 +1,5 @@
 // Student vehicles: browse with filters (type, max price, free for given dates).
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, FlatList, RefreshControl, TouchableOpacity, Dimensions, Modal, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
@@ -32,7 +32,10 @@ export default function RentalsBrowse() {
   const isDefault = applied.type === 'ALL' && !applied.maxDay && !applied.maxHour && !applied.when && applied.sort === 'recent';
   const cacheKey = uid ? `rentals:browse:${uid}` : '';
 
+  // Only the latest filter's answer may land (a slow older request must not overwrite it).
+  const reqIdRef = useRef(0);
   const load = useCallback(async () => {
+    const my = ++reqIdRef.current;
     try {
       const res = await rentalsApi.browse({
         type: applied.type === 'ALL' ? null : applied.type,
@@ -42,10 +45,12 @@ export default function RentalsBrowse() {
         endAt: applied.when?.end || null,
         sort: applied.sort,
       });
+      if (my !== reqIdRef.current) return;
       setListings(res.listings);
       setError(null);
       if (isDefault && cacheKey) writeCache(cacheKey, res.listings);
     } catch (e: any) {
+      if (my !== reqIdRef.current) return;
       setError({ message: e?.message || 'Could not load vehicles.', code: e?.code || 'ERROR' });
     }
   }, [applied, isDefault, cacheKey]);

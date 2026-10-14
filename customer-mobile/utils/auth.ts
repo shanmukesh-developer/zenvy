@@ -8,6 +8,19 @@ import { Platform } from 'react-native';
 
 const TOKEN_KEY = 'zenvy_token';
 
+// ── Session-expiry signal ─────────────────────────────────────────────────────
+// The JWT can expire (or be revoked) while the app is open. AuthContext subscribes so the
+// in-memory profile is dropped / re-checked instead of the app acting signed in with no token.
+type SessionListener = (reason: 'expired' | 'unauthorized') => void;
+const sessionListeners = new Set<SessionListener>();
+export const onSessionInvalid = (cb: SessionListener): (() => void) => {
+  sessionListeners.add(cb);
+  return () => { sessionListeners.delete(cb); };
+};
+const emitSessionInvalid = (reason: 'expired' | 'unauthorized') => {
+  sessionListeners.forEach((cb) => { try { cb(reason); } catch {} });
+};
+
 export const isTokenExpired = (token: string): boolean => {
   try {
     const parts = token.split('.');
@@ -31,6 +44,7 @@ export const getToken = async (): Promise<string | null> => {
     if (token && isTokenExpired(token)) {
       await removeToken();
       await removeUser();
+      emitSessionInvalid('expired');
       return null;
     }
     return token;
@@ -40,6 +54,7 @@ export const getToken = async (): Promise<string | null> => {
     if (token && isTokenExpired(token)) {
       await removeToken();
       await removeUser();
+      emitSessionInvalid('expired');
       return null;
     }
     return token;
@@ -146,7 +161,13 @@ const apiFetchRaw = async (
   }
   const fullUrl = url.startsWith('http') ? url : `${API_URL}${url}`;
   // No silent dev -> production retry: a dev build must never write test data to production.
-  return fetchWithTimeout(fullUrl, { ...options, headers });
+  const res = await fetchWithTimeout(fullUrl, { ...options, headers });
+  // A signed request was rejected: let AuthContext re-check the session (it logs out only if
+  // /api/users/profile also answers 401, so a route-specific 401 never signs the user out).
+  if (res.status === 401 && token && !/\/api\/users\/(profile|logout|fcm-token)/.test(fullUrl)) {
+    emitSessionInvalid('unauthorized');
+  }
+  return res;
 };
 
 /** Parses a JSON body without throwing (HTML 502 pages during a cold start return null). */

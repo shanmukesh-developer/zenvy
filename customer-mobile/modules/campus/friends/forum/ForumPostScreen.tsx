@@ -10,10 +10,10 @@ import {
   StyleSheet,
   Alert,
   Linking,
-  KeyboardAvoidingView,
   Platform,
   ListRenderItem,
 } from 'react-native';
+import { KeyboardAvoidingView } from '../../../../components/KeyboardAvoidingView';
 import { Image } from 'expo-image';
 import { Ellipsis, Send, X, Lock, Link2, Bookmark, BookmarkCheck, MessageCircle, VenetianMask, Hourglass, EyeOff, Share2 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';

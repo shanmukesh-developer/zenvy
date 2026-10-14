@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { View, Text, TextInput, ScrollView, TouchableOpacity, Alert, StyleSheet } from 'react-native';
+import { KeyboardAvoidingView } from '../../../../components/KeyboardAvoidingView';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { CalendarDays, Eye, HeartHandshake, MessageCircle, Database, Ban, Flag, Trash2, ShieldAlert, Lock, Circle, CircleCheck, FileText, ChevronRight } from 'lucide-react-native';
@@ -12,10 +13,12 @@ import { ageOn, connectErrorMessage, toIsoDate } from './connectShared';
 export const ONBOARDING_STEPS = ['Age', 'Consent', 'Profile', 'Selfie'];
 
 const GateFrame: React.FC<{ step?: number; children: React.ReactNode }> = ({ step, children }) => (
-  <ScrollView style={fui.screen} contentContainerStyle={{ paddingBottom: 80 }} keyboardShouldPersistTaps="handled">
-    {step !== undefined ? <StepDots steps={ONBOARDING_STEPS} current={step} /> : null}
-    <View style={{ padding: FS.lg, gap: FS.lg }}>{children}</View>
-  </ScrollView>
+  <KeyboardAvoidingView style={{ flex: 1 }}>
+    <ScrollView style={fui.screen} contentContainerStyle={{ paddingBottom: 80 }} keyboardShouldPersistTaps="handled">
+      {step !== undefined ? <StepDots steps={ONBOARDING_STEPS} current={step} /> : null}
+      <View style={{ padding: FS.lg, gap: FS.lg }}>{children}</View>
+    </ScrollView>
+  </KeyboardAvoidingView>
 );
 
 const Hero: React.FC<{ title: string; subtitle: string; icon?: React.ReactNode }> = ({ title, subtitle, icon }) => (

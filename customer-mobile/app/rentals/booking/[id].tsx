@@ -2,6 +2,7 @@
 // PIN handover / return, accept / decline / cancel / complete, rate and report.
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, ScrollView, RefreshControl, Alert, Linking, Modal, TextInput } from 'react-native';
+import { KeyboardAvoidingView } from '../../../components/KeyboardAvoidingView';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import SafeImage from '../../../components/SafeImage';
 import { rentalsApi, type Booking, BOOKING_STATUS_META, inr, fmtDateTime, fmtHours, RentalsError } from '../../../modules/rentals/rentalsApi';
@@ -124,7 +125,7 @@ export default function RentalBookingScreen() {
   );
 
   return (
-    <View style={{ flex: 1, backgroundColor: p.bg }}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: p.bg }}>
       <RHeader title={b.vehicleTitle} subtitle={isOwner ? 'Your vehicle' : 'Your rental'} right={<Badge label={meta.label.toUpperCase()} color={meta.color} />} />
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 50 }} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} tintColor={p.accent} />} keyboardShouldPersistTaps="handled">
         {guidance ? <Notice tone={['DECLINED', 'CANCELLED', 'EXPIRED'].includes(b.status) ? 'warn' : 'info'}>{guidance}</Notice> : null}
@@ -213,7 +214,7 @@ export default function RentalBookingScreen() {
             <Card>
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 <Field label="Extra km driven" value={extraKm} onChangeText={(t) => setExtraKm(t.replace(/\D/g, '').slice(0, 4))} keyboardType="number-pad" placeholder="0" style={{ flex: 1 }} hint={b.priceBreakdown?.extraPerKm ? `₹${b.priceBreakdown.extraPerKm}/km` : 'No km charge set'} />
-                <Field label="Other charges ₹" value={otherCharges} onChangeText={(t) => setOtherCharges(t.replace(/[^\d.]/g, '').slice(0, 7))} keyboardType="decimal-pad" placeholder="0" style={{ flex: 1 }} hint="Fuel, late fee…" />
+                <Field label="Other charges ₹" value={otherCharges} onChangeText={(t) => setOtherCharges(t.replace(/[^\d.]/g, '').replace(/(\..*)\./g, '$1').slice(0, 7))} keyboardType="decimal-pad" placeholder="0" style={{ flex: 1 }} hint="Fuel, late fee…" />
               </View>
               <Field label="Note for the renter" value={closeNote} onChangeText={(t) => setCloseNote(t.slice(0, 300))} placeholder="Optional" />
               <Btn label="Complete trip" kind="success" loading={busy === 'complete'} onPress={() => run('complete', () => rentalsApi.complete(b.id, { extraKm: extraKm ? Number(extraKm) : 0, otherCharges: otherCharges ? Number(otherCharges) : 0, note: closeNote.trim() || undefined }), 'Trip completed. Rate your renter!')} />
@@ -239,7 +240,7 @@ export default function RentalBookingScreen() {
       </ScrollView>
 
       <Modal visible={!!prompt} transparent animationType="fade" onRequestClose={() => setPrompt(null)}>
-        <View style={{ flex: 1, justifyContent: 'center', padding: 24, backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <KeyboardAvoidingView style={{ flex: 1, justifyContent: 'center', padding: 24, backgroundColor: 'rgba(0,0,0,0.5)' }}>
           <View style={{ backgroundColor: p.bg, borderRadius: 20, padding: 18 }}>
             <Text style={{ fontSize: 16, fontWeight: '900', color: p.text, marginBottom: 10 }}>{prompt?.kind === 'decline' ? 'Decline this request?' : 'Cancel this booking?'}</Text>
             <Field label={prompt?.required ? 'Reason (required)' : 'Reason (optional)'} value={reason} onChangeText={(t) => setReason(t.slice(0, 300))} placeholder={prompt?.kind === 'decline' ? 'e.g. I need it that day' : 'Tell them why'} multiline />
@@ -248,8 +249,8 @@ export default function RentalBookingScreen() {
               <Btn label={prompt?.kind === 'decline' ? 'Decline' : 'Cancel booking'} kind="danger" onPress={confirmPrompt} style={{ flex: 1 }} />
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
-    </View>
+    </KeyboardAvoidingView>
   );
 }

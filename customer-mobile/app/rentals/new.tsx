@@ -1,8 +1,9 @@
 // "Rent out your vehicle": multi-step listing form (create, or edit with ?id=). Saves a draft as you go;
 // the last step sends it for admin review. Photos / documents go through the campus media upload
 // (documents are private: only you and Zenvy admins can see them).
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, Image } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, Alert, Platform, ActivityIndicator, Image } from 'react-native';
+import { KeyboardAvoidingView } from '../../components/KeyboardAvoidingView';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { pickAndUploadImage, alertUploadError, type MediaPurpose } from '../../utils/imageUpload';
 import {
@@ -167,15 +168,33 @@ export default function ListVehicle() {
     }
   };
 
+  // A ref lock (state updates are async): two taps in one frame must not create two drafts.
+  const busyRef = useRef(false);
   const next = async () => {
+    if (busyRef.current) return;
     const problem = stepProblem(step, form);
     if (problem) { Alert.alert('Almost there', problem); return; }
-    // First save once the vehicle details are in, then on every step so nothing is lost.
-    const saved = await save();
-    if (saved) setStep((s) => Math.min(STEPS.length - 1, s + 1));
+    busyRef.current = true;
+    try {
+      // First save once the vehicle details are in, then on every step so nothing is lost.
+      const saved = await save();
+      if (saved) setStep((s) => Math.min(STEPS.length - 1, s + 1));
+    } finally {
+      busyRef.current = false;
+    }
   };
 
   const finish = async () => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    try {
+      await finishInner();
+    } finally {
+      busyRef.current = false;
+    }
+  };
+
+  const finishInner = async () => {
     for (let i = 0; i < STEPS.length - 1; i++) {
       const problem = stepProblem(i, form);
       if (problem) { setStep(i); Alert.alert('Almost there', problem); return; }
@@ -234,7 +253,7 @@ export default function ListVehicle() {
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: p.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: p.bg }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <RHeader title={editId ? 'Edit vehicle' : 'Rent out your vehicle'} subtitle={`Step ${step + 1} of ${STEPS.length} · ${STEPS[step]}`} />
       <View style={{ flexDirection: 'row', gap: 4, paddingHorizontal: 16, paddingTop: 10 }}>
         {STEPS.map((s, i) => (

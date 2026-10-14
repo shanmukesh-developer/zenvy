@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, BackHandler, Alert, StyleSheet } from 'react-native';
+import { KeyboardAvoidingView } from '../../../../components/KeyboardAvoidingView';
 import * as Haptics from 'expo-haptics';
 import { ShieldCheck, Eye, Compass, HeartHandshake, UserRound } from 'lucide-react-native';
 import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';
@@ -306,6 +307,7 @@ export const ConnectHome: React.FC<ConnectHomeProps> = ({ focusId, onOpenChat, u
     ) : tab === 'matches' ? (
       <MatchesList onOpenMatch={(m) => push(m.id, m)} onGate={onGate} onDiscover={() => setTab('discover')} onCount={setMatchCount} />
     ) : profile ? (
+      <KeyboardAvoidingView style={{ flex: 1 }}>
       <ScrollView style={fui.screen} contentContainerStyle={{ padding: FS.lg, paddingBottom: 120 }} keyboardShouldPersistTaps="handled">
         <ConnectProfileEditor
           status={status}
@@ -329,6 +331,7 @@ export const ConnectHome: React.FC<ConnectHomeProps> = ({ focusId, onOpenChat, u
           }
         />
       </ScrollView>
+      </KeyboardAvoidingView>
     ) : null;
 
   return (

@@ -8,6 +8,7 @@ import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import { StatusBar as RNStatusBar } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { AuthProvider } from '../context/AuthContext';
 import { CartProvider } from '../context/CartContext';
 import { ThemeProvider, useTheme } from '../context/ThemeContext';
@@ -107,6 +108,8 @@ function AppContainer() {
   return (
     <SafeAreaProvider>
       <GestureHandlerRootView style={{ flex: 1, backgroundColor: isDark ? '#0A0A0B' : '#F5F5F7' }}>
+        {/* Real keyboard insets for every screen (Android edge-to-edge ignores adjustResize). */}
+        <KeyboardProvider statusBarTranslucent navigationBarTranslucent>
         <WorldTransitionProvider>
           <AuthProvider>
           <CartProvider>
@@ -125,6 +128,7 @@ function AppContainer() {
           </CartProvider>
         </AuthProvider>
         </WorldTransitionProvider>
+        </KeyboardProvider>
       </GestureHandlerRootView>
     </SafeAreaProvider>
   );

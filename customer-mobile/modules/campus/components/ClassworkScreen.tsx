@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import { KeyboardAvoidingView } from '../../../components/KeyboardAvoidingView';
 import * as Haptics from 'expo-haptics';
 import { ArrowLeft, BookOpen, Megaphone, CheckCircle2, Clock } from 'lucide-react-native';
 import { CampusColors } from '../../../constants/campusTheme';
@@ -140,7 +141,7 @@ export const ClassworkScreen: React.FC<ClassworkScreenProps> = ({ currentUser, o
     (a.submissions || []).find((s: any) => s.studentId === currentUser?.id);
 
   return (
-    <View style={styles.safeArea}>
+    <KeyboardAvoidingView style={styles.safeArea}>
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={onBack}>
           <ArrowLeft size={22} color={CampusColors.ink} />
@@ -280,7 +281,7 @@ export const ClassworkScreen: React.FC<ClassworkScreenProps> = ({ currentUser, o
           )}
         </ScrollView>
       )}
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 

@@ -13,8 +13,8 @@ import {
   Modal,
   TextInput,
   Share,
-  KeyboardAvoidingView,
 } from 'react-native';
+import { KeyboardAvoidingView } from '../../components/KeyboardAvoidingView';
 // expo-image (memory + disk cache, downsampled CDN URLs) in place of react-native's Image
 import { CachedImage as Image } from '../../components/SafeImage';
 import { peekCache, readCache, writeCache, peekCachedRestaurant } from '../../utils/swrCache';
@@ -1073,7 +1073,7 @@ export default function ProductDetailScreen() {
 
       {/* ── Rate & Review Modal ── */}
       <Modal visible={showReviewModal} transparent animationType="slide" onRequestClose={closeReviewModal}>
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.modalBackdrop}>
             <ScrollView
               style={{ width: '100%', maxWidth: 420 }}

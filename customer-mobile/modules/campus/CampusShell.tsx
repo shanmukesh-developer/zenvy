@@ -632,6 +632,7 @@ export const CampusShell: React.FC<CampusShellProps> = ({ onBack, link }) => {
         onClose={() => setOverlay(null)}
         currentUser={user}
         campusCode={profile?.campus?.code || null}
+        onRequestVerify={() => switchTo('verify')}
       />
 
       {/* Rides: one entry for campus cab/auto pools and the main app's bike co-ride. */}
@@ -654,7 +655,7 @@ export const CampusShell: React.FC<CampusShellProps> = ({ onBack, link }) => {
         />
       </Sheet>
 
-      <RidePoolModal visible={overlay === 'ridePool'} onClose={() => setOverlay(null)} currentUser={user} />
+      <RidePoolModal visible={overlay === 'ridePool'} onClose={() => setOverlay(null)} currentUser={user} onRequestVerify={() => switchTo('verify')} />
 
       <CampusWhispersModal
         visible={overlay === 'whispers'}

@@ -23,6 +23,11 @@ interface DopaminePressableProps {
   activeOpacity?: number;
   tilt?: boolean;             // Enable 3D tilt mechanics (default false)
   haptic?: 'light' | 'medium' | 'heavy' | 'success' | 'none'; // Native haptics
+  accessibilityLabel?: string;
+  accessibilityRole?: 'button' | 'link' | 'tab' | 'checkbox' | 'radio' | 'none';
+  accessibilityHint?: string;
+  accessibilityState?: { disabled?: boolean; selected?: boolean; checked?: boolean; busy?: boolean };
+  testID?: string;
 }
 
 export default function DopaminePressable({
@@ -38,6 +43,11 @@ export default function DopaminePressable({
   activeOpacity = 0.9,
   tilt = false,
   haptic = 'light',
+  accessibilityLabel,
+  accessibilityRole,
+  accessibilityHint,
+  accessibilityState,
+  testID,
 }: DopaminePressableProps) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const tiltX = useRef(new Animated.Value(0)).current;
@@ -165,6 +175,11 @@ export default function DopaminePressable({
       onPress={handlePress}
       onLongPress={onLongPress}
       disabled={disabled}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityRole={accessibilityRole}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={accessibilityState ?? (disabled ? { disabled: true } : undefined)}
+      testID={testID}
       style={[style, { transform: transformStyle }]}
     >
       {children}

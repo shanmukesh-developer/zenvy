@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, StyleSheet, Alert, Switch, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, StyleSheet, Alert, Switch, Platform } from 'react-native';
+import { KeyboardAvoidingView } from '../../../../components/KeyboardAvoidingView';
 import { VenetianMask, Plus, X, Link2, Search, Check, ShieldAlert, Info } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';
@@ -319,6 +320,7 @@ export const ForumComposer: React.FC<{
 
   return (
     <FriendsScreenModal
+      avoidKeyboard={false}
       visible={!!request}
       onClose={onClose}
       title={title}

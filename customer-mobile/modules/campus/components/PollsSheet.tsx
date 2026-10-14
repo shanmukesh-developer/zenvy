@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import { KeyboardAvoidingView } from '../../../components/KeyboardAvoidingView';
 import { X, BarChart2, Plus } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { CampusColors } from '../../../constants/campusTheme';
@@ -107,10 +108,15 @@ export const PollsSheet: React.FC<PollsSheetProps> = ({ chatId, currentUser, onC
   };
 
   const totalVotes = (p: CampusPoll) =>
-    Object.values(p.votes || {}).reduce((sum, arr) => sum + (arr?.length || 0), 0);
+    p.options.reduce((sum, _o, i) => sum + optionCount(p, i), 0);
+  // Prefer the server's voteCounts (anonymous polls); fall back to the voter list length.
+  const optionCount = (p: CampusPoll, i: number) => {
+    const c = Number(p.voteCounts?.[String(i)]);
+    return Number.isFinite(c) && c >= 0 ? c : (p.votes?.[String(i)] || []).length;
+  };
 
   return (
-    <View style={styles.overlay}>
+    <KeyboardAvoidingView style={styles.overlay}>
       <View style={styles.sheet}>
         <View style={styles.header}>
           <View style={styles.headerLeft}>
@@ -188,7 +194,7 @@ export const PollsSheet: React.FC<PollsSheetProps> = ({ chatId, currentUser, onC
                 <View key={p.id} style={styles.pollCard}>
                   <Text style={styles.pollQuestion}>{p.question}</Text>
                   {p.options.map((opt, i) => {
-                    const count = (p.votes?.[String(i)] || []).length;
+                    const count = optionCount(p, i);
                     const pct = total ? Math.round((count / total) * 100) : 0;
                     const mine = myVotes.includes(i);
                     return (
@@ -211,7 +217,7 @@ export const PollsSheet: React.FC<PollsSheetProps> = ({ chatId, currentUser, onC
           )}
         </ScrollView>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 

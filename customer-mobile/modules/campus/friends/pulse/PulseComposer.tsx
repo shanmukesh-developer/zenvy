@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Switch, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, Switch, StyleSheet, ActivityIndicator, Platform, Alert } from 'react-native';
+import { KeyboardAvoidingView } from '../../../../components/KeyboardAvoidingView';
 import { VenetianMask, BarChart3, Link2, X, Plus, Globe, Users, Lock, BadgeCheck, Send, Hash, CornerDownRight } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import type { UploadedImage } from '../../../../utils/imageUpload';
@@ -209,6 +210,7 @@ export const PulseComposer: React.FC<{
 
   return (
     <FriendsScreenModal
+      avoidKeyboard={false}
       visible={visible}
       onClose={onClose}
       title={title}

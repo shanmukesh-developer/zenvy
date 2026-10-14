@@ -201,7 +201,8 @@ export const EditCommunitySheet: React.FC<{ community: ForumCommunity | null; vi
       if (community.kind === 'custom') patch.name = name.trim();
       const c = await updateCommunity(community.id, patch);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      onSaved({ ...community, ...c });
+      // The update response has no membership / guide fields: keep the ones already on screen.
+      onSaved({ ...community, ...c, isMember: community.isMember, freshersGuide: community.freshersGuide, myRole: c.myRole ?? community.myRole });
       onClose();
     } catch (e: any) {
       setError(blockedDetails(e) || forumErrorMessage(e, "Couldn't save."));

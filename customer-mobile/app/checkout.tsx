@@ -9,8 +9,8 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
 } from 'react-native';
+import { KeyboardAvoidingView } from '../components/KeyboardAvoidingView';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -34,6 +34,7 @@ import { readCache, writeCache } from '../utils/swrCache';
 import { StaggeredSection, FloatingPulse, BounceIn } from '../components/AnimatedSection';
 import DopaminePressable, { ActionPressable } from '../components/DopaminePressable';
 import { stallErrorMessage, stallPayCopy } from '../utils/localVendor';
+import { cleanBlock, cleanRoom as cleanRoomNo, saveHostelToProfile } from '../utils/hostel';
 
 type CampusKey = 'srmap' | 'vitap' | 'amrita';
 type PayMethod = 'COD' | 'Wallet';
@@ -80,12 +81,19 @@ function detectDishType(name: string): string {
 }
 
 const rupees = (n: number) => `₹${Math.round((Number(n) || 0) * 100) / 100}`;
-const cleanRoom = (room: any) => String(room || '').replace(/^\s*room\s*/i, '').trim();
+const cleanRoom = (room: any) => cleanRoomNo(room);
+
+/** "Ganga, Room 304" / "Ganga Block, 304" -> { block, room }; null when the box holds something else. */
+const parseHostelAddress = (addr: string): { block: string; room: string } | null => {
+  const m = String(addr || '').match(/^\s*([^,]{2,60}?)\s*,\s*(?:room\s*(?:no\.?|#)?\s*)?([A-Za-z0-9][A-Za-z0-9\/-]{0,19})\s*$/i);
+  if (!m || /^\d+$/.test(m[1].trim())) return null;
+  return { block: cleanBlock(m[1]), room: cleanRoom(m[2]) };
+};
 
 export default function CheckoutScreen() {
   const router = useRouter();
   const { cart, totalItems, addToCart, setCart, removeItems } = useCart();
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, setUser } = useAuth();
   const { isDark, colors } = useTheme();
 
   const [campus, setCampus] = useState<CampusKey>('srmap');
@@ -93,6 +101,7 @@ export default function CheckoutScreen() {
   const [landmark, setLandmark] = useState('');
   const [instructionIds, setInstructionIds] = useState<string[]>([]);
   const [campusBlocks, setCampusBlocks] = useState<Record<string, string[]>>({});
+  const [savingHostel, setSavingHostel] = useState(false);
 
   const [paymentMethod, setPaymentMethod] = useState<PayMethod>('COD');
 
@@ -557,13 +566,31 @@ export default function CheckoutScreen() {
   }
 
   const blocks = campusBlocks[campus] || [];
+  // "Save as my hostel & room": offered when the box holds a block + room that differs from the profile.
+  const typedHostel = parseHostelAddress(address);
+  const hostelSaved = !!typedHostel &&
+    cleanBlock((user as any)?.hostelBlock).toLowerCase() === typedHostel.block.toLowerCase() &&
+    cleanRoom((user as any)?.roomNumber).toLowerCase() === typedHostel.room.toLowerCase();
+  const saveTypedHostel = async () => {
+    if (!typedHostel || savingHostel || hostelSaved) return;
+    setSavingHostel(true);
+    try {
+      const updated = await saveHostelToProfile(typedHostel.block, typedHostel.room);
+      if (mountedRef.current) setUser(updated);
+      Haptics.selectionAsync().catch(() => {});
+    } catch (e: any) {
+      Alert.alert("Couldn't save", e?.message || 'Please try again.');
+    } finally {
+      if (mountedRef.current) setSavingHostel(false);
+    }
+  };
   const profileBlock = (user as any)?.hostelBlock ? String((user as any).hostelBlock) : null;
   const blockChips = profileBlock && !blocks.includes(profileBlock) ? [profileBlock, ...blocks] : blocks;
   const walletBalance = Number(quote?.walletBalance ?? (user as any)?.walletBalance ?? 0) || 0;
   const walletAllowed = hasOrder && !!quote && quote.canPayWithWallet !== false;
 
   return (
-    <KeyboardAvoidingView style={[s.container, { backgroundColor: bg }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView style={[s.container, { backgroundColor: bg }]} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       {header}
 
       <ScrollView
@@ -624,6 +651,23 @@ export default function CheckoutScreen() {
             maxLength={200}
             returnKeyType="next"
           />
+          {typedHostel && (
+            <TouchableOpacity
+              onPress={saveTypedHostel}
+              disabled={hostelSaved || savingHostel}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: hostelSaved, busy: savingHostel }}
+              accessibilityLabel="Save as my hostel and room"
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: -4, marginBottom: 10, alignSelf: 'flex-start', paddingVertical: 4 }}
+            >
+              <View style={{ width: 18, height: 18, borderRadius: 5, borderWidth: 1.5, borderColor: hostelSaved ? COLORS.emerald : border, backgroundColor: hostelSaved ? COLORS.emerald : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+                {savingHostel ? <ActivityIndicator size="small" color={txt} /> : hostelSaved ? <Text style={{ color: '#fff', fontSize: 11, fontWeight: '900' }}>✓</Text> : null}
+              </View>
+              <Text style={{ fontSize: 11.5, fontWeight: '700', color: hostelSaved ? COLORS.emerald : txtSec }}>
+                {hostelSaved ? 'Saved as my hostel & room' : 'Save as my hostel & room'}
+              </Text>
+            </TouchableOpacity>
+          )}
           {blockChips.length > 0 && (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
               {blockChips.map((block) => {

@@ -1,6 +1,7 @@
 // Driving licence for renting: uploaded once (private photos), verified by Zenvy.
-import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Image, ActivityIndicator, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, Image, ActivityIndicator, Alert, Platform } from 'react-native';
+import { KeyboardAvoidingView } from '../../components/KeyboardAvoidingView';
 import { useRouter } from 'expo-router';
 import { pickAndUploadImage, alertUploadError } from '../../utils/imageUpload';
 import { rentalsApi, type Licence, LICENCE_CLASSES } from '../../modules/rentals/rentalsApi';
@@ -23,12 +24,17 @@ export default function LicenceScreen() {
   const [uploading, setUploading] = useState<'front' | 'back' | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // A live refresh (socket reconnect / licence event) must not throw away an edit in progress.
+  const editingRef = useRef(false);
+  editingRef.current = editing;
   const load = useCallback(async () => {
     try {
       const res = await rentalsApi.licence();
       setLic(res.licence);
-      setEditing(!res.licence);
-      if (res.licence) { setClasses(res.licence.classes); setExpiry(res.licence.expiresOn || ''); }
+      if (!editingRef.current) {
+        setEditing(!res.licence);
+        if (res.licence) { setClasses(res.licence.classes); setExpiry(res.licence.expiresOn || ''); }
+      }
       setError(null);
     } catch (e: any) {
       setError(e?.message || 'Could not load your licence.');
@@ -78,7 +84,7 @@ export default function LicenceScreen() {
   );
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: p.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: p.bg }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <RHeader title="Driving licence" subtitle="Needed once to rent vehicles" />
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
         {lic === undefined && !error ? <StateView kind="loading" /> : null}

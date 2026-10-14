@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import { KeyboardAvoidingView } from '../../../components/KeyboardAvoidingView';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   X,
@@ -178,6 +179,7 @@ export const AssignmentPortalModal: React.FC<AssignmentPortalModalProps> = ({
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <KeyboardAvoidingView style={{ flex: 1 }}>
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
@@ -318,6 +320,7 @@ export const AssignmentPortalModal: React.FC<AssignmentPortalModalProps> = ({
           </ScrollView>
         )}
       </View>
+      </KeyboardAvoidingView>
       </SafeAreaView>
     </Modal>
   );

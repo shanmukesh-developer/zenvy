@@ -84,7 +84,7 @@ export default function RentalsSection() {
       ) : null}
 
       <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
-        <Quick icon="🧾" label="My bookings" badge={elig?.openRequests ? `${elig.openRequests}` : undefined} onPress={() => router.push('/rentals/bookings' as any)} />
+        <Quick icon="🧾" label="My bookings" badge={elig?.openRequests ? `${elig.openRequests}` : undefined} onPress={() => router.push((elig?.openRequests ? '/rentals/bookings?role=owner' : '/rentals/bookings') as any)} />
         <Quick icon="🔑" label="My vehicles" onPress={() => router.push('/rentals/my-listings' as any)} />
         <Quick icon="🪪" label={elig?.licence ? (elig.licence.status === 'VERIFIED' ? 'Licence ✓' : 'Licence') : 'Add licence'} onPress={() => router.push('/rentals/licence' as any)} />
       </View>

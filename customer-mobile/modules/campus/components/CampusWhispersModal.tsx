@@ -10,6 +10,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import { KeyboardAvoidingView } from '../../../components/KeyboardAvoidingView';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   X,
@@ -141,6 +142,7 @@ export const CampusWhispersModal: React.FC<CampusWhispersModalProps> = ({
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <KeyboardAvoidingView style={{ flex: 1 }}>
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
@@ -263,7 +265,7 @@ export const CampusWhispersModal: React.FC<CampusWhispersModalProps> = ({
           transparent
           onRequestClose={() => setComposerOpen(false)}
         >
-          <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView style={styles.modalOverlay}>
             <View style={styles.composerSheet}>
               <View style={styles.sheetHeader}>
                 <Text style={styles.sheetTitle}>Whisper Anonymously</Text>
@@ -312,9 +314,10 @@ export const CampusWhispersModal: React.FC<CampusWhispersModalProps> = ({
                 </TouchableOpacity>
               </View>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
       </View>
+      </KeyboardAvoidingView>
       </SafeAreaView>
     </Modal>
   );

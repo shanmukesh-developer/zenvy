@@ -1,6 +1,7 @@
 import * as Haptics from 'expo-haptics';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, RefreshControl, FlatList, Dimensions, Platform, Modal, ActivityIndicator, Alert, Animated, Linking, BackHandler, Vibration } from 'react-native';
+import { KeyboardAvoidingView } from '../../components/KeyboardAvoidingView';
 // expo-image (memory + disk cache, downsampled CDN URLs) in place of react-native's Image
 import { CachedImage as Image } from '../../components/SafeImage';
 import { useLiveSync, hasType } from '../../utils/useLiveSync';
@@ -239,6 +240,8 @@ const hasDietTag = (r: any, kw: string): boolean => {
 };
 
 export default function HomeScreen() {
+  // Keyboard lift only while Home is the visible tab (it stays mounted under other screens).
+  const homeFocused = useIsFocused();
   const router = useRouter();
   const { user, refreshUser } = useAuth();
   const { totalItems, totalPrice } = useCart();
@@ -662,7 +665,7 @@ export default function HomeScreen() {
   const goldGlowShadow = isDark ? SHADOWS.goldGlow : SHADOWS.redGlow;
 
   return (
-    <View style={[s.container, { backgroundColor: bg }]}>
+    <KeyboardAvoidingView style={[s.container, { backgroundColor: bg }]} enabled={homeFocused}>
       <ServerWakeupOverlay 
         visible={showWakeup} 
         // Refetch only once the server answers; when it stays unreachable the grid shows Retry
@@ -1530,7 +1533,7 @@ export default function HomeScreen() {
           <View style={s.fabBadge} />
         </DopaminePressable>
       </FloatingPulse>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

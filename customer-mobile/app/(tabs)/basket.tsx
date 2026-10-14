@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, TextInput, Alert, ActivityIndicator, RefreshControl } from 'react-native';
+import { KeyboardAvoidingView } from '../../components/KeyboardAvoidingView';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Clipboard from '@react-native-clipboard/clipboard';
-import { useRouter } from 'expo-router';
+import { useRouter, useIsFocused } from 'expo-router';
 import { COLORS, SHADOWS } from '../../constants/theme';
 import { useCart, useBasketQuote, useServiceability, isCustomRequest, DELIVERY_INSTRUCTIONS, DELIVERY_INSTRUCTIONS_KEY } from '../../context/CartContext';
 import { useAuth } from '../../context/AuthContext';
@@ -15,6 +16,7 @@ import SafeImage from '../../components/SafeImage';
 import { stallPayCopy } from '../../utils/localVendor';
 
 export default function BasketScreen() {
+  const basketFocused = useIsFocused();
   const { isDark, colors } = useTheme();
   const { user } = useAuth();
   const { cart, removeFromCart, updateQuantity, clearCart, removeItems, totalPrice, totalItems, roomCode, isHosting, roomStatus, roomMessage, handleHostRoom, handleJoinRoom, handleDisconnect } = useCart();
@@ -75,7 +77,7 @@ export default function BasketScreen() {
   const actionBtnBg = COLORS.red;
 
   return (
-    <View style={[s.container, { backgroundColor: bg }]}>
+    <KeyboardAvoidingView style={[s.container, { backgroundColor: bg }]} enabled={basketFocused}>
       <AmbientBackground />
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -458,7 +460,7 @@ export default function BasketScreen() {
           </ActionPressable>
         </FloatingPulse>
       )}
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

@@ -1,6 +1,7 @@
 // Rate the other student after a completed rental (1-5 stars + optional text).
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, Alert } from 'react-native';
+import { KeyboardAvoidingView } from '../../../components/KeyboardAvoidingView';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { rentalsApi, type Booking } from '../../../modules/rentals/rentalsApi';
 import { RHeader, usePalette, Card, Btn, Field, Stars, StateView } from '../../../modules/rentals/ui';
@@ -37,7 +38,7 @@ export default function RateRental() {
 
   const isOwner = b?.role === 'OWNER';
   return (
-    <View style={{ flex: 1, backgroundColor: p.bg }}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: p.bg }}>
       <RHeader title={isOwner ? 'Rate the renter' : 'Rate your trip'} subtitle={b?.vehicleTitle} />
       {!b ? (error ? <StateView kind="error" title="Could not load" message={error} /> : <StateView kind="loading" />) : !b.canRate ? (
         <StateView kind="empty" icon="⭐" title={b.rated ? 'Already rated' : 'Not ready yet'} message={b.rated ? 'You have already rated this trip.' : 'You can rate once the trip is completed.'} actionLabel="Back" onAction={() => router.back()} />
@@ -52,6 +53,6 @@ export default function RateRental() {
           <Btn label="Submit rating" loading={saving} onPress={submit} />
         </ScrollView>
       )}
-    </View>
+    </KeyboardAvoidingView>
   );
 }

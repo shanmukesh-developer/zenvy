@@ -9,13 +9,13 @@ import {
   StyleSheet,
   TouchableOpacity,
   Modal,
-  KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
   ScrollView,
   StyleProp,
   ViewStyle,
 } from 'react-native';
+import { KeyboardAvoidingView } from '../../components/KeyboardAvoidingView';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { X, ChevronLeft, WifiOff } from 'lucide-react-native';
@@ -171,7 +171,7 @@ export const ScreenModal: React.FC<{
         </View>
         {right}
       </View>
-      {children}
+      <KeyboardAvoidingView style={{ flex: 1 }}>{children}</KeyboardAvoidingView>
     </SafeAreaView>
   </Modal>
 );

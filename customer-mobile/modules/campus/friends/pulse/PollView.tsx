@@ -34,7 +34,15 @@ export const PollView: React.FC<{
       onGateError?.(e);
       const code = errorCode(e);
       if (code === 'ALREADY_VOTED' && typeof e?.data?.myVote === 'number') {
-        onChange({ ...poll, myVote: e.data.myVote });
+        // Voted elsewhere: re-sending the same choice is idempotent and returns the poll with results.
+        const mine = e.data.myVote;
+        try {
+          const again = await votePulsePoll(poll.id, mine);
+          onChange(again.poll);
+        } catch {
+          onChange({ ...poll, myVote: mine });
+        }
+        return;
       } else if (code === 'POLL_CLOSED') {
         onChange({ ...poll, closed: true });
       }

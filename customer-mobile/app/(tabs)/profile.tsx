@@ -12,9 +12,9 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
-  KeyboardAvoidingView,
   Share,
 } from 'react-native';
+import { KeyboardAvoidingView } from '../../components/KeyboardAvoidingView';
 import Clipboard from '@react-native-clipboard/clipboard';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -38,6 +38,7 @@ try {
 }
 import Constants from 'expo-constants';
 import { pickAndUploadImage, alertUploadError } from '../../utils/imageUpload';
+import { cleanRoom, cleanBlock, formatHostel, useCampusHostelBlocks, HOSTEL_BLOCK_MAX, ROOM_NUMBER_MAX } from '../../utils/hostel';
 
 const PHONE_RE = /^[6-9]\d{9}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -133,6 +134,10 @@ export default function ProfileScreen() {
   const [editAbout, setEditAbout] = useState('');
   const [editAddress, setEditAddress] = useState('');
   const [editCity, setEditCity] = useState('');
+  const [editHostelBlock, setEditHostelBlock] = useState('');
+  const [editRoom, setEditRoom] = useState('');
+  // Hostel blocks from the campus directory (only loaded while the editor is open)
+  const hostelCampuses = useCampusHostelBlocks(isEditing);
   const [editProfileImage, setEditProfileImage] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
@@ -330,6 +335,8 @@ export default function ProfileScreen() {
     setEditAbout((user?.about || '').slice(0, BIO_MAX));
     setEditAddress(user?.address || '');
     setEditCity(user?.city || '');
+    setEditHostelBlock(cleanBlock((user as any)?.hostelBlock));
+    setEditRoom(cleanRoom((user as any)?.roomNumber));
     setEditProfileImage(user?.profileImage || null);
     setOtpSent(false);
     setOtpCode('');
@@ -453,6 +460,8 @@ export default function ProfileScreen() {
       about: editAbout.trim().slice(0, BIO_MAX),
       address: editAddress.trim().slice(0, 200),
       city: editCity.trim().slice(0, 60),
+      hostelBlock: cleanBlock(editHostelBlock),
+      roomNumber: cleanRoom(editRoom),
       profileImage: editProfileImage || null,
     };
 
@@ -679,14 +688,16 @@ export default function ProfileScreen() {
               </TouchableOpacity>
             ) : null}
 
-            {/* Primary Address */}
+            {/* Saved hostel block & room (used at checkout), else the delivery address */}
             <TouchableOpacity
               style={[s.primaryAddressBox, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F6', borderColor: border }]}
               onPress={openEditor}
+              accessibilityRole="button"
+              accessibilityLabel={`Hostel and room: ${formatHostel(user) || 'not set'}. Edit`}
             >
-              <Text style={{ fontSize: 14 }}>📍</Text>
+              <Text style={{ fontSize: 14 }}>{formatHostel(user) ? '🏢' : '📍'}</Text>
               <Text style={[s.primaryAddressText, { color: txt }]} numberOfLines={1}>
-                {user?.address || 'Set your hostel room & block'}
+                {formatHostel(user) || user?.address || 'Set your hostel room & block'}
               </Text>
               <Text style={[s.editAddrText, { color: goldColor }]}>EDIT</Text>
             </TouchableOpacity>
@@ -1219,7 +1230,7 @@ export default function ProfileScreen() {
       <Modal visible={isEditing} animationType="slide" transparent={true} onRequestClose={closeEditor}>
         <KeyboardAvoidingView
           style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 0}
         >
           <View style={s.modalOverlay}>
@@ -1363,6 +1374,46 @@ export default function ProfileScreen() {
                 style={[s.modalInput, { color: txt, backgroundColor: inputBg, borderColor: border, height: 80, textAlignVertical: 'top', paddingTop: 10 }]}
               />
               <Text style={{ fontSize: 9, color: txtSec, textAlign: 'right', marginTop: -4, marginBottom: 6 }}>{editAbout.length}/{BIO_MAX}</Text>
+
+              {/* Hostel block (campus directory chips + free text) and room number */}
+              <Text style={[s.inputLabel, { color: txtSec }]}>HOSTEL BLOCK</Text>
+              {hostelCampuses.length > 0 && (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                  {hostelCampuses.flatMap((c) => c.blocks.map((b) => ({ key: `${c.code}:${b}`, block: b }))).filter((x, i, arr) => arr.findIndex((y) => y.block === x.block) === i).slice(0, 32).map(({ key, block }) => {
+                    const on = editHostelBlock.toLowerCase() === block.toLowerCase();
+                    return (
+                      <TouchableOpacity
+                        key={key}
+                        onPress={() => setEditHostelBlock(on ? '' : block)}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: on }}
+                        style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14, borderWidth: 1, borderColor: on ? goldColor : border, backgroundColor: on ? goldColor : inputBg }}
+                      >
+                        <Text style={{ fontSize: 11, fontWeight: '800', color: on ? '#000' : txt }}>🏢 {block}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+              <TextInput
+                value={editHostelBlock}
+                onChangeText={(t) => setEditHostelBlock(t.slice(0, HOSTEL_BLOCK_MAX))}
+                placeholder={hostelCampuses.length ? 'Or type your block' : 'e.g. Ganga Block'}
+                placeholderTextColor={txtSec}
+                maxLength={HOSTEL_BLOCK_MAX}
+                style={[s.modalInput, { color: txt, backgroundColor: inputBg, borderColor: border }]}
+              />
+              <Text style={[s.inputLabel, { color: txtSec }]}>ROOM NUMBER</Text>
+              <TextInput
+                value={editRoom}
+                onChangeText={(t) => setEditRoom(t.replace(/^\s*room\s*/i, '').slice(0, ROOM_NUMBER_MAX))}
+                placeholder="e.g. 304"
+                placeholderTextColor={txtSec}
+                maxLength={ROOM_NUMBER_MAX}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                style={[s.modalInput, { color: txt, backgroundColor: inputBg, borderColor: border }]}
+              />
 
               {/* Delivery Address Auto-complete */}
               <Text style={[s.inputLabel, { color: txtSec }]}>DELIVERY ADDRESS</Text>

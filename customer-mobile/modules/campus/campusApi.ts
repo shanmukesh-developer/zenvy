@@ -591,6 +591,8 @@ export interface CampusPoll {
   question: string;
   options: string[];
   votes: Record<string, string[]>;
+  /** Per-option vote totals from the server (anonymous polls hide other voters' ids). */
+  voteCounts?: Record<string, number>;
   isMulti?: boolean;
   isAnonymous?: boolean;
   closed?: boolean;
