@@ -1,0 +1,60 @@
+# Daily encrypted backup of the production database (free: GitHub Actions + artifacts).
+# The repo is public, so the dump is encrypted with BACKUP_PASSPHRASE before upload; without the
+# passphrase an artifact is unreadable. Secrets needed (repo Settings -> Secrets -> Actions):
+#   SUPABASE_DB_URL     Supabase "Session pooler" connection string (port 5432), not the 6543 one
+#   BACKUP_PASSPHRASE   long random text you keep safe (needed to restore)
+# Restore: download the artifact, then
+#   gpg --batch --passphrase "<passphrase>" -d zenvy-db.dump.gpg > zenvy-db.dump
+#   pg_restore --no-owner --no-privileges -d "<target db url>" zenvy-db.dump
+name: db-backup
+
+on:
+  schedule:
+    - cron: '37 21 * * *' # 03:07 IST daily
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check secrets
+        id: check
+        env:
+          DB: ${{ secrets.SUPABASE_DB_URL }}
+          PASS: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          if [ -z "$DB" ] || [ -z "$PASS" ]; then
+            echo "Backup secrets are not set; skipping."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Dump and encrypt
+        if: steps.check.outputs.ready == 'true'
+        env:
+          DB: ${{ secrets.SUPABASE_DB_URL }}
+          PASS: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          # pg_dump 17 can dump older servers too.
+          docker run --rm -e DB -v "$PWD/out:/out" postgres:17 \
+            sh -c 'pg_dump --format=custom --no-owner --no-privileges --dbname="$DB" --file=/out/zenvy-db.dump'
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$PASS" \
+            --symmetric --cipher-algo AES256 -o out/zenvy-db.dump.gpg out/zenvy-db.dump
+          rm -f out/zenvy-db.dump
+          ls -la out
+
+      - name: Upload encrypted backup
+        if: steps.check.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: zenvy-db-${{ github.run_id }}
+          path: out/zenvy-db.dump.gpg
+          retention-days: 14
+          if-no-files-found: error
