@@ -14,7 +14,6 @@ import { CartProvider } from '../context/CartContext';
 import { ThemeProvider, useTheme } from '../context/ThemeContext';
 import { DietaryProvider } from '../context/DietaryContext';
 import { WorldTransitionProvider } from '../context/WorldTransitionContext';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import WorldTransitionOverlay from '../components/WorldTransitionOverlay';
 import IntroOverlay from '../components/IntroOverlay';
 import GlobalAnnouncement from '../components/GlobalAnnouncement';
@@ -70,29 +69,13 @@ function AppContainer() {
   }, []);
 
   React.useEffect(() => {
-    // Only show intro on first-ever launch, skip on subsequent opens
-    const checkFirstLaunch = async () => {
-      try {
-        const seen = await AsyncStorage.getItem('zenvy_intro_seen');
-        if (!seen) {
-          setShowIntro(true);
-        }
-      } catch (e) {
-        // If AsyncStorage fails, skip intro to avoid blocking the user
-      } finally {
-        setCheckingIntro(false);
-      }
-    };
-    checkFirstLaunch();
+    // The Zenvy intro plays on every app start (cold launch), as it always did.
+    setShowIntro(true);
+    setCheckingIntro(false);
   }, []);
 
-  const handleIntroComplete = async () => {
+  const handleIntroComplete = () => {
     setShowIntro(false);
-    try {
-      await AsyncStorage.setItem('zenvy_intro_seen', 'true');
-    } catch (e) {
-      // Silently fail — intro will just show again next time
-    }
   };
 
   // Wait for icon fonts to load (critical for Expo Web)
