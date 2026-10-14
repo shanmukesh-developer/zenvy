@@ -12,6 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { apiFetch } from '../utils/auth';
 import { useLiveSync } from '../utils/useLiveSync';
 import { campusHrefForNotification } from '../modules/campus/campusLinks';
+import { rentalHrefForNotification } from '../modules/rentals/rentalLinks';
 import { safeId } from '../utils/ids';
 
 interface NotificationItem {
@@ -228,6 +229,9 @@ export default function NotificationsScreen() {
       router.push('/(tabs)/orders' as any);
     } else if (n.type === 'SPIN_EARNED' || n.type === 'WALL_WINNER_REWARD') {
       router.push('/rewards' as any);
+    } else if (rentalHrefForNotification(n.type, n.data)) {
+      // Rental requests, confirmations, reminders, licence and listing reviews
+      router.push(rentalHrefForNotification(n.type, n.data) as any);
     } else if (campusHrefForNotification(n.type, n.data)) {
       // Friend requests, chats, verification results, birthdays and The Wall open the right Campus screen
       router.push(campusHrefForNotification(n.type, n.data) as any);

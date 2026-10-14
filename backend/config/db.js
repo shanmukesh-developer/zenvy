@@ -41,6 +41,7 @@ const { initCatalogueImportLedgerModel } = require('../models/CatalogueImportLed
 const { initNotificationModel } = require('../models/Notification');
 const { initCampusModels } = require('../modules/campus/models');
 const { initFriendsModels } = require('../modules/friends');
+const { initRentalsModels } = require('../modules/rentals');
 
 const initializeAllModels = (instance) => {
   initUserModel(instance);
@@ -81,6 +82,8 @@ const initializeAllModels = (instance) => {
   initNotificationModel(instance);
   // Zenvy Friends tables (after Users / campus / chat models they reference).
   initFriendsModels(instance);
+  // Zenvy Rentals: peer-to-peer student vehicle rentals (Others > Rentals).
+  initRentalsModels(instance);
 
   // Define Associations
   const Restaurant = instance.models.Restaurant;
@@ -600,6 +603,13 @@ const connectDB = async () => {
       } catch (fErr) {
         console.warn('⚠️ [FRIENDS_MIGRATION_WARN]', fErr.message);
       }
+      // Zenvy Rentals: named unique indexes (additive, idempotent).
+      try {
+        const { runRentalsMigrations } = require('../modules/rentals/migrations');
+        await runRentalsMigrations(sequelize);
+      } catch (rErr) {
+        console.warn('⚠️ [RENTALS_MIGRATION_WARN]', rErr.message);
+      }
     } else {
       // Production: no sync({ alter: true }) on every boot. Sequelize v6 alter re-adds UNIQUE
       // constraints each run (duplicate *_key indexes pile up), slows startup (API is 503 until
@@ -632,6 +642,13 @@ const connectDB = async () => {
         await runFriendsMigrations(sequelize);
       } catch (fErr) {
         console.warn('⚠️ [FRIENDS_MIGRATION_WARN]', fErr.message);
+      }
+      // Zenvy Rentals: named unique indexes (additive, idempotent).
+      try {
+        const { runRentalsMigrations } = require('../modules/rentals/migrations');
+        await runRentalsMigrations(sequelize);
+      } catch (rErr) {
+        console.warn('⚠️ [RENTALS_MIGRATION_WARN]', rErr.message);
       }
       
       // Auto-check for empty DB to help user identify missing data

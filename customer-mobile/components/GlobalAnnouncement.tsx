@@ -7,6 +7,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BlurView } from 'expo-blur';
 import { useAuth } from '../context/AuthContext';
 import { campusHrefForNotification } from '../modules/campus/campusLinks';
+import { rentalHrefForNotification } from '../modules/rentals/rentalLinks';
 
 let Notifications: any = null;
 try {
@@ -199,7 +200,11 @@ export default function GlobalAnnouncement() {
         }, delayMs);
 
         const campusHref = campusHrefForNotification(data.type, data);
-        if (campusHref) {
+        const rentalHref = rentalHrefForNotification(data.type, data);
+        if (rentalHref) {
+          // Rentals: booking requests / confirmations / reminders, licence and listing reviews
+          go(rentalHref);
+        } else if (campusHref) {
           // Campus chats, calls, friend requests, verification results, birthdays and The Wall
           go(campusHref);
         } else if (data.type === 'BIRTHDAY_ALERT') {

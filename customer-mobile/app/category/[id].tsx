@@ -602,6 +602,20 @@ export default function CategoryDetailScreen() {
         )}
       </View>
 
+      {categoryId === 'rentals' && (
+        <TouchableOpacity
+          onPress={() => router.push('/rentals' as any)}
+          accessibilityRole="button"
+          accessibilityLabel="Student vehicles: rent from verified students"
+          style={[s.closedBanner, { backgroundColor: isDark ? 'rgba(14,165,233,0.14)' : 'rgba(14,165,233,0.10)' }]}
+        >
+          <Text style={{ fontSize: 14 }}>🏍️</Text>
+          <Text style={{ flex: 1, color: txt, fontSize: 11, fontWeight: '700' }}>
+            Student vehicles: rent bikes, scooters and cars from verified students, or rent out yours. <Text style={{ color: '#0EA5E9', fontWeight: '900' }}>Open ›</Text>
+          </Text>
+        </TouchableOpacity>
+      )}
+
       {!isServiceCategory && closedStore && (
         <View style={[s.closedBanner, { backgroundColor: isDark ? 'rgba(99,102,241,0.12)' : 'rgba(99,102,241,0.08)' }]}>
           <Text style={{ fontSize: 14 }}>🌙</Text>

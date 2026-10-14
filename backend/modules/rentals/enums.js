@@ -1,0 +1,78 @@
+// Zenvy Rentals (peer-to-peer student vehicle rentals): shared enums and limits.
+
+const VEHICLE_TYPES = ['BIKE', 'SCOOTER', 'CAR'];
+const FUELS = ['PETROL', 'DIESEL', 'EV', 'CNG'];
+const TRANSMISSIONS = ['MANUAL', 'AUTOMATIC'];
+const PLATE_TYPES = ['COMMERCIAL_RENTAL', 'PRIVATE'];
+
+const LISTING_STATUS = {
+  DRAFT: 'DRAFT',
+  PENDING_REVIEW: 'PENDING_REVIEW',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+  PAUSED: 'PAUSED',
+  DELETED: 'DELETED',
+};
+
+const BOOKING_STATUS = {
+  REQUESTED: 'REQUESTED',
+  ACCEPTED: 'ACCEPTED',
+  DECLINED: 'DECLINED',
+  EXPIRED: 'EXPIRED',
+  ACTIVE: 'ACTIVE',
+  RETURNED: 'RETURNED',
+  COMPLETED: 'COMPLETED',
+  CANCELLED: 'CANCELLED',
+};
+// Bookings that hold the vehicle's time slot.
+const HOLDING_STATUSES = [BOOKING_STATUS.REQUESTED, BOOKING_STATUS.ACCEPTED, BOOKING_STATUS.ACTIVE];
+// Bookings in which the two students may see each other's phone number (and the renter the full plate).
+const CONTACT_STATUSES = [BOOKING_STATUS.ACCEPTED, BOOKING_STATUS.ACTIVE, BOOKING_STATUS.RETURNED];
+const OPEN_STATUSES = [BOOKING_STATUS.REQUESTED, BOOKING_STATUS.ACCEPTED, BOOKING_STATUS.ACTIVE, BOOKING_STATUS.RETURNED];
+
+const LICENCE_STATUS = { PENDING: 'PENDING', VERIFIED: 'VERIFIED', REJECTED: 'REJECTED' };
+// Indian driving licence classes we understand (Form 7 / Sarathi).
+const LICENCE_CLASSES = ['MCWG', 'MCWOG', 'LMV', 'LMV-NT', 'TRANS'];
+
+const REPORT_CATEGORIES = ['DAMAGE', 'NO_SHOW', 'LATE_RETURN', 'SAFETY', 'PAYMENT', 'OTHER'];
+const REPORT_STATUS = ['OPEN', 'REVIEWING', 'RESOLVED', 'DISMISSED'];
+
+const LIMITS = {
+  MAX_PHOTOS: 6,
+  MIN_PHOTOS: 1,
+  MAX_PRICE_PER_HOUR: 5000,
+  MAX_PRICE_PER_DAY: 50000,
+  MAX_DEPOSIT: 200000,
+  MAX_MIN_HOURS: 72,
+  MAX_KM_PER_DAY: 2000,
+  MAX_EXTRA_PER_KM: 500,
+  MAX_BOOKING_DAYS: 30,
+  MAX_ADVANCE_DAYS: 60,
+  /** A request must start at least this far in the future (minutes). */
+  MIN_LEAD_MINUTES: 15,
+  /** Owner must answer within this long (or before the start, whichever is first). */
+  RESPOND_WINDOW_MS: 2 * 60 * 60 * 1000,
+  /** RETURNED bookings the owner never closes are completed automatically after this long. */
+  AUTO_COMPLETE_MS: 24 * 60 * 60 * 1000,
+  PIN_MAX_ATTEMPTS: 5,
+  PIN_LOCK_MS: 15 * 60 * 1000,
+  MAX_BLOCKED_RANGES: 30,
+  MAX_OPEN_REQUESTS_PER_RENTER: 5,
+};
+
+module.exports = {
+  VEHICLE_TYPES,
+  FUELS,
+  TRANSMISSIONS,
+  PLATE_TYPES,
+  LISTING_STATUS,
+  BOOKING_STATUS,
+  HOLDING_STATUSES,
+  CONTACT_STATUSES,
+  OPEN_STATUSES,
+  LICENCE_STATUS,
+  LICENCE_CLASSES,
+  REPORT_CATEGORIES,
+  REPORT_STATUS,
+  LIMITS,
+};

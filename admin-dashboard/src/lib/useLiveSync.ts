@@ -14,7 +14,9 @@ export type LiveType =
   | 'store' | 'product' | 'config' | 'announcement' | 'coupon' | 'pg' | 'wall' | 'campus'
   | 'order' | 'ticket' | 'verification' | 'pg_booking' | 'wall_submission' | 'service_booking' | 'rider' | 'user'
   // Zenvy Friends moderation (admin room only)
-  | 'friends_report' | 'friends_appeal' | 'friends_review';
+  | 'friends_report' | 'friends_appeal' | 'friends_review'
+  // Student vehicle rentals (public 'rental' + admin queues)
+  | 'rental' | 'rental_listing' | 'rental_licence' | 'rental_booking' | 'rental_report';
 
 export interface LiveEvent {
   type: LiveType | string;

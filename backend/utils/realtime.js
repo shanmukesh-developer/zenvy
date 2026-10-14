@@ -26,10 +26,14 @@ const ADMIN_EVENT = 'admin:changed';
 const DEBOUNCE_MS = 400;
 const BULK_THRESHOLD = 20;
 
-const PUBLIC_TYPES = new Set(['store', 'product', 'config', 'announcement', 'coupon', 'pg', 'wall', 'campus']);
+const PUBLIC_TYPES = new Set(['store', 'product', 'config', 'announcement', 'coupon', 'pg', 'wall', 'campus',
+  // Student vehicle rentals: a listing became visible / hidden (ids only).
+  'rental']);
 const ADMIN_TYPES = new Set([...PUBLIC_TYPES, 'order', 'ticket', 'verification', 'pg_booking', 'wall_submission', 'service_booking', 'rider', 'user',
   // Zenvy Friends moderation queue (admin /moderation page)
-  'friends_report', 'friends_appeal', 'friends_review']);
+  'friends_report', 'friends_appeal', 'friends_review',
+  // Rentals admin queues (admin /rentals page)
+  'rental_listing', 'rental_licence', 'rental_booking', 'rental_report']);
 const ACTIONS = new Set(['created', 'updated', 'deleted']);
 const CACHE_TYPES = new Set(['store', 'product']);
 
@@ -131,6 +135,18 @@ const notifyAdmin = (type, action, id, extra = {}) => {
   }
 };
 
+// Event to one customer's own sockets (room `user_<id>`, joined on authenticated connect). Not debounced.
+// Payloads must stay ids / statuses only. Never throws.
+const toUser = (userId, event, payload = {}) => {
+  try {
+    const id = safeId(userId);
+    if (!ioRef || id === null || typeof event !== 'string') return;
+    ioRef.to(`user_${id}`).emit(event, { ...payload, at: new Date().toISOString() });
+  } catch (err) {
+    console.error('[REALTIME_USER_EMIT_ERROR]', err.message);
+  }
+};
+
 // ── Rider dispatch room ─────────────────────────────────────────────────────
 const RIDERS_ONLINE_ROOM = 'riders_online';
 const DELIVERY_REQUEST_EVENT = 'delivery_request';
@@ -190,7 +206,7 @@ const leaveOrderRoom = (riderId, orderId) => {
 };
 
 module.exports = {
-  init, publish, notifyAdmin, PUBLIC_EVENT, ADMIN_EVENT, ADMIN_ROOM,
+  init, publish, notifyAdmin, toUser, PUBLIC_EVENT, ADMIN_EVENT, ADMIN_ROOM,
   setRiderOnline, deliveryRequest, deliveryRequestGone, leaveOrderRoom,
   RIDERS_ONLINE_ROOM, DELIVERY_REQUEST_EVENT, DELIVERY_REQUEST_GONE_EVENT, CLAIMABLE_STATUSES,
 };

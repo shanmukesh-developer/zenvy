@@ -1,0 +1,76 @@
+// My rental bookings: as renter (vehicles I rent) and as owner (requests for my vehicles), upcoming / past.
+import React, { useCallback, useEffect, useState } from 'react';
+import { View, Text, FlatList, RefreshControl, TouchableOpacity } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import SafeImage from '../../components/SafeImage';
+import { rentalsApi, type Booking, BOOKING_STATUS_META, VEHICLE_META, inr, fmtDateTime } from '../../modules/rentals/rentalsApi';
+import { VEHICLE_FALLBACK, RHeader, usePalette, Chips, Badge, StateView, useRentalLive } from '../../modules/rentals/ui';
+
+export default function RentalBookings() {
+  const params = useLocalSearchParams<{ role?: string }>();
+  const router = useRouter();
+  const p = usePalette();
+  const [role, setRole] = useState<'renter' | 'owner'>(params.role === 'owner' ? 'owner' : 'renter');
+  const [scope, setScope] = useState<'open' | 'past'>('open');
+  const [items, setItems] = useState<Booking[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await rentalsApi.bookings(role, scope);
+      setItems(res.bookings);
+      setError(null);
+    } catch (e: any) {
+      setError(e?.message || 'Could not load bookings.');
+    }
+  }, [role, scope]);
+  useEffect(() => { setItems(null); load(); }, [load]);
+  useRentalLive(() => load());
+
+  return (
+    <View style={{ flex: 1, backgroundColor: p.bg }}>
+      <RHeader title="Rental bookings" subtitle="Cash at pickup · PIN handover" />
+      <FlatList
+        data={items || []}
+        keyExtractor={(b) => b.id}
+        contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} tintColor={p.accent} />}
+        ListHeaderComponent={
+          <View style={{ marginBottom: 12, gap: 10 }}>
+            <Chips<'renter' | 'owner'> options={[{ key: 'renter', label: '🧳 I am renting' }, { key: 'owner', label: '🔑 My vehicles' }]} value={role} onChange={setRole} />
+            <Chips<'open' | 'past'> options={[{ key: 'open', label: 'Upcoming & active' }, { key: 'past', label: 'Past' }]} value={scope} onChange={setScope} />
+          </View>
+        }
+        ListEmptyComponent={
+          items === null && !error ? <StateView kind="loading" />
+            : error ? <StateView kind="error" title="Could not load" message={error} actionLabel="Retry" onAction={load} />
+              : <StateView kind="empty" icon={role === 'renter' ? '🧳' : '🔑'} title={scope === 'open' ? 'Nothing coming up' : 'No past trips'}
+                message={role === 'renter' ? 'Find a bike, scooter or car from a verified student.' : 'Requests for your vehicles show up here.'}
+                actionLabel={role === 'renter' ? 'Browse vehicles' : 'My vehicles'} onAction={() => router.push((role === 'renter' ? '/rentals' : '/rentals/my-listings') as any)} />
+        }
+        renderItem={({ item: b }) => {
+          const meta = BOOKING_STATUS_META[b.status];
+          const needsAction = b.role === 'OWNER' && b.status === 'REQUESTED';
+          return (
+            <TouchableOpacity onPress={() => router.push(`/rentals/booking/${b.id}` as any)} accessibilityRole="button" accessibilityLabel={`${b.vehicleTitle}, ${meta.label}`}
+              style={{ flexDirection: 'row', gap: 12, padding: 12, borderRadius: 18, borderWidth: 1, borderColor: needsAction ? p.warn : p.border, backgroundColor: p.card, marginBottom: 10 }}>
+              <View style={{ width: 64, height: 64, borderRadius: 12, overflow: 'hidden', backgroundColor: p.card2, alignItems: 'center', justifyContent: 'center' }}>
+                {b.vehiclePhoto ? <SafeImage source={{ uri: b.vehiclePhoto }} style={{ width: 64, height: 64 }} contentFit="cover" fallbackUri={VEHICLE_FALLBACK} /> : <Text style={{ fontSize: 26 }}>{b.vehicleType ? VEHICLE_META[b.vehicleType].icon : '🚗'}</Text>}
+              </View>
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                  <Badge label={meta.label.toUpperCase()} color={meta.color} />
+                  {needsAction ? <Badge label="ANSWER NOW" color="#EF4444" /> : null}
+                </View>
+                <Text style={{ fontSize: 14, fontWeight: '900', color: p.text, marginTop: 4 }} numberOfLines={1}>{b.vehicleTitle}</Text>
+                <Text style={{ fontSize: 11.5, color: p.sub, marginTop: 2 }} numberOfLines={1}>{fmtDateTime(b.startAt)} → {fmtDateTime(b.endAt)}</Text>
+                <Text style={{ fontSize: 11.5, color: p.sub, marginTop: 2 }} numberOfLines={1}>{b.role === 'OWNER' ? `Renter: ${b.counterpart?.name || 'Student'}` : `Owner: ${b.counterpart?.name || 'Student'}`} · {inr(b.payAtHandover)} cash at pickup</Text>
+              </View>
+            </TouchableOpacity>
+          );
+        }}
+      />
+    </View>
+  );
+}

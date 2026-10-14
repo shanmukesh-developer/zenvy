@@ -28,9 +28,14 @@ export type MediaPurpose =
   | 'connect'
   | 'forum'
   | 'task'
-  | 'liveness_selfie';
+  | 'liveness_selfie'
+  // Rentals: vehicle photos are public; RC / insurance / licences / report photos are private.
+  | 'rental_photo'
+  | 'rental_doc'
+  | 'rental_licence'
+  | 'rental_report';
 
-export const PRIVATE_MEDIA_PURPOSES: readonly MediaPurpose[] = ['id_card', 'connect', 'liveness_selfie'];
+export const PRIVATE_MEDIA_PURPOSES: readonly MediaPurpose[] = ['id_card', 'connect', 'liveness_selfie', 'rental_doc', 'rental_licence', 'rental_report'];
 
 export interface UploadedImage {
   /** Short relative path, e.g. /api/campus/media/<id>. Store this for campus features. */

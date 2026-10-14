@@ -109,6 +109,7 @@ export default function NexusLayoutClient({
             { href: '/orders', icon: '📦', label: 'Live Orders' },
             { href: '/mega-basket', icon: '🧺', label: 'Mega Basket' },
             { href: '/service-bookings', icon: '🛠️', label: 'Service Bookings' },
+            { href: '/rentals', icon: '🚗', label: 'Vehicle Rentals' },
             { href: '/vault', icon: '🕯️', label: 'Zenvy Vault' },
             { href: '/finance', icon: '💰', label: 'Finance Trace' },
             { href: '/tickets', icon: '🎫', label: 'Support Tickets' },

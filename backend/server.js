@@ -1149,6 +1149,11 @@ const initializeApp = async () => {
     });
     app.use('/api/blocks', require('./routes/blockRoutes'));
     app.use('/api/vault', require('./routes/vaultRoutes'));
+    // Zenvy Rentals (student vehicle rentals). Admin routes mount before /api/admin.
+    const rentalsRoutes = require('./modules/rentals/routes');
+    app.use('/api/rentals', rentalsRoutes.router);
+    app.use('/api/admin/rentals', rentalsRoutes.adminRouter);
+    try { require('./modules/rentals/jobs').initRentalJobs(); } catch (e) { console.error('[RENTALS_JOB_INIT_ERR]', e); }
     app.use('/api/admin', require('./routes/adminRoutes'));
     app.use('/api/rewards', require('./routes/rewardRoutes'));
     app.use('/api/community', require('./routes/communityRoutes'));

@@ -23,6 +23,7 @@ import Clipboard from '@react-native-clipboard/clipboard';
 import SafeImage from '../../components/SafeImage';
 import ShimmerLoader from '../../components/ShimmerLoader';
 import { useLiveSync, hasType } from '../../utils/useLiveSync';
+import RentalsSection from '../../modules/rentals/RentalsSection';
 
 const { width: SW, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SH = SCREEN_HEIGHT;
@@ -69,6 +70,7 @@ const TABS = [
   { key: 'services', label: 'Tech & Repairs', icon: '🛠️' },
   { key: 'pg', label: 'PG Stays', icon: '🏢' },
   { key: 'coride', label: 'Co-Ride', icon: '🏍️' },
+  { key: 'rentals', label: 'Rentals', icon: '🚗' },
   { key: 'promos', label: 'Deals & Spin', icon: '🎁' },
 ];
 
@@ -124,11 +126,17 @@ const PROMOS_OFFERS = [
   { id: 'o2', tagline: 'YOUR COUPONS 🎫', title: 'READY TO USE', subtitle: 'AT CHECKOUT', desc: 'Coupons you have won show up here with their expiry date.', btn: 'SEE MY COUPONS →', img: 'https://images.unsplash.com/photo-1607344645866-009c320b63e0?w=600' },
 ];
 
+const PROMOS_RENTALS = [
+  { id: 'r1', tagline: 'STUDENT VEHICLES 🏍️', title: 'RENT A RIDE', subtitle: 'FROM CLASSMATES', desc: 'Bikes, scooters and cars from college-verified students. PIN pickup, cash at handover.', btn: 'BROWSE VEHICLES →', img: 'https://images.unsplash.com/photo-1558981806-ec527fa84c39?w=1200&q=80' },
+  { id: 'r2', tagline: 'EARN FROM YOUR VEHICLE 💸', title: 'RENT IT OUT', subtitle: 'YOU SET THE PRICE', desc: 'List your bike, scooter or car in minutes. Zenvy verifies every renter and their licence.', btn: 'LIST MY VEHICLE →', img: 'https://images.unsplash.com/photo-1449965408869-ebd13bc9e5a8?w=1200&q=80' },
+];
+
 const TAB_PROMOS: Record<string, typeof PROMOS_FOOD> = {
   food: PROMOS_FOOD,
   services: PROMOS_SERVICES,
   pg: PROMOS_PG,
   coride: PROMOS_CORIDE,
+  rentals: PROMOS_RENTALS,
   promos: PROMOS_OFFERS,
 };
 
@@ -434,6 +442,8 @@ export default function OthersScreen() {
         setActiveTab('promos');
       } else if (tab === 'food' || tab === 'basket') {
         setActiveTab('food');
+      } else if (tab === 'rentals' || tab === 'rental' || tab === 'vehicles') {
+        setActiveTab('rentals');
       }
     }
   }, [tab]);
@@ -1479,6 +1489,8 @@ export default function OthersScreen() {
       case 'c1': openCreateRide(); break;
       case 'c2': openExternal('https://www.rapido.bike/', 'Rapido'); break;
       case 'c3': openExternal('https://m.uber.com/looking', 'Uber'); break;
+      case 'r1': router.push('/rentals' as any); break;
+      case 'r2': router.push('/rentals/new' as any); break;
       case 'o1': scrollViewRef.current?.scrollTo({ y: 250, animated: true }); break;
       case 'o2': scrollViewRef.current?.scrollToEnd({ animated: true }); break;
       default: break;
@@ -2326,6 +2338,9 @@ export default function OthersScreen() {
             })}
           </View>
         )}
+
+        {/* ── RENTALS TAB: student vehicles (peer to peer) + rental stores ── */}
+        {activeTab === 'rentals' && <RentalsSection />}
 
         {/* ── PG & HOMES TAB ── */}
         {activeTab === 'pg' && (
