@@ -140,6 +140,8 @@ export function NoteCallout({ order }: { order: Order }) {
 
 /** The money line: "Collect ₹X cash" for COD, "Paid" otherwise. */
 export function CollectLine({ order }: { order: Order }) {
+  // A cancelled order has nothing to collect (the detail screen used to say "Collect ₹X cash" here).
+  if (order.status === 'Cancelled') return null;
   if (order.isCOD) {
     const done = order.status === 'Delivered';
     return (

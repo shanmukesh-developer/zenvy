@@ -31,7 +31,19 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [notice, setNotice] = useState<string | null>(null);
   const tokenRef = useRef<string | null>(null);
 
+  const signingOut = useRef(false);
   const signOut = useCallback(async (msg?: string) => {
+    // Double tap on Log out, or a burst of 401s while the push token is being removed: run once.
+    if (signingOut.current) return;
+    signingOut.current = true;
+    try {
+      await doSignOut(msg);
+    } finally {
+      signingOut.current = false;
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const doSignOut = async (msg?: string) => {
     stopVoice();
     stopKitchenService();
     // Own logout (token still valid): stop order pushes to this phone. A forced logout skips it
@@ -44,7 +56,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     setRestaurant(null);
     setNotice(msg || null);
     await clearSession();
-  }, []);
+  };
 
   useEffect(() => {
     configureHttp({

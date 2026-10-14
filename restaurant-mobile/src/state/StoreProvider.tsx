@@ -231,8 +231,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Back from the phone's settings (or any resume): retry closed-app alerts if they were off.
+  // 'unknown' = the token POST failed (network / server waking up): retried too, otherwise a phone that
+  // stays open for days never gets closed-app alerts.
+  const pushStateRef = useRef<PushState>('unknown');
+  pushStateRef.current = pushState;
   useEffect(() => {
-    if (pushState === 'ok' || pushState === 'unknown') return;
+    if (pushState === 'ok') return;
     const sub = AppState.addEventListener('change', (st) => {
       if (st === 'active') registerStorePush(rid).then((r) => { if (alive.current) setPushState(r); });
     });
@@ -244,6 +248,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (connectCount > 0) {
       refreshOrders();
       refreshStore();
+      // Never re-asks permission here ('blocked' is retried on resume only).
+      if (connectCount > 1 && pushStateRef.current === 'unknown') registerStorePush(rid).then((r) => { if (alive.current) setPushState(r); });
     }
   }, [connectCount]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -374,6 +380,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       return true;
     } catch (e) {
       let msg = 'Something went wrong. Please try again.';
+      // 400 / 404 / 409 here = the order moved on (cancelled by the customer, timed out, already handled
+      // on another phone). Not a failure of this phone: refresh right away and say so calmly.
+      const conflict = e instanceof ApiError && (e.status === 400 || e.status === 404 || e.status === 409);
       if (e instanceof NetworkError) {
         msg = e.message;
       } else if (e instanceof ApiError) {
@@ -382,7 +391,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       }
       if (alive.current && !(e instanceof ApiError && e.status === 401)) {
         setErr(msg);
-        toast.show(msg, 'error');
+        toast.show(conflict ? `${msg} Refreshing…` : msg, conflict ? 'info' : 'error');
       }
       return false;
     } finally {
@@ -394,8 +403,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [scheduleOrders, toast]);
 
   const accept = useCallback((o: Order, est: number) => runAction(o, 'accept', async () => {
-    await api.acceptOrder(o.id, est);
+    const res: any = await api.acceptOrder(o.id, est);
     cancelAnnouncements(`new:${o.id}`);
+    if (res?.alreadyAccepted) {
+      // Double tap / another phone got there first: keep the server's real status, no second announcement.
+      if (typeof res.status === 'string' && res.status) patchOrder(o.id, { status: res.status });
+      toast.show(`#${o.shortId} was already accepted`, 'info');
+      return;
+    }
     announce(`accept:${o.id}`, { kind: 'accepted', mins: est }, { urgent: true });
     patchOrder(o.id, { status: 'Accepted', estDuration: est, acceptedAt: new Date().toISOString() });
     toast.show(`#${o.shortId} accepted · ready in ${est} min`, 'success');
@@ -417,6 +432,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (res?.status === 'Picking') {
       patchOrder(o.id, { status: 'Picking', readyAt: now });
       toast.show(`Rider told #${o.shortId} is packed`, 'success');
+    } else if (typeof res?.status === 'string' && res.status !== 'ReadyForPickup') {
+      // Retry after the rider already took it (PickedUp / ArrivedAtGate / Delivered): keep the real status.
+      patchOrder(o.id, { status: res.status, readyAt: o.readyAt || now });
+      toast.show(`#${o.shortId} is already with the rider`, 'info');
     } else {
       patchOrder(o.id, { status: 'ReadyForPickup', readyAt: now });
       toast.show(`#${o.shortId} is ready for pickup`, 'success');

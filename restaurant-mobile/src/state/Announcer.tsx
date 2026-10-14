@@ -15,6 +15,16 @@ import { useStore } from './StoreProvider';
 import type { Order } from '../types';
 
 const RING_PATTERN = [0, 600, 250, 600, 250, 600];
+/**
+ * Stop re-ringing an order this long after it was placed. The server auto-cancels a Pending order after
+ * PENDING_ORDER_TIMEOUT_MINUTES (default 15); if the app never hears about it (offline, missed event) the
+ * order would otherwise ring every RING_REPEAT_MS forever. It stays on screen in New.
+ */
+const RING_MAX_AGE_MS = 20 * 60 * 1000;
+const stillFresh = (o: Order) => {
+  const t = o.createdAt ? new Date(o.createdAt).getTime() : NaN;
+  return !Number.isFinite(t) || Date.now() - t < RING_MAX_AGE_MS;
+};
 const PRE_PICKUP = ['Pending', 'Accepted', 'Preparing', 'ReadyForPickup'];
 const BEFORE_HANDOVER = ['Pending', 'Accepted', 'Preparing', 'ReadyForPickup', 'Picking'];
 
@@ -74,7 +84,7 @@ export function Announcer() {
     const fresh = alertRef.current.filter((o) => !rung.current.has(o.id));
     for (const o of fresh.slice().reverse()) {
       rung.current.set(o.id, o.shortId);
-      ring(o, isWaiting);
+      if (stillFresh(o)) ring(o, isWaiting);
     }
   }, [alertKey]);
 
@@ -84,7 +94,7 @@ export function Announcer() {
       return;
     }
     const t = setInterval(() => {
-      const oldest = alertRef.current[0];
+      const oldest = alertRef.current.find(stillFresh);
       if (oldest) ring(oldest, isWaiting);
     }, RING_REPEAT_MS);
     return () => clearInterval(t);
@@ -133,7 +143,15 @@ export function Announcer() {
     }
   }, [conn]);
 
-  useEffect(() => () => { if (Platform.OS !== 'web') Vibration.cancel(); }, []);
+  // Unmount (logout / store switch): stop the vibration, any queued ring voice and the heads-up notifications.
+  useEffect(() => () => {
+    if (Platform.OS !== 'web') Vibration.cancel();
+    for (const [id, shortId] of rung.current) {
+      cancelAnnouncements(`new:${id}`);
+      cancelNativeOrderAlert(shortId);
+    }
+    rung.current.clear();
+  }, []);
 
   return null;
 }

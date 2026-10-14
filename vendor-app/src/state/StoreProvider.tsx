@@ -225,8 +225,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Back from the phone's settings (or any resume): retry closed-app alerts if they were off.
+  // 'unknown' = the token POST failed (network / server waking up): retried too, otherwise a phone that
+  // stays open for days never gets closed-app alerts.
+  const pushStateRef = useRef<PushState>('unknown');
+  pushStateRef.current = pushState;
   useEffect(() => {
-    if (pushState === 'ok' || pushState === 'unknown') return;
+    if (pushState === 'ok') return;
     const sub = AppState.addEventListener('change', (st) => {
       if (st === 'active') registerStorePush(rid).then((r) => { if (alive.current) setPushState(r); });
     });
@@ -238,6 +242,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (connectCount > 0) {
       refreshOrders();
       refreshStore();
+      // Never re-asks permission here ('blocked' is retried on resume only).
+      if (connectCount > 1 && pushStateRef.current === 'unknown') registerStorePush(rid).then((r) => { if (alive.current) setPushState(r); });
     }
   }, [connectCount]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -355,6 +361,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       return true;
     } catch (e) {
       let msg = 'Something went wrong. Please try again.';
+      // 400 / 404 / 409 here = the order moved on (cancelled by the customer, timed out, already handled
+      // on another phone). Not a failure of this phone: refresh right away and say so calmly.
+      const conflict = e instanceof ApiError && (e.status === 400 || e.status === 404 || e.status === 409);
       if (e instanceof NetworkError) {
         msg = e.message;
       } else if (e instanceof ApiError) {
@@ -363,7 +372,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       }
       if (alive.current && !(e instanceof ApiError && e.status === 401)) {
         setErr(msg);
-        toast.show(msg, 'error');
+        toast.show(conflict ? `${msg} Refreshing…` : msg, conflict ? 'info' : 'error');
       }
       return false;
     } finally {
@@ -508,7 +517,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (!editing || input.isAvailable !== editing.isAvailable) body.isAvailable = input.isAvailable;
     let saved: MenuItem;
     if (editing) {
-      const res = await api.updateMenuItem(editing.id, body);
+      // Veg flag unchanged: leave the food type alone, so an "egg" item (set by Zenvy) is not turned
+      // into "nonveg" by an unrelated edit (the form only knows veg / non-veg).
+      const patch: Partial<api.MenuItemBody> = { ...body };
+      if (input.isVegetarian === editing.isVegetarian) { delete patch.isVegetarian; delete patch.dietType; }
+      const res = await api.updateMenuItem(editing.id, patch);
       saved = res || {
         ...editing, ...body, category: input.category || 'Other', description: input.description || null,
         isAvailable: body.isAvailable ?? editing.isAvailable,

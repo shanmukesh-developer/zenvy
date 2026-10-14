@@ -1,7 +1,7 @@
 // Logged-in shell: store bar + banners, the current tab, bottom nav, the full-screen new-order alert,
 // and the Announcer (voice). Tabs stay mounted once visited so scroll positions survive tab switches.
-import React, { useCallback, useState } from 'react';
-import { View } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { BackHandler, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { BottomNav, MainTab } from '../components/Nav';
 import { NewOrderAlert } from '../components/NewOrderAlert';
@@ -27,6 +27,17 @@ export default function MainScreen({ navigation }: NativeStackScreenProps<RootSt
     setTab(t);
     setVisited((v) => (v[t] ? v : { ...v, [t]: true }));
   }, []);
+
+  // Android back on another tab returns to Orders instead of leaving the app (only while Main is focused;
+  // on the order detail screen the navigator handles back).
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (!navigation.isFocused() || tab === 'orders') return false;
+      setTab('orders');
+      return true;
+    });
+    return () => sub.remove();
+  }, [navigation, tab]);
 
   const pane = (key: MainTab, node: React.ReactNode) => (visited[key] ? (
     <View key={key} style={{ flex: 1, display: tab === key ? 'flex' : 'none' }}>{node}</View>

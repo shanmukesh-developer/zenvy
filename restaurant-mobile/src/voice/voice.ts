@@ -274,21 +274,43 @@ async function speakItem(item: QueueItem) {
   await new Promise((r) => setTimeout(r, Platform.OS === 'web' ? 450 : 350));
   if (current !== item) return; // cancelled during the chime
 
-  doneTimer = setTimeout(finishCurrent, estMs); // safety net: some engines never call back
-  try {
-    Speech.speak(text, {
-      language: LANG_TAG[lang],
-      voice: voiceIds[lang],
-      rate: Platform.OS === 'android' ? 0.92 : 0.95,
-      pitch: 1.0,
-      volume: 1.0, // full volume: the voice may be the only sound (ring blocked)
-      onDone: () => { if (current === item) finishCurrent(); },
-      onStopped: () => { if (current === item) finishCurrent(); },
-      onError: () => { if (current === item) finishCurrent(); },
-    });
-  } catch {
-    finishCurrent();
-  }
+  // The chosen language can fail even when the phone reports it (missing voice data, engine hiccup): then
+  // speak the same announcement once more in the next fallback language instead of staying silent.
+  const speakIn = (l: VoiceLang, retried: boolean) => {
+    if (current !== item) return;
+    const t = l === lang ? text : phrase(item.event, l);
+    const fail = () => {
+      if (current !== item) return;
+      const next = retried ? null : nextLang(l);
+      if (next) speakIn(next, true);
+      else finishCurrent();
+    };
+    if (doneTimer) clearTimeout(doneTimer);
+    doneTimer = setTimeout(finishCurrent, estMs); // safety net: some engines never call back
+    try {
+      Speech.speak(t, {
+        language: LANG_TAG[l],
+        voice: voiceIds[l],
+        rate: Platform.OS === 'android' ? 0.92 : 0.95,
+        pitch: 1.0,
+        volume: 1.0, // full volume: the voice may be the only sound (ring blocked)
+        onDone: () => { if (current === item) finishCurrent(); },
+        onStopped: () => { if (current === item) finishCurrent(); },
+        onError: fail,
+      });
+    } catch {
+      fail();
+    }
+  };
+  speakIn(lang, false);
+}
+
+/** Next language to try after `l` failed to speak; null when English (the last resort) failed. */
+function nextLang(l: VoiceLang): VoiceLang | null {
+  if (l === 'en') return null;
+  const start = FALLBACK_CHAIN.indexOf(l);
+  for (const c of FALLBACK_CHAIN.slice(start + 1)) if (available[c] !== false) return c;
+  return 'en';
 }
 
 /** Settings → Test voice: plays even when the voice is switched off. */
