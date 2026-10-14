@@ -75,7 +75,7 @@ const TABS = [
 ];
 
 const BB_CATEGORIES = [
-  { key: 'Fresh', label: 'Fresh Fruits', icon: '🍎', bg: '#F0FDF4', border: '#DCFCE7', text: '#15803D' },
+  { key: 'Fresh', label: 'Fruits & Veggies', icon: '🍎', bg: '#F0FDF4', border: '#DCFCE7', text: '#15803D' },
   { key: 'Grocery', label: 'Atta & Staples', icon: '🌾', bg: '#FFFBEB', border: '#FEF3C7', text: '#B45309' },
   { key: 'Chips & Namkeens', label: 'Snacks & Chips', icon: '🍟', bg: '#FEF2F2', border: '#FEE2E2', text: '#B91C1C' },
   { key: 'Biscuits & Cakes', label: 'Biscuits & Cakes', icon: '🍪', bg: '#FAF5FF', border: '#F3E8FF', text: '#6B21A8' },
@@ -300,7 +300,7 @@ const discountLabel = (p: CatalogueItem) => (p.discountPercent ? `${p.discountPe
 type Shelf = { categories?: string[]; keywords?: string[]; vendorTypes?: string[]; deals?: boolean };
 const SHELVES: Record<string, Shelf> = {
   'All Groceries': { vendorTypes: ['GROCERY'] },
-  Fresh: { categories: ['Fresh', 'Fresh Fruits'] },
+  Fresh: { categories: ['Fresh', 'Fresh Fruits', 'Fruits', 'Vegetables', 'Leafy Greens'] },
   Grocery: { categories: ['Grocery', 'Atta & Flours', 'Dals & Pulses', 'Rice & Grains', 'Edible Oils & Ghee', 'Masalas & Spices', 'Salt, Sugar & Jaggery', 'Daily Essentials'] },
   Electronics: { vendorTypes: ['ELECTRONICS'] },
   Organic: { categories: ['Organic'] },

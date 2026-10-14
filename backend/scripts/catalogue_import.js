@@ -65,7 +65,11 @@ const runCatalogueImport = async () => {
       storeId = await createOnce(store.key, 'store', { storeKey: store.key, name: store.name }, (id, t) => Restaurant.create({
         id,
         name: store.name,
-        location: defaults.location || 'SRM AP Campus',
+        location: store.location || defaults.location || 'SRM AP Campus',
+        ...(Number.isFinite(Number(store.lat)) && store.lat !== null ? { lat: Number(store.lat) } : {}),
+        ...(Number.isFinite(Number(store.lon)) && store.lon !== null ? { lon: Number(store.lon) } : {}),
+        // Shop contact for riders (never the partner login phone: these shops have no app login).
+        ...(store.whatsappNumber ? { whatsappNumber: String(store.whatsappNumber) } : {}),
         zone: defaults.zone || 'Amaravathi_Central',
         campus: store.campus || defaults.campus || null,
         imageUrl: store.imageUrl || null,
@@ -109,6 +113,7 @@ const runCatalogueImport = async () => {
           ...(item.brand ? { brand: item.brand } : {}),
           ...(item.emoji ? { emoji: item.emoji } : {}),
           ...(item.extraFor ? { extraFor: item.extraFor } : {}),
+          ...(item.priceApprox ? { priceApprox: true } : {}),
           ...(store.bookingOnly ? { bookingOnly: true } : {})
         }
       }, { transaction: t }));
