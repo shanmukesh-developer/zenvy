@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { ShieldAlert, ChevronRight } from 'lucide-react-native';
 import { CampusProfileData, CampusUserData, FriendsSubTab, FRIENDS_SUB_TABS } from '../../../types/campus';
 import { isCampusAuthError } from '../campusApi';
@@ -76,6 +76,9 @@ export const FriendsTab: React.FC<FriendsTabProps> = ({
   const [elig, setElig] = useState<FriendsEligibility | null>(() =>
     cachedEligibility && cachedEligibility.userId === userId ? cachedEligibility.value : null
   );
+  // Until the first eligibility answer arrives, show a loader instead of the locked/legacy Pulse
+  // (that flashed for a few seconds before the real Friends page appeared).
+  const [loaded, setLoaded] = useState<boolean>(() => !!(cachedEligibility && cachedEligibility.userId === userId));
   const [active, setActive] = useState<FriendsSubTab>('pulse');
   const [visited, setVisited] = useState<Set<FriendsSubTab>>(() => new Set<FriendsSubTab>(['pulse']));
   const [focus, setFocus] = useState<{ sub: FriendsSubTab; id: string | null } | null>(null);
@@ -102,6 +105,8 @@ export const FriendsTab: React.FC<FriendsTabProps> = ({
         cachedEligibility = null;
       }
       // Network / cold start: keep whatever we had; the next reconnect retries.
+    } finally {
+      if (mounted.current) setLoaded(true);
     }
   }, [userId]);
 
@@ -233,6 +238,14 @@ export const FriendsTab: React.FC<FriendsTabProps> = ({
       </View>
     );
   };
+
+  if (!loaded) {
+    return (
+      <View style={[styles.root, { alignItems: 'center', justifyContent: 'center' }]} accessibilityLabel="Loading Friends">
+        <ActivityIndicator color={FriendsColors.ink} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.root}>
