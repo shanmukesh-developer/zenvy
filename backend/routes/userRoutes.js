@@ -75,7 +75,13 @@ router.get('/products', async (req, res) => {
   try {
     const { getMenuItemModel } = require('../models/MenuItem');
     const MenuItem = getMenuItemModel();
-    const items = await MenuItem.findAll({ where: { isAvailable: true }, order: [['createdAt', 'DESC']] });
+    const { getRestaurantModel } = require('../models/Restaurant');
+    // Only items of stores that are switched on: hidden stores (e.g. awaiting owner review) stay hidden.
+    const activeStores = await getRestaurantModel().findAll({ where: { isActive: true }, attributes: ['id'] });
+    const items = await MenuItem.findAll({
+      where: { isAvailable: true, restaurantId: activeStores.map((r) => r.id) },
+      order: [['createdAt', 'DESC']],
+    });
     const { stripItemSecrets } = require('../utils/publicFields');
     res.json(items.map((m) => stripItemSecrets(m.toJSON())));
   } catch (_err) {
