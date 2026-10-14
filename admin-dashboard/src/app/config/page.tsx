@@ -75,7 +75,8 @@ export default function ConfigTerminal() {
     if (savingFee) return;
     setFeeError(null);
     setFeeNotice(null);
-    const fee = Number(feeInput);
+    // Number('') is 0: a cleared field must not save a free delivery fee.
+    const fee = feeInput.trim() === '' ? NaN : Number(feeInput);
     if (!Number.isInteger(fee) || fee < 0 || fee > MAX_DELIVERY_FEE) {
       setFeeError(`Enter a whole number of rupees from 0 to ${MAX_DELIVERY_FEE}.`);
       return;

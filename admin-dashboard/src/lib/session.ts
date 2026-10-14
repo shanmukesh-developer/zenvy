@@ -162,10 +162,16 @@ async function runVerify(): Promise<AuthState> {
   }
   if (state.status !== 'authed') setState({ status: 'checking', user: state.user, message: null });
 
+  // The admin signed out (or signed in again) while this check was running: its answer is about a
+  // token that is no longer the session's, so it must not change the state.
+  const superseded = () => getToken() !== token;
+
   try {
     let r = await getJson('/api/admin/me', token);
+    if (superseded()) return state;
     // Backends deployed before /api/admin/me existed: fall back to the profile route.
     if (r.status === 404) r = await getJson('/api/users/profile', token);
+    if (superseded()) return state;
 
     if (r.status === 401) {
       clearSession('Your session has expired. Please sign in again.');
@@ -189,6 +195,7 @@ async function runVerify(): Promise<AuthState> {
     setState({ status: 'authed', user, message: null });
     return state;
   } catch {
+    if (superseded()) return state;
     setState({
       status: 'error',
       user: null,
@@ -201,9 +208,11 @@ async function runVerify(): Promise<AuthState> {
 /** Confirms the session with the backend. Concurrent callers share one request. */
 export function verifySession(): Promise<AuthState> {
   if (!inflight) {
-    inflight = runVerify().finally(() => {
-      inflight = null;
+    const run: Promise<AuthState> = runVerify().finally(() => {
+      // clearSession() may already have dropped this check and a newer one may be running.
+      if (inflight === run) inflight = null;
     });
+    inflight = run;
   }
   return inflight;
 }

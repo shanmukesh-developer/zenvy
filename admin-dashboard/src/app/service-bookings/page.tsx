@@ -142,7 +142,7 @@ export default function ServiceBookingsPage() {
   const filtered = bookings.filter(booking => {
     const query = search.trim().toLowerCase();
     return !query || [booking.id, booking.title, booking.serviceType, booking.hostelBlock, booking.contactPhone, booking.userId]
-      .some(value => value?.toLowerCase().includes(query));
+      .some(value => value != null && String(value).toLowerCase().includes(query));
   });
 
   if (!isAuthed) return <div className="p-10 text-center text-sm text-gray-400" role="status">Checking your admin session…</div>;

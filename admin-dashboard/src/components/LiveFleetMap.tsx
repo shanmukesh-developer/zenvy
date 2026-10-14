@@ -2,6 +2,7 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { API_URL } from '@/lib/config';
 
 interface RiderPosition {
   riderId: string;
@@ -36,7 +37,8 @@ function escapeHtml(value: unknown): string {
 function safeImageUrl(value: unknown): string | null {
   if (typeof value !== 'string' || !value) return null;
   try {
-    const u = new URL(value, window.location.origin);
+    // Relative photo paths ('/uploads/..', '/api/campus/media/..') live on the backend, not the admin host.
+    const u = new URL(value, `${API_URL}/`);
     return u.protocol === 'http:' || u.protocol === 'https:' ? u.href : null;
   } catch {
     return null;

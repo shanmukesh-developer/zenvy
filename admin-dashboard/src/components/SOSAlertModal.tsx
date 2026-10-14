@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useAdminSocket } from '@/components/AdminSocketProvider';
 import { useAdminAuth } from '@/utils/useAdminAuth';
 import { adminRequest } from '@/lib/api';
+import { getAuthState } from '@/lib/session';
 
 interface SOSData {
   riderId: string;
@@ -70,6 +71,14 @@ export default function SOSAlertModal() {
     setQueue(prev => [...prev.filter(s => s.riderId !== riderId), { ...data, riderId, timestamp: data.timestamp || new Date().toISOString() }]);
   }, []);
 
+  // Signed out (or session expired): this modal sits outside the auth gate, so drop rider data at once.
+  useEffect(() => {
+    if (isAuthed) return;
+    setQueue([]);
+    setError('');
+    hidden.current.clear();
+  }, [isAuthed]);
+
   // Riders whose SOS is still active on the server (sent while nobody was watching).
   useEffect(() => {
     if (!isAuthed) return;
@@ -108,6 +117,7 @@ export default function SOSAlertModal() {
   useEffect(() => {
     if (!socket) return;
     const handleSos = (data: SOSData) => {
+      if (getAuthState().status !== 'authed') return;
       push(data);
       playSiren();
     };
@@ -126,7 +136,7 @@ export default function SOSAlertModal() {
   }, [socket, push]);
 
   const current = queue[0];
-  if (!current) return null;
+  if (!current || !isAuthed) return null;
 
   const hide = () => {
     hidden.current.add(current.riderId);

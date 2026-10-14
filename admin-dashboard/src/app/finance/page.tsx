@@ -201,7 +201,8 @@ export default function FinanceConsole() {
     const headers = ['Order', 'Store', 'Order value (INR)', 'Commission (INR)', 'Delivery fee (INR)', 'Date'];
     const rows = report.transactions.map(tx => [
       shortId(tx.orderId), tx.restaurantName, tx.totalAmount, tx.commissionEarned, tx.deliveryFee,
-      new Date(tx.timestamp).toISOString().slice(0, 10),
+      // toISOString() throws on an invalid date, which would abort the whole export.
+      (() => { const d = new Date(tx.timestamp); return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10); })(),
     ]);
     const csv = [headers, ...rows].map(r => r.map(csvCell).join(',')).join('\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));

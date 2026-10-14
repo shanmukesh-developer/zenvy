@@ -107,7 +107,8 @@ export default function CMSPage() {
       }
       // Re-read the server copy: if a field this page is about to overwrite was changed elsewhere
       // since it loaded, ask before replacing it (the server itself has no version check).
-      const latest = normalizeConfig((await apiRequest<{ config: AppConfig }>('/api/config'))?.config);
+      // cache: 'reload' skips the few-second read cache, so the conflict check sees the server copy.
+      const latest = normalizeConfig((await apiRequest<{ config: AppConfig }>('/api/config', { cache: 'reload' }))?.config);
       const conflicts = base ? changed.filter(k => !same(latest[k], base[k])) : [];
       if (conflicts.length && !confirm(`Someone else changed ${conflicts.join(', ')} since this page loaded. Saving replaces their change with yours.
 

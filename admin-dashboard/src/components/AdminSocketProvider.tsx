@@ -36,6 +36,7 @@ export default function AdminSocketProvider({ children }: { children: React.Reac
   const [toasts, setToasts] = useState<LiveToast[]>([]);
   const toastSeq = useRef(0);
   const toastTimers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+  const keepAliveRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const notifyLive = useCallback((text: string) => {
     if (!text) return;
@@ -111,13 +112,17 @@ export default function AdminSocketProvider({ children }: { children: React.Reac
     socketRef.current = socket;
     setSocketState(socket);
 
-    // Anti-sleep heartbeat ping to keep Render server awake
+    // Anti-sleep heartbeat ping to keep Render server awake. One interval per provider: a
+    // refreshSocket() call replaces the previous one instead of stacking another.
+    if (keepAliveRef.current) clearInterval(keepAliveRef.current);
     const keepAliveInterval = setInterval(() => {
       fetch(`${SOCKET_URL}/api/health`, { cache: 'no-store' }).catch(() => {});
     }, 10 * 60 * 1000); // 10 minutes
+    keepAliveRef.current = keepAliveInterval;
 
     return () => {
-       clearInterval(keepAliveInterval);
+      clearInterval(keepAliveInterval);
+      if (keepAliveRef.current === keepAliveInterval) keepAliveRef.current = null;
     };
   }, []);
 
@@ -134,6 +139,7 @@ export default function AdminSocketProvider({ children }: { children: React.Reac
     const cleanupInterval = initSocket();
     return () => {
       if (typeof cleanupInterval === 'function') cleanupInterval();
+      if (keepAliveRef.current) { clearInterval(keepAliveRef.current); keepAliveRef.current = null; }
       if (socketRef.current) {
         socketRef.current.disconnect();
         socketRef.current = null;

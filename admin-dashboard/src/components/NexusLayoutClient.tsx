@@ -131,7 +131,9 @@ export default function NexusLayoutClient({
             { href: '/cms', icon: '🎨', label: 'Global CMS Layout' },
             { href: '/notifications', icon: '🔔', label: 'Push Notifications' },
           ].map(({ href, icon, label }) => {
-            const isActive = href === '/' ? pathname === '/' : pathname.startsWith(href) && (href !== '/analytics' || pathname === '/analytics');
+            // trailingSlash: true can give '/analytics/'; compare without it.
+            const path = pathname.replace(/\/+$/, '') || '/';
+            const isActive = href === '/' ? path === '/' : (path === href || path.startsWith(`${href}/`)) && (href !== '/analytics' || path === '/analytics');
             return (
               <Link
                 key={href}

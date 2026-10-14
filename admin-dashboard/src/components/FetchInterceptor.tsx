@@ -53,6 +53,8 @@ export default function FetchInterceptor() {
     window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = resolveUrl(input);
       const isBackend = !!url && url.origin === API_ORIGIN;
+      /** Authorization header this request actually carried (backend requests only). */
+      let sentAuth: string | null = null;
 
       if (isBackend) {
         const base = input instanceof Request ? input.headers : undefined;
@@ -62,6 +64,7 @@ export default function FetchInterceptor() {
           if (token) headers.set('Authorization', `Bearer ${token}`);
           else headers.delete('Authorization');
         }
+        sentAuth = headers.get('Authorization');
         init = { ...init, headers };
       }
 
@@ -82,7 +85,10 @@ export default function FetchInterceptor() {
       }
 
       if (isBackend && url && !AUTH_PATHS.some((p) => url.pathname.startsWith(p))) {
-        if (response.status === 401 && getToken()) {
+        const current = getToken();
+        // Only a 401 for the current token ends the session: a slow request sent with an older token
+        // (or none) must not sign out an admin who has signed in again since.
+        if (response.status === 401 && current && sentAuth === `Bearer ${current}`) {
           // SESSION_REVOKED: the password was changed (tokenVersion bumped), so every old login ends.
           const body = await response.clone().json().catch(() => null) as { code?: string } | null;
           clearSession(body?.code === 'SESSION_REVOKED'

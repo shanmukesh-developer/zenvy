@@ -78,7 +78,7 @@ export default function PaymentVerificationModal({ isOpen, onClose, order, onVer
                   src={order.upiScreenshot} 
                   alt="Payment Screenshot" 
                   className="w-full h-full object-contain cursor-zoom-in group-hover:scale-105 transition-transform duration-500" 
-                  onClick={() => window.open(order.upiScreenshot!, '_blank')}
+                  onClick={() => { if (/^https?:\/\//i.test(order.upiScreenshot!)) window.open(order.upiScreenshot!, '_blank', 'noopener,noreferrer'); }}
                   onError={() => setImageFailed(true)}
                 />
               ) : (
