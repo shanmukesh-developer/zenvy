@@ -1516,13 +1516,15 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* ── FLOATING CAMPUS BUDDY FAB: Friends, Wall, Pulse, Forum, chats ── */}
+      {/* ── FLOATING COMMUNITY FAB: posts, birthdays, The Wall; its Friends card opens Campus Buddy ── */}
       <FloatingPulse color={COLORS.red} style={s.fabBtnWrap}>
         <DopaminePressable
           style={s.fabBtn}
-          onPress={() => router.push('/friends' as any)}
+          onPress={() => router.push('/community' as any)}
           sound="click"
           activeScale={0.88}
+          accessibilityRole="button"
+          accessibilityLabel="Open Campus Buddy: friends, wall and chats"
         >
           <Text style={{ fontSize: 22 }}>💬</Text>
           <View style={s.fabBadge} />

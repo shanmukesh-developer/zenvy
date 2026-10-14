@@ -1,10 +1,11 @@
 import React from 'react';
-import { Redirect } from 'expo-router';
+import { CommunityFeed } from '../modules/campus/feed/CommunityFeed';
 
 /**
- * Community (posts, reviews, birthdays, The Wall) now lives in the Campus hub: Friends > Pulse.
- * Old links, notifications and announcements that open /community land there.
+ * Community home (the Home 💬 button): posts that expire in 48 hours, reviews, birthdays and
+ * The Wall event contest, with the Friends card that opens Campus Buddy (Pulse, Forum, Tasks,
+ * Connect, Spaces). The full-screen feed brings its own header, back button and tabs.
  */
-export default function CommunityRedirect() {
-  return <Redirect href={{ pathname: '/friends', params: { tab: 'friends', sub: 'pulse' } } as any} />;
+export default function CommunityScreen() {
+  return <CommunityFeed />;
 }
