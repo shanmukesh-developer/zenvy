@@ -1,6 +1,6 @@
 // Rider support: raise a ticket (POST /delivery/support), see replies, or call / WhatsApp Zenvy.
 import React, { useCallback, useEffect, useState } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { BOTTOM_INSET, C, R, S, T } from '../theme';
 import { Badge, Btn, Card, EmptyState, ErrorState, Label, ScreenHeader, Skeleton } from '../ui/kit';
 import { useRider } from '../state/RiderStore';
@@ -55,7 +55,7 @@ export function SupportScreen({ prefill, onBack }: { prefill?: string; onBack: (
   const phone10 = SUPPORT_PHONE.slice(-10);
 
   return (
-    <View style={{ flex: 1, backgroundColor: C.bg }}>
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, backgroundColor: C.bg }}>
       <ScreenHeader title="Help" onBack={onBack} />
       <ScrollView
         contentContainerStyle={styles.content}
@@ -145,7 +145,7 @@ export function SupportScreen({ prefill, onBack }: { prefill?: string; onBack: (
           ))
         )}
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

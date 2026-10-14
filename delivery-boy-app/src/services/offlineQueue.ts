@@ -91,7 +91,8 @@ async function load(): Promise<QueuedAction[]> {
   try {
     const raw = await AsyncStorage.getItem(KEY);
     const parsed = raw ? JSON.parse(raw) : [];
-    if (Array.isArray(parsed)) list = parsed;
+    // Drop corrupt / foreign rows instead of crashing every later load / flush on them.
+    if (Array.isArray(parsed)) list = parsed.map(toAction).filter((a): a is QueuedAction => a !== null);
   } catch {
     list = [];
   }
@@ -100,6 +101,22 @@ async function load(): Promise<QueuedAction[]> {
   cache = prune(list);
   if (legacy.length) await save(cache);
   return cache;
+}
+
+function toAction(a: any): QueuedAction | null {
+  if (!a || typeof a !== 'object') return null;
+  const type = a.type as QueueType;
+  if (!Object.prototype.hasOwnProperty.call(QUEUE_STATUS, type) || typeof a.orderId !== 'string' || !a.orderId) return null;
+  const createdAt = Number(a.createdAt);
+  if (!Number.isFinite(createdAt)) return null;
+  return {
+    id: `${a.orderId}:${type}`,
+    type,
+    orderId: a.orderId,
+    createdAt,
+    attempts: Number.isFinite(Number(a.attempts)) ? Number(a.attempts) : 0,
+    nextAttemptAt: Number.isFinite(Number(a.nextAttemptAt)) ? Number(a.nextAttemptAt) : 0,
+  };
 }
 
 function prune(list: QueuedAction[]): QueuedAction[] {
@@ -155,9 +172,13 @@ export function flushQueue(opts: { force?: boolean } = {}): Promise<FlushResult>
     const now = Date.now();
     const keep: QueuedAction[] = [];
     let stop = false;
+    // Steps of one order must reach the server in order: once a step is held back for a retry, its later
+    // steps wait too (sending "Reached customer" before "Picked up" lands would be rejected and dropped).
+    const heldOrders = new Set<string>();
     for (const a of list) {
-      if (stop || (!opts.force && a.nextAttemptAt > now)) {
+      if (stop || heldOrders.has(a.orderId) || (!opts.force && a.nextAttemptAt > now)) {
         keep.push(a);
+        heldOrders.add(a.orderId);
         continue;
       }
       try {
@@ -167,6 +188,7 @@ export function flushQueue(opts: { force?: boolean } = {}): Promise<FlushResult>
         if (e instanceof ApiError && e.status === 401) {
           result.authFailed = true;
           keep.push(a);
+          heldOrders.add(a.orderId);
           stop = true;
         } else if (e instanceof ApiError && (e.status === 400 || e.status === 403 || e.status === 404 || e.status === 409)) {
           // The server rejected it (order cancelled / changed): drop and let the UI roll back.
@@ -175,6 +197,7 @@ export function flushQueue(opts: { force?: boolean } = {}): Promise<FlushResult>
           // NetworkError, 5xx, 429: retry later with backoff.
           const attempts = a.attempts + 1;
           keep.push({ ...a, attempts, nextAttemptAt: Date.now() + Math.min(60000, 2000 * 2 ** attempts) });
+          heldOrders.add(a.orderId);
           if (e instanceof NetworkError) stop = true; // no point trying the rest right now
         }
       }

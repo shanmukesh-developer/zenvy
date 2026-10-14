@@ -21,7 +21,9 @@ export function Sheet({
 }) {
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={blocking ? () => {} : onClose} statusBarTranslucent>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.wrap}>
+      {/* Android draws edge-to-edge (RN 0.86, targetSdk 35): the window no longer resizes for the keyboard, so
+          the sheet itself must move up or the keyboard covers its inputs (edit profile, change password). */}
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.wrap}>
         <Pressable style={StyleSheet.absoluteFill} onPress={blocking ? undefined : onClose} accessibilityLabel="Close" />
         <View style={styles.sheet}>
           <View style={styles.handle} />

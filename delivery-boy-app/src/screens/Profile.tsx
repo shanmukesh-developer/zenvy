@@ -9,7 +9,6 @@ import { Sheet } from '../ui/Sheet';
 import { useRider } from '../state/RiderStore';
 import { useVoice } from '../voice/useVoice';
 import { LANG_LABEL } from '../voice/phrases';
-import * as api from '../services/deliveryApi';
 import * as links from '../services/links';
 import { errorMessage } from '../services/apiClient';
 import { SUPPORT_PHONE } from '../config';
@@ -227,7 +226,7 @@ function EditProfileSheet({ visible, onClose }: { visible: boolean; onClose: () 
 }
 
 function ChangePasswordSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  const { showToast } = useRider();
+  const { showToast, changePassword } = useRider();
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -251,7 +250,7 @@ function ChangePasswordSheet({ visible, onClose }: { visible: boolean; onClose: 
           onPress={async () => {
             setError(null);
             try {
-              await api.changePassword(current, next);
+              await changePassword(current, next);
               showToast('Password updated.', 'success');
               onClose();
             } catch (e) {

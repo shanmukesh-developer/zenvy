@@ -26,13 +26,14 @@ type TokenGetter = () => string | null;
 
 const apiBase = API_URL;
 let getToken: TokenGetter = () => null;
-let onUnauthorized: (() => void) | null = null;
+let onUnauthorized: ((usedToken: string) => void) | null = null;
 let onForbiddenUnapproved: (() => void) | null = null;
 let onReachability: ((reachable: boolean) => void) | null = null;
 
 export function configureApiClient(opts: {
   getToken: TokenGetter;
-  onUnauthorized?: () => void;
+  /** Gets the token the refused request carried (a newer token may already be in use). */
+  onUnauthorized?: (usedToken: string) => void;
   onUnapproved?: () => void;
   onReachability?: (reachable: boolean) => void;
 }) {
@@ -110,7 +111,7 @@ export async function apiFetch<T = unknown>(endpoint: string, opts: RequestOptio
   if (!res.ok) {
     const serverMessage = data && typeof data.message === 'string' ? data.message : null;
     if (res.status === 401 && auth && token) {
-      onUnauthorized?.();
+      onUnauthorized?.(token);
       throw new ApiError(401, 'Your session expired. Please log in again.', data);
     }
     const err = new ApiError(

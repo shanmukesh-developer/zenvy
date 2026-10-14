@@ -19,7 +19,10 @@ export function Toast({ toast, bottom }: { toast: ToastMsg | null; bottom: numbe
     opacity.setValue(0);
     Animated.timing(opacity, { toValue: 1, duration: 150, useNativeDriver: true }).start();
     const t = setTimeout(() => {
-      Animated.timing(opacity, { toValue: 0, duration: 220, useNativeDriver: true }).start(() => setShown(null));
+      // Only when the fade really finished: a newer toast stops this animation and must stay visible.
+      Animated.timing(opacity, { toValue: 0, duration: 220, useNativeDriver: true }).start(({ finished }) => {
+        if (finished) setShown(null);
+      });
     }, Math.min(6000, 2500 + toast.text.length * 30));
     return () => clearTimeout(t);
   }, [toast, opacity]);

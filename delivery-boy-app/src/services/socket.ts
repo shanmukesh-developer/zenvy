@@ -167,6 +167,14 @@ export function emitDutyStatus(riderId: string, name: string, isOnline: boolean)
   socket.emit('rider_status_change', { riderId, name, isOnline });
 }
 
+/**
+ * New session token (password change): the next (re)connect handshake must use it, or the server refuses
+ * the revoked one and the app logs the rider out. The live connection is already authenticated.
+ */
+export function updateSocketToken(token: string): void {
+  if (socket) socket.auth = { token };
+}
+
 /** Foreground resume: reconnect at once if the socket gave up while the app was in the background. */
 export function ensureSocketConnected(): void {
   if (socket && !socket.connected && !socket.active) {

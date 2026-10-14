@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { C, R, S, T, shadow } from '../theme';
-import { Banner, Btn, Card, EmptyState, ErrorState, IconBtn, Skeleton } from '../ui/kit';
+import { Badge, Banner, Btn, Card, EmptyState, ErrorState, IconBtn, Skeleton } from '../ui/kit';
 import { Sheet } from '../ui/Sheet';
 import { useRider } from '../state/RiderStore';
 import { useVoice } from '../voice/useVoice';
@@ -192,7 +192,7 @@ function TodayStrip() {
 
 function ActiveCard({ order, syncing, onOpen }: { order: RiderOrder; syncing: boolean; onOpen: () => unknown }) {
   const idx = Math.max(0, stepIndex(order.status));
-  const store = storeStatusLabel(order.status);
+  const store = order.buyAtStore ? null : storeStatusLabel(order.status);
   return (
     <Card style={{ gap: S.md, borderWidth: 2, borderColor: C.ink }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
@@ -209,6 +209,7 @@ function ActiveCard({ order, syncing, onOpen }: { order: RiderOrder; syncing: bo
         {idx <= 1 ? order.restaurantName ?? 'Store' : order.dropAddress ?? 'Customer'}
       </Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: S.sm }}>
+        {order.buyAtStore && idx <= 1 ? <Badge tone="amber" icon="cart-outline" label="BUY AT STORE" /> : null}
         {store && idx === 0 ? <PillText text={store} ready={order.status === 'ReadyForPickup'} /> : null}
         <PaymentPill order={order} />
       </View>
@@ -325,7 +326,7 @@ function OfferCard({
         <ItemsLine order={order} />
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: S.sm }}>
           <PaymentPill order={order} />
-          {storeStatusLabel(order.status) ? <PillText text={storeStatusLabel(order.status) as string} ready={order.status === 'ReadyForPickup'} /> : null}
+          {!order.buyAtStore && storeStatusLabel(order.status) ? <PillText text={storeStatusLabel(order.status) as string} ready={order.status === 'ReadyForPickup'} /> : null}
         </View>
         <Countdown seconds={OFFER_SECONDS} onDone={onExpire} paused={accepting} />
         <Btn

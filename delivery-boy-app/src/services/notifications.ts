@@ -132,11 +132,18 @@ export function onPushTokenChange(riderId: string): () => void {
 }
 
 /**
- * Logout: forget the local marker AND invalidate this phone's FCM token. The server still holds the old
- * token (there is no rider token-removal route yet), but once FCM deletes it every push to it fails, so a
- * logged-out phone stops getting this rider's order / tip / cancellation pushes. The next login asks FCM
- * for a fresh token and registers that one.
+ * Logout: forget the local marker AND invalidate this phone's FCM token. The store's logout first asks the
+ * server to drop the token (POST /delivery/fcm-token/remove, best effort); once FCM deletes it every push
+ * to it fails anyway, so a logged-out phone stops getting this rider's order / tip / cancellation pushes.
+ * The next login asks FCM for a fresh token and registers that one.
  */
+/** The device token this phone last registered for `riderId` (from the local marker), or null. */
+export async function registeredPushToken(riderId: string): Promise<string | null> {
+  const marker = await getItem(REGISTERED_KEY);
+  const prefix = `${riderId}:`;
+  return riderId && marker && marker.startsWith(prefix) ? marker.slice(prefix.length) || null : null;
+}
+
 export async function forgetPushRegistration(): Promise<void> {
   await setItem(REGISTERED_KEY, '');
   try {

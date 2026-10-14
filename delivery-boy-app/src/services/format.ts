@@ -9,6 +9,8 @@ export function rupees(n: number | null | undefined): string {
 /** YYYY-MM-DD of the IST calendar day. */
 export function istDayKey(d: Date | string | number): string {
   const t = new Date(d).getTime();
+  // An unparseable server date must not throw (toISOString on an invalid Date is a RangeError).
+  if (!Number.isFinite(t)) return 'unknown';
   return new Date(t + IST_OFFSET_MS).toISOString().slice(0, 10);
 }
 
@@ -32,6 +34,7 @@ function partsOfKey(key: string) {
 }
 
 export function dayLabel(key: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return 'Earlier';
   if (key === todayKey()) return 'Today';
   if (key === istDayKey(Date.now() - 86400000)) return 'Yesterday';
   const p = partsOfKey(key);

@@ -13,7 +13,7 @@ import * as push from '../services/notifications';
 import { statusRank } from '../services/orderModel';
 import { istDayKey, lastNDayKeys } from '../services/format';
 import { POLL_ORDERS_MS, POLL_STATS_MS } from '../config';
-import { announce, checkVoices, getVoiceState, initVoice, stopSpeaking } from '../voice/announcer';
+import { announce, cancelAnnouncement, checkVoices, getVoiceState, initVoice, stopSpeaking } from '../voice/announcer';
 import { useAppActive, useDismissedOrders, useInterval, useNetwork } from './hooks';
 import type { Loadable, RiderOrder, RiderProfile, TodayStats, WeekStats } from '../types';
 import type { ToastKind, ToastMsg } from '../ui/Toast';
@@ -94,6 +94,7 @@ interface RiderContextValue {
   showToast: (text: string, kind?: ToastKind) => void;
   clearCancelNotice: () => void;
   saveProfileEdits: (p: ProfileEdits) => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
 }
 
 const Ctx = createContext<RiderContextValue | null>(null);
@@ -161,6 +162,7 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
   // Voice: load settings + check the phone's voices once.
   useEffect(() => {
     initVoice();
+    return () => stopSpeaking();
   }, []);
 
   // ── Session ────────────────────────────────────────────────────────────
@@ -196,14 +198,16 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
     setPhase('login');
   }, [resetState]);
 
+  const passwordChanging = useRef(false);
   const hardLogoutRef = useRef(hardLogout);
   hardLogoutRef.current = hardLogout;
 
   useEffect(() => {
     configureApiClient({
       getToken: () => tokenRef.current,
-      onUnauthorized: () => {
-        if (tokenRef.current) {
+      onUnauthorized: (usedToken) => {
+        // Ignore a 401 for a token we already replaced (password change), or one racing the change itself.
+        if (tokenRef.current && usedToken === tokenRef.current && !passwordChanging.current) {
           hardLogoutRef.current();
           setToast({ id: Date.now(), text: 'Your session expired. Please log in again.', kind: 'error' });
         }
@@ -288,10 +292,15 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     if (tokenRef.current) {
-      // Go off duty before the token is dropped, or dispatch keeps counting + pinging this rider.
-      // Raced so a slow / asleep server never blocks logging out.
+      // Go off duty and drop this phone's push token before the session token is dropped, or dispatch keeps
+      // counting + pinging this rider. Raced so a slow / asleep server never blocks logging out.
+      const riderId = profileRef.current?.id ?? '';
+      const removePush = push
+        .registeredPushToken(riderId)
+        .then((t) => (t ? api.removeFcmToken(t) : undefined))
+        .catch(() => undefined);
       await Promise.race([
-        api.setOnline(false).catch(() => undefined),
+        Promise.all([api.setOnline(false).catch(() => undefined), removePush]),
         new Promise((resolve) => setTimeout(resolve, 4000)),
       ]);
     }
@@ -494,7 +503,8 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
     async (force: boolean) => {
       const r = await queue.flushQueue({ force });
       if (r.authFailed) {
-        hardLogoutRef.current();
+        // apiFetch's onUnauthorized usually logged out already (token cleared): never run it twice.
+        if (tokenRef.current) hardLogoutRef.current();
         return;
       }
       for (const d of r.dropped) {
@@ -543,9 +553,14 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
   }, [appActive]);
 
   const pollOrders = inMain && appActive && (isOnline || active.data.length > 0);
+  // A slow server (requests up to 15 s) must not stack a new round of requests on every 12 s tick.
+  const pollBusy = useRef(false);
   useInterval(() => {
-    if (!connected) return;
-    refreshOrders();
+    if (!connected || pollBusy.current) return;
+    pollBusy.current = true;
+    refreshOrders().finally(() => {
+      pollBusy.current = false;
+    });
     if (queued.length) runFlush(false);
   }, pollOrders ? POLL_ORDERS_MS : null);
   useInterval(() => {
@@ -616,6 +631,7 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
         if (isOnlineRef.current) refreshPending();
       },
       onDeliveryRequestGone: ({ orderId }) => {
+        cancelAnnouncement(`new:${orderId}`);
         setPending((p) => (p.data.some((o) => o.id === orderId) ? { ...p, data: p.data.filter((o) => o.id !== orderId) } : p));
       },
       onAuthError: () => {
@@ -759,6 +775,7 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
   const skipOffer = useCallback(
     (id: string) => {
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      cancelAnnouncement(`new:${id}`);
       dismiss(id);
     },
     [dismiss],
@@ -770,6 +787,7 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
         showToast('Accepting needs internet.', 'error');
         return false;
       }
+      cancelAnnouncement(`new:${order.id}`);
       try {
         const claimed = await api.acceptOrder(order.id);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -871,6 +889,9 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
       };
       inFlightIds.current.add(order.id);
       try {
+        // A step saved offline ("Picked up" / "Reached customer") must land first, or the server refuses
+        // the handover ("Must be PickedUp or ArrivedAtGate first").
+        if ((await queue.getQueue()).some((a) => a.orderId === order.id)) await runFlush(true);
         const r = await api.markDelivered(order.id, pin);
         return done(r.earning ?? order.earning);
       } catch (e) {
@@ -891,7 +912,7 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
         inFlightIds.current.delete(order.id);
       }
     },
-    [connected, afterDelivered, refreshActive],
+    [connected, afterDelivered, refreshActive, runFlush],
   );
 
   const unassign = useCallback(
@@ -929,6 +950,21 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
     },
     [applyProfile, showToast],
   );
+
+  const changePassword = useCallback(async (currentPassword: string, newPassword: string) => {
+    passwordChanging.current = true;
+    try {
+      const token = await api.changePassword(currentPassword, newPassword);
+      // The server revoked every older token (this one too): switch to the fresh one or the next request 401s.
+      if (token && tokenRef.current) {
+        tokenRef.current = token;
+        sock.updateSocketToken(token);
+        await session.saveToken(token);
+      }
+    } finally {
+      passwordChanging.current = false;
+    }
+  }, []);
 
   const openDelivery = useCallback((id: string) => setDeliveryId(id), []);
   const closeDelivery = useCallback(() => setDeliveryId(null), []);
@@ -979,6 +1015,7 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
     showToast,
     clearCancelNotice,
     saveProfileEdits,
+    changePassword,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

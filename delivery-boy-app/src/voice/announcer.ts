@@ -211,6 +211,7 @@ interface Item {
 
 let queue: Item[] = [];
 let running = false;
+let current: Item | null = null; // the item being chimed / spoken right now
 let generation = 0; // bumps on stop so an in-flight item is abandoned
 
 export interface AnnounceOptions {
@@ -260,9 +261,22 @@ export function announceTest(): void {
   pump();
 }
 
+/**
+ * Drop one announcement (e.g. `new:<orderId>` once the rider accepted / skipped it or it left the pool):
+ * removed from the queue, and cut off if it is being spoken right now. Never throws.
+ */
+export function cancelAnnouncement(dedupeKey: string): void {
+  queue = queue.filter((q) => q.dedupeKey !== dedupeKey);
+  if (current && current.dedupeKey === dedupeKey) {
+    current = null;
+    Speech.stop().catch(() => {}); // onStopped ends speakOnce; the queue moves on
+  }
+}
+
 export function stopSpeaking(): void {
   generation++;
   queue = [];
+  current = null;
   running = false;
   Speech.stop().catch(() => {});
 }
@@ -313,23 +327,27 @@ async function pump(): Promise<void> {
       const item = queue.shift() as Item;
       if (!item.force && Date.now() - item.at > STALE_MS) continue;
       if (item.dedupeKey && !claim(item.dedupeKey, item.ttlMs)) continue;
+      current = item;
       const speak = item.force || state.enabled;
       // Voice off: keep the important cues (new order, money, alerts), skip the small "info" ones.
       if (item.chime && (speak || item.chime !== 'info')) {
         await playChime(item.chime, displayText(item));
         if (speak) await sleep(CHIME_GAP_MS);
       }
-      if (!speak || myGen !== generation) continue;
+      if (!speak || myGen !== generation || current !== item) continue;
       let lang = state.effectiveLang;
       let ok = await speakOnce(phrase(lang, item.key, item.args), lang);
-      // The phone did not list its voices and this language failed: fall back (te -> hi -> en) and remember it.
-      while (!ok && myGen === generation && state.check === 'unknown' && lang !== 'en') {
-        setState({ available: { ...state.available, [lang]: false } });
-        const next = state.effectiveLang;
-        if (next === lang) break;
+      // This language failed (no voice / engine error): fall back along te -> hi -> en instead of staying
+      // silent. When the phone did not list its voices, remember the failure so later items skip it.
+      const chain = FALLBACK[state.lang];
+      while (!ok && myGen === generation && current === item) {
+        if (state.check === 'unknown') setState({ available: { ...state.available, [lang]: false } });
+        const next = chain.slice(chain.indexOf(lang) + 1).find((l) => state.available[l] !== false) ?? (lang !== 'en' ? 'en' : null);
+        if (!next || next === lang) break;
         lang = next;
         ok = await speakOnce(phrase(lang, item.key, item.args), lang);
       }
+      current = null;
       await sleep(250);
     }
   } finally {

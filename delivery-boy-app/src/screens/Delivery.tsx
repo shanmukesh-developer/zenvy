@@ -105,13 +105,15 @@ export function DeliveryScreen({ orderId, onClose }: { orderId: string; onClose:
 
   if (step === 'TO_STORE') {
     title = 'Go to store';
-    const kitchen = storeStatusLabel(order.status);
+    // Buy-at-store: the store has no Zenvy app, so "Store accepted" / "Kitchen preparing" would be invented.
+    const kitchen = order.buyAtStore ? null : storeStatusLabel(order.status);
     const dist = distanceTo(order, r.fix);
     body = (
       <>
         <Card style={{ gap: S.md }}>
           <Place kind="store" title={order.restaurantName} address={order.restaurantAddress} />
           <View style={styles.chips}>
+            {order.buyAtStore ? <Badge tone="amber" icon="cart-outline" label="BUY AT STORE" /> : null}
             {kitchen ? <Badge tone={order.status === 'ReadyForPickup' ? 'green' : 'blue'} icon={order.status === 'ReadyForPickup' ? 'check-circle' : 'chef-hat'} label={kitchen} /> : null}
             {dist ? <Badge tone="grey" icon="map-marker-distance" label={`${dist} away`} /> : null}
           </View>

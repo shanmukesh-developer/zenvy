@@ -48,6 +48,11 @@ export async function saveFcmToken(fcmToken: string): Promise<void> {
   await apiFetch('/delivery/fcm-token', { method: 'POST', body: { fcmToken, appVersion: APP_PUSH_VERSION } });
 }
 
+/** Logout: stop this phone's order pushes for this rider (POST /delivery/fcm-token/remove). */
+export async function removeFcmToken(fcmToken: string): Promise<void> {
+  await apiFetch('/delivery/fcm-token/remove', { method: 'POST', body: { fcmToken } });
+}
+
 /**
  * Stall (local vendor) orders are delivered by the stall itself: no rider, no PIN. The server already
  * keeps them out of the pool; this filter makes sure one can never show up in the app either.
@@ -66,7 +71,9 @@ export async function fetchActive(): Promise<RiderOrder[]> {
 }
 
 export async function fetchHistory(): Promise<RiderOrder[]> {
-  return normalizeOrders(await apiFetch<any[]>('/delivery/orders/history'));
+  // Bare array (no paging params); { orders, hasMore } when paged.
+  const data = await apiFetch<any>('/delivery/orders/history');
+  return normalizeOrders(Array.isArray(data) ? data : data?.orders);
 }
 
 export async function fetchToday(): Promise<TodayStats> {
@@ -138,8 +145,13 @@ export async function updateProfile(payload: {
   return apiFetch('/delivery/profile', { method: 'PUT', body: payload });
 }
 
-export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
-  await apiFetch('/delivery/profile/password', { method: 'PUT', body: { currentPassword, newPassword } });
+/**
+ * The server bumps tokenVersion on a password change (every older token, including this phone's, stops
+ * working) and returns a fresh token for this device. Returns it so the caller can keep the session.
+ */
+export async function changePassword(currentPassword: string, newPassword: string): Promise<string | null> {
+  const d = await apiFetch<any>('/delivery/profile/password', { method: 'PUT', body: { currentPassword, newPassword } });
+  return typeof d?.token === 'string' && d.token ? d.token : null;
 }
 
 function toTicket(t: any): SupportTicket {
