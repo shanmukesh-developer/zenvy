@@ -1082,6 +1082,16 @@ const initializeApp = async () => {
       console.warn('⚠️ [TEMPLATE_MENU_CLEANUP] not started:', menuErr.message);
     }
 
+    // 🖼️ One-time item corrections (photos, descriptions, veg flag); each applied once, old values kept.
+    try {
+      const { runItemFixes } = require('./scripts/apply_item_fixes');
+      runItemFixes()
+        .then((r) => console.log('🖼️ [ITEM_FIXES]', JSON.stringify(r)))
+        .catch((err) => console.warn('⚠️ [ITEM_FIXES] failed:', err.message));
+    } catch (fixErr) {
+      console.warn('⚠️ [ITEM_FIXES] not started:', fixErr.message);
+    }
+
     // 🖼️ Legacy base64 images -> CampusMedia short URLs (idempotent, batched, background).
     // Starts a minute after boot so it never competes with startup; set
     // DISABLE_BASE64_MIGRATION=true to switch it off.

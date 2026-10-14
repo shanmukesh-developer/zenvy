@@ -1,0 +1,1700 @@
+{
+ "version": 1,
+ "generated": "2026-10-14",
+ "fixes": [
+  {
+   "id": "510ae186-d6eb-4024-8b9d-18ed66f8ba11",
+   "name": "burger",
+   "imageUrl": "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=600&q=80",
+   "description": "Freshly made burger with a crisp patty, veggies and sauce in a soft bun."
+  },
+  {
+   "id": "d8183e67-9d5d-413b-b9af-3165fbd6698c",
+   "name": "20,000mAh Fast Power Bank",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7c/Power_bank.JPG/500px-Power_bank.JPG"
+  },
+  {
+   "id": "90b07862-cd82-4a49-a2c9-71b74d745f41",
+   "name": "20L Heavy Duty Bucket & Mug Set",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4d/Bucket_and_bathing_mug.jpg/500px-Bucket_and_bathing_mug.jpg"
+  },
+  {
+   "id": "7acb4718-bc68-42d2-b5ce-1ffec281acc2",
+   "name": "24 MANTRA ORGANIC Wild Honey",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d6/Jar_and_honey_stick.jpg/500px-Jar_and_honey_stick.jpg",
+   "description": "Organic wild honey, great in warm lemon water, tea or on toast."
+  },
+  {
+   "id": "8f155468-2e06-42d0-98e3-b31f8dda17e6",
+   "name": "4-Socket Surge Extension Board",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a5/Power_strips_with_extension_cord.jpg/500px-Power_strips_with_extension_cord.jpg"
+  },
+  {
+   "id": "e3e5782b-ab91-4d05-a64f-fcb42087ef77",
+   "name": "4x4 Monster Truck For 3+ Years",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/58/Campaign_Bird_%283530354508%29.jpg/500px-Campaign_Bird_%283530354508%29.jpg",
+   "description": "Chunky big-wheel monster truck toy for kids aged 3 and up."
+  },
+  {
+   "id": "6bfa9e3a-9f22-42af-b035-81dd526a1f75",
+   "name": "A4 Print (per page)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/87/Laser_Printer_Without_Paper_Trays.JPG/500px-Laser_Printer_Without_Paper_Trays.JPG"
+  },
+  {
+   "id": "e73aead4-261f-4d9b-9190-5abea15fd0c6",
+   "name": "Aashirvaad Shudh Chakki Atta",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/66/Whole_wheat_grain_flour_being_scooped.jpg/500px-Whole_wheat_grain_flour_being_scooped.jpg",
+   "description": "Whole wheat chakki atta for soft, fluffy rotis and parathas."
+  },
+  {
+   "id": "a28a4ed0-c1d6-408e-97cf-bfbcd218060d",
+   "name": "Ambrane USB-C Fast Charging Cable",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/36/Bad_USB-C_cable.agr.jpg/500px-Bad_USB-C_cable.agr.jpg",
+   "description": "Durable USB-C cable for fast charging and data transfer."
+  },
+  {
+   "id": "99b6fa63-1e4f-400b-a564-9261a5758699",
+   "name": "Amul Dark Chocolate Fruit & Nut",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b1/Cadbury_chocolate_squares.jpg/500px-Cadbury_chocolate_squares.jpg",
+   "description": "Amul dark chocolate loaded with raisins and crunchy nuts."
+  },
+  {
+   "id": "12dcc141-0e59-4f61-838f-1cb9227d8e71",
+   "name": "Amul Pure Cow Ghee Tin",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f8/Butterschmalz-3.jpg/500px-Butterschmalz-3.jpg",
+   "description": "Pure Amul cow ghee with a rich aroma for cooking and tadka."
+  },
+  {
+   "id": "b378c47b-644f-4e77-b768-f9f3e07a1ebd",
+   "name": "Amul Taaza Fresh Toned Milk",
+   "description": "Amul Taaza toned milk for tea, coffee, cereal and cooking."
+  },
+  {
+   "id": "b47f0155-7ca4-4524-947f-e9ce5b10d384",
+   "name": "Amul Taaza Milk (500ml)",
+   "description": "500ml pack of Amul Taaza toned milk for your daily chai and coffee."
+  },
+  {
+   "id": "1af0a4ad-99f2-4a34-9e9b-a8b30f0b76d2",
+   "name": "Anti-Slip Yoga Mat 6mm Premium",
+   "description": "6mm cushioned anti-slip mat for yoga, stretching and floor workouts."
+  },
+  {
+   "id": "cfb89bf0-588d-4c0a-8409-943d7c3535ba",
+   "name": "Antiseptic Cream 30g",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/06/Savlon.jpg/500px-Savlon.jpg"
+  },
+  {
+   "id": "7b4502d8-1b9d-4b76-9c31-b837214de4f5",
+   "name": "B Natural Guava Fruit Beverage",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/32/Guava_juice_%283110765359%29.jpg/500px-Guava_juice_%283110765359%29.jpg"
+  },
+  {
+   "id": "7ce6961d-6015-4f98-904e-b9de48c1b990",
+   "name": "B Natural Guava Fruit Beverage",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/32/Guava_juice_%283110765359%29.jpg/500px-Guava_juice_%283110765359%29.jpg",
+   "description": "Thick, fruity pink guava drink from B Natural. Serve chilled."
+  },
+  {
+   "id": "759d60f6-e863-440e-bf0e-1076ebf827c1",
+   "name": "Badminton Racket Pair with Shuttle",
+   "description": "Pair of badminton rackets with a shuttlecock for casual games."
+  },
+  {
+   "id": "5cdc55ad-ba3f-4d25-b86a-9793ad3927b9",
+   "name": "Bagrrys Mixed Fruit Muesli Crunchy",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c0/Muesli.jpg/500px-Muesli.jpg",
+   "description": "Crunchy muesli with oats and dried fruit. Add milk or curd for breakfast."
+  },
+  {
+   "id": "dffc9d4c-d777-4381-9414-38fc3ec39909",
+   "name": "Banana Bunch (6pc)",
+   "imageUrl": "https://images.unsplash.com/photo-1571771894821-ce9b6c11b08e?w=600&q=80"
+  },
+  {
+   "id": "490c2fa4-bf72-41f7-936b-c6a8bb870471",
+   "name": "Barilla Penne Rigate Durum Semolina",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Penne_norma_-_Enzo%27s_2026-04-21.jpg/500px-Penne_norma_-_Enzo%27s_2026-04-21.jpg",
+   "description": "Durum wheat penne rigate that holds sauce well. Cooks in about 11 minutes."
+  },
+  {
+   "id": "64d27b2b-b592-4fe4-8486-1b40d05006dd",
+   "name": "Biotique Morning Nectar Face Wash",
+   "imageUrl": "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=600&q=80",
+   "description": "Gentle Biotique face wash for a fresh, clean start to the day."
+  },
+  {
+   "id": "cc1f9fa2-c351-43db-8217-1f24309e2ba4",
+   "name": "Birthday Candles (10)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/91/Italy_-_birthday_cake_with_candles_1.jpg/500px-Italy_-_birthday_cake_with_candles_1.jpg",
+   "description": "Pack of 10 birthday candles for your cake."
+  },
+  {
+   "id": "86c35b56-228b-4da2-8731-a8919d603edd",
+   "name": "Bisleri Mineral Water Can (20 Litres)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/bf/EM_Water_Bottle_%284%29.jpg/500px-EM_Water_Bottle_%284%29.jpg"
+  },
+  {
+   "id": "74daa021-6e71-4245-b351-745171923201",
+   "name": "Blue Pen Set (5pc)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/85/Gel_pen_versus_ballpoint_pen.jpg/500px-Gel_pen_versus_ballpoint_pen.jpg"
+  },
+  {
+   "id": "e2aa0916-0311-4e9b-84d4-8474f0e554bd",
+   "name": "Blueberry Muffin",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/02/Little_Debbie_Blueberry_Muffin_%2818992931693%29.jpg/500px-Little_Debbie_Blueberry_Muffin_%2818992931693%29.jpg",
+   "description": "Soft bakery muffin studded with blueberries."
+  },
+  {
+   "id": "719002dc-f3d6-4163-ac65-36803eb4684f",
+   "name": "Boiled Egg (2 pcs)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c8/Frankfurter_gr%C3%BCne_So%C3%9Fe_mit_Eiern%2C_Oberauroff.jpg/500px-Frankfurter_gr%C3%BCne_So%C3%9Fe_mit_Eiern%2C_Oberauroff.jpg",
+   "description": "Two hard-boiled eggs, a simple protein add-on.",
+   "isVegetarian": false
+  },
+  {
+   "id": "3ed77c05-76bd-408c-a713-dafbe27b3974",
+   "name": "Borges Extra Virgin Olive Oil bottle",
+   "description": "Cold-extracted extra virgin olive oil for salads, pasta and light cooking."
+  },
+  {
+   "id": "e889d7c9-020e-4694-9316-c3988eb34ba0",
+   "name": "Braided Type-C to Type-C Cable",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/36/Bad_USB-C_cable.agr.jpg/500px-Bad_USB-C_cable.agr.jpg"
+  },
+  {
+   "id": "4067558a-90b5-4b3d-88df-3ac68e9c6924",
+   "name": "Britannia Good Day Cashew cookies",
+   "description": "Buttery Britannia Good Day cookies with cashew bits."
+  },
+  {
+   "id": "067b7398-23e1-4e23-bd66-da74bfed55f1",
+   "name": "Brooke Bond Red Label Loose Tea",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f8/Nepal-dhankuta.jpg/500px-Nepal-dhankuta.jpg",
+   "description": "Strong Red Label leaf tea for a bold, refreshing cup of chai."
+  },
+  {
+   "id": "5a37b734-4ed2-481b-9a9e-e2f5b44ba7fe",
+   "name": "Building Blocks Set 50 Pcs",
+   "description": "50 colourful building blocks for creative play."
+  },
+  {
+   "id": "a6ee59c2-e59b-4f38-83bd-f902816fd87c",
+   "name": "Bulk Wash (3kg)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/42/Washing_machine_LG.png/500px-Washing_machine_LG.png"
+  },
+  {
+   "id": "a6a6a7d7-13a8-45f4-92c6-fb63c8ab85ff",
+   "name": "Butter Naan (2 pcs)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/29/Butter_Naan_2.jpg/500px-Butter_Naan_2.jpg",
+   "description": "Two soft tandoori naans brushed with butter."
+  },
+  {
+   "id": "f45590c4-5b7e-4058-be86-8e1a8e2c167a",
+   "name": "Buttermilk (Chaas)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/23/Buttermilk-%28right%29-and-Milk-%28left%29.jpg/500px-Buttermilk-%28right%29-and-Milk-%28left%29.jpg",
+   "description": "Chilled spiced buttermilk with cumin and coriander."
+  },
+  {
+   "id": "e8a0145a-e74a-4200-ad92-9678f21a6e03",
+   "name": "Cadbury Bournvita Chocolate Health Drink",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/23/Chocolate_milk.JPG/500px-Chocolate_milk.JPG",
+   "description": "Chocolate malt drink powder. Mix with hot or cold milk."
+  },
+  {
+   "id": "ee8c9c57-932e-4d20-bb39-eef020ebbbf5",
+   "name": "Cadbury Dairy Milk Silk Chocolate Bar",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Cadbury-Dairy-Milk-Caramel-Bar.jpg/500px-Cadbury-Dairy-Milk-Caramel-Bar.jpg",
+   "description": "Smooth, creamy Cadbury Dairy Milk Silk chocolate bar."
+  },
+  {
+   "id": "36792fd8-54f3-446c-9c78-d651b81ee443",
+   "name": "Cadbury Oreo Chocolate Cookies",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3e/Oreo-Two-Cookies.jpg/500px-Oreo-Two-Cookies.jpg",
+   "description": "Crunchy chocolate Oreo biscuits with a sweet creme filling."
+  },
+  {
+   "id": "cc055896-0ed4-46bc-9da2-48cea3a44ccd",
+   "name": "Cake Cutting Knife",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/71/Unpolished_silverware.jpg/500px-Unpolished_silverware.jpg",
+   "description": "Disposable knife for cutting your cake."
+  },
+  {
+   "id": "8a879f98-03e6-415a-bcc6-c6efb744ba01",
+   "name": "Carrot - Local",
+   "description": "Fresh local carrots for salads, sabzi, halwa and juices."
+  },
+  {
+   "id": "da9cffc8-9c9f-4ff9-9e75-294ebfe9507b",
+   "name": "Cheese Butter Maggi",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/70/Vegetable_Maggi_3.jpg/500px-Vegetable_Maggi_3.jpg",
+   "description": "Masala Maggi cooked with butter and topped with melted cheese."
+  },
+  {
+   "id": "453560ff-887d-491d-9fc3-45b97912124a",
+   "name": "Cheesy Dip Sauce",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/31/Papalaya_Nachos_2.jpg/500px-Papalaya_Nachos_2.jpg",
+   "description": "Creamy cheese dip for fries, nachos and snacks."
+  },
+  {
+   "id": "41e05736-cd9a-46a8-b2dc-c0163272c2e6",
+   "name": "Chicken Fried Rice",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/71/Fried_rice_with_chicken_%2817234644521%29.jpg/500px-Fried_rice_with_chicken_%2817234644521%29.jpg",
+   "description": "Wok-tossed rice with chicken, egg and vegetables."
+  },
+  {
+   "id": "dd75e609-6e8e-4653-8353-1dac785058e9",
+   "name": "Chili Flakes & Oregano",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/70/Chilli_flakes.jpg/500px-Chilli_flakes.jpg",
+   "description": "Sachets of chilli flakes and oregano seasoning."
+  },
+  {
+   "id": "02f7ccae-b1b3-4c03-83ac-3ce3c4b73a96",
+   "name": "Chilli Hot Pepper Seeds",
+   "description": "Hot chilli pepper seeds for growing in pots or a home garden."
+  },
+  {
+   "id": "1578490b-664c-4935-9933-2bf2709bff05",
+   "name": "Chocolate Cookie",
+   "imageUrl": "https://images.unsplash.com/photo-1558961363-fa8fdf82db35?w=600&q=80",
+   "description": "Freshly baked chocolate cookie."
+  },
+  {
+   "id": "0983c1dc-fec8-4c86-a8fc-bde62618c4b2",
+   "name": "Chocolate Sauce",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/Chocolate_sauce_and_vanilla_icrecream.jpg/500px-Chocolate_sauce_and_vanilla_icrecream.jpg",
+   "description": "Rich chocolate sauce to drizzle over desserts."
+  },
+  {
+   "id": "b0ba8ceb-eef3-4c6c-a3be-0f0dfe1281a3",
+   "name": "Cloth Drying Rack (Foldable)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3c/White_laundry_on_a_drying_rack.jpg/500px-White_laundry_on_a_drying_rack.jpg"
+  },
+  {
+   "id": "b4f50531-e151-4518-b6a4-409eebffdcde",
+   "name": "Clothes Hangers Pack (12 Pieces)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e4/Wood_clothes_hanger.png/500px-Wood_clothes_hanger.png"
+  },
+  {
+   "id": "acae08dc-c471-4347-bfcc-4041ab53cee4",
+   "name": "Club Sandwich",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/98/Club_sandwiches_in_hong_kong.jpg/500px-Club_sandwiches_in_hong_kong.jpg",
+   "description": "Triple-layer toasted sandwich with veggies, cheese and sauces."
+  },
+  {
+   "id": "cacc64ab-fbc9-4a48-b95d-09978cdc781a",
+   "name": "Coca Cola (300ml)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ef/Coca-Cola_glass_bottle.jpg/500px-Coca-Cola_glass_bottle.jpg",
+   "description": "Chilled 300ml Coca-Cola."
+  },
+  {
+   "id": "d4dcbef6-ec89-41e3-959d-d78731da510a",
+   "name": "Coca Cola Diet Coke Can Carbonated",
+   "description": "Zero-sugar Diet Coke in a chilled can."
+  },
+  {
+   "id": "6e0c4223-8249-49de-a3e9-a9f414e7e52b",
+   "name": "Coca Cola Original Soft Drink Bottle",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ef/Coca-Cola_glass_bottle.jpg/500px-Coca-Cola_glass_bottle.jpg",
+   "description": "Classic Coca-Cola soft drink. Best served chilled."
+  },
+  {
+   "id": "cef57f6c-7148-4f87-8661-90e73691f3bc",
+   "name": "Coconut Chutney",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a5/Coconut_Chutney_-_Home_Made.JPG/500px-Coconut_Chutney_-_Home_Made.JPG",
+   "description": "Fresh coconut chutney with a mustard and curry leaf tadka."
+  },
+  {
+   "id": "5dbc8ddd-3556-4a63-8721-2eab9fc5d19c",
+   "name": "Coleslaw",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/de/Bowl%27o%27Coleslaw_modified.jpg/500px-Bowl%27o%27Coleslaw_modified.jpg",
+   "description": "Creamy shredded cabbage and carrot slaw."
+  },
+  {
+   "id": "2345662b-398b-4873-80dd-c004de759584",
+   "name": "Colour Print (per page)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b8/HP_Color_LaserJet_CM1312nfi_Multifunction_Printer.jpg/500px-HP_Color_LaserJet_CM1312nfi_Multifunction_Printer.jpg"
+  },
+  {
+   "id": "ce63bf8e-341e-4535-966f-13531712ac72",
+   "name": "Construction Excavator Truck Toy",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0e/Liebherr_912%2C_toy.jpg/500px-Liebherr_912%2C_toy.jpg",
+   "description": "Toy excavator with a movable arm and bucket for pretend construction play."
+  },
+  {
+   "id": "df6adfdc-79a7-4e61-a2af-cc59d3de93a3",
+   "name": "Crispy Mirchi Bajji",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d5/Mirchi_Bada_Mirchi_bajji.jpg/500px-Mirchi_Bada_Mirchi_bajji.jpg",
+   "description": "Batter-fried green chillies, crisp outside and spicy inside."
+  },
+  {
+   "id": "e78c2afe-7f5b-44fc-a911-2411d50e6b62",
+   "name": "Crushed Nuts Topping",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a5/Bowl_of_Cashews_and_Almonds_%2848140118636%29.jpg/500px-Bowl_of_Cashews_and_Almonds_%2848140118636%29.jpg",
+   "description": "Crushed nuts to sprinkle over shakes and desserts."
+  },
+  {
+   "id": "11289628-1a9a-4907-9761-73cd7b145eee",
+   "name": "Cucumber Khira Seeds",
+   "description": "Cucumber seeds for growing fresh khira at home."
+  },
+  {
+   "id": "4d8dc5cb-5003-48ad-8466-f571096ac2de",
+   "name": "Dessert Forks (6 pcs)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/66/Dessert_Forks_of_Henri_Chouteau.jpg/500px-Dessert_Forks_of_Henri_Chouteau.jpg",
+   "description": "Six disposable dessert forks."
+  },
+  {
+   "id": "83e59dae-44a3-407d-9177-f2a03c6f9c88",
+   "name": "Dettol Liquid Handwash Refill Pouch",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1e/SHIELD_PLEX_anti-bacterial_liquid_hand_wash.jpg/500px-SHIELD_PLEX_anti-bacterial_liquid_hand_wash.jpg",
+   "description": "Dettol germ-protection liquid handwash refill pouch."
+  },
+  {
+   "id": "5187c028-3d80-4556-ad0e-ea8cf5c0bd32",
+   "name": "Digestion Relief Syrup 100ml",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ed/Cocillana.JPG/500px-Cocillana.JPG"
+  },
+  {
+   "id": "f451f34f-e13b-4c2b-a23b-f473294d93c4",
+   "name": "Doorstep Measurement & Pickup",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/56/Tape_Measure_Tailor_Tape_Measure_387277_Edited_2020_%2849917401241%29.jpg/500px-Tape_Measure_Tailor_Tape_Measure_387277_Edited_2020_%2849917401241%29.jpg"
+  },
+  {
+   "id": "f77ba163-b471-408b-a9a2-3f52f0a3789a",
+   "name": "Doorstep Tech Diagnosis & Pickup",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d1/Hackers_working_on_Linux_laptop_with_computer_disks_and_repair_kits_-_Milano_2022.jpg/500px-Hackers_working_on_Linux_laptop_with_computer_disks_and_repair_kits_-_Milano_2022.jpg"
+  },
+  {
+   "id": "01f6e91d-6d78-4f63-97a9-a0b42cd02562",
+   "name": "Double Egg Omelette",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ed/Omelette-Plate.jpg/500px-Omelette-Plate.jpg",
+   "description": "Fluffy two-egg omelette with onion, chilli and coriander."
+  },
+  {
+   "id": "c76120cd-9635-4ad9-be80-dd3a9578e6b0",
+   "name": "Double Horse Poha Thick",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/80/Poha.jpg/500px-Poha.jpg",
+   "description": "Thick flattened rice for quick poha breakfasts and snacks."
+  },
+  {
+   "id": "872458f5-e849-4a1b-ad80-543673d822dc",
+   "name": "Dove Cream Beauty Bath Soap Bar",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/Dove_IIII.jpg/500px-Dove_IIII.jpg",
+   "description": "Dove beauty bar with moisturising cream for soft skin."
+  },
+  {
+   "id": "4751438d-3621-4835-bec5-be72cb345e4b",
+   "name": "Dry Cleaning (per piece)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/93/Dry_clean_rack.jpg/500px-Dry_clean_rack.jpg"
+  },
+  {
+   "id": "cc8fef40-ddd6-4521-93cc-983d8196984b",
+   "name": "Egg Schezwan Noodles",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/db/Egg_noodles-MB28.jpg/500px-Egg_noodles-MB28.jpg",
+   "description": "Hakka noodles tossed with scrambled egg in spicy schezwan sauce."
+  },
+  {
+   "id": "e3ac5644-3733-4664-900c-6a8409878aad",
+   "name": "Electral ORS Hydration (5 Packs)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/ORT_saches.JPG/500px-ORT_saches.JPG"
+  },
+  {
+   "id": "2e0b068d-f85c-42c9-a418-ec25690529e2",
+   "name": "Electric Scooter (Weekly Pass)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/78/Orange_colour_OLA_Electric_scooter.jpg/500px-Orange_colour_OLA_Electric_scooter.jpg"
+  },
+  {
+   "id": "f5dcc5ec-7912-46b1-bf96-179ddb0ea819",
+   "name": "Electric Scooter (per hour)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/78/Orange_colour_OLA_Electric_scooter.jpg/500px-Orange_colour_OLA_Electric_scooter.jpg"
+  },
+  {
+   "id": "e4d3c8a0-b751-44e9-8ca2-34dd619c32a5",
+   "name": "Epigamia Blueberries Greek Yogurt",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c7/Vegan_yogurt%2C_March_2012.jpg/500px-Vegan_yogurt%2C_March_2012.jpg",
+   "description": "Thick, high-protein Greek yogurt with blueberry."
+  },
+  {
+   "id": "ab6a58b6-58aa-422b-aa8e-f43d1496d7a9",
+   "name": "Ergonomic Laptop Cooling Stand",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/43/Laptop_stand.jpg/500px-Laptop_stand.jpg"
+  },
+  {
+   "id": "c41f1bca-99e7-486e-96b5-89109dd04976",
+   "name": "Everest Turmeric Powder",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5b/Curcuma_longa_roots.jpg/500px-Curcuma_longa_roots.jpg",
+   "description": "Everest haldi powder for colour and flavour in everyday cooking."
+  },
+  {
+   "id": "6fb9115f-ba8b-44cb-a6ea-7199a18651a3",
+   "name": "Express Wash (1kg)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/42/Washing_machine_LG.png/500px-Washing_machine_LG.png"
+  },
+  {
+   "id": "5b4cef65-899d-4b0d-93db-f4afb45e52c4",
+   "name": "Extra Ketchup & Mayo",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/ff/Mustard_Mayonnaise_Ketchup_Brown_Sauce_Vinegar_01.JPG/500px-Mustard_Mayonnaise_Ketchup_Brown_Sauce_Vinegar_01.JPG",
+   "description": "Extra sachets of tomato ketchup and mayonnaise."
+  },
+  {
+   "id": "ec312b71-8a71-41f5-99f2-0bb43df2ef3b",
+   "name": "Extra Napkins (10 pcs)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/42/Napkins_-_isolated.png/500px-Napkins_-_isolated.png",
+   "description": "Ten extra paper napkins."
+  },
+  {
+   "id": "fb65aa97-4170-4561-881a-43011a940041",
+   "name": "Extra Sambar",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/Boiled_yellow_lentil_tomato_ginger_garlic.jpg/500px-Boiled_yellow_lentil_tomato_ginger_garlic.jpg",
+   "description": "Extra portion of hot lentil and vegetable sambar."
+  },
+  {
+   "id": "353a3402-3d75-4474-97b9-16522109b22e",
+   "name": "FIFA Official Size Football",
+   "description": "Size 5 football for matches and practice on campus grounds."
+  },
+  {
+   "id": "624c8167-fd10-42a5-9d75-a8926c3cecf3",
+   "name": "Ferrero Rocher Hazelnut Pralines",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9f/2023_Ferrero_Rocher_%281%29.jpg/500px-2023_Ferrero_Rocher_%281%29.jpg",
+   "description": "Ferrero Rocher pralines: whole hazelnut, chocolate and crisp wafer."
+  },
+  {
+   "id": "36d76cd3-9df8-45c0-9605-01bdd1f1354a",
+   "name": "Filter Coffee",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/26/South_Indian_filter_coffee.JPG/500px-South_Indian_filter_coffee.JPG",
+   "description": "Hot South Indian filter coffee with frothy milk."
+  },
+  {
+   "id": "b087f9a4-d5be-421d-98fe-f6b3c674e567",
+   "name": "First Aid Emergency Kit",
+   "imageUrl": "https://images.unsplash.com/photo-1603398938378-e54eab446dde?w=600&q=80"
+  },
+  {
+   "id": "ac3796aa-e34c-4845-b920-e4ce093aab08",
+   "name": "Foldable Mesh Laundry Basket",
+   "imageUrl": "https://images.unsplash.com/photo-1582735689369-4fe89db7114c?w=600&q=80"
+  },
+  {
+   "id": "77bf63aa-a349-4138-a86d-2d4059d5194c",
+   "name": "Fortune Kachi Ghani Mustard Oil",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e1/Dune_Aura_Mustard_oil_bottle_picture.jpg/500px-Dune_Aura_Mustard_oil_bottle_picture.jpg",
+   "description": "Pungent kachi ghani mustard oil for pickles, tadka and frying."
+  },
+  {
+   "id": "be76beda-e761-4c7c-9218-3a61172132fe",
+   "name": "Fortune Premium Besan",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Gram_flour_AvL.jpg/500px-Gram_flour_AvL.jpg",
+   "description": "Fine gram flour for pakoras, bajji, cheela and sweets."
+  },
+  {
+   "id": "5a9b98c4-3894-4e12-8f8c-c155f4c4df10",
+   "name": "Fortune Sunflower Oil",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/33/Bottle_1_liter_Sunflower_refined_oil.jpg/500px-Bottle_1_liter_Sunflower_refined_oil.jpg",
+   "description": "Light refined sunflower oil for everyday cooking."
+  },
+  {
+   "id": "150f8077-e650-4090-9c87-097191642af9",
+   "name": "French Fries",
+   "imageUrl": "https://images.unsplash.com/photo-1573080496219-bb080dd4f877?w=600&q=80",
+   "description": "Crispy golden fries, lightly salted."
+  },
+  {
+   "id": "cbf07e17-b84f-4c38-b4b8-b56da97d2335",
+   "name": "Fresh Banana Robusta Premium",
+   "description": "Ripe Robusta bananas, a quick energy snack."
+  },
+  {
+   "id": "35e7ccd9-ca1b-49cf-ac5b-588811410874",
+   "name": "Fresh Cardamom Green",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/69/Cardamom_pods_-_Green_BNC.jpg/500px-Cardamom_pods_-_Green_BNC.jpg",
+   "description": "Aromatic green cardamom (elaichi) for chai, biryani and sweets."
+  },
+  {
+   "id": "e8f71a72-2f7e-41b6-a584-ea297c27c6f8",
+   "name": "Fresh Curd",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c6/Plain_Curd_Rice.jpg/500px-Plain_Curd_Rice.jpg",
+   "description": "Cup of fresh, thick curd."
+  },
+  {
+   "id": "f574c02b-e19d-4315-a54d-ff04161d7b7c",
+   "name": "Fresh Garlic/Velluli",
+   "description": "Fresh garlic bulbs for tadka, chutneys and everyday cooking."
+  },
+  {
+   "id": "0268626b-ccd7-4f83-9a4e-bd4791437d97",
+   "name": "Fresh Ginger",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8a/Ginger_rhizomes.jpg/500px-Ginger_rhizomes.jpg",
+   "description": "Fresh ginger root for chai, curries and home remedies."
+  },
+  {
+   "id": "797f8fa6-70f8-47a7-af69-0459636f0565",
+   "name": "Fresh Lemon",
+   "description": "Juicy fresh lemons for nimbu pani, salads and cooking."
+  },
+  {
+   "id": "1ce7395d-5598-4fae-a843-4e2a14e9e4c9",
+   "name": "Fresh Orange Kinnow Juicy",
+   "description": "Sweet, juicy kinnow oranges, easy to peel."
+  },
+  {
+   "id": "004b085c-de5e-4d38-a899-0b8745f098f8",
+   "name": "Fresh Royal Gala Apple Selection",
+   "imageUrl": "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=600&q=80",
+   "description": "Crisp, sweet Royal Gala apples."
+  },
+  {
+   "id": "4e60a457-44ec-4cc9-b47e-6a256eca36b6",
+   "name": "Fresh Watermelon Juice",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9c/Watermelon_Juice_1.jpg/500px-Watermelon_Juice_1.jpg",
+   "description": "Freshly blended watermelon juice served chilled."
+  },
+  {
+   "id": "ed22e3ac-eb79-4722-8248-8b028dc56d2e",
+   "name": "Fresh Whole Wheat Bread",
+   "description": "Soft whole wheat bread loaf for toast and sandwiches."
+  },
+  {
+   "id": "412d64c9-b4c8-4924-b58e-fa6cdaeb5055",
+   "name": "Garlic Bread (4 pcs)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ee/Garlic_bread_-_on_plate%2C_ready_to_eat.jpg/500px-Garlic_bread_-_on_plate%2C_ready_to_eat.jpg",
+   "description": "Four slices of toasted garlic butter bread."
+  },
+  {
+   "id": "ae3cd7ee-fcec-409b-a20b-9781d39b1290",
+   "name": "Gel & Ball Pens Pack (12 Pcs)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/4/48/Stick-Pens_Colored_30866-480x360_%284904342193%29.jpg"
+  },
+  {
+   "id": "bdeba71e-8e98-440b-8805-dce9518f4091",
+   "name": "Geometry Box",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/fc/Brass_Protractor.jpg/500px-Brass_Protractor.jpg"
+  },
+  {
+   "id": "7913347e-b9ed-4ea9-889b-d599798d3bb5",
+   "name": "Gift Wrapping",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b3/Gift_wrapping_in_a_jewellery_shop_6.jpg/500px-Gift_wrapping_in_a_jewellery_shop_6.jpg",
+   "description": "Gift wrapping for your order."
+  },
+  {
+   "id": "c10ffc88-0a68-45e5-91ad-279ea4db6855",
+   "name": "Green Salad",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/94/Salad_platter.jpg/500px-Salad_platter.jpg",
+   "description": "Fresh cucumber, tomato, onion and carrot salad."
+  },
+  {
+   "id": "0bbe4881-b591-49f0-b362-0fcee650d49d",
+   "name": "Haldirams Bhujia Sev Premium",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/Namkeen_Poha.jpg/500px-Namkeen_Poha.jpg",
+   "description": "Crunchy, spicy Haldiram's besan bhujia for teatime snacking."
+  },
+  {
+   "id": "77d38571-827d-4606-aa16-6c57ad2d0f84",
+   "name": "Hardbound Golden Embossed Thesis",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c4/Margaret_Chapman_1906_bookbinding_and_design%3B_An_anthology_of_Australian_verse.jpg/500px-Margaret_Chapman_1906_bookbinding_and_design%3B_An_anthology_of_Australian_verse.jpg"
+  },
+  {
+   "id": "8fc5b8ea-6c3b-499e-8465-0cc7bf0cdbf5",
+   "name": "Harpic Disinfectant Toilet Cleaner Gel",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/81/ToiletDuck200706251755.jpg/500px-ToiletDuck200706251755.jpg",
+   "description": "Harpic toilet cleaner that removes stains and disinfects."
+  },
+  {
+   "id": "fbe72872-9a39-43c0-91dc-99e95199dfb7",
+   "name": "Head & Shoulders Anti Dandruff Shampoo",
+   "description": "Anti-dandruff shampoo for a clean, flake-free scalp."
+  },
+  {
+   "id": "f6f80d49-aa9a-4225-aae3-feb5b9d972ae",
+   "name": "Heavy Blanket / Quilt Wash",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/96/Grey_knitted_blanket.jpg/500px-Grey_knitted_blanket.jpg"
+  },
+  {
+   "id": "f389450d-cd10-4135-8793-77b034c125a3",
+   "name": "Heavy Metal Zipper Replacement",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a5/Coil_plastic_and_metal_zippers.jpg/500px-Coil_plastic_and_metal_zippers.jpg"
+  },
+  {
+   "id": "d5088e34-8979-4080-86ce-f1f20f5ee8f4",
+   "name": "High-Res Color Printout",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b8/HP_Color_LaserJet_CM1312nfi_Multifunction_Printer.jpg/500px-HP_Color_LaserJet_CM1312nfi_Multifunction_Printer.jpg"
+  },
+  {
+   "id": "c6d7e9a7-9eb6-45c5-8866-6cc1d45e126a",
+   "name": "Highlighter Pack (4 colours)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a6/Artful_highlighter_pens_drawing_on_paper.jpg/500px-Artful_highlighter_pens_drawing_on_paper.jpg"
+  },
+  {
+   "id": "f5baa4ed-a878-4211-91b9-ec0527c349fa",
+   "name": "Hot Coffee",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/45/A_small_cup_of_coffee.JPG/500px-A_small_cup_of_coffee.JPG",
+   "description": "Hot milky coffee, freshly made."
+  },
+  {
+   "id": "f0ef9d0f-99d4-4f92-8533-d4a8d3954bf2",
+   "name": "Hot Samosa (2 pcs)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/95/Samosa_with_sweet_chutney.jpg/500px-Samosa_with_sweet_chutney.jpg",
+   "description": "Two crisp samosas stuffed with spiced potato and peas."
+  },
+  {
+   "id": "cd08428a-5a02-498b-b2d5-baf77447c4e9",
+   "name": "Imported Berry Box (250g) (Campus)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/45/Yogurt_layers_with_fruit_in_tall_personalized_glasses_raspberries_blueberries_strawberries_in_bowls_on_table_%2816380437271%29.jpg/500px-Yogurt_layers_with_fruit_in_tall_personalized_glasses_raspberries_blueberries_strawberries_in_bowls_on_table_%2816380437271%29.jpg"
+  },
+  {
+   "id": "b176af57-bb43-4065-b15f-588d54209631",
+   "name": "Imported Berry Box (250g) (Fresh)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/45/Yogurt_layers_with_fruit_in_tall_personalized_glasses_raspberries_blueberries_strawberries_in_bowls_on_table_%2816380437271%29.jpg/500px-Yogurt_layers_with_fruit_in_tall_personalized_glasses_raspberries_blueberries_strawberries_in_bowls_on_table_%2816380437271%29.jpg"
+  },
+  {
+   "id": "b0d713c0-30d0-48c2-a929-e643b07693ea",
+   "name": "Imported Berry Box (250g) (The)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/45/Yogurt_layers_with_fruit_in_tall_personalized_glasses_raspberries_blueberries_strawberries_in_bowls_on_table_%2816380437271%29.jpg/500px-Yogurt_layers_with_fruit_in_tall_personalized_glasses_raspberries_blueberries_strawberries_in_bowls_on_table_%2816380437271%29.jpg"
+  },
+  {
+   "id": "cd5f513d-6535-4da5-9c1c-47f3dfebdcc0",
+   "name": "India Gate Basmati Rice Feast",
+   "description": "Long-grain India Gate basmati for biryani, pulao and everyday rice."
+  },
+  {
+   "id": "e320533e-86bc-4867-8772-dd0387ff5e12",
+   "name": "Iron & Fold (5 items)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/af/Ironing_a_shirt.jpg/500px-Ironing_a_shirt.jpg"
+  },
+  {
+   "id": "2d833cf0-1bc8-43f3-a77c-f7f29c4ff941",
+   "name": "Kelloggs Corn Flakes Golden Cereal",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/37/Corn_flakes_in_a_bowl.jpg/500px-Corn_flakes_in_a_bowl.jpg",
+   "description": "Crispy Kellogg's corn flakes. Add cold milk for a quick breakfast."
+  },
+  {
+   "id": "2e6fb06f-fd13-4006-a4cc-a77049142f0c",
+   "name": "Kesar Milk",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/74/Kesar_Milk_with_Salonik_Saffron.jpg/500px-Kesar_Milk_with_Salonik_Saffron.jpg",
+   "description": "Warm saffron milk with cardamom and nuts."
+  },
+  {
+   "id": "5a31a528-fd51-476d-9431-c40efb3229da",
+   "name": "Kids Cricket Bat and Ball Set",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/09/GandM_Flare_DXM_bat-Purist_156g_ball.jpg/500px-GandM_Flare_DXM_bat-Purist_156g_ball.jpg",
+   "description": "Lightweight cricket bat and ball set for kids."
+  },
+  {
+   "id": "a8ff3597-dcba-4be8-8d9e-d4da28b6ea0f",
+   "name": "Knorr Classic Tomato Soup Mix",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b5/Tomato_soup%2C_Turkish_style.jpg/500px-Tomato_soup%2C_Turkish_style.jpg",
+   "description": "Instant Knorr tomato soup, ready in minutes."
+  },
+  {
+   "id": "85958f8d-2722-4a4d-983a-e515dd4d428d",
+   "name": "Kurkure Masala Munch Crisps",
+   "description": "Crunchy, tangy Kurkure Masala Munch corn puffs."
+  },
+  {
+   "id": "b5d1d223-f74d-4503-bfa8-35ea2e8d3e29",
+   "name": "LCD Writing Tablet Board For Kids",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9d/Boogie_Board_VersaBoard.jpg/500px-Boogie_Board_VersaBoard.jpg",
+   "description": "Reusable LCD drawing and writing pad with one-tap erase."
+  },
+  {
+   "id": "4c80fd30-ddae-46ec-b11d-327dbe93e0ed",
+   "name": "Lab Coat Resizing & Name Tag Stitch",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d8/Lab_coat_and_scrubs.jpg/500px-Lab_coat_and_scrubs.jpg"
+  },
+  {
+   "id": "5e328213-08f0-4972-9946-d36680c2de0a",
+   "name": "Laboratory Apron (White Cotton)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d8/Lab_coat_and_scrubs.jpg/500px-Lab_coat_and_scrubs.jpg"
+  },
+  {
+   "id": "d120997f-4bec-4ce4-b4fd-4a9bff03373c",
+   "name": "Lakme Peach Milk Face Soft Cream",
+   "imageUrl": "https://images.unsplash.com/photo-1620916566398-39f1143ab7be?w=600&q=80",
+   "description": "Lightweight Lakme peach milk moisturiser for soft skin."
+  },
+  {
+   "id": "415dc7a0-cd01-4a7f-909c-1d63aa936d0d",
+   "name": "Laptop Charger Rental (per day)",
+   "imageUrl": "https://images.unsplash.com/photo-1583863788434-e58a36330cf0?w=600&q=80"
+  },
+  {
+   "id": "05f0d90a-daa4-4b15-bec2-4f8f319235df",
+   "name": "Lays American Style Cream & Onion",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8e/Lay%27s_Sour_Cream_and_Onion_Potato_Chips%2C_Canada%2C_2026-02-15.jpg/500px-Lay%27s_Sour_Cream_and_Onion_Potato_Chips%2C_Canada%2C_2026-02-15.jpg",
+   "description": "Lay's potato chips in creamy onion flavour."
+  },
+  {
+   "id": "1ecc8626-fdbe-45e7-99a2-bc76a834d172",
+   "name": "Lays Classic Salted Potato Chips",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8e/Lay%27s_Sour_Cream_and_Onion_Potato_Chips%2C_Canada%2C_2026-02-15.jpg/500px-Lay%27s_Sour_Cream_and_Onion_Potato_Chips%2C_Canada%2C_2026-02-15.jpg",
+   "description": "Lay's classic lightly salted potato chips."
+  },
+  {
+   "id": "9f4b6e8f-39da-4fab-92a4-6b4c1ae8ac54",
+   "name": "Lays Magic Masala Chips",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8e/Lay%27s_Sour_Cream_and_Onion_Potato_Chips%2C_Canada%2C_2026-02-15.jpg/500px-Lay%27s_Sour_Cream_and_Onion_Potato_Chips%2C_Canada%2C_2026-02-15.jpg",
+   "description": "Lay's potato chips in spicy Indian Magic Masala flavour."
+  },
+  {
+   "id": "5b3926e2-d56a-4ad7-8b74-503a3a0a780e",
+   "name": "Lays Spanish Tomato Tangy Crisps",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8e/Lay%27s_Sour_Cream_and_Onion_Potato_Chips%2C_Canada%2C_2026-02-15.jpg/500px-Lay%27s_Sour_Cream_and_Onion_Potato_Chips%2C_Canada%2C_2026-02-15.jpg",
+   "description": "Lay's potato chips in tangy Spanish tomato flavour."
+  },
+  {
+   "id": "730aadd6-f468-4b20-8ebd-3fb51c462c89",
+   "name": "Lemon Wedges",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/fe/Lemon_cut.jpg/500px-Lemon_cut.jpg",
+   "description": "Fresh lemon wedges to squeeze over your food."
+  },
+  {
+   "id": "28464954-5c8b-4b8d-ae5f-52b4e0ee761c",
+   "name": "Lifebuoy Total Germ Protection Soap",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/74/Soap_in_blue_dish.JPG/500px-Soap_in_blue_dish.JPG",
+   "description": "Lifebuoy germ-protection bath soap."
+  },
+  {
+   "id": "c2bbb3cc-52f3-4d19-aacf-3bbdaf266f99",
+   "name": "Madhur Sugar Pure Refined Crystals",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/94/Sugar_crystals_lie.jpg/500px-Sugar_crystals_lie.jpg",
+   "description": "Refined sugar crystals for tea, coffee and desserts."
+  },
+  {
+   "id": "c49884fb-5e74-43ef-b09d-d96c34862a26",
+   "name": "Maggi 2-Minute Masala Noodles Pack",
+   "description": "Maggi masala instant noodles, ready in two minutes."
+  },
+  {
+   "id": "fc918230-6921-42e3-843b-44eb47b3313e",
+   "name": "Magnetic Chess Board Travel Set",
+   "description": "Foldable magnetic chess set, pieces stay put while you travel."
+  },
+  {
+   "id": "e39c3006-7703-45f3-b4be-ed7216e6cbf4",
+   "name": "Mi 10000mAh Power Bank 3i",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7c/Power_bank.JPG/500px-Power_bank.JPG",
+   "description": "10000mAh Mi power bank to keep your phone charged all day."
+  },
+  {
+   "id": "9504b94e-96c1-424f-9872-ff5542aab08c",
+   "name": "Microfiber Plush Sleep Pillow",
+   "imageUrl": "https://images.unsplash.com/photo-1584100936595-c0654b55a2e2?w=600&q=80"
+  },
+  {
+   "id": "b5843a28-2252-4f90-b541-57e4773747f9",
+   "name": "Mirchi Ka Salan",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e4/Hyderabadi_Hari_Mirchi_Ka_Salan.JPG/500px-Hyderabadi_Hari_Mirchi_Ka_Salan.JPG",
+   "description": "Hyderabadi chilli curry in a peanut-sesame gravy, a classic with biryani."
+  },
+  {
+   "id": "a0251b04-2655-4365-bcc5-649f92902d28",
+   "name": "Mixed Dry Fruits (100g)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1f/Cut_almonds%2C_cut_cashews_and_raisins.jpg/500px-Cut_almonds%2C_cut_cashews_and_raisins.jpg",
+   "description": "100g mix of almonds, cashews and raisins."
+  },
+  {
+   "id": "a286d1a4-f750-40e2-b40c-16ffcb6f05e9",
+   "name": "Mixed Fruit Bowl",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f5/A_bowl_of_fruits_salad_with_avocado.jpg/500px-A_bowl_of_fruits_salad_with_avocado.jpg"
+  },
+  {
+   "id": "90db83be-04f2-4e7c-8cd5-0eef23e4bb52",
+   "name": "Mobile Display & Glass Repair",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9a/Samsung_Galaxy_S2_shattered_screen.jpg/500px-Samsung_Galaxy_S2_shattered_screen.jpg"
+  },
+  {
+   "id": "833d3b07-b62e-4713-a85e-fd4317931472",
+   "name": "Mosquito Net Canopy for Bed",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/2/23/Malaria_prevention-Insecticide_treated_bed_net-PMI.jpg"
+  },
+  {
+   "id": "38711efa-e051-48c8-880b-1666927567b9",
+   "name": "Multicolor Stacking Rings Toy",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/00/Baby_Playing_with_Stacking_Rings.JPG/500px-Baby_Playing_with_Stacking_Rings.JPG",
+   "description": "Colourful stacking rings that help toddlers learn sizes and colours."
+  },
+  {
+   "id": "288ea286-82c7-4bc0-88b2-c291d0a501db",
+   "name": "Musical Rattle Set for Infants",
+   "description": "Set of colourful rattles with gentle sounds for infants."
+  },
+  {
+   "id": "9681929b-6332-45e6-b3c5-77d5eaf092c9",
+   "name": "Nescafe Classic Instant Coffee Jar",
+   "description": "Nescafe Classic instant coffee for a strong cup in seconds."
+  },
+  {
+   "id": "b4428383-3ea8-4e5b-b264-96d94867adc0",
+   "name": "Nescafe Sunrise Premium blend",
+   "description": "Nescafe Sunrise coffee-chicory blend for a smooth filter-style cup."
+  },
+  {
+   "id": "96c32486-9682-4869-88d0-683b95507b2b",
+   "name": "Nivea Soft Light Moisturising Cream",
+   "description": "Light, non-greasy Nivea Soft cream for face, hands and body."
+  },
+  {
+   "id": "25e956e8-f7d0-42a3-b3a9-bf272791adf7",
+   "name": "Nutella Hazelnut Cocoa Spread (350g)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9b/Nutella_ak.jpg/500px-Nutella_ak.jpg"
+  },
+  {
+   "id": "c89f3a95-0796-4b0b-8877-5ae2b68933fa",
+   "name": "ORS Electrolyte Sachets (5pc)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/ORT_saches.JPG/500px-ORT_saches.JPG"
+  },
+  {
+   "id": "192d02a5-d92a-425b-8961-299dd6f36afc",
+   "name": "Onion Rings",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/09/Flickr_pancakejess_677476794--Onion_rings.jpg/500px-Flickr_pancakejess_677476794--Onion_rings.jpg",
+   "description": "Crispy battered onion rings."
+  },
+  {
+   "id": "aee4b62e-ac83-4df0-96a7-c86d54015e62",
+   "name": "Onion Salad",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b5/Spicy_Onion_Salad.jpg/500px-Spicy_Onion_Salad.jpg",
+   "description": "Sliced onions with lemon and chilli."
+  },
+  {
+   "id": "8bc5b870-636f-4cf5-acb1-b2e4aecdc57f",
+   "name": "Oreo Chocolate Sandwich Cookies",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3e/Oreo-Two-Cookies.jpg/500px-Oreo-Two-Cookies.jpg",
+   "description": "Chocolate Oreo cookies with a sweet vanilla creme centre."
+  },
+  {
+   "id": "15d0c89e-6db2-4ba4-93a7-ca8ef418d99b",
+   "name": "Oreo Milkshake",
+   "imageUrl": "https://images.unsplash.com/photo-1572490122747-3968b75cc699?w=600&q=80",
+   "description": "Thick milkshake blended with Oreo cookies."
+  },
+  {
+   "id": "be4280c9-c20b-4f86-bb01-7c6a3ba2b49e",
+   "name": "Organic Cold Pressed Mustard Oil",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e1/Dune_Aura_Mustard_oil_bottle_picture.jpg/500px-Dune_Aura_Mustard_oil_bottle_picture.jpg",
+   "description": "Organic cold-pressed mustard oil with a sharp, natural aroma."
+  },
+  {
+   "id": "15f9f07f-160e-4511-b188-5d2700802abf",
+   "name": "Organic Jaggery Powder Bellam",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/78/Jaggery_cubes.jpg/500px-Jaggery_cubes.jpg",
+   "description": "Organic jaggery powder, a natural sweetener for tea and sweets."
+  },
+  {
+   "id": "a1afc22e-aec2-45a8-bad2-80667153fe62",
+   "name": "Organic Kabuli Chana",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ea/Sa-whitegreen-chickpea.jpg/500px-Sa-whitegreen-chickpea.jpg",
+   "description": "Organic white chickpeas for chole, salads and hummus."
+  },
+  {
+   "id": "3526f1de-1b85-4c14-a4ab-86fb06684ea3",
+   "name": "Organic Ragi Flour",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/31/Food_grain_finger_millet.jpg/500px-Food_grain_finger_millet.jpg",
+   "description": "Organic finger millet flour for ragi dosa, roti and porridge."
+  },
+  {
+   "id": "96827ae4-9a50-4547-a0e7-35c70b361308",
+   "name": "Organic Raw Salvia Chia Seeds",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a6/Chia_seeds_in_a_cup.jpg/500px-Chia_seeds_in_a_cup.jpg",
+   "description": "Raw chia seeds for smoothies, overnight oats and puddings."
+  },
+  {
+   "id": "2dbbbaa9-d8db-40eb-91a4-b47d787f5554",
+   "name": "Organic Toor Dal",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/Tur_Dal.JPG/500px-Tur_Dal.JPG",
+   "description": "Organic split pigeon peas for everyday dal and sambar."
+  },
+  {
+   "id": "a92399d0-c0c2-4942-acd1-ffed8f4707f9",
+   "name": "Organic Unpolished Chana Dal Split",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7a/Chana_Ko_Dal.jpg/500px-Chana_Ko_Dal.jpg",
+   "description": "Unpolished split chana dal for dal, vada and tadka."
+  },
+  {
+   "id": "32833dff-ed80-413f-980e-61c55b73a883",
+   "name": "Organic Whole Wheat Atta Chakki",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/66/Whole_wheat_grain_flour_being_scooped.jpg/500px-Whole_wheat_grain_flour_being_scooped.jpg",
+   "description": "Organic stone-ground whole wheat atta for rotis."
+  },
+  {
+   "id": "4dbd4caa-26c0-402f-97ca-6845e94a2eac",
+   "name": "Orthopedic Mattress Topper",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/7/71/Stringmattress.jpg"
+  },
+  {
+   "id": "bc3cc798-e763-46d3-8d90-9330b58bbd1e",
+   "name": "Papaya Bowl",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/33/Papaya_cubes.jpg/500px-Papaya_cubes.jpg"
+  },
+  {
+   "id": "2bd4a2b2-00ab-4d4b-ba6d-c6473472d349",
+   "name": "Paper Plates (6 pcs)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/41/Paper_Plate.jpg/500px-Paper_Plate.jpg",
+   "description": "Six disposable paper plates."
+  },
+  {
+   "id": "e282f86a-c5b1-4f11-8fbb-9b16d19c0fcc",
+   "name": "Paper Straw (2 pcs)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/32/Colored_straws.jpg/500px-Colored_straws.jpg",
+   "description": "Two eco-friendly paper straws."
+  },
+  {
+   "id": "ce7f2ccb-2076-4e2d-a436-2e0ecb14d5bb",
+   "name": "Paracetamol 500mg (10pc)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/f/f9/Ultracet_tablets.jpg"
+  },
+  {
+   "id": "538d908b-f63c-404d-a472-7603357a5305",
+   "name": "Paracetamol 500mg (Strip of 10)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/f/f9/Ultracet_tablets.jpg"
+  },
+  {
+   "id": "bb25f8f6-7377-495e-863c-f9be46f1853c",
+   "name": "Power Bank Rental (per day)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7c/Power_bank.JPG/500px-Power_bank.JPG"
+  },
+  {
+   "id": "59d65c02-ae80-4299-bb2a-ce6dd86c77a2",
+   "name": "Precision Graphic Fineliner Set (Campus)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/be/Stabilo_Point_88_-_Fineliner.jpg/500px-Stabilo_Point_88_-_Fineliner.jpg"
+  },
+  {
+   "id": "6fcacee5-65c4-44dd-9a63-0d3f797961ae",
+   "name": "Precision Graphic Fineliner Set (SRM)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/be/Stabilo_Point_88_-_Fineliner.jpg/500px-Stabilo_Point_88_-_Fineliner.jpg"
+  },
+  {
+   "id": "aaa54c79-8bfe-41d4-a71d-1af03fcad069",
+   "name": "Precision Graphic Fineliner Set (Stationery)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/be/Stabilo_Point_88_-_Fineliner.jpg/500px-Stabilo_Point_88_-_Fineliner.jpg"
+  },
+  {
+   "id": "707ad192-0ff5-4895-a137-ea57b0ffcd07",
+   "name": "Premium Almonds Badam Value Pack",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/37/Almonds_-_in_shell%2C_shell_cracked_open%2C_shelled%2C_blanched.jpg/500px-Almonds_-_in_shell%2C_shell_cracked_open%2C_shelled%2C_blanched.jpg",
+   "description": "Crunchy whole almonds for snacking or soaking overnight."
+  },
+  {
+   "id": "8ae7668c-cc40-46d5-b8c3-fc83837ca2a9",
+   "name": "Premium Berry Box",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/45/Yogurt_layers_with_fruit_in_tall_personalized_glasses_raspberries_blueberries_strawberries_in_bowls_on_table_%2816380437271%29.jpg/500px-Yogurt_layers_with_fruit_in_tall_personalized_glasses_raspberries_blueberries_strawberries_in_bowls_on_table_%2816380437271%29.jpg"
+  },
+  {
+   "id": "27992e63-4ca1-493e-a065-1ba4228c8cde",
+   "name": "Premium Coat Dry Cleaning",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/93/Dry_clean_rack.jpg/500px-Dry_clean_rack.jpg"
+  },
+  {
+   "id": "51890b08-cfb0-41f5-85e1-18cb96c7a9f3",
+   "name": "Premium Gift Box",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/57/Open_Pink_Gifft_Box_with_White_Ribbon.JPG/500px-Open_Pink_Gifft_Box_with_White_Ribbon.JPG",
+   "description": "Gift box to pack your order for someone special."
+  },
+  {
+   "id": "bd008e78-216a-4fc7-a758-1eff2b223398",
+   "name": "Premium Moong Dal Split",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/86/Mung_beans_%28Vigna_radiata%29.jpg/500px-Mung_beans_%28Vigna_radiata%29.jpg",
+   "description": "Yellow moong dal for quick dal, khichdi and pesarattu."
+  },
+  {
+   "id": "b10e1f12-5726-4c14-9b88-7fa4371dc34c",
+   "name": "Premium Skipping Rope Adjustable",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/77/Ghanaian_kid_%28skipping_rope%29_02.jpg/500px-Ghanaian_kid_%28skipping_rope%29_02.jpg",
+   "description": "Adjustable skipping rope for cardio and warm-ups."
+  },
+  {
+   "id": "7b2fc4b9-c505-4d4f-8da5-7eb227e10921",
+   "name": "Premium Whole Cashews Kaju pouch",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b9/CASHEW_NUTS.jpg/500px-CASHEW_NUTS.jpg",
+   "description": "Whole cashews for snacking, gravies and sweets."
+  },
+  {
+   "id": "7b9ce801-0af8-445f-84b5-759c54893637",
+   "name": "Pure Cotton Bedsheet + Pillow Cover",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/ce/Hotel_Pillow_and_Bedding_%2839935420303%29.jpg/500px-Hotel_Pillow_and_Bedding_%2839935420303%29.jpg"
+  },
+  {
+   "id": "cb9aebee-257f-4825-a677-dc04151f0cde",
+   "name": "Pure Ghee Jar",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f8/Butterschmalz-3.jpg/500px-Butterschmalz-3.jpg",
+   "description": "Pure ghee for rotis, rice, dal tadka and sweets."
+  },
+  {
+   "id": "bb047874-d7a8-404d-b484-4fcf2027e24f",
+   "name": "Quaker Instant Oats (1kg)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/97/Rolled_oats.jpg/500px-Rolled_oats.jpg"
+  },
+  {
+   "id": "a9c23265-af17-4a40-ab0e-d1642ece7659",
+   "name": "Quaker Whole Grain Rolled Oats",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/97/Rolled_oats.jpg/500px-Rolled_oats.jpg",
+   "description": "Whole grain rolled oats for porridge, overnight oats and smoothies."
+  },
+  {
+   "id": "d73aa9c7-09e2-41fc-af6b-b1bbc5e95fd7",
+   "name": "Raita (Cup)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/9/90/Raita_with_cucumber_and_mint.jpg",
+   "description": "Cool curd raita with cucumber and onion."
+  },
+  {
+   "id": "b3588646-05f9-46ee-9f77-dcb846511dcb",
+   "name": "Rechargeable LED Study Lamp",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/38/Led_desk_lmap_1.png/500px-Led_desk_lmap_1.png"
+  },
+  {
+   "id": "ea0a6b17-f302-42fa-ac8a-cda70241eb22",
+   "name": "Red Bull Energy Drink (4-Pack)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7a/Red_Bull_ice.jpg/500px-Red_Bull_ice.jpg"
+  },
+  {
+   "id": "9d689c52-4f57-4bca-8f61-e4d45a480d6b",
+   "name": "Red Bull Energy Drink Carbonated",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7a/Red_Bull_ice.jpg/500px-Red_Bull_ice.jpg",
+   "description": "Red Bull energy drink can. Serve chilled."
+  },
+  {
+   "id": "1608ecef-c59a-4fa0-b58f-e910d0058741",
+   "name": "Remote Control Racing Car Turbo",
+   "description": "Fast remote-control racing car for indoor and outdoor fun."
+  },
+  {
+   "id": "872a6379-4be8-43ae-81c1-1fad473bcf39",
+   "name": "Resistance Band Set 5 Levels",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/86/Resistance_Band.jpg/500px-Resistance_Band.jpg",
+   "description": "Five resistance bands of varying strength for home workouts."
+  },
+  {
+   "id": "75ed53fc-63d5-41d8-b7c9-bd84f4fd1d46",
+   "name": "Roasted Almonds & Cashews (200g) (Campus)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a5/Bowl_of_Cashews_and_Almonds_%2848140118636%29.jpg/500px-Bowl_of_Cashews_and_Almonds_%2848140118636%29.jpg"
+  },
+  {
+   "id": "b775b3b2-1382-4e9a-bbff-7b0b317d46d3",
+   "name": "Roasted Almonds & Cashews (200g) (Fresh)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a5/Bowl_of_Cashews_and_Almonds_%2848140118636%29.jpg/500px-Bowl_of_Cashews_and_Almonds_%2848140118636%29.jpg"
+  },
+  {
+   "id": "9fdec6a0-c037-41bf-90b8-6da2baed82ca",
+   "name": "Roasted Almonds & Cashews (200g) (The)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a5/Bowl_of_Cashews_and_Almonds_%2848140118636%29.jpg/500px-Bowl_of_Cashews_and_Almonds_%2848140118636%29.jpg"
+  },
+  {
+   "id": "f9619cb3-38eb-4c6d-b836-713833a2550c",
+   "name": "Roasted Salted Almonds (200g)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/37/Almonds_-_in_shell%2C_shell_cracked_open%2C_shelled%2C_blanched.jpg/500px-Almonds_-_in_shell%2C_shell_cracked_open%2C_shelled%2C_blanched.jpg"
+  },
+  {
+   "id": "c3efe7f5-a11e-4bf5-ae06-d6b92bc50043",
+   "name": "Safal Frozen Green Peas Extra Sweet",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e3/Frozen_peas.JPG/500px-Frozen_peas.JPG",
+   "description": "Frozen sweet green peas for pulao, curries and snacks."
+  },
+  {
+   "id": "bd730982-c708-4398-ba4f-b975a14f0204",
+   "name": "Saffola Gold Blended Oil",
+   "description": "Saffola Gold blended cooking oil for everyday cooking."
+  },
+  {
+   "id": "4e44c55a-cd8e-4f6a-b282-ed545f8fb4f5",
+   "name": "Savlon Antiseptic Disinfectant Liquid",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/28/Savlon_Antiseptic_Liquid.jpg/500px-Savlon_Antiseptic_Liquid.jpg",
+   "description": "Savlon antiseptic liquid for first aid and cleaning."
+  },
+  {
+   "id": "87feca94-dd10-49fb-9dfd-4864df6e6144",
+   "name": "Schezwan Sauce",
+   "description": "Spicy schezwan sauce dip."
+  },
+  {
+   "id": "84d2a4ea-37fa-4c4e-a528-fe2a33c7de7e",
+   "name": "Scientific Calculator (fx-991EX)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6b/CASIO_fx-991DE_PLUS.jpg/500px-CASIO_fx-991DE_PLUS.jpg"
+  },
+  {
+   "id": "9c0a7a7f-401d-4515-912e-ecec333705db",
+   "name": "Soft Plush Teddy Bear 2ft",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/60/2023_Pluszowy_mi%C5%9B.jpg/500px-2023_Pluszowy_mi%C5%9B.jpg",
+   "description": "Huggable 2ft soft plush teddy bear."
+  },
+  {
+   "id": "8becb450-8072-449d-9140-34176efe8c7a",
+   "name": "Special Ginger Tea",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/04/Masala_Chai.JPG/500px-Masala_Chai.JPG",
+   "description": "Hot adrak chai brewed strong with fresh ginger."
+  },
+  {
+   "id": "ff5bbb44-df88-4af6-832a-95fc32bdd408",
+   "name": "Speed Cube 3 x 3 High Speed Sticker Less 3D Cube",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/bb/Rubiks_cube_by_keqs.jpg/500px-Rubiks_cube_by_keqs.jpg",
+   "description": "Smooth-turning stickerless 3x3 speed cube."
+  },
+  {
+   "id": "ce490f69-e2ae-4753-b4f7-dcbd8b5669c8",
+   "name": "Spiral Project Binding",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/93/Notebook.jpg/500px-Notebook.jpg"
+  },
+  {
+   "id": "f250274d-6c77-4809-9e7d-491a3dcef417",
+   "name": "Sprite Lemon Lime Clear Carbonated Drink",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7d/Sprite_in_a_bottle%21_%2826822632386%29.jpg/500px-Sprite_in_a_bottle%21_%2826822632386%29.jpg",
+   "description": "Clear lemon-lime Sprite soft drink. Serve chilled."
+  },
+  {
+   "id": "302d3cbf-46b1-4847-b02a-5c4f1488449d",
+   "name": "Sticky Notes Neon Bundle (500 Sheets)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b1/Wall_of_sticky_note_are_seen_in_cafe.png/500px-Wall_of_sticky_note_are_seen_in_cafe.png"
+  },
+  {
+   "id": "71952be7-f395-4381-9c05-37366324457b",
+   "name": "Sunfeast Dark Fantasy Choco Fills",
+   "imageUrl": "https://images.unsplash.com/photo-1558961363-fa8fdf82db35?w=600&q=80",
+   "description": "Chocolate cookies with a molten choco-filled centre."
+  },
+  {
+   "id": "32d35e09-7ea0-4836-adcf-8dea167e50b7",
+   "name": "Surf Excel Easy Wash Detergent Powder",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/fb/Ghari_Detergent_1_kg_Pack.jpg/500px-Ghari_Detergent_1_kg_Pack.jpg",
+   "description": "Surf Excel detergent powder for bucket and hand wash."
+  },
+  {
+   "id": "0cdbab84-44d0-4d49-95b5-6244b9ba8f7f",
+   "name": "Surf Excel Matic Liquid Comfort",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c8/HK_SKD_TKO_Po_Yap_Road_%E5%B0%87%E8%BB%8D%E6%BE%B3%E5%BB%A3%E5%A0%B4_Tseung_Kwan_O_Plaza_K-mart_fresh_food_indoor_market_shop_Kai_Bo_Food_Supermarket_Wayway_Laundry_Liquid_plastic_bottle_July_2021_SS2_02.jpg/500px-HK_SKD_TKO_Po_Yap_Road_%E5%B0%87%E8%BB%8D%E6%BE%B3%E5%BB%A3%E5%A0%B4_Tseung_Kwan_O_Plaza_K-mart_fresh_food_indoor_market_shop_Kai_Bo_Food_Supermarket_Wayway_Laundry_Liquid_plastic_bottle_July_2021_SS2_02.jpg",
+   "description": "Surf Excel Matic liquid detergent with Comfort fragrance, for machines."
+  },
+  {
+   "id": "06065419-f76c-4c2e-beb3-fdafc06677bd",
+   "name": "Sweet Corn Soup",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/13/9783Photos_taken_during_2020_coronavirus_pandemic_Meycauayan_City_67.jpg/500px-9783Photos_taken_during_2020_coronavirus_pandemic_Meycauayan_City_67.jpg",
+   "description": "Hot, comforting sweet corn soup."
+  },
+  {
+   "id": "6dd85edd-13b7-49ff-873d-28073b30287c",
+   "name": "Sweet Lassi",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/78/Plain_Lassi_in_a_glass.jpg/500px-Plain_Lassi_in_a_glass.jpg",
+   "description": "Thick, chilled sweet curd lassi."
+  },
+  {
+   "id": "0c352a12-5e6a-44b7-b2cd-2715e34cc4f3",
+   "name": "Tata Salt Iodized Table Salt",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ad/Table_salt_with_salt_shaker_V1.jpg/500px-Table_salt_with_salt_shaker_V1.jpg",
+   "description": "Tata iodised salt for everyday cooking."
+  },
+  {
+   "id": "9d3e2fa2-8d02-4b1c-a1e6-9cfa4150553e",
+   "name": "Tata Sampann Toor Dal",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/Tur_Dal.JPG/500px-Tur_Dal.JPG",
+   "description": "Tata Sampann unpolished toor dal for dal and sambar."
+  },
+  {
+   "id": "86e57cd3-522b-48d8-9cc5-d02e7cb9ffe5",
+   "name": "Tata Tea Premium Cardamom Flavor",
+   "description": "Tata Tea Premium with cardamom for a fragrant cup of chai."
+  },
+  {
+   "id": "d8e73fa7-2c9f-45d9-9d6f-4a4ced5f9fba",
+   "name": "Thums Up (300ml)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/99/Thum%27s_Up_%2815124224444%29.jpg/500px-Thum%27s_Up_%2815124224444%29.jpg",
+   "description": "Chilled 300ml Thums Up with a strong fizz."
+  },
+  {
+   "id": "970ec26a-cfa2-412e-9d2b-c3e213f6c4d6",
+   "name": "Tomato Seeds",
+   "description": "Tomato seeds for growing in pots or a balcony garden."
+  },
+  {
+   "id": "5843d9cf-9cb3-4e80-a095-2619eaf7a98f",
+   "name": "Tropicana 100% Pure Orange Juice",
+   "description": "Tropicana 100% orange juice with no added sugar."
+  },
+  {
+   "id": "c55a6b76-6d01-42fb-b136-8f32e1726d1c",
+   "name": "Type-C 7-in-1 Multiport Hub",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/76/USB-C_Hubb_5_portar.jpg/500px-USB-C_Hubb_5_portar.jpg"
+  },
+  {
+   "id": "fce5667e-e0e5-4e35-a322-e4b9825f9fa2",
+   "name": "Umbrella Rental (per day)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/22/Folding_umbrella_01.jpg/500px-Folding_umbrella_01.jpg"
+  },
+  {
+   "id": "f82c1141-b3ec-4ba4-9466-7b29c6f9e3f3",
+   "name": "Uno Original Card Game",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/28/Baraja_de_UNO.JPG/500px-Baraja_de_UNO.JPG",
+   "description": "The classic UNO card game for 2 to 10 players."
+  },
+  {
+   "id": "5864629a-9f36-40a7-b077-50902f911253",
+   "name": "Vanilla Ice Cream Cup",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e7/MEIJI_ESSEL_SUPER_CUP_CHO-VANILLA_ICE_CREAM_%2812%29.jpg/500px-MEIJI_ESSEL_SUPER_CUP_CHO-VANILLA_ICE_CREAM_%2812%29.jpg",
+   "description": "Cup of creamy vanilla ice cream."
+  },
+  {
+   "id": "0f3d92c3-220e-49a4-9367-df20f8d07099",
+   "name": "Vaseline Cocoa Glow Body Lotion",
+   "description": "Vaseline cocoa butter body lotion for dry skin."
+  },
+  {
+   "id": "ee037d77-9c3b-47c9-a44e-66c422e7a935",
+   "name": "Veg Spring Rolls (4)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/13/Spring_rolls_in_restaurant_in_Siem_Reap.jpg/500px-Spring_rolls_in_restaurant_in_Siem_Reap.jpg",
+   "description": "Four crispy spring rolls stuffed with vegetables."
+  },
+  {
+   "id": "dfb24c7b-5374-4fb8-aff7-e507bc30f80d",
+   "name": "Vim Dishwash Gel Lemon Squeeze",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4c/Tesco_and_Sainsburys_own_dishwashing_liquid.jpg/500px-Tesco_and_Sainsburys_own_dishwashing_liquid.jpg",
+   "description": "Lemon dishwash gel that cuts through grease."
+  },
+  {
+   "id": "2ece7138-31e9-4994-9f8a-8881b3d84f69",
+   "name": "Vitamin C Effervescent (10pc)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/68/Berocca_tablet_and_drink.jpg/500px-Berocca_tablet_and_drink.jpg"
+  },
+  {
+   "id": "c40d3013-d430-43eb-8b51-b2fb66af8926",
+   "name": "Wafer Sticks",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e1/%C3%9Clker_Rulokat_F%C4%B1nd%C4%B1k_Kremal%C4%B1..JPG/500px-%C3%9Clker_Rulokat_F%C4%B1nd%C4%B1k_Kremal%C4%B1..JPG",
+   "description": "Crisp cream-filled wafer sticks."
+  },
+  {
+   "id": "60604595-53c0-4f78-b8d1-56919ed6f653",
+   "name": "Wash & Steam Iron (Per kg)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/af/Ironing_a_shirt.jpg/500px-Ironing_a_shirt.jpg"
+  },
+  {
+   "id": "b0a55b99-102b-41d7-bb62-e96134c40653",
+   "name": "Water Bottle (500ml)",
+   "imageUrl": "https://images.unsplash.com/photo-1523362628745-0c100150b504?w=600&q=80",
+   "description": "500ml packaged drinking water."
+  },
+  {
+   "id": "d4a0a675-cb59-4278-bd59-7c9c713754a1",
+   "name": "Watermelon Slice",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ec/Slice_of_Watermelon_from_Wilson_Farm%2C_Lexington_MA.jpg/500px-Slice_of_Watermelon_from_Wilson_Farm%2C_Lexington_MA.jpg"
+  },
+  {
+   "id": "b6d64ad3-3fe2-40a2-810c-dc61cfeb6be6",
+   "name": "Wooden Abacus Math Learning Toy",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/32/Abacus_of_State_Department_Store.jpg/500px-Abacus_of_State_Department_Store.jpg",
+   "description": "Wooden bead abacus to help kids learn counting and maths."
+  },
+  {
+   "id": "dd0255af-594f-48cd-9c9c-eaf4e1d756c8",
+   "name": "World Map Jigsaw Puzzle 100 Pcs",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/88/Antique_World_Map_jigsaw_puzzle_%281%29.jpg/500px-Antique_World_Map_jigsaw_puzzle_%281%29.jpg",
+   "description": "100-piece world map jigsaw puzzle, fun and educational."
+  },
+  {
+   "id": "ad729b64-e5ef-40cc-8717-6b9706d2f491",
+   "name": "boAt Rockerz Bluetooth Headphones",
+   "description": "boAt Rockerz wireless Bluetooth on-ear headphones."
+  },
+  {
+   "id": "d474c492-426f-4581-a9dc-c31bf29b68b3",
+   "name": "Babai Special Ghee Podi Idli",
+   "imageUrl": "https://images.unsplash.com/photo-1589301760014-d929f3979dbc?w=600&q=80"
+  },
+  {
+   "id": "f2791802-eaf6-4412-bf41-6687eb277bdf",
+   "name": "Cotton Candy Double Scoop",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/Bowl_~_Ice_cream.jpg/500px-Bowl_~_Ice_cream.jpg"
+  },
+  {
+   "id": "739edad1-5c11-4850-91a5-68db46434935",
+   "name": "Corn Bhel Special",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/93/Spicy.JPG/500px-Spicy.JPG"
+  },
+  {
+   "id": "176e150a-9019-495d-910b-923c69f74dae",
+   "name": "Masala Soda",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6f/Goli_soda_with_lemon.jpg/500px-Goli_soda_with_lemon.jpg"
+  },
+  {
+   "id": "33ec90d4-a0d2-480b-a706-435b990b6e74",
+   "name": "Monsoon Corn Fritters",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c7/Corn_Pakora.JPG/500px-Corn_Pakora.JPG"
+  },
+  {
+   "id": "a46bf963-311d-4495-916d-d440758e37fd",
+   "name": "Monsoon Kadhi Pakora",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/67/Kadhi_Pakora.jpg/500px-Kadhi_Pakora.jpg"
+  },
+  {
+   "id": "515e7bd4-43d7-4807-af20-0721685f2e82",
+   "name": "Classic Cheese Vada Pav Duo",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/63/Vada_Pav.jpg/500px-Vada_Pav.jpg"
+  },
+  {
+   "id": "d9bc6cb4-e435-41fb-bd9b-c78baa0c4ed6",
+   "name": "Blue Lagoon",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/73/Blue_Lagoon_at_the_Mandarin_Oriental%2C_Washington_DC.jpg/500px-Blue_Lagoon_at_the_Mandarin_Oriental%2C_Washington_DC.jpg"
+  },
+  {
+   "id": "83568608-85f4-4cb6-a4b2-126b78f1f4f3",
+   "name": "Cold Coffee",
+   "imageUrl": "https://images.unsplash.com/photo-1517701604599-bb29b565090c?w=600&q=80"
+  },
+  {
+   "id": "e4e5790b-4a54-46e4-b429-f4b105fef55b",
+   "name": "Filter Coffee",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/26/South_Indian_filter_coffee.JPG/500px-South_Indian_filter_coffee.JPG"
+  },
+  {
+   "id": "fbe860c6-c6d3-4e93-af1d-471dbe4e3515",
+   "name": "Iced Peach Tea",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f3/Glass_of_iced_tea_-_Evan_Swigart.jpg/500px-Glass_of_iced_tea_-_Evan_Swigart.jpg"
+  },
+  {
+   "id": "5d7b026b-80d7-4a80-bc9b-d6de91db15d4",
+   "name": "Mango Lassi Special",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Mango_Lassi_and_Butter_Milk_-_Vel_South_Indian_Kitchen_%2B_Bar.jpg/500px-Mango_Lassi_and_Butter_Milk_-_Vel_South_Indian_Kitchen_%2B_Bar.jpg"
+  },
+  {
+   "id": "ba7cf9f4-51df-41ea-9e36-f69b7fab5928",
+   "name": "Masala Chai",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/04/Masala_Chai.JPG/500px-Masala_Chai.JPG"
+  },
+  {
+   "id": "a4f516ea-43ec-4d1e-a880-6aec981d523c",
+   "name": "Summer Aam Panna",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/49/Aam_Panna_-_Summer_Cooler.JPG/500px-Aam_Panna_-_Summer_Cooler.JPG"
+  },
+  {
+   "id": "a1c4fb0a-2494-4b54-9066-e8df50f4f01e",
+   "name": "Virgin Mojito",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c0/MojitoReydelmojito.jpg/500px-MojitoReydelmojito.jpg"
+  },
+  {
+   "id": "57345cb7-466b-49ee-928a-a6bc65e8780c",
+   "name": "Watermelon Cooler",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9c/Watermelon_Juice_1.jpg/500px-Watermelon_Juice_1.jpg"
+  },
+  {
+   "id": "dd79e928-b9f0-4a40-a171-5432767fbc6b",
+   "name": "Guntur Karam Onion Dosa",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/43/Masala_dosa_01.jpg/500px-Masala_dosa_01.jpg"
+  },
+  {
+   "id": "e1af336a-ced8-472c-b502-16bd0c933287",
+   "name": "Dal Makhani & Amritsari Kulcha",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c4/Dal_Makhani_along_with_Naan.jpg/500px-Dal_Makhani_along_with_Naan.jpg"
+  },
+  {
+   "id": "5f64f570-60ed-42e4-925c-6dbde490e342",
+   "name": "Gol Gappa Pani Puri Shots (8 pcs)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/46/Golgappa_Pani_Puri_India.jpg/500px-Golgappa_Pani_Puri_India.jpg"
+  },
+  {
+   "id": "616a60c0-3e63-4d77-a6cf-f8346c71ab47",
+   "name": "Domino's Choco Lava Cake",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/95/Chocolate_lava_cake.jpg/500px-Chocolate_lava_cake.jpg"
+  },
+  {
+   "id": "3f981023-e1a4-4943-86ff-ef6bf4bfa05d",
+   "name": "American Chopsuey",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ec/IndianFriedNoodles.jpg/500px-IndianFriedNoodles.jpg"
+  },
+  {
+   "id": "4a1047d5-cd67-4071-9ea1-c2345eb5a859",
+   "name": "Chicken Manchurian",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2b/Chicken_manchurian_02.JPG/500px-Chicken_manchurian_02.JPG"
+  },
+  {
+   "id": "728f8e2b-792f-4eb0-bac9-cd6eeeeeee6b",
+   "name": "Chicken Sweet Corn Soup",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/13/9783Photos_taken_during_2020_coronavirus_pandemic_Meycauayan_City_67.jpg/500px-9783Photos_taken_during_2020_coronavirus_pandemic_Meycauayan_City_67.jpg"
+  },
+  {
+   "id": "5a65314c-7551-4301-9958-fc0a1d8819ff",
+   "name": "Chilli Chicken",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/07/Chicken_Chilli_1.jpg/500px-Chicken_Chilli_1.jpg"
+  },
+  {
+   "id": "d04a4917-f4f9-447d-8659-2a5f6521e540",
+   "name": "Hakka Noodles",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a0/Tasty_hakka_noodles_image.jpg/500px-Tasty_hakka_noodles_image.jpg"
+  },
+  {
+   "id": "47be1ef0-b378-4e62-9fda-3308f85fc046",
+   "name": "Hot & Sour Soup",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/61/French_Market_-_Hot_and_Sour_Soup.jpg/500px-French_Market_-_Hot_and_Sour_Soup.jpg"
+  },
+  {
+   "id": "766cda9e-5ce0-418b-ae2c-9d3a6512eae7",
+   "name": "Szechuan Paneer",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2c/Chilly_Paneer_01.jpg/500px-Chilly_Paneer_01.jpg"
+  },
+  {
+   "id": "d2fe0299-f499-487c-b0e5-32d20740ad7d",
+   "name": "Veg Manchurian Dry",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f1/Veg_manchurian_Balls.jpg/500px-Veg_manchurian_Balls.jpg"
+  },
+  {
+   "id": "f9565970-b45d-4502-9336-74d341715533",
+   "name": "Veg Spring Rolls (6pc)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/13/Spring_rolls_in_restaurant_in_Siem_Reap.jpg/500px-Spring_rolls_in_restaurant_in_Siem_Reap.jpg"
+  },
+  {
+   "id": "2e1f7158-b48f-4e7c-b82a-f4f829b16e42",
+   "name": "Schezwan Chicken Frankie",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/75/Paneer_kathi_roll_homemade.jpg/500px-Paneer_kathi_roll_homemade.jpg"
+  },
+  {
+   "id": "58a20d1f-daa9-4c40-97be-710a601fcc3e",
+   "name": "Belgian Chocolate Scoop",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9d/Sweet_Scoops_Ice_Cream_-_July_2023_-_Sarah_Stierch.jpg/500px-Sweet_Scoops_Ice_Cream_-_July_2023_-_Sarah_Stierch.jpg"
+  },
+  {
+   "id": "64d8a6c5-e78a-4ee6-9386-0c0cf3546b97",
+   "name": "Brownie Sundae",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/40/Brownie_and_Ice_Cream.jpg/500px-Brownie_and_Ice_Cream.jpg"
+  },
+  {
+   "id": "2101b348-255f-4ce5-a1dd-4bf7369da475",
+   "name": "Gulab Jamun (4pc)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/58/Two_Gulab_Jamun_in_a_plate_01.jpg/500px-Two_Gulab_Jamun_in_a_plate_01.jpg"
+  },
+  {
+   "id": "47d9944d-a301-4b62-aebf-f2c9a1c75532",
+   "name": "Kaju Katli (6pc)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ec/Kaju_katli_dessert_-_side_view.jpg/500px-Kaju_katli_dessert_-_side_view.jpg"
+  },
+  {
+   "id": "f13aff12-cfc1-4242-ab6b-536f14ee5f42",
+   "name": "Mango Sorbet",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ec/Scoop_of_mango_lime_sorbet_%283474865544%29.jpg/500px-Scoop_of_mango_lime_sorbet_%283474865544%29.jpg"
+  },
+  {
+   "id": "caebf1c3-825b-4846-a32c-7e4ad2f1193d",
+   "name": "Oreo Milkshake",
+   "imageUrl": "https://images.unsplash.com/photo-1572490122747-3968b75cc699?w=600&q=80"
+  },
+  {
+   "id": "66c2d826-7a47-4e59-8ce4-308e219f0e23",
+   "name": "Rasgulla (4pc)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d6/Rasgulla_Image.JPG/500px-Rasgulla_Image.JPG"
+  },
+  {
+   "id": "955c05f7-5e05-4c56-aa83-f026f6482e46",
+   "name": "Strawberry Cheesecake",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/99/Strawberry_cheesecake_round.jpg/500px-Strawberry_cheesecake_round.jpg"
+  },
+  {
+   "id": "a6299490-174b-4bf7-9555-19b36124b3ec",
+   "name": "Winter Gajar Halwa",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/42/Gajjar_ka_halwa_%28carrot_halwa%29.JPG/500px-Gajjar_ka_halwa_%28carrot_halwa%29.JPG"
+  },
+  {
+   "id": "3d6a84d9-b5cb-4099-a3b8-356f397db8db",
+   "name": "Egg White Omelette",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b1/FoodOmelete.jpg/500px-FoodOmelete.jpg"
+  },
+  {
+   "id": "d803f939-345b-45a9-ac20-6fa6a8291ddc",
+   "name": "Grilled Chicken Bowl",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/46/Liat_Portal_for_Foodie_Disorder_-_Roasted_chicken_with_cauliflower_broccoli_potatoes_rice_and_salad.jpg/500px-Liat_Portal_for_Foodie_Disorder_-_Roasted_chicken_with_cauliflower_broccoli_potatoes_rice_and_salad.jpg"
+  },
+  {
+   "id": "1903211c-bf15-48f2-8518-44d51fa12018",
+   "name": "Peanut Butter Toast",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d6/Avocado_Toast_and_Peanut_Butter_Toast_with_Strawberries_and_Bananas.jpg/500px-Avocado_Toast_and_Peanut_Butter_Toast_with_Strawberries_and_Bananas.jpg"
+  },
+  {
+   "id": "002c4089-b619-4b41-a9c1-ca3a832fa474",
+   "name": "Protein Shake",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c2/Protein_shake.jpg/500px-Protein_shake.jpg"
+  },
+  {
+   "id": "54fa4450-2216-474c-9d4f-450a79dec3bb",
+   "name": "Tofu Stir Fry",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1f/Tofu_stir-fry.jpeg/500px-Tofu_stir-fry.jpeg"
+  },
+  {
+   "id": "87f8bd41-7555-4ba5-9d99-9952102fca9d",
+   "name": "Herb Roasted Chicken Breast (250g)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/61/2020-08-30_06_33_45_Close_view_of_Healthy_Choice_Simply_Steamers_Grilled_Chicken_%26_Broccoli_Alfredo_%28Chicken_Breast_%26_Broccoli_in_a_Creamy_Alfredo_Sauce%29_before_application_of_Alfredo_sauce_in_the_Dulles_section_of_Sterling%2C_Loudoun_County%2C_Virginia.jpg/500px-2020-08-30_06_33_45_Close_view_of_Healthy_Choice_Simply_Steamers_Grilled_Chicken_%26_Broccoli_Alfredo_%28Chicken_Breast_%26_Broccoli_in_a_Creamy_Alfredo_Sauce%29_before_application_of_Alfredo_sauce_in_the_Dulles_section_of_Sterling%2C_Loudoun_County%2C_Virginia.jpg"
+  },
+  {
+   "id": "86489002-e946-49e6-9c15-8b95a5101f33",
+   "name": "Grilled Salmon Quinoa Bowl",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/20/Lachs_Bowl_Karches.jpg/500px-Lachs_Bowl_Karches.jpg"
+  },
+  {
+   "id": "9b361c0e-7f37-4270-8140-64b987394cc2",
+   "name": "Belgian Dark Chocolate Thickshake",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/Chocolate_Milkshake_%28Rudford%27s_Restaurant%29.jpg/500px-Chocolate_Milkshake_%28Rudford%27s_Restaurant%29.jpg"
+  },
+  {
+   "id": "955f73b5-180a-4e97-8932-38c816bc8542",
+   "name": "Pink Dragon Fruit Smoothie (Keventers)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5c/Dragon_fruit_drink.jpg/500px-Dragon_fruit_drink.jpg"
+  },
+  {
+   "id": "40eb6d18-51ef-4fce-a78e-80434e1ece7b",
+   "name": "Chili Garlic Dry Chicken",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/07/Chicken_Chilli_1.jpg/500px-Chicken_Chilli_1.jpg"
+  },
+  {
+   "id": "7209597e-a959-4fb3-be4c-7122d5654268",
+   "name": "Special Veg Hakka Noodles",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a0/Tasty_hakka_noodles_image.jpg/500px-Tasty_hakka_noodles_image.jpg"
+  },
+  {
+   "id": "037d913b-d0df-4a51-b626-7b1a2b642688",
+   "name": "McFlurry Oreo",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8f/Udders_Cookies_and_Cream_Ice_Cream_%28cropped%29.jpg/500px-Udders_Cookies_and_Cream_Ice_Cream_%28cropped%29.jpg"
+  },
+  {
+   "id": "5c7454ed-4215-4317-94d0-812acbed8ef1",
+   "name": "Loaded Cheese Samosa Chat",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/61/Samosa_Chaat.jpg/500px-Samosa_Chaat.jpg"
+  },
+  {
+   "id": "0257eedd-5181-4154-b029-8c7ac116e217",
+   "name": "Kaju Katli Box (250g)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ec/Kaju_katli_dessert_-_side_view.jpg/500px-Kaju_katli_dessert_-_side_view.jpg"
+  },
+  {
+   "id": "a8da85f5-cb19-40e3-9848-ac28d0d9b59d",
+   "name": "Garlic Butter Naan",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/81/Garlic_naan_1.jpg/500px-Garlic_naan_1.jpg"
+  },
+  {
+   "id": "9234719f-fd82-4b7f-9390-1f7d6a7ede6b",
+   "name": "Kolkata Egg Chicken Roll",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a8/Chicken-kathi-roll-recipe.jpg/500px-Chicken-kathi-roll-recipe.jpg"
+  },
+  {
+   "id": "9ad0a17e-f241-4397-bf23-dbd82285832c",
+   "name": "Mirchi Ka Salan Gravy",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e4/Hyderabadi_Hari_Mirchi_Ka_Salan.JPG/500px-Hyderabadi_Hari_Mirchi_Ka_Salan.JPG"
+  },
+  {
+   "id": "9b9ca988-328a-4e42-9de5-629db2a4e84b",
+   "name": "Ghee Roast Masala Dosa",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/43/Masala_dosa_01.jpg/500px-Masala_dosa_01.jpg"
+  },
+  {
+   "id": "adb7ebc9-166f-43f0-a81c-8c598c1edd3d",
+   "name": "Steamed Button Idli (4 pcs)",
+   "imageUrl": "https://images.unsplash.com/photo-1589301760014-d929f3979dbc?w=600&q=80"
+  },
+  {
+   "id": "6739d5ea-8cf9-42a4-b997-1d643c311ad2",
+   "name": "Curd Rice",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/77/Curd_rice_in_ICH_Bhopal.jpg/500px-Curd_rice_in_ICH_Bhopal.jpg"
+  },
+  {
+   "id": "e3b75631-1b69-46e2-b949-43515f419c97",
+   "name": "Ghee Pongal",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2f/Ven_pongal.jpg/500px-Ven_pongal.jpg"
+  },
+  {
+   "id": "5729db29-5b7b-413b-a15d-496899aaa515",
+   "name": "Idli Sambar (4pc)",
+   "imageUrl": "https://images.unsplash.com/photo-1589301760014-d929f3979dbc?w=600&q=80"
+  },
+  {
+   "id": "5f5b57b0-90b9-45b2-81a7-10de64d7a7de",
+   "name": "Masala Dosa",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/43/Masala_dosa_01.jpg/500px-Masala_dosa_01.jpg"
+  },
+  {
+   "id": "57f623c2-89da-4803-93b5-561eabc6e1a3",
+   "name": "Medu Vada (3pc)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/32/Medu_Vada_with_chutnies.jpg/500px-Medu_Vada_with_chutnies.jpg"
+  },
+  {
+   "id": "1ca52923-9cb0-4bb7-ab08-307ae7bb1a28",
+   "name": "Mysore Masala Dosa",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/43/Masala_dosa_01.jpg/500px-Masala_dosa_01.jpg"
+  },
+  {
+   "id": "6a355573-ca9c-402d-875c-dc5fecf2fb94",
+   "name": "Onion Uttapam",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c6/Mini_Uttappam.jpg/500px-Mini_Uttappam.jpg"
+  },
+  {
+   "id": "79825096-0acb-4dff-9491-1ad2f13c891e",
+   "name": "Podi Idli (10pc mini)",
+   "imageUrl": "https://images.unsplash.com/photo-1589301760014-d929f3979dbc?w=600&q=80"
+  },
+  {
+   "id": "454f665c-d390-4f14-bc66-a14ca271aa0f",
+   "name": "Rava Masala Dosa",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/43/Masala_dosa_01.jpg/500px-Masala_dosa_01.jpg"
+  },
+  {
+   "id": "5e1497fb-e413-4151-94b3-536dfe983856",
+   "name": "Set Dosa (3pc)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/22/Set_Dosa_1.jpg/500px-Set_Dosa_1.jpg"
+  },
+  {
+   "id": "94a38c41-b06e-46d8-b876-9955fda67e14",
+   "name": "Tomato Uttapam",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c6/Mini_Uttappam.jpg/500px-Mini_Uttappam.jpg"
+  },
+  {
+   "id": "141a65eb-1259-4ae6-a340-69ed49fadcff",
+   "name": "MLA Pesara Dosa with Upma",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/6/6c/Pesarattu.jpg"
+  },
+  {
+   "id": "8c5099db-ffe4-4c4c-b205-4dae8154deb5",
+   "name": "Avocado Tender Coconut Shot",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/12/Nature%27s_Hydration.jpg/500px-Nature%27s_Hydration.jpg"
+  },
+  {
+   "id": "a54ae5da-4233-466f-9c3c-4412f475f6c9",
+   "name": "Pink Dragon Fruit Smoothie (The)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5c/Dragon_fruit_drink.jpg/500px-Dragon_fruit_drink.jpg"
+  },
+  {
+   "id": "13cf30ab-db72-4c42-a0fe-25a49f50a656",
+   "name": "Hawaiian Paradise",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d1/Hawaiian_pizza_1.jpg/500px-Hawaiian_pizza_1.jpg"
+  },
+  {
+   "id": "477b3d8c-7742-472d-b525-3d5a837b68d7",
+   "name": "Mexican Green Wave",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/95/Vegetable_pizza_food.jpg/500px-Vegetable_pizza_food.jpg"
+  },
+  {
+   "id": "86fe8398-820e-4442-9164-d1612a57b8dc",
+   "name": "Mushroom Swiss Burger",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/54/Veggie_burger_with_fried_mushrooms_cc_flickr_user_jasonlam.jpg/500px-Veggie_burger_with_fried_mushrooms_cc_flickr_user_jasonlam.jpg"
+  },
+  {
+   "id": "907e1679-d0b0-47a5-8292-12b6043956c2",
+   "name": "Veg Whopper",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/28/Mushroom_vegetarian_burger_-_Grubbs.jpg/500px-Mushroom_vegetarian_burger_-_Grubbs.jpg"
+  },
+  {
+   "id": "e616a104-1036-4ac8-86d3-a6e4c90d81f5",
+   "name": "Triple Schezwan Chicken Fried Rice",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/71/Schezwan_fried_rice.jpg/500px-Schezwan_fried_rice.jpg"
+  },
+  {
+   "id": "71fdef67-b5ef-421c-a91e-fec1d6038c91",
+   "name": "Pink Dragon Fruit Cooler",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5c/Dragon_fruit_drink.jpg/500px-Dragon_fruit_drink.jpg"
+  },
+  {
+   "id": "8f1e17a6-7ad1-4e3e-aa1a-a10bd9dc402f",
+   "name": "Pink Dragon Fruit Smoothie (Zenvy)",
+   "imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5c/Dragon_fruit_drink.jpg/500px-Dragon_fruit_drink.jpg"
+  },
+  {
+   "id": "59a99c86-e95a-45fc-833f-3a9f997097e1",
+   "name": "BUN",
+   "description": "Soft, freshly baked bun, great with butter, jam or chai."
+  },
+  {
+   "id": "efad0c4a-c518-4f1b-ad4a-483731b0d906",
+   "name": "dum",
+   "imageUrl": "https://images.unsplash.com/photo-1589302168068-964664d93dc0?w=600&q=80",
+   "description": "Dum-cooked biryani with fragrant rice and spices."
+  }
+ ]
+}
