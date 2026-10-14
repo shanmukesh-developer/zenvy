@@ -57,7 +57,7 @@ const FEATURE_INFO: Record<Feature, { label: string; phase: number; blurb: strin
 
 const SUBPAGES: Array<{ href: string; label: string; phase: number; detail: string }> = [
   { href: '/friends/forum', label: 'Forum admin', phase: 1, detail: 'Communities, moderators, review-target approvals, Freshers Guide.' },
-  { href: '/friends/pulse', label: 'Pulse admin', phase: 2, detail: 'Verified entities and badges.' },
+  { href: '/friends/pulse', label: 'Pulse admin', phase: 2, detail: 'Activity and trends, held posts, verified entities, badges, whisper import.' },
   { href: '/friends/connect', label: 'Connect admin', phase: 4, detail: 'Photo approvals, manual liveness review, consent versions.' },
   { href: '/friends/spaces', label: 'Spaces admin', phase: 5, detail: 'Live rooms monitor and force end.' },
 ];

@@ -31,9 +31,13 @@ export interface FriendsTabProps {
   linkSub?: FriendsSubTab | null;
   linkId?: string | null;
   linkKey?: string;
-  /** Friends > Pulse: the old campus feed's segment (kept by the shell so it survives tab switches). */
+  /**
+   * Friends > Pulse: the old campus feed's segment (kept by the shell so it survives tab switches).
+   * With Pulse on, a ?segment=wall|posts link opens The Wall / Birthdays once instead.
+   */
   pulseSegment: LegacyFeedSegment;
   onChangePulseSegment: (s: LegacyFeedSegment) => void;
+  /** Old Whispers board: reachable only from the pre-launch fallback feed (Pulse off). */
   onOpenWhispers: () => void;
   onOpenNightQuestion: () => void;
   onOpenBranchWars: () => void;
@@ -45,7 +49,9 @@ export interface FriendsTabProps {
 
 /**
  * Campus Buddy > Friends.
- * - Pulse is always there: until Phase 2 it is the existing campus feed (posts, The Wall, 9 PM, Branch Wars).
+ * - Pulse is always there. With the pulse flag on it is the real campus feed (posts, polls, hashtags,
+ *   trends, follows, reposts, bookmarks) with Campus Moments (9 PM, Branch Wars, Today, Birthdays,
+ *   The Wall); with the flag off it stays the previous campus feed so nothing is lost before launch.
  * - Spaces, Forum, Tasks and Connect appear only when the server says they are on for this student
  *   (verified, same campus, not restricted, admin flag on and the phase shipped).
  * - New sub-tabs ask for the community guidelines once before first use.
@@ -159,10 +165,27 @@ export const FriendsTab: React.FC<FriendsTabProps> = ({
 
   const renderSub = (t: FriendsSubTab) => {
     if (t === 'pulse') {
+      const pulseOn = !!elig?.eligible && !!elig?.features?.pulse;
+      // Pulse writes need the guidelines; ask once before the feed opens (like the other sub-tabs).
+      if (pulseOn && !guidelinesAccepted) {
+        return (
+          <View style={styles.dark}>
+            <GuidelinesGate
+              onAccepted={(version) => {
+                setElig((e) => (e ? { ...e, guidelines: { ...e.guidelines, accepted: true, acceptedVersion: version } } : e));
+                load();
+              }}
+            />
+          </View>
+        );
+      }
       return (
         <PulseHome
-          enabled={enabled.includes('pulse') && !!elig?.features?.pulse}
+          enabled={pulseOn}
+          eligibility={elig}
           focusId={focusFor('pulse')}
+          linkKey={linkSub === 'pulse' ? linkKey || null : null}
+          active={active === 'pulse'}
           profile={profile}
           user={user}
           segment={pulseSegment}
@@ -170,6 +193,14 @@ export const FriendsTab: React.FC<FriendsTabProps> = ({
           onOpenWhispers={onOpenWhispers}
           onOpenNightQuestion={onOpenNightQuestion}
           onOpenBranchWars={onOpenBranchWars}
+          onOpenSpace={(spaceId) => {
+            if (!enabled.includes('spaces')) return;
+            select('spaces');
+            setFocus({ sub: 'spaces', id: spaceId });
+          }}
+          onGateError={load}
+          onOpenVerify={onOpenVerify}
+          onOpenSafety={onOpenSafety}
         />
       );
     }
@@ -195,10 +226,10 @@ export const FriendsTab: React.FC<FriendsTabProps> = ({
     const common = { focusId: focusFor(t), onOpenChat };
     return (
       <View style={styles.dark}>
-        {t === 'spaces' ? <SpacesHome {...common} /> : null}
-        {t === 'forum' ? <ForumHome {...common} /> : null}
-        {t === 'tasks' ? <TasksHome {...common} /> : null}
-        {t === 'connect' ? <ConnectHome {...common} /> : null}
+        {t === 'spaces' ? <SpacesHome {...common} userId={userId || null} active={active === 'spaces'} onGateError={load} /> : null}
+        {t === 'forum' ? <ForumHome {...common} userId={userId || null} roles={profile?.roles || []} active={active === 'forum'} onGateError={load} /> : null}
+        {t === 'tasks' ? <TasksHome {...common} userId={userId || null} active={active === 'tasks'} onGateError={load} /> : null}
+        {t === 'connect' ? <ConnectHome {...common} userId={userId || null} active={active === 'connect'} onGateError={load} onOpenSafety={onOpenSafety} /> : null}
       </View>
     );
   };

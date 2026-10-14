@@ -287,7 +287,8 @@ export interface FriendItem {
 
 export interface BlockedItem {
   friendshipId: string;
-  user: { id: string; name: string };
+  // id is null for people blocked through Connect (they are shown by their Connect name only).
+  user: { id: string | null; name: string };
 }
 
 export const fetchFriendRequests = async (): Promise<{ incoming: FriendRequestItem[]; outgoing: FriendRequestItem[] }> => {
@@ -363,12 +364,12 @@ export const blockCampusUser = async (userId: string) => {
   return jsonOrThrow(res, "Couldn't block this person. Please try again.");
 };
 
-export const unblockCampusUser = async (userId: string) => {
+export const unblockCampusUser = async (userId: string | null, friendshipId?: string) => {
   const headers = await getAuthHeaders();
   const res = await campusFetch(`${API_URL}/api/friends/unblock`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ userId }),
+    body: JSON.stringify(userId ? { userId } : { friendshipId }),
   });
   return jsonOrThrow(res, "Couldn't unblock. Please try again.");
 };
@@ -379,7 +380,7 @@ export const fetchBlockedUsers = async (): Promise<BlockedItem[]> => {
   const json = await jsonOrThrow(res, "Couldn't load blocked people.");
   return (Array.isArray(json) ? json : [])
     .filter((b: any) => b && b.user)
-    .map((b: any) => ({ friendshipId: b.friendshipId, user: { id: b.user.id, name: b.user.name } }));
+    .map((b: any) => ({ friendshipId: b.friendshipId, user: { id: b.user.id || null, name: b.user.name || 'Blocked person' } }));
 };
 
 // Chats (Phase 2). Messaging itself is socket-driven; these load list + history.

@@ -3,6 +3,8 @@ const { getConversationModel } = require('../../../models/Conversation');
 const { getMessageModel } = require('../../../models/Message');
 const { getUserModel } = require('../../../models/User');
 const { readableText, avatarUrlFor, absolutize } = require('../campusHelpers');
+const { conversationGuard } = require('../../friends/guards');
+const { identityFor, maskFor } = require('../../friends/services/connectChatIdentity');
 
 const PAGE_SIZE = 30;
 
@@ -77,9 +79,14 @@ const getChats = async (req, res) => {
       });
 
     // Batch-resolve DM peers (name + avatar) in one query.
+    // Connect chats never resolve the peer's account (name / avatar / id): Connect name + profile id only.
+    const connectIdent = {};
+    await Promise.all(mine.filter((c) => c.refType === 'connect').map(async (c) => {
+      connectIdent[c.id] = await identityFor(c);
+    }));
     const peerIds = new Set();
     for (const c of mine) {
-      if (!c.isGroup) {
+      if (!c.isGroup && c.refType !== 'connect') {
         const peer = (c.participants || []).find((p) => p !== userId);
         if (peer) peerIds.add(peer);
       }
@@ -129,6 +136,30 @@ const getChats = async (req, res) => {
         else preview = readableText(lastMsg.text) || (lastMsg.mediaUrl || lastMsg.attachmentUrl ? (lastMsg.type === 'image' ? 'Photo' : 'Attachment') : '');
       }
 
+      const ident = connectIdent[c.id];
+      if (ident) {
+        const peerId = (c.participants || []).find((p) => p !== userId);
+        const peer = (peerId && ident.get(String(peerId))) || { alias: null, name: 'Connect user' };
+        const fromMe = lastMsg && lastMsg.senderId === userId;
+        chats.push({
+          id: c.id,
+          name: peer.name,
+          type: c.type || 'dm',
+          isGroup: false,
+          avatarUrl: null,
+          peerId: peer.alias,
+          lastMessage: typeof preview === 'string' ? preview.slice(0, 160) : '',
+          lastSenderId: lastMsg ? (fromMe ? userId : peer.alias) : null,
+          lastSender: lastMsg ? (fromMe ? 'You' : peer.name) : null,
+          lastMessageAt: c.lastMessageAt,
+          unreadCount,
+          refType: c.refType,
+          refId: c.refId || null,
+          closedAt: c.closedAt || null,
+        });
+        return;
+      }
+
       chats.push({
         id: c.id,
         name,
@@ -170,6 +201,12 @@ const getChatMessages = async (req, res) => {
     if (!(conversation.participants || []).includes(userId)) {
       return res.status(403).json({ message: 'Not a member of this chat' });
     }
+    // Linked chats (task / Connect) have their own read rules: an ended Connect match leaves both views.
+    const guard = await conversationGuard(conversation, userId, 'join');
+    if (!guard.ok) {
+      return res.status(403).json({ message: guard.error, code: guard.code });
+    }
+    const ident = await identityFor(conversation);
 
     const limit = Math.min(parseInt(req.query.limit, 10) || PAGE_SIZE, 100);
 
@@ -199,7 +236,7 @@ const getChatMessages = async (req, res) => {
     const nextCursor = hasMore && page.length ? page[page.length - 1].createdAt : null;
 
     res.json({
-      messages: ascending.map((m) => serializeMessage(m, userId)),
+      messages: ascending.map((m) => maskFor(serializeMessage(m, userId), userId, ident)),
       nextCursor,
       hasMore,
     });

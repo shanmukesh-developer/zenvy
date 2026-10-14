@@ -1,5 +1,6 @@
 /**
- * conversationGuard(conversation, userId, action) -> { ok: true } | { ok: false, code, error }
+ * conversationGuard(conversation, userId, action, extra?) -> { ok: true } | { ok: false, code, error }
+ * extra.text (message:send) is passed to the phase guard (Connect filters explicit / threat text).
  * Called by campusSocket for chat:join ('join'), message:send ('send') and call:invite ('call'),
  * AFTER the normal membership check. Plain chats (refType null) are unaffected.
  *  - A closed conversation (closedAt set) refuses 'send' and 'call' (history stays readable).
@@ -11,7 +12,7 @@ const { connectGuard } = require('./connectGuard');
 
 const GUARDS = { task: taskGuard, connect: connectGuard };
 
-const conversationGuard = async (conversation, userId, action = 'send') => {
+const conversationGuard = async (conversation, userId, action = 'send', extra = {}) => {
   if (!conversation) return { ok: false, code: 'NOT_FOUND', error: 'Conversation not found' };
   const refType = conversation.refType || null;
   try {
@@ -21,7 +22,7 @@ const conversationGuard = async (conversation, userId, action = 'send') => {
     const guard = refType ? GUARDS[refType] : null;
     if (refType && !guard) return { ok: false, code: 'CHAT_CLOSED', error: 'This chat is not available.' };
     if (!guard) return { ok: true };
-    const r = await guard(conversation, userId, action);
+    const r = await guard(conversation, userId, action, extra || {});
     return r && r.ok ? { ok: true } : { ok: false, code: (r && r.code) || 'NOT_ALLOWED', error: (r && r.error) || 'You cannot do that in this chat.' };
   } catch (err) {
     console.warn('[FRIENDS_CONV_GUARD_WARN]', refType, action, err.message);

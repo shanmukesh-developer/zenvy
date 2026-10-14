@@ -24,7 +24,8 @@ export interface LegacyPulseProps {
 /**
  * The campus feed that used to be the Feed tab, kept whole inside Friends > Pulse:
  * Posts (community posts, reviews, birthdays), The Wall (photo contest), and Whispers & 9 PM
- * (9 PM question, Branch Wars, Today). Phase 2 folds these into Pulse's Campus Moments strip.
+ * (9 PM question, Branch Wars, Today). Shown only while the pulse flag is off (pre-launch / older
+ * server); with Pulse on, PulseHome is the feed and these live in its Campus Moments strip.
  */
 export const LegacyPulse: React.FC<LegacyPulseProps> = ({
   profile,

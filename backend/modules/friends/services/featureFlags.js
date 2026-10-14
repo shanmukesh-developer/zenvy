@@ -24,7 +24,8 @@ const DEFAULT_GUIDELINES = [
 
 const DEFAULTS = Object.freeze({
   enabled: true, // master switch for the whole Friends tab
-  features: Object.freeze({ pulse: false, forum: false, tasks: false, connect: false, spaces: false }),
+  // All five sub-tabs shipped and verified; each is ON unless the admin config (/mod/config) turns it off.
+  features: Object.freeze({ pulse: true, forum: true, tasks: true, connect: true, spaces: true }),
   guidelines: Object.freeze({ version: 1, text: DEFAULT_GUIDELINES }),
   keywords: Object.freeze({ block: Object.freeze([]), flag: Object.freeze([]) }),
   linkDenylist: Object.freeze([]),

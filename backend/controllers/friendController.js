@@ -932,30 +932,44 @@ exports.blockUser = async (req, res) => {
 // 9d. Unblock a user
 exports.unblockUser = async (req, res) => {
   try {
-    const { userId } = req.body || {};
-    if (!userId) return res.status(400).json({ message: 'userId is required.' });
-    if (typeof userId !== 'string') return res.status(400).json({ message: 'userId is not valid.' });
+    // { userId } or { friendshipId } (Connect blocks are listed without an account id).
+    const { userId, friendshipId } = req.body || {};
+    if (!userId && !friendshipId) return res.status(400).json({ message: 'userId is required.' });
+    if ((userId && typeof userId !== 'string') || (friendshipId && typeof friendshipId !== 'string')) {
+      return res.status(400).json({ message: 'userId is not valid.' });
+    }
+    if (!userId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(friendshipId)) {
+      return res.status(404).json({ message: 'Blocked user not found in your block list.' });
+    }
 
     const Friendship = getFriendshipModel();
     if (!Friendship) return res.status(500).json({ message: 'Model not loaded' });
 
     const friendship = await Friendship.findOne({
-      where: {
-        status: 'blocked',
-        blockedBy: req.user.id,
-        [Op.or]: [
-          { requesterId: req.user.id, recipientId: userId },
-          { requesterId: userId, recipientId: req.user.id }
-        ]
-      }
+      where: userId
+        ? {
+          status: 'blocked',
+          blockedBy: req.user.id,
+          [Op.or]: [
+            { requesterId: req.user.id, recipientId: userId },
+            { requesterId: userId, recipientId: req.user.id }
+          ]
+        }
+        : {
+          id: friendshipId,
+          status: 'blocked',
+          blockedBy: req.user.id,
+          [Op.or]: [{ requesterId: req.user.id }, { recipientId: req.user.id }],
+        }
     });
 
     if (!friendship) {
       return res.status(404).json({ message: 'Blocked user not found in your block list.' });
     }
 
+    const otherId = friendship.requesterId === req.user.id ? friendship.recipientId : friendship.requesterId;
     await friendship.destroy();
-    clearFriendsBlockCache(req.user.id, userId);
+    clearFriendsBlockCache(req.user.id, otherId);
 
     res.json({ message: 'User unblocked successfully.' });
   } catch (error) {
@@ -978,11 +992,62 @@ exports.getBlockedUsers = async (req, res) => {
       }
     });
 
+    // Never phone numbers here. People blocked through Zenvy Friends Connect (a Connect swipe or
+    // match exists between the pair) are shown by their Connect name only: no account id, real name
+    // or avatar, so a Connect block never reveals who is behind a Connect profile.
+    const otherIds = blocked.map((b) => (b.requesterId === req.user.id ? b.recipientId : b.requesterId));
+    const connectNames = new Map();
+    try {
+      const { getModel } = require('../modules/friends');
+      const Swipe = getModel('ConnectSwipe');
+      const Match = getModel('ConnectMatch');
+      const Profile = getModel('ConnectProfile');
+      if (otherIds.length && Swipe && Profile) {
+        const me = String(req.user.id);
+        const [swipes, matches] = await Promise.all([
+          Swipe.findAll({
+            where: { [Op.or]: [
+              { fromUserId: me, toUserId: { [Op.in]: otherIds } },
+              { toUserId: me, fromUserId: { [Op.in]: otherIds } },
+            ] },
+            attributes: ['fromUserId', 'toUserId'],
+          }),
+          Match ? Match.findAll({
+            where: { [Op.or]: [
+              { userLowId: me, userHighId: { [Op.in]: otherIds } },
+              { userHighId: me, userLowId: { [Op.in]: otherIds } },
+            ] },
+            attributes: ['userLowId', 'userHighId'],
+          }) : [],
+        ]);
+        const viaConnect = new Set();
+        swipes.forEach((s) => viaConnect.add(String(String(s.fromUserId) === me ? s.toUserId : s.fromUserId)));
+        matches.forEach((m) => viaConnect.add(String(String(m.userLowId) === me ? m.userHighId : m.userLowId)));
+        if (viaConnect.size) {
+          const profiles = await Profile.findAll({ where: { userId: { [Op.in]: [...viaConnect] } }, attributes: ['userId', 'displayName'] });
+          const names = new Map(profiles.map((p) => [String(p.userId), p.displayName]));
+          viaConnect.forEach((id) => connectNames.set(id, names.get(id) || 'Connect user'));
+        }
+      }
+    } catch (err) {
+      // Fail closed: if Connect status cannot be checked, show no identity at all for non-friends.
+      console.warn('[GET_BLOCKED_CONNECT_WARN]', err.message);
+      otherIds.forEach((id) => connectNames.set(String(id), 'Blocked person'));
+    }
+
     const list = [];
     for (const b of blocked) {
       const blockedUserId = b.requesterId === req.user.id ? b.recipientId : b.requesterId;
+      if (connectNames.has(String(blockedUserId))) {
+        list.push({
+          friendshipId: b.id,
+          source: 'connect',
+          user: { id: null, name: connectNames.get(String(blockedUserId)), profileImage: null },
+        });
+        continue;
+      }
       const user = await User.findByPk(blockedUserId, {
-        attributes: ['id', 'name', 'phone', 'profileImage']
+        attributes: ['id', 'name', 'profileImage']
       });
       if (user) {
         list.push({

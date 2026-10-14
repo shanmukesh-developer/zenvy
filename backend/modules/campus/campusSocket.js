@@ -7,6 +7,7 @@ const { getProximityRoomModel, getProximityMessageModel } = require('./models/Pr
 const { cleanImageRef, isBlockedBetween, pushToUsers } = require('./campusHelpers');
 // Zenvy Friends: linked-chat rules (task / Connect / closed chats) and the Friends socket events.
 const { conversationGuard } = require('../friends/guards');
+const { identityFor, maskFor } = require('../friends/services/connectChatIdentity');
 const { registerFriendsSocket } = require('../friends/socket');
 
 const MESSAGE_TYPES = new Set(['text', 'image', 'voice', 'audio', 'video', 'file', 'poll', 'location', 'sticker', 'gif']);
@@ -96,6 +97,41 @@ const getProximityLiveCount = (slug) => campusNspRef?.adapter?.rooms?.get('proxi
 
 const initCampusSocket = (io) => {
   const campusNsp = io.of('/campus');
+
+  // Connect chats (refType 'connect'): every event is masked per receiving socket so the other person
+  // only ever appears as their Connect profile id + Connect name (never account id / real name).
+  // refType never changes, so whether a chat is a Connect chat is cached per conversation id.
+  const connectChatIds = new Map(); // chatId -> conversation (Connect) | null
+  const connectIdentForChat = async (chatId, conversation) => {
+    if (!chatId) return null;
+    let conv = conversation;
+    if (!conv) {
+      if (connectChatIds.has(String(chatId))) conv = connectChatIds.get(String(chatId));
+      else {
+        try { conv = await getConversationModel().findByPk(chatId, { attributes: ['id', 'refType', 'participants'] }); } catch { conv = null; }
+        if (!conv) return null;
+      }
+    }
+    if (!conv) return null;
+    const isConnect = conv.refType === 'connect';
+    if (connectChatIds.size > 20000) connectChatIds.clear();
+    connectChatIds.set(String(chatId), isConnect ? { id: conv.id, refType: conv.refType, participants: conv.participants } : null);
+    return isConnect ? identityFor(conv) : null;
+  };
+  const emitToChat = async (chatId, event, payload, { conversation, except } = {}) => {
+    const room = `chat:${chatId}`;
+    const ident = await connectIdentForChat(chatId, conversation);
+    if (!ident) {
+      (except ? except.to(room) : campusNsp.to(room)).emit(event, payload);
+      return;
+    }
+    const sockets = await campusNsp.in(room).fetchSockets();
+    for (const s of sockets) {
+      if (except && s.id === except.id) continue;
+      const viewer = (s.user && s.user.id) || (s.data && s.data.userId) || null;
+      s.emit(event, maskFor(payload, viewer, ident));
+    }
+  };
   campusNspRef = campusNsp;
 
   // Authentication Middleware for /campus
@@ -165,6 +201,8 @@ const initCampusSocket = (io) => {
       onlineUsers.set(userId, new Set());
     }
     onlineUsers.get(userId).add(socket.id);
+
+    socket.data.userId = userId;
 
     // Join personal room
     socket.join(`user:${userId}`);
@@ -271,7 +309,7 @@ const initCampusSocket = (io) => {
         }
 
         // Friends linked chats (task / Connect) and closed chats have their own rules.
-        const guard = await conversationGuard(conversation, userId, 'send');
+        const guard = await conversationGuard(conversation, userId, 'send', { text: typeof text === 'string' ? text : '' });
         if (!guard.ok) {
           if (ack) ack({ error: guard.error, code: guard.code });
           return;
@@ -295,17 +333,37 @@ const initCampusSocket = (io) => {
           }
         }
 
+        // Connect chats: the stored and broadcast sender name is the Connect name, and a quoted reply is
+        // rebuilt on the server from the quoted message (never the client's copy of a name).
+        const connectIdent = await connectIdentForChat(chatId, conversation);
+        const senderName = connectIdent ? ((connectIdent.get(String(userId)) || {}).name || 'Connect user') : socket.user.name;
+        let cleanReplyTo = replyTo;
+        if (connectIdent && replyTo) {
+          cleanReplyTo = null;
+          const quotedId = replyTo && typeof replyTo === 'object' ? replyTo.id : null;
+          if (typeof quotedId === 'string' && /^[0-9a-f-]{36}$/i.test(quotedId)) {
+            const quoted = await Message.findOne({ where: { id: quotedId, conversationId: chatId } });
+            if (quoted) {
+              cleanReplyTo = {
+                id: quoted.id,
+                senderName: (connectIdent.get(String(quoted.senderId)) || {}).name || 'Connect user',
+                text: quoted.isDeletedForEveryone ? 'This message was deleted' : String(quoted.text || (quoted.type === 'image' ? 'Photo' : '')).slice(0, 200),
+              };
+            }
+          }
+        }
+
         // Create message in DB
         const newMsg = await Message.create({
           conversationId: chatId,
           senderId: userId,
-          senderName: socket.user.name,
+          senderName,
           text: text || '',
           clientMsgId: clientMsgId || null,
           type: msgType,
           mediaUrl: cleanMedia,
           mediaMetadata: mediaMetadata ? JSON.stringify(mediaMetadata) : '{}',
-          replyTo: replyTo ? JSON.stringify(replyTo) : null,
+          replyTo: cleanReplyTo ? JSON.stringify(cleanReplyTo) : null,
           readBy: [{ userId, readAt: new Date() }],
           deliveredTo: [{ userId, deliveredAt: new Date() }],
         });
@@ -318,7 +376,7 @@ const initCampusSocket = (io) => {
           id: newMsg.id,
           chatId,
           senderId: userId,
-          senderName: socket.user.name,
+          senderName,
           text: newMsg.text,
           clientMsgId,
           type: newMsg.type,
@@ -332,7 +390,7 @@ const initCampusSocket = (io) => {
         };
 
         // Broadcast to chat room
-        campusNsp.to(`chat:${chatId}`).emit('message:new', messagePayload);
+        await emitToChat(chatId, 'message:new', messagePayload, { conversation });
 
         // Notify individual participant personal rooms (for unread badges in chat list)
         const lastMessage = previewOf(newMsg.type, newMsg.text);
@@ -342,14 +400,14 @@ const initCampusSocket = (io) => {
             campusNsp.to(`user:${pId}`).emit('chat:updated', {
               chatId,
               lastMessage,
-              lastSender: socket.user.name,
+              lastSender: senderName,
               time: new Date(),
             });
             if (!onlineUsers.has(pId) && shouldPush(pId, chatId)) offline.push(pId);
           }
         }
         if (offline.length) {
-          const title = conversation.isGroup ? `${socket.user.name} in ${conversation.name || 'your group'}` : socket.user.name;
+          const title = conversation.isGroup ? `${senderName} in ${conversation.name || 'your group'}` : senderName;
           pushToUsers(offline.slice(0, 300), title, lastMessage, {
             type: 'chat_message',
             kind: 'CAMPUS_MESSAGE',
@@ -384,22 +442,22 @@ const initCampusSocket = (io) => {
     // 4. Typing indicators
     socket.on('typing:start', ({ chatId } = {}) => {
       if (!inChatRoom(chatId)) return;
-      socket.to(`chat:${chatId}`).emit('typing', {
+      emitToChat(chatId, 'typing', {
         chatId,
         userId,
         userName: socket.user.name,
         isTyping: true,
-      });
+      }, { except: socket }).catch(() => {});
     });
 
     socket.on('typing:stop', ({ chatId } = {}) => {
       if (!inChatRoom(chatId)) return;
-      socket.to(`chat:${chatId}`).emit('typing', {
+      emitToChat(chatId, 'typing', {
         chatId,
         userId,
         userName: socket.user.name,
         isTyping: false,
-      });
+      }, { except: socket }).catch(() => {});
     });
 
     // 5. Message Reactions
@@ -433,13 +491,16 @@ const initCampusSocket = (io) => {
         msg.reactions = JSON.stringify(reactions);
         await msg.save();
 
-        campusNsp.to(`chat:${msg.conversationId}`).emit('message:updated', {
+        await emitToChat(msg.conversationId, 'message:updated', {
           id: msg.id,
           chatId: msg.conversationId,
           reactions,
         });
 
-        if (ack) ack({ status: 'ok', reactions });
+        if (ack) {
+          const ident = await connectIdentForChat(msg.conversationId);
+          ack({ status: 'ok', reactions: maskFor(reactions, userId, ident) });
+        }
       } catch (err) {
         console.warn('[CAMPUS_REACT_ERR]', err.message);
         if (ack) ack({ error: SOCKET_ERROR });
@@ -471,12 +532,12 @@ const initCampusSocket = (io) => {
         }
 
         // Broadcast to chat room that messages have been read
-        socket.to(`chat:${chatId}`).emit('receipt:update', {
+        await emitToChat(chatId, 'receipt:update', {
           chatId,
           userId,
           messageIds,
           readAt: new Date(),
-        });
+        }, { except: socket });
       } catch (err) {
         console.warn('[RECEIPT_READ_ERR]', err.message);
       }

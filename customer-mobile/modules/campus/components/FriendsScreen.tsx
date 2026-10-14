@@ -406,7 +406,7 @@ export const FriendsScreen: React.FC<FriendsScreenProps> = ({ visible, onClose, 
                       variant="secondary"
                       label="Unblock"
                       loading={busyId === b.friendshipId}
-                      onPress={() => run(b.friendshipId, () => unblockCampusUser(b.user.id), () => setBlocked((p) => p.filter((x) => x.friendshipId !== b.friendshipId)))}
+                      onPress={() => run(b.friendshipId, () => unblockCampusUser(b.user.id, b.friendshipId), () => setBlocked((p) => p.filter((x) => x.friendshipId !== b.friendshipId)))}
                     />
                   }
                 />
