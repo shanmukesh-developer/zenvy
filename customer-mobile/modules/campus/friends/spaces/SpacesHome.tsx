@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, FlatList, RefreshControl, ActivityIndicator, BackHandler, Alert, StyleSheet } from 'react-native';
 import { Plus, Radio, CalendarClock, Mic, ChevronUp, ShieldCheck } from 'lucide-react-native';
-import { FriendsColors, FS, FR, FT, fui } from '../friendsTheme';
+import { FriendsColors, FS, FR, FT, fui, SectionTints } from '../friendsTheme';
+import { BrandFill } from '../shared/FriendsUi';
 import { FriendsSkeleton } from '../shared/FriendsSkeleton';
 import { FriendsEmpty, FriendsError } from '../shared/FriendsEmpty';
 import { ActionMenu } from '../shared/ActionMenu';
@@ -210,7 +211,8 @@ export const SpacesHome: React.FC<SpacesHomeProps> = ({ focusId, userId, active 
     if (tab === 'live')
       return (
         <FriendsEmpty
-          icon={<Radio size={22} color={FriendsColors.accent} />}
+          tint={SectionTints.spaces.fg}
+          icon={<Radio size={26} color={SectionTints.spaces.fg} />}
           title="Nobody is live right now"
           subtitle="Start a Space to talk with your campus: placement prep, fest plans, exam doubts, late-night chats."
           actionLabel="Start a Space"
@@ -222,7 +224,8 @@ export const SpacesHome: React.FC<SpacesHomeProps> = ({ focusId, userId, active 
     if (tab === 'scheduled')
       return (
         <FriendsEmpty
-          icon={<CalendarClock size={22} color={FriendsColors.accent} />}
+          tint={SectionTints.spaces.fg}
+          icon={<CalendarClock size={26} color={SectionTints.spaces.fg} />}
           title="Nothing scheduled yet"
           subtitle="Schedule a Space so people can set a reminder and show up on time."
           actionLabel="Schedule a Space"
@@ -231,7 +234,8 @@ export const SpacesHome: React.FC<SpacesHomeProps> = ({ focusId, userId, active 
       );
     return (
       <FriendsEmpty
-        icon={<MicIcon size={22} color={FriendsColors.accent} />}
+        tint={SectionTints.spaces.fg}
+          icon={<MicIcon size={26} color={SectionTints.spaces.fg} />}
         title="You haven't hosted a Space"
         subtitle="Host as yourself, or as a verified club you manage. Up to 6 people on stage and 40 listening."
         actionLabel="Start a Space"
@@ -250,6 +254,7 @@ export const SpacesHome: React.FC<SpacesHomeProps> = ({ focusId, userId, active 
           <Text style={FT.small}>Live audio with your campus. Never recorded.</Text>
         </View>
         <TouchableOpacity style={styles.newBtn} onPress={() => setComposer({ edit: null })} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Start or schedule a Space">
+          <BrandFill />
           <Plus size={18} color={FriendsColors.accentInk} />
           <Text style={styles.newText}>New</Text>
         </TouchableOpacity>
@@ -413,7 +418,7 @@ const styles = StyleSheet.create({
     borderRadius: FR.card,
     backgroundColor: FriendsColors.cardHi,
     borderWidth: 1,
-    borderColor: 'rgba(240,138,126,0.45)',
+    borderColor: 'rgba(243,139,128,0.45)',
     zIndex: 15,
     elevation: 8,
   },

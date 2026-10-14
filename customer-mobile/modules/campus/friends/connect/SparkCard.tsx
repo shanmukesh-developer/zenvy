@@ -24,7 +24,7 @@ export const SparkCard: React.FC<{ spark: { date: string; prompt: string } | nul
     );
   }
   return (
-    <LinearGradient colors={['rgba(229,192,123,0.16)', 'rgba(229,192,123,0.03)']} style={styles.card}>
+    <LinearGradient colors={['rgba(232,196,127,0.16)', 'rgba(232,196,127,0.03)']} style={styles.card}>
       <View style={styles.head}>
         <Sparkles size={16} color={FriendsColors.gold} />
         <Text style={[FT.kicker, { color: FriendsColors.gold, flex: 1 }]}>Today's Spark</Text>
@@ -42,7 +42,7 @@ export const SparkCard: React.FC<{ spark: { date: string; prompt: string } | nul
 };
 
 const styles = StyleSheet.create({
-  card: { borderRadius: FR.card, padding: FS.lg, gap: FS.sm, borderWidth: 1, borderColor: 'rgba(229,192,123,0.25)' },
+  card: { borderRadius: FR.card, padding: FS.lg, gap: FS.sm, borderWidth: 1, borderColor: 'rgba(232,196,127,0.25)' },
   head: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   copy: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 32, paddingHorizontal: 8 },
   prompt: { fontSize: 18, lineHeight: 25, fontWeight: '700', color: FriendsColors.ink },

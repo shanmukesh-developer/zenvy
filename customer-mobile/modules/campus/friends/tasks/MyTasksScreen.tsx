@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, FlatList, RefreshControl, ActivityIndicator, StyleSheet } from 'react-native';
 import { ClipboardList, Send, Handshake, CheckCircle2 } from 'lucide-react-native';
-import { FriendsColors, FS, fui } from '../friendsTheme';
+import { FriendsColors, FS, fui, SectionTints } from '../friendsTheme';
 import { FriendsSkeleton } from '../shared/FriendsSkeleton';
 import { FriendsEmpty, FriendsError } from '../shared/FriendsEmpty';
 import { MyTasksTab, Task, fetchMyTasks } from '../api/tasksApi';
@@ -83,7 +83,8 @@ export const MyTasksScreen: React.FC<{ initialTab?: MyTasksTab }> = ({ initialTa
           ListHeaderComponent={paged.softError ? <TaskSoftError error={paged.softError} onRetry={paged.refresh} /> : null}
           ListEmptyComponent={
             <FriendsEmpty
-              icon={<EmptyIcon size={22} color={FriendsColors.accent} />}
+              tint={SectionTints.tasks.fg}
+          icon={<EmptyIcon size={26} color={SectionTints.tasks.fg} />}
               title={empty.title}
               subtitle={empty.subtitle}
               actionLabel={tab === 'posted' ? 'Ask for help' : undefined}

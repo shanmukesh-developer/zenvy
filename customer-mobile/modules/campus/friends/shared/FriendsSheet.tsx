@@ -3,7 +3,7 @@ import { Modal, View, Text, TouchableOpacity, ScrollView, Platform, StyleSheet }
 import { KeyboardAvoidingView } from '../../../../components/KeyboardAvoidingView';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { X, ChevronLeft } from 'lucide-react-native';
-import { FriendsColors, FS, FT } from '../friendsTheme';
+import { FriendsColors, FElevation, FR, FS, FT } from '../friendsTheme';
 
 /** Dark bottom sheet for Friends. Android back and the backdrop close it. */
 export const FriendsSheet: React.FC<{
@@ -36,8 +36,10 @@ export const FriendsSheet: React.FC<{
               ) : null}
             </View>
           </View>
-          <TouchableOpacity onPress={onClose} hitSlop={12} style={styles.iconBtn} accessibilityRole="button" accessibilityLabel="Close">
-            <X size={20} color={FriendsColors.muted} />
+          <TouchableOpacity onPress={onClose} hitSlop={6} style={styles.iconBtn} accessibilityRole="button" accessibilityLabel="Close">
+            <View style={styles.closeDisc}>
+              <X size={18} color={FriendsColors.ink} />
+            </View>
           </TouchableOpacity>
         </View>
         {scroll ? (
@@ -90,34 +92,38 @@ export const FriendsScreenModal: React.FC<{
 const styles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: FriendsColors.overlay, justifyContent: 'flex-end' },
   sheet: {
-    backgroundColor: FriendsColors.card,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    backgroundColor: FriendsColors.overlaySurface,
+    borderTopLeftRadius: FR.sheet,
+    borderTopRightRadius: FR.sheet,
     borderWidth: 1,
-    borderColor: FriendsColors.line,
+    borderBottomWidth: 0,
+    borderColor: FriendsColors.lineStrong,
+    ...(FElevation.floating as object),
     paddingHorizontal: FS.xl,
     paddingTop: FS.sm,
     paddingBottom: Platform.OS === 'ios' ? FS.xxl : FS.lg,
   },
-  grabber: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: FriendsColors.line, marginBottom: FS.sm },
+  grabber: { alignSelf: 'center', width: 36, height: 5, borderRadius: 3, backgroundColor: FriendsColors.lineStrong, marginBottom: FS.sm },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingBottom: FS.md,
     marginBottom: FS.md,
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth * 2,
     borderBottomColor: FriendsColors.line,
   },
   iconBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  closeDisc: { width: 30, height: 30, borderRadius: 15, backgroundColor: FriendsColors.cardHi, alignItems: 'center', justifyContent: 'center' },
   pageHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: FS.sm,
     paddingHorizontal: FS.sm,
     paddingVertical: FS.sm,
+    minHeight: 56,
     backgroundColor: FriendsColors.bg,
-    borderBottomWidth: 1,
-    borderBottomColor: FriendsColors.line,
+    borderBottomWidth: StyleSheet.hairlineWidth * 2,
+    borderBottomColor: FriendsColors.lineSoft,
   },
 });

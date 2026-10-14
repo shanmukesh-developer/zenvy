@@ -20,6 +20,7 @@ import {
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { FriendsColors, FS, FT, FR } from '../friendsTheme';
+import { CardGlow } from '../shared/FriendsUi';
 import { IdentityChip, identityLabel } from '../shared/IdentityChip';
 import { ActionMenu, ActionMenuExtra } from '../shared/ActionMenu';
 import { RelativeTime } from '../shared/RelativeTime';
@@ -36,7 +37,7 @@ const isAnon = (a: any) => !!a && a.anonymous === true;
 export const PostFlags: React.FC<{ post: PulsePost }> = ({ post }) => {
   const chips: { key: string; label: string; icon: React.ReactNode; color: string; bg: string }[] = [];
   if (post.underReview)
-    chips.push({ key: 'review', label: 'Under review', icon: <Hourglass size={11} color={FriendsColors.warn} />, color: FriendsColors.warn, bg: 'rgba(242,178,126,0.12)' });
+    chips.push({ key: 'review', label: 'Under review', icon: <Hourglass size={11} color={FriendsColors.warn} />, color: FriendsColors.warn, bg: FriendsColors.warnSoft });
   if (post.status === 'removed' || post.status === 'hidden')
     chips.push({ key: 'removed', label: 'Removed', icon: <EyeOff size={11} color={FriendsColors.danger} />, color: FriendsColors.danger, bg: FriendsColors.dangerSoft });
   if (post.imported) chips.push({ key: 'imported', label: 'From Whispers', icon: <History size={11} color={FriendsColors.muted} />, color: FriendsColors.muted, bg: FriendsColors.cardHi });
@@ -306,6 +307,7 @@ export const PostCard: React.FC<{
 
   return (
     <View style={styles.card}>
+      <CardGlow />
       {repost?.repostedBy ? (
         <View style={styles.repostLine}>
           <Repeat2 size={13} color={FriendsColors.success} />
@@ -362,7 +364,7 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: FriendsColors.card,
     borderRadius: FR.card,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth * 2,
     borderColor: FriendsColors.line,
     paddingHorizontal: FS.lg,
     paddingTop: FS.md,

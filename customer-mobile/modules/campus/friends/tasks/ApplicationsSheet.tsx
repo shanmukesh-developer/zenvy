@@ -185,7 +185,7 @@ export const ApplicationsSheet: React.FC<{ task: Task | null; visible: boolean; 
 };
 
 const styles = StyleSheet.create({
-  note: { padding: FS.md, borderRadius: FR.md, backgroundColor: 'rgba(242,178,126,0.10)', marginBottom: FS.sm },
+  note: { padding: FS.md, borderRadius: FR.md, backgroundColor: FriendsColors.warnSoft, marginBottom: FS.sm },
   app: { padding: FS.md, borderRadius: FR.card, backgroundColor: FriendsColors.cardHi, borderWidth: 1, borderColor: FriendsColors.line },
   more: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   appFoot: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: FS.md },

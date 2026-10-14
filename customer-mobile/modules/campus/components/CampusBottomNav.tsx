@@ -26,6 +26,7 @@ export const CampusBottomNav: React.FC<CampusBottomNavProps> = ({
   const dark = tone === 'dark';
   const activeColor = dark ? FriendsChrome.accent : CampusColors.accent;
   const idleColor = dark ? FriendsChrome.muted : CampusColors.muted;
+  // Friends is the app's dark "night campus"; the chrome follows it so the switch reads as intentional.
   const tabs: { key: CampusTab; label: string; icon: typeof MessageSquare }[] = [
     { key: 'chats', label: 'Chats', icon: MessageSquare },
     { key: 'friends', label: 'Friends', icon: Users },
@@ -63,8 +64,8 @@ export const CampusBottomNav: React.FC<CampusBottomNavProps> = ({
               {(() => {
                 const n = tab.key === 'chats' ? unreadCount : tab.key === 'me' ? meBadge : 0;
                 return n > 0 ? (
-                  <View style={[styles.badge, dark && { borderColor: FriendsChrome.surface }]}>
-                    <Text style={styles.badgeText}>{n > 99 ? '99+' : n}</Text>
+                  <View style={[styles.badge, dark && { borderColor: FriendsChrome.bg, backgroundColor: FriendsChrome.accent }]}>
+                    <Text style={[styles.badgeText, dark && { color: FriendsChrome.accentInk }]}>{n > 99 ? '99+' : n}</Text>
                   </View>
                 ) : null;
               })()}
@@ -95,7 +96,7 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 8,
   },
-  containerDark: { backgroundColor: FriendsChrome.surface, borderTopColor: FriendsChrome.line, shadowOpacity: 0 },
+  containerDark: { backgroundColor: FriendsChrome.bg, borderTopColor: FriendsChrome.line, borderTopWidth: StyleSheet.hairlineWidth * 2, shadowOpacity: 0, elevation: 0 },
   tabButton: {
     alignItems: 'center',
     justifyContent: 'center',

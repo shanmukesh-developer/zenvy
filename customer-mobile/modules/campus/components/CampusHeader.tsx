@@ -5,6 +5,7 @@ import * as Haptics from 'expo-haptics';
 import { CampusColors, CampusLayout } from '../../../constants/campusTheme';
 import { CampusProfileData } from '../../../types/campus';
 import { FriendsChrome } from '../friends/friendsTheme';
+import { BrandFill } from '../friends/shared/FriendsUi';
 
 interface CampusHeaderProps {
   profile: CampusProfileData | null;
@@ -71,6 +72,7 @@ export const CampusHeader: React.FC<CampusHeaderProps> = ({
             }}
             accessibilityLabel="New chat, group or join"
           >
+            {dark ? <BrandFill radius={22} /> : null}
             <Plus size={20} color={dark ? FriendsChrome.accentInk : '#FFFFFF'} strokeWidth={2.4} />
           </TouchableOpacity>
         )}
@@ -108,7 +110,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: CampusColors.line,
   },
-  headerDark: { backgroundColor: FriendsChrome.bg, borderBottomColor: FriendsChrome.line },
+  headerDark: { backgroundColor: FriendsChrome.bg, borderBottomColor: 'transparent' },
   topRow: { flexDirection: 'row', alignItems: 'center', gap: CampusLayout.spacing.sm, minHeight: 48 },
   titleContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
   title: { fontSize: 22, fontWeight: '800', color: CampusColors.ink, letterSpacing: -0.3, flexShrink: 1 },
@@ -122,7 +124,7 @@ const styles = StyleSheet.create({
     borderRadius: CampusLayout.radius.pill,
   },
   campusBadgeText: { fontSize: 11, fontWeight: '800', color: CampusColors.accentDeep, letterSpacing: 0.4 },
-  iconButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  iconButton: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   primaryButton: { backgroundColor: CampusColors.accent },
   banner: {
     flexDirection: 'row',

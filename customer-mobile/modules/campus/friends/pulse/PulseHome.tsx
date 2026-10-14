@@ -4,6 +4,7 @@ import { PenLine, Plus, Bookmark, TrendingUp, UserRound, Sparkles, Users } from 
 import * as Haptics from 'expo-haptics';
 import type { CampusProfileData, CampusUserData } from '../../../../types/campus';
 import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';
+import { BrandFill } from '../shared/FriendsUi';
 import { FriendsEmpty } from '../shared/FriendsEmpty';
 import { OfflineBanner } from '../shared/OfflineBanner';
 import { EligibilityGate } from '../shared/gates';
@@ -331,6 +332,7 @@ const PulseFeedHome: React.FC<PulseHomeProps> = ({
         <PenLine size={18} color={FriendsColors.muted} />
         <Text style={[FT.muted, { flex: 1 }]}>What's happening on campus?</Text>
         <View style={styles.askPlus}>
+          <BrandFill radius={20} />
           <Plus size={16} color={FriendsColors.accentInk} />
         </View>
       </TouchableOpacity>
@@ -351,6 +353,7 @@ const PulseFeedHome: React.FC<PulseHomeProps> = ({
               accessibilityState={{ selected: on }}
               accessibilityLabel={t === 'campus' ? 'Campus feed' : 'Following feed'}
             >
+              {on ? <BrandFill /> : null}
               {t === 'campus' ? <Sparkles size={14} color={on ? FriendsColors.accentInk : FriendsColors.muted} /> : <Users size={14} color={on ? FriendsColors.accentInk : FriendsColors.muted} />}
               <Text style={[styles.toggleText, on && { color: FriendsColors.accentInk }]}>{t === 'campus' ? 'Campus' : 'Following'}</Text>
             </TouchableOpacity>
@@ -411,6 +414,7 @@ const PulseFeedHome: React.FC<PulseHomeProps> = ({
             </View>
           ) : null}
           <TouchableOpacity style={styles.fab} onPress={() => setComposer({})} activeOpacity={0.9} accessibilityRole="button" accessibilityLabel="Write a post">
+            <BrandFill radius={29} />
             <PenLine size={22} color={FriendsColors.accentInk} />
           </TouchableOpacity>
         </View>
@@ -445,7 +449,7 @@ const styles = StyleSheet.create({
   layer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: FriendsColors.bg },
   hidden: { display: 'none' },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: FS.sm, marginBottom: FS.md },
-  round: { width: 44, height: 44, borderRadius: 22, backgroundColor: FriendsColors.card, borderWidth: 1, borderColor: FriendsColors.line, alignItems: 'center', justifyContent: 'center' },
+  round: { width: 44, height: 44, borderRadius: 22, backgroundColor: FriendsColors.card, borderWidth: StyleSheet.hairlineWidth * 2, borderColor: FriendsColors.lineStrong, alignItems: 'center', justifyContent: 'center' },
   askBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -461,7 +465,7 @@ const styles = StyleSheet.create({
   },
   askPlus: { width: 40, height: 40, borderRadius: 20, backgroundColor: FriendsColors.accent, alignItems: 'center', justifyContent: 'center' },
   toggle: { flexDirection: 'row', padding: 4, gap: 4, borderRadius: FR.pill, backgroundColor: FriendsColors.card, borderWidth: 1, borderColor: FriendsColors.line, marginBottom: FS.md },
-  toggleBtn: { flex: 1, minHeight: 40, borderRadius: FR.pill, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },
+  toggleBtn: { flex: 1, minHeight: 44, borderRadius: FR.pill, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },
   toggleOn: { backgroundColor: FriendsColors.accent },
   toggleText: { fontSize: 14, fontWeight: '800', color: FriendsColors.muted },
   fab: {
@@ -474,9 +478,9 @@ const styles = StyleSheet.create({
     backgroundColor: FriendsColors.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
+    shadowColor: FriendsColors.accentStrong,
     shadowOpacity: 0.4,
-    shadowRadius: 12,
+    shadowRadius: 16,
     shadowOffset: { width: 0, height: 6 },
     elevation: 8,
   },

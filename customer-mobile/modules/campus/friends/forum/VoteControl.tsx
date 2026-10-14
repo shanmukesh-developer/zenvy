@@ -66,7 +66,7 @@ export const VoteControl: React.FC<{
 
   return (
     <View
-      style={[styles.wrap, horizontal ? styles.row : styles.col, disabled && { opacity: 0.6 }]}
+      style={[styles.wrap, horizontal ? styles.row : styles.col, upOn && styles.wrapUp, downOn && styles.wrapDown, disabled && { opacity: 0.6 }]}
       accessibilityLabel={`Score ${state.score}`}
     >
       <TouchableOpacity
@@ -104,6 +104,8 @@ const styles = StyleSheet.create({
   wrap: { alignItems: 'center', backgroundColor: FriendsColors.cardHi, borderRadius: FR.pill, borderWidth: 1, borderColor: FriendsColors.lineSoft },
   row: { flexDirection: 'row', paddingHorizontal: 2 },
   col: { flexDirection: 'column', paddingVertical: 2 },
-  btn: { minWidth: 36, minHeight: 36, alignItems: 'center', justifyContent: 'center' },
-  score: { minWidth: 22, textAlign: 'center', fontSize: 13, fontWeight: '800' },
+  btn: { minWidth: 40, minHeight: 40, alignItems: 'center', justifyContent: 'center' },
+  wrapUp: { backgroundColor: FriendsColors.accentSoft, borderColor: FriendsColors.accentLine },
+  wrapDown: { backgroundColor: FriendsColors.dangerSoft, borderColor: 'rgba(243,139,128,0.3)' },
+  score: { minWidth: 22, textAlign: 'center', fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] },
 });

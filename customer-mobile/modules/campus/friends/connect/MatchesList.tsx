@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, StyleSheet } from 'react-native';
 import { ChevronRight, HeartHandshake } from 'lucide-react-native';
-import { FriendsColors, FS, FT } from '../friendsTheme';
+import { FriendsColors, FS, FT, SectionTints } from '../friendsTheme';
 import { FriendsSkeleton } from '../shared/FriendsSkeleton';
 import { FriendsEmpty, FriendsError } from '../shared/FriendsEmpty';
 import { formatRelative } from '../shared/RelativeTime';
@@ -107,7 +107,8 @@ export const MatchesList: React.FC<{
           <FriendsError message={error} onRetry={() => load('reset')} />
         ) : (
           <FriendsEmpty
-            icon={<HeartHandshake size={22} color={FriendsColors.accent} />}
+            tint={SectionTints.connect.fg}
+          icon={<HeartHandshake size={26} color={SectionTints.connect.fg} />}
             title="No matches yet"
             subtitle="When someone you liked likes you back, they show up here and you can start chatting."
             actionLabel="Discover people"

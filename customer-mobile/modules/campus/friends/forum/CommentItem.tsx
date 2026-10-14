@@ -181,7 +181,7 @@ const styles = StyleSheet.create({
   thread: { width: 2, borderRadius: 1, backgroundColor: FriendsColors.line, marginRight: FS.sm },
   box: { flex: 1, paddingVertical: FS.sm, paddingHorizontal: FS.md, borderRadius: FR.md, backgroundColor: FriendsColors.card, borderWidth: 1, borderColor: FriendsColors.lineSoft },
   best: { borderColor: 'rgba(120,200,150,0.45)', backgroundColor: 'rgba(120,200,150,0.06)' },
-  official: { borderColor: 'rgba(229,192,123,0.4)' },
+  official: { borderColor: 'rgba(232,196,127,0.4)' },
   bestTag: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 2 },
   tagText: { fontSize: 11, fontWeight: '800' },
   head: { flexDirection: 'row', alignItems: 'center' },

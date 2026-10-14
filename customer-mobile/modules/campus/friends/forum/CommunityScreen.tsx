@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } fr
 import { Search, Ellipsis, Plus, ScrollText, Settings2, Gavel, Flame, Clock, TrendingUp, PenLine } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';
+import { BrandFill } from '../shared/FriendsUi';
 import { FriendsEmpty, FriendsError } from '../shared/FriendsEmpty';
 import { FriendsSkeleton } from '../shared/FriendsSkeleton';
 import { ActionMenu } from '../shared/ActionMenu';
@@ -248,6 +249,7 @@ export const CommunityScreen: React.FC<{ id: string; initial?: ForumCommunity | 
           accessibilityLabel={`New post in ${community.name}`}
           activeOpacity={0.85}
         >
+          <BrandFill radius={29} />
           <Plus size={24} color={FriendsColors.accentInk} />
         </TouchableOpacity>
       ) : null}
@@ -278,7 +280,7 @@ const styles = StyleSheet.create({
   hero: { flexDirection: 'row', alignItems: 'center', gap: FS.md },
   heroIcon: { width: 52, height: 52, borderRadius: 16, backgroundColor: FriendsColors.accentSoft, alignItems: 'center', justifyContent: 'center' },
   joinBtn: { minHeight: 40, paddingHorizontal: 16 },
-  pending: { padding: FS.md, borderRadius: FR.md, backgroundColor: 'rgba(242,178,126,0.10)', borderWidth: 1, borderColor: 'rgba(242,178,126,0.25)' },
+  pending: { padding: FS.md, borderRadius: FR.md, backgroundColor: FriendsColors.warnSoft, borderWidth: 1, borderColor: FriendsColors.warnLine },
   headerBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   fab: {
     position: 'absolute',
@@ -290,8 +292,8 @@ const styles = StyleSheet.create({
     backgroundColor: FriendsColors.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: FriendsColors.accent,
-    shadowOpacity: 0.35,
+    shadowColor: FriendsColors.accentStrong,
+    shadowOpacity: 0.4,
     shadowRadius: 14,
     shadowOffset: { width: 0, height: 4 },
     elevation: 6,

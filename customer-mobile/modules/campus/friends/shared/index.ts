@@ -15,3 +15,4 @@ export { OfflineBanner, useCampusOffline } from './OfflineBanner';
 export { ImagePickerRow } from './ImagePickerRow';
 export { RelativeTime, formatRelative, formatLocal } from './RelativeTime';
 export { FriendsSafetyScreen } from './FriendsSafetyScreen';
+export { FriendsButton, FriendsHeader, CardGlow, GradientRing, SectionLabel, FadeIn, BrandFill, useReduceMotion } from './FriendsUi';

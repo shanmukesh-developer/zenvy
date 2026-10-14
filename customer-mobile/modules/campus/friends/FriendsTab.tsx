@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { ShieldAlert, ChevronRight } from 'lucide-react-native';
 import { CampusProfileData, CampusUserData, FriendsSubTab, FRIENDS_SUB_TABS } from '../../../types/campus';
 import { isCampusAuthError } from '../campusApi';
@@ -9,6 +9,7 @@ import { FriendsColors, FS, FT } from './friendsTheme';
 import { SubTabBar } from './shared/SubTabBar';
 import { GuidelinesGate, EligibilityGate } from './shared/gates';
 import { OfflineBanner } from './shared/OfflineBanner';
+import { FriendsSkeleton, SkeletonBlock } from './shared/FriendsSkeleton';
 import { PulseHome } from './pulse/PulseHome';
 import { LegacyFeedSegment } from './pulse/LegacyPulse';
 import { ForumHome } from './forum/ForumHome';
@@ -241,8 +242,14 @@ export const FriendsTab: React.FC<FriendsTabProps> = ({
 
   if (!loaded) {
     return (
-      <View style={[styles.root, { alignItems: 'center', justifyContent: 'center' }]} accessibilityLabel="Loading Friends">
-        <ActivityIndicator color={FriendsColors.ink} />
+      <View style={styles.root} accessibilityLabel="Loading Friends">
+        {/* Same shape as the tab strip + feed, so nothing jumps when Friends appears. */}
+        <View style={styles.skelTabs}>
+          {[64, 76, 70, 66].map((w, i) => (
+            <SkeletonBlock key={i} width={w} height={14} radius={7} />
+          ))}
+        </View>
+        <FriendsSkeleton rows={3} />
       </View>
     );
   }
@@ -279,6 +286,15 @@ const styles = StyleSheet.create({
   page: { flex: 1 },
   hidden: { display: 'none' },
   dark: { flex: 1, backgroundColor: FriendsColors.bg },
+  skelTabs: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 22,
+    paddingHorizontal: FS.xl,
+    height: 50,
+    borderBottomWidth: StyleSheet.hairlineWidth * 2,
+    borderBottomColor: FriendsColors.line,
+  },
   sanction: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -287,7 +303,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     minHeight: 44,
     backgroundColor: FriendsColors.dangerSoft,
-    borderBottomWidth: 1,
-    borderBottomColor: FriendsColors.line,
+    borderBottomWidth: StyleSheet.hairlineWidth * 2,
+    borderBottomColor: 'rgba(243,139,128,0.25)',
   },
 });

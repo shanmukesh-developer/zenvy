@@ -1,7 +1,8 @@
 import React, { useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, FlatList, RefreshControl, ActivityIndicator, StyleSheet, ListRenderItem } from 'react-native';
 import { ChevronLeft, RotateCcw } from 'lucide-react-native';
-import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';
+import { FriendsColors, FS, FT, FR, fui, SectionTints } from '../friendsTheme';
+import { FriendsHeader } from '../shared/FriendsUi';
 import { FriendsSkeleton } from '../shared/FriendsSkeleton';
 import { FriendsError } from '../shared/FriendsEmpty';
 import type { ForumPost } from '../api/forumApi';
@@ -9,23 +10,8 @@ import { ForumPostCard } from './ForumPostCard';
 import { forumBus, forumErrorMessage, patchPostList } from './forumShared';
 
 /** Header for screens inside the Forum stack (back arrow, title, optional right slot). */
-export const ForumHeader: React.FC<{ title: string; subtitle?: string | null; onBack: () => void; right?: React.ReactNode }> = ({ title, subtitle, onBack, right }) => (
-  <View style={styles.header}>
-    <TouchableOpacity onPress={onBack} style={styles.back} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back">
-      <ChevronLeft size={24} color={FriendsColors.ink} />
-    </TouchableOpacity>
-    <View style={{ flex: 1 }}>
-      <Text style={FT.h2} numberOfLines={1} accessibilityRole="header">
-        {title}
-      </Text>
-      {subtitle ? (
-        <Text style={FT.small} numberOfLines={1}>
-          {subtitle}
-        </Text>
-      ) : null}
-    </View>
-    {right}
-  </View>
+export const ForumHeader: React.FC<{ title: string; subtitle?: string | null; onBack: () => void; right?: React.ReactNode }> = (props) => (
+  <FriendsHeader {...props} section="forum" />
 );
 
 /** Horizontal single-select chips (sort, type, kind filters). */
@@ -48,13 +34,13 @@ export function Chips<K extends string>({
           <TouchableOpacity
             key={o.key}
             onPress={() => onChange(o.key)}
-            style={[fui.pill, on && fui.pillActive]}
+            style={[fui.pill, on && { backgroundColor: SectionTints.forum.soft, borderColor: SectionTints.forum.line }]}
             accessibilityRole="tab"
             accessibilityState={{ selected: on }}
             accessibilityLabel={`${label}: ${o.label}`}
           >
             {o.icon}
-            <Text style={[fui.pillText, on && fui.pillTextActive]}>{o.label}</Text>
+            <Text style={[fui.pillText, on && { color: SectionTints.forum.fg }]}>{o.label}</Text>
           </TouchableOpacity>
         );
       })}
@@ -130,7 +116,7 @@ export const PostList: React.FC<{
       ListHeaderComponent={header || null}
       ListEmptyComponent={
         paged.loading ? (
-          <FriendsSkeleton rows={3} />
+          <FriendsSkeleton rows={3} flush />
         ) : paged.error ? (
           <FriendsError message={forumErrorMessage(paged.error, "Couldn't load posts.")} onRetry={paged.reload} />
         ) : (
@@ -177,7 +163,7 @@ const styles = StyleSheet.create({
     marginTop: FS.md,
     padding: FS.md,
     borderRadius: FR.md,
-    backgroundColor: 'rgba(242,178,126,0.10)',
+    backgroundColor: FriendsColors.warnSoft,
     minHeight: 44,
   },
   softText: { flex: 1, fontSize: 12, fontWeight: '600', color: FriendsColors.warn },

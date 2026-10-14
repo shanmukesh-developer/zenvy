@@ -1,7 +1,8 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Users, CalendarClock, Ellipsis, ChevronRight, Headphones } from 'lucide-react-native';
-import { FriendsColors, FS, FR, FT } from '../friendsTheme';
+import { FriendsColors, FS, FR, FT, SectionTints } from '../friendsTheme';
+import { CardGlow, BrandFill } from '../shared/FriendsUi';
 import { IdentityChip } from '../shared/IdentityChip';
 import { FriendsAvatar } from '../shared/FriendsAvatar';
 import type { Space } from '../api/spacesApi';
@@ -35,6 +36,7 @@ export const SpaceListCard: React.FC<{ space: Space; onPress: (s: Space) => void
 
   return (
     <View style={[styles.card, live && styles.liveCard]}>
+      <CardGlow tint={live ? 'rgba(243,139,128,0.10)' : 'rgba(127,222,196,0.07)'} />
       <TouchableOpacity onPress={() => onPress(space)} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel={label} accessibilityHint="Opens the Space">
         <View style={styles.top}>
           <SpaceStatusBadge space={space} />
@@ -89,6 +91,7 @@ export const SpaceListCard: React.FC<{ space: Space; onPress: (s: Space) => void
             accessibilityRole="button"
             accessibilityLabel={inRoom ? 'Return to the room' : space.removed ? 'You were removed from this Space' : `Join ${space.title}`}
           >
+            <BrandFill />
             <Text style={styles.joinText}>{inRoom ? 'Return' : space.isHost ? 'Open' : 'Join'}</Text>
             <ChevronRight size={15} color={FriendsColors.accentInk} />
           </TouchableOpacity>
@@ -101,16 +104,16 @@ export const SpaceListCard: React.FC<{ space: Space; onPress: (s: Space) => void
 };
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: FriendsColors.card, borderRadius: FR.card, borderWidth: 1, borderColor: FriendsColors.line, padding: FS.lg },
-  liveCard: { borderColor: 'rgba(240,138,126,0.45)' },
+  card: { backgroundColor: FriendsColors.card, borderRadius: FR.card, borderWidth: StyleSheet.hairlineWidth * 2, borderColor: FriendsColors.line, padding: FS.lg },
+  liveCard: { borderColor: 'rgba(243,139,128,0.45)' },
   top: { flexDirection: 'row', alignItems: 'center', gap: FS.sm },
-  topic: { flex: 1, fontSize: 12, fontWeight: '700', color: FriendsColors.accent, textAlign: 'right' },
-  more: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  topic: { flex: 1, fontSize: 12, fontWeight: '700', color: SectionTints.spaces.fg, textAlign: 'right' },
+  more: { width: 44, height: 44, margin: -6, alignItems: 'center', justifyContent: 'center' },
   whenRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
   foot: { flexDirection: 'row', alignItems: 'center', marginTop: FS.md, gap: FS.sm, minHeight: 40 },
   stack: { flexDirection: 'row', alignItems: 'center' },
   stackItem: { borderRadius: 15, borderWidth: 2, borderColor: FriendsColors.card },
   stat: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  join: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 40, paddingHorizontal: 16, borderRadius: FR.pill, backgroundColor: FriendsColors.accent },
+  join: { flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 44, paddingHorizontal: 16, borderRadius: FR.pill, backgroundColor: FriendsColors.accent },
   joinText: { fontSize: 13, fontWeight: '800', color: FriendsColors.accentInk },
 });

@@ -3,7 +3,8 @@ import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, StyleSheet
 import { ChevronDown, Ellipsis, Mic, MicOff, Hand, LogOut, Wifi, WifiOff, Users, Radio, UserPlus, X, Hourglass, Ban, Headphones, RotateCcw } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { requestRecordingPermissionsAsync } from 'expo-audio';
-import { FriendsColors, FS, FR, FT, fui } from '../friendsTheme';
+import { FriendsColors, FS, FR, FT, fui, SectionTints } from '../friendsTheme';
+import { BrandFill, CardGlow } from '../shared/FriendsUi';
 import { FriendsEmpty } from '../shared/FriendsEmpty';
 import { FriendsAvatar } from '../shared/FriendsAvatar';
 import { ActionMenu } from '../shared/ActionMenu';
@@ -558,6 +559,7 @@ export const SpaceRoomScreen: React.FC<SpaceRoomScreenProps> = ({ space, visible
 
           {invite ? (
             <View style={styles.invite} accessibilityRole="alert" accessibilityLiveRegion="assertive">
+              <CardGlow tint="rgba(200,182,255,0.12)" />
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <UserPlus size={18} color={FriendsColors.accent} />
                 <Text style={[FT.h3, { flex: 1 }]}>The {invite.byRole === 'host' ? 'host' : 'co-host'} invited you to speak</Text>
@@ -701,6 +703,7 @@ export const SpaceRoomScreen: React.FC<SpaceRoomScreenProps> = ({ space, visible
               accessibilityState={{ checked: !myMuted }}
               accessibilityLabel={myMuted ? (mine?.mutedByHost ? 'Muted by the host. Tap to unmute' : 'Microphone off. Tap to talk') : 'Microphone on. Tap to mute'}
             >
+              {!myMuted ? <BrandFill radius={30} /> : null}
               {myMuted ? <MicOff size={24} color={FriendsColors.ink} /> : <Mic size={24} color={FriendsColors.accentInk} />}
             </TouchableOpacity>
           ) : (
@@ -814,20 +817,20 @@ const ConnBadge: React.FC<{ conn: Conn; turn: boolean; onRetry: () => void }> = 
 const styles = StyleSheet.create({
   root: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: FriendsColors.bg, zIndex: 20 },
   hidden: { opacity: 0, zIndex: -1, transform: [{ translateY: 4000 }] },
-  header: { flexDirection: 'row', alignItems: 'center', gap: FS.sm, paddingHorizontal: FS.sm, paddingVertical: FS.sm, borderBottomWidth: 1, borderBottomColor: FriendsColors.line },
+  header: { flexDirection: 'row', alignItems: 'center', gap: FS.sm, paddingHorizontal: FS.sm, paddingVertical: FS.sm, minHeight: 56, borderBottomWidth: StyleSheet.hairlineWidth * 2, borderBottomColor: SectionTints.spaces.line },
   iconBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: FS.lg },
   metaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: FS.sm, paddingHorizontal: FS.lg, paddingTop: FS.md, paddingBottom: FS.sm },
   conn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, minHeight: 28, borderRadius: FR.pill, borderWidth: 1 },
   connText: { fontSize: 11, fontWeight: '800' },
   netWarn: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: FS.lg, marginTop: FS.sm, padding: FS.md, borderRadius: FR.md, backgroundColor: FriendsColors.dangerSoft },
-  invite: { marginHorizontal: FS.lg, marginTop: FS.md, padding: FS.lg, borderRadius: FR.card, backgroundColor: FriendsColors.cardHi, borderWidth: 1, borderColor: FriendsColors.accent },
+  invite: { marginHorizontal: FS.lg, marginTop: FS.md, padding: FS.lg, borderRadius: FR.card, backgroundColor: FriendsColors.cardHi, borderWidth: 1, borderColor: FriendsColors.accentLine },
   section: { marginTop: FS.lg, paddingHorizontal: FS.lg },
   sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: FS.sm },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
-  emptyAud: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: FS.md, borderRadius: FR.md, backgroundColor: FriendsColors.card },
-  smallGhost: { width: 40, height: 40, borderRadius: 20, borderWidth: 1, borderColor: FriendsColors.line, alignItems: 'center', justifyContent: 'center' },
-  smallPrimary: { minWidth: 72, height: 40, borderRadius: FR.pill, backgroundColor: FriendsColors.accent, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 },
+  emptyAud: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: FS.md, borderRadius: FR.md, backgroundColor: FriendsColors.card, borderWidth: StyleSheet.hairlineWidth * 2, borderColor: FriendsColors.lineSoft },
+  smallGhost: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, borderColor: FriendsColors.line, alignItems: 'center', justifyContent: 'center' },
+  smallPrimary: { minWidth: 72, height: 44, borderRadius: FR.pill, backgroundColor: FriendsColors.accent, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 },
   smallPrimaryText: { fontSize: 13, fontWeight: '800', color: FriendsColors.accentInk },
   bar: {
     position: 'absolute',
@@ -840,18 +843,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: FS.lg,
     paddingTop: FS.md,
     paddingBottom: FS.xl,
-    backgroundColor: FriendsColors.card,
-    borderTopWidth: 1,
-    borderTopColor: FriendsColors.line,
+    backgroundColor: FriendsColors.overlaySurface,
+    borderTopWidth: StyleSheet.hairlineWidth * 2,
+    borderTopColor: FriendsColors.lineStrong,
+    borderTopLeftRadius: FR.sheet,
+    borderTopRightRadius: FR.sheet,
   },
-  leave: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 48, paddingHorizontal: 16, borderRadius: FR.pill, borderWidth: 1, borderColor: 'rgba(240,138,126,0.45)' },
+  leave: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 48, paddingHorizontal: 16, borderRadius: FR.pill, borderWidth: 1, borderColor: 'rgba(243,139,128,0.45)', backgroundColor: FriendsColors.dangerSoft },
   leaveText: { fontSize: 14, fontWeight: '800', color: FriendsColors.danger },
   handCount: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, minHeight: 32, borderRadius: FR.pill, backgroundColor: FriendsColors.goldSoft },
   mic: { width: 60, height: 60, borderRadius: 30, backgroundColor: FriendsColors.cardHi, borderWidth: 1, borderColor: FriendsColors.line, alignItems: 'center', justifyContent: 'center' },
-  micOn: { backgroundColor: FriendsColors.accent, borderColor: FriendsColors.accent },
+  micOn: { backgroundColor: FriendsColors.accent, borderColor: FriendsColors.accent, shadowColor: FriendsColors.accentStrong, shadowOpacity: 0.5, shadowRadius: 14, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
   handBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 52, paddingHorizontal: 20, borderRadius: FR.pill, backgroundColor: FriendsColors.cardHi, borderWidth: 1, borderColor: FriendsColors.line },
   handOn: { backgroundColor: FriendsColors.gold, borderColor: FriendsColors.gold },
   handText: { fontSize: 14, fontWeight: '800', color: FriendsColors.ink },
-  toast: { position: 'absolute', left: FS.lg, right: FS.lg, bottom: 112, padding: FS.md, borderRadius: FR.md, backgroundColor: FriendsColors.cardHi, borderWidth: 1, borderColor: FriendsColors.line },
+  toast: { position: 'absolute', left: FS.lg, right: FS.lg, bottom: 112, padding: FS.md, borderRadius: FR.pill, backgroundColor: FriendsColors.overlaySurface, borderWidth: 1, borderColor: FriendsColors.lineStrong, shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 16, shadowOffset: { width: 0, height: 6 }, elevation: 8 },
   toastText: { fontSize: 13, fontWeight: '600', color: FriendsColors.ink, textAlign: 'center' },
 });

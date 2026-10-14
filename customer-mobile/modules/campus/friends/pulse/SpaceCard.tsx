@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { Mic, Bell, BellRing, Users, Radio, ChevronRight } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import { FriendsColors, FS, FR, FT } from '../friendsTheme';
+import { FriendsColors, FS, FR, FT, SectionTints } from '../friendsTheme';
+import { CardGlow } from '../shared/FriendsUi';
 import { IdentityChip } from '../shared/IdentityChip';
 import { PulseSpaceCard, setSpaceReminder } from '../api/pulseApi';
 import { formatStartsAt, pulseErrorMessage } from './pulseShared';
@@ -47,10 +48,11 @@ export const SpaceCard: React.FC<{ card: PulseSpaceCard; onChanged: (c: PulseSpa
 
   return (
     <View style={[styles.card, live && styles.liveCard]}>
+      <CardGlow tint={live ? 'rgba(243,139,128,0.10)' : 'rgba(127,222,196,0.08)'} />
       <TouchableOpacity onPress={() => nav.openSpace(card.spaceId)} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel={label} accessibilityHint="Opens the Space">
         <View style={styles.top}>
           <View style={[styles.badge, live ? styles.badgeLive : null]}>
-            {live ? <Radio size={12} color={FriendsColors.danger} /> : <Mic size={12} color={FriendsColors.accent} />}
+            {live ? <Radio size={12} color={FriendsColors.danger} /> : <Mic size={12} color={SectionTints.spaces.fg} />}
             <Text style={[styles.badgeText, live && { color: FriendsColors.danger }]}>{live ? 'LIVE SPACE' : 'SPACE'}</Text>
           </View>
           <Text style={[FT.small, { flex: 1, textAlign: 'right' }]} numberOfLines={1}>
@@ -109,14 +111,14 @@ const styles = StyleSheet.create({
     backgroundColor: FriendsColors.card,
     borderRadius: FR.card,
     borderWidth: 1,
-    borderColor: 'rgba(200,182,255,0.35)',
+    borderColor: SectionTints.spaces.line,
     padding: FS.lg,
   },
-  liveCard: { borderColor: 'rgba(240,138,126,0.45)' },
+  liveCard: { borderColor: 'rgba(243,139,128,0.45)' },
   top: { flexDirection: 'row', alignItems: 'center', gap: FS.sm },
-  badge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: FR.pill, backgroundColor: FriendsColors.accentSoft },
+  badge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: FR.pill, backgroundColor: SectionTints.spaces.soft },
   badgeLive: { backgroundColor: FriendsColors.dangerSoft },
-  badgeText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.6, color: FriendsColors.accent },
+  badgeText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.6, color: SectionTints.spaces.fg },
   foot: { flexDirection: 'row', alignItems: 'center', marginTop: FS.md, gap: FS.sm },
   stat: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   remind: {

@@ -526,7 +526,7 @@ const Stepper: React.FC<{ label: string; sub?: string; onMinus: () => void; onPl
 const styles = StyleSheet.create({
   post: { minWidth: 72, minHeight: 40, paddingHorizontal: 16, borderRadius: FR.pill, backgroundColor: FriendsColors.accent, alignItems: 'center', justifyContent: 'center', marginRight: FS.sm },
   postText: { fontSize: 14, fontWeight: '800', color: FriendsColors.accentInk },
-  refusal: { padding: FS.lg, borderRadius: FR.card, borderWidth: 1, borderColor: 'rgba(240,138,126,0.35)', backgroundColor: 'rgba(240,138,126,0.06)', marginBottom: FS.lg },
+  refusal: { padding: FS.lg, borderRadius: FR.card, borderWidth: 1, borderColor: 'rgba(243,139,128,0.35)', backgroundColor: 'rgba(243,139,128,0.06)', marginBottom: FS.lg },
   guideHead: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44 },
   guide: { flexDirection: 'row', gap: FS.md, padding: FS.md, borderRadius: FR.card, backgroundColor: FriendsColors.card, borderWidth: 1, borderColor: FriendsColors.line },
   guideRow: { flexDirection: 'row', gap: 6, marginTop: 6, alignItems: 'flex-start' },

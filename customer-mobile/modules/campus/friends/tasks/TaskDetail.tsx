@@ -747,7 +747,7 @@ const ReviewRow: React.FC<{ label: string; review: { rating: number; text: strin
 
 const styles = StyleSheet.create({
   round: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  stale: { padding: FS.md, borderRadius: FR.md, backgroundColor: 'rgba(242,178,126,0.10)', minHeight: 44, justifyContent: 'center' },
+  stale: { padding: FS.md, borderRadius: FR.md, backgroundColor: FriendsColors.warnSoft, minHeight: 44, justifyContent: 'center' },
   hero: {
     padding: FS.lg,
     borderRadius: FR.card,
@@ -767,7 +767,7 @@ const styles = StyleSheet.create({
   thumb: { width: 120, height: 120, borderRadius: FR.md, backgroundColor: FriendsColors.cardHi },
   posterRow: { marginTop: FS.md, paddingTop: FS.md, borderTopWidth: 1, borderTopColor: FriendsColors.lineSoft },
   banner: { padding: FS.lg, borderRadius: FR.card, backgroundColor: FriendsColors.card, borderWidth: 1, borderColor: FriendsColors.line },
-  bannerDanger: { backgroundColor: 'rgba(240,138,126,0.06)', borderColor: 'rgba(240,138,126,0.3)' },
+  bannerDanger: { backgroundColor: 'rgba(243,139,128,0.06)', borderColor: 'rgba(243,139,128,0.3)' },
   bannerWarn: { backgroundColor: 'rgba(242,178,126,0.06)', borderColor: 'rgba(242,178,126,0.3)' },
   bannerHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   appsCard: { flexDirection: 'row', alignItems: 'center', gap: FS.md, padding: FS.lg, borderRadius: FR.card, backgroundColor: FriendsColors.card, borderWidth: 1, borderColor: FriendsColors.line, minHeight: 72 },

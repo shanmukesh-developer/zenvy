@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from 'rea
 import { Award, Trophy, BookOpen, HandHelping, Flag } from 'lucide-react-native';
 import { fetchFriendsUser, FriendsUserCard } from '../api/core';
 import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';
+import { SkeletonBlock } from '../shared/FriendsSkeleton';
 import { FriendsSheet } from '../shared/FriendsSheet';
 import { IdentityChip, identityLabel } from '../shared/IdentityChip';
 import { ActionMenu } from '../shared/ActionMenu';
@@ -119,7 +120,13 @@ export const ForumUserSheet: React.FC<{
     <>
       <FriendsSheet visible={!!userId} onClose={onClose} title="Profile">
         {loading && !card ? (
-          <ActivityIndicator color={FriendsColors.accent} style={{ marginVertical: FS.xl }} />
+          <View style={{ gap: FS.sm, paddingVertical: FS.md }} accessibilityLabel="Loading profile">
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: FS.md }}>
+              <SkeletonBlock width={40} height={40} radius={20} />
+              <SkeletonBlock width="45%" height={14} />
+            </View>
+            <SkeletonBlock width="100%" height={64} radius={FR.md} />
+          </View>
         ) : error ? (
           <View style={{ paddingVertical: FS.lg }}>
             <Text style={[FT.muted, { textAlign: 'center' }]}>{error}</Text>
@@ -223,6 +230,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: FriendsColors.line,
   },
-  standingIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: FriendsColors.goldSoft, alignItems: 'center', justifyContent: 'center' },
+  standingIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: FriendsColors.goldSoft, borderWidth: 1, borderColor: 'rgba(232,196,127,0.3)', alignItems: 'center', justifyContent: 'center' },
 });
 

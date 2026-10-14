@@ -14,6 +14,8 @@ import { sanctionScopeLabel } from '../api/modApi';
 import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';
 import { FriendsEmpty, FriendsError } from './FriendsEmpty';
 import { FriendsSkeleton } from './FriendsSkeleton';
+import { FriendsButton } from './FriendsUi';
+import { LinearGradient } from 'expo-linear-gradient';
 import { formatLocal } from './RelativeTime';
 
 /** Plain-language copy for each eligibility reason (most fundamental first). */
@@ -176,9 +178,9 @@ export const GuidelinesGate: React.FC<{
     <ScrollView contentContainerStyle={{ padding: FS.lg, paddingBottom: FS.xxxl }}>
       {!readOnly ? (
         <View style={{ alignItems: 'center', marginBottom: FS.lg }}>
-          <View style={styles.icon}>
-            <BookOpen size={22} color={FriendsColors.accent} />
-          </View>
+          <LinearGradient colors={['rgba(200,182,255,0.28)', 'rgba(200,182,255,0.06)']} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }} style={styles.icon}>
+            <BookOpen size={26} color={FriendsColors.accent} />
+          </LinearGradient>
           <Text style={[FT.h1, { textAlign: 'center' }]} accessibilityRole="header">
             Welcome to Friends
           </Text>
@@ -196,7 +198,7 @@ export const GuidelinesGate: React.FC<{
         <Text style={[FT.small, { marginTop: FS.md }]}>Version {g.version}</Text>
       </View>
       {g.url ? (
-        <TouchableOpacity onPress={() => Linking.openURL(g.url as string).catch(() => {})} style={{ marginTop: FS.md }} accessibilityRole="link">
+        <TouchableOpacity onPress={() => Linking.openURL(g.url as string).catch(() => {})} style={{ marginTop: FS.md, minHeight: 44, justifyContent: 'center' }} accessibilityRole="link">
           <Text style={{ color: FriendsColors.accent, fontWeight: '700', textAlign: 'center' }}>Read the full guidelines</Text>
         </TouchableOpacity>
       ) : null}
@@ -214,14 +216,7 @@ export const GuidelinesGate: React.FC<{
               <Text style={styles.errorText}>{saveError}</Text>
             </View>
           ) : null}
-          <TouchableOpacity
-            style={[fui.primaryBtn, { marginTop: FS.xl }, saving && { opacity: 0.6 }]}
-            onPress={accept}
-            disabled={saving}
-            accessibilityRole="button"
-          >
-            {saving ? <ActivityIndicator color={FriendsColors.accentInk} /> : <Text style={fui.primaryBtnText}>I agree</Text>}
-          </TouchableOpacity>
+          <FriendsButton label="I agree" onPress={accept} loading={saving} style={{ marginTop: FS.xl }} accessibilityHint="Accepts the community guidelines" />
         </>
       )}
     </ScrollView>
@@ -230,10 +225,11 @@ export const GuidelinesGate: React.FC<{
 
 const styles = StyleSheet.create({
   icon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: FriendsColors.accentSoft,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    borderWidth: 1,
+    borderColor: FriendsColors.accentLine,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: FS.md,

@@ -4,7 +4,7 @@ import { Hash, VolumeX, Volume2, TrendingUp, Bookmark, PenLine, UserPlus, UserCh
 import * as Haptics from 'expo-haptics';
 import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';
 import { FriendsEmpty, FriendsError } from '../shared/FriendsEmpty';
-import { FriendsSkeleton } from '../shared/FriendsSkeleton';
+import { FriendsSkeleton, SkeletonBlock } from '../shared/FriendsSkeleton';
 import { FriendsSheet } from '../shared/FriendsSheet';
 import { IdentityChip, identityLabel } from '../shared/IdentityChip';
 import { ActionMenu } from '../shared/ActionMenu';
@@ -348,7 +348,16 @@ export const PulseUserSheet: React.FC<{ userId: string | null; onClose: () => vo
     <>
       <FriendsSheet visible={!!userId} onClose={onClose} title="Profile">
         {loading && !card ? (
-          <ActivityIndicator color={FriendsColors.accent} style={{ marginVertical: FS.xl }} />
+          <View style={{ gap: FS.sm, paddingVertical: FS.md }} accessibilityLabel="Loading profile">
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: FS.md }}>
+              <SkeletonBlock width={48} height={48} radius={24} />
+              <View style={{ flex: 1, gap: 8 }}>
+                <SkeletonBlock width="50%" height={14} />
+                <SkeletonBlock width="30%" height={10} />
+              </View>
+            </View>
+            <SkeletonBlock width="100%" height={44} radius={22} />
+          </View>
         ) : error ? (
           <View style={{ paddingVertical: FS.lg }}>
             <Text style={[FT.muted, { textAlign: 'center' }]}>{error}</Text>
@@ -439,7 +448,7 @@ export const PulseUserSheet: React.FC<{ userId: string | null; onClose: () => vo
 
 const styles = StyleSheet.create({
   round: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  note: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: FS.md, borderRadius: FR.md, backgroundColor: 'rgba(242,178,126,0.10)', marginBottom: FS.md },
+  note: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: FS.md, borderRadius: FR.md, backgroundColor: FriendsColors.warnSoft, marginBottom: FS.md },
   sectionRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: FS.sm },
   seeAll: { minHeight: 32, justifyContent: 'center', paddingHorizontal: 4 },
   seeAllText: { fontSize: 12, fontWeight: '800', color: FriendsColors.accent },

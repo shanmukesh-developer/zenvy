@@ -3,7 +3,8 @@ import { View, Text, TouchableOpacity, ScrollView, RefreshControl, BackHandler, 
 import { Search, HelpCircle, Star, Bookmark, PenLine, Gavel, Plus, ChevronRight, ShieldCheck, Sparkles, Hourglass } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import type { CampusRole } from '../../../../types/campus';
-import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';
+import { FriendsColors, FS, FT, FR, fui, SectionTints } from '../friendsTheme';
+import { BrandFill } from '../shared/FriendsUi';
 import { FriendsEmpty, FriendsError } from '../shared/FriendsEmpty';
 import { FriendsSkeleton } from '../shared/FriendsSkeleton';
 import { SUB_TAB_META } from '../shared/SubTabBar';
@@ -219,7 +220,7 @@ export const ForumHome: React.FC<ForumHomeProps> = ({ focusId, userId, roles, ac
         accessibilityLabel={`${c.name}. ${c.description || ''} ${c.memberCount} members, ${c.postCount} posts.${c.isMember ? ' Joined.' : ''}${c.myRole ? ` You are ${c.myRole}.` : ''}`}
       >
         <View style={styles.cIcon}>
-          <Icon size={20} color={FriendsColors.accent} />
+          <Icon size={20} color={SectionTints.forum.fg} />
         </View>
         <View style={{ flex: 1 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -233,7 +234,7 @@ export const ForumHome: React.FC<ForumHomeProps> = ({ focusId, userId, roles, ac
               </View>
             ) : null}
             {c.status === 'pending' ? (
-              <View style={[styles.roleTag, { backgroundColor: 'rgba(242,178,126,0.12)' }]}>
+              <View style={[styles.roleTag, { backgroundColor: FriendsColors.warnSoft }]}>
                 <Hourglass size={10} color={FriendsColors.warn} />
                 <Text style={[styles.roleText, { color: FriendsColors.warn }]}>Pending</Text>
               </View>
@@ -307,6 +308,7 @@ export const ForumHome: React.FC<ForumHomeProps> = ({ focusId, userId, roles, ac
         <PenLine size={18} color={FriendsColors.muted} />
         <Text style={[FT.muted, { flex: 1 }]}>Ask a question or share what you know…</Text>
         <View style={styles.askPlus}>
+          <BrandFill radius={20} />
           <Plus size={16} color={FriendsColors.accentInk} />
         </View>
       </TouchableOpacity>
@@ -330,7 +332,8 @@ export const ForumHome: React.FC<ForumHomeProps> = ({ focusId, userId, roles, ac
         <FriendsError message={forumErrorMessage(error, "Couldn't load communities.")} onRetry={() => load()} />
       ) : !communities.length ? (
         <FriendsEmpty
-          icon={<ForumIcon size={22} color={FriendsColors.accent} />}
+          tint={SectionTints.forum.fg}
+          icon={<ForumIcon size={26} color={SectionTints.forum.fg} />}
           title="No communities yet"
           subtitle="Your campus Forum is being set up. Pull to refresh in a moment."
           actionLabel="Refresh"
@@ -506,14 +509,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: FriendsColors.line,
   },
-  cIcon: { width: 44, height: 44, borderRadius: 14, backgroundColor: FriendsColors.accentSoft, alignItems: 'center', justifyContent: 'center' },
+  cIcon: { width: 44, height: 44, borderRadius: 14, backgroundColor: SectionTints.forum.soft, alignItems: 'center', justifyContent: 'center' },
   roleTag: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6, paddingVertical: 1, borderRadius: FR.pill, backgroundColor: FriendsColors.accentSoft },
   roleText: { fontSize: 10, fontWeight: '800', color: FriendsColors.accent },
   joinBtn: { minWidth: 64, minHeight: 36, paddingHorizontal: 14, borderRadius: FR.pill, borderWidth: 1, borderColor: FriendsColors.accent, alignItems: 'center', justifyContent: 'center' },
   joinText: { fontSize: 13, fontWeight: '800', color: FriendsColors.accent },
   guide: { width: 200, padding: FS.md, borderRadius: FR.card, borderWidth: 1, minHeight: 104 },
-  guideOfficial: { backgroundColor: 'rgba(229,192,123,0.06)', borderColor: 'rgba(229,192,123,0.35)' },
+  guideOfficial: { backgroundColor: 'rgba(232,196,127,0.06)', borderColor: 'rgba(232,196,127,0.35)' },
   guideStudent: { backgroundColor: 'rgba(200,182,255,0.06)', borderColor: 'rgba(200,182,255,0.3)' },
   guideLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase' },
-  stale: { padding: FS.md, borderRadius: FR.md, backgroundColor: 'rgba(242,178,126,0.10)', minHeight: 44, flexDirection: 'row', alignItems: 'center' },
+  stale: { padding: FS.md, borderRadius: FR.md, backgroundColor: FriendsColors.warnSoft, minHeight: 44, flexDirection: 'row', alignItems: 'center' },
 });

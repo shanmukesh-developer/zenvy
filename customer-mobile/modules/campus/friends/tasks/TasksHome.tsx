@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, FlatList, RefreshControl, ActivityIndicator, BackHandler, Alert, StyleSheet } from 'react-native';
 import { Plus, Search, X, ClipboardList, ChevronRight, LayoutGrid, Handshake } from 'lucide-react-native';
-import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';
+import { FriendsColors, FS, FT, FR, fui, SectionTints } from '../friendsTheme';
+import { BrandFill } from '../shared/FriendsUi';
 import { FriendsSkeleton } from '../shared/FriendsSkeleton';
 import { FriendsEmpty, FriendsError } from '../shared/FriendsEmpty';
 import { ActionMenu } from '../shared/ActionMenu';
@@ -251,6 +252,7 @@ export const TasksHome: React.FC<TasksHomeProps> = ({ focusId, onOpenChat, userI
       <View style={styles.quickRow}>
         <TouchableOpacity style={styles.askBtn} onPress={() => setComposer({ edit: null })} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Ask for help: post a task">
           <View style={styles.askPlus}>
+            <BrandFill radius={20} />
             <Plus size={18} color={FriendsColors.accentInk} />
           </View>
           <View style={{ flex: 1 }}>
@@ -283,10 +285,10 @@ export const TasksHome: React.FC<TasksHomeProps> = ({ focusId, onOpenChat, userI
         value={category}
         onChange={setCategory}
         options={[
-          { key: 'all' as const, label: 'All', icon: <LayoutGrid size={13} color={category === 'all' ? FriendsColors.accentInk : FriendsColors.muted} /> },
+          { key: 'all' as const, label: 'All', icon: <LayoutGrid size={13} color={category === 'all' ? SectionTints.tasks.fg : FriendsColors.muted} /> },
           ...TASK_CATEGORIES.map((c) => {
             const Icon = CATEGORY_META[c].icon;
-            return { key: c, label: CATEGORY_META[c].short, icon: <Icon size={13} color={category === c ? FriendsColors.accentInk : FriendsColors.muted} /> };
+            return { key: c, label: CATEGORY_META[c].short, icon: <Icon size={13} color={category === c ? SectionTints.tasks.fg : FriendsColors.muted} /> };
           }),
         ]}
       />
@@ -340,7 +342,8 @@ export const TasksHome: React.FC<TasksHomeProps> = ({ focusId, onOpenChat, userI
           <FriendsError message={taskErrorMessage(board.error, "Couldn't load tasks.")} onRetry={board.reload} />
         ) : filtered ? (
           <FriendsEmpty
-            icon={<Search size={22} color={FriendsColors.accent} />}
+            tint={SectionTints.tasks.fg}
+          icon={<Search size={26} color={SectionTints.tasks.fg} />}
             title="No matching tasks"
             subtitle={q ? `Nothing open matches "${q}".` : 'Nothing open in this category right now.'}
             actionLabel="Show all tasks"
@@ -352,7 +355,8 @@ export const TasksHome: React.FC<TasksHomeProps> = ({ focusId, onOpenChat, userI
           />
         ) : (
           <FriendsEmpty
-            icon={<TasksIcon size={22} color={FriendsColors.accent} />}
+            tint={SectionTints.tasks.fg}
+          icon={<TasksIcon size={26} color={SectionTints.tasks.fg} />}
             title="No open tasks yet"
             subtitle="Be the first: ask for notes, a printout, a quick explanation or an errand. Helpers on your campus will apply."
             actionLabel="Ask for help"

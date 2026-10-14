@@ -627,7 +627,7 @@ export const ForumPostScreen: React.FC<{ id: string; initial?: ForumPost | null 
 
 const styles = StyleSheet.create({
   postCard: { backgroundColor: FriendsColors.card, borderRadius: FR.card, borderWidth: 1, borderColor: FriendsColors.line, padding: FS.lg },
-  notice: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: FS.md, padding: FS.sm, borderRadius: FR.sm, backgroundColor: 'rgba(242,178,126,0.10)' },
+  notice: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: FS.md, padding: FS.sm, borderRadius: FR.sm, backgroundColor: FriendsColors.warnSoft },
   image: { width: '100%', aspectRatio: 4 / 3, borderRadius: FR.md, marginTop: FS.md, backgroundColor: FriendsColors.cardHi },
   link: { flexDirection: 'row', alignItems: 'center', gap: FS.sm, padding: FS.md, borderRadius: FR.md, backgroundColor: FriendsColors.cardHi, minHeight: 48 },
   actions: { flexDirection: 'row', alignItems: 'center', gap: FS.sm, marginTop: FS.lg },

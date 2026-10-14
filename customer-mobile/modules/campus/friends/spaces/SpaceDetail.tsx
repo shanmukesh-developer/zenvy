@@ -306,7 +306,7 @@ export const SpaceDetail: React.FC<{ id: string; initial?: Space | null }> = ({ 
                 </TouchableOpacity>
               ) : null}
               {space.canCancel ? (
-                <TouchableOpacity style={[fui.ghostBtn, { flex: 1, borderColor: 'rgba(240,138,126,0.4)' }]} onPress={doCancel} disabled={!!busy} accessibilityRole="button" accessibilityLabel="Cancel this Space">
+                <TouchableOpacity style={[fui.ghostBtn, { flex: 1, borderColor: 'rgba(243,139,128,0.4)' }]} onPress={doCancel} disabled={!!busy} accessibilityRole="button" accessibilityLabel="Cancel this Space">
                   {busy === 'cancel' ? <ActivityIndicator size="small" color={FriendsColors.danger} /> : <CircleX size={16} color={FriendsColors.danger} />}
                   <Text style={[fui.ghostBtnText, { color: FriendsColors.danger }]}>Cancel</Text>
                 </TouchableOpacity>
@@ -314,7 +314,7 @@ export const SpaceDetail: React.FC<{ id: string; initial?: Space | null }> = ({ 
             </View>
           ) : null}
           {amHost && space.canEnd && !inRoom ? (
-            <TouchableOpacity style={[fui.ghostBtn, { borderColor: 'rgba(240,138,126,0.4)' }]} onPress={doEnd} disabled={!!busy} accessibilityRole="button" accessibilityLabel="End this Space for everyone">
+            <TouchableOpacity style={[fui.ghostBtn, { borderColor: 'rgba(243,139,128,0.4)' }]} onPress={doEnd} disabled={!!busy} accessibilityRole="button" accessibilityLabel="End this Space for everyone">
               {busy === 'end' ? <ActivityIndicator size="small" color={FriendsColors.danger} /> : <Square size={16} color={FriendsColors.danger} />}
               <Text style={[fui.ghostBtnText, { color: FriendsColors.danger }]}>End for everyone</Text>
             </TouchableOpacity>
@@ -370,10 +370,10 @@ const Fact: React.FC<{ icon: React.ReactNode; text: string; sub?: string }> = ({
 const styles = StyleSheet.create({
   round: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   hero: { backgroundColor: FriendsColors.card, borderRadius: FR.card, borderWidth: 1, borderColor: 'rgba(200,182,255,0.3)', padding: FS.lg },
-  heroLive: { borderColor: 'rgba(240,138,126,0.45)' },
+  heroLive: { borderColor: 'rgba(243,139,128,0.45)' },
   facts: { marginTop: FS.lg, gap: FS.md, paddingTop: FS.md, borderTopWidth: 1, borderTopColor: FriendsColors.lineSoft },
   fact: { flexDirection: 'row', alignItems: 'flex-start', gap: FS.sm },
-  review: { flexDirection: 'row', gap: 8, marginTop: FS.md, padding: FS.md, borderRadius: FR.md, backgroundColor: 'rgba(242,178,126,0.10)' },
+  review: { flexDirection: 'row', gap: 8, marginTop: FS.md, padding: FS.md, borderRadius: FR.md, backgroundColor: FriendsColors.warnSoft },
   speakers: { flexDirection: 'row', flexWrap: 'wrap', marginTop: FS.sm },
   speaker: { width: '25%', alignItems: 'center', paddingVertical: FS.sm },
   speakerName: { fontSize: 13, fontWeight: '700', color: FriendsColors.ink, marginTop: 6, maxWidth: '92%' },

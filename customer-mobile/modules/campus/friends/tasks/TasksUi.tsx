@@ -1,28 +1,14 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { ChevronLeft, RotateCcw, Star } from 'lucide-react-native';
-import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';
+import { FriendsColors, FS, FT, FR, fui, SectionTints } from '../friendsTheme';
+import { FriendsHeader } from '../shared/FriendsUi';
 import { taskErrorMessage, toneColor, toneSoft } from './tasksShared';
 import type { TaskReputation } from '../api/tasksApi';
 
 /** Header for screens inside the Tasks stack. */
-export const TaskHeader: React.FC<{ title: string; subtitle?: string | null; onBack: () => void; right?: React.ReactNode }> = ({ title, subtitle, onBack, right }) => (
-  <View style={styles.header}>
-    <TouchableOpacity onPress={onBack} style={styles.back} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back">
-      <ChevronLeft size={24} color={FriendsColors.ink} />
-    </TouchableOpacity>
-    <View style={{ flex: 1 }}>
-      <Text style={FT.h2} numberOfLines={1} accessibilityRole="header">
-        {title}
-      </Text>
-      {subtitle ? (
-        <Text style={FT.small} numberOfLines={1}>
-          {subtitle}
-        </Text>
-      ) : null}
-    </View>
-    {right}
-  </View>
+export const TaskHeader: React.FC<{ title: string; subtitle?: string | null; onBack: () => void; right?: React.ReactNode }> = (props) => (
+  <FriendsHeader {...props} section="tasks" />
 );
 
 /** Small coloured status pill. */
@@ -55,16 +41,16 @@ export function TaskChips<K extends string>({
           <TouchableOpacity
             key={o.key}
             onPress={() => onChange(o.key)}
-            style={[fui.pill, on && fui.pillActive]}
+            style={[fui.pill, on && { backgroundColor: SectionTints.tasks.soft, borderColor: SectionTints.tasks.line }]}
             accessibilityRole="tab"
             accessibilityState={{ selected: on }}
             accessibilityLabel={`${label}: ${o.label}${o.count ? `, ${o.count}` : ''}`}
           >
             {o.icon}
-            <Text style={[fui.pillText, on && fui.pillTextActive]}>{o.label}</Text>
+            <Text style={[fui.pillText, on && { color: SectionTints.tasks.fg }]}>{o.label}</Text>
             {o.count ? (
-              <View style={[styles.count, on && { backgroundColor: 'rgba(23,18,43,0.18)' }]}>
-                <Text style={[styles.countText, on && { color: FriendsColors.accentInk }]}>{o.count > 99 ? '99+' : o.count}</Text>
+              <View style={[styles.count, on && { backgroundColor: SectionTints.tasks.line }]}>
+                <Text style={[styles.countText, on && { color: SectionTints.tasks.fg }]}>{o.count > 99 ? '99+' : o.count}</Text>
               </View>
             ) : null}
           </TouchableOpacity>
@@ -145,7 +131,7 @@ const styles = StyleSheet.create({
     padding: FS.md,
     minHeight: 44,
     borderRadius: FR.md,
-    backgroundColor: 'rgba(242,178,126,0.10)',
+    backgroundColor: FriendsColors.warnSoft,
   },
   softText: { flex: 1, fontSize: 12, fontWeight: '600', color: FriendsColors.warn },
   errorBox: { marginTop: FS.md, padding: FS.md, borderRadius: FR.md, backgroundColor: FriendsColors.dangerSoft },

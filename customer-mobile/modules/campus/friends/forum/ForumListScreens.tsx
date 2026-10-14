@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, FlatList, RefreshControl, ActivityIndicator, StyleSheet, Alert } from 'react-native';
 import { Search, X, Bookmark, PenLine, ShieldCheck, Flag, ScrollText, Inbox } from 'lucide-react-native';
-import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';
+import { FriendsColors, FS, FT, FR, fui, SectionTints } from '../friendsTheme';
 import { FriendsEmpty, FriendsError } from '../shared/FriendsEmpty';
 import { FriendsSkeleton } from '../shared/FriendsSkeleton';
 import { RelativeTime } from '../shared/RelativeTime';
@@ -194,8 +194,8 @@ export const ModQueueScreen: React.FC<{ communityId?: string | null }> = ({ comm
         <Chips
           label="View"
           options={[
-            { key: 'reports', label: 'Reports', icon: <Flag size={13} color={tab === 'reports' ? FriendsColors.accentInk : FriendsColors.muted} /> },
-            { key: 'log', label: 'Mod log', icon: <ScrollText size={13} color={tab === 'log' ? FriendsColors.accentInk : FriendsColors.muted} /> },
+            { key: 'reports', label: 'Reports', icon: <Flag size={13} color={tab === 'reports' ? SectionTints.forum.fg : FriendsColors.muted} /> },
+            { key: 'log', label: 'Mod log', icon: <ScrollText size={13} color={tab === 'log' ? SectionTints.forum.fg : FriendsColors.muted} /> },
           ]}
           value={tab}
           onChange={setTab}

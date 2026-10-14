@@ -1,7 +1,8 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated, Easing, AccessibilityInfo } from 'react-native';
 import { Radio, Mic, MicOff, ShieldCheck, Minus, Plus, Crown, Shield, Hand, BadgeCheck, ChevronLeft, RotateCcw } from 'lucide-react-native';
-import { FriendsColors, FS, FR, FT } from '../friendsTheme';
+import { FriendsColors, FS, FR, FT, SectionTints } from '../friendsTheme';
+import { FriendsHeader } from '../shared/FriendsUi';
 import { FriendsAvatar } from '../shared/FriendsAvatar';
 import { Space, SpaceRole, spaceErrorMessage } from '../api/spacesApi';
 import { statusLabel } from './spacesShared';
@@ -37,7 +38,7 @@ export const SpaceStatusBadge: React.FC<{ space: Space }> = ({ space }) => {
   const review = !!space.underReview;
   const done = space.status === 'ended' || space.status === 'cancelled' || space.status === 'expired';
   const color = live ? FriendsColors.danger : review ? FriendsColors.warn : done ? FriendsColors.faint : FriendsColors.accent;
-  const bg = live ? FriendsColors.dangerSoft : review ? 'rgba(242,178,126,0.12)' : done ? FriendsColors.cardHi : FriendsColors.accentSoft;
+  const bg = live ? FriendsColors.dangerSoft : review ? FriendsColors.warnSoft : done ? FriendsColors.cardHi : FriendsColors.accentSoft;
   return (
     <View style={[styles.badge, { backgroundColor: bg }]}>
       {live ? <LiveDot size={7} /> : null}
@@ -157,29 +158,8 @@ export const SpacesKicker: React.FC<{ children: string; live?: boolean }> = ({ c
 );
 
 /** Header for screens inside the Spaces stack. */
-export const SpaceHeader: React.FC<{ title: string; subtitle?: string | null; onBack: () => void; backLabel?: string; right?: React.ReactNode }> = ({
-  title,
-  subtitle,
-  onBack,
-  backLabel = 'Back',
-  right,
-}) => (
-  <View style={styles.header}>
-    <TouchableOpacity onPress={onBack} style={styles.back} hitSlop={8} accessibilityRole="button" accessibilityLabel={backLabel}>
-      <ChevronLeft size={24} color={FriendsColors.ink} />
-    </TouchableOpacity>
-    <View style={{ flex: 1 }}>
-      <Text style={FT.h2} numberOfLines={1} accessibilityRole="header">
-        {title}
-      </Text>
-      {subtitle ? (
-        <Text style={FT.small} numberOfLines={1}>
-          {subtitle}
-        </Text>
-      ) : null}
-    </View>
-    {right}
-  </View>
+export const SpaceHeader: React.FC<{ title: string; subtitle?: string | null; onBack: () => void; backLabel?: string; right?: React.ReactNode }> = (props) => (
+  <FriendsHeader {...props} section="spaces" />
 );
 
 /** Inline "couldn't refresh" row with Retry (what was loaded stays on screen). */
@@ -213,7 +193,7 @@ const styles = StyleSheet.create({
     padding: FS.md,
     minHeight: 44,
     borderRadius: FR.md,
-    backgroundColor: 'rgba(242,178,126,0.10)',
+    backgroundColor: FriendsColors.warnSoft,
   },
   softText: { flex: 1, fontSize: 12, fontWeight: '600', color: FriendsColors.warn },
   badge: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 3, borderRadius: FR.pill, alignSelf: 'flex-start' },
@@ -226,14 +206,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: FR.pill,
-    backgroundColor: 'rgba(127,214,160,0.10)',
+    backgroundColor: FriendsColors.successSoft,
     borderWidth: 1,
-    borderColor: 'rgba(127,214,160,0.22)',
+    borderColor: 'rgba(143,220,166,0.24)',
   },
   notRecText: { fontSize: 12, fontWeight: '700', color: FriendsColors.success },
   seat: { width: '33.33%', alignItems: 'center', paddingVertical: FS.sm },
   ring: { alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: 'transparent' },
-  ringOn: { borderColor: FriendsColors.accent, shadowColor: FriendsColors.accent, shadowOpacity: 0.7, shadowRadius: 10, shadowOffset: { width: 0, height: 0 }, elevation: 6 },
+  ringOn: { borderColor: SectionTints.spaces.fg, shadowColor: SectionTints.spaces.fg, shadowOpacity: 0.7, shadowRadius: 10, shadowOffset: { width: 0, height: 0 }, elevation: 6 },
   mic: {
     position: 'absolute',
     right: 0,

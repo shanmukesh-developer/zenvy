@@ -1,7 +1,8 @@
 import React, { memo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Clock, MapPin, Users, Globe, MoreHorizontal } from 'lucide-react-native';
-import { FriendsColors, FS, FT, FR } from '../friendsTheme';
+import { FriendsColors, FS, FT, FR, SectionTints } from '../friendsTheme';
+import { CardGlow } from '../shared/FriendsUi';
 import type { Task } from '../api/tasksApi';
 import { identityLabel } from '../shared/IdentityChip';
 import { FriendsAvatar } from '../shared/FriendsAvatar';
@@ -33,9 +34,10 @@ export const TaskCard: React.FC<{ task: Task; onPress: (t: Task) => void; onMore
 
     return (
       <TouchableOpacity style={styles.card} onPress={() => onPress(task)} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel={a11y} accessibilityHint="Opens the task">
+        <CardGlow />
         <View style={styles.top}>
           <View style={styles.cat}>
-            <Icon size={14} color={FriendsColors.accent} />
+            <Icon size={14} color={SectionTints.tasks.fg} />
             <Text style={styles.catText} numberOfLines={1}>
               {cat.short}
             </Text>
@@ -99,17 +101,17 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: FriendsColors.card,
     borderRadius: FR.card,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth * 2,
     borderColor: FriendsColors.line,
     padding: FS.lg,
   },
   top: { flexDirection: 'row', alignItems: 'center', gap: FS.sm },
-  cat: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 4, borderRadius: FR.pill, backgroundColor: FriendsColors.accentSoft, maxWidth: '55%' },
-  catText: { fontSize: 11, fontWeight: '800', color: FriendsColors.accent },
-  reward: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: FR.pill, backgroundColor: FriendsColors.goldSoft, borderWidth: 1, borderColor: 'rgba(229,192,123,0.3)' },
+  cat: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 8, paddingVertical: 4, borderRadius: FR.pill, backgroundColor: SectionTints.tasks.soft, maxWidth: '55%' },
+  catText: { fontSize: 11, fontWeight: '800', color: SectionTints.tasks.fg },
+  reward: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: FR.pill, backgroundColor: FriendsColors.goldSoft, borderWidth: 1, borderColor: 'rgba(232,196,127,0.3)' },
   rewardFree: { backgroundColor: FriendsColors.cardHi, borderColor: FriendsColors.line },
   rewardText: { fontSize: 13, fontWeight: '800', color: FriendsColors.gold },
-  more: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  more: { width: 44, height: 44, margin: -6, alignItems: 'center', justifyContent: 'center' },
   metaRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: FS.md, marginTop: FS.md },
   meta: { flexDirection: 'row', alignItems: 'center', gap: 4, maxWidth: '60%' },
   posterRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: FS.md, paddingTop: FS.sm, borderTopWidth: 1, borderTopColor: FriendsColors.lineSoft },

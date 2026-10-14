@@ -19,7 +19,8 @@ import {
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { Alert } from 'react-native';
-import { FriendsColors, FS, FT, FR } from '../friendsTheme';
+import { FriendsColors, FS, FT, FR, SectionTints } from '../friendsTheme';
+import { CardGlow } from '../shared/FriendsUi';
 import { IdentityChip, identityLabel } from '../shared/IdentityChip';
 import { ActionMenu } from '../shared/ActionMenu';
 import { ForumPost, bookmarkForumPost, deleteForumPost, deleteReview, fetchForumPost } from '../api/forumApi';
@@ -49,7 +50,7 @@ export const PostFlags: React.FC<{ post: ForumPost; showType?: boolean }> = ({ p
     accent: FriendsColors.accentSoft,
     gold: FriendsColors.goldSoft,
     muted: FriendsColors.cardHi,
-    warn: 'rgba(242,178,126,0.12)',
+    warn: FriendsColors.warnSoft,
     danger: FriendsColors.dangerSoft,
     success: 'rgba(120,200,150,0.12)',
   };
@@ -230,6 +231,7 @@ export const ForumPostCard: React.FC<{
 
   return (
     <View style={[styles.card, post.isFreshersGuide && styles.guideCard]}>
+      <CardGlow tint={post.isFreshersGuide ? 'rgba(232,196,127,0.10)' : undefined} />
       <TouchableOpacity
         onPress={() => nav.push({ name: 'post', id: post.id, post })}
         activeOpacity={0.85}
@@ -344,16 +346,16 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: FriendsColors.card,
     borderRadius: FR.card,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth * 2,
     borderColor: FriendsColors.line,
     paddingHorizontal: FS.lg,
     paddingTop: FS.md,
     paddingBottom: FS.sm,
   },
-  guideCard: { borderColor: 'rgba(229,192,123,0.35)' },
+  guideCard: { borderColor: 'rgba(232,196,127,0.35)' },
   head: { flexDirection: 'row', alignItems: 'center', gap: FS.sm },
   iconBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginRight: -10 },
-  community: { fontSize: 11, fontWeight: '800', color: FriendsColors.accent, letterSpacing: 0.4, marginBottom: 4, textTransform: 'uppercase' },
+  community: { fontSize: 11, fontWeight: '800', color: SectionTints.forum.fg, letterSpacing: 0.4, marginBottom: 4, textTransform: 'uppercase' },
   flags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   flag: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: FR.pill },
   flagText: { fontSize: 11, fontWeight: '800' },

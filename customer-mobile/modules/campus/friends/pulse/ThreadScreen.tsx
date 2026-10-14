@@ -202,7 +202,7 @@ export const ThreadScreen: React.FC<{ id: string; initial?: PulsePost | null }> 
           contentContainerStyle={{ paddingHorizontal: FS.lg, paddingBottom: 120 }}
           ListEmptyComponent={
             replies.loading ? (
-              <ActivityIndicator color={FriendsColors.accent} style={{ marginVertical: FS.xl }} accessibilityLabel="Loading replies" />
+              <FriendsSkeleton rows={2} variant="row" flush />
             ) : replies.error ? (
               <FriendsError compact message={pulseErrorMessage(replies.error, "Couldn't load replies.")} onRetry={replies.reload} />
             ) : (

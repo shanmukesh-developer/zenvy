@@ -164,7 +164,7 @@ export const SafetyCenter: React.FC<{
             <Text style={fui.ghostBtnText}>See what Connect stores about me</Text>
           </TouchableOpacity>
           {data ? <MyDataCard data={data} /> : null}
-          <TouchableOpacity style={[fui.ghostBtn, { borderColor: 'rgba(240,138,126,0.4)' }]} onPress={remove} disabled={!!busy} accessibilityRole="button" accessibilityLabel="Delete Connect and all my Connect data">
+          <TouchableOpacity style={[fui.ghostBtn, { borderColor: 'rgba(243,139,128,0.4)' }]} onPress={remove} disabled={!!busy} accessibilityRole="button" accessibilityLabel="Delete Connect and all my Connect data">
             {busy === 'delete' ? <ActivityIndicator size="small" color={FriendsColors.danger} /> : <Trash2 size={16} color={FriendsColors.danger} />}
             <Text style={[fui.ghostBtnText, { color: FriendsColors.danger }]}>Delete Connect</Text>
           </TouchableOpacity>

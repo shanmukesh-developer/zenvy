@@ -1,7 +1,10 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Check, Circle } from 'lucide-react-native';
-import { FriendsColors, FS, FT, FR } from '../friendsTheme';
+import { FriendsColors, FS, FT, FR, SectionTints } from '../friendsTheme';
+import { CardGlow } from '../shared/FriendsUi';
+
+const TINT = SectionTints.tasks;
 import { formatLocal } from '../shared/RelativeTime';
 import type { Task } from '../api/tasksApi';
 
@@ -68,6 +71,7 @@ export const TaskTimeline: React.FC<{ task: Task }> = ({ task }) => {
 
   return (
     <View style={styles.wrap} accessible accessibilityLabel={summary}>
+      <CardGlow tint="rgba(242,192,126,0.07)" />
       <Text style={[FT.kicker, { marginBottom: FS.md }]}>Progress</Text>
       {STEPS.map((s, i) => {
         const done = i <= idx;
@@ -79,9 +83,9 @@ export const TaskTimeline: React.FC<{ task: Task }> = ({ task }) => {
           <View key={s.key} style={styles.row}>
             <View style={styles.rail}>
               <View style={[styles.dot, done && styles.dotDone, current && styles.dotCurrent]}>
-                {done && !current ? <Check size={11} color={FriendsColors.accentInk} /> : current ? <Circle size={8} color={FriendsColors.accent} fill={FriendsColors.accent} /> : null}
+                {done && !current ? <Check size={11} color={FriendsColors.accentInk} /> : current ? <Circle size={8} color={TINT.fg} fill={TINT.fg} /> : null}
               </View>
-              {!last ?<View style={[styles.line, i < idx && styles.lineDone]} /> : null}
+              {!last ? <View style={[styles.line, i < idx && styles.lineDone]} /> : null}
             </View>
             <View style={styles.body}>
               <Text style={[FT.body, { color: done ? FriendsColors.ink : FriendsColors.faint, fontWeight: current ? '800' : '600' }]}>{s.label}</Text>
@@ -106,13 +110,13 @@ export const TaskTimeline: React.FC<{ task: Task }> = ({ task }) => {
 };
 
 const styles = StyleSheet.create({
-  wrap: { padding: FS.lg, borderRadius: FR.card, backgroundColor: FriendsColors.card, borderWidth: 1, borderColor: FriendsColors.line },
+  wrap: { padding: FS.lg, borderRadius: FR.card, backgroundColor: FriendsColors.card, borderWidth: StyleSheet.hairlineWidth * 2, borderColor: FriendsColors.line },
   row: { flexDirection: 'row', gap: FS.md },
   rail: { width: 20, alignItems: 'center' },
-  dot: { width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, borderColor: FriendsColors.line, alignItems: 'center', justifyContent: 'center', backgroundColor: FriendsColors.bg },
-  dotDone: { backgroundColor: FriendsColors.accent, borderColor: FriendsColors.accent },
-  dotCurrent: { backgroundColor: FriendsColors.accentSoft, borderColor: FriendsColors.accent },
-  line: { width: 2, flex: 1, minHeight: 18, backgroundColor: FriendsColors.line, marginVertical: 2 },
-  lineDone: { backgroundColor: FriendsColors.accent },
+  dot: { width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, borderColor: FriendsColors.lineStrong, alignItems: 'center', justifyContent: 'center', backgroundColor: FriendsColors.bg },
+  dotDone: { backgroundColor: TINT.fg, borderColor: TINT.fg },
+  dotCurrent: { width: 22, height: 22, borderRadius: 11, marginHorizontal: -1, backgroundColor: TINT.soft, borderColor: TINT.fg, borderWidth: 2 },
+  line: { width: 2, flex: 1, minHeight: 18, borderRadius: 1, backgroundColor: FriendsColors.line, marginVertical: 3 },
+  lineDone: { backgroundColor: TINT.line },
   body: { flex: 1, paddingBottom: FS.md },
 });

@@ -3,7 +3,8 @@ import { View, Text, TouchableOpacity, Switch, StyleSheet, StyleProp, ViewStyle,
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Check, Heart } from 'lucide-react-native';
-import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';
+import { FriendsColors, FS, FT, FR, fui, SectionTints } from '../friendsTheme';
+import { FriendsButton } from '../shared/FriendsUi';
 import { initialOf, photoSource } from './connectShared';
 
 /** A private Connect photo (memory cache only), or a quiet monogram when there is none. */
@@ -20,7 +21,7 @@ export const ConnectPhotoView: React.FC<{
       {src ? (
         <Image source={src} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory" transition={150} />
       ) : (
-        <LinearGradient colors={['#2A2240', '#16131E']} style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
+        <LinearGradient colors={['#3A2340', '#16131E']} style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
           <Text style={styles.monogram}>{initialOf(name)}</Text>
         </LinearGradient>
       )}
@@ -54,8 +55,8 @@ export const ConnectChip: React.FC<{
 
 /** Read-only tag on a card. */
 export const ConnectTag: React.FC<{ label: string; tone?: 'accent' | 'muted' }> = ({ label, tone = 'muted' }) => (
-  <View style={[styles.tag, tone === 'accent' && { backgroundColor: FriendsColors.accentSoft, borderColor: 'rgba(200,182,255,0.35)' }]}>
-    <Text style={[styles.tagText, tone === 'accent' && { color: FriendsColors.accent }]}>{label}</Text>
+  <View style={[styles.tag, tone === 'accent' && { backgroundColor: SectionTints.connect.soft, borderColor: SectionTints.connect.line }]}>
+    <Text style={[styles.tagText, tone === 'accent' && { color: SectionTints.connect.fg }]}>{label}</Text>
   </View>
 );
 
@@ -101,11 +102,11 @@ const toneOf = (t: Tone) =>
   t === 'accent'
     ? { fg: FriendsColors.accent, bg: FriendsColors.accentSoft }
     : t === 'warn'
-      ? { fg: FriendsColors.warn, bg: 'rgba(240,190,110,0.12)' }
+      ? { fg: FriendsColors.warn, bg: FriendsColors.warnSoft }
       : t === 'danger'
         ? { fg: FriendsColors.danger, bg: FriendsColors.dangerSoft }
         : t === 'success'
-          ? { fg: FriendsColors.success, bg: 'rgba(120,200,150,0.12)' }
+          ? { fg: FriendsColors.success, bg: FriendsColors.successSoft }
           : { fg: FriendsColors.muted, bg: FriendsColors.cardHi };
 
 export const StatusPill: React.FC<{ label: string; tone?: Tone }> = ({ label, tone = 'muted' }) => {
@@ -154,19 +155,7 @@ export const PrimaryButton: React.FC<{
   style?: StyleProp<ViewStyle>;
   a11yHint?: string;
 }> = ({ label, onPress, busy, disabled, icon, style, a11yHint }) => (
-  <TouchableOpacity
-    style={[fui.primaryBtn, (disabled || busy) && { opacity: 0.55 }, style]}
-    onPress={onPress}
-    disabled={disabled || busy}
-    activeOpacity={0.85}
-    accessibilityRole="button"
-    accessibilityLabel={label}
-    accessibilityHint={a11yHint}
-    accessibilityState={{ disabled: !!(disabled || busy), busy: !!busy }}
-  >
-    {busy ? <ActivityIndicator color={FriendsColors.accentInk} /> : icon}
-    <Text style={fui.primaryBtnText}>{label}</Text>
-  </TouchableOpacity>
+  <FriendsButton label={label} onPress={onPress} loading={busy} disabled={disabled} icon={icon} style={style} accessibilityHint={a11yHint} />
 );
 
 export const GhostButton: React.FC<{
@@ -178,18 +167,7 @@ export const GhostButton: React.FC<{
   danger?: boolean;
   style?: StyleProp<ViewStyle>;
 }> = ({ label, onPress, busy, disabled, icon, danger, style }) => (
-  <TouchableOpacity
-    style={[fui.ghostBtn, danger && { borderColor: 'rgba(240,138,126,0.4)' }, (disabled || busy) && { opacity: 0.55 }, style]}
-    onPress={onPress}
-    disabled={disabled || busy}
-    activeOpacity={0.8}
-    accessibilityRole="button"
-    accessibilityLabel={label}
-    accessibilityState={{ disabled: !!(disabled || busy), busy: !!busy }}
-  >
-    {busy ? <ActivityIndicator size="small" color={danger ? FriendsColors.danger : FriendsColors.ink} /> : icon}
-    <Text style={[fui.ghostBtnText, danger && { color: FriendsColors.danger }]}>{label}</Text>
-  </TouchableOpacity>
+  <FriendsButton label={label} onPress={onPress} loading={busy} disabled={disabled} icon={icon} style={style} variant={danger ? 'danger' : 'ghost'} />
 );
 
 /** Onboarding progress: Age · Consent · Selfie · Profile. */
@@ -207,7 +185,7 @@ export const StepDots: React.FC<{ steps: string[]; current: number }> = ({ steps
 );
 
 const styles = StyleSheet.create({
-  monogram: { fontSize: 44, fontWeight: '800', color: 'rgba(200,182,255,0.55)', letterSpacing: -1 },
+  monogram: { fontSize: 44, fontWeight: '800', color: 'rgba(245,168,196,0.6)', letterSpacing: -1 },
   tag: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: FR.pill, backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
   tagText: { fontSize: 12, fontWeight: '700', color: FriendsColors.ink },
   section: { flexDirection: 'row', alignItems: 'flex-end', gap: FS.sm, marginTop: FS.xl, marginBottom: FS.sm },
