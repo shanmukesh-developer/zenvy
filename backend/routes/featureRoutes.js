@@ -94,10 +94,11 @@ router.get('/challenges/active', require('../utils/responseCache').cacheGet('cha
     const Order = getOrderModel();
     const User = getUserModel();
 
+    // Week starts Sunday 00:00 IST (the server clock is UTC: setHours(0) meant 05:30 IST).
+    const IST_MS = 5.5 * 60 * 60 * 1000;
     const now = new Date();
-    const startOfWeek = new Date(now);
-    startOfWeek.setDate(now.getDate() - now.getDay());
-    startOfWeek.setHours(0, 0, 0, 0);
+    const nowIst = new Date(Date.now() + IST_MS);
+    const startOfWeek = new Date(Date.UTC(nowIst.getUTCFullYear(), nowIst.getUTCMonth(), nowIst.getUTCDate() - nowIst.getUTCDay()) - IST_MS);
 
     // Only the columns the leaderboard needs (full order rows carry photos / addresses).
     const orders = await Order.findAll({

@@ -129,7 +129,7 @@ const riderOrderPayload = (order, restaurant, customer, { revealCustomer }) => {
     createdAt: order.createdAt,
     deliverySlot: order.deliverySlot || null,
     // Rider-purchase store (offline, or no partner login): the rider buys the items at the counter.
-    buyAtStore: !!restaurant && (!!restaurant.isOffline || (restaurant.password !== undefined && !restaurant.password)),
+    buyAtStore: require('../utils/riderPurchase').isRiderPurchaseStore(restaurant, 'riderOrderPayload'),
   };
 };
 
@@ -295,6 +295,10 @@ const acceptOrder = (req, res) => withRiderClaimLock(String(req.user.id), () => 
 
 const acceptOrderLocked = async (req, res) => {
   try {
+    // A non-UUID id made PostgreSQL throw (500) in the count below; answer like any unclaimable order.
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(req.params.orderId || ''))) {
+      return res.status(400).json({ message: 'Order was already claimed by another rider or is not yet accepted by the merchant.' });
+    }
     const DeliveryPartner = getDeliveryPartnerModel();
     const Order = getOrderModel();
     const partner = await DeliveryPartner.findByPk(req.user.id);
@@ -1210,6 +1214,8 @@ const changePassword = async (req, res) => {
     await partner.save();
     // Older sessions (other phones, a stolen token) are revoked; this device gets a fresh token.
     require('../middleware/authMiddleware').clearCachedUser(partner.id);
+    // Live sockets opened with an older token are closed too (socket auth only checks at connect).
+    realtime.disconnectRevokedSockets(partner.id, partner.tokenVersion);
     const token = generateToken(partner.id, partner.tokenVersion);
     if (token) res.cookie('token', token, { httpOnly: true, secure: true, sameSite: 'none', maxAge: 30 * 24 * 60 * 60 * 1000 });
     res.json({ message: 'Password updated successfully', token });

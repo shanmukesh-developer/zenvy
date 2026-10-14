@@ -93,8 +93,33 @@ const sendEntry = (req, res, entry, status) => {
   return res.end(req.method === 'HEAD' ? undefined : entry.body);
 };
 
-const cacheGet = (group, { ttlMs = 30 * 1000, key } = {}) => (req, res, next) => {
+// Requests that must always see the database (e.g. an admin editor that reads, edits and writes
+// the whole document back): they skip the cache entirely and get Cache-Control: no-store.
+// Only checked when the request carries a credential, so anonymous traffic pays nothing.
+const hasCredential = (req) => !!((req.headers && req.headers.authorization) || /(?:^|;\s*)token=/.test(String((req.headers && req.headers.cookie) || '')));
+const liveAdminBypass = async (req) => {
+  if (!hasCredential(req)) return false;
+  try {
+    return await require('../middleware/authMiddleware').isLiveAdminRequest(req);
+  } catch {
+    return false;
+  }
+};
+
+const cacheGet = (group, { ttlMs = 30 * 1000, key, bypass } = {}) => (req, res, next) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  if (typeof bypass === 'function' && hasCredential(req)) {
+    return Promise.resolve(bypass(req)).then((skip) => {
+      if (!skip) return serve(group, ttlMs, key, req, res, next);
+      res.set('Cache-Control', 'no-store');
+      res.set('X-Cache', 'BYPASS');
+      return next();
+    }, () => serve(group, ttlMs, key, req, res, next));
+  }
+  return serve(group, ttlMs, key, req, res, next);
+};
+
+const serve = (group, ttlMs, key, req, res, next) => {
   const cacheKey = `${group}|${key ? key(req) : canonicalUrl(req)}`;
   const gen = genOf(group);
   const hit = store.get(cacheKey);
@@ -122,4 +147,4 @@ const cacheGet = (group, { ttlMs = 30 * 1000, key } = {}) => (req, res, next) =>
 
 const stats = () => ({ entries: store.size, groups: Object.fromEntries(generations) });
 
-module.exports = { cacheGet, invalidate, invalidateAll, canonicalUrl, stats };
+module.exports = { cacheGet, invalidate, invalidateAll, canonicalUrl, stats, liveAdminBypass };

@@ -716,6 +716,8 @@ const resetPassword = async (req, res) => {
     await user.save();
     // Every session signed before the reset (including a stolen token) is now revoked.
     require('../middleware/authMiddleware').clearCachedUser(user.id);
+    // ...and so is every live socket opened with one of those tokens.
+    require('../utils/realtime').disconnectRevokedSockets(user.id, user.tokenVersion);
 
     res.json({ message: 'Password reset successful' });
   } catch (error) {
@@ -1001,6 +1003,7 @@ const logoutUser = async (req, res) => {
         && (Number(decoded.tv) || 0) === (Number(user.tokenVersion) || 0)) {
         await User.increment('tokenVersion', { by: 1, where: { id: user.id } });
         require('../middleware/authMiddleware').clearCachedUser(user.id);
+        require('../utils/realtime').disconnectRevokedSockets(user.id, null); // admin-room sockets too
       }
       if (user && fcmToken) {
         const list = Array.isArray(user.fcmTokens) ? user.fcmTokens : [];

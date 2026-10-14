@@ -36,6 +36,8 @@ const writeFlag = async (enabled) => {
   if (row) await row.update({ value: !!enabled });
   else await GlobalConfig.create({ key: FLAG_KEY, value: !!enabled, description: 'Peer-to-peer student vehicle rentals (Others > Rentals)' });
   flagCache = { at: Date.now(), value: !!enabled };
+  // GET /api/users/config (all GlobalConfig rows) is response-cached: show the new switch at once.
+  try { require('../../../utils/realtime').publish('config', 'updated', FLAG_KEY, { scope: 'global' }); } catch { /* cache just expires */ }
   return !!enabled;
 };
 

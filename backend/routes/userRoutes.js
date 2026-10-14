@@ -63,7 +63,7 @@ router.put('/profile', protect, updateUserProfile);
 
 // Public Asset Discovery (short server cache + ETag; cleared on every store / product / config write)
 const { cacheGet } = require('../utils/responseCache');
-router.get('/config', cacheGet('config', { ttlMs: 60 * 1000 }), require('../controllers/adminController').getGlobalConfig);
+router.get('/config', cacheGet('config', { ttlMs: 60 * 1000, bypass: require('../utils/responseCache').liveAdminBypass }), require('../controllers/adminController').getGlobalConfig);
 router.get('/restaurants', cacheGet('catalog', { ttlMs: 30 * 1000 }), require('../controllers/adminController').getRestaurants);
 router.get('/restaurants/:id', cacheGet('catalog', { ttlMs: 30 * 1000 }), require('../controllers/adminController').getRestaurantById);
 router.get('/search', require('../controllers/searchController').globalSearch);

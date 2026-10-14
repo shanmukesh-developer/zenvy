@@ -274,7 +274,7 @@ const computeOrderQuote = async ({ user, items, couponCode }) => {
     store: { id: store.id, name: store.name, vendorType: store.vendorType, isOffline: !!store.isOffline, zone: store.zone, location: store.location, ...(isStall ? { whatsappNumber: store.whatsappNumber || null } : {}), minOrderValue },
     fulfilment: isStall ? 'VENDOR' : 'ZENVY',
     // Stalls and rider-purchase stores (offline / no partner login) are cash on delivery only.
-    paymentMethods: isStall || store.isOffline || (store.password !== undefined && !store.password) ? ['COD'] : ['COD', 'Wallet'],
+    paymentMethods: isStall || require('./riderPurchase').isRiderPurchaseStore(store, 'computeOrderQuote') ? ['COD'] : ['COD', 'Wallet'],
     lines: pricedLines,
     subtotal,
     deliveryFee,

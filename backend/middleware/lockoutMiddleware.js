@@ -21,7 +21,11 @@ const lockoutKey = (req) => {
   if (!raw) return `${scope}|ip:${req.ip}`;
   const text = String(raw).trim().toLowerCase();
   const digits = text.replace(/\D/g, '');
-  if (!text.includes('@') && digits.length >= 10 && /^[+\d\s()-]+$/.test(text)) {
+  // Same rule as utils/phoneUtils.normalizePhone (what the login controllers look the account up
+  // by): no letters -> every non-digit is dropped and the last 10 digits are the account. So
+  // '9876543210.', '9876543210//' and '#9876543210' all share one key; otherwise appending a junk
+  // character gave every guess a fresh counter and the lockout never triggered.
+  if (!text.includes('@') && digits.length >= 10 && !/[a-z]/i.test(text)) {
     const { normalizePhone } = require('../utils/phoneUtils');
     return `${scope}|phone:${normalizePhone(text)}`;
   }

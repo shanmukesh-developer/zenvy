@@ -165,7 +165,8 @@ const quoteOrder = async (req, res) => {
       serviceability: getCampusServiceability(),
       paymentMethods: quote.paymentMethods || ['COD', 'Wallet'],
       walletBalance,
-      canPayWithWallet: quote.fulfilment !== 'VENDOR' && walletBalance >= quote.finalPrice
+      // Stalls and rider-purchase stores are COD only (createOrder refuses Wallet for them).
+      canPayWithWallet: quote.fulfilment !== 'VENDOR' && (quote.paymentMethods || ['COD', 'Wallet']).includes('Wallet') && walletBalance >= quote.finalPrice
     });
   } catch (err) {
     if (err instanceof PricingError) return sendPricingError(res, err);
@@ -282,7 +283,7 @@ const createOrder = async (req, res) => {
     const restaurant = await Restaurant.findByPk(quote.store.id);
     // Rider-purchase store: marked offline, or has no partner login (nobody can tap Accept), so the
     // rider goes there, buys the items and delivers. Its orders skip store acceptance and go to riders.
-    const riderBuys = !!restaurant && (!!restaurant.isOffline || !restaurant.password);
+    const riderBuys = require('../utils/riderPurchase').isRiderPurchaseStore(restaurant, 'createOrder');
     // CampusBites stall: cash to the vendor on delivery, the vendor delivers (no rider, no PIN).
     const isVendorOrder = quote.fulfilment === 'VENDOR';
     if (isVendorOrder && paymentMethod !== 'COD') {
@@ -1334,16 +1335,18 @@ const getOrderStats = async (req, res) => {
     });
 
     // Monthly spend (last 6 months)
+    // Months are IST calendar months (the server runs in UTC: an order at 00:30 IST on the 1st
+    // belonged to the previous month, and for the first 5.5 h of a month the current month was missing).
     const monthlyMap = {};
-    const now = new Date();
+    const IST_MS = 5.5 * 60 * 60 * 1000;
+    const monthKey = (d) => new Date(d.getTime() + IST_MS).toLocaleString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+    const nowIst = new Date(Date.now() + IST_MS);
     for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = d.toLocaleString('default', { month: 'short', year: 'numeric' });
-      monthlyMap[key] = 0;
+      const d = new Date(Date.UTC(nowIst.getUTCFullYear(), nowIst.getUTCMonth() - i, 1));
+      monthlyMap[d.toLocaleString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' })] = 0;
     }
     orders.forEach(o => {
-      const d = new Date(o.createdAt);
-      const key = d.toLocaleString('default', { month: 'short', year: 'numeric' });
+      const key = monthKey(new Date(o.createdAt));
       if (monthlyMap[key] !== undefined) {
         monthlyMap[key] += (o.finalPrice || o.totalPrice || 0);
       }

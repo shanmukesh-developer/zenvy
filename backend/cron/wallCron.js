@@ -51,6 +51,12 @@ const processExpiredWallEvents = async () => {
   console.log(`[WALL CRON] Found ${expiredEvents.length} expired event(s) to finalize.`);
 
   for (const event of expiredEvents) {
+    // Claim the event first (conditional ACTIVE -> ENDED): the 5-minute cron, the admin "finalize
+    // now" route and a second instance during a deploy can all see the same expired event. Only
+    // the run that flips it awards the coupon and sends the pushes (no duplicate WALL- coupons).
+    const [claimed] = await WallEvent.update({ status: 'ENDED' }, { where: { id: event.id, status: 'ACTIVE' } });
+    if (!claimed) continue;
+
     // Find winner with highest likes among approved submissions
     const topSubmission = await WallSubmission.findOne({
       where: {
@@ -93,11 +99,11 @@ const processExpiredWallEvents = async () => {
       }
     }
 
-    // Update event status
+    // Record the winner (status was already set to ENDED by the claim above)
+    await WallEvent.update({ winnerUserId, couponCode }, { where: { id: event.id } });
     event.status = 'ENDED';
     event.winnerUserId = winnerUserId;
     event.couponCode = couponCode;
-    await event.save();
     require('../utils/realtime').publish('wall', 'updated', event.id, { scope: 'event' });
 
     console.log(`🏆 [WALL EVENT ENDED] Event "${event.title}" finalized. Winner: ${winnerName} (${winnerUserId})`);

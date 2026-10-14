@@ -205,7 +205,33 @@ const leaveOrderRoom = (riderId, orderId) => {
   }
 };
 
+// Session revocation for LIVE sockets. Socket auth checks tokenVersion only at connect, so after a
+// password change / reset / admin logout an already-connected socket kept receiving the account's
+// events (orders, customer details, pushes) until it dropped. Disconnects every socket of `accountId`
+// (main namespace) whose token version is not `tokenVersion`; pass null to drop all of them.
+// Fire-and-forget, never throws. Sockets carrying the new token stay connected.
+const disconnectRevokedSockets = (accountId, tokenVersion = null) => {
+  if (!ioRef || !accountId || typeof ioRef.fetchSockets !== 'function') return Promise.resolve(0);
+  const want = tokenVersion === null || tokenVersion === undefined ? null : (Number(tokenVersion) || 0);
+  let pending;
+  try { pending = Promise.resolve(ioRef.fetchSockets()); } catch (err) { console.warn('[REALTIME_REVOKE_WARN]', err.message); return Promise.resolve(0); }
+  return pending
+    .then((sockets) => {
+      let n = 0;
+      for (const s of sockets) {
+        const u = s.data && s.data.user ? s.data.user : s.user;
+        if (!u || String(u.id) !== String(accountId)) continue;
+        if (want !== null && (Number(u.tv) || 0) === want) continue;
+        s.disconnect(true);
+        n++;
+      }
+      return n;
+    })
+    .catch((err) => { console.warn('[REALTIME_REVOKE_WARN]', err.message); return 0; });
+};
+
 module.exports = {
+  disconnectRevokedSockets,
   init, publish, notifyAdmin, toUser, PUBLIC_EVENT, ADMIN_EVENT, ADMIN_ROOM,
   setRiderOnline, deliveryRequest, deliveryRequestGone, leaveOrderRoom,
   RIDERS_ONLINE_ROOM, DELIVERY_REQUEST_EVENT, DELIVERY_REQUEST_GONE_EVENT, CLAIMABLE_STATUSES,

@@ -687,8 +687,12 @@ const getLocalVendors = async (req, res) => {
 // @route   POST /api/restaurants/:id/click
 const incrementClickCount = async (req, res) => {
   try {
+    // Public route: a non-UUID id made PostgreSQL throw (500 + error log per request).
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(req.params.id || ''))) {
+      return res.status(404).json({ message: 'Vendor not found' });
+    }
     const Restaurant = getRestaurantModel();
-    const restaurant = await Restaurant.findByPk(req.params.id);
+    const restaurant = await Restaurant.findByPk(req.params.id, { attributes: ['id', 'clickCount'] });
     if (!restaurant) return res.status(404).json({ message: 'Vendor not found' });
 
     await restaurant.increment('clickCount');

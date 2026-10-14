@@ -748,7 +748,11 @@ exports.updateRestaurant = async (req, res) => {
     if (stallSwitched && !updateData.password) updateData.tokenVersion = (Number(restaurant.tokenVersion) || 0) + 1;
     // A password change bumps tokenVersion (model hook): signed-in partner apps are signed out.
     await restaurant.update(updateData);
-    if (updateData.password || stallSwitched) clearCachedUser(restaurant.id);
+    if (updateData.password || stallSwitched) {
+      clearCachedUser(restaurant.id);
+      // Partner sockets opened with the revoked token stop getting this store's orders now.
+      realtime.disconnectRevokedSockets(restaurant.id, restaurant.tokenVersion);
+    }
     clearRestaurantsCache();
     broadcastSystemUpdate(req, 'RESTAURANT_UPDATED', publicRestaurant(restaurant));
     realtime.publish('store', 'updated', restaurant.id, { storeId: restaurant.id });
@@ -1057,7 +1061,10 @@ exports.getAuditLogs = async (req, res) => {
 exports.updateGlobalConfig = async (req, res) => {
   try {
     const GlobalConfig = getGlobalConfigModel();
-    const { key, value, description } = req.body;
+    const { value, description } = req.body || {};
+    const key = typeof req.body?.key === 'string' ? req.body.key.trim() : '';
+    if (!key || key.length > 100) return res.status(400).json({ message: 'Config key is required (up to 100 characters).' });
+    if (value === undefined) return res.status(400).json({ message: 'Config value is required.' });
     const [_config, created] = await GlobalConfig.upsert({ key, value, description });
     broadcastSystemUpdate(req, 'GLOBAL_CONFIG_UPDATED', { key, value });
     realtime.publish('config', 'updated', key, { scope: 'global' });
@@ -1645,10 +1652,29 @@ exports.createCoupon = async (req, res) => {
   try {
     const { getCouponModel } = require('../models/Coupon');
     const Coupon = getCouponModel();
-    const { code, type, value, userId, expiryDate } = req.body;
-    
-    if (!code || !userId) {
+    const { type, value, userId, expiryDate } = req.body || {};
+    // Checkout looks coupons up by the trimmed code, so a stored ' SAVE50' could never be redeemed.
+    const code = typeof req.body?.code === 'string' ? req.body.code.trim() : '';
+
+    if (!code || !userId || typeof userId !== 'string' || !UUID_RE.test(userId)) {
       return res.status(400).json({ message: 'Code and User ID are required' });
+    }
+    if (code.length > 40 || !/^[A-Za-z0-9_-]+$/.test(code)) {
+      return res.status(400).json({ message: 'Coupon code: up to 40 letters, digits, - or _.' });
+    }
+    // Only the types checkout understands (orderPricing.couponDiscountFor); anything else was
+    // stored, "applied" at checkout and silently gave no discount.
+    const couponType = type === undefined || type === null || type === '' ? 'FREEDEL' : String(type).toUpperCase();
+    if (!['FREEDEL', 'DISCOUNT'].includes(couponType)) {
+      return res.status(400).json({ message: 'Coupon type must be FREEDEL or DISCOUNT.' });
+    }
+    const couponValue = value === undefined || value === null || value === '' ? 0 : Number(value);
+    if (!Number.isFinite(couponValue) || couponValue < 0 || couponValue > 5000) {
+      return res.status(400).json({ message: 'Coupon value must be a number from 0 to 5000.' });
+    }
+    const expiry = expiryDate ? new Date(expiryDate) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    if (Number.isNaN(expiry.getTime())) {
+      return res.status(400).json({ message: 'Expiry date is not a valid date.' });
     }
 
     const User = getUserModel();
@@ -1665,11 +1691,11 @@ exports.createCoupon = async (req, res) => {
 
     const coupon = await Coupon.create({
       code,
-      type: type || 'FREEDEL',
-      value: value || 0,
+      type: couponType,
+      value: couponValue,
       userId,
       isUsed: false,
-      expiryDate: expiryDate ? new Date(expiryDate) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+      expiryDate: expiry
     });
 
     await logAuditAction(req, coupon.id, 'CREATE_COUPON', { code: coupon.code, userId });
