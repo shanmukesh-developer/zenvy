@@ -508,7 +508,9 @@ const autoConfirmOne = async (task) => {
   if (task.status !== 'submitted' || !task.submittedAt) return false;
   if (Date.now() - new Date(task.submittedAt).getTime() < autoConfirmDays() * DAY) return false;
   const cutoff = new Date(Date.now() - autoConfirmDays() * DAY);
-  const r = await completeTask(task.id, { auto: true, where: { submittedAt: { [Op.lt]: cutoff } } });
+  // A task a moderator hid / flagged is frozen: it must not auto-complete (karma, badge, reviews).
+  if (task.modStatus && task.modStatus !== 'visible') return false;
+  const r = await completeTask(task.id, { auto: true, where: { submittedAt: { [Op.lt]: cutoff }, modStatus: 'visible' } });
   return r.won;
 };
 

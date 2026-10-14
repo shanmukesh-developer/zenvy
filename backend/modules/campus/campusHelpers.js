@@ -80,8 +80,10 @@ const isBlockedBetween = async (a, b) => {
       attributes: ['id'],
     });
     return !!row;
-  } catch {
-    return false;
+  } catch (err) {
+    // Fail closed: a database error must never read as "not blocked" (callers refuse on throw).
+    console.warn('[CAMPUS_BLOCK_CHECK_WARN]', err.message);
+    throw err;
   }
 };
 
@@ -97,8 +99,38 @@ const blockedIdsFor = async (userId) => {
       attributes: ['requesterId', 'recipientId'],
     });
     rows.forEach((r) => out.add(r.requesterId === userId ? r.recipientId : r.requesterId));
-  } catch { /* none */ }
+  } catch (err) {
+    // Fail closed (see isBlockedBetween): an empty set would show blocked people.
+    console.warn('[CAMPUS_BLOCK_LIST_WARN]', err.message);
+    throw err;
+  }
   return out;
+};
+
+// ── Campus scope ────────────────────────────────────────────────────────────
+/** { campusId, verified } of a user's campus profile (campusId null when none). */
+const campusScopeFor = async (userId) => {
+  const { getCampusProfileModel } = require('./models/CampusProfile');
+  const CampusProfile = getCampusProfileModel && getCampusProfileModel();
+  if (!CampusProfile || !userId) return { campusId: null, verified: false };
+  const p = await CampusProfile.findOne({ where: { userId }, attributes: ['campusId', 'verificationStatus'] });
+  return { campusId: p && p.campusId ? String(p.campusId) : null, verified: !!(p && p.verificationStatus === 'verified') };
+};
+
+/**
+ * Sequelize condition "this user-id column belongs to a VERIFIED student of campusId", as a sub-select
+ * (boards without their own campusId column: lost & found, ride pools).
+ */
+const sameCampusUsers = (campusId) => {
+  const { getCampusProfileModel } = require('./models/CampusProfile');
+  const CampusProfile = getCampusProfileModel();
+  const sequelize = CampusProfile.sequelize;
+  const tn = CampusProfile.getTableName();
+  const table = typeof tn === 'string' ? tn : tn.tableName;
+  const q = (id) => sequelize.getQueryInterface().quoteIdentifier(id);
+  return {
+    [Op.in]: sequelize.literal(`(SELECT ${q('userId')} FROM ${q(table)} WHERE ${q('campusId')} = ${sequelize.escape(String(campusId))} AND ${q('verificationStatus')} = 'verified')`),
+  };
 };
 
 // ── Push ────────────────────────────────────────────────────────────────────
@@ -142,6 +174,8 @@ module.exports = {
   readableText,
   isBlockedBetween,
   blockedIdsFor,
+  campusScopeFor,
+  sameCampusUsers,
   pushToUsers,
   MEDIA_PATH_RE,
 };

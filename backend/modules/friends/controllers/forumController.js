@@ -725,6 +725,9 @@ const parseReviewInput = (r, { partial = false } = {}) => {
   return out;
 };
 
+/** periodLabel + context values are shown campus-wide too, so they go through the same safety check. */
+const reviewExtraText = (r) => (r ? [r.periodLabel, ...Object.values(r.context || {})].filter(Boolean) : []);
+
 // POST /communities/:id/posts { type, title, body, mediaIds, links, anonymous, official, freshersGuide, review?, clientId }
 const createPost = async (req, res) => {
   const me = req.user.id;
@@ -779,7 +782,7 @@ const createPost = async (req, res) => {
     }
     const mineActive = await M('FriendsReview').findOne({ where: { targetId, authorId: me, active: true }, attributes: ['id'] });
     if (mineActive) throw fail(409, 'REVIEW_EXISTS', 'You already reviewed this. Edit your review instead.', { reviewId: mineActive.id });
-    decision = reviewSafety.enforce([title, body, reviewInput.pros, reviewInput.cons].filter(Boolean).join('\n'), { targetKind: reviewTarget.kind, cfg });
+    decision = reviewSafety.enforce([title, body, reviewInput.pros, reviewInput.cons, ...reviewExtraText(reviewInput)].filter(Boolean).join('\n'), { targetKind: reviewTarget.kind, cfg });
     limiter.enforce(me, 'forum_review');
   } else {
     decision = contentPolicy.enforce([title, body].filter(Boolean).join('\n'), { kind: 'forum_post', cfg });
@@ -895,7 +898,7 @@ const updatePost = async (req, res) => {
   if (post.type === 'review') {
     review = await M('FriendsReview').findOne({ where: { forumPostId: post.id } });
     const target = review ? await M('FriendsReviewTarget').findByPk(review.targetId) : null;
-    decision = reviewSafety.enforce([text, review && review.pros, review && review.cons].filter(Boolean).join('\n'), { targetKind: target && target.kind, cfg });
+    decision = reviewSafety.enforce([text, review && review.pros, review && review.cons, ...reviewExtraText(review)].filter(Boolean).join('\n'), { targetKind: target && target.kind, cfg });
   } else {
     decision = contentPolicy.enforce(text, { kind: 'forum_post', cfg });
   }
@@ -1078,6 +1081,10 @@ const createComment = async (req, res) => {
     parent = await Comment.findByPk(requireUuid(String(b.parentId), 'parent'));
     if (!parent || String(parent.postId) !== String(post.id)) throw fail(404, 'COMMENT_NOT_FOUND', 'The comment you are replying to is gone.');
     if (parent.status !== 'visible') throw fail(409, 'PARENT_NOT_OPEN', 'You cannot reply to that comment.');
+    // Blocks work both ways: no replying under (and pinging) someone who blocked you or whom you blocked.
+    if (String(parent.authorId) !== String(me) && await blocks.isBlocked(me, parent.authorId)) {
+      throw fail(404, 'COMMENT_NOT_FOUND', 'The comment you are replying to is gone.');
+    }
     if (parent.depth + 1 > F.MAX_DEPTH) throw fail(400, 'MAX_DEPTH', 'This thread is too deep. Reply higher up.', { max: F.MAX_DEPTH });
   }
   const anonymous = b.anonymous === undefined
@@ -1119,6 +1126,10 @@ const createComment = async (req, res) => {
     const recipients = new Set();
     if (String(post.authorId) !== String(me)) recipients.add(String(post.authorId));
     if (parent && String(parent.authorId) !== String(me)) recipients.add(String(parent.authorId));
+    if (recipients.size) {
+      const blocked = await blocks.blockedIds(me);
+      for (const r of [...recipients]) if (blocked.has(r)) recipients.delete(r);
+    }
     if (recipients.size) {
       await notify('FORUM_ANSWER', [...recipients], { id: post.id, body: `New comment on "${post.title.slice(0, 80)}"`, dedupeKey: `comment:${comment.id}`, data: { commentId: comment.id } });
     }
@@ -1176,8 +1187,27 @@ const deleteComment = async (req, res) => {
  * are conditional on the row's current value, so racing vote changes can never leave a down/removed
  * vote holding karma or credit an upvote twice.
  */
+// Count-then-award for one voter -> author pair runs one at a time (one process on Render): parallel
+// upvotes on different posts of the same author all saw "< cap" and all awarded.
+const karmaLocks = new Map(); // `${voterId}:${authorId}` -> tail promise
+const withPairLock = (key, fn) => {
+  const prev = karmaLocks.get(key) || Promise.resolve();
+  const run = prev.then(fn, fn);
+  const tail = run.catch(() => {});
+  karmaLocks.set(key, tail);
+  tail.then(() => { if (karmaLocks.get(key) === tail) karmaLocks.delete(key); });
+  return run;
+};
+
 const reconcileKarma = async (voteId, authorId, campusId) => {
   if (!voteId || !authorId) return;
+  const Vote = M('FriendsVote');
+  const peek = await Vote.findByPk(voteId, { attributes: ['id', 'userId'] });
+  if (!peek) return;
+  return withPairLock(`${peek.userId}:${authorId}`, () => reconcileKarmaLocked(voteId, authorId, campusId));
+};
+
+const reconcileKarmaLocked = async (voteId, authorId, campusId) => {
   const Vote = M('FriendsVote');
   const row = await Vote.findByPk(voteId);
   if (!row) return;
@@ -1436,7 +1466,8 @@ const updateReview = async (req, res) => {
   if (b.body !== undefined) postPatch.body = optText(b.body, 5000, 'Body');
   if (!Object.keys(patch).length && !Object.keys(postPatch).length) throw fail(400, 'NOTHING_TO_UPDATE', 'Nothing to update.');
   const target = await M('FriendsReviewTarget').findByPk(review.targetId);
-  const text = [postPatch.title ?? post.title, postPatch.body ?? post.body, patch.pros !== undefined ? patch.pros : review.pros, patch.cons !== undefined ? patch.cons : review.cons].filter(Boolean).join('\n');
+  const text = [postPatch.title ?? post.title, postPatch.body ?? post.body, patch.pros !== undefined ? patch.pros : review.pros, patch.cons !== undefined ? patch.cons : review.cons,
+    ...reviewExtraText({ periodLabel: patch.periodLabel !== undefined ? patch.periodLabel : review.periodLabel, context: patch.context !== undefined ? patch.context : review.context })].filter(Boolean).join('\n');
   const decision = reviewSafety.enforce(text, { targetKind: target && target.kind, cfg });
   limiter.enforce(me, 'forum_edit');
   const previous = { rating: review.rating, pros: review.pros, cons: review.cons, title: post.title, body: post.body };
@@ -1698,6 +1729,7 @@ const moderatePost = async (actor, post, action, reason) => {
     targetType: 'forum_post',
     targetId: post.id,
     subjectUserId: ['remove'].includes(action) ? post.authorId : null,
+    anonymous: !!post.isAnonymous,
     communityId: post.communityId,
     reason: reason || null,
   });
@@ -1733,6 +1765,7 @@ const moderateComment = async (actor, comment, post, action, reason) => {
     targetType: 'forum_comment',
     targetId: comment.id,
     subjectUserId: action === 'remove' ? comment.authorId : null,
+    anonymous: !!comment.isAnonymous,
     communityId: post.communityId,
     reason: reason || null,
   });
@@ -1793,6 +1826,26 @@ const forumTargetInfo = async (targetType, targetId) => {
   return null;
 };
 
+/** Batched forumTargetInfo for many targets: Map "<type>:<id>" -> info (a few queries, not 2 per target). */
+const forumTargetInfos = async (list) => {
+  const ids = { forum_post: [], forum_comment: [], review: [] };
+  for (const t of list) if (ids[t.targetType]) ids[t.targetType].push(String(t.targetId));
+  const findIn = (model, idList, attributes) => (idList.length ? M(model).findAll({ where: { id: { [Op.in]: [...new Set(idList)] } }, attributes }) : []);
+  const [posts, comments, reviews] = await Promise.all([
+    findIn('FriendsForumPost', ids.forum_post, ['id', 'communityId', 'authorId']),
+    findIn('FriendsForumComment', ids.forum_comment, ['id', 'postId', 'authorId']),
+    findIn('FriendsReview', ids.review, ['id', 'forumPostId', 'authorId']),
+  ]);
+  const parentIds = [...comments.map((c) => String(c.postId)), ...reviews.map((r) => String(r.forumPostId))];
+  const parents = await findIn('FriendsForumPost', parentIds, ['id', 'communityId']);
+  const communityOf = new Map([...posts, ...parents].map((p) => [String(p.id), String(p.communityId)]));
+  const out = new Map();
+  for (const p of posts) out.set(`forum_post:${p.id}`, { communityId: String(p.communityId), authorId: String(p.authorId), postId: p.id });
+  for (const c of comments) if (communityOf.has(String(c.postId))) out.set(`forum_comment:${c.id}`, { communityId: communityOf.get(String(c.postId)), authorId: String(c.authorId), postId: c.postId });
+  for (const r of reviews) if (communityOf.has(String(r.forumPostId))) out.set(`review:${r.id}`, { communityId: communityOf.get(String(r.forumPostId)), authorId: String(r.authorId), postId: r.forumPostId });
+  return out;
+};
+
 // GET /mod/reports?communityId=&cursor= — open reports on content in communities I moderate.
 // No reporter ids, no anonymous identities; reports about my own content are left out (conflict).
 const modReports = async (req, res) => {
@@ -1816,9 +1869,10 @@ const modReports = async (req, res) => {
     groups.get(key).push(r);
   }
   const items = [];
+  const infos = await forumTargetInfos([...groups.values()].map((list) => list[0]));
   for (const list of groups.values()) {
     const first = list[0];
-    const info = await forumTargetInfo(first.targetType, first.targetId);
+    const info = infos.get(`${first.targetType}:${first.targetId}`) || null;
     if (!info || !communities.includes(info.communityId) || info.authorId === String(me)) continue;
     items.push({
       reportId: first.id,
@@ -2129,10 +2183,17 @@ const decideTarget = (approve) => async (req, res) => {
 const adminListReviews = async (req, res) => {
   const status = String(req.query.status || 'pending_review');
   if (!F.REVIEW_STATUS.includes(status)) throw fail(400, 'INVALID_FILTER', 'Unknown status.');
-  const reviews = await M('FriendsReview').findAll({ where: { status, active: true }, order: [['createdAt', 'DESC']], limit: 200 });
+  const where = { status, active: true };
+  // Campus filter inside the query: filtering the newest 200 afterwards dropped a campus's reviews
+  // whenever other campuses had more recent ones.
+  if (req.query.campusId) {
+    const campusId = requireUuid(String(req.query.campusId), 'campus');
+    const campusPosts = await M('FriendsForumPost').findAll({ where: { campusId, type: 'review' }, attributes: ['id'] });
+    where.forumPostId = { [Op.in]: campusPosts.map((p) => p.id) };
+  }
+  const reviews = await M('FriendsReview').findAll({ where, order: [['createdAt', 'DESC']], limit: 200 });
   const posts = await M('FriendsForumPost').findAll({ where: { id: { [Op.in]: reviews.map((r) => r.forumPostId) } } });
-  const filtered = req.query.campusId ? posts.filter((p) => String(p.campusId) === String(req.query.campusId)) : posts;
-  send(res, 200, { items: await serializePosts(req, filtered, req.user.id, { full: true }) });
+  send(res, 200, { items: await serializePosts(req, posts, req.user.id, { full: true }) });
 };
 
 // POST /admin/posts/:id/:action  ·  POST /admin/comments/:id/:action  { reason }

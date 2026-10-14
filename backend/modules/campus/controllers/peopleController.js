@@ -224,7 +224,13 @@ const setGroupDiscoverable = async (req, res) => {
     if (!isAdmin) return res.status(403).json({ message: 'Only group admins can change this.' });
 
     const discoverable = !!(req.body && req.body.discoverable);
-    const myProfile = await getCampusProfileModel().findOne({ where: { userId: req.user.id }, attributes: ['campusId'] });
+    const myProfile = await getCampusProfileModel().findOne({ where: { userId: req.user.id }, attributes: ['campusId', 'verificationStatus'] });
+    // Listing a club in a campus directory needs a verified member of that campus (an unverified
+    // account can claim any campus in its profile and plant phishing / spam clubs there).
+    if (discoverable && String(req.user.role || '').toLowerCase() !== 'admin'
+      && (!myProfile || myProfile.verificationStatus !== 'verified' || !myProfile.campusId)) {
+      return res.status(403).json({ code: 'VERIFICATION_REQUIRED', message: 'Verify your college to list a club on campus.' });
+    }
     const Setting = getCampusGroupSettingModel();
     const [row] = await Setting.findOrCreate({
       where: { conversationId: id },

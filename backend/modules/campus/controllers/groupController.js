@@ -2,15 +2,35 @@ const { getConversationModel } = require('../../../models/Conversation');
 const { getUserModel } = require('../../../models/User');
 const { cleanImageRef } = require('../campusHelpers');
 
-// Generate unambiguous 6-character code (No 0/O/1/I/L) per Section 3.3
-const generateJoinCode = () => {
-  const chars = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
+const crypto = require('crypto');
+
+// Generate unambiguous 6-character code (No 0/O/1/I/L) per Section 3.3. crypto.randomInt, not
+// Math.random (predictable), and re-drawn on collision so two groups never share a code.
+const JOIN_CHARS = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
+const randomJoinCode = () => {
   let code = '';
-  for (let i = 0; i < 6; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
+  for (let i = 0; i < 6; i++) code += JOIN_CHARS.charAt(crypto.randomInt(JOIN_CHARS.length));
   return code;
 };
+const generateJoinCode = async () => {
+  const Conversation = getConversationModel();
+  for (let i = 0; i < 8; i++) {
+    const code = randomJoinCode();
+    // eslint-disable-next-line no-await-in-loop
+    const taken = Conversation ? await Conversation.findOne({ where: { joinCode: code }, attributes: ['id'] }) : null;
+    if (!taken) return code;
+  }
+  return randomJoinCode();
+};
+
+// Code guessing guard: a code lookup (preview or join) is limited per user / per IP.
+const codeLimiter = require('../../friends/services/limiter');
+codeLimiter.define('group_code_lookup', 30, 15 * 60 * 1000);
+const codeLookupAllowed = (req) => {
+  const key = req.user && req.user.id ? `u:${req.user.id}` : `ip:${req.ip || (req.connection && req.connection.remoteAddress) || 'unknown'}`;
+  return codeLimiter.take(key, 'group_code_lookup').ok;
+};
+const validCode = (v) => typeof v === 'string' && /^[A-Za-z0-9]{4,12}$/.test(v.trim());
 
 // @desc    Create a new group (Class, Club, Study, Ride)
 // @route   POST /api/campus/groups
@@ -30,7 +50,7 @@ const createGroup = async (req, res) => {
     }
 
     const Conversation = getConversationModel();
-    const joinCode = generateJoinCode();
+    const joinCode = await generateJoinCode();
 
     const group = await Conversation.create({
       name: name.trim().slice(0, 80),
@@ -48,8 +68,9 @@ const createGroup = async (req, res) => {
       try {
         const { getCampusGroupSettingModel } = require('../models/CampusGroupSetting');
         const { getCampusProfileModel } = require('../models/CampusProfile');
-        const mine = await getCampusProfileModel().findOne({ where: { userId: req.user.id }, attributes: ['campusId'] });
-        await getCampusGroupSettingModel().create({
+        const mine = await getCampusProfileModel().findOne({ where: { userId: req.user.id }, attributes: ['campusId', 'verificationStatus'] });
+        // Only a verified student lists a club in their campus directory (see setGroupDiscoverable).
+        if (mine && mine.campusId && mine.verificationStatus === 'verified') await getCampusGroupSettingModel().create({
           conversationId: group.id,
           campusId: mine ? mine.campusId : null,
           discoverable: true,
@@ -76,7 +97,9 @@ const createGroup = async (req, res) => {
 // @route   GET /api/campus/groups/preview/:code
 const previewGroupByCode = async (req, res) => {
   try {
-    const code = req.params.code ? req.params.code.trim().toUpperCase() : '';
+    if (!validCode(req.params.code)) return res.status(404).json({ message: 'Code not found. Please check and try again.' });
+    if (!codeLookupAllowed(req)) return res.status(429).json({ code: 'RATE_LIMITED', message: 'Too many tries. Please wait a few minutes.' });
+    const code = req.params.code.trim().toUpperCase();
     const Conversation = getConversationModel();
 
     const group = await Conversation.findOne({ where: { joinCode: code } });
@@ -106,6 +129,8 @@ const joinGroupByCode = async (req, res) => {
     if (!code) {
       return res.status(400).json({ message: 'Join code is required' });
     }
+    if (!validCode(code)) return res.status(404).json({ message: 'Code not found. Please check and try again.' });
+    if (!codeLookupAllowed(req)) return res.status(429).json({ code: 'RATE_LIMITED', message: 'Too many tries. Please wait a few minutes.' });
 
     const cleanCode = code.trim().toUpperCase();
     const Conversation = getConversationModel();
@@ -160,7 +185,7 @@ const resetJoinCode = async (req, res) => {
       return res.status(403).json({ message: 'Only group admins can reset the join code' });
     }
 
-    const newCode = generateJoinCode();
+    const newCode = await generateJoinCode();
     group.joinCode = newCode;
     await group.save();
 

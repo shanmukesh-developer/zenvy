@@ -42,7 +42,7 @@ const expireDue = async () => {
 const autoConfirmDue = async () => {
   const FriendsTask = getModel('FriendsTask');
   const cutoff = new Date(Date.now() - ctl().autoConfirmDays() * 24 * 60 * 60 * 1000);
-  const due = await FriendsTask.findAll({ where: { status: 'submitted', submittedAt: { [Op.lt]: cutoff } }, limit: BATCH });
+  const due = await FriendsTask.findAll({ where: { status: 'submitted', modStatus: 'visible', submittedAt: { [Op.lt]: cutoff } }, limit: BATCH });
   let confirmed = 0;
   for (const t of due) if (await ctl().autoConfirmOne(t)) confirmed++;
   return confirmed;

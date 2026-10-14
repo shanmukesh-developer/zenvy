@@ -30,6 +30,12 @@ const takeCallInvite = (userId) => {
   }
   return true;
 };
+// Per-user send limits on this socket (chat messages / edits and proximity messages).
+const sockLimiter = require('../friends/services/limiter');
+sockLimiter.define('chat_send', 60, 60 * 1000);
+sockLimiter.define('chat_edit', 30, 60 * 1000);
+sockLimiter.define('proximity_send', 20, 60 * 1000);
+const MAX_RECEIPT_IDS = 200;
 const lastPushAt = new Map(); // `${userId}:${chatId}` -> ms
 const shouldPush = (uid, chatId) => {
   const key = `${uid}:${chatId}`;
@@ -280,16 +286,9 @@ const initCampusSocket = (io) => {
           return;
         }
         const msgType = MESSAGE_TYPES.has(type) ? type : 'text';
-        let cleanMedia = null;
-        if (mediaUrl) {
-          // Inline base64 photos are moved to the media table; the message keeps the short URL.
-          const { storeImageRef } = require('../../utils/imageStore');
-          const img = await storeImageRef(mediaUrl, { ownerId: userId, purpose: 'chat', maxBytes: MAX_INLINE_DATA_URL });
-          cleanMedia = img.ok ? img.value : null;
-          if (!cleanMedia) {
-            if (ack) ack({ error: 'That photo could not be sent. Please try again.', code: 'BAD_MEDIA' });
-            return;
-          }
+        if (!sockLimiter.take(String(userId), 'chat_send').ok) {
+          if (ack) ack({ error: 'You are sending messages too fast. Please slow down.', code: 'RATE_LIMITED' });
+          return;
         }
 
         const Conversation = getConversationModel();
@@ -333,20 +332,34 @@ const initCampusSocket = (io) => {
           }
         }
 
+        // Media is stored only after every membership / guard check (a non-member could otherwise
+        // fill the media table). Inline base64 photos move to the media table; the message keeps the URL.
+        let cleanMedia = null;
+        if (mediaUrl) {
+          const { storeImageRef } = require('../../utils/imageStore');
+          const img = await storeImageRef(mediaUrl, { ownerId: userId, purpose: 'chat', maxBytes: MAX_INLINE_DATA_URL });
+          cleanMedia = img.ok ? img.value : null;
+          if (!cleanMedia) {
+            if (ack) ack({ error: 'That photo could not be sent. Please try again.', code: 'BAD_MEDIA' });
+            return;
+          }
+        }
+
         // Connect chats: the stored and broadcast sender name is the Connect name, and a quoted reply is
         // rebuilt on the server from the quoted message (never the client's copy of a name).
         const connectIdent = await connectIdentForChat(chatId, conversation);
         const senderName = connectIdent ? ((connectIdent.get(String(userId)) || {}).name || 'Connect user') : socket.user.name;
-        let cleanReplyTo = replyTo;
-        if (connectIdent && replyTo) {
-          cleanReplyTo = null;
+        // A quoted reply is always rebuilt from the quoted message of THIS chat: the client's copy could
+        // put words in someone else's mouth (fake senderName / text) or carry an arbitrary blob.
+        let cleanReplyTo = null;
+        if (replyTo) {
           const quotedId = replyTo && typeof replyTo === 'object' ? replyTo.id : null;
           if (typeof quotedId === 'string' && /^[0-9a-f-]{36}$/i.test(quotedId)) {
             const quoted = await Message.findOne({ where: { id: quotedId, conversationId: chatId } });
             if (quoted) {
               cleanReplyTo = {
                 id: quoted.id,
-                senderName: (connectIdent.get(String(quoted.senderId)) || {}).name || 'Connect user',
+                senderName: connectIdent ? ((connectIdent.get(String(quoted.senderId)) || {}).name || 'Connect user') : (quoted.senderName || 'Student'),
                 text: quoted.isDeletedForEveryone ? 'This message was deleted' : String(quoted.text || (quoted.type === 'image' ? 'Photo' : '')).slice(0, 200),
               };
             }
@@ -362,7 +375,7 @@ const initCampusSocket = (io) => {
           clientMsgId: clientMsgId || null,
           type: msgType,
           mediaUrl: cleanMedia,
-          mediaMetadata: mediaMetadata ? JSON.stringify(mediaMetadata) : '{}',
+          mediaMetadata: mediaMetadata && typeof mediaMetadata === 'object' && JSON.stringify(mediaMetadata).length <= 4096 ? JSON.stringify(mediaMetadata) : '{}',
           replyTo: cleanReplyTo ? JSON.stringify(cleanReplyTo) : null,
           readBy: [{ userId, readAt: new Date() }],
           deliveredTo: [{ userId, deliveredAt: new Date() }],
@@ -508,10 +521,13 @@ const initCampusSocket = (io) => {
     });
 
     // 6. Read Receipts (Batched)
-    socket.on('receipt:read', async ({ chatId, messageIds }) => {
+    socket.on('receipt:read', async ({ chatId, messageIds: rawIds }) => {
+      let messageIds = rawIds;
       try {
         if (!chatId || !Array.isArray(messageIds) || !messageIds.length) return;
         if (!(inChatRoom(chatId) || await isMember(chatId))) return;
+        messageIds = [...new Set(messageIds.filter((id) => typeof id === 'string' && id.length <= 64))].slice(0, MAX_RECEIPT_IDS);
+        if (!messageIds.length) return;
         const Message = getMessageModel();
         const { Op } = require('sequelize');
 
@@ -563,6 +579,33 @@ const initCampusSocket = (io) => {
         if (!cleanText || msg.isDeletedForEveryone) {
           if (ack) ack({ error: 'Cannot edit this message' });
           return;
+        }
+        if (cleanText.length > MAX_TEXT) {
+          if (ack) ack({ error: `Messages can be at most ${MAX_TEXT} characters` });
+          return;
+        }
+        if (!sockLimiter.take(String(userId), 'chat_edit').ok) {
+          if (ack) ack({ error: 'You are editing too fast. Please slow down.', code: 'RATE_LIMITED' });
+          return;
+        }
+        // An edit is a new send: the same membership, closed-chat, block and Connect / task rules
+        // (content filter included) apply, or "hi" could be edited into anything after the fact.
+        const editConv = await getConversationModel().findByPk(msg.conversationId);
+        if (!editConv || !(editConv.participants || []).includes(userId)) {
+          if (ack) ack({ error: 'Cannot edit this message' });
+          return;
+        }
+        const editGuard = await conversationGuard(editConv, userId, 'send', { text: cleanText });
+        if (!editGuard.ok) {
+          if (ack) ack({ error: editGuard.error, code: editGuard.code });
+          return;
+        }
+        if (!editConv.isGroup) {
+          const peerId = (editConv.participants || []).find((p) => p !== userId);
+          if (peerId && await isBlockedBetween(userId, peerId)) {
+            if (ack) ack({ error: 'You cannot message this person', code: 'BLOCKED' });
+            return;
+          }
         }
 
         msg.text = cleanText;
@@ -651,8 +694,9 @@ const initCampusSocket = (io) => {
     socket.on('proximity:join', async ({ roomSlug } = {}, ack) => {
       try {
         if (!roomSlug) return;
+        if (typeof roomSlug !== 'string' || roomSlug.length > 80) return;
         const room = await getProximityRoomModel().findOne({ where: { slug: roomSlug } });
-        if (!room) {
+        if (!room || room.isActive === false) {
           if (ack) ack({ error: 'Room not found' });
           return;
         }
@@ -683,12 +727,16 @@ const initCampusSocket = (io) => {
           if (ack) ack({ error: 'Join the room first' });
           return;
         }
+        if (!sockLimiter.take(String(userId), 'proximity_send').ok) {
+          if (ack) ack({ error: 'You are sending messages too fast. Please slow down.', code: 'RATE_LIMITED' });
+          return;
+        }
 
         const ProximityRoom = getProximityRoomModel();
         const ProximityMessage = getProximityMessageModel();
 
         const room = await ProximityRoom.findOne({ where: { slug: roomSlug } });
-        if (!room) {
+        if (!room || room.isActive === false) {
           if (ack) ack({ error: 'Room not found' });
           return;
         }

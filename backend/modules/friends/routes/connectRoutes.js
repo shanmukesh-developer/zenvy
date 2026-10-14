@@ -52,6 +52,11 @@ const anyAccount = requireFriends(null, { minimal: true });
 router.delete('/profile', protect, anyAccount, w(c.deleteProfile));
 router.post('/pause', protect, anyAccount, w(c.pause));
 router.get('/me/data', protect, anyAccount, w(c.myData));
+// Safety exits stay open even when Connect is switched off or the user lost verification: the chat
+// layer still shows an active match, so unmatch / block must always work.
+router.post('/block', protect, anyAccount, w(c.blockProfile));
+router.post('/matches/:id/unmatch', protect, anyAccount, w(c.unmatch));
+router.post('/matches/:id/block', protect, anyAccount, w(c.blockMatch));
 
 // ── Students ─────────────────────────────────────────────────────────────────
 const write = requireFriends('connect', { write: true });
@@ -75,12 +80,9 @@ router.post('/liveness/manual', write, w(c.livenessManual));
 
 router.get('/discover', w(c.discover));
 router.post('/swipe', write, w(c.swipe));
-router.post('/block', w(c.blockProfile));
 
 router.get('/matches', w(c.listMatches));
 router.get('/matches/:id', w(c.getMatch));
-router.post('/matches/:id/unmatch', w(c.unmatch));
-router.post('/matches/:id/block', w(c.blockMatch));
 
 router.use((req, res) => res.status(404).json({ message: 'Not found.', code: 'NOT_FOUND' }));
 

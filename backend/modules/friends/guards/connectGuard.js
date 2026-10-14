@@ -75,6 +75,18 @@ const connectGuard = async (conversation, userId, action = 'send', extra = {}) =
   }
   if (action === 'join') return { ok: true };
 
+  // Sending needs Connect itself to be on and the sender to still pass the Friends gate (verified,
+  // same campus, not sanctioned): turning the feature off or revoking verification stops the chat too.
+  try {
+    const flags = require('../services/featureFlags');
+    const eligibility = require('../services/eligibility');
+    const [ctx, cfg] = await Promise.all([eligibility.loadContext(me), flags.getConfig()]);
+    if (!flags.isEnabled(cfg, 'connect')) return { ok: false, code: 'FEATURE_OFF', error: 'Connect is switched off right now.' };
+    eligibility.assertAllowed(ctx, cfg, 'connect');
+  } catch (err) {
+    return { ok: false, code: (err && err.code) || 'NOT_ALLOWED', error: (err && err.status && err.message) || 'You cannot send Connect messages right now.' };
+  }
+
   const FriendsSanction = getModel('FriendsSanction');
   if (FriendsSanction) {
     const sanction = await FriendsSanction.findOne({

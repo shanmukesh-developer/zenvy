@@ -23,7 +23,9 @@ const record = async (entry, { transaction } = {}) => {
     communityId: entry.communityId || null,
     reportId: entry.reportId || null,
     reason: clip(entry.reason, 500),
-    meta: entry.meta || {},
+    // anonymous: the subject is the hidden author of anonymous content. The id is kept for appeals and
+    // sanctions, but never shown in admin listings (reveal-author is the only, audited, way to see it).
+    meta: entry.anonymous ? { ...(entry.meta || {}), anonymous: true } : (entry.meta || {}),
   }, { transaction });
   console.log(`[FRIENDS_AUDIT] ${actorRole} ${entry.action} ${entry.targetType || '-'}`);
   return row;
@@ -38,15 +40,17 @@ const recordSafe = async (entry, opts) => {
   }
 };
 
-/** Public (admin) shape of an action row. */
-const serializeAction = (a) => ({
+const isAnonymousAction = (a) => !!(a && a.meta && a.meta.anonymous);
+
+/** Public (admin) shape of an action row. opts.anonymous forces the subject to be hidden. */
+const serializeAction = (a, opts = {}) => ({
   id: a.id,
   actorId: a.actorId,
   actorRole: a.actorRole,
   action: a.action,
   targetType: a.targetType,
   targetId: a.targetId,
-  subjectUserId: a.subjectUserId,
+  subjectUserId: (opts && opts.anonymous === true) || isAnonymousAction(a) ? null : a.subjectUserId,
   communityId: a.communityId,
   reportId: a.reportId,
   reason: a.reason,
@@ -54,4 +58,4 @@ const serializeAction = (a) => ({
   createdAt: a.createdAt,
 });
 
-module.exports = { record, recordSafe, serializeAction };
+module.exports = { record, recordSafe, serializeAction, isAnonymousAction };

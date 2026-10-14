@@ -264,6 +264,13 @@ class RoomError extends Error {
  */
 const join = (space, socket, userId, reqLike = null) => withLock(space.id, async () => {
   const uid = String(userId);
+  // The caller read the Space before waiting for this lock: if it ended (or was taken down) in the
+  // meantime, teardown already ran and ensureRoom would resurrect a zombie room for an ended Space.
+  if (!rooms.has(String(space.id))) {
+    const fresh = await M('FriendsSpace').findByPk(space.id, { attributes: ['id', 'status', 'modStatus'] });
+    if (!fresh || fresh.status !== 'live') throw new RoomError('SPACE_NOT_LIVE', 'This Space has ended.', { status: fresh ? fresh.status : 'ended' });
+    if (fresh.modStatus !== 'visible' && uid !== String(space.hostId)) throw new RoomError('NOT_FOUND', 'This Space is not available.');
+  }
   const room = await ensureRoom(space);
   if (room.ended) throw new RoomError('SPACE_NOT_LIVE', 'This Space has ended.', { status: 'ended' });
   const Member = M('FriendsSpaceMember');

@@ -71,6 +71,7 @@ const maybeAutoHide = async (resolver, report, cfg) => {
     targetType: report.targetType,
     targetId: report.targetId,
     subjectUserId: report.targetOwnerId,
+    anonymous: !!(report.snapshot && report.snapshot.anonymous),
     reportId: report.id,
     reason: `Auto-hidden after ${reporters} reports (${report.category})`,
     meta: { reporters },
@@ -97,6 +98,30 @@ const fileReport = async (p) => {
 
   const FriendsReport = getModel('FriendsReport');
   const existing = await FriendsReport.findOne({ where: { reporterId, targetType: p.targetType, targetId: p.targetId } });
+  if (existing && isSystem && !OPEN_STATUSES.includes(existing.status)) {
+    // One system report row per target (unique reporter/target): an edit flagged after an earlier
+    // system report was closed must reopen it, or the content sits in pending_review with nothing
+    // in the moderation queue.
+    const cfgR = await flags.getConfig();
+    const sev = SEVERITY[p.category] || 'low';
+    await FriendsReport.update({
+      status: 'open',
+      category: p.category,
+      severity: sev,
+      note: p.note || null,
+      targetOwnerId: target.ownerId || existing.targetOwnerId || null,
+      snapshot: { ...(target.snapshot || {}), reportedAt: new Date().toISOString() },
+      slaDueAt: new Date(Date.now() + (cfgR.slaHours[sev] || 48) * 3600 * 1000),
+      resolvedBy: null,
+      resolvedAt: null,
+      decision: null,
+      resolution: null,
+      actionId: null,
+    }, { where: { id: existing.id, status: { [Op.notIn]: OPEN_STATUSES } } });
+    await existing.reload();
+    notifyAdminSafe('created', existing.id, { scope: existing.subTab });
+    return { report: existing, duplicate: false, reopened: true, autoHidden: false };
+  }
   if (existing) return { report: existing, duplicate: true, autoHidden: false };
 
   if (!isSystem) limiter.enforce(reporterId, 'report');

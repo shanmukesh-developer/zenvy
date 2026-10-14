@@ -71,6 +71,8 @@ export const MeTab: React.FC<MeTabProps> = ({
   const { setUser: setAuthUser, user: authUser } = useAuth();
   const status = profile?.verificationStatus || 'unverified';
   const isVerified = status === 'verified';
+  // Verified students can set an empty roll number once; a saved one is locked (support can change it).
+  const rollLocked = isVerified && !!String(profile?.collegeId || '').trim();
   const isPending = status === 'pending';
   const isRejected = status === 'rejected' || (lastVerification?.status === 'rejected' && !isVerified && !isPending);
 
@@ -389,8 +391,8 @@ export const MeTab: React.FC<MeTabProps> = ({
             </View>
           </>
         )}
-        <Text style={ui.label}>Roll number</Text>
-        <TextInput style={[ui.input, isVerified && { opacity: 0.6 }]} value={form.collegeId} onChangeText={set('collegeId')} editable={!isVerified} maxLength={LIMITS.collegeId} autoCapitalize="characters" placeholder="e.g. AP21110010123" placeholderTextColor={CampusColors.muted} />
+        <Text style={ui.label}>Roll number{isVerified && !rollLocked ? ' (can be set once)' : ''}</Text>
+        <TextInput style={[ui.input, rollLocked && { opacity: 0.6 }]} value={form.collegeId} onChangeText={set('collegeId')} editable={!rollLocked} maxLength={LIMITS.collegeId} autoCapitalize="characters" placeholder="e.g. AP21110010123" placeholderTextColor={CampusColors.muted} />
         <View style={{ flexDirection: 'row', gap: S.sm }}>
           <View style={{ flex: 1 }}>
             <Text style={ui.label}>Branch</Text>

@@ -17,8 +17,11 @@ const ADJECTIVES = ['Silent', 'Mystic', 'Midnight', 'Secret', 'Wandering', 'Cosm
 const NOUNS = ['Falcon', 'Koala', 'Panda', 'Otter', 'Fox', 'Tiger', 'Dolphin', 'Owl', 'Comet', 'Wolf'];
 
 // Deterministic anonymous alias derived from userId — stable but detached from identity.
+// Keyed with a server secret: a plain hash of the user id let anyone who saw an account id (people
+// search, proximity messages, rides) recompute the alias and unmask that person's whispers / answers.
+const ALIAS_KEY = () => process.env.WHISPER_ALIAS_SECRET || process.env.JWT_SECRET || 'zenvy-whisper-alias';
 const aliasFor = (userId) => {
-  const h = crypto.createHash('sha256').update(String(userId)).digest();
+  const h = crypto.createHmac('sha256', ALIAS_KEY()).update(`whisper:${String(userId)}`).digest();
   const adj = ADJECTIVES[h[0] % ADJECTIVES.length];
   const noun = NOUNS[h[1] % NOUNS.length];
   const num = h[2] % 90 + 10;

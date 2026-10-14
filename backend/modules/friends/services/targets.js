@@ -28,12 +28,17 @@ const excerpt = (text, n = 280) => {
 // ── profile ─────────────────────────────────────────────────────────────────
 register('profile', {
   statuses: [],
-  async load(id) {
+  async load(id, { viewerId } = {}) {
     const User = getModel('User');
     const user = await User.findByPk(id, { attributes: ['id', 'name', 'createdAt'] });
     if (!user) return null;
     const CampusProfile = getModel('CampusProfile');
     const p = CampusProfile ? await CampusProfile.findOne({ where: { userId: id }, attributes: ['campusId', 'bio'] }) : null;
+    // A student can only report people of their own campus (no cross-campus spam, no id oracle).
+    if (viewerId && CampusProfile) {
+      const mine = await CampusProfile.findOne({ where: { userId: viewerId }, attributes: ['campusId'] });
+      if (!mine || !mine.campusId || !p || String(p.campusId) !== String(mine.campusId)) return null;
+    }
     return {
       ownerId: user.id,
       campusId: p ? p.campusId : null,

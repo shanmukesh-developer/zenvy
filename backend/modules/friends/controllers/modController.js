@@ -162,7 +162,7 @@ const getReport = async (req, res) => {
     reports: siblings.map((r) => reportPayload(r)),
     reporterCount: new Set(siblings.filter((r) => reportsSvc.OPEN_STATUSES.includes(r.status)).map((r) => r.reporterId)).size,
     currentState,
-    actions: actions.map(audit.serializeAction),
+    actions: actions.map((a) => audit.serializeAction(a, { anonymous })),
     authorHistory,
     moderation: resolver ? { statuses: resolver.statuses || [], canReveal: !!resolver.revealAuthor } : { statuses: [], canReveal: false },
   });
@@ -225,7 +225,7 @@ const resolveReport = async (req, res) => {
   const FriendsSanction = getModel('FriendsSanction');
   const result = await sequelize.transaction(async (transaction) => {
     // Re-check inside the transaction: two moderators resolving at once act only once.
-    const fresh = await FriendsReport.findByPk(report.id, { transaction });
+    const fresh = await FriendsReport.findByPk(report.id, { transaction, lock: transaction.LOCK.UPDATE });
     if (!reportsSvc.OPEN_STATUSES.includes(fresh.status)) throw fail(409, 'ALREADY_RESOLVED', 'This report is already closed.');
     if (decision === 'remove') await resolver.setStatus(report.targetId, 'removed', { transaction });
     if (decision === 'hide') await resolver.setStatus(report.targetId, 'hidden', { transaction });
@@ -236,6 +236,7 @@ const resolveReport = async (req, res) => {
       targetType: report.targetType,
       targetId: report.targetId,
       subjectUserId: ['remove', 'hide', 'warn', 'sanction'].includes(decision) ? subject : null,
+      anonymous: !!(report.snapshot && report.snapshot.anonymous),
       reportId: report.id,
       reason: note,
       meta: { decision, ...(sanctionSpec ? { scope: sanctionSpec.scope, until: sanctionSpec.until, days: sanctionSpec.days || null } : {}) },
@@ -322,7 +323,10 @@ const listAppeals = async (req, res) => {
   const byId = new Map(actions.map((a) => [String(a.id), a]));
   res.json({
     items: items.map((a) => ({
-      id: a.id, userId: a.userId, actionId: a.actionId, text: a.text, status: a.status, note: a.note,
+      id: a.id,
+      // An appeal against a decision on anonymous content must not unmask its author.
+      userId: audit.isAnonymousAction(byId.get(String(a.actionId))) ? null : a.userId,
+      actionId: a.actionId, text: a.text, status: a.status, note: a.note,
       reviewedBy: a.reviewedBy, reviewedAt: a.reviewedAt, createdAt: a.createdAt,
       action: byId.get(String(a.actionId)) ? audit.serializeAction(byId.get(String(a.actionId))) : null,
     })),
@@ -461,7 +465,9 @@ const listActions = async (req, res) => {
   const limit = cursor.pageSize(req.query.limit, 30);
   const rows = await FriendsModAction.findAll({ where, order: [['createdAt', 'DESC'], ['id', 'DESC']], limit: limit + 1 });
   const { items, nextCursor } = cursor.page(rows, limit);
-  res.json({ items: items.map(audit.serializeAction), nextCursor });
+  // Filtering by subject must not list one person's anonymous content (that is a reveal-author).
+  const shown = where.subjectUserId ? items.filter((a) => !audit.isAnonymousAction(a)) : items;
+  res.json({ items: shown.map((a) => audit.serializeAction(a)), nextCursor });
 };
 
 // ── Config ──────────────────────────────────────────────────────────────────

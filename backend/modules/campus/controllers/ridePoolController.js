@@ -1,6 +1,18 @@
 const { Op } = require('sequelize');
 const { getRidePoolModel } = require('../models/RidePool');
 const { getSequelize } = require('../../../config/db');
+const { campusScopeFor, sameCampusUsers, blockedIdsFor } = require('../campusHelpers');
+const VERIFY_FIRST = { code: 'VERIFICATION_REQUIRED', message: 'Verify your college to use ride pools.' };
+
+/** Who rides with whom is only shown to people on that ride; others see seat placeholders. */
+const publicRide = (ride, viewerId) => {
+  const json = typeof ride.toJSON === 'function' ? ride.toJSON() : { ...ride };
+  const list = Array.isArray(json.passengers) ? json.passengers : [];
+  const onRide = String(json.creatorId) === String(viewerId) || list.some((p) => p && String(p.id) === String(viewerId));
+  if (!onRide) json.passengers = list.map((p) => (p && String(p.id) === String(json.creatorId) ? p : { id: null, name: 'Passenger' }));
+  return json;
+};
+
 
 // Seat changes run in a transaction with a row lock so two students can never take the last seat.
 const withLockedRide = async (rideId, work) => {
@@ -20,6 +32,8 @@ class RideError extends Error {
 // @route   POST /api/campus/ride-pool
 const createRidePool = async (req, res) => {
   try {
+    const scope = await campusScopeFor(req.user.id);
+    if (!scope.verified || !scope.campusId) return res.status(403).json(VERIFY_FIRST);
     const {
       destination,
       departureTime,
@@ -82,8 +96,11 @@ const createRidePool = async (req, res) => {
 const getRidePools = async (req, res) => {
   try {
     const RidePool = getRidePoolModel();
-    const rides = await RidePool.findAll({
+    const scope = await campusScopeFor(req.user.id);
+    if (!scope.verified || !scope.campusId) return res.status(403).json(VERIFY_FIRST);
+    const rows = await RidePool.findAll({
       where: {
+        creatorId: sameCampusUsers(scope.campusId),
         status: 'open',
         // Rides that left more than 30 minutes ago are no longer bookable
         departureTime: { [Op.gte]: new Date(Date.now() - 30 * 60 * 1000) },
@@ -91,6 +108,8 @@ const getRidePools = async (req, res) => {
       order: [['departureTime', 'ASC']],
       limit: 100,
     });
+    const blocked = await blockedIdsFor(req.user.id);
+    const rides = rows.filter((r) => !blocked.has(r.creatorId)).map((r) => publicRide(r, req.user.id));
     res.json({ rides });
   } catch (err) {
     console.error('[GET_RIDE_ERR]', err);
@@ -102,6 +121,16 @@ const getRidePools = async (req, res) => {
 // @route   POST /api/campus/ride-pool/:id/join
 const joinRidePool = async (req, res) => {
   try {
+    const scope = await campusScopeFor(req.user.id);
+    if (!scope.verified || !scope.campusId) return res.status(403).json(VERIFY_FIRST);
+    // Same campus only, and never with someone you blocked / who blocked you (creator never changes).
+    const rid = String(req.params.id || '');
+    const peek = /^[0-9a-f-]{36}$/i.test(rid) ? await getRidePoolModel().findByPk(rid, { attributes: ['id', 'creatorId'] }) : null;
+    if (!peek) return res.status(404).json({ message: 'Ride not found' });
+    const creatorScope = await campusScopeFor(peek.creatorId);
+    if (creatorScope.campusId !== scope.campusId || (await blockedIdsFor(req.user.id)).has(peek.creatorId)) {
+      return res.status(404).json({ message: 'Ride not found' });
+    }
     const ride = await withLockedRide(req.params.id, async (ride, t) => {
       if (!ride) throw new RideError(404, 'Ride not found');
       if (ride.status !== 'open') throw new RideError(400, `This ride is ${ride.status}`);
@@ -116,7 +145,7 @@ const joinRidePool = async (req, res) => {
       return ride;
     });
 
-    res.json({ message: 'Seat booked', ride });
+    res.json({ message: 'Seat booked', ride: publicRide(ride, req.user.id) });
   } catch (err) {
     if (err instanceof RideError) return res.status(err.status).json({ message: err.message });
     console.error('[JOIN_RIDE_ERR]', err);
@@ -143,7 +172,7 @@ const leaveRidePool = async (req, res) => {
       return ride;
     });
 
-    res.json({ message: 'Seat released', ride });
+    res.json({ message: 'Seat released', ride: publicRide(ride, req.user.id) });
   } catch (err) {
     if (err instanceof RideError) return res.status(err.status).json({ message: err.message });
     console.error('[LEAVE_RIDE_ERR]', err);

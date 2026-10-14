@@ -283,7 +283,9 @@ const updateCampusProfile = async (req, res) => {
     const isAdminCaller = String(req.user.role || '').toLowerCase() === 'admin';
     if (isVerified && !isAdminCaller) {
       const changingCampus = campusId !== undefined && String(campusId || '') !== String(profile.campusId || '');
-      const changingCollegeId = collegeId !== undefined && String(collegeId || '') !== String(profile.collegeId || '');
+      // An empty roll number (e.g. verified by college email) can be set once; a set one stays locked.
+      const changingCollegeId = collegeId !== undefined && !!String(profile.collegeId || '').trim()
+        && String(collegeId || '') !== String(profile.collegeId || '');
       if (changingCampus || changingCollegeId) {
         return res.status(400).json({
           code: 'VERIFIED_FIELDS_LOCKED',
@@ -538,15 +540,23 @@ const confirmEmailOtp = async (req, res) => {
       return res.status(429).json({ code: 'OTP_LOCKED', message: 'Too many wrong tries. Ask for a new code.' });
     }
 
+    // Reserve one attempt atomically BEFORE comparing: a burst of parallel guesses all read
+    // attempts = 0 above, so a check-then-increment let hundreds of guesses through per code.
+    const [reserved] = await Verification.update(
+      { attempts: Verification.sequelize.literal('"attempts" + 1') },
+      { where: { id: record.id, status: 'pending', consumedAt: null, attempts: { [Op.lt]: OTP_MAX_ATTEMPTS } } }
+    );
+    if (!reserved) {
+      return res.status(429).json({ code: 'OTP_LOCKED', message: 'Too many wrong tries. Ask for a new code.', attemptsLeft: 0 });
+    }
+
     const want = Buffer.from(record.otpHash, 'hex');
     const got = Buffer.from(otpHashFor(req.user.id, email, otp), 'hex');
     const ok = want.length === got.length && crypto.timingSafeEqual(want, got);
     if (!ok) {
-      // Atomic increment so parallel guesses cannot get around the limit.
-      await Verification.increment('attempts', { by: 1, where: { id: record.id } });
       await record.reload({ attributes: ['id', 'attempts'] });
       const left = Math.max(0, OTP_MAX_ATTEMPTS - (record.attempts || 0));
-      if (left === 0) await Verification.update({ status: 'expired' }, { where: { id: record.id } });
+      if (left === 0) await Verification.update({ status: 'expired' }, { where: { id: record.id, status: 'pending' } });
       return res.status(left === 0 ? 429 : 400).json({
         code: left === 0 ? 'OTP_LOCKED' : 'OTP_INVALID',
         message: left === 0 ? 'Too many wrong tries. Ask for a new code.' : `Wrong code. ${left} ${left === 1 ? 'try' : 'tries'} left.`,
@@ -622,6 +632,20 @@ const submitIdCard = async (req, res) => {
     const idCardImageUrl = idImg.ok ? idImg.value : null;
     if (!idCardImageUrl) {
       return res.status(400).json({ code: 'ID_IMAGE_REQUIRED', message: 'Add a clear photo of your student ID card.' });
+    }
+    // A media reference must be the caller's own upload: otherwise anyone who saw another person's
+    // private photo id (a Connect photo, a chat image) could attach it here and get fresh signed links.
+    {
+      const { mediaIdOf } = require('../../../utils/imageStore');
+      const mid = mediaIdOf(idCardImageUrl);
+      const { getCampusMediaModel } = require('../models/CampusMedia');
+      const Media = getCampusMediaModel && getCampusMediaModel();
+      if (mid && Media) {
+        const row = await Media.findByPk(mid, { attributes: ['id', 'ownerId'] });
+        if (!row || String(row.ownerId) !== String(req.user.id)) {
+          return res.status(400).json({ code: 'ID_IMAGE_REQUIRED', message: 'Upload a photo of your own student ID card.' });
+        }
+      }
     }
     const collegeId = req.body && req.body.collegeId != null ? String(req.body.collegeId).trim().slice(0, 50) : null;
 

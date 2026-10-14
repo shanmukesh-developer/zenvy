@@ -390,6 +390,8 @@ const canView = async (viewerId, target, cfg) => {
   const v = String(viewerId);
   const t = String(target.userId);
   if (v === t) return true;
+  // A profile a moderator hid / removed is not shown to anyone but its owner (matches included).
+  if (target.modStatus && target.modStatus !== 'visible') return false;
   if (await blocks.isBlocked(v, t)) return false;
   if (await activeMatchBetween(v, t)) return true;
   const viewerProfile = await myProfile(v);
@@ -1152,16 +1154,18 @@ const listMatches = async (req, res) => {
     order: [['createdAt', 'DESC'], ['id', 'DESC']],
     limit: limit + 1,
   });
+  // Page (and cursor) from the rows as fetched: dropping blocked rows first lost the next cursor
+  // whenever one of the limit+1 rows was a block, so later matches became unreachable.
+  const pg = cursor.page(rows, limit);
   const visible = [];
-  for (const m of rows) {
+  for (const m of pg.items) {
     if (blocked.has(otherOf(m, me))) {
       await deletion.endMatch(m.id, { status: 'blocked' });
       continue;
     }
     visible.push(m);
   }
-  const pg = cursor.page(visible, limit);
-  send(res, 200, { items: await matchDtos(req, pg.items, me), nextCursor: pg.nextCursor });
+  send(res, 200, { items: await matchDtos(req, visible, me), nextCursor: pg.nextCursor });
 };
 
 const loadMyMatch = async (req) => {

@@ -69,6 +69,13 @@ const sendPushToUser = async (userId, title, body, data = {}) => {
   }
 };
 
+// Friend-request spam guard (request -> cancel -> request pushed the recipient every time).
+const friendLimiter = require('../modules/friends/services/limiter');
+friendLimiter.define('friend_request', 20, 60 * 60 * 1000); // per sender per hour
+friendLimiter.define('friend_request_pair', 3, 24 * 60 * 60 * 1000); // per sender -> recipient per day
+const VIBE_MAX = 30;
+const ICEBREAKER_MAX = 300;
+
 // 1. Scan/Search contacts
 const CONTACT_SYNC_MAX = 500;
 const CONTACT_SYNC_DAILY = 3000;
@@ -108,6 +115,11 @@ exports.searchContacts = async (req, res) => {
       const digits = query.replace(/\D/g, '');
       const normalized = digits.length >= 10 ? normalizePhone(digits) : null;
       if (normalized && /^\d{10}$/.test(normalized)) exactPhone = normalized;
+      // A full-number lookup counts against the same daily budget as contact sync, otherwise this
+      // path maps phone numbers to accounts without the 3000/day cap.
+      if (exactPhone && !takeContactBudget(req.user.id, 1)) {
+        return res.status(429).json({ code: 'CONTACT_SYNC_LIMIT', message: 'Contact sync limit reached for today. Try again tomorrow.' });
+      }
 
       matchedUsers = await User.findAll({
         where: {
@@ -201,19 +213,27 @@ exports.sendFriendRequest = async (req, res) => {
     if (!User || !Friendship) return res.status(500).json({ message: 'Model not loaded' });
 
     // Support connecting via friendCode or raw QR payload (e.g. zenvy://orbit?code=ZNV-XXXXX or ZNV-XXXXX)
+    if (recipientId != null && typeof recipientId !== 'string') return res.status(400).json({ message: 'recipientId must be text.' });
+    if (friendCode != null && typeof friendCode !== 'string') return res.status(400).json({ message: 'friendCode must be text.' });
+    vibe = typeof vibe === 'string' && vibe.trim() ? vibe.trim().slice(0, VIBE_MAX) : null;
+    icebreaker = typeof icebreaker === 'string' && icebreaker.trim() ? icebreaker.trim().slice(0, ICEBREAKER_MAX) : null;
+
     if (!recipientId && friendCode) {
-      let codeToFind = friendCode.trim();
+      let codeToFind = friendCode.trim().slice(0, 64);
       if (codeToFind.toUpperCase().includes('CODE=')) {
         const match = codeToFind.match(/code=([A-Za-z0-9_-]+)/i);
         if (match) codeToFind = match[1];
       }
       const isPostgres = User.sequelize.options.dialect === 'postgres';
       const matchOp = isPostgres ? Op.iLike : Op.like;
-      const targetUser = await User.findOne({
+      // Exact (case-insensitive) match: '%' / '_' in the code are literal, never wildcards that
+      // would match whichever account comes first.
+      const targetUser = /^[A-Za-z0-9-]{3,20}$/.test(codeToFind) ? await User.findOne({
         where: {
-          friendCode: { [matchOp]: codeToFind }
+          friendCode: codeToFind.toUpperCase(),
+          role: 'student',
         }
-      });
+      }) : null;
       if (!targetUser) {
         return res.status(404).json({ code: 'USER_NOT_FOUND', message: `No one found with friend code ${codeToFind}. Check the code and try again.` });
       }
@@ -226,8 +246,9 @@ exports.sendFriendRequest = async (req, res) => {
       return res.status(400).json({ message: 'That is your own friend code.' });
     }
 
-    const recipient = await User.findByPk(recipientId, { attributes: ['id', 'isActive'] });
-    if (!recipient || recipient.isActive === false) {
+    const recipient = await User.findByPk(recipientId, { attributes: ['id', 'isActive', 'role'] });
+    // Only students are on Friends: admin / rider / restaurant accounts can never be requested.
+    if (!recipient || recipient.isActive === false || recipient.role !== 'student') {
       return res.status(404).json({ code: 'USER_NOT_FOUND', message: 'This student is not on Zenvy.' });
     }
 
@@ -255,6 +276,12 @@ exports.sendFriendRequest = async (req, res) => {
       return res.status(403).json({ code: 'CANNOT_REQUEST', message: 'You cannot send a request to this person.' });
     }
 
+    const burst = friendLimiter.take(String(req.user.id), 'friend_request');
+    const pairTake = burst.ok ? friendLimiter.take(`${req.user.id}:${recipientId}`, 'friend_request_pair') : burst;
+    if (!burst.ok || !pairTake.ok) {
+      return res.status(429).json({ code: 'RATE_LIMITED', message: 'Too many friend requests. Please try again later.', retryAfter: (burst.ok ? pairTake : burst).retryAfterSec });
+    }
+
     // Strict check: count accepted friends for sender
     const requesterFriendsCount = await Friendship.count({
       where: {
@@ -274,7 +301,7 @@ exports.sendFriendRequest = async (req, res) => {
       recipientId,
       status: 'pending',
       vibe: vibe || 'Roomie',
-      icebreaker: icebreaker ? icebreaker.trim() : null
+      icebreaker: icebreaker || null
     });
 
     // Socket emission & push notification to recipient
@@ -356,8 +383,15 @@ exports.acceptFriendRequest = async (req, res) => {
       return res.status(400).json({ code: 'FRIEND_LIMIT', message: `You can have up to ${MAX_FRIENDS} friends. Remove someone to add more.` });
     }
 
+    // Conditional update: a block (or a second accept) racing this request must not be overwritten.
+    const [accepted] = await Friendship.update(
+      { status: 'accepted' },
+      { where: { id: friendship.id, recipientId: req.user.id, status: 'pending' } }
+    );
+    if (!accepted) {
+      return res.status(409).json({ code: 'NOT_PENDING', message: 'This request is no longer available.' });
+    }
     friendship.status = 'accepted';
-    await friendship.save();
 
     // Create 1-on-1 Conversation
     const participants = [friendship.requesterId, friendship.recipientId];
@@ -539,8 +573,9 @@ exports.getPendingRequests = async (req, res) => {
 
     const list = [];
     for (const p of pending) {
+      // No phone number before the request is accepted (search shows full numbers only to friends).
       const requester = await User.findByPk(p.requesterId, {
-        attributes: ['id', 'name', 'phone', 'friendCode', 'profileImage']
+        attributes: ['id', 'name', 'friendCode', 'profileImage']
       });
       if (requester) {
         list.push({
@@ -771,6 +806,15 @@ exports.getFriendMessages = async (req, res) => {
     if (!conversation.participants.includes(req.user.id)) {
       return res.status(403).json({ message: 'Not a participant of this conversation.' });
     }
+    // Task / Connect chats follow their own rules (an ended Connect match is unreadable) and Connect
+    // chats never expose the other person's account id or real name.
+    let connectIdent = null;
+    if (conversation.refType) {
+      const { conversationGuard } = require('../modules/friends/guards');
+      const guard = await conversationGuard(conversation, req.user.id, 'join');
+      if (!guard.ok) return res.status(403).json({ code: guard.code, message: guard.error });
+      connectIdent = await require('../modules/friends/services/connectChatIdentity').identityFor(conversation);
+    }
 
     const messages = await Message.findAll({
       where: { conversationId },
@@ -784,6 +828,10 @@ exports.getFriendMessages = async (req, res) => {
       text: decryptText(m.text)
     })).reverse(); // Reverse back to ASC for the client UI
 
+    if (connectIdent) {
+      const { maskFor } = require('../modules/friends/services/connectChatIdentity');
+      return res.json(maskFor(decrypted, req.user.id, connectIdent));
+    }
     res.json(decrypted);
   } catch (error) {
     console.error('[GET_CHAT_MESSAGES_ERROR]', error);
@@ -1179,6 +1227,20 @@ exports.markStatusAsSeen = async (req, res) => {
     const User = getUserModel();
     const Friendship = getFriendshipModel();
     if (!User || !Friendship) return res.status(500).json({ message: 'Models not loaded' });
+
+    if (!friendId || typeof friendId !== 'string') return res.status(400).json({ message: 'friendId is required.' });
+    // Only an accepted friend can see (and mark) someone's status.
+    const isFriend = await Friendship.findOne({
+      where: {
+        status: 'accepted',
+        [Op.or]: [
+          { requesterId: req.user.id, recipientId: friendId },
+          { requesterId: friendId, recipientId: req.user.id },
+        ],
+      },
+      attributes: ['id'],
+    });
+    if (!isFriend) return res.status(404).json({ message: 'User not found' });
 
     const friend = await User.findByPk(friendId);
     if (!friend) return res.status(404).json({ message: 'User not found' });

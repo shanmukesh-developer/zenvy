@@ -148,8 +148,8 @@ const getProximityMessages = async (req, res) => {
     const ProximityRoom = getProximityRoomModel();
     const ProximityMessage = getProximityMessageModel();
 
-    const room = await ProximityRoom.findOne({ where: { slug: req.params.slug } });
-    if (!room) return res.status(404).json({ message: 'Room not found' });
+    const room = await ProximityRoom.findOne({ where: { slug: String(req.params.slug || '').slice(0, 80) } });
+    if (!room || room.isActive === false) return res.status(404).json({ message: 'Room not found' });
 
     const limit = Math.min(parseInt(req.query.limit) || 50, 100);
 
@@ -166,6 +166,10 @@ const getProximityMessages = async (req, res) => {
       limit,
     });
     messages.reverse();
+    // People you blocked (or who blocked you) are left out of the room history.
+    const { blockedIdsFor } = require('../campusHelpers');
+    const blocked = await blockedIdsFor(req.user.id);
+    const visible = messages.filter((m) => !blocked.has(m.senderId));
     const { getProximityLiveCount } = require('../campusSocket');
 
     res.json({
@@ -178,7 +182,7 @@ const getProximityMessages = async (req, res) => {
         category: room.category,
         activeUserCount: getProximityLiveCount(room.slug),
       },
-      messages: messages.map((m) => ({
+      messages: visible.map((m) => ({
         id: m.id,
         senderId: m.senderId,
         senderName: m.senderName,
@@ -199,12 +203,18 @@ const postProximityMessage = async (req, res) => {
     const ProximityRoom = getProximityRoomModel();
     const ProximityMessage = getProximityMessageModel();
 
-    const room = await ProximityRoom.findOne({ where: { slug: req.params.slug } });
-    if (!room) return res.status(404).json({ message: 'Room not found' });
+    const room = await ProximityRoom.findOne({ where: { slug: String(req.params.slug || '').slice(0, 80) } });
+    if (!room || room.isActive === false) return res.status(404).json({ message: 'Room not found' });
 
-    const { text } = req.body;
-    if (!text || !text.trim()) {
+    const { text } = req.body || {};
+    if (typeof text !== 'string' || !text.trim()) {
       return res.status(400).json({ message: 'Message text is required' });
+    }
+    // Same per-user budget as the proximity:message socket event.
+    const lim = require('../../friends/services/limiter');
+    lim.define('proximity_send', 20, 60 * 1000);
+    if (!lim.take(String(req.user.id), 'proximity_send').ok) {
+      return res.status(429).json({ code: 'RATE_LIMITED', message: 'You are sending messages too fast. Please slow down.' });
     }
 
     const msg = await ProximityMessage.create({

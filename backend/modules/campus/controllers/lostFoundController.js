@@ -1,11 +1,19 @@
 const { getLostAndFoundModel } = require('../models/LostAndFound');
-const { cleanImageRef } = require('../campusHelpers');
+const { cleanImageRef, campusScopeFor, sameCampusUsers, blockedIdsFor } = require('../campusHelpers');
+
+const VERIFY_FIRST = { code: 'VERIFICATION_REQUIRED', message: 'Verify your college to use the campus board.' };
 
 // @desc    Post a lost or found item to the campus board
 // @route   POST /api/campus/lost-found
 const createLostFound = async (req, res) => {
   try {
-    const { type, title, description, location, imageUrl, claimContact } = req.body;
+    const { type, title, description, location, imageUrl, claimContact } = req.body || {};
+    // Posting (with a contact) is for verified students: the board is campus-only.
+    const scope = await campusScopeFor(req.user.id);
+    if (!scope.verified || !scope.campusId) return res.status(403).json(VERIFY_FIRST);
+    if ([title, description, location, claimContact].some((v) => v != null && typeof v !== 'string')) {
+      return res.status(400).json({ message: 'Please send text fields as text.' });
+    }
     if (!type || !['lost', 'found'].includes(type)) {
       return res.status(400).json({ message: "type must be 'lost' or 'found'" });
     }
@@ -31,11 +39,11 @@ const createLostFound = async (req, res) => {
       userId: req.user.id,
       userName: req.user.name || 'A student',
       type,
-      title: title.trim(),
-      description: description ? description.trim() : null,
-      location: location.trim(),
+      title: title.trim().slice(0, 120),
+      description: description ? description.trim().slice(0, 1000) : null,
+      location: location.trim().slice(0, 120),
       imageUrl: cleanImage,
-      claimContact: claimContact ? claimContact.trim() : null,
+      claimContact: claimContact ? claimContact.trim().slice(0, 120) : null,
       status: 'open',
     });
 
@@ -52,16 +60,22 @@ const createLostFound = async (req, res) => {
 const getLostFound = async (req, res) => {
   try {
     const LostAndFound = getLostAndFoundModel();
-    const where = {};
-    if (req.query.type) where.type = req.query.type;
-    if (req.query.status) where.status = req.query.status;
+    // Only verified students see their own campus's board: items carry names and a contact
+    // (usually a phone number), so other campuses and unverified accounts get nothing.
+    const scope = await campusScopeFor(req.user.id);
+    if (!scope.verified || !scope.campusId) return res.status(403).json(VERIFY_FIRST);
+    const where = { userId: sameCampusUsers(scope.campusId) };
+    if (['lost', 'found'].includes(req.query.type)) where.type = req.query.type;
+    if (['open', 'claimed', 'resolved'].includes(req.query.status)) where.status = req.query.status;
     else where.status = 'open';
 
-    const items = await LostAndFound.findAll({
+    const rows = await LostAndFound.findAll({
       where,
       order: [['createdAt', 'DESC']],
       limit: 100,
     });
+    const blocked = await blockedIdsFor(req.user.id);
+    const items = rows.filter((r) => !blocked.has(r.userId));
     res.json({ items });
   } catch (err) {
     console.error('[GET_LNF_ERR]', err);

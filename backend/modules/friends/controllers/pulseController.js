@@ -1003,6 +1003,7 @@ const moderatePost = async (actorId, post, action, reason) => {
     targetType: post.kind === 'reply' ? 'reply' : 'post',
     targetId: post.id,
     subjectUserId: ['remove', 'hide'].includes(action) ? post.authorId : null,
+    anonymous: !!post.isAnonymous,
     reason: reason || null,
   });
   if (['remove', 'hide'].includes(action)) {
