@@ -354,6 +354,9 @@ export const CampusShell: React.FC<CampusShellProps> = ({ onBack, link }) => {
     } else if (link.screen === 'friends_safety') {
       setActiveTab('me');
       switchTo('friendsSafety');
+    } else if (link.screen === 'whispers' || link.screen === 'nightQuestion' || link.screen === 'branchWars') {
+      // Opened from the Community screen's Whispers & 9 PM tab.
+      switchTo(link.screen);
     }
   }, [link, linkKey, hasProfile, openChat, switchTo]);
 
