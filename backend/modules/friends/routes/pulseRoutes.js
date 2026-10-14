@@ -39,6 +39,7 @@ router.get('/trends', w(c.getTrends));
 router.get('/hashtags/:tag', w(c.hashtagFeed));
 router.get('/users/:id/posts', w(c.userPosts));
 router.get('/mine', w(c.myPosts));
+router.get('/entities/mine', w(c.myEntities));
 router.get('/bookmarks', w(c.listBookmarks));
 
 router.post('/posts', write, w(c.createPost));

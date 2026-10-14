@@ -629,6 +629,21 @@ const myPosts = async (req, res) => {
   send(res, 200, { items: await serializePosts(req, items, me), nextCursor });
 };
 
+// GET /entities/mine: verified clubs / official accounts of my campus I may post as (composer "post as").
+// Same rule as managedEntity(): active, verified, my campus, I am a manager.
+const myEntities = async (req, res) => {
+  const me = String(req.user.id);
+  const rows = await M('FriendsEntity').findAll({
+    where: { campusId: campusOf(req), status: 'active', verified: true },
+    order: [['name', 'ASC']],
+    limit: 200,
+  });
+  const items = rows
+    .filter((e) => (e.managerIds || []).map(String).includes(me))
+    .map((e) => identity.entityIdentity(req, e));
+  send(res, 200, { items });
+};
+
 // ═════════════════════════════════════════════════════════════════════════════
 // Posts and replies
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1170,6 +1185,7 @@ module.exports = {
   hashtagFeed,
   userPosts,
   myPosts,
+  myEntities,
   getPost,
   listReplies,
   createPost,
