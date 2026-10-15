@@ -355,7 +355,16 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
                 // Old installs added checkout extras as `extra-<id>` lines
                 isAddOn: item.isAddOn || String(item.id).startsWith('extra-'),
               }));
-            setCart(migrated);
+            // Items added before storage finished loading (deep link, fast tap) are kept: they win
+            // over the saved basket when they are from another store (one store per order).
+            setCart((prev) => {
+              if (prev.length === 0) return migrated;
+              const prevStores = new Set(prev.map(storeKeyOf).filter(Boolean));
+              const savedStores = new Set(migrated.map(storeKeyOf).filter(Boolean));
+              const clash = [...savedStores].some((k) => prevStores.size > 0 && !prevStores.has(k));
+              if (clash) return prev;
+              return prev.reduce((acc, l) => mergeInto(acc, l), migrated as CartItem[]);
+            });
           }
         }
 
@@ -620,7 +629,7 @@ export const friendlyNetworkMessage = "We couldn't reach Zenvy. Check your inter
  * Live bill for the basket from POST /api/orders/quote. Custom Mega Basket requests are not part of it.
  * `enabled` should be false for guests (the quote needs a signed-in customer).
  */
-export function useBasketQuote(couponCode: string | null | undefined, enabled: boolean) {
+export function useBasketQuote(couponCode: string | null | undefined, enabled: boolean, active: boolean = true) {
   const { cart } = useCart();
   const orderLines = useMemo(() => cart.filter((i) => !isCustomRequest(i)), [cart]);
   const signature = useMemo(
@@ -643,7 +652,7 @@ export function useBasketQuote(couponCode: string | null | undefined, enabled: b
   linesRef.current = orderLines;
   useLiveSync({
     types: ['store', 'product'],
-    enabled: enabled && orderLines.length > 0,
+    enabled: enabled && active && orderLines.length > 0,
     onChange: (events) => {
       const lines = linesRef.current;
       if (!lines.length) return;
@@ -661,6 +670,8 @@ export function useBasketQuote(couponCode: string | null | undefined, enabled: b
       setLoading(false);
       return;
     }
+    // Screen in the background (e.g. the Basket tab under Checkout): keep the last bill, ask again on return.
+    if (!active) return;
     let cancelled = false;
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     // A silent (live-sync) re-quote only keeps the old bill on screen when the basket and coupon are
@@ -712,7 +723,7 @@ export function useBasketQuote(couponCode: string | null | undefined, enabled: b
       try { controller?.abort(); } catch {}
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signature, couponCode, enabled, nonce]);
+  }, [signature, couponCode, enabled, nonce, active]);
 
   return { quote, loading, error, refresh, hasOrderLines: orderLines.length > 0 };
 }

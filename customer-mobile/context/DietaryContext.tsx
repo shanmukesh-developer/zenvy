@@ -44,7 +44,7 @@ export function DietaryProvider({ children }: { children: React.ReactNode }) {
         }
       }
     } catch (e) {
-      console.log('DietaryContext: Error loading preferences', e);
+      console.warn('[Dietary] could not load preferences', e);
     }
   }, []);
 

@@ -205,11 +205,13 @@ export default function RewardsScreen() {
         spinLockRef.current = false;
         return;
       }
-    } catch (err) {
-      console.error('Spin failed:', err);
+    } catch {
+      // The request may have reached the server before the connection dropped: don't promise the spin is unused.
       if (mountedRef.current) {
         setSpinning(false);
-        Alert.alert('No connection', 'Please check your internet and try again. Your spin was not used.');
+        Alert.alert('Connection problem', "We couldn't confirm your spin. If it went through, your prize will show in your coupons below.");
+        fetchEligibility();
+        fetchCoupons({ silent: true });
       }
       spinLockRef.current = false;
       return;

@@ -23,7 +23,6 @@ export const ZENVY_SUPPORT_WHATSAPP = '919391955674';
 export const ENDPOINTS = {
   // System Health & Diagnostics
   health: `${API_URL}/api/health`,
-  ping: `${API_URL}/api/ping`,
 
   // Auth
   login: `${API_URL}/api/users/login`,
@@ -92,7 +91,6 @@ export const ENDPOINTS = {
   // Mega Basket
   megaBasketList: `${API_URL}/api/mega-basket`,
   megaBasketCreate: `${API_URL}/api/mega-basket`,
-  megaBasketPay: (id: string) => `${API_URL}/api/mega-basket/${id}/pay`,
   megaBasketApprove: (id: string) => `${API_URL}/api/mega-basket/${id}/approve`,
 
   // Birthdays

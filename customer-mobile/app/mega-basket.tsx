@@ -261,9 +261,16 @@ export default function MegaBasketScreen() {
     return items.reduce((acc, curr) => acc + (curr.priceEstimated * curr.quantity), 0);
   }, [items]);
 
-  // Same fees the server charges (megaBasketController.createBasket)
-  const shoppingFee = 30;
-  const deliveryFee = 20;
+  // Fees: what the server charged on the customer's latest list (it sets them on every basket);
+  // the current server defaults (megaBasketController.createBasket) until there is one.
+  const latestFees = useMemo(() => {
+    const withFees = baskets
+      .filter((b) => Number.isFinite(Number(b.shoppingFee)) && Number.isFinite(Number(b.deliveryFee)))
+      .sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+    return withFees[0] ? { shopping: Number(withFees[0].shoppingFee), delivery: Number(withFees[0].deliveryFee) } : null;
+  }, [baskets]);
+  const shoppingFee = latestFees ? latestFees.shopping : 30;
+  const deliveryFee = latestFees ? latestFees.delivery : 20;
   const grandTotal = subtotal + shoppingFee + deliveryFee;
 
   const handlePlaceOrder = async () => {

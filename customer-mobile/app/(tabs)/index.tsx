@@ -447,6 +447,7 @@ export default function HomeScreen() {
     }
   };
 
+  const claimingRef = useRef(false);
   const handleClaimVault = async (itemId: string) => {
     if (!user) {
       setShowVaultModal(false);
@@ -456,6 +457,8 @@ export default function HomeScreen() {
       ]);
       return;
     }
+    if (claimingRef.current) return; // a double tap must not claim twice
+    claimingRef.current = true;
     setClaimingItemId(itemId);
     try {
       const res = await apiFetch(ENDPOINTS.vaultClaim(itemId), { method: 'POST' });
@@ -472,6 +475,7 @@ export default function HomeScreen() {
     } catch (e) {
       Alert.alert("Couldn't claim this deal", 'Check your connection and try again.');
     } finally {
+      claimingRef.current = false;
       setClaimingItemId(null);
     }
   };

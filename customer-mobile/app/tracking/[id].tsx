@@ -147,6 +147,11 @@ export default function TrackingScreen() {
   const statusRef = useRef(1);
   const fetchingRef = useRef(false);
   const lastFetchRef = useRef(0);
+  // Last live status event, and a re-fetch asked for while one was already in flight.
+  const lastSocketStatusAtRef = useRef(0);
+  const refetchQueuedRef = useRef(false);
+  // A retry cannot fix "no such order" (bad link / another account): no TRY AGAIN for those.
+  const [orderErrorRetryable, setOrderErrorRetryable] = useState(true);
   const ratingPromptedRef = useRef(false);
   const confettiShownRef = useRef(false);
   const gateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -187,20 +192,30 @@ export default function TrackingScreen() {
         message: `My Zenvy order${storeName ? ` from ${storeName}` : ''} is ${stageText}.${estMinutes && status >= 2 && status <= 4 ? ` The store estimated about ${estMinutes} min.` : ''}`,
         title: 'Zenvy order status'
       });
-    } catch (e) {
-      console.log('Share tracking error:', e);
+    } catch {
+      // Share sheet dismissed / unavailable: nothing to do.
     }
   };
 
-  const fetchOrder = useCallback(async () => {
-    if (!orderId || fetchingRef.current) return;
+  const fetchOrder = useCallback(async (): Promise<void> => {
+    if (!orderId) {
+      setLoadingOrder(false);
+      return;
+    }
+    if (fetchingRef.current) {
+      // A live update arrived mid-fetch: fetch again once this one is done (it may be older).
+      refetchQueuedRef.current = true;
+      return;
+    }
     fetchingRef.current = true;
-    lastFetchRef.current = Date.now();
+    const startedAt = Date.now();
+    lastFetchRef.current = startedAt;
     try {
       const res = await apiFetch(`${API_URL}/api/orders/${encodeURIComponent(orderId)}`);
       if (!res.ok) {
         const errData = (await readJson(res)) || {};
         if (!mountedRef.current) return;
+        setOrderErrorRetryable(!(res.status === 404 || res.status === 403));
         setOrderError(
           res.status === 401
             ? 'Please sign in again to see this order.'
@@ -218,7 +233,10 @@ export default function TrackingScreen() {
       }
       setOrderInfo(data);
       setOrderError(null);
-      applyStep(statusToStep(data.status, statusRef.current));
+      const fetchedStep = statusToStep(data.status, statusRef.current);
+      // A live event newer than this request already moved the order on: don't step back to the older state.
+      const stale = fetchedStep !== -1 && fetchedStep < statusRef.current && lastSocketStatusAtRef.current > startedAt;
+      if (!stale) applyStep(fetchedStep);
 
       // Ask for a rating once per visit, and never for an order that is already rated.
       if (data.status === 'Delivered' && data.rating == null && !ratingPromptedRef.current) {
@@ -235,17 +253,24 @@ export default function TrackingScreen() {
         }
       }
     } catch (e) {
-      console.error('Fetch order error:', e);
-      if (mountedRef.current) setOrderError("Can't reach Zenvy right now. Check your internet and try again.");
+      if (mountedRef.current) {
+        setOrderErrorRetryable(true);
+        setOrderError("Can't reach Zenvy right now. Check your internet and try again.");
+      }
     } finally {
       fetchingRef.current = false;
       if (mountedRef.current) setLoadingOrder(false);
+    }
+    if (refetchQueuedRef.current && mountedRef.current) {
+      refetchQueuedRef.current = false;
+      await fetchOrder();
     }
   }, [orderId]);
 
   useEffect(() => {
     if (!orderId) {
       setLoadingOrder(false);
+      setOrderErrorRetryable(false);
       setOrderError("We couldn't find this order.");
       return;
     }
@@ -261,7 +286,9 @@ export default function TrackingScreen() {
     };
     const handleDisconnect = () => setIsConnected(false);
 
-    const handleGate = (data: { message?: string }) => {
+    const handleGate = (data: { orderId?: string; message?: string }) => {
+      // Another order's room event (several orders tracked in one session) is not for this screen.
+      if (data && data.orderId && String(data.orderId) !== String(orderId)) return;
       setGateNotification(data?.message || 'Your rider is waiting at the gate!');
       if (gateTimerRef.current) clearTimeout(gateTimerRef.current);
       gateTimerRef.current = setTimeout(() => {
@@ -280,7 +307,10 @@ export default function TrackingScreen() {
       }
       if (!s) return;
       const step = statusToStep(s, statusRef.current);
-      applyStep(step);
+      lastSocketStatusAtRef.current = Date.now();
+      // Events can arrive out of order: only move forward (or to Cancelled). The fetch below
+      // reads the server's real status either way.
+      if (step === -1 || step >= statusRef.current) applyStep(step);
       if (s === 'Delivered' && !confettiShownRef.current) {
         confettiShownRef.current = true;
         setShowConfetti(true);
@@ -358,7 +388,10 @@ export default function TrackingScreen() {
   }, [cancelSecondsLeft]);
 
   // Customers can cancel while the store has not accepted yet, or within 2 minutes of placing it (before pickup).
-  const canCancel = status === 1 || (cancelSecondsLeft > 0 && (status === 2 || status === 3));
+  // Same rule as the server: Pending, or Accepted / Preparing within the window (not ready for pickup / picking).
+  const liveStatus = orderInfo?.status;
+  const canCancel = status === 1 ||
+    (cancelSecondsLeft > 0 && (status === 2 || status === 3) && (liveStatus === 'Accepted' || liveStatus === 'Preparing'));
 
   // Cancel order handler
   const handleCancelOrder = async () => {
@@ -528,12 +561,14 @@ export default function TrackingScreen() {
         <Text style={[s.cancelledDesc, { color: txtSec, textAlign: 'center', marginTop: 8 }]}>
           {orderError}
         </Text>
-        <TouchableOpacity
-          style={[s.returnBtn, { backgroundColor: COLORS.gold, marginTop: 24 }]}
-          onPress={() => { setLoadingOrder(true); fetchOrder(); }}
-        >
-          <Text style={[s.returnBtnText, { color: '#000' }]}>TRY AGAIN</Text>
-        </TouchableOpacity>
+        {orderErrorRetryable && !!orderId && (
+          <TouchableOpacity
+            style={[s.returnBtn, { backgroundColor: COLORS.gold, marginTop: 24 }]}
+            onPress={() => { setLoadingOrder(true); fetchOrder(); }}
+          >
+            <Text style={[s.returnBtnText, { color: '#000' }]}>TRY AGAIN</Text>
+          </TouchableOpacity>
+        )}
         <TouchableOpacity style={{ marginTop: 16 }} onPress={() => router.replace('/(tabs)/orders' as any)}>
           <Text style={{ fontSize: 11, fontWeight: '800', color: txtSec, letterSpacing: 1 }}>VIEW ALL ORDERS</Text>
         </TouchableOpacity>

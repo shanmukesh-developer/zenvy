@@ -25,11 +25,8 @@ export const fetchAdCreative = async (_placement: AdPlacement): Promise<AdCreati
 };
 
 // ── Ad Analytics Tracker ──────────────────────────────────────────────────────
-export const trackAdEvent = (adId: string, eventType: 'impression' | 'click') => {
-  if (__DEV__) {
-    console.log(`[AD_ANALYTICS] ${eventType.toUpperCase()} logged for adId: ${adId}`);
-  }
-};
+// No ad backend yet: events are not recorded anywhere.
+export const trackAdEvent = (_adId: string, _eventType: 'impression' | 'click') => {};
 
 interface AdSlotProps {
   placement: AdPlacement;

@@ -26,7 +26,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { useDietary, DietPrefs } from '../../context/DietaryContext';
 import AmbientBackground from '../../components/AmbientBackground';
 import { StaggeredSection } from '../../components/AnimatedSection';
-import { apiFetch } from '../../utils/auth';
+import { apiFetch, getToken } from '../../utils/auth';
 import { newIdempotencyKey } from '../../context/CartContext';
 import { API_URL, ENDPOINTS } from '../../constants/api';
 import { usePhoneOtp, PhoneProof } from '../../utils/phoneOtp';
@@ -186,6 +186,7 @@ export default function ProfileScreen() {
 
   const fetchData = useCallback(async (mode: 'focus' | 'pull' = 'focus') => {
     if (mode === 'pull') setRefreshing(true);
+    const tokenAtStart = await getToken();
     const [profileRes, statsRes, couponsRes] = await Promise.allSettled([
       apiFetch(ENDPOINTS.profile),
       apiFetch(`${API_URL}/api/orders/stats`),
@@ -196,7 +197,9 @@ export default function ProfileScreen() {
     try {
       if (profileRes.status === 'fulfilled' && profileRes.value.ok) {
         const data = await profileRes.value.json();
-        if (mountedRef.current && data && typeof data === 'object') setUser(data);
+        // Signed out (or switched account) while this was loading: don't bring the old profile back.
+        const sameSession = !!tokenAtStart && (await getToken()) === tokenAtStart;
+        if (mountedRef.current && sameSession && data && typeof data === 'object') setUser(data);
       }
     } catch (e) {
       console.warn('[Profile] profile sync failed:', e);

@@ -33,6 +33,7 @@ export default function MyListings() {
   useRentalLive(() => load());
 
   const act = async (l: OwnListing, kind: 'pause' | 'resume' | 'submit' | 'delete') => {
+    if (busy) return; // one listing action at a time (double taps sent the same action twice)
     const run = async () => {
       setBusy(`${l.id}:${kind}`);
       try {

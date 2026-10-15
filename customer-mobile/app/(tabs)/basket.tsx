@@ -26,7 +26,7 @@ export default function BasketScreen() {
   const router = useRouter();
 
   // The bill comes from the server (POST /api/orders/quote); guests see an item estimate only.
-  const { quote, loading: quoteLoading, error: quoteError, refresh: refreshQuote, hasOrderLines } = useBasketQuote(null, !!user);
+  const { quote, loading: quoteLoading, error: quoteError, refresh: refreshQuote, hasOrderLines } = useBasketQuote(null, !!user, basketFocused);
   const { serviceability } = useServiceability();
   const isClosed = quote?.serviceability?.open === false || serviceability?.open === false;
   const closedMessage = quote?.serviceability?.message || serviceability?.message ||

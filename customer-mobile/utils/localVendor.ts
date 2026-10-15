@@ -67,7 +67,7 @@ export const stallErrorMessage = (code: any, serverMessage?: string | null, stal
     case 'ADDONS_NOT_FOR_STALL':
       return { title: 'Remove add-ons', message: serverMessage || `Add-ons can't be added to a ${name} order.` };
     case 'MULTIPLE_STORES':
-      return { title: 'One place per order', message: serverMessage || "A stall order can only have that stall's items. Place the other items as a separate order." };
+      return { title: 'One place per order', message: serverMessage || 'Each order comes from one store or stall. Place the other items as a separate order.' };
     case 'STORE_CLOSED':
       return { title: 'Closed right now', message: serverMessage || `${name} is not taking orders right now. Try again when it opens.` };
     case 'MIN_ORDER_NOT_MET':

@@ -9,11 +9,12 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  BackHandler,
 } from 'react-native';
 import { KeyboardAvoidingView } from '../components/KeyboardAvoidingView';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useNavigation } from 'expo-router';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { API_URL, ENDPOINTS } from '../constants/api';
 import {
@@ -26,6 +27,8 @@ import {
   newIdempotencyKey,
   DELIVERY_INSTRUCTIONS,
   DELIVERY_INSTRUCTIONS_KEY,
+  type CartItem,
+  type OrderQuote,
 } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -38,6 +41,42 @@ import { cleanBlock, cleanRoom as cleanRoomNo, saveHostelToProfile } from '../ut
 
 type CampusKey = 'srmap' | 'vitap' | 'amrita';
 type PayMethod = 'COD' | 'Wallet';
+
+/** Exactly what the customer confirmed: placed as-is (never re-read from a later render). */
+interface OrderSnapshot {
+  sig: string;
+  orderLines: CartItem[];
+  customLines: CartItem[];
+  paymentMethod: PayMethod;
+  couponCode: string | null;
+  isStallOrder: boolean;
+  stallName: string;
+  /** The bill shown in the confirm dialog; the server refuses with PRICE_CHANGED if it moved. */
+  expectedTotal: number | null;
+  campus: CampusKey;
+  deliveryAddress: string;
+  basketAddress: string;
+  deliveryNotes: string[];
+}
+
+/** An order request whose outcome we never heard (timeout / dropped connection). */
+interface UnsettledAttempt {
+  sig: string;
+  key: string;
+  startedAt: number;
+  cartKeys: string[];
+}
+
+const CHECKOUT_CAMPUS_KEY = 'zenvy_checkout_campus';
+const isCampusKey = (v: any): v is CampusKey => v === 'srmap' || v === 'vitap' || v === 'amrita';
+/** Best guess from a college email (e.g. name@srmap.edu.in); null = the customer picks. */
+const campusFromEmail = (email?: string | null): CampusKey | null => {
+  const domain = String(email || '').toLowerCase().split('@')[1] || '';
+  if (/(^|\.)srmap\./.test(domain)) return 'srmap';
+  if (/(^|\.)vitap\./.test(domain)) return 'vitap';
+  if (/amrita/.test(domain)) return 'amrita';
+  return null;
+};
 
 interface ExtraItem {
   id: string;
@@ -96,7 +135,15 @@ export default function CheckoutScreen() {
   const { user, refreshUser, setUser } = useAuth();
   const { isDark, colors } = useTheme();
 
-  const [campus, setCampus] = useState<CampusKey>('srmap');
+  const navigation = useNavigation();
+  // No silent default: the last campus picked here, else the college email's campus, else the customer picks.
+  const [campus, setCampusState] = useState<CampusKey | null>(null);
+  const campusTouchedRef = useRef(false);
+  const setCampus = (key: CampusKey) => {
+    campusTouchedRef.current = true;
+    setCampusState(key);
+    AsyncStorage.setItem(CHECKOUT_CAMPUS_KEY, key).catch(() => {});
+  };
   const [address, setAddress] = useState('');
   const [landmark, setLandmark] = useState('');
   const [instructionIds, setInstructionIds] = useState<string[]>([]);
@@ -110,7 +157,8 @@ export default function CheckoutScreen() {
 
   // Rewards "USE NOW" opens checkout with ?coupon=CODE. The quote drops it (COUPON_INVALID) if it is not usable.
   const { coupon: couponParam } = useLocalSearchParams<{ coupon?: string | string[] }>();
-  const couponFromLink = String((Array.isArray(couponParam) ? couponParam[0] : couponParam) || '').trim().toUpperCase();
+  // Codes are matched exactly by the server: keep the link's case.
+  const couponFromLink = String((Array.isArray(couponParam) ? couponParam[0] : couponParam) || '').trim();
   const couponLinkAppliedRef = useRef(false);
   useEffect(() => {
     if (couponLinkAppliedRef.current || !couponFromLink) return;
@@ -122,7 +170,11 @@ export default function CheckoutScreen() {
 
   const [placing, setPlacing] = useState(false);
   const placingRef = useRef(false);
-  const idempotencyKeyRef = useRef<string>(newIdempotencyKey());
+  // The confirm dialog is open: a second tap must not stack another one.
+  const confirmOpenRef = useRef(false);
+  // Set while an order request's outcome is unknown: retries reuse its key (same basket) and
+  // look in recent orders first, so a request that did get through is never placed twice.
+  const attemptRef = useRef<UnsettledAttempt | null>(null);
   // Separate key for the Mega Basket shopping list, tied to its exact contents and kept across retries
   // until the server answers, so a timed-out request that was processed is not created twice.
   const basketKeyRef = useRef<{ sig: string; key: string } | null>(null);
@@ -143,10 +195,32 @@ export default function CheckoutScreen() {
   const closedMessage = quote?.serviceability?.message || serviceability?.message ||
     `Campus kitchens are closed for the night. Ordering opens again at ${serviceability?.reopensAt || quote?.serviceability?.reopensAt || '6:00 AM'}.`;
 
-  // A new basket or a new bill means a new checkout attempt.
+  // Latest bill, read by the confirm dialog's button (its closure is from an earlier render).
+  const quoteRef = useRef<OrderQuote | null>(quote);
+  quoteRef.current = quote;
+
   useEffect(() => {
-    idempotencyKeyRef.current = newIdempotencyKey();
-  }, [quote?.finalPrice, paymentMethod, cart.length]);
+    let cancelled = false;
+    (async () => {
+      let saved: string | null = null;
+      try { saved = await AsyncStorage.getItem(CHECKOUT_CAMPUS_KEY); } catch {}
+      if (cancelled || campusTouchedRef.current) return;
+      const guess = isCampusKey(saved) ? saved : campusFromEmail((user as any)?.email);
+      if (guess) setCampusState(guess);
+    })();
+    return () => { cancelled = true; };
+  }, [user]);
+
+  // Leaving while the order is being placed would hide its outcome: block back until it settles.
+  useEffect(() => {
+    try { (navigation as any)?.setOptions?.({ gestureEnabled: !placing }); } catch {}
+    if (!placing) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      Alert.alert('Placing your order', 'Hang on a moment, we are confirming your order.');
+      return true;
+    });
+    return () => sub.remove();
+  }, [placing, navigation]);
 
   // Prefill the address from the profile
   useEffect(() => {
@@ -291,7 +365,7 @@ export default function CheckoutScreen() {
   };
 
   const customEstimate = customLines.reduce((acc, i) => acc + (Number(i.price) || 0) * i.quantity, 0);
-  const campusLabel = CAMPUSES.find((c) => c.key === campus)?.label || 'SRM AP';
+  const campusLabel = CAMPUSES.find((c) => c.key === campus)?.label || '';
 
   const deliveryNotes = useMemo(
     () => DELIVERY_INSTRUCTIONS.filter((d) => instructionIds.includes(d.id)).map((d) => d.note),
@@ -334,17 +408,84 @@ export default function CheckoutScreen() {
     ]);
   };
 
-  const canPlace = !placing && !isClosed && !!user && address.trim().length >= 3 &&
+  const canPlace = !placing && !isClosed && !!user && !!campus && address.trim().length >= 3 &&
     (hasOrder ? (!!quote && !quoteLoading) : hasCustom);
 
-  const handlePlaceOrder = () => {
-    if (placingRef.current) return;
+  // Store name for error copy (a stall's own name, or the store the basket is from).
+  const errorStoreName = isStallOrder
+    ? stallName
+    : (quote?.store?.name || orderLines.find((i) => !i.isAddOn)?.restaurantName || 'This store');
+
+  /** One checkout attempt = this basket, payment, coupon and address (the bill is checked by the server). */
+  const attemptSig = JSON.stringify([
+    orderLines.map(toOrderLine),
+    customLines.map((i) => [i.id, i.name, i.quantity, i.price]),
+    isStallOrder ? 'COD' : paymentMethod,
+    isStallOrder ? null : couponCode,
+    campus,
+    address.trim(),
+    landmark.trim(),
+    deliveryNotes,
+  ]);
+  const liveSigRef = useRef(attemptSig);
+  liveSigRef.current = attemptSig;
+
+  const buildSnapshot = (): OrderSnapshot | null => {
+    if (!campus) return null;
+    return {
+      sig: attemptSig,
+      orderLines,
+      customLines,
+      paymentMethod: isStallOrder ? 'COD' : paymentMethod,
+      couponCode: isStallOrder ? null : couponCode,
+      isStallOrder,
+      stallName,
+      expectedTotal: hasOrder && quote ? quote.finalPrice : null,
+      campus,
+      deliveryAddress: buildDeliveryAddress(),
+      basketAddress: buildDeliveryAddress(true),
+      deliveryNotes,
+    };
+  };
+
+  /**
+   * The last order request timed out: did it reach the server? Its Idempotency-Key is stored on the
+   * order, so a match in recent orders means it was placed. 'unknown' = could not check.
+   */
+  const findSettledAttempt = async (attempt: UnsettledAttempt): Promise<string | null | 'unknown'> => {
+    try {
+      const res = await apiFetch(ENDPOINTS.myOrders);
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !Array.isArray(data)) return 'unknown';
+      const hit = data.find((o: any) => o && (
+        (o.idempotencyKey && o.idempotencyKey === attempt.key) ||
+        (!('idempotencyKey' in o) && new Date(o.createdAt).getTime() >= attempt.startedAt - 5000)
+      ));
+      return hit ? String(hit._id || hit.id) : null;
+    } catch {
+      return 'unknown';
+    }
+  };
+
+  const goToPlacedOrder = (orderId: string, cartKeys: string[]) => {
+    const keys = new Set(cartKeys);
+    setCart((prev) => prev.filter((i) => !keys.has(i.cartKey)));
+    refreshUser().catch(() => {});
+    router.replace(`/tracking/${orderId}` as any);
+  };
+
+  const handlePlaceOrder = async () => {
+    if (placingRef.current || confirmOpenRef.current) return;
     if (cart.length === 0) {
       Alert.alert('Your basket is empty', 'Add something tasty first!');
       return;
     }
     if (isClosed) {
       Alert.alert('Closed for the night', closedMessage);
+      return;
+    }
+    if (!campus) {
+      Alert.alert('Pick your campus', 'Choose the campus we should deliver to.');
       return;
     }
     if (address.trim().length < 3) {
@@ -355,85 +496,170 @@ export default function CheckoutScreen() {
       if (quoteLoading) Alert.alert('One moment', 'We are updating your bill. Try again in a second.');
       else if (quoteError?.code === 'ITEMS_UNAVAILABLE' || quoteError?.code === 'BOOKING_ONLY_ITEMS') offerRemoveUnavailable(quoteError.message, quoteError.body);
       else if (quoteError?.code === 'ADDONS_NOT_FOR_STALL') offerRemoveStallAddOns(quoteError.message);
-      else if (quoteError && stallErrorMessage(quoteError.code, quoteError.message, stallName)) {
-        const m = stallErrorMessage(quoteError.code, quoteError.message, stallName)!;
+      else if (quoteError && stallErrorMessage(quoteError.code, quoteError.message, errorStoreName)) {
+        const m = stallErrorMessage(quoteError.code, quoteError.message, errorStoreName)!;
         Alert.alert(m.title, m.message);
       }
       else if (quoteError) Alert.alert('We could not get your bill', quoteError.message, [{ text: 'OK', style: 'cancel' }, { text: 'Retry', onPress: refreshQuote }]);
       return;
     }
 
+    // An earlier request timed out: look for it before placing anything again.
+    const pending = attemptRef.current;
+    if (pending && hasOrder) {
+      confirmOpenRef.current = true;
+      setPlacing(true);
+      const found = await findSettledAttempt(pending);
+      confirmOpenRef.current = false;
+      if (mountedRef.current) setPlacing(false);
+      if (found === 'unknown') {
+        Alert.alert('Connection problem', `${friendlyNetworkMessage} We need to check whether your last order went through before placing another.`);
+        return;
+      }
+      if (found) {
+        attemptRef.current = null;
+        Alert.alert('Your order went through', 'Your earlier order was placed. Opening it now.', [
+          { text: 'View order', onPress: () => goToPlacedOrder(found, pending.cartKeys) },
+        ], { cancelable: false });
+        return;
+      }
+      // Not placed: a changed basket is a new attempt; the same basket keeps the key (the server dedupes).
+      if (pending.sig !== attemptSig) attemptRef.current = null;
+    }
+
+    const snap = buildSnapshot();
+    if (!snap) return;
+
     const lines: string[] = [];
     if (hasOrder && quote) {
-      const n = orderLines.reduce((a, i) => a + i.quantity, 0);
+      const n = snap.orderLines.reduce((a, i) => a + i.quantity, 0);
       lines.push(`${n} item${n === 1 ? '' : 's'} from ${quote.store?.name || 'your store'} • ${rupees(quote.finalPrice)}`);
-      lines.push(isStallOrder
+      lines.push(snap.isStallOrder
         ? `💵 ${stallPayCopy(stallName)} (${stallName} delivers it, no Zenvy rider)`
-        : `💳 ${paymentMethod === 'Wallet' ? 'Zenvy Wallet' : 'Cash on Delivery'}`);
+        : `💳 ${snap.paymentMethod === 'Wallet' ? 'Zenvy Wallet' : 'Cash on Delivery'}`);
     }
     if (hasCustom) {
       lines.push(`🛍️ Mega Basket shopping list (${customLines.length}) • est. ${rupees(customEstimate)} + fees, cash on delivery`);
     }
     lines.push(`📍 ${campusLabel} - ${address.trim()}`);
 
+    confirmOpenRef.current = true;
+    const release = () => { confirmOpenRef.current = false; };
     Alert.alert('Confirm your order', lines.join('\n'), [
-      { text: 'Edit', style: 'cancel' },
-      { text: 'Place order', onPress: () => { executeOrderPlacement(); } },
-    ]);
+      { text: 'Edit', style: 'cancel', onPress: release },
+      {
+        text: 'Place order',
+        onPress: () => {
+          release();
+          // The basket, payment or bill changed while the dialog was open: show the new one first.
+          const latestTotal = quoteRef.current ? quoteRef.current.finalPrice : null;
+          if (liveSigRef.current !== snap.sig || (snap.expectedTotal !== null && latestTotal !== snap.expectedTotal)) {
+            Alert.alert('Your basket changed', 'Check your updated basket and bill, then tap Place order again.');
+            return;
+          }
+          executeOrderPlacement(snap);
+        },
+      },
+    ], { cancelable: true, onDismiss: release });
   };
 
-  const executeOrderPlacement = async () => {
+  /** The bill moved between the confirm dialog and the server (price / fee / coupon change). */
+  const confirmNewPrice = (snap: OrderSnapshot, message: string, fresh: any) => {
+    const newTotal = fresh && typeof fresh.finalPrice === 'number' ? fresh.finalPrice : null;
+    if (newTotal === null) {
+      Alert.alert('Your bill changed', `${message} Check the updated bill and tap Place order again.`);
+      return;
+    }
+    if (snap.paymentMethod === 'Wallet' && fresh.canPayWithWallet === false) {
+      Alert.alert('Your bill changed', `${message} Your Wallet balance does not cover the new total — pay with cash instead.`, [
+        { text: 'OK', style: 'cancel' },
+        { text: 'Pay cash instead', onPress: () => setPaymentMethod('COD') },
+      ]);
+      return;
+    }
+    confirmOpenRef.current = true;
+    const release = () => { confirmOpenRef.current = false; };
+    Alert.alert('Your bill changed', message, [
+      { text: 'Edit', style: 'cancel', onPress: release },
+      {
+        text: `Place for ${rupees(newTotal)}`,
+        onPress: () => {
+          release();
+          if (liveSigRef.current !== snap.sig) {
+            Alert.alert('Your basket changed', 'Check your updated basket and bill, then tap Place order again.');
+            return;
+          }
+          executeOrderPlacement({ ...snap, expectedTotal: newTotal });
+        },
+      },
+    ], { cancelable: true, onDismiss: release });
+  };
+
+  const executeOrderPlacement = async (snap: OrderSnapshot) => {
     if (placingRef.current) return;
     placingRef.current = true;
     setPlacing(true);
-    const deliveryAddress = buildDeliveryAddress();
+    const { orderLines: lines, customLines: listLines, stallName: snapStall } = snap;
     let placedOrderId: string | null = null;
     let placedBasket = false;
+    let navigateTo: string | null = null;
 
     try {
       // 1. The food / store order — priced and charged by the server
-      if (hasOrder) {
+      if (lines.length > 0) {
+        // Same basket as an unsettled attempt -> same key, so the server returns that order instead of a second one.
+        if (!attemptRef.current || attemptRef.current.sig !== snap.sig) {
+          attemptRef.current = { sig: snap.sig, key: newIdempotencyKey(), startedAt: Date.now(), cartKeys: lines.map((l) => l.cartKey) };
+        }
+        const key = attemptRef.current.key;
         let res: Response;
         try {
           res = await apiFetch(ENDPOINTS.placeOrder, {
             method: 'POST',
-            headers: { 'Idempotency-Key': idempotencyKeyRef.current },
+            headers: { 'Idempotency-Key': key },
             body: JSON.stringify({
-              items: orderLines.map(toOrderLine),
-              paymentMethod: isStallOrder ? 'COD' : paymentMethod,
-              deliveryAddress,
-              campus,
+              items: lines.map(toOrderLine),
+              paymentMethod: snap.paymentMethod,
+              deliveryAddress: snap.deliveryAddress,
+              campus: snap.campus,
               deliverySlot: 'ASAP',
-              ...(deliveryNotes.length ? { deliveryInstructions: deliveryNotes } : {}),
-              idempotencyKey: idempotencyKeyRef.current,
-              ...(couponCode && !isStallOrder ? { couponCode } : {}),
+              ...(snap.deliveryNotes.length ? { deliveryInstructions: snap.deliveryNotes } : {}),
+              idempotencyKey: key,
+              ...(snap.couponCode ? { couponCode: snap.couponCode } : {}),
+              ...(snap.expectedTotal !== null ? { expectedTotal: snap.expectedTotal } : {}),
             }),
           });
         } catch {
-          // Same key on retry, so a request that did get through is never placed twice.
+          // Outcome unknown: the attempt (and its key) stays, and the next tap checks Orders first.
           Alert.alert('Connection problem', `${friendlyNetworkMessage} If your order went through, it will show up in Orders.`);
           return;
         }
         const data = await res.json().catch(() => null);
+        const code = data?.code;
+        // The server answered: the attempt is settled, except "still being placed" (same key in flight).
+        if (code !== 'ORDER_IN_PROGRESS') attemptRef.current = null;
         if (res.ok && data && (data._id || data.id)) {
           placedOrderId = String(data._id || data.id);
-          const placedKeys = new Set(orderLines.map((l) => l.cartKey));
+          const placedKeys = new Set(lines.map((l) => l.cartKey));
           setCart((prev) => prev.filter((i) => !placedKeys.has(i.cartKey)));
         } else {
-          const code = data?.code;
           const message = (data && typeof data.message === 'string' && data.message) || 'We could not place your order. Please try again.';
-          if (res.status !== 409) idempotencyKeyRef.current = newIdempotencyKey();
+          if (code === 'PRICE_CHANGED') {
+            refreshQuote();
+            confirmNewPrice(snap, message, data?.quote);
+            return;
+          }
           if (code === 'ITEMS_UNAVAILABLE' || code === 'BOOKING_ONLY_ITEMS') offerRemoveUnavailable(message, data);
           else if (code === 'STALL_COD_ONLY') {
             setPaymentMethod('COD');
             Alert.alert('Cash only', `${message} Payment is now set to cash. Tap Place order again.`);
           } else if (code === 'COUPON_NOT_FOR_STALL') {
             setCouponCode(null);
-            Alert.alert('Coupon removed', `Coupons can't be used on ${stallName} orders, so we removed it. Tap Place order again.`);
+            Alert.alert('Coupon removed', `Coupons can't be used on ${snapStall} orders, so we removed it. Tap Place order again.`);
           } else if (code === 'ADDONS_NOT_FOR_STALL') {
             offerRemoveStallAddOns(message);
-          } else if (stallErrorMessage(code, message, stallName)) {
-            const m = stallErrorMessage(code, message, stallName)!;
+          } else if (stallErrorMessage(code, message, errorStoreName)) {
+            const m = stallErrorMessage(code, message, errorStoreName)!;
             Alert.alert(m.title, m.message);
           } else if (code === 'INSUFFICIENT_WALLET') {
             Alert.alert('Not enough Wallet balance', message, [
@@ -457,15 +683,15 @@ export default function CheckoutScreen() {
       }
 
       // 2. Mega Basket shopping list (free-text requests a rider buys for you; cash on delivery)
-      if (hasCustom) {
+      if (listLines.length > 0) {
         const basketBody = {
-          items: customLines.map((i) => ({
+          items: listLines.map((i) => ({
             name: String(i.name || '').replace(/^\[Custom Request\]\s*/i, ''),
             quantity: i.quantity,
             unit: 'pcs',
             priceEstimated: Number(i.price) || 0,
           })),
-          deliveryAddress: buildDeliveryAddress(true),
+          deliveryAddress: snap.basketAddress,
           paymentMethod: 'COD',
         };
         const basketSig = JSON.stringify(basketBody);
@@ -484,7 +710,7 @@ export default function CheckoutScreen() {
           if (res.status !== 409 && basketKeyRef.current?.key === basketKey) basketKeyRef.current = null;
           if (res.ok) {
             placedBasket = true;
-            const keys = new Set(customLines.map((l) => l.cartKey));
+            const keys = new Set(listLines.map((l) => l.cartKey));
             setCart((prev) => prev.filter((i) => !keys.has(i.cartKey)));
           } else {
             const message = (data && typeof data.message === 'string' && data.message) || 'We could not send your shopping list.';
@@ -502,13 +728,14 @@ export default function CheckoutScreen() {
       if (placedOrderId || placedBasket) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         refreshUser().catch(() => {});
-        if (placedOrderId) router.replace(`/tracking/${placedOrderId}` as any);
-        else router.replace('/mega-basket?tab=list' as any);
+        navigateTo = placedOrderId ? `/tracking/${placedOrderId}` : '/mega-basket?tab=list';
       }
     } finally {
       placingRef.current = false;
       if (mountedRef.current) setPlacing(false);
     }
+    // Navigate only after the "placing" lock is released (the back guard would otherwise block it).
+    if (navigateTo) router.replace(navigateTo as any);
   };
 
   const bg = colors.bg;
@@ -519,6 +746,10 @@ export default function CheckoutScreen() {
   const goldColor = isDark ? COLORS.gold : colors.gold;
 
   const goBack = () => {
+    if (placingRef.current) {
+      Alert.alert('Placing your order', 'Hang on a moment, we are confirming your order.');
+      return;
+    }
     if (router.canGoBack()) router.back();
     else router.replace('/(tabs)' as any);
   };
@@ -565,7 +796,7 @@ export default function CheckoutScreen() {
     );
   }
 
-  const blocks = campusBlocks[campus] || [];
+  const blocks: string[] = (campus && campusBlocks[campus]) || [];
   // "Save as my hostel & room": offered when the box holds a block + room that differs from the profile.
   const typedHostel = parseHostelAddress(address);
   const hostelSaved = !!typedHostel &&
@@ -588,6 +819,8 @@ export default function CheckoutScreen() {
   const blockChips = profileBlock && !blocks.includes(profileBlock) ? [profileBlock, ...blocks] : blocks;
   const walletBalance = Number(quote?.walletBalance ?? (user as any)?.walletBalance ?? 0) || 0;
   const walletAllowed = hasOrder && !!quote && quote.canPayWithWallet !== false;
+  // Buy-at-store shops (the rider pays the shop) take cash only: say so instead of "not enough balance".
+  const storeCodOnly = hasOrder && !!quote && Array.isArray(quote.paymentMethods) && !quote.paymentMethods.includes('Wallet');
 
   return (
     <KeyboardAvoidingView style={[s.container, { backgroundColor: bg }]} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -612,6 +845,9 @@ export default function CheckoutScreen() {
         {/* Campus Selection */}
         <StaggeredSection delay={50} direction="up">
           <Text style={[s.sectionTitle, { color: txt }]}>DELIVERY CAMPUS</Text>
+          {!campus && (
+            <Text style={[s.helperText, { color: COLORS.red }]}>Pick the campus we should deliver to.</Text>
+          )}
           <View style={s.campusRow}>
             {CAMPUSES.map(item => {
               const isActive = campus === item.key;
@@ -812,7 +1048,9 @@ export default function CheckoutScreen() {
                 title: 'ZENVY WALLET',
                 desc: !hasOrder
                   ? 'Shopping lists are paid in cash on delivery'
-                  : walletAllowed
+                  : storeCodOnly
+                    ? 'This store takes cash on delivery only'
+                    : walletAllowed
                     ? `Balance ${rupees(walletBalance)}`
                     : `Balance ${rupees(walletBalance)} — not enough for this order`,
                 icon: '👛',
@@ -879,6 +1117,15 @@ export default function CheckoutScreen() {
                 ) : quoteError.code === 'ADDONS_NOT_FOR_STALL' ? (
                   <TouchableOpacity style={s.smallBtn} onPress={removeAddOns}>
                     <Text style={s.smallBtnText}>REMOVE ADD-ONS</Text>
+                  </TouchableOpacity>
+                ) : quoteError.code === 'MULTIPLE_STORES' || quoteError.code === 'ADDONS_ONLY' || quoteError.code === 'TOO_MANY_LINES' || quoteError.code === 'INVALID_QUANTITY' || quoteError.code === 'STORE_CLOSED' ? (
+                  // Retrying gives the same answer: the basket itself has to change.
+                  <TouchableOpacity style={s.smallBtn} onPress={() => router.replace('/(tabs)/basket' as any)}>
+                    <Text style={s.smallBtnText}>EDIT BASKET</Text>
+                  </TouchableOpacity>
+                ) : quoteError.code === 'MIN_ORDER_NOT_MET' && quoteError.body?.storeId ? (
+                  <TouchableOpacity style={s.smallBtn} onPress={() => router.push(`/restaurant/${quoteError.body.storeId}` as any)}>
+                    <Text style={s.smallBtnText}>ADD MORE ITEMS</Text>
                   </TouchableOpacity>
                 ) : (
                   <TouchableOpacity style={s.smallBtn} onPress={refreshQuote}>
