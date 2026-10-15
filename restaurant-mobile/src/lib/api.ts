@@ -107,8 +107,15 @@ export interface MenuItemBody {
   tags?: string[];
 }
 
-export async function createMenuItem(body: MenuItemBody): Promise<MenuItem> {
-  const raw = await apiFetch('/api/restaurants/menu', { method: 'POST', body, no401Logout: true, timeoutMs: 30000 });
+/**
+ * `idempotencyKey`: the same key for every retry of one "Add item" tap, so a retry after a timeout (the first
+ * request may have been saved) does not create the item twice on a server that honours the header.
+ */
+export async function createMenuItem(body: MenuItemBody, idempotencyKey?: string): Promise<MenuItem> {
+  const raw = await apiFetch('/api/restaurants/menu', {
+    method: 'POST', body, no401Logout: true, timeoutMs: 30000,
+    headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined,
+  });
   const item = normalizeMenuItem(raw);
   if (!item) throw new ApiError(500, 'The item was saved but the reply was empty. Pull down to refresh your menu.', raw);
   return item;
@@ -151,4 +158,24 @@ export function registerPushToken(token: string, app: 'restaurant' | 'vendor' = 
 /** POST /api/restaurants/fcm-token/remove (on logout, while the token is still valid). */
 export function removePushToken(token: string) {
   return apiFetch('/api/restaurants/fcm-token/remove', { method: 'POST', body: { token }, no401Logout: true, timeoutMs: 8000 });
+}
+
+// ── Session refresh (optional server feature) ───────────────────────────────
+let refreshUnsupported = false;
+
+/**
+ * POST /api/restaurants/refresh-token → { token, restaurant? }: swaps a still-valid session for a fresh one,
+ * so a phone that stays logged in for weeks is not suddenly logged out mid-shift. Returns null when the
+ * server has no such route (404 / 405, remembered for this launch) or anything else goes wrong; never logs out.
+ */
+export async function refreshSession(): Promise<{ token: string; restaurant?: any } | null> {
+  if (refreshUnsupported) return null;
+  try {
+    const res = await apiFetch<any>('/api/restaurants/refresh-token', { method: 'POST', body: {}, no401Logout: true, timeoutMs: 15000 });
+    const token = typeof res?.token === 'string' && res.token ? res.token : null;
+    return token ? { token, restaurant: res?.restaurant ?? res?.vendor ?? undefined } : null;
+  } catch (e) {
+    if (e instanceof ApiError && (e.status === 404 || e.status === 405)) refreshUnsupported = true;
+    return null;
+  }
 }

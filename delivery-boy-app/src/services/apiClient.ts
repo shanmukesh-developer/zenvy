@@ -71,13 +71,15 @@ interface RequestOptions {
   timeoutMs?: number;
   /** false for login: a 401 there means wrong password, not an expired session. */
   auth?: boolean;
+  /** Send this token instead of the current one (logout clean-up runs after the session is already cleared). */
+  token?: string;
 }
 
 export async function apiFetch<T = unknown>(endpoint: string, opts: RequestOptions = {}): Promise<T> {
   const { method = 'GET', body, timeoutMs = 15000, auth = true } = opts;
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
-  const token = auth ? getToken() : null;
+  const token = auth ? opts.token ?? getToken() : null;
   if (token) headers.Authorization = `Bearer ${token}`;
 
   const controller = new AbortController();

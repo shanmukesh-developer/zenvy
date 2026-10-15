@@ -185,8 +185,8 @@ export function PushOffBanner() {
   if (pushState !== 'blocked' && pushState !== 'unavailable') return null;
   const blocked = pushState === 'blocked';
   const text = blocked
-    ? 'Notifications are blocked. New orders ring only while this app is open.'
-    : 'Alerts with the app closed are not available on this phone. Keep this app open to hear new orders.';
+    ? 'Do not close this app. Notifications are blocked, so new orders ring only while Zenvy is open. Tap to fix.'
+    : 'Do not close this app. Alerts with the app closed are not available on this phone, so new orders ring only while Zenvy is open.';
   return (
     <Pressable
       onPress={blocked ? () => { Linking.openSettings().catch(() => {}); } : undefined}

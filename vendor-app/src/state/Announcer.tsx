@@ -7,6 +7,7 @@
 import { useEffect, useRef } from 'react';
 import { AppState, Platform, Vibration } from 'react-native';
 import { RING_REPEAT_MS } from '../config';
+import { serverNow } from '../lib/http';
 import { TIMED_OUT_REASON } from '../lib/model';
 import { playRing, RING_SOUND_MS } from '../lib/push';
 import { cancelNativeOrderAlert, nativeOrderAlert } from '../voice/kitchenService';
@@ -23,7 +24,8 @@ const RING_PATTERN = [0, 600, 250, 600, 250, 600];
 const RING_MAX_AGE_MS = 20 * 60 * 1000;
 const stillFresh = (o: Order) => {
   const t = o.createdAt ? new Date(o.createdAt).getTime() : NaN;
-  return !Number.isFinite(t) || Date.now() - t < RING_MAX_AGE_MS;
+  // createdAt is server time: compare with the server's clock, not a phone clock that may be minutes off.
+  return !Number.isFinite(t) || serverNow() - t < RING_MAX_AGE_MS;
 };
 
 /**
@@ -34,23 +36,24 @@ const stillFresh = (o: Order) => {
 function ring(o: Order, stillWaiting: (id: string) => boolean) {
   if (Platform.OS !== 'web') Vibration.vibrate(RING_PATTERN);
   const amount = String(Math.round(o.finalPrice || o.totalPrice || 0));
-  const speak = (force: boolean) => {
+  // `silent`: the ring sound already played, so the background heads-up must not add a second sound.
+  const speak = (force: boolean, silent: boolean) => {
     if (!stillWaiting(o.id)) return;
     forgetAnnouncement(`new:${o.id}`);
     announce(
       `new:${o.id}`,
       { kind: 'newOrder', items: o.itemCount, total: o.finalPrice || o.totalPrice },
-      { urgent: true, dedupeMs: 0, force, native: { orderNum: o.shortId, amount } },
+      { urgent: true, dedupeMs: 0, force, native: { orderNum: o.shortId, amount, silent } },
     );
   };
   playRing(`New order #${o.shortId}`).then((rang) => {
     if (!rang) {
-      speak(true); // no ring sound: the voice is the sound
+      speak(true, false); // no ring sound: the voice (and the heads-up's own sound) is the sound
     } else if (voiceEnabled()) {
-      setTimeout(() => speak(false), RING_SOUND_MS); // voice right after the ring, never on top of it
+      setTimeout(() => speak(false, true), RING_SOUND_MS); // voice right after the ring, never on top of it
     } else if (AppState.currentState !== 'active') {
-      // Voice off: still wake the phone with the native heads-up notification (no speech).
-      nativeOrderAlert('', o.shortId, amount, getVoiceSnapshot().settings.lang);
+      // Voice off: still wake the phone with the native heads-up notification (no speech, no second sound).
+      nativeOrderAlert('', o.shortId, amount, getVoiceSnapshot().settings.lang, true);
     }
   });
 }

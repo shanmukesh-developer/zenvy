@@ -11,6 +11,8 @@ export const STORAGE = {
   vendor: '@zenvy_vendor_profile',
   savedPhone: '@zenvy_vendor_saved_phone',
   voice: '@zenvy_vendor_voice_v1',
+  /** Orders put off with "Later" (per shop, id → time). */
+  silenced: '@zenvy_vendor_silenced',
   // voice.ts reads this once to migrate an old switch; the vendor app never had one.
   soundOnV1: '@zenvy_vendor_sound_on',
 } as const;

@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { BOTTOM_INSET, C, R, S, T, TOP_INSET } from '../theme';
+import { C, R, S, T, useInsets } from '../theme';
 import { Btn, Spinner } from '../ui/kit';
 import { useRider } from '../state/RiderStore';
 import { ApiError, NetworkError, errorMessage } from '../services/apiClient';
@@ -13,8 +13,9 @@ const logo = require('../../assets/icon.png');
 
 export function SplashScreen() {
   const { phase, retryBoot } = useRider();
+  const insets = useInsets();
   return (
-    <View style={[styles.center, { backgroundColor: C.bg }]}>
+    <View style={[styles.center, { backgroundColor: C.bg, paddingTop: insets.top }]}>
       <Image source={logo} style={styles.logo} accessibilityLabel="Zenvy Rider" />
       <Text style={[T.h2, { color: C.ink }]}>Zenvy Rider</Text>
       {phase === 'splash-error' ? (
@@ -38,6 +39,7 @@ function cleanPhone(v: string): string {
 
 export function LoginScreen() {
   const { login } = useRider();
+  const insets = useInsets();
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [show, setShow] = useState(false);
@@ -63,7 +65,7 @@ export function LoginScreen() {
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, backgroundColor: C.bg }}>
-      <ScrollView contentContainerStyle={styles.loginWrap} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={[styles.loginWrap, { paddingTop: insets.top + S.xl, paddingBottom: insets.bottom + S.xl }]} keyboardShouldPersistTaps="handled">
         <View style={{ alignItems: 'center', gap: S.sm }}>
           <Image source={logo} style={styles.logo} accessibilityLabel="Zenvy Rider" />
           <Text style={[T.h1, { color: C.ink }]}>Zenvy Rider</Text>
@@ -140,8 +142,9 @@ export function LoginScreen() {
 
 export function PendingScreen() {
   const { recheckApproval, logout, profile, showToast } = useRider();
+  const insets = useInsets();
   return (
-    <View style={[styles.center, { backgroundColor: C.bg, paddingHorizontal: S.xl, gap: S.lg }]}>
+    <View style={[styles.center, { backgroundColor: C.bg, paddingHorizontal: S.xl, gap: S.lg, paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       <View style={styles.pendingIcon}>
         <MaterialCommunityIcons name="shield-account-outline" size={48} color={C.amber} />
       </View>
@@ -171,15 +174,13 @@ export function PendingScreen() {
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: S.lg, paddingTop: TOP_INSET },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: S.lg },
   logo: { width: 92, height: 92, borderRadius: 24 },
   loginWrap: {
     flexGrow: 1,
     justifyContent: 'center',
     padding: S.xl,
     gap: S.xl,
-    paddingTop: TOP_INSET + S.xl,
-    paddingBottom: BOTTOM_INSET + S.xl,
   },
   inputRow: {
     flexDirection: 'row',

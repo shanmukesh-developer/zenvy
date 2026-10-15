@@ -2,7 +2,7 @@
 import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { BOTTOM_INSET, C, R, S, T } from '../theme';
+import { C, R, S, T, useInsets } from '../theme';
 import { Banner, Btn, Card, Label, ScreenHeader } from '../ui/kit';
 import { useVoice } from '../voice/useVoice';
 import { announceTest, checkVoices, updateVoiceSettings } from '../voice/announcer';
@@ -12,6 +12,7 @@ const LANGS: VoiceLang[] = ['te', 'hi', 'en'];
 
 export function VoiceSettingsScreen({ onBack }: { onBack: () => void }) {
   const v = useVoice();
+  const insets = useInsets();
   const samples = [
     phrase(v.lang, 'newOrder', { earning: 30 }),
     phrase(v.lang, 'delivered', { amount: 30 }),
@@ -21,7 +22,7 @@ export function VoiceSettingsScreen({ onBack }: { onBack: () => void }) {
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       <ScreenHeader title="Voice" onBack={onBack} />
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + S.xxl }]}>
         <Card style={styles.switchRow}>
           <MaterialCommunityIcons name={v.enabled ? 'volume-high' : 'volume-off'} size={30} color={v.enabled ? C.greenDark : C.muted} />
           <View style={{ flex: 1 }}>
@@ -87,7 +88,7 @@ export function VoiceSettingsScreen({ onBack }: { onBack: () => void }) {
 }
 
 const styles = StyleSheet.create({
-  content: { paddingHorizontal: S.lg, gap: S.lg, paddingBottom: BOTTOM_INSET + S.xxl },
+  content: { paddingHorizontal: S.lg, gap: S.lg },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: S.md },
   lang: {
     flexDirection: 'row',

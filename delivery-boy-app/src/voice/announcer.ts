@@ -334,7 +334,10 @@ async function pump(): Promise<void> {
         await playChime(item.chime, displayText(item));
         if (speak) await sleep(CHIME_GAP_MS);
       }
-      if (!speak || myGen !== generation || current !== item) continue;
+      if (!speak || myGen !== generation || current !== item) {
+        if (current === item) current = null;
+        continue;
+      }
       let lang = state.effectiveLang;
       let ok = await speakOnce(phrase(lang, item.key, item.args), lang);
       // This language failed (no voice / engine error): fall back along te -> hi -> en instead of staying
@@ -347,7 +350,9 @@ async function pump(): Promise<void> {
         lang = next;
         ok = await speakOnce(phrase(lang, item.key, item.args), lang);
       }
-      current = null;
+      // Only clear our own item: after stopSpeaking() a newer pump loop may already own `current`, and
+      // nulling it would make that loop skip its speech and stop cancelAnnouncement from cutting it off.
+      if (current === item) current = null;
       await sleep(250);
     }
   } finally {

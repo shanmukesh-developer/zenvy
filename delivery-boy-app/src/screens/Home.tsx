@@ -1,13 +1,14 @@
 // Home: duty switch, today's money, active deliveries, incoming offers.
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Animated, Easing, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { C, R, S, T, shadow } from '../theme';
 import { Badge, Banner, Btn, Card, EmptyState, ErrorState, IconBtn, Skeleton } from '../ui/kit';
 import { Sheet } from '../ui/Sheet';
+import { SosButton } from '../ui/Sos';
 import { useRider } from '../state/RiderStore';
 import { useVoice } from '../voice/useVoice';
-import { firstName, stepFor, stepIndex, storeStatusLabel } from '../services/orderModel';
+import { firstName, kitchenChip, stepFor, stepIndex } from '../services/orderModel';
 import { minutesAgo, rupees } from '../services/format';
 import { OFFER_SECONDS } from '../config';
 import { ItemsLine, PaymentPill, distanceTo } from './parts';
@@ -68,12 +69,21 @@ export function HomeScreen() {
             onPress={() => r.setOverlay({ kind: 'voice' })}
             color={voice.enabled ? C.greenDark : C.muted}
           />
+          <SosButton />
         </View>
 
         <DutySwitch online={r.isOnline} busy={r.dutyBusy} onPress={toggleDuty} />
         <TodayStrip />
 
         {r.locationDenied ? <Banner tone="blue" icon="crosshairs-off" text="Location is off. Turn it on so customers can see you." /> : null}
+        {!r.locationDenied && r.backgroundLocationOff ? (
+          <Banner
+            tone="blue"
+            icon="map-marker-off"
+            text={'Customers lose your live location when you open Google Maps. Set location to "Allow all the time".'}
+            action={{ label: 'Allow', onPress: r.allowBackgroundLocation }}
+          />
+        ) : null}
 
         {r.active.data.length > 0 ? (
           <View style={{ gap: S.md }}>
@@ -192,7 +202,7 @@ function TodayStrip() {
 
 function ActiveCard({ order, syncing, onOpen }: { order: RiderOrder; syncing: boolean; onOpen: () => unknown }) {
   const idx = Math.max(0, stepIndex(order.status));
-  const store = order.buyAtStore ? null : storeStatusLabel(order.status);
+  const store = idx <= 1 ? kitchenChip(order) : null;
   return (
     <Card style={{ gap: S.md, borderWidth: 2, borderColor: C.ink }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: S.sm }}>
@@ -210,7 +220,7 @@ function ActiveCard({ order, syncing, onOpen }: { order: RiderOrder; syncing: bo
       </Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: S.sm }}>
         {order.buyAtStore && idx <= 1 ? <Badge tone="amber" icon="cart-outline" label="BUY AT STORE" /> : null}
-        {store && idx === 0 ? <PillText text={store} ready={order.status === 'ReadyForPickup'} /> : null}
+        {store ? <PillText text={store.text} ready={store.ready} /> : null}
         <PaymentPill order={order} />
       </View>
       <Btn title="Continue" icon="arrow-right" onPress={onOpen} />
@@ -292,8 +302,15 @@ function OfferCard({
     }
   };
   const ago = minutesAgo(order.createdAt);
+  const chip = kitchenChip(order);
+  // TalkBack: announce the new order once. (A live region on the whole card re-read it every second
+  // because the countdown inside it ticks.)
+  useEffect(() => {
+    const earn = order.earning !== null ? `, you earn ${Math.round(order.earning)} rupees` : '';
+    AccessibilityInfo.announceForAccessibility(`New delivery order from ${order.restaurantName ?? 'a store'}${earn}`);
+  }, [order.id]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <View style={[styles.offer, shadow]} accessibilityLiveRegion="assertive">
+    <View style={[styles.offer, shadow]}>
       <View style={styles.offerTop}>
         <MaterialCommunityIcons name="bell-ring" size={24} color={C.white} />
         <Text style={[T.h3, { color: C.white, flex: 1 }]}>New delivery order</Text>
@@ -326,7 +343,7 @@ function OfferCard({
         <ItemsLine order={order} />
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: S.sm }}>
           <PaymentPill order={order} />
-          {!order.buyAtStore && storeStatusLabel(order.status) ? <PillText text={storeStatusLabel(order.status) as string} ready={order.status === 'ReadyForPickup'} /> : null}
+          {chip ? <PillText text={chip.text} ready={chip.ready} /> : null}
         </View>
         <Countdown seconds={OFFER_SECONDS} onDone={onExpire} paused={accepting} />
         <Btn

@@ -4,6 +4,7 @@ import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { ToastProvider } from './src/ui/Toast';
 import { SocketProvider } from './src/state/SocketProvider';
 import { SESSION_EXPIRED, SessionProvider, useSession } from './src/state/SessionProvider';
@@ -49,12 +50,15 @@ export default function App() {
   useEffect(() => { initVoice(); }, []);
   return (
     <SafeAreaProvider>
-      <StatusBar style="dark" />
-      <ToastProvider>
-        <SessionProvider>
-          <Root />
-        </SessionProvider>
-      </ToastProvider>
+      {/* Real keyboard insets for every screen and sheet (Android edge-to-edge ignores adjustResize). */}
+      <KeyboardProvider statusBarTranslucent navigationBarTranslucent>
+        <StatusBar style="dark" />
+        <ToastProvider>
+          <SessionProvider>
+            <Root />
+          </SessionProvider>
+        </ToastProvider>
+      </KeyboardProvider>
     </SafeAreaProvider>
   );
 }

@@ -2,8 +2,11 @@
 // Foreground: watchPositionAsync. Background (the rider switched to Google Maps to navigate): a
 // location task with an Android foreground service, so the process and its socket stay alive and the
 // customer map / admin radar keep moving during the ride. Background permission is asked once, with an
-// explanation, only when tracking starts (on duty / holding an order); declining keeps foreground-only.
-import { Alert } from 'react-native';
+// explanation, only when tracking starts (on duty / holding an order); declining keeps foreground-only and
+// the Home screen shows a banner to allow it later (requestBackgroundLocation).
+// Battery: 'idle' mode (on duty, no order) uses balanced accuracy every 30-60 s; 'active' (holding an order)
+// uses high accuracy. The foreground watch pauses while the app is in the background (the task covers it).
+import { Alert, Linking } from 'react-native';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { getItem, setItem } from './session';
@@ -16,14 +19,59 @@ export interface Fix {
   ts: number;
 }
 
+/**
+ * 'active': holding an order (customer map is live): high accuracy, frequent fixes.
+ * 'idle': on duty without an order (admin radar / distance to store only): balanced accuracy, 30-60 s.
+ */
+export type TrackingMode = 'active' | 'idle';
+
 let sub: Location.LocationSubscription | null = null;
-let gen = 0; // bumps on every start/stop so a late watch result after stop is discarded
+let gen = 0; // bumps on every start/stop so a late result after stop is discarded
+let watchGen = 0; // bumps on every watch (re)start / removal
 let lastFix: Fix | null = null;
 /** Current consumer of fixes from either source; null while tracking is stopped. */
 let listener: ((f: Fix) => void) | null = null;
+let mode: TrackingMode = 'idle';
+let bgMode: TrackingMode | null = null; // options the background task was started with (null = not started by us)
+let foreground = true;
+let fgGranted = false;
 
 const BG_TASK = 'zenvy-rider-location';
 const BG_ASKED_KEY = '@zenvy_rider_bg_location_asked';
+
+const WATCH_OPTS: Record<TrackingMode, Location.LocationOptions> = {
+  active: { accuracy: Location.Accuracy.High, timeInterval: 5000, distanceInterval: 15 },
+  idle: { accuracy: Location.Accuracy.Balanced, timeInterval: 30000, distanceInterval: 50 },
+};
+const BG_OPTS: Record<TrackingMode, Location.LocationTaskOptions> = {
+  active: { accuracy: Location.Accuracy.High, timeInterval: 10000, distanceInterval: 15 },
+  idle: { accuracy: Location.Accuracy.Balanced, timeInterval: 60000, distanceInterval: 100, deferredUpdatesInterval: 60000 },
+};
+
+// ── Background permission state (Home banner) ──────────────────────────────
+export type BgLocationState = 'granted' | 'denied' | 'unknown';
+let bgState: BgLocationState = 'unknown';
+const bgListeners = new Set<(s: BgLocationState) => void>();
+
+function setBgState(next: BgLocationState): void {
+  if (next === bgState) return;
+  bgState = next;
+  bgListeners.forEach((l) => {
+    try {
+      l(next);
+    } catch {
+      // ignore listener errors
+    }
+  });
+}
+
+export function subscribeBackgroundLocation(l: (s: BgLocationState) => void): () => void {
+  bgListeners.add(l);
+  l(bgState);
+  return () => {
+    bgListeners.delete(l);
+  };
+}
 
 function toFix(loc: Location.LocationObject): Fix {
   return {
@@ -36,7 +84,7 @@ function toFix(loc: Location.LocationObject): Fix {
 }
 
 function deliver(f: Fix): void {
-  // Drop out-of-order fixes (the watch and the background task both report while in the foreground).
+  // Drop out-of-order fixes (the watch and the background task can both report).
   if (lastFix && f.ts < lastFix.ts) return;
   lastFix = f;
   listener?.(f);
@@ -59,7 +107,12 @@ if (!TaskManager.isTaskDefined(BG_TASK)) {
 async function ensureBackgroundPermission(): Promise<boolean> {
   try {
     const cur = await Location.getBackgroundPermissionsAsync();
-    if (cur.status === 'granted') return true;
+    if (cur.status === 'granted') {
+      setBgState('granted');
+      return true;
+    }
+    setBgState('denied');
+    // Asked once already: the Home banner offers "Allow" instead of a popup on every start.
     if (!cur.canAskAgain || (await getItem(BG_ASKED_KEY)) === '1') return false;
     await setItem(BG_ASKED_KEY, '1');
     const ok = await new Promise<boolean>((resolve) => {
@@ -74,62 +127,133 @@ async function ensureBackgroundPermission(): Promise<boolean> {
       );
     });
     if (!ok) return false;
-    return (await Location.requestBackgroundPermissionsAsync()).status === 'granted';
+    const granted = (await Location.requestBackgroundPermissionsAsync()).status === 'granted';
+    setBgState(granted ? 'granted' : 'denied');
+    return granted;
   } catch {
     return false;
   }
 }
 
+/**
+ * Home banner "Allow": ask again, or open the app's settings page when Android will not show the prompt
+ * (Android 11+ only offers "Allow all the time" there). Starts background updates once granted.
+ */
+export async function requestBackgroundLocation(): Promise<boolean> {
+  try {
+    const cur = await Location.getBackgroundPermissionsAsync();
+    let granted = cur.status === 'granted';
+    if (!granted && cur.canAskAgain) granted = (await Location.requestBackgroundPermissionsAsync()).status === 'granted';
+    if (!granted) {
+      await Linking.openSettings().catch(() => {});
+      return false;
+    }
+    setBgState('granted');
+    if (listener && fgGranted) startBackgroundUpdates(gen);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Re-read the permission on resume (the rider may have changed it on the settings page). */
+export async function recheckBackgroundLocation(): Promise<void> {
+  try {
+    const cur = await Location.getBackgroundPermissionsAsync();
+    const granted = cur.status === 'granted';
+    setBgState(granted ? 'granted' : 'denied');
+    if (granted && listener && fgGranted && bgMode === null) startBackgroundUpdates(gen);
+  } catch {
+    // keep the last known state
+  }
+}
+
 async function startBackgroundUpdates(my: number): Promise<void> {
   if (!(await ensureBackgroundPermission()) || my !== gen) return;
+  const want = mode;
   try {
-    if (await Location.hasStartedLocationUpdatesAsync(BG_TASK)) return;
+    const running = await Location.hasStartedLocationUpdatesAsync(BG_TASK);
+    if (running && bgMode === want) return;
+    // Mode changed (order taken / delivered): restart with the new accuracy + interval.
+    if (running) await Location.stopLocationUpdatesAsync(BG_TASK);
+    if (my !== gen) return;
+    bgMode = want;
     await Location.startLocationUpdatesAsync(BG_TASK, {
-      accuracy: Location.Accuracy.High,
-      timeInterval: 10000,
-      distanceInterval: 15,
+      ...BG_OPTS[want],
       pausesUpdatesAutomatically: false,
       activityType: Location.ActivityType.OtherNavigation,
       showsBackgroundLocationIndicator: true,
       foregroundService: {
         notificationTitle: 'Zenvy Rider is on duty',
-        notificationBody: 'Sharing your live location with the customer while you deliver.',
+        notificationBody:
+          want === 'active'
+            ? 'Sharing your live location with the customer while you deliver.'
+            : 'Sharing your location with Zenvy while you are on duty.',
         notificationColor: '#C9A84C',
         killServiceOnDestroy: true,
       },
     });
     if (my !== gen) stopBackgroundUpdates(); // stopped while starting
+    else if (mode !== want) startBackgroundUpdates(my); // mode changed while starting
   } catch {
+    bgMode = null;
     // no background support on this build: foreground tracking still works
   }
 }
 
 function stopBackgroundUpdates(): void {
+  bgMode = null;
   Location.hasStartedLocationUpdatesAsync(BG_TASK)
     .then((on) => (on ? Location.stopLocationUpdatesAsync(BG_TASK) : undefined))
     .catch(() => {});
+}
+
+function removeWatch(): void {
+  watchGen++;
+  try {
+    sub?.remove();
+  } catch {
+    // ignore
+  }
+  sub = null;
+}
+
+/** (Re)start the foreground watch with the current mode's options. Only while the app is in the foreground. */
+async function applyWatch(): Promise<void> {
+  removeWatch();
+  if (!listener || !fgGranted || !foreground) return;
+  const my = watchGen;
+  try {
+    const s = await Location.watchPositionAsync(WATCH_OPTS[mode], (loc) => deliver(toFix(loc)));
+    if (my !== watchGen) {
+      s.remove();
+      return;
+    }
+    sub = s;
+  } catch {
+    // the background task (if any) still reports
+  }
 }
 
 export function getLastFix(): Fix | null {
   return lastFix;
 }
 
-export async function startTracking(onFix: (f: Fix) => void): Promise<'granted' | 'denied'> {
+export async function startTracking(onFix: (f: Fix) => void, nextMode: TrackingMode = mode): Promise<'granted' | 'denied'> {
   listener = onFix;
-  if (sub) return 'granted';
+  if (fgGranted) {
+    setTrackingMode(nextMode);
+    return 'granted';
+  }
+  mode = nextMode;
   const my = ++gen;
   try {
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') return 'denied';
-    const s = await Location.watchPositionAsync(
-      { accuracy: Location.Accuracy.High, timeInterval: 5000, distanceInterval: 15 },
-      (loc) => deliver(toFix(loc)),
-    );
-    if (my !== gen) {
-      s.remove();
-      return 'granted';
-    }
-    sub = s;
+    if (my !== gen) return 'granted';
+    fgGranted = true;
+    await applyWatch();
+    if (my !== gen) return 'granted';
     startBackgroundUpdates(my);
     return 'granted';
   } catch {
@@ -137,15 +261,32 @@ export async function startTracking(onFix: (f: Fix) => void): Promise<'granted' 
   }
 }
 
+/** Holding an order or not: switch accuracy / interval of both the watch and the background task. */
+export function setTrackingMode(next: TrackingMode): void {
+  if (next === mode) return;
+  mode = next;
+  if (!listener || !fgGranted) return;
+  applyWatch();
+  if (bgMode !== null) startBackgroundUpdates(gen);
+}
+
+/**
+ * App went to the background / came back. In the background only the location task reports (it runs as a
+ * foreground service); the watch would only duplicate it, so it is paused.
+ */
+export function setAppForeground(active: boolean): void {
+  if (active === foreground) return;
+  foreground = active;
+  if (!listener || !fgGranted) return;
+  if (active) applyWatch();
+  else removeWatch();
+}
+
 export function stopTracking(): void {
   gen++;
   listener = null;
-  try {
-    sub?.remove();
-  } catch {
-    // ignore
-  }
-  sub = null;
+  fgGranted = false;
+  removeWatch();
   stopBackgroundUpdates();
 }
 

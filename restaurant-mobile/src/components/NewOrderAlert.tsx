@@ -1,7 +1,7 @@
 // Full-screen red NEW ORDER alert. Shows while any Pending order is not accepted / rejected / silenced
 // (oldest first). Sound + vibration are driven by the Announcer. Accept / Reject run inline here.
 import React, { useEffect, useState } from 'react';
-import { Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { rupees } from '../lib/model';
@@ -9,6 +9,7 @@ import { useStore } from '../state/StoreProvider';
 import { useVoice } from '../voice/useVoice';
 import { color, font, mono, radius, space } from '../theme';
 import { Button } from '../ui/kit';
+import { KeyboardAwareScrollView } from '../ui/KeyboardAvoidingView';
 import { PrepPicker, RejectPicker } from './AcceptReject';
 import { CampusTag, Elapsed, ItemLines, NoteCallout, PaymentBadge } from './orderParts';
 
@@ -30,7 +31,7 @@ export function NewOrderAlert() {
     // accidental press in a busy kitchen must not stop the ringing (only the explicit Later button does).
     <Modal visible animationType="fade" onRequestClose={() => { if (mode !== 'view') setMode('view'); }} statusBarTranslucent>
       <View style={[styles.root, { paddingTop: insets.top + space.sm, paddingBottom: insets.bottom + space.sm }]}>
-        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        <KeyboardAwareScrollView contentContainerStyle={styles.scroll}>
           <View style={styles.head}>
             <Ionicons name={voice.settings.enabled ? 'notifications' : 'notifications-off'} size={30} color={color.textInverse} />
             <Text style={[font.h1, { color: color.textInverse, fontSize: 30, lineHeight: 36 }]}>NEW ORDER</Text>
@@ -84,7 +85,7 @@ export function NewOrderAlert() {
               </Text>
             </View>
           )}
-        </ScrollView>
+        </KeyboardAwareScrollView>
       </View>
     </Modal>
   );

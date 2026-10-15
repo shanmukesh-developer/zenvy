@@ -39,8 +39,8 @@ export async function fetchProfile(prev?: RiderProfile | null): Promise<RiderPro
   return toProfile(await apiFetch<any>('/delivery/profile'), prev);
 }
 
-export async function setOnline(isOnline: boolean): Promise<boolean> {
-  const data = await apiFetch<{ isOnline?: boolean }>('/delivery/online', { method: 'PUT', body: { isOnline } });
+export async function setOnline(isOnline: boolean, token?: string): Promise<boolean> {
+  const data = await apiFetch<{ isOnline?: boolean }>('/delivery/online', { method: 'PUT', body: { isOnline }, token });
   return typeof data?.isOnline === 'boolean' ? data.isOnline : isOnline;
 }
 
@@ -49,8 +49,13 @@ export async function saveFcmToken(fcmToken: string): Promise<void> {
 }
 
 /** Logout: stop this phone's order pushes for this rider (POST /delivery/fcm-token/remove). */
-export async function removeFcmToken(fcmToken: string): Promise<void> {
-  await apiFetch('/delivery/fcm-token/remove', { method: 'POST', body: { fcmToken } });
+export async function removeFcmToken(fcmToken: string, token?: string): Promise<void> {
+  await apiFetch('/delivery/fcm-token/remove', { method: 'POST', body: { fcmToken }, token });
+}
+
+/** SOS: pages the Zenvy admins (socket + push) with the rider's location. Server falls back to the last live location. */
+export async function sendSos(p: { lat?: number; lng?: number; note?: string }): Promise<void> {
+  await apiFetch('/delivery/sos', { method: 'POST', body: p, timeoutMs: 20000 });
 }
 
 /**

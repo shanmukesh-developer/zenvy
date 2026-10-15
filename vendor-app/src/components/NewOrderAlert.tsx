@@ -1,7 +1,8 @@
 // Full-screen red NEW ORDER alert. Shows while any Pending order is waiting (oldest first) and keeps
-// ringing (driven by the Announcer) until the vendor accepts or rejects it. Accept / Reject run inline.
+// ringing (driven by the Announcer) until the vendor accepts, rejects or puts it off with "Later" (stops the
+// ringing and hides this screen; the order stays in New). Accept / Reject run inline.
 import React, { useEffect, useState } from 'react';
-import { Modal, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { rupees } from '../lib/model';
@@ -9,10 +10,11 @@ import { useStore } from '../state/StoreProvider';
 import { useVoice } from '../voice/useVoice';
 import { color, font, mono, radius, space } from '../theme';
 import { Button } from '../ui/kit';
+import { KeyboardAwareScrollView } from '../ui/KeyboardAvoidingView';
 import { AddressBlock, CollectLine, Elapsed, ItemLines, NoteCallout, ReasonPicker } from './orderParts';
 
 export function NewOrderAlert() {
-  const { alertOrders, busy, accept, actionErrors } = useStore();
+  const { alertOrders, busy, accept, actionErrors, silence } = useStore();
   const voice = useVoice();
   const insets = useSafeAreaInsets();
   const order = alertOrders[0] || null;
@@ -26,10 +28,11 @@ export function NewOrderAlert() {
   const err = !b && mode === 'view' ? actionErrors[order.id] : undefined;
 
   return (
-    // Hardware back only steps out of the reject picker; it never dismisses the order.
+    // Hardware back only steps out of the reject picker. It never silences the order: an accidental press in
+    // a busy shop must not stop the ringing (only the explicit Later button does).
     <Modal visible animationType="fade" onRequestClose={() => { if (mode !== 'view') setMode('view'); }} statusBarTranslucent>
       <View style={[styles.root, { paddingTop: insets.top + space.sm, paddingBottom: insets.bottom + space.sm }]}>
-        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        <KeyboardAwareScrollView contentContainerStyle={styles.scroll}>
           <View style={styles.head}>
             <Ionicons name={voice.settings.enabled ? 'notifications' : 'notifications-off'} size={30} color={color.textInverse} />
             <Text style={[font.h1, { color: color.textInverse, fontSize: 30, lineHeight: 36 }]}>NEW ORDER</Text>
@@ -75,13 +78,24 @@ export function NewOrderAlert() {
                 loading={b === 'accept'}
                 disabled={!!b}
               />
-              <Button label="Reject" variant="onRed" onPress={() => setMode('reject')} disabled={!!b} />
+              <View style={styles.row}>
+                <Button label="Reject" variant="onRed" onPress={() => setMode('reject')} disabled={!!b} style={{ flex: 1 }} />
+                <Button
+                  label="Later"
+                  variant="outlineOnRed"
+                  icon="volume-mute"
+                  onPress={() => silence([order.id])}
+                  disabled={!!b}
+                  style={{ flex: 1 }}
+                  a11y="Stop ringing for this order. It stays in New"
+                />
+              </View>
               <Text style={[font.small, { color: color.textInverse, textAlign: 'center' }]}>
-                You deliver this order yourself. Not accepted in time = auto-cancelled.
+                You deliver this order yourself. Later = stop ringing, the order stays in New. Not accepted in time = auto-cancelled.
               </Text>
             </View>
           )}
-        </ScrollView>
+        </KeyboardAwareScrollView>
       </View>
     </Modal>
   );

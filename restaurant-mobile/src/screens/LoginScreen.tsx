@@ -1,7 +1,7 @@
 // Real restaurant login (POST /api/restaurants/login). No presets, no pre-filled passwords.
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Image, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View,
+  ActivityIndicator, Image, Linking, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,6 +10,7 @@ import { health, isStallAccount, login } from '../lib/api';
 import { ApiError, NetworkError } from '../lib/http';
 import { loadSavedId, setSavedId } from '../lib/storage';
 import { useSession } from '../state/SessionProvider';
+import { KeyboardAvoidingView } from '../ui/KeyboardAvoidingView';
 import { color, font, radius, space, touch } from '../theme';
 import { Button } from '../ui/kit';
 
@@ -92,7 +93,7 @@ export default function LoginScreen() {
   const wa = () => Linking.openURL(`https://wa.me/${SUPPORT_PHONE}?text=${encodeURIComponent('Hi Zenvy, I need help logging in to the restaurant partner app.')}`).catch(() => {});
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: color.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: color.bg }}>
       <ScrollView
         contentContainerStyle={[styles.wrap, { paddingTop: insets.top + space.xl, paddingBottom: insets.bottom + space.lg }]}
         keyboardShouldPersistTaps="handled"

@@ -17,8 +17,12 @@ export interface RiderSocketHandlers {
   onDeliveryRequestGone?: (p: { orderId: string }) => void;
   /** connected=true also fires after every reconnect: events sent while offline are not replayed, so refetch. */
   onConnectionChange?: (connected: boolean) => void;
-  /** The server refused the token for good (not a 'Please retry' hiccup): log out. */
-  onAuthError?: () => void;
+  /**
+   * The server refused the token for good (not a 'Please retry' hiccup). Gets the token that handshake used.
+   * Return false to ignore it (e.g. that token was just replaced by a password change): the socket then
+   * retries with the latest token instead of staying down.
+   */
+  onAuthError?: (usedToken: string | null) => boolean | void;
 }
 
 let socket: Socket | null = null;
@@ -26,6 +30,9 @@ let joined = new Set<string>();
 let handlers: RiderSocketHandlers = {};
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let retryAttempt = 0;
+/** Read by every (re)connect handshake, so a token replaced mid-session (password change) is always used. */
+let currentToken: string | null = null;
+let handshakeToken: string | null = null;
 
 function clearRetry(): void {
   if (retryTimer) clearTimeout(retryTimer);
@@ -58,8 +65,13 @@ export function setSocketHandlers(h: RiderSocketHandlers): void {
 export function connectSocket(token: string): void {
   if (socket) return;
   joined = new Set();
+  currentToken = token;
   const s = io(socketBaseUrl(getApiBase()), {
-    auth: { token },
+    // Callback form: evaluated on every handshake, never a stale token captured at connect time.
+    auth: (cb) => {
+      handshakeToken = currentToken;
+      cb({ token: currentToken });
+    },
     transports: ['websocket'],
     reconnection: true,
     reconnectionDelay: 2000,
@@ -84,7 +96,11 @@ export function connectSocket(token: string): void {
     const msg = String(err?.message || '');
     if (/authentication error/i.test(msg) && !/please retry/i.test(msg)) {
       clearRetry();
-      handlers.onAuthError?.();
+      const usedToken = handshakeToken;
+      if (usedToken !== currentToken || handlers.onAuthError?.(usedToken) === false) {
+        // Refused an outdated token (or the app chose to ignore it): retry with the current one.
+        if (!s.active) scheduleManualReconnect(s, err);
+      }
       return;
     }
     // Transport errors keep socket.active true (built-in reconnection runs); refused handshakes do not.
@@ -123,6 +139,8 @@ export function disconnectSocket(): void {
   socket?.disconnect();
   socket = null;
   joined = new Set();
+  currentToken = null;
+  handshakeToken = null;
 }
 
 /** Keep order-room membership equal to the rider's active orders. */
@@ -172,7 +190,7 @@ export function emitDutyStatus(riderId: string, name: string, isOnline: boolean)
  * the revoked one and the app logs the rider out. The live connection is already authenticated.
  */
 export function updateSocketToken(token: string): void {
-  if (socket) socket.auth = { token };
+  currentToken = token;
 }
 
 /** Foreground resume: reconnect at once if the socket gave up while the app was in the background. */

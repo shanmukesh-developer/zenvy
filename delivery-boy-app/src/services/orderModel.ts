@@ -69,8 +69,11 @@ function toStatus(v: unknown): OrderStatus {
 /** true / false only when the server told us; null otherwise. */
 function toKitchenReady(raw: any, status: OrderStatus): boolean | null {
   if (status === 'ReadyForPickup') return true;
+  // readyAt (newer servers) is the kitchen's own "packed" time: it stays set after the rider reaches the store.
+  const hasReadyAt = !!raw && Object.prototype.hasOwnProperty.call(raw, 'readyAt');
+  if (hasReadyAt && cleanText(raw.readyAt)) return true;
   if (status === 'Accepted' || status === 'Preparing') return false;
-  if (raw && Object.prototype.hasOwnProperty.call(raw, 'readyAt')) return !!cleanText(raw.readyAt);
+  if (hasReadyAt) return false;
   return null;
 }
 
@@ -250,6 +253,25 @@ export function storeStatusLabel(status: OrderStatus): string | null {
   if (status === 'ReadyForPickup') return 'Ready for pickup';
   if (status === 'Preparing') return 'Kitchen preparing';
   if (status === 'Accepted') return 'Store accepted';
+  return null;
+}
+
+/**
+ * Kitchen chip for an order the rider has not picked up yet: before reaching the store ("Ready for pickup",
+ * "Kitchen preparing") and while waiting at the counter ("Food packed"). null for buy-at-store orders (the
+ * store has no app, so any kitchen state would be invented) and when the server did not say.
+ */
+export function kitchenChip(o: RiderOrder): { text: string; ready: boolean } | null {
+  if (o.buyAtStore) return null;
+  if (o.status === 'Picking') {
+    const t = atStoreKitchenLabel(o);
+    return t ? { text: t, ready: o.kitchenReady === true } : null;
+  }
+  if (o.status === 'Accepted' || o.status === 'Preparing' || o.status === 'ReadyForPickup' || o.status === 'Pending') {
+    if (o.kitchenReady === true) return { text: 'Ready for pickup', ready: true };
+    const t = storeStatusLabel(o.status);
+    return t ? { text: t, ready: false } : null;
+  }
   return null;
 }
 

@@ -32,7 +32,10 @@ class KitchenForegroundService : Service(), TextToSpeech.OnInitListener {
     companion object {
         const val CHANNEL_ID = "zenvy_kitchen_live_channel"
         const val ALERT_CHANNEL_ID = "zenvy_order_alert_channel"
+        /** Same heads-up, no sound / vibration: used when the app's own ring already sounded (no double sound). */
+        const val SILENT_ALERT_CHANNEL_ID = "zenvy_order_alert_silent_channel"
         const val NOTIFICATION_ID = 9991
+        const val PAUSED_NOTIFICATION_ID = 9992
         const val ACTION_START = "ACTION_START"
         const val ACTION_STOP = "ACTION_STOP"
         const val ACTION_SPEAK = "ACTION_SPEAK"
@@ -41,6 +44,7 @@ class KitchenForegroundService : Service(), TextToSpeech.OnInitListener {
         const val EXTRA_AMOUNT = "EXTRA_AMOUNT"
         const val EXTRA_TITLE = "EXTRA_TITLE"
         const val EXTRA_BODY = "EXTRA_BODY"
+        const val EXTRA_SILENT = "EXTRA_SILENT"
         private const val WAKELOCK_MS = 24 * 60 * 60 * 1000L
 
         @Volatile
@@ -101,6 +105,7 @@ class KitchenForegroundService : Service(), TextToSpeech.OnInitListener {
                 intent.getStringExtra(EXTRA_AMOUNT) ?: "",
                 intent.getStringExtra(EXTRA_TITLE),
                 intent.getStringExtra(EXTRA_BODY),
+                intent.getBooleanExtra(EXTRA_SILENT, false),
             )
         }
         return START_STICKY
@@ -115,21 +120,35 @@ class KitchenForegroundService : Service(), TextToSpeech.OnInitListener {
         val notification = createPersistentNotification()
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val serviceType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-                } else {
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                try {
+                    startForeground(NOTIFICATION_ID, notification, preferredServiceType())
+                } catch (e: Exception) {
+                    // The combined type was refused (e.g. the dataSync daily limit is used up): mediaPlayback
+                    // alone has no time limit and covers what the service does (speaks / rings orders).
+                    startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
                 }
-                startForeground(NOTIFICATION_ID, notification, serviceType)
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
             isForeground = true
+            cancelPausedNotice()
         } catch (e: Exception) {
-            // e.g. ForegroundServiceStartNotAllowedException, or the daily dataSync limit is used up: stop
-            // cleanly instead of crashing. The app starts the service again the next time it is opened.
+            // e.g. ForegroundServiceStartNotAllowedException: stop cleanly instead of crashing. The app starts
+            // the service again the next time it is opened.
             stopKitchenForeground()
         }
+    }
+
+    /**
+     * Android 15+ caps dataSync foreground services at 6 hours a day (then onTimeout). The service never needs
+     * dataSync there: mediaPlayback (no time limit; the service rings and speaks orders) keeps it alive all
+     * shift. Android 14 keeps both types (no dataSync limit yet); older versions only know dataSync.
+     */
+    private fun preferredServiceType(): Int = when {
+        Build.VERSION.SDK_INT >= 35 -> ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE ->
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+        else -> ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
     }
 
     private fun stopKitchenForeground() {
@@ -145,15 +164,46 @@ class KitchenForegroundService : Service(), TextToSpeech.OnInitListener {
     }
 
     /**
-     * Android 15+: the dataSync foreground-service type has a daily time limit. When it runs out the system
-     * calls this, and kills the app if the service does not stop within seconds. Stop cleanly; the app
-     * starts the service again on its next resume.
+     * Android 15+: a time-limited foreground-service type (dataSync, 6 h a day) ran out. The system kills the
+     * app if the service does not stop within seconds, so stop cleanly, and tell the owner loudly: with the
+     * screen locked new orders would otherwise go quiet without anyone noticing. The app starts the service
+     * again (as mediaPlayback, which has no limit) the next time it is opened.
      */
     override fun onTimeout(startId: Int, fgsType: Int) {
         stopKitchenForeground()
+        postPausedNotice()
     }
 
-    private fun handleOrderAlert(text: String, orderNum: String, amount: String, title: String?, body: String?) {
+    private fun postPausedNotice() {
+        try {
+            createNotificationChannels()
+            val intent = Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val pendingIntent = PendingIntent.getActivity(
+                this, 1, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
+            )
+            val notice = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setContentTitle("Zenvy order alerts paused")
+                .setContentText("Android stopped the background alerts. Open Zenvy to keep hearing new orders.")
+                .setStyle(NotificationCompat.BigTextStyle().bigText("Android stopped the background alerts. Open Zenvy to keep hearing new orders."))
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true)
+                .setVibrate(longArrayOf(0, 400, 200, 400, 200, 600))
+                .build()
+            NotificationManagerCompat.from(this).notify(PAUSED_NOTIFICATION_ID, notice)
+        } catch (e: Exception) {}
+    }
+
+    private fun cancelPausedNotice() {
+        try { NotificationManagerCompat.from(this).cancel(PAUSED_NOTIFICATION_ID) } catch (e: Exception) {}
+    }
+
+    private fun handleOrderAlert(text: String, orderNum: String, amount: String, title: String?, body: String?, silent: Boolean) {
         // 1. Wake up screen and CPU so user sees and hears alert outside app
         try {
             val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -165,8 +215,8 @@ class KitchenForegroundService : Service(), TextToSpeech.OnInitListener {
             screenLock.acquire(15000L)
         } catch (e: Exception) {}
 
-        // 2. Strong PhonePe-style vibration
-        try {
+        // 2. Strong PhonePe-style vibration (skipped when silent: the app's ring already vibrates)
+        if (!silent) try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 val vibratorManager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
                 vibratorManager.defaultVibrator.vibrate(
@@ -196,7 +246,7 @@ class KitchenForegroundService : Service(), TextToSpeech.OnInitListener {
                 PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
             )
 
-            val alertNotification = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
+            val alertNotification = NotificationCompat.Builder(this, if (silent) SILENT_ALERT_CHANNEL_ID else ALERT_CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle(if (!title.isNullOrEmpty()) title else "🔔 జెన్వీ కొత్త ఆర్డర్! (₹$amount)")
                 .setContentText(if (!body.isNullOrEmpty()) body else "రసీదు నంబర్ #${orderNum}. త్వరగా కిచెన్‌లో తయారు చేయండి!")
@@ -205,7 +255,9 @@ class KitchenForegroundService : Service(), TextToSpeech.OnInitListener {
                 .setContentIntent(pendingIntent)
                 .setAutoCancel(true)
                 .setOnlyAlertOnce(false)
-                .setVibrate(longArrayOf(0, 400, 200, 400, 200, 600))
+                .apply {
+                    if (silent) setSilent(true) else setVibrate(longArrayOf(0, 400, 200, 400, 200, 600))
+                }
                 .build()
 
             val id = if (orderNum.isNotEmpty()) alertIdFor(orderNum) else (System.currentTimeMillis() % 10000).toInt()
@@ -280,6 +332,18 @@ class KitchenForegroundService : Service(), TextToSpeech.OnInitListener {
                 lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
             notificationManager.createNotificationChannel(alertChannel)
+
+            val silentAlertChannel = NotificationChannel(
+                SILENT_ALERT_CHANNEL_ID,
+                "Zenvy Incoming Orders (shown with the app ring)",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Shows the new order while the app's own ring plays (no second sound)"
+                enableVibration(false)
+                setSound(null, null)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            }
+            notificationManager.createNotificationChannel(silentAlertChannel)
         }
     }
 

@@ -3,12 +3,13 @@
 // order actions are never optimistic (the server decides), stock / menu update on success.
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
-import { FALLBACK_POLL_MS, SAFETY_POLL_MS } from '../config';
+import { FALLBACK_POLL_MS, SAFETY_POLL_MS, STORAGE } from '../config';
 import * as api from '../lib/api';
 import { ApiError, NetworkError, errorMessage } from '../lib/http';
 import { normalizeOrder, rupees, stageOf, TIMEOUT_REASON_TEXT, todayNumbers } from '../lib/model';
 import { onOrderPush, onPushTokenChange, registerStorePush, type PushState } from '../lib/push';
-import { startKitchenService } from '../voice/kitchenService';
+import { safeGet, safeSet } from '../lib/storage';
+import { startKitchenService, stopKitchenService } from '../voice/kitchenService';
 import { announce, cancelAnnouncements, detectVoices } from '../voice/voice';
 import { useToast } from '../ui/Toast';
 import { useSocket } from './SocketProvider';
@@ -35,7 +36,7 @@ interface StoreCtx {
   conn: ConnStatus;
   /** Closed-app order alerts: 'blocked' / 'unavailable' = new orders ring only while the app is open. */
   pushState: PushState;
-  /** Pending orders not yet accepted / rejected, oldest first. */
+  /** Pending orders not yet accepted / rejected / put off with "Later", oldest first. */
   alertOrders: Order[];
   busy: Record<string, BusyKind>;
   /** Last failed action per order (shown inline: toasts sit behind the alert / sheet modals). */
@@ -44,6 +45,8 @@ interface StoreCtx {
   refreshOrders: (opts?: { pull?: boolean }) => Promise<void>;
   refreshStore: () => Promise<void>;
   refreshMenu: () => Promise<void>;
+  /** "Later": stop ringing for these orders (remembered across restarts). They stay in New. */
+  silence: (ids: string[]) => void;
   accept: (o: Order) => Promise<boolean>;
   reject: (o: Order, reason: string) => Promise<boolean>;
   outForDelivery: (o: Order) => Promise<boolean>;
@@ -61,9 +64,16 @@ const Ctx = createContext<StoreCtx | null>(null);
 
 /** A socket stub that the list does not have yet is kept this long (replication / race). */
 const STUB_KEEP_MS = 60000;
+/** Stages with something still to do (the service stays on for these even when the shop is closed). */
+const ACTIVE_STAGES: Order['stage'][] = ['new', 'accepted', 'outForDelivery'];
+/** "Later" (stop ringing) is remembered across app restarts for this long (the server auto-cancels long before). */
+const SILENCE_KEEP_MS = 6 * 60 * 60 * 1000;
+/** While closed only by the hours (switch on), re-check the store this often so it reopens on time. */
+const CLOSED_STORE_CHECK_MS = 5 * 60 * 1000;
+const newIdempotencyKey = (rid: string) => `${rid}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
-  const { restaurant: maybeRestaurant, updateProfile } = useSession();
+  const { restaurant: maybeRestaurant, updateProfile, signOut } = useSession();
   // Only mounted with a stall; the fallback covers the logout render.
   const restaurant = (maybeRestaurant || { id: '', name: '' }) as StoreProfile;
   const rid = restaurant.id;
@@ -82,6 +92,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [menuError, setMenuError] = useState<string | null>(null);
   const [menuLoading, setMenuLoading] = useState(false);
   const [menuPending, setMenuPending] = useState<Record<string, boolean>>({});
+  const [silenced, setSilenced] = useState<Record<string, number>>({});
+  const [silencedReady, setSilencedReady] = useState(false);
   const [busy, setBusy] = useState<Record<string, BusyKind>>({});
   const [actionErrors, setActionErrors] = useState<Record<string, string>>({});
 
@@ -92,6 +104,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const patchOrderRef = useRef<(id: string, patch: Partial<Order>) => void>(() => {});
   const ordersRef = useRef<Order[]>([]);
   ordersRef.current = orders;
+  const menuRef = useRef<MenuItem[] | null>(null);
+  menuRef.current = menu;
   const busyRef = useRef<Record<string, BusyKind>>({});
   const menuPendingRef = useRef<Record<string, boolean>>({});
   const alive = useRef(true);
@@ -159,6 +173,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     try {
       const { store: s, raw } = await api.getStore(rid);
       if (!alive.current) return;
+      if (api.isLocalVendorAccount(raw) === false) {
+        // A restaurant account (rider-delivered orders) restored into this app: its orders need the other flow.
+        signOut('This is a restaurant account. Please use the Zenvy Restaurant app.');
+        return;
+      }
       setStore(s);
       setStoreError(null);
       updateProfile({
@@ -173,7 +192,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     } finally {
       storeInFlight.current = false;
     }
-  }, [rid, updateProfile]);
+  }, [rid, updateProfile, signOut]);
 
   const menuInFlight = useRef(false);
   const refreshMenu = useCallback(async () => {
@@ -213,7 +232,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     refreshOrders();
     refreshStore();
     refreshMenu();
-    startKitchenService();
+    // The kitchen service (and its wakelock) is started / stopped below, from the store's open state.
     // Order pushes while the app is closed (FCM via the server). Best effort: never blocks the app, but
     // a phone that cannot get them shows a banner so the store knows to keep the app open.
     registerStorePush(rid).then((st) => { if (alive.current) setPushState(st); });
@@ -247,9 +266,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
   }, [connectCount]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Polling: fast while the socket is down, slow safety net while it is up.
+  // Polling: fast while the socket is down, slow safety net while it is up. In the background it is skipped
+  // while the socket is up (the socket and order pushes carry new orders; a poll there only keeps the radio
+  // awake) and while the store is closed with nothing in progress.
+  const kitchenWantedRef = useRef(true);
   useEffect(() => {
-    const t = setInterval(() => { refreshOrdersRef.current(); }, conn === 'online' ? SAFETY_POLL_MS : FALLBACK_POLL_MS);
+    const t = setInterval(() => {
+      if (AppState.currentState !== 'active' && (conn === 'online' || !kitchenWantedRef.current)) return;
+      refreshOrdersRef.current();
+    }, conn === 'online' ? SAFETY_POLL_MS : FALLBACK_POLL_MS);
     return () => clearInterval(t);
   }, [conn]);
 
@@ -260,11 +285,34 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         refreshStore();
         detectVoices();
         // Android may have stopped the foreground service while we were away: start it again.
-        startKitchenService();
+        if (kitchenWantedRef.current) startKitchenService();
       }
     });
     return () => sub.remove();
   }, [refreshStore]);
+
+  // ── Kitchen service (foreground service + wakelock): only while the store can get orders ──
+  // Closed (switched off, or outside its hours) with nothing in progress = no service and no wakelock, so a
+  // closed store does not drain the battery overnight. Unknown store state (not loaded yet) keeps it on.
+  const hasActive = orders.some((o) => ACTIVE_STAGES.includes(o.stage));
+  const kitchenWanted = store === null || store.isOpen || hasActive;
+  kitchenWantedRef.current = kitchenWanted;
+  const kitchenOn = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (kitchenOn.current === kitchenWanted) return;
+    kitchenOn.current = kitchenWanted;
+    if (kitchenWanted) startKitchenService();
+    else stopKitchenService();
+  }, [kitchenWanted]);
+
+  // Closed only by the hours (switch still on): the server opens it at opensAt without telling the app, so
+  // re-check now and then to start the service (and ringing) again on time.
+  const closedByHours = !!store && !store.isOpen && store.isOpenNow;
+  useEffect(() => {
+    if (!closedByHours) return;
+    const t = setInterval(() => { refreshStore(); }, CLOSED_STORE_CHECK_MS);
+    return () => clearInterval(t);
+  }, [closedByHours, refreshStore]);
 
   // ── Socket events (room restaurant_<id>, contract §5) ─────────────────────
   useEffect(() => {
@@ -319,12 +367,47 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [socket, rid, scheduleOrders, debounce, refreshStore, refreshMenu]);
 
   // ── New-order alert list (rings until accepted or rejected) ───────────────
+  // "Later" is persisted per store, so an app restart (or Android killing the app) does not ring an order the
+  // owner already put off. Nothing rings until it is loaded (a few ms; the order list takes longer anyway).
+  const silencedKey = `${STORAGE.silenced}:${rid}`;
+  const silencedRef = useRef<Record<string, number>>({});
+  silencedRef.current = silenced;
+  useEffect(() => {
+    let on = true;
+    safeGet(silencedKey).then((raw) => {
+      if (!on) return;
+      let saved: Record<string, unknown> = {};
+      try {
+        const v = raw ? JSON.parse(raw) : null;
+        if (v && typeof v === 'object') saved = v;
+      } catch { /* start empty */ }
+      const now = Date.now();
+      const kept: Record<string, number> = {};
+      for (const [id, at] of Object.entries(saved)) if (typeof at === 'number' && now - at < SILENCE_KEEP_MS) kept[id] = at;
+      setSilenced((prev) => ({ ...kept, ...prev }));
+      setSilencedReady(true);
+    });
+    return () => { on = false; };
+  }, [silencedKey]);
+
   const alertOrders = useMemo(
-    () => orders
-      .filter((o) => o.stage === 'new')
+    () => (silencedReady ? orders : [])
+      .filter((o) => o.stage === 'new' && !silenced[o.id])
       .sort((a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime()),
-    [orders],
+    [orders, silenced, silencedReady],
   );
+
+  const silence = useCallback((ids: string[]) => {
+    if (!ids.length) return;
+    const now = Date.now();
+    const next: Record<string, number> = {};
+    for (const [id, at] of Object.entries(silencedRef.current)) if (now - at < SILENCE_KEEP_MS) next[id] = at;
+    ids.forEach((id) => { next[id] = now; });
+    silencedRef.current = next;
+    setSilenced(next);
+    safeSet(silencedKey, JSON.stringify(next));
+    ids.forEach((id) => cancelAnnouncements(`new:${id}`));
+  }, [silencedKey]);
 
   // ── Order actions ─────────────────────────────────────────────────────────
   const patchOrder = useCallback((id: string, patch: Partial<Order>) => {
@@ -366,6 +449,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const conflict = e instanceof ApiError && (e.status === 400 || e.status === 404 || e.status === 409);
       if (e instanceof NetworkError) {
         msg = e.message;
+        // A timeout may still have reached the server (accepted / rejected there): reload the order right
+        // away, so the card shows its real status before anyone taps again.
+        scheduleOrders(300);
       } else if (e instanceof ApiError) {
         msg = e.message;
         scheduleOrders(100); // the order may have been cancelled meanwhile
@@ -456,7 +542,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
   }, [rid, updateProfile, toast]);
 
+  const hoursBusy = useRef(false);
   const setHours = useCallback(async (hours: OperatingHours): Promise<Result> => {
+    if (hoursBusy.current) return { ok: false }; // double tap on Save: the first save is still running
+    hoursBusy.current = true;
     try {
       const s = await api.setHours(rid, hours);
       if (!alive.current) return { ok: true };
@@ -466,6 +555,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       return { ok: true };
     } catch (e) {
       return { ok: false, error: errorMessage(e, "Couldn't save the hours. Try again.") };
+    } finally {
+      hoursBusy.current = false;
     }
   }, [rid, updateProfile, toast]);
 
@@ -502,6 +593,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const createKeys = useRef<Record<string, string>>({});
   const saveItem = useCallback(async (input: ItemInput, editing: MenuItem | null): Promise<MenuItem> => {
     const body: api.MenuItemBody = {
       name: input.name,
@@ -527,13 +619,32 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         isAvailable: body.isAvailable ?? editing.isAvailable,
       };
     } else {
-      saved = await api.createMenuItem(body);
+      // One key per "Add" attempt for the same input: a retry after a timeout reuses it (servers that honour
+      // Idempotency-Key never create it twice).
+      const sig = JSON.stringify(body);
+      const key = createKeys.current[sig] || (createKeys.current[sig] = newIdempotencyKey(rid));
+      const before = menuRef.current ? new Set(menuRef.current.map((m) => m.id)) : null;
+      try {
+        saved = await api.createMenuItem(body, key);
+      } catch (e) {
+        if (!(e instanceof NetworkError || (e instanceof ApiError && e.status >= 500)) || !before) throw e;
+        // Timed out / dropped: the item may have been saved anyway. Reload the menu before the owner retries,
+        // so a second tap never adds the same item twice.
+        const fresh = await api.getMenu(rid).catch(() => null);
+        if (!fresh) throw e;
+        if (alive.current) setMenu(fresh);
+        const name = body.name.trim().toLowerCase();
+        const match = fresh.find((m) => !before.has(m.id) && m.name.trim().toLowerCase() === name);
+        if (!match) throw e;
+        saved = match;
+      }
+      delete createKeys.current[sig];
     }
     upsertLocal(saved);
     toast.show(editing ? `${saved.name} saved` : `${saved.name} added to your menu`, 'success');
     if (!editing) announce(`menu:add:${saved.id}`, { kind: 'itemAdded' }, { dedupeMs: 0 });
     return saved;
-  }, [toast, upsertLocal]);
+  }, [rid, toast, upsertLocal]);
 
   const deleteItem = useCallback(async (item: MenuItem): Promise<DeleteResult> => {
     try {
@@ -552,11 +663,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<StoreCtx>(() => ({
     restaurant, store, storeError, orders, ordersLoaded, ordersError, refreshing, lastSyncedAt,
     menu, menuError, menuLoading, menuPending, conn, pushState, alertOrders, busy, actionErrors, retryConnection, refreshOrders, refreshStore,
-    refreshMenu, accept, reject, outForDelivery, delivered, cancel, setOpen, setHours, setStock, saveItem, deleteItem,
+    refreshMenu, silence, accept, reject, outForDelivery, delivered, cancel, setOpen, setHours, setStock, saveItem, deleteItem,
   }), [
     restaurant, store, storeError, orders, ordersLoaded, ordersError, refreshing, lastSyncedAt,
     menu, menuError, menuLoading, menuPending, conn, pushState, alertOrders, busy, actionErrors, retryConnection, refreshOrders, refreshStore,
-    refreshMenu, accept, reject, outForDelivery, delivered, cancel, setOpen, setHours, setStock, saveItem, deleteItem,
+    refreshMenu, silence, accept, reject, outForDelivery, delivered, cancel, setOpen, setHours, setStock, saveItem, deleteItem,
   ]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

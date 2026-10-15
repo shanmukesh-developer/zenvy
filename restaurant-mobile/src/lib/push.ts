@@ -80,15 +80,52 @@ function ensureChannels(): Promise<boolean> {
   return channelsReady;
 }
 
-async function hasPermission(ask: boolean): Promise<boolean> {
+let permissionAsk: Promise<boolean> | null = null;
+
+/**
+ * Notification permission, asked at most once at a time: push registration and the kitchen service both
+ * need it at startup, and two overlapping system prompts drop one of the answers. Never throws.
+ */
+export function ensureNotificationPermission(ask: boolean): Promise<boolean> {
+  if (!isNative) return Promise.resolve(false);
+  if (permissionAsk) return permissionAsk;
+  const run = (async () => {
+    try {
+      const cur = await Notifications.getPermissionsAsync();
+      if (cur.status === 'granted') return true;
+      if (!ask || cur.canAskAgain === false) return false;
+      return (await Notifications.requestPermissionsAsync()).status === 'granted';
+    } catch {
+      return false;
+    }
+  })();
+  if (!ask) return run;
+  permissionAsk = run;
+  run.finally(() => { if (permissionAsk === run) permissionAsk = null; });
+  return run;
+}
+
+const hasPermission = (ask: boolean) => ensureNotificationPermission(ask);
+
+/**
+ * Forced logout (session expired / revoked): a loud notification on the order channel, so a phone lying in
+ * the kitchen with the screen off does not go quiet without anyone noticing. Best effort, never throws.
+ */
+export async function notifyLoggedOut(message: string): Promise<void> {
+  if (!isNative) return;
   try {
-    const cur = await Notifications.getPermissionsAsync();
-    if (cur.status === 'granted') return true;
-    if (!ask || cur.canAskAgain === false) return false;
-    return (await Notifications.requestPermissionsAsync()).status === 'granted';
-  } catch {
-    return false;
-  }
+    if (!(await hasPermission(false))) return;
+    await ensureChannels();
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: `${APP_TITLE}: logged out`,
+        body: `${message} New orders will NOT ring until you log in again.`,
+        sound: RING_SOUND,
+        data: { type: 'LOGGED_OUT' },
+      },
+      trigger: Platform.OS === 'android' ? { channelId: ORDERS_CHANNEL } : null,
+    });
+  } catch { /* ignore */ }
 }
 
 /** Plays the ring once. false = it could not (web, notifications blocked, old build): use a fallback. */

@@ -45,13 +45,22 @@ class KitchenServiceModule(private val reactContext: ReactApplicationContext) : 
     /** Older signature, kept for compatibility: Telugu notification text. */
     @ReactMethod
     fun speakOrder(text: String, orderNum: String, amount: String, promise: Promise) {
-        sendOrderAlert(text, orderNum, amount, "", "", promise)
+        sendOrderAlert(text, orderNum, amount, "", "", false, promise)
     }
 
     /** New-order alert with the notification title / body in the owner's chosen language. */
     @ReactMethod
     fun alertOrder(text: String, orderNum: String, amount: String, title: String, body: String, promise: Promise) {
-        sendOrderAlert(text, orderNum, amount, title, body, promise)
+        sendOrderAlert(text, orderNum, amount, title, body, false, promise)
+    }
+
+    /**
+     * Same, with `silent`: the heads-up is posted without its own sound / vibration because the app's ring
+     * already played (otherwise every re-ring sounds twice).
+     */
+    @ReactMethod
+    fun alertOrderV2(text: String, orderNum: String, amount: String, title: String, body: String, silent: Boolean, promise: Promise) {
+        sendOrderAlert(text, orderNum, amount, title, body, silent, promise)
     }
 
     /** Removes the heads-up notification of an order that was accepted, rejected, silenced or cancelled. */
@@ -61,7 +70,7 @@ class KitchenServiceModule(private val reactContext: ReactApplicationContext) : 
         promise.resolve(true)
     }
 
-    private fun sendOrderAlert(text: String, orderNum: String, amount: String, title: String, body: String, promise: Promise) {
+    private fun sendOrderAlert(text: String, orderNum: String, amount: String, title: String, body: String, silent: Boolean, promise: Promise) {
         try {
             val intent = Intent(reactContext, KitchenForegroundService::class.java).apply {
                 action = KitchenForegroundService.ACTION_SPEAK
@@ -70,6 +79,7 @@ class KitchenServiceModule(private val reactContext: ReactApplicationContext) : 
                 putExtra(KitchenForegroundService.EXTRA_AMOUNT, amount)
                 putExtra(KitchenForegroundService.EXTRA_TITLE, title)
                 putExtra(KitchenForegroundService.EXTRA_BODY, body)
+                putExtra(KitchenForegroundService.EXTRA_SILENT, silent)
             }
             // Service already in the foreground: a plain startService is allowed (the app holds a foreground
             // service) and carries no startForeground() deadline. Otherwise startForegroundService; the

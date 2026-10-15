@@ -1,5 +1,6 @@
 // Zenvy Rider design tokens: light, high contrast for outdoor use, big touch targets.
-import { Platform, StatusBar, TextStyle } from 'react-native';
+import type { TextStyle } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export const C = {
   bg: '#F3F4F6',
@@ -53,6 +54,11 @@ export const shadow = {
   elevation: 2,
 };
 
-// react-native-safe-area-context is not installed: conservative fixed insets.
-export const TOP_INSET = Platform.OS === 'android' ? StatusBar.currentHeight ?? 24 : 47;
-export const BOTTOM_INSET = Platform.OS === 'ios' ? 28 : 12;
+/**
+ * Real system-bar insets (edge-to-edge: the app draws under the status bar and the gesture / 3-button nav bar).
+ * `bottom` keeps a small minimum so content never touches the screen edge on phones that report 0.
+ */
+export function useInsets(): { top: number; bottom: number } {
+  const i = useSafeAreaInsets();
+  return { top: i.top, bottom: Math.max(i.bottom, 8) };
+}

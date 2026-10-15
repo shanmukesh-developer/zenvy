@@ -1,7 +1,7 @@
 // Bottom sheet on a Modal. Android back closes it unless `blocking`.
 import React from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { BOTTOM_INSET, C, R, S, T } from '../theme';
+import { C, R, S, T, useInsets } from '../theme';
 import { IconBtn } from './kit';
 
 export function Sheet({
@@ -19,13 +19,14 @@ export function Sheet({
   blocking?: boolean;
   footer?: React.ReactNode;
 }) {
+  const insets = useInsets();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={blocking ? () => {} : onClose} statusBarTranslucent>
       {/* Android draws edge-to-edge (RN 0.86, targetSdk 35): the window no longer resizes for the keyboard, so
           the sheet itself must move up or the keyboard covers its inputs (edit profile, change password). */}
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.wrap}>
         <Pressable style={StyleSheet.absoluteFill} onPress={blocking ? undefined : onClose} accessibilityLabel="Close" />
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, { paddingBottom: insets.bottom + S.lg }]}>
           <View style={styles.handle} />
           {title ? (
             <View style={styles.header}>
@@ -51,7 +52,6 @@ const styles = StyleSheet.create({
     borderTopRightRadius: R.xl,
     paddingHorizontal: S.lg,
     paddingTop: S.sm,
-    paddingBottom: BOTTOM_INSET + S.lg,
     maxHeight: '92%',
   },
   handle: { alignSelf: 'center', width: 44, height: 5, borderRadius: 3, backgroundColor: C.line, marginBottom: S.md },

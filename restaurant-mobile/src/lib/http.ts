@@ -23,6 +23,24 @@ export class NetworkError extends Error {
 }
 
 let getToken: () => string | null = () => null;
+
+/**
+ * Server clock minus phone clock (ms), from the HTTP Date header of the latest answer. Order times
+ * (createdAt) are server times, so age checks (e.g. the ring cap) use serverNow(), not a phone clock that
+ * may be minutes off. 0 until the first answer.
+ */
+let clockOffsetMs = 0;
+export const serverNow = () => Date.now() + clockOffsetMs;
+function noteServerDate(res: Response, sentAt: number) {
+  try {
+    const d = Date.parse(res.headers.get('date') || '');
+    if (!Number.isFinite(d)) return;
+    const local = (sentAt + Date.now()) / 2; // the header was stamped somewhere between send and receive
+    const off = d - local;
+    // The header has 1 s resolution: ignore sub-second noise.
+    clockOffsetMs = Math.abs(off) < 1500 ? 0 : off;
+  } catch { /* keep the last offset */ }
+}
 let onUnauthorized: (() => void) | null = null;
 
 export function configureHttp(opts: { getToken: () => string | null; onUnauthorized: () => void }) {
@@ -45,11 +63,13 @@ export interface RequestOptions {
   auth?: boolean;
   /** Treat a 401 as an ordinary error instead of logging out. */
   no401Logout?: boolean;
+  /** Extra request headers (e.g. Idempotency-Key). */
+  headers?: Record<string, string>;
 }
 
 export async function apiFetch<T = any>(path: string, opts: RequestOptions = {}): Promise<T> {
   const { method = 'GET', body, form, timeoutMs = 15000, auth = true, no401Logout = false } = opts;
-  const headers: Record<string, string> = { Accept: 'application/json' };
+  const headers: Record<string, string> = { Accept: 'application/json', ...(opts.headers || {}) };
   if (body !== undefined && !form) headers['Content-Type'] = 'application/json';
   const token = auth ? getToken() : null;
   if (auth && token) headers.Authorization = `Bearer ${token}`;
@@ -57,6 +77,7 @@ export async function apiFetch<T = any>(path: string, opts: RequestOptions = {})
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   let res: Response;
+  const sentAt = Date.now();
   try {
     res = await fetch(`${API_URL}${path}`, {
       method,
@@ -74,6 +95,7 @@ export async function apiFetch<T = any>(path: string, opts: RequestOptions = {})
     clearTimeout(timer);
   }
 
+  noteServerDate(res, sentAt);
   let data: any = null;
   const text = await res.text().catch(() => '');
   if (text) {

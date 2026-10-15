@@ -11,6 +11,8 @@ export const STORAGE = {
   restaurant: '@zenvy_restaurant_profile',
   savedId: '@zenvy_restaurant_saved_id',
   voice: '@zenvy_restaurant_voice_v2',
+  /** Orders put off with "Later" (per store, id → time). */
+  silenced: '@zenvy_restaurant_silenced',
   // Older builds: read once for migration, then removed.
   soundOnV1: '@zenvy_restaurant_sound_on',
   legacyToken: 'restaurant_token',

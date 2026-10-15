@@ -64,6 +64,11 @@ interface RiderContextValue {
   syncPendingIds: Set<string>;
   fix: gps.Fix | null;
   locationDenied: boolean;
+  /** Tracking is on but "Allow all the time" is not: the live map stops when the rider switches to Maps. */
+  backgroundLocationOff: boolean;
+  allowBackgroundLocation: () => Promise<void>;
+  /** POST /delivery/sos with the last GPS fix. true when Zenvy got it. */
+  sendSos: () => Promise<boolean>;
   cancelNotice: CancelNotice | null;
   toast: ToastMsg | null;
   // navigation
@@ -127,6 +132,7 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
   const [queued, setQueued] = useState<queue.QueuedAction[]>([]);
   const [fix, setFix] = useState<gps.Fix | null>(null);
   const [locationDenied, setLocationDenied] = useState(false);
+  const [bgLocation, setBgLocation] = useState<gps.BgLocationState>('unknown');
   const [cancelNotice, setCancelNotice] = useState<CancelNotice | null>(null);
   const [toast, setToast] = useState<ToastMsg | null>(null);
   const [tab, setTab] = useState<Tab>('home');
@@ -144,6 +150,10 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
   const finishedIds = useRef<Set<string>>(new Set()); // delivered / released by us
   const inFlightIds = useRef<Set<string>>(new Set()); // deliver / release request still running
   const activeSeq = useRef(0); // drops out-of-order /orders/active responses
+  const pendingSeq = useRef(0); // same for /orders/pending (and drops a pool answer that lands after going off duty)
+  /** Bumps on logout / session end: any response that started in an older session is ignored. */
+  const epoch = useRef(0);
+  const cleanupRef = useRef<Promise<void> | null>(null); // logout clean-up still running
   const seenOffers = useRef<Set<string>>(new Set());
   const autoOpened = useRef(false);
   const lastEmit = useRef(0);
@@ -186,17 +196,48 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
     resetDismissed();
   }, [resetDismissed]);
 
-  const hardLogout = useCallback(async () => {
-    tokenRef.current = null;
-    stopSpeaking();
-    sock.disconnectSocket();
-    gps.stopTracking();
-    await queue.clearQueue();
-    await push.forgetPushRegistration();
-    await session.clearSession();
-    resetState();
-    setPhase('login');
-  }, [resetState]);
+  /**
+   * End the session: the UI moves to Login at once and every response still in flight from this session is
+   * ignored (epoch). Storage / push clean-up runs after; a new login waits for it (cleanupRef).
+   * `serverCleanup` (normal logout) gets the old token explicitly, since tokenRef is already cleared.
+   */
+  const endSession = useCallback(
+    (serverCleanup?: (token: string) => Promise<unknown>): Promise<void> => {
+      const token = tokenRef.current;
+      epoch.current++;
+      activeSeq.current++;
+      pendingSeq.current++;
+      tokenRef.current = null;
+      stopSpeaking();
+      sock.disconnectSocket();
+      gps.stopTracking();
+      resetState();
+      setPhase('login');
+      const prev = cleanupRef.current ?? Promise.resolve();
+      const run: Promise<void> = prev
+        .then(async () => {
+          // Token first: if the app is killed during the slow steps below it must not come back logged in.
+          await session.clearSession();
+          await queue.clearQueue();
+          if (serverCleanup && token) {
+            await Promise.race([
+              serverCleanup(token).catch(() => undefined),
+              new Promise((resolve) => setTimeout(resolve, 4000)),
+            ]);
+          }
+          await push.forgetPushRegistration();
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (cleanupRef.current === run) cleanupRef.current = null;
+        });
+      cleanupRef.current = run;
+      return run;
+    },
+    [resetState],
+  );
+
+  const hardLogout = useCallback(() => endSession(), [endSession]);
 
   const passwordChanging = useRef(false);
   const hardLogoutRef = useRef(hardLogout);
@@ -274,6 +315,8 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(
     async (phone: string, password: string) => {
+      // A logout clean-up still running would clear the new session's token / push registration.
+      if (cleanupRef.current) await cleanupRef.current;
       const { token, profile: fromLogin } = await api.login(phone, password);
       tokenRef.current = token;
       await session.saveToken(token);
@@ -291,25 +334,25 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
   );
 
   const logout = useCallback(async () => {
-    if (tokenRef.current) {
-      // Go off duty and drop this phone's push token before the session token is dropped, or dispatch keeps
-      // counting + pinging this rider. Raced so a slow / asleep server never blocks logging out.
-      const riderId = profileRef.current?.id ?? '';
-      const removePush = push
-        .registeredPushToken(riderId)
-        .then((t) => (t ? api.removeFcmToken(t) : undefined))
-        .catch(() => undefined);
-      await Promise.race([
-        Promise.all([api.setOnline(false).catch(() => undefined), removePush]),
-        new Promise((resolve) => setTimeout(resolve, 4000)),
-      ]);
-    }
-    await hardLogout();
-  }, [hardLogout]);
+    // Login screen first (no 4 s wait on a slow server, no taps on a half-logged-out app). Then, with the old
+    // token: go off duty and drop this phone's push token, or dispatch keeps counting + pinging this rider.
+    const riderId = profileRef.current?.id ?? '';
+    endSession((token) =>
+      Promise.all([
+        api.setOnline(false, token).catch(() => undefined),
+        push
+          .registeredPushToken(riderId)
+          .then((t) => (t ? api.removeFcmToken(t, token) : undefined))
+          .catch(() => undefined),
+      ]),
+    );
+  }, [endSession]);
 
   const refreshProfile = useCallback(async () => {
+    const ep = epoch.current;
     try {
       const p = await api.fetchProfile(profileRef.current);
+      if (ep !== epoch.current) return;
       applyProfile(p);
       if (!p.isApproved && phaseRef.current === 'main') setPhase('pending');
     } catch {
@@ -354,9 +397,11 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
     const prev = prevStatus.current;
     const next = new Map<string, string>();
     for (const o of active.data) {
-      next.set(o.id, o.status);
+      // Ready = status ReadyForPickup, or the kitchen's readyAt while the rider already waits at the counter.
+      const key = `${o.status}|${o.kitchenReady === true ? 'ready' : ''}`;
+      next.set(o.id, key);
       const before = prev.get(o.id);
-      if (o.status === 'ReadyForPickup' && before && before !== 'ReadyForPickup') {
+      if (o.kitchenReady === true && before && !before.endsWith('|ready')) {
         announce('ready', {}, { dedupeKey: `ready:${o.id}`, chime: 'info' });
       }
       if (o.status === 'ArrivedAtGate' && cashOf(o) > 0) {
@@ -368,13 +413,15 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
 
   // ── Fetchers ───────────────────────────────────────────────────────────
   const loadHistory = useCallback(async (): Promise<RiderOrder[] | null> => {
+    const ep = epoch.current;
     try {
       const list = await api.fetchHistory();
+      if (ep !== epoch.current) return null;
       setHistory({ data: list, loaded: true, error: null, updatedAt: Date.now() });
       session.writeCache('history', list);
       return list;
     } catch (e) {
-      setHistory((h) => ({ ...h, loaded: true, error: errorMessage(e) }));
+      if (ep === epoch.current) setHistory((h) => ({ ...h, loaded: true, error: errorMessage(e) }));
       return null;
     }
   }, []);
@@ -388,12 +435,13 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
     setDeliveryId((cur) => (cur === o.id ? null : cur));
   }, []);
 
-  const refreshActive = useCallback(async () => {
+  /** Returns the fresh list, or null when it failed / was superseded by a newer request. */
+  const refreshActive = useCallback(async (): Promise<RiderOrder[] | null> => {
     const seq = ++activeSeq.current;
     try {
       const list = await api.fetchActive();
       // A newer request already answered (or we logged out): this response is stale.
-      if (seq !== activeSeq.current || !tokenRef.current) return;
+      if (seq !== activeSeq.current || !tokenRef.current) return null;
       const prev = activeRef.current;
       const nextIds = new Set(list.map((o) => o.id));
       const vanished = prev.filter(
@@ -423,18 +471,23 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
         autoOpened.current = true;
         if (list.length === 1) setDeliveryId(list[0].id);
       }
+      return list;
     } catch (e) {
-      if (isUnapprovedError(e) || seq !== activeSeq.current) return;
+      if (isUnapprovedError(e) || seq !== activeSeq.current) return null;
       setServerActive((a) => ({ ...a, loaded: true, error: errorMessage(e) }));
+      return null;
     }
   }, [loadHistory, noteCancelled, showToast]);
 
   const refreshPending = useCallback(async () => {
+    const seq = ++pendingSeq.current;
     try {
       const list = await api.fetchPending();
+      // Out of order (an older poll answering after a newer socket-triggered one), logged out, or went off
+      // duty meanwhile: this pool list is stale.
+      if (seq !== pendingSeq.current || !tokenRef.current || !isOnlineRef.current) return;
       list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
       setPending({ data: list, loaded: true, error: null, updatedAt: Date.now() });
-      if (!isOnlineRef.current) return;
       // Announce the newest order this rider has not heard about yet.
       const now = Date.now();
       const fresh = list.filter((o) => !seenOffers.current.has(o.id) && !((dismissedRef.current[o.id] ?? 0) > now));
@@ -444,7 +497,7 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
         announce('newOrder', { store: o.restaurantName, earning: o.earning }, { dedupeKey: `new:${o.id}`, chime: 'order' });
       }
     } catch (e) {
-      if (isUnapprovedError(e)) return;
+      if (isUnapprovedError(e) || seq !== pendingSeq.current) return;
       setPending((p) => ({ ...p, loaded: true, error: errorMessage(e) }));
     }
   }, []);
@@ -454,12 +507,14 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
   }, [refreshActive, refreshPending]);
 
   const refreshToday = useCallback(async () => {
+    const ep = epoch.current;
     try {
       const t = await api.fetchToday();
+      if (ep !== epoch.current) return;
       setToday({ data: t, loaded: true, error: null, updatedAt: Date.now() });
       session.writeCache('today', t);
     } catch (e) {
-      setToday((s) => ({ ...s, loaded: true, error: errorMessage(e) }));
+      if (ep === epoch.current) setToday((s) => ({ ...s, loaded: true, error: errorMessage(e) }));
     }
   }, []);
 
@@ -468,8 +523,9 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
   }, [loadHistory]);
 
   const refreshEarnings = useCallback(async () => {
+    const ep = epoch.current;
     const [, , w] = await Promise.all([refreshToday(), loadHistory(), api.fetchWeek().catch(() => null), refreshProfile()]);
-    if (w) setWeekServer(w);
+    if (w && ep === epoch.current) setWeekServer(w);
   }, [refreshToday, loadHistory, refreshProfile]);
 
   // Week: server buckets when available, else computed from recent deliveries.
@@ -507,12 +563,16 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
         if (tokenRef.current) hardLogoutRef.current();
         return;
       }
+      const fresh = r.done.length || r.dropped.length ? await refreshActive() : null;
+      if (!fresh) return; // could not re-check: stay quiet (the list rolls back on the next refresh)
+      const stillMine = new Set(fresh.map((o) => o.id));
       for (const d of r.dropped) {
-        // A step that raced a delivery / release we already finished is stale, not a real failure.
-        if (finishedIds.current.has(d.action.orderId)) continue;
+        // A step that raced a delivery / release we already finished is stale, not a real failure. So is a step
+        // for an order that is no longer ours (delivered by support / cancelled / reassigned while the app was
+        // closed): on a cold start finishedIds is empty, so check the fresh active list instead.
+        if (finishedIds.current.has(d.action.orderId) || !stillMine.has(d.action.orderId)) continue;
         showToast(`Couldn't sync: ${d.message}`, 'error');
       }
-      if (r.done.length || r.dropped.length) await refreshActive();
     },
     [refreshActive, showToast],
   );
@@ -545,6 +605,8 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
       sock.ensureSocketConnected();
       refreshOrders();
       refreshToday();
+      refreshProfile(); // approval / duty / rating may have changed while we were away
+      gps.recheckBackgroundLocation();
       if (queued.length) runFlush(true);
       if (getVoiceState().check !== 'ok') checkVoices();
     }
@@ -634,8 +696,10 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
         cancelAnnouncement(`new:${orderId}`);
         setPending((p) => (p.data.some((o) => o.id === orderId) ? { ...p, data: p.data.filter((o) => o.id !== orderId) } : p));
       },
-      onAuthError: () => {
-        if (!tokenRef.current) return;
+      onAuthError: (usedToken) => {
+        // Token replaced by a password change (or the change is in flight): not a dead session. Returning false
+        // makes the socket retry with the latest token.
+        if (!tokenRef.current || passwordChanging.current || (usedToken && usedToken !== tokenRef.current)) return false;
         hardLogoutRef.current();
         setToast({ id: Date.now(), text: 'Your session expired. Please log in again.', kind: 'error' });
       },
@@ -646,6 +710,7 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
           return;
         }
         refetchSoon(); // events sent while we were disconnected are not replayed
+        refreshProfile();
       },
     });
     sock.connectSocket(tokenRef.current);
@@ -657,7 +722,13 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
   }, [active.data]);
 
   // ── GPS: only on duty or while holding an order ────────────────────────
-  const needGps = inMain && (isOnline || active.data.length > 0);
+  const holdingOrder = active.data.length > 0;
+  const needGps = inMain && (isOnline || holdingOrder);
+  const holdingRef = useRef(holdingOrder);
+  holdingRef.current = holdingOrder;
+  const appActiveRef = useRef(appActive);
+  appActiveRef.current = appActive;
+  const uiFix = useRef<gps.Fix | null>(null);
   useEffect(() => {
     if (!needGps) {
       gps.stopTracking();
@@ -667,7 +738,12 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
     gps
       .startTracking((f) => {
         if (stopped) return;
-        setFix(f);
+        // The fix only feeds "x km away" labels: no re-render in the background, and only on a real move.
+        const shown = uiFix.current;
+        if (!shown || (appActiveRef.current && (f.ts - shown.ts > 20000 || gps.haversineKm(shown, f) > 0.025))) {
+          uiFix.current = f;
+          setFix(f);
+        }
         const now = Date.now();
         if (now - lastEmit.current < 10000) return;
         lastEmit.current = now;
@@ -678,7 +754,7 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
         } else if (isOnlineRef.current) {
           sock.emitLocation({ lat: f.lat, lng: f.lng, heading: f.heading, speed: f.speed, ...meta });
         }
-      })
+      }, holdingRef.current ? 'active' : 'idle')
       .then((r) => {
         if (!stopped) setLocationDenied(r === 'denied');
       });
@@ -687,6 +763,33 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
       gps.stopTracking();
     };
   }, [needGps]);
+
+  // Holding an order: high accuracy for the customer's live map. Only on duty: balanced, every 30-60 s.
+  useEffect(() => {
+    gps.setTrackingMode(holdingOrder ? 'active' : 'idle');
+  }, [holdingOrder]);
+  // Background: the location task (foreground service) reports; the in-app watch pauses.
+  useEffect(() => {
+    gps.setAppForeground(appActive);
+  }, [appActive]);
+  useEffect(() => gps.subscribeBackgroundLocation(setBgLocation), []);
+
+  const allowBackgroundLocation = useCallback(async () => {
+    await gps.requestBackgroundLocation();
+  }, []);
+
+  const sendSos = useCallback(async () => {
+    const f = gps.getLastFix();
+    try {
+      await api.sendSos(f ? { lat: f.lat, lng: f.lng } : {});
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+      showToast('SOS sent. The Zenvy team will call you now.', 'success');
+      return true;
+    } catch (e) {
+      showToast(`${errorMessage(e)} If you are in danger, call 112.`, 'error');
+      return false;
+    }
+  }, [showToast]);
 
   // ── Push ───────────────────────────────────────────────────────────────
   const riderId = profile?.id;
@@ -753,6 +856,7 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
         setIsOnline(v);
         isOnlineRef.current = v;
+        if (!v) pendingSeq.current++; // a pool request still in flight must not refill the list
         announce(v ? 'online' : 'offline', {}, { chime: 'info' });
         if (profileRef.current) {
           sock.emitDutyStatus(profileRef.current.id, profileRef.current.name, v);
@@ -794,7 +898,8 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
         announce('accepted', {}, { dedupeKey: `accepted:${order.id}`, chime: 'info' });
         setPending((p) => ({ ...p, data: p.data.filter((o) => o.id !== order.id) }));
         // It may already be ready at the counter: don't announce that as a "change".
-        prevStatus.current.set(order.id, claimed?.status ?? order.status);
+        const known = claimed ?? order;
+        prevStatus.current.set(order.id, `${known.status}|${known.kitchenReady === true ? 'ready' : ''}`);
         // Show it right away (the accept response is the full order) even if the refetch below fails.
         const mine = claimed ?? order;
         activeSeq.current++; // an older in-flight refetch would not contain this order
@@ -970,53 +1075,111 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
   const closeDelivery = useCallback(() => setDeliveryId(null), []);
   const clearCancelNotice = useCallback(() => setCancelNotice(null), []);
 
-  const value: RiderContextValue = {
-    phase,
-    profile,
-    isOnline,
-    dutyBusy,
-    today,
-    active,
-    pending,
-    offers,
-    history,
-    week,
-    connected,
-    serverReachable,
-    queueCount: queued.length,
-    syncPendingIds,
-    fix,
-    locationDenied,
-    cancelNotice,
-    toast,
-    tab,
-    setTab,
-    deliveryId,
-    openDelivery,
-    closeDelivery,
-    overlay,
-    setOverlay,
-    retryBoot,
-    login,
-    logout,
-    recheckApproval,
-    refreshProfile,
-    setDuty,
-    refreshOrders,
-    refreshToday,
-    refreshHistory,
-    refreshEarnings,
-    accept,
-    skipOffer,
-    advance,
-    deliver,
-    unassign,
-    flushNow,
-    showToast,
-    clearCancelNotice,
-    saveProfileEdits,
-    changePassword,
-  };
+  const backgroundLocationOff = needGps && bgLocation === 'denied';
+  // Memoized: a new object every render would re-render every screen on each GPS / poll tick.
+  const value = useMemo<RiderContextValue>(
+    () => ({
+      phase,
+      profile,
+      isOnline,
+      dutyBusy,
+      today,
+      active,
+      pending,
+      offers,
+      history,
+      week,
+      connected,
+      serverReachable,
+      queueCount: queued.length,
+      syncPendingIds,
+      fix,
+      locationDenied,
+      cancelNotice,
+      toast,
+      tab,
+      setTab,
+      deliveryId,
+      openDelivery,
+      closeDelivery,
+      overlay,
+      setOverlay,
+      retryBoot,
+      login,
+      logout,
+      recheckApproval,
+      refreshProfile,
+      setDuty,
+      refreshOrders,
+      refreshToday,
+      refreshHistory,
+      refreshEarnings,
+      accept,
+      skipOffer,
+      advance,
+      deliver,
+      unassign,
+      flushNow,
+      showToast,
+      clearCancelNotice,
+      saveProfileEdits,
+      changePassword,
+      backgroundLocationOff,
+      allowBackgroundLocation,
+      sendSos,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      phase,
+      profile,
+      isOnline,
+      dutyBusy,
+      today,
+      active,
+      pending,
+      offers,
+      history,
+      week,
+      connected,
+      serverReachable,
+      queued.length,
+      syncPendingIds,
+      fix,
+      locationDenied,
+      cancelNotice,
+      toast,
+      tab,
+      setTab,
+      deliveryId,
+      openDelivery,
+      closeDelivery,
+      overlay,
+      setOverlay,
+      retryBoot,
+      login,
+      logout,
+      recheckApproval,
+      refreshProfile,
+      setDuty,
+      refreshOrders,
+      refreshToday,
+      refreshHistory,
+      refreshEarnings,
+      accept,
+      skipOffer,
+      advance,
+      deliver,
+      unassign,
+      flushNow,
+      showToast,
+      clearCancelNotice,
+      saveProfileEdits,
+      changePassword,
+      backgroundLocationOff,
+      allowBackgroundLocation,
+      sendSos,
+    ],
+  );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

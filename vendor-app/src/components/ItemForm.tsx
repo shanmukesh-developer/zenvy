@@ -2,10 +2,11 @@
 // save button at the bottom that cannot be pressed twice.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
+  ActivityIndicator, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { KeyboardAvoidingView } from '../ui/KeyboardAvoidingView';
 import * as api from '../lib/api';
 import { errorMessage } from '../lib/http';
 import { pickPhoto, PhotoSource } from '../lib/photo';
@@ -208,7 +209,7 @@ export function ItemForm({ mode, categories, onClose, onSave, onDelete, onDuplic
 
   return (
     <Modal visible={!!mode} animationType="slide" onRequestClose={requestClose} statusBarTranslucent>
-      <KeyboardAvoidingView style={{ flex: 1, backgroundColor: color.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={{ flex: 1, backgroundColor: color.bg }}>
         <View style={[styles.head, { paddingTop: insets.top + space.xs }]}>
           <IconButton icon="close" label="Close" onPress={requestClose} />
           <Text style={[font.h2, { color: color.text, flex: 1 }]} numberOfLines={1}>{title}</Text>

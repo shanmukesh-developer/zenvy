@@ -2,7 +2,7 @@
 import React, { useEffect } from 'react';
 import { BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { BOTTOM_INSET, C, R, S, T } from '../theme';
+import { C, R, S, T, useInsets } from '../theme';
 import { Btn } from '../ui/kit';
 import { Sheet } from '../ui/Sheet';
 import { useRider, type Tab } from '../state/RiderStore';
@@ -25,6 +25,7 @@ const TABS: { key: Tab; label: string; icon: IconName }[] = [
 
 export function Shell() {
   const r = useRider();
+  const insets = useInsets();
   const { overlay, setOverlay, deliveryId, closeDelivery, tab, setTab } = r;
 
   useEffect(() => {
@@ -95,7 +96,7 @@ export function Shell() {
       </View>
 
       {!deliveryId && !overlay ? (
-        <View style={styles.tabBar} accessibilityRole="tablist">
+        <View style={[styles.tabBar, { paddingBottom: insets.bottom }]} accessibilityRole="tablist">
           {TABS.map((t) => {
             const on = t.key === tab;
             const badge = t.key === 'home' && r.active.data.length > 0 ? r.active.data.length : 0;
@@ -189,7 +190,6 @@ const styles = StyleSheet.create({
     backgroundColor: C.card,
     borderTopWidth: 1,
     borderTopColor: C.line,
-    paddingBottom: BOTTOM_INSET,
     paddingTop: 6,
   },
   tab: { flex: 1, alignItems: 'center', justifyContent: 'center', minHeight: 60, gap: 2 },

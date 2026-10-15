@@ -1,11 +1,12 @@
 // Shared building blocks: buttons, chips, badges, cards, sheets, empty / error states, skeletons.
 import React from 'react';
 import {
-  ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, StyleProp, StyleSheet, Text, View, ViewStyle,
+  ActivityIndicator, Modal, Pressable, StyleProp, StyleSheet, Text, View, ViewStyle,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { color, font, radius, shadow, space, touch } from '../theme';
+import { KeyboardAvoidingView } from './KeyboardAvoidingView';
 
 export type IconName = keyof typeof Ionicons.glyphMap;
 type Variant = 'accept' | 'reject' | 'rejectOutline' | 'primary' | 'secondary' | 'ghost' | 'onRed' | 'outlineOnRed';
@@ -173,7 +174,7 @@ export function Sheet({ visible, onClose, title, children }: {
   const insets = useSafeAreaInsets();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <KeyboardAvoidingView style={{ flex: 1 }}>
         <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close" />
         <View style={[styles.sheet, { paddingBottom: insets.bottom + space.md }]}>
           <View style={styles.grabber} />

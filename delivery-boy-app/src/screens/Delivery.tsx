@@ -3,12 +3,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { BOTTOM_INSET, C, R, S, T } from '../theme';
+import { C, R, S, T, useInsets } from '../theme';
 import { Badge, Btn, Card, IconBtn, Label, Row } from '../ui/kit';
 import { Sheet } from '../ui/Sheet';
+import { SosButton } from '../ui/Sos';
 import { PinPad } from '../ui/PinPad';
 import { useRider } from '../state/RiderStore';
-import { atStoreKitchenLabel, canUnassign, firstName, isDialable, stepFor, stepIndex, storeStatusLabel } from '../services/orderModel';
+import { atStoreKitchenLabel, canUnassign, firstName, isDialable, kitchenChip, stepFor, stepIndex } from '../services/orderModel';
 import * as links from '../services/links';
 import { rupees } from '../services/format';
 import { CashBox, Instructions, ItemChecklist, ItemsLine, PaymentPill, Place, StepBar, cashToCollect, distanceTo } from './parts';
@@ -19,6 +20,7 @@ const tickStore = new Map<string, Set<number>>();
 
 export function DeliveryScreen({ orderId, onClose }: { orderId: string; onClose: () => void }) {
   const r = useRider();
+  const insets = useInsets();
   const live = r.active.data.find((o) => o.id === orderId) ?? null;
   const snapshot = useRef<RiderOrder | null>(live);
   if (live) snapshot.current = live;
@@ -106,7 +108,8 @@ export function DeliveryScreen({ orderId, onClose }: { orderId: string; onClose:
   if (step === 'TO_STORE') {
     title = 'Go to store';
     // Buy-at-store: the store has no Zenvy app, so "Store accepted" / "Kitchen preparing" would be invented.
-    const kitchen = order.buyAtStore ? null : storeStatusLabel(order.status);
+    // readyAt (kitchen packed it) shows "Ready for pickup" even before the status catches up.
+    const kitchen = kitchenChip(order);
     const dist = distanceTo(order, r.fix);
     body = (
       <>
@@ -114,7 +117,7 @@ export function DeliveryScreen({ orderId, onClose }: { orderId: string; onClose:
           <Place kind="store" title={order.restaurantName} address={order.restaurantAddress} />
           <View style={styles.chips}>
             {order.buyAtStore ? <Badge tone="amber" icon="cart-outline" label="BUY AT STORE" /> : null}
-            {kitchen ? <Badge tone={order.status === 'ReadyForPickup' ? 'green' : 'blue'} icon={order.status === 'ReadyForPickup' ? 'check-circle' : 'chef-hat'} label={kitchen} /> : null}
+            {kitchen ? <Badge tone={kitchen.ready ? 'green' : 'blue'} icon={kitchen.ready ? 'check-circle' : 'chef-hat'} label={kitchen.text} /> : null}
             {dist ? <Badge tone="grey" icon="map-marker-distance" label={`${dist} away`} /> : null}
           </View>
         </Card>
@@ -284,6 +287,7 @@ export function DeliveryScreen({ orderId, onClose }: { orderId: string; onClose:
           <Text style={[T.label, { color: C.muted }]}>ORDER #{order.shortId}</Text>
           <Text style={[T.h2, { color: C.ink }]}>{title}</Text>
         </View>
+        <SosButton />
         <IconBtn icon="dots-vertical" onPress={() => setMenu(true)} label="More options" />
       </View>
       <View style={{ paddingHorizontal: S.lg, gap: S.sm }}>
@@ -301,7 +305,7 @@ export function DeliveryScreen({ orderId, onClose }: { orderId: string; onClose:
           <Text style={[T.small, { color: C.muted, textAlign: 'center' }]}>You earn {rupees(order.earning)} for this order.</Text>
         ) : null}
       </ScrollView>
-      {primary ? <View style={styles.footer}>{primary}</View> : null}
+      {primary ? <View style={[styles.footer, { paddingBottom: insets.bottom + S.md }]}>{primary}</View> : null}
 
       <Sheet visible={confirmUnticked} onClose={() => setConfirmUnticked(false)} title="Some items not ticked">
         <Text style={[T.body, { color: C.ink2 }]}>Make sure nothing is missing from the bag.</Text>
@@ -431,7 +435,7 @@ const styles = StyleSheet.create({
   body: { padding: S.lg, gap: S.lg, paddingBottom: S.xxl },
   chips: { flexDirection: 'row', gap: S.sm, flexWrap: 'wrap' },
   sync: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.amberTint, padding: S.sm, borderRadius: R.md },
-  footer: { padding: S.lg, paddingBottom: BOTTOM_INSET + S.md, backgroundColor: C.card, borderTopWidth: 1, borderTopColor: C.line },
+  footer: { padding: S.lg, backgroundColor: C.card, borderTopWidth: 1, borderTopColor: C.line },
   doneIcon: { width: 92, height: 92, borderRadius: 46, backgroundColor: C.green, alignItems: 'center', justifyContent: 'center', marginTop: S.sm },
   cashDone: { flexDirection: 'row', alignItems: 'center', gap: S.sm, backgroundColor: C.cashTint, borderRadius: R.md, padding: S.md },
 });

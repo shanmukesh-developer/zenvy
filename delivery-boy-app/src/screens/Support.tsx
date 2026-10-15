@@ -1,7 +1,7 @@
 // Rider support: raise a ticket (POST /delivery/support), see replies, or call / WhatsApp Zenvy.
 import React, { useCallback, useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { BOTTOM_INSET, C, R, S, T } from '../theme';
+import { C, R, S, T, useInsets } from '../theme';
 import { Badge, Btn, Card, EmptyState, ErrorState, Label, ScreenHeader, Skeleton } from '../ui/kit';
 import { useRider } from '../state/RiderStore';
 import * as api from '../services/deliveryApi';
@@ -15,6 +15,7 @@ const TOPICS = ['Order issue', 'Payment / earnings', 'App problem', 'Other'];
 
 export function SupportScreen({ prefill, onBack }: { prefill?: string; onBack: () => void }) {
   const r = useRider();
+  const insets = useInsets();
   const [topic, setTopic] = useState(prefill ? 'Order issue' : '');
   const [text, setText] = useState(prefill ?? '');
   const [formError, setFormError] = useState<string | null>(null);
@@ -58,7 +59,7 @@ export function SupportScreen({ prefill, onBack }: { prefill?: string; onBack: (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, backgroundColor: C.bg }}>
       <ScreenHeader title="Help" onBack={onBack} />
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + S.xxl }]}
         keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
@@ -150,7 +151,7 @@ export function SupportScreen({ prefill, onBack }: { prefill?: string; onBack: (
 }
 
 const styles = StyleSheet.create({
-  content: { paddingHorizontal: S.lg, gap: S.lg, paddingBottom: BOTTOM_INSET + S.xxl },
+  content: { paddingHorizontal: S.lg, gap: S.lg },
   input: {
     minHeight: 110,
     textAlignVertical: 'top',

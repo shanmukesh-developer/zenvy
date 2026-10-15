@@ -1,9 +1,10 @@
 // Logged-in store + token. Restores the saved session on launch; any 401 logs out with a message.
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, AppState, Platform, Vibration } from 'react-native';
 import { configureHttp } from '../lib/http';
-import { isStallAccount } from '../lib/api';
+import { isStallAccount, refreshSession } from '../lib/api';
 import { clearSession, loadSession, pickProfile, saveProfile, saveSession } from '../lib/storage';
-import { unregisterStorePush } from '../lib/push';
+import { notifyLoggedOut, unregisterStorePush } from '../lib/push';
 import { stopKitchenService } from '../voice/kitchenService';
 import { stopVoice } from '../voice/voice';
 import type { StoreProfile } from '../types';
@@ -23,6 +24,9 @@ interface SessionCtx {
 const Ctx = createContext<SessionCtx | null>(null);
 
 export const SESSION_EXPIRED = 'Your session expired. Please log in again.';
+
+/** Swap the session for a fresh one (if the server supports it) at most this often. */
+const REFRESH_EVERY_MS = 12 * 60 * 60 * 1000;
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
@@ -51,11 +55,21 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     if (!msg && tokenRef.current) {
       await Promise.race([unregisterStorePush(), new Promise((r) => setTimeout(r, 4000))]);
     }
+    const wasLoggedIn = !!tokenRef.current;
     tokenRef.current = null;
     setToken(null);
     setRestaurant(null);
     setNotice(msg || null);
     await clearSession();
+    // Forced logout (expired / revoked session) of a running shift: be loud. Orders stop ringing from now on,
+    // and a phone lying face-down in the kitchen would otherwise go quiet without anyone noticing.
+    if (msg && wasLoggedIn) {
+      if (Platform.OS !== 'web') Vibration.vibrate([0, 600, 250, 600, 250, 600]);
+      notifyLoggedOut(msg);
+      if (AppState.currentState === 'active') {
+        Alert.alert('Logged out', `${msg} New orders will NOT ring until you log in again.`, [{ text: 'OK' }]);
+      }
+    }
   };
 
   useEffect(() => {
@@ -64,6 +78,30 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       onUnauthorized: () => { if (tokenRef.current) signOut(SESSION_EXPIRED); },
     });
   }, [signOut]);
+
+  // Optional server feature: renew the session token now and then (launch + resume, at most every 12 h).
+  // A server without the route answers 404 and this quietly does nothing.
+  const lastRefresh = useRef(0);
+  const tryRefresh = useCallback(async () => {
+    const before = tokenRef.current;
+    if (!before || Date.now() - lastRefresh.current < REFRESH_EVERY_MS) return;
+    lastRefresh.current = Date.now();
+    const res = await refreshSession();
+    if (!res || tokenRef.current !== before) return; // unsupported / failed, or logged out meanwhile
+    tokenRef.current = res.token;
+    setToken(res.token);
+    setRestaurant((prev) => {
+      if (!prev) return prev;
+      const fresh = res.restaurant ? pickProfile(res.restaurant) : null;
+      const next = fresh && fresh.id === prev.id ? { ...prev, ...fresh } : prev;
+      saveSession(res.token, next);
+      return next;
+    });
+  }, []);
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (st) => { if (st === 'active') tryRefresh(); });
+    return () => sub.remove();
+  }, [tryRefresh]);
 
   useEffect(() => {
     let alive = true;
@@ -79,16 +117,18 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         tokenRef.current = t;
         setToken(t);
         setRestaurant(r);
+        if (t) tryRefresh();
       })
       .catch(() => { /* start logged out */ })
       .finally(() => { if (alive) setReady(true); });
     return () => { alive = false; };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const signIn = useCallback(async (t: string, raw: any) => {
     const profile = pickProfile(raw);
     if (!profile) throw new Error('Login response was missing the store details. Please try again.');
     await saveSession(t, profile);
+    lastRefresh.current = Date.now(); // brand-new token
     tokenRef.current = t;
     setNotice(null);
     setRestaurant(profile);

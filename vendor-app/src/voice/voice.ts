@@ -9,6 +9,8 @@ import { safeGet, safeRemove, safeSet } from '../lib/storage';
 import { nativeOrderAlert, hasKitchenService } from './kitchenService';
 import { FALLBACK_CHAIN, LANG_TAG, phrase, VoiceEvent, VoiceLang } from './phrases';
 
+type NativeAlert = { orderNum: string; amount: string; silent?: boolean };
+
 export interface VoiceSettings { enabled: boolean; lang: VoiceLang }
 
 export interface VoiceSnapshot {
@@ -24,8 +26,9 @@ interface QueueItem {
   key: string;
   event: VoiceEvent;
   urgent: boolean;
-  /** For new orders: native heads-up notification when the app is in the background. */
-  native?: { orderNum: string; amount: string };
+  /** For new orders: native heads-up notification when the app is in the background. `silent`: the app ring
+   *  already sounded, so the heads-up must not play a second sound. */
+  native?: NativeAlert;
 }
 
 const MAX_QUEUE = 4;
@@ -178,7 +181,7 @@ function pruneRecent(now: number) {
 export function announce(
   key: string,
   event: VoiceEvent,
-  opts: { urgent?: boolean; dedupeMs?: number; force?: boolean; native?: { orderNum: string; amount: string } } = {},
+  opts: { urgent?: boolean; dedupeMs?: number; force?: boolean; native?: NativeAlert } = {},
 ): boolean {
   if (!settings.enabled && !opts.force) return false;
   const now = Date.now();
@@ -260,7 +263,7 @@ async function speakItem(item: QueueItem) {
   // itself only in Telugu (its TTS is fixed to te-IN); for other languages expo-speech speaks below.
   if (item.native && background && hasKitchenService()) {
     const nativeSpeaks = lang === 'te' && settings.enabled;
-    const ok = await nativeOrderAlert(nativeSpeaks ? text : '', item.native.orderNum, item.native.amount, settings.lang);
+    const ok = await nativeOrderAlert(nativeSpeaks ? text : '', item.native.orderNum, item.native.amount, settings.lang, !!item.native.silent);
     // Accepted / rejected / silenced while the native call ran: never arm a timer that would end a
     // different (later) announcement.
     if (current !== item) return;

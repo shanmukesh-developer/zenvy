@@ -1,5 +1,5 @@
 // Shop: the big OPEN / CLOSED switch, shop hours, and today's real numbers (from the orders list).
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { shopLine, useOpenToggle } from '../components/ShopBar';
@@ -53,17 +53,27 @@ function HoursSheet({ visible, onClose, start, end, weekly }: { visible: boolean
   const [e, setE] = useState(end ? formatHHMM(end) : '');
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // State updates are async: two quick taps would both pass a `saving` check and send two saves.
+  const savingRef = useRef(false);
 
   const save = async () => {
+    if (savingRef.current) return;
     const ps = parseTime(s);
     const pe = parseTime(e);
     if (!ps || !pe) { setErr('Type times like 7:00 AM and 9:30 PM.'); return; }
+    savingRef.current = true;
     setSaving(true);
     setErr(null);
-    const res = await setHours({ start: ps, end: pe });
-    setSaving(false);
-    if (res.ok) onClose();
-    else setErr(res.error || "Couldn't save the hours.");
+    try {
+      const res = await setHours({ start: ps, end: pe });
+      if (res.ok) onClose();
+      else setErr(res.error || "Couldn't save the hours.");
+    } catch {
+      setErr("Couldn't save the hours.");
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
   };
 
   return (

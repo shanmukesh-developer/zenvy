@@ -7,8 +7,21 @@ import { getItem, setItem } from './session';
 import { KEYS } from '../config';
 
 const REGISTERED_KEY = KEYS.pushRegistered;
-const ALERT_CHANNEL = 'delivery-alerts-v2';
+/**
+ * New-order pushes. v3 plays the bundled alert.wav (res/raw/alert.wav, app.json expo-notifications "sounds").
+ * An Android channel's sound is fixed when it is created, so the old v2 channel (system default sound) is
+ * deleted and the id bumped. Pushes the server still sends to 'delivery-alerts-v2' then land in the manifest's
+ * default FCM channel, which is this one (app.json expo-notifications "defaultChannel").
+ */
+export const ALERT_CHANNEL = 'delivery-alerts-v3';
+const LEGACY_ALERT_CHANNELS = ['delivery-alerts-v2', 'delivery-alerts'];
+const ALERT_SOUND = 'alert.wav';
+/** Money / cash / cancellation cues: heads-up + sound. */
 const CHIME_CHANNEL = 'zenvy-chime-v1';
+/** New-order cue in the app: the same alert sound as the push. */
+const ORDER_CHIME_CHANNEL = 'zenvy-chime-order-v1';
+/** Small "info" cues (online, accepted, ready): sound only, never a heads-up banner over Google Maps. */
+const INFO_CHIME_CHANNEL = 'zenvy-chime-info-v1';
 
 Notifications.setNotificationHandler({
   handleNotification: async (n) => {
@@ -34,19 +47,37 @@ function ensureChannels(): Promise<void> {
   if (!channelsReady) {
     channelsReady = (async () => {
       await Notifications.setNotificationChannelAsync(ALERT_CHANNEL, {
-        name: 'Delivery alerts',
+        name: 'New delivery orders',
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250, 250, 250],
         lightColor: '#0E9F5B',
-        sound: 'default',
+        sound: ALERT_SOUND,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      });
+      await Notifications.setNotificationChannelAsync(ORDER_CHIME_CHANNEL, {
+        name: 'New order sound',
+        description: 'Sound before a new-order voice announcement',
+        importance: Notifications.AndroidImportance.HIGH,
+        sound: ALERT_SOUND,
+        enableVibrate: false,
       });
       await Notifications.setNotificationChannelAsync(CHIME_CHANNEL, {
         name: 'Order sounds',
-        description: 'Short sound before a voice announcement',
+        description: 'Short sound before a money / cash / cancellation announcement',
         importance: Notifications.AndroidImportance.HIGH,
         sound: 'default',
         enableVibrate: false,
       });
+      await Notifications.setNotificationChannelAsync(INFO_CHIME_CHANNEL, {
+        name: 'Small updates',
+        description: 'Quiet sound for small updates (on duty, order ready)',
+        importance: Notifications.AndroidImportance.DEFAULT,
+        sound: 'default',
+        enableVibrate: false,
+      });
+      for (const id of LEGACY_ALERT_CHANNELS) {
+        await Notifications.deleteNotificationChannelAsync(id).catch(() => {});
+      }
     })().catch(() => {
       channelsReady = null;
     });
@@ -71,6 +102,13 @@ const PATTERNS: Record<ChimeKind, number[]> = {
   alert: [0, 500, 200, 500],
 };
 
+const CHIME_CHANNEL_FOR: Record<ChimeKind, string> = {
+  order: ORDER_CHIME_CHANNEL,
+  money: CHIME_CHANNEL,
+  alert: CHIME_CHANNEL,
+  info: INFO_CHIME_CHANNEL,
+};
+
 /**
  * Distinctive cue: vibration pattern + the system notification sound (a silent-banner local notification
  * that removes itself). Never throws. `text` is the notification body when it shows in the tray.
@@ -85,8 +123,8 @@ export async function playChime(kind: ChimeKind, text: string): Promise<void> {
   try {
     await ensureChannels();
     const id = await Notifications.scheduleNotificationAsync({
-      content: { title: 'Zenvy Rider', body: text, sound: 'default', data: { chime: true } },
-      trigger: Platform.OS === 'android' ? { channelId: CHIME_CHANNEL } : null,
+      content: { title: 'Zenvy Rider', body: text, sound: kind === 'order' ? ALERT_SOUND : 'default', data: { chime: true } },
+      trigger: Platform.OS === 'android' ? { channelId: CHIME_CHANNEL_FOR[kind] } : null,
     });
     setTimeout(() => {
       Notifications.dismissNotificationAsync(id).catch(() => {});
