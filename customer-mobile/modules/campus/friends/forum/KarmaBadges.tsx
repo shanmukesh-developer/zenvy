@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
-import { Award, Trophy, BookOpen, HandHelping, Flag } from 'lucide-react-native';
+import { Award, Trophy, BookOpen, HandHelping, Flag } from '../../../../components/lucide';
 import { fetchFriendsUser, FriendsUserCard } from '../api/core';
 import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';
 import { SkeletonBlock } from '../shared/FriendsSkeleton';

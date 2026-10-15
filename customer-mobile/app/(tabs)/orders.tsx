@@ -7,7 +7,7 @@ import { connectSocket } from '../../utils/socket';
 import { COLORS, SHADOWS } from '../../constants/theme';
 import { ENDPOINTS } from '../../constants/api';
 import { useTheme } from '../../context/ThemeContext';
-import { useCart } from '../../context/CartContext';
+import { useCartActions } from '../../context/CartContext';
 import { useAuth } from '../../context/AuthContext';
 import { apiFetch } from '../../utils/auth';
 import AmbientBackground from '../../components/AmbientBackground';
@@ -114,7 +114,7 @@ export default function OrdersScreen() {
   const router = useRouter();
   const { isDark, colors } = useTheme();
   const { user, refreshUser } = useAuth();
-  const { addToCart } = useCart();
+  const { addToCart } = useCartActions();
   const [orders, setOrders] = useState<any[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);

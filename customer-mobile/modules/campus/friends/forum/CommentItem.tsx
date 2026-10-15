@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
-import { Ellipsis, Reply, CircleCheck, ShieldCheck, Hourglass, ChevronDown, ChevronRight, Pencil, Gavel, Award } from 'lucide-react-native';
+import { Ellipsis, Reply, CircleCheck, ShieldCheck, Hourglass, ChevronDown, ChevronRight, Pencil, Gavel, Award } from '../../../../components/lucide';
 import { FriendsColors, FS, FT, FR } from '../friendsTheme';
 import { IdentityChip, identityLabel } from '../shared/IdentityChip';
 import { ActionMenu, ActionMenuExtra } from '../shared/ActionMenu';

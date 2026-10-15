@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, FlatList, RefreshControl, ActivityIndicator, StyleSheet, Alert } from 'react-native';
-import { Search, X, Bookmark, PenLine, ShieldCheck, Flag, ScrollText, Inbox } from 'lucide-react-native';
+import { Search, X, Bookmark, PenLine, ShieldCheck, Flag, ScrollText, Inbox } from '../../../../components/lucide';
 import { FriendsColors, FS, FT, FR, fui, SectionTints } from '../friendsTheme';
 import { FriendsEmpty, FriendsError } from '../shared/FriendsEmpty';
 import { FriendsSkeleton } from '../shared/FriendsSkeleton';

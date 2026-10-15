@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, StyleSheet, Alert } from 'react-native';
-import { Flag, Ban, MicOff, UserPlus, UserMinus, Shield, ShieldOff, Hand, LogOut, Check, Circle, CircleCheck, ArrowDownToLine } from 'lucide-react-native';
+import { Flag, Ban, MicOff, UserPlus, UserMinus, Shield, ShieldOff, Hand, LogOut, Check, Circle, CircleCheck, ArrowDownToLine } from '../../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { FriendsSheet } from '../shared/FriendsSheet';
 import { FriendsAvatar } from '../shared/FriendsAvatar';

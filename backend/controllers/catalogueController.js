@@ -204,4 +204,44 @@ const getItems = async (req, res) => {
   }
 };
 
-module.exports = { getTypes, getStores, getItems, shapeItem, shapeStore };
+// @desc    Lowest in-stock price per store type ("From ₹X" on the app's service cards), one small call
+//          instead of a full item list per type.
+// @route   GET /api/catalogue/min-prices?types=repairs,tailoring,print,laundry,home
+// Public, read-only: the same prices /items already shows. Response: { repairs: 49, print: 2, ... }
+// (a type with no active store or no priced, in-stock item is left out).
+const MAX_MIN_PRICE_TYPES = 12;
+const getMinPrices = async (req, res) => {
+  try {
+    const Restaurant = getRestaurantModel();
+    const MenuItem = getMenuItemModel();
+    const requested = [...new Set(String(req.query.types || '')
+      .split(',')
+      .map(t => t.trim().toLowerCase())
+      .filter(t => /^[a-z_]{1,30}$/.test(t)))]
+      .slice(0, MAX_MIN_PRICE_TYPES);
+    const out = {};
+    for (const type of requested) {
+      const vendorTypes = resolveVendorTypes(type);
+      if (!vendorTypes) continue;
+      const stores = await Restaurant.findAll({ where: { isActive: true, vendorType: { [Op.in]: vendorTypes } }, attributes: ['id'], raw: true });
+      if (!stores.length) continue;
+      // Same "in stock" rule as /items (unavailable items whose restock time has passed count again).
+      const min = await MenuItem.min('price', {
+        where: {
+          restaurantId: { [Op.in]: stores.map(s => s.id) },
+          price: { [Op.gt]: 0 },
+          [Op.or]: [{ isAvailable: true }, { outOfStockUntil: { [Op.lte]: new Date() } }]
+        }
+      });
+      const n = Number(min);
+      if (Number.isFinite(n) && n > 0) out[type] = n;
+    }
+    res.set('Cache-Control', 'no-cache');
+    res.json(out);
+  } catch (error) {
+    console.error('[CATALOGUE_MIN_PRICES_ERROR]', error);
+    res.status(500).json({ message: 'Could not load prices right now. Please try again.' });
+  }
+};
+
+module.exports = { getTypes, getStores, getItems, getMinPrices, shapeItem, shapeStore };

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, Alert, StyleSheet } from 'react-native';
-import { Users, MoreHorizontal, UserCheck } from 'lucide-react-native';
+import { Users, MoreHorizontal, UserCheck } from '../../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';
 import { FriendsSheet } from '../shared/FriendsSheet';

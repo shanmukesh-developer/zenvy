@@ -1,4 +1,4 @@
-import { Heart, Users, BookOpen, PartyPopper, LucideIcon } from 'lucide-react-native';
+import { Heart, Users, BookOpen, PartyPopper, LucideIcon } from '../../../../components/lucide';
 import { errorCode } from '../api/core';
 import { resolveMediaUrl } from '../../../../utils/imageUpload';
 import type { ConnectLookingFor, ConnectMatch, ConnectStatus } from '../api/connectApi';

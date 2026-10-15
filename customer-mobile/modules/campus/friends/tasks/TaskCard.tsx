@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { Clock, MapPin, Users, Globe, MoreHorizontal } from 'lucide-react-native';
+import { Clock, MapPin, Users, Globe, MoreHorizontal } from '../../../../components/lucide';
 import { FriendsColors, FS, FT, FR, SectionTints } from '../friendsTheme';
 import { CardGlow } from '../shared/FriendsUi';
 import type { Task } from '../api/tasksApi';

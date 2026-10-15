@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Linking, StyleSheet } from 'react-native';
-import { ExternalLink, Phone, Globe, ShieldCheck } from 'lucide-react-native';
+import { ExternalLink, Phone, Globe, ShieldCheck } from '../../../../components/lucide';
 import { FriendsScreenModal } from '../shared/FriendsSheet';
 import { FriendsSkeleton } from '../shared/FriendsSkeleton';
 import { FriendsError } from '../shared/FriendsEmpty';

@@ -16,7 +16,7 @@ import {
   Bell,
   School,
   Lock,
-} from 'lucide-react-native';
+} from '../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { CampusColors } from '../../../constants/campusTheme';

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, FlatList, RefreshControl, ActivityIndicator, BackHandler, Alert, StyleSheet } from 'react-native';
-import { Plus, Search, X, ClipboardList, ChevronRight, LayoutGrid, Handshake } from 'lucide-react-native';
+import { Plus, Search, X, ClipboardList, ChevronRight, LayoutGrid, Handshake } from '../../../../components/lucide';
 import { FriendsColors, FS, FT, FR, fui, SectionTints } from '../friendsTheme';
 import { BrandFill } from '../shared/FriendsUi';
 import { FriendsSkeleton } from '../shared/FriendsSkeleton';

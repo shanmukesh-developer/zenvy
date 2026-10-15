@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Check, Circle } from 'lucide-react-native';
+import { Check, Circle } from '../../../../components/lucide';
 import { FriendsColors, FS, FT, FR, SectionTints } from '../friendsTheme';
 import { CardGlow } from '../shared/FriendsUi';
 

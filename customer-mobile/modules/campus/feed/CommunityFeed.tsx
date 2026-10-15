@@ -1,9 +1,9 @@
 import * as Haptics from 'expo-haptics';
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert, Modal, Dimensions, Platform, TouchableWithoutFeedback, Keyboard, Animated, Easing, AppState, RefreshControl } from 'react-native';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert, Modal, Dimensions, Platform, TouchableWithoutFeedback, Keyboard, Animated, Easing, AppState, RefreshControl, FlatList } from 'react-native';
 import { KeyboardAvoidingView } from '../../../components/KeyboardAvoidingView';
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
+import { useRouter, useIsFocused } from 'expo-router';
 import { pickImageAsset, prepareAndUploadImage, alertUploadError } from '../../../utils/imageUpload';
 import { CampusColors } from '../../../constants/campusTheme';
 import { COLORS, SHADOWS } from '../../../constants/theme';
@@ -178,6 +178,223 @@ interface PostType {
   productName?: string;
 }
 
+const postTimeLeft = (expiresAt?: string | null) => {
+  if (!expiresAt) return '';
+  const ms = new Date(expiresAt).getTime() - Date.now();
+  if (ms <= 0) return 'Expired';
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  if (h === 0) return `${m}m left`;
+  return `${h}h left`;
+};
+
+const postTime = (isoString: string) => {
+  const d = new Date(isoString);
+  if (isNaN(d.getTime())) return '';
+  const diff = Date.now() - d.getTime();
+  if (diff < 60000) return 'Just now';
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+  return d.toLocaleDateString();
+};
+
+const postBgHash = (id: string) => {
+  const colors = [
+    ['#FBBF24', '#F59E0B'], // amber-400 to orange-500
+    ['#38BDF8', '#6366F1'], // sky-400 to indigo-500
+    ['#34D399', '#0D9488'], // emerald-400 to teal-500
+    ['#FB7185', '#EC4899'], // rose-400 to pink-500
+  ];
+  const code = String(id || '').charCodeAt(String(id || '').length - 1) || 0;
+  return colors[code % colors.length];
+};
+
+const postKey = (p: PostType) => String(p.id);
+
+type PostCardActions = {
+  openImage: (url: string) => void;
+  imageError: (postId: string) => void;
+  like: (postId: string) => void;
+  reply: (post: PostType) => void;
+  remove: (id: string, parentId: string | null) => void;
+  toggleThread: (postId: string) => void;
+};
+
+/** One polaroid in the posts grid. Memoized: a like / reply / new post re-renders only the cards it changes. */
+const PostCard = React.memo(function PostCard({ post, idx, myUserId, signedIn, imageFailed, expanded, cardBg, border, txt, txtSec, isDark, actions }: {
+  post: PostType; idx: number; myUserId: string; signedIn: boolean; imageFailed: boolean; expanded: boolean;
+  cardBg: string; border: string; txt: string; txtSec: string; isDark: boolean; actions: PostCardActions;
+}) {
+  const bgGrad = postBgHash(post.id);
+  const isLiked = myUserId ? (post.likedBy || []).map(String).includes(myUserId) : false;
+  const rotation = (idx % 2 === 0 ? '-1.5deg' : '1.5deg');
+
+  return (
+    <StaggeredSection 
+      delay={50 + (idx % 6) * 50} 
+      direction="up"
+      style={[s.polaroidWrapper, { transform: [{ rotate: rotation }] }]}
+    >
+      {/* Peg Wooden Clip */}
+      <View style={s.pegClip} />
+
+      {/* Polaroid Frame */}
+      <CardPressable 
+        style={[s.polaroidFrame, { backgroundColor: cardBg, borderColor: border }]} 
+        onPress={() => post.imageUrl ? actions.openImage(post.imageUrl) : null} 
+        tilt={false} // Disabled 3D tilt to eliminate JS thread lag
+      >
+        {post.imageUrl && !imageFailed ? (
+          <Image 
+            source={{ uri: getImageUrl(post.imageUrl) }}
+            style={s.polaroidImg} 
+            onError={() => {
+              actions.imageError(post.id);
+            }}
+          />
+        ) : (
+          <View style={[s.textPostBg, { backgroundColor: bgGrad[0] }]}>
+            <Text style={s.textPostContent} numberOfLines={8}>{post.content || '📷 Photo unavailable'}</Text>
+          </View>
+        )}
+
+        {/* Footer Details */}
+        <View style={s.polaroidDetails}>
+          {post.imageUrl && post.content ? (
+            <Text style={[s.polaroidDesc, { color: txt }]} numberOfLines={3}>"{post.content}"</Text>
+          ) : null}
+
+          {/* Review details */}
+          {post.postType === 'review' && (
+            <View style={[s.reviewMeta, { backgroundColor: isDark ? '#1C1B1F' : 'rgba(139,90,43,0.04)', borderColor: border }]}>
+              {Number(post.starRating) > 0 ? (
+                <Text style={s.reviewStars}>{'★'.repeat(Math.min(5, Math.round(Number(post.starRating))))}{'☆'.repeat(Math.max(0, 5 - Math.min(5, Math.round(Number(post.starRating)))))}</Text>
+              ) : null}
+              {post.restaurantName ? (
+                <Text style={[s.reviewRestaurant, { color: isDark ? COLORS.gold : '#8b5a2b' }]} numberOfLines={1}>📍 {post.restaurantName.toUpperCase()}</Text>
+              ) : null}
+              {post.productName ? (
+                <Text style={[s.reviewProduct, { color: txtSec }]} numberOfLines={1}>🍽️ {post.productName}</Text>
+              ) : null}
+            </View>
+          )}
+
+          {/* User Row */}
+          <View style={[s.polaroidUserRow, { borderBottomColor: border }]}>
+            <View style={s.authorAvatar}>
+              <Text style={s.authorAvatarText}>{(post.userName||'A').charAt(0).toUpperCase()}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[s.authorName, { color: txt }]} numberOfLines={1}>{(post.userName || 'Student').toUpperCase()}</Text>
+              <Text style={s.postTime}>{postTime(post.createdAt)}</Text>
+            </View>
+            {post.postType !== 'review' && !!postTimeLeft(post.expiresAt) && (
+              <View style={s.expiryBadge}>
+                <Text style={s.expiryText}>{postTimeLeft(post.expiresAt)}</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Actions */}
+          <View style={s.actionsRow}>
+            <DopaminePressable style={s.actionBtn} onPress={() => actions.like(post.id)} sound="click" activeScale={0.88}>
+              <Text style={[s.actionText, isLiked && { color: COLORS.red }]}>
+                {isLiked ? '❤️' : '🤍'} {post.likes}
+              </Text>
+            </DopaminePressable>
+
+            <DopaminePressable style={s.actionBtn} onPress={() => actions.reply(post)} sound="click" activeScale={0.88}>
+              <Text style={s.actionText}>💬 {post.replyCount}</Text>
+            </DopaminePressable>
+
+            {signedIn && String(post.userId) === myUserId ? (
+              <DopaminePressable style={s.actionBtn} onPress={() => actions.remove(post.id, null)}sound="click" activeScale={0.88}>
+                <Text style={[s.actionText, { color: COLORS.red }]}>🗑️</Text>
+              </DopaminePressable>
+            ) : null}
+          </View>
+
+          {/* Replies */}
+          {post.replies && post.replies.length > 0 ? (
+            <TouchableOpacity 
+              style={s.repliesTrigger} 
+              onPress={() => actions.toggleThread(post.id)}
+            >
+              <Text style={[s.repliesTriggerText, { color: isDark ? COLORS.gold : '#8b5a2b' }]}>
+                {expanded ? 'HIDE REPLIES ▲' : `SHOW REPLIES (${post.replies.length}) ▼`}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+
+          {expanded && post.replies && (
+            <View style={[s.repliesBox, { borderTopColor: border }]}>
+              {post.replies.map(r => (
+                <View key={r.id} style={s.replyItem}>
+                  <Text style={[s.replyUser, { color: txt }]}>{(r.userName || 'Student').toUpperCase()}:</Text>
+                  <Text style={[s.replyText, { color: txtSec, flexShrink: 1 }]}>{r.content}</Text>
+                  {signedIn && String(r.userId) === myUserId ? (
+                    <TouchableOpacity onPress={() => actions.remove(r.id, post.id)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                      <Text style={{ fontSize: 7, color: COLORS.red }}>🗑️</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              ))}
+            </View>
+          )}
+
+        </View>
+      </CardPressable>
+    </StaggeredSection>
+  );
+});
+
+/** "⏱️ COUNTDOWN CLASH" value. Ticks every second only while the Wall tab is showing and the screen is focused. */
+function formatWallLeft(endTime: any): string {
+  const ms = new Date(endTime).getTime() - Date.now();
+  if (isNaN(ms)) return '';
+  if (ms <= 0) return 'CONTEST ENDED';
+  const days = Math.floor(ms / 86400000);
+  const hours = Math.floor((ms % 86400000) / 3600000);
+  const mins = Math.floor((ms % 3600000) / 60000);
+  const secs = Math.floor((ms % 60000) / 1000);
+  const hms = `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  return days > 0 ? `${days}d ${hms}` : hms;
+}
+
+function WallCountdown({ endTime, active }: { endTime: any; active: boolean }) {
+  const focused = useIsFocused();
+  const [left, setLeft] = useState(() => (endTime ? formatWallLeft(endTime) : ''));
+  useEffect(() => {
+    if (!endTime) { setLeft(''); return; }
+    setLeft(formatWallLeft(endTime));
+    if (!active || !focused) return;
+    const t = setInterval(() => setLeft(formatWallLeft(endTime)), 1000);
+    return () => clearInterval(t);
+  }, [endTime, active, focused]);
+  return <Text style={{ fontSize: 13, fontWeight: '900', color: '#FF5A00' }}>{left || '—'}</Text>;
+}
+
+/** true once the contest's endTime has passed (one timer to the end moment, not a 1 s tick). */
+function useWallEnded(endTime: any): boolean {
+  const compute = () => {
+    if (!endTime) return false;
+    const ms = new Date(endTime).getTime() - Date.now();
+    return !isNaN(ms) && ms <= 0;
+  };
+  const [ended, setEnded] = useState(compute);
+  useEffect(() => {
+    setEnded(compute());
+    if (!endTime) return;
+    const ms = new Date(endTime).getTime() - Date.now();
+    if (isNaN(ms) || ms <= 0) return;
+    // setTimeout caps at ~24.8 days; re-check then if the contest runs longer.
+    const t = setTimeout(() => setEnded(compute()), Math.min(ms + 50, 2147483000));
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [endTime]);
+  return ended;
+}
+
 /**
  * Community posts, reviews, birthdays and The Wall. Lives inside the Campus hub's Feed tab
  * (embedded: no own header / tab bar, Campus colours). /community redirects there.
@@ -252,7 +469,6 @@ export function CommunityFeed({ embedded = false, tab }: { embedded?: boolean; t
   const [loadingWall, setLoadingWall] = useState(true);
   const [wallError, setWallError] = useState(false);
   const [wallHistoryError, setWallHistoryError] = useState(false);
-  const [wallTimeLeft, setWallTimeLeft] = useState<string>('');
 
   // Modals & Form
   const [showWallSubmitModal, setShowWallSubmitModal] = useState(false);
@@ -663,32 +879,9 @@ export function CommunityFeed({ embedded = false, tab }: { embedded?: boolean; t
     }
   }, [activeTab]);
 
-  useEffect(() => {
-    if (!activeWallEvent || !activeWallEvent.endTime) {
-      setWallTimeLeft('');
-      return;
-    }
-
-    const updateTimer = () => {
-      const ms = new Date(activeWallEvent.endTime).getTime() - Date.now();
-      if (isNaN(ms)) {
-        setWallTimeLeft('');
-      } else if (ms <= 0) {
-        setWallTimeLeft('CONTEST ENDED');
-      } else {
-        const days = Math.floor(ms / 86400000);
-        const hours = Math.floor((ms % 86400000) / 3600000);
-        const mins = Math.floor((ms % 3600000) / 60000);
-        const secs = Math.floor((ms % 60000) / 1000);
-        const hms = `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-        setWallTimeLeft(days > 0 ? `${days}d ${hms}` : hms);
-      }
-    };
-
-    updateTimer();
-    const tInterval = setInterval(updateTimer, 1000);
-    return () => clearInterval(tInterval);
-  }, [activeWallEvent]);
+  // Has the live Wall contest ended? Flips once at endTime (no per-second re-render of the whole feed;
+  // the visible countdown ticks inside <WallCountdown/>).
+  const wallEnded = useWallEnded(activeWallEvent?.endTime);
 
   // Merge a post (from the POST response or the realtime socket) without duplicates.
   const upsertPost = (newPost: any) => {
@@ -977,25 +1170,39 @@ export function CommunityFeed({ embedded = false, tab }: { embedded?: boolean; t
     });
   };
 
-  const getTimeLeft = (expiresAt?: string | null) => {
-    if (!expiresAt) return '';
-    const ms = new Date(expiresAt).getTime() - Date.now();
-    if (ms <= 0) return 'Expired';
-    const h = Math.floor(ms / 3600000);
-    const m = Math.floor((ms % 3600000) / 60000);
-    if (h === 0) return `${m}m left`;
-    return `${h}h left`;
-  };
-
-  const formatTime = (isoString: string) => {
-    const d = new Date(isoString);
-    if (isNaN(d.getTime())) return '';
-    const diff = Date.now() - d.getTime();
-    if (diff < 60000) return 'Just now';
-    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-    return d.toLocaleDateString();
-  };
+  // Post-card handlers with stable identities (they call the latest screen functions through a ref),
+  // so memoized cards don't re-render just because the feed re-rendered.
+  const cardFnsRef = useRef({ handleLike, handleDelete, toggleThread, checkAuthAndRun });
+  cardFnsRef.current = { handleLike, handleDelete, toggleThread, checkAuthAndRun };
+  const cardActions = useMemo<PostCardActions>(() => ({
+    openImage: (url) => setSelectedImage(getImageUrl(url)),
+    imageError: (postId) => setImageErrors(prev => ({ ...prev, [postId]: true })),
+    like: (postId) => cardFnsRef.current.handleLike(postId),
+    reply: (post) => cardFnsRef.current.checkAuthAndRun(() => {
+      setReplyingTo(post);
+      setShowComposer(true);
+    }),
+    remove: (id, parentId) => cardFnsRef.current.handleDelete(id, parentId),
+    toggleThread: (postId) => cardFnsRef.current.toggleThread(postId),
+  }), []);
+  const signedIn = !!user;
+  const renderPost = useCallback(({ item, index }: { item: PostType; index: number }) => (
+    <PostCard
+      post={item}
+      idx={index}
+      myUserId={myUserId}
+      signedIn={signedIn}
+      imageFailed={!!imageErrors[item.id]}
+      expanded={expandedThreads.has(item.id)}
+      cardBg={cardBg}
+      border={border}
+      txt={txt}
+      txtSec={txtSec}
+      isDark={isDark}
+      actions={cardActions}
+    />
+  ), [myUserId, signedIn, imageErrors, expandedThreads, cardBg, border, txt, txtSec, isDark, cardActions]);
+  const postExtra = useMemo(() => ({ imageErrors, expandedThreads }), [imageErrors, expandedThreads]);
 
   const filtered = posts.filter(p => {
     if (search) {
@@ -1011,18 +1218,6 @@ export function CommunityFeed({ embedded = false, tab }: { embedded?: boolean; t
   const trending = [...posts]
     .sort((a, b) => (b.likes + b.replyCount * 2) - (a.likes + a.replyCount * 2))
     .slice(0, 3);
-
-  const getBgHash = (id: string) => {
-    const colors = [
-      ['#FBBF24', '#F59E0B'], // amber-400 to orange-500
-      ['#38BDF8', '#6366F1'], // sky-400 to indigo-500
-      ['#34D399', '#0D9488'], // emerald-400 to teal-500
-      ['#FB7185', '#EC4899'], // rose-400 to pink-500
-    ];
-    const code = String(id || '').charCodeAt(String(id || '').length - 1) || 0;
-    return colors[code % colors.length];
-  };
-
   return (
     <View style={[s.container, { backgroundColor: bg }, embedded && { paddingTop: 0 }]}>
       {/* ── HEADER ── */}
@@ -1187,7 +1382,7 @@ export function CommunityFeed({ embedded = false, tab }: { embedded?: boolean; t
                         <Text style={{ fontSize: 18 }}>⏱️</Text>
                         <View>
                           <Text style={{ fontSize: 7.5, fontWeight: '900', color: txtSec, letterSpacing: 0.8 }}>COUNTDOWN CLASH</Text>
-                          <Text style={{ fontSize: 13, fontWeight: '900', color: '#FF5A00' }}>{wallTimeLeft || '—'}</Text>
+                          <WallCountdown endTime={activeWallEvent.endTime} active={activeTab === 'wall'} />
                         </View>
                       </View>
 
@@ -1461,14 +1656,24 @@ export function CommunityFeed({ embedded = false, tab }: { embedded?: boolean; t
           )}
         </ScrollView>
       ) : (
-        <ScrollView
+        <FlatList
           style={{ flex: 1 }}
+          data={filtered}
+          keyExtractor={postKey}
+          renderItem={renderPost}
+          extraData={postExtra}
+          numColumns={2}
+          columnWrapperStyle={s.galleryRow}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 100 }}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
+          initialNumToRender={6}
+          maxToRenderPerBatch={6}
+          windowSize={9}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={isDark ? COLORS.gold : '#8b5a2b'} colors={[COLORS.gold]} />}
-        >
+          ListHeaderComponent={
+            <>
         {!embedded && (
         <DopaminePressable
           style={[
@@ -1630,9 +1835,13 @@ export function CommunityFeed({ embedded = false, tab }: { embedded?: boolean; t
 
         {/* Hanging Rope String Indicator */}
         <View style={[s.stringLine, { backgroundColor: isDark ? 'rgba(212,175,122,0.3)' : 'rgba(139,90,43,0.15)' }]} />
-
-        {/* ── POLAROID GALLERY ── */}
-        {loading && posts.length === 0 ? (
+              {/* galleryGrid's top padding (the empty / loading states carry their own) */}
+              {filtered.length > 0 && <View style={{ height: 12 }} />}
+            </>
+          }
+          ListFooterComponent={filtered.length > 0 ? <View style={{ height: 12 }} /> : null}
+          ListEmptyComponent={
+            loading && posts.length === 0 ? (
           <View style={s.galleryGrid}>
             {[0, 1, 2, 3].map(i => (
               <View key={i} style={[s.polaroidWrapper, { padding: 0 }]}>
@@ -1671,144 +1880,13 @@ export function CommunityFeed({ embedded = false, tab }: { embedded?: boolean; t
               </TouchableOpacity>
             )}
           </View>
-        ) : (
-          <View style={s.galleryGrid}>
-            {filtered.map((post, idx) => {
-              const bgGrad = getBgHash(post.id);
-              const isLiked = myUserId ? (post.likedBy || []).map(String).includes(myUserId) : false;
-              const rotation = (idx % 2 === 0 ? '-1.5deg' : '1.5deg');
-
-              return (
-                <StaggeredSection 
-                  key={post.id} 
-                  delay={50 + (idx % 6) * 50} 
-                  direction="up"
-                  style={[s.polaroidWrapper, { transform: [{ rotate: rotation }] }]}
-                >
-                  {/* Peg Wooden Clip */}
-                  <View style={s.pegClip} />
-
-                  {/* Polaroid Frame */}
-                  <CardPressable 
-                    style={[s.polaroidFrame, { backgroundColor: cardBg, borderColor: border }]} 
-                    onPress={() => post.imageUrl ? setSelectedImage(getImageUrl(post.imageUrl)) : null} 
-                    tilt={false} // Disabled 3D tilt to eliminate JS thread lag
-                  >
-                    {post.imageUrl && !imageErrors[post.id] ? (
-                      <Image 
-                        source={{ uri: getImageUrl(post.imageUrl) }}
-                        style={s.polaroidImg} 
-                        onError={() => {
-                          setImageErrors(prev => ({ ...prev, [post.id]: true }));
-                        }}
-                      />
-                    ) : (
-                      <View style={[s.textPostBg, { backgroundColor: bgGrad[0] }]}>
-                        <Text style={s.textPostContent} numberOfLines={8}>{post.content || '📷 Photo unavailable'}</Text>
-                      </View>
-                    )}
-
-                    {/* Footer Details */}
-                    <View style={s.polaroidDetails}>
-                      {post.imageUrl && post.content ? (
-                        <Text style={[s.polaroidDesc, { color: txt }]} numberOfLines={3}>"{post.content}"</Text>
-                      ) : null}
-
-                      {/* Review details */}
-                      {post.postType === 'review' && (
-                        <View style={[s.reviewMeta, { backgroundColor: isDark ? '#1C1B1F' : 'rgba(139,90,43,0.04)', borderColor: border }]}>
-                          {Number(post.starRating) > 0 ? (
-                            <Text style={s.reviewStars}>{'★'.repeat(Math.min(5, Math.round(Number(post.starRating))))}{'☆'.repeat(Math.max(0, 5 - Math.min(5, Math.round(Number(post.starRating)))))}</Text>
-                          ) : null}
-                          {post.restaurantName ? (
-                            <Text style={[s.reviewRestaurant, { color: isDark ? COLORS.gold : '#8b5a2b' }]} numberOfLines={1}>📍 {post.restaurantName.toUpperCase()}</Text>
-                          ) : null}
-                          {post.productName ? (
-                            <Text style={[s.reviewProduct, { color: txtSec }]} numberOfLines={1}>🍽️ {post.productName}</Text>
-                          ) : null}
-                        </View>
-                      )}
-
-                      {/* User Row */}
-                      <View style={[s.polaroidUserRow, { borderBottomColor: border }]}>
-                        <View style={s.authorAvatar}>
-                          <Text style={s.authorAvatarText}>{(post.userName||'A').charAt(0).toUpperCase()}</Text>
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={[s.authorName, { color: txt }]} numberOfLines={1}>{(post.userName || 'Student').toUpperCase()}</Text>
-                          <Text style={s.postTime}>{formatTime(post.createdAt)}</Text>
-                        </View>
-                        {post.postType !== 'review' && !!getTimeLeft(post.expiresAt) && (
-                          <View style={s.expiryBadge}>
-                            <Text style={s.expiryText}>{getTimeLeft(post.expiresAt)}</Text>
-                          </View>
-                        )}
-                      </View>
-
-                      {/* Actions */}
-                      <View style={s.actionsRow}>
-                        <DopaminePressable style={s.actionBtn} onPress={() => handleLike(post.id)} sound="click" activeScale={0.88}>
-                          <Text style={[s.actionText, isLiked && { color: COLORS.red }]}>
-                            {isLiked ? '❤️' : '🤍'} {post.likes}
-                          </Text>
-                        </DopaminePressable>
-
-                        <DopaminePressable style={s.actionBtn} onPress={() => {
-                          checkAuthAndRun(() => {
-                            setReplyingTo(post);
-                            setShowComposer(true);
-                          });
-                        }} sound="click" activeScale={0.88}>
-                          <Text style={s.actionText}>💬 {post.replyCount}</Text>
-                        </DopaminePressable>
-
-                        {user && String(post.userId) === myUserId ? (
-                          <DopaminePressable style={s.actionBtn} onPress={() => handleDelete(post.id, null)}sound="click" activeScale={0.88}>
-                            <Text style={[s.actionText, { color: COLORS.red }]}>🗑️</Text>
-                          </DopaminePressable>
-                        ) : null}
-                      </View>
-
-                      {/* Replies */}
-                      {post.replies && post.replies.length > 0 ? (
-                        <TouchableOpacity 
-                          style={s.repliesTrigger} 
-                          onPress={() => toggleThread(post.id)}
-                        >
-                          <Text style={[s.repliesTriggerText, { color: isDark ? COLORS.gold : '#8b5a2b' }]}>
-                            {expandedThreads.has(post.id) ? 'HIDE REPLIES ▲' : `SHOW REPLIES (${post.replies.length}) ▼`}
-                          </Text>
-                        </TouchableOpacity>
-                      ) : null}
-
-                      {expandedThreads.has(post.id) && post.replies && (
-                        <View style={[s.repliesBox, { borderTopColor: border }]}>
-                          {post.replies.map(r => (
-                            <View key={r.id} style={s.replyItem}>
-                              <Text style={[s.replyUser, { color: txt }]}>{(r.userName || 'Student').toUpperCase()}:</Text>
-                              <Text style={[s.replyText, { color: txtSec, flexShrink: 1 }]}>{r.content}</Text>
-                              {user && String(r.userId) === myUserId ? (
-                                <TouchableOpacity onPress={() => handleDelete(r.id, post.id)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                                  <Text style={{ fontSize: 7, color: COLORS.red }}>🗑️</Text>
-                                </TouchableOpacity>
-                              ) : null}
-                            </View>
-                          ))}
-                        </View>
-                      )}
-
-                    </View>
-                  </CardPressable>
-                </StaggeredSection>
-              );
-            })}
-          </View>
-        )}
-      </ScrollView>
+        ) : null
+          }
+        />
     )}
 
       {/* Floating Wall submit button (outside the ScrollView so it never scrolls away) */}
-      {activeTab === 'wall' && wallSubTab === 'live' && activeWallEvent && wallTimeLeft !== 'CONTEST ENDED' && !userWallSubmission && (
+      {activeTab === 'wall' && wallSubTab === 'live' && activeWallEvent && !wallEnded && !userWallSubmission && (
         <TouchableOpacity
           style={s.wallSubmitFab}
           onPress={() => checkAuthAndRun(() => setShowWallSubmitModal(true))}
@@ -2512,6 +2590,7 @@ const s = StyleSheet.create({
   },
 
   galleryGrid: { paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+  galleryRow: { paddingHorizontal: 16, justifyContent: 'space-between' },
   polaroidWrapper: { width: (SW - 44) / 2, marginBottom: 24, alignItems: 'center', position: 'relative' },
   pegClip: { position: 'absolute', top: -8, width: 10, height: 20, backgroundColor: '#8b5a2b', borderLeftWidth: 1, borderRightWidth: 1, borderColor: '#5c3a21', borderRadius: 2, zIndex: 10 },
   polaroidFrame: { width: '100%', backgroundColor: '#fdfcf0', padding: 8, paddingBottom: 12, borderRadius: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 6, borderWidth: 0.5, borderColor: 'rgba(0,0,0,0.06)' },

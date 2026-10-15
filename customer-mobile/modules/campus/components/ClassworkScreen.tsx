@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { KeyboardAvoidingView } from '../../../components/KeyboardAvoidingView';
 import * as Haptics from 'expo-haptics';
-import { ArrowLeft, BookOpen, Megaphone, CheckCircle2, Clock } from 'lucide-react-native';
+import { ArrowLeft, BookOpen, Megaphone, CheckCircle2, Clock } from '../../../components/lucide';
 import { CampusColors } from '../../../constants/campusTheme';
 import { CampusUserData } from '../../../types/campus';
 import {

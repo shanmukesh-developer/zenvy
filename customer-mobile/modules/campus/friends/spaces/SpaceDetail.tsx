@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator, StyleSheet, Alert } from 'react-native';
-import { Ellipsis, Radio, Pencil, CircleX, Play, Square, Users, CalendarClock, Headphones, Hourglass, Wifi, Ban } from 'lucide-react-native';
+import { Ellipsis, Radio, Pencil, CircleX, Play, Square, Users, CalendarClock, Headphones, Hourglass, Wifi, Ban } from '../../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { FriendsColors, FS, FR, FT, fui } from '../friendsTheme';
 import { IdentityChip } from '../shared/IdentityChip';
@@ -9,6 +9,7 @@ import { FriendsSkeleton } from '../shared/FriendsSkeleton';
 import { FriendsEmpty, FriendsError } from '../shared/FriendsEmpty';
 import { ActionMenu } from '../shared/ActionMenu';
 import { useCampusOffline } from '../shared/OfflineBanner';
+import { useScreenActive } from '../shared/useScreenActive';
 import { errorCode } from '../api/core';
 import { Space, cancelSpace, endSpace, fetchSpace, spaceErrorMessage, startSpace } from '../api/spacesApi';
 import { NotRecorded, SpaceHeader, SpaceSoftError, SpaceStatusBadge } from './SpacesUi';
@@ -35,7 +36,7 @@ const POLL_LIVE_MS = 20000;
  * One Space: what it is, who hosts it and when (local time), with the right action for me:
  * join / return (live), remind me (scheduled), or host controls (start, edit, cancel, end).
  */
-export const SpaceDetail: React.FC<{ id: string; initial?: Space | null }> = ({ id, initial }) => {
+export const SpaceDetail: React.FC<{ id: string; initial?: Space | null; active?: boolean }> = ({ id, initial, active = true }) => {
   const nav = useSpacesNav();
   const offline = useCampusOffline();
   const [space, setSpace] = useState<Space | null>(() => spaceCache.get<Space>(`space:${id}`) || initial || null);
@@ -98,13 +99,27 @@ export const SpaceDetail: React.FC<{ id: string; initial?: Space | null }> = ({ 
 
   // Fresh copies from elsewhere (list, room, reminder) and a gentle refresh while live.
   useEffect(() => spaceBus.on((s) => s.id === id && setSpace(s)), [id]);
+  // Polls only while this detail is the visible page (Spaces tab showing, on top, app in the
+  // foreground and the screen focused). Coming back catches up at once, then every POLL_LIVE_MS.
+  const screenActive = useScreenActive();
+  const polling = active && screenActive;
+  const pausedRef = useRef(false);
   useEffect(() => {
-    const t = setInterval(() => {
+    if (!polling) {
+      pausedRef.current = true;
+      return;
+    }
+    const tick = () => {
       setNow(Date.now());
       if (spaceRef.current?.status === 'live' || spaceRef.current?.status === 'scheduled') load('silent');
-    }, POLL_LIVE_MS);
+    };
+    if (pausedRef.current) {
+      pausedRef.current = false;
+      tick();
+    }
+    const t = setInterval(tick, POLL_LIVE_MS);
     return () => clearInterval(t);
-  }, [load]);
+  }, [load, polling]);
 
   const run = async (key: string, fn: () => Promise<Space | null>) => {
     if (busy) return;

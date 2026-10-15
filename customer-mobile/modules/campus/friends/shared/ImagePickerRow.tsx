@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, TouchableOpacity, ScrollView, ActivityIndicator, StyleSheet, Text } from 'react-native';
 import { Image } from 'expo-image';
-import { ImagePlus, X } from 'lucide-react-native';
+import { ImagePlus, X } from '../../../../components/lucide';
 import { pickAndUploadImage, alertUploadError, MediaPurpose, UploadedImage, resolveMediaUrl } from '../../../../utils/imageUpload';
 import { FriendsColors, FS, FR } from '../friendsTheme';
 

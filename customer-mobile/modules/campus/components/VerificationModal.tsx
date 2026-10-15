@@ -12,7 +12,7 @@ import {
   ImageIcon,
   ChevronRight,
   ChevronLeft,
-} from 'lucide-react-native';
+} from '../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import type { ImagePickerAsset } from 'expo-image-picker';
 import { CampusColors } from '../../../constants/campusTheme';

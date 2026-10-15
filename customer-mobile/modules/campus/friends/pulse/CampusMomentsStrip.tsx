@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, ActivityIndicator, Alert } from 'react-native';
 import { Image } from 'expo-image';
-import { Moon, Trophy, CalendarDays, Cake, Camera, ChevronRight, Utensils, MapPin, Heart, Plus, Send } from 'lucide-react-native';
+import { Moon, Trophy, CalendarDays, Cake, Camera, ChevronRight, Utensils, MapPin, Heart, Plus, Send } from '../../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { ENDPOINTS } from '../../../../constants/api';
 import { apiFetch } from '../../../../utils/auth';

@@ -16,7 +16,7 @@ import {
   Gavel,
   BookmarkCheck,
   EyeOff,
-} from 'lucide-react-native';
+} from '../../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { Alert } from 'react-native';
 import { FriendsColors, FS, FT, FR, SectionTints } from '../friendsTheme';

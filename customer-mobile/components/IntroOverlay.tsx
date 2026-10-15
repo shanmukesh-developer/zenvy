@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Animated, Dimensions, Platform, Easing, TouchableOpacity } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -8,7 +8,23 @@ interface IntroOverlayProps {
   onComplete: () => void;
 }
 
+// Whole intro ≈ 1.5 s: reveal → letters → tagline → zoom-through exit (starts at EXIT_AT).
+const EXIT_AT = 1050;
+const DONE_AT = 1500;
+
 export default function IntroOverlay({ onComplete }: IntroOverlayProps) {
+  // Once the exit animation starts the overlay stops catching touches (the app underneath is usable).
+  const [exiting, setExiting] = useState(false);
+  // onComplete runs once, whether the timer, the SKIP button or a tap ends the intro.
+  const doneRef = useRef(false);
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
+  const finish = useCallback(() => {
+    if (doneRef.current) return;
+    doneRef.current = true;
+    onCompleteRef.current();
+  }, []);
+
   // Container & Logo Zoom Animations — ALL useNativeDriver: true
   const fadeOutAnim = useRef(new Animated.Value(1)).current;
   const logoScale = useRef(new Animated.Value(0.4)).current;
@@ -45,13 +61,13 @@ export default function IntroOverlay({ onComplete }: IntroOverlayProps) {
     const logoAnim = Animated.parallel([
       Animated.timing(logoOpacity, {
         toValue: 1,
-        duration: 1000,
+        duration: 450,
         useNativeDriver: true,
       }),
       Animated.spring(logoScale, {
         toValue: 1.0,
         friction: 6,
-        tension: 30,
+        tension: 60,
         useNativeDriver: true,
       }),
     ]);
@@ -60,8 +76,8 @@ export default function IntroOverlay({ onComplete }: IntroOverlayProps) {
     // 2. Concentric Gold Ripples
     const ripple1 = Animated.loop(
       Animated.parallel([
-        Animated.timing(wave1, { toValue: 2.2, duration: 2400, easing: Easing.out(Easing.ease), useNativeDriver: true }),
-        Animated.timing(wave1Opacity, { toValue: 0, duration: 2400, useNativeDriver: true }),
+        Animated.timing(wave1, { toValue: 2.2, duration: 1400, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+        Animated.timing(wave1Opacity, { toValue: 0, duration: 1400, useNativeDriver: true }),
       ])
     );
     ripple1.start();
@@ -70,22 +86,22 @@ export default function IntroOverlay({ onComplete }: IntroOverlayProps) {
     const ripple2Timeout = setTimeout(() => {
       ripple2 = Animated.loop(
         Animated.parallel([
-          Animated.timing(wave2, { toValue: 2.2, duration: 2400, easing: Easing.out(Easing.ease), useNativeDriver: true }),
-          Animated.timing(wave2Opacity, { toValue: 0, duration: 2400, useNativeDriver: true }),
+          Animated.timing(wave2, { toValue: 2.2, duration: 1400, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+          Animated.timing(wave2Opacity, { toValue: 0, duration: 1400, useNativeDriver: true }),
         ])
       );
       ripple2.start();
-    }, 800);
+    }, 350);
 
     // 3. Staggered Letters Sequence (Z E N V Y)
     const letterTimeouts: any[] = [];
     letters.forEach((_, idx) => {
-      const delay = 600 + idx * 120;
+      const delay = 250 + idx * 60;
       const t = setTimeout(() => {
         Animated.parallel([
-          Animated.timing(letterOpacityAnims[idx], { toValue: 1, duration: 400, useNativeDriver: true }),
-          Animated.spring(letterYAnims[idx], { toValue: 0, friction: 6, tension: 60, useNativeDriver: true }),
-          Animated.spring(letterScaleAnims[idx], { toValue: 1, friction: 6, tension: 60, useNativeDriver: true }),
+          Animated.timing(letterOpacityAnims[idx], { toValue: 1, duration: 250, useNativeDriver: true }),
+          Animated.spring(letterYAnims[idx], { toValue: 0, friction: 6, tension: 90, useNativeDriver: true }),
+          Animated.spring(letterScaleAnims[idx], { toValue: 1, friction: 6, tension: 90, useNativeDriver: true }),
         ]).start();
       }, delay);
       letterTimeouts.push(t);
@@ -95,19 +111,19 @@ export default function IntroOverlay({ onComplete }: IntroOverlayProps) {
     let tagAnim: any = null;
     const tagTimeout = setTimeout(() => {
       tagAnim = Animated.parallel([
-        Animated.timing(tagOpacity, { toValue: 0.7, duration: 800, useNativeDriver: true }),
-        Animated.timing(tagY, { toValue: 0, duration: 800, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.timing(tagOpacity, { toValue: 0.7, duration: 350, useNativeDriver: true }),
+        Animated.timing(tagY, { toValue: 0, duration: 350, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
       ]);
       tagAnim.start();
-    }, 1400);
+    }, 600);
 
     // 5. Floating particles movement
     const emberAnims: any[] = [];
     embers.forEach((ember, idx) => {
       ember.y.setValue(0);
       ember.opacity.setValue(0);
-      const duration = 4000 + Math.random() * 3000;
-      const delay = idx * 200;
+      const duration = 2500 + Math.random() * 1500;
+      const delay = idx * 80;
 
       const loop = Animated.loop(
         Animated.sequence([
@@ -115,9 +131,9 @@ export default function IntroOverlay({ onComplete }: IntroOverlayProps) {
           Animated.parallel([
             Animated.timing(ember.y, { toValue: -(SH * 0.6), duration, easing: Easing.linear, useNativeDriver: true }),
             Animated.sequence([
-              Animated.timing(ember.opacity, { toValue: Math.random() * 0.6 + 0.2, duration: 1000, useNativeDriver: true }),
-              Animated.delay(Math.max(0, duration - 2000)),
-              Animated.timing(ember.opacity, { toValue: 0, duration: 1000, useNativeDriver: true }),
+              Animated.timing(ember.opacity, { toValue: Math.random() * 0.6 + 0.2, duration: 400, useNativeDriver: true }),
+              Animated.delay(Math.max(0, duration - 800)),
+              Animated.timing(ember.opacity, { toValue: 0, duration: 400, useNativeDriver: true }),
             ]),
           ]),
         ])
@@ -129,27 +145,26 @@ export default function IntroOverlay({ onComplete }: IntroOverlayProps) {
     // 6. Zoom-Through Portal Fade-Out
     let fadeOutAnimation: any = null;
     const zoomTimeout = setTimeout(() => {
+      setExiting(true);
       fadeOutAnimation = Animated.parallel([
         Animated.timing(logoScale, {
           toValue: 4.5,
-          duration: 1000,
+          duration: DONE_AT - EXIT_AT,
           easing: Easing.inOut(Easing.cubic),
           useNativeDriver: true,
         }),
         Animated.timing(fadeOutAnim, {
           toValue: 0,
-          duration: 800,
+          duration: DONE_AT - EXIT_AT - 50,
           easing: Easing.out(Easing.ease),
           useNativeDriver: true,
         }),
       ]);
       fadeOutAnimation.start();
-    }, 2400);
+    }, EXIT_AT);
 
     // 7. Completion callback
-    const doneTimeout = setTimeout(() => {
-      onComplete();
-    }, 3200);
+    const doneTimeout = setTimeout(finish, DONE_AT);
 
     return () => {
       clearTimeout(ripple2Timeout);
@@ -173,11 +188,19 @@ export default function IntroOverlay({ onComplete }: IntroOverlayProps) {
   }, []);
 
   return (
-    <Animated.View style={[styles.container, { opacity: fadeOutAnim }]}>
+    <Animated.View
+      style={[styles.container, { opacity: fadeOutAnim }]}
+      pointerEvents={exiting ? 'none' : 'auto'}
+      // Tap anywhere to skip
+      onStartShouldSetResponder={() => true}
+      onResponderRelease={finish}
+      accessibilityRole="button"
+      accessibilityLabel="Zenvy intro. Tap to skip"
+    >
       {/* ── SKIP BUTTON ── */}
       <TouchableOpacity
         style={styles.skipBtn}
-        onPress={onComplete}
+        onPress={finish}
         activeOpacity={0.8}
         accessibilityLabel="Skip intro"
       >

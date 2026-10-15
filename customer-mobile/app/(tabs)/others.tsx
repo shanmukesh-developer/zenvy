@@ -5,7 +5,7 @@ import { KeyboardAvoidingView } from '../../components/KeyboardAvoidingView';
 // expo-image (memory + disk cache, downsampled CDN URLs) in place of react-native's Image
 import { CachedImage as Image } from '../../components/SafeImage';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect, useIsFocused } from 'expo-router';
 import { COLORS, SHADOWS, RADIUS } from '../../constants/theme';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
@@ -341,10 +341,13 @@ const shelfItems = (name: string | null, items: CatalogueItem[]): CatalogueItem[
 // Rotating search hint lives in its own component so the whole screen does not re-render every 2.5 s.
 const RotatingSearchPlaceholder = memo(({ color, textColor, style }: { color: string; textColor: string; style: any }) => {
   const [idx, setIdx] = useState(0);
+  // Only rotates while the Others tab is on screen (the tab stays mounted behind the others).
+  const focused = useIsFocused();
   useEffect(() => {
+    if (!focused) return;
     const iv = setInterval(() => setIdx(i => (i + 1) % SEARCH_PLACEHOLDERS.length), 2500);
     return () => clearInterval(iv);
-  }, []);
+  }, [focused]);
   return (
     <TextInput
       style={[style, { color: textColor }]}
@@ -501,8 +504,22 @@ export default function OthersScreen() {
     }
   }, []);
 
-  // "From ₹X" on the service cards, from the real booking catalogue.
+  // "From ₹X" on the service cards, from the real booking catalogue: one small cached call
+  // (GET /api/catalogue/min-prices). A server without that endpoint yet falls back to the item lists.
   const fetchServicePrices = useCallback(async () => {
+    try {
+      const res = await apiFetch(`${API_URL}/api/catalogue/min-prices?types=${encodeURIComponent(SERVICE_TYPES.join(','))}`);
+      const data = res.ok ? await readJson(res) : null;
+      if (data && typeof data === 'object' && !Array.isArray(data)) {
+        const entries = SERVICE_TYPES
+          .map(t => [t, Number((data as any)[t])] as const)
+          .filter(([, v]) => Number.isFinite(v) && v > 0);
+        if (isMountedRef.current) setServiceFromPrice(Object.fromEntries(entries));
+        return;
+      }
+    } catch (err) {
+      console.warn('[OTHERS_SERVICE_MIN_PRICES]', err);
+    }
     try {
       const entries = await Promise.all(SERVICE_TYPES.map(async t => {
         const res = await apiFetch(`${API_URL}/api/catalogue/items?type=${encodeURIComponent(t)}&limit=200`);

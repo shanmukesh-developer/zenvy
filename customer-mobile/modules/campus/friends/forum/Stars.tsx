@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, TouchableOpacity, StyleSheet, Text } from 'react-native';
-import { Star } from 'lucide-react-native';
+import { Star } from '../../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { FriendsColors } from '../friendsTheme';
 

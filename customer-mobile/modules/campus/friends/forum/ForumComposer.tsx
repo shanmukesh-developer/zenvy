@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, StyleSheet, Alert, Switch, Platform } from 'react-native';
 import { KeyboardAvoidingView } from '../../../../components/KeyboardAvoidingView';
-import { VenetianMask, Plus, X, Link2, Search, Check, ShieldAlert, Info } from 'lucide-react-native';
+import { VenetianMask, Plus, X, Link2, Search, Check, ShieldAlert, Info } from '../../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';
 import { FriendsScreenModal } from '../shared/FriendsSheet';

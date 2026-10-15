@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useSyncExternalStore } from 'react';
 import { Text, TextStyle, StyleProp } from 'react-native';
 import { FT } from '../friendsTheme';
 
@@ -32,18 +32,39 @@ export const formatLocal = (v: string | number | Date | null | undefined): strin
   return d.toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 };
 
+// One shared minute ticker for every <RelativeTime/> on screen (instead of one interval each).
+// It runs only while at least one timestamp is mounted.
+let minuteTick = 0;
+let minuteTimer: ReturnType<typeof setInterval> | null = null;
+const minuteListeners = new Set<() => void>();
+const subscribeMinute = (cb: () => void) => {
+  minuteListeners.add(cb);
+  if (!minuteTimer) {
+    minuteTimer = setInterval(() => {
+      minuteTick += 1;
+      minuteListeners.forEach((l) => l());
+    }, 60000);
+  }
+  return () => {
+    minuteListeners.delete(cb);
+    if (minuteListeners.size === 0 && minuteTimer) {
+      clearInterval(minuteTimer);
+      minuteTimer = null;
+    }
+  };
+};
+const getMinuteTick = () => minuteTick;
+/** Re-renders the caller once a minute (shared timer). */
+export const useMinuteTick = () => useSyncExternalStore(subscribeMinute, getMinuteTick, getMinuteTick);
+
 /** Self-updating relative time (refreshes every minute). Screen readers get the full local time. */
 export const RelativeTime: React.FC<{ value: string | number | Date | null | undefined; style?: StyleProp<TextStyle>; prefix?: string }> = ({
   value,
   style,
   prefix,
 }) => {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 60000);
-    return () => clearInterval(t);
-  }, []);
-  const label = formatRelative(value, now);
+  useMinuteTick();
+  const label = formatRelative(value, Date.now());
   if (!label) return null;
   return (
     <Text style={[FT.small, style]} accessibilityLabel={`${prefix ? `${prefix} ` : ''}${formatLocal(value)}`} numberOfLines={1}>

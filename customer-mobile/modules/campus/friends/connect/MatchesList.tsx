@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, StyleSheet } from 'react-native';
-import { ChevronRight, HeartHandshake } from 'lucide-react-native';
+import { ChevronRight, HeartHandshake } from '../../../../components/lucide';
 import { FriendsColors, FS, FT, SectionTints } from '../friendsTheme';
 import { FriendsSkeleton } from '../shared/FriendsSkeleton';
 import { FriendsEmpty, FriendsError } from '../shared/FriendsEmpty';

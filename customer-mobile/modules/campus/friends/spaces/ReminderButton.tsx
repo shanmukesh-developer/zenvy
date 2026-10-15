@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Text, TouchableOpacity, ActivityIndicator, StyleSheet, Alert } from 'react-native';
-import { Bell, BellRing } from 'lucide-react-native';
+import { Bell, BellRing } from '../../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { FriendsColors, FR } from '../friendsTheme';
 import { Space, setSpaceRemind, spaceErrorMessage } from '../api/spacesApi';

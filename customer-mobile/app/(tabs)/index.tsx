@@ -11,7 +11,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS, SHADOWS, RADIUS } from '../../constants/theme';
 import { API_URL, ENDPOINTS } from '../../constants/api';
 import { useAuth } from '../../context/AuthContext';
-import { useCart } from '../../context/CartContext';
+import { useCartState } from '../../context/CartContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useDietary } from '../../context/DietaryContext';
 import { apiFetch } from '../../utils/auth';
@@ -239,12 +239,44 @@ const hasDietTag = (r: any, kw: string): boolean => {
     availableMenu(r).some((i: any) => (i.name || '').toLowerCase().includes(kw) || (i.category || '').toLowerCase().includes(kw) || has(i.tags));
 };
 
+/** Floating "N items added" bar: reads the basket totals itself so an ADD doesn't re-render the whole Home screen. */
+const HomeFloatingCart = React.memo(function HomeFloatingCart({ isDark, txt, onOpen }: { isDark: boolean; txt: string; onOpen: () => void }) {
+  const { totalItems, totalPrice } = useCartState();
+  if (!(totalItems > 0)) return null;
+  return (
+    <View style={s.floatingCartWrap} pointerEvents="box-none">
+      <TouchableOpacity
+        activeOpacity={0.92}
+        style={[s.floatingCartBar, { backgroundColor: isDark ? '#1C1917' : '#FFFFFF', borderColor: isDark ? COLORS.gold : COLORS.red }]}
+        onPress={onOpen}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+          <View style={[s.floatingCartBadge, { backgroundColor: isDark ? COLORS.gold : COLORS.red }]}>
+            <Text style={{ fontSize: 11, fontWeight: '900', color: isDark ? '#000' : '#FFF' }}>{totalItems}</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[s.floatingCartLabel, { color: txt }]} numberOfLines={1}>
+              {totalItems} {totalItems === 1 ? 'ITEM' : 'ITEMS'} ADDED
+            </Text>
+            <Text style={[s.floatingCartSub, { color: isDark ? COLORS.gold : COLORS.red }]}>
+              ₹{totalPrice} SUBTOTAL
+            </Text>
+          </View>
+        </View>
+        <View style={[s.floatingCartCta, { backgroundColor: isDark ? COLORS.gold : COLORS.red }]}>
+          <Text style={[s.floatingCartCtaText, { color: isDark ? '#000' : '#FFF' }]}>VIEW BASKET</Text>
+          <Text style={{ fontSize: 12, color: isDark ? '#000' : '#FFF', fontWeight: '900' }}>➔</Text>
+        </View>
+      </TouchableOpacity>
+    </View>
+  );
+});
+
 export default function HomeScreen() {
   // Keyboard lift only while Home is the visible tab (it stays mounted under other screens).
   const homeFocused = useIsFocused();
   const router = useRouter();
   const { user, refreshUser } = useAuth();
-  const { totalItems, totalPrice } = useCart();
   const { isDark, toggleTheme, colors } = useTheme();
   const { triggerTransition } = useWorldTransition();
   const scrollRef = useRef<ScrollView>(null);
@@ -635,6 +667,7 @@ export default function HomeScreen() {
 
   const cardBg = isDark ? 'rgba(255, 255, 255, 0.08)' : colors.card;
   const txt = colors.text;
+  const openBasket = useCallback(() => router.push('/(tabs)/basket' as any), [router]);
   const txtSec = colors.textSecondary;
   const border = isDark ? COLORS.borderGold : colors.border;
   const bg = colors.bg;
@@ -670,7 +703,8 @@ export default function HomeScreen() {
               {user?.profileImage ? (
                 <SafeImage
                   source={{ uri: user.profileImage }}
-                  fallbackUri="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&q=80"
+                  // A broken profile photo shows the user's initials, never a stock photo of someone else.
+                  fallback={<Text style={[s.avatarText, { color: goldColor }]}>{(user?.name||'Z').substring(0,2).toUpperCase()}</Text>}
                   style={{ width: '100%', height: '100%' }}
                 />
               ) : (
@@ -1472,34 +1506,8 @@ export default function HomeScreen() {
       {/* ── SEARCH OVERLAY DRAWER ── */}
       <SearchOverlay isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
 
-      {/* ── FLOATING BOTTOM BASKET BAR ── */}
-      {totalItems > 0 && (
-        <View style={s.floatingCartWrap} pointerEvents="box-none">
-          <TouchableOpacity
-            activeOpacity={0.92}
-            style={[s.floatingCartBar, { backgroundColor: isDark ? '#1C1917' : '#FFFFFF', borderColor: isDark ? COLORS.gold : COLORS.red }]}
-            onPress={() => router.push('/(tabs)/basket' as any)}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
-              <View style={[s.floatingCartBadge, { backgroundColor: isDark ? COLORS.gold : COLORS.red }]}>
-                <Text style={{ fontSize: 11, fontWeight: '900', color: isDark ? '#000' : '#FFF' }}>{totalItems}</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[s.floatingCartLabel, { color: txt }]} numberOfLines={1}>
-                  {totalItems} {totalItems === 1 ? 'ITEM' : 'ITEMS'} ADDED
-                </Text>
-                <Text style={[s.floatingCartSub, { color: isDark ? COLORS.gold : COLORS.red }]}>
-                  ₹{totalPrice} SUBTOTAL
-                </Text>
-              </View>
-            </View>
-            <View style={[s.floatingCartCta, { backgroundColor: isDark ? COLORS.gold : COLORS.red }]}>
-              <Text style={[s.floatingCartCtaText, { color: isDark ? '#000' : '#FFF' }]}>VIEW BASKET</Text>
-              <Text style={{ fontSize: 12, color: isDark ? '#000' : '#FFF', fontWeight: '900' }}>➔</Text>
-            </View>
-          </TouchableOpacity>
-        </View>
-      )}
+      {/* ── FLOATING BOTTOM BASKET BAR (its own component: a basket change re-renders only it) ── */}
+      <HomeFloatingCart isDark={isDark} txt={txt} onOpen={openBasket} />
 
       {/* ── FLOATING COMMUNITY FAB: posts, birthdays, The Wall; its Friends card opens Campus Buddy ── */}
       <FloatingPulse color={COLORS.red} style={s.fabBtnWrap}>

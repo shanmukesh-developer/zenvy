@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator, StyleSheet, Alert } from 'react-native';
-import { Hash, VolumeX, Volume2, TrendingUp, Bookmark, PenLine, UserPlus, UserCheck, Flag, Plus } from 'lucide-react-native';
+import { Hash, VolumeX, Volume2, TrendingUp, Bookmark, PenLine, UserPlus, UserCheck, Flag, Plus } from '../../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';
 import { FriendsEmpty, FriendsError } from '../shared/FriendsEmpty';

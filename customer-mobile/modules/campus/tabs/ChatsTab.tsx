@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, TextInput } from 'react-native';
-import { Sparkles, Users, ChevronRight, Search, UserPlus, MessageSquarePlus, X } from 'lucide-react-native';
+import { Sparkles, Users, ChevronRight, Search, UserPlus, MessageSquarePlus, X } from '../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { CampusColors } from '../../../constants/campusTheme';
 import { CampusChatListItem } from '../../../types/campus';

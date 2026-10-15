@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, TextInput, ActivityIndicator, StyleSheet, Alert } from 'react-native';
-import { ThumbsUp, ThumbsDown, ShieldCheck, MessageSquareReply, Hourglass, Pencil, Trash2 } from 'lucide-react-native';
+import { ThumbsUp, ThumbsDown, ShieldCheck, MessageSquareReply, Hourglass, Pencil, Trash2 } from '../../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';
 import { FriendsSheet } from '../shared/FriendsSheet';

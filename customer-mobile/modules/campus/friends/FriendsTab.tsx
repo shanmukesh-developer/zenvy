@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { ShieldAlert, ChevronRight } from 'lucide-react-native';
+import { ShieldAlert, ChevronRight } from '../../../components/lucide';
 import { CampusProfileData, CampusUserData, FriendsSubTab, FRIENDS_SUB_TABS } from '../../../types/campus';
 import { isCampusAuthError } from '../campusApi';
 import { subscribeCampusConnection } from '../campusSocketClient';

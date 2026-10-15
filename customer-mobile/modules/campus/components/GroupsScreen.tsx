@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, Share, RefreshControl, ScrollView, Switch } from 'react-native';
-import { Users, Plus, KeyRound, MoreVertical, Globe2 } from 'lucide-react-native';
+import { Users, Plus, KeyRound, MoreVertical, Globe2 } from '../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { CampusColors } from '../../../constants/campusTheme';
 import {

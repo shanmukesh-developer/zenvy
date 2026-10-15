@@ -30,7 +30,7 @@ import {
   Camera,
   BarChart2,
   Trash2,
-} from 'lucide-react-native';
+} from '../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { pickImageAsset, prepareAndUploadImage, resolveMediaUrl, ImageUploadError } from '../../../utils/imageUpload';
 import { CampusColors, CampusLayout } from '../../../constants/campusTheme';

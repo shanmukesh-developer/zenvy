@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { KeyboardAvoidingView } from '../../../../components/KeyboardAvoidingView';
 import { Image } from 'expo-image';
-import { Ellipsis, Send, X, Lock, Link2, Bookmark, BookmarkCheck, MessageCircle, VenetianMask, Hourglass, EyeOff, Share2 } from 'lucide-react-native';
+import { Ellipsis, Send, X, Lock, Link2, Bookmark, BookmarkCheck, MessageCircle, VenetianMask, Hourglass, EyeOff, Share2 } from '../../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { Share } from 'react-native';
 import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';

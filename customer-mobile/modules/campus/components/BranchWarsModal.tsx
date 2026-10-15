@@ -16,7 +16,7 @@ import {
   BookOpen,
   Users,
   RefreshCw,
-} from 'lucide-react-native';
+} from '../../../components/lucide';
 import { CampusColors, CampusLayout } from '../../../constants/campusTheme';
 import { fetchBranchWars, PulseBranchStanding } from '../campusApi';
 

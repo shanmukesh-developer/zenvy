@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, Alert, StyleSheet, Platform, ActionSheetIOS } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { Plus, X, ImagePlus, EyeOff, Info } from 'lucide-react-native';
+import { Plus, X, ImagePlus, EyeOff, Info } from '../../../../components/lucide';
 import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';
 import { pickAndUploadImage, alertUploadError, UploadedImage } from '../../../../utils/imageUpload';
 import {

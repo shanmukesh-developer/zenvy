@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, Switch, StyleSheet, StyleProp, ViewStyle, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Check, Heart } from 'lucide-react-native';
+import { Check, Heart } from '../../../../components/lucide';
 import { FriendsColors, FS, FT, FR, fui, SectionTints } from '../friendsTheme';
 import { FriendsButton } from '../shared/FriendsUi';
 import { initialOf, photoSource } from './connectShared';

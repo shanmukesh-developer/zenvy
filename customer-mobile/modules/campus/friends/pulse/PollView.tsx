@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
-import { CircleCheck, BarChart3 } from 'lucide-react-native';
+import { CircleCheck, BarChart3 } from '../../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { FriendsColors, FS, FR, FT } from '../friendsTheme';
 import { PulsePoll, votePulsePoll } from '../api/pulseApi';

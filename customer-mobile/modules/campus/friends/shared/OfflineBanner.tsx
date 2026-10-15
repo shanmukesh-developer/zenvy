@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { WifiOff } from 'lucide-react-native';
+import { WifiOff } from '../../../../components/lucide';
 import { getCampusConnectionState, subscribeCampusConnection, CampusConnectionState } from '../../campusSocketClient';
 import { FriendsColors, FS, FR } from '../friendsTheme';
 

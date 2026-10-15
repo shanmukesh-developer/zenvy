@@ -18,7 +18,7 @@ import {
   MessageCircle,
   Users,
   RefreshCw,
-} from 'lucide-react-native';
+} from '../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { CampusColors, CampusLayout } from '../../../constants/campusTheme';
 import {

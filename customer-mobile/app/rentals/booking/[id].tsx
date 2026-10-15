@@ -175,7 +175,7 @@ export default function RentalBookingScreen() {
         <Card>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
             <View style={{ width: 44, height: 44, borderRadius: 22, overflow: 'hidden', backgroundColor: p.card2, alignItems: 'center', justifyContent: 'center' }}>
-              {other?.avatar ? <SafeImage source={{ uri: other.avatar }} style={{ width: 44, height: 44 }} /> : <Text style={{ fontSize: 18 }}>🧑‍🎓</Text>}
+              {other?.avatar ? <SafeImage source={{ uri: other.avatar }} style={{ width: 44, height: 44 }} fallback={<Text style={{ fontSize: 18 }}>🧑‍🎓</Text>} /> : <Text style={{ fontSize: 18 }}>🧑‍🎓</Text>}
             </View>
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 14, fontWeight: '900', color: p.text }}>{other?.name || 'Student'} <Text style={{ color: p.success, fontSize: 11.5 }}>✓ verified</Text></Text>

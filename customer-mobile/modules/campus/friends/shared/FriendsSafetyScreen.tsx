@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, ScrollView, Switch, TouchableOpacity, RefreshControl, StyleSheet, Alert } from 'react-native';
-import { ChevronRight, Ban, BookOpen, ShieldAlert, Flag, VolumeX, Scale } from 'lucide-react-native';
+import { ChevronRight, Ban, BookOpen, ShieldAlert, Flag, VolumeX, Scale } from '../../../../components/lucide';
 import { FriendsScreenModal, FriendsSheet } from './FriendsSheet';
 import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';
 import {

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
-import { ArrowBigUp, ArrowBigDown } from 'lucide-react-native';
+import { ArrowBigUp, ArrowBigDown } from '../../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { voteForum } from '../api/forumApi';
 import { FriendsColors, FR } from '../friendsTheme';

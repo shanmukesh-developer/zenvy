@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Alert, Platform } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { Ban, HeartOff, ImageOff } from 'lucide-react-native';
+import { Ban, HeartOff, ImageOff } from '../../../../components/lucide';
 import { ActionMenu, ActionMenuExtra } from '../shared/ActionMenu';
 import { ReportSheet } from '../shared/ReportSheet';
 import { FriendsColors } from '../friendsTheme';

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, StyleSheet, Alert } from 'react-native';
-import { Radio, CalendarClock, Check, Info, Wifi } from 'lucide-react-native';
+import { Radio, CalendarClock, Check, Info, Wifi } from '../../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { FriendsColors, FS, FR, FT, fui } from '../friendsTheme';
 import { FriendsScreenModal } from '../shared/FriendsSheet';

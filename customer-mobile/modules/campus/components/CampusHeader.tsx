@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { ShieldCheck, Plus, ArrowLeft, Sparkles, X } from 'lucide-react-native';
+import { ShieldCheck, Plus, ArrowLeft, Sparkles, X } from '../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { CampusColors, CampusLayout } from '../../../constants/campusTheme';
 import { CampusProfileData } from '../../../types/campus';

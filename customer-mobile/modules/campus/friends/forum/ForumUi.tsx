@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, FlatList, RefreshControl, ActivityIndicator, StyleSheet, ListRenderItem } from 'react-native';
-import { ChevronLeft, RotateCcw } from 'lucide-react-native';
+import { ChevronLeft, RotateCcw } from '../../../../components/lucide';
 import { FriendsColors, FS, FT, FR, fui, SectionTints } from '../friendsTheme';
 import { FriendsHeader } from '../shared/FriendsUi';
 import { FriendsSkeleton } from '../shared/FriendsSkeleton';

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, FlatList, RefreshControl, ActivityIndicator, StyleSheet } from 'react-native';
-import { MessageCircle, Lock, ArrowUp } from 'lucide-react-native';
+import { MessageCircle, Lock, ArrowUp } from '../../../../components/lucide';
 import { FriendsColors, FS, FT, FR } from '../friendsTheme';
 import { FriendsSkeleton } from '../shared/FriendsSkeleton';
 import { FriendsEmpty, FriendsError } from '../shared/FriendsEmpty';

@@ -10,7 +10,7 @@ import { API_URL, ZENVY_SUPPORT_WHATSAPP } from '../constants/api';
 import { isLocalVendor, vendorCallNumber, callVendor, stallPayCopy } from '../utils/localVendor';
 import { useSWRJson } from '../utils/swrCache';
 import { useLiveSync } from '../utils/useLiveSync';
-import { useCart } from '../context/CartContext';
+import { useCartActions, useCartState } from '../context/CartContext';
 import { isCustomizable } from './CustomizeDrawer';
 
 /**
@@ -71,12 +71,23 @@ const closedLabel = (vendor: any): string => {
 const idOf = (x: any) => String(x?._id || x?.id || '');
 const availableMenu = (vendor: any): any[] => (Array.isArray(vendor.menu) ? vendor.menu : []).filter((m: any) => m && m.isAvailable !== false);
 
+/** The ADD button's label: the only part of the section that re-renders when the basket changes. */
+const StallAddLabel = React.memo(function StallAddLabel({ itemId, justAdded, isOpen }: { itemId: string; justAdded: boolean; isOpen: boolean }) {
+  const { quantityOf } = useCartState();
+  const inBasket = quantityOf(itemId);
+  return (
+    <Text style={[s.addBtnText, justAdded && { color: '#fff' }]}>
+      {justAdded ? '✓ ADDED' : !isOpen ? 'CLOSED' : inBasket > 0 ? `ADD + (${inBasket})` : 'ADD +'}
+    </Text>
+  );
+});
+
 export default function CampusBitesSection({ restaurants, loading: homeLoading = false }: CampusBitesSectionProps) {
   const router = useRouter();
   const { isDark } = useTheme();
   const [selectedCampus, setSelectedCampus] = useState('ALL');
   const [stallSearch, setStallSearch] = useState('');
-  const { addToCart, quantityOf } = useCart();
+  const { addToCart } = useCartActions();
   const [addedKey, setAddedKey] = useState<string | null>(null);
 
   const stallsSWR = useSWRJson<any[]>('/api/restaurants/local-vendors', { validate: Array.isArray });
@@ -404,7 +415,6 @@ export default function CampusBitesSection({ restaurants, loading: homeLoading =
                 <View style={s.dishList}>
                   {dishes.map((m: any) => {
                     const mId = idOf(m);
-                    const inBasket = quantityOf(mId);
                     const justAdded = addedKey === mId;
                     return (
                       <View key={mId} style={[s.dishRow, { borderColor: border }]}>
@@ -417,9 +427,7 @@ export default function CampusBitesSection({ restaurants, loading: homeLoading =
                           accessibilityLabel={`Add ${m.name} from ${vendor.name || 'the stall'} to your basket`}
                           onPress={() => addStallItem(vendor, m, isOpen)}
                         >
-                          <Text style={[s.addBtnText, justAdded && { color: '#fff' }]}>
-                            {justAdded ? '✓ ADDED' : !isOpen ? 'CLOSED' : inBasket > 0 ? `ADD + (${inBasket})` : 'ADD +'}
-                          </Text>
+                          <StallAddLabel itemId={mId} justAdded={justAdded} isOpen={isOpen} />
                         </TouchableOpacity>
                       </View>
                     );

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, TextInput, FlatList, RefreshControl, ActivityIndicator, StyleSheet } from 'react-native';
-import { Search, Star, PenLine, ChevronRight, Hourglass } from 'lucide-react-native';
+import { Search, Star, PenLine, ChevronRight, Hourglass } from '../../../../components/lucide';
 import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';
 import { FriendsEmpty, FriendsError } from '../shared/FriendsEmpty';
 import { FriendsSkeleton } from '../shared/FriendsSkeleton';

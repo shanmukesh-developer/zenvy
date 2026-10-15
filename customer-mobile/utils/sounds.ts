@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 
 // ── Zenvy Sound Engine ─────────────────────────────────────────────────────
-// Generates synthetic sounds using Web Audio API (web) and expo-av (native).
+// Generates synthetic sounds using Web Audio API (web); native plays bundled WAVs via expo-audio.
 // Supports distinct custom transition chimes for PG, Co-Ride, and Premium Restaurants.
 
 export type SoundType = 
@@ -16,23 +16,51 @@ export type SoundType =
   | 'error' 
   | 'click';
 
-// ── Native Sound Engine (expo-av with URL caching) ──
-const NATIVE_SOUND_URLS: Record<SoundType, string> = {
-  click: 'https://assets.mixkit.co/active_storage/sfx/2568/2568-84.wav',
-  addToCart: 'https://assets.mixkit.co/active_storage/sfx/2019/2019-84.wav',
-  tabSwitch: 'https://assets.mixkit.co/active_storage/sfx/2571/2571-84.wav',
-  success: 'https://assets.mixkit.co/active_storage/sfx/2017/2017-84.wav',
-  error: 'https://assets.mixkit.co/active_storage/sfx/2573/2573-84.wav',
-  worldTransition: 'https://assets.mixkit.co/active_storage/sfx/2018/2018-84.wav',
-  pgTransition: 'https://assets.mixkit.co/active_storage/sfx/1917/1917-84.wav', // Deep homelike chord
-  rideTransition: 'https://assets.mixkit.co/active_storage/sfx/2813/2813-84.wav', // Energetic motorcycle rev-like swish
-  premiumRestaurantTransition: 'https://assets.mixkit.co/active_storage/sfx/2013/2013-84.wav', // High luxury bell/chime
-  brandSplash: 'https://assets.mixkit.co/active_storage/sfx/2017/2017-84.wav',
+// ── Native Sound Engine (expo-audio, bundled local files: no network) ──
+// Tiny WAVs synthesized from the same tone recipes as the web sounds below
+// (scratch script: node gen_sounds.js assets/sounds). They ship inside the app bundle.
+const NATIVE_SOUND_FILES: Record<SoundType, number> = {
+  click: require('../assets/sounds/click.wav'),
+  addToCart: require('../assets/sounds/addToCart.wav'),
+  tabSwitch: require('../assets/sounds/tabSwitch.wav'),
+  success: require('../assets/sounds/success.wav'),
+  error: require('../assets/sounds/error.wav'),
+  worldTransition: require('../assets/sounds/worldTransition.wav'),
+  pgTransition: require('../assets/sounds/pgTransition.wav'),
+  rideTransition: require('../assets/sounds/rideTransition.wav'),
+  premiumRestaurantTransition: require('../assets/sounds/premiumRestaurantTransition.wav'),
+  brandSplash: require('../assets/sounds/success.wav'),
 };
 
-const soundCache: Record<string, any> = {};
+const soundCache: Partial<Record<SoundType, any>> = {};
 const lastPlayTime: Record<string, number> = {};
 const SOUND_THROTTLE_MS = 100;
+
+function getPlayer(type: SoundType): any {
+  const cached = soundCache[type];
+  if (cached) return cached;
+  const { createAudioPlayer } = require('expo-audio');
+  if (!createAudioPlayer) return null;
+  const player = createAudioPlayer(NATIVE_SOUND_FILES[type]);
+  if (player) {
+    player.volume = type === 'click' ? 0.3 : 0.8;
+    soundCache[type] = player;
+  }
+  return player;
+}
+
+let preloaded = false;
+/**
+ * Creates every player once (call shortly after startup, off the first-frame path), so the first
+ * tap's sound is not delayed by player creation. Safe to call more than once.
+ */
+export function preloadSounds(): void {
+  if (preloaded || Platform.OS === 'web') return;
+  preloaded = true;
+  (Object.keys(NATIVE_SOUND_FILES) as SoundType[]).forEach((type) => {
+    try { getPlayer(type); } catch { /* audio unavailable: playSound stays a no-op */ }
+  });
+}
 
 async function playNativeSound(type: SoundType) {
   try {
@@ -41,26 +69,13 @@ async function playNativeSound(type: SoundType) {
     if (lastPlayTime[type] && now - lastPlayTime[type] < SOUND_THROTTLE_MS) return;
     lastPlayTime[type] = now;
 
-    const { createAudioPlayer } = require('expo-audio');
-    if (!createAudioPlayer) return;
-
-    if (soundCache[type]) {
-      try {
-        const p = soundCache[type];
-        if (p.seekTo) {
-          p.seekTo(0).catch(() => {});
-        }
-        p.play();
-        return;
-      } catch {
-        soundCache[type] = null;
-      }
-    }
-    const player = createAudioPlayer(NATIVE_SOUND_URLS[type]);
-    if (player) {
-      player.volume = type === 'click' ? 0.3 : 0.8;
-      player.play();
-      soundCache[type] = player;
+    const p = getPlayer(type);
+    if (!p) return;
+    try {
+      if (p.seekTo) p.seekTo(0).catch(() => {});
+      p.play();
+    } catch {
+      soundCache[type] = undefined;
     }
   } catch (err) {
     // Fail silently in background to prevent native crashes

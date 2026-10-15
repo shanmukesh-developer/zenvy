@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, BackHandler, StyleSheet, AppState, FlatList, ScrollView, RefreshControl } from 'react-native';
-import { PenLine, Plus, Bookmark, TrendingUp, UserRound, Sparkles, Users } from 'lucide-react-native';
+import { PenLine, Plus, Bookmark, TrendingUp, UserRound, Sparkles, Users } from '../../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import type { CampusProfileData, CampusUserData } from '../../../../types/campus';
 import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';

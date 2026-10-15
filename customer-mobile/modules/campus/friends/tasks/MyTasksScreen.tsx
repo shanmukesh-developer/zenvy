@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, FlatList, RefreshControl, ActivityIndicator, StyleSheet } from 'react-native';
-import { ClipboardList, Send, Handshake, CheckCircle2 } from 'lucide-react-native';
+import { ClipboardList, Send, Handshake, CheckCircle2 } from '../../../../components/lucide';
 import { FriendsColors, FS, fui, SectionTints } from '../friendsTheme';
 import { FriendsSkeleton } from '../shared/FriendsSkeleton';
 import { FriendsEmpty, FriendsError } from '../shared/FriendsEmpty';

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
-import { Mic, Bell, BellRing, Users, Radio, ChevronRight } from 'lucide-react-native';
+import { Mic, Bell, BellRing, Users, Radio, ChevronRight } from '../../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { FriendsColors, FS, FR, FT, SectionTints } from '../friendsTheme';
 import { CardGlow } from '../shared/FriendsUi';

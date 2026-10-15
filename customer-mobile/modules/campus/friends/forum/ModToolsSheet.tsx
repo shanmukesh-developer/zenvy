@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
-import { Pin, PinOff, Lock, LockOpen, Trash2, RotateCcw, CircleCheck, Gavel } from 'lucide-react-native';
+import { Pin, PinOff, Lock, LockOpen, Trash2, RotateCcw, CircleCheck, Gavel } from '../../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { FriendsSheet } from '../shared/FriendsSheet';
 import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';

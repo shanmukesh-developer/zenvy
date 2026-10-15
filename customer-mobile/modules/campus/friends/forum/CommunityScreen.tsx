@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
-import { Search, Ellipsis, Plus, ScrollText, Settings2, Gavel, Flame, Clock, TrendingUp, PenLine } from 'lucide-react-native';
+import { Search, Ellipsis, Plus, ScrollText, Settings2, Gavel, Flame, Clock, TrendingUp, PenLine } from '../../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';
 import { BrandFill } from '../shared/FriendsUi';

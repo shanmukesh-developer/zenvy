@@ -1,5 +1,5 @@
 const express = require('express');
-const { getTypes, getStores, getItems } = require('../controllers/catalogueController');
+const { getTypes, getStores, getItems, getMinPrices } = require('../controllers/catalogueController');
 
 const router = express.Router();
 
@@ -10,5 +10,6 @@ const catalogCache = cacheGet('catalog', { ttlMs: 30 * 1000 });
 router.get('/types', catalogCache, getTypes);
 router.get('/stores', catalogCache, getStores);
 router.get('/items', catalogCache, getItems);
+router.get('/min-prices', catalogCache, getMinPrices);
 
 module.exports = router;

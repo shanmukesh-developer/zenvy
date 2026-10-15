@@ -18,7 +18,7 @@ import {
 import { KeyboardAvoidingView } from '../../components/KeyboardAvoidingView';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
-import { X, ChevronLeft, WifiOff } from 'lucide-react-native';
+import { X, ChevronLeft, WifiOff } from '../../components/lucide';
 import { CampusColors, CampusLayout } from '../../constants/campusTheme';
 import { resolveMediaUrl } from '../../utils/imageUpload';
 import ShimmerLoader from '../../components/ShimmerLoader';

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, Linking, StyleSheet } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { Camera, Clock, ScanFace, ShieldCheck, XCircle, Hourglass, RefreshCw } from 'lucide-react-native';
+import { Camera, Clock, ScanFace, ShieldCheck, XCircle, Hourglass, RefreshCw } from '../../../../components/lucide';
 import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';
 import { errorCode } from '../api/core';
 import { ConnectLiveness, startLiveness, submitLivenessSelfie } from '../api/connectApi';

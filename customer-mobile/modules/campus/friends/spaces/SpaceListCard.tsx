@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { Users, CalendarClock, Ellipsis, ChevronRight, Headphones } from 'lucide-react-native';
+import { Users, CalendarClock, Ellipsis, ChevronRight, Headphones } from '../../../../components/lucide';
 import { FriendsColors, FS, FR, FT, SectionTints } from '../friendsTheme';
 import { CardGlow, BrandFill } from '../shared/FriendsUi';
 import { IdentityChip } from '../shared/IdentityChip';

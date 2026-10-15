@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { MessageSquare, Users, School, User } from 'lucide-react-native';
+import { MessageSquare, Users, School, User } from '../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { CampusColors, CampusLayout } from '../../../constants/campusTheme';
 import { CampusTab } from '../../../types/campus';

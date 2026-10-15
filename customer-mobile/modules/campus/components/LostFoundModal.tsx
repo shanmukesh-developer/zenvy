@@ -26,7 +26,7 @@ import {
   Sparkles,
   Camera,
   ImagePlus,
-} from 'lucide-react-native';
+} from '../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { pickImageAsset, prepareAndUploadImage, alertUploadError, resolveMediaUrl } from '../../../utils/imageUpload';
 import { CampusColors, CampusLayout } from '../../../constants/campusTheme';

@@ -2,7 +2,7 @@ import React from 'react';
 import { Modal, View, Text, TouchableOpacity, ScrollView, Platform, StyleSheet } from 'react-native';
 import { KeyboardAvoidingView } from '../../../../components/KeyboardAvoidingView';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { X, ChevronLeft } from 'lucide-react-native';
+import { X, ChevronLeft } from '../../../../components/lucide';
 import { FriendsColors, FElevation, FR, FS, FT } from '../friendsTheme';
 
 /** Dark bottom sheet for Friends. Android back and the backdrop close it. */

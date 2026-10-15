@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-nati
 import {
   MapPin, BookOpen, Utensils, Dumbbell, Users, Sofa, Mic, Coffee, Music, Gamepad2, Trees, Bus, Laptop, Building,
   Wifi, ChevronRight,
-} from 'lucide-react-native';
+} from '../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { CampusColors } from '../../../constants/campusTheme';
 import { fetchProximityRooms, ProximityRoomItem } from '../campusApi';

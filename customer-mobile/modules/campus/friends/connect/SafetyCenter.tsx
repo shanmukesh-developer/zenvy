@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator, StyleSheet } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { PauseCircle, PlayCircle, EyeOff, Ban, FileText, Download, Trash2, ChevronRight, ShieldCheck, LifeBuoy, MapPinOff } from 'lucide-react-native';
+import { PauseCircle, PlayCircle, EyeOff, Ban, FileText, Download, Trash2, ChevronRight, ShieldCheck, LifeBuoy, MapPinOff } from '../../../../components/lucide';
 import { FriendsScreenModal } from '../shared/FriendsSheet';
 import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';
 import { formatLocal } from '../shared/RelativeTime';

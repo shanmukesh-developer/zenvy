@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, Alert, StyleSheet } from 'react-native';
-import { Check, X, Minus, Plus, ShieldCheck, Ban, Scale, CalendarClock, Hourglass } from 'lucide-react-native';
+import { Check, X, Minus, Plus, ShieldCheck, Ban, Scale, CalendarClock, Hourglass } from '../../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';
 import { FriendsScreenModal } from '../shared/FriendsSheet';

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated, Easing, AccessibilityInfo } from 'react-native';
-import { Radio, Mic, MicOff, ShieldCheck, Minus, Plus, Crown, Shield, Hand, BadgeCheck, ChevronLeft, RotateCcw } from 'lucide-react-native';
+import { Radio, Mic, MicOff, ShieldCheck, Minus, Plus, Crown, Shield, Hand, BadgeCheck, ChevronLeft, RotateCcw } from '../../../../components/lucide';
 import { FriendsColors, FS, FR, FT, SectionTints } from '../friendsTheme';
 import { FriendsHeader } from '../shared/FriendsUi';
 import { FriendsAvatar } from '../shared/FriendsAvatar';

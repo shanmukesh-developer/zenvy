@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { KeyboardAvoidingView } from '../../../components/KeyboardAvoidingView';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { X, KeyRound, Users, CheckCircle2, AlertCircle } from 'lucide-react-native';
+import { X, KeyRound, Users, CheckCircle2, AlertCircle } from '../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { CampusColors, CampusLayout } from '../../../constants/campusTheme';
 import { previewCampusGroup } from '../campusApi';

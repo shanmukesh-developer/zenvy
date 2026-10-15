@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
-import { Star, Gavel, Circle, CircleCheck } from 'lucide-react-native';
+import { Star, Gavel, Circle, CircleCheck } from '../../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';
 import { FriendsSheet } from '../shared/FriendsSheet';

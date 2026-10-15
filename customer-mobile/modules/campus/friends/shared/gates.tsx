@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, StyleSheet, Linking } from 'react-native';
-import { ShieldCheck, ShieldAlert, Lock, LogIn, BookOpen, Clock, Check } from 'lucide-react-native';
+import { ShieldCheck, ShieldAlert, Lock, LogIn, BookOpen, Clock, Check } from '../../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import {
   FriendsEligibility,

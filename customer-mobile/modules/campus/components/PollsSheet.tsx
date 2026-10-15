@@ -10,7 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import { KeyboardAvoidingView } from '../../../components/KeyboardAvoidingView';
-import { X, BarChart2, Plus } from 'lucide-react-native';
+import { X, BarChart2, Plus } from '../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { CampusColors } from '../../../constants/campusTheme';
 import { CampusUserData } from '../../../types/campus';

@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useContext, useEffect, useRef } from 'react';
+import { NavigationContext } from 'expo-router/react-navigation';
 import { connectSocket } from './socket';
 
 /**
@@ -8,6 +9,9 @@ import { connectSocket } from './socket';
  * Events are coalesced on the client (default 500 ms) and handed over as one batch, so a burst of
  * admin edits costs one refetch. After a reconnect the handler gets a synthetic `reconnect` event
  * (events sent while offline are not replayed), which every `affects*` helper treats as "refetch".
+ * A reconnect refetches at once only when the screen is focused (or the hook lives outside any screen,
+ * e.g. a provider) or its data is older than RECONNECT_STALE_MS; a hidden screen with fresh data
+ * refetches when it is next focused instead, so a flaky network does not make every mounted tab reload.
  *
  * Callers must refetch silently: keep the current data on screen, no skeletons/spinners.
  */
@@ -43,6 +47,8 @@ interface Options {
 const RECONNECT_EVENT: LiveSyncEvent = { type: 'reconnect', action: 'updated', id: null };
 /** Extra random delay per batch so all clients do not hit the API in the same instant. */
 const JITTER_MS = 1500;
+/** A hidden screen whose last load is older than this still refetches straight away on reconnect. */
+const RECONNECT_STALE_MS = 2 * 60 * 1000;
 
 export function useLiveSync({
   types,
@@ -58,6 +64,8 @@ export function useLiveSync({
   onChangeRef.current = onChange;
   filterRef.current = filter;
   const typesKey = types.slice().sort().join(',');
+  // The screen this hook runs in (undefined outside a navigator screen, e.g. in a context provider).
+  const navigation = useContext(NavigationContext) as any;
 
   useEffect(() => {
     if (!enabled) return;
@@ -74,12 +82,21 @@ export function useLiveSync({
     let disposed = false;
     // The first 'connect' after mount is the initial connection: the screen's own load covers it
     let hadConnection = socket.connected;
+    // When this screen's data was last (re)loaded: mount, then every delivered batch.
+    let lastSyncAt = Date.now();
+    // A reconnect skipped while hidden: delivered on the next focus.
+    let deferredReconnect = false;
+    const isFocused = () => {
+      if (!navigation || typeof navigation.isFocused !== 'function') return true;
+      try { return !!navigation.isFocused(); } catch { return true; }
+    };
 
     const flush = () => {
       timer = null;
       if (disposed || pending.length === 0) return;
       const batch = pending;
       pending = [];
+      lastSyncAt = Date.now();
       try {
         onChangeRef.current(batch);
       } catch (err) {
@@ -103,9 +120,25 @@ export function useLiveSync({
     };
 
     const onConnect = () => {
-      if (hadConnection && refetchOnReconnect) queue(RECONNECT_EVENT);
+      if (hadConnection && refetchOnReconnect) {
+        if (isFocused() || Date.now() - lastSyncAt > RECONNECT_STALE_MS) queue(RECONNECT_EVENT);
+        else deferredReconnect = true;
+      }
       hadConnection = true;
     };
+
+    let unsubscribeFocus: (() => void) | undefined;
+    if (navigation && typeof navigation.addListener === 'function') {
+      try {
+        unsubscribeFocus = navigation.addListener('focus', () => {
+          if (!deferredReconnect) return;
+          deferredReconnect = false;
+          queue(RECONNECT_EVENT);
+        });
+      } catch {
+        unsubscribeFocus = undefined;
+      }
+    }
 
     socket.on('data:changed', onDataChanged);
     socket.on('connect', onConnect);
@@ -115,8 +148,9 @@ export function useLiveSync({
       if (timer) clearTimeout(timer);
       socket.off('data:changed', onDataChanged);
       socket.off('connect', onConnect);
+      try { unsubscribeFocus?.(); } catch {}
     };
-  }, [typesKey, debounceMs, refetchOnReconnect, enabled]);
+  }, [typesKey, debounceMs, refetchOnReconnect, enabled, navigation]);
 }
 
 const same = (a: unknown, b: unknown) => a != null && b != null && String(a) === String(b);

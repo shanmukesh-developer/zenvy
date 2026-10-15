@@ -17,7 +17,7 @@ import {
   Lock,
   Users,
   History,
-} from 'lucide-react-native';
+} from '../../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { FriendsColors, FS, FT, FR } from '../friendsTheme';
 import { CardGlow } from '../shared/FriendsUi';

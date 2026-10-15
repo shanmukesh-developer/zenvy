@@ -3,7 +3,7 @@ import { View, Text, TextInput, ScrollView, TouchableOpacity, Alert, StyleSheet 
 import { KeyboardAvoidingView } from '../../../../components/KeyboardAvoidingView';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { CalendarDays, Eye, HeartHandshake, MessageCircle, Database, Ban, Flag, Trash2, ShieldAlert, Lock, Circle, CircleCheck, FileText, ChevronRight } from 'lucide-react-native';
+import { CalendarDays, Eye, HeartHandshake, MessageCircle, Database, Ban, Flag, Trash2, ShieldAlert, Lock, Circle, CircleCheck, FileText, ChevronRight } from '../../../../components/lucide';
 import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';
 import { errorCode } from '../api/core';
 import { ConnectStatus, acceptConnectConsent, saveDateOfBirth } from '../api/connectApi';

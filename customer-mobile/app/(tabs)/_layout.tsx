@@ -1,15 +1,25 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Tabs } from 'expo-router';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../../constants/theme';
-import { useWorldTransition } from '../../context/WorldTransitionContext';
 import { useTheme } from '../../context/ThemeContext';
-import { useCart } from '../../context/CartContext';
+import { useCartState } from '../../context/CartContext';
 import { Ionicons } from '@expo/vector-icons';
 import { playSound, resumeAudio } from '../../utils/sounds';
 
-function TabIcon({ name, focused, iconName, isDark, badgeCount }: { name: string; focused: boolean; iconName: any; isDark: boolean; badgeCount?: number }) {
+/** Basket count bubble: the only part of the tab bar that re-renders when the basket changes. */
+const CartBadge = React.memo(function CartBadge({ isDark }: { isDark: boolean }) {
+  const { totalItems } = useCartState();
+  if (!(totalItems > 0)) return null;
+  return (
+    <View style={[styles.cartBadge, { borderColor: isDark ? '#09090B' : '#FFFFFF' }]}>
+      <Text style={styles.cartBadgeText}>{totalItems > 99 ? '99+' : totalItems}</Text>
+    </View>
+  );
+});
+
+const TabIcon = React.memo(function TabIcon({ name, focused, iconName, isDark, showCartBadge }: { name: string; focused: boolean; iconName: any; isDark: boolean; showCartBadge?: boolean }) {
   const inactiveColor = isDark ? COLORS.textMuted : '#617088';
   const labelColor = isDark ? COLORS.textSecondary : '#617088';
 
@@ -17,126 +27,77 @@ function TabIcon({ name, focused, iconName, isDark, badgeCount }: { name: string
     <View style={styles.tabIconWrap}>
       {focused && <View style={styles.activeIndicator} />}
       <View style={{ position: 'relative' }}>
-        <Ionicons 
-          name={focused ? iconName : `${iconName}-outline`} 
-          size={22} 
-          color={focused ? COLORS.red : inactiveColor} 
+        <Ionicons
+          name={focused ? iconName : `${iconName}-outline`}
+          size={22}
+          color={focused ? COLORS.red : inactiveColor}
           style={focused ? styles.tabIconActive : styles.tabIcon}
         />
-        {badgeCount !== undefined && badgeCount > 0 && (
-          <View style={[styles.cartBadge, { borderColor: isDark ? '#09090B' : '#FFFFFF' }]}>
-            <Text style={styles.cartBadgeText}>{badgeCount > 99 ? '99+' : badgeCount}</Text>
-          </View>
-        )}
+        {showCartBadge && <CartBadge isDark={isDark} />}
       </View>
       <Text style={[styles.tabLabel, { color: focused ? COLORS.red : labelColor, fontWeight: focused ? '900' : '700' }]}>
         {name}
       </Text>
     </View>
   );
-}
+});
+
+// Every tab plays the same click on press (module-level, so its identity never changes).
+const TAB_LISTENERS = {
+  tabPress: () => {
+    resumeAudio();
+    playSound('tabSwitch');
+  },
+};
 
 export default function TabLayout() {
-  const { triggerTransition } = useWorldTransition();
-  const { isDark, colors } = useTheme();
-  const { totalItems } = useCart();
+  const { isDark } = useTheme();
   const insets = useSafeAreaInsets();
 
-  // Only Home and Others get the cinematic world transition.
-  // Orders, Basket, Profile switch instantly — no overlay needed.
-  const makeTransitionListener = (path: string, world: any) => ({
-    tabPress: (e: any) => {
-      e.preventDefault();
-      triggerTransition(path, world);
-    }
-  });
+  // Theme-aware tab bar style, memoized so the navigator's options stay referentially stable.
+  const screenOptions = useMemo(() => ({
+    headerShown: false,
+    tabBarShowLabel: false,
+    tabBarStyle: {
+      backgroundColor: isDark ? '#09090B' : '#FFFFFF',
+      borderTopWidth: 1,
+      borderTopColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+      height: Platform.OS === 'ios' ? 88 : 60 + insets.bottom,
+      paddingTop: 8,
+      paddingBottom: Platform.OS === 'ios' ? 24 : insets.bottom > 0 ? insets.bottom : 8,
+      elevation: 20,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: -4 },
+      shadowOpacity: isDark ? 0.35 : 0.06,
+      shadowRadius: 12,
+    },
+  }), [isDark, insets.bottom]);
 
-  // Theme-aware tab bar style
-  const tabBarStyle = {
-    backgroundColor: isDark ? '#09090B' : '#FFFFFF',
-    borderTopWidth: 1,
-    borderTopColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
-    height: Platform.OS === 'ios' ? 88 : 60 + insets.bottom,
-    paddingTop: 8,
-    paddingBottom: Platform.OS === 'ios' ? 24 : insets.bottom > 0 ? insets.bottom : 8,
-    elevation: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: isDark ? 0.35 : 0.06,
-    shadowRadius: 12,
-  };
+  const tabOptions = useMemo(() => {
+    const make = (name: string, iconName: string, showCartBadge?: boolean) => ({
+      tabBarIcon: ({ focused }: { focused: boolean }) => (
+        <TabIcon name={name} focused={focused} iconName={iconName} isDark={isDark} showCartBadge={showCartBadge} />
+      ),
+    });
+    return {
+      index: make('Home', 'home'),
+      others: make('Others', 'grid'),
+      orders: make('Orders', 'receipt'),
+      basket: make('Basket', 'cart', true),
+      profile: make('Profile', 'person'),
+    };
+  }, [isDark]);
 
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarStyle: tabBarStyle,
-        tabBarShowLabel: false,
-      }}
-    >
-      {/* Home & Others — cinematic world transition */}
-      <Tabs.Screen
-        name="index"
-        options={{
-          tabBarIcon: ({ focused }) => <TabIcon name="Home" focused={focused} iconName="home" isDark={isDark} />,
-        }}
-        listeners={{
-          tabPress: () => {
-            resumeAudio();
-            playSound('tabSwitch');
-          }
-        }}
-      />
-      <Tabs.Screen
-        name="others"
-        options={{
-          tabBarIcon: ({ focused }) => <TabIcon name="Others" focused={focused} iconName="grid" isDark={isDark} />,
-        }}
-        listeners={{
-          tabPress: () => {
-            resumeAudio();
-            playSound('tabSwitch');
-          }
-        }}
-      />
+    <Tabs screenOptions={screenOptions}>
+      {/* Home & Others */}
+      <Tabs.Screen name="index" options={tabOptions.index} listeners={TAB_LISTENERS} />
+      <Tabs.Screen name="others" options={tabOptions.others} listeners={TAB_LISTENERS} />
 
       {/* Orders, Basket, Profile — instant switch, no transition */}
-      <Tabs.Screen
-        name="orders"
-        options={{
-          tabBarIcon: ({ focused }) => <TabIcon name="Orders" focused={focused} iconName="receipt" isDark={isDark} />,
-        }}
-        listeners={{
-          tabPress: () => {
-            resumeAudio();
-            playSound('tabSwitch');
-          }
-        }}
-      />
-      <Tabs.Screen
-        name="basket"
-        options={{
-          tabBarIcon: ({ focused }) => <TabIcon name="Basket" focused={focused} iconName="cart" isDark={isDark} badgeCount={totalItems} />,
-        }}
-        listeners={{
-          tabPress: () => {
-            resumeAudio();
-            playSound('tabSwitch');
-          }
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          tabBarIcon: ({ focused }) => <TabIcon name="Profile" focused={focused} iconName="person" isDark={isDark} />,
-        }}
-        listeners={{
-          tabPress: () => {
-            resumeAudio();
-            playSound('tabSwitch');
-          }
-        }}
-      />
+      <Tabs.Screen name="orders" options={tabOptions.orders} listeners={TAB_LISTENERS} />
+      <Tabs.Screen name="basket" options={tabOptions.basket} listeners={TAB_LISTENERS} />
+      <Tabs.Screen name="profile" options={tabOptions.profile} listeners={TAB_LISTENERS} />
     </Tabs>
   );
 }

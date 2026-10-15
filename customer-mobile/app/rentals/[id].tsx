@@ -155,7 +155,7 @@ export default function RentalDetail() {
           {l.owner ? (
             <Card style={{ marginTop: 14, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <View style={{ width: 42, height: 42, borderRadius: 21, overflow: 'hidden', backgroundColor: p.card2, alignItems: 'center', justifyContent: 'center' }}>
-                {l.owner.avatar ? <SafeImage source={{ uri: l.owner.avatar }} style={{ width: 42, height: 42 }} /> : <Text style={{ fontSize: 18 }}>🧑‍🎓</Text>}
+                {l.owner.avatar ? <SafeImage source={{ uri: l.owner.avatar }} style={{ width: 42, height: 42 }} fallback={<Text style={{ fontSize: 18 }}>🧑‍🎓</Text>} /> : <Text style={{ fontSize: 18 }}>🧑‍🎓</Text>}
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 14, fontWeight: '900', color: p.text }}>{l.owner.name} <Text style={{ color: p.success, fontSize: 12 }}>✓ verified student</Text></Text>

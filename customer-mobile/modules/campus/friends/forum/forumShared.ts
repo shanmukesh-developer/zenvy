@@ -18,7 +18,7 @@ import {
   Sparkles,
   House,
   type LucideIcon,
-} from 'lucide-react-native';
+} from '../../../../components/lucide';
 import { errorCode } from '../api/core';
 import type { ForumPost, ForumPostType, ReviewKind, ForumCommunity } from '../api/forumApi';
 

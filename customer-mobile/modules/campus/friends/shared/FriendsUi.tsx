@@ -13,7 +13,7 @@ import {
   ViewStyle,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ChevronLeft } from 'lucide-react-native';
+import { ChevronLeft } from '../../../../components/lucide';
 import type { FriendsSubTab } from '../../../../types/campus';
 import { FriendsColors, FriendsGradients, FMotion, FR, FS, FT, SectionTints, fui } from '../friendsTheme';
 

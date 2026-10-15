@@ -23,7 +23,7 @@ import {
   Lock,
   UserX,
   UserCheck,
-} from 'lucide-react-native';
+} from '../../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';
 import { FriendsSkeleton } from '../shared/FriendsSkeleton';

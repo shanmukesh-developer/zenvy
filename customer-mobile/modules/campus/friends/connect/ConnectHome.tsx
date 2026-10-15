@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { View, Text, TouchableOpacity, ScrollView, BackHandler, Alert, StyleSheet } from 'react-native';
 import { KeyboardAvoidingView } from '../../../../components/KeyboardAvoidingView';
 import * as Haptics from 'expo-haptics';
-import { ShieldCheck, Eye, Compass, HeartHandshake, UserRound } from 'lucide-react-native';
+import { ShieldCheck, Eye, Compass, HeartHandshake, UserRound } from '../../../../components/lucide';
 import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';
 import { FriendsSkeleton } from '../shared/FriendsSkeleton';
 import { FriendsError } from '../shared/FriendsEmpty';

@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { Sparkles, ShieldCheck, ChevronRight, Plus } from 'lucide-react-native';
+import { Sparkles, ShieldCheck, ChevronRight, Plus } from '../../../../components/lucide';
 import { FriendsColors, FS, FT, FR } from '../friendsTheme';
 import type { ForumCommunity } from '../api/forumApi';
 import { RelativeTime } from '../shared/RelativeTime';

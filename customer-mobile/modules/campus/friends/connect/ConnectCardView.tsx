@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { MoreHorizontal, GraduationCap } from 'lucide-react-native';
+import { MoreHorizontal, GraduationCap } from '../../../../components/lucide';
 import { FriendsColors, FS, FT, FR } from '../friendsTheme';
 import type { ConnectCard, ConnectStatus } from '../api/connectApi';
 import { ConnectPhotoView, ConnectTag } from './ConnectUi';

@@ -1,4 +1,4 @@
-import { GraduationCap, Printer, FolderKanban, Palette, Code2, Bike, Shapes, LucideIcon } from 'lucide-react-native';
+import { GraduationCap, Printer, FolderKanban, Palette, Code2, Bike, Shapes, LucideIcon } from '../../../../components/lucide';
 import { errorCode } from '../api/core';
 import type { Task, TaskCategory, TaskFulfillment, TaskStage, TaskApplicationStatus } from '../api/tasksApi';
 import { FriendsColors } from '../friendsTheme';

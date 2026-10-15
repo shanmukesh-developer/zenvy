@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, LayoutChangeEvent, ScrollView, Text, TouchableOpacity, View, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Sparkles, Mic, MessagesSquare, ClipboardList, Heart } from 'lucide-react-native';
+import { Sparkles, Mic, MessagesSquare, ClipboardList, Heart } from '../../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import type { FriendsSubTab } from '../../../../types/campus';
 import { FriendsColors, FriendsGradients, FMotion, FS, SectionTints, fui } from '../friendsTheme';

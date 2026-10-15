@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, StyleSheet, Linking } from 'react-native';
-import { Flag, Check, Circle, CircleCheck, Phone } from 'lucide-react-native';
+import { Flag, Check, Circle, CircleCheck, Phone } from '../../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { FriendsSheet } from './FriendsSheet';
 import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';

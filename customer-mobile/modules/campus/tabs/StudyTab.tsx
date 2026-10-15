@@ -15,7 +15,7 @@ import {
   Play,
   ChevronRight,
   Clock,
-} from 'lucide-react-native';
+} from '../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { CampusColors, CampusLayout } from '../../../constants/campusTheme';
 import { CampusProfileData, CampusUserData } from '../../../types/campus';

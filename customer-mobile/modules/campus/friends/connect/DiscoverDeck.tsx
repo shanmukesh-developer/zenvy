@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Heart, X, SlidersHorizontal, MessageCircle, Compass, PauseCircle } from 'lucide-react-native';
+import { Heart, X, SlidersHorizontal, MessageCircle, Compass, PauseCircle } from '../../../../components/lucide';
 import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';
 import { FriendsSheet } from '../shared/FriendsSheet';
 import { FriendsSkeleton, SkeletonBlock } from '../shared/FriendsSkeleton';

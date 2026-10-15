@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { BadgeCheck, VenetianMask } from 'lucide-react-native';
+import { BadgeCheck, VenetianMask } from '../../../../components/lucide';
 import { FriendsIdentity } from '../api/core';
 import { FriendsColors, FS, FT } from '../friendsTheme';
 import { RelativeTime } from './RelativeTime';

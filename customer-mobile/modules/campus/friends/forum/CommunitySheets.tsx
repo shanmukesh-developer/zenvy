@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, Switch, ActivityIndicator, StyleSheet, Alert } from 'react-native';
-import { ScrollText, Check, Settings2, Plus } from 'lucide-react-native';
+import { ScrollText, Check, Settings2, Plus } from '../../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { FriendsSheet } from '../shared/FriendsSheet';
 import { IdentityChip } from '../shared/IdentityChip';

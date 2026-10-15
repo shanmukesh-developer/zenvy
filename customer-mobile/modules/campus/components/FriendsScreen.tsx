@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, RefreshControl, Alert, Share } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
-import { UserPlus, Copy, Share2, Users, MoreVertical, Inbox } from 'lucide-react-native';
+import { UserPlus, Copy, Share2, Users, MoreVertical, Inbox } from '../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { CampusColors } from '../../../constants/campusTheme';
 import {

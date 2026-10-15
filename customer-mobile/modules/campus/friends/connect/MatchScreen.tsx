@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl, StyleSheet } from 'react-native';
-import { ChevronLeft, MoreHorizontal, MessageCircle, HeartOff, Ban, Flag, PhoneOff, HeartCrack } from 'lucide-react-native';
+import { ChevronLeft, MoreHorizontal, MessageCircle, HeartOff, Ban, Flag, PhoneOff, HeartCrack } from '../../../../components/lucide';
 import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';
 import { FriendsSkeleton } from '../shared/FriendsSkeleton';
 import { FriendsEmpty, FriendsError } from '../shared/FriendsEmpty';

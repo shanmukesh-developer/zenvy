@@ -22,7 +22,7 @@ import {
   ShieldCheck,
   Wifi,
   WifiOff,
-} from 'lucide-react-native';
+} from '../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { CampusColors, CampusLayout } from '../../../constants/campusTheme';
 import { CampusUserData } from '../../../types/campus';

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { KeyboardAvoidingView } from '../../../../components/KeyboardAvoidingView';
 import * as Haptics from 'expo-haptics';
-import { ChevronLeft, Sparkles } from 'lucide-react-native';
+import { ChevronLeft, Sparkles } from '../../../../components/lucide';
 import { FriendsColors, FS, FT, fui } from '../friendsTheme';
 import { errorCode } from '../api/core';
 import { ConnectLiveness, ConnectMyProfile, ConnectStatus, activateConnect } from '../api/connectApi';

@@ -20,6 +20,7 @@ import GlobalAnnouncement from '../components/GlobalAnnouncement';
 import ThemedAlert, { showGlobalAlert } from '../components/ThemedAlert';
 import OfflineBanner from '../components/OfflineBanner';
 import ErrorBoundary from '../components/ErrorBoundary';
+import { preloadSounds } from '../utils/sounds';
 
 // Global interceptor to theme all native Alert.alert calls across the codebase automatically
 const originalAlert = Alert.alert;
@@ -33,8 +34,9 @@ Alert.alert = (title, message, buttons, options) => {
 
 function AppContainer() {
   const { isDark, isThemeReady } = useTheme();
-  const [showIntro, setShowIntro] = React.useState(false);
-  const [checkingIntro, setCheckingIntro] = React.useState(true);
+  // The Zenvy intro plays on every app start (cold launch). It is dark on its own, so it shows from the
+  // first frame without waiting for the saved theme to load.
+  const [showIntro, setShowIntro] = React.useState(true);
 
   // Preload Ionicons so tab bar icons render on Expo Web
   const [fontsLoaded, fontError] = useFonts({
@@ -68,27 +70,39 @@ function AppContainer() {
     }
   }, []);
 
+  // UI sounds are bundled files: create their players once, after the intro, off the first-frame path.
   React.useEffect(() => {
-    // The Zenvy intro plays on every app start (cold launch), as it always did.
-    setShowIntro(true);
-    setCheckingIntro(false);
+    const t = setTimeout(() => { try { preloadSounds(); } catch {} }, 1800);
+    return () => clearTimeout(t);
   }, []);
 
-  const handleIntroComplete = () => {
+  const handleIntroComplete = React.useCallback(() => {
     setShowIntro(false);
-  };
+  }, []);
+
+  // Intro on top of everything; after it, a dark cover only if the saved theme is somehow still loading.
+  const introLayer = showIntro ? (
+    <IntroOverlay onComplete={handleIntroComplete} />
+  ) : !isThemeReady ? (
+    <View style={[StyleSheet.absoluteFill, { backgroundColor: '#060608', zIndex: 999999 }]} />
+  ) : null;
 
   // Wait for icon fonts to load (critical for Expo Web)
   // If the font fails to load, render anyway (icons fall back) instead of spinning forever
+  // (The intro layer sits beside the app in one stable spot, so it never restarts when the fonts finish.)
   if (!fontsLoaded && !fontError) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#0A0A0B' : '#F5F5F7' }}>
-        <ActivityIndicator size="large" color="#F59E0B" />
+      <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#0A0A0B' : '#F5F5F7' }}>
+          <ActivityIndicator size="large" color="#F59E0B" />
+        </View>
+        {introLayer}
       </View>
     );
   }
 
   return (
+    <View style={{ flex: 1 }}>
     <SafeAreaProvider>
       <GestureHandlerRootView style={{ flex: 1, backgroundColor: isDark ? '#0A0A0B' : '#F5F5F7' }}>
         {/* Real keyboard insets for every screen (Android edge-to-edge ignores adjustResize). */}
@@ -102,11 +116,6 @@ function AppContainer() {
             <ThemedAlert />
             <OfflineBanner />
             
-            {(checkingIntro || !isThemeReady) ? (
-              <View style={[StyleSheet.absoluteFill, { backgroundColor: '#060608', zIndex: 999999 }]} />
-            ) : showIntro ? (
-              <IntroOverlay onComplete={handleIntroComplete} />
-            ) : null}
             
           </CartProvider>
         </AuthProvider>
@@ -114,6 +123,8 @@ function AppContainer() {
         </KeyboardProvider>
       </GestureHandlerRootView>
     </SafeAreaProvider>
+    {introLayer}
+    </View>
   );
 }
 

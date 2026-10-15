@@ -15,7 +15,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, SHADOWS } from '../../constants/theme';
 import { API_URL } from '../../constants/api';
-import { useCart, MAX_ITEM_QTY } from '../../context/CartContext';
+import { useCartActions, useCartState, MAX_ITEM_QTY } from '../../context/CartContext';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useDietary } from '../../context/DietaryContext';
@@ -57,11 +57,100 @@ const seedRestaurant = (id: string): any => {
 const isVegItem = (item: any) =>
   item?.isVegetarian === true || String(item?.isVegetarian).toLowerCase() === 'true' || Number(item?.isVegetarian) === 1;
 
+/** One dish's ADD button / − qty + stepper: reads the basket itself so only this control re-renders on a change. */
+const MenuAddControl = React.memo(function MenuAddControl({ itemId, soldOut, customizable, isAdded, blocked, closed, eliteLocked, tint, onAdd }: {
+  itemId: string; soldOut: boolean; customizable: boolean; isAdded: boolean; blocked: boolean; closed: boolean; eliteLocked: boolean; tint: string; onAdd: () => void;
+}) {
+  const { cart } = useCartState();
+  const { updateQuantity } = useCartActions();
+  const qtyInCart = cart.reduce((acc, c) => (String(c.id) === itemId ? acc + c.quantity : acc), 0);
+  const plainLine = cart.find((c) => c.cartKey === itemId);
+  return (
+    <>
+    {soldOut ? (
+      <View style={[st.menuAddBtn, { backgroundColor: '#E5E7EB', borderColor: '#9CA3AF' }]}>
+        <Text style={[st.menuAddBtnText, { color: '#6B7280' }]}>SOLD OUT</Text>
+      </View>
+    ) : plainLine && !customizable ? (
+      <View style={[st.stepperWrap, { backgroundColor: tint, borderColor: tint }]}>
+        <TouchableOpacity
+          style={st.stepperActionBtn}
+          onPress={() => updateQuantity(plainLine.cartKey, plainLine.quantity - 1)}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={st.stepperActionText}>−</Text>
+        </TouchableOpacity>
+        <Text style={st.stepperCountText}>{plainLine.quantity}</Text>
+        <TouchableOpacity
+          style={st.stepperActionBtn}
+          onPress={() => updateQuantity(plainLine.cartKey, plainLine.quantity + 1)}
+          disabled={plainLine.quantity >= MAX_ITEM_QTY}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={[st.stepperActionText, plainLine.quantity >= MAX_ITEM_QTY && { opacity: 0.4 }]}>+</Text>
+        </TouchableOpacity>
+      </View>
+    ) : (
+      <CartPressable
+        style={[
+          st.menuAddBtn,
+          isAdded
+            ? { backgroundColor: '#EF4F5F', borderColor: '#EF4F5F' }
+            : { backgroundColor: '#FFF5F6', borderColor: '#EF4F5F' },
+          blocked && { backgroundColor: '#F3F4F6', borderColor: '#9CA3AF' },
+        ]}
+        onPress={onAdd}
+        sound="addToCart"
+      >
+        <Text style={[
+          st.menuAddBtnText,
+          isAdded ? { color: '#fff' } : { color: '#EF4F5F' },
+          blocked && { color: '#6B7280' },
+        ]}>
+          {isAdded ? '✓ ADDED' : closed ? 'CLOSED' : eliteLocked ? '👑 ELITE' : customizable && qtyInCart > 0 ? `ADD + (${qtyInCart})` : 'ADD +'}
+        </Text>
+      </CartPressable>
+    )}
+    </>
+  );
+});
+
+/** "VIEW BASKET" bar: the only part of the page that reads the basket totals. */
+const RestaurantFloatingCart = React.memo(function RestaurantFloatingCart({ tint, onOpen }: { tint: string; onOpen: () => void }) {
+  const { totalItems, totalPrice } = useCartState();
+  if (!(totalItems > 0)) return null;
+  return (
+    <FloatingPulse color={tint} style={st.floatingCartContainer}>
+      <DopaminePressable
+        style={[st.floatingCart, { backgroundColor: tint, width: '100%' }]}
+        onPress={onOpen}
+        sound="success"
+        activeScale={0.95}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', justifyContent: 'space-between', paddingHorizontal: 4 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={st.badgeContainer}><Text style={st.badgeText}>{totalItems}</Text></View>
+            <View>
+              <Text style={[st.floatingCartText, { color: '#fff' }]}>VIEW BASKET</Text>
+              <Text style={{ fontSize: 9, fontWeight: '800', color: 'rgba(255,255,255,0.85)' }}>₹{totalPrice} ITEM TOTAL</Text>
+            </View>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={[st.proceedText, { color: '#fff' }]}>Checkout</Text>
+            <Text style={{ fontSize: 16, color: '#fff', fontWeight: '900' }}>➔</Text>
+          </View>
+        </View>
+      </DopaminePressable>
+    </FloatingPulse>
+  );
+});
+
 export default function RestaurantDetail() {
   const params = useLocalSearchParams<{ id: string | string[] }>();
   const id = String((Array.isArray(params.id) ? params.id[0] : params.id) || '').trim();
   const router = useRouter();
-  const { addToCart, totalItems, cart, updateQuantity, totalPrice } = useCart();
+  // Actions only: basket changes re-render just the ADD controls and the floating bar below, not the whole menu.
+  const { addToCart } = useCartActions();
   const { user } = useAuth();
   const { isDark, colors } = useTheme();
   const { dietMode, setDietMode, isItemAllowed } = useDietary();
@@ -76,6 +165,7 @@ export default function RestaurantDetail() {
   const [isFavorite, setIsFavorite] = useState(false);
   const [addedId, setAddedId] = useState<string | null>(null);
   const [customizingItem, setCustomizingItem] = useState<any>(null);
+  const openBasket = useCallback(() => router.push('/(tabs)/basket' as any), [router]);
 
   const addedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
@@ -517,8 +607,6 @@ export default function RestaurantDetail() {
             const specs = parseJson(item.specs);
             const kcal = Number(specs?.kcal);
             const customizable = isCustomizable(item);
-            const qtyInCart = cart.reduce((acc, c) => (String(c.id) === itemId ? acc + c.quantity : acc), 0);
-            const plainLine = cart.find((c) => c.cartKey === itemId);
 
             return (
               <StaggeredSection key={itemId} delay={Math.min(i, 10) * 60} direction="up">
@@ -558,50 +646,17 @@ export default function RestaurantDetail() {
                     </View>
                   )}
                   <View style={st.floatingAddWrap} pointerEvents="box-none">
-                    {soldOut ? (
-                      <View style={[st.menuAddBtn, { backgroundColor: '#E5E7EB', borderColor: '#9CA3AF' }]}>
-                        <Text style={[st.menuAddBtnText, { color: '#6B7280' }]}>SOLD OUT</Text>
-                      </View>
-                    ) : plainLine && !customizable ? (
-                      <View style={[st.stepperWrap, { backgroundColor: brand ? accent : '#EF4F5F', borderColor: brand ? accent : '#EF4F5F' }]}>
-                        <TouchableOpacity
-                          style={st.stepperActionBtn}
-                          onPress={() => updateQuantity(plainLine.cartKey, plainLine.quantity - 1)}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        >
-                          <Text style={st.stepperActionText}>−</Text>
-                        </TouchableOpacity>
-                        <Text style={st.stepperCountText}>{plainLine.quantity}</Text>
-                        <TouchableOpacity
-                          style={st.stepperActionBtn}
-                          onPress={() => updateQuantity(plainLine.cartKey, plainLine.quantity + 1)}
-                          disabled={plainLine.quantity >= MAX_ITEM_QTY}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        >
-                          <Text style={[st.stepperActionText, plainLine.quantity >= MAX_ITEM_QTY && { opacity: 0.4 }]}>+</Text>
-                        </TouchableOpacity>
-                      </View>
-                    ) : (
-                      <CartPressable
-                        style={[
-                          st.menuAddBtn,
-                          isAdded
-                            ? { backgroundColor: '#EF4F5F', borderColor: '#EF4F5F' }
-                            : { backgroundColor: '#FFF5F6', borderColor: '#EF4F5F' },
-                          (!isOpen || eliteLocked || stallOffline) && { backgroundColor: '#F3F4F6', borderColor: '#9CA3AF' },
-                        ]}
-                        onPress={() => handleAddToCart(item)}
-                        sound="addToCart"
-                      >
-                        <Text style={[
-                          st.menuAddBtnText,
-                          isAdded ? { color: '#fff' } : { color: '#EF4F5F' },
-                          (!isOpen || eliteLocked || stallOffline) && { color: '#6B7280' },
-                        ]}>
-                          {isAdded ? '✓ ADDED' : !isOpen || stallOffline ? 'CLOSED' : eliteLocked ? '👑 ELITE' : customizable && qtyInCart > 0 ? `ADD + (${qtyInCart})` : 'ADD +'}
-                        </Text>
-                      </CartPressable>
-                    )}
+                    <MenuAddControl
+                      itemId={itemId}
+                      soldOut={soldOut}
+                      customizable={customizable}
+                      isAdded={isAdded}
+                      blocked={!isOpen || eliteLocked || stallOffline}
+                      closed={!isOpen || stallOffline}
+                      eliteLocked={eliteLocked}
+                      tint={brand ? accent : '#EF4F5F'}
+                      onAdd={() => handleAddToCart(item)}
+                    />
                   </View>
                 </View>
               </CardPressable>
@@ -612,31 +667,8 @@ export default function RestaurantDetail() {
         <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* Floating Basket Bar */}
-      {totalItems > 0 && (
-        <FloatingPulse color={brand ? accent : '#EF4F5F'} style={st.floatingCartContainer}>
-          <DopaminePressable
-            style={[st.floatingCart, { backgroundColor: brand ? accent : '#EF4F5F', width: '100%' }]}
-            onPress={() => router.push('/(tabs)/basket' as any)}
-            sound="success"
-            activeScale={0.95}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', justifyContent: 'space-between', paddingHorizontal: 4 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <View style={st.badgeContainer}><Text style={st.badgeText}>{totalItems}</Text></View>
-                <View>
-                  <Text style={[st.floatingCartText, { color: '#fff' }]}>VIEW BASKET</Text>
-                  <Text style={{ fontSize: 9, fontWeight: '800', color: 'rgba(255,255,255,0.85)' }}>₹{totalPrice} ITEM TOTAL</Text>
-                </View>
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={[st.proceedText, { color: '#fff' }]}>Checkout</Text>
-                <Text style={{ fontSize: 16, color: '#fff', fontWeight: '900' }}>➔</Text>
-              </View>
-            </View>
-          </DopaminePressable>
-        </FloatingPulse>
-      )}
+      {/* Floating Basket Bar (own component: re-renders alone when the basket changes) */}
+      <RestaurantFloatingCart tint={brand ? accent : '#EF4F5F'} onOpen={openBasket} />
 
       {customizingItem && (
         <CustomizeDrawer

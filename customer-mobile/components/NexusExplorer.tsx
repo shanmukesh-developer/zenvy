@@ -5,7 +5,7 @@ import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
-import { useCart } from '../context/CartContext';
+import { useCartActions } from '../context/CartContext';
 import { useDietary } from '../context/DietaryContext';
 import DopaminePressable, { CardPressable, ActionPressable } from './DopaminePressable';
 import SafeImage from './SafeImage';
@@ -21,7 +21,7 @@ interface NexusExplorerProps {
 export default function NexusExplorer({ restaurants, activeCategory, onSelectItem }: NexusExplorerProps) {
   const router = useRouter();
   const { isDark } = useTheme();
-  const { addToCart } = useCart();
+  const { addToCart } = useCartActions();
   const { dietMode, isItemAllowed } = useDietary();
   const [activeFilter, setActiveFilter] = useState<'all' | 'veg'>('all');
   const [activeSort, setActiveSort] = useState<'recommended' | 'rating' | 'fastest'>('recommended');

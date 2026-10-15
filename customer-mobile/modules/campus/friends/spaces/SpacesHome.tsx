@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, FlatList, RefreshControl, ActivityIndicator, BackHandler, Alert, StyleSheet } from 'react-native';
-import { Plus, Radio, CalendarClock, Mic, ChevronUp, ShieldCheck } from 'lucide-react-native';
+import { Plus, Radio, CalendarClock, Mic, ChevronUp, ShieldCheck } from '../../../../components/lucide';
 import { FriendsColors, FS, FR, FT, fui, SectionTints } from '../friendsTheme';
 import { BrandFill } from '../shared/FriendsUi';
 import { FriendsSkeleton } from '../shared/FriendsSkeleton';
@@ -344,7 +344,7 @@ export const SpacesHome: React.FC<SpacesHomeProps> = ({ focusId, userId, active 
           const top = i === stack.length - 1;
           return (
             <View key={s.key} style={[styles.layer, !top && styles.hidden]} importantForAccessibility={top ? 'auto' : 'no-hide-descendants'} accessibilityElementsHidden={!top}>
-              <SpaceDetail id={s.route.id} initial={s.route.space} />
+              <SpaceDetail id={s.route.id} initial={s.route.space} active={active && top && !(room && roomVisible)} />
             </View>
           );
         })}

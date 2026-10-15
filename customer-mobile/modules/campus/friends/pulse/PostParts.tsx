@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, Modal, StyleSheet, Linking, Alert, ScrollView, useWindowDimensions, StyleProp, TextStyle } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Link2, X, ExternalLink } from 'lucide-react-native';
+import { Link2, X, ExternalLink } from '../../../../components/lucide';
 import { FriendsColors, FS, FR, FT } from '../friendsTheme';
 import { parsePulseText } from './pulseShared';
 

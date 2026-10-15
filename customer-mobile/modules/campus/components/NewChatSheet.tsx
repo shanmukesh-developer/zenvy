@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
-import { Search, Users, KeyRound, UserPlus, MessageSquarePlus, BadgeCheck } from 'lucide-react-native';
+import { Search, Users, KeyRound, UserPlus, MessageSquarePlus, BadgeCheck } from '../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { CampusColors } from '../../../constants/campusTheme';
 import {

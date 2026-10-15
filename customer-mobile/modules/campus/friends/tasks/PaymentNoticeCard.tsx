@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, Linking, StyleSheet } from 'react-native';
-import { ShieldAlert, ExternalLink, IndianRupee } from 'lucide-react-native';
+import { ShieldAlert, ExternalLink, IndianRupee } from '../../../../components/lucide';
 import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';
 import { FriendsSheet } from '../shared/FriendsSheet';
 import { PAYMENT_NOTICE, buildUpiLink, isValidUpiId } from '../api/tasksApi';

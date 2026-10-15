@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { WifiOff } from 'lucide-react-native';
+import { WifiOff } from '../../../../components/lucide';
 import { FriendsColors, FS, FT } from '../friendsTheme';
 import { FriendsButton, FadeIn } from './FriendsUi';
 

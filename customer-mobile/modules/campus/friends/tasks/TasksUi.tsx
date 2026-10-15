@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
-import { ChevronLeft, RotateCcw, Star } from 'lucide-react-native';
+import { ChevronLeft, RotateCcw, Star } from '../../../../components/lucide';
 import { FriendsColors, FS, FT, FR, fui, SectionTints } from '../friendsTheme';
 import { FriendsHeader } from '../shared/FriendsUi';
 import { taskErrorMessage, toneColor, toneSoft } from './tasksShared';

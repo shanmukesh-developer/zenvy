@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, StyleProp, ImageStyle, ImageSourcePropType } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Image, ImageProps } from 'expo-image';
 
+// Stand-in photos for food / product / place images only. People (a user's avatar, a rider) never get
+// a stock photo of a stranger: they fall back to a neutral person icon (or the caller's `fallback`).
 const LUXURY_FALLBACKS: Record<string, string> = {
-  avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400&q=70',
-  rider: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&q=70',
   food: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&q=70',
   biryani: 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=400&q=70',
   burger: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&q=70',
@@ -38,12 +39,14 @@ export function optimizeImageUri(uriString?: string | null, width = 400): string
   return uriString;
 }
 
-function getSmartFallback(uriString?: string | null): string {
+/** Stock fallback photo for a URI, or null when the image is of a person (no stock face is shown). */
+function getSmartFallback(uriString?: string | null): string | null {
   if (!uriString) return DEFAULT_FALLBACK_URI;
-  if (uriString.startsWith('data:image')) return LUXURY_FALLBACKS.avatar;
+  // Inline data images are user uploads (usually a profile photo).
+  if (uriString.startsWith('data:image')) return null;
   const lower = uriString.toLowerCase();
-  if (lower.includes('avatar') || lower.includes('profile') || lower.includes('user')) return LUXURY_FALLBACKS.avatar;
-  if (lower.includes('rider') || lower.includes('driver') || lower.includes('captain')) return LUXURY_FALLBACKS.rider;
+  if (lower.includes('avatar') || lower.includes('profile') || lower.includes('user')) return null;
+  if (lower.includes('rider') || lower.includes('driver') || lower.includes('captain')) return null;
   for (const [key, fallback] of Object.entries(LUXURY_FALLBACKS)) {
     if (lower.includes(key)) return fallback;
   }
@@ -54,6 +57,8 @@ interface SafeImageProps extends Omit<ImageProps, 'source' | 'style' | 'onError'
   source?: ImageSourcePropType | { uri?: string | null } | null;
   style?: StyleProp<ImageStyle>;
   fallbackUri?: string;
+  /** Shown instead of any fallback photo when the image is missing or fails (e.g. initials for an avatar). */
+  fallback?: React.ReactNode;
   /** Fade-in on load, ms. */
   fadeInDuration?: number;
   /** Width requested from Unsplash/Pexels (default 400; use ~800 for full-width heroes). */
@@ -68,6 +73,7 @@ interface SafeImageProps extends Omit<ImageProps, 'source' | 'style' | 'onError'
 export default function SafeImage({
   source,
   fallbackUri,
+  fallback,
   style,
   onError,
   fadeInDuration = 200,
@@ -80,9 +86,21 @@ export default function SafeImage({
 
   useEffect(() => { setHasError(false); }, [rawUri]);
 
+  const failed = typeof source !== 'number' && (hasError || !rawUri.trim());
+  // A person's photo that is missing / broken: the caller's placeholder, or a neutral person icon.
+  if (failed && (fallback !== undefined || !resolvedFallback)) {
+    const flat: any = StyleSheet.flatten(style as any) || {};
+    const iconSize = typeof flat.width === 'number' ? Math.max(12, Math.round(flat.width * 0.5)) : 20;
+    return (
+      <View style={[style as any, styles.container, styles.placeholder]}>
+        {fallback !== undefined ? fallback : <Ionicons name="person" size={iconSize} color="rgba(128, 128, 128, 0.65)" />}
+      </View>
+    );
+  }
+
   let imgSource: any;
   if (typeof source === 'number') imgSource = source;
-  else if (hasError || !rawUri.trim()) imgSource = { uri: resolvedFallback };
+  else if (failed) imgSource = { uri: resolvedFallback };
   else imgSource = { uri: optimizeImageUri(rawUri, maxWidth) };
 
   return (
@@ -108,6 +126,10 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: 'rgba(128, 128, 128, 0.08)',
     overflow: 'hidden',
+  },
+  placeholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 

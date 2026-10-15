@@ -85,7 +85,15 @@ interface CartContextType {
   handleDisconnect: () => void;
 }
 
-const CartContext = createContext<CartContextType | undefined>(undefined);
+/** Stable functions only: their identity never changes, so a component that only adds/removes never re-renders on a basket change. */
+export type CartActions = Pick<CartContextType,
+  'addToCart' | 'removeFromCart' | 'updateQuantity' | 'updateCustomName' | 'removeItems' | 'clearCart' | 'setCart'
+  | 'handleHostRoom' | 'handleJoinRoom' | 'handleDisconnect'>;
+/** Values that change with the basket / group-cart room. */
+export type CartState = Omit<CartContextType, keyof CartActions>;
+
+const CartActionsContext = createContext<CartActions | undefined>(undefined);
+const CartStateContext = createContext<CartState | undefined>(undefined);
 
 export const MAX_ITEM_QTY = 20;
 const ROOM_CODE_RE = /^ZN-[A-Z0-9]{4,8}$/;
@@ -141,6 +149,18 @@ const sanitizeIncomingCart = (incoming: any): CartItem[] | null => {
     }));
 };
 
+const mergeInto = (prev: CartItem[], line: CartItem): CartItem[] => {
+  const existing = prev.find((i) => i.cartKey === line.cartKey);
+  if (existing) {
+    return prev.map((i) =>
+      i.cartKey === line.cartKey
+        ? { ...i, quantity: Math.min(MAX_ITEM_QTY, i.quantity + line.quantity) }
+        : i
+    );
+  }
+  return [...prev, line];
+};
+
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const [cart, setCartState] = useState<CartItem[]>([]);
@@ -174,6 +194,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const userName = user?.name || 'Guest';
   const userId = String((user as any)?._id || (user as any)?.id || 'guest');
+  // The stable actions read the signed-in name/id from refs (never a stale closure).
+  const userNameRef = useRef(userName);
+  userNameRef.current = userName;
+  const userIdRef = useRef(userId);
+  userIdRef.current = userId;
 
   // Sync local changes to Room
   useEffect(() => {
@@ -266,7 +291,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }
   }, [setCart]);
 
-  const handleHostRoom = async () => {
+  const handleHostRoom = useCallback(async () => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let code = 'ZN-';
     // 8 characters (~1e12 codes) so live baskets can't be found by guessing codes.
@@ -278,9 +303,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setIsJoined(false);
     try { await AsyncStorage.setItem('zenvy_collab_session', JSON.stringify({ code, role: 'host' })); } catch {}
     initializeSocket(code, 'host');
-  };
+  }, [initializeSocket]);
 
-  const handleJoinRoom = async (inputCode: string) => {
+  const handleJoinRoom = useCallback(async (inputCode: string) => {
     if (!inputCode) return;
     let formatted = inputCode.trim().toUpperCase().replace(/\s+/g, '');
     if (!formatted.startsWith('ZN-')) formatted = `ZN-${formatted.replace(/^ZN/, '')}`;
@@ -293,9 +318,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setIsHosting(false);
     try { await AsyncStorage.setItem('zenvy_collab_session', JSON.stringify({ code: formatted, role: 'join' })); } catch {}
     initializeSocket(formatted, 'join');
-  };
+  }, [initializeSocket]);
 
-  const handleDisconnect = async () => {
+  const handleDisconnect = useCallback(async () => {
     if (socketRef.current) {
       socketRef.current.removeAllListeners();
       socketRef.current.disconnect();
@@ -308,7 +333,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setRoomMessage(null);
     lastSyncedCartRef.current = [];
     try { await AsyncStorage.removeItem('zenvy_collab_session'); } catch {}
-  };
+  }, []);
 
   // Load cart and collab state on start
   useEffect(() => {
@@ -363,19 +388,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }
   }, [cart, isLoaded]);
 
-  const mergeInto = (prev: CartItem[], line: CartItem): CartItem[] => {
-    const existing = prev.find((i) => i.cartKey === line.cartKey);
-    if (existing) {
-      return prev.map((i) =>
-        i.cartKey === line.cartKey
-          ? { ...i, quantity: Math.min(MAX_ITEM_QTY, i.quantity + line.quantity) }
-          : i
-      );
-    }
-    return [...prev, line];
-  };
-
-  const addToCart = (item: AddableItem): boolean => {
+  const addToCart = useCallback((item: AddableItem): boolean => {
     const id = String(item.id);
     const cartKey = generateCartKey(id, item.customizations);
     const basePrice = item.basePrice || item.price;
@@ -388,8 +401,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       quantity: Math.min(MAX_ITEM_QTY, Math.max(1, item.quantity || 1)),
       image: item.image || item.imageUrl || '',
       restaurantName: item.restaurantName || '',
-      addedBy: item.addedBy || userName,
-      addedById: item.addedById || userId,
+      addedBy: item.addedBy || userNameRef.current,
+      addedById: item.addedById || userIdRef.current,
     };
 
     const current = cartRef.current;
@@ -455,13 +468,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     cartRef.current = mergeInto(withoutStallAddOns(current), line);
     setCart((prev) => mergeInto(withoutStallAddOns(prev), line));
     return true;
-  };
+  }, [setCart]);
 
-  const removeFromCart = (cartKey: string) => {
+  const removeFromCart = useCallback((cartKey: string) => {
     setCart((prev) => prev.filter((i) => i.cartKey !== cartKey));
-  };
+  }, [setCart]);
 
-  const updateQuantity = (cartKey: string, qty: number) => {
+  const updateQuantity = useCallback((cartKey: string, qty: number) => {
     if (qty <= 0) {
       setCart((prev) => prev.filter((i) => i.cartKey !== cartKey));
       return;
@@ -471,21 +484,21 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       qty = MAX_ITEM_QTY;
     }
     setCart((prev) => prev.map((i) => (i.cartKey === cartKey ? { ...i, quantity: qty } : i)));
-  };
+  }, [setCart]);
 
-  const updateCustomName = (cartKey: string, name: string) => {
+  const updateCustomName = useCallback((cartKey: string, name: string) => {
     setCart((prev) => prev.map((i) =>
       i.cartKey === cartKey ? { ...i, customName: name, customizations: { ...i.customizations, cakeMessage: name } } : i
     ));
-  };
+  }, [setCart]);
 
-  const removeItems = ({ ids = [], names = [] }: { ids?: string[]; names?: string[] }) => {
+  const removeItems = useCallback(({ ids = [], names = [] }: { ids?: string[]; names?: string[] }) => {
     const idSet = new Set(ids.filter(Boolean).map(String));
     const nameSet = new Set(names.filter(Boolean).map((n) => String(n).trim().toLowerCase()));
     setCart((prev) => prev.filter((i) => !idSet.has(String(i.id)) && !nameSet.has(String(i.name).trim().toLowerCase())));
-  };
+  }, [setCart]);
 
-  const clearCart = () => setCart([]);
+  const clearCart = useCallback(() => setCart([]), [setCart]);
 
   // Logout or account switch: the basket and group-cart session belong to the previous account.
   // A guest who signs in keeps the basket they built.
@@ -501,27 +514,54 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
-  const quantityOf = (itemId: string) =>
-    cart.reduce((acc, i) => (String(i.id) === String(itemId) ? acc + i.quantity : acc), 0);
+  const quantityOf = useCallback((itemId: string) =>
+    cart.reduce((acc, i) => (String(i.id) === String(itemId) ? acc + i.quantity : acc), 0), [cart]);
 
-  const totalItems = cart.reduce((acc, item) => acc + item.quantity, 0);
-  const totalPrice = Math.round(cart.reduce((acc, item) => acc + item.price * item.quantity, 0) * 100) / 100;
+  const totalItems = useMemo(() => cart.reduce((acc, item) => acc + item.quantity, 0), [cart]);
+  const totalPrice = useMemo(
+    () => Math.round(cart.reduce((acc, item) => acc + item.price * item.quantity, 0) * 100) / 100,
+    [cart]
+  );
+
+  const actions = useMemo<CartActions>(() => ({
+    addToCart, removeFromCart, updateQuantity, updateCustomName, removeItems, clearCart, setCart,
+    handleHostRoom, handleJoinRoom, handleDisconnect,
+  }), [addToCart, removeFromCart, updateQuantity, updateCustomName, removeItems, clearCart, setCart,
+    handleHostRoom, handleJoinRoom, handleDisconnect]);
+
+  const state = useMemo<CartState>(() => ({
+    cart, quantityOf, totalItems, totalPrice,
+    roomCode, isHosting, isJoined, roomStatus, roomMessage,
+  }), [cart, quantityOf, totalItems, totalPrice, roomCode, isHosting, isJoined, roomStatus, roomMessage]);
 
   return (
-    <CartContext.Provider value={{
-      cart, addToCart, removeFromCart, updateQuantity, updateCustomName, removeItems, clearCart, setCart, quantityOf,
-      totalItems, totalPrice,
-      roomCode, isHosting, isJoined, roomStatus, roomMessage, handleHostRoom, handleJoinRoom, handleDisconnect,
-    }}>
-      {children}
-    </CartContext.Provider>
+    <CartActionsContext.Provider value={actions}>
+      <CartStateContext.Provider value={state}>
+        {children}
+      </CartStateContext.Provider>
+    </CartActionsContext.Provider>
   );
 }
 
-export const useCart = () => {
-  const context = useContext(CartContext);
-  if (!context) throw new Error('useCart must be used within CartProvider');
+/** Basket actions only (stable identities): a component using just this never re-renders when the basket changes. */
+export const useCartActions = (): CartActions => {
+  const context = useContext(CartActionsContext);
+  if (!context) throw new Error('useCartActions must be used within CartProvider');
   return context;
+};
+
+/** Basket contents, totals and group-cart room state (re-renders on every basket change). */
+export const useCartState = (): CartState => {
+  const context = useContext(CartStateContext);
+  if (!context) throw new Error('useCartState must be used within CartProvider');
+  return context;
+};
+
+/** Everything (state + actions). Re-renders on every basket change; prefer useCartActions where it is enough. */
+export const useCart = (): CartContextType => {
+  const actions = useCartActions();
+  const state = useCartState();
+  return useMemo(() => ({ ...state, ...actions }), [state, actions]);
 };
 
 // ── Server pricing (POST /api/orders/quote) ─────────────────────────────────

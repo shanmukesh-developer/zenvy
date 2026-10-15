@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, RefreshControl, BackHandler, StyleSheet, ActivityIndicator, Alert } from 'react-native';
-import { Search, HelpCircle, Star, Bookmark, PenLine, Gavel, Plus, ChevronRight, ShieldCheck, Sparkles, Hourglass } from 'lucide-react-native';
+import { Search, HelpCircle, Star, Bookmark, PenLine, Gavel, Plus, ChevronRight, ShieldCheck, Sparkles, Hourglass } from '../../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import type { CampusRole } from '../../../../types/campus';
 import { FriendsColors, FS, FT, FR, fui, SectionTints } from '../friendsTheme';

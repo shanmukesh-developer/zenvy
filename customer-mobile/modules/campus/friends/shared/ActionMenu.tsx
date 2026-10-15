@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, TouchableOpacity, Alert, Platform, ActivityIndicator } from 'react-native';
 import Clipboard from '@react-native-clipboard/clipboard';
-import { Flag, VolumeX, Volume2, Ban, Link, Trash2 } from 'lucide-react-native';
+import { Flag, VolumeX, Volume2, Ban, Link, Trash2 } from '../../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { FriendsSheet } from './FriendsSheet';
 import { ReportSheet, ReportTarget } from './ReportSheet';

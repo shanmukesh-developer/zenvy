@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, StyleSheet, Alert, AppState, BackHandler, Linking, Animated } from 'react-native';
-import { ChevronDown, Ellipsis, Mic, MicOff, Hand, LogOut, Wifi, WifiOff, Users, Radio, UserPlus, X, Hourglass, Ban, Headphones, RotateCcw } from 'lucide-react-native';
+import { ChevronDown, Ellipsis, Mic, MicOff, Hand, LogOut, Wifi, WifiOff, Users, Radio, UserPlus, X, Hourglass, Ban, Headphones, RotateCcw } from '../../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { requestRecordingPermissionsAsync } from 'expo-audio';
 import { FriendsColors, FS, FR, FT, fui, SectionTints } from '../friendsTheme';
