@@ -135,6 +135,9 @@ const riderOrderPayload = (order, restaurant, customer, { revealCustomer }) => {
   };
 };
 
+// Restaurant columns riderOrderPayload reads (incl. the rider-purchase judgement).
+const RIDER_REST_ATTRS = ['id', 'name', 'location', 'whatsappNumber', 'lat', 'lon', 'isOffline', 'password'];
+
 const notApproved = (res) => res.status(403).json({
   code: 'RIDER_NOT_APPROVED',
   message: 'Your account is pending verification by the logistics admin.'
@@ -264,7 +267,8 @@ const authPartner = async (req, res) => {
       isAvailable: partner.isAvailable,
       walletBalance: partner.walletBalance,
       zenPoints: partner.zenPoints || 0,
-      completedDeliveries: partner.completedDeliveries || 0,
+      // Live count (the completedDeliveries column is never updated; it always read 0).
+      completedDeliveries: await getOrderModel().count({ where: { deliveryPartnerId: partner.id, status: 'Delivered' } }).catch(() => null),
       rating: partner.averageRating ?? null, // null = no ratings yet
       averageRating: partner.averageRating ?? null,
       loginStreak: partner.loginStreak || 0,
@@ -335,8 +339,8 @@ const acceptOrderLocked = async (req, res) => {
       const current = await Order.findByPk(req.params.orderId);
       if (current && current.deliveryPartnerId === req.user.id && !['Cancelled', 'Delivered'].includes(current.status)) {
         const [restaurant, customer] = await Promise.all([
-          getRestaurantModel().findByPk(current.restaurantId),
-          getUserModel().findByPk(current.userId),
+          getRestaurantModel().findByPk(current.restaurantId, { attributes: RIDER_REST_ATTRS }),
+          getUserModel().findByPk(current.userId, { attributes: ['id', 'name', 'phone', 'hostelBlock'] }),
         ]);
         return res.json({
           ...riderOrderPayload(current, restaurant, customer, { revealCustomer: true }),
@@ -900,9 +904,11 @@ const getActiveOrders = async (req, res) => {
     const userIds = [...new Set(orders.map(o => o.userId))];
     const restIds = [...new Set(orders.map(o => o.restaurantId))];
     
+    // Only what the rider payload reads (polled every 12 s by every rider on duty): full rows dragged
+    // password hashes, token lists and base64 photos / menus through every poll.
     const [users, restaurants] = await Promise.all([
-      User.findAll({ where: { id: userIds } }),
-      Restaurant.findAll({ where: { id: restIds } })
+      User.findAll({ where: { id: userIds }, attributes: ['id', 'name', 'phone', 'hostelBlock'] }),
+      Restaurant.findAll({ where: { id: restIds }, attributes: ['id', 'name', 'location', 'whatsappNumber', 'lat', 'lon', ...require('../utils/riderPurchase').RIDER_PURCHASE_ATTRIBUTES] })
     ]);
 
     const userMap = Object.fromEntries(users.map(u => [u.id, u]));
@@ -1129,8 +1135,17 @@ const updateRiderProfile = async (req, res) => {
       });
     }
 
-    const { password, fcmTokens, ...safe } = partner.toJSON();
-    res.json({ ...safe, _id: partner.id, averageRating: partner.averageRating ?? null, rating: partner.averageRating ?? null });
+    const { password, fcmTokens, tokenVersion, ...safe } = partner.toJSON(); // eslint-disable-line no-unused-vars
+    // Same live count as GET /profile: the stored completedDeliveries column is never updated (always 0) and
+    // the app showed "0 deliveries" after every profile save.
+    const completedCount = await getOrderModel().count({ where: { deliveryPartnerId: partner.id, status: 'Delivered' } }).catch(() => null);
+    res.json({
+      ...safe,
+      _id: partner.id,
+      ...(completedCount !== null ? { completedCount, completedDeliveries: completedCount } : { completedDeliveries: undefined }),
+      averageRating: partner.averageRating ?? null,
+      rating: partner.averageRating ?? null,
+    });
   } catch (error) {
     serverError(res, '[RIDER_PROFILE_UPDATE_ERROR]', error);
   }
@@ -1341,28 +1356,57 @@ const removeFcmToken = async (req, res) => {
 
 // @desc    Rider SOS: stored on the rider row (so an admin who opens the dashboard later still sees
 //          it), sent live to the admin room and pushed to admin devices.
-// @route   POST /api/delivery/sos   { lat?, lng?, accuracy?, note? }
+// @route   POST /api/delivery/sos   { lat?, lng?, accuracy?, fixAt?, note? }
+//          fixAt = when the phone took that GPS fix (ms epoch): an old fix is marked stale for the admin.
 const SOS_REPEAT_MS = 30 * 1000;
+const SOS_FRESH_FIX_MS = 2 * 60 * 1000;
+const cleanSosNote = (v) => (typeof v === 'string' ? v.replace(/[<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 200) : '');
+// Where the rider is: the phone's fix, else their last live GPS (stale). Both carry `at` (ISO) when known.
+const sosLocationOf = (body, liveLocation, now = Date.now()) => {
+  const lat = Number(body.lat ?? body.latitude);
+  const lng = Number(body.lng ?? body.longitude);
+  const hasFix = Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && !(lat === 0 && lng === 0);
+  if (hasFix) {
+    const fixAt = Number(body.fixAt);
+    // A fix "from the future" (phone clock ahead) counts as now; only a clearly old one is stale.
+    const at = Number.isFinite(fixAt) && fixAt > 0 ? Math.min(fixAt, now) : null;
+    const accuracy = Number(body.accuracy);
+    return {
+      lat, lng,
+      ...(Number.isFinite(accuracy) && accuracy >= 0 ? { accuracy: Math.round(accuracy) } : {}),
+      ...(at ? { at: new Date(at).toISOString() } : {}),
+      ...(at && now - at > SOS_FRESH_FIX_MS ? { stale: true } : {}),
+    };
+  }
+  const live = liveLocation && typeof liveLocation === 'object' ? liveLocation : null;
+  if (live && Number.isFinite(Number(live.lat)) && Number.isFinite(Number(live.lng))) {
+    const ts = live.ts ? Date.parse(live.ts) : NaN;
+    return { lat: Number(live.lat), lng: Number(live.lng), stale: true, ...(Number.isFinite(ts) ? { at: new Date(ts).toISOString() } : {}) };
+  }
+  return null;
+};
 const triggerSos = async (req, res) => {
   try {
     const DeliveryPartner = getDeliveryPartnerModel();
-    const partner = await DeliveryPartner.findByPk(req.user.id, { attributes: ['id', 'name', 'phone', 'isSosActive', 'sosAt', 'liveLocation', 'currentOrderId'] });
+    const partner = await DeliveryPartner.findByPk(req.user.id, { attributes: ['id', 'name', 'phone', 'isSosActive', 'sosAt', 'sosNote', 'sosLocation', 'liveLocation', 'currentOrderId'] });
     if (!partner) return res.status(401).json({ message: 'Rider account not found' });
 
     const body = req.body || {};
-    const lat = Number(body.lat);
-    const lng = Number(body.lng);
-    const hasFix = Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && !(lat === 0 && lng === 0);
-    const live = partner.liveLocation && typeof partner.liveLocation === 'object' ? partner.liveLocation : null;
-    const location = hasFix
-      ? { lat, lng, ...(Number.isFinite(Number(body.accuracy)) ? { accuracy: Math.round(Number(body.accuracy)) } : {}) }
-      : (live && Number.isFinite(Number(live.lat)) && Number.isFinite(Number(live.lng)) ? { lat: Number(live.lat), lng: Number(live.lng), stale: true } : null);
-    const note = typeof body.note === 'string' ? body.note.replace(/[<>]/g, '').trim().slice(0, 200) : '';
     const now = new Date();
+    const fresh = sosLocationOf(body, partner.liveLocation, now.getTime());
+    const typedNote = cleanSosNote(body.note);
 
-    // A repeated tap within 30 s refreshes the location but does not re-page every admin.
+    // A repeated tap within 30 s refreshes the location but does not re-page every admin. A repeat
+    // without a new fix / note keeps what the first tap stored. A NEW SOS never shows the location or
+    // note of an older (resolved) one.
     const repeat = partner.isSosActive && partner.sosAt && now - new Date(partner.sosAt) < SOS_REPEAT_MS;
-    await DeliveryPartner.update({ isSosActive: true, sosAt: repeat ? partner.sosAt : now, ...(location ? { sosLocation: location } : {}) }, { where: { id: partner.id } });
+    const prevLocation = typeof partner.sosLocation === 'string' ? (() => { try { return JSON.parse(partner.sosLocation); } catch { return null; } })() : partner.sosLocation;
+    const location = repeat && (!fresh || (fresh.stale && prevLocation && !prevLocation.stale)) ? (prevLocation || fresh) : fresh;
+    const note = typedNote || (repeat ? cleanSosNote(partner.sosNote) : '');
+    await DeliveryPartner.update(
+      { isSosActive: true, sosAt: repeat ? partner.sosAt : now, sosLocation: location || null, sosNote: note || null },
+      { where: { id: partner.id } }
+    );
 
     const payload = {
       riderId: partner.id,
@@ -1407,5 +1451,6 @@ module.exports = {
   updateOrderStatus, toggleOnline, getOrderHistory, saveFcmToken, getLeaderboard,
   getRiderProfile, updateRiderProfile, getPublicRiderProfile, getTodayStats,
   cancelOrderByRider, changePassword, notifyArrivalAtGate,
-  getWeekStats, createRiderTicket, getRiderTickets, removeFcmToken, triggerSos
+  getWeekStats, createRiderTicket, getRiderTickets, removeFcmToken, triggerSos,
+  sosLocationOf
 };

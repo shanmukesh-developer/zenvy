@@ -53,8 +53,11 @@ export async function removeFcmToken(fcmToken: string, token?: string): Promise<
   await apiFetch('/delivery/fcm-token/remove', { method: 'POST', body: { fcmToken }, token });
 }
 
-/** SOS: pages the Zenvy admins (socket + push) with the rider's location. Server falls back to the last live location. */
-export async function sendSos(p: { lat?: number; lng?: number; note?: string }): Promise<void> {
+/**
+ * SOS: pages the Zenvy admins (socket + push) with the rider's location and note. `fixAt` is when the phone took
+ * the fix (an old one is shown to the admin as "last known"). No fix: the server uses the last live location.
+ */
+export async function sendSos(p: { lat?: number; lng?: number; accuracy?: number; fixAt?: number; note?: string }): Promise<void> {
   await apiFetch('/delivery/sos', { method: 'POST', body: p, timeoutMs: 20000 });
 }
 

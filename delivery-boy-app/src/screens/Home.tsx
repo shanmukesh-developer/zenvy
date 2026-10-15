@@ -107,6 +107,7 @@ export function HomeScreen() {
               order={hero}
               distance={distanceTo(hero, r.fix)}
               connected={r.connected}
+              covered={!!r.deliveryId || !!r.overlay}
               onAccept={() => r.accept(hero)}
               onSkip={() => r.skipOffer(hero.id)}
               onExpire={() => {
@@ -280,6 +281,7 @@ function OfferCard({
   order,
   distance,
   connected,
+  covered,
   onAccept,
   onSkip,
   onExpire,
@@ -287,6 +289,8 @@ function OfferCard({
   order: RiderOrder;
   distance: string | null;
   connected: boolean;
+  /** Home is under the delivery screen / an overlay: the rider cannot see this card, so its clock waits. */
+  covered: boolean;
   onAccept: () => Promise<boolean>;
   onSkip: () => void;
   onExpire: () => void;
@@ -345,7 +349,7 @@ function OfferCard({
           <PaymentPill order={order} />
           {chip ? <PillText text={chip.text} ready={chip.ready} /> : null}
         </View>
-        <Countdown seconds={OFFER_SECONDS} onDone={onExpire} paused={accepting} />
+        <Countdown seconds={OFFER_SECONDS} onDone={onExpire} paused={accepting || covered} />
         <Btn
           title={connected ? 'Accept order' : 'No internet'}
           icon={connected ? 'check-bold' : 'wifi-off'}

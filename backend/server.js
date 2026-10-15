@@ -1697,19 +1697,19 @@ const initializeApp = async () => {
           try {
             const { getDeliveryPartnerModel } = require('./models/DeliveryPartner');
             const DP = getDeliveryPartnerModel();
-            const partner = await DP.findByPk(socket.user.id, { attributes: ['id', 'name', 'phone', 'liveLocation', 'currentOrderId', 'isSosActive', 'sosAt'] });
+            const partner = await DP.findByPk(socket.user.id, { attributes: ['id', 'name', 'phone', 'liveLocation', 'currentOrderId', 'isSosActive', 'sosAt', 'sosNote', 'sosLocation'] });
             if (!partner) return;
-            const lat = Number(data.lat ?? data.latitude);
-            const lng = Number(data.lng ?? data.longitude);
-            const hasFix = Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && !(lat === 0 && lng === 0);
-            const live = partner.liveLocation && typeof partner.liveLocation === 'object' ? partner.liveLocation : null;
-            const location = hasFix
-              ? { lat, lng }
-              : (live && Number.isFinite(Number(live.lat)) && Number.isFinite(Number(live.lng)) ? { lat: Number(live.lat), lng: Number(live.lng), stale: true } : null);
+            // Coordinates only (no note: the legacy client has no note field). Same rules as the REST SOS.
+            const { sosLocationOf } = require('./controllers/deliveryPartnerController');
             const now = new Date();
+            const fresh = sosLocationOf({ lat: data.lat, lng: data.lng, latitude: data.latitude, longitude: data.longitude }, partner.liveLocation, now.getTime());
             const repeat = partner.isSosActive && partner.sosAt && now - new Date(partner.sosAt) < 30000;
+            const prevLocation = typeof partner.sosLocation === 'string' ? (() => { try { return JSON.parse(partner.sosLocation); } catch { return null; } })() : partner.sosLocation;
+            const location = repeat && (!fresh || (fresh.stale && prevLocation && !prevLocation.stale)) ? (prevLocation || fresh) : fresh;
+            // A new SOS never carries the note of an older, resolved one; a repeat keeps the note of the first tap.
+            const note = repeat && partner.sosNote ? String(partner.sosNote) : null;
             // Keep it on the rider row so an admin who opens the dashboard later still sees it.
-            await DP.update({ isSosActive: true, sosAt: repeat ? partner.sosAt : now, ...(location ? { sosLocation: location } : {}) }, { where: { id: partner.id } })
+            await DP.update({ isSosActive: true, sosAt: repeat ? partner.sosAt : now, sosLocation: location || null, sosNote: note }, { where: { id: partner.id } })
               .catch((e) => console.warn('[SOS_PERSIST_WARN]', e.message));
             const payload = {
               riderId: partner.id,
@@ -1720,6 +1720,7 @@ const initializeApp = async () => {
               lng: location ? location.lng : undefined,
               location,
               orderId: partner.currentOrderId || null,
+              note: note || undefined,
             };
             log(`[CRITICAL SOS] (legacy socket) rider ${partner.id} at ${payload.timestamp}`);
             io.to('admin-room').emit('sos_received', payload);

@@ -32,9 +32,10 @@ export function SupportScreen({ prefill, onBack }: { prefill?: string; onBack: (
     }
   }, []);
 
+  // Also reloads when support answers a ticket while this screen is open (socket ticket_updated).
   useEffect(() => {
     load();
-  }, [load]);
+  }, [load, r.ticketNonce]);
 
   const canSend = !!topic && text.trim().length >= 5;
 

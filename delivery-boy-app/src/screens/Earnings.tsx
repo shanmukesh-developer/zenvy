@@ -18,7 +18,8 @@ export function EarningsScreen() {
   }, []);
 
   const tKey = todayKey();
-  const weekKeys = useMemo(() => new Set(lastNDayKeys(7)), []);
+  // Recomputed when the IST day changes (the screen can stay open past midnight).
+  const weekKeys = useMemo(() => new Set(lastNDayKeys(7)), [tKey]);
   const rows = useMemo(() => {
     const list = r.history.data ?? [];
     return list.filter((o) => o.deliveredAt && (seg === 'today' ? istDayKey(o.deliveredAt) === tKey : weekKeys.has(istDayKey(o.deliveredAt))));
@@ -120,7 +121,7 @@ export function EarningsScreen() {
         {r.profile?.totalEarnings !== null && r.profile?.totalEarnings !== undefined ? (
           <Text style={[T.small, { color: C.muted, textAlign: 'center' }]}>
             Lifetime: {rupees(r.profile.totalEarnings)}
-            {r.profile.completedCount !== null ? ` · ${r.profile.completedCount} deliveries` : ''}
+            {r.profile.completedCount !== null ? ` · ${r.profile.completedCount} deliver${r.profile.completedCount === 1 ? 'y' : 'ies'}` : ''}
           </Text>
         ) : null}
       </View>

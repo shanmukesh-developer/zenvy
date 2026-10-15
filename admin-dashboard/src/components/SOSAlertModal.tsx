@@ -13,8 +13,8 @@ interface SOSData {
   timestamp?: string;
   lat?: number;
   lng?: number;
-  location?: { lat?: number; lng?: number } | null;
-  /** Rider's short note from the SOS button (live alerts only; not stored on the rider row). */
+  location?: { lat?: number; lng?: number; stale?: boolean; at?: string } | null;
+  /** Rider's short note from the SOS sheet (live alert, and stored on the rider row as sosNote). */
   note?: string;
   /** Order the rider was carrying when they pressed SOS. */
   orderId?: string | null;
@@ -51,12 +51,14 @@ function playSiren() {
 }
 
 /** JSON columns can arrive as an object or (SQLite) a JSON string. */
-const asLocation = (v: unknown): { lat?: number; lng?: number } | null => {
+const asLocation = (v: unknown, forceStale = false): { lat?: number; lng?: number; stale?: boolean; at?: string } | null => {
   let o = v;
   if (typeof o === 'string') { try { o = JSON.parse(o); } catch { return null; } }
   if (!o || typeof o !== 'object') return null;
-  const { lat, lng } = o as { lat?: unknown; lng?: unknown };
-  return lat == null || lng == null ? null : { lat: Number(lat), lng: Number(lng) };
+  const { lat, lng, stale, at, ts } = o as { lat?: unknown; lng?: unknown; stale?: unknown; at?: unknown; ts?: unknown };
+  if (lat == null || lng == null) return null;
+  const when = typeof at === 'string' ? at : typeof ts === 'string' ? ts : undefined;
+  return { lat: Number(lat), lng: Number(lng), ...(stale === true || forceStale ? { stale: true } : {}), ...(when ? { at: when } : {}) };
 };
 
 const coords = (s: SOSData) => {
@@ -113,7 +115,9 @@ export default function SOSAlertModal() {
         riderPhone: r.phone,
         timestamp: r.sosAt || r.updatedAt,
         // Where the rider was when they pressed SOS; their last live position only as a fallback.
-        location: asLocation(r.sosLocation) || asLocation(r.liveLocation),
+        location: asLocation(r.sosLocation) || asLocation(r.liveLocation, true),
+        note: typeof r.sosNote === 'string' && r.sosNote.trim() ? r.sosNote : undefined,
+        orderId: r.currentOrderId || null,
       }));
       if (seq !== loadSeq.current || getAuthState().status !== 'authed') return;
       const activeIds = new Set(active.map(s => s.riderId));
@@ -184,6 +188,11 @@ export default function SOSAlertModal() {
 
   const where = coords(current);
   const when = current.timestamp ? new Date(current.timestamp) : null;
+  // Not a live fix (old phone fix, or the rider's last GPS from before the SOS): say how old it is.
+  const fixAt = current.location?.at ? new Date(current.location.at) : null;
+  const staleText = current.location?.stale
+    ? `Last known location${fixAt && !Number.isNaN(fixAt.getTime()) ? ` (${fixAt.toLocaleString()})` : ''}, may be out of date ↗`
+    : null;
 
   return (
     <div role="alertdialog" aria-modal="true" aria-labelledby="sos-title" className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
@@ -198,7 +207,7 @@ export default function SOSAlertModal() {
         <p className="text-sm text-red-100 mb-2 font-mono break-all">ID: {current.riderId}{when && !Number.isNaN(when.getTime()) ? ` · ${when.toLocaleString()}` : ''}</p>
         {where && (
           <a className="block text-sm text-white underline mb-6" target="_blank" rel="noreferrer" href={`https://www.google.com/maps?q=${where.lat},${where.lng}`}>
-            Open last location on the map ↗
+            {staleText || 'Open location on the map ↗'}
           </a>
         )}
         {error && <p role="alert" className="text-sm font-bold text-white bg-black/30 rounded-xl px-4 py-2 mb-4">{error}</p>}

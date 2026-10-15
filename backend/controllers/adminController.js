@@ -890,7 +890,7 @@ exports.resetRiderSos = async (req, res) => {
     const DeliveryPartner = getDeliveryPartnerModel();
     const rider = await DeliveryPartner.findByPk(req.params.id);
     if (!rider) return res.status(404).json({ message: 'Rider not found' });
-    await rider.update({ isSosActive: false });
+    await rider.update({ isSosActive: false, sosNote: null });
     broadcastSystemUpdate(req, 'RIDER_SOS_RESET', { id: req.params.id });
     await logAuditAction(req, rider.id, 'FLEET_SOS_RESET', { name: rider.name });
     res.json({ message: 'SOS reset successful' });

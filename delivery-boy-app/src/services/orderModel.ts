@@ -43,6 +43,18 @@ export function digitsOnly(p: string | null | undefined): string {
   return String(p || '').replace(/\D/g, '');
 }
 
+/**
+ * Typed / pasted Indian mobile → its 10 digits ("+91 98765 43210", "098765 43210" → "9876543210").
+ * Anything else comes back as all its digits, so a caller can tell a wrong number from a right one
+ * (never "the last 10 digits" of a longer number).
+ */
+export function indianMobileDigits(v: string | null | undefined): string {
+  let d = digitsOnly(v);
+  if (d.length === 12 && d.startsWith('91')) d = d.slice(2);
+  else if (d.length === 11 && d.startsWith('0')) d = d.slice(1);
+  return d;
+}
+
 /** A real phone number we can dial (rejects 'Hidden', '', etc). */
 export function isDialable(p: string | null | undefined): boolean {
   return /\d{10}/.test(digitsOnly(p));

@@ -67,10 +67,12 @@ interface RiderContextValue {
   /** Tracking is on but "Allow all the time" is not: the live map stops when the rider switches to Maps. */
   backgroundLocationOff: boolean;
   allowBackgroundLocation: () => Promise<void>;
-  /** POST /delivery/sos with the last GPS fix. true when Zenvy got it. */
-  sendSos: () => Promise<boolean>;
+  /** POST /delivery/sos with the rider's note and the best GPS fix. true when Zenvy got it. */
+  sendSos: (note?: string) => Promise<boolean>;
   cancelNotice: CancelNotice | null;
   toast: ToastMsg | null;
+  /** Bumps when Zenvy support answers / updates one of this rider's tickets (the Help screen reloads). */
+  ticketNonce: number;
   // navigation
   tab: Tab;
   setTab: (t: Tab) => void;
@@ -139,6 +141,7 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
   const [deliveryId, setDeliveryId] = useState<string | null>(null);
   const [overlay, setOverlay] = useState<Overlay>(null);
   const [bootNonce, setBootNonce] = useState(0);
+  const [ticketNonce, setTicketNonce] = useState(0);
 
   const connected = useNetwork();
   const appActive = useAppActive();
@@ -348,11 +351,18 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
     );
   }, [endSession]);
 
+  // Bumps on every duty change: a profile read that started before (or during) a duty switch carries the old
+  // isOnline and must not flip the switch back (the server would be on duty while the app shows OFFLINE).
+  const dutySeq = useRef(0);
+  const dutyBusyRef = useRef(false);
+
   const refreshProfile = useCallback(async () => {
     const ep = epoch.current;
+    const ds = dutySeq.current;
     try {
-      const p = await api.fetchProfile(profileRef.current);
+      let p = await api.fetchProfile(profileRef.current);
       if (ep !== epoch.current) return;
+      if (ds !== dutySeq.current || dutyBusyRef.current) p = { ...p, isOnline: isOnlineRef.current };
       applyProfile(p);
       if (!p.isApproved && phaseRef.current === 'main') setPhase('pending');
     } catch {
@@ -687,7 +697,10 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
         showToast(`${from ? from + ' sent' : 'You got'} a ₹${Math.round(amount)} tip`, 'success');
         refreshProfile();
       },
-      onTicketUpdated: () => showToast('Zenvy support replied to your ticket.', 'info'),
+      onTicketUpdated: () => {
+        showToast('Zenvy support replied to your ticket.', 'info');
+        setTicketNonce((n) => n + 1);
+      },
       // Live pool (riders_online room): refetch at once instead of waiting for the poll / push.
       onDeliveryRequest: () => {
         if (isOnlineRef.current) refreshPending();
@@ -778,10 +791,14 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
     await gps.requestBackgroundLocation();
   }, []);
 
-  const sendSos = useCallback(async () => {
-    const f = gps.getLastFix();
+  const sendSos = useCallback(async (note?: string) => {
+    const f = await gps.getSosFix();
+    const text = (note ?? '').replace(/\s+/g, ' ').trim().slice(0, 200);
     try {
-      await api.sendSos(f ? { lat: f.lat, lng: f.lng } : {});
+      await api.sendSos({
+        ...(f ? { lat: f.lat, lng: f.lng, fixAt: f.ts, ...(f.accuracy !== null ? { accuracy: f.accuracy } : {}) } : {}),
+        ...(text ? { note: text } : {}),
+      });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
       showToast('SOS sent. The Zenvy team will call you now.', 'success');
       return true;
@@ -851,6 +868,8 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
         return false;
       }
       setDutyBusy(true);
+      dutyBusyRef.current = true;
+      dutySeq.current++;
       try {
         const v = await api.setOnline(next);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -869,6 +888,8 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
         if (!isUnapprovedError(e)) showToast(errorMessage(e), 'error');
         return false;
       } finally {
+        dutySeq.current++;
+        dutyBusyRef.current = false;
         setDutyBusy(false);
       }
     },
@@ -1050,10 +1071,26 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
   const saveProfileEdits = useCallback(
     async (p: ProfileEdits) => {
       const raw = await api.updateProfile(p);
-      applyProfile(api.toProfile({ ...raw, isOnline: isOnlineRef.current }, profileRef.current));
+      // Only the edited fields come from this answer: its stats (delivery count, rating) are raw columns, not
+      // the live counts GET /profile computes, and its isOnline may be older than the duty switch.
+      const edited = api.toProfile(raw, profileRef.current);
+      const prev = profileRef.current;
+      applyProfile(
+        prev
+          ? {
+              ...prev,
+              name: edited.name,
+              vehicleType: edited.vehicleType,
+              vehicleNumber: edited.vehicleNumber,
+              emergencyContact: edited.emergencyContact,
+              photoUrl: edited.photoUrl,
+            }
+          : { ...edited, isOnline: isOnlineRef.current },
+      );
       showToast('Profile saved.', 'success');
+      refreshProfile();
     },
-    [applyProfile, showToast],
+    [applyProfile, refreshProfile, showToast],
   );
 
   const changePassword = useCallback(async (currentPassword: string, newPassword: string) => {
@@ -1097,6 +1134,7 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
       locationDenied,
       cancelNotice,
       toast,
+      ticketNonce,
       tab,
       setTab,
       deliveryId,
@@ -1148,6 +1186,7 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
       locationDenied,
       cancelNotice,
       toast,
+      ticketNonce,
       tab,
       setTab,
       deliveryId,

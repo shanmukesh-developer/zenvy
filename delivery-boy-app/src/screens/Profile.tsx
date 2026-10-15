@@ -11,6 +11,7 @@ import { useVoice } from '../voice/useVoice';
 import { LANG_LABEL } from '../voice/phrases';
 import * as links from '../services/links';
 import { errorMessage } from '../services/apiClient';
+import { indianMobileDigits } from '../services/orderModel';
 import { SUPPORT_PHONE } from '../config';
 
 const VEHICLES = ['Bicycle', 'Scooter', 'Motorcycle', 'E-bike'];
@@ -67,7 +68,7 @@ export function ProfileScreen() {
             <Text style={[T.body, { color: C.ink2 }]}>+91 {p.phone}</Text>
             <Text style={[T.small, { color: C.muted }]}>
               {rating}
-              {p.completedCount !== null ? ` · ${p.completedCount} deliveries` : ''}
+              {p.completedCount !== null ? ` · ${p.completedCount} deliver${p.completedCount === 1 ? 'y' : 'ies'}` : ''}
             </Text>
           </View>
         </Card>
@@ -182,8 +183,11 @@ function EditProfileSheet({ visible, onClose }: { visible: boolean; onClose: () 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
-  const emergencyDigits = emergency.replace(/\D/g, '').slice(-10);
-  const valid = name.trim().length >= 2 && (emergencyDigits.length === 0 || emergencyDigits.length === 10);
+  // "+91 98765 43210" (pasted from contacts) is 9876543210; a number that is not 10 digits is refused, never cut
+  // down to its last 10 digits (that saved a wrong emergency number).
+  const emergencyDigits = indianMobileDigits(emergency);
+  const emergencyOk = emergencyDigits.length === 0 || /^\d{10}$/.test(emergencyDigits);
+  const valid = name.trim().length >= 2 && emergencyOk;
 
   const save = async () => {
     setError(null);
@@ -219,8 +223,8 @@ function EditProfileSheet({ visible, onClose }: { visible: boolean; onClose: () 
         </View>
       </View>
       <Field label="VEHICLE NUMBER" value={vehicleNumber} onChangeText={setVehicleNumber} autoCapitalize="characters" placeholder="e.g. AP 39 AB 1234" />
-      <Field label="EMERGENCY CONTACT (10 DIGITS)" value={emergency} onChangeText={setEmergency} keyboardType="phone-pad" maxLength={14} />
-      <ErrorLine text={error} />
+      <Field label="EMERGENCY CONTACT (10 DIGITS)" value={emergency} onChangeText={setEmergency} keyboardType="phone-pad" maxLength={18} />
+      <ErrorLine text={error ?? (emergencyOk ? null : 'Enter a 10-digit mobile number for your emergency contact.')} />
     </Sheet>
   );
 }

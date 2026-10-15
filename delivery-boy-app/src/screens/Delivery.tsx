@@ -136,7 +136,8 @@ export function DeliveryScreen({ orderId, onClose }: { orderId: string; onClose:
   } else if (step === 'AT_STORE') {
     title = order.buyAtStore ? 'Buy at store' : 'Pick up order';
     const allTicked = order.items.length === 0 || ticked.size >= order.items.length;
-    const kitchen = atStoreKitchenLabel(order);
+    // Buy-at-store: the shop has no Zenvy app, so "Kitchen preparing" / "Food packed" would be invented.
+    const kitchen = order.buyAtStore ? null : atStoreKitchenLabel(order);
     body = (
       <>
         <View style={{ gap: 2 }}>

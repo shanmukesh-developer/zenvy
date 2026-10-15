@@ -30,6 +30,21 @@ const runSweepMigrations = async (sequelize) => {
     } catch (err) {
       console.warn('⚠️ [SWEEP_MIGRATION_WARN] VerificationLogs.details check:', err.message);
     }
+
+    // Rider support tickets (POST /api/delivery/support) set riderId and leave userId NULL. Tickets tables
+    // created before that change still have userId NOT NULL (sync() never relaxes a constraint), so every
+    // rider ticket failed with a 500. DROP NOT NULL is idempotent and does not rewrite the table.
+    try {
+      const [rows] = await sequelize.query(
+        `SELECT is_nullable FROM information_schema.columns WHERE table_name = 'Tickets' AND column_name = 'userId' LIMIT 1;`
+      );
+      if (rows && rows[0] && String(rows[0].is_nullable || '').toUpperCase() === 'NO') {
+        await step('Tickets.userId nullable', 'ALTER TABLE "Tickets" ALTER COLUMN "userId" DROP NOT NULL;');
+        console.log('✅ [SWEEP_MIGRATION] Tickets.userId is now nullable (rider tickets).');
+      }
+    } catch (err) {
+      console.warn('⚠️ [SWEEP_MIGRATION_WARN] Tickets.userId check:', err.message);
+    }
   }
 
   // One row per (user, client key). Partial unique indexes (Postgres and SQLite both support

@@ -16,6 +16,8 @@ export interface Fix {
   lng: number;
   heading: number | null;
   speed: number | null;
+  /** Metres (68% radius), null when the phone did not say. */
+  accuracy: number | null;
   ts: number;
 }
 
@@ -39,13 +41,17 @@ let fgGranted = false;
 const BG_TASK = 'zenvy-rider-location';
 const BG_ASKED_KEY = '@zenvy_rider_bg_location_asked';
 
+// Idle has no distance filter: a rider waiting on duty at one spot (outside a store, at the hostel gate) must
+// still report every 30-60 s. With a 50 / 100 m filter a parked rider sent nothing, the server's last fix went
+// older than RIDER_FRESH_MINUTES (10) and dispatch ranked them last for new-order pushes. Balanced accuracy
+// (Wi-Fi / cell) at that interval stays cheap on battery.
 const WATCH_OPTS: Record<TrackingMode, Location.LocationOptions> = {
   active: { accuracy: Location.Accuracy.High, timeInterval: 5000, distanceInterval: 15 },
-  idle: { accuracy: Location.Accuracy.Balanced, timeInterval: 30000, distanceInterval: 50 },
+  idle: { accuracy: Location.Accuracy.Balanced, timeInterval: 30000, distanceInterval: 0 },
 };
 const BG_OPTS: Record<TrackingMode, Location.LocationTaskOptions> = {
   active: { accuracy: Location.Accuracy.High, timeInterval: 10000, distanceInterval: 15 },
-  idle: { accuracy: Location.Accuracy.Balanced, timeInterval: 60000, distanceInterval: 100, deferredUpdatesInterval: 60000 },
+  idle: { accuracy: Location.Accuracy.Balanced, timeInterval: 60000, distanceInterval: 0, deferredUpdatesInterval: 60000 },
 };
 
 // ── Background permission state (Home banner) ──────────────────────────────
@@ -79,6 +85,7 @@ function toFix(loc: Location.LocationObject): Fix {
     lng: loc.coords.longitude,
     heading: Number.isFinite(loc.coords.heading ?? NaN) && (loc.coords.heading ?? -1) >= 0 ? loc.coords.heading : null,
     speed: Number.isFinite(loc.coords.speed ?? NaN) && (loc.coords.speed ?? -1) >= 0 ? loc.coords.speed : null,
+    accuracy: Number.isFinite(loc.coords.accuracy ?? NaN) && (loc.coords.accuracy ?? -1) >= 0 ? loc.coords.accuracy : null,
     ts: loc.timestamp,
   };
 }
@@ -237,6 +244,32 @@ async function applyWatch(): Promise<void> {
 
 export function getLastFix(): Fix | null {
   return lastFix;
+}
+
+const SOS_FRESH_MS = 60 * 1000;
+
+/**
+ * Best position for an SOS, within ~6 s: a fix from the last minute, else a new one (only when location is
+ * already allowed: no permission popup in an emergency), else the newest of the phone's last known position
+ * and our last fix. The caller sends `ts` along so the server can tell the admin how old it is.
+ */
+export async function getSosFix(): Promise<Fix | null> {
+  const known = lastFix;
+  if (known && Date.now() - known.ts < SOS_FRESH_MS) return known;
+  try {
+    const perm = await Location.getForegroundPermissionsAsync();
+    if (perm.status !== 'granted') return known;
+    const current = await Promise.race([
+      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }).then(toFix),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 6000)),
+    ]).catch(() => null);
+    if (current) return current;
+    const last = await Location.getLastKnownPositionAsync().then((l) => (l ? toFix(l) : null)).catch(() => null);
+    if (last && (!known || last.ts > known.ts)) return last;
+  } catch {
+    // fall back to what we have
+  }
+  return known;
 }
 
 export async function startTracking(onFix: (f: Fix) => void, nextMode: TrackingMode = mode): Promise<'granted' | 'denied'> {

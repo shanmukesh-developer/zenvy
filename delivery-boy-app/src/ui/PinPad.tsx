@@ -20,6 +20,10 @@ export function PinPad({
   length?: number;
 }) {
   const shake = useRef(new Animated.Value(0)).current;
+  // Latest value, also between renders: two quick taps in one frame both read the same `value` prop and the
+  // second digit replaced the first.
+  const latest = useRef(value);
+  latest.current = value;
   useEffect(() => {
     if (!shakeKey) return;
     Animated.sequence([
@@ -33,9 +37,14 @@ export function PinPad({
   const press = (k: string) => {
     if (disabled) return;
     Haptics.selectionAsync().catch(() => {});
-    if (k === 'clear') onChange('');
-    else if (k === 'del') onChange(value.slice(0, -1));
-    else if (value.length < length) onChange(value + k);
+    const cur = latest.current;
+    let next = cur;
+    if (k === 'clear') next = '';
+    else if (k === 'del') next = cur.slice(0, -1);
+    else if (cur.length < length) next = cur + k;
+    if (next === cur) return;
+    latest.current = next;
+    onChange(next);
   };
 
   const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'clear', '0', 'del'];
