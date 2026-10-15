@@ -205,6 +205,16 @@ exports.getRestaurantById = async (req, res) => {
     }
 
     const openState = getStoreOpenState(restaurant);
+    // CampusBites stalls: rating only from real order ratings, plus today's hours for the stall page.
+    const stallExtra = {};
+    if (isLocalVendorStore(restaurant)) {
+      const rated = (await require('../utils/storeRatings').realRatingsFor([restaurant.id])).get(String(restaurant.id));
+      stallExtra.rating = rated ? rated.rating : null;
+      stallExtra.ratingCount = rated ? rated.ratingCount : 0;
+      stallExtra.hoursToday = require('../utils/storeHours').todayHoursText(restaurant);
+      stallExtra.fulfilment = 'VENDOR';
+      stallExtra.paymentMethods = ['COD'];
+    }
     res.json({ 
       ...resObj, 
       _id: restaurant.id, 
@@ -216,6 +226,7 @@ exports.getRestaurantById = async (req, res) => {
       isOpen: openState.isOpen,
       opensAt: openState.opensAt || null,
       closedReason: openState.isOpen ? null : (openState.message || null),
+      ...stallExtra,
       menu: sortMenuItems(menu).map(m => {
         const mObj = stripItemSecrets(m.toJSON());
         let mTags = mObj.tags || [];
@@ -1065,6 +1076,19 @@ exports.updateGlobalConfig = async (req, res) => {
     const key = typeof req.body?.key === 'string' ? req.body.key.trim() : '';
     if (!key || key.length > 100) return res.status(400).json({ message: 'Config key is required (up to 100 characters).' });
     if (value === undefined) return res.status(400).json({ message: 'Config value is required.' });
+    // Retention windows (cron/retentionCron.js): whole days, at least 1.
+    const retention = require('../cron/retentionCron');
+    if (key === retention.KEYS.chat || key === retention.KEYS.pulse) {
+      const n = typeof value === 'number' || (typeof value === 'string' && value.trim() !== '') ? Number(value) : NaN;
+      if (!Number.isInteger(n) || n < retention.MIN_DAYS || n > retention.MAX_DAYS) {
+        return res.status(400).json({ message: `${key} must be a whole number of days from ${retention.MIN_DAYS} to ${retention.MAX_DAYS}.` });
+      }
+      const [, createdR] = await GlobalConfig.upsert({ key, value: n, description: description || (key === retention.KEYS.chat ? 'Days chat messages are kept before deletion' : 'Days Pulse posts are kept before deletion') });
+      retention.clearRetentionCache();
+      broadcastSystemUpdate(req, 'GLOBAL_CONFIG_UPDATED', { key, value: n });
+      realtime.publish('config', 'updated', key, { scope: 'retention' });
+      return res.json({ key, value: n, created: createdR });
+    }
     const [_config, created] = await GlobalConfig.upsert({ key, value, description });
     broadcastSystemUpdate(req, 'GLOBAL_CONFIG_UPDATED', { key, value });
     realtime.publish('config', 'updated', key, { scope: 'global' });

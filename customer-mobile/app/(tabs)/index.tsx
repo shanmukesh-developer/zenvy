@@ -1214,7 +1214,7 @@ export default function HomeScreen() {
         <View style={{ height: 20 }} />
 
         {/* ── CAMPUSBITES: LOCAL VENDORS ── */}
-        <CampusBitesSection restaurants={restaurants} />
+        <CampusBitesSection restaurants={restaurants} loading={loading} />
 
         <View style={{ height: 100 }} />
       </ScrollView>

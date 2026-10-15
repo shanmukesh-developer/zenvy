@@ -181,45 +181,40 @@ const GROCERY_CATEGORIES = [
 
 const SEARCH_PLACEHOLDERS = ["Search for 'rice'", "Search for 'chips'", "Search for 'curd'", "Search for 'atta'", "Search for 'ghee'", "Search for 'toys'", "Search for 'seeds'"];
 
+// Shelf tiles only: each tile's badge ("UP TO x% OFF" / "FROM ₹y") is computed from the real catalogue.
 const TOY_MANIA_CATEGORIES = [
   {
     title: 'Vehicle toys',
-    badge: 'STARTING @ RS. 49',
     image: 'https://images.unsplash.com/photo-1594787318286-3d835c1d207f?w=200&q=80',
     bg: '#E0F2FE',
     badgeBg: '#0284C7'
   },
   {
     title: 'Learning & education',
-    badge: 'UP TO 80% OFF',
     image: 'https://images.unsplash.com/photo-1516627145497-ae6968895b74?w=200&q=80',
     bg: '#ECFDF5',
     badgeBg: '#059669'
   },
   {
     title: 'Sports & games',
-    badge: 'STARTING @ RS. 49',
     image: 'https://images.unsplash.com/photo-1531565637446-32307b194362?w=200&q=80',
     bg: '#FFF7ED',
     badgeBg: '#EA580C'
   },
   {
     title: 'Games & plushies',
-    badge: 'STARTING @ RS. 49',
     image: 'https://images.unsplash.com/photo-1606167668584-78701c57f13d?w=200&q=80',
     bg: '#F3E8FF',
     badgeBg: '#7C3AED'
   },
   {
     title: 'Baby & toddler toys',
-    badge: 'UP TO 80% OFF',
     image: 'https://images.unsplash.com/photo-1555448248-2571daf6344b?w=200&q=80',
     bg: '#FDF2F8',
     badgeBg: '#DB2777'
   },
   {
     title: 'Fitness ready',
-    badge: 'STARTING @ RS. 99',
     image: 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?w=200&q=80',
     bg: '#FEF9C3',
     badgeBg: '#CA8A04'

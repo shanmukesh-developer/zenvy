@@ -31,6 +31,8 @@ const run = async (sequelize, { log = true } = {}) => {
   const alias = require('../services/alias');
   const trends = require('../services/trends');
   const campusOf = new Map();
+  const { pulseDays } = await require('../../../cron/retentionCron').getRetentionPolicy();
+  const keepSince = new Date(Date.now() - pulseDays * 24 * 60 * 60 * 1000);
   let lastCreatedAt = null;
   let lastId = null;
 
@@ -38,7 +40,9 @@ const run = async (sequelize, { log = true } = {}) => {
     const where = lastCreatedAt
       ? { [Op.or]: [{ createdAt: { [Op.gt]: lastCreatedAt } }, { createdAt: lastCreatedAt, id: { [Op.gt]: lastId } }] }
       : {};
-    const batch = await Whisper.findAll({ where, order: [['createdAt', 'ASC'], ['id', 'ASC']], limit: BATCH });
+    // Whispers older than the Pulse retention window are not imported: the retention job would only
+    // delete them again (and the next boot would re-import them).
+    const batch = await Whisper.findAll({ where: { [Op.and]: [where, { createdAt: { [Op.gte]: keepSince } }] }, order: [['createdAt', 'ASC'], ['id', 'ASC']], limit: BATCH });
     if (!batch.length) break;
     lastCreatedAt = batch[batch.length - 1].createdAt;
     lastId = batch[batch.length - 1].id;

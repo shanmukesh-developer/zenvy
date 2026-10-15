@@ -696,7 +696,10 @@ const initCampusSocket = (io) => {
         if (!roomSlug) return;
         if (typeof roomSlug !== 'string' || roomSlug.length > 80) return;
         const room = await getProximityRoomModel().findOne({ where: { slug: roomSlug } });
-        if (!room || room.isActive === false) {
+        // Campus spots belong to one campus (or to every campus when campusId is empty).
+        const { spotVisibleTo } = require('./controllers/proximityController');
+        const { campusScopeFor } = require('./campusHelpers');
+        if (!spotVisibleTo(room, room && room.campusId ? (await campusScopeFor(userId)).campusId : null)) {
           if (ack) ack({ error: 'Room not found' });
           return;
         }

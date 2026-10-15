@@ -178,4 +178,23 @@ const normalizeOperatingHours = (input) => {
   return weekly ? { start, end, weekly } : { start, end };
 };
 
-module.exports = { getStoreOpenState, getCampusServiceability, formatTime, DAY_KEYS, normalizeOperatingHours };
+// Today's hours as shown on a store card (IST): "9:00 AM – 10:00 PM", "Open 24 hours", "Closed today",
+// or null when the store has no hours set.
+const todayHoursText = (restaurant, now = new Date()) => {
+  const hours = readHours(restaurant);
+  if (!hours) return null;
+  const weekly = readWeekly(hours);
+  if (weekly) {
+    const day = weekly[DAY_KEYS[istDayIndex(now)]];
+    if (!day || !day.open) return 'Closed today';
+    if (day.start === day.end) return 'Open 24 hours';
+    return `${formatTime(day.startText)} – ${formatTime(day.endText)}`;
+  }
+  const start = toMinutes(hours.start);
+  const end = toMinutes(hours.end);
+  if (start === null || end === null) return null;
+  if (start === end) return 'Open 24 hours';
+  return `${formatTime(hours.start)} – ${formatTime(hours.end)}`;
+};
+
+module.exports = { getStoreOpenState, getCampusServiceability, formatTime, todayHoursText, DAY_KEYS, normalizeOperatingHours };

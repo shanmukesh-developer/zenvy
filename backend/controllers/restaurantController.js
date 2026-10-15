@@ -3,7 +3,7 @@ const { getMenuItemModel } = require('../models/MenuItem');
 const { getOrderModel } = require('../models/Order');
 const jwt = require('jsonwebtoken');
 const { Op } = require('sequelize');
-const { getStoreOpenState, normalizeOperatingHours } = require('../utils/storeHours');
+const { getStoreOpenState, normalizeOperatingHours, todayHoursText } = require('../utils/storeHours');
 const { isLocalVendorStore, LOCAL_VENDOR_TYPES } = require('../utils/vendorTypes');
 const { sortMenuItems } = require('../utils/menuSort');
 
@@ -655,15 +655,39 @@ const getLocalVendors = async (req, res) => {
       : [];
     const menuByVendor = groupByRestaurant(allMenuItems);
 
+    // Ratings come only from real delivered-order ratings (no stored / invented store score).
+    const ratingByVendor = await require('../utils/storeRatings').realRatingsFor(vendorIds);
+
+    // Stall campus (free text such as 'SRM') matched to the real campus list (code or name).
+    const { getCampusModel } = require('../modules/campus/models/Campus');
+    const CampusModel = getCampusModel && getCampusModel();
+    const campuses = CampusModel ? await CampusModel.findAll({ where: { isActive: true }, attributes: ['id', 'code', 'name'] }) : [];
+    const norm = (x) => String(x || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const campusFor = (raw) => {
+      const k = norm(raw);
+      if (!k) return null;
+      return campuses.find((c) => norm(c.code) === k || norm(c.name) === k)
+        || (k.length >= 3 ? campuses.find((c) => norm(c.code).startsWith(k) || norm(c.name).startsWith(k)) : null)
+        || null;
+    };
+
     const augmented = vendors.map(v => {
       const vJson = applyFeaturedExpiry(stripStoreSecrets(v.toJSON()));
       vJson._id = vJson.id;
       const open = getStoreOpenState(v);
       vJson.isOpen = open.isOpen && !v.isOffline;
       vJson.opensAt = open.opensAt || null;
+      vJson.closesAt = vJson.isOpen ? (open.closesAt || null) : null;
+      vJson.hoursToday = todayHoursText(v);
       vJson.closedReason = vJson.isOpen ? null : (open.message || `${v.name} is not taking orders on Zenvy right now.`);
       vJson.fulfilment = 'VENDOR';
       vJson.paymentMethods = ['COD'];
+      const rated = ratingByVendor.get(String(v.id));
+      vJson.rating = rated ? rated.rating : 0;
+      vJson.ratingCount = rated ? rated.ratingCount : 0;
+      const campus = campusFor(v.campus);
+      vJson.campusCode = campus ? campus.code : null;
+      vJson.campusName = campus ? campus.name : null;
       vJson.menu = (menuByVendor.get(v.id) || [])
         .map(m => {
           const item = stripItemSecrets(m.toJSON());
@@ -674,6 +698,12 @@ const getLocalVendors = async (req, res) => {
         });
       return vJson;
     });
+    // Featured (premium) stalls first, then open before closed, then by real rating.
+    augmented.sort((a, b) =>
+      ((b.subscriptionTier === 'premium') - (a.subscriptionTier === 'premium'))
+      || ((b.isOpen === true) - (a.isOpen === true))
+      || ((b.rating || 0) - (a.rating || 0))
+      || String(a.name || '').localeCompare(String(b.name || '')));
 
     res.json(augmented);
   } catch (error) {

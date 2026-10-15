@@ -60,6 +60,46 @@ const runCampusMigrations = async (sequelize) => {
       // Column already exists
     }
   }
+
+  // Campus spots (proximity_rooms) are admin-managed: emoji + sort order, and coordinates optional.
+  for (const col of [{ name: 'emoji', type: 'VARCHAR(16)' }, { name: 'sortOrder', type: 'INTEGER DEFAULT 0' }]) {
+    try {
+      if (dialect === 'sqlite') {
+        await sequelize.query(`ALTER TABLE "proximity_rooms" ADD COLUMN "${col.name}" ${col.type};`);
+      } else {
+        await sequelize.query(`ALTER TABLE "proximity_rooms" ADD COLUMN IF NOT EXISTS "${col.name}" ${col.type};`);
+      }
+    } catch (_err) {
+      // Column already exists
+    }
+  }
+  if (dialect === 'sqlite') {
+    // Local dev only: SQLite cannot drop NOT NULL in place; Sequelize rebuilds this small table.
+    try {
+      const qi = sequelize.getQueryInterface();
+      const desc = await qi.describeTable('proximity_rooms');
+      for (const col of ['latitude', 'longitude']) {
+        if (desc[col] && desc[col].allowNull === false) {
+          await qi.changeColumn('proximity_rooms', col, { type: require('sequelize').DataTypes.DOUBLE, allowNull: true });
+        }
+      }
+    } catch (err) {
+      console.warn('⚠️ [CAMPUS_MIGRATION_WARN] proximity_rooms coordinates nullable (sqlite):', err.message);
+    }
+  } else {
+    for (const col of ['latitude', 'longitude']) {
+      try {
+        await sequelize.query(`ALTER TABLE "proximity_rooms" ALTER COLUMN "${col}" DROP NOT NULL;`);
+      } catch (err) {
+        console.warn(`⚠️ [CAMPUS_MIGRATION_WARN] proximity_rooms.${col} nullable:`, err.message);
+      }
+    }
+  }
+  try {
+    await require('../controllers/proximityController').retireLegacyDefaultSpots();
+  } catch (err) {
+    console.warn('⚠️ [CAMPUS_MIGRATION_WARN] retire default campus spots:', err.message);
+  }
 };
 
 module.exports = { runCampusMigrations };

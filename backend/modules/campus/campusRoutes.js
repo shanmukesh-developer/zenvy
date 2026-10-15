@@ -79,6 +79,18 @@ const {
 // Campus list changes almost never: 5 min server cache + ETag (realtime 'campus' publishes clear it).
 router.get('/campuses', require('../../utils/responseCache').cacheGet('campus', { ttlMs: 5 * 60 * 1000 }), getCampuses);
 
+// Retention policy shown in the apps ("Messages disappear after 7 days"); admin GlobalConfig keys.
+router.get('/retention', async (req, res) => {
+  try {
+    const { chatDays, pulseDays } = await require('../../cron/retentionCron').getRetentionPolicy();
+    res.set('Cache-Control', 'public, max-age=300');
+    res.json({ chatDays, pulseDays });
+  } catch (err) {
+    console.error('[RETENTION_POLICY_ERR]', err.message);
+    res.status(500).json({ message: 'Something went wrong. Please try again.' });
+  }
+});
+
 // Media: one upload for every campus image; served from a short URL with long cache headers.
 // GET is public by unguessable id (ID cards need the owner/admin token or a signed link).
 router.post('/media', protect, parseUpload, uploadMedia);
@@ -179,6 +191,14 @@ router.post('/admin/events', protect, admin, pulseAdmin.createEvent);
 router.put('/admin/events/:id', protect, admin, pulseAdmin.updateEvent);
 router.delete('/admin/events/:id', protect, admin, pulseAdmin.deleteEvent);
 router.put('/admin/daily-question', protect, admin, pulseAdmin.upsertDailyQuestion);
+
+// Admin: Campus spots (open chat rooms per campus). Only admin-created spots exist.
+const spotAdmin = require('./controllers/spotAdminController');
+router.get('/admin/spots', protect, admin, spotAdmin.listSpots);
+router.post('/admin/spots', protect, admin, spotAdmin.createSpot);
+router.put('/admin/spots/reorder', protect, admin, spotAdmin.reorderSpots);
+router.put('/admin/spots/:id', protect, admin, spotAdmin.updateSpot);
+router.delete('/admin/spots/:id', protect, admin, spotAdmin.deleteSpot);
 
 // ── Zenvy Friends (Campus Buddy > Friends) ────────────────────────────────────
 // Mounted last so the existing /pulse/* routes above keep answering first. Each sub-tab router is a

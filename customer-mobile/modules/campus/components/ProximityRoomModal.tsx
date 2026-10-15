@@ -18,32 +18,18 @@ import {
   X,
   MapPin,
   Send,
-  Users,
   Radio,
-  BookOpen,
-  Utensils,
-  Dumbbell,
   ShieldCheck,
   Wifi,
   WifiOff,
-  Sofa,
-  Mic,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { CampusColors, CampusLayout } from '../../../constants/campusTheme';
 import { CampusUserData } from '../../../types/campus';
 import { fetchProximityRoomMessages, ProximityMessageItem } from '../campusApi';
 import { connectCampusSocket } from '../campusSocketClient';
+import { SPOT_ICON_MAP } from './LiveZones';
 
-const ICON_MAP: Record<string, any> = {
-  BookOpen,
-  Utensils,
-  Dumbbell,
-  Users,
-  MapPin,
-  Sofa,
-  Mic,
-};
 
 interface ProximityRoomModalProps {
   visible: boolean;
@@ -65,6 +51,7 @@ export const ProximityRoomModal: React.FC<ProximityRoomModalProps> = ({
     name: string;
     subtitle: string;
     icon: string;
+    emoji?: string | null;
     activeUserCount: number;
   } | null>(null);
   const [activeUsers, setActiveUsers] = useState(0);
@@ -260,7 +247,7 @@ export const ProximityRoomModal: React.FC<ProximityRoomModalProps> = ({
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  const IconComponent = roomMeta ? ICON_MAP[roomMeta.icon] || MapPin : MapPin;
+  const IconComponent = roomMeta ? SPOT_ICON_MAP[roomMeta.icon] || MapPin : MapPin;
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
@@ -276,7 +263,7 @@ export const ProximityRoomModal: React.FC<ProximityRoomModalProps> = ({
           </TouchableOpacity>
           <View style={styles.headerTitleWrap}>
             <View style={styles.headerTitleRow}>
-              <IconComponent size={16} color={CampusColors.accent} />
+              {roomMeta?.emoji ? <Text style={{ fontSize: 15 }}>{roomMeta.emoji}</Text> : <IconComponent size={16} color={CampusColors.accent} />}
               <Text style={styles.headerTitle}>
                 {roomMeta?.name || roomSlug}
               </Text>
@@ -284,6 +271,7 @@ export const ProximityRoomModal: React.FC<ProximityRoomModalProps> = ({
             <Text style={styles.headerSubtitle}>
               {roomMeta?.subtitle || 'Open campus spot chat'}
             </Text>
+            <Text style={styles.headerSubtitle}>Messages here disappear after 24 hours.</Text>
           </View>
           <View style={styles.liveBadge}>
             <Animated.View style={{ opacity: pulseAnim }}>

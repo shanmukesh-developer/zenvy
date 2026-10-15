@@ -778,10 +778,13 @@ export interface ProximityRoomItem {
   slug: string;
   subtitle: string;
   icon: string;
+  /** Admin-set emoji for the spot card (null = show the icon). */
+  emoji?: string | null;
   category: string;
-  latitude: number;
-  longitude: number;
-  radiusMeters: number;
+  sortOrder?: number;
+  latitude: number | null;
+  longitude: number | null;
+  radiusMeters: number | null;
   activeUserCount: number;
   isNearby: boolean;
   distance: number | null;
@@ -803,6 +806,7 @@ export interface ProximityRoomDetail {
     slug: string;
     subtitle: string;
     icon: string;
+    emoji?: string | null;
     category: string;
     activeUserCount: number;
   };

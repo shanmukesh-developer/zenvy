@@ -1,59 +1,33 @@
 const { Op } = require('sequelize');
 const { getProximityRoomModel, getProximityMessageModel } = require('../models/ProximityRoom');
 
-// Default proximity rooms seeded per campus (configurable later)
-const DEFAULT_ROOMS = [
-  {
-    name: 'Central Library 2F',
-    slug: 'library-study',
-    subtitle: 'Quiet Study Zone • 2nd Floor West Wing',
-    icon: 'BookOpen',
-    category: 'library',
-    latitude: 16.4486,
-    longitude: 80.6235,
-    radiusMeters: 200,
-  },
-  {
-    name: 'Canteen & Mess Hall 1',
-    slug: 'mess-hall-1',
-    subtitle: 'Dining Hall • Near Ganga Block',
-    icon: 'Utensils',
-    category: 'dining',
-    latitude: 16.4478,
-    longitude: 80.6242,
-    radiusMeters: 150,
-  },
-  {
-    name: 'Indoor Sports Arena',
-    slug: 'sports-complex',
-    subtitle: 'Badminton, TT & Gym Complex',
-    icon: 'Dumbbell',
-    category: 'sports',
-    latitude: 16.4495,
-    longitude: 80.6250,
-    radiusMeters: 200,
-  },
-  {
-    name: 'Hostel Common Room',
-    slug: 'hostel-common',
-    subtitle: 'Yamuna Block • Ground Floor',
-    icon: 'Sofa',
-    category: 'hostel',
-    latitude: 16.4470,
-    longitude: 80.6238,
-    radiusMeters: 100,
-  },
-  {
-    name: 'Amphitheatre Lawn',
-    slug: 'amphitheatre',
-    subtitle: 'Events & Open Mic Area',
-    icon: 'Mic',
-    category: 'common',
-    latitude: 16.4490,
-    longitude: 80.6228,
-    radiusMeters: 250,
-  },
-];
+// Campus spots are created by admins only (admin dashboard > Campus Spots). The five rooms the app
+// used to seed on first load are retired once (disabled, kept so an admin can re-enable or delete them).
+const LEGACY_DEFAULT_SLUGS = ['library-study', 'mess-hall-1', 'sports-complex', 'hostel-common', 'amphitheatre'];
+const LEGACY_RETIRED_KEY = 'CAMPUS_SPOTS_DEFAULTS_RETIRED';
+
+const retireLegacyDefaultSpots = async () => {
+  const ProximityRoom = getProximityRoomModel();
+  const GlobalConfig = ProximityRoom.sequelize.models.GlobalConfig;
+  if (!GlobalConfig) return 0;
+  if (await GlobalConfig.findOne({ where: { key: LEGACY_RETIRED_KEY } })) return 0;
+  const [n] = await ProximityRoom.update(
+    { isActive: false },
+    { where: { slug: { [Op.in]: LEGACY_DEFAULT_SLUGS }, campusId: null } }
+  );
+  await GlobalConfig.findOrCreate({
+    where: { key: LEGACY_RETIRED_KEY },
+    defaults: { value: true, description: 'Built-in campus spots were disabled once; spots are admin-managed now' },
+  });
+  if (n) console.log(`[CAMPUS_SPOTS] Disabled ${n} old built-in campus spot(s); manage spots in the admin dashboard.`);
+  return n;
+};
+
+/** May this user see / join this spot? Spots without a campus are for everyone. */
+const spotVisibleTo = (room, campusId) =>
+  !!room && room.isActive !== false && (!room.campusId || (campusId && String(room.campusId) === String(campusId)));
+
+const spotOrder = [['sortOrder', 'ASC'], ['name', 'ASC']];
 
 // Haversine formula: distance in meters between two lat/lng points
 const haversineDistance = (lat1, lon1, lat2, lon2) => {
@@ -69,31 +43,19 @@ const haversineDistance = (lat1, lon1, lat2, lon2) => {
   return R * c;
 };
 
-// Seed default rooms if they don't exist
-const seedDefaultRooms = async () => {
-  const ProximityRoom = getProximityRoomModel();
-  for (const room of DEFAULT_ROOMS) {
-    const existing = await ProximityRoom.findOne({ where: { slug: room.slug } });
-    if (!existing) {
-      await ProximityRoom.create(room);
-    }
-  }
-};
-
 // GET /api/campus/proximity/rooms?lat=&lng=
+// Active spots for the student's campus plus spots meant for every campus, in the admin's order.
 const getProximityRooms = async (req, res) => {
   try {
     const ProximityRoom = getProximityRoomModel();
-    
-    // Seed defaults if needed
-    const count = await ProximityRoom.count();
-    if (count === 0) {
-      await seedDefaultRooms();
-    }
-
+    const { campusScopeFor } = require('../campusHelpers');
+    const { campusId } = await campusScopeFor(req.user.id);
     const rooms = await ProximityRoom.findAll({
-      where: { isActive: true },
-      order: [['name', 'ASC']],
+      where: {
+        isActive: true,
+        [Op.or]: campusId ? [{ campusId: null }, { campusId: String(campusId) }] : [{ campusId: null }],
+      },
+      order: spotOrder,
     });
     // Lazy require: campusSocket requires this module's models at load time.
     const { getProximityLiveCount } = require('../campusSocket');
@@ -105,19 +67,19 @@ const getProximityRooms = async (req, res) => {
     const result = rooms.map((room) => {
       let distance = null;
       let isNearby = false;
-
-      if (!isNaN(userLat) && !isNaN(userLng)) {
+      if (!isNaN(userLat) && !isNaN(userLng) && room.latitude != null && room.longitude != null) {
         distance = Math.round(haversineDistance(userLat, userLng, room.latitude, room.longitude));
-        isNearby = distance <= room.radiusMeters;
+        isNearby = distance <= (room.radiusMeters || 150);
       }
-
       return {
         id: room.id,
         name: room.name,
         slug: room.slug,
-        subtitle: room.subtitle,
+        subtitle: room.subtitle || '',
         icon: room.icon,
+        emoji: room.emoji || null,
         category: room.category,
+        sortOrder: room.sortOrder || 0,
         latitude: room.latitude,
         longitude: room.longitude,
         radiusMeters: room.radiusMeters,
@@ -125,14 +87,6 @@ const getProximityRooms = async (req, res) => {
         isNearby,
         distance,
       };
-    });
-
-    // Sort: nearby first, then by distance
-    result.sort((a, b) => {
-      if (a.isNearby && !b.isNearby) return -1;
-      if (!a.isNearby && b.isNearby) return 1;
-      if (a.distance != null && b.distance != null) return a.distance - b.distance;
-      return b.activeUserCount - a.activeUserCount;
     });
 
     res.json({ rooms: result });
@@ -149,7 +103,8 @@ const getProximityMessages = async (req, res) => {
     const ProximityMessage = getProximityMessageModel();
 
     const room = await ProximityRoom.findOne({ where: { slug: String(req.params.slug || '').slice(0, 80) } });
-    if (!room || room.isActive === false) return res.status(404).json({ message: 'Room not found' });
+    const { campusScopeFor } = require('../campusHelpers');
+    if (!spotVisibleTo(room, (await campusScopeFor(req.user.id)).campusId)) return res.status(404).json({ message: 'Room not found' });
 
     const limit = Math.min(parseInt(req.query.limit) || 50, 100);
 
@@ -177,8 +132,9 @@ const getProximityMessages = async (req, res) => {
         id: room.id,
         name: room.name,
         slug: room.slug,
-        subtitle: room.subtitle,
+        subtitle: room.subtitle || '',
         icon: room.icon,
+        emoji: room.emoji || null,
         category: room.category,
         activeUserCount: getProximityLiveCount(room.slug),
       },
@@ -204,7 +160,8 @@ const postProximityMessage = async (req, res) => {
     const ProximityMessage = getProximityMessageModel();
 
     const room = await ProximityRoom.findOne({ where: { slug: String(req.params.slug || '').slice(0, 80) } });
-    if (!room || room.isActive === false) return res.status(404).json({ message: 'Room not found' });
+    const { campusScopeFor } = require('../campusHelpers');
+    if (!spotVisibleTo(room, (await campusScopeFor(req.user.id)).campusId)) return res.status(404).json({ message: 'Room not found' });
 
     const { text } = req.body || {};
     if (typeof text !== 'string' || !text.trim()) {
@@ -246,6 +203,8 @@ module.exports = {
   getProximityRooms,
   getProximityMessages,
   postProximityMessage,
-  seedDefaultRooms,
+  retireLegacyDefaultSpots,
+  spotVisibleTo,
   haversineDistance,
+  LEGACY_DEFAULT_SLUGS,
 };

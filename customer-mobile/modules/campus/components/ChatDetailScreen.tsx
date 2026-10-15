@@ -36,6 +36,7 @@ import { pickImageAsset, prepareAndUploadImage, resolveMediaUrl, ImageUploadErro
 import { CampusColors, CampusLayout } from '../../../constants/campusTheme';
 import { CampusUserData } from '../../../types/campus';
 import { fetchChatMessages } from '../campusApi';
+import { useRetentionPolicy, daysLabel } from '../useRetentionPolicy';
 import { PollsSheet } from './PollsSheet';
 import {
   connectCampusSocket,
@@ -107,6 +108,7 @@ export const ChatDetailScreen: React.FC<ChatDetailScreenProps> = ({
   const [loadingMore, setLoadingMore] = useState(false);
 
   const flatListRef = useRef<FlatList>(null);
+  const retention = useRetentionPolicy();
   const typingTimeoutRef = useRef<any>(null);
   const isTypingRef = useRef(false);
   const loadingOlderRef = useRef(false);
@@ -616,19 +618,22 @@ export const ChatDetailScreen: React.FC<ChatDetailScreenProps> = ({
             flatListRef.current?.scrollToEnd({ animated: true });
           }}
           ListHeaderComponent={
-            hasMore ? (
-              <TouchableOpacity
-                style={styles.loadEarlierBtn}
-                onPress={loadOlder}
-                disabled={loadingMore}
-              >
-                {loadingMore ? (
-                  <ActivityIndicator size="small" color={CampusColors.accent} />
-                ) : (
-                  <Text style={styles.loadEarlierText}>Load earlier messages</Text>
-                )}
-              </TouchableOpacity>
-            ) : null
+            <>
+              {hasMore ? (
+                <TouchableOpacity
+                  style={styles.loadEarlierBtn}
+                  onPress={loadOlder}
+                  disabled={loadingMore}
+                >
+                  {loadingMore ? (
+                    <ActivityIndicator size="small" color={CampusColors.accent} />
+                  ) : (
+                    <Text style={styles.loadEarlierText}>Load earlier messages</Text>
+                  )}
+                </TouchableOpacity>
+              ) : null}
+              <Text style={styles.retentionNote}>Messages disappear after {daysLabel(retention.chatDays)}.</Text>
+            </>
           }
           renderItem={({ item }) => {
             const isMe = item.senderId === currentUser?.id || item.senderId === 'me';
@@ -978,6 +983,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
   },
+  retentionNote: { textAlign: 'center', fontSize: 11, color: CampusColors.muted, marginVertical: 8 },
   loadEarlierText: {
     fontSize: 13,
     fontWeight: '600',

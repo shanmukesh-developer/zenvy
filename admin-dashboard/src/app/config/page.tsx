@@ -23,6 +23,14 @@ interface Serviceability {
 const DELIVERY_FEE_KEY = 'delivery_fee';
 const DEFAULT_DELIVERY_FEE = 30; // backend fallback in utils/orderPricing.js
 const MAX_DELIVERY_FEE = 200;
+// Retention windows read by backend/cron/retentionCron.js (whole days, minimum 1).
+const RETENTION = [
+  { key: 'CHAT_RETENTION_DAYS', label: 'Chat messages', def: 7, hint: 'DMs, groups, task / Connect chats and campus spot rooms. Shown in every chat.' },
+  { key: 'PULSE_RETENTION_DAYS', label: 'Pulse posts', def: 30, hint: 'Whole threads (replies, likes, polls). Posts under an open report or appeal are kept until resolved.' },
+] as const;
+// Internal one-time markers the backend reads (not settings) are hidden from the list below too.
+const MANAGED_KEYS: string[] = [...RETENTION.map(r => r.key), 'CAMPUS_SPOTS_DEFAULTS_RETIRED'];
+const MAX_RETENTION_DAYS = 3650;
 
 const formatValue = (value: unknown) => {
   if (Array.isArray(value)) return value.join(', ');
@@ -43,6 +51,11 @@ export default function ConfigTerminal() {
   const [feeError, setFeeError] = useState<string | null>(null);
   const [feeNotice, setFeeNotice] = useState<string | null>(null);
 
+  const [retInputs, setRetInputs] = useState<Record<string, string>>({});
+  const [savingRet, setSavingRet] = useState<string | null>(null);
+  const [retError, setRetError] = useState<string | null>(null);
+  const [retNotice, setRetNotice] = useState<string | null>(null);
+
   const fetchAll = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
@@ -56,6 +69,9 @@ export default function ConfigTerminal() {
       setServiceability(svc);
       const fee = list.find(c => c.key === DELIVERY_FEE_KEY)?.value;
       setFeeInput(String(fee ?? DEFAULT_DELIVERY_FEE));
+      const ret: Record<string, string> = {};
+      for (const r of RETENTION) ret[r.key] = String(list.find(c => c.key === r.key)?.value ?? r.def);
+      setRetInputs(ret);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Could not load the configuration.');
     } finally {
@@ -69,7 +85,35 @@ export default function ConfigTerminal() {
 
   const feeRow = configs.find(c => c.key === DELIVERY_FEE_KEY);
   const currentFee = Number(feeRow?.value ?? DEFAULT_DELIVERY_FEE);
-  const otherRows = configs.filter(c => c.key !== DELIVERY_FEE_KEY);
+  const otherRows = configs.filter(c => c.key !== DELIVERY_FEE_KEY && !MANAGED_KEYS.includes(c.key));
+
+  const handleSaveRetention = async (key: string, label: string, def: number) => {
+    if (savingRet) return;
+    setRetError(null);
+    setRetNotice(null);
+    const raw = (retInputs[key] || '').trim();
+    const days = raw === '' ? NaN : Number(raw);
+    if (!Number.isInteger(days) || days < 1 || days > MAX_RETENTION_DAYS) {
+      setRetError(`${label}: enter a whole number of days from 1 to ${MAX_RETENTION_DAYS}.`);
+      return;
+    }
+    const current = Number(configs.find(c => c.key === key)?.value ?? def);
+    if (days === current) {
+      setRetNotice('No change to save.');
+      return;
+    }
+    if (days < current && !confirm(`Shorten ${label.toLowerCase()} retention from ${current} to ${days} day(s)? Older items are permanently deleted on the next hourly run.`)) return;
+    setSavingRet(key);
+    try {
+      await apiRequest('/api/admin/config', { method: 'POST', body: JSON.stringify({ key, value: days }) });
+      setRetNotice(`${label} are now kept for ${days} day(s).`);
+      await fetchAll();
+    } catch (err) {
+      setRetError(err instanceof Error ? err.message : 'Could not save the retention setting.');
+    } finally {
+      setSavingRet(null);
+    }
+  };
 
   const handleSaveFee = async () => {
     if (savingFee) return;
@@ -213,6 +257,48 @@ export default function ConfigTerminal() {
             <p className="text-xs text-gray-500">Could not read the live ordering status.</p>
           )}
         </div>
+      </div>
+
+      {/* Data retention: read by the backend's hourly cleanup job */}
+      <div className="glass-card p-10 space-y-6">
+        <div className="flex items-center gap-4">
+          <div className="w-10 h-10 bg-rose-600/20 rounded-xl flex items-center justify-center text-xl">🧹</div>
+          <div>
+            <h4 className="text-lg font-black text-white uppercase tracking-tight">Data Retention</h4>
+            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Hourly cleanup permanently deletes older items · minimum 1 day</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {RETENTION.map(r => (
+            <div key={r.key} className="space-y-2">
+              <label htmlFor={`ret-${r.key}`} className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">{r.label} (days)</label>
+              <div className="flex items-end gap-3">
+                <input
+                  id={`ret-${r.key}`}
+                  type="number"
+                  min={1}
+                  max={MAX_RETENTION_DAYS}
+                  step={1}
+                  value={retInputs[r.key] ?? ''}
+                  onChange={(e) => { setRetInputs(prev => ({ ...prev, [r.key]: e.target.value })); setRetError(null); setRetNotice(null); }}
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl p-4 text-white font-black"
+                />
+                <button
+                  onClick={() => handleSaveRetention(r.key, r.label, r.def)}
+                  disabled={!!savingRet}
+                  className="px-6 py-4 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-2xl text-[10px] font-black uppercase tracking-widest text-white"
+                >
+                  {savingRet === r.key ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+              <p className="text-[11px] text-gray-500">
+                {r.hint} {!configs.some(c => c.key === r.key) && `(server default ${r.def} days, not set in the database yet)`}
+              </p>
+            </div>
+          ))}
+        </div>
+        {retError && <p className="text-xs font-bold text-red-400">{retError}</p>}
+        {retNotice && <p className="text-xs font-bold text-emerald-400">{retNotice}</p>}
       </div>
 
       {/* Other stored keys: shown honestly as not enforced */}

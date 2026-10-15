@@ -561,6 +561,8 @@ const initializeApp = async () => {
       await require('./config/sweepMigrations').runSweepMigrations(require('./config/db').getSequelize());
     } catch (e) { console.warn('[SWEEP_MIGRATION_WARN]', e.message); }
     try { initWallCron(); } catch (e) { console.error('[WALL_CRON_INIT_ERR]', e); }
+    // Chat messages (7 days) and Pulse posts (30 days) retention; windows are admin GlobalConfig keys.
+    try { require('./cron/retentionCron').initRetentionCron(); } catch (e) { console.error('[RETENTION_CRON_INIT_ERR]', e); }
 
     app.get('/auth-helper', (req, res) => {
       res.removeHeader('X-Frame-Options');

@@ -1,13 +1,20 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { MapPin, BookOpen, Utensils, Dumbbell, Users, Sofa, Mic, Wifi, ChevronRight } from 'lucide-react-native';
+import {
+  MapPin, BookOpen, Utensils, Dumbbell, Users, Sofa, Mic, Coffee, Music, Gamepad2, Trees, Bus, Laptop, Building,
+  Wifi, ChevronRight,
+} from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { CampusColors } from '../../../constants/campusTheme';
 import { fetchProximityRooms, ProximityRoomItem } from '../campusApi';
 import ShimmerLoader from '../../../components/ShimmerLoader';
+import { useLiveSync } from '../../../utils/useLiveSync';
 import { T, S, R } from '../ui';
 
-const ICON_MAP: Record<string, any> = { BookOpen, Utensils, Dumbbell, Users, MapPin, Sofa, Mic };
+/** Icons an admin can pick for a spot (backend spotAdminController ICONS). */
+export const SPOT_ICON_MAP: Record<string, any> = {
+  MapPin, BookOpen, Utensils, Dumbbell, Users, Sofa, Mic, Coffee, Music, Gamepad2, Trees, Bus, Laptop, Building,
+};
 
 const CATEGORY_COLORS: Record<string, { bg: string; fg: string }> = {
   library: { bg: CampusColors.accentSoft, fg: CampusColors.accentDeep },
@@ -19,8 +26,9 @@ const CATEGORY_COLORS: Record<string, { bg: string; fg: string }> = {
 };
 
 /**
- * Campus spot chat rooms (library, mess, gym…). Open rooms anyone on campus can drop into;
- * the app does not use your location.
+ * Campus spot chat rooms (library, mess, gym…). Spots are created by admins per campus; the app shows
+ * only what the server returns (nothing when there are none) and refreshes when an admin edits them.
+ * The app does not use your location.
  */
 export const LiveZones: React.FC<{ onOpenRoom: (slug: string) => void; refreshKey?: number }> = ({ onOpenRoom, refreshKey }) => {
   const [rooms, setRooms] = useState<ProximityRoomItem[]>([]);
@@ -52,6 +60,13 @@ export const LiveZones: React.FC<{ onOpenRoom: (slug: string) => void; refreshKe
     load();
   }, [load, refreshKey]);
 
+  // Admin created / edited / disabled / reordered a spot: refetch silently.
+  useLiveSync({
+    types: ['campus'],
+    filter: (e) => !e.scope || e.scope === 'spots',
+    onChange: () => { load(); },
+  });
+
   if (loading) {
     return (
       <View style={{ flexDirection: 'row', gap: S.md }}>
@@ -60,30 +75,35 @@ export const LiveZones: React.FC<{ onOpenRoom: (slug: string) => void; refreshKe
       </View>
     );
   }
-  if (error || rooms.length === 0) {
+  if (error && rooms.length === 0) {
     return (
       <TouchableOpacity style={styles.empty} onPress={() => { setLoading(true); load(); }} activeOpacity={0.7}>
-        <Text style={T.muted}>{error ? "Couldn't load campus spots. Tap to retry." : 'No campus spots yet. Tap to refresh.'}</Text>
+        <Text style={T.muted}>Couldn&apos;t load campus spots. Tap to retry.</Text>
       </TouchableOpacity>
     );
+  }
+  if (rooms.length === 0) {
+    return <Text style={[T.small, { color: CampusColors.muted }]}>No campus spots yet.</Text>;
   }
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: S.md, paddingRight: S.lg }}>
       {rooms.map((room) => {
-        const Icon = ICON_MAP[room.icon] || MapPin;
+        const Icon = SPOT_ICON_MAP[room.icon] || MapPin;
         const c = CATEGORY_COLORS[room.category] || CATEGORY_COLORS.common;
         return (
           <TouchableOpacity
             key={room.slug}
             style={styles.card}
             activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={`Open ${room.name} chat`}
             onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
               onOpenRoom(room.slug);
             }}
           >
             <View style={[styles.icon, { backgroundColor: c.bg }]}>
-              <Icon size={16} color={c.fg} />
+              {room.emoji ? <Text style={styles.emoji}>{room.emoji}</Text> : <Icon size={16} color={c.fg} />}
             </View>
             <View style={{ flex: 1 }}>
               <Text style={T.h3} numberOfLines={1}>{room.name}</Text>
@@ -94,7 +114,7 @@ export const LiveZones: React.FC<{ onOpenRoom: (slug: string) => void; refreshKe
                     <Text style={styles.liveText}>{room.activeUserCount} here</Text>
                   </View>
                 )}
-                <Text style={T.small} numberOfLines={1}>{room.subtitle}</Text>
+                {!!room.subtitle && <Text style={[T.small, { flexShrink: 1 }]} numberOfLines={1}>{room.subtitle}</Text>}
               </View>
             </View>
             <ChevronRight size={14} color={CampusColors.muted} />
@@ -119,6 +139,7 @@ const styles = StyleSheet.create({
     width: 230,
   },
   icon: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  emoji: { fontSize: 17 },
   live: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: '#DCFCE7', paddingHorizontal: 5, paddingVertical: 1, borderRadius: R.pill },
   liveText: { fontSize: 9, fontWeight: '800', color: '#166534' },
   empty: { paddingVertical: S.lg, alignItems: 'center', backgroundColor: CampusColors.card, borderRadius: R.card, borderWidth: 1, borderColor: CampusColors.line },

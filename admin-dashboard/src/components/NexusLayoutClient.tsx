@@ -126,6 +126,7 @@ export default function NexusLayoutClient({
             { href: '/blocks', icon: '🏆', label: 'Block Wars' },
             { href: '/config', icon: '⚙️', label: 'Delivery Fee & Config' },
             { href: '/campus', icon: '🏫', label: 'Campus Pulse' },
+            { href: '/campus/spots', icon: '📍', label: 'Campus Spots' },
             { href: '/moderation', icon: '🛡️', label: 'Friends Moderation' },
             { href: '/friends', icon: '🫂', label: 'Friends Config' },
             { href: '/cms', icon: '🎨', label: 'Global CMS Layout' },
@@ -133,7 +134,7 @@ export default function NexusLayoutClient({
           ].map(({ href, icon, label }) => {
             // trailingSlash: true can give '/analytics/'; compare without it.
             const path = pathname.replace(/\/+$/, '') || '/';
-            const isActive = href === '/' ? path === '/' : (path === href || path.startsWith(`${href}/`)) && (href !== '/analytics' || path === '/analytics');
+            const isActive = href === '/' ? path === '/' : (path === href || path.startsWith(`${href}/`)) && (href !== '/analytics' || path === '/analytics') && (href !== '/campus' || path === '/campus');
             return (
               <Link
                 key={href}

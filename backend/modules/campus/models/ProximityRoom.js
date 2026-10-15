@@ -32,14 +32,25 @@ const initProximityModels = (sequelize) => {
       type: DataTypes.STRING,
       defaultValue: 'common',
     },
-    // Geofence center point
+    // Optional emoji shown on the spot card (admin-set); falls back to the icon.
+    emoji: {
+      type: DataTypes.STRING(16),
+      allowNull: true,
+    },
+    // Admin ordering in the app (lower first).
+    sortOrder: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: 0,
+    },
+    // Optional geofence center point (the app does not use location today).
     latitude: {
       type: DataTypes.DOUBLE,
-      allowNull: false,
+      allowNull: true,
     },
     longitude: {
       type: DataTypes.DOUBLE,
-      allowNull: false,
+      allowNull: true,
     },
     // Geofence radius in meters
     radiusMeters: {

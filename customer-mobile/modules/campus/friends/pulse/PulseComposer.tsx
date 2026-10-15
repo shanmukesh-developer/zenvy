@@ -22,6 +22,7 @@ import {
 } from '../api/pulseApi';
 import { linksIn, pulseBus, pulseErrorMessage, tagsIn } from './pulseShared';
 import type { PulseComposerRequest } from './pulseNav';
+import { useRetentionPolicy, daysLabel } from '../../useRetentionPolicy';
 
 interface Draft {
   text: string;
@@ -89,6 +90,7 @@ export const PulseComposer: React.FC<{
   const [error, setError] = useState<string | null>(null);
   const [entities, setEntities] = useState<PulseEntityOption[]>([]);
   const inputRef = useRef<TextInput>(null);
+  const retention = useRetentionPolicy();
 
   // Fresh state for every request (restore a saved draft, or prefill / edit text).
   useEffect(() => {
@@ -271,6 +273,11 @@ export const PulseComposer: React.FC<{
               {PULSE_LIMITS.text - len}
             </Text>
           </View>
+          <Text style={[FT.small, { marginTop: 4 }]}>
+            {replyTo
+              ? `Replies are removed with the thread, ${daysLabel(retention.pulseDays)} after the first post.`
+              : `Posts are removed after ${daysLabel(retention.pulseDays)}.`}
+          </Text>
 
           {!edit ? (
             <>
