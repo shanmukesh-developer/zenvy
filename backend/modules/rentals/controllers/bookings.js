@@ -234,6 +234,13 @@ const accept = async (req, res) => {
     if (b.status !== B.REQUESTED) throw fail(409, 'INVALID_STATE', `This request is already ${b.status.toLowerCase()}.`);
     const listing = await Listing.findByPk(b.listingId, { transaction: t });
     if (!listing || listing.status === E.LISTING_STATUS.DELETED) throw fail(409, 'INVALID_STATE', 'This vehicle was removed.');
+    // B22: only a live (APPROVED) vehicle can confirm a trip: a paused / un-approved / rejected
+    // listing used to accept requests, and the owner's hours or blocked dates may have changed.
+    if (listing.status !== E.LISTING_STATUS.APPROVED) {
+      throw fail(409, 'LISTING_NOT_LIVE', 'This vehicle is not live right now. Resume it (or wait for approval) before accepting.');
+    }
+    const problem = scheduleProblem(listing, new Date(b.startAt), new Date(b.endAt));
+    if (problem) throw fail(409, problem.code, problem.message);
     const lic = await Licence.findOne({ where: { userId: b.renterId }, transaction: t });
     assertLicenceFor(lic, listing, { requireVerified: true, at: b.endAt });
     const clash = await overlapping(Booking, b.listingId, new Date(b.startAt), new Date(b.endAt), t, b.id);
@@ -367,8 +374,13 @@ const complete = async (req, res) => {
   const row = await mutate(req, async (b, t) => {
     asOwner(b, req);
     if (b.status !== B.RETURNED) throw fail(409, 'INVALID_STATE', 'Mark the vehicle as returned first.');
-    const listing = await M().Listing.findByPk(b.listingId, { transaction: t });
-    const perKm = listing && Number(listing.extraPerKm) > 0 ? Number(listing.extraPerKm) : 0;
+    // B22: the per-km rate agreed when the trip was booked (the quote stored on the booking), not
+    // whatever the owner set on the listing afterwards. Older bookings without it use the listing.
+    let pb = b.priceBreakdown;
+    if (typeof pb === 'string') { try { pb = JSON.parse(pb); } catch { pb = null; } }
+    const agreed = pb && typeof pb === 'object' && Object.prototype.hasOwnProperty.call(pb, 'extraPerKm') ? Number(pb.extraPerKm) || 0 : null;
+    const listing = agreed === null ? await M().Listing.findByPk(b.listingId, { transaction: t }) : null;
+    const perKm = agreed !== null ? (agreed > 0 ? agreed : 0) : (listing && Number(listing.extraPerKm) > 0 ? Number(listing.extraPerKm) : 0);
     if (extraKm > 0 && !perKm) throw fail(400, 'NO_KM_RATE', 'This vehicle has no extra-km charge set.', { field: 'extraKm' });
     const kmCharge = money(extraKm * perKm);
     const extras = money(kmCharge + otherCharges);

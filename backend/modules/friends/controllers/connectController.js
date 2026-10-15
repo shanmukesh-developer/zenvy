@@ -1200,26 +1200,11 @@ const unmatch = async (req, res) => {
   send(res, 200, { unmatched: true, duplicate: !won });
 };
 
-/** Global block (Friendship status 'blocked', blockedBy = me), same as /api/friends/block. */
+/** Global block (Friendship status 'blocked'), same as /api/friends/block, recorded with source
+ * 'connect' so the block list always masks this person (B2) and directional so the other side's own
+ * block survives either unblock (B5). */
 const blockUser = async (me, other) => {
-  const Friendship = M('Friendship');
-  const existing = await Friendship.findOne({
-    where: { [Op.or]: [{ requesterId: me, recipientId: other }, { requesterId: other, recipientId: me }] },
-  });
-  if (existing && existing.status === 'blocked' && existing.blockedBy && String(existing.blockedBy) !== me) {
-    // Already blocked by the other person: the block applies both ways; keep their row.
-  } else if (existing) {
-    existing.status = 'blocked';
-    existing.blockedBy = me;
-    await existing.save();
-  } else {
-    try {
-      await Friendship.create({ requesterId: me, recipientId: other, status: 'blocked', blockedBy: me });
-    } catch (err) {
-      if (!isUniqueError(err)) throw err;
-      await Friendship.update({ status: 'blocked', blockedBy: me }, { where: { requesterId: me, recipientId: other } });
-    }
-  }
+  await require('../../../utils/friendshipBlocks').applyBlock(M('Friendship'), me, other, 'connect');
   blocks.clearBlocks(me, other);
   // The pair can never meet in Connect again: an ended match and a pass from me.
   const [low, high] = orderedPair(me, other);
@@ -1251,6 +1236,11 @@ const blockProfile = async (req, res) => {
   if (!target || String(target.userId) === me) throw fail(404, 'PROFILE_NOT_FOUND', 'This profile is not available.');
   const cp = await M('CampusProfile').findOne({ where: { userId: me }, attributes: ['campusId'] });
   if (!cp || String(cp.campusId) !== String(target.campusId)) throw fail(404, 'PROFILE_NOT_FOUND', 'This profile is not available.');
+  // Only a profile I can actually see (B2): otherwise any profile id would create a block row with
+  // its owner. An existing block between us is re-applied idempotently (same answer either way).
+  if (!(await blocks.isBlocked(me, String(target.userId))) && !(await canView(me, target, cfgOf(req)))) {
+    throw fail(404, 'PROFILE_NOT_FOUND', 'This profile is not available.');
+  }
   limiter.enforce(me, 'connect_block');
   await blockUser(me, String(target.userId));
   send(res, 200, { blocked: true });

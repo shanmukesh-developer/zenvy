@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState, createContext, useContext, useRef, useCallback } from 'react';
+import React, { useEffect, useState, createContext, useContext, useRef, useCallback, useMemo } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { SOCKET_URL } from '@/lib/config';
 import { getToken, subscribe } from '@/lib/session';
@@ -88,14 +88,10 @@ export default function AdminSocketProvider({ children }: { children: React.Reac
       if (!NON_DATA_EVENTS.has(event)) invalidateRequestCache();
     });
 
+    // 'connect' fires on the first connection AND on every automatic reconnection (socket.io v4 emits
+    // 'reconnect' on the Manager, socket.io, never on the socket), so this one handler re-joins the room.
     socket.on('connect', () => {
       invalidateRequestCache(); // events sent while offline are not replayed
-      setIsConnected(true);
-      joinAdminRoom();
-    });
-
-    socket.on('reconnect', () => {
-      console.log('[ADMIN_SOCKET] Reconnected. Re-joining admin-room...');
       setIsConnected(true);
       joinAdminRoom();
     });
@@ -149,8 +145,15 @@ export default function AdminSocketProvider({ children }: { children: React.Reac
     };
   }, [initSocket, sessionToken]);
 
+  // Memoized: a new object every render made every consumer (dashboard, every page's live sync, the
+  // SOS modal) re-render whenever a toast appeared or disappeared.
+  const value = useMemo(
+    () => ({ socket: socketState, isConnected, refreshSocket: initSocket, notifyLive }),
+    [socketState, isConnected, initSocket, notifyLive],
+  );
+
   return (
-    <SocketContext.Provider value={{ socket: socketState, isConnected, refreshSocket: initSocket, notifyLive }}>
+    <SocketContext.Provider value={value}>
       {children}
       {toasts.length > 0 && (
         <div className="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none" role="status" aria-live="polite">

@@ -9,10 +9,21 @@ import {
   Button, Callout, Chip, ConfirmModal, EmptyState, Field, INPUT, MenuButton, Modal, Skeleton, Thumb, Toggle,
   ToastProvider, TypedConfirmModal, cx, FOCUS_RING, useSlashFocus, useToast,
 } from '@/components/restaurants/ui';
-import { StoreWizard, StepKey } from '@/components/restaurants/StoreWizard';
-import { StoreDrawer, DrawerTab } from '@/components/restaurants/StoreDrawer';
+import dynamic from 'next/dynamic';
+import type { StepKey } from '@/components/restaurants/StoreWizard';
+import type { DrawerTab } from '@/components/restaurants/StoreDrawer';
+
+// The wizard and the store drawer (with the menu manager) are most of this route's code but only
+// open on demand: loaded the first time they are opened, so the store list paints sooner.
+const PanelLoading = () => (
+  <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" role="status" aria-live="polite">
+    <div className="w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin" aria-label="Loading" />
+  </div>
+);
+const StoreWizard = dynamic(() => import('@/components/restaurants/StoreWizard').then(m => m.StoreWizard), { ssr: false, loading: PanelLoading });
+const StoreDrawer = dynamic(() => import('@/components/restaurants/StoreDrawer').then(m => m.StoreDrawer), { ssr: false, loading: PanelLoading });
 import { useStoreStats } from '@/components/restaurants/useStoreStats';
-import { bulkUpdateStores, duplicateStore, patchStore, removeStoreBanner } from '@/components/restaurants/storeActions';
+import { bulkUpdateStores, describeBulk, duplicateStore, patchStore, removeStoreBanner } from '@/components/restaurants/storeActions';
 import { summarizeWeekly, weeklyFromStore } from '@/components/restaurants/helpers';
 
 const FILTERS_KEY = 'zenvy.admin.storeFilters.v1';
@@ -266,33 +277,45 @@ function StoresScreen() {
       action: active ? 'Publish all' : 'Hide all',
       danger: !active,
       run: async () => {
-        // One server call (all-or-nothing per store row; max 300).
-        const result = await bulkUpdateStores(targets.map(storeId).slice(0, 300), { isActive: active });
+        // Chunks of 300 (the endpoint's limit), so every selected store is sent, not only the first 300.
+        const result = await bulkUpdateStores(targets.map(storeId), { isActive: active });
         let bannerErrors = 0;
         if (!active) {
-          for (const s of targets) if (await removeStoreBanner(storeId(s))) bannerErrors++;
+          // Only stores whose hide request went through lose their Home banner.
+          for (const id of result.okIds) if (await removeStoreBanner(id)) bannerErrors++;
         }
         setConfirm(null);
         setSelected(new Set());
         await loadStores(true);
-        const ok = Number(result?.count) || 0;
-        if (ok === targets.length && !bannerErrors) toast.success(`${ok} store${ok === 1 ? '' : 's'} ${active ? 'published' : 'hidden'}.`);
-        else if (ok === targets.length) toast.error(`${ok} stores hidden, but ${bannerErrors} Home banner(s) were not removed.`);
-        else toast.error(`${ok} of ${targets.length} updated. The rest were not found; refresh and try again.`);
+        const text = describeBulk(result, targets.length, active ? 'published' : 'hidden');
+        if (result.count === targets.length && !bannerErrors) toast.success(text);
+        else if (result.count === targets.length) toast.error(`${text} ${bannerErrors} Home banner(s) were not removed.`);
+        else toast.error(`${text}${bannerErrors ? ` ${bannerErrors} Home banner(s) were not removed.` : ''}`);
       },
     });
   };
   const bulkSetOpen = async (open: boolean) => {
     const targets = stores.filter(s => selected.has(storeId(s)) && (s.isOpenNow !== false) !== open);
     if (!targets.length) { toast.info(`All selected stores are already ${open ? 'taking orders' : 'paused'}.`); return; }
-    try {
-      const result = await bulkUpdateStores(targets.map(storeId).slice(0, 300), { isOpenNow: open });
-      setSelected(new Set());
-      await loadStores(true);
-      toast.success(`${Number(result?.count) || 0} store${targets.length === 1 ? '' : 's'} ${open ? 'taking orders again' : 'paused'}.`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Could not update the stores.');
-    }
+    setConfirm({
+      title: `${open ? 'Resume' : 'Pause'} ${targets.length} store${targets.length === 1 ? '' : 's'}?`,
+      body: (
+        <div className="space-y-2">
+          <p>{open ? 'They start taking orders again right away.' : 'They stay visible but stop taking new orders until resumed.'}</p>
+          <ul className="max-h-40 list-disc overflow-y-auto pl-5 text-gray-400">{targets.map(s => <li key={storeId(s)}>{s.name}</li>)}</ul>
+        </div>
+      ),
+      action: open ? 'Resume all' : 'Pause all',
+      danger: !open,
+      run: async () => {
+        const result = await bulkUpdateStores(targets.map(storeId), { isOpenNow: open });
+        setConfirm(null);
+        setSelected(new Set());
+        await loadStores(true);
+        const text = describeBulk(result, targets.length, open ? 'taking orders again' : 'paused');
+        if (result.count === targets.length) toast.success(text); else toast.error(text);
+      },
+    });
   };
 
   const deleteStore = async (store: Store) => {

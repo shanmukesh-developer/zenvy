@@ -8,6 +8,19 @@ const { Op } = require('sequelize');
 const { getPoolRequestModel } = require('../models/PoolRequest');
 const { sendServerError } = require('../utils/httpErrors');
 
+// Non-UUID ids answer 404 instead of a Postgres error (B23).
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+router.param('id', (req, res, next, id) => (UUID_RE.test(String(id || '')) ? next() : res.status(404).json({ message: 'Bike pool listing not found.' })));
+router.param('requestId', (req, res, next, id) => (UUID_RE.test(String(id || '')) ? next() : res.status(404).json({ message: 'Request not found.' })));
+// Bounded lists (B23): ?limit (max 100) & ?offset.
+const pageOf = (req, dflt = 50) => ({
+  limit: Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || dflt)),
+  offset: Math.max(0, parseInt(req.query.offset, 10) || 0),
+});
+const POOL_ROLES = ['rider', 'passenger'];
+const VEHICLE_TYPES = ['Bike', 'Car', 'Auto', 'Scooter'];
+const cleanStr = (v, max) => String(v).replace(/[<>]/g, '').trim().slice(0, max);
+
 // Atomic seat claim: decrements only while a seat is left and the ride is open.
 const takeSeat = async (poolId) => {
   const BikePool = getBikePoolModel();
@@ -32,6 +45,24 @@ router.post('/posts', protect, async (req, res) => {
   if (!creatorRole || !origin || !destination || !departureTime) {
     return res.status(400).json({ message: 'Role, origin, destination, and departure time are required.' });
   }
+  // Input validation (B23): enums, plain text, bounded lists and numbers.
+  if (!POOL_ROLES.includes(creatorRole)) return res.status(400).json({ message: 'Role must be rider or passenger.' });
+  if (typeof origin !== 'string' || typeof destination !== 'string' || !origin.trim() || !destination.trim()) {
+    return res.status(400).json({ message: 'Origin and destination must be text.' });
+  }
+  if (vehicleType != null && vehicleType !== '' && !VEHICLE_TYPES.includes(vehicleType)) return res.status(400).json({ message: `Vehicle must be one of ${VEHICLE_TYPES.join(', ')}.` });
+  // The app sends labels like 'Silent Ride 🤫': short text, not a fixed list.
+  if (rideVibe != null && (typeof rideVibe !== 'string' || rideVibe.length > 30)) return res.status(400).json({ message: 'Ride vibe must be short text.' });
+  if (notes != null && typeof notes !== 'string') return res.status(400).json({ message: 'Notes must be text.' });
+  if (vehicleInfo != null && (typeof vehicleInfo !== 'string' || vehicleInfo.length > 120)) return res.status(400).json({ message: 'Vehicle details must be text under 120 characters.' });
+  if (stopovers != null && (!Array.isArray(stopovers) || stopovers.length > 5 || stopovers.some((x) => typeof x !== 'string' || x.length > 80))) {
+    return res.status(400).json({ message: 'Add at most 5 stopovers, each under 80 characters.' });
+  }
+  if (recurringDays != null && (!Array.isArray(recurringDays) || recurringDays.length > 7 || recurringDays.some((x) => typeof x !== 'string' && typeof x !== 'number'))) {
+    return res.status(400).json({ message: 'Recurring days must be a list of weekdays.' });
+  }
+  const fuel = estimatedFuelCost === undefined || estimatedFuelCost === null || estimatedFuelCost === '' ? 0 : Number(estimatedFuelCost);
+  if (!Number.isFinite(fuel) || fuel < 0 || fuel > 5000) return res.status(400).json({ message: 'Fuel cost must be between ₹0 and ₹5000.' });
   const departure = new Date(departureTime);
   if (Number.isNaN(departure.getTime()) || departure.getTime() < Date.now() - 5 * 60 * 1000) {
     return res.status(400).json({ message: 'Pick a departure time that is still ahead.' });
@@ -56,21 +87,21 @@ router.post('/posts', protect, async (req, res) => {
     const newPost = await BikePool.create({
       creatorId: currentUser.id,
       creatorRole,
-      origin,
-      destination,
+      origin: cleanStr(origin, 120),
+      destination: cleanStr(destination, 120),
       departureTime: departure,
-      estimatedFuelCost: estimatedFuelCost || 0,
+      estimatedFuelCost: Math.round(fuel * 100) / 100,
       splitAmount: 0,
       vehicleType: vehicleType || 'Bike',
       availableSeats: seats,
-      autoApprove: autoApprove || false,
-      isRecurring: isRecurring || false,
-      recurringDays: recurringDays || [],
-      stopovers: stopovers || [],
-      rideVibe: rideVibe || 'Any',
-      vehicleInfo: creatorRole === 'rider' ? vehicleInfo : null,
+      autoApprove: autoApprove === true,
+      isRecurring: isRecurring === true,
+      recurringDays: Array.isArray(recurringDays) ? recurringDays.map((d) => String(d).slice(0, 10)) : [],
+      stopovers: Array.isArray(stopovers) ? stopovers.map((x) => cleanStr(x, 80)).filter(Boolean) : [],
+      rideVibe: rideVibe ? cleanStr(rideVibe, 30) : 'Any',
+      vehicleInfo: creatorRole === 'rider' && vehicleInfo ? cleanStr(vehicleInfo, 120) : null,
       genderPreference: currentUser.genderPreference || 'Any',
-      notes,
+      notes: notes ? cleanStr(notes, 300) : null,
       status: 'Available',
       paymentStatus: 'Unpaid'
     });
@@ -98,8 +129,8 @@ router.get('/posts', protect, async (req, res) => {
         status: 'Available',
         creatorId: { [Op.ne]: currentUser.id },
         availableSeats: { [Op.gt]: 0 },
-        // Rides that left more than 30 minutes ago are no longer joinable
-        departureTime: { [Op.gte]: new Date(Date.now() - 30 * 60 * 1000) }
+        // Rides that already left are not joinable (B23)
+        departureTime: { [Op.gte]: new Date() }
       },
       include: [
         {
@@ -109,7 +140,8 @@ router.get('/posts', protect, async (req, res) => {
           attributes: ['id', 'name', 'gender', 'genderPreference', 'profileImage']
         }
       ],
-      order: [['departureTime', 'ASC']]
+      order: [['departureTime', 'ASC']],
+      ...pageOf(req, 50)
     });
 
     // Enforce safety/gender matching rules in memory for high fidelity filtering
@@ -153,12 +185,16 @@ router.post('/posts/:id/join', protect, async (req, res) => {
       include: [{ model: User, as: 'creator', attributes: ['id', 'gender', 'genderPreference', 'karmaPoints'] }]
     });
 
-    if (!pool) {
+    // A ride whose host account is gone cannot be joined (was a crash on pool.creator.gender).
+    if (!pool || !pool.creator) {
       return res.status(404).json({ message: 'Bike pool listing not found.' });
     }
 
     if (pool.status !== 'Available') {
       return res.status(400).json({ message: 'This ride is no longer available.' });
+    }
+    if (new Date(pool.departureTime).getTime() < Date.now()) {
+      return res.status(400).json({ code: 'RIDE_DEPARTED', message: 'This ride has already left.' });
     }
 
     if (pool.creatorId === req.user.id) {
@@ -327,6 +363,10 @@ router.post('/posts/:id/complete', protect, async (req, res) => {
     if (pool.creatorId !== req.user.id) {
       return res.status(403).json({ message: 'Only the creator can complete the ride.' });
     }
+    // Karma is for a ride that happened (B23): not before its departure time.
+    if (new Date(pool.departureTime).getTime() > Date.now()) {
+      return res.status(400).json({ code: 'RIDE_NOT_STARTED', message: 'You can complete the ride after its departure time.' });
+    }
 
     const karmaReward = 50; // 50 Karma points for eco-friendly ride
 
@@ -491,7 +531,8 @@ router.get('/my-rides', protect, async (req, res) => {
           ]
         }
       ],
-      order: [['createdAt', 'DESC']]
+      order: [['createdAt', 'DESC']],
+      limit: 100
     });
 
     // Phone numbers only between people who actually share the ride: the host sees approved
@@ -530,8 +571,14 @@ router.post('/admin/:id/force-cancel', protect, admin, async (req, res) => {
     if (pool.status === 'Completed' || pool.status === 'Cancelled') {
       return res.status(400).json({ message: 'Cannot cancel a completed or already cancelled ride.' });
     }
+    const [closed] = await BikePool.update({ status: 'Cancelled' }, { where: { id: pool.id, status: { [Op.notIn]: ['Completed', 'Cancelled'] } } });
+    if (!closed) return res.status(409).json({ message: 'This ride was just completed or cancelled. Please refresh.' });
     pool.status = 'Cancelled';
-    await pool.save();
+    // Open join requests are closed too (B23), exactly like a host cancel.
+    await getPoolRequestModel().update(
+      { status: 'Cancelled' },
+      { where: { poolId: pool.id, status: { [Op.in]: ['Pending', 'Approved'] } } }
+    );
     res.json({ message: 'Listing forcibly cancelled by Admin.', pool });
   } catch (err) {
     sendServerError(res, err, '[BIKEPOOLROUTES_ERROR]');
@@ -561,7 +608,8 @@ router.get('/admin/all', protect, admin, async (req, res) => {
         { model: User, as: 'creator', attributes: ['id', 'name', 'phone', 'gender'] },
         { model: User, as: 'coRider', attributes: ['id', 'name', 'phone'] }
       ],
-      order: [['createdAt', 'DESC']]
+      order: [['createdAt', 'DESC']],
+      ...pageOf(req, 100)
     });
     res.json(pools);
   } catch (err) {

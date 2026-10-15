@@ -15,6 +15,19 @@ const MAX_SERVICE_QTY = 50;
 const cleanText = (v, max) => (typeof v === 'string' ? v.replace(/[<>]/g, '').trim().slice(0, max) : '');
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const VALID_SERVICE_TYPES = [
+  'LAPTOP_REPAIR', 'PHONE_REPAIR', 'TAILORING', 'PRINTOUT', 'LAUNDRY', 'ROOM_SHIFTING',
+  'AUTO_RIDE', 'BIKE_TAXI', 'STATION_CAB', 'PG_BOOKING', 'MATTRESS_DELIVERY',
+  'ELECTRONICS_DELIVERY', 'GROCERY_DELIVERY', 'PHARMACY_DELIVERY', 'GENERAL',
+];
+// A catalogue item from a service store books only its own kind of service (B27): a cheap print
+// item can no longer be used to price a laptop repair.
+const SERVICE_TYPES_FOR_STORE = {
+  PRINT: ['PRINTOUT'],
+  LAUNDRY: ['LAUNDRY'],
+  TAILORING: ['TAILORING'],
+  REPAIRS: ['LAPTOP_REPAIR', 'PHONE_REPAIR', 'GENERAL'],
+};
 const toInt = (v, min, max, dflt) => {
   const n = parseInt(v, 10);
   if (!Number.isFinite(n)) return dflt;
@@ -29,7 +42,7 @@ const specsOf = (item) => {
 // Server-side price of a service booking, from the same catalogue rows the app shows (M11 / ordering-n15).
 // Print: per-page rate (B&W or colour) × pages × copies + binding, exactly like the print sheet.
 // Others: the service card price. Returns { amount, item } or { error }.
-const priceServiceBooking = async (specifications) => {
+const priceServiceBooking = async (specifications, serviceType = null) => {
   const spec = specifications && typeof specifications === 'object' ? specifications : {};
   const itemId = String(spec.catalogueItemId || '');
   if (!UUID_RE.test(itemId)) return { amount: 0, item: null }; // older app: the partner sends a quote
@@ -43,6 +56,11 @@ const priceServiceBooking = async (specifications) => {
   }
   const inStock = item.isAvailable !== false || !!(item.outOfStockUntil && new Date(item.outOfStockUntil) <= new Date());
   if (!inStock) return { error: `${item.name} is not taking bookings right now.` };
+
+  const storeKind = String((store && store.vendorType) || '').toUpperCase();
+  if (serviceType && SERVICE_TYPES_FOR_STORE[storeKind] && !SERVICE_TYPES_FOR_STORE[storeKind].includes(serviceType)) {
+    return { error: `${item.name} cannot be booked as ${String(serviceType).toLowerCase().replace(/_/g, ' ')}. Please pick the matching service.` };
+  }
 
   const isPrint = String(spec.category || '').toLowerCase() === 'print';
   if (!isPrint) {
@@ -158,12 +176,6 @@ router.post('/book', protect, async (req, res) => {
       paymentMethod,
     } = req.body;
 
-    const VALID_SERVICE_TYPES = [
-      'LAPTOP_REPAIR', 'PHONE_REPAIR', 'TAILORING', 'PRINTOUT', 'LAUNDRY', 'ROOM_SHIFTING',
-      'AUTO_RIDE', 'BIKE_TAXI', 'STATION_CAB', 'PG_BOOKING', 'MATTRESS_DELIVERY',
-      'ELECTRONICS_DELIVERY', 'GROCERY_DELIVERY', 'PHARMACY_DELIVERY', 'GENERAL',
-    ];
-
     if (!serviceType || !title) {
       return res.status(400).json({ success: false, message: 'serviceType and title are required' });
     }
@@ -175,6 +187,9 @@ router.post('/book', protect, async (req, res) => {
       });
     }
 
+    if (typeof title !== 'string' || typeof serviceType !== 'string' || (description != null && typeof description !== 'string')) {
+      return res.status(400).json({ success: false, message: 'serviceType, title and description must be text.' });
+    }
     if (title.length > 200) {
       return res.status(400).json({ success: false, message: 'Title must be under 200 characters' });
     }
@@ -184,7 +199,7 @@ router.post('/book', protect, async (req, res) => {
     }
 
     // The client's quotedAmount is ignored: the price comes from the catalogue (see priceServiceBooking).
-    const priced = await priceServiceBooking(specifications);
+    const priced = await priceServiceBooking(specifications, serviceType);
     if (priced.error) {
       return res.status(400).json({ success: false, code: 'SERVICE_UNAVAILABLE', message: priced.error });
     }
@@ -420,6 +435,21 @@ router.patch('/:id/status', protect, async (req, res) => {
 
     const current = booking.status;
     if (['COMPLETED', 'CANCELLED'].includes(current)) {
+      // B27: Zenvy support may still correct the final amount or add a note on a closed booking
+      // (refund / settlement follow-ups). Nobody can reopen it or change anything else.
+      const statusChange = status && status !== current;
+      const otherFields = quotedAmount != null || driverDetails != null || assignedPartnerId != null;
+      if (isAdmin && !statusChange && !otherFields && (finalAmount != null || note)) {
+        const closedChanges = {};
+        if (finalAmount != null) closedChanges.finalAmount = Number(finalAmount);
+        const history = Array.isArray(booking.trackingHistory) ? [...booking.trackingHistory] : [];
+        history.push({ stage: current, timestamp: new Date().toISOString(), note: note || `Final amount corrected to Rs ${closedChanges.finalAmount}` });
+        closedChanges.trackingHistory = history;
+        const saved = await saveIfUnchanged(ServiceBooking, booking, closedChanges);
+        if (!saved) return staleBooking(res);
+        require('../utils/realtime').notifyAdmin('service_booking', 'updated', saved.id);
+        return res.json({ success: true, message: 'Booking updated successfully', booking: saved });
+      }
       return res.status(400).json({ success: false, code: 'BOOKING_CLOSED', message: `This booking is already ${current.toLowerCase()} and cannot be changed.` });
     }
     let nextStatus = status && status !== current ? status : current;
@@ -438,7 +468,9 @@ router.patch('/:id/status', protect, async (req, res) => {
     const raises = (changes.quotedAmount !== undefined && changes.quotedAmount > Number(booking.quotedAmount || 0) + 0.009)
       || (changes.finalAmount !== undefined && changes.finalAmount > Number(booking.finalAmount || 0) + 0.009);
     let needsReapproval = false;
-    if (raises && PRICE_LOCKED_AFTER_APPROVAL.includes(current)) {
+    // B21: also when this same update moves the booking INTO an approved state (REQUESTED ->
+    // CONFIRMED / IN_PROGRESS / READY with a higher price), which used to skip the student's approval.
+    if (raises && (PRICE_LOCKED_AFTER_APPROVAL.includes(current) || PRICE_LOCKED_AFTER_APPROVAL.includes(nextStatus))) {
       if (current === 'READY_FOR_DELIVERY') {
         return res.status(400).json({ success: false, code: 'PRICE_LOCKED', message: 'The price cannot be raised after the job is ready. Contact Zenvy support.' });
       }
@@ -448,7 +480,10 @@ router.patch('/:id/status', protect, async (req, res) => {
     }
     if (nextStatus !== current) changes.status = nextStatus;
     if (driverDetails && typeof driverDetails === 'object' && !Array.isArray(driverDetails)) changes.driverDetails = driverDetails;
-    if (assignedPartnerId && isAdmin) changes.assignedPartnerId = assignedPartnerId;
+    if (assignedPartnerId && isAdmin) {
+      if (!UUID_RE.test(String(assignedPartnerId))) return res.status(400).json({ success: false, message: 'assignedPartnerId is not valid.' });
+      changes.assignedPartnerId = assignedPartnerId;
+    }
 
     if (status || note || needsReapproval) {
       const history = Array.isArray(booking.trackingHistory) ? [...booking.trackingHistory] : [];
@@ -640,10 +675,13 @@ router.get('/admin/all', protect, admin, async (req, res) => {
     }
 
     const { status, serviceType, hostelBlock } = req.query;
+    // Unknown filter values answer 400 instead of a database error on Postgres enums (B27).
+    if (status && !BOOKING_STATUSES.includes(status)) return res.status(400).json({ success: false, message: `status must be one of: ${BOOKING_STATUSES.join(', ')}` });
+    if (serviceType && !VALID_SERVICE_TYPES.includes(serviceType)) return res.status(400).json({ success: false, message: 'Unknown serviceType.' });
     const where = {};
     if (status) where.status = status;
     if (serviceType) where.serviceType = serviceType;
-    if (hostelBlock) where.hostelBlock = hostelBlock;
+    if (hostelBlock) where.hostelBlock = String(hostelBlock).slice(0, 60);
 
     const bookings = await ServiceBooking.findAll({
       where,

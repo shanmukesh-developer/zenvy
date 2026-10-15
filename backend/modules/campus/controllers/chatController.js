@@ -39,7 +39,8 @@ const serializeMessage = (msg, userId) => ({
   // Friend DMs sent through /api/friends/message are stored encrypted; show the real text.
   text: msg.isDeletedForEveryone ? 'This message was deleted' : readableText(msg.text),
   type: msg.type || 'text',
-  mediaUrl: msg.mediaUrl || msg.attachmentUrl || undefined,
+  // A deleted / moderator-removed message never exposes its media link (B4).
+  mediaUrl: msg.isDeletedForEveryone ? undefined : (msg.mediaUrl || msg.attachmentUrl || undefined),
   replyTo: parseJson(msg.replyTo, null) || undefined,
   reactions: parseJson(msg.reactions, {}) || {},
   isEdited: !!msg.isEdited,

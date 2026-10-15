@@ -1070,7 +1070,8 @@ const confirm = async (req, res) => {
   const { task, role } = await loadTaskFor(req, req.params.id);
   requireRole(role, ['poster'], 'Only the poster can confirm completion.');
   limiter.enforce(me, 'task_transition');
-  const r = await completeTask(task.id, { where: { posterId: me } });
+  // A task a moderator took down cannot be completed (no karma for removed work) (B26).
+  const r = await completeTask(task.id, { where: { posterId: me, modStatus: 'visible' } });
   const fresh = await M('FriendsTask').findByPk(task.id);
   if (!r.won) {
     if (fresh.status === 'completed') return send(res, 200, { task: await serializeOne(req, fresh, me), duplicate: true });

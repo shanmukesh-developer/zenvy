@@ -93,6 +93,14 @@ register('message', {
     const msg = await Message.findByPk(id, { transaction });
     if (!msg) return false;
     msg.isDeletedForEveryone = status !== 'visible';
+    if (status !== 'visible') {
+      // A moderator removal wipes the content itself (B4), not just a flag readers must honour:
+      // the report keeps its own snapshot for the audit trail.
+      msg.text = '';
+      msg.mediaUrl = null;
+      msg.attachmentUrl = null;
+      msg.mediaMetadata = '{}';
+    }
     await msg.save({ transaction });
     return true;
   },

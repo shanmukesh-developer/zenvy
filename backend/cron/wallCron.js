@@ -18,14 +18,14 @@ const initWallCron = () => {
   });
 
   // 2. Cleanup media older than 48 hours post event end (runs daily at 3:00 AM)
-  cron.schedule('0 3 * * *', async () => {
+  cron.schedule('0 3 * * *', async () => { // 03:00 India time (B25), not 03:00 UTC
     console.log('⏰ [WALL CRON] Running 48h post-event media cleanup...');
     try {
       await cleanupOldWallMedia();
     } catch (err) {
       console.error('[WALL CRON] Error cleaning up media:', err);
     }
-  });
+  }, { timezone: 'Asia/Kolkata' });
 
   console.log('⏰ [CRON] Wall photo contest winner calculation & media cleanup jobs scheduled.');
 };
@@ -57,15 +57,22 @@ const processExpiredWallEvents = async () => {
     const [claimed] = await WallEvent.update({ status: 'ENDED' }, { where: { id: event.id, status: 'ACTIVE' } });
     if (!claimed) continue;
 
-    // Find winner with highest likes among approved submissions
-    const topSubmission = await WallSubmission.findOne({
+    // Winner = most real votes (counted from WallLikes, not the cached likeCount) among approved
+    // submissions; a photo with no votes never wins (B18).
+    const voteCount = WallSubmission.sequelize.literal('(SELECT COUNT(*) FROM "WallLikes" WHERE "WallLikes"."submissionId" = "WallSubmission"."id")');
+    const ranked = await WallSubmission.findOne({
       where: {
         eventId: event.id,
         isApproved: true
       },
-      order: [['likeCount', 'DESC'], ['createdAt', 'ASC']],
-      include: [{ model: User, as: 'user' }]
+      attributes: ['id', [voteCount, 'votes']],
+      order: [[voteCount, 'DESC'], ['createdAt', 'ASC']],
     });
+    const votes = ranked ? Number(ranked.get('votes')) || 0 : 0;
+    const topSubmission = ranked && votes > 0
+      ? await WallSubmission.findByPk(ranked.id, { include: [{ model: User, as: 'user' }] })
+      : null;
+    if (topSubmission) topSubmission.likeCount = votes;
 
     let winnerUserId = null;
     let winnerName = 'Community Member';
@@ -82,6 +89,7 @@ const processExpiredWallEvents = async () => {
       couponCode = `WALL-${uniqueSuffix}`;
       const rewardVal = event.couponValue || 100;
 
+      if (!Coupon) couponCode = null;
       if (Coupon) {
         try {
           await Coupon.create({
@@ -94,6 +102,8 @@ const processExpiredWallEvents = async () => {
           });
           console.log(`🎁 [WALL REWARD] Created coupon ${couponCode} (₹${rewardVal}) for winner ${winnerUserId}`);
         } catch (cErr) {
+          // No coupon was created: never announce / store a code that does not exist (B18).
+          couponCode = null;
           console.error('[WALL REWARD ERR]', cErr);
         }
       }
@@ -122,7 +132,9 @@ const processExpiredWallEvents = async () => {
         await sendPushToTokens(
           topSubmission.user.fcmTokens,
           '👑 YOU WON THE WALL PHOTO CONTEST!',
-          `Your photo scored ${topSubmission.likeCount} votes! You won a ₹${event.couponValue || 100} coupon. Code: ${couponCode}`,
+          couponCode
+            ? `Your photo scored ${topSubmission.likeCount} votes! You won a ₹${event.couponValue || 100} coupon. Code: ${couponCode}`
+            : `Your photo scored ${topSubmission.likeCount} votes! Our team will send your reward shortly.`,
           {
             type: 'WALL_WINNER_REWARD',
             couponCode: couponCode || '',
@@ -153,17 +165,17 @@ const cleanupOldWallMedia = async () => {
   });
 
   for (const evt of endedEvents) {
-    // Delete non-winning submission images to save storage
-    const deletedCount = await WallSubmission.destroy({
-      where: {
-        eventId: evt.id,
-        userId: { [Op.ne]: evt.winnerUserId }
-      }
-    });
+    // Delete non-winning submission images to save storage. (`userId <> NULL` matches nothing in
+    // SQL, so an event without a winner used to keep every photo.)
+    const where = evt.winnerUserId ? { eventId: evt.id, userId: { [Op.ne]: evt.winnerUserId } } : { eventId: evt.id };
+    const doomed = await WallSubmission.findAll({ where, attributes: ['id', 'imageUrl'] });
+    const deletedCount = doomed.length ? await WallSubmission.destroy({ where: { id: { [Op.in]: doomed.map((d) => d.id) } } }) : 0;
+    // ...and their photo bytes (B19).
+    if (doomed.length) await require('../utils/mediaCleanup').releaseMedia(doomed.map((d) => d.imageUrl), 'wall').catch(() => 0);
     if (deletedCount > 0) {
       console.log(`🧹 [WALL CLEANUP] Purged ${deletedCount} non-winning submission images for event "${evt.title}"`);
     }
   }
 };
 
-module.exports = { initWallCron, processExpiredWallEvents };
+module.exports = { initWallCron, processExpiredWallEvents, cleanupOldWallMedia };

@@ -33,6 +33,9 @@ const optionalViewer = async (req) => {
 
 // A contest is open only while it is ACTIVE and its end time has not passed (the cron that
 // finalizes it runs every 5 minutes, so the end time is checked here too).
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const isUuid = (v) => UUID_RE.test(String(v || ''));
+const releaseWallMedia = (values) => require('../utils/mediaCleanup').releaseMedia(values, 'wall').catch(() => 0);
 const isEventOpen = (event) => !!event && event.status === 'ACTIVE' && new Date(event.endTime).getTime() > Date.now();
 
 // The event coupon code is the winner's personal reward code: only admins see it.
@@ -275,7 +278,6 @@ router.post('/events/:id/submit', protect, async (req, res) => {
     }
     const imageUrl = img.value;
 
-    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     let event = UUID_RE.test(String(eventId || '')) ? await WallEvent.findByPk(eventId) : null;
     if (!event) {
       event = await WallEvent.findOne({
@@ -303,9 +305,11 @@ router.post('/events/:id/submit', protect, async (req, res) => {
           message: "Your photo already has votes, so it can't be replaced in this contest."
         });
       }
+      const replacedImage = existing.imageUrl;
       existing.imageUrl = imageUrl;
       existing.isApproved = false;
       await existing.save();
+      if (replacedImage && replacedImage !== imageUrl) releaseWallMedia([replacedImage]); // B19
       realtime.notifyAdmin('wall_submission', 'updated', existing.id);
       realtime.publish('wall', 'updated', eventId, { scope: 'submissions' }); // it left the public wall until re-approved
       return res.status(200).json({
@@ -350,11 +354,19 @@ router.post('/submissions/:id/like', protect, async (req, res) => {
     }
 
     const submissionId = req.params.id;
+    if (!isUuid(submissionId)) return res.status(404).json({ message: 'Submission not found.' });
+    // Votes are for students (B18): rider / store / admin tokens never vote.
+    if (String(req.user.role || '').toLowerCase() !== 'student') {
+      return res.status(403).json({ code: 'STUDENTS_ONLY', message: 'Only students can vote on The Wall.' });
+    }
     const submission = await WallSubmission.findByPk(submissionId, {
       include: [{ model: WallEvent, as: 'event' }]
     });
 
     if (!submission) return res.status(404).json({ message: 'Submission not found.' });
+    if (String(submission.userId) === String(req.user.id)) {
+      return res.status(400).json({ code: 'OWN_SUBMISSION', message: 'You cannot vote for your own photo.' });
+    }
 
     if (!isEventOpen(submission.event)) {
       return res.status(400).json({ code: 'CONTEST_CLOSED', message: 'Voting has closed for this contest.' });
@@ -383,9 +395,15 @@ router.post('/submissions/:id/like', protect, async (req, res) => {
     }
     // The count is recomputed from the real votes (no lost or double votes when many people
     // vote at the same moment, which a read-modify-save of likeCount would cause).
-    const likeCount = await WallLike.count({ where: { submissionId } });
-    await WallSubmission.update({ likeCount }, { where: { id: submissionId } });
-    submission.likeCount = likeCount;
+    // One UPDATE with the count as a subquery (B18): a separate count-then-write let two
+    // overlapping toggles store a stale number.
+    const sq = WallSubmission.sequelize;
+    await sq.query(
+      'UPDATE "WallSubmissions" SET "likeCount" = (SELECT COUNT(*) FROM "WallLikes" WHERE "WallLikes"."submissionId" = :id) WHERE "id" = :id',
+      { replacements: { id: submissionId } }
+    );
+    const fresh = await WallSubmission.findByPk(submissionId, { attributes: ['id', 'likeCount'] });
+    submission.likeCount = fresh ? Number(fresh.likeCount) || 0 : 0;
 
     res.json({
       liked,
@@ -404,6 +422,7 @@ router.get('/events/:id/leaderboard', async (req, res) => {
     const WallSubmission = getWallSubmissionModel();
     const User = getUserModel();
 
+    if (!isUuid(req.params.id)) return res.status(404).json({ message: 'Event not found.' });
     const submissions = await WallSubmission.findAll({
       where: { eventId: req.params.id, isApproved: true },
       order: [['likeCount', 'DESC'], ['createdAt', 'ASC']],
@@ -426,7 +445,7 @@ router.put('/events/:id/end', protect, admin, async (req, res) => {
     const User = getUserModel();
     if (!WallEvent || !WallSubmission) return res.status(500).json({ message: 'Models not initialized.' });
 
-    const event = await WallEvent.findByPk(req.params.id);
+    const event = isUuid(req.params.id) ? await WallEvent.findByPk(req.params.id) : null;
     if (!event) return res.status(404).json({ message: 'Event not found.' });
     if (event.status === 'ENDED') return res.status(400).json({ message: 'Event is already ended.' });
 
@@ -520,7 +539,7 @@ router.get('/admin/pending', protect, admin, async (req, res) => {
 router.put('/admin/submissions/:id/approve', protect, admin, async (req, res) => {
   try {
     const WallSubmission = getWallSubmissionModel();
-    const submission = await WallSubmission.findByPk(req.params.id);
+    const submission = isUuid(req.params.id) ? await WallSubmission.findByPk(req.params.id) : null;
     if (!submission) return res.status(404).json({ message: 'Submission not found.' });
 
     submission.isApproved = true;
@@ -540,10 +559,11 @@ router.put('/admin/submissions/:id/approve', protect, admin, async (req, res) =>
 router.put('/admin/submissions/:id/reject', protect, admin, async (req, res) => {
   try {
     const WallSubmission = getWallSubmissionModel();
-    const submission = await WallSubmission.findByPk(req.params.id);
+    const submission = isUuid(req.params.id) ? await WallSubmission.findByPk(req.params.id) : null;
     if (!submission) return res.status(404).json({ message: 'Submission not found.' });
 
     await submission.destroy();
+    releaseWallMedia([submission.imageUrl]); // B19: a rejected photo's bytes go too
     realtime.publish('wall', 'updated', submission.eventId, { scope: 'submissions' });
     realtime.notifyAdmin('wall_submission', 'deleted', submission.id);
 

@@ -6,6 +6,26 @@ const { normalizePhone } = require('../utils/phoneUtils');
 const { encryptText, decryptText } = require('../utils/crypto');
 const { sendPushToTokens } = require('../utils/push');
 const { Op } = require('sequelize');
+const crypto = require('crypto');
+const fb = require('../utils/friendshipBlocks');
+
+// Malformed ids answer 400/404 instead of a database error (B26).
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const isUuid = (v) => typeof v === 'string' && UUID_RE.test(v);
+// The fields a friendship row exposes to its two members (never block / nickname internals).
+const publicFriendship = (f) => ({
+  id: f.id,
+  requesterId: f.requesterId,
+  recipientId: f.recipientId,
+  status: f.status,
+  vibe: f.vibe || 'Roomie',
+  icebreaker: f.icebreaker || null,
+  streakCount: f.streakCount || 0,
+  theme: f.theme || 'friendship',
+  lastInteractionAt: f.lastInteractionAt || null,
+  createdAt: f.createdAt,
+  updatedAt: f.updatedAt,
+});
 
 // Campus friends list cap (was 10 "close friends", which blocked normal classmates from connecting).
 const MAX_FRIENDS = 200;
@@ -175,11 +195,16 @@ exports.searchContacts = async (req, res) => {
       }
     }) : [];
     const friendshipByPeer = new Map();
+    const blockedPeers = new Set();
     for (const f of friendships) {
       const peer = String(f.requesterId) === String(req.user.id) ? f.recipientId : f.requesterId;
+      if (f.status === 'blocked') blockedPeers.add(String(peer));
       if (!friendshipByPeer.has(String(peer))) friendshipByPeer.set(String(peer), f);
     }
     for (const matchedUser of matchedUsers) {
+      // A blocked pair (either direction, Friends or Connect block) is never listed: a "blocked"
+      // status here would tell either side who is behind a block (B2). Blocks live in the block list.
+      if (blockedPeers.has(String(matchedUser.id))) continue;
       const friendship = friendshipByPeer.get(String(matchedUser.id)) || null;
 
       // Full number only for accepted friends, synced contacts (the caller already has it)
@@ -241,6 +266,7 @@ exports.sendFriendRequest = async (req, res) => {
     }
 
     if (!recipientId) return res.status(400).json({ message: 'recipientId or valid friendCode is required.' });
+    if (!isUuid(recipientId)) return res.status(404).json({ code: 'USER_NOT_FOUND', message: 'This student is not on Zenvy.' });
 
     if (recipientId === req.user.id) {
       return res.status(400).json({ message: 'That is your own friend code.' });
@@ -252,57 +278,70 @@ exports.sendFriendRequest = async (req, res) => {
       return res.status(404).json({ code: 'USER_NOT_FOUND', message: 'This student is not on Zenvy.' });
     }
 
-    // Check existing
-    const existing = await Friendship.findOne({
-      where: {
-        [Op.or]: [
-          { requesterId: req.user.id, recipientId },
-          { requesterId: recipientId, recipientId: req.user.id }
-        ]
+    // Check + create under the pair lock: A→B and B→A at the same moment cannot both insert (B7).
+    const outcome = await fb.withPairLock(req.user.id, recipientId, async () => {
+      const rows = await fb.pairRows(Friendship, req.user.id, recipientId);
+      const existing = rows[0] || null;
+      let shadow = false;
+      if (existing) {
+        if (existing.status === 'blocked') {
+          // Only my own Friends-list block is answered plainly. A block by the other person, or a
+          // Connect block, gets exactly the answer a normal request gets, so a request can never be
+          // used to confirm who is behind a block or a Connect profile (B2).
+          if (fb.blockSourceOf(existing, req.user.id) === 'friends') {
+            return { status: 403, body: { code: 'CANNOT_REQUEST', message: 'Unblock them first to send a request.' } };
+          }
+          shadow = true;
+        } else if (existing.status === 'accepted') {
+          return { status: 409, body: { code: 'ALREADY_FRIENDS', message: 'You are already friends.', friendshipId: existing.id } };
+        } else if (existing.status === 'pending' && existing.requesterId === req.user.id) {
+          return { status: 409, body: { code: 'REQUEST_ALREADY_SENT', message: 'Request already sent. Waiting for them to accept.', friendshipId: existing.id } };
+        } else if (existing.status === 'pending') {
+          return { status: 409, body: { code: 'REQUEST_INCOMING', message: 'They already sent you a request. Accept it to connect.', friendshipId: existing.id } };
+        }
+      }
+
+      const burst = friendLimiter.take(String(req.user.id), 'friend_request');
+      const pairTake = burst.ok ? friendLimiter.take(`${req.user.id}:${recipientId}`, 'friend_request_pair') : burst;
+      if (!burst.ok || !pairTake.ok) {
+        return { status: 429, body: { code: 'RATE_LIMITED', message: 'Too many friend requests. Please try again later.', retryAfter: (burst.ok ? pairTake : burst).retryAfterSec } };
+      }
+
+      // Strict check: count accepted friends for sender
+      const requesterFriendsCount = await Friendship.count({
+        where: {
+          status: 'accepted',
+          [Op.or]: [
+            { requesterId: req.user.id },
+            { recipientId: req.user.id }
+          ]
+        }
+      });
+      if (requesterFriendsCount >= MAX_FRIENDS) {
+        return { status: 400, body: { code: 'FRIEND_LIMIT', message: `You can have up to ${MAX_FRIENDS} friends. Remove someone to add more.` } };
+      }
+
+      if (shadow) {
+        const now = new Date();
+        return { shadow: true, friendship: { id: crypto.randomUUID(), requesterId: req.user.id, recipientId, status: 'pending', vibe: vibe || 'Roomie', icebreaker: icebreaker || null, streakCount: 0, theme: 'friendship', lastInteractionAt: null, createdAt: now, updatedAt: now } };
+      }
+      try {
+        const created = await Friendship.create({
+          requesterId: req.user.id,
+          recipientId,
+          status: 'pending',
+          vibe: vibe || 'Roomie',
+          icebreaker: icebreaker || null
+        });
+        return { friendship: created };
+      } catch (err) {
+        if (!fb.isUniqueErr(err)) throw err;
+        return { status: 409, body: { code: 'REQUEST_INCOMING', message: 'They already sent you a request. Accept it to connect.' } };
       }
     });
-
-    if (existing) {
-      if (existing.status === 'accepted') {
-        return res.status(409).json({ code: 'ALREADY_FRIENDS', message: 'You are already friends.', friendshipId: existing.id });
-      }
-      if (existing.status === 'pending' && existing.requesterId === req.user.id) {
-        return res.status(409).json({ code: 'REQUEST_ALREADY_SENT', message: 'Request already sent. Waiting for them to accept.', friendshipId: existing.id });
-      }
-      if (existing.status === 'pending') {
-        return res.status(409).json({ code: 'REQUEST_INCOMING', message: 'They already sent you a request. Accept it to connect.', friendshipId: existing.id });
-      }
-      // Blocked (either side): do not reveal who blocked whom.
-      return res.status(403).json({ code: 'CANNOT_REQUEST', message: 'You cannot send a request to this person.' });
-    }
-
-    const burst = friendLimiter.take(String(req.user.id), 'friend_request');
-    const pairTake = burst.ok ? friendLimiter.take(`${req.user.id}:${recipientId}`, 'friend_request_pair') : burst;
-    if (!burst.ok || !pairTake.ok) {
-      return res.status(429).json({ code: 'RATE_LIMITED', message: 'Too many friend requests. Please try again later.', retryAfter: (burst.ok ? pairTake : burst).retryAfterSec });
-    }
-
-    // Strict check: count accepted friends for sender
-    const requesterFriendsCount = await Friendship.count({
-      where: {
-        status: 'accepted',
-        [Op.or]: [
-          { requesterId: req.user.id },
-          { recipientId: req.user.id }
-        ]
-      }
-    });
-    if (requesterFriendsCount >= MAX_FRIENDS) {
-      return res.status(400).json({ code: 'FRIEND_LIMIT', message: `You can have up to ${MAX_FRIENDS} friends. Remove someone to add more.` });
-    }
-
-    const friendship = await Friendship.create({
-      requesterId: req.user.id,
-      recipientId,
-      status: 'pending',
-      vibe: vibe || 'Roomie',
-      icebreaker: icebreaker || null
-    });
+    if (outcome.status) return res.status(outcome.status).json(outcome.body);
+    if (outcome.shadow) return res.status(201).json({ message: 'Friend request sent.', friendship: outcome.friendship });
+    const friendship = outcome.friendship;
 
     // Socket emission & push notification to recipient
     const io = req.app.get('io');
@@ -327,7 +366,7 @@ exports.sendFriendRequest = async (req, res) => {
       { type: 'FRIEND_REQUEST', requesterId: req.user.id, friendshipId: friendship.id, screen: 'friend_requests' }
     );
 
-    res.status(201).json({ message: 'Friend request sent.', friendship });
+    res.status(201).json({ message: 'Friend request sent.', friendship: publicFriendship(friendship) });
   } catch (error) {
     console.error('[SEND_FRIEND_REQUEST_ERROR]', error);
     res.status(500).json({ message: 'Server error sending request.' });
@@ -337,8 +376,9 @@ exports.sendFriendRequest = async (req, res) => {
 // 3. Accept Friend Request
 exports.acceptFriendRequest = async (req, res) => {
   try {
-    const { friendshipId } = req.body;
+    const { friendshipId } = req.body || {};
     if (!friendshipId) return res.status(400).json({ message: 'friendshipId is required.' });
+    if (!isUuid(friendshipId)) return res.status(404).json({ message: 'Friend request not found.' });
 
     const Friendship = getFriendshipModel();
     const Conversation = getConversationModel();
@@ -354,6 +394,9 @@ exports.acceptFriendRequest = async (req, res) => {
       // Never let "accept" turn a blocked pair back into friends.
       return res.status(400).json({ code: 'NOT_PENDING', message: friendship.status === 'accepted' ? 'You are already friends.' : 'This request is no longer available.' });
     }
+    // A legacy duplicate row for the same pair may hold a block: a block always wins (B7).
+    const pairBlocked = await Friendship.count({ where: { status: 'blocked', ...fb.pairWhere(friendship.requesterId, friendship.recipientId) } });
+    if (pairBlocked) return res.status(400).json({ code: 'NOT_PENDING', message: 'This request is no longer available.' });
 
     // Strict check: count accepted friends for requester
     const requesterFriendsCount = await Friendship.count({
@@ -467,7 +510,7 @@ exports.acceptFriendRequest = async (req, res) => {
       { type: 'FRIEND_ACCEPTED', friendId: req.user.id, chatId: conversation.id, conversationId: conversation.id, screen: 'campus_chat' }
     );
 
-    res.json({ message: 'Friend request accepted.', friendship, conversationId: conversation.id });
+    res.json({ message: 'Friend request accepted.', friendship: publicFriendship(friendship), conversationId: conversation.id });
   } catch (error) {
     console.error('[ACCEPT_FRIEND_REQUEST_ERROR]', error);
     res.status(500).json({ message: 'Server error accepting request.' });
@@ -489,50 +532,64 @@ exports.getFriends = async (req, res) => {
     const User = getUserModel();
     const Conversation = getConversationModel();
     if (!Friendship || !User || !Conversation) return res.status(500).json({ message: 'Models not loaded' });
+    const me = req.user.id;
 
-    const friendships = await Friendship.findAll({
+    const rows = await Friendship.findAll({
       where: {
-        status: 'accepted',
+        status: { [Op.in]: ['accepted', 'blocked'] },
         [Op.or]: [
-          { requesterId: req.user.id },
-          { recipientId: req.user.id }
+          { requesterId: me },
+          { recipientId: me }
         ]
       }
     });
+    const peerOf = (f) => (f.requesterId === me ? f.recipientId : f.requesterId);
+    // A legacy duplicate blocked row for the same pair hides the friend (B7).
+    const blockedPeers = new Set(rows.filter((f) => f.status === 'blocked').map((f) => String(peerOf(f))));
+    const seen = new Set();
+    const friendships = rows.filter((f) => {
+      const peer = String(peerOf(f));
+      if (f.status !== 'accepted' || blockedPeers.has(peer) || seen.has(peer)) return false;
+      seen.add(peer);
+      return true;
+    });
+
+    // Two batched lookups instead of three queries per friend (B26).
+    const friendIds = friendships.map(peerOf);
+    const users = friendIds.length ? await User.findAll({
+      where: { id: { [Op.in]: friendIds } },
+      attributes: ['id', 'name', 'phone', 'friendCode', 'profileImage', 'statusText', 'statusEmoji', 'statusSeenBy']
+    }) : [];
+    const userById = new Map(users.map((u) => [String(u.id), u]));
+    const pairKeys = [];
+    friendIds.forEach((fid) => { pairKeys.push(JSON.stringify([me, fid]), JSON.stringify([fid, me])); });
+    const convs = pairKeys.length ? await Conversation.findAll({
+      where: { isGroup: false, refType: null, participants: { [Op.in]: pairKeys } },
+      attributes: ['id', 'participants', 'createdAt'],
+      order: [['createdAt', 'ASC']]
+    }) : [];
+    const convByPeer = new Map();
+    for (const c of convs) {
+      const parts = Array.isArray(c.participants) ? c.participants : (() => { try { return JSON.parse(c.participants); } catch { return []; } })();
+      const peer = parts.find((p) => p !== me);
+      if (peer && !convByPeer.has(String(peer))) convByPeer.set(String(peer), c.id);
+    }
 
     const list = [];
     for (const fs of friendships) {
-      const friendId = fs.requesterId === req.user.id ? fs.recipientId : fs.requesterId;
-      const friend = await User.findByPk(friendId, {
-        attributes: ['id', 'name', 'phone', 'friendCode', 'profileImage', 'statusText', 'statusEmoji', 'statusSeenBy']
-      });
-
+      const friendId = peerOf(fs);
+      const friend = userById.get(String(friendId));
       if (!friend) continue;
-
-      // Find conversation ID
-      let conversation = await Conversation.findOne({
-        where: {
-          isGroup: false,
-          refType: null,
-          participants: JSON.stringify([req.user.id, friendId])
-        }
-      });
-      if (!conversation) {
-        conversation = await Conversation.findOne({
-          where: {
-            isGroup: false,
-            refType: null,
-            participants: JSON.stringify([friendId, req.user.id])
-          }
-        });
-      }
+      const myNickname = fb.nicknameFor(fs, me);
+      const seenBy = Array.isArray(friend.statusSeenBy) ? friend.statusSeenBy : [];
 
       list.push({
         friendshipId: fs.id,
         friendId: friend.id,
-        name: fs.nickname || friend.name,
+        // Nicknames are private to the person who set them (B6).
+        name: myNickname || friend.name,
         originalName: friend.name,
-        nickname: fs.nickname || null,
+        nickname: myNickname,
         vibe: fs.vibe || 'Roomie',
         icebreaker: fs.icebreaker || null,
         friendCode: friend.friendCode || null,
@@ -543,10 +600,11 @@ exports.getFriends = async (req, res) => {
         streakCount: fs.streakCount || 0,
         lastInteractionAt: fs.lastInteractionAt,
         theme: fs.theme || 'friendship',
-        conversationId: conversation ? conversation.id : null,
+        conversationId: convByPeer.get(String(friendId)) || null,
         statusText: friend.statusText || null,
         statusEmoji: friend.statusEmoji || null,
-        statusSeenBy: friend.statusSeenBy || []
+        // Only whether *I* saw it: the full viewer list of a friend's status is theirs alone (B26).
+        statusSeenBy: seenBy.includes(me) ? [me] : []
       });
     }
 
@@ -599,7 +657,8 @@ exports.getPendingRequests = async (req, res) => {
 exports.updateFriendshipTheme = async (req, res) => {
   try {
     const { id } = req.params;
-    const { theme } = req.body;
+    const { theme } = req.body || {};
+    if (!isUuid(id)) return res.status(404).json({ message: 'Friendship not found.' });
 
     const VALID_THEMES = ['friendship', 'crazy', 'love', 'graphite', 'grove', 'autumn', 'blossom', 'nightfall'];
     if (!VALID_THEMES.includes(theme)) {
@@ -615,6 +674,7 @@ exports.updateFriendshipTheme = async (req, res) => {
     if (friendship.requesterId !== req.user.id && friendship.recipientId !== req.user.id) {
       return res.status(403).json({ message: 'Not authorized.' });
     }
+    if (friendship.status !== 'accepted') return res.status(404).json({ message: 'Friendship not found.' });
 
     friendship.theme = theme;
     await friendship.save();
@@ -649,6 +709,8 @@ exports.sendFriendMessage = async (req, res) => {
     const Friendship = getFriendshipModel();
     if (!Conversation || !Message || !Friendship) return res.status(500).json({ message: 'Models not loaded' });
 
+    if (conversationId && !isUuid(conversationId)) conversationId = null;
+    if (friendshipId && !isUuid(friendshipId)) friendshipId = null;
     let conversation;
     if (conversationId) {
       conversation = await Conversation.findByPk(conversationId);
@@ -697,15 +759,10 @@ exports.sendFriendMessage = async (req, res) => {
     // 1:1 chats need a live (accepted, not blocked) friendship.
     if (!conversation.isGroup) {
       const peerId = members.find(p => p !== req.user.id);
-      const live = peerId && await Friendship.findOne({
-        where: {
-          status: 'accepted',
-          [Op.or]: [
-            { requesterId: req.user.id, recipientId: peerId },
-            { requesterId: peerId, recipientId: req.user.id }
-          ]
-        }
-      });
+      // Every row of the pair counts: an accepted row next to a (legacy duplicate) blocked row is
+      // still a blocked pair (B7).
+      const pair = peerId ? await fb.pairRows(Friendship, req.user.id, peerId) : [];
+      const live = pair.length && !pair.some((r) => r.status === 'blocked') && pair.some((r) => r.status === 'accepted');
       if (!live) return res.status(403).json({ message: 'You can only message people in your circle.' });
     }
 
@@ -796,6 +853,7 @@ exports.getFriendMessages = async (req, res) => {
   try {
     const { conversationId } = req.params;
     const { limit = 50, offset = 0 } = req.query; // Added pagination support
+    if (!isUuid(conversationId)) return res.status(404).json({ message: 'Conversation not found.' });
     const Conversation = getConversationModel();
     const Message = getMessageModel();
     if (!Conversation || !Message) return res.status(500).json({ message: 'Models not loaded' });
@@ -816,17 +874,29 @@ exports.getFriendMessages = async (req, res) => {
       connectIdent = await require('../modules/friends/services/connectChatIdentity').identityFor(conversation);
     }
 
+    const uid = String(req.user.id);
     const messages = await Message.findAll({
-      where: { conversationId },
+      where: {
+        conversationId,
+        [Op.and]: [
+          { [Op.or]: [{ expiresAt: null }, { expiresAt: { [Op.gt]: new Date() } }] },
+          // Messages this user deleted for themselves stay hidden (B4).
+          { [Op.or]: [{ deletedFor: null }, { deletedFor: { [Op.notLike]: `%${uid}%` } }] },
+        ],
+      },
       order: [['createdAt', 'DESC']], // Fetch latest first for pagination
       limit: Math.min(100, Math.max(1, parseInt(limit, 10) || 50)),
       offset: Math.max(0, parseInt(offset, 10) || 0)
     });
 
-    const decrypted = messages.map(m => ({
-      ...m.toJSON(),
-      text: decryptText(m.text)
-    })).reverse(); // Reverse back to ASC for the client UI
+    const decrypted = messages.map((m) => {
+      const j = m.toJSON();
+      if (j.isDeletedForEveryone) {
+        // Deleted or moderator-removed: no text, no media (B4).
+        return { ...j, text: 'This message was deleted', mediaUrl: null, attachmentUrl: null, mediaMetadata: null };
+      }
+      return { ...j, text: decryptText(m.text) };
+    }).reverse(); // Reverse back to ASC for the client UI
 
     if (connectIdent) {
       const { maskFor } = require('../modules/friends/services/connectChatIdentity');
@@ -844,17 +914,22 @@ exports.updateFriendshipNickname = async (req, res) => {
     const Friendship = getFriendshipModel();
     if (!Friendship) return res.status(500).json({ message: 'Models not loaded' });
 
+    if (!isUuid(req.params.id)) return res.status(404).json({ message: 'Friendship not found' });
     const friendship = await Friendship.findByPk(req.params.id);
     if (!friendship) return res.status(404).json({ message: 'Friendship not found' });
     if (friendship.requesterId !== req.user.id && friendship.recipientId !== req.user.id) {
       return res.status(403).json({ message: 'Not authorized.' });
     }
 
-    const nickname = String((req.body || {}).nickname || '').replace(/[<>]/g, '').trim().slice(0, 40);
-    friendship.nickname = nickname || null;
+    const raw = (req.body || {}).nickname;
+    if (raw != null && typeof raw !== 'string') return res.status(400).json({ message: 'Nickname must be text.' });
+    const nickname = String(raw || '').replace(/[<>]/g, '').trim().slice(0, 40);
+    // Private to me (B6): stored per viewer; the old shared column is cleared so it stops leaking.
+    friendship.nicknames = fb.withNickname(friendship, req.user.id, nickname || null);
+    friendship.nickname = null;
     await friendship.save();
 
-    res.json({ message: 'Nickname updated successfully', nickname: friendship.nickname });
+    res.json({ message: 'Nickname updated successfully', nickname: nickname || null });
   } catch (error) {
     console.error('[UPDATE_NICKNAME_ERROR]', error);
     res.status(500).json({ message: 'Server error updating nickname.' });
@@ -867,6 +942,7 @@ exports.removeFriend = async (req, res) => {
     const Friendship = getFriendshipModel();
     if (!Friendship) return res.status(500).json({ message: 'Models not loaded' });
 
+    if (!isUuid(req.params.id)) return res.status(404).json({ message: 'Friendship not found' });
     const friendship = await Friendship.findByPk(req.params.id);
     if (!friendship) return res.status(404).json({ message: 'Friendship not found' });
 
@@ -889,8 +965,9 @@ exports.removeFriend = async (req, res) => {
 // 9b. Decline a pending friend request
 exports.declineFriendRequest = async (req, res) => {
   try {
-    const { friendshipId } = req.body;
+    const { friendshipId } = req.body || {};
     if (!friendshipId) return res.status(400).json({ message: 'friendshipId is required.' });
+    if (!isUuid(friendshipId)) return res.status(404).json({ message: 'Friend request not found.' });
 
     const Friendship = getFriendshipModel();
     if (!Friendship) return res.status(500).json({ message: 'Model not loaded' });
@@ -941,33 +1018,9 @@ exports.blockUser = async (req, res) => {
     const Friendship = getFriendshipModel();
     if (!Friendship) return res.status(500).json({ message: 'Model not loaded' });
 
-    // Check for existing friendship/request
-    let friendship = await Friendship.findOne({
-      where: {
-        [Op.or]: [
-          { requesterId: req.user.id, recipientId: userId },
-          { requesterId: userId, recipientId: req.user.id }
-        ]
-      }
-    });
-
-    if (friendship && friendship.status === 'blocked' && friendship.blockedBy && friendship.blockedBy !== req.user.id) {
-      // Already blocked by the other person: the block applies both ways; keep their row as is.
-      clearFriendsBlockCache(req.user.id, userId);
-      return res.json({ message: 'User blocked successfully.', friendshipId: friendship.id });
-    }
-    if (friendship) {
-      friendship.status = 'blocked';
-      friendship.blockedBy = req.user.id;
-      await friendship.save();
-    } else {
-      friendship = await Friendship.create({
-        requesterId: req.user.id,
-        recipientId: userId,
-        status: 'blocked',
-        blockedBy: req.user.id
-      });
-    }
+    // Directional block (B5): my block is recorded next to theirs if they blocked me first, so
+    // either person lifting their own block never lifts the other's.
+    const friendship = await fb.applyBlock(Friendship, req.user.id, userId, 'friends');
 
     clearFriendsBlockCache(req.user.id, userId);
     res.json({ message: 'User blocked successfully.', friendshipId: friendship.id });
@@ -986,37 +1039,29 @@ exports.unblockUser = async (req, res) => {
     if ((userId && typeof userId !== 'string') || (friendshipId && typeof friendshipId !== 'string')) {
       return res.status(400).json({ message: 'userId is not valid.' });
     }
-    if (!userId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(friendshipId)) {
+    if ((userId && !isUuid(userId)) || (!userId && !isUuid(friendshipId))) {
       return res.status(404).json({ message: 'Blocked user not found in your block list.' });
     }
 
     const Friendship = getFriendshipModel();
     if (!Friendship) return res.status(500).json({ message: 'Model not loaded' });
 
-    const friendship = await Friendship.findOne({
-      where: userId
-        ? {
-          status: 'blocked',
-          blockedBy: req.user.id,
-          [Op.or]: [
-            { requesterId: req.user.id, recipientId: userId },
-            { requesterId: userId, recipientId: req.user.id }
-          ]
-        }
-        : {
-          id: friendshipId,
-          status: 'blocked',
-          blockedBy: req.user.id,
-          [Op.or]: [{ requesterId: req.user.id }, { recipientId: req.user.id }],
-        }
-    });
+    const me = String(req.user.id);
+    const candidates = userId
+      ? await fb.pairRows(Friendship, me, userId)
+      : await Friendship.findAll({ where: { id: friendshipId, [Op.or]: [{ requesterId: me }, { recipientId: me }] } });
+    // A Connect block is only reachable by its block-list entry (friendshipId): unblocking by a
+    // guessed account id must not confirm who is behind a Connect profile (B2).
+    const friendship = candidates.find((r) => r.status === 'blocked' && fb.isBlocker(r, me)
+      && !(userId && fb.blockSourceOf(r, me) === 'connect')) || null;
 
     if (!friendship) {
       return res.status(404).json({ message: 'Blocked user not found in your block list.' });
     }
 
     const otherId = friendship.requesterId === req.user.id ? friendship.recipientId : friendship.requesterId;
-    await friendship.destroy();
+    // Lifts only MY block; if they blocked me too, theirs stays (B5).
+    await fb.liftBlock(friendship, me);
     clearFriendsBlockCache(req.user.id, otherId);
 
     res.json({ message: 'User unblocked successfully.' });
@@ -1033,12 +1078,13 @@ exports.getBlockedUsers = async (req, res) => {
     const User = getUserModel();
     if (!Friendship || !User) return res.status(500).json({ message: 'Models not loaded' });
 
-    const blocked = await Friendship.findAll({
+    const meId = String(req.user.id);
+    const blocked = (await Friendship.findAll({
       where: {
         status: 'blocked',
-        blockedBy: req.user.id
+        [Op.or]: [{ requesterId: meId }, { recipientId: meId }]
       }
-    });
+    })).filter((b) => fb.isBlocker(b, meId));
 
     // Never phone numbers here. People blocked through Zenvy Friends Connect (a Connect swipe or
     // match exists between the pair) are shown by their Connect name only: no account id, real name
@@ -1083,6 +1129,24 @@ exports.getBlockedUsers = async (req, res) => {
       otherIds.forEach((id) => connectNames.set(String(id), 'Blocked person'));
     }
 
+    // A block made from Connect is always masked, even after the Connect history is gone (B2).
+    const fromConnect = blocked.filter((b) => fb.blockSourceOf(b, meId) === 'connect')
+      .map((b) => String(b.requesterId === req.user.id ? b.recipientId : b.requesterId))
+      .filter((id) => !connectNames.has(id));
+    if (fromConnect.length) {
+      let names = new Map();
+      try {
+        const Profile = require('../modules/friends').getModel('ConnectProfile');
+        const profiles = Profile ? await Profile.findAll({ where: { userId: { [Op.in]: fromConnect } }, attributes: ['userId', 'displayName'] }) : [];
+        names = new Map(profiles.map((p) => [String(p.userId), p.displayName]));
+      } catch { /* masked either way */ }
+      fromConnect.forEach((id) => connectNames.set(id, names.get(id) || 'Connect user'));
+    }
+
+    const plainIds = blocked.map((b) => String(b.requesterId === req.user.id ? b.recipientId : b.requesterId)).filter((id) => !connectNames.has(id));
+    const plainUsers = plainIds.length ? await User.findAll({ where: { id: { [Op.in]: plainIds } }, attributes: ['id', 'name', 'profileImage'] }) : [];
+    const plainById = new Map(plainUsers.map((u) => [String(u.id), u]));
+
     const list = [];
     for (const b of blocked) {
       const blockedUserId = b.requesterId === req.user.id ? b.recipientId : b.requesterId;
@@ -1094,9 +1158,7 @@ exports.getBlockedUsers = async (req, res) => {
         });
         continue;
       }
-      const user = await User.findByPk(blockedUserId, {
-        attributes: ['id', 'name', 'profileImage']
-      });
+      const user = plainById.get(String(blockedUserId));
       if (user) {
         list.push({
           friendshipId: b.id,
@@ -1122,8 +1184,9 @@ setInterval(() => {
 }, 60 * 60 * 1000).unref?.();
 exports.sendFriendNudge = async (req, res) => {
   try {
-    const { friendshipId } = req.body;
+    const { friendshipId } = req.body || {};
     if (!friendshipId) return res.status(400).json({ message: 'friendshipId is required.' });
+    if (!isUuid(friendshipId)) return res.status(404).json({ message: 'Friendship not found.' });
 
     const Friendship = getFriendshipModel();
     if (!Friendship) return res.status(500).json({ message: 'Models not loaded' });
@@ -1175,7 +1238,15 @@ exports.sendFriendNudge = async (req, res) => {
 // 11. Update User Status (Story/Status feature)
 exports.updateUserStatus = async (req, res) => {
   try {
-    const { statusText, statusEmoji } = req.body;
+    const { statusText, statusEmoji } = req.body || {};
+    // Plain short text only (B26): objects / huge strings used to be stored as-is.
+    if ((statusText != null && typeof statusText !== 'string') || (statusEmoji != null && typeof statusEmoji !== 'string')) {
+      return res.status(400).json({ message: 'Status must be text.' });
+    }
+    const cleanText = String(statusText || '').replace(/[<>]/g, '').trim();
+    const cleanEmoji = String(statusEmoji || '').trim();
+    if (cleanText.length > 140) return res.status(400).json({ message: 'Status can be at most 140 characters.' });
+    if (cleanEmoji.length > 16) return res.status(400).json({ message: 'Pick a single emoji for your status.' });
     const User = getUserModel();
     const Friendship = getFriendshipModel();
     if (!User || !Friendship) return res.status(500).json({ message: 'Models not loaded' });
@@ -1183,8 +1254,8 @@ exports.updateUserStatus = async (req, res) => {
     const user = await User.findByPk(req.user.id);
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    user.statusText = statusText || null;
-    user.statusEmoji = statusEmoji || null;
+    user.statusText = cleanText || null;
+    user.statusEmoji = cleanEmoji || null;
     user.statusSeenBy = [];
     await user.save();
 
@@ -1229,6 +1300,7 @@ exports.markStatusAsSeen = async (req, res) => {
     if (!User || !Friendship) return res.status(500).json({ message: 'Models not loaded' });
 
     if (!friendId || typeof friendId !== 'string') return res.status(400).json({ message: 'friendId is required.' });
+    if (!isUuid(friendId)) return res.status(404).json({ message: 'User not found' });
     // Only an accepted friend can see (and mark) someone's status.
     const isFriend = await Friendship.findOne({
       where: {
@@ -1365,6 +1437,7 @@ exports.cancelFriendRequest = async (req, res) => {
   try {
     const Friendship = getFriendshipModel();
     if (!Friendship) return res.status(500).json({ message: 'Model not loaded' });
+    if (!isUuid(req.params.id)) return res.status(404).json({ message: 'Request not found.' });
     const friendship = await Friendship.findByPk(req.params.id);
     if (!friendship || friendship.requesterId !== req.user.id || friendship.status !== 'pending') {
       return res.status(404).json({ message: 'Request not found.' });

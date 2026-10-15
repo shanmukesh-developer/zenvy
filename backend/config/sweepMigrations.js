@@ -53,6 +53,20 @@ const runSweepMigrations = async (sequelize) => {
   // • Store menus: WHERE "restaurantId" IN (...) [AND "isAvailable"] for listings and the cart.
   await step('menu_items_restaurant_id',
     'CREATE INDEX IF NOT EXISTS "menu_items_restaurant_id" ON "MenuItems" ("restaurantId");');
+
+  // 2026-10-15 fix hunt (B7): one Friendship row per UNORDERED pair. Expression index (Postgres
+  // LEAST/GREATEST, SQLite scalar min/max). If legacy duplicate pairs exist the index is not built
+  // and only logs; the app also serialises pair writes (utils/friendshipBlocks withPairLock).
+  await step('friendships_unordered_pair', isPg
+    ? 'CREATE UNIQUE INDEX IF NOT EXISTS "friendships_unordered_pair" ON "Friendships" (LEAST("requesterId", "recipientId"), GREATEST("requesterId", "recipientId"));'
+    : 'CREATE UNIQUE INDEX IF NOT EXISTS "friendships_unordered_pair" ON "Friendships" (min("requesterId", "recipientId"), max("requesterId", "recipientId"));');
+
+  // B15: one community review per (user, delivered order). Partial: posts / legacy reviews have no orderId.
+  await step('community_posts_user_order_review',
+    'CREATE UNIQUE INDEX IF NOT EXISTS "community_posts_user_order_review" ON "CommunityPosts" ("userId", "orderId") WHERE "orderId" IS NOT NULL;');
+  // B25: one product review per (user, product). Not built (only logs) while legacy duplicates exist.
+  await step('product_reviews_user_product_unique',
+    'CREATE UNIQUE INDEX IF NOT EXISTS "product_reviews_user_product_unique" ON "ProductReviews" ("userId", "productId");');
 };
 
 module.exports = { runSweepMigrations };

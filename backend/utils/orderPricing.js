@@ -19,6 +19,38 @@ const ADDON_VENDOR_TYPE = 'EXTRAS';
 
 const money = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
+// Customizations are stored on the order and shown to the kitchen: bounded plain data only (B12).
+// At most 10 options; each a short string or a list of at most 10 short strings. Anything else
+// (nested objects, numbers, huge text) is dropped.
+const CUSTOM_MAX_KEYS = 10;
+const CUSTOM_MAX_LEN = 60;
+const cleanCustomText = (v) => String(v).replace(/[<>]/g, '').trim().slice(0, CUSTOM_MAX_LEN);
+const sanitizeCustomizations = (raw) => {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const out = {};
+  let n = 0;
+  for (const key of Object.keys(raw)) {
+    if (n >= CUSTOM_MAX_KEYS) break;
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+    const k = cleanCustomText(key);
+    if (!k) continue;
+    const v = raw[key];
+    if (typeof v === 'string') {
+      const t = cleanCustomText(v);
+      if (!t) continue;
+      out[k] = t;
+    } else if (Array.isArray(v)) {
+      const list = v.filter((x) => typeof x === 'string').slice(0, CUSTOM_MAX_KEYS).map(cleanCustomText).filter(Boolean);
+      if (!list.length) continue;
+      out[k] = list;
+    } else {
+      continue;
+    }
+    n += 1;
+  }
+  return n ? out : null;
+};
+
 class PricingError extends Error {
   constructor(status, code, message, extra = {}) {
     super(message);
@@ -107,7 +139,7 @@ const computeOrderQuote = async ({ user, items, couponCode }) => {
       problems.push({ id: rawId != null ? String(rawId) : null, name: label, reason: 'not_found' });
       continue;
     }
-    lines.push({ id, qty, customizations: raw.customizations && typeof raw.customizations === 'object' ? raw.customizations : null, label });
+    lines.push({ id, qty, customizations: sanitizeCustomizations(raw.customizations), label });
   }
 
   const ids = [...new Set(lines.map(l => l.id))];
@@ -302,6 +334,7 @@ const normalizePaymentMethod = (pm) => {
 const PAYMENT_UNAVAILABLE_MESSAGE = 'Online payments are coming soon — please choose Cash on Delivery or Wallet.';
 
 module.exports = {
+  sanitizeCustomizations,
   computeOrderQuote,
   PricingError,
   activeCouponWhere,

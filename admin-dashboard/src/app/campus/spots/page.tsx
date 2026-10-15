@@ -146,22 +146,36 @@ export default function CampusSpotsPage() {
     });
   };
 
-  // Reorder within the full list (the app sorts every campus's spots by the same order).
-  const move = (index: number, dir: -1 | 1) => {
-    const target = index + dir;
-    if (target < 0 || target >= spots.length) return;
-    const next = spots.slice();
-    [next[index], next[target]] = [next[target], next[index]];
-    setSpots(next);
-    run('reorder', async () => {
-      await adminRequest('/api/campus/admin/spots/reorder', { method: 'PUT', body: JSON.stringify({ ids: next.map(s => s.id) }) });
-      return 'Order saved.';
-    });
-  };
-
   const visible = spots
     .map((s, i) => ({ s, i }))
     .filter(({ s }) => campusFilter === 'all' || (campusFilter === 'global' ? !s.campusId : s.campusId === campusFilter));
+
+  // Reorder within the full list (the app sorts every campus's spots by the same order). With a campus
+  // filter on, a spot swaps with the nearest spot the admin can SEE in that direction, not with a
+  // hidden spot of another campus (which looked like the button did nothing).
+  const move = async (visiblePos: number, dir: -1 | 1) => {
+    if (busy) return;
+    const from = visible[visiblePos];
+    const to = visible[visiblePos + dir];
+    if (!from || !to) return;
+    const before = spots;
+    const next = spots.slice();
+    [next[from.i], next[to.i]] = [next[to.i], next[from.i]];
+    setSpots(next);
+    setBusy('reorder');
+    setNotice(null);
+    try {
+      await adminRequest('/api/campus/admin/spots/reorder', { method: 'PUT', body: JSON.stringify({ ids: next.map(s => s.id) }) });
+      setNotice({ kind: 'ok', text: 'Order saved.' });
+    } catch (e) {
+      // Roll back the optimistic swap, then reload the server's order.
+      setSpots(before);
+      setNotice({ kind: 'error', text: errText(e, 'Could not save the new order.') });
+    } finally {
+      setBusy(null);
+    }
+    load();
+  };
 
   if (loading) {
     return (
@@ -265,11 +279,11 @@ export default function CampusSpotsPage() {
           <p className="text-sm text-gray-500">No spots for this campus.</p>
         ) : (
           <ul className="space-y-2">
-            {visible.map(({ s, i }) => (
+            {visible.map(({ s }, vi) => (
               <li key={s.id} className={`flex items-center gap-4 rounded-2xl border border-white/5 p-4 ${s.isActive ? 'bg-white/[0.03]' : 'bg-white/[0.01] opacity-60'}`}>
                 <div className="flex flex-col gap-1">
-                  <button onClick={() => move(i, -1)} disabled={!!busy || i === 0} className="text-gray-400 hover:text-white disabled:opacity-20" aria-label={`Move ${s.name} up`}>▲</button>
-                  <button onClick={() => move(i, 1)} disabled={!!busy || i === spots.length - 1} className="text-gray-400 hover:text-white disabled:opacity-20" aria-label={`Move ${s.name} down`}>▼</button>
+                  <button onClick={() => move(vi, -1)} disabled={!!busy || vi === 0} className="text-gray-400 hover:text-white disabled:opacity-20" aria-label={`Move ${s.name} up`}>▲</button>
+                  <button onClick={() => move(vi, 1)} disabled={!!busy || vi === visible.length - 1} className="text-gray-400 hover:text-white disabled:opacity-20" aria-label={`Move ${s.name} down`}>▼</button>
                 </div>
                 <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-xl">{s.emoji || '📍'}</div>
                 <div className="flex-1 min-w-0">

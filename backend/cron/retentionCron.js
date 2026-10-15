@@ -324,6 +324,14 @@ const runRetention = async (opts = {}) => {
       console.error('[RETENTION] pulse cleanup failed:', err.message);
       out.pulseError = err.message;
     }
+    try {
+      // Wall / birthday / community photos nothing points at any more (B19).
+      out.media = await require('../utils/mediaCleanup').sweepUnreferencedMedia(opts);
+      if (out.media.deleted) console.log(`[RETENTION] unreferenced photos: ${out.media.deleted} deleted (${out.media.checked} checked).`);
+    } catch (err) {
+      console.error('[RETENTION] photo sweep failed:', err.message);
+      out.mediaError = err.message;
+    }
   } finally {
     running = false;
   }

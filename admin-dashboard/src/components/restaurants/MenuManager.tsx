@@ -4,7 +4,7 @@ import { DietType, Product, Store, adminRequest, dietOf, isBookingOnlyStore, isL
 import { useLiveSync, useFreshIds, FRESH_ROW_CLASS, LiveEvent } from '@/lib/useLiveSync';
 import { parseCsv, timeAgo } from './helpers';
 import { ImagePicker, TagInput } from './inputs';
-import { bulkUpdateItems, duplicateItemPayload } from './storeActions';
+import { bulkUpdateItems, describeBulk, duplicateItemPayload } from './storeActions';
 import { API_URL } from '@/lib/config';
 import {
   Button, Callout, Chip, ConfirmModal, EmptyState, Field, INPUT, MenuButton, Modal, Segmented, Skeleton, Toggle, cx, FOCUS_RING, useToast,
@@ -137,16 +137,19 @@ export function MenuManager({ store }: { store: Store }) {
   };
 
   const deleteItems = async (items: Product[]) => {
-    const failed: string[] = [];
+    // Tracked by id: two items can share a name, and a name match hid a deleted twin (or kept a failed one).
+    const failedIds = new Set<string>();
     await inBatches(items, 4, async p => {
       try { await adminRequest(`/api/admin/menu-items/${itemId(p)}/delete`, { method: 'DELETE' }); }
-      catch { failed.push(p.name); }
+      catch { failedIds.add(itemId(p)); }
     });
-    const removed = new Set(items.filter(p => !failed.includes(p.name)).map(itemId));
+    const removed = new Set(items.map(itemId).filter(id => !failedIds.has(id)));
     setProducts(prev => prev.filter(p => !removed.has(itemId(p))));
-    setSelected(new Set());
+    // Keep the failed ones selected so the admin can retry them.
+    setSelected(new Set(failedIds));
     setConfirmDelete(null);
-    if (failed.length) toast.error(`Could not delete: ${failed.join(', ')}`);
+    const failedNames = items.filter(p => failedIds.has(itemId(p))).map(p => p.name);
+    if (failedNames.length) toast.error(`Could not delete: ${failedNames.join(', ')}`);
     else toast.success(items.length === 1 ? `${items[0].name} deleted.` : `${items.length} items deleted.`);
   };
 
@@ -155,12 +158,13 @@ export function MenuManager({ store }: { store: Store }) {
   const bulkPatch = async (patch: Record<string, unknown>, label: string) => {
     const items = selectedItems;
     try {
-      // One server call for every selected item (max 300), all in one transaction.
-      const result = await bulkUpdateItems(items.map(itemId).slice(0, 300), patch);
-      const ok = Number(result?.count) || 0;
-      setProducts(prev => prev.map(p => (selected.has(itemId(p)) ? { ...p, ...(patch as Partial<Product>) } : p)));
+      // Chunks of 300 ids (the endpoint's limit), each chunk in one server transaction.
+      const result = await bulkUpdateItems(items.map(itemId), patch);
+      const ok = result.count;
+      const okIds = new Set(result.okIds);
+      setProducts(prev => prev.map(p => (okIds.has(itemId(p)) ? { ...p, ...(patch as Partial<Product>) } : p)));
       if (ok === items.length) toast.success(`${label}: ${ok} item${ok === 1 ? '' : 's'}.`);
-      else toast.error(`${label}: ${ok} of ${items.length} updated. Reloading the menu.`);
+      else toast.error(`${label}: ${describeBulk(result, items.length, 'updated', 'item')} Reloading the menu.`);
       load(true);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not update the items.');

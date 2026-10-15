@@ -5,6 +5,9 @@ const { fail, cleanText, hit } = require('../services/util');
 const { checkRefs } = require('../services/media');
 const S = require('../services/serialize');
 const notify = require('../services/notify');
+const { istYmd } = require('../../../utils/istTime');
+const istYmdNow = () => istYmd(new Date());
+const istYmdOf = (d) => istYmd(new Date(d));
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -38,7 +41,8 @@ const assertLicenceFor = (lic, listing, { requireVerified = false, at = new Date
   if (requireVerified && lic.status !== E.LICENCE_STATUS.VERIFIED) {
     throw fail(409, 'LICENCE_NOT_VERIFIED', "The renter's driving licence is still being verified by Zenvy. You can accept once it is verified.");
   }
-  if (lic.expiresOn && String(lic.expiresOn) < new Date(at).toISOString().slice(0, 10)) {
+  // Calendar dates in IST (B22): a licence valid "until 31 May" covers the whole IST day.
+  if (lic.expiresOn && String(lic.expiresOn) < istYmdOf(at)) {
     throw fail(403, 'LICENCE_EXPIRED', 'Your driving licence expires before this trip ends. Upload your renewed licence.');
   }
   const have = effectiveClasses(lic);
@@ -72,7 +76,7 @@ const upsert = async (req, res) => {
   if (b.expiresOn) {
     const e = String(b.expiresOn).slice(0, 10);
     if (!DATE_RE.test(e) || Number.isNaN(Date.parse(e))) throw fail(400, 'INVALID_INPUT', 'Expiry date must look like 2030-05-31.', { field: 'expiresOn' });
-    if (e < new Date().toISOString().slice(0, 10)) throw fail(400, 'LICENCE_EXPIRED', 'This licence has already expired.', { field: 'expiresOn' });
+    if (e < istYmdNow()) throw fail(400, 'LICENCE_EXPIRED', 'This licence has already expired.', { field: 'expiresOn' });
     expiresOn = e;
   }
   const existing = await Licence.findOne({ where: { userId: req.user.id } });

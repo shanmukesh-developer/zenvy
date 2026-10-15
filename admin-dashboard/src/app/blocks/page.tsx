@@ -20,7 +20,7 @@ export default function BlockWarsHUD() {
 
   const fetchStats = useCallback(async (signal?: { cancelled: boolean }) => {
     try {
-      const res = await fetch(`${API_URL}/api/blocks/activity`, { cache: 'no-store' });
+      const res = await fetch(`${API_URL}/api/blocks/activity`, { cache: 'no-store', credentials: 'include' });
       if (!res.ok) throw new Error(res.status >= 500 ? 'The server had a problem loading block activity.' : `Could not load block activity (${res.status}).`);
       const data = await res.json();
       if (signal?.cancelled) return;

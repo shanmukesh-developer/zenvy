@@ -14,6 +14,9 @@ const CAMPUS_HUBS = [
   { name: 'Neerukonda', lat: 16.4715, lon: 80.5055, tag: 'VILLAGE', icon: '📍' },
 ];
 const CAMPUS_CENTER: [number, number] = [16.4650, 80.5040];
+/** A rider whose app has not sent a position for this long is dropped from the map (stale pin). */
+const STALE_AFTER_MS = 2 * 60 * 1000;
+const EXPIRY_SWEEP_MS = 20 * 1000;
 
 export default function LiveRiderMap() {
   const [riders, setRiders] = useState<Record<string, { lat: number; lon: number; name?: string; updatedAt: number }>>({});
@@ -53,9 +56,23 @@ export default function LiveRiderMap() {
     };
   }, [socket]);
 
-  // Custom DivIcon for Riders
-  const createRiderIcon = (id: string) => {
-    return L.divIcon({
+  // Drop riders that went quiet (app killed, no signal) instead of showing a frozen pin forever.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const cutoff = Date.now() - STALE_AFTER_MS;
+      setRiders((prev) => {
+        const stale = Object.keys(prev).filter((id) => prev[id].updatedAt < cutoff);
+        if (!stale.length) return prev;
+        const next = { ...prev };
+        stale.forEach((id) => { delete next[id]; });
+        return next;
+      });
+    }, EXPIRY_SWEEP_MS);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Icons are built once (they were rebuilt for every pin on every position update).
+  const riderIcon = useMemo(() => L.divIcon({
       className: 'zenvy-rider-pin',
       html: `
         <div style="
@@ -87,12 +104,9 @@ export default function LiveRiderMap() {
       `,
       iconSize: [38, 38],
       iconAnchor: [19, 19]
-    });
-  };
+    }), []);
 
-  // Custom DivIcon for Campus Hubs
-  const createHubIcon = (hub: typeof CAMPUS_HUBS[0]) => {
-    return L.divIcon({
+  const hubIcons = useMemo(() => Object.fromEntries(CAMPUS_HUBS.map((hub) => [hub.name, L.divIcon({
       className: 'zenvy-hub-pin',
       html: `
         <div style="
@@ -114,8 +128,7 @@ export default function LiveRiderMap() {
       `,
       iconSize: [70, 24],
       iconAnchor: [35, 12]
-    });
-  };
+    })])), []);
 
   const activeRidersCount = Object.keys(riders).length;
 
@@ -151,7 +164,7 @@ export default function LiveRiderMap() {
           <Marker
             key={hub.name}
             position={[hub.lat, hub.lon]}
-            icon={createHubIcon(hub)}
+            icon={hubIcons[hub.name]}
           >
             <Popup className="zenvy-dark-popup">
               <div style={{ background: '#09090b', color: '#fff', padding: '10px 12px', borderRadius: '12px', minWidth: '180px' }}>
@@ -171,7 +184,7 @@ export default function LiveRiderMap() {
           <Marker
             key={id}
             position={[pos.lat, pos.lon]}
-            icon={createRiderIcon(id)}
+            icon={riderIcon}
           >
             <Popup className="zenvy-dark-popup">
               <div style={{ background: '#09090b', color: '#fff', padding: '10px 12px', borderRadius: '12px', minWidth: '190px' }}>

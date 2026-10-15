@@ -302,6 +302,36 @@ async function changeBookingStatus(bookingId, nextStatus, mayChange) {
 }
 
 // Listing photos: media URLs / hosted https kept, inline base64 moved to the media table (max 12).
+// B27: numbers on PG listings / rooms are validated (a negative rent, 0 beds or more free beds than
+// beds used to be stored as sent). Returns an error message or null; `partial` = update (only the
+// fields present are checked).
+const badNumber = (v, { min = 0, max = 1000000, int = false } = {}) => {
+  if (v === undefined || v === null || v === '') return false;
+  const n = Number(v);
+  return !Number.isFinite(n) || n < min || n > max || (int && !Number.isInteger(n));
+};
+const pgNumbersError = (b) => {
+  if (badNumber(b.baseRent, { max: 500000 })) return 'Rent must be between ₹0 and ₹500000.';
+  if (badNumber(b.securityDeposit, { max: 500000 })) return 'Deposit must be between ₹0 and ₹500000.';
+  if (badNumber(b.distanceFromCollege, { max: 100 })) return 'Distance must be between 0 and 100 km.';
+  return null;
+};
+const roomError = (b, current = null) => {
+  if (badNumber(b.pricePerBed, { max: 500000 })) return 'Price per bed must be between ₹0 and ₹500000.';
+  if (badNumber(b.totalBeds, { min: 1, max: 20, int: true })) return 'Total beds must be a whole number from 1 to 20.';
+  if (badNumber(b.availableBeds, { min: 0, max: 20, int: true })) return 'Available beds must be a whole number from 0 to 20.';
+  if (badNumber(b.floorNumber, { min: -2, max: 100, int: true })) return 'Floor must be a whole number.';
+  const total = b.totalBeds !== undefined && b.totalBeds !== null && b.totalBeds !== '' ? Number(b.totalBeds) : (current ? Number(current.totalBeds) : null);
+  const avail = b.availableBeds !== undefined && b.availableBeds !== null && b.availableBeds !== '' ? Number(b.availableBeds) : (current ? Number(current.availableBeds) : null);
+  if (total !== null && avail !== null && Number.isFinite(total) && Number.isFinite(avail) && avail > total) return 'Available beds cannot be more than total beds.';
+  return null;
+};
+
+// Non-UUID ids answer 404 instead of a Postgres error (B27).
+router.param('id', (req, res, next, id) => (UUID_RE.test(String(id || '')) ? next() : res.status(404).json({ message: 'PG not found.' })));
+router.param('roomId', (req, res, next, id) => (UUID_RE.test(String(id || '')) ? next() : res.status(404).json({ message: 'Room not found.' })));
+router.param('bookingId', (req, res, next, id) => (UUID_RE.test(String(id || '')) ? next() : res.status(404).json({ message: 'Booking not found.' })));
+
 const cleanPgImages = (images, req) =>
   require('../utils/imageStore').storeImageList(images, { req, ownerId: req.user && req.user.id, purpose: 'pg', maxItems: 12 });
 
@@ -313,6 +343,8 @@ router.post('/', protect, admin, async (req, res) => {
       name, address, distanceFromCollege, genderType, baseRent, securityDeposit,
       amenities, images, description, messMenu, foodTimetable, rules, contactInfo, isActive
     } = req.body;
+    const numErr = pgNumbersError(req.body || {});
+    if (numErr) return res.status(400).json({ message: numErr });
 
     const imgs = await cleanPgImages(images, req);
     if (!imgs.ok) return res.status(imgs.status || 400).json({ message: imgs.message });
@@ -352,6 +384,8 @@ router.put('/:id', protect, admin, async (req, res) => {
       name, address, distanceFromCollege, genderType, baseRent, securityDeposit,
       amenities, images, description, messMenu, foodTimetable, rules, contactInfo, isActive
     } = req.body;
+    const numErr = pgNumbersError(req.body || {});
+    if (numErr) return res.status(400).json({ message: numErr });
     let cleanImages;
     if (images !== undefined) {
       const imgs = await cleanPgImages(images, req);
@@ -401,6 +435,9 @@ router.post('/:id/rooms', protect, admin, async (req, res) => {
   try {
     const PGRoom = getPGRoomModel();
     const { roomNumber, sharingType, pricePerBed, totalBeds, availableBeds, floorNumber, hasAttachedBathroom, hasAC, hasBalcony, furnishing, isActive } = req.body;
+    const err = roomError(req.body || {});
+    if (err) return res.status(400).json({ message: err });
+    if (!(await getPGHostelModel().findByPk(req.params.id, { attributes: ['id'] }))) return res.status(404).json({ message: 'PG not found.' });
     const room = await PGRoom.create({
       hostelId: req.params.id,
       roomNumber, sharingType, pricePerBed, totalBeds, availableBeds, floorNumber, hasAttachedBathroom, hasAC, hasBalcony, furnishing, isActive: isActive ?? true
@@ -422,6 +459,8 @@ router.put('/:id/rooms/:roomId', protect, admin, async (req, res) => {
     if (!room) return res.status(404).json({ message: 'Room not found.' });
 
     const { roomNumber, sharingType, pricePerBed, totalBeds, availableBeds, floorNumber, hasAttachedBathroom, hasAC, hasBalcony, furnishing, isActive } = req.body;
+    const err = roomError(req.body || {}, room);
+    if (err) return res.status(400).json({ message: err });
     await room.update({
       roomNumber, sharingType, pricePerBed, totalBeds, availableBeds, floorNumber, hasAttachedBathroom, hasAC, hasBalcony, furnishing, isActive
     });

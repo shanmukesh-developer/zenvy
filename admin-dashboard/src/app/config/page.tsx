@@ -83,6 +83,16 @@ export default function ConfigTerminal() {
     if (isAuthed) fetchAll();
   }, [isAuthed, fetchAll]);
 
+  // Reload only the config rows after a retention save: fetchAll() also resets the fee and the other
+  // retention input, which would wipe a value the admin typed but has not saved yet.
+  const reloadConfigRows = useCallback(async (savedKey: string) => {
+    const rows = await apiRequest<ConfigRow[]>('/api/admin/config', { cache: 'reload' });
+    const list = Array.isArray(rows) ? rows : [];
+    setConfigs(list);
+    const r = RETENTION.find(x => x.key === savedKey);
+    if (r) setRetInputs(prev => ({ ...prev, [savedKey]: String(list.find(c => c.key === savedKey)?.value ?? r.def) }));
+  }, []);
+
   const feeRow = configs.find(c => c.key === DELIVERY_FEE_KEY);
   const currentFee = Number(feeRow?.value ?? DEFAULT_DELIVERY_FEE);
   const otherRows = configs.filter(c => c.key !== DELIVERY_FEE_KEY && !MANAGED_KEYS.includes(c.key));
@@ -98,16 +108,19 @@ export default function ConfigTerminal() {
       return;
     }
     const current = Number(configs.find(c => c.key === key)?.value ?? def);
-    if (days === current) {
+    const currentValid = Number.isFinite(current);
+    if (currentValid && days === current) {
       setRetNotice('No change to save.');
       return;
     }
-    if (days < current && !confirm(`Shorten ${label.toLowerCase()} retention from ${current} to ${days} day(s)? Older items are permanently deleted on the next hourly run.`)) return;
+    // A stored value that is not a number cannot be compared: always ask before saving.
+    if (!currentValid && !confirm(`The saved ${label.toLowerCase()} retention is not a valid number. Set it to ${days} day(s)? Older items are permanently deleted on the next hourly run.`)) return;
+    if (currentValid && days < current && !confirm(`Shorten ${label.toLowerCase()} retention from ${current} to ${days} day(s)? Older items are permanently deleted on the next hourly run.`)) return;
     setSavingRet(key);
     try {
       await apiRequest('/api/admin/config', { method: 'POST', body: JSON.stringify({ key, value: days }) });
       setRetNotice(`${label} are now kept for ${days} day(s).`);
-      await fetchAll();
+      await reloadConfigRows(key).catch(() => { /* saved; the list refreshes on the next load */ });
     } catch (err) {
       setRetError(err instanceof Error ? err.message : 'Could not save the retention setting.');
     } finally {

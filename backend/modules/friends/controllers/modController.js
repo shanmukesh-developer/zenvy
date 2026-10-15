@@ -353,6 +353,9 @@ const decideAppeal = async (req, res) => {
     );
     if (!n) throw fail(409, 'ALREADY_DECIDED', 'This appeal was already decided.');
     const action = await FriendsModAction.findByPk(appeal.actionId, { transaction });
+    // Follow-up rows of a decision on anonymous content stay anonymous too (B3): otherwise the
+    // lift / restore / appeal rows would pair the hidden author with the content in the audit list.
+    const anonymous = audit.isAnonymousAction(action);
     const effects = [];
     if (decision === 'reversed' && action) {
       if (action.action === 'sanction') {
@@ -362,14 +365,14 @@ const decideAppeal = async (req, res) => {
         );
         if (lifted) {
           effects.push('sanction_lifted');
-          await audit.record({ actorId: req.user.id, actorRole: 'admin', action: 'lift_sanction', targetType: 'user', targetId: appeal.userId, subjectUserId: appeal.userId, reason: note, meta: { appealId: id, sourceActionId: action.id } }, { transaction });
+          await audit.record({ actorId: req.user.id, actorRole: 'admin', action: 'lift_sanction', targetType: 'user', targetId: appeal.userId, subjectUserId: appeal.userId, anonymous, reason: note, meta: { appealId: id, sourceActionId: action.id } }, { transaction });
         }
       } else if (['remove', 'hide', 'hide_pending'].includes(action.action)) {
         const resolver = targets.get(action.targetType);
         if (resolver && resolver.setStatus && (resolver.statuses || []).includes('visible')) {
           await resolver.setStatus(action.targetId, 'visible', { transaction });
           effects.push('content_restored');
-          await audit.record({ actorId: req.user.id, actorRole: 'admin', action: 'restore', targetType: action.targetType, targetId: action.targetId, subjectUserId: appeal.userId, reason: note, meta: { appealId: id, sourceActionId: action.id } }, { transaction });
+          await audit.record({ actorId: req.user.id, actorRole: 'admin', action: 'restore', targetType: action.targetType, targetId: action.targetId, subjectUserId: appeal.userId, anonymous, reason: note, meta: { appealId: id, sourceActionId: action.id } }, { transaction });
         }
       }
     }
@@ -380,6 +383,7 @@ const decideAppeal = async (req, res) => {
       targetType: action ? action.targetType : null,
       targetId: action ? action.targetId : null,
       subjectUserId: appeal.userId,
+      anonymous,
       reason: note,
       meta: { appealId: id, sourceActionId: appeal.actionId, effects },
     }, { transaction });
@@ -392,11 +396,20 @@ const decideAppeal = async (req, res) => {
 };
 
 // ── Sanctions ───────────────────────────────────────────────────────────────
-const sanctionPayload = (s) => ({
-  id: s.id, userId: s.userId, scope: s.scope, until: s.until, reason: s.reason, actionId: s.actionId,
+// A sanction issued over anonymous content does not link to its source action (B3): the action
+// row names the content, and sanction.userId + action.targetId together would unmask the author.
+const sanctionPayload = (s, anonymous = false) => ({
+  id: s.id, userId: s.userId, scope: s.scope, until: s.until, reason: s.reason, actionId: anonymous ? null : s.actionId,
+  anonymous: !!anonymous,
   createdBy: s.createdBy, liftedAt: s.liftedAt, liftedBy: s.liftedBy, createdAt: s.createdAt,
   active: !s.liftedAt && (!s.until || new Date(s.until).getTime() > Date.now()),
 });
+const anonymousActionIds = async (actionIds) => {
+  const ids = [...new Set(actionIds.filter(Boolean).map(String))];
+  if (!ids.length) return new Set();
+  const rows = await getModel('FriendsModAction').findAll({ where: { id: { [Op.in]: ids } }, attributes: ['id', 'meta'] });
+  return new Set(rows.filter((a) => audit.isAnonymousAction(a)).map((a) => String(a.id)));
+};
 
 // GET /sanctions?userId=&active=true|false&cursor=
 const listSanctions = async (req, res) => {
@@ -414,7 +427,8 @@ const listSanctions = async (req, res) => {
   const limit = cursor.pageSize(req.query.limit, 30);
   const rows = await FriendsSanction.findAll({ where, order: [['createdAt', 'DESC'], ['id', 'DESC']], limit: limit + 1 });
   const { items, nextCursor } = cursor.page(rows, limit);
-  res.json({ items: items.map(sanctionPayload), nextCursor });
+  const anon = await anonymousActionIds(items.map((s) => s.actionId));
+  res.json({ items: items.map((s) => sanctionPayload(s, anon.has(String(s.actionId)))), nextCursor });
 };
 
 // POST /sanctions { userId, scope, days | permanent, reason }
@@ -448,7 +462,8 @@ const liftSanction = async (req, res) => {
   if (!s) throw fail(404, 'SANCTION_NOT_FOUND', 'Sanction not found.');
   const [n] = await FriendsSanction.update({ liftedAt: new Date(), liftedBy: req.user.id }, { where: { id, liftedAt: null } });
   if (!n) throw fail(409, 'ALREADY_LIFTED', 'This sanction was already lifted.');
-  const action = await audit.record({ actorId: req.user.id, actorRole: 'admin', action: 'lift_sanction', targetType: 'user', targetId: s.userId, subjectUserId: s.userId, reason, meta: { sanctionId: id } });
+  const anonymous = (await anonymousActionIds([s.actionId])).has(String(s.actionId));
+  const action = await audit.record({ actorId: req.user.id, actorRole: 'admin', action: 'lift_sanction', targetType: 'user', targetId: s.userId, subjectUserId: s.userId, anonymous, reason, meta: { sanctionId: id } });
   eligibility.clearEligibility(s.userId);
   res.json({ ok: true, actionId: action.id });
 };

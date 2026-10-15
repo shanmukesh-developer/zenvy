@@ -108,6 +108,22 @@ const announceDueBirthdays = async (io) => {
   return count;
 };
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const isUuid = (v) => UUID_RE.test(String(v || ''));
+const MAX_PENDING_PER_USER = 3;
+// Public shapes never carry account ids (B25): who submitted / approved / wished stays private.
+const publicCelebration = (c) => {
+  const j = typeof c.toJSON === 'function' ? c.toJSON() : { ...c };
+  delete j.userId;
+  delete j.approvedBy;
+  return j;
+};
+const publicWish = (w) => {
+  const j = typeof w.toJSON === 'function' ? w.toJSON() : { ...w };
+  delete j.userId;
+  return j;
+};
+
 // POST /api/birthdays - Submit birthday celebration request
 router.post('/', protect, async (req, res) => {
   try {
@@ -131,6 +147,12 @@ router.post('/', protect, async (req, res) => {
       return res.status(400).json({ code: 'INVALID_DATE', message: 'Pick the birthday date from today up to 60 days ahead.' });
     }
 
+    // A few pending requests per person at a time (B25): each one carries a photo for review.
+    const pendingMine = await BirthdayCelebration.count({ where: { userId: req.user.id, status: 'pending' } });
+    if (pendingMine >= MAX_PENDING_PER_USER) {
+      return res.status(429).json({ code: 'TOO_MANY_PENDING', message: `You already have ${MAX_PENDING_PER_USER} birthday requests waiting for review. Please wait for them first.` });
+    }
+
     // The photo bytes go to the media table (sniffed, max 5 MB); the row keeps the short URL.
     const { storeImageRef, sendImageError } = require('../utils/imageStore');
     const photo = await storeImageRef(candidatePhoto || null, { req, ownerId: req.user.id, purpose: 'birthday' });
@@ -147,7 +169,7 @@ router.post('/', protect, async (req, res) => {
       wishCount: 0
     });
 
-    res.status(201).json(celebration);
+    res.status(201).json(publicCelebration(celebration));
   } catch (err) {
     console.error('Error submitting birthday request:', err);
     res.status(500).json({ message: 'Failed to submit birthday celebration.' });
@@ -169,7 +191,7 @@ router.get('/active', async (req, res) => {
       order: [['approvedAt', 'DESC']]
     });
 
-    res.json(activeCelebrations);
+    res.json(activeCelebrations.map(publicCelebration));
   } catch (err) {
     console.error('Error fetching active birthdays:', err);
     res.status(500).json({ message: 'Failed to fetch active birthdays.' });
@@ -180,11 +202,18 @@ router.get('/active', async (req, res) => {
 router.get('/pending', protect, admin, async (req, res) => {
   try {
     const BirthdayCelebration = getBirthdayCelebrationModel();
-    const pending = await BirthdayCelebration.findAll({
+    // Paged (B25): ?limit (default 50, max 100) & ?offset. The array shape is unchanged; the total
+    // is in the X-Total-Count header.
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
+    const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+    const { rows, count } = await BirthdayCelebration.findAndCountAll({
       where: { status: 'pending' },
-      order: [['createdAt', 'ASC']]
+      order: [['createdAt', 'ASC']],
+      limit,
+      offset
     });
-    res.json(pending);
+    res.set('X-Total-Count', String(count));
+    res.json(rows);
   } catch (err) {
     console.error('Error fetching pending birthdays:', err);
     res.status(500).json({ message: 'Failed to fetch pending requests.' });
@@ -197,7 +226,7 @@ router.put('/:id/approve', protect, admin, async (req, res) => {
     const BirthdayCelebration = getBirthdayCelebrationModel();
     if (!BirthdayCelebration) return res.status(500).json({ message: 'Database model not initialized.' });
 
-    const celebration = await BirthdayCelebration.findByPk(req.params.id);
+    const celebration = isUuid(req.params.id) ? await BirthdayCelebration.findByPk(req.params.id) : null;
     if (!celebration) return res.status(404).json({ message: 'Celebration not found.' });
 
     const now = new Date();
@@ -237,12 +266,16 @@ router.put('/:id/reject', protect, admin, async (req, res) => {
     const BirthdayCelebration = getBirthdayCelebrationModel();
     if (!BirthdayCelebration) return res.status(500).json({ message: 'Database model not initialized.' });
 
-    const celebration = await BirthdayCelebration.findByPk(req.params.id);
+    const celebration = isUuid(req.params.id) ? await BirthdayCelebration.findByPk(req.params.id) : null;
     if (!celebration) return res.status(404).json({ message: 'Celebration not found.' });
 
+    const rejectedPhoto = celebration.candidatePhotoUrl;
     await celebration.update({
-      status: 'rejected'
+      status: 'rejected',
+      candidatePhotoUrl: null
     });
+    // A rejected photo is not kept (B19).
+    if (rejectedPhoto) require('../utils/mediaCleanup').releaseMedia([rejectedPhoto], 'birthday').catch(() => 0);
 
     require('../utils/realtime').notifyAdmin('announcement', 'updated', celebration.id, { scope: 'birthday' });
     res.json({ message: 'Birthday request rejected.', celebration });
@@ -262,7 +295,7 @@ router.post('/:id/wish', protect, async (req, res) => {
       return res.status(500).json({ message: 'Database models not initialized.' });
     }
 
-    const celebration = await BirthdayCelebration.findByPk(req.params.id);
+    const celebration = isUuid(req.params.id) ? await BirthdayCelebration.findByPk(req.params.id) : null;
     if (!celebration) return res.status(404).json({ message: 'Birthday celebration not found.' });
 
     // Check if expired
@@ -274,7 +307,8 @@ router.post('/:id/wish', protect, async (req, res) => {
       return res.status(400).json({ message: 'This birthday is not live yet.' });
     }
 
-    const message = typeof req.body?.message === 'string' ? req.body.message.trim().slice(0, 300) : '';
+    // The column is VARCHAR(255): longer wishes failed and were reported as "already wished" (B16).
+    const message = typeof req.body?.message === 'string' ? req.body.message.replace(/[<>]/g, '').trim().slice(0, 255) : '';
 
     // Create unique wish constraint check
     try {
@@ -285,13 +319,16 @@ router.post('/:id/wish', protect, async (req, res) => {
         message: message || ''
       });
     } catch (dbErr) {
-      // SequelizeUniqueConstraintError
-      return res.status(400).json({ message: 'You have already wished this candidate! ❤️' });
+      // Only a real duplicate is "already wished" (B16); anything else is a server error.
+      if (dbErr && dbErr.name === 'SequelizeUniqueConstraintError') {
+        return res.status(400).json({ message: 'You have already wished this candidate! ❤️' });
+      }
+      throw dbErr;
     }
 
-    // Increment wishCount
-    celebration.wishCount = (celebration.wishCount || 0) + 1;
-    await celebration.save();
+    // Atomic increment (B16): concurrent wishes all count.
+    await BirthdayCelebration.increment('wishCount', { by: 1, where: { id: celebration.id } });
+    await celebration.reload({ attributes: ['id', 'wishCount'] });
 
     // Wishes show on the celebration itself (GET /api/birthdays/:id/wishes); no per-wish feed posts.
 
@@ -308,12 +345,14 @@ router.get('/:id/wishes', async (req, res) => {
     const BirthdayWish = getBirthdayWishModel();
     if (!BirthdayWish) return res.status(500).json({ message: 'Database model not initialized.' });
 
+    if (!isUuid(req.params.id)) return res.status(404).json({ message: 'Birthday celebration not found.' });
     const wishes = await BirthdayWish.findAll({
       where: { celebrationId: req.params.id },
-      order: [['createdAt', 'DESC']]
+      order: [['createdAt', 'DESC']],
+      limit: 500
     });
 
-    res.json(wishes);
+    res.json(wishes.map(publicWish));
   } catch (err) {
     console.error('Error fetching wishes:', err);
     res.status(500).json({ message: 'Failed to fetch wishes.' });

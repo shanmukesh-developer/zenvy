@@ -18,6 +18,16 @@ const broadcastBasketStatus = (req, basketId, payload) => {
 
 // The delivery PIN is the customer's secret: the rider must ask for it at the door,
 // so it is never included in rider-facing responses.
+// Mega Basket fees (one source for createBasket and the public GET /api/mega-basket/fees).
+const MEGA_BASKET_SHOPPING_FEE = 30;
+const MEGA_BASKET_DELIVERY_FEE = 20;
+
+// @desc    Current Mega Basket fees (public, cached) so the app never hard-codes them
+// @route   GET /api/mega-basket/fees
+const getBasketFees = (req, res) => {
+  res.json({ shoppingFee: MEGA_BASKET_SHOPPING_FEE, deliveryFee: MEGA_BASKET_DELIVERY_FEE, currency: 'INR' });
+};
+
 const withoutPin = (basket) => {
   if (!basket) return basket;
   const json = typeof basket.toJSON === 'function' ? basket.toJSON() : { ...basket };
@@ -126,22 +136,26 @@ const createBasket = async (req, res) => {
 
     // Calculate estimated total
     let estimatedTotal = 0;
+    // Clamp BEFORE totalling (B24): the estimate used the raw quantity / price while the stored
+    // item was clamped, so the shown estimate and the items disagreed.
     const itemsData = items.map(item => {
-      const qty = Math.max(1, parseInt(item.quantity) || 1);
-      const estPrice = Math.max(0, parseFloat(item.priceEstimated) || 0);
+      const qty = Math.min(99, Math.max(1, parseInt(item.quantity) || 1));
+      const rawPrice = parseFloat(item.priceEstimated);
+      const estPrice = Math.round(Math.min(100000, Math.max(0, Number.isFinite(rawPrice) ? rawPrice : 0)) * 100) / 100;
       estimatedTotal += estPrice * qty;
 
       return {
         name: item.name.replace(/[<>]/g, '').trim().slice(0, 80),
-        quantity: Math.min(qty, 99),
-        unit: String(item.unit || 'pcs').slice(0, 20),
+        quantity: qty,
+        unit: String(item.unit || 'pcs').replace(/[<>]/g, '').trim().slice(0, 20) || 'pcs',
         priceEstimated: estPrice,
         status: 'Pending'
       };
     });
+    estimatedTotal = Math.round(estimatedTotal * 100) / 100;
 
-    const shoppingFee = 30;
-    const deliveryFee = 20;
+    const shoppingFee = MEGA_BASKET_SHOPPING_FEE;
+    const deliveryFee = MEGA_BASKET_DELIVERY_FEE;
     const deliveryPin = String(require('crypto').randomInt(1000, 10000));
 
     // Initial status determined by payment method
@@ -293,12 +307,29 @@ const getPendingBaskets = async (req, res) => {
       where: { status: 'PaidEstimate', deliveryPartnerId: null },
       include: [
         { model: MegaBasketItem, as: 'items' },
-        { model: User, as: 'user', attributes: ['name', 'hostelBlock'] }
+        { model: User, as: 'user', attributes: ['hostelBlock'] }
       ],
       order: [['createdAt', 'DESC']]
     });
 
-    res.json(baskets.map(withoutPin));
+    // Open pool = every rider sees it: only what is needed to decide on a claim (B11). The exact
+    // address, customer identity and payment details are shown after the claim (rider's own list).
+    res.json(baskets.map((b) => {
+      const j = b.toJSON();
+      return {
+        id: j.id,
+        status: j.status,
+        estimatedTotal: j.estimatedTotal,
+        shoppingFee: j.shoppingFee,
+        deliveryFee: j.deliveryFee,
+        paymentMethod: j.paymentMethod,
+        createdAt: j.createdAt,
+        updatedAt: j.updatedAt,
+        area: j.user ? j.user.hostelBlock || null : null,
+        user: { hostelBlock: j.user ? j.user.hostelBlock || null : null },
+        items: (j.items || []).map((i) => ({ id: i.id, name: i.name, quantity: i.quantity, unit: i.unit, priceEstimated: i.priceEstimated, status: i.status })),
+      };
+    }));
   } catch (error) {
     serverError(res, '[MEGA_BASKET_ERROR]', error);
   }
@@ -366,7 +397,7 @@ const updateItemStatus = async (req, res) => {
       return res.status(403).json({ message: 'Not authorized' });
     }
 
-    const item = await MegaBasketItem.findByPk(itemId);
+    let item = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(itemId || '')) ? await MegaBasketItem.findByPk(itemId) : null;
     if (!item || item.basketId !== basket.id) {
       return res.status(404).json({ message: 'Item not found in this basket' });
     }
@@ -382,25 +413,42 @@ const updateItemStatus = async (req, res) => {
       if (!Number.isFinite(p) || p < 0 || p > 100000) return res.status(400).json({ message: 'Please enter a valid price.' });
     }
 
+    let photoValue;
     if (photoProofUrl !== undefined) {
       const { storeImageRef, sendImageError } = require('../utils/imageStore');
       const img = await storeImageRef(photoProofUrl, { req, ownerId: req.user.id, purpose: 'basket' });
       if (!img.ok) return sendImageError(res, img);
-      item.photoProofUrl = img.value;
+      photoValue = img.value;
     }
-    const prevStatus = item.status;
-    const prevPrice = item.priceActual;
-    if (status !== undefined) item.status = status;
-    if (priceActual !== undefined) item.priceActual = priceActual === null ? null : Number(priceActual);
-    const billChanged = item.status !== prevStatus || Number(item.priceActual) !== Number(prevPrice);
-    await item.save();
 
-    // The customer was shown a bill: any price / availability change after that withdraws it, so
-    // the rider must resubmit and the customer approves the new total (never a stale one).
-    if (billChanged && basket.status === 'PriceApprovalPending') {
-      const [reopened] = await MegaBasket.update({ status: 'Shopping' }, { where: { id: basket.id, status: 'PriceApprovalPending' } });
-      if (reopened) broadcastBasketStatus(req, basket.id, { id: basket.id, status: 'Shopping' });
-    }
+    // Item change + bill withdrawal in one transaction under the basket row lock (B24): a customer
+    // approval racing this edit either lands first (we then refuse the edit) or waits and then
+    // finds the bill withdrawn. An approved bill can never get a changed item behind it.
+    let reopened = false;
+    // SQLite (local dev): IMMEDIATE so the read-then-write cannot hit SQLITE_BUSY.
+    const txOpts = MegaBasket.sequelize.getDialect() === 'sqlite' ? { type: require('sequelize').Transaction.TYPES.IMMEDIATE } : {};
+    const outcome = await MegaBasket.sequelize.transaction(txOpts, async (t) => {
+      const fresh = await MegaBasket.findByPk(basket.id, { transaction: t, lock: t.LOCK.UPDATE });
+      if (!fresh || !['PartnerAssigned', 'Shopping', 'PriceApprovalPending'].includes(fresh.status)) return { refused: true };
+      const row = await MegaBasketItem.findByPk(item.id, { transaction: t });
+      const prevStatus = row.status;
+      const prevPrice = row.priceActual;
+      if (photoValue !== undefined) row.photoProofUrl = photoValue;
+      if (status !== undefined) row.status = status;
+      if (priceActual !== undefined) row.priceActual = priceActual === null ? null : Number(priceActual);
+      const billChanged = row.status !== prevStatus || Number(row.priceActual) !== Number(prevPrice);
+      await row.save({ transaction: t });
+      // The customer was shown a bill: any price / availability change after that withdraws it, so
+      // the rider must resubmit and the customer approves the new total (never a stale one).
+      if (billChanged && fresh.status === 'PriceApprovalPending') {
+        const [n] = await MegaBasket.update({ status: 'Shopping' }, { where: { id: basket.id, status: 'PriceApprovalPending' }, transaction: t });
+        reopened = n > 0;
+      }
+      return { item: row };
+    });
+    if (outcome.refused) return res.status(409).json({ message: 'The bill for this basket was already approved. Items can no longer change.' });
+    item = outcome.item;
+    if (reopened) broadcastBasketStatus(req, basket.id, { id: basket.id, status: 'Shopping' });
 
     const io = req.app.get('io');
     if (io) {
@@ -440,7 +488,9 @@ const submitBill = async (req, res) => {
     let actualTotal = 0;
     basket.items.forEach(item => {
       if (item.status !== 'Unavailable') {
-        const price = parseFloat(item.priceActual) || parseFloat(item.priceEstimated) || 0;
+        // A real ₹0 price (free item) counts as 0, not as "fall back to the estimate" (B24).
+        const actual = item.priceActual === null || item.priceActual === undefined || item.priceActual === '' ? NaN : parseFloat(item.priceActual);
+        const price = Number.isFinite(actual) ? actual : (parseFloat(item.priceEstimated) || 0);
         actualTotal += price * item.quantity;
       }
     });
@@ -630,6 +680,23 @@ const getAllBaskets = async (req, res) => {
     const User = getUserModel();
     const DeliveryPartner = getDeliveryPartnerModel();
 
+    // ?summary=1 (dashboard overview feed): totals, status and names only, no item rows, and an
+    // optional smaller ?limit (1-50). The full list (Mega Basket page) is unchanged.
+    const summary = req.query.summary === '1' || req.query.summary === 'true';
+    if (summary) {
+      const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 50);
+      const rows = await MegaBasket.findAll({
+        attributes: ['id', 'userId', 'deliveryPartnerId', 'status', 'estimatedTotal', 'actualTotal', 'shoppingFee', 'deliveryFee', 'deliveryAddress', 'paymentMethod', 'paymentStatus', 'createdAt', 'updatedAt'],
+        include: [
+          { model: User, as: 'user', attributes: ['name'] },
+          { model: DeliveryPartner, as: 'deliveryPartner', attributes: ['name', 'photoUrl'] }
+        ],
+        order: [['createdAt', 'DESC']],
+        limit
+      });
+      return res.json(rows);
+    }
+
     const baskets = await MegaBasket.findAll({
       include: [
         { model: MegaBasketItem, as: 'items' },
@@ -721,6 +788,9 @@ const expireStaleBaskets = async (io) => {
 
 
 module.exports = {
+  getBasketFees,
+  MEGA_BASKET_SHOPPING_FEE,
+  MEGA_BASKET_DELIVERY_FEE,
   cancelBasket,
   expireStaleBaskets,
   createBasket,

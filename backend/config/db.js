@@ -14,6 +14,7 @@ const { initGlobalConfigModel } = require('../models/GlobalConfig');
 const { initVerificationLogModel } = require('../models/VerificationLog');
 const { initCouponModel } = require('../models/Coupon');
 const { initCommunityPostModel } = require('../models/CommunityPost');
+const { initCommunityPostLikeModel } = require('../models/CommunityPostLike');
 const { initTicketModel } = require('../models/Ticket');
 const { initBikePoolModel } = require('../models/BikePool');
 const { initPoolRequestModel } = require('../models/PoolRequest');
@@ -56,6 +57,7 @@ const initializeAllModels = (instance) => {
   initVerificationLogModel(instance);
   initCouponModel(instance);
   initCommunityPostModel(instance);
+  initCommunityPostLikeModel(instance);
   initTicketModel(instance);
   initBikePoolModel(instance);
   initPoolRequestModel(instance);

@@ -45,7 +45,9 @@ const {
   bulkCreateMenuItems,
   bulkUpdateMenuItems,
   bulkUpdateRestaurants,
-  duplicateRestaurant
+  duplicateRestaurant,
+  createRider,
+  getAttentionCounts
 } = require('../controllers/adminController');
 const { getAllOrders } = require('../controllers/orderController');
 const { protect, admin } = require('../middleware/authMiddleware');
@@ -82,6 +84,7 @@ router.post('/broadcast-push', broadcastPushNotification);
 // Live Orders Intelligence
 router.get('/orders', getAllOrders);
 router.get('/stats', getDashboardStats);
+router.get('/attention-counts', getAttentionCounts);
 router.get('/stats/volume', getOrderVolumeStats);
 router.put('/orders/batch-update', batchUpdateOrders);
 
@@ -102,6 +105,7 @@ router.delete('/restaurants/:id', deleteRestaurant);
 
 // Fleet Management
 router.get('/riders', getAllRiders);
+router.post('/riders', createRider);
 router.put('/riders/:id/approve', approveRider);
 router.route('/riders/:id')
   .post(updateRider)

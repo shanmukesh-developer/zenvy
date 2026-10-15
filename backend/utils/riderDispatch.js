@@ -43,13 +43,19 @@ const tokensOf = (rider) => (Array.isArray(rider.fcmTokens) ? rider.fcmTokens : 
   .map((t) => (typeof t === 'string' ? t : t && t.token))
   .filter(Boolean);
 
+const RIDER_NEW_ORDER_CHANNEL = 'delivery-alerts-v3';
+
 // Push NEW_ORDER to the `limit` best-placed riders. Never throws.
 const pushNearestRiders = async ({ restaurant, orderId, title, body, limit = 5, excludeRiderId = null, data = {} }) => {
   try {
     const ranked = await rankOnlineRiders(restaurant, { excludeRiderId });
     const tokens = ranked.slice(0, limit).flatMap(({ rider }) => tokensOf(rider));
     if (tokens.length === 0) return 0;
-    await sendPushToTokens(tokens, title, body, { orderId: String(orderId), type: 'NEW_ORDER', ...data }, { persist: false });
+    // Rider app v3 channel (bundled 'alert' sound; the app deletes the old v2 channel).
+    await sendPushToTokens(tokens, title, body, { orderId: String(orderId), type: 'NEW_ORDER', ...data }, {
+      persist: false,
+      android: { priority: 'high', notification: { sound: 'alert', channelId: RIDER_NEW_ORDER_CHANNEL } },
+    });
     return tokens.length;
   } catch (err) {
     console.error('[RIDER_DISPATCH_PUSH_ERROR]', err.message);
@@ -80,4 +86,5 @@ const refreshRiderCurrentOrder = async (riderId) => {
   }
 };
 
-module.exports = { BASE_DELIVERY_FEE, riderPayout, RIDER_FRESH_MS, isRiderFresh, riderFixAgeMs, rankOnlineRiders, pushNearestRiders, refreshRiderCurrentOrder };
+module.exports = {
+  RIDER_NEW_ORDER_CHANNEL, BASE_DELIVERY_FEE, riderPayout, RIDER_FRESH_MS, isRiderFresh, riderFixAgeMs, rankOnlineRiders, pushNearestRiders, refreshRiderCurrentOrder };

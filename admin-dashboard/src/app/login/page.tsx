@@ -1,15 +1,23 @@
 "use client";
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
 import { API_URL } from '@/lib/config';
 import { getAuthState, startSession } from '@/lib/session';
 
-/** Only allow same-site relative redirects after login. */
+/**
+ * Only same-origin paths are allowed as the post-login redirect. The value is resolved by the URL
+ * parser (as the browser would) instead of string checks: '/\evil.com', '/\t/evil.com' and similar are
+ * read by browsers as '//evil.com' and slipped past a startsWith('//') test.
+ */
 const safeNext = () => {
   try {
-    const next = new URLSearchParams(window.location.search).get('next');
-    if (next && next.startsWith('/') && !next.startsWith('//') && !next.startsWith('/login')) return next;
+    const raw = new URLSearchParams(window.location.search).get('next');
+    if (!raw || !raw.startsWith('/')) return '/';
+    const origin = window.location.origin;
+    const url = new URL(raw, origin);
+    if (url.origin !== origin || !url.pathname.startsWith('/')) return '/';
+    if (url.pathname.replace(/\/+$/, '') === '/login') return '/';
+    return `${url.pathname}${url.search}${url.hash}`;
   } catch { /* ignore */ }
   return '/';
 };
@@ -99,11 +107,9 @@ export default function AdminLoginPage() {
       <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] bg-blue-600/10 blur-[120px] rounded-full" />
       <div className="absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] bg-amber-600/5 blur-[120px] rounded-full" />
 
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md glass p-10 rounded-[32px] border border-white/5 relative z-10"
-      >
+      {/* CSS entrance animation (framer-motion added ~40 KB gzipped to the first page every admin loads). */}
+      <div className="w-full max-w-md glass p-10 rounded-[32px] border border-white/5 relative z-10 animate-slide-up">
+
         <div className="text-center mb-12">
           <div className="w-16 h-16 bg-blue-600/20 border border-blue-500/30 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-6 shadow-2xl">
             ⚡
@@ -150,20 +156,15 @@ export default function AdminLoginPage() {
           </button>
         </div>
 
-        <AnimatePresence>
-          {error && (
-            <motion.div 
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              role="alert"
-              className="mt-8 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-400 text-xs font-semibold text-center"
-            >
-              {error}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </motion.div>
+        {error && (
+          <div
+            role="alert"
+            className="mt-8 p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-400 text-xs font-semibold text-center animate-fade-in"
+          >
+            {error}
+          </div>
+        )}
+      </div>
 
       <div className="absolute bottom-10 text-[9px] font-bold text-gray-500 uppercase tracking-[0.3em]">
         Zenvy Operations Management Portal

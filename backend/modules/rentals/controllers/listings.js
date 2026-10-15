@@ -1,6 +1,6 @@
 // Student vehicle listings: browse, detail, quote, and the owner's create / edit / submit / pause / delete.
 const { Op } = require('sequelize');
-const { getModel } = require('../index');
+const { getModel, getSequelize } = require('../index');
 const E = require('../enums');
 const { fail, cleanText, isUuid, num, hit } = require('../services/util');
 const { checkRefs, toPath } = require('../services/media');
@@ -456,23 +456,36 @@ const resume = async (req, res) => {
 
 // DELETE /api/rentals/listings/:id  (soft delete)
 const remove = async (req, res) => {
-  const row = await loadOwned(req);
-  const { Booking } = M();
-  const live = await Booking.count({ where: { listingId: row.id, status: { [Op.in]: [E.BOOKING_STATUS.ACCEPTED, E.BOOKING_STATUS.ACTIVE, E.BOOKING_STATUS.RETURNED] } } });
-  if (live) throw fail(409, 'HAS_ACTIVE_BOOKINGS', 'This vehicle has confirmed or ongoing trips. Finish or cancel them first.');
-  const pending = await Booking.findAll({ where: { listingId: row.id, status: E.BOOKING_STATUS.REQUESTED } });
-  for (const b of pending) {
-    const [n] = await Booking.update(
-      { status: E.BOOKING_STATUS.DECLINED, declinedAt: new Date(), declineReason: 'The owner removed this vehicle.' },
-      { where: { id: b.id, status: E.BOOKING_STATUS.REQUESTED } },
-    );
-    if (n) {
-      b.status = E.BOOKING_STATUS.DECLINED;
-      notify.booking(b, { to: 'renter', title: 'Rental request declined', body: `${b.vehicleTitle || 'The vehicle'} is no longer listed.`, type: 'RENTAL_DECLINED' });
+  const owned = await loadOwned(req);
+  const { Booking, Listing } = M();
+  // B22: under the same listing lock + transaction as booking accept / request, so an accept
+  // racing the removal either lands first (removal refused) or sees the vehicle gone.
+  const { withListingLock } = require('./bookings');
+  const { Transaction } = require('sequelize');
+  const declined = [];
+  let wasVisible = false;
+  let alreadyGone = false;
+  let row = owned;
+  await withListingLock(owned.id, () => getSequelize().transaction({ type: Transaction.TYPES.IMMEDIATE }, async (t) => {
+    row = await Listing.findByPk(owned.id, { transaction: t });
+    if (!row || row.status === E.LISTING_STATUS.DELETED) { alreadyGone = true; return; }
+    const live = await Booking.count({ where: { listingId: row.id, status: { [Op.in]: [E.BOOKING_STATUS.ACCEPTED, E.BOOKING_STATUS.ACTIVE, E.BOOKING_STATUS.RETURNED] } }, transaction: t });
+    if (live) throw fail(409, 'HAS_ACTIVE_BOOKINGS', 'This vehicle has confirmed or ongoing trips. Finish or cancel them first.');
+    const pending = await Booking.findAll({ where: { listingId: row.id, status: E.BOOKING_STATUS.REQUESTED }, transaction: t });
+    for (const b of pending) {
+      const [n] = await Booking.update(
+        { status: E.BOOKING_STATUS.DECLINED, declinedAt: new Date(), declineReason: 'The owner removed this vehicle.' },
+        { where: { id: b.id, status: E.BOOKING_STATUS.REQUESTED }, transaction: t },
+      );
+      if (n) { b.status = E.BOOKING_STATUS.DECLINED; declined.push(b); }
     }
+    wasVisible = row.status === E.LISTING_STATUS.APPROVED;
+    await row.update({ status: E.LISTING_STATUS.DELETED, deletedAt: new Date() }, { transaction: t });
+  }));
+  if (alreadyGone) return res.json({ ok: true, message: 'Vehicle removed.' });
+  for (const b of declined) {
+    notify.booking(b, { to: 'renter', title: 'Rental request declined', body: `${b.vehicleTitle || 'The vehicle'} is no longer listed.`, type: 'RENTAL_DECLINED' });
   }
-  const wasVisible = row.status === E.LISTING_STATUS.APPROVED;
-  await row.update({ status: E.LISTING_STATUS.DELETED, deletedAt: new Date() });
   if (wasVisible) notify.listingChanged(row.id);
   notify.admin('rental_listing', 'deleted', row.id);
   res.json({ ok: true, message: 'Vehicle removed.' });

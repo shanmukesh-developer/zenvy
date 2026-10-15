@@ -204,18 +204,16 @@ const serializeSpaces = async (req, rows, me, { admin = false } = {}) => {
   if (!rows.length) return [];
   const ids = rows.map((s) => s.id);
   const Reminder = M('FriendsSpaceReminder');
-  const [reminders, mine, members] = await Promise.all([
-    Reminder.findAll({ where: { spaceId: { [Op.in]: ids } }, attributes: ['spaceId', 'userId'] }),
+  // Counts by GROUP BY + only my own reminder rows (B26): was every reminder row of every Space.
+  const [reminderCounts, myReminders, mine, members, myBlocks] = await Promise.all([
+    Reminder.findAll({ where: { spaceId: { [Op.in]: ids } }, attributes: ['spaceId', [Reminder.sequelize.fn('COUNT', Reminder.sequelize.col('id')), 'n']], group: ['spaceId'], raw: true }),
+    me ? Reminder.findAll({ where: { spaceId: { [Op.in]: ids }, userId: me }, attributes: ['spaceId'] }) : [],
     me ? M('FriendsSpaceMember').findAll({ where: { spaceId: { [Op.in]: ids }, userId: me }, attributes: ['spaceId', 'removedAt'] }) : [],
     admin ? M('FriendsSpaceMember').findAll({ where: { spaceId: { [Op.in]: ids } }, attributes: ['spaceId', 'removedAt'] }) : [],
+    me && !admin ? blocks.blockedIds(me) : new Set(),
   ]);
-  const interested = new Map();
-  const reminded = new Set();
-  reminders.forEach((r) => {
-    const k = String(r.spaceId);
-    interested.set(k, (interested.get(k) || 0) + 1);
-    if (me && String(r.userId) === String(me)) reminded.add(k);
-  });
+  const interested = new Map(reminderCounts.map((r) => [String(r.spaceId), Number(r.n) || 0]));
+  const reminded = new Set(myReminders.map((r) => String(r.spaceId)));
   const removedFrom = new Set(mine.filter((m) => m.removedAt).map((m) => String(m.spaceId)));
   const idMap = await identity.loadIdentities(req, rows.map((s) => s.hostId), { viewerId: me });
   const entIds = rows.map((s) => s.entityId).filter(Boolean);
@@ -257,7 +255,8 @@ const serializeSpaces = async (req, rows, me, { admin = false } = {}) => {
       participantCount: live.participants,
       speakerCount: live.speakers,
       listenerCount: live.listeners,
-      speakers: s.status === 'live' ? state.speakersOf(k) : [],
+      // People I blocked / who blocked me are not listed among the speakers (B26).
+      speakers: s.status === 'live' ? state.speakersOf(k).filter((sp) => !myBlocks.has(String(sp.userId))) : [],
       limits: { maxSpeakers: s.maxSpeakers, maxListeners: s.maxListeners },
       full: { speakers: live.speakers >= s.maxSpeakers, listeners: live.listeners >= s.maxListeners },
       recording: false,

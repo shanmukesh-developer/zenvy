@@ -36,7 +36,9 @@ const initCommunityPostModel = (sequelize) => {
     starRating: { type: DataTypes.FLOAT, allowNull: true },
     restaurantId: { type: DataTypes.STRING, allowNull: true },
     restaurantName: { type: DataTypes.STRING, allowNull: true },
-    productName: { type: DataTypes.STRING, allowNull: true }
+    productName: { type: DataTypes.STRING, allowNull: true },
+    // The delivered order a review is about: one review per (user, order) (B15).
+    orderId: { type: DataTypes.STRING, allowNull: true }
   }, { timestamps: true });
 
   // No self-referencing associations — threading is handled manually in routes

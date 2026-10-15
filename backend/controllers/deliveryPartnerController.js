@@ -130,6 +130,8 @@ const riderOrderPayload = (order, restaurant, customer, { revealCustomer }) => {
     deliverySlot: order.deliverySlot || null,
     // Rider-purchase store (offline, or no partner login): the rider buys the items at the counter.
     buyAtStore: require('../utils/riderPurchase').isRiderPurchaseStore(restaurant, 'riderOrderPayload'),
+    // When the kitchen marked the food ready (B28): the rider app shows a "Ready" chip.
+    readyAt: order.readyAt || null,
   };
 };
 
@@ -535,6 +537,7 @@ const updateOrderStatus = async (req, res) => {
     // Replay of a step that already happened (a request that timed out on the phone but landed here,
     // then re-sent from the offline queue): answer 200 with the order as it is, never a false error.
     const RIDER_STEP_RANK = { Picking: 1, PickedUp: 2, ArrivedAtGate: 3 };
+    const afterResponse = []; // slow pushes, run once the rider has the answer
     if (status !== 'Delivered' && RIDER_STEP_RANK[order.status] && RIDER_STEP_RANK[order.status] >= RIDER_STEP_RANK[status]) {
       const { deliveryPin, deliveryPinAttempts, ...safeOrder } = order.toJSON();
       return res.json({ ...safeOrder, _id: order.id, riderEarning: riderPayout(order), alreadyApplied: true });
@@ -641,7 +644,9 @@ const updateOrderStatus = async (req, res) => {
       } catch (creditErr) {
         console.error('[DELIVERY_CREDIT_ERROR]', order.id, creditErr.message);
       }
-      if (customer) {
+      // Badge / milestone pushes go out AFTER the response (B28): the rider's "Delivered" tap
+      // used to wait for FCM.
+      if (customer) afterResponse.push(async () => {
         try {
           for (const badge of order.newBadges || []) {
             await sendPushToTokens(
@@ -665,7 +670,7 @@ const updateOrderStatus = async (req, res) => {
         } catch (pushErr) {
           console.warn('[DELIVERY_PUSH_WARN]', pushErr.message);
         }
-      }
+      });
     }
 
     const io = req.app.get('io');
@@ -688,6 +693,7 @@ const updateOrderStatus = async (req, res) => {
       res.json({ ...safeOrder, _id: order.id, riderEarning: riderPayout(order) });
     }
 
+    for (const job of afterResponse) await job();
     try {
       const User = getUserModel();
       const customer = await User.findByPk(order.userId);
@@ -838,9 +844,10 @@ const saveFcmToken = async (req, res) => {
       // of the same token behind, or the phone gets every order alert twice).
       const tokens = (Array.isArray(partner.fcmTokens) ? partner.fcmTokens : [])
         .filter(t => t && (typeof t === 'string' ? t : t.token) !== fcmToken);
-      const idx = tokens.findIndex(t => t && t.appVersion === appVersion);
-      if (idx > -1) tokens[idx] = { token: fcmToken, appVersion }; else tokens.push({ token: fcmToken, appVersion });
-      partner.fcmTokens = tokens;
+      // Keyed by token only (B28): two phones on the same app version used to overwrite each other
+      // (the second login silenced the first phone). Newest last, at most 5 devices.
+      tokens.push({ token: fcmToken, appVersion, at: new Date().toISOString() });
+      partner.fcmTokens = tokens.slice(-5);
       partner.changed('fcmTokens', true);
       await partner.save();
       // A shared / handed-over phone: detach this device token from every other rider account,
@@ -1237,11 +1244,40 @@ const notifyArrivalAtGate = async (req, res) => {
     }
 
     // Conditional flip FIRST: never overwrite a Delivered / Cancelled that landed after our read.
+    // Only the request that moves PickedUp -> ArrivedAtGate notifies (B28): a replay / double tap
+    // answers 200 without pinging the customer again.
     const [arrived] = await Order.update(
       { status: 'ArrivedAtGate' },
-      { where: { id: order.id, deliveryPartnerId: req.user.id, status: { [Op.in]: ['PickedUp', 'ArrivedAtGate'] } } }
+      { where: { id: order.id, deliveryPartnerId: req.user.id, status: 'PickedUp' } }
     );
-    if (arrived === 0) return res.status(409).json({ message: 'This order was just updated. Please refresh.' });
+    if (arrived === 0) {
+      const now = await Order.findByPk(order.id, { attributes: ['id', 'status'] });
+      if (now && now.status === 'ArrivedAtGate') {
+        return res.json({ message: 'Gate arrival notification sent successfully', status: 'ArrivedAtGate', alreadyApplied: true });
+      }
+      return res.status(409).json({ message: 'This order was just updated. Please refresh.' });
+    }
+
+    order.status = 'ArrivedAtGate';
+
+    // Emit socket event to the order room
+    const io = req.app.get('io');
+    if (io) {
+      io.to(order.id.toString()).emit('driverAtGate', {
+        orderId: order.id,
+        message: 'Your rider is waiting at the hostel gate!'
+      });
+      const gatePayload = {
+        id: order.id,
+        status: 'ArrivedAtGate'
+      };
+      io.to(order.id.toString()).emit('statusUpdated', gatePayload);
+      io.to('admin-room').emit('statusUpdated', gatePayload);
+      if (order.restaurantId) io.to(`restaurant_${order.restaurantId}`).emit('statusUpdated', gatePayload);
+    }
+
+    // Answer the rider first (B28); the push and WhatsApp messages can take seconds.
+    res.json({ message: 'Gate arrival notification sent successfully', status: 'ArrivedAtGate' });
 
     // Send push notification to the customer
     try {
@@ -1273,24 +1309,6 @@ const notifyArrivalAtGate = async (req, res) => {
       console.warn('[WHATSAPP_NOTIFY_WARN] Failed to send WhatsApp gate arrival update:', e.message);
     }
 
-    order.status = 'ArrivedAtGate';
-
-    // Emit socket event to the order room
-    const io = req.app.get('io');
-    if (io) {
-      io.to(order.id.toString()).emit('driverAtGate', {
-        message: 'Your rider is waiting at the hostel gate!'
-      });
-      const gatePayload = {
-        id: order.id,
-        status: 'ArrivedAtGate'
-      };
-      io.to(order.id.toString()).emit('statusUpdated', gatePayload);
-      io.to('admin-room').emit('statusUpdated', gatePayload);
-      if (order.restaurantId) io.to(`restaurant_${order.restaurantId}`).emit('statusUpdated', gatePayload);
-    }
-
-    res.json({ message: 'Gate arrival notification sent successfully', status: 'ArrivedAtGate' });
   } catch (error) {
     console.error('[GATE_ARRIVAL_ERROR]', error);
     serverError(res, '[RIDER_ERROR]', error);

@@ -22,20 +22,18 @@ export async function hasStoreBanner(id: string): Promise<boolean> {
  */
 export async function removeStoreBanner(id: string): Promise<string | null> {
   try {
-    const banners = await readBanners();
-    const next = banners.filter(b => b.redirectUrl !== storeAppPath(id));
-    if (next.length === banners.length) return null;
-    await adminRequest('/api/config', { method: 'PUT', body: JSON.stringify({ banners: next }) });
+    // One atomic server-side removal (DELETE /api/config/banners): never rewrites the other banners,
+    // so an edit made elsewhere at the same moment is kept.
+    await adminRequest(`/api/config/banners?redirectUrl=${encodeURIComponent(storeAppPath(id))}`, { method: 'DELETE' });
     return null;
   } catch (e) {
     return e instanceof Error ? e.message : 'unknown error';
   }
 }
 
-/** Adds (or updates) a Home hero banner that opens this store. */
+/** Adds (or updates) a Home hero banner that opens this store (atomic, POST /api/config/banners). */
 export async function upsertStoreBanner(store: Store, badge: string, offer: string): Promise<void> {
   if (!store.imageUrl) throw new Error('Add a cover photo before adding a Home banner.');
-  const banners = await readBanners();
   const redirectUrl = storeAppPath(storeId(store));
   const banner = {
     imageUrl: store.imageUrl,
@@ -47,9 +45,7 @@ export async function upsertStoreBanner(store: Store, badge: string, offer: stri
     redirectUrl,
     isActive: true,
   };
-  const index = banners.findIndex(b => b.redirectUrl === redirectUrl);
-  const next = index >= 0 ? banners.map((b, i) => (i === index ? { ...b, ...banner } : b)) : [banner, ...banners];
-  await adminRequest('/api/config', { method: 'PUT', body: JSON.stringify({ banners: next }) });
+  await adminRequest('/api/config/banners', { method: 'POST', body: JSON.stringify({ banner }) });
 }
 
 /**
@@ -60,14 +56,60 @@ export async function duplicateStore(id: string, name: string, copyMenu: boolean
   return adminRequest<Store>(`/api/admin/restaurants/${id}/duplicate`, { method: 'POST', body: JSON.stringify({ name, copyMenu }) });
 }
 
-/** POST /api/admin/restaurants/bulk-update (max 300 ids). */
-export async function bulkUpdateStores(ids: string[], patch: { isActive?: boolean; isOpenNow?: boolean; isFeatured?: boolean }) {
-  return adminRequest<{ count: number; notFound: number; message?: string }>('/api/admin/restaurants/bulk-update', { method: 'POST', body: JSON.stringify({ ids, patch }) });
+/** The bulk endpoints accept at most this many ids per call. */
+export const BULK_CHUNK = 300;
+
+export interface BulkResult {
+  /** Rows actually updated. */
+  count: number;
+  /** Ids the server did not find. */
+  notFound: number;
+  /** Ids in chunks whose request failed (not updated). */
+  failed: number;
+  /** First failure message, if any chunk failed. */
+  error?: string;
+  /** Ids sent in chunks that succeeded (the server may still have skipped not-found ones). */
+  okIds: string[];
 }
 
-/** POST /api/admin/menu-items/bulk-update (max 300 ids). */
-export async function bulkUpdateItems(ids: string[], patch: Record<string, unknown>) {
-  return adminRequest<{ count: number; notFound: number; message?: string }>('/api/admin/menu-items/bulk-update', { method: 'POST', body: JSON.stringify({ ids, patch }) });
+/** Sends `ids` to a bulk endpoint in chunks of 300 (one after another) and adds up the results. */
+async function bulkInChunks(path: string, ids: string[], patch: Record<string, unknown>): Promise<BulkResult> {
+  const out: BulkResult = { count: 0, notFound: 0, failed: 0, okIds: [] };
+  for (let i = 0; i < ids.length; i += BULK_CHUNK) {
+    const chunk = ids.slice(i, i + BULK_CHUNK);
+    try {
+      const r = await adminRequest<{ count?: number; notFound?: number }>(path, { method: 'POST', body: JSON.stringify({ ids: chunk, patch }) });
+      out.count += Number(r?.count) || 0;
+      out.notFound += Number(r?.notFound) || 0;
+      out.okIds.push(...chunk);
+    } catch (e) {
+      out.failed += chunk.length;
+      if (!out.error) out.error = e instanceof Error ? e.message : 'Request failed.';
+    }
+  }
+  return out;
+}
+
+/** POST /api/admin/restaurants/bulk-update, chunked (any number of ids). */
+export function bulkUpdateStores(ids: string[], patch: { isActive?: boolean; isOpenNow?: boolean; isFeatured?: boolean }) {
+  return bulkInChunks('/api/admin/restaurants/bulk-update', ids, patch);
+}
+
+/** POST /api/admin/menu-items/bulk-update, chunked (any number of ids). */
+export function bulkUpdateItems(ids: string[], patch: Record<string, unknown>) {
+  return bulkInChunks('/api/admin/menu-items/bulk-update', ids, patch);
+}
+
+/** "12 of 15 updated. 2 not found, 1 failed: <reason>" style summary for a bulk result. */
+export function describeBulk(result: BulkResult, total: number, verb: string, noun = 'store'): string {
+  const plural = (n: number) => `${n} ${noun}${n === 1 ? '' : 's'}`;
+  if (result.count === total) return `${plural(total)} ${verb}.`;
+  const parts = [`${result.count} of ${plural(total)} ${verb}.`];
+  if (result.notFound) parts.push(`${result.notFound} not found (refresh the list).`);
+  if (result.failed) parts.push(`${result.failed} failed${result.error ? `: ${result.error}` : '.'}`);
+  const unchanged = total - result.count - result.notFound - result.failed;
+  if (unchanged > 0) parts.push(`${unchanged} unchanged.`);
+  return parts.join(' ');
 }
 
 /** Item fields for "Duplicate item" (same store). */

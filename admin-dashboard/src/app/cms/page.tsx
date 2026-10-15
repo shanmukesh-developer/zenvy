@@ -116,11 +116,17 @@ Press Cancel, then Discard, to load their version first.`)) {
         setStaleRemote(true);
         return;
       }
-      const body: Partial<Record<EditableKey, unknown>> = {};
+      const body: Partial<Record<EditableKey | 'ifUpdatedAt', unknown>> = {};
       changed.forEach(k => { body[k] = config[k]; });
+      // Version check on the server: the save is refused (409) if the config changed again after the
+      // copy just read, so a store banner added in between is never overwritten.
+      if (latest.updatedAt) body.ifUpdatedAt = latest.updatedAt;
       const data = await apiRequest<{ config: AppConfig }>('/api/config', {
         method: 'PUT',
         body: JSON.stringify(body),
+      }).catch((err: unknown) => {
+        if (err instanceof Error && /changed the app config/i.test(err.message)) setStaleRemote(true);
+        throw err;
       });
       const saved = normalizeConfig(data?.config);
       baseline.current = saved;

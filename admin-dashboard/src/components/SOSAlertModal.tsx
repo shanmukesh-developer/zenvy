@@ -4,6 +4,7 @@ import { useAdminSocket } from '@/components/AdminSocketProvider';
 import { useAdminAuth } from '@/utils/useAdminAuth';
 import { adminRequest } from '@/lib/api';
 import { getAuthState } from '@/lib/session';
+import { useLiveSync } from '@/lib/useLiveSync';
 
 interface SOSData {
   riderId: string;
@@ -45,6 +46,15 @@ function playSiren() {
   }
 }
 
+/** JSON columns can arrive as an object or (SQLite) a JSON string. */
+const asLocation = (v: unknown): { lat?: number; lng?: number } | null => {
+  let o = v;
+  if (typeof o === 'string') { try { o = JSON.parse(o); } catch { return null; } }
+  if (!o || typeof o !== 'object') return null;
+  const { lat, lng } = o as { lat?: unknown; lng?: unknown };
+  return lat == null || lng == null ? null : { lat: Number(lat), lng: Number(lng) };
+};
+
 const coords = (s: SOSData) => {
   const lat = Number(s.lat ?? s.location?.lat);
   const lng = Number(s.lng ?? s.location?.lng);
@@ -79,40 +89,49 @@ export default function SOSAlertModal() {
     hidden.current.clear();
   }, [isAuthed]);
 
-  // Riders whose SOS is still active on the server (sent while nobody was watching).
+  // Riders whose SOS is still active on the server (sent while nobody was watching, or while this
+  // tab's live socket was down). Only SOS riders are requested (?sosActive=1), not the whole fleet.
+  const loadSeq = useRef(0);
+  const loadActive = useCallback(async () => {
+    const seq = ++loadSeq.current;
+    try {
+      const riderPage = (page: number) => adminRequest<{ riders?: any[]; pages?: number }>(`/api/admin/riders?sosActive=1&limit=100&page=${page}`, { cache: 'reload' });
+      const first = await riderPage(1);
+      const all: any[] = Array.isArray(first?.riders) ? [...first.riders] : [];
+      const pages = Math.min(20, Number(first?.pages) || 1);
+      if (all.length >= 100 && pages > 1) {
+        const rest = await Promise.all(Array.from({ length: pages - 1 }, (_, i) => riderPage(i + 2)));
+        rest.forEach(d => { if (Array.isArray(d?.riders)) all.push(...d.riders); });
+      }
+      const active: SOSData[] = all.filter(r => r?.isSosActive).map(r => ({
+        riderId: String(r.id || r._id),
+        riderName: r.name,
+        riderPhone: r.phone,
+        timestamp: r.sosAt || r.updatedAt,
+        // Where the rider was when they pressed SOS; their last live position only as a fallback.
+        location: asLocation(r.sosLocation) || asLocation(r.liveLocation),
+      }));
+      if (seq !== loadSeq.current || getAuthState().status !== 'authed') return;
+      const activeIds = new Set(active.map(s => s.riderId));
+      setQueue(prev => {
+        // Alerts resolved elsewhere while this tab was offline are dropped; new ones are added.
+        const kept = prev.filter(s => activeIds.has(s.riderId));
+        const known = new Set(kept.map(s => s.riderId));
+        return [...kept, ...active.filter(s => !known.has(s.riderId) && !hidden.current.has(s.riderId))];
+      });
+    } catch {
+      /* the live socket still delivers new alerts */
+    }
+  }, []);
+
   useEffect(() => {
     if (!isAuthed) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        // Same URLs as the dashboard's rider list, so the read cache shares one request per page.
-        // Page 1 gives the page count; the remaining pages load in parallel.
-        const riderPage = (page: number) => adminRequest<{ riders?: any[]; pages?: number }>(`/api/admin/riders?limit=100&page=${page}`);
-        const first = await riderPage(1);
-        const all: any[] = Array.isArray(first?.riders) ? [...first.riders] : [];
-        const pages = Math.min(20, Number(first?.pages) || 1);
-        if (all.length >= 100 && pages > 1) {
-          const rest = await Promise.all(Array.from({ length: pages - 1 }, (_, i) => riderPage(i + 2)));
-          rest.forEach(d => { if (Array.isArray(d?.riders)) all.push(...d.riders); });
-        }
-        const active: SOSData[] = all.filter(r => r?.isSosActive).map(r => ({
-          riderId: String(r.id || r._id),
-          riderName: r.name,
-          riderPhone: r.phone,
-          timestamp: r.sosAt || r.updatedAt,
-          location: r.liveLocation || null,
-        }));
-        if (cancelled || !active.length) return;
-        setQueue(prev => {
-          const known = new Set(prev.map(s => s.riderId));
-          return [...prev, ...active.filter(s => !known.has(s.riderId) && !hidden.current.has(s.riderId))];
-        });
-      } catch {
-        /* the live socket still delivers new alerts */
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [isAuthed]);
+    loadActive();
+    return () => { loadSeq.current++; };
+  }, [isAuthed, loadActive]);
+
+  // Socket came back after a drop: SOS alerts sent meanwhile are not replayed, so re-read them.
+  useLiveSync([], (_events, { reconnect }) => { if (reconnect) loadActive(); }, { enabled: isAuthed });
 
   useEffect(() => {
     if (!socket) return;

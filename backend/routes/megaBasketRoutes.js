@@ -16,13 +16,18 @@ const {
   completeDelivery,
   getActiveBaskets,
   getAllBaskets,
-  cancelBasket
+  cancelBasket,
+  getBasketFees
 } = require('../controllers/megaBasketController');
+const { cacheGet } = require('../utils/responseCache');
 
 const router = express.Router();
 
 // Admin Endpoints
 router.get('/admin/all', protect, admin, getAllBaskets);
+
+// Public: current fees (the app shows them before a basket exists). Before '/:id'.
+router.get('/fees', cacheGet('megaBasketFees', { ttlMs: 5 * 60 * 1000 }), getBasketFees);
 
 // Customer Endpoints
 router.post('/', protect, createBasket);

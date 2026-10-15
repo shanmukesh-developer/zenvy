@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAdminAuth } from '@/utils/useAdminAuth';
-import { motion } from 'framer-motion';
 import { API_URL } from '@/lib/config';
 
 interface TopPerformer {
@@ -123,10 +122,9 @@ export default function RewardsAnalytics() {
                     <span className="text-white">{count}</span>
                   </div>
                   <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${(Number(count) / tierTotal) * 100}%` }}
-                      className={`h-full ${getTierColor(tier)}`}
+                    <div
+                      style={{ width: `${(Number(count) / tierTotal) * 100}%` }}
+                      className={`h-full transition-[width] duration-700 ${getTierColor(tier)}`}
                     />
                   </div>
                 </div>

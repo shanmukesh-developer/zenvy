@@ -6,11 +6,23 @@ const realtime = require('../utils/realtime');
 // @desc    Create a new support ticket
 // @route   POST /api/tickets
 const createTicket = async (req, res) => {
-  const { subject, description, orderId, priority } = req.body;
+  const { subject: rawSubject, description: rawDescription, orderId } = req.body || {};
 
-  if (!subject || !description) {
+  if (!rawSubject || !rawDescription) {
     return res.status(400).json({ message: 'Subject and description are required.' });
   }
+  if (typeof rawSubject !== 'string' || typeof rawDescription !== 'string') {
+    return res.status(400).json({ message: 'Subject and description must be text.' });
+  }
+  // B25: the subject column is VARCHAR(255) (longer subjects failed with a 500).
+  const subject = rawSubject.replace(/[<>]/g, '').trim().slice(0, 200);
+  const description = rawDescription.replace(/[<>]/g, '').trim().slice(0, 5000);
+  if (!subject || !description) return res.status(400).json({ message: 'Subject and description are required.' });
+  // B25: customers cannot set their own priority (everyone picked "Critical" for a 2-hour SLA).
+  // Support staff triage it; a ticket about a live order starts at High.
+  const isStaff = req.user && String(req.user.role || '').toLowerCase() === 'admin';
+  const requested = ['Low', 'Medium', 'High', 'Critical'].includes((req.body || {}).priority) ? req.body.priority : null;
+  const priority = isStaff && requested ? requested : (orderId ? 'High' : 'Medium');
 
   try {
     const Ticket = getTicketModel();

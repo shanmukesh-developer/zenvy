@@ -31,9 +31,28 @@ const runFriendsMigrations = async (sequelize) => {
   };
 
   // Postgres only; SQLite relies on the model validators.
+  // B26: a constraint whose definition changed (e.g. a new enum value) is replaced. Each constraint
+  // carries a comment with a hash of its expression; when the hash differs (or a constraint from
+  // before this check has none), it is dropped and re-added NOT VALID (new rows are checked, existing
+  // rows are never re-validated, so startup cannot fail on legacy data).
   const addCheck = async (table, name, expr) => {
     if (!isPg) return true;
-    return run(`check ${name}`, `DO $$ BEGIN ALTER TABLE "${table}" ADD CONSTRAINT "${name}" CHECK (${expr}); EXCEPTION WHEN duplicate_object THEN NULL; END $$;`);
+    const sig = require('crypto').createHash('sha1').update(String(expr)).digest('hex').slice(0, 16);
+    try {
+      const [rows] = await sequelize.query(
+        `SELECT obj_description(c.oid, 'pg_constraint') AS sig FROM pg_constraint c WHERE c.conname = :name AND c.conrelid = to_regclass(:tbl)`,
+        { replacements: { name, tbl: `"${table}"` } },
+      );
+      if (rows && rows.length && rows[0].sig === sig) return true;
+    } catch (err) {
+      console.warn(`⚠️ [FRIENDS_MIGRATION_WARN] check ${name} lookup: ${err.message}`);
+      return run(`check ${name}`, `DO $$ BEGIN ALTER TABLE "${table}" ADD CONSTRAINT "${name}" CHECK (${expr}); EXCEPTION WHEN duplicate_object THEN NULL; END $$;`);
+    }
+    return run(`check ${name}`, `DO $$ BEGIN
+      ALTER TABLE "${table}" DROP CONSTRAINT IF EXISTS "${name}";
+      ALTER TABLE "${table}" ADD CONSTRAINT "${name}" CHECK (${expr}) NOT VALID;
+      COMMENT ON CONSTRAINT "${name}" ON "${table}" IS '${sig}';
+    END $$;`);
   };
 
   // Column adds on SQLite have no IF NOT EXISTS: check first so a re-run is silent.

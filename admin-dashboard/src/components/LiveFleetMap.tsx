@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { API_URL } from '@/lib/config';
@@ -11,6 +11,9 @@ interface RiderPosition {
   currentCheckpoint?: string;
   activeOrderCount: number;
   isOnline: boolean;
+  lat?: number;
+  lng?: number;
+  locatedAt?: number;
 }
 
 interface Checkpoint {
@@ -45,6 +48,20 @@ function safeImageUrl(value: unknown): string | null {
   }
 }
 
+// One shared icon (was rebuilt on every rider update).
+let riderIconCache: L.DivIcon | null = null;
+const getRiderIcon = () => {
+  if (!riderIconCache) {
+    riderIconCache = L.divIcon({
+      className: 'custom-div-icon',
+      html: `<div class="w-10 h-10 bg-blue-500/20 border-2 border-blue-500 rounded-full flex items-center justify-center text-lg shadow-[0_0_20px_rgba(59,130,246,0.3)] animate-pulse">🛵</div>`,
+      iconSize: [40, 40],
+      iconAnchor: [20, 20]
+    });
+  }
+  return riderIconCache;
+};
+
 export default function LiveFleetMap({ riders, checkpoints }: LiveFleetMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -78,11 +95,13 @@ export default function LiveFleetMap({ riders, checkpoints }: LiveFleetMapProps)
       center: CAMPUS_CENTER,
       zoom: 14,
       zoomControl: false,
-      attributionControl: false
+      attributionControl: true
     });
 
+    // Attribution is required by the OpenStreetMap / CARTO tile licences.
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      maxZoom: 20
+      maxZoom: 20,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions" target="_blank" rel="noreferrer">CARTO</a>'
     }).addTo(map);
 
     mapRef.current = map;
@@ -150,17 +169,19 @@ export default function LiveFleetMap({ riders, checkpoints }: LiveFleetMapProps)
     const map = mapRef.current;
     if (!map) return;
 
-    const riderIcon = L.divIcon({
-      className: 'custom-div-icon',
-      html: `<div class="w-10 h-10 bg-blue-500/20 border-2 border-blue-500 rounded-full flex items-center justify-center text-lg shadow-[0_0_20px_rgba(59,130,246,0.3)] animate-pulse">🛵</div>`,
-      iconSize: [40, 40],
-      iconAnchor: [20, 20]
-    });
+    const riderIcon = getRiderIcon();
 
-    // Remove riders not present or offline
+    /** Real GPS fix first, then the route checkpoint the app reported; no invented position. */
+    const positionOf = (rider: RiderPosition): [number, number] | null => {
+      if (Number.isFinite(rider.lat) && Number.isFinite(rider.lng)) return [rider.lat as number, rider.lng as number];
+      const cpData = checkpoints.find(c => c.name === rider.currentCheckpoint);
+      return cpData ? [cpData.lat, cpData.lng] : null;
+    };
+
+    // Remove riders not present, offline or without any known position
     Object.keys(markersRef.current).forEach(riderId => {
       const rider = riders[riderId];
-      if (!rider || !rider.isOnline) {
+      if (!rider || !rider.isOnline || !positionOf(rider)) {
         markersRef.current[riderId].remove();
         delete markersRef.current[riderId];
       }
@@ -170,8 +191,9 @@ export default function LiveFleetMap({ riders, checkpoints }: LiveFleetMapProps)
     Object.values(riders).forEach(rider => {
       if (!rider.isOnline) return;
 
-      const cpData = checkpoints.find(c => c.name === rider.currentCheckpoint);
-      const pos: [number, number] = cpData ? [cpData.lat, cpData.lng] : CAMPUS_CENTER;
+      const pos = positionOf(rider);
+      if (!pos) return;
+      const located = Number.isFinite(rider.lat) && Number.isFinite(rider.lng);
 
       // Every rider-supplied value is escaped: these strings arrive over the socket exactly as the
       // rider client sent them and Leaflet renders popup content as HTML.
@@ -191,8 +213,10 @@ export default function LiveFleetMap({ riders, checkpoints }: LiveFleetMapProps)
           </div>
           <div class="space-y-1">
             <div class="flex justify-between text-[8px] font-black uppercase">
-              <span class="text-gray-600">Sector</span>
-              <span class="text-blue-400">${escapeHtml(rider.currentCheckpoint || 'Hub')}</span>
+              <span class="text-gray-600">${located ? 'GPS' : 'Sector'}</span>
+              <span class="text-blue-400">${located
+                ? escapeHtml(`${(rider.lat as number).toFixed(4)}, ${(rider.lng as number).toFixed(4)}`)
+                : escapeHtml(rider.currentCheckpoint || 'Hub')}</span>
             </div>
             <div class="flex justify-between text-[8px] font-black uppercase">
               <span class="text-gray-600">Orders</span>

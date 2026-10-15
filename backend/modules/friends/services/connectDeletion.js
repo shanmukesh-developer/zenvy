@@ -43,7 +43,9 @@ const serial = (fn) => {
 const runTx = (fn) => {
   const seq = getSequelize();
   if (seq.getDialect() === 'postgres') return seq.transaction((t) => fn(t));
-  return serial(() => seq.transaction((t) => fn(t)));
+  // IMMEDIATE: these transactions read before they write; a deferred SQLite transaction then fails
+  // with SQLITE_BUSY when another connection wrote in between.
+  return serial(() => seq.transaction({ type: require('sequelize').Transaction.TYPES.IMMEDIATE }, (t) => fn(t)));
 };
 
 // ── Realtime (best effort; the app also refetches on focus) ──────────────────
@@ -101,6 +103,30 @@ const afterEnded = (match) => {
   emitTo(users, 'friends:connect_updated', { matchId: match.id, status: 'ended' });
 };
 
+const markLegacyConnectBlocks = async (u, matches, transaction) => {
+  const Friendship = M('Friendship');
+  if (!Friendship) return;
+  const fb = require('../../../utils/friendshipBlocks');
+  const rows = await Friendship.findAll({ where: { status: 'blocked', [Op.or]: [{ requesterId: u }, { recipientId: u }] }, transaction });
+  const legacy = rows.filter((r) => Object.values(fb.blockersOf(r)).some((src) => !src));
+  if (!legacy.length) return;
+  const peers = legacy.map((r) => String(r.requesterId) === u ? String(r.recipientId) : String(r.requesterId));
+  const swipes = await M('ConnectSwipe').findAll({
+    where: { [Op.or]: [{ fromUserId: u, toUserId: { [Op.in]: peers } }, { toUserId: u, fromUserId: { [Op.in]: peers } }] },
+    attributes: ['fromUserId', 'toUserId'], transaction,
+  });
+  const viaConnect = new Set();
+  swipes.forEach((s) => viaConnect.add(String(s.fromUserId) === u ? String(s.toUserId) : String(s.fromUserId)));
+  matches.forEach((m) => viaConnect.add(String(m.userLowId) === u ? String(m.userHighId) : String(m.userLowId)));
+  for (const r of legacy) {
+    const peer = String(r.requesterId) === u ? String(r.recipientId) : String(r.requesterId);
+    if (!viaConnect.has(peer)) continue;
+    const meta = fb.blockersOf(r);
+    Object.keys(meta).forEach((k) => { if (!meta[k]) meta[k] = 'connect'; });
+    await r.update({ blockMeta: JSON.stringify(meta) }, { transaction });
+  }
+};
+
 /** Deletes everything Connect holds about one user. Returns counts of what was deleted. */
 const deleteConnectData = async (userId) => {
   const u = String(userId);
@@ -120,6 +146,10 @@ const deleteConnectData = async (userId) => {
     const matchCount = matches.length
       ? await M('ConnectMatch').destroy({ where: { id: { [Op.in]: matches.map((m) => m.id) } }, transaction })
       : 0;
+    // Blocks made before block sources were stored are recognised as Connect blocks only through
+    // the swipe / match history deleted below. Record the source first so those block-list entries
+    // stay masked afterwards (B2).
+    await markLegacyConnectBlocks(u, matches, transaction);
     const swipes = await M('ConnectSwipe').destroy({ where: { [Op.or]: [{ fromUserId: u }, { toUserId: u }] }, transaction });
     const photos = await M('ConnectPhoto').destroy({ where: { userId: u }, transaction });
     const CampusMedia = M('CampusMedia');

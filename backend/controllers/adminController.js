@@ -832,8 +832,14 @@ exports.getAllRiders = async (req, res) => {
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 100);
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const offset = (page - 1) * limit;
+    // Optional filters (the dashboard SOS modal only needs riders with an active SOS; the fleet map
+    // only approved riders), so callers no longer page through the whole fleet to find a few rows.
+    const where = {};
+    if (req.query.sosActive === '1' || req.query.sosActive === 'true') where.isSosActive = true;
+    if (req.query.approved === '1' || req.query.approved === 'true') where.isApproved = true;
 
     const { count, rows: riders } = await DeliveryPartner.findAndCountAll({
+      where,
       attributes: { exclude: ['password', 'tokenVersion', 'fcmTokens'] },
       limit,
       offset,
@@ -1115,26 +1121,28 @@ exports.getDashboardStats = async (req, res) => {
     const DeliveryPartner = getDeliveryPartnerModel();
     const Restaurant = getRestaurantModel();
     
-    // Optimized single-pass aggregation
-    const [totalOrders, activeFleet, localVendorCount] = await Promise.all([
+    const { fn, col } = require('sequelize');
+    // Every number is one SQL aggregate, all in parallel (the active pipeline used to load every open
+    // order row and sum it in JS, after two sequential round trips).
+    const [totalOrders, activeFleet, localVendorCount, deliveredStats, activeStats] = await Promise.all([
       Order.count(),
       DeliveryPartner.count({ where: { isApproved: true } }),
-      Restaurant.count({ where: { vendorType: 'LOCAL_VENDOR', isActive: true } })
+      Restaurant.count({ where: { vendorType: 'LOCAL_VENDOR', isActive: true } }),
+      Order.findOne({
+        where: { status: 'Delivered' },
+        attributes: [[fn('SUM', col('totalPrice')), 'revenue']],
+        raw: true
+      }),
+      Order.findOne({
+        where: { status: { [Op.notIn]: ['Delivered', 'Cancelled'] } },
+        attributes: [[fn('SUM', col('totalPrice')), 'revenue'], [fn('COUNT', col('id')), 'count']],
+        raw: true
+      })
     ]);
 
-    const deliveredStats = await Order.findAll({
-      where: { status: 'Delivered' },
-      attributes: [[require('sequelize').fn('SUM', require('sequelize').col('totalPrice')), 'revenue']]
-    });
-
-    const activeOrdersList = await Order.findAll({
-      where: { status: { [Op.notIn]: ['Delivered', 'Cancelled'] } },
-      attributes: ['totalPrice']
-    });
-
-    const totalRevenue = Number(deliveredStats[0]?.dataValues.revenue || 0);
-    const activeRevenue = activeOrdersList.reduce((sum, o) => sum + (o.totalPrice || 0), 0);
-    const activeOrdersCount = activeOrdersList.length;
+    const totalRevenue = Number(deliveredStats?.revenue || 0);
+    const activeRevenue = Number(activeStats?.revenue || 0);
+    const activeOrdersCount = Number(activeStats?.count || 0);
 
     res.json({
       revenue: `₹${totalRevenue.toLocaleString()}`,
@@ -2446,4 +2454,67 @@ exports.expireFeaturedStores = async () => {
     console.warn('[FEATURED_EXPIRY_ERROR]', err.message);
     return 0;
   }
+};
+
+// ─── Rider creation (dashboard Fleet page) ───────────────────────
+// POST /api/admin/riders. Admin-only replacement for the public, rate-limited /api/delivery/register:
+// created approved, no phone OTP, and no rider session token is returned to the admin's browser.
+const RIDER_VEHICLE_TYPES = ['Bike', 'Scooter', 'Cycle', 'EV', 'Car', 'Walk'];
+exports.createRider = async (req, res) => {
+  try {
+    const { normalizePhone } = require('../utils/phoneUtils');
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const name = typeof body.name === 'string' ? body.name.trim() : '';
+    if (name.length < 2 || name.length > 80) return res.status(400).json({ message: 'Enter the rider\'s full name (2 to 80 characters).', code: 'INVALID_INPUT' });
+    const phone = typeof body.phone === 'string' || typeof body.phone === 'number' ? normalizePhone(String(body.phone)) : '';
+    if (!/^[6-9]\d{9}$/.test(phone)) return res.status(400).json({ message: 'Enter a valid 10-digit mobile number.', code: 'INVALID_INPUT' });
+    const password = body.password;
+    if (typeof password !== 'string' || password.length < 6 || password.length > 128) {
+      return res.status(400).json({ message: 'Password must be 6 to 128 characters.', code: 'INVALID_INPUT' });
+    }
+    // Never trimmed silently (the rider types exactly what the admin shares): reject instead.
+    if (password !== password.trim()) return res.status(400).json({ message: 'The password cannot start or end with a space.', code: 'INVALID_INPUT' });
+    const rawVehicle = typeof body.vehicleType === 'string' ? body.vehicleType.trim() : '';
+    const vehicleType = rawVehicle ? (RIDER_VEHICLE_TYPES.find(v => v.toLowerCase() === rawVehicle.toLowerCase()) || rawVehicle.slice(0, 30)) : 'Bike';
+
+    const DeliveryPartner = getDeliveryPartnerModel();
+    const exists = await DeliveryPartner.findOne({ where: { phone }, attributes: ['id'] });
+    if (exists) return res.status(409).json({ message: 'A rider with this mobile number already exists.', code: 'CONFLICT' });
+
+    const rider = await DeliveryPartner.create({ name, phone, password, vehicleType, isApproved: true });
+    await logAuditAction(req, rider.id, 'FLEET_RIDER_CREATED', { name, vehicleType });
+    realtime.notifyAdmin('rider', 'created', rider.id);
+    const json = rider.toJSON();
+    for (const k of ['password', 'tokenVersion', 'fcmTokens']) delete json[k];
+    res.status(201).json({ ...json, _id: rider.id });
+  } catch (error) {
+    if (error && error.name === 'SequelizeUniqueConstraintError') return res.status(409).json({ message: 'A rider with this mobile number already exists.', code: 'CONFLICT' });
+    if (error && error.name === 'SequelizeValidationError') return res.status(400).json({ message: error.errors?.[0]?.message || 'Invalid rider details.', code: 'INVALID_INPUT' });
+    sendServerError(res, error, '[ADMIN_CREATE_RIDER_ERROR]');
+  }
+};
+
+// ─── "Needs attention" counters for the dashboard overview ───────
+// GET /api/admin/attention-counts. One SQL COUNT per queue instead of downloading every ticket / wall
+// submission / booking to count it in the browser. A queue whose table is missing or fails is null.
+exports.getAttentionCounts = async (req, res) => {
+  const safeCount = async (load, where) => {
+    try {
+      const Model = load();
+      if (!Model) return null;
+      return await Model.count({ where });
+    } catch (err) {
+      console.warn('[ATTENTION_COUNT_WARN]', err.message);
+      return null;
+    }
+  };
+  const [tickets, verifications, pgBookings, wallPending, serviceRequests] = await Promise.all([
+    safeCount(() => require('../models/Ticket').getTicketModel(), { status: { [Op.in]: ['Open', 'In Progress'] } }),
+    safeCount(() => require('../modules/campus/models/Verification').getVerificationModel(), { status: 'pending', type: 'id_card' }),
+    safeCount(() => require('../models/PGBooking').getPGBookingModel(), { status: 'Pending' }),
+    safeCount(() => require('../models/WallSubmission').getWallSubmissionModel(), { isApproved: false }),
+    safeCount(() => require('../models/ServiceBooking').getServiceBookingModel(), { status: 'REQUESTED' }),
+  ]);
+  res.set('Cache-Control', 'no-store');
+  res.json({ tickets, verifications, pgBookings, wallPending, serviceRequests });
 };

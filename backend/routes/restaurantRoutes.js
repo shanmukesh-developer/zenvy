@@ -1,5 +1,5 @@
 const express = require('express');
-const { getRestaurants, getRestaurantMenu, createRestaurant, restaurantLogin, getRestaurantOrders, toggleMenuItemAvailability, updateMenuItemTags, createMenuItem, updateMenuItem, deleteMenuItem, getLocalVendors, incrementClickCount, toggleRestaurantOffline, setRestaurantOpen, setRestaurantHours, saveStoreFcmToken, getMenuItemById } = require('../controllers/restaurantController');
+const { refreshStoreToken, getRestaurants, getRestaurantMenu, createRestaurant, restaurantLogin, getRestaurantOrders, toggleMenuItemAvailability, updateMenuItemTags, createMenuItem, updateMenuItem, deleteMenuItem, getLocalVendors, incrementClickCount, toggleRestaurantOffline, setRestaurantOpen, setRestaurantHours, saveStoreFcmToken, getMenuItemById } = require('../controllers/restaurantController');
 const { protect, admin, vendor } = require('../middleware/authMiddleware');
 const rateLimit = require('express-rate-limit');
 const router = express.Router();
@@ -25,6 +25,7 @@ router.get('/menu/item/:itemId', catalogCache, getMenuItemById);
 router.get('/', catalogCache, getRestaurants);
 router.get('/:id/menu', catalogCache, getRestaurantMenu);
 router.post('/login', authLimiter, accountLockout, restaurantLogin);
+router.post('/refresh-token', protect, refreshStoreToken); // sliding store / vendor session (B28)
 router.get('/:id/orders', protect, vendor, getRestaurantOrders); 
 router.put('/:id/offline', protect, vendor, toggleRestaurantOffline);
 router.put('/:id/open', protect, vendor, setRestaurantOpen);

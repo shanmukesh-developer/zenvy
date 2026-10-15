@@ -385,6 +385,9 @@ const serializePosts = async (req, rows, me, { spacesOn = false, admin = false }
   const authorsFollowingMe = new Set(followsMe.map((f) => String(f.userId)));
 
   const authorShape = (p) => identity.authorOf(p, idents, me, entOf);
+  // "Replying to <name>" never names someone I blocked / who blocked me (B26).
+  const myBlocks = me && !admin ? await blocks.blockedIds(me) : new Set();
+  const parentHidden = (parent) => !parent.isAnonymous && myBlocks.has(String(parent.authorId));
 
   return rows.map((p) => {
     if (p.kind === 'space_card') return cardOut.get(String(p.id)) || null;
@@ -402,7 +405,7 @@ const serializePosts = async (req, rows, me, { spacesOn = false, admin = false }
       id: p.id,
       rootId: p.rootId || null,
       parentId: p.parentId || null,
-      replyTo: parent ? (parent.status === 'visible' || (me && String(parent.authorId) === String(me))
+      replyTo: parent ? (!parentHidden(parent) && (parent.status === 'visible' || (me && String(parent.authorId) === String(me)))
         ? { id: parent.id, author: authorShape(parent) }
         : { id: parent.id, unavailable: true }) : null,
       text: p.text || '',
@@ -608,6 +611,8 @@ const userPosts = async (req, res) => {
   if (userId !== me && (await blocks.blockedIds(me)).has(userId)) throw fail(404, 'USER_NOT_FOUND', 'This student is not available.');
   const prof = await M('CampusProfile').findOne({ where: { userId }, attributes: ['campusId'] });
   if (!prof || String(prof.campusId) !== String(campusId)) throw fail(404, 'USER_NOT_FOUND', 'This student is not available.');
+  // A 'followers' profile shows its posts only to people it follows back (B9).
+  if (!(await identity.profileVisibleTo(me, userId))) return send(res, 200, { items: [], nextCursor: null, limited: true });
   const limit = cursor.pageSize(req.query.limit, 20);
   const and = [{ campusId, authorId: userId, isAnonymous: false, status: 'visible', kind: { [Op.in]: ['post', 'reply'] } }];
   const after = cursor.after(req.query.cursor);
@@ -814,11 +819,13 @@ const createPost = async (req, res) => {
   } else {
     const who = anonymous ? aliasName : (entity ? entity.name : (ctx.user.name || 'A student'));
     const preview = text ? (text.length > 100 ? `${text.slice(0, 100)}...` : text) : 'sent a photo';
+    // Never notify someone who blocked me or whom I blocked (B8).
+    const myBlocks = await blocks.blockedIds(me);
     if (isReply) {
-      const recipients = [parent.authorId, root.authorId].map(String).filter((u) => u !== String(me));
+      const recipients = [...new Set([parent.authorId, root.authorId].map(String))].filter((u) => u !== String(me) && !myBlocks.has(u));
       await notify('FRIENDS_REPLY', recipients, { id: post.id, dedupeKey: `reply:${post.id}`, body: `${who} replied: ${preview}`, data: { postId: post.id, rootId } });
     }
-    const mentioned = (await mentionedUsers(text, me, campusId)).filter((u) => !isReply || (u !== String(parent.authorId) && u !== String(root.authorId)));
+    const mentioned = (await mentionedUsers(text, me, campusId)).filter((u) => !myBlocks.has(String(u)) && (!isReply || (u !== String(parent.authorId) && u !== String(root.authorId))));
     if (mentioned.length) {
       await notify('FRIENDS_MENTION', mentioned, { id: post.id, dedupeKey: `mention:${post.id}`, body: `${who} mentioned you: ${preview}`, data: { postId: post.id, rootId: rootId || post.id } });
     }

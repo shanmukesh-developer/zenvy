@@ -195,7 +195,7 @@ export default function UserManagement() {
       const res = await fetch(`${API_URL}/api/admin/audit?page=${page}`, { cache: 'no-store' });
       if (!res.ok) throw new Error(await readError(res, 'Could not load the audit log.'));
       const data = await res.json();
-      // The backend currently returns a plain array (latest 100); the paginated shape is also supported.
+      // The backend returns { logs, total, pages } (100 per page); a plain array (older backends) is still accepted.
       if (Array.isArray(data)) {
         setLogs(data);
         setTotalLogs(data.length);

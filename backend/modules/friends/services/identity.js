@@ -33,12 +33,13 @@ const loadIdentities = async (req, userIds, { viewerId } = {}) => {
   const FriendsBadge = getModel('FriendsBadge');
   const FriendsEdge = getModel('FriendsEdge');
 
-  const [users, profiles, settings, badges, follows] = await Promise.all([
+  const [users, profiles, settings, badges, follows, followsBack] = await Promise.all([
     User.findAll({ where: { id: { [Op.in]: ids } }, attributes: ['id', 'name', 'profileImage', 'isActive'] }),
     CampusProfile ? CampusProfile.findAll({ where: { userId: { [Op.in]: ids } }, attributes: ['userId', 'campusId', 'year', 'branch', 'verificationStatus'] }) : [],
     FriendsSettings ? FriendsSettings.findAll({ where: { userId: { [Op.in]: ids } }, attributes: ['userId', 'profileVisibility', 'showYear', 'showBranch'] }) : [],
     FriendsBadge ? FriendsBadge.findAll({ where: { userId: { [Op.in]: ids } }, attributes: ['userId', 'code'] }) : [],
     viewerId && FriendsEdge ? FriendsEdge.findAll({ where: { userId: viewerId, kind: 'follow', targetType: 'user', targetId: { [Op.in]: ids } }, attributes: ['targetId'] }) : [],
+    viewerId && FriendsEdge ? FriendsEdge.findAll({ where: { userId: { [Op.in]: ids }, kind: 'follow', targetType: 'user', targetId: String(viewerId) }, attributes: ['userId'] }) : [],
   ]);
   const campusIds = [...new Set(profiles.map((p) => p.campusId).filter(Boolean))];
   const campuses = Campus && campusIds.length ? await Campus.findAll({ where: { id: { [Op.in]: campusIds } }, attributes: ['id', 'code'] }) : [];
@@ -46,6 +47,7 @@ const loadIdentities = async (req, userIds, { viewerId } = {}) => {
   const profileOf = new Map(profiles.map((p) => [String(p.userId), p]));
   const settingsOf = new Map(settings.map((s) => [String(s.userId), s]));
   const followed = new Set(follows.map((f) => String(f.targetId)));
+  const followsViewer = new Set(followsBack.map((f) => String(f.userId)));
   const badgesOf = new Map();
   badges.forEach((b) => {
     const k = String(b.userId);
@@ -58,7 +60,9 @@ const loadIdentities = async (req, userIds, { viewerId } = {}) => {
     const p = profileOf.get(id);
     const s = settingsOf.get(id);
     const isSelf = viewerId && String(viewerId) === id;
-    const visibleToViewer = isSelf || !s || s.profileVisibility !== 'followers' || followed.has(id);
+    // 'followers' = people they follow back (B9). Anyone can follow anyone, so one-way following
+    // would make the setting meaningless.
+    const visibleToViewer = isSelf || !s || s.profileVisibility !== 'followers' || (followed.has(id) && followsViewer.has(id));
     const identity = {
       userId: id,
       name: u.name || 'Student',
@@ -75,6 +79,27 @@ const loadIdentities = async (req, userIds, { viewerId } = {}) => {
     out.set(id, identity);
   }
   return out;
+};
+
+/** May viewer see the full profile (posts, year, branch) of target? Mutual follow for 'followers'. */
+const profileVisibleTo = async (viewerId, targetId) => {
+  if (!viewerId || String(viewerId) === String(targetId)) return true;
+  const FriendsSettings = getModel('FriendsSettings');
+  const FriendsEdge = getModel('FriendsEdge');
+  const s = FriendsSettings ? await FriendsSettings.findOne({ where: { userId: String(targetId) }, attributes: ['profileVisibility'] }) : null;
+  if (!s || s.profileVisibility !== 'followers') return true;
+  if (!FriendsEdge) return false;
+  const n = await FriendsEdge.count({
+    where: {
+      kind: 'follow',
+      targetType: 'user',
+      [Op.or]: [
+        { userId: String(viewerId), targetId: String(targetId) },
+        { userId: String(targetId), targetId: String(viewerId) },
+      ],
+    },
+  });
+  return n >= 2;
 };
 
 /** Identity of one user (null when the user does not exist). */
@@ -122,4 +147,5 @@ const leaksPrivate = (value) => {
   return false;
 };
 
-module.exports = { loadIdentities, identityOf, anonymousIdentity, authorOf, entityIdentity, scrub, leaksPrivate, PRIVATE_KEYS };
+module.exports = {
+  profileVisibleTo, loadIdentities, identityOf, anonymousIdentity, authorOf, entityIdentity, scrub, leaksPrivate, PRIVATE_KEYS };

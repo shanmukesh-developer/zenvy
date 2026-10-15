@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef, useCallback, memo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { useAdminSocket } from '@/components/AdminSocketProvider';
 import dynamic from 'next/dynamic';
 import { useAdminAuth } from '@/utils/useAdminAuth';
@@ -15,6 +15,8 @@ import ListImage from '@/components/ListImage';
 // "Needs attention" counters on the overview, kept live by realtime events.
 type InboxKey = 'tickets' | 'verifications' | 'pgBookings' | 'wallPending' | 'serviceRequests';
 type Inbox = Record<InboxKey, number | null>;
+/** Keys whose number is a lower bound (the fallback list hit its server cap): shown as "N+". */
+type InboxCapped = Partial<Record<InboxKey, boolean>>;
 const INBOX_ITEMS: { key: InboxKey; label: string; href: string; liveType: string }[] = [
   { key: 'tickets', label: 'Open tickets', href: '/tickets', liveType: 'ticket' },
   { key: 'verifications', label: 'Student IDs to review', href: '/student-verification', liveType: 'verification' },
@@ -24,7 +26,11 @@ const INBOX_ITEMS: { key: InboxKey; label: string; href: string; liveType: strin
 ];
 const LIVE_HOME_TYPES = ['order', 'rider', 'store', 'ticket', 'verification', 'pg_booking', 'wall_submission', 'wall', 'service_booking'] as const;
 
-const LiveFleetMap = dynamic(() => import('@/components/LiveFleetMap'), { ssr: false });
+// Leaflet (~150 KB) loads only with the map; a skeleton holds the space meanwhile.
+const LiveFleetMap = dynamic(() => import('@/components/LiveFleetMap'), {
+  ssr: false,
+  loading: () => <div className="w-full h-full rounded-2xl bg-white/[0.03] animate-pulse" aria-label="Loading the fleet map" />,
+});
 
 // Route reference points drawn on the fleet map (real places on the Mangalagiri → SRM AP route).
 const CHECKPOINTS = [
@@ -37,7 +43,8 @@ const CHECKPOINTS = [
 
 const ORDER_FEED_LIMIT = 40;
 const ORDERS_PATH = `/api/orders?limit=${ORDER_FEED_LIMIT}`;
-const BASKETS_PATH = '/api/mega-basket/admin/all';
+// Summary rows only (no basket items): the overview needs totals, status and names, nothing else.
+const BASKETS_PATH = `/api/mega-basket/admin/all?summary=1&limit=${ORDER_FEED_LIMIT}`;
 const STATS_PATH = '/api/admin/stats';
 /** Fallback polling: frequent only while the live socket is down; slow safety net otherwise. */
 const POLL_OFFLINE_MS = 15000;
@@ -89,6 +96,11 @@ interface RiderPosition {
   currentCheckpoint?: string;
   activeOrderCount: number;
   isOnline: boolean;
+  /** Last real GPS fix from admin_rider_location (absent until the rider app sends one). */
+  lat?: number;
+  lng?: number;
+  /** ms timestamp of that fix. */
+  locatedAt?: number;
 }
 
 interface OperationalEvent {
@@ -177,10 +189,23 @@ const peekFeed = () => {
 // ─── Memoized Components for Performance ───────────────────
 const OrderItem = memo(({ order, onVerify, fresh }: { order: LiveOrder, onVerify: (o: LiveOrder) => void, fresh?: boolean }) => {
   const upi = needsUpiCheck(order);
+  // Clickable rows (legacy UPI to verify) are real buttons for keyboard and screen-reader users:
+  // focusable, Enter / Space open the check, and the role + label announce what they do.
+  const interactive = upi
+    ? {
+        role: 'button' as const,
+        tabIndex: 0,
+        'aria-label': `Verify the UPI payment of order ${shortId(order.id)} from ${order.customer}`,
+        onClick: () => onVerify(order),
+        onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onVerify(order); }
+        },
+      }
+    : {};
   return (
     <div
-      onClick={() => { if (upi) onVerify(order); }}
-      className={`group p-4 rounded-3xl bg-white/[0.015] border border-white/5 hover:border-white/10 transition-all duration-300 ${upi ? 'cursor-pointer hover:bg-amber-500/5' : ''} ${fresh ? FRESH_ROW_CLASS : ''}`}
+      {...interactive}
+      className={`group p-4 rounded-3xl bg-white/[0.015] border border-white/5 hover:border-white/10 transition-all duration-300 ${upi ? 'cursor-pointer hover:bg-amber-500/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60' : ''} ${fresh ? FRESH_ROW_CLASS : ''}`}
     >
       <div className="flex justify-between items-start mb-2 gap-2">
         <div className="min-w-0">
@@ -282,6 +307,7 @@ export default function AdminHome() {
   const { mark: markFresh, isFresh } = useFreshIds();
   const [inbox, setInbox] = useState<Inbox>({ tickets: null, verifications: null, pgBookings: null, wallPending: null, serviceRequests: null });
   const [freshInbox, setFreshInbox] = useState<Partial<Record<InboxKey, boolean>>>({});
+  const [inboxCapped, setInboxCapped] = useState<InboxCapped>({});
 
   const [stats, setStats] = useState<AdminStat[] | null>(peekStats);
   const [statsError, setStatsError] = useState<string | null>(null);
@@ -331,7 +357,8 @@ export default function AdminHome() {
     try {
       // Every rider (100 per page, capped at 20 pages) so riders beyond the newest 100 are on the map too.
       // Page 1 tells us the page count; the rest are fetched in parallel instead of one after another.
-      const riderPage = (page: number) => apiRequest<{ riders?: any[]; pages?: number }>(`/api/admin/riders?limit=100&page=${page}`);
+      // Approved riders only (server-side filter): unapproved sign-ups were downloaded and then dropped.
+      const riderPage = (page: number) => apiRequest<{ riders?: any[]; pages?: number }>(`/api/admin/riders?approved=1&limit=100&page=${page}`);
       const first = await riderPage(1);
       const list: any[] = Array.isArray(first?.riders) ? [...first.riders] : [];
       const pages = Math.min(20, Number(first?.pages) || 1);
@@ -360,37 +387,58 @@ export default function AdminHome() {
     }
   }, []);
 
-  // Counts for the "Needs attention" strip. Each one fails independently (shown as "–").
-  const fetchInbox = useCallback(async (only?: InboxKey[]) => {
-    const want = (k: InboxKey) => !only || only.includes(k);
+  // Counts for the "Needs attention" strip: one request, SQL COUNTs on the server
+  // (GET /api/admin/attention-counts). A queue the server could not count stays "–".
+  const fetchInbox = useCallback(async () => {
+    try {
+      const d = await apiRequest<Partial<Record<InboxKey, number | null>>>('/api/admin/attention-counts', { cache: 'reload' });
+      const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+      setInbox(prev => {
+        const next = { ...prev };
+        // Keep the last known number when one queue could not be counted this time.
+        (Object.keys(next) as InboxKey[]).forEach(k => { const v = num(d?.[k]); if (v !== null || prev[k] === null) next[k] = v; });
+        return next;
+      });
+      setInboxCapped({});
+      return;
+    } catch {
+      // Older backend without the counts endpoint: count the (capped) lists instead, below.
+    }
+    const LIST_CAP: Partial<Record<InboxKey, number>> = { verifications: 100, pgBookings: 200, serviceRequests: 100 };
     const count = (v: unknown) => (Array.isArray(v) ? v.length : null);
-    const jobs: Partial<Record<InboxKey, Promise<number | null>>> = {};
-    if (want('tickets')) jobs.tickets = apiRequest<any[]>('/api/tickets/admin')
-      .then(list => (Array.isArray(list) ? list.filter(t => t?.status === 'Open' || t?.status === 'In Progress').length : null));
-    if (want('verifications')) jobs.verifications = apiRequest<{ requests?: unknown[] }>('/api/campus/verify/requests?status=pending')
-      .then(d => count(d?.requests));
-    if (want('pgBookings')) jobs.pgBookings = apiRequest<unknown[]>('/api/pg/admin/bookings?status=Pending').then(count);
-    if (want('wallPending')) jobs.wallPending = apiRequest<unknown[]>('/api/wall/admin/pending').then(count);
-    if (want('serviceRequests')) jobs.serviceRequests = apiRequest<{ bookings?: unknown[] }>('/api/services/admin/all?status=REQUESTED')
-      .then(d => count(d?.bookings));
+    const jobs: Record<InboxKey, Promise<number | null>> = {
+      tickets: apiRequest<any[]>('/api/tickets/admin')
+        .then(list => (Array.isArray(list) ? list.filter(t => t?.status === 'Open' || t?.status === 'In Progress').length : null)),
+      verifications: apiRequest<{ requests?: unknown[] }>('/api/campus/verify/requests?status=pending').then(d => count(d?.requests)),
+      pgBookings: apiRequest<unknown[]>('/api/pg/admin/bookings?status=Pending').then(count),
+      wallPending: apiRequest<unknown[]>('/api/wall/admin/pending').then(count),
+      serviceRequests: apiRequest<{ bookings?: unknown[] }>('/api/services/admin/all?status=REQUESTED').then(d => count(d?.bookings)),
+    };
     const keys = Object.keys(jobs) as InboxKey[];
-    const results = await Promise.allSettled(keys.map(k => jobs[k]!));
+    const results = await Promise.allSettled(keys.map(k => jobs[k]));
+    const capped: InboxCapped = {};
     setInbox(prev => {
       const next = { ...prev };
       keys.forEach((k, i) => {
         const r = results[i];
-        // Keep the last known number if a background refresh fails.
-        if (r.status === 'fulfilled') next[k] = r.value;
-        else if (prev[k] === null) next[k] = null;
+        if (r.status === 'fulfilled') {
+          next[k] = r.value;
+          const cap = LIST_CAP[k];
+          if (cap && r.value !== null && r.value >= cap) capped[k] = true;
+        } else if (prev[k] === null) next[k] = null;
       });
       return next;
     });
+    setInboxCapped(capped);
   }, []);
 
   const inboxFreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (inboxFreshTimer.current) clearTimeout(inboxFreshTimer.current); }, []);
 
   const lastStatsUpdate = useRef(0);
+  const lastRidersFetch = useRef(0);
+  const ridersTrailing = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (ridersTrailing.current) clearTimeout(ridersTrailing.current); }, []);
   const throttledFetchStats = useCallback(() => {
     const now = Date.now();
     if (now - lastStatsUpdate.current > 10000) {
@@ -569,12 +617,19 @@ export default function AdminHome() {
     const handleRiderLocation = (data: any) => {
       if (!data?.riderId) return;
       const id = String(data.riderId);
+      const lat = Number(data.lat ?? data.latitude);
+      const lng = Number(data.lng ?? data.longitude);
+      const hasFix = (data.lat ?? data.latitude) != null && (data.lng ?? data.longitude) != null
+        && Number.isFinite(lat) && Number.isFinite(lng) && (lat !== 0 || lng !== 0);
       pendingRidersUpdate[id] = {
+        ...(pendingRidersUpdate[id] || {}),
         riderId: id,
         riderName: data.riderName || 'Rider',
         currentCheckpoint: data.currentCheckpoint,
         activeOrderCount: toNumber(data.activeOrderCount),
         isOnline: data.isOnline !== false,
+        // Only a real fix moves the pin; an update without one keeps the last known position.
+        ...(hasFix ? { lat, lng, locatedAt: Date.now() } : {}),
       };
       if (!riderUpdateTimeout) {
         riderUpdateTimeout = setTimeout(() => {
@@ -623,7 +678,9 @@ export default function AdminHome() {
     const handleOrderAccepted = (data: any) => {
       const targetId = String(data?.orderId || '');
       if (!targetId) return;
-      setLiveOrders(prev => prev.map(o => o.id === targetId ? { ...o, status: 'Accepted', riderAssigned: true, deliveryPartnerName: data.riderName || o.deliveryPartnerName } : o));
+      // Rider fields only: the status comes from `statusUpdated` (a rider can accept an order that is
+      // already Preparing / Ready, and forcing 'Accepted' moved it backwards on screen).
+      setLiveOrders(prev => prev.map(o => o.id === targetId ? { ...o, riderAssigned: true, deliveryPartnerName: data.riderName || o.deliveryPartnerName } : o));
     };
 
     const handleDeliveryComplete = (data: any) => {
@@ -636,7 +693,9 @@ export default function AdminHome() {
     const handleOrderUnassigned = (data: any) => {
       const targetId = String(data?.orderId || '');
       if (!targetId) return;
-      setLiveOrders(prev => prev.map(o => o.id === targetId ? { ...o, status: 'Pending', riderAssigned: false, deliveryPartnerName: undefined, deliveryPartnerPhoto: undefined } : o));
+      // Unassigning a rider does not reset the order to Pending (it may be Preparing / Ready): only the
+      // rider fields change here; `statusUpdated` carries any real status change.
+      setLiveOrders(prev => prev.map(o => o.id === targetId ? { ...o, riderAssigned: false, deliveryPartnerName: undefined, deliveryPartnerPhoto: undefined } : o));
     };
 
     const handleRiderProfileUpdated = (data: any) => {
@@ -729,13 +788,24 @@ export default function AdminHome() {
       throttledFetchStats();
       if (!reconnect) markFresh(events.filter(e => e.type === 'order').map(e => e.id));
     }
-    if (has('rider')) { fetchRiders(); throttledFetchStats(); }
+    if (has('rider')) {
+      // Rider rows change often (duty toggles) and the socket events above already keep the list live:
+      // re-read the full roster at most every 15 s instead of on every rider event.
+      const now = Date.now();
+      const wait = 15000 - (now - lastRidersFetch.current);
+      if (reconnect || wait <= 0) { lastRidersFetch.current = now; fetchRiders(); }
+      else if (!ridersTrailing.current) {
+        // One trailing refresh so the last change inside the window is not lost.
+        ridersTrailing.current = setTimeout(() => { ridersTrailing.current = null; lastRidersFetch.current = Date.now(); fetchRiders(); }, wait);
+      }
+      throttledFetchStats();
+    }
     if (has('store') && !has('order')) throttledFetchStats();
     const inboxKeys = INBOX_ITEMS
       .filter(i => has(i.liveType) || (i.key === 'wallPending' && events.some(e => e.type === 'wall' && e.scope === 'submissions')))
       .map(i => i.key);
     if (inboxKeys.length) {
-      fetchInbox(inboxKeys);
+      fetchInbox();
       if (!reconnect) {
         setFreshInbox(prev => ({ ...prev, ...Object.fromEntries(inboxKeys.map(k => [k, true])) }));
         if (inboxFreshTimer.current) clearTimeout(inboxFreshTimer.current);
@@ -752,11 +822,15 @@ export default function AdminHome() {
     }
   }, { enabled: isAuthed });
 
-  if (!isAuthed) return null; // NexusLayoutClient shows the auth loader / redirect
+  // Derived lists are recomputed only when their source changes (not on every toast / input keystroke).
+  const riderList = useMemo(
+    () => Object.values(riders).sort((a, b) => Number(b.isOnline) - Number(a.isOnline)),
+    [riders],
+  );
+  const onlineCount = useMemo(() => riderList.filter(r => r.isOnline).length, [riderList]);
+  const upiPendingCount = useMemo(() => liveOrders.filter(needsUpiCheck).length, [liveOrders]);
 
-  const riderList = Object.values(riders);
-  const onlineCount = riderList.filter(r => r.isOnline).length;
-  const upiPendingCount = liveOrders.filter(needsUpiCheck).length;
+  if (!isAuthed) return null; // NexusLayoutClient shows the auth loader / redirect
 
   return (
     <div className="space-y-12 animate-fade-in relative pb-20">
@@ -812,7 +886,7 @@ export default function AdminHome() {
           return (
             <Link key={item.key} href={item.href} className={`glass-card p-5 flex items-center justify-between gap-3 border border-white/5 hover:border-white/15 transition-colors ${freshInbox[item.key] ? FRESH_ROW_CLASS : ''}`}>
               <span className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">{item.label}</span>
-              <span className={`text-2xl font-black ${value ? 'text-amber-300' : 'text-white'}`}>{value === null ? '–' : value}</span>
+              <span className={`text-2xl font-black ${value ? 'text-amber-300' : 'text-white'}`}>{value === null ? '–' : `${value}${inboxCapped[item.key] ? '+' : ''}`}</span>
             </Link>
           );
         })}
@@ -820,11 +894,11 @@ export default function AdminHome() {
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-10 items-start">
         {/* ─── Fleet map ─── */}
-        <div className="col-span-1 lg:col-span-2">
+        <div className="col-span-1 xl:col-span-2">
           <div className="glass-card p-2 border-white/5 relative overflow-hidden bg-slate-900/50 h-[550px]">
             <LiveFleetMap riders={riders} checkpoints={CHECKPOINTS} />
           </div>
-          <p className="text-[11px] text-gray-600 mt-2">Riders appear on the map at the last route checkpoint their app reported.</p>
+          <p className="text-[11px] text-gray-600 mt-2">Riders appear at their live GPS position, or at the last route checkpoint their app reported if there is no GPS fix yet.</p>
         </div>
 
         {/* ─── Ops stream ─── */}
@@ -847,7 +921,7 @@ export default function AdminHome() {
               <div className="grid grid-cols-1 gap-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
                 {riderList.length === 0 ? (
                   <p className="text-[11px] text-gray-600 italic text-center py-6">No approved riders yet.</p>
-                ) : riderList.sort((a, b) => Number(b.isOnline) - Number(a.isOnline)).map(rider => (
+                ) : riderList.map(rider => (
                   <RiderStatusItem key={rider.riderId} rider={rider} />
                 ))}
               </div>
@@ -912,7 +986,7 @@ export default function AdminHome() {
               <span className="text-2xl">📢</span>
               <div>
                 <h3 className="text-xl font-black text-white uppercase tracking-widest">In-app Banner</h3>
-                <p className="text-[11px] text-gray-500">Shown live to everyone who has the app open. For phones that are closed, use Push Notifications.</p>
+                <p id="mega-banner-hint" className="text-[11px] text-gray-500">Shown live to everyone who has the app open. For phones that are closed, use Push Notifications.</p>
               </div>
             </div>
             <div className="flex flex-col gap-4">
@@ -934,7 +1008,10 @@ export default function AdminHome() {
                   </button>
                 ))}
               </div>
+              <label htmlFor="mega-banner-text" className="sr-only">Banner message</label>
               <textarea
+                id="mega-banner-text"
+                aria-describedby="mega-banner-hint"
                 rows={3}
                 maxLength={280}
                 value={megaMsg}

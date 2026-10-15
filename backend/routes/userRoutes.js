@@ -234,6 +234,7 @@ router.post('/products/:id/reviews', protect, async (req, res) => {
     if (already) return res.status(409).json({ message: 'You have already reviewed this product. Thank you!' });
 
     const text = typeof comment === 'string' ? comment.trim().replace(/[<>]/g, '').slice(0, 1000) : '';
+    // One review per (user, product) (B25): the named unique index backs the check above.
     const newReview = await ProductReview.create({
       productId: rawId,
       productName: typeof req.body.productName === 'string' ? req.body.productName.slice(0, 120) : null,
@@ -246,7 +247,11 @@ router.post('/products/:id/reviews', protect, async (req, res) => {
       tags: Array.isArray(tags) ? tags.slice(0, 10).map(x => String(x).slice(0, 40)) : [],
       verified: true,
       helpfulCount: 0
+    }).catch((e) => {
+      if (e && e.name === 'SequelizeUniqueConstraintError') return null;
+      throw e;
     });
+    if (!newReview) return res.status(409).json({ message: 'You have already reviewed this product. Thank you!' });
 
     res.json({
       success: true,

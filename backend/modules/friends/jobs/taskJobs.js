@@ -52,9 +52,12 @@ const closeChats = async () => {
   const FriendsTask = getModel('FriendsTask');
   const Conversation = getModel('Conversation');
   const now = new Date();
+  // Only tasks whose chat is still open (B26): the closed ones used to fill the 1000-row page
+  // forever, so newer chats were never closed.
+  const openChats = FriendsTask.sequelize.literal('(SELECT "id" FROM "Conversations" WHERE "closedAt" IS NULL)');
   const rows = await FriendsTask.findAll({
     where: {
-      conversationId: { [Op.ne]: null },
+      conversationId: { [Op.ne]: null, [Op.in]: openChats },
       [Op.or]: [
         { status: 'completed', chatClosesAt: { [Op.lt]: now } },
         { status: { [Op.in]: ['cancelled', 'expired'] } },

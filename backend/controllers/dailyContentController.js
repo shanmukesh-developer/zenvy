@@ -1,4 +1,7 @@
 const { getDailyContentModel } = require('../models/DailyContent');
+const { Op } = require('sequelize');
+// "Today" is the IST calendar day (B17): the server runs in UTC, so the day used to flip at 05:30.
+const { istYmd } = require('../utils/istTime');
 
 // Seeded shuffle using Linear Congruential Generator — same date → same order
 function seededShuffle(arr, seed) {
@@ -13,8 +16,8 @@ function seededShuffle(arr, seed) {
 }
 
 function dateSeed() {
-  const d = new Date();
-  const str = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  const [y, m, d] = istYmd().split('-').map(Number);
+  const str = `${y}-${m - 1}-${d}`; // same seed format as before, on the IST date
   let h = 0;
   for (let i = 0; i < str.length; i++) {
     h = ((h << 5) - h + str.charCodeAt(i)) | 0;
@@ -48,12 +51,15 @@ exports.getActiveContent = async (req, res) => {
   try {
     const DailyContent = getDailyContentModel();
     if (!DailyContent) return res.status(500).json({ message: 'DailyContent model not loaded' });
-    const today = new Date().toISOString().split('T')[0];
+    const today = istYmd();
     const content = await DailyContent.findOne({
       where: {
         activeDate: today,
-        isPublished: true
-      }
+        isPublished: true,
+        // Content past its expiry is not served even on its day (B17).
+        [Op.or]: [{ expiresAt: null }, { expiresAt: { [Op.gt]: new Date() } }]
+      },
+      order: [['createdAt', 'DESC']]
     });
     res.status(200).json({ success: true, data: content });
   } catch (error) {
@@ -66,7 +72,7 @@ exports.getActiveContent = async (req, res) => {
 exports.getDailyTruthDare = async (req, res) => {
   try {
     const seed = dateSeed();
-    const count = parseInt(req.query.count) || 10; // how many to return
+    const count = Math.min(50, Math.max(1, parseInt(req.query.count, 10) || 10)); // how many to return
 
     // Full campus question pools — same as frontend but authoritative source
     const CAMPUS_TRUTHS = [
@@ -108,7 +114,7 @@ exports.getDailyTruthDare = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      date: new Date().toISOString().split('T')[0],
+      date: istYmd(),
       data: {
         truths: todayTruths,
         dares: todayDares,

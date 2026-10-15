@@ -1,6 +1,7 @@
 const { getRestaurantModel } = require('../models/Restaurant');
 const { getMenuItemModel } = require('../models/MenuItem');
 const { Op } = require('sequelize');
+const { stripItemSecrets } = require('../utils/publicFields');
 
 // Real rating only (0 = not rated yet → null, the app shows "New").
 const realRating = (r) => (Number(r) > 0 ? Number(r) : null);
@@ -38,7 +39,7 @@ const globalSearch = async (req, res) => {
           _id: r.id, id: r.id, name: r.name, location: r.location, imageUrl: r.imageUrl, vendorType: r.vendorType, rating: realRating(r.rating)
         })),
         items: trendingItems.map(item => {
-          const itemJSON = item.toJSON();
+          const itemJSON = stripItemSecrets(item.toJSON());
           return {
             ...itemJSON,
             _id: itemJSON.id,
@@ -78,7 +79,7 @@ const globalSearch = async (req, res) => {
 
     // Transform menuItems to match the expected format
     const items = menuItems.map(item => {
-      const itemJSON = item.toJSON();
+      const itemJSON = stripItemSecrets(item.toJSON());
       return {
         ...itemJSON,
         _id: itemJSON.id,

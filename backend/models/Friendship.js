@@ -51,6 +51,18 @@ const initFriendshipModel = (sequelize) => {
     blockedBy: {
       type: DataTypes.UUID,
       allowNull: true
+    },
+    // Every current blocker and where they blocked from: {"<userId>": "friends"|"connect"} (JSON).
+    // Null on rows written before directional blocks: blockedBy is then the only blocker.
+    blockMeta: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    // Private nickname per viewer: {"<viewerId>": "nickname"} (JSON). The legacy shared
+    // `nickname` column is no longer shown (it leaked one side's nickname to the other).
+    nicknames: {
+      type: DataTypes.TEXT,
+      allowNull: true
     }
   }, {
     timestamps: true,

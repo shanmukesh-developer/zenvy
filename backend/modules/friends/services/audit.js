@@ -49,7 +49,8 @@ const serializeAction = (a, opts = {}) => ({
   actorRole: a.actorRole,
   action: a.action,
   targetType: a.targetType,
-  targetId: a.targetId,
+  // A 'user' target IS the subject: hidden with it for anonymous rows (B3).
+  targetId: ((opts && opts.anonymous === true) || isAnonymousAction(a)) && a.targetType === 'user' ? null : a.targetId,
   subjectUserId: (opts && opts.anonymous === true) || isAnonymousAction(a) ? null : a.subjectUserId,
   communityId: a.communityId,
   reportId: a.reportId,

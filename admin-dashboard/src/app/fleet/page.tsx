@@ -315,14 +315,18 @@ export default function FleetManagement() {
     setError(null);
     const name = newRider.name.trim();
     const phone = newRider.phone.replace(/\D/g, '').slice(-10);
-    const password = newRider.password.trim();
-    if (!name) { setError('Name is required.'); return; }
+    // Never trimmed silently: the rider would type exactly what the admin shared and be locked out.
+    const password = newRider.password;
+    if (name.length < 2) { setError('Enter the rider\'s full name.'); return; }
     if (!/^[6-9]\d{9}$/.test(phone)) { setError('Enter a valid 10-digit mobile number.'); return; }
+    if (password && password !== password.trim()) { setError('The password starts or ends with a space. Remove the space so the rider can sign in with exactly what you share.'); return; }
     if (!editingRider && password.length < 6) { setError('Set a password of at least 6 characters for the rider app login.'); return; }
     if (editingRider && password && password.length < 6) { setError('New password must be at least 6 characters (leave blank to keep the current one).'); return; }
+    if (password.length > 128) { setError('Password must be at most 128 characters.'); return; }
     setIsSubmitting(true);
     try {
-      const endpoint = editingRider ? `${API_URL}/api/admin/riders/${editingRider._id}` : `${API_URL}/api/delivery/register`;
+      // Admin-only endpoints: the new rider is created approved (not the public, rate-limited sign-up).
+      const endpoint = editingRider ? `${API_URL}/api/admin/riders/${editingRider._id}` : `${API_URL}/api/admin/riders`;
       const body: Record<string, string> = { name, phone, vehicleType: newRider.vehicleType };
       if (password) body.password = password;
       const res = await fetch(endpoint, {

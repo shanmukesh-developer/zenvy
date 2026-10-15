@@ -14,4 +14,8 @@ router.get('/', cacheGet('config', { ttlMs: 60 * 1000, bypass: liveAdminBypass }
 // Update global app configuration (admin only)
 router.put('/', protect, admin, appConfigController.updateConfig);
 
+// Add/update or remove ONE Home banner atomically (store "Home banner" toggle, store hide/delete).
+router.post('/banners', protect, admin, appConfigController.upsertBanner);
+router.delete('/banners', protect, admin, appConfigController.removeBanner);
+
 module.exports = router;

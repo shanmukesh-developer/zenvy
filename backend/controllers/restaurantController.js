@@ -165,6 +165,29 @@ const restaurantLogin = async (req, res) => {
   }
 };
 
+// @desc    Sliding session for the restaurant / vendor apps (B28): a signed-in store swaps its
+//          token for a fresh 30-day one. protect() already checked the tokenVersion (a password
+//          change still signs every device out).
+// @route   POST /api/restaurants/refresh-token
+const refreshStoreToken = async (req, res) => {
+  try {
+    if (!req.user || String(req.user.role || '').toLowerCase() !== 'restaurant') {
+      return res.status(403).json({ message: 'Only a store session can be refreshed here.' });
+    }
+    const Restaurant = getRestaurantModel();
+    const store = await Restaurant.findByPk(req.user.id, { attributes: ['id', 'tokenVersion', 'isActive'] });
+    if (!store) return res.status(401).json({ message: 'Restaurant not found' });
+    const secret = process.env.JWT_SECRET;
+    if (!secret) return res.status(500).json({ message: 'Server configuration error' });
+    const token = jwt.sign({ id: store.id, role: 'restaurant', tv: Number(store.tokenVersion) || 0 }, secret, { expiresIn: '30d' });
+    res.cookie('token', token, { httpOnly: true, secure: true, sameSite: 'none', maxAge: 30 * 24 * 60 * 60 * 1000 });
+    res.json({ token, expiresIn: 30 * 24 * 60 * 60, expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() });
+  } catch (error) {
+    console.error('[STORE_REFRESH_TOKEN_ERROR]', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 // Customer contact on a stall order is shown to the owning stall only; it is hidden again 24 h after
 // the order finished (Delivered / Cancelled).
 const CONTACT_TTL_MS = 24 * 60 * 60 * 1000;
@@ -189,8 +212,20 @@ const getRestaurantOrders = async (req, res) => {
     const User = getUserModel();
     const DeliveryPartner = getDeliveryPartnerModel();
 
+    // ?scope=active (partner apps, B28): only open orders plus today's (IST) finished ones, so the
+    // kitchen poll stays small. Default (no scope) is unchanged: the 200 most recent orders.
+    const scopeActive = String(req.query.scope || '') === 'active';
+    const where = { restaurantId: req.params.id };
+    if (scopeActive) {
+      const { Op } = require('sequelize');
+      const { istStartOfDay } = require('../utils/istTime');
+      where[Op.or] = [
+        { status: { [Op.notIn]: ['Delivered', 'Cancelled'] } },
+        { createdAt: { [Op.gte]: istStartOfDay() } },
+      ];
+    }
     const orders = await Order.findAll({
-      where: { restaurantId: req.params.id },
+      where,
       include: [
         { model: User, as: 'user', attributes: ['name', 'phone', 'hostelBlock', 'roomNumber'] },
         { model: DeliveryPartner, as: 'deliveryPartner', attributes: ['name', 'phone'] }
@@ -896,6 +931,7 @@ const getMenuItemById = async (req, res) => {
 };
 
 module.exports = {
+  refreshStoreToken,
   getRestaurants,
   getRestaurantMenu,
   createRestaurant,

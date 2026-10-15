@@ -202,14 +202,18 @@ router.get('/recommendations', protect, async (req, res) => {
       if (o.restaurantId) restaurantFreq[o.restaurantId] = (restaurantFreq[o.restaurantId] || 0) + 1;
     });
 
+    const { getRestaurantModel } = require('../models/Restaurant');
+    const { stripItemSecrets } = require('../utils/publicFields');
+    // Only items of live stores (B1); public item rows never carry owner phone / commission.
     const allItems = await MenuItem.findAll({
       where: { isAvailable: true },
+      include: [{ model: getRestaurantModel(), as: 'restaurant', attributes: ['id', 'name', 'imageUrl', 'vendorType'], where: { isActive: true } }],
       limit: 200
     });
 
     const scored = allItems.map(item => {
       let score = 0;
-      const itemData = item.toJSON();
+      const itemData = stripItemSecrets(item.toJSON());
 
       // Boost if user has ordered similar items
       if (itemFreq[itemData.name]) score += itemFreq[itemData.name] * 3;
@@ -276,6 +280,7 @@ router.post('/gift', protect, async (req, res) => {
     let updatedSender;
     let recipientName;
     let replayed = false;
+    let giftEvent = null;
 
     await sequelize.transaction(async (t) => {
       const sender = await User.findByPk(req.user.id, { transaction: t, lock: true });
@@ -292,9 +297,10 @@ router.post('/gift', protect, async (req, res) => {
       if (!sender.isElite) throw giftError('Only Elite members can send gifts');
 
       const now = new Date();
+      const { istMonthKey } = require('../utils/istTime');
       if (sender.lastGiftResetDate) {
-        const lastReset = new Date(sender.lastGiftResetDate);
-        if (lastReset.getMonth() !== now.getMonth() || lastReset.getFullYear() !== now.getFullYear()) {
+        // Monthly limit resets on the IST month boundary, not the server's UTC one.
+        if (istMonthKey(sender.lastGiftResetDate) !== istMonthKey(now)) {
           sender.eliteGiftsUsedThisMonth = 0;
           sender.lastGiftResetDate = now;
         }
@@ -324,18 +330,23 @@ router.post('/gift', protect, async (req, res) => {
 
       updatedSender = sender;
       recipientName = recipient.name;
-
-      // Notify only the recipient (personal socket room joined on connect)
-      const io = req.app.get('io');
-      if (io) {
-        io.to(`user_${recipient.id}`).emit('gift_received', {
+      giftEvent = {
+        room: `user_${recipient.id}`,
+        payload: {
           recipientId: recipient.id,
           senderName: sender.name,
           amount,
           message: message || `${sender.name} sent you a meal gift! 🎁`
-        });
-      }
+        }
+      };
     });
+
+    // Notify only the recipient (personal socket room) — after the transaction committed, so a
+    // rolled-back gift is never announced.
+    if (giftEvent) {
+      const io = req.app.get('io');
+      if (io) io.to(giftEvent.room).emit('gift_received', giftEvent.payload);
+    }
 
     if (!replayed) console.log(`[GIFT] ${updatedSender.name} → ${recipientName}: ₹${amount}`);
     const body = {
@@ -361,48 +372,49 @@ router.post('/gift', protect, async (req, res) => {
 // POST /api/features/push/campaign - Send a push campaign (Admin only)
 router.post('/push/campaign', protect, admin, async (req, res) => {
   try {
-    const { title, body, targetType, targetData } = req.body;
-    // targetType: 'all', 'elite', 'block', 'abandoned_cart', 'inactive'
+    const { title, body, targetType, targetData } = req.body || {};
+    // targetType: 'all', 'elite', 'block', 'inactive'. Anything else is refused — an unknown or
+    // misspelled target must never fall through to "every user" (B20).
     if (!title || !body) return res.status(400).json({ message: 'Title and body are required' });
+    const TARGETS = ['all', 'elite', 'block', 'inactive'];
+    if (!TARGETS.includes(targetType)) {
+      return res.status(400).json({ message: `Choose a target: ${TARGETS.join(', ')}` });
+    }
+    const block = targetType === 'block' ? String((targetData && targetData.block) || '').trim() : '';
+    if (targetType === 'block' && !block) return res.status(400).json({ message: 'Pick the hostel block to target.' });
 
     const { getUserModel } = require('../models/User');
     const { sendPushToTokens } = require('../utils/push');
     const User = getUserModel();
     const { Op } = require('sequelize');
 
-    let users = [];
-    switch (targetType) {
-      case 'elite':
-        users = await User.findAll({ where: { isElite: true } });
-        break;
-      case 'block':
-        if (targetData?.block) {
-          users = await User.findAll({ where: { hostelBlock: targetData.block } });
-        }
-        break;
-      case 'inactive': {
-        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-        users = await User.findAll({
-          where: { updatedAt: { [Op.lt]: thirtyDaysAgo } }
-        });
-        break;
-      }
-      default:
-        users = await User.findAll({ where: {} });
-    }
+    let where = {};
+    if (targetType === 'elite') where = { isElite: true };
+    else if (targetType === 'block') where = { hostelBlock: block };
+    else if (targetType === 'inactive') where = { updatedAt: { [Op.lt]: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } };
 
-    let sentCount = 0;
-    for (const user of users) {
-      const tokens = user.fcmTokens;
-      if (tokens && Array.isArray(tokens) && tokens.length > 0) {
-        await sendPushToTokens(tokens, title, body, { type: 'campaign' }, { recipients: [user.id] });
-        sentCount++;
-      }
-    }
+    // Only the columns needed to send (no full user rows in memory).
+    const users = await User.findAll({ where, attributes: ['id', 'fcmTokens'], raw: true });
+    const parseTokens = (t) => {
+      if (Array.isArray(t)) return t;
+      if (typeof t === 'string') { try { const v = JSON.parse(t); return Array.isArray(v) ? v : []; } catch { return []; } }
+      return [];
+    };
+    const targets = users.map((u) => ({ id: u.id, tokens: parseTokens(u.fcmTokens) })).filter((u) => u.tokens.length > 0);
+    const sentCount = targets.length;
 
-    console.log(`[PUSH_CAMPAIGN] "${title}" sent to ${sentCount}/${users.length} users (target: ${targetType})`);
+    // Send in the background in small batches so a big campaign never holds the request open.
+    setTimeout(async () => {
+      const BATCH = 25;
+      for (let i = 0; i < targets.length; i += BATCH) {
+        await Promise.all(targets.slice(i, i + BATCH).map((u) =>
+          sendPushToTokens(u.tokens, title, body, { type: 'campaign' }, { recipients: [u.id] }).catch(() => null)));
+      }
+      console.log(`[PUSH_CAMPAIGN] "${title}" sent to ${sentCount}/${users.length} users (target: ${targetType})`);
+    }, 0);
+
     res.json({
-      message: `Campaign sent to ${sentCount} devices`,
+      message: `Campaign sending to ${sentCount} devices`,
       totalUsers: users.length,
       devicesReached: sentCount
     });
