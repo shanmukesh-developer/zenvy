@@ -23,14 +23,17 @@ export default function ThemedAlert() {
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
   const [buttons, setButtons] = useState<AlertButton[]>([]);
+  // Android back / outside dismissal must run the cancel path (callers reset their state there)
+  const onDismissRef = useRef<(() => void) | undefined>(undefined);
   const [fadeAnim] = useState(new Animated.Value(0));
   const [scaleAnim] = useState(new Animated.Value(0.9));
   // Guards against a quick double tap running a button's action twice during the close animation
   const closingRef = useRef(false);
 
   useEffect(() => {
-    showGlobalAlert = (t, msg, btns) => {
+    showGlobalAlert = (t, msg, btns, options) => {
       closingRef.current = false;
+      onDismissRef.current = typeof options?.onDismiss === 'function' ? options.onDismiss : undefined;
       setTitle(t);
       setMessage(msg || '');
       setButtons(btns && btns.length > 0 ? btns : [{ text: 'OK' }]);
@@ -85,7 +88,12 @@ export default function ThemedAlert() {
   const activeBorder = isDark ? COLORS.borderGold : COLORS.borderLight;
 
   return (
-    <Modal visible={visible} transparent={true} animationType="none" onRequestClose={() => handlePress()}>
+    <Modal
+      visible={visible}
+      transparent={true}
+      animationType="none"
+      onRequestClose={() => handlePress(buttons.find((b) => b.style === 'cancel')?.onPress || onDismissRef.current)}
+    >
       <View style={styles.overlay}>
         <Animated.View style={[styles.overlayBg, { opacity: fadeAnim }]} />
         <Animated.View

@@ -167,7 +167,10 @@ interface PostType {
   content: string;
   imageUrl: string | null;
   likes: number;
+  /** Legacy: older servers sent the full liker list. */
   likedBy: string[];
+  /** The server now answers only whether the signed-in viewer liked it (never who else did). */
+  likedByMe?: boolean;
   replyCount: number;
   createdAt: string;
   expiresAt?: string | null;
@@ -177,6 +180,12 @@ interface PostType {
   restaurantName?: string;
   productName?: string;
 }
+
+const isLikedByMe = (post: Pick<PostType, 'likedBy' | 'likedByMe'>, myUserId: string): boolean => {
+  if (!myUserId) return false;
+  if (typeof post.likedByMe === 'boolean') return post.likedByMe;
+  return (post.likedBy || []).map(String).includes(myUserId);
+};
 
 const postTimeLeft = (expiresAt?: string | null) => {
   if (!expiresAt) return '';
@@ -226,7 +235,7 @@ const PostCard = React.memo(function PostCard({ post, idx, myUserId, signedIn, i
   cardBg: string; border: string; txt: string; txtSec: string; isDark: boolean; actions: PostCardActions;
 }) {
   const bgGrad = postBgHash(post.id);
-  const isLiked = myUserId ? (post.likedBy || []).map(String).includes(myUserId) : false;
+  const isLiked = isLikedByMe(post, myUserId);
   const rotation = (idx % 2 === 0 ? '-1.5deg' : '1.5deg');
 
   return (
@@ -482,10 +491,37 @@ export function CommunityFeed({ embedded = false, tab }: { embedded?: boolean; t
   const [isReviewDraft, setIsReviewDraft] = useState(false);
   const [starRating, setStarRating] = useState(5);
   const [restaurantName, setRestaurantName] = useState('');
+  // Reviews are about a real store the user got a delivered order from (server: REVIEW_NEEDS_STORE /
+  // REVIEW_NEEDS_ORDER), so the place is picked from the user's delivered orders, not typed.
+  const [reviewStoreId, setReviewStoreId] = useState<string | null>(null);
+  const [reviewStores, setReviewStores] = useState<{ id: string; name: string }[] | null>(null);
   const [productName, setProductName] = useState('');
   const [selectedMood, setSelectedMood] = useState<string | null>(null);
   
   const [replyingTo, setReplyingTo] = useState<PostType | null>(null);
+
+  useEffect(() => {
+    if (!isReviewDraft || !user || reviewStores) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiFetch(ENDPOINTS.myOrders);
+        const data = await res.json().catch(() => null);
+        if (cancelled) return;
+        const seen = new Map<string, string>();
+        (res.ok && Array.isArray(data) ? data : []).forEach((o: any) => {
+          const id = String(o?.restaurantId || o?.restaurant?.id || '');
+          if (o?.status !== 'Delivered' || !id || seen.has(id)) return;
+          seen.set(id, String(o.restaurantName || o.restaurant?.name || 'Store'));
+        });
+        setReviewStores([...seen].map(([id, name]) => ({ id, name })));
+      } catch {
+        if (!cancelled) setReviewStores([]);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isReviewDraft, user, reviewStores]);
   const [expandedThreads, setExpandedThreads] = useState<Set<string>>(new Set());
   const [posting, setPosting] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -915,16 +951,16 @@ export function CommunityFeed({ embedded = false, tab }: { embedded?: boolean; t
       if (mountedRef.current) upsertPost(newPost);
     };
 
-    const onPostLiked = (data: { id: string; likes: number; likedBy: string[] }) => {
+    const onPostLiked = (data: { id: string; likes: number; likedBy?: string[] }) => {
       if (!mountedRef.current || !data?.id) return;
       setPosts(prev => prev.map(p => {
         if (p.id === data.id) {
-          return { ...p, likes: data.likes, likedBy: (data.likedBy || []).map(String) };
+          return { ...p, likes: data.likes, ...(Array.isArray(data.likedBy) ? { likedBy: data.likedBy.map(String) } : {}) };
         }
         if (p.replies && p.replies.some(r => r.id === data.id)) {
           return {
             ...p,
-            replies: p.replies.map(r => r.id === data.id ? { ...r, likes: data.likes, likedBy: (data.likedBy || []).map(String) } : r)
+            replies: p.replies.map(r => r.id === data.id ? { ...r, likes: data.likes, ...(Array.isArray(data.likedBy) ? { likedBy: data.likedBy.map(String) } : {}) } : r)
           };
         }
         return p;
@@ -1033,8 +1069,10 @@ export function CommunityFeed({ embedded = false, tab }: { embedded?: boolean; t
       Alert.alert('Nothing to post yet', 'Write something or add a photo first.');
       return;
     }
-    if (isReviewDraft && !replyingTo && !restaurantName.trim()) {
-      Alert.alert('Which restaurant?', 'Add the restaurant name so others know what you are reviewing.');
+    if (isReviewDraft && !replyingTo && !reviewStoreId) {
+      Alert.alert('Which place?', reviewStores && reviewStores.length === 0
+        ? 'You can review a place once an order from it has been delivered to you.'
+        : 'Pick the place you are reviewing.');
       return;
     }
     setPosting(true);
@@ -1050,6 +1088,7 @@ export function CommunityFeed({ embedded = false, tab }: { embedded?: boolean; t
       if (submittedReview) {
         body.postType = 'review';
         body.starRating = starRating.toString();
+        body.restaurantId = reviewStoreId;
         body.restaurantName = restaurantName.trim();
         body.productName = productName.trim();
       }
@@ -1078,6 +1117,8 @@ export function CommunityFeed({ embedded = false, tab }: { embedded?: boolean; t
       setReplyingTo(null);
       setIsReviewDraft(false);
       setRestaurantName('');
+      setReviewStoreId(null);
+      setReviewStores(null); // a delivered order is used up by this review: reload next time
       setProductName('');
       setSelectedMood(null);
       setStarRating(5);
@@ -1099,16 +1140,17 @@ export function CommunityFeed({ embedded = false, tab }: { embedded?: boolean; t
     if (!target) return;
     likePendingRef.current.add(id);
 
-    const previous = { likes: target.likes, likedBy: target.likedBy };
-    const isLiked = target.likedBy.map(String).includes(userId);
-    const setLikeState = (likes: number, likedBy: string[]) => {
-      setPosts(prev => prev.map(p => p.id === id ? { ...p, likes, likedBy } : p));
+    const previous = { likes: target.likes, likedBy: target.likedBy, likedByMe: target.likedByMe };
+    const isLiked = isLikedByMe(target, userId);
+    const setLikeState = (likes: number, likedBy: string[], likedByMe: boolean | undefined) => {
+      setPosts(prev => prev.map(p => p.id === id ? { ...p, likes, likedBy, likedByMe } : p));
     };
 
     // Optimistic update
     setLikeState(
       isLiked ? Math.max(0, target.likes - 1) : target.likes + 1,
-      isLiked ? target.likedBy.filter(u => u !== userId) : [...target.likedBy, userId]
+      isLiked ? target.likedBy.filter(u => u !== userId) : [...target.likedBy, userId],
+      !isLiked
     );
 
     try {
@@ -1117,14 +1159,19 @@ export function CommunityFeed({ embedded = false, tab }: { embedded?: boolean; t
       if (res.ok) {
         const data = await res.json().catch(() => null);
         if (data && typeof data.likes === 'number') {
-          setLikeState(data.likes, Array.isArray(data.likedBy) ? data.likedBy.map(String) : []);
+          const mine = typeof data.likedByMe === 'boolean' ? data.likedByMe : !isLiked;
+          setLikeState(
+            data.likes,
+            Array.isArray(data.likedBy) ? data.likedBy.map(String) : (mine ? [userId] : []),
+            mine
+          );
         }
       } else {
-        setLikeState(previous.likes, previous.likedBy);
-        Alert.alert('Couldn\'t like', await friendlyError(res, 'Please try again in a moment.'));
+        setLikeState(previous.likes, previous.likedBy, previous.likedByMe);
+        Alert.alert("Couldn't like", await friendlyError(res, 'Please try again in a moment.'));
       }
     } catch (e) {
-      if (mountedRef.current) setLikeState(previous.likes, previous.likedBy);
+      if (mountedRef.current) setLikeState(previous.likes, previous.likedBy, previous.likedByMe);
       Alert.alert('No connection', 'Your like was not saved. Please check your internet and try again.');
     } finally {
       likePendingRef.current.delete(id);
@@ -1971,7 +2018,30 @@ export function CommunityFeed({ embedded = false, tab }: { embedded?: boolean; t
                             </DopaminePressable>
                           ))}
                         </View>
-                        <TextInput style={[s.reviewInputField, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="Restaurant Name" placeholderTextColor={txtSec} value={restaurantName} onChangeText={setRestaurantName} maxLength={60} />
+                        {reviewStores === null ? (
+                          <ActivityIndicator size="small" color={isDark ? COLORS.gold : '#8b5a2b'} />
+                        ) : reviewStores.length === 0 ? (
+                          <Text style={{ fontSize: 10, fontWeight: '700', color: txtSec }}>
+                            You can review a place once an order from it has been delivered to you.
+                          </Text>
+                        ) : (
+                          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }} keyboardShouldPersistTaps="handled">
+                            {reviewStores.map(st => {
+                              const sel = reviewStoreId === st.id;
+                              return (
+                                <TouchableOpacity
+                                  key={st.id}
+                                  onPress={() => { setReviewStoreId(sel ? null : st.id); setRestaurantName(sel ? '' : st.name); }}
+                                  accessibilityRole="radio"
+                                  accessibilityState={{ selected: sel }}
+                                  style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, borderWidth: 1, borderColor: sel ? (isDark ? COLORS.gold : '#8b5a2b') : border, backgroundColor: sel ? (isDark ? COLORS.gold : '#8b5a2b') : (isDark ? '#222' : '#fff') }}
+                                >
+                                  <Text style={{ fontSize: 10, fontWeight: '800', color: sel ? (isDark ? '#000' : '#fff') : txt }} numberOfLines={1}>📍 {st.name}</Text>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </ScrollView>
+                        )}
                         <TextInput style={[s.reviewInputField, { backgroundColor: isDark ? '#222' : '#fff', borderColor: border, color: txt }]} placeholder="Dish Name" placeholderTextColor={txtSec} value={productName} onChangeText={setProductName} maxLength={60} />
                       </View>
                     )}

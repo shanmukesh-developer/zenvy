@@ -194,16 +194,20 @@ const getCampusProfile = async (req, res) => {
       }
     }
 
-    // Attach basic user info
+    // Attach basic user info. protect() only loads id/role/name/phone/email/hostel onto req.user,
+    // so photo, status and friend code are read from the account row (they were always null here).
+    const extra = await getUserModel().findByPk(req.user.id, {
+      attributes: ['profileImage', 'statusEmoji', 'statusText', 'friendCode'],
+    }).catch(() => null);
     const userData = {
       id: req.user.id,
       name: req.user.name,
       phone: req.user.phone,
-      profileImage: req.user.profileImage,
-      statusEmoji: req.user.statusEmoji,
-      statusText: req.user.statusText,
+      profileImage: extra ? extra.profileImage : (req.user.profileImage || null),
+      statusEmoji: extra ? extra.statusEmoji : (req.user.statusEmoji || null),
+      statusText: extra ? extra.statusText : (req.user.statusText || null),
       // Lets Campus > Me show and share the student's own friend code.
-      friendCode: req.user.friendCode || null,
+      friendCode: (extra && extra.friendCode) || req.user.friendCode || null,
     };
 
     // ID-card photos used to be stored as multi-MB data: URLs and were sent on every open.

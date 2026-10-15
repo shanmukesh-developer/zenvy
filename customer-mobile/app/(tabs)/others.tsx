@@ -915,6 +915,7 @@ export default function OthersScreen() {
   const [rideVibe, setRideVibe] = useState('Any');
   const [autoApprove, setAutoApprove] = useState(false);
   const [submittingRide, setSubmittingRide] = useState(false);
+  const submittingRideRef = useRef(false); // a double tap lands before the state flips (two rides posted)
 
   // Ordering hours (real: GET /api/orders/serviceability)
   const [serviceability, setServiceability] = useState<{ open: boolean; reopensAt?: string } | null>(null);
@@ -1198,7 +1199,7 @@ export default function OthersScreen() {
   };
 
   const handleCreateRide = async () => {
-    if (submittingRide) return;
+    if (submittingRide || submittingRideRef.current) return;
     const o = origin.trim();
     const d = destination.trim();
     const n = notes.trim();
@@ -1235,6 +1236,7 @@ export default function OthersScreen() {
     const seats = Math.min(6, Math.max(1, parseInt(availableSeats, 10) || 1));
     const fuel = Math.min(5000, Math.max(0, Math.round(Number(estimatedFuelCost) || 0)));
 
+    submittingRideRef.current = true;
     setSubmittingRide(true);
     try {
       const res = await apiFetch(ENDPOINTS.bikepoolPosts, {
@@ -1278,6 +1280,7 @@ export default function OthersScreen() {
     } catch {
       if (isMountedRef.current) Alert.alert('Could not post the ride', NETWORK_ERROR_MESSAGE);
     } finally {
+      submittingRideRef.current = false;
       if (isMountedRef.current) setSubmittingRide(false);
     }
   };

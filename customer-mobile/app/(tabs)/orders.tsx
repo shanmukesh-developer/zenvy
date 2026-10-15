@@ -206,10 +206,14 @@ export default function OrdersScreen() {
       // addToCart returns false and shows a single "Replace basket?" prompt for all these lines.
       let addedAny = false;
       available.forEach(({ item, live }) => {
+        // Customized lines carry their add-on cost (portion, toppings…) on top of today's base price;
+        // the server quote is still the bill.
+        const hasCustom = !!(item.customizations && typeof item.customizations === 'object' && Object.keys(item.customizations).length);
+        const addOn = hasCustom ? Math.max(0, Number(item.addOnPrice) || 0) : 0;
         const added = addToCart({
             id: String(live.id || live._id),
             name: live.name || item.name,
-            price: Number(live.price) || 0,
+            price: (Number(live.price) || 0) + addOn,
             basePrice: Number(live.price) || 0,
             image: live.imageUrl || item.image || '',
             restaurantId: targetRestaurantId,

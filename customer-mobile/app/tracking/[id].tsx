@@ -142,6 +142,10 @@ export default function TrackingScreen() {
   const [ratingReview, setRatingReview] = useState('');
   const [ratingTip, setRatingTip] = useState('');
   const [submittingRating, setSubmittingRating] = useState(false);
+  // A fast double tap lands before the state flips: a ref blocks the second request
+  // (it came back ALREADY_RATED and replaced the thank-you with an error).
+  const submittingRatingRef = useRef(false);
+  const orderActionRef = useRef(false); // same guard for cancel / approve purchase / approve bill
 
   const mountedRef = useRef(true);
   const statusRef = useRef(1);
@@ -395,8 +399,9 @@ export default function TrackingScreen() {
 
   // Cancel order handler
   const handleCancelOrder = async () => {
-    if (cancelling) return;
+    if (cancelling || orderActionRef.current) return;
     if (!orderId) return;
+    orderActionRef.current = true;
     setCancelling(true);
     try {
       const res = await apiFetch(`${API_URL}/api/orders/${encodeURIComponent(orderId)}/cancel`, { method: 'PUT', body: JSON.stringify({}) });
@@ -415,13 +420,15 @@ export default function TrackingScreen() {
     } catch {
       if (mountedRef.current) Alert.alert('No connection', 'Please check your internet and try again.');
     } finally {
+      orderActionRef.current = false;
       if (mountedRef.current) setCancelling(false);
     }
   };
 
   const handleApprovePurchase = async () => {
-    if (approving) return;
+    if (approving || orderActionRef.current) return;
     if (!orderId) return;
+    orderActionRef.current = true;
     setApproving(true);
     try {
       const res = await apiFetch(`${API_URL}/api/orders/${encodeURIComponent(orderId)}/approve-purchase`, { method: 'PUT' });
@@ -436,13 +443,15 @@ export default function TrackingScreen() {
     } catch {
       if (mountedRef.current) Alert.alert('No connection', 'Please check your internet and try again.');
     } finally {
+      orderActionRef.current = false;
       if (mountedRef.current) setApproving(false);
     }
   };
 
   const handleApproveBill = async () => {
-    if (approving) return;
+    if (approving || orderActionRef.current) return;
     if (!orderId) return;
+    orderActionRef.current = true;
     setApproving(true);
     try {
       const res = await apiFetch(`${API_URL}/api/orders/${encodeURIComponent(orderId)}/approve-bill`, { method: 'PUT' });
@@ -458,6 +467,7 @@ export default function TrackingScreen() {
     } catch {
       if (mountedRef.current) Alert.alert('No connection', 'Please check your internet and try again.');
     } finally {
+      orderActionRef.current = false;
       if (mountedRef.current) setApproving(false);
     }
   };
@@ -467,8 +477,9 @@ export default function TrackingScreen() {
 
   // Submit Rating handler (the server stores the item reviews itself)
   const handleSubmitRating = async () => {
-    if (submittingRating) return;
+    if (submittingRatingRef.current) return;
     if (!orderId) return;
+    submittingRatingRef.current = true;
     setSubmittingRating(true);
     try {
       const res = await apiFetch(`${API_URL}/api/orders/${encodeURIComponent(orderId)}/rate`, {
@@ -502,6 +513,7 @@ export default function TrackingScreen() {
       console.error(e);
       if (mountedRef.current) Alert.alert('No connection', 'Please check your internet and try again.');
     } finally {
+      submittingRatingRef.current = false;
       if (mountedRef.current) setSubmittingRating(false);
     }
   };
