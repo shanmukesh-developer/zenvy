@@ -128,12 +128,14 @@ const injectionGuard = (req, res, next) => {
         continue;
       }
       if (typeof value === 'string') {
+        // SQL keywords are LOG-ONLY: every query is parameterised by Sequelize, and blocking matched
+        // everyday text ("I'll update you", "please delete my cart", "create a group") with a 403.
         if (containsSQLInjection(value)) {
           const matchedPattern = SQL_INJECTION_PATTERNS.find(pat => pat.test(value));
-          console.warn(`🛡️ [SECURITY_BLOCK] SQL injection detected in ${location}.${key} (${value.length} chars) (Matched: ${matchedPattern}) from IP ${req.ip} | TraceId: ${req.traceId}`);
-          return true;
+          console.warn(`🛡️ [SECURITY_SIGNAL] SQL-like text in ${location}.${key} (${value.length} chars) (Matched: ${matchedPattern}) from IP ${req.ip} | TraceId: ${req.traceId}`);
         }
-        if (containsPathTraversal(value)) {
+        // Path traversal only matters in URL parts; message bodies may legitimately contain "../".
+        if (location !== 'body' && containsPathTraversal(value)) {
           const matchedPattern = PATH_TRAVERSAL_PATTERNS.find(pat => pat.test(value));
           console.warn(`🛡️ [SECURITY_BLOCK] Path traversal detected in ${location}.${key} (${value.length} chars) (Matched: ${matchedPattern}) from IP ${req.ip} | TraceId: ${req.traceId}`);
           return true;
