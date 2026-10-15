@@ -23,6 +23,11 @@ const { cacheGet } = require('../utils/responseCache');
 
 const router = express.Router();
 
+// Non-UUID ids answer 404 instead of a PostgreSQL "invalid input syntax for type uuid" 500
+// (SQLite never complained, so this only showed up in production).
+const UUID_PARAM_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+router.param('id', (req, res, next, id) => (UUID_PARAM_RE.test(String(id || '')) ? next() : res.status(404).json({ message: 'Basket not found', code: 'NOT_FOUND' })));
+
 // Admin Endpoints
 router.get('/admin/all', protect, admin, getAllBaskets);
 

@@ -289,7 +289,7 @@ const unifiedSeed = async () => {
     {
       id: "6f302987-98d8-495e-92c8-f4d9904e7bf1",
       name: "KFC Premium",
-      imageUrl: "/assets/kfc_takeover_banner.png",
+      imageUrl: null,
       categories: ["Burgers", "Chicken", "Premium"],
       vendorType: "RESTAURANT",
       rating: 5.0,
@@ -304,7 +304,7 @@ const unifiedSeed = async () => {
         gradient: "linear-gradient(135deg, #E4002B 0%, #111111 100%)",
         fontColor: "#FFFFFF",
         logoAnimationType: "kfc-bucket-drop",
-        logoUrl: "/assets/kfc_logo.png"
+        logoUrl: null
       },
       menu: [
         { name: "KFC Zinger Burger", price: 199, description: "Signature crispy chicken zinger burger, freshly prepared.", image: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?q=80&w=600&auto=format&fit=crop", category: "Burgers", isVegetarian: false, tags: ["burgers", "non-veg"] },
@@ -315,7 +315,7 @@ const unifiedSeed = async () => {
     {
       id: "4e9b9d36-829d-4721-881c-8b8fd91d3bc5",
       name: "Domino's Pizza",
-      imageUrl: "/assets/dominos_takeover_banner.png",
+      imageUrl: null,
       categories: ["Pizza", "Premium"],
       vendorType: "RESTAURANT",
       rating: 4.8,
@@ -330,7 +330,7 @@ const unifiedSeed = async () => {
         gradient: "linear-gradient(135deg, #006491 0%, #E31B23 100%)",
         fontColor: "#FFFFFF",
         logoAnimationType: "dominos-flip",
-        logoUrl: "/assets/dominos_logo.png"
+        logoUrl: null
       },
       menu: [
         { name: "Domino's Cheese Burst Margherita", price: 299, description: "Classic cheese burst pizza with rich tomato herb sauce.", image: "https://images.unsplash.com/photo-1604382354936-07c5d9983bd3?q=80&w=600&auto=format&fit=crop", category: "Pizza", isVegetarian: true, tags: ["pizza", "veg"] },
@@ -341,7 +341,7 @@ const unifiedSeed = async () => {
     {
       id: "7a1a011e-2e2d-456c-bcff-3e4e9db12345",
       name: "McDonald's Premium",
-      imageUrl: "/assets/mcdonalds_takeover_banner.png",
+      imageUrl: null,
       categories: ["Burgers", "Premium"],
       vendorType: "RESTAURANT",
       rating: 4.9,
@@ -356,7 +356,7 @@ const unifiedSeed = async () => {
         gradient: "linear-gradient(135deg, #DA291C 0%, #FFC72C 100%)",
         fontColor: "#FFFFFF",
         logoAnimationType: "mcd-glow",
-        logoUrl: "/assets/mcdonalds_logo.png"
+        logoUrl: null
       },
       menu: [
         { name: "McDonald's Big Mac", price: 249, description: "Double layer flame-grilled chicken patties, special sauce, cheese, pickles.", image: "https://images.unsplash.com/photo-1550547660-d9450f859349?q=80&w=600&auto=format&fit=crop", category: "Burgers", isVegetarian: false, tags: ["burgers", "non-veg"] },

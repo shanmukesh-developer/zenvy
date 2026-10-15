@@ -675,6 +675,9 @@ const updateUserProfile = async (req, res) => {
     if (req.body.genderPreference !== undefined) user.genderPreference = trimmed(req.body.genderPreference, 40);
 
     await user.save();
+    // protect() caches name / phone / email / hostel for 60 s: drop it so the next request (an
+    // order, a wish, a friend request) uses the new details at once.
+    require('../middleware/authMiddleware').clearCachedUser(user.id);
     // The session token is NOT re-issued here: the app keeps its SecureStore token.
     res.json(sanitizeUser(user));
   } catch (error) {

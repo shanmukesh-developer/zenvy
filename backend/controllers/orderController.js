@@ -243,7 +243,7 @@ const createOrder = async (req, res) => {
       if (seen && seen.orderId) {
         const Order = getOrderModel();
         const existing = await Order.findByPk(seen.orderId);
-        if (existing) return res.status(200).json({ ...existing.toJSON(), _id: existing.id, duplicate: true });
+        if (existing) return res.status(200).json({ ...ownerOrderJson(existing), _id: existing.id, duplicate: true });
       } else if (seen) {
         return res.status(409).json({ message: 'Your order is already being placed — hang tight!', code: 'ORDER_IN_PROGRESS' });
       }
@@ -251,7 +251,7 @@ const createOrder = async (req, res) => {
       const stored = await getOrderModel().findOne({
         where: { userId: req.user.id, idempotencyKey: idemRaw, createdAt: { [Op.gt]: new Date(Date.now() - IDEMPOTENCY_DB_WINDOW_MS) } },
       });
-      if (stored) return res.status(200).json({ ...stored.toJSON(), _id: stored.id, duplicate: true });
+      if (stored) return res.status(200).json({ ...ownerOrderJson(stored), _id: stored.id, duplicate: true });
       recentOrderKeys.set(idemKey, { at: Date.now(), orderId: null });
       idemClaimed = true;
     }
@@ -274,7 +274,7 @@ const createOrder = async (req, res) => {
       // Same key raced in from another process: the transaction rolled back, return the winner.
       if (idemRaw && err && err.name === 'SequelizeUniqueConstraintError') {
         const winner = await Order.findOne({ where: { userId: req.user.id, idempotencyKey: idemRaw } });
-        if (winner) return res.status(200).json({ ...winner.toJSON(), _id: winner.id, duplicate: true });
+        if (winner) return res.status(200).json({ ...ownerOrderJson(winner), _id: winner.id, duplicate: true });
       }
       throw err;
     }
@@ -408,7 +408,7 @@ const createOrder = async (req, res) => {
       // back (nothing charged here) and the first order exists, so return it instead of a 500.
       if (idemRaw && err && err.name === 'SequelizeUniqueConstraintError') {
         const winner = await Order.findOne({ where: { userId: req.user.id, idempotencyKey: idemRaw } });
-        if (winner) return res.status(200).json({ ...winner.toJSON(), _id: winner.id, duplicate: true }); // owner: keeps the PIN
+        if (winner) return res.status(200).json({ ...ownerOrderJson(winner), _id: winner.id, duplicate: true }); // owner: keeps the PIN
       }
       throw err;
     }
@@ -433,7 +433,7 @@ const createOrder = async (req, res) => {
       console.warn('[BLOCK_PULSE_WARN] Socket emit failed:', e.message);
     }
 
-    res.status(201).json({ ...createdOrder.toJSON(), _id: createdOrder.id, bill: quote });
+    res.status(201).json({ ...ownerOrderJson(createdOrder), _id: createdOrder.id, bill: quote });
 
     // ── After the response: notifications & dispatch (never affect the order) ──
     try {
@@ -636,6 +636,8 @@ const withoutPin = (order) => {
   const json = order && typeof order.toJSON === 'function' ? order.toJSON() : { ...order };
   delete json.deliveryPin;
   delete json.deliveryPinAttempts;
+  // UPI proof / payout flags are admin-only (riders, stores and customers get this shape).
+  for (const k of ORDER_INTERNAL_FIELDS) delete json[k];
   return json;
 };
 
@@ -679,6 +681,7 @@ const getOrderById = async (req, res) => {
 
     const orderData = order.toJSON();
     delete orderData.deliveryPinAttempts;
+    if (!isAdmin) for (const k of ORDER_INTERNAL_FIELDS) delete orderData[k];
     // The delivery PIN is the customer's secret: the rider asks for it at the door.
     if (!isOwner && !isAdmin) delete orderData.deliveryPin;
     // Map associations for legacy frontend compatibility (+ _id)
@@ -711,6 +714,38 @@ const getOrderById = async (req, res) => {
   }
 };
 
+// Fields the customer app reads from GET /api/orders/myorders (orders tab, checkout duplicate
+// guard via idempotencyKey, review-store picker). Everything else stays server-side.
+const MY_ORDER_FIELDS = [
+  'id', 'restaurantId', 'restaurant', 'items', 'totalPrice', 'deliveryFee', 'batchDiscount', 'gateDiscount',
+  'finalPrice', 'priceBreakdown', 'status', 'cancellationReason', 'paymentStatus', 'paymentMethod',
+  'deliverySlot', 'deliveryAddress', 'deliveryInstructions', 'distance', 'deliveredAt', 'estDuration',
+  'acceptedAt', 'readyAt', 'fulfilment', 'outForDeliveryAt', 'idempotencyKey', 'dropLat', 'dropLng',
+  'isSurge', 'hostelGateDelivery', 'rating', 'review', 'deliveryPin', 'refundedAt',
+  'isPurchasingApprovedByCustomer', 'itemPhotoUrl', 'billProofUrl', 'billAmount', 'isBillApproved',
+  'category', 'isMultiRestaurant', 'createdAt', 'updatedAt',
+];
+// Never sent to the customer / rider on the single-order view either (admin only).
+const ORDER_INTERNAL_FIELDS = ['deliveryPinAttempts', 'upiUTR', 'upiScreenshot', 'upiStatus', 'payoutSettled', 'riderPayoutSettled'];
+// One row of the customer's order list (whitelist: MY_ORDER_FIELDS).
+function customerOrderJson(o) {
+  const json = o && typeof o.toJSON === 'function' ? o.toJSON() : { ...(o || {}) };
+  const out = {};
+  for (const k of MY_ORDER_FIELDS) if (json[k] !== undefined) out[k] = json[k];
+  return {
+    ...out,
+    _id: json.id,
+    restaurantName: json.restaurant ? json.restaurant.name : null,
+    restaurantImage: json.restaurant ? json.restaurant.imageUrl : null
+  };
+}
+// The customer's own order (create / duplicate replies): keeps the PIN, drops the internals.
+function ownerOrderJson(order) {
+  const j = order && typeof order.toJSON === 'function' ? order.toJSON() : { ...(order || {}) };
+  for (const k of ORDER_INTERNAL_FIELDS) delete j[k];
+  return j;
+}
+
 // @desc    Get logged in user orders
 const getMyOrders = async (req, res) => {
   try {
@@ -722,15 +757,9 @@ const getMyOrders = async (req, res) => {
       order: [['createdAt', 'DESC']],
       limit: 50
     });
-    res.json(orders.map(o => {
-      const json = o.toJSON();
-      return {
-        ...json,
-        _id: o.id,
-        restaurantName: json.restaurant ? json.restaurant.name : null,
-        restaurantImage: json.restaurant ? json.restaurant.imageUrl : null
-      };
-    }));
+    // Customer-facing fields only: PIN attempt counters, UPI proof, payout flags, rider id and
+    // pickup internals stayed in this list before.
+    res.json(orders.map(customerOrderJson));
   } catch (error) {
     console.error('[MY_ORDERS_ERROR]', error);
     res.status(500).json({ message: 'We could not load your orders right now. Please pull to refresh.' });
@@ -1822,7 +1851,7 @@ const approvePurchase = async (req, res) => {
     order.isPurchasingApprovedByCustomer = true;
     await order.save();
     broadcastOrderStatus(req, order, { id: order.id, status: order.status, isPurchasingApprovedByCustomer: true });
-    res.json({ message: 'Purchase approved', order });
+    res.json({ message: 'Purchase approved', order: ownerOrderJson(order) });
   } catch (error) {
     console.error('[APPROVE_PURCHASE_ERROR]', error);
     res.status(500).json({ message: 'Could not approve right now. Please try again.' });
@@ -1939,4 +1968,4 @@ const approveBill = async (req, res) => {
   }
 };
 
-module.exports = { restaurantUpdateOrderStatus, autoCancelStalePendingOrders, cancelAndRefund, createOrder, quoteOrder, getServiceability, getOrderById, getMyOrders, rateOrder, getAllOrders, cancelOrder, updateOrderStatus, getSurgeStatus, restaurantAcceptOrder, verifyUPIPayment, restaurantReadyOrder, getOrderStats, uploadItemPhoto, approvePurchase, uploadBillProof, approveBill };
+module.exports = { customerOrderJson, restaurantUpdateOrderStatus, autoCancelStalePendingOrders, cancelAndRefund, createOrder, quoteOrder, getServiceability, getOrderById, getMyOrders, rateOrder, getAllOrders, cancelOrder, updateOrderStatus, getSurgeStatus, restaurantAcceptOrder, verifyUPIPayment, restaurantReadyOrder, getOrderStats, uploadItemPhoto, approvePurchase, uploadBillProof, approveBill };

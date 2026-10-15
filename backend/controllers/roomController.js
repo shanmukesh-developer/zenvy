@@ -10,10 +10,18 @@ const generateRoomCode = () => {
 
 const createRoom = async (req, res) => {
   try {
-    const { name, isPublic, ttlHours = 24 } = req.body;
+    const body = req.body || {};
     const adminId = req.user.id;
-
+    // Bounded input (a non-string name, or a ttlHours of 1e9 / "abc", used to 500 or make a
+    // room that never expires): 1-60 chars, 1-72 h (default 24).
+    const name = typeof body.name === 'string' ? body.name.replace(/[<>]/g, '').trim().slice(0, 60) : '';
     if (!name) return res.status(400).json({ message: 'Room name is required.' });
+    const ttlRaw = body.ttlHours === undefined || body.ttlHours === null || body.ttlHours === '' ? 24 : Number(body.ttlHours);
+    if (!Number.isFinite(ttlRaw) || ttlRaw < 1 || ttlRaw > 72) {
+      return res.status(400).json({ message: 'A room can last from 1 to 72 hours.' });
+    }
+    const ttlHours = ttlRaw;
+    const isPublic = typeof body.isPublic === 'boolean' ? body.isPublic : true;
 
     const Room = getRoomModel();
     const RoomParticipant = getRoomParticipantModel();
@@ -25,7 +33,7 @@ const createRoom = async (req, res) => {
       name,
       adminId,
       joinCode,
-      isPublic: isPublic !== undefined ? isPublic : true,
+      isPublic,
       expiresAt
     });
 
@@ -45,17 +53,18 @@ const createRoom = async (req, res) => {
 
 const joinRoom = async (req, res) => {
   try {
-    const { joinCode } = req.body;
+    const joinCode = typeof (req.body || {}).joinCode === 'string' ? req.body.joinCode.trim().toUpperCase() : '';
     const userId = req.user.id;
 
-    if (!joinCode) return res.status(400).json({ message: 'Join code is required.' });
+    if (!/^[0-9A-F]{8}$/.test(joinCode)) return res.status(400).json({ message: 'Join code is required.' });
 
     const Room = getRoomModel();
     const RoomParticipant = getRoomParticipantModel();
 
     const room = await Room.findOne({ where: { joinCode, isActive: true } });
     
-    if (!room) {
+    // An expired room (isActive is only flipped later by the purge job) cannot be joined.
+    if (!room || (room.expiresAt && new Date(room.expiresAt).getTime() < Date.now())) {
       return res.status(404).json({ message: 'Room not found or has expired.' });
     }
 
@@ -103,8 +112,15 @@ const myRooms = async (req, res) => {
 
 const kickUser = async (req, res) => {
   try {
-    const { roomId, targetUserId } = req.body;
+    const { roomId, targetUserId } = req.body || {};
     const adminId = req.user.id;
+    const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID.test(String(roomId || '')) || !UUID.test(String(targetUserId || ''))) {
+      return res.status(400).json({ message: 'roomId and targetUserId are required.' });
+    }
+    if (String(targetUserId) === String(adminId)) {
+      return res.status(400).json({ message: 'You cannot remove yourself as the room admin.' });
+    }
 
     const RoomParticipant = getRoomParticipantModel();
 

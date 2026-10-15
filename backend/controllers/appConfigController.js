@@ -35,9 +35,9 @@ exports.getConfig = async (req, res) => {
           }
         ],
         categories: [
-          { name: 'Fruits', img: '/assets/3d-fruit.png', order: 1, isActive: true },
-          { name: 'Rental', img: '/assets/3d-bike.png', order: 2, isActive: true },
-          { name: 'Sweets', img: '/assets/3d-donut.png', order: 3, isActive: true }
+          { name: 'Fruits', img: null, order: 1, isActive: true },
+          { name: 'Rental', img: null, order: 2, isActive: true },
+          { name: 'Sweets', img: null, order: 3, isActive: true }
         ]
       } });
     }

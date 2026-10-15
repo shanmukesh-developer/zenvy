@@ -563,6 +563,7 @@ export function CommunityFeed({ embedded = false, tab }: { embedded?: boolean; t
     birthdayDate: string;
     status: 'pending' | 'approved' | 'rejected' | 'expired';
     wishCount: number;
+    wishedByMe?: boolean;
     approvedAt?: string;
     expiresAt?: string;
   }
@@ -570,7 +571,8 @@ export function CommunityFeed({ embedded = false, tab }: { embedded?: boolean; t
   interface WishType {
     id: string;
     celebrationId: string;
-    userId: string;
+    userId?: string;
+    wishedByMe?: boolean;
     userName: string;
     message: string;
     createdAt: string;
@@ -730,7 +732,8 @@ export function CommunityFeed({ embedded = false, tab }: { embedded?: boolean; t
     }
   };
 
-  const alreadyWished = !!myUserId && selectedBirthdayWishes.some(w => String(w.userId) === myUserId);
+  // The server flags the viewer's own wish (wishedByMe); account ids are no longer in the list.
+  const alreadyWished = !!user && (!!selectedBirthday?.wishedByMe || selectedBirthdayWishes.some(w => w.wishedByMe || (!!myUserId && String(w.userId) === myUserId)));
 
   const submitWish = async (presetText?: string) => {
     if (!selectedBirthday || submittingWish) return;
@@ -751,6 +754,11 @@ export function CommunityFeed({ embedded = false, tab }: { embedded?: boolean; t
         body: JSON.stringify({ message: msg })
       });
       if (!res.ok) {
+        const errData = await res.clone().json().catch(() => null);
+        if (errData?.code === 'ALREADY_WISHED' && mountedRef.current) {
+          setSelectedBirthday(prev => prev && prev.id === celebrationId ? { ...prev, wishedByMe: true } : prev);
+          setBirthdays(prev => prev.map(b => b.id === celebrationId ? { ...b, wishedByMe: true } : b));
+        }
         Alert.alert('Couldn\'t send wish', await friendlyError(res, 'Please try again in a moment.'));
         return;
       }
@@ -759,15 +767,15 @@ export function CommunityFeed({ embedded = false, tab }: { embedded?: boolean; t
       const newWishItem: WishType = {
         id: `wish-${Date.now()}`,
         celebrationId,
-        userId: myUserId,
+        wishedByMe: true,
         userName: user?.name || 'You',
         message: msg,
         createdAt: new Date().toISOString()
       };
       const serverCount = typeof data?.wishCount === 'number' ? data.wishCount : null;
       setSelectedBirthdayWishes(prev => [newWishItem, ...prev]);
-      setSelectedBirthday(prev => prev && prev.id === celebrationId ? { ...prev, wishCount: serverCount ?? (prev.wishCount || 0) + 1 } : prev);
-      setBirthdays(prev => prev.map(b => b.id === celebrationId ? { ...b, wishCount: serverCount ?? (b.wishCount || 0) + 1 } : b));
+      setSelectedBirthday(prev => prev && prev.id === celebrationId ? { ...prev, wishedByMe: true, wishCount: serverCount ?? (prev.wishCount || 0) + 1 } : prev);
+      setBirthdays(prev => prev.map(b => b.id === celebrationId ? { ...b, wishedByMe: true, wishCount: serverCount ?? (b.wishCount || 0) + 1 } : b));
       setBirthdayWishMessage('');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     } catch (e) {

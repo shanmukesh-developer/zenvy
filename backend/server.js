@@ -153,7 +153,11 @@ app.use(cors({
     if (isAllowedOrigin(origin)) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      // 403 (not a 500 "server error") for a refused browser origin.
+      const err = new Error('This origin is not allowed to call the Zenvy API.');
+      err.status = 403;
+      err.code = 'CORS_REFUSED';
+      callback(err);
     }
   },
   credentials: true,
@@ -1092,6 +1096,16 @@ const initializeApp = async () => {
         .catch((err) => console.warn('⚠️ [ITEM_FIXES] failed:', err.message));
     } catch (fixErr) {
       console.warn('⚠️ [ITEM_FIXES] not started:', fixErr.message);
+    }
+
+    // 🖼️ Broken app-relative '/assets/...' image URLs -> null (idempotent; absolute URLs untouched).
+    try {
+      const { runAssetUrlFix } = require('./scripts/normalize_asset_urls');
+      runAssetUrlFix()
+        .then((r) => console.log('🖼️ [ASSET_URL_FIX]', JSON.stringify(r)))
+        .catch((err) => console.warn('⚠️ [ASSET_URL_FIX] failed:', err.message));
+    } catch (assetErr) {
+      console.warn('⚠️ [ASSET_URL_FIX] not started:', assetErr.message);
     }
 
     // 🖼️ Legacy base64 images -> CampusMedia short URLs (idempotent, batched, background).
@@ -2216,11 +2230,13 @@ const initializeApp = async () => {
             try {
               const { getOrderModel } = require('./models/Order');
               const Order = getOrderModel();
-              const order = await Order.findByPk(String(data.activeOrderId).trim());
+              const order = await Order.findByPk(String(data.activeOrderId).trim(), { attributes: ['id', 'deliveryPartnerId', 'status'] });
               if (!order || order.deliveryPartnerId !== socket.user.id) {
                 console.warn(`[SOCKET_DENIED] Rider ${socket.user.id} tried to update location for unauthorized order ${data.activeOrderId}`);
                 return;
               }
+              // Delivered / cancelled: the customer's tracking room no longer gets the rider's position.
+              if (['Delivered', 'Cancelled'].includes(order.status)) data.activeOrderId = null;
             } catch (err) {
               console.error('[SOCKET_RIDER_LOCATION_UPDATE_ERROR]', err.message);
               return;
@@ -2258,7 +2274,7 @@ const initializeApp = async () => {
           });
           // Also emit to specific order room for customer tracking
           if (data.activeOrderId) {
-              if (data.currentCheckpoint !== undefined) {
+              if (data.currentCheckpoint !== undefined && (typeof data.currentCheckpoint === 'number' || (typeof data.currentCheckpoint === 'string' && data.currentCheckpoint.length <= 80))) {
                 io.to(String(data.activeOrderId)).emit('checkpointUpdated', { orderId: String(data.activeOrderId), currentCheckpoint: data.currentCheckpoint });
               }
               // Live map: the customer's order room gets the rider's real position (no PIN, no other orders).

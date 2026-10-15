@@ -118,10 +118,32 @@ const publicCelebration = (c) => {
   delete j.approvedBy;
   return j;
 };
-const publicWish = (w) => {
+const publicWish = (w, viewerId) => {
   const j = typeof w.toJSON === 'function' ? w.toJSON() : { ...w };
+  // The viewer's own wish is flagged (the id itself stays private), so the app can show
+  // "Your wish has been sent" without the userId the list used to leak.
+  j.wishedByMe = !!viewerId && String(j.userId) === String(viewerId);
   delete j.userId;
   return j;
+};
+// Signed-in viewer on the public lists (only to answer wishedByMe); never required.
+const optionalUserId = (req) => {
+  const h = req.headers && req.headers.authorization;
+  if (!h || !h.startsWith('Bearer ') || !process.env.JWT_SECRET) return null;
+  try {
+    const jwt = require('jsonwebtoken');
+    const decoded = jwt.verify(h.split(' ')[1].replace(/['"]+/g, '').trim(), process.env.JWT_SECRET);
+    return decoded && decoded.id ? String(decoded.id) : null;
+  } catch {
+    return null;
+  }
+};
+// Which of these celebrations the viewer has already wished.
+const wishedSetFor = async (viewerId, celebrationIds) => {
+  const BirthdayWish = getBirthdayWishModel();
+  if (!viewerId || !BirthdayWish || !celebrationIds.length) return new Set();
+  const rows = await BirthdayWish.findAll({ where: { userId: viewerId, celebrationId: { [Op.in]: celebrationIds } }, attributes: ['celebrationId'] });
+  return new Set(rows.map((r) => String(r.celebrationId)));
 };
 
 // POST /api/birthdays - Submit birthday celebration request
@@ -191,7 +213,8 @@ router.get('/active', async (req, res) => {
       order: [['approvedAt', 'DESC']]
     });
 
-    res.json(activeCelebrations.map(publicCelebration));
+    const wished = await wishedSetFor(optionalUserId(req), activeCelebrations.map((c) => c.id));
+    res.json(activeCelebrations.map((c) => ({ ...publicCelebration(c), wishedByMe: wished.has(String(c.id)) })));
   } catch (err) {
     console.error('Error fetching active birthdays:', err);
     res.status(500).json({ message: 'Failed to fetch active birthdays.' });
@@ -321,7 +344,7 @@ router.post('/:id/wish', protect, async (req, res) => {
     } catch (dbErr) {
       // Only a real duplicate is "already wished" (B16); anything else is a server error.
       if (dbErr && dbErr.name === 'SequelizeUniqueConstraintError') {
-        return res.status(400).json({ message: 'You have already wished this candidate! ❤️' });
+        return res.status(400).json({ code: 'ALREADY_WISHED', wishedByMe: true, message: 'You have already wished this candidate! ❤️' });
       }
       throw dbErr;
     }
@@ -332,7 +355,7 @@ router.post('/:id/wish', protect, async (req, res) => {
 
     // Wishes show on the celebration itself (GET /api/birthdays/:id/wishes); no per-wish feed posts.
 
-    res.json({ message: 'Wish sent successfully!', wishCount: celebration.wishCount });
+    res.json({ message: 'Wish sent successfully!', wishCount: celebration.wishCount, wishedByMe: true });
   } catch (err) {
     console.error('Error wishing candidate:', err);
     res.status(500).json({ message: 'Failed to send wish.' });
@@ -352,7 +375,8 @@ router.get('/:id/wishes', async (req, res) => {
       limit: 500
     });
 
-    res.json(wishes.map(publicWish));
+    const viewerId = optionalUserId(req);
+    res.json(wishes.map((w) => publicWish(w, viewerId)));
   } catch (err) {
     console.error('Error fetching wishes:', err);
     res.status(500).json({ message: 'Failed to fetch wishes.' });

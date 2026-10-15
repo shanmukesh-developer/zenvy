@@ -172,6 +172,9 @@ const initCampusSocket = (io) => {
         name: user.name,
         role: user.role,
         hostelBlock: user.hostelBlock,
+        // Token version, so a password reset / admin sign-out can drop exactly the old sessions
+        // (utils/realtime.disconnectRevokedSockets).
+        tv: Number(decoded.tv) || 0,
       };
 
       next();

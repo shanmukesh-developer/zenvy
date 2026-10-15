@@ -346,15 +346,18 @@ exports.sendFriendRequest = async (req, res) => {
     // Socket emission & push notification to recipient
     const io = req.app.get('io');
     if (io) {
+      // protect() only puts id/role/name/phone/email/hostel on req.user: the photo and friend code
+      // come from the account row (they were always null in this event).
+      const me = await getUserModel().findByPk(req.user.id, { attributes: ['name', 'profileImage', 'friendCode'] }).catch(() => null);
       io.to(`user_${recipientId}`).emit('incoming_friend_request', {
         friendshipId: friendship.id,
         vibe: friendship.vibe,
         icebreaker: friendship.icebreaker,
         requester: {
           id: req.user.id,
-          name: req.user.name,
-          profileImage: req.user.profileImage,
-          friendCode: req.user.friendCode
+          name: (me && me.name) || req.user.name,
+          profileImage: (me && me.profileImage) || null,
+          friendCode: (me && me.friendCode) || null
         }
       });
     }

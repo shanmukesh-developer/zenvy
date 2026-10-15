@@ -539,7 +539,7 @@ const updateOrderStatus = async (req, res) => {
     const RIDER_STEP_RANK = { Picking: 1, PickedUp: 2, ArrivedAtGate: 3 };
     const afterResponse = []; // slow pushes, run once the rider has the answer
     if (status !== 'Delivered' && RIDER_STEP_RANK[order.status] && RIDER_STEP_RANK[order.status] >= RIDER_STEP_RANK[status]) {
-      const { deliveryPin, deliveryPinAttempts, ...safeOrder } = order.toJSON();
+      const { deliveryPin, deliveryPinAttempts, upiUTR, upiScreenshot, upiStatus, payoutSettled, riderPayoutSettled, ...safeOrder } = order.toJSON(); // eslint-disable-line no-unused-vars
       return res.json({ ...safeOrder, _id: order.id, riderEarning: riderPayout(order), alreadyApplied: true });
     }
 
@@ -689,7 +689,7 @@ const updateOrderStatus = async (req, res) => {
     }
     {
       // Never hand the customer's delivery PIN to the rider.
-      const { deliveryPin, deliveryPinAttempts, ...safeOrder } = order.toJSON();
+      const { deliveryPin, deliveryPinAttempts, upiUTR, upiScreenshot, upiStatus, payoutSettled, riderPayoutSettled, ...safeOrder } = order.toJSON(); // eslint-disable-line no-unused-vars
       res.json({ ...safeOrder, _id: order.id, riderEarning: riderPayout(order) });
     }
 

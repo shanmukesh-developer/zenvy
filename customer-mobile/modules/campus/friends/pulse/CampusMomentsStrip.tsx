@@ -22,10 +22,12 @@ interface Birthday {
   candidatePhotoUrl: string | null;
   birthdayDate: string;
   wishCount: number;
+  wishedByMe?: boolean;
 }
 interface Wish {
   id: string;
-  userId: string;
+  userId?: string;
+  wishedByMe?: boolean;
   userName: string;
   message: string;
   createdAt: string;
@@ -472,9 +474,16 @@ const BirthdaysSheet: React.FC<{
     try {
       const res = await apiFetch((ENDPOINTS as any).birthdaysWish(open.id), { method: 'POST', body: JSON.stringify({ message: msg }) });
       const json = await readJson(res);
-      if (!res.ok) throw new Error(serverMessage(json, "Couldn't send your wish."));
+      if (!res.ok) {
+        if (json?.code === 'ALREADY_WISHED') {
+          const marked = { ...open, wishedByMe: true };
+          setOpen(marked);
+          onChanged(birthdays.map((b) => (b.id === open.id ? marked : b)));
+        }
+        throw new Error(serverMessage(json, "Couldn't send your wish."));
+      }
       const count = typeof json?.wishCount === 'number' ? json.wishCount : open.wishCount + 1;
-      const updated = { ...open, wishCount: count };
+      const updated = { ...open, wishCount: count, wishedByMe: true };
       setOpen(updated);
       onChanged(birthdays.map((b) => (b.id === open.id ? updated : b)));
       setMessage('');
@@ -532,7 +541,8 @@ const BirthdaysSheet: React.FC<{
     }
   };
 
-  const wished = !!me && !!wishes && wishes.some((w) => String(w.userId) === String(me));
+  // The server flags the viewer's own wish (wishedByMe); the list no longer carries account ids.
+  const wished = !!me && (!!open?.wishedByMe || (!!wishes && wishes.some((w) => w.wishedByMe || String(w.userId) === String(me))));
 
   return (
     <FriendsSheet

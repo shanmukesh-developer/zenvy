@@ -208,13 +208,21 @@ const leaveOrderRoom = (riderId, orderId) => {
 // Session revocation for LIVE sockets. Socket auth checks tokenVersion only at connect, so after a
 // password change / reset / admin logout an already-connected socket kept receiving the account's
 // events (orders, customer details, pushes) until it dropped. Disconnects every socket of `accountId`
-// (main namespace) whose token version is not `tokenVersion`; pass null to drop all of them.
+// (main and /campus namespaces) whose token version is not `tokenVersion`; pass null to drop all of them.
 // Fire-and-forget, never throws. Sockets carrying the new token stay connected.
 const disconnectRevokedSockets = (accountId, tokenVersion = null) => {
   if (!ioRef || !accountId || typeof ioRef.fetchSockets !== 'function') return Promise.resolve(0);
   const want = tokenVersion === null || tokenVersion === undefined ? null : (Number(tokenVersion) || 0);
+  // The /campus namespace (chat, calls, proximity rooms) authenticates separately: its sockets
+  // stayed connected after a password reset or a ban and kept sending messages.
   let pending;
-  try { pending = Promise.resolve(ioRef.fetchSockets()); } catch (err) { console.warn('[REALTIME_REVOKE_WARN]', err.message); return Promise.resolve(0); }
+  try {
+    const campus = typeof ioRef.of === 'function' ? ioRef.of('/campus') : null;
+    pending = Promise.all([
+      Promise.resolve(ioRef.fetchSockets()),
+      campus && typeof campus.fetchSockets === 'function' ? Promise.resolve(campus.fetchSockets()).catch(() => []) : Promise.resolve([]),
+    ]).then(([main, camp]) => [...main, ...camp]);
+  } catch (err) { console.warn('[REALTIME_REVOKE_WARN]', err.message); return Promise.resolve(0); }
   return pending
     .then((sockets) => {
       let n = 0;

@@ -7,13 +7,29 @@ const { protect } = require('../middleware/authMiddleware');
 const rateLimit = require('express-rate-limit');
 const router = express.Router();
 
-// ── Strict Auth Shield (Scaled for 500-1000 campus users on shared Wi-Fi) ──────────────────────
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 50, // 50 auth attempts per IP per 15 min — prevents brute force while accommodating shared campus WiFi
+// ── Auth Shield (scaled for 500-1000 campus users on ONE shared Wi-Fi NAT IP) ───────────────────
+// 50 per IP per 15 min was the whole campus' budget: ~16 students logging in (send-otp +
+// verify-otp + login) locked everyone else out for 15 minutes. Guessing is already capped per
+// account (accountLockout, 5 OTP attempts per code, 8 SMS per number per day), so the per-IP cap
+// is only a flood guard now, and each phone number gets its own small budget on top.
+const { normalizePhone } = require('../utils/phoneUtils');
+const AUTH_IP_MAX = Math.max(50, Number(process.env.AUTH_RATE_LIMIT_IP_MAX) || 600);
+const AUTH_PHONE_MAX = Math.max(10, Number(process.env.AUTH_RATE_LIMIT_PHONE_MAX) || 30);
+const authIpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: AUTH_IP_MAX,
   skip: (req, res) => !require('../utils/env').isProduction(),
-  message: { message: 'Too many authentication attempts, please try again after 15 minutes.' }
+  message: { message: 'Too many authentication attempts, please try again after 15 minutes.', code: 'RATE_LIMITED' }
 });
+const authPhoneLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: AUTH_PHONE_MAX,
+  // Requests without a phone (Google sign-in) share the IP bucket above only.
+  skip: (req, res) => !require('../utils/env').isProduction() || !normalizePhone(String((req.body && req.body.phone) || '')),
+  keyGenerator: (req) => `phone:${normalizePhone(String((req.body && req.body.phone) || ''))}`,
+  message: { message: 'Too many attempts for this number, please try again after 15 minutes.', code: 'RATE_LIMITED' }
+});
+const authLimiter = [authIpLimiter, authPhoneLimiter];
 
 const { accountLockout } = require('../middleware/lockoutMiddleware');
 
@@ -271,9 +287,11 @@ router.get('/orders', protect, async (req, res) => {
   try {
     const { getOrderModel } = require('../models/Order');
     const Order = getOrderModel();
-    const limit = Math.min(100, parseInt(req.query.limit) || 50);
+    // 1-100 (a negative ?limit was a PostgreSQL error); same customer-facing fields as /api/orders/myorders.
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
     const orders = await Order.findAll({ where: { userId: req.user.id }, order: [['createdAt', 'DESC']], limit });
-    res.json(orders);
+    const { customerOrderJson } = require('../controllers/orderController');
+    res.json(orders.map(customerOrderJson));
   } catch (_err) {
     sendServerError(res, _err, '[USERROUTES_ERROR]');
   }

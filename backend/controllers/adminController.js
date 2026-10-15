@@ -630,7 +630,7 @@ const healStoreImages = async (restaurant, req) => {
       if (moved) brand[k] = moved; else { delete brand[k]; allMoved = false; }
     }
     if (allMoved) {
-      try { await Restaurant.update({ brandTheme: brand }, { where: { id: restaurant.id } }); } catch (err) { console.warn('[ADMIN_INLINE_IMAGE_WARN] brandTheme', restaurant.id, err.message); }
+      try { await Restaurant.update({ brandTheme: JSON.stringify(brand) }, { where: { id: restaurant.id }, validate: false }); /* static update skips the JSON setter: write the text (an object became "[object Object]") */ } catch (err) { console.warn('[ADMIN_INLINE_IMAGE_WARN] brandTheme', restaurant.id, err.message); }
     }
     json.brandTheme = brand;
     changed = true;
@@ -1961,6 +1961,8 @@ exports.toggleUserBan = async (req, res) => {
     clearCachedUser(user.id);
     if (!user.isActive) {
       try { req.app.get('io')?.in(`user_${user.id}`).disconnectSockets(true); } catch { /* best effort */ }
+      // Campus chat sockets too (separate namespace): a banned student kept chatting.
+      realtime.disconnectRevokedSockets(user.id, null);
     }
 
     res.json({ message: `User account ${user.isActive ? 'reactivated' : 'suspended'}`, user: withoutPassword(user) });
