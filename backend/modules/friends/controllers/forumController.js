@@ -1613,32 +1613,49 @@ const closeReports = async (keys, { status, decision, actorId, actionId, note })
   return n;
 };
 
-const setPostStatus = async (post, status, reason) => {
+// `transaction` (moderation queue / appeals): the row writes join it and the derived recounts run
+// after commit. Without it (SQLite) the recounts waited on the open transaction's write lock:
+// resolving a report with "remove" failed with SQLITE_BUSY after 6 s.
+const afterTx = (transaction, tag, fn) => {
+  if (transaction && typeof transaction.afterCommit === 'function') {
+    transaction.afterCommit(() => { Promise.resolve().then(fn).catch((e) => console.warn(`[${tag}]`, e.message)); });
+    return Promise.resolve();
+  }
+  return fn();
+};
+
+const setPostStatus = async (post, status, reason, { transaction } = {}) => {
   post.status = status;
   if (status === 'visible') post.removedReason = null;
   else if (reason) post.removedReason = String(reason).slice(0, 300);
   if (status !== 'visible') post.isPinned = false;
-  await post.save({ fields: ['status', 'removedReason', 'isPinned'] });
+  await post.save({ fields: ['status', 'removedReason', 'isPinned'], transaction });
+  let reviewTarget = null;
   if (post.type === 'review') {
-    const rv = await M('FriendsReview').findOne({ where: { forumPostId: post.id } });
+    const rv = await M('FriendsReview').findOne({ where: { forumPostId: post.id }, transaction });
     if (rv) {
       rv.status = status === 'visible' ? 'published' : status === 'pending_review' ? 'pending_review' : status === 'hidden' ? 'hidden' : 'removed';
-      await rv.save({ fields: ['status'] });
-      await recomputeTarget(rv.targetId);
+      await rv.save({ fields: ['status'], transaction });
+      reviewTarget = rv.targetId;
     }
   }
-  await recountCommunity(post.communityId);
+  await afterTx(transaction, 'FORUM_RECOUNT_WARN', async () => {
+    if (reviewTarget) await recomputeTarget(reviewTarget);
+    await recountCommunity(post.communityId);
+  });
 };
 
-const setCommentStatus = async (comment, status, reason) => {
+const setCommentStatus = async (comment, status, reason, { transaction } = {}) => {
   comment.status = status;
   comment.removedReason = status === 'visible' ? null : (reason ? String(reason).slice(0, 300) : comment.removedReason);
-  await comment.save({ fields: ['status', 'removedReason'] });
-  if (status !== 'visible') {
-    const post = await M('FriendsForumPost').findByPk(comment.postId);
-    if (post && String(post.bestCommentId) === String(comment.id)) await clearBest(post);
-  }
-  await recountComments(comment.postId);
+  await comment.save({ fields: ['status', 'removedReason'], transaction });
+  await afterTx(transaction, 'FORUM_RECOUNT_WARN', async () => {
+    if (status !== 'visible') {
+      const post = await M('FriendsForumPost').findByPk(comment.postId);
+      if (post && String(post.bestCommentId) === String(comment.id)) await clearBest(post);
+    }
+    await recountComments(comment.postId);
+  });
 };
 
 /**
@@ -2246,11 +2263,11 @@ targets.register('forum_post', {
       },
     };
   },
-  async setStatus(id, status) {
-    const p = await M('FriendsForumPost').findByPk(id);
+  async setStatus(id, status, { transaction } = {}) {
+    const p = await M('FriendsForumPost').findByPk(id, { transaction });
     if (!p || p.status === 'deleted') return false;
-    await setPostStatus(p, status, status === 'visible' ? null : 'Moderation decision');
-    if (status === 'visible' && p.isFreshersGuide) { p.isPinned = true; await p.save({ fields: ['isPinned'] }); }
+    await setPostStatus(p, status, status === 'visible' ? null : 'Moderation decision', { transaction });
+    if (status === 'visible' && p.isFreshersGuide) { p.isPinned = true; await p.save({ fields: ['isPinned'], transaction }); }
     return true;
   },
   async revealAuthor(id) {
@@ -2278,10 +2295,10 @@ targets.register('forum_comment', {
       snapshot: { excerpt: targets.excerpt(c.body), mediaIds: [], anonymous: !!c.isAnonymous, alias: c.isAnonymous ? c.aliasName : undefined, postId: p.id, communityId: p.communityId, createdAt: c.createdAt },
     };
   },
-  async setStatus(id, status) {
-    const c = await M('FriendsForumComment').findByPk(id);
+  async setStatus(id, status, { transaction } = {}) {
+    const c = await M('FriendsForumComment').findByPk(id, { transaction });
     if (!c || c.status === 'deleted') return false;
-    await setCommentStatus(c, status, status === 'visible' ? null : 'Moderation decision');
+    await setCommentStatus(c, status, status === 'visible' ? null : 'Moderation decision', { transaction });
     return true;
   },
   async revealAuthor(id) {
@@ -2319,12 +2336,12 @@ targets.register('review', {
       },
     };
   },
-  async setStatus(id, status) {
-    const rv = await M('FriendsReview').findByPk(id);
+  async setStatus(id, status, { transaction } = {}) {
+    const rv = await M('FriendsReview').findByPk(id, { transaction });
     if (!rv) return false;
-    const p = await M('FriendsForumPost').findByPk(rv.forumPostId);
+    const p = await M('FriendsForumPost').findByPk(rv.forumPostId, { transaction });
     if (!p || p.status === 'deleted') return false;
-    await setPostStatus(p, status, status === 'visible' ? null : 'Moderation decision');
+    await setPostStatus(p, status, status === 'visible' ? null : 'Moderation decision', { transaction });
     return true;
   },
   async revealAuthor(id) {
@@ -2353,11 +2370,11 @@ targets.register('review_response', {
       snapshot: { excerpt: targets.excerpt(r.body), mediaIds: [], anonymous: false, reviewId: r.reviewId, communityId: p.communityId, createdAt: r.createdAt },
     };
   },
-  async setStatus(id, status) {
-    const r = await M('FriendsReviewResponse').findByPk(id);
+  async setStatus(id, status, { transaction } = {}) {
+    const r = await M('FriendsReviewResponse').findByPk(id, { transaction });
     if (!r || r.status === 'deleted') return false;
     r.status = status === 'pending_review' ? 'hidden' : status;
-    await r.save({ fields: ['status'] });
+    await r.save({ fields: ['status'], transaction });
     return true;
   },
   async currentState(id) {

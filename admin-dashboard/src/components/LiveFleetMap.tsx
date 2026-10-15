@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { API_URL } from '@/lib/config';
+import { MAP_TILE_URL, MAP_TILE_MAX_ZOOM, MAP_TILE_ATTRIBUTION, MAP_TILE_CLASS } from '@/lib/mapTiles';
 
 interface RiderPosition {
   riderId: string;
@@ -98,10 +99,11 @@ export default function LiveFleetMap({ riders, checkpoints }: LiveFleetMapProps)
       attributionControl: true
     });
 
-    // Attribution is required by the OpenStreetMap / CARTO tile licences.
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      maxZoom: 20,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions" target="_blank" rel="noreferrer">CARTO</a>'
+    // Attribution is required by the OpenStreetMap tile licence.
+    L.tileLayer(MAP_TILE_URL, {
+      maxZoom: MAP_TILE_MAX_ZOOM,
+      className: MAP_TILE_CLASS,
+      attribution: MAP_TILE_ATTRIBUTION,
     }).addTo(map);
 
     mapRef.current = map;

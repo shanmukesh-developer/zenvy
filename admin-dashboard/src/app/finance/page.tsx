@@ -80,13 +80,16 @@ const csvCell = (v: unknown) => {
 };
 
 /** How a cancelled order is (or is not) refunded under the COD + Wallet model. */
+const PAY_METHODS: Record<string, string> = { cod: 'COD', wallet: 'Wallet', upi: 'UPI', card: 'Card' };
 const refundState = (d: Dispute): { refundable: boolean; note: string } => {
-  switch (d.paymentMethod) {
+  // Older rows store the method in lower case ('cod'): they showed "Unknown payment method".
+  const method = PAY_METHODS[String(d.paymentMethod || '').toLowerCase()] || d.paymentMethod;
+  switch (method) {
     case 'COD': return { refundable: false, note: 'Cash on Delivery: nothing was paid, no refund needed.' };
     case 'Wallet': return { refundable: false, note: 'Wallet: refunded automatically when the order was cancelled.' };
     case 'UPI':
     case 'Card': {
-      const label = d.paymentMethod === 'UPI' ? 'Legacy UPI' : 'Legacy card';
+      const label = method === 'UPI' ? 'Legacy UPI' : 'Legacy card';
       if (d.refundedAt) return { refundable: false, note: `${label}: already refunded to the Wallet on ${new Date(d.refundedAt).toLocaleDateString()}.` };
       if (d.upiStatus === 'Rejected') return { refundable: false, note: `${label}: payment was rejected, nothing to refund.` };
       // Same rule as the server: only money that was actually received can be refunded.

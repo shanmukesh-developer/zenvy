@@ -14,6 +14,10 @@ interface SOSData {
   lat?: number;
   lng?: number;
   location?: { lat?: number; lng?: number } | null;
+  /** Rider's short note from the SOS button (live alerts only; not stored on the rider row). */
+  note?: string;
+  /** Order the rider was carrying when they pressed SOS. */
+  orderId?: string | null;
 }
 
 /**
@@ -189,6 +193,8 @@ export default function SOSAlertModal() {
         {queue.length > 1 && <p className="text-sm font-black text-red-100 mb-2">{queue.length} active alerts. Showing the oldest first.</p>}
         <p className="text-xl text-white font-bold mb-1">Rider: {current.riderName || 'Unknown rider'}</p>
         {current.riderPhone && <a className="block text-lg text-white underline mb-1" href={`tel:${current.riderPhone}`}>Call {current.riderPhone}</a>}
+        {current.note && <p className="text-base text-white font-bold mb-1 break-words">“{String(current.note).slice(0, 200)}”</p>}
+        {current.orderId && <p className="text-sm text-white font-black mb-1">Carrying order #{String(current.orderId).slice(-6).toUpperCase()}</p>}
         <p className="text-sm text-red-100 mb-2 font-mono break-all">ID: {current.riderId}{when && !Number.isNaN(when.getTime()) ? ` · ${when.toLocaleString()}` : ''}</p>
         {where && (
           <a className="block text-sm text-white underline mb-6" target="_blank" rel="noreferrer" href={`https://www.google.com/maps?q=${where.lat},${where.lng}`}>

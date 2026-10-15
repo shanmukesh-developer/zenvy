@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAdminAuth } from '@/utils/useAdminAuth';
 import { useLiveSync, useFreshIds, FRESH_ROW_CLASS } from '@/lib/useLiveSync';
 import {
-  STATUS_META, Store, StoreStatus, adminRequest, formatINR, isLocalVendorType, storeId, storeStatus, vendorLabel,
+  STATUS_META, Store, StoreStatus, adminRequest, formatINR, isLocalVendorType, readTags, storeId, storeStatus, vendorLabel,
 } from './catalogue';
 import {
   Button, Callout, Chip, ConfirmModal, EmptyState, Field, INPUT, MenuButton, Modal, Skeleton, Thumb, Toggle,
@@ -110,7 +110,8 @@ function StoresScreen() {
     if (!quiet) { setLoading(true); setLoadError(''); }
     try {
       const data = await adminRequest<Store[]>('/api/admin/restaurants');
-      setStores(Array.isArray(data) ? data : []);
+      // Tags normalised once here: every card, filter and the wizard can treat them as a list.
+      setStores(Array.isArray(data) ? data.map(s => ({ ...s, tags: readTags(s.tags) })) : []);
       setLoadError('');
     } catch (e) {
       if (!quiet) setLoadError(e instanceof Error ? e.message : 'Could not load stores.');

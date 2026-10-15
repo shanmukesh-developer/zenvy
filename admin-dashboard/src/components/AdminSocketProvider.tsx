@@ -101,8 +101,26 @@ export default function AdminSocketProvider({ children }: { children: React.Reac
       setIsConnected(false);
     });
 
-    socket.on('connect_error', (err) => {
+    // A refusal by a server middleware (e.g. SERVER_STARTING during a redeploy) is NOT retried by
+    // socket.io itself (socket.active becomes false): the dashboard used to sit on "offline" until a
+    // page reload. Retry after the server's retryAfter (or a growing delay, max 30 s).
+    let manualRetries = 0;
+    let manualRetryTimer: ReturnType<typeof setTimeout> | null = null;
+    socket.on('connect', () => { manualRetries = 0; });
+    socket.on('connect_error', (err: Error & { data?: { retryAfter?: number } }) => {
       console.warn('[ADMIN_SOCKET] Connection error:', err.message);
+      if (socket.active || manualRetryTimer) return;
+      const hinted = Number(err?.data?.retryAfter) * 1000;
+      const wait = Number.isFinite(hinted) && hinted > 0 ? hinted : Math.min(30000, 2000 * 2 ** manualRetries);
+      manualRetries++;
+      manualRetryTimer = setTimeout(() => {
+        manualRetryTimer = null;
+        // Only the current socket of a signed-in admin reconnects (sign-out replaced / dropped it).
+        if (socketRef.current === socket && getToken() && !socket.connected) {
+          socket.auth = { token: getToken() };
+          socket.connect();
+        }
+      }, wait);
     });
 
     socketRef.current = socket;

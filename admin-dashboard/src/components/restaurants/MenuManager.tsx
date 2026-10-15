@@ -530,6 +530,9 @@ function ItemEditor({ initial, storeName, categories, bookingOnly, nextSortOrder
         specs: {
           weight: form.weight.trim() || null,
           ...(initial ? {} : { sortOrder: nextSortOrder }),
+          // Items added to a booking-only service store carry the flag like its imported items do
+          // (the list shows the Booking chip from it; the server also checks the store type).
+          ...(isBooking ? { bookingOnly: true } : {}),
         },
       };
       if (form.isAvailable) payload.outOfStockUntil = null;

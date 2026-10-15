@@ -135,13 +135,22 @@ const counts = async (postId) => {
 };
 
 /** Status change from moderation / self-delete, keeping reply + hashtag counters right. */
-const setPostStatus = async (post, status, reason) => {
+// With a `transaction` (moderation queue / appeals) the row write joins it and the counters are
+// recomputed after commit (on SQLite they waited on the transaction's own write lock: SQLITE_BUSY).
+const setPostStatus = async (post, status, reason, { transaction } = {}) => {
   post.status = status;
   if (status === 'visible') post.removedReason = null;
   else if (reason) post.removedReason = String(reason).slice(0, 300);
-  await post.save({ fields: ['status', 'removedReason'] });
-  if (post.parentId) await recountReplies(post.parentId);
-  await trends.recountHashtags(await trends.hashtagIdsOf([post.id]));
+  await post.save({ fields: ['status', 'removedReason'], transaction });
+  const recount = async () => {
+    if (post.parentId) await recountReplies(post.parentId);
+    await trends.recountHashtags(await trends.hashtagIdsOf([post.id]));
+  };
+  if (transaction && typeof transaction.afterCommit === 'function') {
+    transaction.afterCommit(() => { recount().catch((e) => console.warn('[PULSE_RECOUNT_WARN]', e.message)); });
+    return;
+  }
+  await recount();
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1164,10 +1173,10 @@ const postResolver = {
       },
     };
   },
-  async setStatus(id, status) {
-    const p = await M('FriendsPost').findByPk(id);
+  async setStatus(id, status, { transaction } = {}) {
+    const p = await M('FriendsPost').findByPk(id, { transaction });
     if (!p || p.status === 'deleted') return false;
-    await setPostStatus(p, status, status === 'visible' ? null : 'Moderation decision');
+    await setPostStatus(p, status, status === 'visible' ? null : 'Moderation decision', { transaction });
     trends.clearTrends(p.campusId);
     return true;
   },

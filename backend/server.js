@@ -283,11 +283,36 @@ require('./utils/realtime').init(io);
 // socket.connect() again after retryAfter seconds (the partner apps do).
 let dbReady = false;
 const STARTUP_RETRY_AFTER_SECONDS = 10;
+// A socket that arrives during startup is HELD (up to STARTUP_SOCKET_WAIT_MS) until the database is
+// ready instead of being refused at once: clients that do not re-call connect() after a middleware
+// refusal (the admin dashboard, the customer app) used to stay offline after every redeploy.
+const STARTUP_SOCKET_WAIT_MS = 25000;
+const dbReadyWaiters = new Set();
+const markDbReady = () => {
+  dbReady = true;
+  dbReadyWaiters.forEach((fn) => fn());
+  dbReadyWaiters.clear();
+};
 io.use((socket, next) => {
   if (dbReady) return next();
-  const err = new Error('Server is starting, please retry in a moment');
-  err.data = { code: 'SERVER_STARTING', retryAfter: STARTUP_RETRY_AFTER_SECONDS };
-  next(err);
+  let done = false;
+  const refuse = () => {
+    if (done) return;
+    done = true;
+    dbReadyWaiters.delete(proceed);
+    const err = new Error('Server is starting, please retry in a moment');
+    err.data = { code: 'SERVER_STARTING', retryAfter: STARTUP_RETRY_AFTER_SECONDS };
+    next(err);
+  };
+  const proceed = () => {
+    if (done) return;
+    done = true;
+    clearTimeout(timer);
+    if (socket.conn && socket.conn.readyState === 'closed') return; // the client gave up meanwhile
+    next();
+  };
+  const timer = setTimeout(refuse, STARTUP_SOCKET_WAIT_MS);
+  dbReadyWaiters.add(proceed);
 });
 
 // 🛡️ Socket.io JWT Authentication Middleware
@@ -1661,16 +1686,44 @@ const initializeApp = async () => {
       });
       
       // Legacy socket SOS (newer rider apps use POST /api/delivery/sos, which also pushes admins).
-      socket.on('sos_alert', (data = {}) => {
+      // The admin payload is rebuilt from the rider's own row (same shape as the REST SOS): the raw
+      // client object (any size, any keys, spoofable name / order id) is never relayed to admins.
+      let lastLegacySosAt = 0;
+      socket.on('sos_alert', async (data = {}) => {
         if (socket.user && socket.user.role && socket.user.role.toLowerCase() === 'rider' && data?.riderId === socket.user.id) {
-          log(`[CRITICAL SOS] Triggered by ${data.riderName} (ID: ${data.riderId}) at ${data.timestamp}`);
-          io.to('admin-room').emit('sos_received', data);
-          // Keep it on the rider row so an admin who opens the dashboard later still sees it.
+          const nowMs = Date.now();
+          if (nowMs - lastLegacySosAt < 5000) return; // a held / repeated button must not flood the admin room
+          lastLegacySosAt = nowMs;
           try {
             const { getDeliveryPartnerModel } = require('./models/DeliveryPartner');
-            getDeliveryPartnerModel().update({ isSosActive: true, sosAt: new Date() }, { where: { id: socket.user.id } })
+            const DP = getDeliveryPartnerModel();
+            const partner = await DP.findByPk(socket.user.id, { attributes: ['id', 'name', 'phone', 'liveLocation', 'currentOrderId', 'isSosActive', 'sosAt'] });
+            if (!partner) return;
+            const lat = Number(data.lat ?? data.latitude);
+            const lng = Number(data.lng ?? data.longitude);
+            const hasFix = Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && !(lat === 0 && lng === 0);
+            const live = partner.liveLocation && typeof partner.liveLocation === 'object' ? partner.liveLocation : null;
+            const location = hasFix
+              ? { lat, lng }
+              : (live && Number.isFinite(Number(live.lat)) && Number.isFinite(Number(live.lng)) ? { lat: Number(live.lat), lng: Number(live.lng), stale: true } : null);
+            const now = new Date();
+            const repeat = partner.isSosActive && partner.sosAt && now - new Date(partner.sosAt) < 30000;
+            // Keep it on the rider row so an admin who opens the dashboard later still sees it.
+            await DP.update({ isSosActive: true, sosAt: repeat ? partner.sosAt : now, ...(location ? { sosLocation: location } : {}) }, { where: { id: partner.id } })
               .catch((e) => console.warn('[SOS_PERSIST_WARN]', e.message));
-          } catch (e) { console.warn('[SOS_PERSIST_WARN]', e.message); }
+            const payload = {
+              riderId: partner.id,
+              riderName: partner.name,
+              riderPhone: partner.phone || null,
+              timestamp: (repeat ? new Date(partner.sosAt) : now).toISOString(),
+              lat: location ? location.lat : undefined,
+              lng: location ? location.lng : undefined,
+              location,
+              orderId: partner.currentOrderId || null,
+            };
+            log(`[CRITICAL SOS] (legacy socket) rider ${partner.id} at ${payload.timestamp}`);
+            io.to('admin-room').emit('sos_received', payload);
+          } catch (e) { console.warn('[SOS_LEGACY_WARN]', e.message); }
         } else {
           console.warn(`[SOCKET_DENIED] Unauthorized sos_alert attempt by user ${socket.user?.id}`);
         }
@@ -2171,12 +2224,15 @@ const initializeApp = async () => {
       });
 
       // ── Cross-Portal: Rider ↔ Admin ↔ Customer ────────────────
+      // Rider-app fields relayed to the admin room are plain bounded strings (an object / huge value
+      // would crash or flood every admin dashboard that renders it).
+      const adminSafeText = (v, max) => (typeof v === 'string' || typeof v === 'number' ? String(v).replace(/[<>]/g, '').slice(0, max) : undefined);
 
       // Rider came online: broadcast to admin dashboard
       socket.on('rider_connected', (data = {}) => {
         if (socket.user && socket.user.role && socket.user.role.toLowerCase() === 'rider' && data?.driverId === socket.user.id) {
           log(`[RIDER ONLINE] ${data.name} (${data.driverId})`);
-          io.to('admin-room').emit('admin_rider_online', { riderId: data.driverId, name: data.name, timestamp: new Date().toISOString() });
+          io.to('admin-room').emit('admin_rider_online', { riderId: data.driverId, name: adminSafeText(data.name, 60), timestamp: new Date().toISOString() });
         } else {
           console.warn(`[SOCKET_DENIED] Unauthorized rider_connected attempt by user ${socket.user?.id}`);
         }
@@ -2196,7 +2252,7 @@ const initializeApp = async () => {
       socket.on('rider_status_change', (data = {}) => {
         if (socket.user && socket.user.role && socket.user.role.toLowerCase() === 'rider' && data?.riderId === socket.user.id) {
           log(`[RIDER STATUS] ${data.name} → ${data.isOnline ? 'ONLINE' : 'OFFLINE'}`);
-          io.to('admin-room').emit('admin_rider_status', { riderId: data.riderId, name: data.name, isOnline: data.isOnline });
+          io.to('admin-room').emit('admin_rider_status', { riderId: data.riderId, name: adminSafeText(data.name, 60), isOnline: data.isOnline === true });
         } else {
           console.warn(`[SOCKET_DENIED] Unauthorized rider_status_change attempt by user ${socket.user?.id}`);
         }
@@ -2213,7 +2269,7 @@ const initializeApp = async () => {
           }
           await socket.join(room);
           log(`[RIDER ACCEPTED] ${data.riderName} accepted order ${data.orderId}`);
-          io.to('admin-room').emit('admin_order_accepted', { orderId: data.orderId, riderId: data.riderId, riderName: data.riderName });
+          io.to('admin-room').emit('admin_order_accepted', { orderId: room, riderId: data.riderId, riderName: adminSafeText(data.riderName, 60) });
         } else {
           console.warn(`[SOCKET_DENIED] Unauthorized rider_accepted attempt by user ${socket.user?.id}`);
         }
@@ -2263,12 +2319,15 @@ const initializeApp = async () => {
 
           // Broadcast checkpoint to admin dashboard room ONLY
           // Admin-room only, so the coordinates are visible to admins and nobody else.
+          // Client fields are typed and bounded here: an object / huge string as riderName used to reach
+          // every admin dashboard as-is (React cannot render an object: the dashboard crashed).
+          const orderCount = Number(data.activeOrderCount);
           io.to('admin-room').emit('admin_rider_location', {
             riderId: data.riderId,
-            riderName: data.riderName,
-            currentCheckpoint: data.currentCheckpoint,
-            activeOrderCount: data.activeOrderCount,
-            isOnline: data.isOnline,
+            riderName: adminSafeText(data.riderName, 60),
+            currentCheckpoint: adminSafeText(data.currentCheckpoint, 80),
+            activeOrderCount: Number.isFinite(orderCount) && orderCount >= 0 ? Math.min(Math.floor(orderCount), 50) : 0,
+            isOnline: data.isOnline !== false,
             ...(hasFix ? { lat, lng, heading: Number(data.heading) || null, ts: Date.now() } : {}),
             timestamp: Date.now()
           });
@@ -2301,10 +2360,10 @@ const initializeApp = async () => {
             if (order && order.deliveryPartnerId === socket.user.id) {
               log(`[DELIVERED] ${data.riderName} completed order ${data.orderId} (+₹${data.earnings})`);
               io.to('admin-room').emit('admin_delivery_complete', {
-                orderId: data.orderId,
+                orderId: order.id,
                 riderId: data.riderId,
-                riderName: data.riderName,
-                earnings: data.earnings,
+                riderName: adminSafeText(data.riderName, 60),
+                earnings: Number.isFinite(Number(data.earnings)) ? Number(data.earnings) : undefined,
                 timestamp: new Date().toISOString()
               });
             } else {
@@ -2342,7 +2401,7 @@ const initializeApp = async () => {
     });
 
     // Everything is registered: open the gates for /api and sockets.
-    dbReady = true;
+    markDbReady();
     console.log(`✅ [STARTUP] Database ready — API accepting requests (${Math.round(process.uptime())}s after boot)`);
 
     // Background, post-ready maintenance (never blocks requests).

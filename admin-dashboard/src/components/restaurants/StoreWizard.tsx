@@ -2,7 +2,7 @@
 import { useEffect, useId, useMemo, useRef, useState, ReactNode } from 'react';
 import {
   Store, VENDOR_TYPES, VendorGroup, adminRequest, formatINR, formatWhatsapp, isBookingOnlyStore, isLocalVendorType,
-  isValidIndianMobile, readBrandTheme, storeId, tenDigits, vendorLabel,
+  isValidIndianMobile, readBrandTheme, readTags, storeId, tenDigits, vendorLabel,
 } from '@/app/restaurants/catalogue';
 import {
   Weekly, generatePassword, isOpenByHours, mapsUrl, operatingHoursPayload, parseMapLink, passwordStrength,
@@ -73,7 +73,7 @@ export function stateFromStore(s: Store): WizardState {
     vendorType: (s.vendorType || 'RESTAURANT').toUpperCase(),
     campus: s.campus || '',
     description: s.stallDescription || '',
-    tags: Array.isArray(s.tags) ? s.tags.map(String) : [],
+    tags: readTags(s.tags),
     location: s.location || '',
     zone: s.zone || '',
     lat: s.lat != null ? String(s.lat) : '',
@@ -463,7 +463,7 @@ function BasicsStep({ s, set, errors, stores, editingId }: StepProps & { stores:
   const campuses = useMemo(() => uniq(stores.map(x => x.campus).filter(Boolean) as string[]), [stores]);
   const tagSuggestions = useMemo(() => {
     const counts = new Map<string, number>();
-    stores.filter(x => (x.vendorType || 'RESTAURANT').toUpperCase() === s.vendorType).forEach(x => (x.tags || []).forEach(t => counts.set(String(t), (counts.get(String(t)) || 0) + 1)));
+    stores.filter(x => (x.vendorType || 'RESTAURANT').toUpperCase() === s.vendorType).forEach(x => readTags(x.tags).forEach(t => counts.set(String(t), (counts.get(String(t)) || 0) + 1)));
     return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).map(([t]) => t);
   }, [stores, s.vendorType]);
   const dupe = stores.find(x => storeId(x) !== editingId && x.name.trim().toLowerCase() === s.name.trim().toLowerCase() && s.name.trim());

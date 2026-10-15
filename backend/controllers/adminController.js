@@ -1886,8 +1886,11 @@ exports.processManualRefund = async (req, res) => {
     const order = await Order.findByPk(req.params.orderId);
     if (!order) return res.status(404).json({ message: 'Order not found' });
     if (order.status !== 'Cancelled') return res.status(400).json({ message: 'Can only refund Cancelled orders.' });
-    if (order.paymentMethod === 'COD') return res.status(400).json({ message: 'COD orders do not require refunds.' });
-    if (order.paymentMethod === 'Wallet') return res.status(400).json({ message: 'Wallet orders are refunded to the Wallet automatically when they are cancelled.' });
+    // Case-insensitive: older SQLite rows store 'cod' / 'wallet' (a cancelled 'wallet' order was already
+    // refunded automatically and must never be refunded twice).
+    const method = String(order.paymentMethod || '').toUpperCase();
+    if (method === 'COD') return res.status(400).json({ message: 'COD orders do not require refunds.' });
+    if (method === 'WALLET') return res.status(400).json({ message: 'Wallet orders are refunded to the Wallet automatically when they are cancelled.' });
     const VerificationLog = getVerificationLogModel();
     const already = VerificationLog ? await VerificationLog.findOne({ where: { targetId: String(order.id), action: 'MANUAL_REFUND_PROCESSED' } }) : null;
     if (already) return res.status(400).json({ message: 'This order has already been refunded.' });
@@ -1984,7 +1987,10 @@ exports.broadcastPushNotification = async (req, res) => {
       whereClause.hostelBlock = targetBlock;
     }
     const activeUsers = await User.findAll({ where: whereClause, attributes: ['id', 'fcmTokens'] });
-    
+    if (isTargeted && !activeUsers.length) {
+      return res.status(404).json({ code: 'NO_RECIPIENTS', message: `No active students have "${String(targetBlock).slice(0, 60)}" as their hostel block, so nothing was sent. Check the spelling (it must match the profile exactly).` });
+    }
+
     let allTokens = [];
     activeUsers.forEach(user => {
       if (user.fcmTokens) {
@@ -2049,7 +2055,14 @@ exports.broadcastPushNotification = async (req, res) => {
     await logAuditAction(req, null, 'GLOBAL_PUSH_SENT', { title, body, userCount: activeUsers.length });
     realtime.publish('announcement', 'created', null, { scope: 'broadcast' });
     
-    res.json({ message: `Push notification broadcasted successfully to approximately ${activeUsers.length} active devices.` });
+    // Students and devices are reported separately (the old text called the student count "devices").
+    const who = `${activeUsers.length} student${activeUsers.length === 1 ? '' : 's'}`;
+    const devices = `${allTokens.length} registered device${allTokens.length === 1 ? '' : 's'}`;
+    res.json({
+      message: `Sent to ${who} (${devices}${isTargeted ? '' : ', plus phones subscribed to campus-wide alerts'}). It is also in their in-app notification list.`,
+      students: activeUsers.length,
+      devices: allTokens.length,
+    });
   } catch (error) {
     console.error('Broadcast push failed:', error);
     sendServerError(res, error, '[ADMINCONTROLLER_ERROR]');

@@ -73,6 +73,9 @@ const joinRoom = async (req, res) => {
       where: { roomId: room.id, userId }
     });
 
+    if (existing && existing.kickedAt) {
+      return res.status(403).json({ code: 'REMOVED_FROM_ROOM', message: 'The room admin removed you from this room, so you cannot rejoin it with the code.' });
+    }
     if (existing) {
       return res.status(200).json({ room, message: 'You are already in this room.' });
     }
@@ -98,7 +101,7 @@ const myRooms = async (req, res) => {
     const RoomParticipant = getRoomParticipantModel();
 
     const memberships = await RoomParticipant.findAll({
-      where: { userId },
+      where: { userId, kickedAt: null },
       include: [{ model: Room, as: 'room', where: { isActive: true } }]
     });
 
@@ -126,17 +129,20 @@ const kickUser = async (req, res) => {
 
     // Verify admin
     const adminParticipant = await RoomParticipant.findOne({
-      where: { roomId, userId: adminId, role: 'admin' }
+      where: { roomId, userId: adminId, role: 'admin', kickedAt: null }
     });
 
     if (!adminParticipant) {
       return res.status(403).json({ message: 'You must be a room admin to kick users.' });
     }
 
-    // Remove target
-    await RoomParticipant.destroy({
-      where: { roomId, userId: targetUserId }
-    });
+    // Remove target: the row stays with kickedAt set, so the join code no longer lets them back in
+    // (deleting it made a kick a no-op for anyone who still had the code).
+    const [kicked] = await RoomParticipant.update(
+      { kickedAt: new Date(), role: 'member' },
+      { where: { roomId, userId: targetUserId, kickedAt: null } }
+    );
+    if (!kicked) return res.status(404).json({ message: 'That person is not in this room.' });
 
     res.status(200).json({ message: 'User kicked from room.' });
   } catch (error) {

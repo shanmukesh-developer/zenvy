@@ -3,6 +3,15 @@ import { useCallback, useEffect, useState } from 'react';
 import { FIELD, PGBooking, formatDate, pgRequest } from './pgApi';
 import { FRESH_ROW_CLASS } from '@/lib/useLiveSync';
 
+interface DuplicateInfo {
+  index?: { built: boolean | null; duplicateGroups?: number } | null;
+  groups: Array<{
+    userId: string; hostelId: string; keepId: string;
+    user?: { name?: string; phone?: string } | null; hostel?: { name?: string } | null;
+    bookings: Array<{ id: string; status: string; createdAt?: string }>;
+  }>;
+}
+
 const STATUS_STYLE: Record<string, string> = {
   Pending: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
   Confirmed: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300',
@@ -22,6 +31,32 @@ export function BookingsPanel({ onPendingCount, liveTick = 0, isFresh }: {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
+  // Older double taps can have left one student with several open requests at one PG; they also stop
+  // the server's one-open-booking guard index from being built (GET /api/pg/admin/bookings/duplicates).
+  const [dupes, setDupes] = useState<DuplicateInfo | null>(null);
+  const [resolving, setResolving] = useState(false);
+  const loadDupes = useCallback(async () => {
+    try { setDupes(await pgRequest<DuplicateInfo>('/api/pg/admin/bookings/duplicates', { cache: 'reload' })); } catch { /* older backend: no banner */ }
+  }, []);
+  useEffect(() => { loadDupes(); }, [loadDupes, liveTick]);
+  const resolveDupes = async () => {
+    if (resolving || !dupes?.groups.length) return;
+    const extra = dupes.groups.reduce((n, g) => n + g.bookings.length - 1, 0);
+    if (!window.confirm(`Cancel ${extra} duplicate request${extra === 1 ? '' : 's'}?
+
+For each student and PG one request is kept: the confirmed one, otherwise the newest. The others are cancelled (a confirmed duplicate gives its bed back). Students are not notified.`)) return;
+    setResolving(true);
+    setNotice(null);
+    try {
+      const res = await pgRequest<{ message?: string; failed?: unknown[] }>('/api/pg/admin/bookings/duplicates/resolve', { method: 'POST', body: '{}' });
+      setNotice({ kind: res?.failed?.length ? 'error' : 'ok', text: `${res?.message || 'Duplicates resolved.'}${res?.failed?.length ? ` ${res.failed.length} could not be cancelled; retry.` : ''}` });
+      await Promise.all([loadDupes(), load()]);
+    } catch (e) {
+      setNotice({ kind: 'error', text: e instanceof Error ? e.message : 'Could not resolve the duplicates.' });
+    } finally {
+      setResolving(false);
+    }
+  };
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) {
@@ -81,6 +116,20 @@ export function BookingsPanel({ onPendingCount, liveTick = 0, isFresh }: {
         <button type="button" disabled={loading} onClick={() => load()} className="rounded-lg border border-white/10 px-4 py-2 text-sm font-semibold text-gray-300 hover:text-white disabled:opacity-50">{loading ? 'Loading…' : 'Refresh'}</button>
         <p className="text-xs text-gray-500">Students also get a WhatsApp link to the housing desk when they request. Confirm here once you have spoken to them.</p>
       </div>
+
+      {dupes && dupes.groups.length > 0 && (
+        <div role="alert" className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
+          <p className="font-bold">Duplicate open requests: {dupes.groups.length} student{dupes.groups.length === 1 ? '' : 's'} with more than one open request at the same PG</p>
+          <ul className="list-disc space-y-0.5 pl-5 text-xs text-amber-200/90">
+            {dupes.groups.slice(0, 8).map(g => (
+              <li key={`${g.userId}:${g.hostelId}`}>{g.user?.name || 'Unknown student'} · {g.hostel?.name || 'PG removed'}: {g.bookings.length} requests ({g.bookings.map(b => b.status).join(', ')})</li>
+            ))}
+            {dupes.groups.length > 8 && <li>…and {dupes.groups.length - 8} more</li>}
+          </ul>
+          {dupes.index && dupes.index.built === false && <p className="text-xs text-amber-200/80">Until they are resolved the server cannot switch on its duplicate-booking guard.</p>}
+          <button type="button" disabled={resolving} onClick={resolveDupes} className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-black hover:bg-amber-400 disabled:opacity-50">{resolving ? 'Resolving…' : 'Keep one per student, cancel the rest'}</button>
+        </div>
+      )}
 
       {notice && (
         <div role={notice.kind === 'error' ? 'alert' : 'status'} className={`flex items-start justify-between gap-3 rounded-lg border p-3 text-sm ${notice.kind === 'error' ? 'border-red-500/30 bg-red-500/10 text-red-200' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'}`}>

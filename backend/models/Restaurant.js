@@ -3,6 +3,16 @@ const bcrypt = require('bcryptjs');
 
 let Restaurant;
 
+/** JSON text column -> value. Strings that are themselves JSON (double-encoded rows) are decoded again, up to 3 levels. */
+const decodeJsonText = (raw) => {
+  let v = raw;
+  for (let i = 0; i < 3 && typeof v === 'string'; i++) {
+    if (!v) return null;
+    try { v = JSON.parse(v); } catch { return null; }
+  }
+  return typeof v === 'string' ? null : v;
+};
+
 const initRestaurantModel = (sequelize) => {
   if (!sequelize) return null;
 
@@ -23,8 +33,10 @@ const initRestaurantModel = (sequelize) => {
       type: DataTypes.TEXT, 
       defaultValue: '[]',
       get() {
-        const val = this.getDataValue('tags');
-        try { return val ? JSON.parse(val) : []; } catch { return []; }
+        // Older seed / sync scripts stored the list JSON-encoded twice ('"[\\"burgers\\"]"'): decode up to
+        // three levels so every reader (admin wizard, customer app, search) always gets an array.
+        const val = decodeJsonText(this.getDataValue('tags'));
+        return Array.isArray(val) ? val.filter((t) => typeof t === 'string' || typeof t === 'number').map(String) : [];
       },
       set(val) { this.setDataValue('tags', JSON.stringify(val)); }
     },
@@ -32,8 +44,8 @@ const initRestaurantModel = (sequelize) => {
       type: DataTypes.TEXT, 
       defaultValue: '{"start":"09:00","end":"22:00"}',
       get() {
-        const val = this.getDataValue('operatingHours');
-        try { return val ? JSON.parse(val) : { start: '09:00', end: '22:00' }; } catch { return { start: '09:00', end: '22:00' }; }
+        const val = decodeJsonText(this.getDataValue('operatingHours'));
+        return val && typeof val === 'object' ? val : { start: '09:00', end: '22:00' };
       },
       set(val) { this.setDataValue('operatingHours', JSON.stringify(val)); }
     },

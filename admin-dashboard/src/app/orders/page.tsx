@@ -59,9 +59,11 @@ interface Order {
 
 type Notice = { kind: 'success' | 'error'; text: string } | null;
 
-const STATUS_FILTERS = ['All', 'Pending', 'Accepted', 'Preparing', 'ReadyForPickup', 'PickedUp', 'ArrivedAtGate', 'OutForDelivery', 'Delivered', 'Cancelled'];
+const STATUS_FILTERS = ['All', 'Pending', 'Accepted', 'Preparing', 'ReadyForPickup', 'Picking', 'PickedUp', 'ArrivedAtGate', 'OutForDelivery', 'Delivered', 'Cancelled'];
 const STATUS_LABELS: Record<string, string> = {
   ReadyForPickup: 'Ready',
+  // Buy-at-store orders: the rider is at the counter buying the items.
+  Picking: 'Rider buying',
   PickedUp: 'Picked up',
   ArrivedAtGate: 'At gate',
   OutForDelivery: 'Out for delivery',

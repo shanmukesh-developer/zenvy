@@ -248,6 +248,88 @@ router.get('/admin/bookings', protect, admin, async (req, res) => {
   }
 });
 
+// Duplicate open requests (same student + same PG, Pending / Confirmed more than once). They block the
+// one-open-booking index; the list lets admins see them, resolve keeps one per pair and cancels the rest.
+const loadOpenDuplicateGroups = async () => {
+  const PGBooking = getPGBookingModel();
+  const open = await PGBooking.findAll({ where: { status: { [Op.in]: ACTIVE_BOOKING } }, order: [['createdAt', 'ASC']], limit: 5000 });
+  const byPair = new Map();
+  open.forEach((b) => {
+    const key = `${b.userId}:${b.hostelId}`;
+    if (!byPair.has(key)) byPair.set(key, []);
+    byPair.get(key).push(b);
+  });
+  return [...byPair.values()].filter((list) => list.length > 1);
+};
+// Kept: the confirmed one (a reserved bed), else the newest request. The rest are cancelled.
+const pickKeeper = (list) => list.find((b) => b.status === 'Confirmed') || list[list.length - 1];
+
+router.get('/admin/bookings/duplicates', protect, admin, async (req, res) => {
+  try {
+    const groups = await loadOpenDuplicateGroups();
+    const userIds = [...new Set(groups.map((g) => g[0].userId))];
+    const hostelIds = [...new Set(groups.map((g) => g[0].hostelId))];
+    const [users, hostels] = await Promise.all([
+      userIds.length ? getUserModel().findAll({ where: { id: userIds }, attributes: ['id', 'name', 'phone'] }) : [],
+      hostelIds.length ? getPGHostelModel().findAll({ where: { id: hostelIds }, attributes: ['id', 'name'] }) : [],
+    ]);
+    const u = Object.fromEntries(users.map((x) => [x.id, x]));
+    const h = Object.fromEntries(hostels.map((x) => [x.id, x]));
+    const { getPgOpenIndexState } = require('../config/db');
+    res.json({
+      index: getPgOpenIndexState(),
+      groups: groups.map((list) => {
+        const keep = pickKeeper(list);
+        return {
+          userId: list[0].userId,
+          hostelId: list[0].hostelId,
+          user: u[list[0].userId] || null,
+          hostel: h[list[0].hostelId] || null,
+          keepId: keep.id,
+          bookings: list.map((b) => ({ id: b.id, status: b.status, roomId: b.roomId, checkInDate: b.checkInDate, createdAt: b.createdAt })),
+        };
+      }),
+    });
+  } catch (err) {
+    sendServerError(res, err, '[PG_DUPLICATES_ERROR]');
+  }
+});
+
+router.post('/admin/bookings/duplicates/resolve', protect, admin, async (req, res) => {
+  try {
+    const groups = await loadOpenDuplicateGroups();
+    let cancelled = 0;
+    const failed = [];
+    for (const list of groups) {
+      const keep = pickKeeper(list);
+      for (const b of list) {
+        if (b.id === keep.id) continue;
+        const result = await changeBookingStatus(b.id, 'Cancelled', () => true);
+        if (result.error) failed.push({ id: b.id, error: result.error });
+        else {
+          cancelled++;
+          realtime.notifyAdmin('pg_booking', 'updated', b.id);
+        }
+      }
+      realtime.publish('pg', 'updated', keep.hostelId, { scope: 'availability' });
+    }
+    const { ensurePgOpenBookingIndex } = require('../config/db');
+    const index = await ensurePgOpenBookingIndex();
+    console.log(`[PG_BOOKINGS_DUPLICATES] admin ${req.user.id} resolved ${groups.length} pair(s): ${cancelled} duplicate(s) cancelled; index ${index.built ? 'built' : 'still missing'}.`);
+    res.json({
+      message: groups.length
+        ? `${cancelled} duplicate request${cancelled === 1 ? '' : 's'} cancelled (one kept per student and PG).${index.built ? ' The duplicate guard is active again.' : ''}`
+        : 'No duplicate open requests.',
+      cancelled,
+      pairs: groups.length,
+      failed,
+      index,
+    });
+  } catch (err) {
+    sendServerError(res, err, '[PG_DUPLICATES_RESOLVE_ERROR]');
+  }
+});
+
 // PUT confirm / cancel a booking request (Admin). Confirming takes a bed; cancelling a confirmed one gives it back.
 router.put('/admin/bookings/:bookingId/status', protect, admin, async (req, res) => {
   try {
@@ -288,6 +370,12 @@ async function changeBookingStatus(bookingId, nextStatus, mayChange) {
     if (booking.status === 'Cancelled') return { status: 400, error: 'This booking was already cancelled.' };
     const room = await PGRoom.findByPk(booking.roomId, { transaction: t, lock: t.LOCK.UPDATE });
     if (nextStatus === 'Confirmed') {
+      // Older duplicate rows (see /admin/bookings/duplicates): never reserve two beds for one student at one PG.
+      const other = await PGBooking.findOne({
+        where: { userId: booking.userId, hostelId: booking.hostelId, status: 'Confirmed', id: { [Op.ne]: booking.id } },
+        transaction: t,
+      });
+      if (other) return { status: 409, error: 'This student already has a confirmed booking at this PG. Cancel this duplicate request instead.' };
       if (!room || room.availableBeds <= 0) return { status: 400, error: 'No beds left in this room.' };
       room.availableBeds -= 1;
       await room.save({ transaction: t });

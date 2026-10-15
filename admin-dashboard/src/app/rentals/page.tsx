@@ -450,7 +450,7 @@ function ReportCard({ r, onChanged }: { r: AdminReport; onChanged: () => void })
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex flex-wrap items-center gap-2"><h2 className="text-lg font-bold">{label(r.category)}</h2><Pill s={r.status} /><span className="text-xs text-gray-500">{when(r.createdAt)}</span></div>
-          <p className="mt-1 text-sm text-gray-400">{r.booking ? `${r.booking.vehicleTitle} · ${when(r.booking.startAt)} → ${when(r.booking.endAt)} · booking ${label(r.booking.status)}` : `Booking ${r.bookingId}`}</p>
+          <p className="mt-1 text-sm text-gray-400">{r.booking ? `${r.booking.vehicleTitle || 'Vehicle'} · ${when(r.booking.startAt)} → ${when(r.booking.endAt)} · booking ${label(r.booking.status)}` : `Booking ${r.bookingId}`}</p>
         </div>
         <div className="text-right text-sm">
           <p>By <b>{r.reporter.name || r.reporter.id}</b> ({label(r.reporterRole || '')}) {r.reporter.phone || ''}</p>

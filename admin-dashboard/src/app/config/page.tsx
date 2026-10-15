@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAdminAuth } from '@/utils/useAdminAuth';
 import { adminRequest as apiRequest } from '@/lib/api';
+import Link from 'next/link';
 
 interface ConfigRow {
   _id: string;
@@ -30,10 +31,17 @@ const RETENTION = [
 ] as const;
 // Internal one-time markers the backend reads (not settings) are hidden from the list below too.
 const MANAGED_KEYS: string[] = [...RETENTION.map(r => r.key), 'CAMPUS_SPOTS_DEFAULTS_RETIRED'];
+// Keys the backend DOES read, but that are edited on their own page (listing them under "not read"
+// told admins the rentals on/off switch did nothing).
+const MANAGED_ELSEWHERE: Record<string, { label: string; href: string }> = {
+  VEHICLE_RENTALS_ENABLED: { label: 'Vehicle rentals on/off', href: '/rentals' },
+};
 const MAX_RETENTION_DAYS = 3650;
 
 const formatValue = (value: unknown) => {
-  if (Array.isArray(value)) return value.join(', ');
+  // Lists of objects used to print "[object Object], [object Object]".
+  if (Array.isArray(value) && value.every(v => v === null || ['string', 'number', 'boolean'].includes(typeof v))) return value.join(', ');
+  if (Array.isArray(value)) { const json = JSON.stringify(value); return json.length > 240 ? `${json.slice(0, 240)}… (${value.length} items)` : json; }
   if (value === null || value === undefined || value === '') return '—';
   if (typeof value === 'object') return JSON.stringify(value);
   return String(value);
@@ -95,7 +103,8 @@ export default function ConfigTerminal() {
 
   const feeRow = configs.find(c => c.key === DELIVERY_FEE_KEY);
   const currentFee = Number(feeRow?.value ?? DEFAULT_DELIVERY_FEE);
-  const otherRows = configs.filter(c => c.key !== DELIVERY_FEE_KEY && !MANAGED_KEYS.includes(c.key));
+  const otherRows = configs.filter(c => c.key !== DELIVERY_FEE_KEY && !MANAGED_KEYS.includes(c.key) && !MANAGED_ELSEWHERE[c.key]);
+  const elsewhereRows = configs.filter(c => MANAGED_ELSEWHERE[c.key]);
 
   const handleSaveRetention = async (key: string, label: string, def: number) => {
     if (savingRet) return;
@@ -323,6 +332,16 @@ export default function ConfigTerminal() {
             They are shown read-only to avoid a false sense of control.
           </p>
         </div>
+        {elsewhereRows.length > 0 && (
+          <ul className="space-y-1 text-xs text-gray-400">
+            {elsewhereRows.map(row => (
+              <li key={row.key}>
+                <span className="font-mono text-gray-300">{row.key}</span> = <span className="font-bold text-white">{formatValue(row.value)}</span>
+                {' · '}{MANAGED_ELSEWHERE[row.key].label} is read by the server; change it on <Link href={MANAGED_ELSEWHERE[row.key].href} className="text-blue-400 underline">its own page</Link>.
+              </li>
+            ))}
+          </ul>
+        )}
         {otherRows.length === 0 ? (
           <p className="text-xs text-gray-600 italic">No other settings stored.</p>
         ) : (

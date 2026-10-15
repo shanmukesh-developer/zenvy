@@ -841,7 +841,6 @@ async function ensureOrderIdempotencyIndex(db) {
   // cannot be built; the routes also guard in code, so this only logs.
   const uniques = [
     ['pool_requests_pool_passenger_unique', 'CREATE UNIQUE INDEX IF NOT EXISTS "pool_requests_pool_passenger_unique" ON "PoolRequests" ("poolId", "passengerId");'],
-    ['pg_bookings_open_unique', `CREATE UNIQUE INDEX IF NOT EXISTS "pg_bookings_open_unique" ON "PGBookings" ("userId", "hostelId") WHERE "status" IN ('Pending', 'Confirmed');`],
   ];
   for (const [name, sql] of uniques) {
     try {
@@ -850,8 +849,43 @@ async function ensureOrderIdempotencyIndex(db) {
       console.warn(`⚠️ [DB_MIGRATION_WARN] ${name}:`, err.message);
     }
   }
+  await ensurePgOpenBookingIndex(db);
 }
+
+// One open (Pending / Confirmed) PG booking per student per residence. Older double taps can have left
+// duplicate open rows; then the index cannot be built. Startup says so clearly, and admins resolve
+// them in Admin -> PG & Hostels -> Bookings ("Duplicate open requests"), which retries the index.
+const PG_OPEN_INDEX_SQL = `CREATE UNIQUE INDEX IF NOT EXISTS "pg_bookings_open_unique" ON "PGBookings" ("userId", "hostelId") WHERE "status" IN ('Pending', 'Confirmed');`;
+const pgOpenIndexState = { built: null, duplicateGroups: 0, extraRows: 0, error: null, checkedAt: null };
+
+async function countPgOpenDuplicates(db) {
+  const rows = await db.query(
+    `SELECT COUNT(*) AS n FROM "PGBookings" WHERE "status" IN ('Pending', 'Confirmed') GROUP BY "userId", "hostelId" HAVING COUNT(*) > 1`,
+    { type: db.QueryTypes.SELECT },
+  );
+  return { groups: rows.length, extra: rows.reduce((sum, r) => sum + Number(r.n) - 1, 0) };
+}
+
+async function ensurePgOpenBookingIndex(db = sequelize) {
+  pgOpenIndexState.checkedAt = new Date().toISOString();
+  try {
+    await db.query(PG_OPEN_INDEX_SQL);
+    Object.assign(pgOpenIndexState, { built: true, duplicateGroups: 0, extraRows: 0, error: null });
+  } catch (err) {
+    let dup = { groups: 0, extra: 0 };
+    try { dup = await countPgOpenDuplicates(db); } catch { /* table missing: keep zeros */ }
+    Object.assign(pgOpenIndexState, { built: false, duplicateGroups: dup.groups, extraRows: dup.extra, error: err.message });
+    if (dup.groups > 0) {
+      console.warn(`⚠️ [PG_BOOKINGS_DUPLICATES] ${dup.groups} student + PG pair(s) have more than one open booking (${dup.extra} extra row(s)), so the one-open-booking guard index "pg_bookings_open_unique" was NOT built. The booking route still refuses new duplicates in code. Resolve them in Admin -> PG & Hostels -> Bookings -> "Duplicate open requests" (it rebuilds the index).`);
+    } else {
+      console.warn('⚠️ [DB_MIGRATION_WARN] pg_bookings_open_unique:', err.message);
+    }
+  }
+  return { ...pgOpenIndexState };
+}
+
+const getPgOpenIndexState = () => ({ ...pgOpenIndexState });
 
 const getSequelize = () => sequelize;
 
-module.exports = { connectDB, getSequelize };
+module.exports = { connectDB, getSequelize, ensurePgOpenBookingIndex, getPgOpenIndexState };

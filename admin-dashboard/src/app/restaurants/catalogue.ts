@@ -167,6 +167,15 @@ export const readSpecs = (specs: unknown): Record<string, unknown> => {
   return specs && typeof specs === 'object' && !Array.isArray(specs) ? (specs as Record<string, unknown>) : {};
 };
 
+/** Store / item tags as a string list. Older rows can arrive JSON-encoded (once or twice) instead of as an array. */
+export const readTags = (value: unknown): string[] => {
+  let v = value;
+  for (let i = 0; i < 3 && typeof v === 'string'; i++) {
+    try { v = JSON.parse(v); } catch { return []; }
+  }
+  return Array.isArray(v) ? v.filter(t => typeof t === 'string' || typeof t === 'number').map(String) : [];
+};
+
 export const readBrandTheme = (value: unknown): BrandTheme | null => {
   const obj = readSpecs(value);
   return Object.keys(obj).length ? (obj as BrandTheme) : null;

@@ -1,9 +1,9 @@
 "use client";
-import React, { useEffect, useState, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { useAdminSocket } from '@/components/AdminSocketProvider';
+import { MAP_TILE_URL, MAP_TILE_MAX_ZOOM, MAP_TILE_ATTRIBUTION, MAP_TILE_CLASS } from '@/lib/mapTiles';
 
 
 // SRM University AP (Neerukonda / Mangalagiri) - same coordinates as the dashboard CHECKPOINTS.
@@ -17,6 +17,7 @@ const CAMPUS_CENTER: [number, number] = [16.4650, 80.5040];
 /** A rider whose app has not sent a position for this long is dropped from the map (stale pin). */
 const STALE_AFTER_MS = 2 * 60 * 1000;
 const EXPIRY_SWEEP_MS = 20 * 1000;
+const escapeHtml = (v: string) => v.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
 
 export default function LiveRiderMap() {
   const [riders, setRiders] = useState<Record<string, { lat: number; lon: number; name?: string; updatedAt: number }>>({});
@@ -130,6 +131,42 @@ export default function LiveRiderMap() {
       iconAnchor: [35, 12]
     })])), []);
 
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<L.Map | null>(null);
+  const riderLayerRef = useRef<L.LayerGroup | null>(null);
+
+  // One Leaflet map per mounted container; removed on unmount (strict-mode double mounts are safe).
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const map = L.map(el, { center: CAMPUS_CENTER, zoom: 15 });
+    L.tileLayer(MAP_TILE_URL, { maxZoom: MAP_TILE_MAX_ZOOM, className: MAP_TILE_CLASS, attribution: MAP_TILE_ATTRIBUTION }).addTo(map);
+    CAMPUS_HUBS.forEach((hub) => {
+      L.marker([hub.lat, hub.lon], { icon: hubIcons[hub.name] })
+        .bindPopup(`<div style="background:#09090b;color:#fff;padding:10px 12px;border-radius:12px;min-width:180px"><div style="font-size:10px;font-weight:900;color:#38BDF8;letter-spacing:1px;text-transform:uppercase;margin-bottom:2px">${escapeHtml(hub.tag)}</div><div style="font-size:12px;font-weight:800;color:#fff">${escapeHtml(hub.name)}</div></div>`, { className: 'zenvy-dark-popup' })
+        .addTo(map);
+    });
+    riderLayerRef.current = L.layerGroup().addTo(map);
+    mapRef.current = map;
+    return () => {
+      map.remove();
+      mapRef.current = null;
+      riderLayerRef.current = null;
+    };
+  }, [hubIcons]);
+
+  // Rider pins follow the live positions (names are escaped: they come from rider profiles).
+  useEffect(() => {
+    const layer = riderLayerRef.current;
+    if (!layer) return;
+    layer.clearLayers();
+    Object.entries(riders).forEach(([id, pos]) => {
+      L.marker([pos.lat, pos.lon], { icon: riderIcon })
+        .bindPopup(`<div style="background:#09090b;color:#fff;padding:10px 12px;border-radius:12px;min-width:190px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px"><span style="font-size:9px;font-weight:900;color:#10B981;letter-spacing:1px;text-transform:uppercase">🟢 ACTIVE TRANSMISSION</span><span style="font-size:9px;color:#9CA3AF">#${escapeHtml(id.slice(-6).toUpperCase())}</span></div><div style="font-size:13px;font-weight:800;color:#fff;margin-bottom:2px">${escapeHtml(pos.name || 'Fleet Delivery Partner')}</div><div style="font-size:10px;color:#6B7280">Coords: ${pos.lat.toFixed(4)}, ${pos.lon.toFixed(4)}</div></div>`, { className: 'zenvy-dark-popup' })
+        .addTo(layer);
+    });
+  }, [riders, riderIcon]);
+
   const activeRidersCount = Object.keys(riders).length;
 
   return (
@@ -148,65 +185,9 @@ export default function LiveRiderMap() {
         </span>
       </div>
 
-      {/* Map Surface */}
-      <MapContainer
-        center={CAMPUS_CENTER}
-        zoom={15}
-        style={{ height: '100%', width: '100%' }}
-      >
-        <TileLayer
-          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
-        />
-
-        {/* Campus Hub Markers */}
-        {CAMPUS_HUBS.map((hub) => (
-          <Marker
-            key={hub.name}
-            position={[hub.lat, hub.lon]}
-            icon={hubIcons[hub.name]}
-          >
-            <Popup className="zenvy-dark-popup">
-              <div style={{ background: '#09090b', color: '#fff', padding: '10px 12px', borderRadius: '12px', minWidth: '180px' }}>
-                <div style={{ fontSize: '10px', fontWeight: '900', color: '#38BDF8', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '2px' }}>
-                  {hub.tag}
-                </div>
-                <div style={{ fontSize: '12px', fontWeight: '800', color: '#ffffff' }}>
-                  {hub.name}
-                </div>
-              </div>
-            </Popup>
-          </Marker>
-        ))}
-
-        {/* Live Rider Pins */}
-        {Object.entries(riders).map(([id, pos]) => (
-          <Marker
-            key={id}
-            position={[pos.lat, pos.lon]}
-            icon={riderIcon}
-          >
-            <Popup className="zenvy-dark-popup">
-              <div style={{ background: '#09090b', color: '#fff', padding: '10px 12px', borderRadius: '12px', minWidth: '190px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                  <span style={{ fontSize: '9px', fontWeight: '900', color: '#10B981', letterSpacing: '1px', textTransform: 'uppercase' }}>
-                    🟢 ACTIVE TRANSMISSION
-                  </span>
-                  <span style={{ fontSize: '9px', color: '#9CA3AF' }}>
-                    #{id.slice(-6).toUpperCase()}
-                  </span>
-                </div>
-                <div style={{ fontSize: '13px', fontWeight: '800', color: '#ffffff', marginBottom: '2px' }}>
-                  {pos.name || 'Fleet Delivery Partner'}
-                </div>
-                <div style={{ fontSize: '10px', color: '#6B7280' }}>
-                  Coords: {pos.lat.toFixed(4)}, {pos.lon.toFixed(4)}
-                </div>
-              </div>
-            </Popup>
-          </Marker>
-        ))}
-      </MapContainer>
+      {/* Map Surface (plain Leaflet: react-leaflet 4 cannot run on the React 19 that Next 16 ships —
+          it threw "Map container is already initialized" and the tracker tab crashed) */}
+      <div ref={containerRef} style={{ height: '100%', width: '100%' }} />
     </div>
   );
 }

@@ -26,6 +26,12 @@ const initRoomParticipantModel = (sequelize) => {
     isMuted: {
       type: DataTypes.BOOLEAN,
       defaultValue: false
+    },
+    // Set when a room admin removes the member. The row is kept (not deleted) so the join code
+    // cannot be used to walk straight back in; kicked rows are not members anywhere.
+    kickedAt: {
+      type: DataTypes.DATE,
+      allowNull: true
     }
   }, {
     timestamps: true,

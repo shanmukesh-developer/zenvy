@@ -144,7 +144,9 @@ export function Chip({ tone = 'slate', children, title, dot }: { tone?: Tone; ch
 
 // ─── Skeleton / empty state / inline alert ───────────────────────────────────
 export function Skeleton({ className }: { className?: string }) {
-  return <div aria-hidden className={cx('animate-pulse rounded-md bg-white/[0.06]', className)} />;
+  // A <span> (display: block) so it is valid inside <p> / inline parents too (a <div> in a <p> is a
+  // hydration error and React logs it on every drawer open).
+  return <span aria-hidden className={cx('animate-pulse rounded-md bg-white/[0.06]', /\bhidden\b/.test(className || '') ? '' : 'block', className)} />;
 }
 
 export function EmptyState({ icon, title, body, action }: { icon?: ReactNode; title: string; body?: ReactNode; action?: ReactNode }) {
