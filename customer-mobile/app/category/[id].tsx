@@ -191,7 +191,8 @@ export default function CategoryDetailScreen() {
   // Photo / screenshot attachment (images only: there is no document picker in this build)
   const handlePickDocument = async () => {
     try {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      // Android uses the system photo picker (no permission); only iOS asks for library access.
+      const perm = Platform.OS === 'ios' ? await ImagePicker.requestMediaLibraryPermissionsAsync() : { granted: true };
       if (!perm.granted) {
         Alert.alert('Allow photo access', 'To attach a photo, allow Zenvy to access your photos in Settings.');
         return;

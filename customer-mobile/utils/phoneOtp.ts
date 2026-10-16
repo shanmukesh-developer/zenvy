@@ -13,7 +13,7 @@ import { postAuth, mapFirebasePhoneAuthError, NETWORK_ERROR_MESSAGE } from './au
  * `otp` to verify-otp / register / reset-password / google-complete.
  */
 const FIREBASE_NUMBER_ERRORS = ['auth/invalid-phone-number', 'auth/missing-phone-number'];
-export type OtpPurpose = 'auth' | 'reset_password' | 'change_phone';
+export type OtpPurpose = 'auth' | 'reset_password' | 'change_phone' | 'delete_account';
 export type PhoneProof = { otp: string } | { firebaseToken: string };
 
 export interface SendOtpResult {

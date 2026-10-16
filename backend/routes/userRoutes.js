@@ -18,14 +18,16 @@ const AUTH_PHONE_MAX = Math.max(10, Number(process.env.AUTH_RATE_LIMIT_PHONE_MAX
 const authIpLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: AUTH_IP_MAX,
-  skip: (req, res) => !require('../utils/env').isProduction(),
+  // Load-test requests (X-Loadtest-Key === env LOADTEST_KEY) skip this IP flood guard only; the
+  // per-phone budget below, accountLockout and validation still apply to them.
+  skip: (req) => require('../utils/loadtestBypass').skipRateLimit(req),
   message: { message: 'Too many authentication attempts, please try again after 15 minutes.', code: 'RATE_LIMITED' }
 });
 const authPhoneLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: AUTH_PHONE_MAX,
   // Requests without a phone (Google sign-in) share the IP bucket above only.
-  skip: (req, res) => !require('../utils/env').isProduction() || !normalizePhone(String((req.body && req.body.phone) || '')),
+  skip: (req, res) => !require('../utils/loadtestBypass').rateLimitsActive() || !normalizePhone(String((req.body && req.body.phone) || '')),
   keyGenerator: (req) => `phone:${normalizePhone(String((req.body && req.body.phone) || ''))}`,
   message: { message: 'Too many attempts for this number, please try again after 15 minutes.', code: 'RATE_LIMITED' }
 });

@@ -168,6 +168,10 @@ app.use(cors({
 app.set('trust proxy', 1);
 
 const rateLimit = require('express-rate-limit');
+// Rate limits skip only outside production (unless RATE_LIMIT_ENFORCE=1) or for a load-test request
+// carrying X-Loadtest-Key === env LOADTEST_KEY (no bypass when that env is unset). Limits only.
+const { skipRateLimit, logLoadtestStatus } = require('./utils/loadtestBypass');
+logLoadtestStatus();
 
 // Who is calling, for rate limits: the signed-in account (JWT signature VERIFIED, so a forged id
 // cannot dodge the limit) or, when signed out / invalid token, the client IP. Cached on req.
@@ -203,7 +207,7 @@ const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   limit: (req) => (rateLimitIdentity(req).user ? RL_USER_MAX : RL_IP_MAX),
   keyGenerator: (req) => rateLimitIdentity(req).key,
-  skip: (req, res) => !isProductionEnv(),
+  skip: (req) => skipRateLimit(req),
   message: { message: 'Too many requests, please slow down and try again in a few minutes.', code: 'RATE_LIMITED' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -214,7 +218,7 @@ const orderRateLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 5, // 5 order submissions per minute per signed-in user (IP only when signed out)
   keyGenerator: (req) => rateLimitIdentity(req).key,
-  skip: (req, res) => !isProductionEnv(),
+  skip: (req) => skipRateLimit(req),
   message: { message: 'Too many orders in a minute. Please wait a moment and try again.', code: 'TOO_MANY_ORDERS' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -224,7 +228,7 @@ const orderRateLimiter = rateLimit({
 const authRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 50, // 50 auth attempts per IP per 15 min — prevents brute force but allows shared WiFi retries
-  skip: (req, res) => !isProductionEnv(),
+  skip: (req) => skipRateLimit(req),
   message: { message: 'Too many authentication attempts, please try again after 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -1042,6 +1046,9 @@ const initializeApp = async () => {
 
     // Routes
     app.use('/api/users', require('./routes/userRoutes'));
+    // Self-service account deletion (Google Play requirement) + public legal pages for the Play listing
+    app.use('/api/users/account', require('./routes/accountRoutes'));
+    app.use('/legal', require('./routes/legalRoutes'));
     const ticketRoutes = require('./routes/ticketRoutes');
     const systemRoutes = require('./routes/systemRoutes');
     const appConfigRoutes = require('./routes/appConfigRoutes');

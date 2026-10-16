@@ -95,7 +95,10 @@ export const resolveMediaUrl = (url?: string | null): string | null => {
 export const pickImageAsset = async (opts: PickOptions = {}): Promise<ImagePicker.ImagePickerAsset | null> => {
   const source = opts.source || 'library';
   try {
-    if (Platform.OS !== 'web') {
+    // Android: the gallery opens the system photo picker, which needs NO permission (Google Play
+    // photo & video policy: the app declares no READ_MEDIA_* / storage permission). Only the camera
+    // and the iOS photo library ask.
+    if (Platform.OS !== 'web' && (source === 'camera' || Platform.OS === 'ios')) {
       const perm =
         source === 'camera'
           ? await ImagePicker.requestCameraPermissionsAsync()

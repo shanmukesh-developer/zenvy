@@ -13,6 +13,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Share,
+  Linking,
 } from 'react-native';
 import { KeyboardAvoidingView } from '../../components/KeyboardAvoidingView';
 import Clipboard from '@react-native-clipboard/clipboard';
@@ -38,6 +39,7 @@ try {
 }
 import Constants from 'expo-constants';
 import { pickAndUploadImage, alertUploadError } from '../../utils/imageUpload';
+import DeleteAccountModal from '../../components/DeleteAccountModal';
 import { cleanRoom, cleanBlock, formatHostel, useCampusHostelBlocks, HOSTEL_BLOCK_MAX, ROOM_NUMBER_MAX } from '../../utils/hostel';
 
 const PHONE_RE = /^[6-9]\d{9}$/;
@@ -126,6 +128,7 @@ export default function ProfileScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
 
   // Edit fields
   const [editName, setEditName] = useState('');
@@ -1183,6 +1186,13 @@ export default function ProfileScreen() {
               <Text style={[s.supportBtnDesc, { color: txtSec }]}>Version & info</Text>
             </TouchableOpacity>
           </View>
+          <View style={s.supportGrid}>
+            <TouchableOpacity style={[s.supportBtn, { backgroundColor: cardBg, borderColor: border }]} onPress={() => Linking.openURL(ENDPOINTS.privacyPolicy).catch(() => {})} accessibilityRole="link">
+              <Text style={{ fontSize: 20 }}>🔒</Text>
+              <Text style={[s.supportBtnTitle, { color: txt }]}>PRIVACY POLICY</Text>
+              <Text style={[s.supportBtnDesc, { color: txtSec }]}>What we collect & why</Text>
+            </TouchableOpacity>
+          </View>
         </StaggeredSection>
 
         {/* Theme switch button */}
@@ -1225,6 +1235,11 @@ export default function ProfileScreen() {
             <Text style={s.logoutText}>SIGN OUT</Text>
           </TouchableOpacity>
           <Text style={s.logoutSubText}>Sign out of your Zenvy account on this phone</Text>
+
+          {/* Account deletion (Google Play requirement): anonymises the account + deletes personal data */}
+          <TouchableOpacity onPress={() => setShowDeleteAccount(true)} accessibilityRole="button" style={{ alignItems: 'center', paddingVertical: 14 }}>
+            <Text style={{ color: '#EF4444', fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' }}>Delete my account</Text>
+          </TouchableOpacity>
         </StaggeredSection>
 
       </ScrollView>
@@ -1486,6 +1501,17 @@ export default function ProfileScreen() {
         </View>
       </KeyboardAvoidingView>
       </Modal>
+
+      <DeleteAccountModal
+        visible={showDeleteAccount}
+        phone={user?.phone}
+        onClose={() => setShowDeleteAccount(false)}
+        onDeleted={async () => {
+          setShowDeleteAccount(false);
+          await logout();
+          router.replace('/login');
+        }}
+      />
 
       {/* ─── MODAL: ABOUT US ─── */}
       <Modal visible={showAbout} animationType="slide" transparent={true} onRequestClose={() => setShowAbout(false)}>

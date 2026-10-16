@@ -165,7 +165,8 @@ const OTP_DAILY_CAP = Math.max(1, parseInt(process.env.OTP_DAILY_CAP, 10) || 8);
 const OTP_PURPOSES = {
   auth: 'auth', login: 'auth', register: 'auth', link_google: 'auth',
   reset_password: 'reset_password', reset: 'reset_password',
-  change_phone: 'change_phone'
+  change_phone: 'change_phone',
+  delete_account: 'delete_account' // re-authentication before POST /api/users/account/delete
 };
 
 const normalizePurpose = (p) => (p === undefined || p === null || p === '' ? 'auth' : OTP_PURPOSES[String(p)] || null);
@@ -871,7 +872,7 @@ const sendOtp = async (req, res) => {
     }
 
     const User = getUserModel();
-    if (purpose === 'reset_password' && !(await User.findOne({ where: { phone: cleanPhone } }))) {
+    if ((purpose === 'reset_password' || purpose === 'delete_account') && !(await User.findOne({ where: { phone: cleanPhone } }))) {
       return res.status(404).json({ code: 'ACCOUNT_NOT_FOUND', message: 'No Zenvy account uses this number.' });
     }
     if (purpose === 'change_phone' && await User.findOne({ where: { phone: cleanPhone } })) {

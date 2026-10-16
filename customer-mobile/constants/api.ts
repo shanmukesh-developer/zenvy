@@ -38,6 +38,11 @@ export const ENDPOINTS = {
   logout: `${API_URL}/api/users/logout`,
   fcmToken: `${API_URL}/api/users/fcm-token`,
   fcmTokenRemove: `${API_URL}/api/users/fcm-token/remove`,
+  // Account deletion (Profile -> Delete my account) + public legal pages
+  accountDeletionCheck: `${API_URL}/api/users/account/deletion-check`,
+  accountDelete: `${API_URL}/api/users/account/delete`,
+  privacyPolicy: `${API_URL}/legal/privacy`,
+  deleteAccountInfo: `${API_URL}/legal/delete-account`,
 
   // Restaurants
   restaurants: `${API_URL}/api/users/restaurants`,
