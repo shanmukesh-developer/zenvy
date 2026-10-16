@@ -3,17 +3,17 @@ import React, { memo, useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, RefreshControl, SectionList, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FormMode, ItemForm } from '../components/ItemForm';
-import { rupees } from '../lib/model';
+import { dietOf, rupees } from '../lib/model';
 import { useStore } from '../state/StoreProvider';
 import { color, font, radius, space, touch } from '../theme';
 import { Button, EmptyState, ErrorStrip, SkeletonCard } from '../ui/kit';
-import type { MenuItem } from '../types';
+import type { Diet, MenuItem } from '../types';
 
-function VegMark({ veg }: { veg: boolean | null }) {
-  if (veg === null) return null;
-  const c = veg ? color.veg : color.nonVeg;
+function VegMark({ diet }: { diet: Diet | null }) {
+  if (diet === null) return null;
+  const c = diet === 'veg' ? color.veg : diet === 'egg' ? color.warning : color.nonVeg;
   return (
-    <View style={[styles.veg, { borderColor: c }]} accessibilityLabel={veg ? 'Veg' : 'Non-veg'}>
+    <View style={[styles.veg, { borderColor: c }]} accessibilityLabel={diet === 'veg' ? 'Veg' : diet === 'egg' ? 'Egg' : 'Non-veg'}>
       <View style={[styles.vegDot, { backgroundColor: c }]} />
     </View>
   );
@@ -40,7 +40,7 @@ const MenuRow = memo(function MenuRow({ item, pending, onToggle, onEdit }: {
         </View>
         <View style={{ flex: 1, gap: 2 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs }}>
-            <VegMark veg={item.isVegetarian} />
+            <VegMark diet={dietOf(item)} />
             <Text style={[font.body, { color: on ? color.text : color.textMuted, fontWeight: '800', flex: 1 }]} numberOfLines={2}>{item.name}</Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs }}>

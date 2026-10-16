@@ -57,9 +57,13 @@ export async function getStore(id: string): Promise<{ store: StoreState; raw: an
   return { store: normalizeStore(raw), raw };
 }
 
-/** The stall's latest orders, with the customer's name + phone (owning vendor only, contract §4). */
-export async function getOrders(id: string): Promise<Order[]> {
-  const rows = await apiFetch<any[]>(`/api/restaurants/${enc(id)}/orders`);
+/**
+ * The stall's orders, with the customer's name + phone (owning vendor only, contract §4).
+ * `scope: 'active'` (routine polls / socket refreshes): only open orders plus today's (IST) finished ones,
+ * so the poll stays small. Without it: the latest 200 orders (Done tab + 7-day numbers).
+ */
+export async function getOrders(id: string, scope?: 'active'): Promise<Order[]> {
+  const rows = await apiFetch<any[]>(`/api/restaurants/${enc(id)}/orders${scope ? `?scope=${scope}` : ''}`);
   return (Array.isArray(rows) ? rows : []).map(normalizeOrder).filter((o): o is Order => !!o);
 }
 
@@ -105,8 +109,10 @@ export interface MenuItemBody {
   description: string | null;
   imageUrl: string | null;
   isVegetarian: boolean;
-  /** veg / nonveg (the server keeps isVegetarian in step). */
+  /** veg / nonveg / egg (the server keeps isVegetarian in step). */
   dietType: 'veg' | 'nonveg' | 'egg';
+  /** Sent only to drop an old "egg" tag when the dish is no longer egg. */
+  tags?: string[];
   /** Create honours it in the same write; on edit sent only when it changed. */
   isAvailable?: boolean;
 }

@@ -3,7 +3,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { shopLine, useOpenToggle } from '../components/ShopBar';
-import { formatHHMM, istDayKey, rupees, todayIST, todayNumbers } from '../lib/model';
+import { deliveredDay, formatHHMM, istDayKey, rupees, todayIST, todayNumbers } from '../lib/model';
 import { useStore } from '../state/StoreProvider';
 import { color, font, radius, space, touch } from '../theme';
 import { Button, Card, ErrorStrip, Sheet } from '../ui/kit';
@@ -130,9 +130,11 @@ export default function ShopScreen() {
     for (const o of orders) {
       if (!o.createdAt || o.status === 'Cancelled') continue;
       const d = days.find((x) => x.key === istDayKey(o.createdAt as string));
-      if (!d) continue;
-      d.orders += 1;
-      if (o.status === 'Delivered' && o.isCOD) d.cash += o.finalPrice;
+      if (d) d.orders += 1;
+      // Cash on the day it was collected (same rule as today's tile).
+      const paidOn = o.status === 'Delivered' && o.isCOD ? deliveredDay(o) : null;
+      const c = paidOn ? days.find((x) => x.key === istDayKey(paidOn)) : null;
+      if (c) c.cash += o.finalPrice;
     }
     return { ...t, days, maxDay: Math.max(1, ...days.map((d) => d.orders)) };
   }, [orders]);
@@ -205,7 +207,7 @@ export default function ShopScreen() {
             <Text style={[font.small, { color: color.text, width: 100, textAlign: 'right' }]}>{d.orders} · {rupees(Math.round(d.cash))}</Text>
           </View>
         ))}
-        <Text style={[font.small, { color: color.textMuted }]}>Orders (not cancelled) · cash from delivered orders. From your latest 200 orders.</Text>
+        <Text style={[font.small, { color: color.textMuted }]}>Orders (not cancelled) by the day placed · cash by the day collected. From your latest 200 orders.</Text>
       </Card>
 
       {toggle.sheets}

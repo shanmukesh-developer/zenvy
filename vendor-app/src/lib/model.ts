@@ -1,6 +1,6 @@
 // Turns server order / menu / shop rows into the shapes the UI renders, plus IST time helpers.
 // Every field is defensive: null / missing / malformed data never crashes a screen.
-import type { MenuItem, Order, OrderItem, OrderStage, StoreState } from '../types';
+import type { Diet, MenuItem, Order, OrderItem, OrderStage, StoreState } from '../types';
 
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 
@@ -116,6 +116,14 @@ function roomFromAddress(address: string): string | null {
   return m ? m[1].toUpperCase() : null;
 }
 
+/** A profile hostel / room for the chips: only when the delivery address is empty or mentions it. */
+function profilePlace(v: string | null, address: string): string | null {
+  if (!v) return null;
+  if (!address.trim()) return v.toUpperCase();
+  const esc = v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|[^A-Za-z0-9])${esc}($|[^A-Za-z0-9])`, 'i').test(address) ? v.toUpperCase() : null;
+}
+
 export function normalizeOrder(raw: any): Order | null {
   const id = raw?.id || raw?._id;
   if (!id || typeof id !== 'string') return null;
@@ -159,8 +167,10 @@ export function normalizeOrder(raw: any): Order | null {
     isCOD,
     collectAmount: isCOD ? finalPrice : 0,
     deliveryAddress: address,
-    hostelBlock: str(c?.hostelBlock) || str(raw.hostelBlock) || str(u?.hostelBlock) || blockFromAddress(address),
-    roomNumber: str(c?.roomNumber) || str(raw.roomNumber) || str(u?.roomNumber) || roomFromAddress(address),
+    // The address typed at checkout wins: the profile's hostel / room may be somewhere else (ordering from a
+    // friend's room, the library). A profile value is used only when the address names it too, or is empty.
+    hostelBlock: blockFromAddress(address) || profilePlace(str(c?.hostelBlock) || str(raw.hostelBlock) || str(u?.hostelBlock), address),
+    roomNumber: roomFromAddress(address) || profilePlace(str(c?.roomNumber) || str(raw.roomNumber) || str(u?.roomNumber), address),
     instructions,
     cancellationReason: typeof raw.cancellationReason === 'string' ? raw.cancellationReason : null,
     customerName,
@@ -181,7 +191,20 @@ export function normalizeMenuItem(raw: any): MenuItem | null {
     category: str(raw.category) || 'Other',
     isVegetarian: typeof raw.isVegetarian === 'boolean' ? raw.isVegetarian : null,
     isAvailable: raw.isAvailable !== false,
+    dietType: raw.dietType === 'veg' || raw.dietType === 'nonveg' || raw.dietType === 'egg' ? raw.dietType : null,
+    tags: Array.isArray(raw.tags) ? raw.tags.filter((t: unknown): t is string => typeof t === 'string') : [],
   };
+}
+
+export const isEggTag = (t: string) => t.trim().toLowerCase() === 'egg';
+
+/** Veg / non-veg / egg for the form and the row mark. */
+export function dietOf(item: Pick<MenuItem, 'isVegetarian' | 'tags' | 'dietType'>): Diet | null {
+  if (item.dietType) return item.dietType;
+  if (item.tags.some(isEggTag)) return 'egg';
+  if (item.isVegetarian === true) return 'veg';
+  if (item.isVegetarian === false) return 'nonveg';
+  return null;
 }
 
 export function normalizeStore(raw: any): StoreState {
@@ -280,11 +303,16 @@ export const rupees = (n: number | null | undefined) => {
 export const TIMED_OUT_REASON = /did not accept the order in time/i;
 export const TIMEOUT_REASON_TEXT = 'The stall did not accept the order in time';
 
+/** When a delivered order's cash was collected (older rows may lack deliveredAt). */
+export const deliveredDay = (o: Order) => o.deliveredAt || o.updatedAt || o.createdAt;
+
 /** Today's real numbers (IST) from the orders list. Shared by the Shop screen and the closing announcement. */
 export function todayNumbers(orders: Order[]) {
   const today = orders.filter((o) => isTodayIST(o.createdAt));
   const live = today.filter((o) => o.status !== 'Cancelled');
-  const delivered = today.filter((o) => o.status === 'Delivered');
+  // Cash is counted on the day it was collected (delivered), not the day the order was placed: an order
+  // placed at 11:55 PM and delivered after midnight is today's cash in hand.
+  const delivered = orders.filter((o) => o.status === 'Delivered' && isTodayIST(deliveredDay(o)));
   const cancelled = today.filter((o) => o.status === 'Cancelled');
   const onTheWay = today.filter((o) => o.stage === 'outForDelivery');
   const sum = (arr: Order[], f: (o: Order) => number) => Math.round(arr.reduce((a, o) => a + (f(o) || 0), 0));

@@ -93,7 +93,8 @@ export default function LoginScreen() {
         setError('This is a restaurant account. Please use the Zenvy Restaurant app.');
         return;
       }
-      await setSavedPhone(remember ? id : null);
+      // Saved as 10 digits: the field already shows +91 in front ("+91 +91 98765…" otherwise).
+      await setSavedPhone(remember ? (normalizePhone(id) || id) : null);
       await signIn(data.token, data.restaurant);
     } catch (e) {
       setError(friendly(e, server === 'waking'));

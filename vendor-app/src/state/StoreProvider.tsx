@@ -6,7 +6,7 @@ import { AppState } from 'react-native';
 import { FALLBACK_POLL_MS, SAFETY_POLL_MS, STORAGE } from '../config';
 import * as api from '../lib/api';
 import { ApiError, NetworkError, errorMessage } from '../lib/http';
-import { normalizeOrder, rupees, stageOf, TIMEOUT_REASON_TEXT, todayNumbers } from '../lib/model';
+import { isEggTag, isTodayIST, normalizeOrder, rupees, stageOf, TIMEOUT_REASON_TEXT, todayNumbers } from '../lib/model';
 import { onOrderPush, onPushTokenChange, registerStorePush, type PushState } from '../lib/push';
 import { safeGet, safeSet } from '../lib/storage';
 import { startKitchenService, stopKitchenService } from '../voice/kitchenService';
@@ -42,7 +42,7 @@ interface StoreCtx {
   /** Last failed action per order (shown inline: toasts sit behind the alert / sheet modals). */
   actionErrors: Record<string, string>;
   retryConnection: () => void;
-  refreshOrders: (opts?: { pull?: boolean }) => Promise<void>;
+  refreshOrders: (opts?: { pull?: boolean; full?: boolean }) => Promise<void>;
   refreshStore: () => Promise<void>;
   refreshMenu: () => Promise<void>;
   /** "Later": stop ringing for these orders (remembered across restarts). They stay in New. */
@@ -70,6 +70,10 @@ const ACTIVE_STAGES: Order['stage'][] = ['new', 'accepted', 'outForDelivery'];
 const SILENCE_KEEP_MS = 6 * 60 * 60 * 1000;
 /** While closed only by the hours (switch on), re-check the store this often so it reopens on time. */
 const CLOSED_STORE_CHECK_MS = 5 * 60 * 1000;
+/** The full order list (Done tab, 7-day numbers) is refetched at most this often; routine polls use ?scope=active. */
+const FULL_ORDERS_EVERY_MS = 30 * 60 * 1000;
+/** After an order action succeeds, taps on a different order's buttons are ignored this long (ghost double tap). */
+const GHOST_TAP_MS = 700;
 const newIdempotencyKey = (rid: string) => `${rid}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
@@ -115,20 +119,42 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // ── Fetchers (coalesced: a refresh asked for during one in flight runs once more afterwards) ──
+  // Routine refreshes (polls, socket events, after an action) ask only for the active orders
+  // (?scope=active: open + today's finished). The full latest-200 list (Done tab, 7-day numbers) is fetched
+  // at start, on pull-to-refresh, every FULL_ORDERS_EVERY_MS, and whenever an active order we hold is missing
+  // from the active answer (it finished on an earlier day: only the full list has its final status).
   const ordersInFlight = useRef<Promise<void> | null>(null);
   const ordersAgain = useRef(false);
-  const refreshOrdersRef = useRef<(opts?: { pull?: boolean }) => Promise<void>>(async () => {});
-  const refreshOrders = useCallback(async (opts?: { pull?: boolean }) => {
+  const fullAgain = useRef(false);
+  const lastFullAt = useRef(0);
+  const refreshOrdersRef = useRef<(opts?: { pull?: boolean; full?: boolean }) => Promise<void>>(async () => {});
+  const refreshOrders = useCallback(async (opts?: { pull?: boolean; full?: boolean }) => {
     if (opts?.pull) setRefreshing(true);
     if (ordersInFlight.current) {
       ordersAgain.current = true;
+      if (opts?.pull || opts?.full) fullAgain.current = true;
       return ordersInFlight.current;
     }
+    const full = !!(opts?.pull || opts?.full) || !lastFullAt.current || Date.now() - lastFullAt.current > FULL_ORDERS_EVERY_MS;
     const run = (async () => {
       const startedAt = Date.now();
       try {
-        const fetched = await api.getOrders(rid);
+        const got = await api.getOrders(rid, full ? undefined : 'active');
         if (!alive.current) return;
+        let fetched = got;
+        if (full) {
+          lastFullAt.current = startedAt;
+        } else {
+          // Keep the older history (finished orders from earlier days) the active answer leaves out.
+          const gotIds = new Set(got.map((o) => o.id));
+          const kept = ordersRef.current.filter((o) => !o.partial && !gotIds.has(o.id));
+          const history = kept.filter((o) => o.stage === 'done' && !isTodayIST(o.createdAt));
+          // Any other order we hold that the server left out is no longer active (finished on an earlier day,
+          // or a finished order from today after the IST midnight): get its real status from the full list.
+          if (kept.length > history.length) { ordersAgain.current = true; fullAgain.current = true; }
+          fetched = [...got, ...history]
+            .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+        }
         const lp = localPatches.current;
         const fresh = fetched.map((o) => {
           const p = lp[o.id];
@@ -157,7 +183,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         if (alive.current) setRefreshing(false);
         if (ordersAgain.current && alive.current) {
           ordersAgain.current = false;
-          refreshOrdersRef.current();
+          const again = fullAgain.current;
+          fullAgain.current = false;
+          refreshOrdersRef.current(again ? { full: true } : undefined);
         }
       }
     })();
@@ -245,11 +273,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   // Back from the phone's settings (or any resume): retry closed-app alerts if they were off.
   // 'unknown' = the token POST failed (network / server waking up): retried too, otherwise a phone that
-  // stays open for days never gets closed-app alerts.
+  // stays open for days never gets closed-app alerts. 'ok' runs too: it is a local check, and re-sends the
+  // token to the server once a day (it may have been dropped there).
   const pushStateRef = useRef<PushState>('unknown');
   pushStateRef.current = pushState;
   useEffect(() => {
-    if (pushState === 'ok') return;
     const sub = AppState.addEventListener('change', (st) => {
       if (st === 'active') registerStorePush(rid).then((r) => { if (alive.current) setPushState(r); });
     });
@@ -424,8 +452,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, []);
   patchOrderRef.current = patchOrder;
 
+  // The order an action just finished on, and when. When a step succeeds the card leaves its tab (or the
+  // alert shows the next order) and the list moves under the finger: the second tap of a double tap then
+  // lands on ANOTHER order's button at the same spot (it marked a second order delivered, cash not
+  // collected). Taps on a different order right after a success are ignored for a moment.
+  const lastDone = useRef<{ id: string; at: number }>({ id: '', at: 0 });
   const runAction = useCallback(async (o: Order, kind: BusyKind, fn: () => Promise<void>) => {
     if (busyRef.current[o.id]) return false; // double tap / two buttons for the same order
+    if (lastDone.current.id !== o.id && Date.now() - lastDone.current.at < GHOST_TAP_MS) return false;
     busyRef.current = { ...busyRef.current, [o.id]: kind };
     setBusy(busyRef.current);
     const setErr = (msg: string | null) => setActionErrors((prev) => {
@@ -440,6 +474,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setErr(null);
     try {
       await fn();
+      lastDone.current = { id: o.id, at: Date.now() };
       scheduleOrders(500);
       return true;
     } catch (e) {
@@ -601,22 +636,20 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       category: input.category || null,
       description: input.description || null,
       imageUrl: input.imageUrl,
-      isVegetarian: input.isVegetarian,
-      dietType: input.isVegetarian ? 'veg' : 'nonveg',
+      isVegetarian: input.diet === 'veg',
+      dietType: input.diet,
     };
     // Availability: always on create (same write: a "not available" item is never live for a moment);
     // on edit only when it changed.
     if (!editing || input.isAvailable !== editing.isAvailable) body.isAvailable = input.isAvailable;
+    // Older egg dishes carry an "egg" tag: drop it when the dish is no longer egg (dietType is the truth now).
+    if (editing && input.diet !== 'egg' && editing.tags.some(isEggTag)) body.tags = editing.tags.filter((t) => !isEggTag(t));
     let saved: MenuItem;
     if (editing) {
-      // Veg flag unchanged: leave the food type alone, so an "egg" item (set by Zenvy) is not turned
-      // into "nonveg" by an unrelated edit (the form only knows veg / non-veg).
-      const patch: Partial<api.MenuItemBody> = { ...body };
-      if (input.isVegetarian === editing.isVegetarian) { delete patch.isVegetarian; delete patch.dietType; }
-      const res = await api.updateMenuItem(editing.id, patch);
+      const res = await api.updateMenuItem(editing.id, body);
       saved = res || {
         ...editing, ...body, category: input.category || 'Other', description: input.description || null,
-        isAvailable: body.isAvailable ?? editing.isAvailable,
+        tags: body.tags ?? editing.tags, isAvailable: body.isAvailable ?? editing.isAvailable,
       };
     } else {
       // One key per "Add" attempt for the same input: a retry after a timeout reuses it (servers that honour

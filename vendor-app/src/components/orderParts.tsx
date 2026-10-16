@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Linking, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CANCEL_REASONS, NEW_ORDER_LATE_MIN, NEW_ORDER_WARN_MIN, REJECT_REASONS } from '../config';
-import { agoText, clockIST, minutesSince, rupees, telDigits, waDigits } from '../lib/model';
+import { agoText, clockIST, istDayKey, isTodayIST, minutesSince, rupees, telDigits, waDigits } from '../lib/model';
 import { useNow, useStore } from '../state/StoreProvider';
 import { color, font, radius, space } from '../theme';
 import { Badge, Button, Chip, Sheet } from '../ui/kit';
@@ -20,6 +20,14 @@ export const whatsappNumber = (phone: string | null | undefined, text?: string) 
   Linking.openURL(`https://wa.me/${waDigits(phone)}${q}`).catch(() => {});
 };
 
+const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+/** Finished order time: "9:05 PM" today, "Thu 15 · 9:05 PM" on an earlier day (the Done tab mixes days). */
+function doneWhen(d: string | null): string {
+  if (!d || isTodayIST(d)) return clockIST(d);
+  const [y, m, day] = istDayKey(d).split('-').map(Number);
+  return `${DAYS[new Date(Date.UTC(y, m - 1, day)).getUTCDay()]} ${day} · ${clockIST(d)}`;
+}
+
 export function Elapsed({ order, onDark }: { order: Order; onDark?: boolean }) {
   const now = useNow();
   const mins = minutesSince(order.createdAt, now);
@@ -29,7 +37,7 @@ export function Elapsed({ order, onDark }: { order: Order; onDark?: boolean }) {
       : isNew && mins >= NEW_ORDER_WARN_MIN ? color.warning : color.textMuted;
   return (
     <Text style={[font.small, { color: tint, fontWeight: isNew && mins >= NEW_ORDER_WARN_MIN ? '800' : '600' }]}>
-      {order.stage === 'done' ? clockIST(order.createdAt) : agoText(order.createdAt, now)}
+      {order.stage === 'done' ? doneWhen(order.createdAt) : agoText(order.createdAt, now)}
       {isNew && mins >= NEW_ORDER_LATE_MIN ? ' · accept now' : ''}
     </Text>
   );

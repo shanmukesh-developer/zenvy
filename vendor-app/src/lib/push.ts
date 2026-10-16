@@ -14,6 +14,8 @@ import { safeGet, safeSet } from './storage';
 const APP: 'restaurant' | 'vendor' = 'vendor';
 const APP_TITLE = 'Zenvy Vendor';
 const REGISTERED_KEY = '@zenvy_vendor_push_registered';
+/** The registered token is re-sent to the server at most this often (see registerStorePush). */
+const REREGISTER_MS = 24 * 60 * 60 * 1000;
 /** Same id the server sends store pushes on (utils/storePush.js). */
 export const ORDERS_CHANNEL = 'delivery-alerts-v2';
 const RING_CHANNEL = 'zenvy-ring-v1';
@@ -179,9 +181,14 @@ export async function registerStorePush(storeId: string): Promise<PushState> {
   currentToken = token;
   try {
     const marker = `${storeId}:${token}`;
-    if ((await safeGet(REGISTERED_KEY)) === marker) return 'ok';
+    // Re-sent at least once a day even when unchanged: the server may have dropped it (stale-token prune,
+    // another stall's login on this phone, a database move), and a phone that never re-sends would stay
+    // silent while closed forever. The server treats a repeat as a no-op.
+    const saved = (await safeGet(REGISTERED_KEY)) || '';
+    const [savedMarker, savedAt] = saved.split('|');
+    if (savedMarker === marker && Date.now() - Number(savedAt || 0) < REREGISTER_MS) return 'ok';
     await registerPushToken(token, APP);
-    await safeSet(REGISTERED_KEY, marker);
+    await safeSet(REGISTERED_KEY, `${marker}|${Date.now()}`);
     return 'ok';
   } catch (err) {
     console.warn('[PUSH_REGISTER]', (err as any)?.message || err);
@@ -199,7 +206,7 @@ export function onPushTokenChange(storeId: string): () => void {
       currentToken = token;
       try {
         await registerPushToken(token, APP);
-        await safeSet(REGISTERED_KEY, `${storeId}:${token}`);
+        await safeSet(REGISTERED_KEY, `${storeId}:${token}|${Date.now()}`);
       } catch { /* retried on the next start */ }
     });
     return () => sub.remove();

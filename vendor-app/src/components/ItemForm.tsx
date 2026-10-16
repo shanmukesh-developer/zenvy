@@ -8,14 +8,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAvoidingView } from '../ui/KeyboardAvoidingView';
 import * as api from '../lib/api';
+import { dietOf } from '../lib/model';
 import { errorMessage } from '../lib/http';
 import { pickPhoto, PhotoSource } from '../lib/photo';
 import type { DeleteResult } from '../state/StoreProvider';
 import { color, font, radius, space, touch } from '../theme';
 import { Button, Chip, IconButton } from '../ui/kit';
-import type { ItemInput, MenuItem } from '../types';
-
-type Diet = 'veg' | 'nonveg';
+import type { Diet, ItemInput, MenuItem } from '../types';
 
 export type FormMode =
   | { kind: 'add'; category?: string }
@@ -46,7 +45,7 @@ function draftFor(mode: FormMode | null): Draft {
     name: mode.kind === 'duplicate' ? `${it.name} (copy)`.slice(0, NAME_MAX) : it.name,
     price: String(it.price || ''),
     category: it.category === 'Other' ? '' : it.category,
-    diet: it.isVegetarian === false ? 'nonveg' : 'veg',
+    diet: dietOf(it) || 'veg',
     description: it.description || '',
     imageUrl: it.imageUrl,
     isAvailable: mode.kind === 'duplicate' ? true : it.isAvailable,
@@ -122,6 +121,13 @@ export function ItemForm({ mode, categories, onClose, onSave, onDelete, onDuplic
     setNewCat(!!d.category && !categories.includes(d.category));
   }, [modeKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The delete confirmation opens at the very bottom of the form, under the fold: bring its buttons into view.
+  useEffect(() => {
+    if (confirm !== 'delete') return;
+    const t = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 60);
+    return () => clearTimeout(t);
+  }, [confirm]);
+
   const editing = mode?.kind === 'edit' ? mode.item : null;
   const errs = useMemo(() => validate(draft), [draft]);
   const show = (f: Field) => (triedSave || touched[f]) ? errs[f] : undefined;
@@ -172,7 +178,7 @@ export function ItemForm({ mode, categories, onClose, onSave, onDelete, onDuplic
       name,
       price: parsePrice(draft.price) as number,
       category: known || category,
-      isVegetarian: draft.diet === 'veg',
+      diet: draft.diet,
       description: draft.description.trim(),
       imageUrl: draft.imageUrl,
       isAvailable: draft.isAvailable,
@@ -205,6 +211,7 @@ export function ItemForm({ mode, categories, onClose, onSave, onDelete, onDuplic
   const diets: { key: Diet; label: string; c: string }[] = [
     { key: 'veg', label: 'Veg', c: color.veg },
     { key: 'nonveg', label: 'Non-veg', c: color.nonVeg },
+    { key: 'egg', label: 'Egg', c: color.warning },
   ];
 
   return (
@@ -293,7 +300,7 @@ export function ItemForm({ mode, categories, onClose, onSave, onDelete, onDuplic
           </View>
           {show('price') ? <Text style={styles.err}>{show('price')}</Text> : null}
 
-          {/* Veg / non-veg */}
+          {/* Veg / non-veg / egg */}
           <Text style={styles.label}>TYPE *</Text>
           <View style={{ flexDirection: 'row', gap: space.xs }}>
             {diets.map((d) => {
@@ -304,6 +311,7 @@ export function ItemForm({ mode, categories, onClose, onSave, onDelete, onDuplic
                   onPress={() => set('diet', d.key)}
                   accessibilityRole="radio"
                   accessibilityState={{ selected: sel }}
+                  accessibilityLabel={d.label}
                   style={[styles.diet, sel && { borderColor: d.c, backgroundColor: d.c }]}
                 >
                   <View style={[styles.vegBox, { borderColor: sel ? color.textInverse : d.c }]}>
@@ -327,6 +335,7 @@ export function ItemForm({ mode, categories, onClose, onSave, onDelete, onDuplic
                     onPress={() => { setNewCat(false); set('category', sel ? '' : c); }}
                     accessibilityRole="radio"
                     accessibilityState={{ selected: sel }}
+                    accessibilityLabel={`Category ${c}`}
                     style={[styles.cat, sel && { backgroundColor: color.text, borderColor: color.text }]}
                   >
                     <Text style={[font.small, { color: sel ? color.textInverse : color.text, fontWeight: '800' }]} numberOfLines={1}>{c}</Text>

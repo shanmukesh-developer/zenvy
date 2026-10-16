@@ -85,14 +85,20 @@ export interface MenuItem {
   category: string;
   isVegetarian: boolean | null;
   isAvailable: boolean;
+  /** Server food type (MenuItem.dietType). null on older items: fall back to isVegetarian / the "egg" tag. */
+  dietType: Diet | null;
+  /** Free-form server tags. Older egg dishes were marked with an "egg" tag before dietType existed. */
+  tags: string[];
 }
+
+export type Diet = 'veg' | 'nonveg' | 'egg';
 
 /** What the add / edit item form sends to the store. */
 export interface ItemInput {
   name: string;
   price: number;
   category: string;
-  isVegetarian: boolean;
+  diet: Diet;
   description: string;
   imageUrl: string | null;
   isAvailable: boolean;

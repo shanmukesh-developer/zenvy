@@ -29,7 +29,9 @@ function LinkRow({ icon, label, sub, onPress }: { icon: IconName; label: string;
 const LANGS: VoiceLang[] = ['te', 'hi', 'en'];
 
 export default function SettingsScreen() {
-  const { restaurant, store, setOpen } = useStore();
+  const { restaurant, store, setOpen, orders } = useStore();
+  // Accepted / on-the-way orders are never auto-cancelled for a stall: the customer keeps waiting for them.
+  const running = orders.filter((o) => o.stage === 'accepted' || o.stage === 'outForDelivery').length;
   const { signOut } = useSession();
   const voice = useVoice();
   const [confirmOut, setConfirmOut] = useState(false);
@@ -149,6 +151,11 @@ export default function SettingsScreen() {
             ? 'Your shop is OPEN. After you log out, new orders will not ring on this phone and will be cancelled if nobody accepts them.'
             : 'New orders will not ring on this phone after you log out.'}
         </Text>
+        {running ? (
+          <Text style={[font.body, { color: color.alertDark, fontWeight: '800', marginBottom: space.md }]}>
+            You still have {running} order{running === 1 ? '' : 's'} to deliver. The customer{running === 1 ? ' is' : 's are'} waiting: deliver or cancel {running === 1 ? 'it' : 'them'} first.
+          </Text>
+        ) : null}
         {closeErr ? <Text style={[font.body, { color: color.alertDark, fontWeight: '700', marginBottom: space.sm }]}>{closeErr}</Text> : null}
         <View style={{ gap: space.xs }}>
           {canCloseOnLogout ? (
