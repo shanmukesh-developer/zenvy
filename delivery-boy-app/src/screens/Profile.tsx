@@ -125,6 +125,11 @@ export function ProfileScreen() {
             ? `You still have ${r.active.data.length} active deliver${r.active.data.length === 1 ? 'y' : 'ies'}. Finish first if you can.`
             : 'You will go offline and stop getting orders.'}
         </Text>
+        {r.syncPendingIds.size ? (
+          <Text style={[T.body, { color: C.red, fontWeight: '700' }]} accessibilityRole="alert">
+            {`${r.syncPendingIds.size} order step${r.syncPendingIds.size === 1 ? ' is' : 's are'} not sent yet (no internet). Connect to the internet and wait a moment first, or ${r.syncPendingIds.size === 1 ? 'it' : 'they'} will be lost when you log out.`}
+          </Text>
+        ) : null}
         <View style={{ flexDirection: 'row', gap: S.md }}>
           <Btn title="Cancel" variant="outline" size="mid" onPress={() => setConfirmLogout(false)} style={{ flex: 1 }} />
           <Btn

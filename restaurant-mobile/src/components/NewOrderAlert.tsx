@@ -14,7 +14,7 @@ import { PrepPicker, RejectPicker } from './AcceptReject';
 import { CampusTag, Elapsed, ItemLines, NoteCallout, PaymentBadge } from './orderParts';
 
 export function NewOrderAlert() {
-  const { alertOrders, silence, busy } = useStore();
+  const { alertOrders, silence, busy, isGhostTap } = useStore();
   const voice = useVoice();
   const insets = useSafeAreaInsets();
   const order = alertOrders[0] || null;
@@ -25,6 +25,8 @@ export function NewOrderAlert() {
   if (!order) return null;
   const more = alertOrders.length - 1;
   const b = busy[order.id];
+  // A double tap on the previous order's button must not open / silence this (next) order.
+  const guarded = (fn: () => void) => () => { if (!isGhostTap(order.id)) fn(); };
 
   return (
     // Hardware back only steps out of the accept / reject picker. It never silences the order: an
@@ -67,14 +69,14 @@ export function NewOrderAlert() {
             <RejectPicker order={order} onRed onDone={() => setMode('view')} onBack={() => setMode('view')} />
           ) : (
             <View style={{ gap: space.sm }}>
-              <Button label="ACCEPT" variant="accept" size="huge" icon="checkmark-circle" onPress={() => setMode('accept')} disabled={!!b} />
+              <Button label="ACCEPT" variant="accept" size="huge" icon="checkmark-circle" onPress={guarded(() => setMode('accept'))} disabled={!!b} />
               <View style={styles.row}>
-                <Button label="Reject" variant="onRed" onPress={() => setMode('reject')} disabled={!!b} style={{ flex: 1 }} />
+                <Button label="Reject" variant="onRed" onPress={guarded(() => setMode('reject'))} disabled={!!b} style={{ flex: 1 }} />
                 <Button
                   label="Later"
                   variant="outlineOnRed"
                   icon="volume-mute"
-                  onPress={() => silence([order.id])}
+                  onPress={guarded(() => silence([order.id]))}
                   disabled={!!b}
                   style={{ flex: 1 }}
                   a11y="Stop ringing for this order. It stays in New"

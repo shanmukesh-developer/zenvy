@@ -1274,6 +1274,22 @@ const initializeApp = async () => {
     setTimeout(runAutoCancel, 30 * 1000);
     setInterval(runAutoCancel, 2 * 60 * 1000);
 
+    // Stall orders open for hours are FLAGGED (never cancelled): admin + stall told once (utils/stallStuckJob).
+    let stallStuckRunning = false;
+    const runStallStuck = async () => {
+      if (stallStuckRunning) return;
+      stallStuckRunning = true;
+      try {
+        await require('./utils/stallStuckJob').flagStuckStallOrders(io);
+      } catch (e) {
+        console.warn('[STALL_STUCK] Error:', e.message);
+      } finally {
+        stallStuckRunning = false;
+      }
+    };
+    setTimeout(runStallStuck, 60 * 1000);
+    setInterval(runStallStuck, 15 * 60 * 1000);
+
     // Promotions past their featuredUntil end on their own (store row + Home banner), every 10 min.
     const runFeaturedExpiry = async () => {
       try {

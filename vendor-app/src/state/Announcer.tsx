@@ -115,7 +115,7 @@ export function Announcer() {
         cancelAnnouncements(`new:${o.id}`);
         const timedOut = TIMED_OUT_REASON.test(o.cancellationReason || '');
         // Key `cancel:<id>` is shared with our own reject / cancel, so those never announce twice.
-        announce(`cancel:${o.id}`, { kind: timedOut ? 'timedOut' : 'cancelled' }, { urgent: true });
+        announce(`cancel:${o.id}`, timedOut ? { kind: 'timedOut' } : { kind: 'cancelled', by: o.cancelledBy }, { urgent: true });
         if (Platform.OS !== 'web') Vibration.vibrate([0, 400, 200, 400]);
       }
     }

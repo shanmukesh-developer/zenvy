@@ -194,6 +194,22 @@ export async function forgetPushRegistration(): Promise<void> {
   }
 }
 
+/** True when the tray shows the server's NEW_ORDER push for this order (it already rang with its own sound). */
+export async function newOrderPushShown(orderId: string): Promise<boolean> {
+  try {
+    const list = await Notifications.getPresentedNotificationsAsync();
+    return list.some((n) => {
+      const content: any = n.request.content || {};
+      const trigger: any = n.request.trigger || {};
+      const data: any = { ...(trigger.remoteMessage?.data || {}), ...(content.data || {}) };
+      if (data.chime === true || data.type !== 'NEW_ORDER') return false;
+      return !data.orderId || String(data.orderId) === String(orderId);
+    });
+  } catch {
+    return false;
+  }
+}
+
 export function onPushReceived(cb: (data: Record<string, any>) => void): () => void {
   const sub = Notifications.addNotificationReceivedListener((n) => {
     const data = (n.request.content.data as any) || {};

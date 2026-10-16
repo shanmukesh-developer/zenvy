@@ -6,7 +6,7 @@ import { AppState } from 'react-native';
 import { FALLBACK_POLL_MS, SAFETY_POLL_MS, STORAGE } from '../config';
 import * as api from '../lib/api';
 import { ApiError, NetworkError, errorMessage } from '../lib/http';
-import { isEggTag, isTodayIST, normalizeOrder, rupees, stageOf, TIMEOUT_REASON_TEXT, todayNumbers } from '../lib/model';
+import { cancelledByFromCode, isEggTag, isTodayIST, normalizeOrder, rupees, stageOf, TIMEOUT_REASON_TEXT, todayNumbers } from '../lib/model';
 import { onOrderPush, onPushTokenChange, registerStorePush, type PushState } from '../lib/push';
 import { safeGet, safeSet } from '../lib/storage';
 import { startKitchenService, stopKitchenService } from '../voice/kitchenService';
@@ -356,6 +356,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       if (!id) return;
       if (status) {
         const patch: Partial<Order> = { status };
+        const by = status === 'Cancelled' ? cancelledByFromCode(p?.reason) : null;
+        if (by) patch.cancelledBy = by;
         if (status === 'Cancelled' && p?.reason === 'STORE_TIMEOUT') patch.cancellationReason = TIMEOUT_REASON_TEXT;
         else if (status === 'Cancelled' && typeof p?.reason === 'string' && p.reason && !/^[A-Z_]+$/.test(p.reason)) patch.cancellationReason = p.reason;
         patchOrderRef.current(id, patch);
@@ -517,7 +519,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     cancelAnnouncements(`new:${o.id}`);
     // Same key as the "cancelled" announcement, so the status change does not announce twice.
     announce(`cancel:${o.id}`, { kind: 'rejected' });
-    patchOrder(o.id, { status: 'Cancelled', cancellationReason: reason });
+    patchOrder(o.id, { status: 'Cancelled', cancellationReason: reason, cancelledBy: 'store' });
     toast.show(`#${o.shortId} rejected`, 'info');
   }), [runAction, patchOrder, toast]);
 
@@ -537,8 +539,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const cancel = useCallback((o: Order, reason: string) => runAction(o, 'cancel', async () => {
     await api.setOrderStatus(o.id, 'Cancelled', reason);
-    announce(`cancel:${o.id}`, { kind: 'rejected' });
-    patchOrder(o.id, { status: 'Cancelled', cancellationReason: reason });
+    // An accepted order the stall cancels itself: "Order cancelled", not "Order rejected" (that is for new orders).
+    announce(`cancel:${o.id}`, { kind: 'cancelled', by: 'store' });
+    patchOrder(o.id, { status: 'Cancelled', cancellationReason: reason, cancelledBy: 'store' });
     toast.show(`#${o.shortId} cancelled`, 'info');
   }), [runAction, patchOrder, toast]);
 

@@ -147,13 +147,16 @@ export function PastLine({ order }: { order: Order }) {
 
 /** One obvious action per stage: New → Accept (+ Reject), Preparing → MARK READY, Ready → info. */
 export function OrderActions({ order, onAccept, onReject }: { order: Order; onAccept: () => void; onReject: () => void }) {
-  const { busy, markReady } = useStore();
+  const { busy, markReady, isGhostTap } = useStore();
   const b = busy[order.id];
+  // Opening the accept / reject sheet is not a server action: guard it here against a double tap that
+  // landed on this card after the previous order left the list.
+  const guarded = (fn: () => void) => () => { if (!isGhostTap(order.id)) fn(); };
   if (order.stage === 'new') {
     return (
       <View style={styles.actions}>
-        <Button label="Reject" variant="rejectOutline" onPress={onReject} disabled={!!b} loading={b === 'reject'} style={{ flex: 1 }} />
-        <Button label="Accept" variant="accept" icon="checkmark-circle" onPress={onAccept} disabled={!!b} loading={b === 'accept'} style={{ flex: 2 }} />
+        <Button label="Reject" variant="rejectOutline" onPress={guarded(onReject)} disabled={!!b} loading={b === 'reject'} style={{ flex: 1 }} />
+        <Button label="Accept" variant="accept" icon="checkmark-circle" onPress={guarded(onAccept)} disabled={!!b} loading={b === 'accept'} style={{ flex: 2 }} />
       </View>
     );
   }

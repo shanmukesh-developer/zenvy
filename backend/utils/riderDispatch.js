@@ -10,6 +10,8 @@ const { getCoordsForAddress, getHaversineDistance } = require('./distance');
 const BASE_DELIVERY_FEE = 30;
 const riderPayout = (order) => (Number(order?.deliveryFee) > 0 ? Number(order.deliveryFee) : BASE_DELIVERY_FEE);
 
+// Orders one rider may hold at once (same env as the claim check in deliveryPartnerController).
+const MAX_ACTIVE_ORDERS = Math.max(1, parseInt(process.env.RIDER_MAX_ACTIVE_ORDERS, 10) || 3);
 const RIDER_FRESH_MS = Math.max(2, Number(process.env.RIDER_FRESH_MINUTES) || 10) * 60 * 1000;
 
 const riderFixAgeMs = (rider) => {
@@ -52,7 +54,24 @@ const RIDER_PUSH_ANDROID = Object.freeze({ priority: 'high', notification: { sou
 // Push NEW_ORDER to the `limit` best-placed riders. Never throws.
 const pushNearestRiders = async ({ restaurant, orderId, title, body, limit = 5, excludeRiderId = null, data = {} }) => {
   try {
-    const ranked = await rankOnlineRiders(restaurant, { excludeRiderId });
+    let ranked = await rankOnlineRiders(restaurant, { excludeRiderId });
+    // A rider already carrying the maximum orders cannot claim this one: do not ring them, and do not let
+    // them take one of the `limit` push slots from riders who can.
+    if (ranked.length) {
+      try {
+        const { Op, fn, col } = require('sequelize');
+        const rows = await require('../models/Order').getOrderModel().findAll({
+          attributes: ['deliveryPartnerId', [fn('COUNT', col('id')), 'n']],
+          where: { deliveryPartnerId: { [Op.in]: ranked.map(({ rider }) => rider.id) }, status: { [Op.notIn]: ['Delivered', 'Cancelled'] } },
+          group: ['deliveryPartnerId'],
+          raw: true,
+        });
+        const full = new Set(rows.filter((r) => Number(r.n) >= MAX_ACTIVE_ORDERS).map((r) => String(r.deliveryPartnerId)));
+        if (full.size) ranked = ranked.filter(({ rider }) => !full.has(String(rider.id)));
+      } catch (countErr) {
+        console.warn('[RIDER_DISPATCH_COUNT_WARN]', countErr.message);
+      }
+    }
     const tokens = ranked.slice(0, limit).flatMap(({ rider }) => tokensOf(rider));
     if (tokens.length === 0) return 0;
     // Rider app v3 channel (bundled 'alert' sound; the app deletes the old v2 channel).

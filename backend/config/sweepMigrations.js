@@ -47,6 +47,52 @@ const runSweepMigrations = async (sequelize) => {
     }
   }
 
+  if (sequelize.getDialect() === 'sqlite') {
+    // Same rider-ticket fix for SQLite (local / fallback DB): SQLite cannot drop a NOT NULL, so an old
+    // Tickets table is rebuilt once with the identical definition minus NOT NULL on userId (rows and
+    // indexes kept). Skipped when userId is already nullable.
+    try {
+      const [cols] = await sequelize.query("PRAGMA table_info('Tickets')");
+      const userCol = (cols || []).find((c) => c.name === 'userId');
+      if (userCol && Number(userCol.notnull) === 1) {
+        const [[tbl]] = await sequelize.query("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'Tickets'");
+        const [idx] = await sequelize.query("SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'Tickets' AND sql IS NOT NULL");
+        const createSql = String((tbl && tbl.sql) || '');
+        const relaxed = createSql
+          .replace(/^CREATE TABLE\s+[`"]?Tickets[`"]?/i, 'CREATE TABLE `Tickets_rebuild`')
+          .replace(/([`"]userId[`"]\s+[A-Z0-9_() ]*?)\s+NOT NULL/i, '$1');
+        if (relaxed !== createSql && /Tickets_rebuild/.test(relaxed) && !/[`"]userId[`"][^,]*NOT NULL/i.test(relaxed)) {
+          const names = cols.map((c) => `"${c.name}"`).join(', ');
+          // Plain statements on the default connection (no Sequelize transaction: SQLite runs those on their
+          // own connection, where foreign_keys=OFF would not apply and DROP TABLE would cascade).
+          await sequelize.query('PRAGMA foreign_keys=OFF');
+          try {
+            await sequelize.query('BEGIN IMMEDIATE');
+            try {
+              await sequelize.query('DROP TABLE IF EXISTS "Tickets_rebuild"');
+              await sequelize.query(relaxed);
+              await sequelize.query(`INSERT INTO "Tickets_rebuild" (${names}) SELECT ${names} FROM "Tickets"`);
+              await sequelize.query('DROP TABLE "Tickets"');
+              await sequelize.query('ALTER TABLE "Tickets_rebuild" RENAME TO "Tickets"');
+              for (const i of idx || []) await sequelize.query(i.sql);
+              await sequelize.query('COMMIT');
+            } catch (rebuildErr) {
+              await sequelize.query('ROLLBACK').catch(() => {});
+              throw rebuildErr;
+            }
+            console.log('✅ [SWEEP_MIGRATION] SQLite Tickets.userId is now nullable (rider tickets).');
+          } finally {
+            await sequelize.query('PRAGMA foreign_keys=ON');
+          }
+        } else {
+          console.warn('⚠️ [SWEEP_MIGRATION_WARN] SQLite Tickets.userId: unexpected table definition, left as is.');
+        }
+      }
+    } catch (err) {
+      console.warn('⚠️ [SWEEP_MIGRATION_WARN] SQLite Tickets.userId check:', err.message);
+    }
+  }
+
   // One row per (user, client key). Partial unique indexes (Postgres and SQLite both support
   // WHERE). If old duplicates exist the index is not built; the routes also guard in code.
   await step('mega_baskets_user_idempotency_key',

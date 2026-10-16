@@ -47,6 +47,9 @@ interface StoreCtx {
   refreshStore: () => Promise<void>;
   refreshMenu: () => Promise<void>;
   silence: (ids: string[]) => void;
+  /** True for a tap on a DIFFERENT order right after an action succeeded (the second tap of a double tap
+   *  that landed on the next order once the list / alert moved). Callers ignore such taps. */
+  isGhostTap: (orderId: string) => boolean;
   accept: (o: Order, estDuration: number) => Promise<boolean>;
   reject: (o: Order, reason: string) => Promise<boolean>;
   markReady: (o: Order) => Promise<boolean>;
@@ -70,6 +73,8 @@ const SILENCE_KEEP_MS = 6 * 60 * 60 * 1000;
 const CLOSED_STORE_CHECK_MS = 5 * 60 * 1000;
 /** The full order list (Past tab, 7-day history) is refetched at most this often; routine polls use ?scope=active. */
 const FULL_ORDERS_EVERY_MS = 30 * 60 * 1000;
+/** After an order action succeeds, taps on a different order's buttons are ignored this long (ghost double tap). */
+const GHOST_TAP_MS = 700;
 const newIdempotencyKey = (rid: string) => `${rid}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
@@ -422,9 +427,18 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [orders, silenced, silencedReady],
   );
 
+  // The order an action just finished on, and when. When a step succeeds the card leaves its tab (or the
+  // alert shows the next order) and the list moves under the finger: the second tap of a double tap then
+  // lands on ANOTHER order's button at the same spot (accepting / rejecting / silencing the wrong order).
+  const lastDone = useRef<{ id: string; at: number }>({ id: '', at: 0 });
+  const isGhostTap = useCallback((orderId: string) => (
+    lastDone.current.id !== orderId && Date.now() - lastDone.current.at < GHOST_TAP_MS
+  ), []);
+
   const silence = useCallback((ids: string[]) => {
     if (!ids.length) return;
     const now = Date.now();
+    if (ids.length === 1) lastDone.current = { id: ids[0], at: now };
     const next: Record<string, number> = {};
     for (const [id, at] of Object.entries(silencedRef.current)) if (now - at < SILENCE_KEEP_MS) next[id] = at;
     ids.forEach((id) => { next[id] = now; });
@@ -451,6 +465,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const runAction = useCallback(async (o: Order, kind: BusyKind, fn: () => Promise<void>) => {
     if (busyRef.current[o.id]) return false; // double tap / two buttons for the same order
+    if (isGhostTap(o.id)) return false;
     busyRef.current = { ...busyRef.current, [o.id]: kind };
     setBusy(busyRef.current);
     const setErr = (msg: string | null) => setActionErrors((prev) => {
@@ -465,6 +480,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setErr(null);
     try {
       await fn();
+      lastDone.current = { id: o.id, at: Date.now() };
       scheduleOrders(500);
       return true;
     } catch (e) {
@@ -492,7 +508,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       busyRef.current = next;
       if (alive.current) setBusy(next);
     }
-  }, [scheduleOrders, toast]);
+  }, [scheduleOrders, toast, isGhostTap]);
 
   const accept = useCallback((o: Order, est: number) => runAction(o, 'accept', async () => {
     const res: any = await api.acceptOrder(o.id, est);
@@ -686,11 +702,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<StoreCtx>(() => ({
     restaurant, store, storeError, openToggleSupported, orders, ordersLoaded, ordersError, refreshing, lastSyncedAt,
     menu, menuError, menuLoading, menuPending, conn, pushState, alertOrders, busy, actionErrors, retryConnection, refreshOrders, refreshStore,
-    refreshMenu, silence, accept, reject, markReady, setOpen, setStock, setPrice, saveItem, deleteItem,
+    refreshMenu, silence, isGhostTap, accept, reject, markReady, setOpen, setStock, setPrice, saveItem, deleteItem,
   }), [
     restaurant, store, storeError, openToggleSupported, orders, ordersLoaded, ordersError, refreshing, lastSyncedAt,
     menu, menuError, menuLoading, menuPending, conn, pushState, alertOrders, busy, actionErrors, retryConnection, refreshOrders, refreshStore,
-    refreshMenu, silence, accept, reject, markReady, setOpen, setStock, setPrice, saveItem, deleteItem,
+    refreshMenu, silence, isGhostTap, accept, reject, markReady, setOpen, setStock, setPrice, saveItem, deleteItem,
   ]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

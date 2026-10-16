@@ -539,7 +539,9 @@ const connectDB = async () => {
           { name: 'dropLng', type: 'FLOAT' },
           { name: 'fulfilment', type: "VARCHAR(16) DEFAULT 'ZENVY'" },
           { name: 'outForDeliveryAt', type: 'DATETIME' },
-          { name: 'refundedAt', type: 'DATETIME' }
+          { name: 'refundedAt', type: 'DATETIME' },
+          { name: 'stuckFlaggedAt', type: 'DATETIME' },
+          { name: 'cancelledBy', type: 'VARCHAR(16)' }
         ];
         for (const col of orderCols) {
           try {

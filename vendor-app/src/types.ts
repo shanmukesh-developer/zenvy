@@ -69,12 +69,16 @@ export interface Order {
   roomNumber: string | null;
   instructions: string[];
   cancellationReason: string | null;
+  /** Who cancelled (server Orders.cancelledBy, or the socket event's reason code). Null = not known. */
+  cancelledBy: CancelledBy | null;
   /** Full customer name (owning vendor only). */
   customerName: string | null;
   customerPhone: string | null;
   /** Card built from a socket event before the full order was fetched. */
   partial?: boolean;
 }
+
+export type CancelledBy = 'customer' | 'store' | 'support' | 'system';
 
 export interface MenuItem {
   id: string;

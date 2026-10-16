@@ -120,7 +120,7 @@ export function shopLine(store: ReturnType<typeof useStore>['store']): { text: s
   if (store.isOpen) return { text: 'Open · taking orders', tint: color.openDark };
   if (store.isOpenNow) {
     // Switch ON but closed: outside the hours (opensAt), or something Zenvy set (offline stall, closed today).
-    if (store.opensAt) return { text: `Outside your hours · opens ${formatHHMM(store.opensAt)}`, tint: color.warning };
+    if (store.opensAt) return { text: `Outside your hours (opens at ${formatHHMM(store.opensAt)})`, tint: color.warning };
     return { text: store.closedReason || 'Outside your hours', tint: color.warning };
   }
   return { text: 'Closed — no new orders', tint: color.alertDark };

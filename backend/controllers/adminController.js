@@ -1640,16 +1640,25 @@ exports.batchUpdateOrders = async (req, res) => {
           }
         } else {
           const { cancelAndRefund } = require('./orderController');
-          const { cancelled, refunded } = await cancelAndRefund(order, { reason: 'Cancelled by Zenvy support', onlyFromStatuses: [targetStatus] });
+          const { cancelled, refunded } = await cancelAndRefund(order, { reason: 'Cancelled by Zenvy support', onlyFromStatuses: [targetStatus], by: 'support' });
           if (!cancelled) continue;
           updatedCount++;
-          emitStatus(order, { id: order.id, status: 'Cancelled', refundedToWallet: refunded });
-          if (io) io.to(String(order.id)).emit('orderCancelled', { orderId: order.id, reason: 'ADMIN' });
-          if (io && order.restaurantId) io.to(`restaurant_${order.restaurantId}`).emit('orderCancelled', { orderId: order.id, reason: 'ADMIN' });
-          realtime.notifyAdmin('order', 'updated', order.id);
-          if (order.deliveryPartnerId) {
-            await getDeliveryPartnerModel().update({ currentOrderId: null }, { where: { id: order.deliveryPartnerId, currentOrderId: order.id } });
+          emitStatus(order, { id: order.id, status: 'Cancelled', reason: 'ADMIN_CANCELLED', refundedToWallet: refunded });
+          if (io) {
+            const gone = { orderId: order.id, reason: 'ADMIN_CANCELLED' };
+            io.to(String(order.id)).emit('orderCancelled', gone);
+            io.to('admin-room').emit('orderCancelled', gone);
+            if (order.restaurantId) io.to(`restaurant_${order.restaurantId}`).emit('orderCancelled', gone);
+            // The assigned rider must stop (they may not be in the order room). cancelAndRefund already
+            // re-pointed their currentOrderId at an order they still carry.
+            if (order.deliveryPartnerId) io.to(`rider_${order.deliveryPartnerId}`).emit('orderCancelled', { orderId: order.id });
           }
+          realtime.notifyAdmin('order', 'updated', order.id);
+          const oc = require('./orderController');
+          if (order.restaurantId) oc.pushStoreCancelled(order.restaurantId, order, 'An order was cancelled by Zenvy support.');
+          oc.pushCustomer(order, 'Order cancelled', refunded > 0
+            ? `Zenvy support cancelled your order. ₹${refunded} is back in your Wallet.`
+            : 'Zenvy support cancelled your order. You have not been charged.');
         }
       } catch (e) {
         console.error('[BATCH_ORDER_UPDATE_ERROR]', order.id, e.message);
@@ -2523,13 +2532,111 @@ exports.getAttentionCounts = async (req, res) => {
       return null;
     }
   };
-  const [tickets, verifications, pgBookings, wallPending, serviceRequests] = await Promise.all([
+  const stallStuck = require('../utils/stallStuckJob');
+  const [tickets, verifications, pgBookings, wallPending, serviceRequests, stuckStallOrders] = await Promise.all([
     safeCount(() => require('../models/Ticket').getTicketModel(), { status: { [Op.in]: ['Open', 'In Progress'] } }),
     safeCount(() => require('../modules/campus/models/Verification').getVerificationModel(), { status: 'pending', type: 'id_card' }),
     safeCount(() => require('../models/PGBooking').getPGBookingModel(), { status: 'Pending' }),
     safeCount(() => require('../models/WallSubmission').getWallSubmissionModel(), { isApproved: false }),
     safeCount(() => require('../models/ServiceBooking').getServiceBookingModel(), { status: 'REQUESTED' }),
+    safeCount(() => require('../models/Order').getOrderModel(), stallStuck.stuckStallWhere(stallStuck.STUCK_HOURS)),
   ]);
   res.set('Cache-Control', 'no-store');
-  res.json({ tickets, verifications, pgBookings, wallPending, serviceRequests });
+  res.json({ tickets, verifications, pgBookings, wallPending, serviceRequests, stuckStallOrders, stuckStallHours: stallStuck.STUCK_HOURS });
+};
+
+// ─── Assign / unassign a rider (support intervention) ───────────────────────────────
+// PUT /api/admin/orders/:id/rider { riderId: '<uuid>' | null }
+// Before pickup only (Accepted / Preparing / ReadyForPickup / Picking): the food is still at the store.
+// A rider-set 'Picking' step is undone (back to ReadyForPickup if the kitchen marked it ready, else
+// Preparing), exactly like a rider release. Stall (VENDOR) orders never have a rider. The write is
+// conditional on the rider + status read here, so a claim / pickup / cancel that lands meanwhile wins (409).
+const ADMIN_ASSIGNABLE = ['Accepted', 'Preparing', 'ReadyForPickup', 'Picking'];
+const ADMIN_MAX_ACTIVE_ORDERS = Math.max(1, parseInt(process.env.RIDER_MAX_ACTIVE_ORDERS, 10) || 3);
+exports.assignOrderRider = async (req, res) => {
+  try {
+    const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID.test(String(req.params.id || ''))) return res.status(404).json({ message: 'Order not found' });
+    const raw = req.body ? req.body.riderId : undefined;
+    if (raw !== null && (typeof raw !== 'string' || !UUID.test(raw))) {
+      return res.status(400).json({ message: 'riderId must be a rider id, or null to unassign.', code: 'INVALID_INPUT' });
+    }
+    const newRiderId = raw;
+    const Order = getOrderModel();
+    const DeliveryPartner = getDeliveryPartnerModel();
+    const order = await Order.findByPk(req.params.id);
+    if (!order) return res.status(404).json({ message: 'Order not found' });
+    if (order.fulfilment === 'VENDOR') return res.status(400).json({ message: 'The stall delivers this order itself: there is no rider to assign.', code: 'STALL_ORDER' });
+    if (!ADMIN_ASSIGNABLE.includes(order.status)) {
+      return res.status(400).json({ message: 'A rider can only be assigned or removed before pickup.', code: 'NOT_ASSIGNABLE', status: order.status });
+    }
+    const oldRiderId = order.deliveryPartnerId || null;
+    if (oldRiderId === newRiderId) return res.json({ message: newRiderId ? 'This rider already has the order.' : 'No rider was assigned.', orderId: order.id, status: order.status, riderId: newRiderId, alreadyApplied: true });
+
+    let rider = null;
+    if (newRiderId) {
+      rider = await DeliveryPartner.findByPk(newRiderId);
+      if (!rider) return res.status(404).json({ message: 'Rider not found' });
+      if (!rider.isApproved) return res.status(400).json({ message: `${rider.name || 'This rider'} is not approved.`, code: 'RIDER_NOT_APPROVED' });
+      const held = await Order.count({ where: { deliveryPartnerId: rider.id, status: { [Op.notIn]: ['Delivered', 'Cancelled'] } } });
+      if (held >= ADMIN_MAX_ACTIVE_ORDERS) {
+        return res.status(409).json({ message: `${rider.name || 'This rider'} already carries ${held} orders (the most allowed).`, code: 'MAX_ACTIVE' });
+      }
+    }
+    const nextStatus = order.status === 'Picking' ? (order.readyAt ? 'ReadyForPickup' : 'Preparing') : order.status;
+    const [n] = await Order.update(
+      { deliveryPartnerId: newRiderId, status: nextStatus },
+      { where: { id: order.id, deliveryPartnerId: oldRiderId, status: order.status } }
+    );
+    if (!n) return res.status(409).json({ message: 'This order was just updated (claimed, picked up or cancelled). Refresh and try again.', code: 'ORDER_CHANGED' });
+    order.deliveryPartnerId = newRiderId;
+    order.status = nextStatus;
+
+    const { refreshRiderCurrentOrder, pushNearestRiders } = require('../utils/riderDispatch');
+    const io = req.app.get('io');
+    if (oldRiderId) {
+      realtime.leaveOrderRoom(oldRiderId, order.id);
+      await refreshRiderCurrentOrder(oldRiderId);
+      // The old rider's app drops the order on its refetch (it vanished from their active list).
+      if (io) io.to(`rider_${oldRiderId}`).emit('statusUpdated', { id: order.id, status: order.status, reassigned: true });
+    }
+    if (newRiderId) {
+      await DeliveryPartner.update({ currentOrderId: order.id }, { where: { id: newRiderId, currentOrderId: null } });
+      await refreshRiderCurrentOrder(newRiderId);
+      if (!oldRiderId) realtime.deliveryRequestGone(order.id);
+    } else {
+      realtime.deliveryRequest(order.id); // back in the pool for every online rider
+    }
+    if (io) {
+      const payload = { id: order.id, status: order.status, riderAssigned: !!newRiderId };
+      io.to(String(order.id)).emit('statusUpdated', payload);
+      io.to('admin-room').emit('statusUpdated', payload);
+      if (order.restaurantId) io.to(`restaurant_${order.restaurantId}`).emit('statusUpdated', payload);
+      if (!newRiderId) io.to('admin-room').emit('order_unassigned', { orderId: order.id, reason: 'Removed by Zenvy support' });
+    }
+    realtime.notifyAdmin('order', 'updated', order.id);
+    const restaurant = order.restaurantId ? await getRestaurantModel().findByPk(order.restaurantId, { attributes: ['id', 'name', 'location'] }) : null;
+    try {
+      if (newRiderId) {
+        const tokens = (Array.isArray(rider.fcmTokens) ? rider.fcmTokens : []).map((t) => (typeof t === 'string' ? t : t && t.token)).filter(Boolean);
+        if (tokens.length) {
+          await require('../utils/push').sendPushToTokens(tokens, '🛵 Order assigned to you', `Zenvy support gave you an order from ${restaurant?.name || 'a store'}.`, { orderId: String(order.id), type: 'ORDER_ASSIGNED' }, {
+            persist: false,
+            android: { priority: 'high', notification: { sound: 'alert', channelId: require('../utils/riderDispatch').RIDER_NEW_ORDER_CHANNEL } },
+          });
+        }
+      } else {
+        await pushNearestRiders({ restaurant, orderId: order.id, limit: 5, excludeRiderId: oldRiderId, title: '🛵 Order needs a rider', body: `${restaurant?.name || 'A store'} has an order waiting for a rider.` });
+      }
+    } catch (pushErr) {
+      console.warn('[ADMIN_ASSIGN_PUSH_WARN]', pushErr.message);
+    }
+    await logAuditAction(req, order.id, newRiderId ? 'ORDER_RIDER_ASSIGNED' : 'ORDER_RIDER_UNASSIGNED', { from: oldRiderId, to: newRiderId });
+    res.json({
+      message: newRiderId ? `Assigned to ${rider.name || 'the rider'}.` : 'Rider removed. The order is back with the riders.',
+      orderId: order.id, status: order.status, riderId: newRiderId,
+    });
+  } catch (error) {
+    sendServerError(res, error, '[ADMIN_ASSIGN_RIDER_ERROR]');
+  }
 };

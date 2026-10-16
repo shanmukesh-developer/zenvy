@@ -960,6 +960,21 @@ const getAllOrders = async (req, res) => {
     if (from || to) where.createdAt = { ...(from ? { [Op.gte]: from } : {}), ...(to ? { [Op.lt]: to } : {}) };
     if (req.query.fulfilment === 'VENDOR') where.fulfilment = 'VENDOR';
     else if (req.query.fulfilment === 'ZENVY') where[Op.and] = [{ [Op.or]: [{ fulfilment: null }, { fulfilment: { [Op.ne]: 'VENDOR' } }] }];
+    // ?stuckHours=N: stall orders still Accepted / OutForDelivery N+ hours after they were placed.
+    if (req.query.stuckHours !== undefined) {
+      const hours = Number(req.query.stuckHours);
+      if (!Number.isFinite(hours) || hours < 1 || hours > 72) {
+        return res.status(400).json({ message: "'stuckHours' must be a number of hours between 1 and 72." });
+      }
+      const stuck = require('../utils/stallStuckJob').stuckStallWhere(hours);
+      where.fulfilment = stuck.fulfilment;
+      if (status && status !== 'All' && !require('../utils/stallStuckJob').STUCK_STATUSES.includes(status)) {
+        return res.json({ orders: [], total: 0, pages: 0 });
+      }
+      if (!status || status === 'All') where.status = stuck.status;
+      where.createdAt = { ...(where.createdAt || {}), ...stuck.createdAt };
+      delete where[Op.and];
+    }
 
     const { count, rows: orders } = await Order.findAndCountAll({ 
       where,
@@ -1001,7 +1016,7 @@ const getAllOrders = async (req, res) => {
 // Cancels an order and refunds it exactly once (Wallet amount back, coupon restored).
 // `onlyFromStatuses` limits the cancel to orders still in one of those statuses (used by the auto-cancel job).
 // Returns { cancelled, refunded }.
-const cancelAndRefund = async (order, { reason = null, onlyFromStatuses = null, requireUnclaimed = false, extraWhere = null } = {}) => {
+const cancelAndRefund = async (order, { reason = null, onlyFromStatuses = null, requireUnclaimed = false, extraWhere = null, by = null } = {}) => {
   const Order = getOrderModel();
   const { getSequelize } = require('../config/db');
   const sequelize = getSequelize();
@@ -1020,7 +1035,7 @@ const cancelAndRefund = async (order, { reason = null, onlyFromStatuses = null, 
       ? { [Op.in]: onlyFromStatuses }
       : { [Op.notIn]: ['Cancelled', 'Delivered'] };
     const [n] = await Order.update(
-      { status: 'Cancelled', ...(reason ? { cancellationReason: reason } : {}) },
+      { status: 'Cancelled', ...(reason ? { cancellationReason: reason } : {}), ...(by ? { cancelledBy: by } : {}) },
       { where: { id: order.id, status: statusWhere, ...(requireUnclaimed ? { deliveryPartnerId: null } : {}), ...(extraWhere ? { [Op.and]: [extraWhere] } : {}) }, transaction: t }
     );
     if (n === 0) return false;
@@ -1091,7 +1106,7 @@ const autoCancelStalePendingOrders = async (io) => {
   for (const { order, from, code, why, text } of jobs) {
     try {
       // onlyFromStatuses + rider check inside the conditional update: a rider claim that lands now wins.
-      const { cancelled, refunded } = await cancelAndRefund(order, { reason: why, onlyFromStatuses: from, requireUnclaimed: true });
+      const { cancelled, refunded } = await cancelAndRefund(order, { reason: why, onlyFromStatuses: from, requireUnclaimed: true, by: 'system' });
       if (!cancelled) continue;
       count++;
       const payload = { id: order.id, status: 'Cancelled', reason: code, refundedToWallet: refunded };
@@ -1174,7 +1189,7 @@ const cancelOrder = async (req, res) => {
         { createdAt: { [Op.gte]: new Date(Date.now() - 120 * 1000) } },
       ],
     } : null;
-    const { cancelled, refunded } = await cancelAndRefund(order, { reason, ...(ownerCancel ? { onlyFromStatuses: OWNER_CANCELLABLE, requireUnclaimed: true, extraWhere: ownerWhere } : {}) });
+    const { cancelled, refunded } = await cancelAndRefund(order, { reason, by: ownerCancel ? 'customer' : 'support', ...(ownerCancel ? { onlyFromStatuses: OWNER_CANCELLABLE, requireUnclaimed: true, extraWhere: ownerWhere } : {}) });
 
     if (!cancelled) {
       const fresh = await Order.findByPk(order.id, { attributes: ['id', 'status'] });
@@ -1196,6 +1211,12 @@ const cancelOrder = async (req, res) => {
       if (order.deliveryPartnerId) io.to(`rider_${order.deliveryPartnerId}`).emit('orderCancelled', { orderId: order.id });
     }
     if (order.restaurantId) pushStoreCancelled(order.restaurantId, order, ownerCancel ? 'The customer cancelled an order.' : 'An order was cancelled by Zenvy support.');
+    // Support cancelled it: the customer may not have the app open (the auto-cancel and store-decline paths push too).
+    if (!ownerCancel) {
+      pushCustomer(order, 'Order cancelled', refunded > 0
+        ? `Zenvy support cancelled your order${reason ? `: ${reason}` : '.'} ₹${refunded} is back in your Wallet.`
+        : `Zenvy support cancelled your order${reason ? `: ${reason}` : '.'} You have not been charged.`);
+    }
 
     res.json({
       message: refunded > 0 ? `Order cancelled. ₹${refunded} is back in your Wallet.` : 'Order cancelled.',
@@ -1325,6 +1346,12 @@ const updateOrderStatus = async (req, res) => {
       newBadges: status === 'Delivered' ? (order.newBadges || []) : []
     };
     broadcastOrderStatus(req, order, statusPayload);
+    // Support marking the food ready (store phone dead) tells the assigned rider like the partner app does:
+    // the rider app's "Food packed" alert listens for orderReady on the rider's own room.
+    if (status === 'ReadyForPickup' && prevStatus !== 'ReadyForPickup' && order.deliveryPartnerId) {
+      const io = req.app.get('io');
+      if (io) io.to(`rider_${order.deliveryPartnerId}`).emit('orderReady', { orderId: order.id });
+    }
     if (status === 'Delivered') {
       const io = req.app.get('io');
       if (io) io.to('admin-room').emit('admin_delivery_complete', { orderId: order.id });
@@ -1529,7 +1556,7 @@ const verifyUPIPayment = async (req, res) => {
       );
       if (!n) return res.status(409).json({ message: 'This order was just updated. Please refresh.' });
       order.upiStatus = 'Rejected';
-      const { cancelled } = await cancelAndRefund(order, { reason: 'UPI payment rejected' });
+      const { cancelled } = await cancelAndRefund(order, { reason: 'UPI payment rejected', by: 'support' });
       order.status = cancelled ? 'Cancelled' : order.status;
     }
 
@@ -1667,7 +1694,7 @@ const restaurantUpdateOrderStatus = async (req, res) => {
     const reason = typeof (req.body || {}).reason === 'string' && req.body.reason.trim()
       ? req.body.reason.replace(/[<>]/g, '').trim().slice(0, 250)
       : 'The store could not take this order';
-    const { cancelled, refunded } = await cancelAndRefund(order, { reason, onlyFromStatuses: ['Pending', 'Accepted', 'Preparing'] });
+    const { cancelled, refunded } = await cancelAndRefund(order, { reason, onlyFromStatuses: ['Pending', 'Accepted', 'Preparing'], by: 'store' });
     if (!cancelled) {
       // A retry of the same decline (the first response was lost): 200, not an error (B28).
       const fresh = await Order.findByPk(order.id, { attributes: ['id', 'status', 'cancellationReason'] });
@@ -1730,7 +1757,7 @@ const vendorUpdateOrderStatus = async (req, res, order) => {
     if (status === 'Cancelled') {
       const reason = typeof (req.body || {}).reason === 'string' ? req.body.reason.replace(/[<>]/g, '').trim().slice(0, 250) : '';
       if (!reason) return res.status(400).json({ message: 'Please tell the customer why you are cancelling.' });
-      const { cancelled } = await cancelAndRefund(order, { reason, onlyFromStatuses: VENDOR_CANCELLABLE });
+      const { cancelled } = await cancelAndRefund(order, { reason, onlyFromStatuses: VENDOR_CANCELLABLE, by: 'store' });
       if (!cancelled) {
         // Retry of the same reject after a lost response: 200 (B28).
         const fresh = await Order.findByPk(order.id, { attributes: ['id', 'status', 'cancellationReason'] });
@@ -1973,4 +2000,4 @@ const approveBill = async (req, res) => {
   }
 };
 
-module.exports = { customerOrderJson, restaurantUpdateOrderStatus, autoCancelStalePendingOrders, cancelAndRefund, createOrder, quoteOrder, getServiceability, getOrderById, getMyOrders, rateOrder, getAllOrders, cancelOrder, updateOrderStatus, getSurgeStatus, restaurantAcceptOrder, verifyUPIPayment, restaurantReadyOrder, getOrderStats, uploadItemPhoto, approvePurchase, uploadBillProof, approveBill };
+module.exports = { pushCustomer, pushStoreCancelled, customerOrderJson, restaurantUpdateOrderStatus, autoCancelStalePendingOrders, cancelAndRefund, createOrder, quoteOrder, getServiceability, getOrderById, getMyOrders, rateOrder, getAllOrders, cancelOrder, updateOrderStatus, getSurgeStatus, restaurantAcceptOrder, verifyUPIPayment, restaurantReadyOrder, getOrderStats, uploadItemPhoto, approvePurchase, uploadBillProof, approveBill };

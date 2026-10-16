@@ -61,6 +61,12 @@ const initOrderModel = (sequelize) => {
     fulfilment: { type: DataTypes.STRING(16), allowNull: true, defaultValue: 'ZENVY' },
     // Stall orders: when the vendor left with the order (status OutForDelivery).
     outForDeliveryAt: { type: DataTypes.DATE, allowNull: true },
+    // Stall orders still Accepted / OutForDelivery hours later: flagged once by utils/stallStuckJob.js
+    // (admin + stall notified). Never auto-cancelled. Null = never flagged.
+    stuckFlaggedAt: { type: DataTypes.DATE, allowNull: true },
+    // Who cancelled: 'customer' | 'store' | 'support' | 'system' (auto-cancel jobs). Null on older rows.
+    // Lets the partner apps say the right thing ("the customer cancelled" vs "Zenvy support cancelled").
+    cancelledBy: { type: DataTypes.STRING(16), allowNull: true },
     // Client Idempotency-Key for POST /api/orders (unique per user, see config/db.js index), so a
     // retry after a restart or after minutes still returns the same order instead of a second one.
     idempotencyKey: { type: DataTypes.STRING(120), allowNull: true },

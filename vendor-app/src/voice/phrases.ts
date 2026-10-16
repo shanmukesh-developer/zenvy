@@ -16,7 +16,8 @@ export type VoiceEvent =
   | { kind: 'rejected' }
   | { kind: 'outForDelivery'; cash: number }
   | { kind: 'delivered'; cash: number }
-  | { kind: 'cancelled' }
+  /** by: who cancelled ('store' = this stall, e.g. from another phone or an accepted order it cancelled). */
+  | { kind: 'cancelled'; by?: 'customer' | 'store' | 'support' | 'system' | null }
   | { kind: 'timedOut' }
   | { kind: 'storeOpen' }
   | { kind: 'storeClosed'; orders: number; cash: number }
@@ -65,9 +66,20 @@ export function phrase(e: VoiceEvent, lang: VoiceLang): string {
       if (lang === 'hi') return 'ऑर्डर डिलीवर हो गया.';
       return 'Order delivered.';
     case 'cancelled':
-      if (lang === 'te') return 'కస్టమర్ ఆర్డర్ క్యాన్సిల్ చేశారు.';
-      if (lang === 'hi') return 'ग्राहक ने ऑर्डर कैंसल कर दिया.';
-      return 'The customer cancelled the order.';
+      if (e.by === 'customer') {
+        if (lang === 'te') return 'కస్టమర్ ఆర్డర్ క్యాన్సిల్ చేశారు.';
+        if (lang === 'hi') return 'ग्राहक ने ऑर्डर कैंसल कर दिया.';
+        return 'The customer cancelled the order.';
+      }
+      if (e.by === 'support') {
+        if (lang === 'te') return 'జెన్వీ సపోర్ట్ ఆర్డర్ క్యాన్సిల్ చేశారు.';
+        if (lang === 'hi') return 'ज़ेनवी सपोर्ट ने ऑर्डर कैंसल कर दिया.';
+        return 'Zenvy support cancelled the order.';
+      }
+      // The stall's own cancel, an automatic cancel, or not known: no blame on the customer.
+      if (lang === 'te') return 'ఆర్డర్ క్యాన్సిల్ అయ్యింది.';
+      if (lang === 'hi') return 'ऑर्डर कैंसल हो गया.';
+      return 'Order cancelled.';
     case 'timedOut':
       if (lang === 'te') return 'టైమ్ అయిపోయింది. ఆర్డర్ క్యాన్సిల్ అయ్యింది.';
       if (lang === 'hi') return 'समय खत्म. ऑर्डर कैंसल हो गया.';

@@ -13,7 +13,7 @@ import { peekCachedJson } from '@/lib/requestCache';
 import ListImage from '@/components/ListImage';
 
 // "Needs attention" counters on the overview, kept live by realtime events.
-type InboxKey = 'tickets' | 'verifications' | 'pgBookings' | 'wallPending' | 'serviceRequests';
+type InboxKey = 'tickets' | 'verifications' | 'pgBookings' | 'wallPending' | 'serviceRequests' | 'stuckStallOrders';
 type Inbox = Record<InboxKey, number | null>;
 /** Keys whose number is a lower bound (the fallback list hit its server cap): shown as "N+". */
 type InboxCapped = Partial<Record<InboxKey, boolean>>;
@@ -23,6 +23,7 @@ const INBOX_ITEMS: { key: InboxKey; label: string; href: string; liveType: strin
   { key: 'pgBookings', label: 'PG booking requests', href: '/pg', liveType: 'pg_booking' },
   { key: 'wallPending', label: 'Wall photos to moderate', href: '/wall', liveType: 'wall_submission' },
   { key: 'serviceRequests', label: 'New service bookings', href: '/service-bookings', liveType: 'service_booking' },
+  { key: 'stuckStallOrders', label: 'Stall orders stuck > 6 h', href: '/orders?stuck=6', liveType: 'order' },
 ];
 const LIVE_HOME_TYPES = ['order', 'rider', 'store', 'ticket', 'verification', 'pg_booking', 'wall_submission', 'wall', 'service_booking'] as const;
 
@@ -305,7 +306,7 @@ export default function AdminHome() {
   const { isAuthed } = useAdminAuth();
   const { socket, isConnected, notifyLive } = useAdminSocket();
   const { mark: markFresh, isFresh } = useFreshIds();
-  const [inbox, setInbox] = useState<Inbox>({ tickets: null, verifications: null, pgBookings: null, wallPending: null, serviceRequests: null });
+  const [inbox, setInbox] = useState<Inbox>({ tickets: null, verifications: null, pgBookings: null, wallPending: null, serviceRequests: null, stuckStallOrders: null });
   const [freshInbox, setFreshInbox] = useState<Partial<Record<InboxKey, boolean>>>({});
   const [inboxCapped, setInboxCapped] = useState<InboxCapped>({});
 
@@ -413,6 +414,7 @@ export default function AdminHome() {
       pgBookings: apiRequest<unknown[]>('/api/pg/admin/bookings?status=Pending').then(count),
       wallPending: apiRequest<unknown[]>('/api/wall/admin/pending').then(count),
       serviceRequests: apiRequest<{ bookings?: unknown[] }>('/api/services/admin/all?status=REQUESTED').then(d => count(d?.bookings)),
+      stuckStallOrders: apiRequest<{ total?: number }>('/api/admin/orders?stuckHours=6&limit=1').then(d => (typeof d?.total === 'number' ? d.total : null)),
     };
     const keys = Object.keys(jobs) as InboxKey[];
     const results = await Promise.allSettled(keys.map(k => jobs[k]));

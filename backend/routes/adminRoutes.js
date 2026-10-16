@@ -87,6 +87,8 @@ router.get('/stats', getDashboardStats);
 router.get('/attention-counts', getAttentionCounts);
 router.get('/stats/volume', getOrderVolumeStats);
 router.put('/orders/batch-update', batchUpdateOrders);
+// Support: give an order to a rider / take it back (before pickup). { riderId: uuid | null }
+router.put('/orders/:id/rider', require('../controllers/adminController').assignOrderRider);
 
 // Restaurant & Menu Control
 router.get('/restaurants', getAllRestaurants);

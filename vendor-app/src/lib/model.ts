@@ -173,6 +173,7 @@ export function normalizeOrder(raw: any): Order | null {
     roomNumber: roomFromAddress(address) || profilePlace(str(c?.roomNumber) || str(raw.roomNumber) || str(u?.roomNumber), address),
     instructions,
     cancellationReason: typeof raw.cancellationReason === 'string' ? raw.cancellationReason : null,
+    cancelledBy: cancelledByOf(raw.cancelledBy),
     customerName,
     customerPhone,
     partial: !!raw.__partial,
@@ -300,6 +301,20 @@ export const rupees = (n: number | null | undefined) => {
   return `${neg}₹${groupIN(i)}${d ? `.${d}` : ''}`;
 };
 
+const CANCELLED_BY = ['customer', 'store', 'support', 'system'] as const;
+export function cancelledByOf(v: unknown): Order['cancelledBy'] {
+  return typeof v === 'string' && (CANCELLED_BY as readonly string[]).includes(v) ? (v as Order['cancelledBy']) : null;
+}
+/** Socket cancel codes (statusUpdated / orderCancelled `reason`) → who cancelled. */
+export function cancelledByFromCode(code: unknown): Order['cancelledBy'] {
+  switch (code) {
+    case 'CUSTOMER_CANCELLED': return 'customer';
+    case 'ADMIN_CANCELLED': case 'ADMIN': return 'support';
+    case 'STORE_TIMEOUT': case 'NO_RIDER_TIMEOUT': return 'system';
+    case 'STORE_DECLINED': return 'store';
+    default: return null;
+  }
+}
 export const TIMED_OUT_REASON = /did not accept the order in time/i;
 export const TIMEOUT_REASON_TEXT = 'The stall did not accept the order in time';
 

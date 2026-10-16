@@ -1,7 +1,7 @@
 // App-wide rider state: session, duty, orders, earnings, network, offline queue, socket, GPS, push, voice.
 // Screens read from useRider() and call its actions; they never call the API for order state directly.
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { LayoutAnimation, Platform, UIManager } from 'react-native';
+import { AppState, LayoutAnimation, Platform, UIManager } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { ApiError, NetworkError, configureApiClient, errorMessage, isUnapprovedError } from '../services/apiClient';
 import * as api from '../services/deliveryApi';
@@ -12,11 +12,14 @@ import * as gps from '../services/location';
 import * as push from '../services/notifications';
 import { statusRank } from '../services/orderModel';
 import { istDayKey, lastNDayKeys } from '../services/format';
-import { POLL_ORDERS_MS, POLL_STATS_MS } from '../config';
+import { POLL_ORDERS_MS, POLL_STATS_MS, RIDER_MAX_ACTIVE_ORDERS } from '../config';
 import { announce, cancelAnnouncement, checkVoices, getVoiceState, initVoice, stopSpeaking } from '../voice/announcer';
 import { useAppActive, useDismissedOrders, useInterval, useNetwork } from './hooks';
 import type { Loadable, RiderOrder, RiderProfile, TodayStats, WeekStats } from '../types';
 import type { ToastKind, ToastMsg } from '../ui/Toast';
+
+/** Background new order: how long to wait for the server's NEW_ORDER push before ringing ourselves. */
+const BACKGROUND_PUSH_WAIT_MS = 5000;
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -340,6 +343,14 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
     // Login screen first (no 4 s wait on a slow server, no taps on a half-logged-out app). Then, with the old
     // token: go off duty and drop this phone's push token, or dispatch keeps counting + pinging this rider.
     const riderId = profileRef.current?.id ?? '';
+    // Offline-queued steps (picked up / reached) are lost with the session: try to send them first (bounded).
+    try {
+      if ((await queue.getQueue()).length) {
+        await Promise.race([queue.flushQueue({ force: true }), new Promise((resolve) => setTimeout(resolve, 4000))]);
+      }
+    } catch {
+      // best effort: the Profile sheet already warned about unsent steps
+    }
     endSession((token) =>
       Promise.all([
         api.setOnline(false, token).catch(() => undefined),
@@ -502,9 +513,22 @@ export function RiderProvider({ children }: { children: React.ReactNode }) {
       const now = Date.now();
       const fresh = list.filter((o) => !seenOffers.current.has(o.id) && !((dismissedRef.current[o.id] ?? 0) > now));
       list.forEach((o) => seenOffers.current.add(o.id));
-      if (fresh.length) {
+      // Carrying the most orders allowed: the claim would be refused, so do not call the rider for it.
+      if (fresh.length && activeRef.current.length < RIDER_MAX_ACTIVE_ORDERS) {
         const o = fresh[0];
-        announce('newOrder', { store: o.restaurantName, earning: o.earning }, { dedupeKey: `new:${o.id}`, chime: 'order' });
+        const say = (chime: 'order' | null) =>
+          announce('newOrder', { store: o.restaurantName, earning: o.earning }, { dedupeKey: `new:${o.id}`, chime });
+        if (AppState.currentState === 'active') say('order');
+        else {
+          // In the background the NEW_ORDER push (channel v3, alert sound) usually rings too: wait for it and
+          // play our own chime only when it did not show (no push token / not among the nearest riders).
+          const ep = epoch.current;
+          setTimeout(() => {
+            if (ep !== epoch.current || !isOnlineRef.current) return;
+            if (activeRef.current.length >= RIDER_MAX_ACTIVE_ORDERS) return;
+            push.newOrderPushShown(o.id).then((shown) => say(shown ? null : 'order')).catch(() => say('order'));
+          }, BACKGROUND_PUSH_WAIT_MS);
+        }
       }
     } catch (e) {
       if (isUnapprovedError(e) || seq !== pendingSeq.current) return;

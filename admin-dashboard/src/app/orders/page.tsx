@@ -35,6 +35,8 @@ interface Order {
   /** 'VENDOR' = CampusBites stall delivers itself (COD to the stall, no rider, no PIN). null / 'ZENVY' = Zenvy rider. */
   fulfilment?: string | null;
   outForDeliveryAt?: string | null;
+  /** Set once by the backend job when a stall order stayed open for hours (admin + stall were told). */
+  stuckFlaggedAt?: string | null;
   items: OrderItem[];
   totalPrice: number;
   finalPrice?: number | null;
@@ -78,6 +80,8 @@ const FULFILMENT_FILTERS: { value: FulfilmentFilter; label: string }[] = [
 const isVendorOrder = (o: Order) => o.fulfilment === 'VENDOR';
 const stallName = (o: Order) => o.restaurant?.name || 'the stall';
 const TERMINAL = ['Delivered', 'Cancelled'];
+/** Statuses where support can assign / remove a rider (the food is still at the store). */
+const ASSIGNABLE = ['Accepted', 'Preparing', 'ReadyForPickup', 'Picking'];
 const PIN_LOCK_ATTEMPTS = 5;
 
 const statusLabel = (s: string) => STATUS_LABELS[s] || s;
@@ -190,6 +194,9 @@ const OrderRow = memo(({ order, busy, fresh, onSelect }: {
           {pinLocked && (
             <span className="text-[8px] font-black text-red-400 uppercase tracking-wider">PIN locked</span>
           )}
+          {order.stuckFlaggedAt && !TERMINAL.includes(order.status) && (
+            <span className="text-[8px] font-black text-orange-400 uppercase tracking-wider" title="This stall order has been open for hours. Call the stall, then mark it Delivered or cancel it.">Stuck · check with stall</span>
+          )}
         </div>
       </td>
       <td className="p-4">
@@ -219,13 +226,19 @@ export default function OrdersPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('All');
   const [filterFulfilment, setFilterFulfilment] = useState<FulfilmentFilter>('All');
+  // "Stall orders stuck > N h": stall orders still Accepted / Out for delivery N+ hours after placing (null = off).
+  const [stuckHours, setStuckHours] = useState<number | null>(null);
   // ?store=<id> (from Stores → a store → "All orders").
   const [storeFilter, setStoreFilter] = useState<string | null>(null);
   // The first load waits until ?store= has been read, so a store link does not fetch twice.
   const [filtersReady, setFiltersReady] = useState(false);
   useEffect(() => {
-    const sid = new URLSearchParams(window.location.search).get('store');
+    const qs = new URLSearchParams(window.location.search);
+    const sid = qs.get('store');
     if (sid) setStoreFilter(sid);
+    // ?stuck=<hours> (overview "Stall orders stuck" tile).
+    const stuck = Number(qs.get('stuck'));
+    if (Number.isFinite(stuck) && stuck >= 1 && stuck <= 72) setStuckHours(Math.round(stuck));
     setFiltersReady(true);
   }, []);
   const clearStoreFilter = () => {
@@ -254,7 +267,8 @@ export default function OrdersPage() {
     if (showSpinner) setLoading(true);
     try {
       const params = new URLSearchParams({ page: String(page), limit: '50', status: filterStatus });
-      if (filterFulfilment !== 'All') params.set('fulfilment', filterFulfilment);
+      if (stuckHours) params.set('stuckHours', String(stuckHours));
+      else if (filterFulfilment !== 'All') params.set('fulfilment', filterFulfilment);
       if (storeFilter) params.set('restaurantId', storeFilter);
       const data = await requestJson<{ orders?: Order[]; total?: number; pages?: number }>(`${API_URL}/api/admin/orders?${params}`);
       if (seq !== requestSeq.current) return; // a newer request (filter/page change) superseded this one
@@ -270,7 +284,7 @@ export default function OrdersPage() {
     } finally {
       if (seq === requestSeq.current && showSpinner) setLoading(false);
     }
-  }, [filterStatus, filterFulfilment, storeFilter]);
+  }, [filterStatus, filterFulfilment, storeFilter, stuckHours]);
 
   /** Coalesces bursts of socket events into one quiet refresh. */
   const scheduleRefresh = useCallback(() => {
@@ -306,6 +320,10 @@ export default function OrdersPage() {
     const handleDeliveryComplete = (data: { orderId: string }) => patchStatus(String(data?.orderId || ''), 'Delivered');
     const handleOrderCancelled = (data: { orderId: string }) => { patchStatus(String(data?.orderId || ''), 'Cancelled'); scheduleRefresh(); };
     const handleOrderUnassigned = () => scheduleRefresh();
+    const handleStallStuck = (data: { placedAtIST?: string; hours?: number }) => {
+      scheduleRefresh();
+      notifyLive(`Stall order open > ${data?.hours || 6} h${data?.placedAtIST ? ` (placed ${data.placedAtIST})` : ''}`);
+    };
 
     socket.on('admin_newOrder', handleNewOrder);
     socket.on('newOrder', handleNewOrder);
@@ -314,6 +332,7 @@ export default function OrdersPage() {
     socket.on('admin_delivery_complete', handleDeliveryComplete);
     socket.on('order_unassigned', handleOrderUnassigned);
     socket.on('orderCancelled', handleOrderCancelled);
+    socket.on('stallOrderStuck', handleStallStuck);
 
     return () => {
       socket.off('admin_newOrder', handleNewOrder);
@@ -323,8 +342,9 @@ export default function OrdersPage() {
       socket.off('admin_delivery_complete', handleDeliveryComplete);
       socket.off('order_unassigned', handleOrderUnassigned);
       socket.off('orderCancelled', handleOrderCancelled);
+      socket.off('stallOrderStuck', handleStallStuck);
     };
-  }, [socket, scheduleRefresh]);
+  }, [socket, scheduleRefresh, notifyLive]);
 
   // Realtime sync: `admin:changed` { type: 'order' } (ids only) → quiet refetch + highlight.
   useLiveSync(['order'], (events, { reconnect }) => {
@@ -401,6 +421,31 @@ export default function OrdersPage() {
     runAction(o, isVerified ? 'Payment verified' : 'Payment rejected', `${API_URL}/api/orders/${orderId(o)}/verify-upi`, { isVerified });
   };
 
+  // Support can give a not-yet-picked-up order to a rider or take it back (PUT /api/admin/orders/:id/rider).
+  const selectedAssignable = !!selectedOrder && !isVendorOrder(selectedOrder) && ASSIGNABLE.includes(selectedOrder.status);
+  const [assignRiders, setAssignRiders] = useState<{ id: string; name: string; isOnline?: boolean }[] | null>(null);
+  const [assignPick, setAssignPick] = useState('');
+  useEffect(() => {
+    if (!selectedAssignable || assignRiders) return;
+    let live = true;
+    requestJson<{ riders?: { id?: string; _id?: string; name?: string; isOnline?: boolean }[] }>(`${API_URL}/api/admin/riders?approved=1&limit=100`)
+      .then(d => {
+        if (!live) return;
+        const list = (d.riders || []).map(r => ({ id: String(r.id || r._id || ''), name: r.name || 'Rider', isOnline: r.isOnline })).filter(r => r.id);
+        list.sort((a, b) => Number(!!b.isOnline) - Number(!!a.isOnline) || a.name.localeCompare(b.name));
+        setAssignRiders(list);
+      })
+      .catch(() => { if (live) setAssignRiders([]); });
+    return () => { live = false; };
+  }, [selectedAssignable, assignRiders]);
+  const assignRider = (o: Order, riderId: string | null) => {
+    const id = shortId(orderId(o));
+    const who = riderId ? (assignRiders || []).find(r => r.id === riderId)?.name || 'this rider' : null;
+    if (!confirm(riderId ? `Give order ${id} to ${who}? The current rider (if any) loses it.` : `Take order ${id} away from its rider? It goes back to all riders.`)) return;
+    runAction(o, riderId ? 'Rider assigned' : 'Rider removed', `${API_URL}/api/admin/orders/${orderId(o)}/rider`, { riderId });
+    setAssignPick('');
+  };
+
   if (!isAuthed) return <div className="p-20 text-center font-black text-white uppercase tracking-widest animate-pulse">Checking access…</div>;
 
   const visibleOrders = orders.filter(o => filterStatus === 'All' || o.status === filterStatus);
@@ -439,6 +484,25 @@ export default function OrdersPage() {
             {f.label}
           </button>
         ))}
+        <span className="mx-1 h-4 w-px bg-white/10" aria-hidden />
+        <button
+          onClick={() => setStuckHours(h => (h ? null : 6))}
+          aria-pressed={!!stuckHours}
+          title="Stall orders still Accepted / Out for delivery long after they were placed. They are never auto-cancelled: call the stall."
+          className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${stuckHours ? 'bg-orange-500 text-black border-orange-500' : 'bg-white/5 text-gray-500 border-white/10 hover:text-white'}`}
+        >
+          Stall orders stuck &gt; {stuckHours || 6} h
+        </button>
+        {stuckHours && (
+          <select
+            value={stuckHours}
+            onChange={e => setStuckHours(Number(e.target.value))}
+            aria-label="Stuck for at least"
+            className="rounded-xl border border-white/10 bg-black/40 px-2 py-1 text-[10px] font-bold text-gray-300"
+          >
+            {[2, 4, 6, 12, 24, 48].map(h => <option key={h} value={h}>{h} h</option>)}
+          </select>
+        )}
         {storeFilter && (
           <span className="ml-2 flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-emerald-300">
             One store{orders[0]?.restaurant?.name ? `: ${orders[0].restaurant.name}` : ''}
@@ -590,7 +654,34 @@ export default function OrdersPage() {
                       )}
                     </div>
                   ) : (
-                    <p className="text-[10px] text-gray-500">Rider: {selectedOrder.deliveryPartnerId ? 'Assigned' : 'Not assigned yet'}</p>
+                    <div className="mt-1 space-y-2">
+                      <p className="text-[10px] text-gray-500">
+                        Rider: {selectedOrder.deliveryPartnerId ? ((assignRiders || []).find(r => r.id === selectedOrder.deliveryPartnerId)?.name || 'Assigned') : 'Not assigned yet'}
+                      </p>
+                      {selectedAssignable && (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <select
+                            value={assignPick}
+                            onChange={e => setAssignPick(e.target.value)}
+                            aria-label="Rider to assign"
+                            className="rounded-xl border border-white/10 bg-black/40 px-2 py-1 text-[10px] font-bold text-gray-300"
+                          >
+                            <option value="">{assignRiders === null ? 'Loading riders…' : 'Choose a rider…'}</option>
+                            {(assignRiders || []).filter(r => r.id !== selectedOrder.deliveryPartnerId).map(r => (
+                              <option key={r.id} value={r.id}>{r.name}{r.isOnline ? ' · online' : ' · offline'}</option>
+                            ))}
+                          </select>
+                          <button disabled={selectedBusy || !assignPick} onClick={() => assignRider(selectedOrder, assignPick)} className="px-3 py-1 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-xl text-[9px] font-black uppercase tracking-wider hover:bg-blue-500/20 disabled:opacity-30">
+                            {selectedOrder.deliveryPartnerId ? 'Reassign' : 'Assign'}
+                          </button>
+                          {selectedOrder.deliveryPartnerId && (
+                            <button disabled={selectedBusy} onClick={() => assignRider(selectedOrder, null)} className="px-3 py-1 bg-red-500/10 text-red-400 border border-red-500/20 rounded-xl text-[9px] font-black uppercase tracking-wider hover:bg-red-500/20 disabled:opacity-30">
+                              Remove rider
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
                 <div>

@@ -10,9 +10,42 @@ const socketUrl = API_URL.replace(/\/$/, "");
 // when a screen explicitly needs realtime (e.g. order tracking).
 let _socket: Socket | null = null;
 
+// Rooms this client joined (order tracking, mega-basket rooms). socket.io rooms live on the
+// server-side socket, so after any reconnect they are re-joined here even when a screen forgot to.
+// Bounded so a long session does not keep re-joining dozens of old orders.
+const MAX_REMEMBERED_ROOMS = 20;
+const joinedRooms = new Map<string, { event: 'joinOrder' | 'joinRoom'; room: string }>();
+const sentThisConnection = new Set<string>();
+
+const trackOutgoing = (event: string, ...args: any[]) => {
+  if (event !== 'joinOrder' && event !== 'joinRoom') return;
+  const room = args[0];
+  if (typeof room !== 'string' && typeof room !== 'number') return;
+  const key = `${event}:${room}`;
+  joinedRooms.delete(key); // re-insert = most recent last
+  joinedRooms.set(key, { event, room: String(room) });
+  while (joinedRooms.size > MAX_REMEMBERED_ROOMS) {
+    const oldest = joinedRooms.keys().next().value;
+    if (oldest === undefined) break;
+    joinedRooms.delete(oldest);
+  }
+  sentThisConnection.add(key);
+};
+
+// A refusal by a server middleware (SERVER_STARTING during a redeploy, a transient auth lookup
+// failure) is NOT retried by socket.io itself (socket.active becomes false), so the app used to stay
+// offline until restarted. Retry with the server's retryAfter or a growing delay (max 30 s), bounded.
+const MAX_MANUAL_RETRIES = 12;
+let manualRetries = 0;
+let manualRetryTimer: ReturnType<typeof setTimeout> | null = null;
+const clearManualRetry = () => {
+  if (manualRetryTimer) clearTimeout(manualRetryTimer);
+  manualRetryTimer = null;
+};
+
 export const getSocket = (): Socket => {
   if (!_socket) {
-    _socket = io(socketUrl, {
+    const s = io(socketUrl, {
       transports: ['websocket', 'polling'],
       withCredentials: true,
       autoConnect: false,          // <── KEY: don't connect on creation
@@ -27,13 +60,43 @@ export const getSocket = (): Socket => {
         getToken().then(token => cb({ token })).catch(() => cb({}));
       }
     });
+    s.onAnyOutgoing(trackOutgoing);
+    s.on('connect', () => {
+      manualRetries = 0;
+      clearManualRetry();
+      joinedRooms.forEach(({ event, room }, key) => {
+        if (!sentThisConnection.has(key)) s.emit(event, room);
+      });
+    });
+    s.on('disconnect', () => { sentThisConnection.clear(); });
+    s.on('connect_error', (err: Error & { data?: { retryAfter?: number } }) => {
+      // socket.io keeps retrying transport errors on its own (active stays true).
+      if (s.active || manualRetryTimer) return;
+      const msg = String(err?.message || '');
+      // A suspended / deleted account will never be let in: retrying only spins the radio.
+      if (/suspended|not found/i.test(msg)) return;
+      if (manualRetries >= MAX_MANUAL_RETRIES) return;
+      const hinted = Number(err?.data?.retryAfter) * 1000;
+      const wait = Number.isFinite(hinted) && hinted > 0 ? hinted : Math.min(30000, 2000 * 2 ** manualRetries);
+      manualRetries++;
+      manualRetryTimer = setTimeout(() => {
+        manualRetryTimer = null;
+        if (_socket === s && !s.connected && !s.active) s.connect();
+      }, wait);
+    });
+    _socket = s;
   }
   return _socket;
 };
 
 export const connectSocket = (): Socket => {
   const s = getSocket();
-  if (!s.connected) s.connect();
+  if (!s.connected && !s.active) {
+    // An explicit connect (screen mount, app resume) earns a fresh retry budget.
+    manualRetries = 0;
+    clearManualRetry();
+    s.connect();
+  }
   return s;
 };
 
@@ -49,6 +112,11 @@ export const refreshSocketAuth = () => {
  */
 export const reconnectSocketWithFreshAuth = () => {
   if (!_socket) return;
+  // The previous account's order rooms must not be re-joined for the next one.
+  joinedRooms.clear();
+  sentThisConnection.clear();
+  manualRetries = 0;
+  clearManualRetry();
   if (_socket.connected || _socket.active) {
     _socket.disconnect();
     _socket.connect();

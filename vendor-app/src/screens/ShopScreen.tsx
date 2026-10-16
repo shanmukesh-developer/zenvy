@@ -150,7 +150,7 @@ export default function ShopScreen() {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
           <Ionicons name="storefront" size={30} color={toggle.live ? color.openDark : color.closed} />
           <View style={{ flex: 1 }}>
-            <Text style={[font.h2, { color: color.text }]}>{toggle.paused ? 'Paused' : toggle.on ? 'Shop is OPEN' : 'Shop is CLOSED'}</Text>
+            <Text style={[font.h2, { color: color.text }]}>{toggle.paused ? 'Paused' : toggle.live ? 'Shop is OPEN' : toggle.on ? 'Open switch on · Closed now' : 'Shop is CLOSED'}</Text>
             <Text style={[font.small, { color: line.tint, fontWeight: '800' }]}>{line.text}</Text>
           </View>
         </View>

@@ -31,6 +31,9 @@ export const POLL_STATS_MS = 60000;
 /** Seconds a rider has to accept a new order before it is skipped (it stays in the pool for others). */
 export const OFFER_SECONDS = 30;
 
+/** Orders a rider may carry at once (server RIDER_MAX_ACTIVE_ORDERS, default 3): no new-order call beyond it. */
+export const RIDER_MAX_ACTIVE_ORDERS = 3;
+
 /** Rejected / timed-out offers stay hidden this long. */
 export const DISMISS_TTL_MS = 30 * 60 * 1000;
 
