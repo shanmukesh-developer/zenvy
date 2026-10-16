@@ -1,5 +1,6 @@
 const { Sequelize } = require('sequelize');
 const path = require('path');
+const dbSettings = require('./dbSettings');
 
 let sequelize;
 
@@ -322,11 +323,10 @@ const connectDB = async () => {
       }
 
       // Render internal database connections reject SSL. External connections require SSL.
-      const dialectOptions = {
-        // High-concurrency guards: Prevent queries and idle transactions from locking rows indefinitely
-        statement_timeout: 30000,                  // Abort any query taking longer than 30 seconds
-        idle_in_transaction_session_timeout: 30000 // Terminate session if transaction is left open/idle for 30 seconds
-      };
+      // High-concurrency guards (config/dbSettings.js): statement_timeout (DB_STATEMENT_TIMEOUT_MS,
+      // default 30 s, 0 = off) and idle_in_transaction_session_timeout (30 s), sent as connection
+      // startup options (never a session SET, so nothing leaks behind a transaction-mode pooler).
+      const dialectOptions = dbSettings.getPgTimeoutOptions();
       if (!isInternal) {
         dialectOptions.ssl = {
           require: true,
@@ -337,13 +337,9 @@ const connectDB = async () => {
       sequelize = new Sequelize(currentUrl, {
         dialect: 'postgres',
         dialectOptions: dialectOptions,
-        pool: {
-          max: 20, // Scaled for 500-1000 concurrent campus users
-          min: 3,  // Keep warm connections ready for burst traffic
-          acquire: 60000,
-          idle: 30000,
-          evict: 10000 // Aggressively reclaim stale connections every 10s under load
-        },
+        // DB_POOL_MAX / DB_POOL_MIN / DB_POOL_ACQUIRE_MS / DB_POOL_IDLE_MS / DB_POOL_EVICT_MS
+        // (defaults 10 / 0 / 10 s / 30 s / 10 s; config/dbSettings.js).
+        pool: dbSettings.getPoolConfig(),
         retry: {
           match: [
             /SequelizeConnectionError/,
@@ -365,6 +361,7 @@ const connectDB = async () => {
       try {
         await sequelize.authenticate();
         console.log(`✅ [DB_SUCCESS] Authenticated successfully with PostgreSQL candidate ${i + 1}.`);
+        console.log(`[DB_INIT] ${dbSettings.describe()}`);
         connected = true;
         break;
       } catch (err) {

@@ -2393,6 +2393,14 @@ const initializeApp = async () => {
     markDbReady();
     console.log(`✅ [STARTUP] Database ready — API accepting requests (${Math.round(process.uptime())}s after boot)`);
 
+    // A4: hot-path indexes (CREATE INDEX CONCURRENTLY on Postgres), a few seconds after ready, one
+    // process only, never blocking startup or traffic. ENSURE_INDEXES=false disables it.
+    try {
+      require('./scripts/ensure_indexes').scheduleEnsureIndexes({ shouldStop: () => lifecycle.isShuttingDown() });
+    } catch (idxErr) {
+      console.warn('⚠️ [ENSURE_INDEXES] not started:', idxErr.message);
+    }
+
     // Background, post-ready maintenance (never blocks requests).
     (async () => {
       // Auto-backfill missing friendCodes on startup (especially for Render PostgreSQL DB)

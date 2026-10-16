@@ -15,7 +15,7 @@
 //  - FAIL OPEN: if opening the transaction or the lock statement errors, a warning is logged and
 //    fn runs without the lock (fn(null), or fn(opts.transaction)): exactly today's single-process
 //    behaviour behind the caller's in-memory guard. A lock wait is bounded by the pool's
-//    statement_timeout (30 s), after which it also fails open.
+//    statement_timeout (DB_STATEMENT_TIMEOUT_MS, default 30 s), after which it also fails open.
 const crypto = require('crypto');
 
 const LOCK_SQL = 'SELECT pg_advisory_xact_lock(CAST(:k AS bigint))';

@@ -9,6 +9,7 @@
 // • Needs an absolute API base for the new URLs: PUBLIC_API_URL, or RENDER_EXTERNAL_URL (set by
 //   Render automatically). Without one it does nothing (relative URLs would break clients).
 const { Op } = require('sequelize');
+const { withStatementTimeout } = require('../config/dbSettings');
 
 // [modelName, column, ownerColumn|null, purpose, isPrivate, kind]  kind: 'text' | 'jsonArray'
 const TARGETS = [
@@ -39,6 +40,7 @@ const TARGETS = [
 const BATCH = 10;               // rows per query (a row can hold several MB)
 const MAX_ROWS_PER_COLUMN = 2000; // per run; the next boot continues
 const PAUSE_MS = 150;           // between batches, to stay gentle on the shared DB
+const SCAN_TIMEOUT_MS = 120 * 1000; // per batch scan (see withStatementTimeout below)
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -80,7 +82,10 @@ const runBase64MediaMigration = async ({ log = console.log } = {}) => {
         if (seenSkip.size) where.id = { [Op.notIn]: [...seenSkip] };
         const attrs = ['id', column];
         if (ownerCol && ownerCol !== 'id' && Model.rawAttributes[ownerCol]) attrs.push(ownerCol);
-        const rows = await Model.findAll({ where, attributes: attrs, limit: BATCH, raw: true });
+        // The LIKE scan reads (and de-TOASTs) every row of the column: on a big table it can outlast
+        // the pool's statement_timeout (DB_STATEMENT_TIMEOUT_MS, 15 s), so this one query gets its own
+        // limit (SET LOCAL in its own read-only transaction; SQLite: plain query).
+        const rows = await withStatementTimeout(sequelize, SCAN_TIMEOUT_MS, (t) => Model.findAll({ where, attributes: attrs, limit: BATCH, raw: true, ...(t ? { transaction: t } : {}) }));
         if (!rows.length) break;
         for (const row of rows) {
           processed++;
