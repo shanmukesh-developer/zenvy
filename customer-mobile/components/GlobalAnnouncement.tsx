@@ -8,6 +8,7 @@ import { BlurView } from 'expo-blur';
 import { useAuth } from '../context/AuthContext';
 import { campusHrefForNotification } from '../modules/campus/campusLinks';
 import { rentalHrefForNotification } from '../modules/rentals/rentalLinks';
+import { autoRideHrefForNotification } from '../modules/autoRide/autoRideLinks';
 
 let Notifications: any = null;
 try {
@@ -201,7 +202,11 @@ export default function GlobalAnnouncement() {
 
         const campusHref = campusHrefForNotification(data.type, data);
         const rentalHref = rentalHrefForNotification(data.type, data);
-        if (rentalHref) {
+        const autoRideHref = autoRideHrefForNotification(data.type, data);
+        if (autoRideHref) {
+          // Zenvy Auto-Ride: seat bookings, full-auto requests, trip updates (full, departure, delays, refunds)
+          go(autoRideHref);
+        } else if (rentalHref) {
           // Rentals: booking requests / confirmations / reminders, licence and listing reviews
           go(rentalHref);
         } else if (campusHref) {

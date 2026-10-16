@@ -25,6 +25,8 @@ import SafeImage from '../../components/SafeImage';
 import ShimmerLoader from '../../components/ShimmerLoader';
 import { useLiveSync, hasType } from '../../utils/useLiveSync';
 import RentalsSection from '../../modules/rentals/RentalsSection';
+import AutoRideSection from '../../modules/autoRide/AutoRideSection';
+import { useAutoRideStatus } from '../../modules/autoRide/ui';
 
 const { width: SW, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SH = SCREEN_HEIGHT;
@@ -411,7 +413,7 @@ export default function OthersScreen() {
   const { isDark, toggleTheme, colors } = useTheme();
   const { user, setUser } = useAuth();
   const router = useRouter();
-  const { tab } = useLocalSearchParams<{ tab: string }>();
+  const { tab, sub } = useLocalSearchParams<{ tab: string; sub?: string }>();
   const [activeTab, setActiveTab] = useState('food');
   const [groceryMode, setGroceryMode] = useState<'home' | 'categories'>('home');
   const [selectedBBOption, setSelectedBBOption] = useState('Fresh');
@@ -888,7 +890,16 @@ export default function OthersScreen() {
   const [distanceFilter, setDistanceFilter] = useState('All'); // 'All', '1', '3', '5', '10'
 
   // ── Co-Ride States ──
-  const [corideTab, setCorideTab] = useState<'browse' | 'my-rides'>('browse');
+  const [corideTab, setCorideTab] = useState<'browse' | 'my-rides' | 'auto'>('browse');
+  // Zenvy Auto-Ride (verified drivers): its sub-tab exists only while GET /api/auto-ride/status says enabled.
+  const autoRideStatus = useAutoRideStatus(!!(user?._id || user?.id));
+  const autoRideOn = !!autoRideStatus?.enabled;
+  useEffect(() => {
+    if ((tab === 'coride' || tab === 'rides') && sub === 'auto') setCorideTab('auto');
+  }, [tab, sub]);
+  useEffect(() => {
+    if (corideTab === 'auto' && autoRideStatus && !autoRideStatus.enabled) setCorideTab('browse');
+  }, [corideTab, autoRideStatus]);
   const [rides, setRides] = useState<any[]>([]);
   const [myRides, setMyRides] = useState<any[]>([]);
   const [loadingRides, setLoadingRides] = useState(false);
@@ -2543,6 +2554,11 @@ export default function OthersScreen() {
                   <DopaminePressable style={[s.corideSubTabBtn, corideTab === 'my-rides' && s.corideSubTabBtnActive, { flex: 1 }]} onPress={() => setCorideTab('my-rides')} sound="tabSwitch">
                     <Text style={[s.corideSubTabLabel, { color: colors.textSecondary }, corideTab === 'my-rides' && s.corideSubTabLabelActive]}>❤️ MY RIDES</Text>
                   </DopaminePressable>
+                  {autoRideOn ? (
+                    <DopaminePressable style={[s.corideSubTabBtn, corideTab === 'auto' && s.corideSubTabBtnActive, { flex: 1 }]} onPress={() => setCorideTab('auto')} sound="tabSwitch" accessibilityLabel="Zenvy Auto-Ride, shared autos with verified drivers">
+                      <Text style={[s.corideSubTabLabel, { color: colors.textSecondary }, corideTab === 'auto' && s.corideSubTabLabelActive]}>🛺 AUTO</Text>
+                    </DopaminePressable>
+                  ) : null}
                 </View>
 
                 {/* BROWSE SUB-TAB */}
@@ -2818,6 +2834,9 @@ export default function OthersScreen() {
                     )}
                   </View>
                 )}
+
+                {/* ZENVY AUTO-RIDE SUB-TAB (verified drivers, separate from the peer "Auto" pools above) */}
+                {corideTab === 'auto' && autoRideOn && <AutoRideSection />}
 
                 <ActionPressable style={s.floatingFab} onPress={openCreateRide} sound="click">
                   <Text style={s.floatingFabText}>POST A RIDE +</Text>

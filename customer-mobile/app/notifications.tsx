@@ -13,6 +13,7 @@ import { apiFetch } from '../utils/auth';
 import { useLiveSync } from '../utils/useLiveSync';
 import { campusHrefForNotification } from '../modules/campus/campusLinks';
 import { rentalHrefForNotification } from '../modules/rentals/rentalLinks';
+import { autoRideHrefForNotification } from '../modules/autoRide/autoRideLinks';
 import { safeId } from '../utils/ids';
 
 interface NotificationItem {
@@ -229,6 +230,9 @@ export default function NotificationsScreen() {
       router.push('/(tabs)/orders' as any);
     } else if (n.type === 'SPIN_EARNED' || n.type === 'WALL_WINNER_REWARD') {
       router.push('/rewards' as any);
+    } else if (autoRideHrefForNotification(n.type, n.data)) {
+      // Zenvy Auto-Ride bookings, full-auto requests and trip updates
+      router.push(autoRideHrefForNotification(n.type, n.data) as any);
     } else if (rentalHrefForNotification(n.type, n.data)) {
       // Rental requests, confirmations, reminders, licence and listing reviews
       router.push(rentalHrefForNotification(n.type, n.data) as any);
