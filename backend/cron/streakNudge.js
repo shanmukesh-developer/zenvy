@@ -1,25 +1,23 @@
-const cron = require('node-cron');
 const { Op } = require('sequelize');
 const { getUserModel } = require('../models/User');
 const { sendPushToTokens } = require('../utils/push');
 
-const initStreakNudge = () => {
-  // Daily at 18:00 IST (Render runs in UTC), while campus ordering is still open (closes 21:00 IST),
-  // so the student can still act on it before the streak resets at midnight.
-  cron.schedule('0 18 * * *', async () => {
-    console.log('[STREAK CRON] Running daily fire streak expiry checks...');
-    try {
-      await runStreakNudgeLogic();
-    } catch (error) {
-      console.error('[STREAK CRON] Error during streak nudge cycle:', error);
-    }
-  }, { timezone: 'Asia/Kolkata' });
-  console.log('⏰ [CRON] Daily streak nudge job scheduled at 6:00 PM IST');
+// Daily at 18:00 IST (Render runs in UTC), while campus ordering is still open (closes 21:00 IST),
+// so the student can still act on it before the streak resets at midnight. Scheduled by
+// jobs/index.js through utils/jobs.runExclusive. Returns the number of students nudged (0 on error).
+const runStreakNudgeJob = async () => {
+  console.log('[STREAK CRON] Running daily fire streak expiry checks...');
+  try {
+    return await runStreakNudgeLogic();
+  } catch (error) {
+    console.error('[STREAK CRON] Error during streak nudge cycle:', error);
+    return 0;
+  }
 };
 
 const runStreakNudgeLogic = async () => {
   const User = getUserModel();
-  if (!User) return;
+  if (!User) return 0;
 
   const now = new Date();
   
@@ -85,6 +83,7 @@ const runStreakNudgeLogic = async () => {
   }
   
   console.log(`[STREAK CHECK] Finished. Nudged ${nudgedCount} users.`);
+  return nudgedCount;
 };
 
-module.exports = { initStreakNudge, runStreakNudgeLogic };
+module.exports = { runStreakNudgeJob, runStreakNudgeLogic };

@@ -2444,7 +2444,7 @@ exports.duplicateRestaurant = async (req, res) => {
 };
 
 // RB-5: promotions whose featuredUntil passed are switched off (row + Home banner) and pushed live.
-// Runs every 10 minutes from server.js. Returns the number of stores changed. Never throws.
+// Runs every 10 minutes (jobs/index.js, one process per tick). Returns the number of stores changed. Never throws.
 exports.expireFeaturedStores = async () => {
   try {
     const Restaurant = getRestaurantModel();

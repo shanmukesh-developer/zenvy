@@ -11,7 +11,6 @@
 // Both windows are admin GlobalConfig keys (whole days, minimum 1). Safe to run twice at once (every
 // step is "delete what is still there") and batched (small id lists per statement) so Postgres never
 // holds a long lock on the busy chat / feed tables.
-const cron = require('node-cron');
 const { Op } = require('sequelize');
 
 const KEYS = { chat: 'CHAT_RETENTION_DAYS', pulse: 'PULSE_RETENTION_DAYS' };
@@ -338,16 +337,8 @@ const runRetention = async (opts = {}) => {
   return out;
 };
 
-let scheduled = false;
-const initRetentionCron = () => {
-  if (scheduled) return;
-  scheduled = true;
-  // Hourly at :23 (off the top of the hour, away from the other hourly jobs), plus once shortly after boot.
-  cron.schedule('23 * * * *', () => { runRetention().catch(() => {}); });
-  const t = setTimeout(() => { runRetention().catch(() => {}); }, 3 * 60 * 1000);
-  if (t.unref) t.unref();
-  console.log('[CRON] Chat / Pulse retention job initialized (runs hourly).');
-};
+// Scheduling lives in jobs/index.js (runExclusive): hourly at :23 (off the top of the hour, away from
+// the other hourly jobs), plus once 3 minutes after boot.
 
 module.exports = {
   KEYS,
@@ -360,5 +351,4 @@ module.exports = {
   runChatRetention,
   runPulseRetention,
   runRetention,
-  initRetentionCron,
 };

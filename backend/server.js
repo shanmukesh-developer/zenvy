@@ -11,10 +11,11 @@ const path = require('path');
 const multer = require('multer');
 const helmet = require('helmet');
 const morgan = require('morgan');
-const { initEphemeralPurge } = require('./cron/ephemeralPurge');
-const { initStreakNudge } = require('./cron/streakNudge');
-const { initWallCron } = require('./cron/wallCron');
 const { isProduction: isProductionEnv } = require('./utils/env'); // single production check (RENDER / NODE_ENV)
+// PROCESS_ROLE = all (default: API + sockets + jobs) | web (API + sockets) | worker (jobs + health only).
+// Scheduled jobs live in jobs/index.js and run single-runner (utils/jobs.runExclusive).
+const { getProcessRole, servesApi, createNullIo } = require('./utils/processRole');
+const PROCESS_ROLE = getProcessRole();
 // xss-clean removed due to Express 5 query getter incompatibility; custom safeXssMiddleware used instead.
 
 // Secret hygiene: a JWT secret that was ever committed (or is short) lets anyone forge
@@ -253,7 +254,9 @@ server.maxConnections = 2000; // Allow 2000 simultaneous TCP connections
 server.keepAliveTimeout = 65000; // Keep connections alive (must be > nginx/ALB timeout)
 server.headersTimeout = 70000; // Must be > keepAliveTimeout
 
-const io = new Server(server, {
+// PROCESS_ROLE=worker has no socket server: a stand-in drops every emit (warned once per event) until
+// the Redis emitter lands (Phase 2). 'all' / 'web' get the real socket.io server as before.
+const io = !servesApi(PROCESS_ROLE) ? createNullIo() : new Server(server, {
   cors: { 
     origin: (origin, callback) => {
       if (isAllowedOrigin(origin)) {
@@ -577,6 +580,14 @@ app.get('/api/health', async (req, res) => {
 app.get(['/api/ping', '/ping'], (req, res) => {
   res.json({ status: 'pong', timestamp: Date.now() });
 });
+
+// PROCESS_ROLE=worker answers only the health endpoints above (and '/'): no API, no sockets.
+if (PROCESS_ROLE === 'worker') {
+  app.use((req, res, next) => {
+    if (req.method === 'GET' && req.path === '/') return next();
+    res.status(404).json({ message: 'This process runs background jobs only (PROCESS_ROLE=worker).', code: 'WORKER_ONLY' });
+  });
+}
 // Static uploads served once below after DB init
 
 // Every other /api route waits for the database (health and ping above answer on their own).
@@ -593,9 +604,7 @@ const initializeApp = async () => {
     try {
       await require('./config/sweepMigrations').runSweepMigrations(require('./config/db').getSequelize());
     } catch (e) { console.warn('[SWEEP_MIGRATION_WARN]', e.message); }
-    try { initWallCron(); } catch (e) { console.error('[WALL_CRON_INIT_ERR]', e); }
-    // Chat messages (7 days) and Pulse posts (30 days) retention; windows are admin GlobalConfig keys.
-    try { require('./cron/retentionCron').initRetentionCron(); } catch (e) { console.error('[RETENTION_CRON_INIT_ERR]', e); }
+    // Wall contest / media and chat + Pulse retention jobs: scheduled with the others (jobs/index.js) below.
 
     app.get('/auth-helper', (req, res) => {
       res.removeHeader('X-Frame-Options');
@@ -1140,21 +1149,8 @@ const initializeApp = async () => {
       console.warn('⚠️ [ASSET_URL_FIX] not started:', assetErr.message);
     }
 
-    // 🖼️ Legacy base64 images -> CampusMedia short URLs (idempotent, batched, background).
-    // Starts a minute after boot so it never competes with startup; set
-    // DISABLE_BASE64_MIGRATION=true to switch it off.
-    if (String(process.env.DISABLE_BASE64_MIGRATION || '').toLowerCase() !== 'true') {
-      setTimeout(() => {
-        try {
-          const { runBase64MediaMigration } = require('./scripts/migrate_base64_to_media');
-          runBase64MediaMigration()
-            .then((r) => console.log('🖼️ [BASE64_MIGRATION]', JSON.stringify(r)))
-            .catch((err) => console.warn('⚠️ [BASE64_MIGRATION] failed:', err.message));
-        } catch (migErr) {
-          console.warn('⚠️ [BASE64_MIGRATION] not started:', migErr.message);
-        }
-      }, 60 * 1000).unref?.();
-    }
+    // 🖼️ Legacy base64 images -> CampusMedia short URLs: a one-shot background job a minute after boot
+    // (single-runner, jobs/index.js 'media.base64Migration'); DISABLE_BASE64_MIGRATION=true switches it off.
 
     // 👤 Owner-configured admin bootstrap (idempotent). Creates the admin account from
     // ADMIN_PHONE + ADMIN_PASSWORD (Render env) only if that phone has no account yet.
@@ -1211,7 +1207,7 @@ const initializeApp = async () => {
     const rentalsRoutes = require('./modules/rentals/routes');
     app.use('/api/rentals', rentalsRoutes.router);
     app.use('/api/admin/rentals', rentalsRoutes.adminRouter);
-    try { require('./modules/rentals/jobs').initRentalJobs(); } catch (e) { console.error('[RENTALS_JOB_INIT_ERR]', e); }
+    // Rentals expiry + reminders: jobs/index.js 'rentals.lifecycle' (every 2 min).
     app.use('/api/admin', require('./routes/adminRoutes'));
     app.use('/api/rewards', require('./routes/rewardRoutes'));
     app.use('/api/community', require('./routes/communityRoutes'));
@@ -1226,87 +1222,16 @@ const initializeApp = async () => {
     app.use('/api/daily-content', require('./routes/dailyContent'));
     app.use('/api/campus', require('./modules/campus/campusRoutes'));
 
-    // ── Hourly Cleanup: Delete expired community posts and mark expired birthdays ──────────────────────
-    const runExpiryCleanup = async () => {
-      try {
-        const { getCommunityPostModel } = require('./models/CommunityPost');
-        const { getBirthdayCelebrationModel } = require('./models/BirthdayCelebration');
-        const { Op: CleanupOp } = require('sequelize');
-        
-        const CommunityPost = getCommunityPostModel();
-        if (CommunityPost) {
-          const deleted = await CommunityPost.destroy({
-            where: { expiresAt: { [CleanupOp.lt]: new Date() } }
-          });
-          if (deleted > 0) console.log(`🗑️  [EXPIRY_CLEANUP] Deleted ${deleted} expired community post(s).`);
-        }
-
-        const BirthdayCelebration = getBirthdayCelebrationModel();
-        if (BirthdayCelebration) {
-          const [updated] = await BirthdayCelebration.update(
-            { status: 'expired' },
-            {
-              where: {
-                status: 'approved',
-                expiresAt: { [CleanupOp.lt]: new Date() }
-              }
-            }
-          );
-          if (updated > 0) console.log(`🗑️  [EXPIRY_CLEANUP] Marked ${updated} expired birthday celebration(s) as expired.`);
-        }
-        // Birthdays approved ahead of time are announced on the day itself.
-        await require('./routes/birthdayRoutes').announceDueBirthdays(io);
-      } catch (e) { console.warn('[EXPIRY_CLEANUP] Error:', e.message); }
-    };
-    // Run once on startup, then every hour
-    runExpiryCleanup();
-    setInterval(runExpiryCleanup, 60 * 60 * 1000);
-
-    // Orders the store never accepted: cancel + refund once, tell the customer (orders-n12).
-    let autoCancelRunning = false;
-    const runAutoCancel = async () => {
-      if (autoCancelRunning) return;
-      autoCancelRunning = true;
-      try {
-        const { autoCancelStalePendingOrders } = require('./controllers/orderController');
-        await autoCancelStalePendingOrders(io);
-        const { expireStaleBaskets } = require('./controllers/megaBasketController');
-        await expireStaleBaskets(io);
-      } catch (e) {
-        console.warn('[AUTO_CANCEL] Error:', e.message);
-      } finally {
-        autoCancelRunning = false;
-      }
-    };
-    setTimeout(runAutoCancel, 30 * 1000);
-    setInterval(runAutoCancel, 2 * 60 * 1000);
-
-    // Stall orders open for hours are FLAGGED (never cancelled): admin + stall told once (utils/stallStuckJob).
-    let stallStuckRunning = false;
-    const runStallStuck = async () => {
-      if (stallStuckRunning) return;
-      stallStuckRunning = true;
-      try {
-        await require('./utils/stallStuckJob').flagStuckStallOrders(io);
-      } catch (e) {
-        console.warn('[STALL_STUCK] Error:', e.message);
-      } finally {
-        stallStuckRunning = false;
-      }
-    };
-    setTimeout(runStallStuck, 60 * 1000);
-    setInterval(runStallStuck, 15 * 60 * 1000);
-
-    // Promotions past their featuredUntil end on their own (store row + Home banner), every 10 min.
-    const runFeaturedExpiry = async () => {
-      try {
-        await require('./controllers/adminController').expireFeaturedStores();
-      } catch (e) {
-        console.warn('[FEATURED_EXPIRY] Error:', e.message);
-      }
-    };
-    setTimeout(runFeaturedExpiry, 45 * 1000);
-    setInterval(runFeaturedExpiry, 10 * 60 * 1000);
+    // ── Scheduled / background jobs (jobs/index.js) ──────────────────────
+    // Expiry cleanup + birthday announcements (hourly, once now), auto-cancel (2 min), stall stuck flags
+    // (15 min), featured expiry (10 min), menu auto-restore (30 s), rentals (2 min), Wall (5 min / 03:00
+    // IST), chat + Pulse retention (hourly :23), ephemeral purge (hourly), streak nudge (18:00 IST),
+    // abandoned cart (10:00 IST), Friends tasks / Connect / Spaces, base64 migration (once). Same
+    // schedules as before; each tick runs on exactly ONE process (Postgres advisory lock). Not started
+    // when PROCESS_ROLE=web (only the per-process Spaces room sweep runs there).
+    try {
+      require('./jobs').startJobs({ io, isDbReady: () => dbReady, role: PROCESS_ROLE });
+    } catch (e) { console.error('[JOBS_INIT_ERR]', e); }
     
 
     // Serve uploaded files statically
@@ -1409,8 +1334,14 @@ const initializeApp = async () => {
     const CART_ROOM_PATTERN = /^ZN-[A-Z0-9]{4,8}$/;
     const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+    // Per-process, socket-bound housekeeping (NOT single-runner jobs): they read THIS process's socket
+    // rooms, so they run on every process that serves sockets and never on PROCESS_ROLE=worker (no
+    // sockets there: every rider would look disconnected). Cross-instance presence needs the Redis
+    // adapter (Phase 2).
+    const socketsHere = servesApi(PROCESS_ROLE);
+
     // Forget shared-cart snapshots once nobody has been in the room for 6 hours.
-    setInterval(() => {
+    if (socketsHere) setInterval(() => {
       const cutoff = Date.now() - 6 * 60 * 60 * 1000;
       for (const [room, snap] of roomCartSnapshots.entries()) {
         const live = io.sockets.adapter.rooms.get(room);
@@ -1461,7 +1392,7 @@ const initializeApp = async () => {
     };
 
     // Sweep (also covers riders whose timer was lost in a restart / redeploy).
-    setInterval(async () => {
+    if (socketsHere) setInterval(async () => {
       try {
         const { getDeliveryPartnerModel } = require('./models/DeliveryPartner');
         const { riderFixAgeMs } = require('./utils/riderDispatch');
@@ -2481,7 +2412,8 @@ const startServer = () => {
     console.log(`🚀 Server listening on port ${PORT} — initializing database in the background...`);
 
     // ── Self-Ping Keep-Alive (Prevents Render Free Tier Sleep) ──
-    if (isProductionEnv()) {
+    // Per process, no data written. KEEPALIVE=false switches it off (paid plans never sleep).
+    if (isProductionEnv() && String(process.env.KEEPALIVE || '').trim().toLowerCase() !== 'false') {
       const KEEP_ALIVE_INTERVAL = 14 * 60 * 1000; // 14 minutes (Render sleeps at 15 min)
       const selfUrl = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
       setInterval(async () => {
@@ -2526,73 +2458,8 @@ const startServer = () => {
 
 startServer();
 
-// ── F2: Scheduled Push Campaigns (Daily abandoned cart nudge at 10 AM) ──
-try {
-  const cron = require('node-cron');
-  cron.schedule('0 10 * * *', async () => {
-    console.log('[CRON] Running daily abandoned cart nudge...');
-    try {
-      // In-process call (the HTTP route is admin-only now)
-      const { runAbandonedCartNudge } = require('./routes/featureRoutes');
-      const { count } = await runAbandonedCartNudge();
-      console.log(`[CRON] Abandoned cart nudge sent to ${count} users`);
-    } catch (e) { console.warn('[CRON] Nudge failed:', e.message); }
-  }, { timezone: 'Asia/Kolkata' });
-  console.log('⏰ [CRON] Daily abandoned cart nudge scheduled at 10:00 AM');
-} catch (e) {
-  console.warn('[CRON] node-cron not available, skipping scheduled jobs');
-}
-
-// ── Restaurant out-of-stock auto-restore periodic check ──
-setInterval(async () => {
-  if (!dbReady) return;
-  try {
-    const { getMenuItemModel } = require('./models/MenuItem');
-    const MenuItem = getMenuItemModel();
-    if (!MenuItem) return;
-    const { Op } = require('sequelize');
-    
-    const expiredItems = await MenuItem.findAll({
-      where: {
-        isAvailable: false,
-        outOfStockUntil: {
-          [Op.ne]: null,
-          [Op.lte]: new Date()
-        }
-      }
-    });
-
-    if (expiredItems.length > 0) {
-      console.log(`[AUTO-RESTORE] Restoring ${expiredItems.length} menu items...`);
-      for (const item of expiredItems) {
-        item.isAvailable = true;
-        item.outOfStockUntil = null;
-        await item.save();
-
-        // Broadcast to clients via Socket.io
-        io.emit('inventory_updated', { itemId: item.id, restaurantId: item.restaurantId, isAvailable: true });
-        require('./utils/realtime').publish('product', 'updated', item.id, { storeId: item.restaurantId, scope: 'stock' });
-        console.log(`[AUTO-RESTORE] Restored item: ${item.name} (${item.id})`);
-      }
-    }
-  } catch (err) {
-    console.warn('[AUTO-RESTORE_ERROR] Failed to run auto-restore:', err.message);
-  }
-}, 30000); // Check every 30 seconds
-
-// ── Ephemeral Purge (Zenvy After Dark) ──
-try {
-  initEphemeralPurge();
-} catch (e) {
-  console.warn('[CRON] Failed to init Ephemeral Purge:', e.message);
-}
-
-// ── Daily Fire Streak Nudge ──
-try {
-  initStreakNudge();
-} catch (e) {
-  console.warn('[CRON] Failed to init Streak Nudge:', e.message);
-}
+// Abandoned-cart nudge (10:00 IST), menu auto-restore (30 s), ephemeral purge (hourly) and the streak
+// nudge (18:00 IST) are scheduled in jobs/index.js (started from initializeApp once the DB is ready).
 
 module.exports = { 
   checkSurgeState, 

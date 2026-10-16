@@ -12,7 +12,7 @@
  *   Afterwards the other people's apps get `friends:connect_updated {matchId, status:'ended'}` and every
  *   socket leaves the deleted chat rooms, so nothing more is delivered.
  *
- * purge() — retention (runs from the router timer and POST /connect/admin/jobs/run):
+ * purge() — retention (hourly from jobs/index.js on ONE process, and POST /connect/admin/jobs/run):
  *   - ended matches (unmatched / blocked) older than CONNECT_CHAT_RETENTION_DAYS (default 30): their
  *     messages and conversation are deleted; the match row stays (purgedAt) so the pair cannot rematch;
  *   - liveness selfies still waiting for a decision after 30 days are deleted (status back to 'none').

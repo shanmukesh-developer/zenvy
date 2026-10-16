@@ -10,13 +10,12 @@ const { requireFriends } = require('../services/eligibility');
 const flags = require('../services/featureFlags');
 const { wrap } = require('../services/http');
 const c = require('../controllers/tasksController');
-const jobs = require('../jobs/taskJobs');
 
 // The tasks phase has shipped: the sub-tab is on once an admin turns the 'tasks' flag on
 // (featureFlags DEFAULTS keep it OFF until the owner approves the launch).
 flags.markImplemented('tasks');
-// Expiry, 7-day auto-confirm (D4) and chat closing. No-op under NODE_ENV=test / FRIENDS_TASK_JOBS=off.
-jobs.start();
+// Expiry, 7-day auto-confirm (D4) and chat closing are scheduled by jobs/index.js (started from
+// server.js, not on require). Still a no-op under NODE_ENV=test / FRIENDS_TASK_JOBS=off.
 
 const router = express.Router();
 const w = (fn) => wrap(fn, 'FRIENDS_TASKS');

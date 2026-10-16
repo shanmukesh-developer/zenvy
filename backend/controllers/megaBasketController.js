@@ -745,7 +745,7 @@ const cancelBasket = async (req, res) => {
 };
 
 // Baskets no rider claims are cancelled after MEGA_BASKET_TIMEOUT_MINUTES (default 60), so they do
-// not sit in the rider pool forever. Runs from server.js together with the order auto-cancel job.
+// not sit in the rider pool forever. Runs from jobs/index.js together with the order auto-cancel job.
 const BASKET_TIMEOUT_MINUTES = Math.max(15, parseInt(process.env.MEGA_BASKET_TIMEOUT_MINUTES, 10) || 60);
 const expireStaleBaskets = async (io) => {
   const MegaBasket = getMegaBasketModel();

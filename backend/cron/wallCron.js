@@ -1,4 +1,3 @@
-const cron = require('node-cron');
 const { Op } = require('sequelize');
 const { getWallEventModel } = require('../models/WallEvent');
 const { getWallSubmissionModel } = require('../models/WallSubmission');
@@ -6,28 +5,28 @@ const { getCouponModel } = require('../models/Coupon');
 const { getUserModel } = require('../models/User');
 const { sendPushToTopic, sendPushToTokens } = require('../utils/push');
 
-const initWallCron = () => {
-  // 1. Check for expired events every 5 minutes
-  cron.schedule('*/5 * * * *', async () => {
-    console.log('⏰ [WALL CRON] Checking for expired Wall photo contests...');
-    try {
-      await processExpiredWallEvents();
-    } catch (err) {
-      console.error('[WALL CRON] Error processing expired events:', err);
-    }
-  });
+// Scheduled by jobs/index.js through utils/jobs.runExclusive:
+//  1. every 5 minutes ('*/5 * * * *'): finalize expired Wall photo contests (runWallFinalizeJob)
+//  2. daily 03:00 India time ('0 3 * * *' Asia/Kolkata, B25): purge media 48 h after an event ended
+// Both log and swallow their errors (as the old cron callbacks did) and return counts.
+const runWallFinalizeJob = async () => {
+  console.log('⏰ [WALL CRON] Checking for expired Wall photo contests...');
+  try {
+    return { finalized: await processExpiredWallEvents() };
+  } catch (err) {
+    console.error('[WALL CRON] Error processing expired events:', err);
+    return { finalized: 0 };
+  }
+};
 
-  // 2. Cleanup media older than 48 hours post event end (runs daily at 3:00 AM)
-  cron.schedule('0 3 * * *', async () => { // 03:00 India time (B25), not 03:00 UTC
-    console.log('⏰ [WALL CRON] Running 48h post-event media cleanup...');
-    try {
-      await cleanupOldWallMedia();
-    } catch (err) {
-      console.error('[WALL CRON] Error cleaning up media:', err);
-    }
-  }, { timezone: 'Asia/Kolkata' });
-
-  console.log('⏰ [CRON] Wall photo contest winner calculation & media cleanup jobs scheduled.');
+const runWallMediaCleanupJob = async () => {
+  console.log('⏰ [WALL CRON] Running 48h post-event media cleanup...');
+  try {
+    return { purged: await cleanupOldWallMedia() };
+  } catch (err) {
+    console.error('[WALL CRON] Error cleaning up media:', err);
+    return { purged: 0 };
+  }
 };
 
 const processExpiredWallEvents = async () => {
@@ -36,7 +35,7 @@ const processExpiredWallEvents = async () => {
   const Coupon = getCouponModel();
   const User = getUserModel();
 
-  if (!WallEvent || !WallSubmission) return;
+  if (!WallEvent || !WallSubmission) return 0;
 
   const now = new Date();
   const expiredEvents = await WallEvent.findAll({
@@ -46,7 +45,8 @@ const processExpiredWallEvents = async () => {
     }
   });
 
-  if (expiredEvents.length === 0) return;
+  if (expiredEvents.length === 0) return 0;
+  let finalized = 0;
 
   console.log(`[WALL CRON] Found ${expiredEvents.length} expired event(s) to finalize.`);
 
@@ -56,6 +56,7 @@ const processExpiredWallEvents = async () => {
     // the run that flips it awards the coupon and sends the pushes (no duplicate WALL- coupons).
     const [claimed] = await WallEvent.update({ status: 'ENDED' }, { where: { id: event.id, status: 'ACTIVE' } });
     if (!claimed) continue;
+    finalized++;
 
     // Winner = most real votes (counted from WallLikes, not the cached likeCount) among approved
     // submissions; a photo with no votes never wins (B18).
@@ -147,12 +148,14 @@ const processExpiredWallEvents = async () => {
       console.error('[WALL NOTIFICATION ERR]', pErr);
     }
   }
+  return finalized;
 };
 
 const cleanupOldWallMedia = async () => {
   const WallEvent = getWallEventModel();
   const WallSubmission = getWallSubmissionModel();
-  if (!WallEvent || !WallSubmission) return;
+  if (!WallEvent || !WallSubmission) return 0;
+  let purged = 0;
 
   // 48 hours ago
   const cutoffTime = new Date(Date.now() - 48 * 60 * 60 * 1000);
@@ -172,10 +175,12 @@ const cleanupOldWallMedia = async () => {
     const deletedCount = doomed.length ? await WallSubmission.destroy({ where: { id: { [Op.in]: doomed.map((d) => d.id) } } }) : 0;
     // ...and their photo bytes (B19).
     if (doomed.length) await require('../utils/mediaCleanup').releaseMedia(doomed.map((d) => d.imageUrl), 'wall').catch(() => 0);
+    purged += deletedCount;
     if (deletedCount > 0) {
       console.log(`🧹 [WALL CLEANUP] Purged ${deletedCount} non-winning submission images for event "${evt.title}"`);
     }
   }
+  return purged;
 };
 
-module.exports = { initWallCron, processExpiredWallEvents, cleanupOldWallMedia };
+module.exports = { runWallFinalizeJob, runWallMediaCleanupJob, processExpiredWallEvents, cleanupOldWallMedia };

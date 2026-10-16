@@ -84,7 +84,7 @@ const announceBirthday = async (io, celebration) => {
   }
 };
 
-// Hourly (server.js): approved birthdays whose day (IST) has come and that were approved earlier,
+// Hourly (jobs/index.js): approved birthdays whose day (IST) has come and that were approved earlier,
 // announced once from 08:00 IST so nobody is woken at midnight.
 const announceDueBirthdays = async (io) => {
   const BirthdayCelebration = getBirthdayCelebrationModel();
@@ -269,7 +269,7 @@ router.put('/:id/approve', protect, admin, async (req, res) => {
     });
 
     // Birthday is today: announce now (exactly once). Future dates are announced on the day by
-    // announceDueBirthdays (hourly job in server.js).
+    // announceDueBirthdays (hourly job in jobs/index.js).
     if (isToday) {
       const [claimed] = await BirthdayCelebration.update({ announcedAt: now }, { where: { id: celebration.id, announcedAt: null } });
       if (claimed > 0) await announceBirthday(req.app.get('io'), celebration);

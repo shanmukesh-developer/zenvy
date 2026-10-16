@@ -1069,7 +1069,7 @@ const cancelAndRefund = async (order, { reason = null, onlyFromStatuses = null, 
 };
 
 // Orders nobody moves forward are cancelled (and Wallet-refunded) automatically, so a customer is
-// never left waiting (orders-n12). Runs from server.js every 2 minutes. Two cases, rider never set:
+// never left waiting (orders-n12). Runs from jobs/index.js every 2 minutes. Two cases, rider never set:
 //  • 'Pending' for PENDING_ORDER_TIMEOUT_MINUTES (default 15): the store never accepted it.
 //  • 'Accepted'/'Preparing'/'ReadyForPickup' for UNCLAIMED_ORDER_TIMEOUT_MINUTES (default 30) since
 //    acceptance: no rider claimed it. App-less (catalogue) stores start orders at 'Accepted', so

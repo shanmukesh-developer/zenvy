@@ -11,7 +11,9 @@
  *                 Live Spaces with NO room in this process (never joined, or lost in a restart) and no
  *                 activity for 5 min -> ended 'empty', or 'server_restart' when the last activity was
  *                 before this process started.
- * The routes file calls start(); the room sweep runs every 15 s, the database steps every minute.
+ * jobs/index.js schedules this (same timing as start() below): the room sweep runs every 15 s on every
+ * process that serves sockets, the database steps every minute on ONE process (utils/jobs.runExclusive).
+ * start() is kept for tests / tools; the server no longer calls it.
  * Disabled when NODE_ENV=test or FRIENDS_SPACE_JOBS=off (tests call runOnce / sweep directly).
  */
 const { Op } = require('sequelize');

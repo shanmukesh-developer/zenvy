@@ -425,7 +425,7 @@ router.post('/push/campaign', protect, admin, async (req, res) => {
 });
 
 // Abandoned-cart nudge: customers who ordered 3-10 days ago and not since.
-// Called in-process by the daily cron (server.js) and by admins through the route below.
+// Called in-process by the daily cron (jobs/index.js) and by admins through the route below.
 const runAbandonedCartNudge = async () => {
   const { getUserModel } = require('../models/User');
   const { getOrderModel } = require('../models/Order');

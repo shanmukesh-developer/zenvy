@@ -15,14 +15,12 @@ const { requireFriends } = require('../services/eligibility');
 const flags = require('../services/featureFlags');
 const { wrap } = require('../services/http');
 const c = require('../controllers/connectController');
-const deletion = require('../services/connectDeletion');
 
 // The connect phase has shipped: the sub-tab is on once an admin turns the 'connect' flag on
 // (featureFlags DEFAULTS keep it OFF until the owner approves the launch).
 flags.markImplemented('connect');
-// Retention purges (ended-match chats after 30 days, unreviewed selfies after 30 days).
-// No-op under NODE_ENV=test / CONNECT_JOBS=off.
-deletion.start();
+// Retention purges (ended-match chats after 30 days, unreviewed selfies after 30 days) are scheduled
+// by jobs/index.js (started from server.js, not on require). Still a no-op under NODE_ENV=test / CONNECT_JOBS=off.
 
 const router = express.Router();
 const w = (fn) => wrap(fn, 'FRIENDS_CONNECT');

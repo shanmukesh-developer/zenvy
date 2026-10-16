@@ -12,13 +12,12 @@ const { requireFriends } = require('../services/eligibility');
 const flags = require('../services/featureFlags');
 const { wrap } = require('../services/http');
 const c = require('../controllers/spacesController');
-const jobs = require('../jobs/spaceJobs');
 
 // The spaces phase has shipped: the sub-tab is on once an admin turns the 'spaces' flag on
 // (featureFlags DEFAULTS keep it OFF until the owner approves the launch).
 flags.markImplemented('spaces');
-// Reminders, expiry and abandoned rooms. No-op under NODE_ENV=test / FRIENDS_SPACE_JOBS=off.
-jobs.start();
+// Reminders, expiry and abandoned rooms are scheduled by jobs/index.js (started from server.js, not on
+// require). Still a no-op under NODE_ENV=test / FRIENDS_SPACE_JOBS=off.
 
 const router = express.Router();
 const w = (fn) => wrap(fn, 'FRIENDS_SPACES');

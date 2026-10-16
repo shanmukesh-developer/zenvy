@@ -1,4 +1,4 @@
-// Rentals background job (every 2 minutes, same style as the order auto-cancel loop in server.js):
+// Rentals background job (every 2 minutes, scheduled in jobs/index.js like the order auto-cancel job):
 //  - REQUESTED past respondBy (2 h or the pickup time)      -> EXPIRED, renter + owner told
 //  - ACCEPTED never handed over by the end of the booking   -> EXPIRED (no-show), both told
 //  - RETURNED not closed by the owner within 24 h            -> COMPLETED (no extra charges)
@@ -80,26 +80,5 @@ const runRentalJobs = async (now = new Date()) => {
   return out;
 };
 
-let running = false;
-let timer = null;
-const initRentalJobs = () => {
-  if (timer) return;
-  const tick = async () => {
-    if (running) return;
-    running = true;
-    try {
-      const r = await runRentalJobs();
-      if (r && (r.expired || r.noShow || r.autoCompleted)) console.log('[RENTALS_JOB]', JSON.stringify(r));
-    } catch (err) {
-      console.warn('[RENTALS_JOB] Error:', err.message);
-    } finally {
-      running = false;
-    }
-  };
-  setTimeout(tick, 40 * 1000).unref?.();
-  timer = setInterval(tick, 2 * 60 * 1000);
-  timer.unref?.();
-  console.log('⏰ [CRON] Rentals expiry + reminders every 2 min');
-};
-
-module.exports = { runRentalJobs, initRentalJobs };
+// Scheduled every 2 minutes (first run 40 s after boot) by jobs/index.js through utils/jobs.runExclusive.
+module.exports = { runRentalJobs };

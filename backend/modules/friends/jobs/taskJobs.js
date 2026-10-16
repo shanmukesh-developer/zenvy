@@ -6,7 +6,8 @@
  *                   -> completed (autoConfirmed:true). Karma and notifications only for the winner.
  *  3. Chat close:   task chats of completed tasks close 7 days after completion (chatClosesAt);
  *                   chats of cancelled / expired tasks are closed (history stays readable).
- * The routes file calls start() once; reads also apply the same rules lazily per task, so the API is
+ * jobs/index.js schedules runOnce on ONE process (utils/jobs.runExclusive, same timing as start(),
+ * which is kept for tests / tools); reads also apply the same rules lazily per task, so the API is
  * exact between runs. Disabled when NODE_ENV=test or FRIENDS_TASK_JOBS=off.
  */
 const { Op } = require('sequelize');
