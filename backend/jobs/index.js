@@ -159,6 +159,19 @@ const runRentals = async () => {
   }
 };
 
+// Auto-Ride holds / booking opens / private request expiry / reminders / no-shows / refunds
+// (modules/autoRide/jobs.js). One indexed lookup and out when nothing is active (feature off).
+const runAutoRide = async () => {
+  try {
+    const r = await require('../modules/autoRide/jobs').runAutoRideJobs();
+    if (r && !r.idle && !r.skipped && Object.values(r).some((v) => typeof v === 'number' && v > 0)) console.log('[AUTORIDE_JOB]', JSON.stringify(r));
+    return r;
+  } catch (err) {
+    console.warn('[AUTORIDE_JOB] Error:', err.message);
+    return { error: err.message };
+  }
+};
+
 const runRetention = async () => require('../cron/retentionCron').runRetention();
 
 // Daily abandoned-cart push (10:00 IST).
@@ -233,6 +246,7 @@ const JOBS = [
   { name: 'stores.featuredExpiry', schedule: { everyMs: 10 * MIN, firstMs: 45 * SEC }, run: runFeaturedExpiry, quietWhenIdle: true },
   { name: 'menu.autoRestore', schedule: { everyMs: 30 * SEC }, run: runMenuAutoRestore, quietWhenIdle: true, emits: true },
   { name: 'rentals.lifecycle', schedule: { everyMs: 2 * MIN, firstMs: 40 * SEC }, run: runRentals, quietWhenIdle: true, emits: true },
+  { name: 'autoRide.lifecycle', schedule: { everyMs: 30 * SEC, firstMs: 50 * SEC }, run: runAutoRide, quietWhenIdle: true, emits: true },
   { name: 'wall.finalize', schedule: { cron: '*/5 * * * *' }, run: () => require('../cron/wallCron').runWallFinalizeJob(), quietWhenIdle: true },
   { name: 'wall.mediaCleanup', schedule: { cron: '0 3 * * *', timezone: IST }, run: () => require('../cron/wallCron').runWallMediaCleanupJob(), timeoutMs: 30 * MIN },
   { name: 'retention.chatPulse', schedule: { cron: '23 * * * *', onceAfterMs: 3 * MIN }, run: runRetention, timeoutMs: 30 * MIN },

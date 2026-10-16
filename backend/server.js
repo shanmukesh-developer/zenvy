@@ -421,6 +421,14 @@ async function loadSocketAccount(decoded) {
     if ((Number(decoded.tv) || 0) !== (Number(p.tokenVersion) || 0)) return null; // password changed
     return { id: p.id, role: 'rider', suspended: false };
   }
+  if (tokenRole === 'auto_driver') {
+    // Zenvy Auto Driver app (modules/autoRide): own table, current tokenVersion, suspended refused.
+    const AutoDriver = require('./modules/autoRide').getModel('AutoDriver');
+    const d = AutoDriver ? await AutoDriver.findByPk(id, { attributes: ['id', 'tokenVersion', 'status'] }) : null;
+    if (!d) return null;
+    if ((Number(decoded.tv) || 0) !== (Number(d.tokenVersion) || 0)) return null; // password changed / signed out
+    return { id: d.id, role: 'auto_driver', suspended: d.status === 'SUSPENDED' };
+  }
   if (tokenRole === 'restaurant' || tokenRole === 'vendor') {
     const { getRestaurantModel } = require('./models/Restaurant');
     const r = await getRestaurantModel().findByPk(id, { attributes: ['id', 'tokenVersion'] });
@@ -1247,6 +1255,14 @@ const initializeApp = async () => {
     app.use('/api/rentals', rentalsRoutes.router);
     app.use('/api/admin/rentals', rentalsRoutes.adminRouter);
     // Rentals expiry + reminders: jobs/index.js 'rentals.lifecycle' (every 2 min).
+    // Zenvy Auto-Ride (shared autos seat booking + Zenvy Auto Driver app). Driver router first so
+    // /api/auto-ride/driver/* never reaches the customer router; admin routes before /api/admin.
+    // Off for customers / publishing until GlobalConfig AUTO_RIDE_ENABLED is true.
+    const autoRideRoutes = require('./modules/autoRide/routes');
+    app.use('/api/auto-ride/driver', autoRideRoutes.driverRouter);
+    app.use('/api/auto-ride', autoRideRoutes.router);
+    app.use('/api/admin/auto-ride', autoRideRoutes.adminRouter);
+    // Auto-Ride holds / lifecycle: jobs/index.js 'autoRide.lifecycle' (every 30 s).
     app.use('/api/admin', require('./routes/adminRoutes'));
     app.use('/api/rewards', require('./routes/rewardRoutes'));
     app.use('/api/community', require('./routes/communityRoutes'));
@@ -1512,6 +1528,7 @@ const initializeApp = async () => {
       // Personal rooms so targeted events never need a global broadcast.
       if (!isGuestSocket()) {
         if (socketRole() === 'rider') { socket.join(`rider_${socket.user.id}`); cancelRiderOfflineCheck(socket.user.id); }
+        else if (socketRole() === 'auto_driver') socket.join(`autodriver_${socket.user.id}`);
         else if (socketRole() !== 'restaurant') socket.join(`user_${socket.user.id}`);
       }
 

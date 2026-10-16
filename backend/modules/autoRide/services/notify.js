@@ -1,0 +1,86 @@
+// Auto-Ride notifications. Never throws, never blocks the request (fire-and-forget, after commit).
+//  Customers: push + in-app Notification row (campus pushToUsers -> utils/push recipients) and an
+//             ids-only socket nudge `autoride:changed` { kind, id, status } to room user_<id>.
+//  Drivers:   push to AutoDriver.fcmTokens + in-app Notification row with userId = driver id
+//             (GET /api/auto-ride/driver/notifications) and `autoride:changed` to room autodriver_<id>.
+//  Admins:    admin:changed (auto_* types) to admin-room.  Public: data:changed type 'auto_trip' (ids only).
+const realtime = require('../../../utils/realtime');
+const { getModel } = require('../index');
+
+const pending = new Set(); // in-flight sends (tests await idle())
+const track = (p) => {
+  pending.add(p);
+  p.finally(() => pending.delete(p));
+  return p;
+};
+const idle = async () => { while (pending.size) await Promise.allSettled([...pending]); };
+
+const toCustomers = (userIds, title, body, data = {}) => {
+  const ids = [...new Set((Array.isArray(userIds) ? userIds : [userIds]).filter(Boolean).map(String))];
+  if (!ids.length || !title) return;
+  track(Promise.resolve()
+    .then(() => require('../../campus/campusHelpers').pushToUsers(ids, title, body, { screen: 'auto_booking', ...data }))
+    .catch((err) => console.warn('[AUTORIDE_PUSH_WARN]', err.message)));
+};
+
+const toDriver = (driverId, title, body, data = {}) => {
+  if (!driverId || !title) return;
+  track(Promise.resolve()
+    .then(async () => {
+      const Driver = getModel('AutoDriver');
+      const d = Driver ? await Driver.findByPk(driverId, { attributes: ['id', 'fcmTokens'] }) : null;
+      if (!d) return;
+      const tokens = Array.isArray(d.fcmTokens) ? d.fcmTokens.filter((t) => typeof t === 'string') : [];
+      const { sendPushToTokens } = require('../../../utils/push');
+      await sendPushToTokens(tokens, title, body, { screen: 'auto_driver_trip', ...data }, { recipients: [String(d.id)] });
+    })
+    .catch((err) => console.warn('[AUTORIDE_DRIVER_PUSH_WARN]', err.message)));
+};
+
+/** Socket nudges (ids + status only). */
+const nudgeCustomers = (userIds, kind, id, status) => {
+  [...new Set((Array.isArray(userIds) ? userIds : [userIds]).filter(Boolean).map(String))]
+    .forEach((uid) => realtime.toUser(uid, 'autoride:changed', { kind, id, ...(status ? { status } : {}) }));
+};
+const nudgeDriver = (driverId, kind, id, status) => {
+  if (!driverId) return;
+  if (typeof realtime.toDriver === 'function') realtime.toDriver(driverId, 'autoride:changed', { kind, id, ...(status ? { status } : {}) });
+};
+
+const admin = (type, action, id) => realtime.notifyAdmin(type, action, id);
+/** A trip's public listing changed (availability / status): browsers refetch. */
+const tripChanged = (tripId) => realtime.publish('auto_trip', 'updated', tripId);
+
+/** Customer ids holding a live / confirmed booking on a trip (for broadcast-to-passengers). */
+const passengersOf = async (tripId, statuses) => {
+  const Booking = getModel('AutoBooking');
+  if (!Booking) return [];
+  const { Op } = require('sequelize');
+  const rows = await Booking.findAll({ where: { tripId, status: { [Op.in]: statuses } }, attributes: ['userId'] });
+  return [...new Set(rows.map((r) => String(r.userId)))];
+};
+
+/** Trip-wide event: every passenger in `statuses` + the driver, plus socket nudges + public refresh. */
+const tripEvent = (trip, { title, body, driverTitle, driverBody, type, statuses }) => {
+  track(Promise.resolve().then(async () => {
+    const { CONFIRMED_BOOKING_STATUSES } = require('../enums');
+    const users = await passengersOf(trip.id, statuses || CONFIRMED_BOOKING_STATUSES);
+    if (title && users.length) toCustomers(users, title, body, { type, tripId: trip.id });
+    nudgeCustomers(users, 'trip', trip.id, trip.status);
+    if (driverTitle) toDriver(trip.driverId, driverTitle, driverBody || '', { type, tripId: trip.id });
+  }).catch((err) => console.warn('[AUTORIDE_NOTIFY_WARN]', err.message)));
+  nudgeDriver(trip.driverId, 'trip', trip.id, trip.status);
+  tripChanged(trip.id);
+  admin('auto_trip', 'updated', trip.id);
+};
+
+/** One booking changed: its customer (push optional) + the trip's driver nudged. */
+const bookingEvent = (b, { title, body, type, driverTitle, driverBody } = {}) => {
+  if (title) toCustomers([b.userId], title, body, { type, bookingId: b.id, tripId: b.tripId });
+  nudgeCustomers([b.userId], 'booking', b.id, b.status);
+  if (driverTitle) toDriver(b.driverId, driverTitle, driverBody || '', { type, bookingId: b.id, tripId: b.tripId });
+  nudgeDriver(b.driverId, 'booking', b.id, b.status);
+  admin('auto_booking', 'updated', b.id);
+};
+
+module.exports = { toCustomers, toDriver, nudgeCustomers, nudgeDriver, admin, tripChanged, tripEvent, bookingEvent, passengersOf, idle };

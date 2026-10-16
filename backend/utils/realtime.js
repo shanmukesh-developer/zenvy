@@ -28,12 +28,16 @@ const BULK_THRESHOLD = 20;
 
 const PUBLIC_TYPES = new Set(['store', 'product', 'config', 'announcement', 'coupon', 'pg', 'wall', 'campus',
   // Student vehicle rentals: a listing became visible / hidden (ids only).
-  'rental']);
+  'rental',
+  // Auto-Ride: a shared-auto trip's availability / status changed (ids only).
+  'auto_trip']);
 const ADMIN_TYPES = new Set([...PUBLIC_TYPES, 'order', 'ticket', 'verification', 'pg_booking', 'wall_submission', 'service_booking', 'rider', 'user',
   // Zenvy Friends moderation queue (admin /moderation page)
   'friends_report', 'friends_appeal', 'friends_review',
   // Rentals admin queues (admin /rentals page)
-  'rental_listing', 'rental_licence', 'rental_booking', 'rental_report']);
+  'rental_listing', 'rental_licence', 'rental_booking', 'rental_report',
+  // Auto-Ride admin queues (drivers, vehicles, routes, bookings, full-auto requests, incidents)
+  'auto_driver', 'auto_vehicle', 'auto_route', 'auto_booking', 'auto_private_request', 'auto_incident']);
 const ACTIONS = new Set(['created', 'updated', 'deleted']);
 const CACHE_TYPES = new Set(['store', 'product']);
 
@@ -147,6 +151,18 @@ const toUser = (userId, event, payload = {}) => {
   }
 };
 
+// Event to one Zenvy Auto Driver's own sockets (room `autodriver_<id>`, joined on authenticated
+// connect of an 'auto_driver' token). Not debounced. Payloads ids / statuses only. Never throws.
+const toDriver = (driverId, event, payload = {}) => {
+  try {
+    const id = safeId(driverId);
+    if (!ioRef || id === null || typeof event !== 'string') return;
+    ioRef.to(`autodriver_${id}`).emit(event, { ...payload, at: new Date().toISOString() });
+  } catch (err) {
+    console.error('[REALTIME_DRIVER_EMIT_ERROR]', err.message);
+  }
+};
+
 // C2: one event to every connected socket of the main namespace (e.g. community_post_deleted when a
 // moderator hides a post). Payloads must stay ids only. Never throws.
 const broadcast = (event, payload = {}) => {
@@ -251,7 +267,7 @@ const disconnectRevokedSockets = (accountId, tokenVersion = null) => {
 
 module.exports = {
   disconnectRevokedSockets,
-  init, publish, notifyAdmin, toUser, broadcast, PUBLIC_EVENT, ADMIN_EVENT, ADMIN_ROOM,
+  init, publish, notifyAdmin, toUser, toDriver, broadcast, PUBLIC_EVENT, ADMIN_EVENT, ADMIN_ROOM,
   setRiderOnline, deliveryRequest, deliveryRequestGone, leaveOrderRoom,
   RIDERS_ONLINE_ROOM, DELIVERY_REQUEST_EVENT, DELIVERY_REQUEST_GONE_EVENT, CLAIMABLE_STATUSES,
 };

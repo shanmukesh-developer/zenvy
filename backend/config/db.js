@@ -46,6 +46,7 @@ const { initSmsDailyCountModel } = require('../models/SmsDailyCount');
 const { initCampusModels } = require('../modules/campus/models');
 const { initFriendsModels } = require('../modules/friends');
 const { initRentalsModels } = require('../modules/rentals');
+const { initAutoRideModels } = require('../modules/autoRide');
 
 const initializeAllModels = (instance) => {
   initUserModel(instance);
@@ -91,6 +92,8 @@ const initializeAllModels = (instance) => {
   initFriendsModels(instance);
   // Zenvy Rentals: peer-to-peer student vehicle rentals (Others > Rentals).
   initRentalsModels(instance);
+  // Zenvy Auto-Ride: shared autos seat booking + Zenvy Auto Driver accounts (off until AUTO_RIDE_ENABLED).
+  initAutoRideModels(instance);
 
   // Define Associations
   const Restaurant = instance.models.Restaurant;
@@ -615,6 +618,13 @@ const connectDB = async () => {
       } catch (rErr) {
         console.warn('⚠️ [RENTALS_MIGRATION_WARN]', rErr.message);
       }
+      // Zenvy Auto-Ride: named unique / partial unique indexes (race guards; additive, idempotent).
+      try {
+        const { runAutoRideMigrations } = require('../modules/autoRide/migrations');
+        await runAutoRideMigrations(sequelize);
+      } catch (aErr) {
+        console.warn('⚠️ [AUTORIDE_MIGRATION_WARN]', aErr.message);
+      }
     } else {
       // Production: no sync({ alter: true }) on every boot. Sequelize v6 alter re-adds UNIQUE
       // constraints each run (duplicate *_key indexes pile up), slows startup (API is 503 until
@@ -654,6 +664,13 @@ const connectDB = async () => {
         await runRentalsMigrations(sequelize);
       } catch (rErr) {
         console.warn('⚠️ [RENTALS_MIGRATION_WARN]', rErr.message);
+      }
+      // Zenvy Auto-Ride: named unique / partial unique indexes (race guards; additive, idempotent).
+      try {
+        const { runAutoRideMigrations } = require('../modules/autoRide/migrations');
+        await runAutoRideMigrations(sequelize);
+      } catch (aErr) {
+        console.warn('⚠️ [AUTORIDE_MIGRATION_WARN]', aErr.message);
       }
       
       // Auto-check for empty DB to help user identify missing data

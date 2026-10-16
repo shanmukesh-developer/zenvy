@@ -17,7 +17,9 @@ const MEDIA_REL_RE = new RegExp(`^/api/campus/media/(${UUID})$`, 'i');
 const MEDIA_ABS_RE = new RegExp(`^https?://[^/\\s]+/api/campus/media/(${UUID})(?:\\?[^\\s]*)?$`, 'i');
 const HTTP_URL_RE = /^https?:\/\/[^\s"'<>]{3,2040}$/i;
 const DEFAULT_MAX_BYTES = 5 * 1024 * 1024;
-const PURPOSES = new Set(['id_card', 'chat', 'lost_found', 'avatar', 'post', 'other', 'delivery_proof', 'bill', 'store', 'menu', 'service', 'pg', 'birthday', 'wall', 'vault', 'basket']);
+const PURPOSES = new Set(['id_card', 'chat', 'lost_found', 'avatar', 'post', 'other', 'delivery_proof', 'bill', 'store', 'menu', 'service', 'pg', 'birthday', 'wall', 'vault', 'basket',
+  // Zenvy Auto-Ride driver documents / photos (always stored private; modules/autoRide/services/media.js).
+  'auto_driver_doc']);
 
 const publicBase = (req) => {
   const env = String(process.env.PUBLIC_API_URL || '').trim().replace(/\/+$/, '');
