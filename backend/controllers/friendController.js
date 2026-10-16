@@ -769,6 +769,12 @@ exports.sendFriendMessage = async (req, res) => {
       if (!live) return res.status(403).json({ message: 'You can only message people in your circle.' });
     }
 
+    // C2: slurs / threats refused, profanity masked (utils/contentFilter.js), before encryption.
+    const cf = require('../utils/contentFilter');
+    const filtered = cf.analyse(text);
+    if (filtered.action === 'block') return cf.rejectBlocked(res, 'text');
+    text = filtered.text;
+
     // Encrypt cleartext
     const encryptedText = encryptText(text);
 

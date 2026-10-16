@@ -10,8 +10,13 @@ module.exports = {
   REPORT_TARGETS: [
     'post', 'reply', 'forum_post', 'forum_comment', 'review', 'review_response', 'profile', 'message',
     'task', 'task_application', 'space', 'connect_profile', 'connect_photo', 'community',
+    // C2: campus surfaces outside Friends (modules/friends/services/ugcTargets.js).
+    'whisper', 'community_post', 'lost_found', 'proximity_message', 'group', 'poll',
   ],
-  SUB_TABS: ['pulse', 'forum', 'tasks', 'connect', 'spaces', 'chat'],
+  // C2: report targets that auto-hide after UGC_AUTO_HIDE_REPORTS distinct reporters (any reason).
+  UGC_TARGETS: ['whisper', 'community_post', 'lost_found', 'proximity_message', 'group', 'poll', 'message'],
+  CONTENT_STATES: ['pending_review', 'hidden', 'removed', 'visible'],
+  SUB_TABS: ['pulse', 'forum', 'tasks', 'connect', 'spaces', 'chat', 'campus'],
   REPORT_CATEGORIES: [
     'spam', 'impersonation', 'harassment', 'threat', 'privacy', 'sexual', 'hate',
     'academic_integrity', 'defamation', 'self_harm', 'other',

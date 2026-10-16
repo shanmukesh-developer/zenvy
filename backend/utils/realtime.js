@@ -147,6 +147,17 @@ const toUser = (userId, event, payload = {}) => {
   }
 };
 
+// C2: one event to every connected socket of the main namespace (e.g. community_post_deleted when a
+// moderator hides a post). Payloads must stay ids only. Never throws.
+const broadcast = (event, payload = {}) => {
+  try {
+    if (!ioRef || typeof event !== 'string') return;
+    ioRef.emit(event, payload);
+  } catch (err) {
+    console.error('[REALTIME_BROADCAST_ERROR]', err.message);
+  }
+};
+
 // ── Rider dispatch room ─────────────────────────────────────────────────────
 const RIDERS_ONLINE_ROOM = 'riders_online';
 const DELIVERY_REQUEST_EVENT = 'delivery_request';
@@ -240,7 +251,7 @@ const disconnectRevokedSockets = (accountId, tokenVersion = null) => {
 
 module.exports = {
   disconnectRevokedSockets,
-  init, publish, notifyAdmin, toUser, PUBLIC_EVENT, ADMIN_EVENT, ADMIN_ROOM,
+  init, publish, notifyAdmin, toUser, broadcast, PUBLIC_EVENT, ADMIN_EVENT, ADMIN_ROOM,
   setRiderOnline, deliveryRequest, deliveryRequestGone, leaveOrderRoom,
   RIDERS_ONLINE_ROOM, DELIVERY_REQUEST_EVENT, DELIVERY_REQUEST_GONE_EVENT, CLAIMABLE_STATUSES,
 };

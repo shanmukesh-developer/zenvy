@@ -47,7 +47,10 @@ const isAutoHidden = async (targetType, targetId) => {
 };
 
 const maybeAutoHide = async (resolver, report, cfg) => {
-  if (!AUTO_HIDE_CATEGORIES.includes(report.category)) return false;
+  // C2: campus content outside Friends (E.UGC_TARGETS) is hidden pending review after
+  // UGC_AUTO_HIDE_REPORTS (default 3) distinct reporters, whatever the reason.
+  const ugcTarget = (E.UGC_TARGETS || []).includes(report.targetType);
+  if (!ugcTarget && !AUTO_HIDE_CATEGORIES.includes(report.category)) return false;
   if (!resolver.setStatus || !(resolver.statuses || []).includes('pending_review')) return false;
   const FriendsReport = getModel('FriendsReport');
   const reporters = await FriendsReport.count({
@@ -56,12 +59,13 @@ const maybeAutoHide = async (resolver, report, cfg) => {
     where: {
       targetType: report.targetType,
       targetId: report.targetId,
-      category: { [Op.in]: AUTO_HIDE_CATEGORIES },
+      ...(ugcTarget ? {} : { category: { [Op.in]: AUTO_HIDE_CATEGORIES } }),
       status: { [Op.in]: OPEN_STATUSES },
       isSystem: false,
     },
   });
-  if (reporters < cfg.autoHideThreshold) return false;
+  const threshold = ugcTarget ? require('./ugc').autoHideThreshold() : cfg.autoHideThreshold;
+  if (reporters < threshold) return false;
   if (await isAutoHidden(report.targetType, report.targetId)) return false;
   await resolver.setStatus(report.targetId, 'pending_review', {});
   await audit.record({
@@ -73,7 +77,7 @@ const maybeAutoHide = async (resolver, report, cfg) => {
     subjectUserId: report.targetOwnerId,
     anonymous: !!(report.snapshot && report.snapshot.anonymous),
     reportId: report.id,
-    reason: `Auto-hidden after ${reporters} reports (${report.category})`,
+    reason: ugcTarget ? `Auto-hidden after ${reporters} reports, pending review` : `Auto-hidden after ${reporters} reports (${report.category})`,
     meta: { reporters },
   });
   return true;
@@ -173,6 +177,7 @@ const fileSystemReport = async ({ targetType, targetId, category = 'other', note
 };
 
 module.exports = {
+  isAutoHidden,
   fileReport,
   fileSystemReport,
   SEVERITY,

@@ -49,12 +49,17 @@ const createGroup = async (req, res) => {
       }
     }
 
+    // C2: slurs / threats in a group name or description are refused, profanity masked.
+    const cf = require('../../../utils/contentFilter');
+    const text = cf.cleanFields({ name: name.trim(), description: description ? String(description) : '' });
+    if (text.blocked) return cf.rejectBlocked(res, text.field);
+
     const Conversation = getConversationModel();
     const joinCode = await generateJoinCode();
 
     const group = await Conversation.create({
-      name: name.trim().slice(0, 80),
-      description: description ? String(description).trim().slice(0, 250) : '',
+      name: text.values.name.trim().slice(0, 80),
+      description: text.values.description ? String(text.values.description).trim().slice(0, 250) : '',
       isGroup: true,
       type: ['class', 'club', 'study', 'ride', 'group', 'hostel', 'secret'].includes(type) ? type : 'study',
       groupAvatar: cleanAvatar,
@@ -103,7 +108,8 @@ const previewGroupByCode = async (req, res) => {
     const Conversation = getConversationModel();
 
     const group = await Conversation.findOne({ where: { joinCode: code } });
-    if (!group) {
+    // C2: a group taken down by moderators (hidden / pending review / removed) cannot be joined.
+    if (!group || await require('../../friends/services/ugc').isHidden('group', group.id)) {
       return res.status(404).json({ message: 'Code not found. Please check and try again.' });
     }
 
@@ -134,6 +140,11 @@ const joinGroupByCode = async (req, res) => {
 
     const cleanCode = code.trim().toUpperCase();
     const Conversation = getConversationModel();
+    // C2: a group taken down by moderators cannot be joined.
+    const peek = await Conversation.findOne({ where: { joinCode: cleanCode }, attributes: ['id'] });
+    if (peek && await require('../../friends/services/ugc').isHidden('group', peek.id)) {
+      return res.status(404).json({ message: 'Code not found' });
+    }
 
     // Read-modify-write of the participants list under a row lock, so when a whole class joins
     // at once nobody's membership is overwritten.

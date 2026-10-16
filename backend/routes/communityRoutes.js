@@ -49,7 +49,8 @@ const likedSetFor = async (viewerId, postIds) => {
   return new Set(rows.map((r) => String(r.postId)));
 };
 
-const withReplies = async (req, CommunityPost, roots, now) => {
+const withReplies = async (req, CommunityPost, rootRows, now) => {
+  let roots = rootRows;
   const viewerId = optionalUserId(req);
   const rootIds = roots.map((p) => p.id);
   let allReplies = [];
@@ -64,7 +65,21 @@ const withReplies = async (req, CommunityPost, roots, now) => {
       });
     } catch { /* parentId column missing, no replies */ }
   }
-  const liked = await likedSetFor(viewerId, [...rootIds, ...allReplies.map((r) => r.id)]);
+  // C2: moderated posts (hidden / pending review / removed) and, for a signed-in viewer, posts by people
+  // blocked either way are left out (roots and replies).
+  try {
+    const ugc = require('../modules/friends/services/ugc');
+    const hidden = await ugc.hiddenIds('community_post', [...rootIds, ...allReplies.map((r) => r.id)]);
+    const blocked = viewerId ? await ugc.blockedIds(viewerId) : new Set();
+    const keep = (p) => !hidden.has(String(p.id)) && !blocked.has(String(p.userId));
+    if (hidden.size || blocked.size) {
+      roots = roots.filter(keep);
+      allReplies = allReplies.filter(keep);
+    }
+  } catch (err) {
+    console.warn('[COMMUNITY_UGC_FILTER_WARN]', err.message);
+  }
+  const liked = await likedSetFor(viewerId, [...roots.map((p) => p.id), ...allReplies.map((r) => r.id)]);
   return roots.map((p) => {
     const pj = finish(shapePost(p, liked), viewerId);
     pj.replies = allReplies.filter((r) => r.parentId === pj.id).map((r) => finish(shapePost(r, liked), viewerId));
@@ -130,6 +145,16 @@ router.post('/', protect, async (req, res) => {
     const tooLong = (v, n) => v !== undefined && v !== null && String(v).trim().length > n;
     if (tooLong(productName, 60)) return res.status(400).json({ message: 'Dish name can be at most 60 characters.' });
 
+    // C2: sanctioned authors cannot post; slurs / threats are refused (422 CONTENT_BLOCKED), profanity masked.
+    const ugc = require('../modules/friends/services/ugc');
+    const guard = await ugc.postGuard(req.user.id);
+    if (guard) return res.status(guard.status).json(guard.body);
+    const textFilter = require('../utils/contentFilter').cleanFields({
+      content: typeof content === 'string' ? content.trim() : content,
+      productName: typeof productName === 'string' ? productName : productName,
+    });
+    if (textFilter.blocked) return require('../utils/contentFilter').rejectBlocked(res, textFilter.field);
+
     let parent = null;
     if (parentId !== undefined && parentId !== null && parentId !== '') {
       if (!isUuid(parentId)) return res.status(404).json({ message: 'Parent post not found.' });
@@ -180,6 +205,17 @@ router.post('/', protect, async (req, res) => {
       review = { store, orderId: String(open.id) };
     }
 
+    // C2: per-user limits for posts and replies (reviews are already one per delivered order). DB counts.
+    if (!isReview && role !== 'admin') {
+      const limited = await ugc.checkRate('community_post', (since) => CommunityPost.count({
+        where: { userId: String(req.user.id), createdAt: { [Op.gte]: since }, [Op.or]: [{ postType: null }, { postType: { [Op.ne]: 'review' } }] },
+      }));
+      if (limited) {
+        res.set('Retry-After', String(limited.body.retryAfter));
+        return res.status(limited.status).json(limited.body);
+      }
+    }
+
     // Photo: sniffed and stored in the media table; the post keeps only the short URL.
     let cleanImage = null;
     if (imageUrl) {
@@ -202,7 +238,7 @@ router.post('/', protect, async (req, res) => {
         userName: author?.name || req.user.name || 'Zenvy member',
         // Inline base64 avatars are never copied into posts: the short avatar URL is used instead.
         userAvatar: author ? require('../modules/campus/campusHelpers').avatarUrlFor(req, { id: req.user.id, profileImage: author.profileImage }) : null,
-        content: typeof content === 'string' ? content.trim() : '',
+        content: typeof textFilter.values.content === 'string' ? textFilter.values.content : '',
         imageUrl: cleanImage,
         parentId: parentId || null,
         likes: 0,
@@ -212,7 +248,7 @@ router.post('/', protect, async (req, res) => {
         starRating: isReview ? reviewStars : null,
         restaurantId: isReview ? String(review.store.id) : null,
         restaurantName: isReview ? review.store.name : null,
-        productName: isReview ? (String(productName || '').trim() || null) : null,
+        productName: isReview ? (String(textFilter.values.productName || '').trim() || null) : null,
         orderId: isReview ? review.orderId : null
       });
     } catch (err) {

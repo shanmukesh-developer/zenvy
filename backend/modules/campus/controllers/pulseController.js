@@ -166,11 +166,16 @@ const answerDailyQuestion = async (req, res) => {
     const existing = await QuestionAnswer.findOne({ where: { questionId: question.id, userId: uid } });
     if (existing) return res.status(409).json({ message: 'You already answered tonight' });
 
+    // C2: same rules as whispers for these anonymous answers (sanctions, slurs / threats, masking).
+    const guard = await require('../../friends/services/ugc').postGuard(uid);
+    if (guard) return res.status(guard.status).json(guard.body);
+    const filtered = require('../../../utils/contentFilter').analyse(answer.trim());
+    if (filtered.action === 'block') return require('../../../utils/contentFilter').rejectBlocked(res, 'answer');
     const created = await QuestionAnswer.create({
       questionId: question.id,
       userId: uid,
       alias: aliasFor(uid),
-      answer: answer.trim(),
+      answer: filtered.text,
       upvotes: [uid],
     });
 
@@ -222,8 +227,14 @@ const getWhispers = async (req, res) => {
     const topic = req.query.topic;
     if (topic && topic !== 'All' && WHISPER_TOPICS.includes(topic)) where.topic = topic;
 
-    const rows = await Whisper.findAll({ where, order: [['createdAt', 'DESC']], limit: 100 });
+    let rows = await Whisper.findAll({ where, order: [['createdAt', 'DESC']], limit: 100 });
     const uid = req.user.id;
+    // C2: moderated (hidden / pending review / removed) whispers and whispers by people blocked either
+    // way are left out. The author id is used on the server only and never sent.
+    const ugc = require('../../friends/services/ugc');
+    rows = await ugc.filterVisible('whisper', rows);
+    const blocked = await ugc.blockedIds(uid);
+    if (blocked.size) rows = rows.filter((w) => !blocked.has(String(w.userId)));
     const whispers = rows.map((w) => {
       const hearts = w.hearts || [];
       return {
@@ -262,11 +273,24 @@ const createWhisper = async (req, res) => {
 
     const Whisper = getWhisperModel();
     const uid = req.user.id;
+    // C2: sanctioned authors cannot post, per-user limits (DB counts), slurs / threats refused, profanity masked.
+    const ugc = require('../../friends/services/ugc');
+    const guard = await ugc.postGuard(uid);
+    if (guard) return res.status(guard.status).json(guard.body);
+    if (String(req.user.role || '').toLowerCase() !== 'admin') {
+      const limited = await ugc.checkRate('whisper', (since) => Whisper.count({ where: { userId: uid, createdAt: { [Op.gte]: since } } }));
+      if (limited) {
+        res.set('Retry-After', String(limited.body.retryAfter));
+        return res.status(limited.status).json(limited.body);
+      }
+    }
+    const filter = require('../../../utils/contentFilter').analyse(text.trim());
+    if (filter.action === 'block') return require('../../../utils/contentFilter').rejectBlocked(res, 'text');
     const created = await Whisper.create({
       userId: uid,
       alias: aliasFor(uid),
       topic: safeTopic,
-      text: text.trim(),
+      text: filter.text,
       hearts: [uid],
     });
 
@@ -293,7 +317,7 @@ const reactWhisper = async (req, res) => {
   try {
     const Whisper = getWhisperModel();
     const row = await Whisper.findByPk(req.params.id);
-    if (!row) return res.status(404).json({ message: 'Whisper not found' });
+    if (!row || await require('../../friends/services/ugc').isHidden('whisper', row.id)) return res.status(404).json({ message: 'Whisper not found' });
 
     const uid = req.user.id;
     const hearts = row.hearts || [];

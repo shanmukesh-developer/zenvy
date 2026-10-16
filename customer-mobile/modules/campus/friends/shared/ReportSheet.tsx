@@ -7,6 +7,9 @@ import { FriendsColors, FS, FT, FR, fui } from '../friendsTheme';
 import { fileReport, REPORT_CATEGORIES, REPORT_NOTE_MAX, ReportCategory, ReportTargetType } from '../api/modApi';
 import { errorCode } from '../api/core';
 
+/** C2: the confirmation every surface shows after a report (Google Play UGC policy). */
+export const REPORTED_CONFIRMATION = 'Reported — thanks, our team will review it within 24 hours.';
+
 export interface ReportTarget {
   type: ReportTargetType;
   id: string;
@@ -80,10 +83,10 @@ export const ReportSheet: React.FC<{
             <Check size={26} color={FriendsColors.accentInk} />
           </View>
           <Text style={[FT.h3, { textAlign: 'center', marginTop: FS.md }]}>
-            {done.duplicate ? 'You already reported this' : 'Report received'}
+            {done.duplicate ? 'You already reported this' : 'Reported'}
           </Text>
           <Text style={[FT.muted, { textAlign: 'center', marginTop: 6 }]}>
-            Our team reviews every report. You can follow its status in Me › Friends privacy & safety.
+            {REPORTED_CONFIRMATION} You can follow its status in Me › Friends privacy & safety.
           </Text>
           <TouchableOpacity style={[fui.primaryBtn, { alignSelf: 'stretch', marginTop: FS.xl }]} onPress={onClose} accessibilityRole="button">
             <Text style={fui.primaryBtnText}>Done</Text>

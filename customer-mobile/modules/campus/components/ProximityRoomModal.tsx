@@ -29,6 +29,7 @@ import { CampusUserData } from '../../../types/campus';
 import { fetchProximityRoomMessages, ProximityMessageItem } from '../campusApi';
 import { connectCampusSocket } from '../campusSocketClient';
 import { SPOT_ICON_MAP } from './LiveZones';
+import { ActionMenu } from '../friends/shared/ActionMenu';
 
 
 interface ProximityRoomModalProps {
@@ -45,6 +46,8 @@ export const ProximityRoomModal: React.FC<ProximityRoomModalProps> = ({
   currentUser,
 }) => {
   const [messages, setMessages] = useState<ProximityMessageItem[]>([]);
+  const [menuMsg, setMenuMsg] = useState<ProximityMessageItem | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(true);
   const [roomMeta, setRoomMeta] = useState<{
@@ -347,8 +350,18 @@ export const ProximityRoomModal: React.FC<ProximityRoomModalProps> = ({
             {messages.map((item) => {
               const isMe = item.senderId === currentUser?.id;
               return (
-                <View
+                <TouchableOpacity
                   key={item.id}
+                  activeOpacity={0.85}
+                  disabled={isMe || String(item.id).startsWith('opt-')}
+                  onLongPress={() => {
+                    // C2: long-press someone's message to Report it or Block them.
+                    Haptics.selectionAsync().catch(() => {});
+                    setMenuMsg(item);
+                    setMenuOpen(true);
+                  }}
+                  delayLongPress={300}
+                  accessibilityHint={isMe ? undefined : 'Long press for Report or Block'}
                   style={[styles.msgRow, isMe ? styles.msgRowMe : styles.msgRowOther]}
                 >
                   <View
@@ -369,11 +382,24 @@ export const ProximityRoomModal: React.FC<ProximityRoomModalProps> = ({
                       {formatTime(item.createdAt)}
                     </Text>
                   </View>
-                </View>
+                </TouchableOpacity>
               );
             })}
           </ScrollView>
         )}
+
+        <ActionMenu
+          visible={menuOpen}
+          onClose={() => setMenuOpen(false)}
+          title="Message"
+          report={menuMsg ? { type: 'proximity_message', id: menuMsg.id, label: `a message by ${menuMsg.senderName || 'a student'}` } : null}
+          block={menuMsg && menuMsg.senderId ? { userId: String(menuMsg.senderId), name: menuMsg.senderName || 'this student' } : null}
+          onReported={() => {
+            const id = menuMsg?.id;
+            if (id) setMessages((prev) => prev.filter((m) => m.id !== id));
+          }}
+          onBlocked={(uid) => setMessages((prev) => prev.filter((m) => String(m.senderId) !== String(uid)))}
+        />
 
         {/* Typing indicator */}
         {typingUsers.length > 0 && (

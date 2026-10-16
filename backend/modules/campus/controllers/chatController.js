@@ -233,8 +233,14 @@ const getChatMessages = async (req, res) => {
 
     const hasMore = rows.length > limit;
     const page = hasMore ? rows.slice(0, limit) : rows;
-    const ascending = page.slice().reverse();
+    let ascending = page.slice().reverse();
     const nextCursor = hasMore && page.length ? page[page.length - 1].createdAt : null;
+    // C2: in group chats, messages from people blocked either way are left out (the cursor still
+    // advances over them). 1:1 chats with a blocked person cannot get new messages at all.
+    if (conversation.isGroup) {
+      const blocked = await require('../../friends/services/ugc').blockedIds(userId);
+      if (blocked.size) ascending = ascending.filter((m) => !blocked.has(String(m.senderId)));
+    }
 
     res.json({
       messages: ascending.map((m) => maskFor(serializeMessage(m, userId), userId, ident)),

@@ -30,12 +30,19 @@ import {
   Camera,
   BarChart2,
   Trash2,
+  Flag,
+  Ban,
+  MoreVertical,
 } from '../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { pickImageAsset, prepareAndUploadImage, resolveMediaUrl, ImageUploadError } from '../../../utils/imageUpload';
 import { CampusColors, CampusLayout } from '../../../constants/campusTheme';
 import { CampusUserData } from '../../../types/campus';
-import { fetchChatMessages } from '../campusApi';
+import { fetchChatMessages, fetchChats, blockCampusUser } from '../campusApi';
+import { ReportSheet, ReportTarget } from '../friends/shared/ReportSheet';
+import { ActionMenu } from '../friends/shared/ActionMenu';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 import { useRetentionPolicy, daysLabel } from '../useRetentionPolicy';
 import { PollsSheet } from './PollsSheet';
 import {
@@ -100,6 +107,10 @@ export const ChatDetailScreen: React.FC<ChatDetailScreenProps> = ({
   const [selectedMsgForMenu, setSelectedMsgForMenu] = useState<ChatMessage | null>(null);
   const [attachmentMenuVisible, setAttachmentMenuVisible] = useState(false);
   const [pollsOpen, setPollsOpen] = useState(false);
+  // C2: Report / Block (message long-press menu + header menu for the chat itself).
+  const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
+  const [chatMenuOpen, setChatMenuOpen] = useState(false);
+  const [chatInfo, setChatInfo] = useState<{ isGroup: boolean; peerId: string | null; refType: string | null } | null>(null);
   const [sendingPhoto, setSendingPhoto] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError, setHistoryError] = useState<string | null>(null);
@@ -435,8 +446,60 @@ export const ChatDetailScreen: React.FC<ChatDetailScreenProps> = ({
       setInputText((current) => (current ? current : textToSend));
       if (replyContext) setReplyingTo((cur) => cur || ({ ...replyContext, senderId: '', createdAt: new Date() } as ChatMessage));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
-      Alert.alert('Message not sent', "We couldn't send your message. Check your connection and tap send again.");
+      const code = (e as any)?.code;
+      if (code === 'CONTENT_BLOCKED') {
+        Alert.alert('Please rephrase', (e as any)?.message || "That has words that aren't allowed on Zenvy. Please rephrase it and try again.");
+      } else if (code === 'BLOCKED' || code === 'RATE_LIMITED' || code === 'CHAT_CLOSED') {
+        Alert.alert('Message not sent', (e as any)?.message || "We couldn't send your message.");
+      } else {
+        Alert.alert('Message not sent', "We couldn't send your message. Check your connection and tap send again.");
+      }
     }
+  };
+
+  /** Hides everything from a person I just blocked (the server leaves them out from now on). */
+  const dropSender = (userId: string) => {
+    setMessages((prev) => prev.filter((m) => String(m.senderId) !== String(userId)));
+  };
+
+  const confirmBlock = (userId: string, name: string) => {
+    Alert.alert(
+      `Block ${name}?`,
+      "They won't be able to message or call you, and you won't see their messages in groups. They aren't told.",
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await blockCampusUser(userId);
+              if (!mountedRef.current) return;
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+              dropSender(userId);
+            } catch (err: any) {
+              Alert.alert("Couldn't block", err?.message || 'Please try again.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const openChatMenu = async () => {
+    if (!chatInfo) {
+      try {
+        const list = await fetchChats();
+        const me = list.find((c: any) => c.id === chatId) as any;
+        if (!mountedRef.current) return;
+        setChatInfo({ isGroup: !!me?.isGroup, peerId: me?.peerId || null, refType: me?.refType || null });
+      } catch {
+        if (!mountedRef.current) return;
+        Alert.alert("Couldn't load options", 'Please try again in a moment.');
+        return;
+      }
+    }
+    setChatMenuOpen(true);
   };
 
   // Pick -> compress (1280 px JPEG) -> upload to campus media -> send only the short URL over the socket.
@@ -581,6 +644,9 @@ export const ChatDetailScreen: React.FC<ChatDetailScreenProps> = ({
             onPress={() => onStartCall?.('video')}
           >
             <Video size={19} color={CampusColors.ink} strokeWidth={2} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.headerActionBtn} onPress={openChatMenu} accessibilityRole="button" accessibilityLabel="Chat options">
+            <MoreVertical size={18} color={CampusColors.ink} strokeWidth={2} />
           </TouchableOpacity>
         </View>
       </View>
@@ -824,6 +890,34 @@ export const ChatDetailScreen: React.FC<ChatDetailScreenProps> = ({
                   <Text style={[styles.menuOptionText, { color: '#A3321A' }]}>Delete for everyone</Text>
                 </TouchableOpacity>
               )}
+
+              {/* C2: Report the message / Block its sender (someone else's, already saved on the server). */}
+              {selectedMsgForMenu && selectedMsgForMenu.senderId !== (currentUser?.id || 'me') && UUID_RE.test(String(selectedMsgForMenu.id)) && !selectedMsgForMenu.isDeletedForEveryone && (
+                <TouchableOpacity
+                  style={styles.menuOption}
+                  onPress={() => {
+                    const m = selectedMsgForMenu;
+                    setSelectedMsgForMenu(null);
+                    setTimeout(() => setReportTarget({ type: 'message', id: m.id, label: `a message from ${m.senderName || 'this person'}` }), Platform.OS === 'ios' ? 450 : 0);
+                  }}
+                >
+                  <Flag size={18} color="#A3321A" />
+                  <Text style={[styles.menuOptionText, { color: '#A3321A' }]}>Report message</Text>
+                </TouchableOpacity>
+              )}
+              {selectedMsgForMenu && selectedMsgForMenu.senderId !== (currentUser?.id || 'me') && UUID_RE.test(String(selectedMsgForMenu.senderId)) && (
+                <TouchableOpacity
+                  style={styles.menuOption}
+                  onPress={() => {
+                    const m = selectedMsgForMenu;
+                    setSelectedMsgForMenu(null);
+                    confirmBlock(String(m.senderId), m.senderName || 'this person');
+                  }}
+                >
+                  <Ban size={18} color="#A3321A" />
+                  <Text style={[styles.menuOptionText, { color: '#A3321A' }]}>Block {selectedMsgForMenu.senderName || 'sender'}</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         </TouchableOpacity>
@@ -888,6 +982,33 @@ export const ChatDetailScreen: React.FC<ChatDetailScreenProps> = ({
       {pollsOpen && (
         <PollsSheet chatId={chatId} currentUser={currentUser} onClose={() => setPollsOpen(false)} />
       )}
+
+      <ReportSheet
+        visible={!!reportTarget}
+        onClose={() => setReportTarget(null)}
+        target={reportTarget}
+        onReported={() => {
+          // The reporter stops seeing the message right away; our team reviews it.
+          const t = reportTarget;
+          if (t && t.type === 'message') setMessages((prev) => prev.filter((m) => m.id !== t.id));
+        }}
+      />
+      <ActionMenu
+        visible={chatMenuOpen}
+        onClose={() => setChatMenuOpen(false)}
+        title={chatName}
+        report={
+          chatInfo
+            ? chatInfo.isGroup
+              ? { type: 'group', id: chatId, label: `the group "${chatName}"` }
+              : chatInfo.peerId && UUID_RE.test(chatInfo.peerId) && !chatInfo.refType
+              ? { type: 'profile', id: chatInfo.peerId, label: chatName }
+              : null
+            : null
+        }
+        block={chatInfo && !chatInfo.isGroup && !chatInfo.refType && chatInfo.peerId && UUID_RE.test(chatInfo.peerId) ? { userId: chatInfo.peerId, name: chatName } : null}
+        onBlocked={(uid) => dropSender(uid)}
+      />
 
     </SafeAreaView>
   );

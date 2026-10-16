@@ -100,7 +100,25 @@ const init = (sequelize) => {
     ],
   });
 
-  return { FriendsReport, FriendsModAction, FriendsSanction, FriendsAppeal };
+  // C2: moderation state of campus content that has no status column of its own (whispers, community
+  // posts, lost & found, campus spot messages, groups, polls). No row = visible. Lists filter on it.
+  const FriendsContentState = sequelize.define('FriendsContentState', {
+    id: uuidPk(),
+    targetType: { type: DataTypes.STRING(24), allowNull: false },
+    targetId: { type: DataTypes.UUID, allowNull: false },
+    status: oneOf(E.CONTENT_STATES, 'pending_review', 16),
+    ownerId: { type: DataTypes.UUID, allowNull: true }, // server only
+    updatedBy: { type: DataTypes.UUID, allowNull: true },
+  }, {
+    tableName: 'FriendsContentStates',
+    timestamps: true,
+    indexes: [
+      { name: 'fcs_target_uq', unique: true, fields: ['targetType', 'targetId'] },
+      { name: 'fcs_status', fields: ['targetType', 'status'] },
+    ],
+  });
+
+  return { FriendsReport, FriendsModAction, FriendsSanction, FriendsAppeal, FriendsContentState };
 };
 
 module.exports = { init };

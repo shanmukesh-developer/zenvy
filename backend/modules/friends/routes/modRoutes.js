@@ -26,6 +26,12 @@ router.post('/sanctions/:id/lift', w(c.liftSanction));
 router.get('/actions', w(c.listActions));
 
 router.get('/config', w(c.getConfig));
+// C2: Whispers / After Dark kill switches (GlobalConfig CAMPUS_WHISPERS_ENABLED / AFTER_DARK_ENABLED).
+router.get('/switches', w(c.getSwitches));
+router.put('/switches', w(c.putSwitches));
+// C2: direct take-down / restore of campus content (whispers, community posts, lost & found, ...).
+router.post('/content/:type/:id', w(c.setContentStatus));
+router.get('/whispers', w(c.listWhispers));
 router.put('/config', w(c.putConfig));
 
 router.get('/entities', w(c.listEntities));

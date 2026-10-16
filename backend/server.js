@@ -1834,6 +1834,11 @@ const initializeApp = async () => {
       // during After Dark hours (utils/afterDark.js, IST). Guests are never allowed.
       const { isAfterDarkNow, afterDarkStatus } = require('./utils/afterDark');
       const afterDarkClosed = () => {
+        // C2: admin kill switch (cached GlobalConfig AFTER_DARK_ENABLED) closes it whatever the hour.
+        if (!require('./utils/featureSwitches').peek('afterDark')) {
+          socket.emit('after_dark_closed', { open: false, enabled: false, message: 'Zenvy After Dark is paused right now.' });
+          return true;
+        }
         if (isAfterDarkNow()) return false;
         const s = afterDarkStatus();
         socket.emit('after_dark_closed', { ...s, message: `Zenvy After Dark opens at ${s.opensAt} IST.` });
@@ -1863,8 +1868,15 @@ const initializeApp = async () => {
         const groupId = String(data?.groupId || '').trim();
         const room = `afterdark_${groupId}`;
         if (!socket.rooms.has(room)) return; // must have passed join_after_dark_group
-        const text = typeof data?.text === 'string' ? data.text.trim().slice(0, 2000) : '';
+        let text = typeof data?.text === 'string' ? data.text.trim().slice(0, 2000) : '';
         if (!text) return;
+        // C2: slurs / threats refused, profanity masked.
+        const afterDarkFilter = require('./utils/contentFilter').analyse(text);
+        if (afterDarkFilter.action === 'block') {
+          socket.emit('after_dark_error', { code: 'CONTENT_BLOCKED', message: require('./utils/contentFilter').BLOCK_MESSAGE });
+          return;
+        }
+        text = afterDarkFilter.text;
 
         try {
           const senderName = await getDisplayName();

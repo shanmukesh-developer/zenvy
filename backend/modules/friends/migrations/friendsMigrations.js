@@ -104,6 +104,8 @@ const runFriendsMigrations = async (sequelize) => {
     ['fsn_user', false, 'FriendsSanctions', '"userId", "scope"'],
     ['fap_uq', true, 'FriendsAppeals', '"userId", "actionId"'],
     ['fap_status', false, 'FriendsAppeals', '"status", "createdAt"'],
+    ['fcs_target_uq', true, 'FriendsContentStates', '"targetType", "targetId"'],
+    ['fcs_status', false, 'FriendsContentStates', '"targetType", "status"'],
   ];
   for (const [name, unique, table, cols] of indexes) {
     await run(`idx ${name}`, `CREATE ${unique ? 'UNIQUE ' : ''}INDEX IF NOT EXISTS "${name}" ON "${table}" (${cols});`);
@@ -122,6 +124,7 @@ const runFriendsMigrations = async (sequelize) => {
   await addCheck('FriendsReports', 'frp_target_chk', `"targetType" IN (${quoteList(E.REPORT_TARGETS)})`);
   await addCheck('FriendsModActions', 'fma_role_chk', `"actorRole" IN (${quoteList(E.ACTOR_ROLES)})`);
   await addCheck('FriendsSanctions', 'fsn_scope_chk', `"scope" IN (${quoteList(E.SANCTION_SCOPES)})`);
+  await addCheck('FriendsContentStates', 'fcs_status_chk', `"status" IN (${quoteList(E.CONTENT_STATES)})`);
   await addCheck('FriendsAppeals', 'fap_status_chk', `"status" IN (${quoteList(E.APPEAL_STATUS)})`);
   await addCheck('FriendsConsents', 'fc_kind_chk', `"kind" IN (${quoteList(E.CONSENT_KINDS)})`);
   await addCheck('FriendsKarma', 'fk_nonneg_chk', '"helpfulAnswers" >= 0 AND "resourcesShared" >= 0 AND "tasksCompleted" >= 0 AND "taskRatingCount" >= 0');

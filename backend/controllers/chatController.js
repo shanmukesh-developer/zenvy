@@ -9,7 +9,10 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 
 // Zenvy After Dark is open during the configured IST window (utils/afterDark.js:
 // AFTER_DARK_START_HOUR / AFTER_DARK_END_HOUR, default 22:00-04:00, or AFTER_DARK_ALWAYS_OPEN=true).
-const checkAfterDarkHours = (req, res, next) => {
+const checkAfterDarkHours = async (req, res, next) => {
+  // C2: admin kill switch (GlobalConfig AFTER_DARK_ENABLED, utils/featureSwitches.js) wins over the hours.
+  const switches = require('../utils/featureSwitches');
+  if (!(await switches.isOn('afterDark'))) return res.status(403).json(switches.offBody('afterDark'));
   if (isAfterDarkNow()) return next();
   const status = afterDarkStatus();
   return res.status(403).json({
@@ -20,8 +23,11 @@ const checkAfterDarkHours = (req, res, next) => {
 };
 
 // GET /api/chat/status — public opening hours (no gate)
-const getAfterDarkStatus = (req, res) => {
-  res.json(afterDarkStatus());
+const getAfterDarkStatus = async (req, res) => {
+  const enabled = await require('../utils/featureSwitches').isOn('afterDark');
+  const status = afterDarkStatus();
+  // Additive: older apps read { open, opensAt, closesAt }; switched off reads as closed.
+  res.json({ ...status, open: enabled && status.open, enabled });
 };
 
 const serializeMessage = (m) => {

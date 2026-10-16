@@ -124,7 +124,8 @@ const getProximityMessages = async (req, res) => {
     // People you blocked (or who blocked you) are left out of the room history.
     const { blockedIdsFor } = require('../campusHelpers');
     const blocked = await blockedIdsFor(req.user.id);
-    const visible = messages.filter((m) => !blocked.has(m.senderId));
+    // C2: moderated messages (hidden / pending review / removed) are left out too.
+    const visible = await require('../../friends/services/ugc').filterVisible('proximity_message', messages.filter((m) => !blocked.has(m.senderId)));
     const { getProximityLiveCount } = require('../campusSocket');
 
     res.json({
@@ -174,11 +175,18 @@ const postProximityMessage = async (req, res) => {
       return res.status(429).json({ code: 'RATE_LIMITED', message: 'You are sending messages too fast. Please slow down.' });
     }
 
+    // C2: sanctioned authors cannot post; slurs / threats refused (422 CONTENT_BLOCKED), profanity masked.
+    const guard = await require('../../friends/services/ugc').postGuard(req.user.id);
+    if (guard) return res.status(guard.status).json(guard.body);
+    const cf = require('../../../utils/contentFilter');
+    const filtered = cf.analyse(text.trim().slice(0, 1000));
+    if (filtered.action === 'block') return cf.rejectBlocked(res, 'text');
+
     const msg = await ProximityMessage.create({
       roomId: room.id,
       senderId: req.user.id,
       senderName: req.user.name,
-      text: text.trim().slice(0, 1000),
+      text: filtered.text,
       type: 'text',
       expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
     });

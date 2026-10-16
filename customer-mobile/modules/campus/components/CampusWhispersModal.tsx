@@ -21,6 +21,7 @@ import {
   ShieldCheck,
   Send,
   RefreshCw,
+  MoreHorizontal,
 } from '../../../components/lucide';
 import * as Haptics from 'expo-haptics';
 import { CampusColors, CampusLayout } from '../../../constants/campusTheme';
@@ -30,6 +31,7 @@ import {
   reactWhisper,
   PulseWhisper,
 } from '../campusApi';
+import { ActionMenu } from '../friends/shared/ActionMenu';
 
 interface CampusWhispersModalProps {
   visible: boolean;
@@ -67,6 +69,14 @@ export const CampusWhispersModal: React.FC<CampusWhispersModalProps> = ({
   const [newText, setNewText] = useState('');
   const [newTopic, setNewTopic] = useState('Hostels');
   const [loadError, setLoadError] = useState<string | null>(null);
+  // C2: Report on every whisper (anonymous: no Block, the app never knows the author).
+  const [menuFor, setMenuFor] = useState<PulseWhisper | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const openMenu = (w: PulseWhisper) => {
+    setMenuFor(w);
+    setMenuOpen(true);
+  };
+  const [paused, setPaused] = useState<string | null>(null);
   const mountedRef = useRef(true);
   const requestRef = useRef(0);
 
@@ -81,6 +91,7 @@ export const CampusWhispersModal: React.FC<CampusWhispersModalProps> = ({
     const reqId = ++requestRef.current;
     setLoading(true);
     setLoadError(null);
+    setPaused(null);
     try {
       const data = await fetchWhispers(topic);
       if (!mountedRef.current || reqId !== requestRef.current) return;
@@ -89,6 +100,11 @@ export const CampusWhispersModal: React.FC<CampusWhispersModalProps> = ({
     } catch (e: any) {
       if (!mountedRef.current || reqId !== requestRef.current) return;
       setWhispers([]);
+      // C2: the admin kill switch answers 403 FEATURE_OFF.
+      if (e?.code === 'FEATURE_OFF') {
+        setPaused(e?.message || 'Campus Whispers is paused right now. Please check back soon.');
+        return;
+      }
       setLoadError(e?.message || "We couldn't load whispers. Check your connection and try again.");
     } finally {
       if (mountedRef.current && reqId === requestRef.current) setLoading(false);
@@ -131,7 +147,13 @@ export const CampusWhispersModal: React.FC<CampusWhispersModalProps> = ({
     } catch (e: any) {
       if (!mountedRef.current) return;
       const msg = typeof e?.message === 'string' ? e.message : '';
-      Alert.alert("Couldn't post", msg ? `${msg} Your whisper is still here.` : 'Your whisper is still here. Please try again.');
+      if (e?.code === 'CONTENT_BLOCKED') {
+        Alert.alert('Please rephrase', msg || "That has words that aren't allowed on Zenvy. Please rephrase it and try again.");
+      } else if (e?.code === 'RATE_LIMITED') {
+        Alert.alert('Slow down a little', msg || 'You have posted a lot of whispers. Please try again later.');
+      } else {
+        Alert.alert("Couldn't post", msg ? `${msg} Your whisper is still here.` : 'Your whisper is still here. Please try again.');
+      }
     } finally {
       if (mountedRef.current) setPosting(false);
     }
@@ -157,6 +179,10 @@ export const CampusWhispersModal: React.FC<CampusWhispersModalProps> = ({
             style={styles.whisperBtn}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              if (paused) {
+                Alert.alert('Whispers paused', paused);
+                return;
+              }
               if (!isVerified) {
                 if (isPendingVerification) {
                   Alert.alert('ID under review', "You can post whispers as soon as your student ID is approved. Reading and hearting work right now.");
@@ -212,6 +238,8 @@ export const CampusWhispersModal: React.FC<CampusWhispersModalProps> = ({
         <ScrollView style={styles.feedScroll} contentContainerStyle={styles.feedContent}>
           {loading ? (
             <ActivityIndicator color={CampusColors.rose} style={{ marginVertical: 24 }} />
+          ) : paused ? (
+            <Text style={styles.emptyText}>{paused}</Text>
           ) : loadError ? (
             <View style={styles.errorWrap}>
               <Text style={styles.emptyText}>{loadError}</Text>
@@ -224,14 +252,24 @@ export const CampusWhispersModal: React.FC<CampusWhispersModalProps> = ({
             <Text style={styles.emptyText}>No whispers in this channel yet. Start one.</Text>
           ) : (
             filtered.map((item) => (
-              <View key={item.id} style={styles.whisperCard}>
+              <TouchableOpacity key={item.id} style={styles.whisperCard} activeOpacity={0.9} onLongPress={() => openMenu(item)} delayLongPress={350}>
                 <View style={styles.cardHeader}>
                   <View style={styles.aliasWrap}>
                     <View style={styles.aliasDot} />
                     <Text style={styles.aliasText}>{item.alias}</Text>
                   </View>
-                  <View style={styles.topicBadge}>
-                    <Text style={styles.topicBadgeText}>{item.topic}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <View style={styles.topicBadge}>
+                      <Text style={styles.topicBadgeText}>{item.topic}</Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => openMenu(item)}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Whisper options"
+                    >
+                      <MoreHorizontal size={18} color={CampusColors.muted} />
+                    </TouchableOpacity>
                   </View>
                 </View>
 
@@ -253,10 +291,22 @@ export const CampusWhispersModal: React.FC<CampusWhispersModalProps> = ({
                     </Text>
                   </TouchableOpacity>
                 </View>
-              </View>
+              </TouchableOpacity>
             ))
           )}
         </ScrollView>
+
+        <ActionMenu
+          visible={menuOpen}
+          onClose={() => setMenuOpen(false)}
+          title="Whisper"
+          report={menuFor ? { type: 'whisper', id: menuFor.id, label: `this whisper by ${menuFor.alias}` } : null}
+          onReported={() => {
+            // Hidden for the reporter straight away; our team reviews it.
+            const id = menuFor?.id;
+            if (id) setWhispers((prev) => prev.filter((w) => w.id !== id));
+          }}
+        />
 
         {/* Composer Modal */}
         <Modal

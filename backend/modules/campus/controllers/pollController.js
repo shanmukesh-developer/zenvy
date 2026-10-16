@@ -47,12 +47,19 @@ const createPoll = async (req, res) => {
     }
     await requireMember(conversationId, req.user);
 
+    // C2: slurs / threats in the question or an option are refused, profanity masked.
+    const cf = require('../../../utils/contentFilter');
+    const fields = { question: question.trim() };
+    cleanOptions.forEach((o, i) => { fields[`option${i}`] = o; });
+    const text = cf.cleanFields(fields);
+    if (text.blocked) return cf.rejectBlocked(res, text.field.startsWith('option') ? 'options' : text.field);
+
     const CampusPoll = getCampusPollModel();
     const poll = await CampusPoll.create({
       conversationId,
       creatorId: req.user.id,
-      question: question.trim(),
-      options: cleanOptions,
+      question: text.values.question,
+      options: cleanOptions.map((o, i) => text.values[`option${i}`]),
       isMulti: !!isMulti,
       isAnonymous: !!isAnonymous,
       votes: {},
@@ -72,10 +79,15 @@ const getPolls = async (req, res) => {
   try {
     await requireMember(req.params.conversationId, req.user);
     const CampusPoll = getCampusPollModel();
-    const polls = await CampusPoll.findAll({
+    let polls = await CampusPoll.findAll({
       where: { conversationId: req.params.conversationId },
       order: [['createdAt', 'DESC']],
     });
+    // C2: moderated polls and polls by people blocked either way are left out.
+    const ugc = require('../../friends/services/ugc');
+    polls = await ugc.filterVisible('poll', polls);
+    const blocked = await ugc.blockedIds(req.user.id);
+    if (blocked.size) polls = polls.filter((p) => !blocked.has(String(p.creatorId)));
     res.json({ polls: polls.map((p) => publicPoll(p, req.user.id)) });
   } catch (err) {
     if (sendAccessError(res, err)) return;
@@ -91,7 +103,7 @@ const votePoll = async (req, res) => {
     const { optionIndexes } = req.body;
     const CampusPoll = getCampusPollModel();
     const found = await CampusPoll.findByPk(req.params.id);
-    if (!found) return res.status(404).json({ message: 'Poll not found' });
+    if (!found || await require('../../friends/services/ugc').isHidden('poll', found.id)) return res.status(404).json({ message: 'Poll not found' });
     await requireMember(found.conversationId, req.user);
     if (found.expiresAt && new Date(found.expiresAt).getTime() < Date.now()) return res.status(400).json({ message: 'Poll is closed' });
 

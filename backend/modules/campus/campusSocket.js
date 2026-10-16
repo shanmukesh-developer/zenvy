@@ -32,6 +32,12 @@ const takeCallInvite = (userId) => {
 };
 // Per-user send limits on this socket (chat messages / edits and proximity messages).
 const sockLimiter = require('../friends/services/limiter');
+// C2: bad-word filter, moderation / block helpers (lazy: the Friends models load after this module).
+const contentFilter = require('../../utils/contentFilter');
+const ugcService = () => require('../friends/services/ugc');
+const ugcBlockedIds = async (uid) => {
+  try { return await ugcService().blockedIds(uid); } catch { return new Set(); }
+};
 sockLimiter.define('chat_send', 60, 60 * 1000);
 sockLimiter.define('chat_edit', 30, 60 * 1000);
 sockLimiter.define('proximity_send', 20, 60 * 1000);
@@ -124,10 +130,12 @@ const initCampusSocket = (io) => {
     connectChatIds.set(String(chatId), isConnect ? { id: conv.id, refType: conv.refType, participants: conv.participants } : null);
     return isConnect ? identityFor(conv) : null;
   };
-  const emitToChat = async (chatId, event, payload, { conversation, except } = {}) => {
+  // skip (C2): user ids that must not get this event (people blocked with the sender in a group chat).
+  const emitToChat = async (chatId, event, payload, { conversation, except, skip } = {}) => {
     const room = `chat:${chatId}`;
     const ident = await connectIdentForChat(chatId, conversation);
-    if (!ident) {
+    const skipping = skip && skip.size > 0;
+    if (!ident && !skipping) {
       (except ? except.to(room) : campusNsp.to(room)).emit(event, payload);
       return;
     }
@@ -135,7 +143,8 @@ const initCampusSocket = (io) => {
     for (const s of sockets) {
       if (except && s.id === except.id) continue;
       const viewer = (s.user && s.user.id) || (s.data && s.data.userId) || null;
-      s.emit(event, maskFor(payload, viewer, ident));
+      if (skipping && viewer && skip.has(String(viewer))) continue;
+      s.emit(event, ident ? maskFor(payload, viewer, ident) : payload);
     }
   };
   campusNspRef = campusNsp;
@@ -335,6 +344,19 @@ const initCampusSocket = (io) => {
           }
         }
 
+        // C2: slurs / threats are refused, milder profanity is masked (utils/contentFilter.js).
+        let safeText = typeof text === 'string' ? text : '';
+        if (safeText) {
+          const filtered = contentFilter.analyse(safeText);
+          if (filtered.action === 'block') {
+            if (ack) ack({ error: contentFilter.BLOCK_MESSAGE, code: 'CONTENT_BLOCKED' });
+            return;
+          }
+          safeText = filtered.text;
+        }
+        // Group chats: people blocked with the sender (either way) do not get the message live.
+        const skipIds = conversation.isGroup ? await ugcBlockedIds(userId) : null;
+
         // Media is stored only after every membership / guard check (a non-member could otherwise
         // fill the media table). Inline base64 photos move to the media table; the message keeps the URL.
         let cleanMedia = null;
@@ -374,7 +396,7 @@ const initCampusSocket = (io) => {
           conversationId: chatId,
           senderId: userId,
           senderName,
-          text: text || '',
+          text: safeText || '',
           clientMsgId: clientMsgId || null,
           type: msgType,
           mediaUrl: cleanMedia,
@@ -406,13 +428,13 @@ const initCampusSocket = (io) => {
         };
 
         // Broadcast to chat room
-        await emitToChat(chatId, 'message:new', messagePayload, { conversation });
+        await emitToChat(chatId, 'message:new', messagePayload, { conversation, skip: skipIds });
 
         // Notify individual participant personal rooms (for unread badges in chat list)
         const lastMessage = previewOf(newMsg.type, newMsg.text);
         const offline = [];
         for (const pId of participants) {
-          if (pId !== userId) {
+          if (pId !== userId && !(skipIds && skipIds.has(String(pId)))) {
             campusNsp.to(`user:${pId}`).emit('chat:updated', {
               chatId,
               lastMessage,
@@ -611,7 +633,12 @@ const initCampusSocket = (io) => {
           }
         }
 
-        msg.text = cleanText;
+        const editFiltered = contentFilter.analyse(cleanText);
+        if (editFiltered.action === 'block') {
+          if (ack) ack({ error: contentFilter.BLOCK_MESSAGE, code: 'CONTENT_BLOCKED' });
+          return;
+        }
+        msg.text = editFiltered.text;
         msg.isEdited = true;
         msg.editedAt = new Date();
         await msg.save();
@@ -619,7 +646,7 @@ const initCampusSocket = (io) => {
         campusNsp.to(`chat:${msg.conversationId}`).emit('message:updated', {
           id: msg.id,
           chatId: msg.conversationId,
-          text: cleanText,
+          text: msg.text,
           isEdited: true,
           editedAt: msg.editedAt,
         });
@@ -747,11 +774,23 @@ const initCampusSocket = (io) => {
           return;
         }
 
+        // C2: sanctions, slurs / threats (refused) and profanity (masked), like POST .../messages.
+        const proxGuard = await ugcService().postGuard(userId);
+        if (proxGuard) {
+          if (ack) ack({ error: proxGuard.body.message, code: proxGuard.body.code });
+          return;
+        }
+        const proxFiltered = contentFilter.analyse(text.trim().slice(0, 1000));
+        if (proxFiltered.action === 'block') {
+          if (ack) ack({ error: contentFilter.BLOCK_MESSAGE, code: 'CONTENT_BLOCKED' });
+          return;
+        }
+
         const msg = await ProximityMessage.create({
           roomId: room.id,
           senderId: userId,
           senderName: socket.user.name,
-          text: text.trim().slice(0, 1000),
+          text: proxFiltered.text,
           type: 'text',
           expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
         });
@@ -767,7 +806,16 @@ const initCampusSocket = (io) => {
           clientMsgId: clientMsgId || null,
         };
 
-        campusNsp.to(`proximity:${roomSlug}`).emit('proximity:newMessage', payload);
+        // People blocked with the sender (either way) do not get it live (history filters them too).
+        const proxSkip = await ugcBlockedIds(userId);
+        if (!proxSkip.size) campusNsp.to(`proximity:${roomSlug}`).emit('proximity:newMessage', payload);
+        else {
+          const sockets = await campusNsp.in(`proximity:${roomSlug}`).fetchSockets();
+          for (const sk of sockets) {
+            const viewer = (sk.user && sk.user.id) || (sk.data && sk.data.userId) || null;
+            if (!viewer || !proxSkip.has(String(viewer))) sk.emit('proximity:newMessage', payload);
+          }
+        }
 
         if (ack) ack({ status: 'sent', id: msg.id, createdAt: msg.createdAt });
       } catch (err) {

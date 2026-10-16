@@ -24,6 +24,13 @@ const createLostFound = async (req, res) => {
       return res.status(400).json({ message: 'Where it was lost/found is required' });
     }
 
+    // C2: sanctioned authors cannot post; slurs / threats refused (422 CONTENT_BLOCKED), profanity masked.
+    const guard = await require('../../friends/services/ugc').postGuard(req.user.id);
+    if (guard) return res.status(guard.status).json(guard.body);
+    const cf = require('../../../utils/contentFilter');
+    const text = cf.cleanFields({ title, description, location });
+    if (text.blocked) return cf.rejectBlocked(res, text.field);
+
     // Photo: '/api/campus/media/<id>' from POST /api/campus/media, an https URL, or a legacy data:image URL.
     // Inline base64 is sniffed and moved to the media table (short URL on the row).
     let cleanImage = null;
@@ -39,9 +46,9 @@ const createLostFound = async (req, res) => {
       userId: req.user.id,
       userName: req.user.name || 'A student',
       type,
-      title: title.trim().slice(0, 120),
-      description: description ? description.trim().slice(0, 1000) : null,
-      location: location.trim().slice(0, 120),
+      title: text.values.title.trim().slice(0, 120),
+      description: text.values.description ? text.values.description.trim().slice(0, 1000) : null,
+      location: text.values.location.trim().slice(0, 120),
       imageUrl: cleanImage,
       claimContact: claimContact ? claimContact.trim().slice(0, 120) : null,
       status: 'open',
@@ -75,7 +82,8 @@ const getLostFound = async (req, res) => {
       limit: 100,
     });
     const blocked = await blockedIdsFor(req.user.id);
-    const items = rows.filter((r) => !blocked.has(r.userId));
+    // C2: moderated items (hidden / pending review / removed) are left out too.
+    const items = await require('../../friends/services/ugc').filterVisible('lost_found', rows.filter((r) => !blocked.has(r.userId)));
     res.json({ items });
   } catch (err) {
     console.error('[GET_LNF_ERR]', err);

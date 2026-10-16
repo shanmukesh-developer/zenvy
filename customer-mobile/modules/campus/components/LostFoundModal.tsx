@@ -26,7 +26,9 @@ import {
   Sparkles,
   Camera,
   ImagePlus,
+  MoreHorizontal,
 } from '../../../components/lucide';
+import { ActionMenu } from '../friends/shared/ActionMenu';
 import * as Haptics from 'expo-haptics';
 import { pickImageAsset, prepareAndUploadImage, alertUploadError, resolveMediaUrl } from '../../../utils/imageUpload';
 import { CampusColors, CampusLayout } from '../../../constants/campusTheme';
@@ -57,6 +59,9 @@ export const LostFoundModal: React.FC<LostFoundModalProps> = ({
 }) => {
   const [filter, setFilter] = useState<'all' | 'lost' | 'found'>('all');
   const [items, setItems] = useState<CampusLostFoundItem[]>([]);
+  // C2: Report / Block on other people's posts.
+  const [menuItem, setMenuItem] = useState<CampusLostFoundItem | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -174,7 +179,7 @@ export const LostFoundModal: React.FC<LostFoundModalProps> = ({
       resetCreateForm();
     } catch (e: any) {
       if (verifyGate(e)) return;
-      Alert.alert("Couldn't post", e?.message || 'Please try again in a moment.');
+      Alert.alert(e?.code === 'CONTENT_BLOCKED' ? 'Please rephrase' : "Couldn't post", e?.message || 'Please try again in a moment.');
     } finally {
       setSubmitting(false);
     }
@@ -365,6 +370,20 @@ export const LostFoundModal: React.FC<LostFoundModalProps> = ({
                           <Text style={styles.resolvedText}>RESOLVED</Text>
                         </View>
                       )}
+                      {!isOwner && currentUser ? (
+                        <TouchableOpacity
+                          style={{ marginLeft: 'auto', padding: 4 }}
+                          onPress={() => {
+                            setMenuItem(item);
+                            setMenuOpen(true);
+                          }}
+                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                          accessibilityRole="button"
+                          accessibilityLabel="Post options"
+                        >
+                          <MoreHorizontal size={18} color={CampusColors.muted} />
+                        </TouchableOpacity>
+                      ) : null}
                     </View>
 
                     <Text style={styles.itemTitle}>{item.title}</Text>
@@ -444,6 +463,19 @@ export const LostFoundModal: React.FC<LostFoundModalProps> = ({
             )}
           </ScrollView>
         )}
+
+        <ActionMenu
+          visible={menuOpen}
+          onClose={() => setMenuOpen(false)}
+          title="Board post"
+          report={menuItem ? { type: 'lost_found', id: menuItem.id, label: `"${menuItem.title}" by ${menuItem.userName || 'a student'}` } : null}
+          block={menuItem && menuItem.userId ? { userId: String(menuItem.userId), name: menuItem.userName || 'this student' } : null}
+          onReported={() => {
+            const id = menuItem?.id;
+            if (id) setItems((prev) => prev.filter((x) => x.id !== id));
+          }}
+          onBlocked={(uid) => setItems((prev) => prev.filter((x) => String(x.userId) !== String(uid)))}
+        />
 
         {/* Post Item Sub-Modal */}
         <Modal

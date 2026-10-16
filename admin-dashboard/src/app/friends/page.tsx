@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useAdminAuth } from '@/utils/useAdminAuth';
 import { adminRequest } from '@/lib/api';
+import CampusSafetyPanel from './CampusSafetyPanel';
 
 /**
  * Zenvy Friends configuration hub (backend: GET/PUT /api/campus/mod/config, stored in GlobalConfig
@@ -351,6 +352,9 @@ export default function FriendsConfigPage() {
               <p className="text-[10px] text-gray-500 mt-2">Applies to new reports.</p>
             </div>
           </section>
+
+          {/* C2: Whispers / After Dark switches + whisper board */}
+          <CampusSafetyPanel />
 
           {/* Per-phase admin */}
           <section className={card}>

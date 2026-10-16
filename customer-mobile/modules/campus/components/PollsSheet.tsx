@@ -15,6 +15,7 @@ import * as Haptics from 'expo-haptics';
 import { CampusColors } from '../../../constants/campusTheme';
 import { CampusUserData } from '../../../types/campus';
 import { CampusPoll, fetchCampusPolls, createCampusPoll, voteCampusPoll } from '../campusApi';
+import { ReportSheet } from '../friends/shared/ReportSheet';
 
 interface PollsSheetProps {
   chatId: string;
@@ -24,6 +25,7 @@ interface PollsSheetProps {
 
 export const PollsSheet: React.FC<PollsSheetProps> = ({ chatId, currentUser, onClose }) => {
   const [polls, setPolls] = useState<CampusPoll[]>([]);
+  const [reportPoll, setReportPoll] = useState<CampusPoll | null>(null);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [question, setQuestion] = useState('');
@@ -210,13 +212,30 @@ export const PollsSheet: React.FC<PollsSheetProps> = ({ chatId, currentUser, onC
                       </TouchableOpacity>
                     );
                   })}
-                  <Text style={styles.pollMeta}>{total} vote{total === 1 ? '' : 's'}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Text style={styles.pollMeta}>{total} vote{total === 1 ? '' : 's'}</Text>
+                    {p.creatorId && p.creatorId !== currentUser?.id ? (
+                      // C2: report a poll (question / options).
+                      <TouchableOpacity onPress={() => setReportPoll(p)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel="Report this poll">
+                        <Text style={[styles.pollMeta, { color: '#A3321A', fontWeight: '700' }]}>Report</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
                 </View>
               );
             })
           )}
         </ScrollView>
       </View>
+      <ReportSheet
+        visible={!!reportPoll}
+        onClose={() => setReportPoll(null)}
+        target={reportPoll ? { type: 'poll', id: reportPoll.id, label: 'this poll' } : null}
+        onReported={() => {
+          const id = reportPoll?.id;
+          if (id) setPolls((prev) => prev.filter((x) => x.id !== id));
+        }}
+      />
     </KeyboardAvoidingView>
   );
 };

@@ -224,6 +224,10 @@ const setGroupDiscoverable = async (req, res) => {
     if (!isAdmin) return res.status(403).json({ message: 'Only group admins can change this.' });
 
     const discoverable = !!(req.body && req.body.discoverable);
+    // C2: a group under moderation (hidden / pending review / removed) cannot be listed again.
+    if (discoverable && UUID_RE.test(id) && await require('../../friends/services/ugc').isHidden('group', id)) {
+      return res.status(403).json({ code: 'GROUP_UNDER_REVIEW', message: 'This group is under review by our team and cannot be listed right now.' });
+    }
     const myProfile = await getCampusProfileModel().findOne({ where: { userId: req.user.id }, attributes: ['campusId', 'verificationStatus'] });
     // Listing a club in a campus directory needs a verified member of that campus (an unverified
     // account can claim any campus in its profile and plant phishing / spam clubs there).

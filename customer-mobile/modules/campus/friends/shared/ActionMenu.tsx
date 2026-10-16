@@ -36,7 +36,9 @@ export const ActionMenu: React.FC<{
   extra?: ActionMenuExtra[];
   onMuteChanged?: (muted: boolean) => void;
   onBlocked?: (userId: string) => void;
-}> = ({ visible, onClose, title = 'Options', report, mute, block, copyLink, onDelete, deleteLabel = 'Delete', extra, onMuteChanged, onBlocked }) => {
+  /** C2: called after a report is filed (e.g. hide the item locally for the reporter). */
+  onReported?: (r: { reportId: string; duplicate: boolean }) => void;
+}> = ({ visible, onClose, title = 'Options', report, mute, block, copyLink, onDelete, deleteLabel = 'Delete', extra, onMuteChanged, onBlocked, onReported }) => {
   const [reportOpen, setReportOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -189,7 +191,7 @@ export const ActionMenu: React.FC<{
           <Text style={fui.ghostBtnText}>Cancel</Text>
         </TouchableOpacity>
       </FriendsSheet>
-      <ReportSheet visible={reportOpen} onClose={() => setReportOpen(false)} target={report || null} />
+      <ReportSheet visible={reportOpen} onClose={() => setReportOpen(false)} target={report || null} onReported={onReported} />
     </>
   );
 };

@@ -91,6 +91,18 @@ router.get('/retention', async (req, res) => {
   }
 });
 
+// C2: which optional campus features are on (the app hides the entry points of the ones that are off).
+router.get('/features', protect, async (req, res) => {
+  try {
+    const sw = require('../../utils/featureSwitches');
+    res.set('Cache-Control', 'private, max-age=30');
+    res.json(await sw.all());
+  } catch (err) {
+    console.error('[CAMPUS_FEATURES_ERR]', err.message);
+    res.json({ whispers: true, afterDark: true });
+  }
+});
+
 // Media: one upload for every campus image; served from a short URL with long cache headers.
 // GET is public by unguessable id (ID cards need the owner/admin token or a signed link).
 router.post('/media', protect, parseUpload, uploadMedia);
@@ -160,9 +172,11 @@ router.get('/pulse/today', protect, getToday);
 router.get('/pulse/question', protect, getDailyQuestion);
 router.post('/pulse/question/answer', protect, answerDailyQuestion);
 router.post('/pulse/question/answer/:id/upvote', protect, upvoteAnswer);
-router.get('/pulse/whispers', protect, getWhispers);
-router.post('/pulse/whispers', protect, createWhisper);
-router.post('/pulse/whispers/:id/react', protect, reactWhisper);
+// C2: Whispers kill switch (GlobalConfig CAMPUS_WHISPERS_ENABLED, admin Friends moderation > switches).
+const featureSwitches = require('../../utils/featureSwitches');
+router.get('/pulse/whispers', protect, featureSwitches.requireOn('whispers'), getWhispers);
+router.post('/pulse/whispers', protect, featureSwitches.requireOn('whispers'), createWhisper);
+router.post('/pulse/whispers/:id/react', protect, featureSwitches.requireOn('whispers'), reactWhisper);
 router.get('/pulse/branch-wars', protect, getBranchLeaderboard);
 // Board counts for the Pulse cards (no photos downloaded)
 router.get('/pulse/counts', protect, async (req, res) => {

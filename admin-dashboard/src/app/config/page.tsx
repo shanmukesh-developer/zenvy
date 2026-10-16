@@ -35,6 +35,8 @@ const MANAGED_KEYS: string[] = [...RETENTION.map(r => r.key), 'CAMPUS_SPOTS_DEFA
 // told admins the rentals on/off switch did nothing).
 const MANAGED_ELSEWHERE: Record<string, { label: string; href: string }> = {
   VEHICLE_RENTALS_ENABLED: { label: 'Vehicle rentals on/off', href: '/rentals' },
+  CAMPUS_WHISPERS_ENABLED: { label: 'Campus Whispers on/off', href: '/friends' },
+  AFTER_DARK_ENABLED: { label: 'Zenvy After Dark on/off', href: '/friends' },
 };
 const MAX_RETENTION_DAYS = 3650;
 

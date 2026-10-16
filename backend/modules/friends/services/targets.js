@@ -56,7 +56,9 @@ register('profile', {
 // ── message (campus chat, task chat, Connect chat) ──────────────────────────
 const MEDIA_ID_RE = /\/api\/campus\/media\/([0-9a-f-]{36})/i;
 register('message', {
-  statuses: ['removed', 'hidden', 'visible'],
+  // C2: 'pending_review' (auto-hide after UGC_AUTO_HIDE_REPORTS reports) hides the message like a delete
+  // but keeps its content, so a moderator can restore it; 'hidden' / 'removed' wipe it (B4).
+  statuses: ['pending_review', 'removed', 'hidden', 'visible'],
   async load(id, { viewerId } = {}) {
     const Message = getModel('Message');
     const Conversation = getModel('Conversation');
@@ -93,7 +95,7 @@ register('message', {
     const msg = await Message.findByPk(id, { transaction });
     if (!msg) return false;
     msg.isDeletedForEveryone = status !== 'visible';
-    if (status !== 'visible') {
+    if (status !== 'visible' && status !== 'pending_review') {
       // A moderator removal wipes the content itself (B4), not just a flag readers must honour:
       // the report keeps its own snapshot for the audit trail.
       msg.text = '';
@@ -112,3 +114,6 @@ register('message', {
 });
 
 module.exports = { register, get, has, excerpt };
+
+// C2: campus content outside Friends (whispers, community posts, lost & found, spots, groups, polls).
+require('./ugcTargets');

@@ -77,6 +77,7 @@ export const PulseTab: React.FC<PulseTabProps> = ({
   const [branches, setBranches] = useState<PulseBranchStanding[]>([]);
   const [today, setToday] = useState<PulseToday | null>(null);
   const [topWhisper, setTopWhisper] = useState<PulseWhisper | null>(null);
+  const [whispersOff, setWhispersOff] = useState(false);
   const [pulseError, setPulseError] = useState(false);
   const [pulseLoaded, setPulseLoaded] = useState(false);
 
@@ -122,6 +123,10 @@ export const PulseTab: React.FC<PulseTabProps> = ({
     if (ws.status === 'fulfilled') {
       const top = [...(ws.value.whispers || [])].sort((a, b) => b.hearts - a.hearts)[0] || null;
       setTopWhisper(top);
+      setWhispersOff(false);
+    } else if ((ws.reason as any)?.code === 'FEATURE_OFF') {
+      // C2: admin kill switch: hide the Whispers entry point.
+      setWhispersOff(true);
     }
     setPulseError((isFeed ? [q, bw, ws] : [td]).every((r) => r.status === 'rejected'));
     setPulseLoaded(true);
@@ -403,7 +408,7 @@ export const PulseTab: React.FC<PulseTabProps> = ({
       )}
 
       {/* 4. Campus Whispers Highlights (Section 7.3) */}
-      {isFeed && (
+      {isFeed && !whispersOff && (
       <View style={styles.sectionCard}>
         <View style={styles.sectionHeader}>
           <View style={styles.titleRow}>

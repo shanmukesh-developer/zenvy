@@ -14,7 +14,8 @@ import { useLiveSync, useFreshIds, FRESH_ROW_CLASS, liveLabel, type LiveEvent } 
  */
 
 // ── Contract (mirrors backend/modules/friends/models/foundation/enums.js) ──────
-const SUB_TABS = ['pulse', 'forum', 'tasks', 'connect', 'spaces', 'chat'] as const;
+// 'campus' (C2): whispers, community posts, lost & found, campus spots, groups and polls.
+const SUB_TABS = ['pulse', 'forum', 'tasks', 'connect', 'spaces', 'chat', 'campus'] as const;
 const CATEGORIES = [
   'spam', 'impersonation', 'harassment', 'threat', 'privacy', 'sexual', 'hate',
   'academic_integrity', 'defamation', 'self_harm', 'other',

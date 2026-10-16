@@ -223,12 +223,25 @@ const resolveReport = async (req, res) => {
   const sequelize = getSequelize();
   const FriendsReport = getModel('FriendsReport');
   const FriendsSanction = getModel('FriendsSanction');
+  const wasAutoHidden = decision === 'dismiss' && (E.UGC_TARGETS || []).includes(report.targetType)
+    ? await reportsSvc.isAutoHidden(report.targetType, report.targetId) : false;
   const result = await sequelize.transaction(async (transaction) => {
     // Re-check inside the transaction: two moderators resolving at once act only once.
     const fresh = await FriendsReport.findByPk(report.id, { transaction, lock: transaction.LOCK.UPDATE });
     if (!reportsSvc.OPEN_STATUSES.includes(fresh.status)) throw fail(409, 'ALREADY_RESOLVED', 'This report is already closed.');
     if (decision === 'remove') await resolver.setStatus(report.targetId, 'removed', { transaction });
     if (decision === 'hide') await resolver.setStatus(report.targetId, 'hidden', { transaction });
+    // C2: campus content auto-hidden while it waited for review comes back when the reports are dismissed.
+    let restored = false;
+    if (decision === 'dismiss' && (E.UGC_TARGETS || []).includes(report.targetType) && resolver && resolver.setStatus
+      && (resolver.statuses || []).includes('visible') && wasAutoHidden) {
+      await resolver.setStatus(report.targetId, 'visible', { transaction });
+      await audit.record({
+        actorId: req.user.id, actorRole: 'admin', action: 'restore', targetType: report.targetType, targetId: report.targetId,
+        anonymous: !!(report.snapshot && report.snapshot.anonymous), reportId: report.id, reason: note || 'Reports dismissed',
+      }, { transaction });
+      restored = true;
+    }
     const action = await audit.record({
       actorId: req.user.id,
       actorRole: 'admin',
@@ -262,7 +275,7 @@ const resolveReport = async (req, res) => {
       where: { targetType: report.targetType, targetId: report.targetId, status: { [Op.in]: statusesToClose } },
       transaction,
     });
-    return { action, sanction, closed };
+    return { action, sanction, closed, restored };
   });
 
   if (subject) eligibility.clearEligibility(subject);
@@ -281,6 +294,7 @@ const resolveReport = async (req, res) => {
     decision,
     actionId: result.action.id,
     reportsClosed: result.closed,
+    ...(result.restored ? { restored: true } : {}),
     sanction: result.sanction ? { id: result.sanction.id, scope: result.sanction.scope, until: result.sanction.until } : null,
   });
 };
@@ -636,7 +650,101 @@ const revokeBadge = async (req, res) => {
   res.json({ ok: true });
 };
 
+
+// ── C2: campus kill switches (Whispers, After Dark) ─────────────────────────
+// GET /switches -> { whispers: bool, afterDark: bool }
+const getSwitches = async (req, res) => {
+  const sw = require('../../../utils/featureSwitches');
+  const out = {};
+  for (const name of Object.keys(sw.SWITCHES)) out[name] = await sw.isOn(name, { fresh: true });
+  res.json({ switches: out, keys: Object.fromEntries(Object.entries(sw.SWITCHES).map(([k, v]) => [k, v.key])) });
+};
+
+// PUT /switches { whispers?: bool, afterDark?: bool } — audited as config_update.
+const putSwitches = async (req, res) => {
+  const sw = require('../../../utils/featureSwitches');
+  const b = req.body || {};
+  const changes = Object.entries(b).filter(([k]) => sw.SWITCHES[k]);
+  if (!changes.length) throw fail(400, 'NOTHING_TO_CHANGE', `Send one of: ${Object.keys(sw.SWITCHES).join(', ')}.`);
+  for (const [k, v] of changes) if (typeof v !== 'boolean') throw fail(400, 'INVALID_SWITCH', `${k} must be true or false.`);
+  for (const [k, v] of changes) {
+    await sw.setOn(k, v);
+    await audit.recordSafe({ actorId: req.user.id, actorRole: 'admin', action: 'config_update', reason: `${sw.SWITCHES[k].label} turned ${v ? 'on' : 'off'}`, meta: { switch: sw.SWITCHES[k].key, enabled: v } });
+  }
+  const out = {};
+  for (const name of Object.keys(sw.SWITCHES)) out[name] = await sw.isOn(name);
+  notifyAdmin('friends_config', 'updated', 'switches');
+  res.json({ ok: true, switches: out });
+};
+
+
+// C2: POST /content/:type/:id { action: 'remove'|'hide'|'restore', reason } — take campus content down
+// (or bring it back) without waiting for a report, e.g. a whisper an admin spotted. Audited; open
+// reports on the target are left for the queue (resolve them there to notify reporters).
+const CONTENT_ACTION_STATUS = { remove: 'removed', hide: 'hidden', restore: 'visible' };
+const setContentStatus = async (req, res) => {
+  const targetType = String(req.params.type || '');
+  const targetId = requireUuid(String(req.params.id || ''), 'target');
+  const action = String((req.body && req.body.action) || '');
+  const status = CONTENT_ACTION_STATUS[action];
+  if (!status) throw fail(400, 'INVALID_ACTION', 'Action must be remove, hide or restore.');
+  if (!(E.UGC_TARGETS || []).includes(targetType)) throw fail(400, 'INVALID_TARGET', 'That kind of content cannot be moderated from here.');
+  const reason = optText(req.body && req.body.reason, 500, 'Reason');
+  const resolver = targets.get(targetType);
+  if (!resolver || !resolver.setStatus || !(resolver.statuses || []).includes(status)) throw fail(422, 'ACTION_NOT_SUPPORTED', 'This kind of content cannot be changed from here.');
+  const target = await resolver.load(targetId, {});
+  if (!target) throw fail(404, 'TARGET_NOT_FOUND', 'Target not found.');
+  const anonymous = !!(target.snapshot && target.snapshot.anonymous);
+  const sequelize = getSequelize();
+  const logged = await sequelize.transaction(async (transaction) => {
+    await resolver.setStatus(targetId, status, { transaction });
+    return audit.record({
+      actorId: req.user.id, actorRole: 'admin', action, targetType, targetId,
+      subjectUserId: action === 'restore' ? null : (target.ownerId || null), anonymous, reason,
+      meta: { direct: true, snapshot: target.snapshot ? { excerpt: target.snapshot.excerpt } : null },
+    }, { transaction });
+  });
+  notifyAdmin('friends_report', 'updated', targetId);
+  res.json({ ok: true, targetType, targetId, status, actionId: logged.id });
+};
+
+
+// C2: GET /whispers?status=visible|hidden|all&limit= — recent Campus Whispers for the admin board
+// (author never included: use the audited reveal-author on a report, or warn / sanction from it).
+const listWhispers = async (req, res) => {
+  const W = getModel('CampusWhisper');
+  if (!W) return res.json({ items: [] });
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
+  const where = {};
+  if (req.query.before) {
+    const d = new Date(String(req.query.before));
+    if (!Number.isNaN(d.getTime())) where.createdAt = { [Op.lt]: d };
+  }
+  const rows = await W.findAll({ where, order: [['createdAt', 'DESC']], limit, attributes: ['id', 'alias', 'topic', 'text', 'hearts', 'createdAt'] });
+  const ids = rows.map((r) => r.id);
+  const State = getModel('FriendsContentState');
+  const states = ids.length && State ? await State.findAll({ where: { targetType: 'whisper', targetId: { [Op.in]: ids } }, attributes: ['targetId', 'status'], raw: true }) : [];
+  const stateBy = new Map(states.map((x) => [String(x.targetId), x.status]));
+  const counts = ids.length ? await getModel('FriendsReport').findAll({
+    where: { targetType: 'whisper', targetId: { [Op.in]: ids }, status: { [Op.in]: reportsSvc.OPEN_STATUSES } },
+    attributes: ['targetId', 'reporterId'], raw: true,
+  }) : [];
+  const reportersBy = new Map();
+  counts.forEach((r) => { const k = String(r.targetId); if (!reportersBy.has(k)) reportersBy.set(k, new Set()); reportersBy.get(k).add(r.reporterId); });
+  let items = rows.map((w) => ({
+    id: w.id, alias: w.alias, topic: w.topic, text: w.text, hearts: (w.hearts || []).length, createdAt: w.createdAt,
+    status: stateBy.get(String(w.id)) || 'visible', openReporters: reportersBy.has(String(w.id)) ? reportersBy.get(String(w.id)).size : 0,
+  }));
+  if (req.query.status === 'visible') items = items.filter((i) => i.status === 'visible');
+  else if (req.query.status === 'hidden') items = items.filter((i) => i.status !== 'visible');
+  res.json({ items, nextBefore: rows.length === limit ? rows[rows.length - 1].createdAt : null });
+};
+
 module.exports = {
+  listWhispers,
+  setContentStatus,
+  getSwitches,
+  putSwitches,
   getQueue,
   getReport,
   assignReport,

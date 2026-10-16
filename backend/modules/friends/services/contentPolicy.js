@@ -109,6 +109,12 @@ const check = (text, ctx = {}) => {
 
   // Admin keyword lists.
   for (const w of cfg.keywords.block || []) if (hasWord(norm, sq, w)) { block.add('BLOCKED_TERM'); break; }
+  // C2: the shared bad-word filter's severe list (identity slurs, threats, "kill yourself"), whole words only.
+  try {
+    if (require('../../../utils/contentFilter').isBlocked(raw)) block.add('BLOCKED_TERM');
+  } catch (err) {
+    console.warn('[FRIENDS_CONTENT_FILTER_WARN]', err.message);
+  }
   for (const w of cfg.keywords.flag || []) if (hasWord(norm, sq, w)) { flag.add('FLAGGED_TERM'); break; }
 
   // Faculty / staff reviews: allegations go to a human first (never auto-removed for being negative).

@@ -19,7 +19,14 @@ export type ReportTargetType =
   | 'space'
   | 'connect_profile'
   | 'connect_photo'
-  | 'community';
+  | 'community'
+  // C2: campus surfaces outside Friends
+  | 'whisper'
+  | 'community_post'
+  | 'lost_found'
+  | 'proximity_message'
+  | 'group'
+  | 'poll';
 
 export type ReportCategory =
   | 'spam'

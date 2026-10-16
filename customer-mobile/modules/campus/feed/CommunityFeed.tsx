@@ -17,6 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { connectSocket } from '../../../utils/socket';
 import { useLiveSync } from '../../../utils/useLiveSync';
 import ShimmerLoader from '../../../components/ShimmerLoader';
+import { ActionMenu } from '../friends/shared/ActionMenu';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 
@@ -227,6 +228,8 @@ type PostCardActions = {
   reply: (post: PostType) => void;
   remove: (id: string, parentId: string | null) => void;
   toggleThread: (postId: string) => void;
+  /** C2: Report / Block menu on someone else's post or reply. */
+  more: (post: PostType, parentId: string | null) => void;
 };
 
 /** One polaroid in the posts grid. Memoized: a like / reply / new post re-renders only the cards it changes. */
@@ -320,6 +323,10 @@ const PostCard = React.memo(function PostCard({ post, idx, myUserId, signedIn, i
               <DopaminePressable style={s.actionBtn} onPress={() => actions.remove(post.id, null)}sound="click" activeScale={0.88}>
                 <Text style={[s.actionText, { color: COLORS.red }]}>🗑️</Text>
               </DopaminePressable>
+            ) : signedIn ? (
+              <DopaminePressable style={s.actionBtn} onPress={() => actions.more(post, null)} sound="click" activeScale={0.88} accessibilityLabel="Post options">
+                <Text style={s.actionText}>⋯</Text>
+              </DopaminePressable>
             ) : null}
           </View>
 
@@ -344,6 +351,10 @@ const PostCard = React.memo(function PostCard({ post, idx, myUserId, signedIn, i
                   {signedIn && String(r.userId) === myUserId ? (
                     <TouchableOpacity onPress={() => actions.remove(r.id, post.id)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
                       <Text style={{ fontSize: 7, color: COLORS.red }}>🗑️</Text>
+                    </TouchableOpacity>
+                  ) : signedIn ? (
+                    <TouchableOpacity onPress={() => actions.more(r, post.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel="Reply options">
+                      <Text style={{ fontSize: 12, color: txtSec }}>⋯</Text>
                     </TouchableOpacity>
                   ) : null}
                 </View>
@@ -525,6 +536,23 @@ export function CommunityFeed({ embedded = false, tab }: { embedded?: boolean; t
   const [expandedThreads, setExpandedThreads] = useState<Set<string>>(new Set());
   const [posting, setPosting] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  // C2: Report / Block on other people's posts and replies.
+  const [ugcMenu, setUgcMenu] = useState<{ post: PostType; parentId: string | null } | null>(null);
+  const [ugcMenuOpen, setUgcMenuOpen] = useState(false);
+  /** Drops a post or reply locally (after a report) — the server hides it too once reviewed. */
+  const dropLocal = (id: string, parentId: string | null) => {
+    if (parentId) {
+      setPosts(prev => prev.map(p => p.id === parentId ? { ...p, replies: (p.replies || []).filter(r => r.id !== id) } : p));
+    } else {
+      setPosts(prev => prev.filter(p => p.id !== id));
+    }
+  };
+  /** Hides everything by a person I just blocked (the server leaves them out from now on). */
+  const dropAuthor = (userId: string) => {
+    setPosts(prev => prev
+      .filter(p => String(p.userId) !== String(userId))
+      .map(p => ({ ...p, replies: (p.replies || []).filter(r => String(r.userId) !== String(userId)) })));
+  };
 
   // Photos are compressed and uploaded to Zenvy media storage; posts only carry the short https link.
   const [photoUploading, setPhotoUploading] = useState<null | 'post' | 'birthday' | 'wall'>(null);
@@ -1239,6 +1267,10 @@ export function CommunityFeed({ embedded = false, tab }: { embedded?: boolean; t
     }),
     remove: (id, parentId) => cardFnsRef.current.handleDelete(id, parentId),
     toggleThread: (postId) => cardFnsRef.current.toggleThread(postId),
+    more: (post, parentId) => {
+      setUgcMenu({ post, parentId });
+      setUgcMenuOpen(true);
+    },
   }), []);
   const signedIn = !!user;
   const renderPost = useCallback(({ item, index }: { item: PostType; index: number }) => (
@@ -2160,6 +2192,15 @@ export function CommunityFeed({ embedded = false, tab }: { embedded?: boolean; t
       </Modal>
 
       {/* ── LIGHTBOX MODAL ── */}
+      <ActionMenu
+        visible={ugcMenuOpen}
+        onClose={() => setUgcMenuOpen(false)}
+        title={ugcMenu?.parentId ? 'Reply' : 'Post'}
+        report={ugcMenu ? { type: 'community_post', id: String(ugcMenu.post.id), label: `${ugcMenu.parentId ? 'a reply' : 'a post'} by ${ugcMenu.post.userName || 'a student'}` } : null}
+        block={ugcMenu && ugcMenu.post.userId ? { userId: String(ugcMenu.post.userId), name: ugcMenu.post.userName || 'this student' } : null}
+        onReported={() => { if (ugcMenu) dropLocal(String(ugcMenu.post.id), ugcMenu.parentId); }}
+        onBlocked={(uid) => dropAuthor(uid)}
+      />
       <Modal visible={!!selectedImage} transparent={true} animationType="fade" onRequestClose={() => setSelectedImage(null)}>
         <TouchableOpacity 
           style={s.lightboxOverlay} 

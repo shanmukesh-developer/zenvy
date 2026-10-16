@@ -11,6 +11,7 @@ import {
   setGroupDiscoverable,
 } from '../campusApi';
 import { ScreenModal, Sheet, Avatar, ListRow, EmptyState, ErrorState, SkeletonRows, Button, T, S, R, ui } from '../ui';
+import { ActionMenu } from '../friends/shared/ActionMenu';
 
 const TYPE_OPTIONS: { key: string; label: string; hint: string }[] = [
   { key: 'study', label: 'Study group', hint: 'Friends, projects, lab partners' },
@@ -72,7 +73,9 @@ export const CreateGroupSheet: React.FC<{
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       onCreated({ ...group, discoverable: isPublic, isAdmin: true });
     } catch (e: any) {
-      setError(e?.message || "Couldn't create the group. Please try again.");
+      setError(e?.code === 'CONTENT_BLOCKED'
+        ? e?.message || "That name has words that aren't allowed on Zenvy. Please rephrase it."
+        : e?.message || "Couldn't create the group. Please try again.");
     } finally {
       setBusy(false);
     }
@@ -149,6 +152,9 @@ export const GroupsScreen: React.FC<GroupsScreenProps> = ({ visible, onClose, on
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  // C2: Report a group you are in (admins have their manage menu instead).
+  const [reportGroup, setReportGroup] = useState<CampusGroup | null>(null);
+  const [reportMenuOpen, setReportMenuOpen] = useState(false);
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -293,13 +299,31 @@ export const GroupsScreen: React.FC<GroupsScreenProps> = ({ visible, onClose, on
                     <TouchableOpacity onPress={() => manage(g)} hitSlop={10} style={{ padding: 6 }} accessibilityLabel={`Manage ${g.name}`}>
                       <MoreVertical size={18} color={CampusColors.muted} />
                     </TouchableOpacity>
-                  ) : undefined
+                  ) : (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setReportGroup(g);
+                        setReportMenuOpen(true);
+                      }}
+                      hitSlop={10}
+                      style={{ padding: 6 }}
+                      accessibilityLabel={`Options for ${g.name}`}
+                    >
+                      <MoreVertical size={18} color={CampusColors.muted} />
+                    </TouchableOpacity>
+                  )
                 }
               />
             ))}
           </View>
         )}
       </ScrollView>
+      <ActionMenu
+        visible={reportMenuOpen}
+        onClose={() => setReportMenuOpen(false)}
+        title={reportGroup?.name || 'Group'}
+        report={reportGroup ? { type: 'group', id: reportGroup.id, label: `the group "${reportGroup.name}"` } : null}
+      />
     </ScreenModal>
   );
 };
