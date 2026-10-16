@@ -1,0 +1,122 @@
+"use client";
+
+import { useEffect, useState } from 'react';
+import { autoRideApi, BOOKING_STATUSES, type Booking } from '@/lib/autoRideApi';
+import { useLoader, type Lookups } from './hooks';
+import { Btn, ConfirmDialog, Empty, ErrorBox, Loading, Msg, Pill, Select, Toolbar, errText, inr, label, maskPhone, short, when } from './ui';
+
+export default function BookingsTab({ tick, onChanged, lookups }: { tick: number; onChanged: () => void; lookups: Lookups }) {
+  const [status, setStatus] = useState('');
+  const [code, setCode] = useState('');
+  const [codeQ, setCodeQ] = useState('');
+  const [phone, setPhone] = useState('');
+  const [openId, setOpenId] = useState<string | null>(null);
+  useEffect(() => { const t = setTimeout(() => setCodeQ(code.toUpperCase().replace(/[^A-Z0-9]/g, '')), 400); return () => clearTimeout(t); }, [code]);
+  const { data, loading, error, reload } = useLoader(`${status}|${codeQ}`, tick, () => autoRideApi.bookings({ status: status || undefined, code: codeQ || undefined }));
+  const all = data?.bookings || [];
+  // Phone search runs over the loaded rows (the server filters by code / status / ids only).
+  const digits = phone.replace(/\D/g, '');
+  const rows = digits ? all.filter((b) => String(b.passenger?.phone || '').replace(/\D/g, '').includes(digits)) : all;
+  return (
+    <section className="space-y-4" aria-label="Bookings">
+      <Toolbar>
+        <label className="text-xs font-bold uppercase tracking-wider text-gray-400">Booking code
+          <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="ZA7K3Q" className="ml-2 w-32 border border-white/10 bg-[#111318] p-2 font-mono text-sm font-normal uppercase text-white" />
+        </label>
+        <label className="text-xs font-bold uppercase tracking-wider text-gray-400">Phone
+          <input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="numeric" placeholder="98765…" className="ml-2 w-36 border border-white/10 bg-[#111318] p-2 text-sm font-normal text-white" />
+        </label>
+        <Select name="Status" value={status} onChange={setStatus} options={['', ...BOOKING_STATUSES]} />
+        <span className="text-sm text-gray-500">{rows.length} of {all.length}{all.length >= 300 ? ' (latest 300; phone search covers these only)' : ''}</span>
+      </Toolbar>
+      {error && <ErrorBox text={error} retry={reload} />}
+      {loading ? <Loading text="Loading bookings…" /> : rows.length === 0 ? <Empty text={codeQ ? `No booking with code ${codeQ}.` : 'No bookings match.'} /> : (
+        <div className="overflow-x-auto border border-white/10">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-white/[0.03] text-xs uppercase tracking-wider text-gray-400">
+              <tr><th className="p-3">Code</th><th className="p-3">Passenger</th><th className="p-3">Trip</th><th className="p-3">Seats</th><th className="p-3">Payment</th><th className="p-3">Status</th><th className="p-3" /></tr>
+            </thead>
+            <tbody className="divide-y divide-white/10">
+              {rows.map((b) => {
+                const open = openId === b.id;
+                return [
+                  <tr key={b.id} className={`align-top ${open ? 'bg-white/[0.03]' : ''}`}>
+                    <td className="p-3"><p className="font-mono font-bold">{b.bookingCode}</p><p className="text-xs text-gray-500">{when(b.createdAt)}</p></td>
+                    <td className="p-3"><p>{b.passenger?.name || `#${short(b.userId)}`}</p><p className="font-mono text-xs text-gray-500">{maskPhone(b.passenger?.phone)}</p></td>
+                    <td className="p-3 text-xs">{b.trip ? <><Pill s={b.trip.status} /><p className="mt-1 text-gray-400">{when(b.trip.departureAt)}</p></> : `#${short(b.tripId)}`}<p className="text-gray-500">Driver {lookups.drivers.get(String(b.driverId))?.name || `#${short(b.driverId)}`}</p></td>
+                    <td className="p-3 text-xs">{b.seatCount}{b.seatNumbers.length ? ` (#${b.seatNumbers.join(', ')})` : ''}{b.type === 'PRIVATE' && <p className="font-bold text-violet-300">Full auto</p>}</td>
+                    <td className="p-3 text-xs"><p className="font-bold">{inr(b.amount)}</p><p className="text-gray-400">{b.paymentMethod ? label(b.paymentMethod) : '—'} · {b.paymentStatus ? label(b.paymentStatus) : '—'}</p>{b.refundAmount > 0 && <p className="text-emerald-300">Refund {inr(b.refundAmount)}</p>}</td>
+                    <td className="p-3"><Pill s={b.status} />{b.pinLocked && <p className="mt-1 text-xs text-red-300">PIN locked</p>}</td>
+                    <td className="p-3 text-right"><Btn onClick={() => setOpenId(open ? null : b.id)}>{open ? 'Close' : 'Details'}</Btn></td>
+                  </tr>,
+                  open ? <tr key={`${b.id}-d`}><td colSpan={7} className="border-t border-white/10 bg-black/20 p-5"><BookingDetail b={b} onChanged={() => { onChanged(); reload(); }} /></td></tr> : null,
+                ];
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function BookingDetail({ b, onChanged }: { b: Booking; onChanged: () => void }) {
+  const [cancel, setCancel] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const walletPaid = b.paymentMethod === 'WALLET' && (b.walletDebited > 0 || b.paymentStatus === 'PAID');
+  const retry = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await autoRideApi.retryRefund(b.id);
+      setMsg(r.booking.status === 'REFUNDED' ? { ok: true, text: `Refunded ${inr(r.refunded)} to the passenger's Zenvy Wallet.` } : { ok: false, text: `Refund still pending (attempt ${r.booking.refundAttempts}). Try again later.` });
+      onChanged();
+    } catch (e) { setMsg({ ok: false, text: errText(e, 'Could not retry the refund.') }); } finally { setBusy(false); }
+  };
+  return (
+    <div className="space-y-3 text-sm">
+      <div className="grid gap-3 md:grid-cols-3">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Passenger</p>
+          <p>{b.passenger?.name || '—'}</p>
+          <p className="font-mono">{b.passenger?.phone || '—'}</p>
+          <p className="text-xs text-gray-500">User #{short(b.userId)}</p>
+        </div>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Booking</p>
+          <p>{label(b.type)} · {b.seatCount} seat{b.seatCount === 1 ? '' : 's'}{b.seatNumbers.length ? ` (#${b.seatNumbers.join(', ')})` : ''}</p>
+          <p className="text-xs text-gray-400">Confirmed {when(b.confirmedAt)} · boarded {when(b.boardedAt)}</p>
+          {b.holdExpiresAt && <p className="text-xs text-amber-300">Hold expires {when(b.holdExpiresAt)}</p>}
+          {b.cancelledAt && <p className="text-xs text-red-300">Cancelled {when(b.cancelledAt)} by {b.cancelledBy || '—'}{b.cancelReason ? `: ${b.cancelReason}` : ''}</p>}
+        </div>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Money</p>
+          <p>{inr(b.amount)} · {b.paymentMethod ? label(b.paymentMethod) : '—'} · {b.paymentStatus ? label(b.paymentStatus) : '—'}</p>
+          <p className="text-xs text-gray-400">Wallet debited {inr(b.walletDebited)} · refund {inr(b.refundAmount)}{b.refundedAt ? ` on ${when(b.refundedAt)}` : ''} · attempts {b.refundAttempts}</p>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {['HELD', 'CONFIRMED'].includes(b.status) && <Btn tone="bad" onClick={() => { setMsg(null); setCancel(true); }}>Cancel booking</Btn>}
+        {b.status === 'REFUND_PENDING' && <Btn tone="primary" disabled={busy} onClick={retry}>{busy ? 'Retrying…' : 'Retry refund'}</Btn>}
+      </div>
+      <Msg msg={msg} />
+      {cancel && (
+        <ConfirmDialog open tone="bad" title={`Cancel booking ${b.bookingCode}?`} confirmLabel="Cancel booking" reason={{ label: 'Reason (the passenger sees this)', min: 5 }}
+          body={<>
+            <p>The seat{b.seatCount === 1 ? ' is' : 's are'} released and the passenger and driver are notified.</p>
+            {b.status === 'HELD' ? <p>This is only a hold: nothing was paid.</p>
+              : walletPaid ? <p className="font-bold text-emerald-300">{inr(b.walletDebited || b.amount)} is refunded in full to the passenger&apos;s Zenvy Wallet.</p>
+                : <p>Cash booking: nothing was paid to Zenvy, nothing to refund.</p>}
+          </>}
+          onCancel={() => setCancel(false)}
+          onConfirm={async (reason) => {
+            const r = await autoRideApi.cancelBooking(b.id, reason);
+            setCancel(false);
+            setMsg({ ok: true, text: `Cancelled (${label(r.booking.status)})${r.booking.refundAmount ? `, refund ${inr(r.booking.refundAmount)}` : ''}.` });
+            onChanged();
+          }} />
+      )}
+    </div>
+  );
+}

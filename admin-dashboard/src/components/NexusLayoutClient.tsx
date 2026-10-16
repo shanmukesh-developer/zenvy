@@ -17,6 +17,7 @@ const NAV_ITEMS: { href: string; icon: string; label: string }[] = [
   { href: '/mega-basket', icon: '🧺', label: 'Mega Basket' },
   { href: '/service-bookings', icon: '🛠️', label: 'Service Bookings' },
   { href: '/rentals', icon: '🚗', label: 'Vehicle Rentals' },
+  { href: '/auto-ride', icon: '🛺', label: 'Auto-Ride' },
   { href: '/vault', icon: '🕯️', label: 'Zenvy Vault' },
   { href: '/finance', icon: '💰', label: 'Finance Trace' },
   { href: '/tickets', icon: '🎫', label: 'Support Tickets' },

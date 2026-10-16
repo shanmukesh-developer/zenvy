@@ -16,7 +16,9 @@ export type LiveType =
   // Zenvy Friends moderation (admin room only)
   | 'friends_report' | 'friends_appeal' | 'friends_review'
   // Student vehicle rentals (public 'rental' + admin queues)
-  | 'rental' | 'rental_listing' | 'rental_licence' | 'rental_booking' | 'rental_report';
+  | 'rental' | 'rental_listing' | 'rental_licence' | 'rental_booking' | 'rental_report'
+  // Zenvy Auto-Ride (public 'auto_trip' + admin queues)
+  | 'auto_trip' | 'auto_driver' | 'auto_vehicle' | 'auto_route' | 'auto_booking' | 'auto_private_request' | 'auto_incident';
 
 export interface LiveEvent {
   type: LiveType | string;
