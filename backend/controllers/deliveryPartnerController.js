@@ -286,7 +286,8 @@ const NOT_STALL_ORDER = { [Op.and]: [{ [Op.or]: [{ fulfilment: null }, { fulfilm
 
 // One claim at a time per rider (in this process): the active-order count and the claim then
 // cannot interleave, so a burst of taps on several cards never takes more than the limit.
-// The re-count after the claim (below) still guards against several server processes.
+// Across processes (Postgres, A2) the count + claim run in one transaction that first locks the
+// rider's row FOR UPDATE (claimForRider below); the re-count after the claim stays as a last guard.
 const riderClaimChains = new Map();
 const withRiderClaimLock = (riderId, fn) => {
   const prev = riderClaimChains.get(riderId) || Promise.resolve();
@@ -298,6 +299,57 @@ const withRiderClaimLock = (riderId, fn) => {
 };
 
 const acceptOrder = (req, res) => withRiderClaimLock(String(req.user.id), () => acceptOrderLocked(req, res));
+
+const CLAIMABLE_STATUSES = ['Accepted', 'Preparing', 'ReadyForPickup'];
+
+/**
+ * Count the rider's other active orders and, when under the limit, claim the order (conditional
+ * UPDATE). Resolves { activeCount, updatedRows } (updatedRows 0 when the limit was reached, i.e.
+ * activeCount >= MAX_ACTIVE_ORDERS, or the order was not claimable).
+ * opts.transaction: run both statements in it (after the caller locked the rider row).
+ */
+const claimForRider = async (riderId, orderId, opts = {}) => {
+  const Order = getOrderModel();
+  const tx = opts.transaction ? { transaction: opts.transaction } : {};
+  // One rider must not hoard the pool: at most RIDER_MAX_ACTIVE_ORDERS (default 3) at a time.
+  // (This order itself is not counted, so a retried claim of it still gets its 200 below.)
+  const activeCount = await Order.count({
+    where: {
+      deliveryPartnerId: riderId,
+      id: { [Op.ne]: orderId },
+      status: { [Op.notIn]: ['Delivered', 'Cancelled'] },
+    },
+    ...tx,
+  });
+  if (activeCount >= MAX_ACTIVE_ORDERS) return { activeCount, updatedRows: 0 };
+  // Atomic Claim: Only orders already accepted by restaurant/system can be claimed
+  const [updatedRows] = await Order.update(
+    { deliveryPartnerId: riderId },
+    { where: { id: orderId, deliveryPartnerId: null, status: { [Op.in]: CLAIMABLE_STATUSES }, ...NOT_STALL_ORDER }, ...tx }
+  );
+  return { activeCount, updatedRows };
+};
+
+/**
+ * Postgres: count + claim in one transaction holding the rider's row lock (SELECT ... FOR UPDATE),
+ * so claims by the same rider on different processes run one after the other. Resolves null when
+ * that transaction / lock failed (the caller then does exactly what a single process does).
+ * SQLite: null at once (one process: the in-process chain above already serialises the claims).
+ */
+const claimForRiderLocked = async (riderId, orderId) => {
+  const DeliveryPartner = getDeliveryPartnerModel();
+  const db = DeliveryPartner && DeliveryPartner.sequelize;
+  if (!db || db.getDialect() !== 'postgres') return null;
+  try {
+    return await db.transaction(async (t) => {
+      await DeliveryPartner.findByPk(riderId, { attributes: ['id'], transaction: t, lock: t.LOCK.UPDATE });
+      return claimForRider(riderId, orderId, { transaction: t });
+    });
+  } catch (err) {
+    console.warn('[RIDER_CLAIM_LOCK_WARN] claiming without the rider row lock:', err.message);
+    return null;
+  }
+};
 
 const acceptOrderLocked = async (req, res) => {
   try {
@@ -311,27 +363,16 @@ const acceptOrderLocked = async (req, res) => {
     if (!partner) return res.status(401).json({ message: 'Rider account not found' });
     if (!partner.isApproved) return notApproved(res);
 
-    // One rider must not hoard the pool: at most RIDER_MAX_ACTIVE_ORDERS (default 3) at a time.
-    // (This order itself is not counted, so a retried claim of it still gets its 200 below.)
-    const activeCount = await Order.count({
-      where: {
-        deliveryPartnerId: req.user.id,
-        id: { [Op.ne]: req.params.orderId },
-        status: { [Op.notIn]: ['Delivered', 'Cancelled'] },
-      },
-    });
+    // Active-order limit + atomic claim (Postgres: under the rider row lock; fail open to the
+    // unlocked statements, which is the single-process behaviour).
+    const { activeCount, updatedRows } = (await claimForRiderLocked(req.user.id, req.params.orderId))
+      || (await claimForRider(req.user.id, req.params.orderId));
     if (activeCount >= MAX_ACTIVE_ORDERS) {
       return res.status(409).json({
         code: 'MAX_ACTIVE',
         message: `You already have ${activeCount} active orders. Deliver one before taking another.`,
       });
     }
-
-    // 2. Atomic Claim: Only orders already accepted by restaurant/system can be claimed
-    const [updatedRows] = await Order.update(
-      { deliveryPartnerId: req.user.id },
-      { where: { id: req.params.orderId, deliveryPartnerId: null, status: { [Op.in]: ['Accepted', 'Preparing', 'ReadyForPickup'] }, ...NOT_STALL_ORDER } }
-    );
 
     if (updatedRows === 0) {
       // A retry of this rider's own claim (first request timed out on the phone but landed here):
@@ -1452,5 +1493,6 @@ module.exports = {
   getRiderProfile, updateRiderProfile, getPublicRiderProfile, getTodayStats,
   cancelOrderByRider, changePassword, notifyArrivalAtGate,
   getWeekStats, createRiderTicket, getRiderTickets, removeFcmToken, triggerSos,
-  sosLocationOf
+  sosLocationOf,
+  claimForRider, // A2: the count + claim step (tests run it inside a transaction too)
 };

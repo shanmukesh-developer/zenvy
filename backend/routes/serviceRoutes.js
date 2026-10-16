@@ -136,7 +136,7 @@ router.post('/book', protect, async (req, res) => {
   const { readIdempotencyKey, claim } = require('../utils/idempotency');
   const rawSpecs = (req.body || {}).specifications;
   const bookingKey = readIdempotencyKey(req, rawSpecs && typeof rawSpecs === 'object' ? rawSpecs.clientRequestId : undefined, (req.body || {}).idempotencyKey);
-  const slot = claim('service-book', req.user.id, bookingKey);
+  const slot = await claim('service-book', req.user.id, bookingKey);
   if (slot.state === 'busy') {
     return res.status(409).json({ success: false, code: 'BOOKING_IN_PROGRESS', message: 'Your booking is still being saved. Hang tight.' });
   }
@@ -288,13 +288,13 @@ router.post('/book', protect, async (req, res) => {
       message: 'Service booked successfully! Our executive will connect with you.',
       booking: booking.toJSON(),
     };
-    slot.finish(200, body); // a repeat is answered 200 + duplicate:true
+    await slot.finish(200, body); // a repeat is answered 200 + duplicate:true
     return res.status(201).json(body);
   } catch (error) {
     console.error('Error creating service booking:', error);
     return res.status(500).json({ success: false, message: 'We could not book this service right now. Please try again.' });
   } finally {
-    slot.release(); // no-op after finish(); frees the key after a refusal so a retry can run
+    await slot.release(); // no-op after finish(); frees the key after a refusal so a retry can run
   }
 });
 

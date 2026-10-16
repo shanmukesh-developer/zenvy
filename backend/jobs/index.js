@@ -167,6 +167,16 @@ const runAbandonedCart = async () => {
   }
 };
 
+// Expired retry-key claims / stored answers (utils/idempotency.js, IdempotencyKeys table).
+const runIdempotencyCleanup = async () => {
+  try {
+    return await require('../utils/idempotency').cleanupExpired();
+  } catch (err) {
+    console.warn('[IDEMPOTENCY_CLEANUP] Error:', err.message);
+    return { error: err.message };
+  }
+};
+
 const runTasks = async () => require('../modules/friends/jobs/taskJobs').runOnce();
 const runConnectPurge = async () => {
   try {
@@ -218,6 +228,7 @@ const JOBS = [
   { name: 'wall.mediaCleanup', schedule: { cron: '0 3 * * *', timezone: IST }, run: () => require('../cron/wallCron').runWallMediaCleanupJob(), timeoutMs: 30 * MIN },
   { name: 'retention.chatPulse', schedule: { cron: '23 * * * *', onceAfterMs: 3 * MIN }, run: runRetention, timeoutMs: 30 * MIN },
   { name: 'chat.ephemeralPurge', schedule: { cron: '0 * * * *' }, run: () => require('../cron/ephemeralPurge').runEphemeralPurge() },
+  { name: 'idempotency.cleanup', schedule: { everyMs: 30 * MIN, firstMs: 2 * MIN }, run: runIdempotencyCleanup, quietWhenIdle: true },
   { name: 'push.streakNudge', schedule: { cron: '0 18 * * *', timezone: IST }, run: () => require('../cron/streakNudge').runStreakNudgeJob(), timeoutMs: 30 * MIN },
   { name: 'push.abandonedCart', schedule: { cron: '0 10 * * *', timezone: IST }, run: runAbandonedCart, timeoutMs: 30 * MIN },
   {

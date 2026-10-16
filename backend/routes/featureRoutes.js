@@ -255,7 +255,7 @@ router.post('/gift', protect, async (req, res) => {
   // server answers. A repeat never charges the wallet twice.
   const { readIdempotencyKey, claim } = require('../utils/idempotency');
   const giftKey = readIdempotencyKey(req, (req.body || {}).idempotencyKey);
-  const slot = claim('gift', req.user.id, giftKey);
+  const slot = await claim('gift', req.user.id, giftKey);
   if (slot.state === 'busy') {
     return res.status(409).json({ code: 'GIFT_IN_PROGRESS', message: 'Your gift is still being sent. Hang tight.' });
   }
@@ -354,14 +354,14 @@ router.post('/gift', protect, async (req, res) => {
       remainingGifts: Math.max(0, 3 - (updatedSender.eliteGiftsUsedThisMonth || 0)),
       newBalance: updatedSender.walletBalance
     };
-    slot.finish(200, body);
+    await slot.finish(200, body);
     res.json(replayed ? { ...body, duplicate: true } : body);
   } catch (error) {
     console.error('[GIFT_ERROR]', error);
     if (error.expose) return res.status(400).json({ message: error.message });
     res.status(500).json({ message: 'Could not send the gift right now. Your wallet was not charged.' });
   } finally {
-    slot.release(); // no-op after finish(); frees the key after any refusal so a retry can run
+    await slot.release(); // no-op after finish(); frees the key after any refusal so a retry can run
   }
 });
 

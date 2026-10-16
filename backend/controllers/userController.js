@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const admin = require('../config/firebase'); // eslint-disable-line no-unused-vars -- initialises Firebase Admin
 const { getAuth } = require('firebase-admin/auth');
 const { normalizePhone } = require('../utils/phoneUtils');
+const pgLock = require('../utils/pgLock');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared helpers
@@ -891,42 +892,55 @@ const sendOtp = async (req, res) => {
     const OtpCode = await getOtpModel();
     const { Op } = require('sequelize');
     const now = Date.now();
-
-    // Per-phone resend cooldown
-    const last = await OtpCode.findOne({ where: { phone: cleanPhone }, order: [['createdAt', 'DESC']] });
-    if (last && now - new Date(last.createdAt).getTime() < OTP_RESEND_COOLDOWN_MS) {
-      const retryAfter = Math.ceil((OTP_RESEND_COOLDOWN_MS - (now - new Date(last.createdAt).getTime())) / 1000);
-      res.set('Retry-After', String(retryAfter));
-      return res.status(429).json({ code: 'OTP_COOLDOWN', retryAfter, message: `Please wait ${retryAfter}s before requesting another code.` });
-    }
-
-    // Daily cap per phone (rolling 24h)
-    const dayAgo = new Date(now - 24 * 60 * 60 * 1000);
-    const sentToday = await OtpCode.findAll({
-      where: { phone: cleanPhone, createdAt: { [Op.gt]: dayAgo } },
-      attributes: ['createdAt'],
-      order: [['createdAt', 'ASC']]
-    });
-    if (sentToday.length >= OTP_DAILY_CAP) {
-      const oldest = new Date(sentToday[0].createdAt).getTime();
-      const retryAfter = Math.max(60, Math.ceil((oldest + 24 * 60 * 60 * 1000 - now) / 1000));
-      res.set('Retry-After', String(retryAfter));
-      return res.status(429).json({ code: 'OTP_DAILY_LIMIT', retryAfter, message: "You've requested too many codes today. Please try again later or log in with your password." });
-    }
-
-    if (!process.env.FAST2SMS_API_KEY) {
-      console.error('[SEND_OTP] FAST2SMS_API_KEY is not configured');
-      return res.status(502).json({ code: 'SMS_UNAVAILABLE', message: "We couldn't send the SMS right now. Please try again in a minute or log in with your password." });
-    }
-
     const code = String(crypto.randomInt(100000, 1000000));
-    const record = await OtpCode.create({
-      phone: cleanPhone,
-      purpose,
-      codeHash: hashOtp(cleanPhone, purpose, code),
-      expiresAt: new Date(now + OTP_TTL_MS),
-      ip: (req.ip || '').slice(0, 64) || null
-    });
+
+    // Cooldown + daily cap + create, for this phone one at a time across processes too (A2): on
+    // Postgres under pg_advisory_xact_lock('otp:' + phone), committed before the SMS goes out, so
+    // a parallel send on another process sees this row and gets the cooldown. SQLite / lock error:
+    // the same statements without the lock (the in-process guard above).
+    const reserveOtpSend = async (t) => {
+      const tx = t ? { transaction: t } : {};
+      // Per-phone resend cooldown
+      const last = await OtpCode.findOne({ where: { phone: cleanPhone }, order: [['createdAt', 'DESC']], ...tx });
+      if (last && now - new Date(last.createdAt).getTime() < OTP_RESEND_COOLDOWN_MS) {
+        const retryAfter = Math.ceil((OTP_RESEND_COOLDOWN_MS - (now - new Date(last.createdAt).getTime())) / 1000);
+        return { refuse: { status: 429, retryAfter, body: { code: 'OTP_COOLDOWN', retryAfter, message: `Please wait ${retryAfter}s before requesting another code.` } } };
+      }
+
+      // Daily cap per phone (rolling 24h)
+      const dayAgo = new Date(now - 24 * 60 * 60 * 1000);
+      const sentToday = await OtpCode.findAll({
+        where: { phone: cleanPhone, createdAt: { [Op.gt]: dayAgo } },
+        attributes: ['createdAt'],
+        order: [['createdAt', 'ASC']],
+        ...tx,
+      });
+      if (sentToday.length >= OTP_DAILY_CAP) {
+        const oldest = new Date(sentToday[0].createdAt).getTime();
+        const retryAfter = Math.max(60, Math.ceil((oldest + 24 * 60 * 60 * 1000 - now) / 1000));
+        return { refuse: { status: 429, retryAfter, body: { code: 'OTP_DAILY_LIMIT', retryAfter, message: "You've requested too many codes today. Please try again later or log in with your password." } } };
+      }
+
+      if (!process.env.FAST2SMS_API_KEY) {
+        console.error('[SEND_OTP] FAST2SMS_API_KEY is not configured');
+        return { refuse: { status: 502, body: { code: 'SMS_UNAVAILABLE', message: "We couldn't send the SMS right now. Please try again in a minute or log in with your password." } } };
+      }
+
+      const record = await OtpCode.create({
+        phone: cleanPhone,
+        purpose,
+        codeHash: hashOtp(cleanPhone, purpose, code),
+        expiresAt: new Date(now + OTP_TTL_MS),
+        ip: (req.ip || '').slice(0, 64) || null
+      }, tx);
+      return { record };
+    };
+    const reserved = await pgLock.withAdvisoryXactLock(OtpCode.sequelize, `otp:${cleanPhone}`, reserveOtpSend);
+    if (reserved.refuse) {
+      if (reserved.refuse.retryAfter !== undefined) res.set('Retry-After', String(reserved.refuse.retryAfter));
+      return res.status(reserved.refuse.status).json(reserved.refuse.body);
+    }
+    const { record } = reserved;
 
     const sms = await sendSmsOtp(cleanPhone, code);
     if (!sms.ok) {

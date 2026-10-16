@@ -19,6 +19,7 @@
 const crypto = require('crypto');
 const { Op } = require('sequelize');
 const { getModel, getSequelize } = require('../index');
+const pgLock = require('../../../utils/pgLock');
 const flags = require('../services/featureFlags');
 const limiter = require('../services/limiter');
 const identity = require('../services/identity');
@@ -1199,28 +1200,40 @@ const withPairLock = (key, fn) => {
   return run;
 };
 
+// Across processes (Postgres, A2) the count-then-award also runs under
+// pg_advisory_xact_lock('karma:<voter>:<author>') in its own transaction (utils/pgLock; fail open
+// to the unlocked statements = the single-process behaviour). The karma bump itself runs after
+// that transaction committed, exactly as before (it is an atomic increment).
 const reconcileKarma = async (voteId, authorId, campusId) => {
   if (!voteId || !authorId) return;
   const Vote = M('FriendsVote');
   const peek = await Vote.findByPk(voteId, { attributes: ['id', 'userId'] });
   if (!peek) return;
-  return withPairLock(`${peek.userId}:${authorId}`, () => reconcileKarmaLocked(voteId, authorId, campusId));
+  const pair = `${peek.userId}:${authorId}`;
+  return withPairLock(pair, async () => {
+    const delta = await pgLock.withAdvisoryXactLock(getSequelize(), `karma:${pair}`, (t) => reconcileKarmaVote(voteId, authorId, t));
+    if (delta) await bumpKarma(authorId, campusId, 'karma', delta);
+  });
 };
 
-const reconcileKarmaLocked = async (voteId, authorId, campusId) => {
+// The vote row's award flag in line with its value; resolves the karma change to apply (1, -1 or 0).
+const reconcileKarmaVote = async (voteId, authorId, t) => {
   const Vote = M('FriendsVote');
-  const row = await Vote.findByPk(voteId);
-  if (!row) return;
+  const tx = t ? { transaction: t } : {};
+  const row = await Vote.findByPk(voteId, tx);
+  if (!row) return 0;
   if (row.value === 1 && !row.karmaAwarded) {
     const since = new Date(Date.now() - DAY);
-    const awarded = await Vote.count({ where: { userId: row.userId, targetAuthorId: authorId, karmaAwarded: true, updatedAt: { [Op.gte]: since } } });
-    if (awarded >= KARMA_PER_PAIR_PER_DAY) return;
-    const [n] = await Vote.update({ karmaAwarded: true }, { where: { id: row.id, karmaAwarded: false, value: 1 } });
-    if (n === 1) await bumpKarma(authorId, campusId, 'karma', 1);
-  } else if (row.value !== 1 && row.karmaAwarded) {
-    const [n] = await Vote.update({ karmaAwarded: false }, { where: { id: row.id, karmaAwarded: true, value: { [Op.ne]: 1 } } });
-    if (n === 1) await bumpKarma(authorId, campusId, 'karma', -1);
+    const awarded = await Vote.count({ where: { userId: row.userId, targetAuthorId: authorId, karmaAwarded: true, updatedAt: { [Op.gte]: since } }, ...tx });
+    if (awarded >= KARMA_PER_PAIR_PER_DAY) return 0;
+    const [n] = await Vote.update({ karmaAwarded: true }, { where: { id: row.id, karmaAwarded: false, value: 1 }, ...tx });
+    return n === 1 ? 1 : 0;
   }
+  if (row.value !== 1 && row.karmaAwarded) {
+    const [n] = await Vote.update({ karmaAwarded: false }, { where: { id: row.id, karmaAwarded: true, value: { [Op.ne]: 1 } }, ...tx });
+    return n === 1 ? -1 : 0;
+  }
+  return 0;
 };
 
 /** Resource posts that reach 3 upvotes credit the author once (resourcesShared). */

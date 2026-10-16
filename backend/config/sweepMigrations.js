@@ -100,6 +100,13 @@ const runSweepMigrations = async (sequelize) => {
   await step('service_bookings_user_idempotency_key',
     'CREATE UNIQUE INDEX IF NOT EXISTS "service_bookings_user_idempotency_key" ON "ServiceBookings" ("userId", "idempotencyKey") WHERE "idempotencyKey" IS NOT NULL;');
 
+  // A2: shared retry-key claims (utils/idempotency.js). sync() creates the table with these indexes;
+  // repeated here (no-op once built) so a table created without them still gets the unique claim key.
+  await step('idempotency_keys_scope_user_key',
+    'CREATE UNIQUE INDEX IF NOT EXISTS "idempotency_keys_scope_user_key" ON "IdempotencyKeys" ("scope", "userId", "key");');
+  await step('idempotency_keys_expires_at',
+    'CREATE INDEX IF NOT EXISTS "idempotency_keys_expires_at" ON "IdempotencyKeys" ("expiresAt");');
+
   // Read-path indexes (perf pass). Names follow Sequelize's own convention so a model-declared
   // index of the same columns is recognised as existing. Plain IF NOT EXISTS: no-op once built.
   // • My orders: WHERE "userId" = ? ORDER BY "createdAt" DESC LIMIT 50.

@@ -40,6 +40,7 @@ const { initDailyContentModel } = require('../models/DailyContent');
 const { initOtpCodeModel } = require('../models/OtpCode');
 const { initCatalogueImportLedgerModel } = require('../models/CatalogueImportLedger');
 const { initNotificationModel } = require('../models/Notification');
+const { initIdempotencyKeyModel } = require('../models/IdempotencyKey');
 const { initCampusModels } = require('../modules/campus/models');
 const { initFriendsModels } = require('../modules/friends');
 const { initRentalsModels } = require('../modules/rentals');
@@ -82,6 +83,7 @@ const initializeAllModels = (instance) => {
   initOtpCodeModel(instance);
   initCatalogueImportLedgerModel(instance);
   initNotificationModel(instance);
+  initIdempotencyKeyModel(instance);
   // Zenvy Friends tables (after Users / campus / chat models they reference).
   initFriendsModels(instance);
   // Zenvy Rentals: peer-to-peer student vehicle rentals (Others > Rentals).

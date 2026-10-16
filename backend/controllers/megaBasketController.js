@@ -77,7 +77,7 @@ const BASKET_KEY_WINDOW_MS = 24 * 60 * 60 * 1000;
 const createBasket = async (req, res) => {
   const { readIdempotencyKey, claim } = require('../utils/idempotency');
   const basketKey = readIdempotencyKey(req, (req.body || {}).idempotencyKey);
-  const slot = claim('mega-basket', req.user.id, basketKey);
+  const slot = await claim('mega-basket', req.user.id, basketKey);
   if (slot.state === 'busy') {
     return res.status(409).json({ code: 'BASKET_IN_PROGRESS', message: 'Your list is still being placed. Hang tight.' });
   }
@@ -221,12 +221,12 @@ const createBasket = async (req, res) => {
     }
 
     const body = createdBasket.toJSON();
-    slot.finish(200, body); // a repeat is answered 200 + duplicate:true
+    await slot.finish(200, body); // a repeat is answered 200 + duplicate:true
     res.status(201).json(body);
   } catch (error) {
     serverError(res, '[MEGA_BASKET_ERROR]', error);
   } finally {
-    slot.release(); // no-op after finish(); frees the key after a refusal so a retry can run
+    await slot.release(); // no-op after finish(); frees the key after a refusal so a retry can run
   }
 };
 
