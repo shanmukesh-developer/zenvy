@@ -1,0 +1,56 @@
+{
+  "expo": {
+    "name": "Zenvy Auto Driver",
+    "slug": "zenvy-auto-driver",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.srm.zenvyautodriver"
+    },
+    "android": {
+      "package": "com.srm.zenvyautodriver",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "backgroundColor": "#0B0D12",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "blockedPermissions": [
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_CONTACTS",
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "./plugins/withReleaseSigning",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Zenvy Auto Driver uses your photos to upload your licence, vehicle papers and auto photos for verification.",
+          "cameraPermission": "Zenvy Auto Driver uses the camera to photograph your licence, vehicle papers and auto for verification.",
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#0B0D12",
+          "sounds": [
+            "./assets/sounds/alert.wav"
+          ],
+          "defaultChannel": "delivery-alerts-v2"
+        }
+      ]
+    ]
+  }
+}
