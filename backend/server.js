@@ -59,6 +59,14 @@ const flushLogs = () => {
   logBuffer = [];
   fs.appendFile(logFile, batch, () => { /* fire-and-forget */ });
 };
+// Shutdown: write whatever is buffered synchronously (the process exits right after).
+const flushLogsSync = () => {
+  if (logFlushTimer) { clearTimeout(logFlushTimer); logFlushTimer = null; }
+  if (logBuffer.length === 0) return;
+  const batch = logBuffer.join('');
+  logBuffer = [];
+  try { fs.appendFileSync(logFile, batch); } catch { /* best effort */ }
+};
 const log = (msg) => {
   logBuffer.push(`[${new Date().toISOString()}] ${msg}\n`);
   if (!logFlushTimer) {
@@ -147,6 +155,16 @@ const isAllowedOrigin = (origin) => {
 };
 
 const app = express();
+
+// ── Liveness / readiness (utils/lifecycle.js) ─────────────────────────────────────────────────────
+// Registered before every other middleware: no CORS / helmet / logging / rate limit / auth / database
+// gate. /livez = the process answers (no DB). /readyz = startup done AND cached DB ping healthy AND not
+// shutting down (Render healthCheckPath, render.yaml). While draining, every response carries
+// `Connection: close` so keep-alive connections end after their current request.
+const lifecycle = require('./utils/lifecycle');
+app.use(lifecycle.connectionCloseWhileDraining);
+app.get('/livez', lifecycle.livezHandler);
+app.get('/readyz', lifecycle.readyzHandler);
 
 // Layer 0: CORS (Origin whitelist) - Handled at the very top to prevent rate-limiter preflight blockers
 app.use(cors({
@@ -238,8 +256,10 @@ const authRateLimiter = rateLimit({
 // Export auth limiter for routes to use
 app.set('authRateLimiter', authRateLimiter);
 
-// Apply the global rate limiting middleware to all requests starting with /api
-app.use('/api/', globalLimiter);
+// Apply the global rate limiting middleware to all requests starting with /api.
+// Health / ping (monitors, keep-alive, load balancers) are never rate limited.
+const HEALTH_PATHS = new Set(['/api/health', '/api/ping']);
+app.use('/api/', (req, res, next) => (HEALTH_PATHS.has(req.originalUrl.split('?')[0].replace(/\/+$/, '')) ? next() : globalLimiter(req, res, next)));
 app.post('/api/orders', orderRateLimiter);
 
 // 📦 Serve compiled APK directly for download
@@ -294,11 +314,20 @@ const STARTUP_RETRY_AFTER_SECONDS = 10;
 // ready instead of being refused at once: clients that do not re-call connect() after a middleware
 // refusal (the admin dashboard, the customer app) used to stay offline after every redeploy.
 const STARTUP_SOCKET_WAIT_MS = 25000;
-const dbReadyWaiters = new Set();
+const dbReadyWaiters = new Map(); // proceed -> refuse
 const markDbReady = () => {
   dbReady = true;
-  dbReadyWaiters.forEach((fn) => fn());
+  lifecycle.markDbReady(); // /readyz turns 200 once the first cached DB ping succeeds
+  const waiting = Array.from(dbReadyWaiters.keys());
   dbReadyWaiters.clear();
+  waiting.forEach((fn) => fn());
+};
+// A shutdown that starts while sockets are still held (deploy cancelled during startup) refuses them
+// at once instead of letting them wait out STARTUP_SOCKET_WAIT_MS.
+const refuseHeldSockets = () => {
+  const refusers = Array.from(dbReadyWaiters.values());
+  dbReadyWaiters.clear();
+  refusers.forEach((fn) => fn());
 };
 io.use((socket, next) => {
   if (dbReady) return next();
@@ -306,6 +335,7 @@ io.use((socket, next) => {
   const refuse = () => {
     if (done) return;
     done = true;
+    clearTimeout(timer);
     dbReadyWaiters.delete(proceed);
     const err = new Error('Server is starting, please retry in a moment');
     err.data = { code: 'SERVER_STARTING', retryAfter: STARTUP_RETRY_AFTER_SECONDS };
@@ -319,7 +349,8 @@ io.use((socket, next) => {
     next();
   };
   const timer = setTimeout(refuse, STARTUP_SOCKET_WAIT_MS);
-  dbReadyWaiters.add(proceed);
+  if (lifecycle.isShuttingDown()) return refuse();
+  dbReadyWaiters.set(proceed, refuse);
 });
 
 // 🛡️ Socket.io JWT Authentication Middleware
@@ -550,7 +581,9 @@ app.get('/api/health', async (req, res) => {
   let dbHost = 'unknown';
   if (instance) {
     try {
-      await instance.authenticate();
+      // Cached ping (utils/lifecycle, refreshed every ~5 s): no database query per health request.
+      const ping = await lifecycle.getDbStatus();
+      if (!ping.ok) throw new Error(ping.error || 'database ping failing');
       dbStatus = 'connected';
       // Safely extract hostname if possible
       const dbUrl = process.env.DATABASE_URL;
@@ -1230,7 +1263,8 @@ const initializeApp = async () => {
     // schedules as before; each tick runs on exactly ONE process (Postgres advisory lock). Not started
     // when PROCESS_ROLE=web (only the per-process Spaces room sweep runs there).
     try {
-      require('./jobs').startJobs({ io, isDbReady: () => dbReady, role: PROCESS_ROLE });
+      // Not when a shutdown began while startup was still running (it already stopped the jobs).
+      if (!lifecycle.isShuttingDown()) require('./jobs').startJobs({ io, isDbReady: () => dbReady, role: PROCESS_ROLE });
     } catch (e) { console.error('[JOBS_INIT_ERR]', e); }
     
 
@@ -2410,6 +2444,8 @@ const startServer = () => {
 
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Server listening on port ${PORT} — initializing database in the background...`);
+    // Cached database ping for /readyz and /api/health (one SELECT 1 every ~5 s, 1 s timeout).
+    lifecycle.startDbPing(() => require('./config/db').getSequelize());
 
     // ── Self-Ping Keep-Alive (Prevents Render Free Tier Sleep) ──
     // Per process, no data written. KEEPALIVE=false switches it off (paid plans never sleep).
@@ -2434,24 +2470,23 @@ const startServer = () => {
     }
   });
 
-  // ── Graceful Shutdown (Prevents 500+ user connection drops) ──────────────────────
-  const gracefulShutdown = (signal) => {
-    console.log(`\n🛑 [SHUTDOWN] ${signal} received. Closing server gracefully...`);
-    server.close(() => {
-      console.log('✅ [SHUTDOWN] HTTP server closed. Cleaning up...');
-      io.close(() => {
-        console.log('✅ [SHUTDOWN] Socket.io closed.');
-        process.exit(0);
-      });
-    });
-    // Force kill after 10 seconds if graceful shutdown hangs
-    setTimeout(() => {
-      console.error('💀 [SHUTDOWN] Forced exit after 10s timeout');
-      process.exit(1);
-    }, 10000);
-  };
-  process.once('SIGTERM', () => gracefulShutdown('SIGTERM'));
-  process.once('SIGINT', () => gracefulShutdown('SIGINT'));
+  // ── Graceful shutdown (utils/lifecycle.js) ──────────────────────────────────────────────────
+  // SIGTERM / SIGINT: /readyz 503, no new connections (idle keep-alives closed, in-flight requests
+  // finish), jobs stopped (in-flight runs awaited), 'server:draining' to every socket then transports
+  // closed in batches (clients auto-reconnect to the new instance), logs flushed, sequelize.close(),
+  // exit 0. Hard exit (also code 0) at SHUTDOWN_TIMEOUT_MS (default 25 s; Render maxShutdownDelaySeconds 45).
+  lifecycle.configureShutdown({
+    server,
+    io,
+    stopJobs: (opts) => require('./jobs').stopJobs(opts),
+    flushLogs: flushLogsSync,
+    closeDb: async () => {
+      const instance = require('./config/db').getSequelize();
+      if (instance) await instance.close();
+    },
+    onDrainStart: refuseHeldSockets,
+  });
+  lifecycle.installSignalHandlers();
 
   initializeApp();
 };

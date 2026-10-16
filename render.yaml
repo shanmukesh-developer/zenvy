@@ -13,6 +13,11 @@ services:
     rootDir: backend
     buildCommand: npm install --legacy-peer-deps
     startCommand: npm start
+    # Traffic goes only to an instance whose startup finished, whose database answers and that is not
+    # shutting down (backend/utils/lifecycle.js). /livez = process up (no DB), /api/health unchanged.
+    healthCheckPath: /readyz
+    # SIGTERM -> graceful drain (backend SHUTDOWN_TIMEOUT_MS, default 25 s) well before Render's SIGKILL.
+    maxShutdownDelaySeconds: 45
     envVars:
       - key: DATABASE_URL
         fromDatabase:

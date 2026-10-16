@@ -160,5 +160,19 @@ const runExclusive = async (name, fn, opts = {}) => {
 };
 
 const isRunning = (name) => inFlight.has(name);
+/** Names of the jobs with a run in progress in this process (incl. timed-out runs still going). */
+const runningJobs = () => Array.from(inFlight.keys());
 
-module.exports = { runExclusive, isRunning, lockKey, isIdle, DEFAULT_TIMEOUT_MS };
+/**
+ * Wait until no job run is in progress in this process, at most timeoutMs (graceful shutdown).
+ * Resolves { idle: true } or { idle: false, stillRunning: [names] }. Never rejects.
+ */
+const waitForIdle = async (timeoutMs = 0) => {
+  const deadline = Date.now() + Math.max(0, Number(timeoutMs) || 0);
+  while (inFlight.size && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, Math.min(50, Math.max(1, deadline - Date.now()))));
+  }
+  return inFlight.size ? { idle: false, stillRunning: runningJobs() } : { idle: true, stillRunning: [] };
+};
+
+module.exports = { runExclusive, isRunning, runningJobs, waitForIdle, lockKey, isIdle, DEFAULT_TIMEOUT_MS };

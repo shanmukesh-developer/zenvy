@@ -15,7 +15,7 @@
 //
 // Tests / tools: runJob(name) runs one job now (through runExclusive), listJobs() lists them.
 const cron = require('node-cron');
-const { runExclusive } = require('../utils/jobs');
+const { runExclusive, waitForIdle } = require('../utils/jobs');
 const { getProcessRole, runsJobs, servesApi } = require('../utils/processRole');
 
 const SEC = 1000;
@@ -24,6 +24,7 @@ const IST = 'Asia/Kolkata';
 
 let ctx = { io: null, isDbReady: () => true };
 const handles = []; // timers / cron tasks started by startJobs (for stopJobs)
+let stopping = false; // set by stopJobs: scheduled ticks that still fire start no new run
 
 // ── Job bodies (moved verbatim from server.js where they were inline) ────────────────────────────
 
@@ -261,8 +262,18 @@ const runJob = (name, overrides = {}) => {
 };
 
 const unref = (t) => { if (t && t.unref) t.unref(); return t; };
-const track = (h) => { handles.push(h); return h; };
-const fire = (name) => { runJob(name).catch((err) => console.warn(`[JOB] ${name}: ${err.message}`)); };
+const track = (h) => {
+  if (stopping) { // a chained / retry timer created after stopJobs: cancel it at once
+    try { if (h.interval) clearInterval(h.interval); if (h.timeout) clearTimeout(h.timeout); if (h.cron) h.cron.stop(); } catch { /* ignore */ }
+    return h;
+  }
+  handles.push(h);
+  return h;
+};
+const fire = (name) => {
+  if (stopping) return;
+  runJob(name).catch((err) => console.warn(`[JOB] ${name}: ${err.message}`));
+};
 
 const scheduleJob = (job) => {
   const s = job.schedule;
@@ -289,6 +300,7 @@ const scheduleJob = (job) => {
   }
   if (s.onceAfterMs !== undefined) {
     const attempt = () => {
+      if (stopping) return;
       runJob(job.name).then((r) => {
         if (r && r.skipped === 'locked' && s.retryLockedMs) track({ timeout: unref(setTimeout(attempt, s.retryLockedMs)) });
       }).catch((err) => console.warn(`[JOB] ${job.name}: ${err.message}`));
@@ -308,6 +320,7 @@ const SPACES_FIRST_MS = 30 * SEC;
 const startSpaces = (job, { jobsHere, socketsHere }) => {
   let ticks = 0;
   const dbPass = () => {
+    if (stopping) return;
     if (!jobsHere) { if (socketsHere) sweepSpacesRooms(); return; }
     runJob(job.name)
       .then((r) => { if (r && !r.ran && socketsHere) sweepSpacesRooms(); })
@@ -316,6 +329,7 @@ const startSpaces = (job, { jobsHere, socketsHere }) => {
   const first = setTimeout(() => {
     dbPass();
     track({ interval: unref(setInterval(() => {
+      if (stopping) return;
       ticks++;
       if (ticks % SPACES_DB_EVERY_TICKS === 0) dbPass();
       else if (socketsHere) sweepSpacesRooms();
@@ -332,6 +346,7 @@ let started = false;
 const startJobs = (opts = {}) => {
   if (started) return { started: false, role: getProcessRole() };
   started = true;
+  stopping = false;
   const role = opts.role || getProcessRole();
   ctx = { io: opts.io || null, isDbReady: opts.isDbReady || (() => true) };
   const jobsHere = runsJobs(role);
@@ -361,15 +376,27 @@ const startJobs = (opts = {}) => {
   return { started: true, role, jobs: names };
 };
 
-const stopJobs = () => {
+/**
+ * Cancel every schedule started by startJobs (intervals, timeouts, cron tasks); ticks that still fire
+ * afterwards start nothing. With opts.waitMs > 0 it then waits (at most waitMs) for runs already in
+ * progress in this process to finish (graceful shutdown). Resolves
+ * { cancelled, idle, stillRunning: [names] }. Manual runJob() calls still work (tests / tools).
+ */
+const stopJobs = async (opts = {}) => {
+  stopping = true;
+  let cancelled = 0;
   for (const h of handles.splice(0)) {
     try {
       if (h.cron) h.cron.stop();
       if (h.interval) clearInterval(h.interval);
       if (h.timeout) clearTimeout(h.timeout);
+      cancelled++;
     } catch { /* already stopped */ }
   }
   started = false;
+  const waitMs = Math.max(0, Number(opts.waitMs) || 0);
+  const r = await waitForIdle(waitMs);
+  return { cancelled, ...r };
 };
 
 module.exports = { JOBS, listJobs, runJob, startJobs, stopJobs, getContext: () => ctx };
