@@ -130,6 +130,13 @@ export function ItemForm({ mode, categories, onClose, onSave, onDelete, onDuplic
     setNewCat(!!d.category && !categories.includes(d.category));
   }, [modeKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The delete confirmation opens at the very bottom of the form, under the fold: bring its buttons into view.
+  useEffect(() => {
+    if (confirm !== 'delete') return;
+    const t = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 60);
+    return () => clearTimeout(t);
+  }, [confirm]);
+
   const editing = mode?.kind === 'edit' ? mode.item : null;
   const errs = useMemo(() => validate(draft), [draft]);
   const show = (f: Field) => (triedSave || touched[f]) ? errs[f] : undefined;

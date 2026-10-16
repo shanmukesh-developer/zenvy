@@ -65,7 +65,7 @@ export default function TodayScreen() {
         <Tile label="Cancelled" value={String(s.cancelled)} caption={s.missed ? `${s.missed} not accepted in time` : 'Rejected or cancelled'} tint={s.cancelled ? color.alert : undefined} />
         <Tile
           label="Avg prep"
-          value={s.avgPrep !== null ? `${s.avgPrep} min` : '—'}
+          value={s.avgPrep !== null ? (s.avgPrep < 1 ? '<1 min' : `${s.avgPrep} min`) : '—'}
           caption={s.avgPrep !== null ? `From ${s.prepN} order${s.prepN === 1 ? '' : 's'}` : 'Shows after you mark orders ready'}
         />
       </View>

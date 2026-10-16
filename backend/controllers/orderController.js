@@ -1302,6 +1302,9 @@ const updateOrderStatus = async (req, res) => {
       const extra = status === 'OutForDelivery' ? { outForDeliveryAt: new Date() } : {};
       // Leaving 'Pending' = the store side accepted (by admin): start the no-rider clock now.
       if (order.status === 'Pending' && status !== 'Pending' && !order.acceptedAt) extra.acceptedAt = new Date();
+      // Admin marking it ready stamps the kitchen's ready time too, like the partner app does: the rider app's
+      // "Food packed" chip (and a release from 'Picking') read readyAt, not only the status.
+      if (status === 'ReadyForPickup' && !order.readyAt) extra.readyAt = new Date();
       const allowedFrom = Object.keys(ADMIN_STATUS_RANK).filter((s) => s !== 'Delivered' && ADMIN_STATUS_RANK[s] <= targetRank);
       const [n] = await Order.update({ status, ...extra }, { where: { id: order.id, status: { [Op.in]: allowedFrom } } });
       if (n === 0) return res.status(409).json({ message: 'This order was just updated (cancelled, delivered or moved on). Please refresh.' });
@@ -1574,6 +1577,8 @@ const restaurantReadyOrder = async (req, res) => {
 
     // Retry / double tap, or the rider already took the food: not an error, report the real status.
     if (['ReadyForPickup', 'PickedUp', 'ArrivedAtGate', 'Delivered'].includes(order.status)) {
+      // An older row marked ready without a time (admin / legacy path): stamp it now so the rider sees "Food packed".
+      if (order.status === 'ReadyForPickup' && !order.readyAt) await Order.update({ readyAt: new Date() }, { where: { id: order.id, status: 'ReadyForPickup', readyAt: null } });
       return res.json({ message: order.status === 'ReadyForPickup' ? 'Order is already marked ready' : 'The rider has already picked up this order', orderId: order.id, status: order.status, alreadyApplied: true });
     }
     if (order.status !== 'Accepted' && order.status !== 'Preparing') {

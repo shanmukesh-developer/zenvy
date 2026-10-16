@@ -561,6 +561,9 @@ const pickItemInput = (body = {}, existing = null) => {
 
 // @desc    Create Menu Item (Restaurant Portal / Vendor app)
 // @route   POST /api/restaurants/menu
+// Idempotency-Key → { at, promise } for POST /api/restaurants/menu (per store; in memory, 10 min).
+const createItemIdem = new Map();
+const CREATE_IDEM_TTL_MS = 10 * 60 * 1000;
 const createMenuItem = async (req, res) => {
   try {
     const MenuItem = getMenuItemModel();
@@ -580,8 +583,31 @@ const createMenuItem = async (req, res) => {
       if (err instanceof ItemInputError) return res.status(400).json({ message: err.message });
       throw err;
     }
+    // Idempotency-Key (partner / vendor apps): a retry of the same "Add item" tap after a timeout returns
+    // the item the first request created instead of adding it twice. A request still in flight is shared.
+    const idemKey = String(req.get('Idempotency-Key') || '').trim().slice(0, 128);
+    const cacheKey = idemKey ? `${restaurantId}:${idemKey}` : null;
+    const cached = cacheKey ? createItemIdem.get(cacheKey) : null;
+    if (cached && Date.now() - cached.at < CREATE_IDEM_TTL_MS) {
+      const prior = await cached.promise.catch(() => null);
+      if (prior) {
+        const still = await MenuItem.findByPk(prior.id);
+        if (still) return res.status(200).json({ ...stripItemSecrets(still.toJSON()), idempotentReplay: true });
+      }
+    }
     // Honour isAvailable / tags / food type in ONE write: an "out of stock" or egg dish is never live for a moment.
-    const newItem = await MenuItem.create({ ...data, restaurantId });
+    const creating = MenuItem.create({ ...data, restaurantId });
+    if (cacheKey) {
+      for (const [k, v] of createItemIdem) if (Date.now() - v.at >= CREATE_IDEM_TTL_MS) createItemIdem.delete(k);
+      createItemIdem.set(cacheKey, { at: Date.now(), promise: creating });
+    }
+    let newItem;
+    try {
+      newItem = await creating;
+    } catch (err) {
+      if (cacheKey) createItemIdem.delete(cacheKey);
+      throw err;
+    }
 
     clearPublicRestaurantsCache();
     realtime.publish('product', 'created', newItem.id, { storeId: newItem.restaurantId });

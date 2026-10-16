@@ -39,8 +39,12 @@ export async function getStore(id: string): Promise<{ store: StoreState; raw: an
   return { store: normalizeStore(raw), raw };
 }
 
-export async function getOrders(id: string): Promise<Order[]> {
-  const rows = await apiFetch<any[]>(`/api/restaurants/${enc(id)}/orders`);
+/**
+ * `scope: 'active'` (routine polls / socket refreshes): only open orders plus today's (IST) finished ones,
+ * so the kitchen poll stays small. Without it: the latest 200 orders (Past tab + 7-day history).
+ */
+export async function getOrders(id: string, scope?: 'active'): Promise<Order[]> {
+  const rows = await apiFetch<any[]>(`/api/restaurants/${enc(id)}/orders${scope ? `?scope=${scope}` : ''}`);
   return (Array.isArray(rows) ? rows : []).map(normalizeOrder).filter((o): o is Order => !!o);
 }
 

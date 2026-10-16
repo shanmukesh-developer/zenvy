@@ -43,7 +43,11 @@ const tokensOf = (rider) => (Array.isArray(rider.fcmTokens) ? rider.fcmTokens : 
   .map((t) => (typeof t === 'string' ? t : t && t.token))
   .filter(Boolean);
 
+// Rider app Android channel (delivery-boy-app/src/services/notifications.ts ALERT_CHANNEL). Every push to a
+// rider names it explicitly: the old 'delivery-alerts-v2' channel is deleted by the rider app, and relying on
+// the manifest's default-channel fallback breaks the moment that default changes.
 const RIDER_NEW_ORDER_CHANNEL = 'delivery-alerts-v3';
+const RIDER_PUSH_ANDROID = Object.freeze({ priority: 'high', notification: { sound: 'alert', channelId: RIDER_NEW_ORDER_CHANNEL } });
 
 // Push NEW_ORDER to the `limit` best-placed riders. Never throws.
 const pushNearestRiders = async ({ restaurant, orderId, title, body, limit = 5, excludeRiderId = null, data = {} }) => {
@@ -54,7 +58,7 @@ const pushNearestRiders = async ({ restaurant, orderId, title, body, limit = 5, 
     // Rider app v3 channel (bundled 'alert' sound; the app deletes the old v2 channel).
     await sendPushToTokens(tokens, title, body, { orderId: String(orderId), type: 'NEW_ORDER', ...data }, {
       persist: false,
-      android: { priority: 'high', notification: { sound: 'alert', channelId: RIDER_NEW_ORDER_CHANNEL } },
+      android: RIDER_PUSH_ANDROID,
     });
     return tokens.length;
   } catch (err) {
@@ -86,5 +90,5 @@ const refreshRiderCurrentOrder = async (riderId) => {
   }
 };
 
-module.exports = {
+module.exports = { RIDER_PUSH_ANDROID,
   RIDER_NEW_ORDER_CHANNEL, BASE_DELIVERY_FEE, riderPayout, RIDER_FRESH_MS, isRiderFresh, riderFixAgeMs, rankOnlineRiders, pushNearestRiders, refreshRiderCurrentOrder };
