@@ -41,7 +41,14 @@ const initVaultItemModel = (sequelize) => {
     streakRequirement: {
       type: DataTypes.INTEGER,
       defaultValue: 0
-    }
+    },
+    // C1-4 (all nullable, added on boot by addMissingColumns): the store (and optionally the product)
+    // the deal is for, and its own minimum order. A claimed coupon carries these and the order bill
+    // (utils/orderPricing) enforces them. Deals without a store stay valid at any store, but always
+    // with a minimum (minOrderValue, else the deal's original price).
+    restaurantId: { type: DataTypes.UUID, allowNull: true },
+    menuItemId: { type: DataTypes.UUID, allowNull: true },
+    minOrderValue: { type: DataTypes.FLOAT, allowNull: true }
   }, { timestamps: true });
 
   return VaultItem;

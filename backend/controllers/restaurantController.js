@@ -82,6 +82,8 @@ const partnerAudit = async (req, targetId, action, details) => {
 // Body: { phone, password, app? } (login phone; a stall may also use its WhatsApp number)
 //    or { id | name | identifier, password, app? } (store UUID, exact store name, or a 10-digit phone)
 const { isAccountLocked, recordAccountFailure, clearAccountFailures } = require('../middleware/lockoutMiddleware');
+// C1-7: admin took a live store down (see Restaurant.suspendedAt).
+const isSuspendedStore = (store) => !!store && store.isActive === false && !!store.suspendedAt;
 const restaurantLogin = async (req, res) => {
   const body = req.body || {};
   const rawId = body.id || body.email || body.name || body.identifier;
@@ -141,6 +143,13 @@ const restaurantLogin = async (req, res) => {
     }
     clearAccountFailures(lockKey);
 
+    // Suspended by Zenvy (C1-7: a live store the admin switched off). Only after the password check,
+    // so the status is never revealed to someone guessing. Drafts and the partner's own "closed" /
+    // offline switches (isOpenNow / isOffline) never block the login.
+    if (isSuspendedStore(restaurant)) {
+      return res.status(403).json({ code: 'ACCOUNT_SUSPENDED', message: 'This store has been suspended by Zenvy. Please contact Zenvy support to reactivate it.' });
+    }
+
     if (appKind === 'vendor' && !isLocalVendorStore(restaurant)) {
       return res.status(403).json({ code: 'NOT_A_VENDOR_ACCOUNT', message: 'This is a restaurant account. Use the Zenvy Restaurant app.' });
     }
@@ -175,8 +184,11 @@ const refreshStoreToken = async (req, res) => {
       return res.status(403).json({ message: 'Only a store session can be refreshed here.' });
     }
     const Restaurant = getRestaurantModel();
-    const store = await Restaurant.findByPk(req.user.id, { attributes: ['id', 'tokenVersion', 'isActive'] });
+    const store = await Restaurant.findByPk(req.user.id, { attributes: ['id', 'tokenVersion', 'isActive', 'suspendedAt'] });
     if (!store) return res.status(401).json({ message: 'Restaurant not found' });
+    if (isSuspendedStore(store)) {
+      return res.status(403).json({ code: 'ACCOUNT_SUSPENDED', message: 'This store has been suspended by Zenvy. Please contact Zenvy support to reactivate it.' });
+    }
     const secret = process.env.JWT_SECRET;
     if (!secret) return res.status(500).json({ message: 'Server configuration error' });
     const token = jwt.sign({ id: store.id, role: 'restaurant', tv: Number(store.tokenVersion) || 0 }, secret, { expiresIn: '30d' });
@@ -651,6 +663,7 @@ const updateMenuItem = async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 };
+
 
 // @desc    Delete a menu item (partner / vendor app). Past orders keep their own copy of the
 //          item name and price, so a hard delete is safe; a basket holding it gets

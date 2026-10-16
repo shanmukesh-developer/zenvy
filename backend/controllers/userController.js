@@ -203,10 +203,11 @@ const sendSmsOtp = async (phone, code) => {
   const apiKey = process.env.FAST2SMS_API_KEY;
   if (!apiKey) return { ok: false, reason: 'FAST2SMS_API_KEY missing' };
   try {
+    // API key in the `authorization` header (Fast2SMS documents it for GET too), not the query
+    // string, so it never lands in proxy / provider access logs.
     const url = 'https://www.fast2sms.com/dev/bulkV2'
-      + `?authorization=${encodeURIComponent(apiKey)}`
-      + `&route=otp&variables_values=${encodeURIComponent(code)}&numbers=${encodeURIComponent(phone)}`;
-    const smsRes = await fetch(url, { signal: AbortSignal.timeout(10000) });
+      + `?route=otp&variables_values=${encodeURIComponent(code)}&numbers=${encodeURIComponent(phone)}`;
+    const smsRes = await fetch(url, { headers: { authorization: apiKey }, signal: AbortSignal.timeout(10000) });
     const smsData = await smsRes.json().catch(() => ({}));
     if (smsData && smsData.return === true) return { ok: true };
     return { ok: false, reason: (smsData && (smsData.message || smsData.status_code)) || `HTTP ${smsRes.status}` };
@@ -942,8 +943,19 @@ const sendOtp = async (req, res) => {
     }
     const { record } = reserved;
 
+    // Global daily SMS budget (C1-6, shared across processes): a flood of numbers past the per-phone
+    // limits trips this circuit breaker instead of draining the SMS credit.
+    const smsBudget = require('../utils/smsBudget');
+    const budget = await smsBudget.reserve({ io: req.app && typeof req.app.get === 'function' ? req.app.get('io') : null });
+    if (!budget.ok) {
+      await record.destroy().catch(() => {});
+      res.set('Retry-After', '3600');
+      return res.status(503).json({ code: 'SMS_BUDGET', message: "We can't send SMS codes right now. Please log in with your password, or try again later." });
+    }
+
     const sms = await sendSmsOtp(cleanPhone, code);
     if (!sms.ok) {
+      await smsBudget.refund(budget.day);
       await record.destroy().catch(() => {});
       console.error(`[SEND_OTP] SMS provider failed for ${maskPhone(cleanPhone)}:`, sms.reason);
       return res.status(502).json({ code: 'SMS_UNAVAILABLE', message: "We couldn't send the SMS right now. Please try again in a minute or log in with your password." });

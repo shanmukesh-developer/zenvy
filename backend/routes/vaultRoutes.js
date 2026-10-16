@@ -12,6 +12,13 @@ const endOfIstDay = () => {
   ist.setUTCHours(23, 59, 59, 999);
   return new Date(ist.getTime() - 5.5 * 60 * 60 * 1000);
 };
+// Minimum order for a coupon claimed from this deal: its own minOrderValue, else its original price.
+const vaultMinOrder = (item) => {
+  const own = Number(item.minOrderValue);
+  if (Number.isFinite(own) && own > 0) return Math.round(own * 100) / 100;
+  const mrp = Number(item.originalPrice);
+  return Number.isFinite(mrp) && mrp > 0 ? Math.round(mrp * 100) / 100 : null;
+};
 class ClaimError extends Error { constructor(status, message) { super(message); this.status = status; } }
 const { Op } = require('sequelize');
 const { sendServerError } = require('../utils/httpErrors');
@@ -77,7 +84,14 @@ router.post('/claim/:id', protect, async (req, res) => {
         value: isFreeDelivery ? 0 : value,
         userId: user.id,
         isUsed: false,
-        expiryDate: endOfIstDay()
+        expiryDate: endOfIstDay(),
+        // C1-4: the coupon only works where the deal is (store / product) and above a minimum order:
+        // the deal's own minimum, else its original price (a ₹150-off "Brownie Box" deal needs a ₹249+
+        // order instead of making any ₹150 order free). Enforced again in utils/orderPricing.
+        restaurantId: item.restaurantId || null,
+        menuItemId: item.menuItemId || null,
+        minOrderValue: vaultMinOrder(item),
+        vaultItemId: item.id
       }, { transaction: t });
 
       // Decrement stock
@@ -97,7 +111,7 @@ router.post('/claim/:id', protect, async (req, res) => {
         ? `Deal claimed! Use code ${coupon.code} today for free delivery.`
         : `Deal claimed! Use code ${coupon.code} today for ₹${coupon.value} off.`,
       code: coupon.code,
-      coupon: { code: coupon.code, type: coupon.type, value: coupon.value, expiryDate: coupon.expiryDate },
+      coupon: { code: coupon.code, type: coupon.type, value: coupon.value, expiryDate: coupon.expiryDate, restaurantId: coupon.restaurantId || null, menuItemId: coupon.menuItemId || null, minOrderValue: coupon.minOrderValue || null },
       item: securedItem
     });
   } catch (error) {

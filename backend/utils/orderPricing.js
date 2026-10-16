@@ -96,6 +96,55 @@ const couponDiscountFor = (coupon, { subtotal, deliveryFee }) => {
   return { delivery: 0, items: 0 };
 };
 
+// Vault coupons (C1-4) are tied to the deal's store / product and a minimum order. Coupons claimed
+// before those columns existed carry none: their deal is found from the code (VAULT-<deal id 8>-...).
+const couponRestrictions = async (coupon) => {
+  const r = {
+    restaurantId: coupon.restaurantId || null,
+    menuItemId: coupon.menuItemId || null,
+    minOrderValue: Number(coupon.minOrderValue) > 0 ? Number(coupon.minOrderValue) : 0,
+  };
+  const legacy = /^VAULT-([0-9A-F]{8})-/i.exec(String(coupon.code || ''));
+  if (legacy && !coupon.vaultItemId && !r.minOrderValue) {
+    try {
+      const { getVaultItemModel } = require('../models/VaultItem');
+      const VaultItem = getVaultItemModel();
+      const deals = VaultItem ? await VaultItem.findAll({ attributes: ['id', 'originalPrice', 'minOrderValue', 'restaurantId', 'menuItemId'] }) : [];
+      const deal = deals.find((d) => String(d.id).slice(0, 8).toUpperCase() === legacy[1].toUpperCase());
+      if (deal) {
+        const own = Number(deal.minOrderValue);
+        r.minOrderValue = own > 0 ? own : (Number(deal.originalPrice) > 0 ? Number(deal.originalPrice) : 0);
+        r.restaurantId = r.restaurantId || deal.restaurantId || null;
+        r.menuItemId = r.menuItemId || deal.menuItemId || null;
+      }
+    } catch { /* restrictions lookup is best effort for legacy coupons */ }
+  }
+  return r;
+};
+
+const assertCouponFitsOrder = async (coupon, { store, subtotal, pricedLines }) => {
+  const r = await couponRestrictions(coupon);
+  if (r.restaurantId && String(r.restaurantId) !== String(store.id)) {
+    let name = 'another store';
+    try {
+      const other = await getRestaurantModel().findByPk(r.restaurantId, { attributes: ['id', 'name'] });
+      if (other && other.name) name = other.name;
+    } catch { /* name is cosmetic */ }
+    throw new PricingError(400, 'COUPON_WRONG_STORE', `Coupon ${coupon.code} only works on orders from ${name}. Remove it to continue.`, { couponStoreId: r.restaurantId });
+  }
+  if (r.menuItemId && !pricedLines.some((l) => String(l.menuItemId) === String(r.menuItemId))) {
+    let name = 'the deal item';
+    try {
+      const it = await getMenuItemModel().findByPk(r.menuItemId, { attributes: ['id', 'name'] });
+      if (it && it.name) name = it.name;
+    } catch { /* cosmetic */ }
+    throw new PricingError(400, 'COUPON_ITEM_REQUIRED', `Coupon ${coupon.code} needs ${name} in your basket. Add it or remove the coupon to continue.`, { couponMenuItemId: r.menuItemId });
+  }
+  if (r.minOrderValue > 0 && subtotal < r.minOrderValue) {
+    throw new PricingError(400, 'COUPON_MIN_ORDER', `Coupon ${coupon.code} needs an item total of at least ₹${money(r.minOrderValue)}. Add ₹${money(r.minOrderValue - subtotal)} more or remove the coupon.`, { couponMinOrderValue: money(r.minOrderValue), subtotal });
+  }
+};
+
 const isItemAvailable = (dbItem, now = new Date()) => {
   if (dbItem.isAvailable) return true;
   // "Out of stock until X" items come back on their own once X has passed.
@@ -281,6 +330,7 @@ const computeOrderQuote = async ({ user, items, couponCode }) => {
     if (!coupon) {
       throw new PricingError(400, 'COUPON_INVALID', 'That coupon is not valid any more (it may be used or expired). Remove it to continue.');
     }
+    await assertCouponFitsOrder(coupon, { store, subtotal, pricedLines });
   }
   let itemsDiscountLeft = subtotal;
   const addItemsDiscount = (type, label, amount) => {

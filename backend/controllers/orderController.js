@@ -1143,6 +1143,74 @@ const autoCancelStalePendingOrders = async (io) => {
   return count;
 };
 
+// C1-5: a rider claimed the order but never picked it up. Once the store has marked it ready
+// (readyAt) and RIDER_PICKUP_TIMEOUT_MIN (default 20) have passed with no change to the order since
+// (updatedAt: the claim itself also writes the row, so a late claim gets the full window), the rider
+// is taken off it and it goes back to the rider pool through the same code as an admin "Remove rider"
+// (adminController.releaseOrderRider: sockets, pool, nearest-rider pushes). Admins are pushed; the
+// rider has no counter column, so it is logged per rider. 'Picking' (rider at the counter) is left
+// alone. Runs inside the 'orders.autoCancel' job (single runner); the conditional release makes a
+// repeat or a pickup that lands meanwhile a no-op.
+const RIDER_PICKUP_TIMEOUT_MIN = () => Math.max(5, parseInt(process.env.RIDER_PICKUP_TIMEOUT_MIN, 10) || 20);
+const PICKUP_WAIT_STATUSES = ['Accepted', 'Preparing', 'ReadyForPickup'];
+const releaseStalledRiderClaims = async (io) => {
+  const Order = getOrderModel();
+  const minutes = RIDER_PICKUP_TIMEOUT_MIN();
+  const cutoff = new Date(Date.now() - minutes * 60 * 1000);
+  const stalled = await Order.findAll({
+    where: {
+      status: { [Op.in]: PICKUP_WAIT_STATUSES },
+      deliveryPartnerId: { [Op.ne]: null },
+      readyAt: { [Op.ne]: null, [Op.lt]: cutoff },
+      updatedAt: { [Op.lt]: cutoff },
+      [Op.and]: [{ [Op.or]: [{ fulfilment: null }, { fulfilment: { [Op.ne]: 'VENDOR' } }] }],
+    },
+    order: [['readyAt', 'ASC']],
+    limit: 50,
+  });
+  if (!stalled.length) return 0;
+  const { releaseOrderRider } = require('./adminController');
+  const released = [];
+  for (const order of stalled) {
+    const riderId = order.deliveryPartnerId;
+    try {
+      const ok = await releaseOrderRider(order, {
+        io,
+        reason: `Rider did not pick up within ${minutes} min of the order being ready`,
+        extraWhere: { readyAt: { [Op.lt]: cutoff }, updatedAt: { [Op.lt]: cutoff } },
+      });
+      if (!ok) continue;
+      released.push({ order, riderId });
+      console.warn(`[RIDER_PICKUP_TIMEOUT] rider ${riderId} released order ${order.id} (ready ${minutes}+ min, not picked up)`);
+      try {
+        if (io) io.to(`rider_${riderId}`).emit('orderReleased', { orderId: order.id, reason: 'PICKUP_TIMEOUT' });
+        const rider = await getDeliveryPartnerModel().findByPk(riderId, { attributes: ['id', 'fcmTokens'] });
+        const tokens = (rider && Array.isArray(rider.fcmTokens) ? rider.fcmTokens : []).map((t) => (typeof t === 'string' ? t : t && t.token)).filter(Boolean);
+        if (tokens.length) {
+          await sendPushToTokens(tokens, 'Order released', `You did not pick up an order within ${minutes} minutes of it being ready, so it went back to other riders.`, { orderId: String(order.id), type: 'ORDER_RELEASED' }, { persist: false });
+        }
+      } catch (pushErr) {
+        console.warn('[RIDER_PICKUP_TIMEOUT_PUSH_WARN]', pushErr.message);
+      }
+    } catch (e) {
+      console.error('[RIDER_PICKUP_TIMEOUT_ERROR]', order.id, e.message);
+    }
+  }
+  if (released.length) {
+    const perRider = released.reduce((m, r) => m.set(r.riderId, (m.get(r.riderId) || 0) + 1), new Map());
+    for (const [rid, n] of perRider) console.warn(`[RIDER_PICKUP_TIMEOUT] rider ${rid}: ${n} order(s) released this run`);
+    await require('../utils/adminAlert').pushAdmins(
+      '⏱️ Rider did not pick up',
+      released.length === 1
+        ? `An order waited ${minutes}+ min at the store after it was ready; the rider was removed and it is back in the rider pool.`
+        : `${released.length} orders waited ${minutes}+ min at the store after they were ready; the riders were removed and they are back in the rider pool.`,
+      { type: 'RIDER_PICKUP_TIMEOUT', orderId: String(released[0].order.id) },
+      { io }
+    );
+  }
+  return released.length;
+};
+
 const cancelOrder = async (req, res) => {
   try {
     const Order = getOrderModel();
@@ -2000,4 +2068,4 @@ const approveBill = async (req, res) => {
   }
 };
 
-module.exports = { pushCustomer, pushStoreCancelled, customerOrderJson, restaurantUpdateOrderStatus, autoCancelStalePendingOrders, cancelAndRefund, createOrder, quoteOrder, getServiceability, getOrderById, getMyOrders, rateOrder, getAllOrders, cancelOrder, updateOrderStatus, getSurgeStatus, restaurantAcceptOrder, verifyUPIPayment, restaurantReadyOrder, getOrderStats, uploadItemPhoto, approvePurchase, uploadBillProof, approveBill };
+module.exports = { pushCustomer, pushStoreCancelled, customerOrderJson, restaurantUpdateOrderStatus, autoCancelStalePendingOrders, releaseStalledRiderClaims, cancelAndRefund, createOrder, quoteOrder, getServiceability, getOrderById, getMyOrders, rateOrder, getAllOrders, cancelOrder, updateOrderStatus, getSurgeStatus, restaurantAcceptOrder, verifyUPIPayment, restaurantReadyOrder, getOrderStats, uploadItemPhoto, approvePurchase, uploadBillProof, approveBill };

@@ -54,6 +54,10 @@ const initDeliveryPartnerModel = (sequelize) => {
     isApproved: { type: DataTypes.BOOLEAN, defaultValue: false },
     // Bumped on every password change: sessions signed with an older `tv` are revoked.
     tokenVersion: { type: DataTypes.INTEGER, allowNull: true, defaultValue: 0 },
+    // C1-7: set when an APPROVED rider is deactivated by the admin (isApproved true -> false); cleared
+    // on approval. While set the rider login is refused. New sign-ups waiting for approval are not
+    // suspended (they still log in and see "waiting for approval"). Added on boot by addMissingColumns.
+    suspendedAt: { type: DataTypes.DATE, allowNull: true },
     loginStreak: { type: DataTypes.INTEGER, defaultValue: 0 },
     lastLoginDate: { type: DataTypes.DATEONLY, defaultValue: null }
   }, { 
@@ -77,6 +81,17 @@ const initDeliveryPartnerModel = (sequelize) => {
     }
   });
   DeliveryPartner.beforeUpdate(hashPassword);
+  // Admin deactivation (C1-7): every session of the rider ends at once, and they go off duty.
+  DeliveryPartner.beforeUpdate((partner) => {
+    if (!partner.changed('isApproved')) return;
+    if (partner.isApproved === false && partner.previous('isApproved') === true) {
+      partner.suspendedAt = new Date();
+      partner.tokenVersion = (Number(partner.tokenVersion) || 0) + 1;
+      partner.isOnline = false;
+    } else if (partner.isApproved === true && partner.suspendedAt) {
+      partner.suspendedAt = null;
+    }
+  });
   DeliveryPartner.beforeBulkCreate(async (partners) => {
     for (const partner of partners) {
       partner.password = await bcrypt.hash(partner.password, 10);

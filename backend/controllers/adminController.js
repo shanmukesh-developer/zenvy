@@ -758,8 +758,10 @@ exports.updateRestaurant = async (req, res) => {
     }
     if (stallSwitched && !updateData.password) updateData.tokenVersion = (Number(restaurant.tokenVersion) || 0) + 1;
     // A password change bumps tokenVersion (model hook): signed-in partner apps are signed out.
+    // So does switching a live store off (C1-7 suspension, model hook sets suspendedAt).
+    const tvBefore = Number(restaurant.tokenVersion) || 0;
     await restaurant.update(updateData);
-    if (updateData.password || stallSwitched) {
+    if (updateData.password || stallSwitched || (Number(restaurant.tokenVersion) || 0) !== tvBefore) {
       clearCachedUser(restaurant.id);
       // Partner sockets opened with the revoked token stop getting this store's orders now.
       realtime.disconnectRevokedSockets(restaurant.id, restaurant.tokenVersion);
@@ -872,7 +874,13 @@ exports.approveRider = async (req, res) => {
         return res.status(409).json({ code: 'RIDER_HAS_ACTIVE_ORDER', message: `${rider.name || 'This rider'} is carrying an order. Reassign or finish it before deactivating.` });
       }
     }
+    const tvBefore = Number(rider.tokenVersion) || 0;
     await rider.update(isApproved ? { isApproved } : { isApproved, isOnline: false });
+    if ((Number(rider.tokenVersion) || 0) !== tvBefore) {
+      // Deactivated (C1-7, model hook): every rider session / socket ends now.
+      try { const io = req.app.get('io'); if (io) io.in(`rider_${rider.id}`).disconnectSockets(true); } catch (e) { console.warn('[RIDER_REVOKE_SOCKET_WARN]', e.message); }
+      realtime.disconnectRevokedSockets(rider.id, rider.tokenVersion);
+    }
     await logAuditAction(req, rider.id, isApproved ? 'FLEET_RIDER_APPROVED' : 'FLEET_RIDER_DEACTIVATED', { name: rider.name });
     broadcastSystemUpdate(req, 'RIDER_STATUS_CHANGED', { id: req.params.id, isApproved });
     realtime.notifyAdmin('rider', 'updated', rider.id);
@@ -922,8 +930,9 @@ exports.updateRider = async (req, res) => {
       // phone that can no longer accept (they go online again after signing in).
       updateData.isOnline = false;
     }
+    const tvBefore = Number(rider.tokenVersion) || 0;
     await rider.update(updateData);
-    if (updateData.password) {
+    if (updateData.password || (Number(rider.tokenVersion) || 0) !== tvBefore) {
       clearCachedUser(rider.id); // tokenVersion was bumped: old sessions end now
       realtime.setRiderOnline(rider.id, false);
       // Old sockets were authenticated with the revoked token: drop them (they cannot reconnect).
@@ -1356,7 +1365,38 @@ const pickVaultFields = (body = {}, existing = null) => {
   }
   if (out.imageUrl !== undefined) out.imageUrl = String(out.imageUrl || '').trim() || null;
   if (out.isActive !== undefined) out.isActive = toBool(out.isActive);
+  // C1-4 (optional): the store / product the deal is for and its own minimum order ('' / null clears).
+  for (const key of ['restaurantId', 'menuItemId']) {
+    if (body[key] === undefined) continue;
+    const v = body[key] === null ? '' : String(body[key]).trim();
+    if (v && !UUID_RE.test(v)) throw new AdminInputError(key === 'restaurantId' ? 'Pick a valid store for this deal.' : 'Pick a valid product for this deal.');
+    out[key] = v || null;
+  }
+  if (body.minOrderValue !== undefined) {
+    if (body.minOrderValue === null || body.minOrderValue === '') out.minOrderValue = null;
+    else {
+      const n = Number(body.minOrderValue);
+      if (!Number.isFinite(n) || n < 0 || n > 100000) throw new AdminInputError('Minimum order must be between ₹0 and ₹1,00,000.');
+      out.minOrderValue = n > 0 ? Math.round(n * 100) / 100 : null;
+    }
+  }
   return out;
+};
+
+// Store / product of a deal must exist, and the product must belong to the store (C1-4).
+const assertVaultTargets = async (fields, existing = null) => {
+  const restaurantId = fields.restaurantId !== undefined ? fields.restaurantId : (existing ? existing.restaurantId : null);
+  const menuItemId = fields.menuItemId !== undefined ? fields.menuItemId : (existing ? existing.menuItemId : null);
+  if (fields.restaurantId && !(await getRestaurantModel().findByPk(fields.restaurantId, { attributes: ['id'] }))) {
+    throw new AdminInputError('That store does not exist.');
+  }
+  if (menuItemId && (fields.menuItemId !== undefined || fields.restaurantId !== undefined)) {
+    const item = await getMenuItemModel().findByPk(menuItemId, { attributes: ['id', 'restaurantId'] });
+    if (!item) throw new AdminInputError('That product does not exist.');
+    if (!restaurantId) fields.restaurantId = item.restaurantId; // a product deal is always tied to its store
+    else if (String(item.restaurantId) !== String(restaurantId)) throw new AdminInputError('That product belongs to another store.');
+  }
+  return fields;
 };
 
 exports.upsertVaultItem = async (req, res) => {
@@ -1368,9 +1408,9 @@ exports.upsertVaultItem = async (req, res) => {
       if (!UUID_RE.test(String(id))) return res.status(404).json({ message: 'Deal not found.' });
       item = await VaultItem.findByPk(id);
       if (!item) return res.status(404).json({ message: 'Deal not found.' });
-      await item.update(await mediaizeImageFields(pickVaultFields(req.body, item), req, ['imageUrl'], 'vault'));
+      await item.update(await mediaizeImageFields(await assertVaultTargets(pickVaultFields(req.body, item), item), req, ['imageUrl'], 'vault'));
     } else {
-      item = await VaultItem.create(await mediaizeImageFields(pickVaultFields(req.body), req, ['imageUrl'], 'vault'));
+      item = await VaultItem.create(await mediaizeImageFields(await assertVaultTargets(pickVaultFields(req.body)), req, ['imageUrl'], 'vault'));
     }
     broadcastSystemUpdate(req, 'VAULT_UPDATED', item);
     realtime.publish('coupon', id && id !== 'new' ? 'updated' : 'created', item.id, { scope: 'vault' });
@@ -2386,7 +2426,15 @@ exports.bulkUpdateRestaurants = async (req, res) => {
     for (const k of BULK_STORE_PATCH) if (rawPatch[k] !== undefined) patch[k] = toBool(rawPatch[k]);
     if (!Object.keys(patch).length) return res.status(400).json({ message: `Nothing to change. Allowed: ${BULK_STORE_PATCH.join(', ')}.` });
     const stores = await Restaurant.findAll({ where: { id: { [Op.in]: ids } } });
-    for (const store of stores) await store.update(patch); // instance hooks (publishedAt) run
+    for (const store of stores) {
+      const tvBefore = Number(store.tokenVersion) || 0;
+      await store.update(patch); // instance hooks (publishedAt, C1-7 suspension) run
+      if ((Number(store.tokenVersion) || 0) !== tvBefore) {
+        // Suspended (live store switched off): its partner sessions end now.
+        clearCachedUser(store.id);
+        realtime.disconnectRevokedSockets(store.id, store.tokenVersion);
+      }
+    }
     clearRestaurantsCache();
     const io = req.app.get('io');
     for (const store of stores) {
@@ -2553,6 +2601,52 @@ exports.getAttentionCounts = async (req, res) => {
 // conditional on the rider + status read here, so a claim / pickup / cancel that lands meanwhile wins (409).
 const ADMIN_ASSIGNABLE = ['Accepted', 'Preparing', 'ReadyForPickup', 'Picking'];
 const ADMIN_MAX_ACTIVE_ORDERS = Math.max(1, parseInt(process.env.RIDER_MAX_ACTIVE_ORDERS, 10) || 3);
+
+/**
+ * Take the rider off an order that is still at the store and put it back in the rider pool: the same
+ * write, sockets and pushes as an admin "Remove rider" (PUT /api/admin/orders/:id/rider { riderId: null }).
+ * Also used by the rider pickup-timeout job (orderController.releaseStalledRiderClaims).
+ * Conditional on the rider + status read in `order` (+ opts.extraWhere): resolves false when a pickup /
+ * cancel / other change landed first (nothing done), true when the rider was removed.
+ * opts: { io, reason, extraWhere }
+ */
+const releaseOrderRider = async (order, { io = null, reason = 'Removed by Zenvy support', extraWhere = null } = {}) => {
+  const Order = getOrderModel();
+  const oldRiderId = order.deliveryPartnerId || null;
+  if (!oldRiderId) return false;
+  const nextStatus = order.status === 'Picking' ? (order.readyAt ? 'ReadyForPickup' : 'Preparing') : order.status;
+  const [n] = await Order.update(
+    { deliveryPartnerId: null, status: nextStatus },
+    { where: { id: order.id, deliveryPartnerId: oldRiderId, status: order.status, ...(extraWhere || {}) } }
+  );
+  if (!n) return false;
+  order.deliveryPartnerId = null;
+  order.status = nextStatus;
+
+  const { refreshRiderCurrentOrder, pushNearestRiders } = require('../utils/riderDispatch');
+  realtime.leaveOrderRoom(oldRiderId, order.id);
+  await refreshRiderCurrentOrder(oldRiderId);
+  // The old rider's app drops the order on its refetch (it vanished from their active list).
+  if (io) io.to(`rider_${oldRiderId}`).emit('statusUpdated', { id: order.id, status: order.status, reassigned: true });
+  realtime.deliveryRequest(order.id); // back in the pool for every online rider
+  if (io) {
+    const payload = { id: order.id, status: order.status, riderAssigned: false };
+    io.to(String(order.id)).emit('statusUpdated', payload);
+    io.to('admin-room').emit('statusUpdated', payload);
+    if (order.restaurantId) io.to(`restaurant_${order.restaurantId}`).emit('statusUpdated', payload);
+    io.to('admin-room').emit('order_unassigned', { orderId: order.id, reason });
+  }
+  realtime.notifyAdmin('order', 'updated', order.id);
+  try {
+    const restaurant = order.restaurantId ? await getRestaurantModel().findByPk(order.restaurantId, { attributes: ['id', 'name', 'location'] }) : null;
+    await pushNearestRiders({ restaurant, orderId: order.id, limit: 5, excludeRiderId: oldRiderId, title: '🛵 Order needs a rider', body: `${restaurant?.name || 'A store'} has an order waiting for a rider.` });
+  } catch (pushErr) {
+    console.warn('[ADMIN_ASSIGN_PUSH_WARN]', pushErr.message);
+  }
+  return true;
+};
+exports.releaseOrderRider = releaseOrderRider;
+
 exports.assignOrderRider = async (req, res) => {
   try {
     const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -2582,6 +2676,13 @@ exports.assignOrderRider = async (req, res) => {
       if (held >= ADMIN_MAX_ACTIVE_ORDERS) {
         return res.status(409).json({ message: `${rider.name || 'This rider'} already carries ${held} orders (the most allowed).`, code: 'MAX_ACTIVE' });
       }
+    }
+    if (!newRiderId) {
+      // Remove the rider: shared with the pickup-timeout job (same write, sockets and pushes).
+      const released = await releaseOrderRider(order, { io: req.app.get('io'), reason: 'Removed by Zenvy support' });
+      if (!released) return res.status(409).json({ message: 'This order was just updated (claimed, picked up or cancelled). Refresh and try again.', code: 'ORDER_CHANGED' });
+      await logAuditAction(req, order.id, 'ORDER_RIDER_UNASSIGNED', { from: oldRiderId, to: null });
+      return res.json({ message: 'Rider removed. The order is back with the riders.', orderId: order.id, status: order.status, riderId: null });
     }
     const nextStatus = order.status === 'Picking' ? (order.readyAt ? 'ReadyForPickup' : 'Preparing') : order.status;
     const [n] = await Order.update(

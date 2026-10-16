@@ -250,7 +250,15 @@ router.get('/recommendations', protect, async (req, res) => {
 
 // POST /api/features/gift - Send a gift (meal voucher) to another user
 const giftError = (msg) => Object.assign(new Error(msg), { expose: true });
-router.post('/gift', protect, async (req, res) => {
+// Owner decision (C1-3): the wallet is non-transferable refund / order credit (RBI: no P2P transfer of
+// stored value). Gifts are OFF unless WALLET_TRANSFERS_ENABLED=true. Checked before the idempotency
+// claim, so nothing is reserved or charged; older apps show the message in their error alert.
+const walletTransfersEnabled = () => String(process.env.WALLET_TRANSFERS_ENABLED || '').toLowerCase() === 'true';
+const TRANSFER_DISABLED_BODY = Object.freeze({ code: 'TRANSFER_DISABLED', message: 'Wallet transfers are turned off. Your wallet balance can be used for orders in Zenvy.' });
+router.post('/gift', protect, async (req, res, next) => {
+  if (!walletTransfersEnabled()) return res.status(403).json({ ...TRANSFER_DISABLED_BODY });
+  return next();
+}, async (req, res) => {
   // Retry key (customer-1): the app sends the same key for the same recipient + amount until the
   // server answers. A repeat never charges the wallet twice.
   const { readIdempotencyKey, claim } = require('../utils/idempotency');

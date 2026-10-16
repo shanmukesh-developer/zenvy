@@ -234,6 +234,12 @@ const authPartner = async (req, res) => {
       return res.status(401).json({ message: 'Invalid phone or password' });
     }
 
+    // Deactivated by Zenvy (C1-7: an approved rider the admin switched off). New sign-ups waiting for
+    // approval (never approved, no suspendedAt) still log in and see "waiting for approval".
+    if (partner.suspendedAt && partner.isApproved !== true) {
+      return res.status(403).json({ code: 'ACCOUNT_SUSPENDED', message: 'Your Zenvy rider account has been deactivated. Please contact Zenvy support.' });
+    }
+
     // ── 3. Return partner data and JWT token ────────────────────────────────
     const token = generateToken(partner.id, partner.tokenVersion);
     res.cookie('token', token, { httpOnly: true, secure: true, sameSite: 'none', maxAge: 30 * 24 * 60 * 60 * 1000 });

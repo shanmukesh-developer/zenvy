@@ -46,6 +46,10 @@ const updateStreak = async (userId) => {
   return user.streakCount;
 };
 
+// Order-tier badge name -> tier ('Bronze Beginner' -> 'Bronze', ..., 'Elite Eater' -> 'Elite').
+const { BADGE_CRITERIA } = require('../services/BadgeService');
+const ORDER_TIER_BY_BADGE = new Map(BADGE_CRITERIA.ORDERS.map((b) => [b.name, b.tier]));
+
 // Calculate perks based on user badges
 const calculateBadgePerks = (user) => {
   if (!user) return { deliveryDiscount: 0, orderDiscount: 0, status: 'Guest Citizen' };
@@ -63,27 +67,37 @@ const calculateBadgePerks = (user) => {
   let orderDiscount = 0;
   let status = 'Standard Citizen';
 
-  if (user.isElite || badges.some(b => b.includes('Elite'))) {
+  // Only the ORDER-tier badges (services/BadgeService BADGE_CRITERIA.ORDERS, exact names) unlock
+  // order perks. Streak / late-night badges share the tier words ("Diamond Drifter", "Gold Ghost")
+  // and used to match a substring test, handing out order-tier discounts they were never meant to.
+  const tierRank = { Bronze: 1, Silver: 2, Gold: 3, Platinum: 4, Diamond: 5, Elite: 6 };
+  let tier = user.isElite ? 'Elite' : null;
+  for (const b of badges) {
+    const t = typeof b === 'string' ? ORDER_TIER_BY_BADGE.get(b.trim()) : undefined;
+    if (t && (!tier || tierRank[t] > tierRank[tier])) tier = t;
+  }
+
+  if (tier === 'Elite') {
     deliveryDiscount = 1;
     orderDiscount = 100;
     status = 'Elite Sovereign';
-  } else if (badges.some(b => b.includes('Diamond'))) {
+  } else if (tier === 'Diamond') {
     deliveryDiscount = 1;
     orderDiscount = 50;
     status = 'Diamond Dignitary';
-  } else if (badges.some(b => b.includes('Platinum'))) {
-    deliveryDiscount = 1; 
+  } else if (tier === 'Platinum') {
+    deliveryDiscount = 1;
     orderDiscount = 25;
     status = 'Platinum Pro';
-  } else if (badges.some(b => b.includes('Gold'))) {
+  } else if (tier === 'Gold') {
     deliveryDiscount = 0.5;
     orderDiscount = 15;
     status = 'Gold Grafter';
-  } else if (badges.some(b => b.includes('Silver'))) {
+  } else if (tier === 'Silver') {
     deliveryDiscount = 0.2;
     orderDiscount = 10;
     status = 'Silver Scaler';
-  } else if (badges.some(b => b.includes('Bronze'))) {
+  } else if (tier === 'Bronze') {
     orderDiscount = 5;
     status = 'Bronze Beginner';
   }
@@ -108,4 +122,4 @@ const effectiveStreak = (user) => {
   return daysSince <= 1 ? count : 0;
 };
 
-module.exports = { updateStreak, calculateBadgePerks, effectiveStreak };
+module.exports = { updateStreak, calculateBadgePerks, effectiveStreak, ORDER_TIER_BY_BADGE };

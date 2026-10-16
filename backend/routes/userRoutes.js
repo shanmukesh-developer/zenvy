@@ -32,6 +32,17 @@ const authPhoneLimiter = rateLimit({
   message: { message: 'Too many attempts for this number, please try again after 15 minutes.', code: 'RATE_LIMITED' }
 });
 const authLimiter = [authIpLimiter, authPhoneLimiter];
+// C1-6: send-otp costs real money per call, so it gets its own, tighter per-IP flood guard on top
+// (default 200 per 15 min per IP, floor 30). It stays generous on purpose: a whole hostel shares a few
+// NAT IPs. The real abuse limits are per phone (cooldown + daily cap in the controller, the phone
+// bucket above) and the global daily SMS cap (utils/smsBudget, SMS_DAILY_CAP).
+const OTP_SEND_IP_MAX = Math.max(30, Number(process.env.OTP_SEND_IP_MAX) || 200);
+const otpSendIpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: OTP_SEND_IP_MAX,
+  skip: (req) => require('../utils/loadtestBypass').skipRateLimit(req),
+  message: { message: 'Too many codes requested from this network. Please try again in a few minutes or log in with your password.', code: 'RATE_LIMITED' }
+});
 
 const { accountLockout } = require('../middleware/lockoutMiddleware');
 
@@ -67,7 +78,7 @@ const loginValidation = [
 
 router.post('/register', authLimiter, registerValidation, validate, registerUser);
 router.post('/login', authLimiter, accountLockout, loginValidation, validate, authUser);
-router.post('/send-otp', authLimiter, sendOtp);
+router.post('/send-otp', authLimiter, otpSendIpLimiter, sendOtp);
 router.post('/verify-otp', authLimiter, verifyOtp);
 router.post('/google-login', authLimiter, googleLogin);
 router.post('/google-complete', authLimiter, googleComplete);

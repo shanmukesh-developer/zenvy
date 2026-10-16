@@ -66,8 +66,10 @@ const runExpiryCleanup = async ({ io }) => {
 };
 
 // Orders the store never accepted: cancel + refund once, tell the customer (orders-n12).
+// + C1-5: riders who claimed an order but did not pick it up within RIDER_PICKUP_TIMEOUT_MIN of it
+// being ready are taken off it (back to the pool, admins told). Same single-runner tick.
 const runAutoCancel = async ({ io }) => {
-  const out = { orders: 0, baskets: 0 };
+  const out = { orders: 0, baskets: 0, ridersReleased: 0 };
   try {
     const { autoCancelStalePendingOrders } = require('../controllers/orderController');
     out.orders = (await autoCancelStalePendingOrders(io)) || 0;
@@ -75,6 +77,12 @@ const runAutoCancel = async ({ io }) => {
     out.baskets = (await expireStaleBaskets(io)) || 0;
   } catch (e) {
     console.warn('[AUTO_CANCEL] Error:', e.message);
+  }
+  try {
+    const { releaseStalledRiderClaims } = require('../controllers/orderController');
+    out.ridersReleased = (await releaseStalledRiderClaims(io)) || 0;
+  } catch (e) {
+    console.warn('[RIDER_PICKUP_TIMEOUT] Error:', e.message);
   }
   return out;
 };

@@ -7,6 +7,7 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 async function seedLocalVendors() {
+  if (!require('../utils/seedGuard').seedAllowed('scripts/seed_local_vendors.js')) process.exit(1);
   const { connectDB, getSequelize } = require('../config/db');
   await connectDB();
   const sequelize = getSequelize();

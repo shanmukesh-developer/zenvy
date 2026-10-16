@@ -56,6 +56,11 @@ const initRestaurantModel = (sequelize) => {
     phone: { type: DataTypes.STRING, allowNull: true },
     // Bumped on every partner password change: older partner JWTs (claim `tv`) stop working.
     tokenVersion: { type: DataTypes.INTEGER, allowNull: true, defaultValue: 0 },
+    // C1-7: set when the admin takes a LIVE store down (isActive true -> false); cleared when it is
+    // switched on again. While set (and isActive is false) the partner / vendor login is refused.
+    // Drafts (never live) keep logging in. Not the partner's own "closed" switches (isOpenNow /
+    // isOffline), which never touch this. Nullable, added on boot by addMissingColumns.
+    suspendedAt: { type: DataTypes.DATE, allowNull: true },
     // Partner / vendor app push tokens ([{ token, app, at }]) for new-order alerts while the app is closed.
     fcmTokens: {
       type: DataTypes.TEXT,
@@ -109,6 +114,16 @@ const initRestaurantModel = (sequelize) => {
   Restaurant.beforeUpdate((restaurant) => {
     if (restaurant.changed('password') && restaurant.previous('password')) {
       restaurant.tokenVersion = (Number(restaurant.tokenVersion) || 0) + 1;
+    }
+  });
+  // Admin suspension (C1-7): a live store switched off ends every partner session at once.
+  Restaurant.beforeUpdate((restaurant) => {
+    if (!restaurant.changed('isActive')) return;
+    if (restaurant.isActive === false && restaurant.previous('isActive') !== false) {
+      restaurant.suspendedAt = new Date();
+      restaurant.tokenVersion = (Number(restaurant.tokenVersion) || 0) + 1;
+    } else if (restaurant.isActive !== false && restaurant.suspendedAt) {
+      restaurant.suspendedAt = null;
     }
   });
   // Draft → published: stamp the first time the store goes live.

@@ -12,7 +12,13 @@ const initCouponModel = (sequelize) => {
     value: { type: DataTypes.FLOAT, defaultValue: 0 },
     userId: { type: DataTypes.UUID, allowNull: false },
     isUsed: { type: DataTypes.BOOLEAN, defaultValue: false },
-    expiryDate: { type: DataTypes.DATE }
+    expiryDate: { type: DataTypes.DATE },
+    // C1-4 restrictions (nullable = none; older coupons are unchanged). Set on Vault claims from the
+    // deal; checked by utils/orderPricing when the coupon is applied.
+    restaurantId: { type: DataTypes.UUID, allowNull: true },
+    menuItemId: { type: DataTypes.UUID, allowNull: true },
+    minOrderValue: { type: DataTypes.FLOAT, allowNull: true },
+    vaultItemId: { type: DataTypes.UUID, allowNull: true }
   }, { timestamps: true });
 
   return Coupon;

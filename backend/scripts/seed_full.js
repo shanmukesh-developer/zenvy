@@ -138,6 +138,8 @@ const CONFIGS = [
 ];
 
 async function run() {
+  // Never against production (demo admin 9999999999 with a published password, data wipe).
+  if (!require('../utils/seedGuard').seedAllowed('scripts/seed_full.js')) process.exit(1);
   console.log('🌱 Starting full database seed (Development)...');
   const sqlitePath = path.join(__dirname, '..', 'local_dev.sqlite');
   

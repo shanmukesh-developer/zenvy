@@ -100,6 +100,9 @@ function Avatar({ uri, style, fallback }: { uri?: string | null; style: any; fal
 
 type StatsState = 'loading' | 'ready' | 'error';
 
+
+// Wallet gifts / P2P transfers are turned off (owner decision: refund credit is not transferable).
+const WALLET_GIFTS_ENABLED: boolean = false;
 export default function ProfileScreen() {
   const { user, setUser, logout } = useAuth();
   const { isDark, toggleTheme, colors } = useTheme();
@@ -1037,8 +1040,9 @@ export default function ProfileScreen() {
           </StaggeredSection>
         ) : null}
 
-        {/* 🎁 Send a Gift (Elite Perk) */}
-        {user?.isElite ? (
+        {/* 🎁 Send a Gift (Elite Perk): off. The wallet is non-transferable order credit (the server answers
+            403 TRANSFER_DISABLED), so the section is hidden until WALLET_GIFTS_ENABLED is switched back on. */}
+        {WALLET_GIFTS_ENABLED && user?.isElite ? (
           <StaggeredSection delay={280} direction="up">
             <Text style={[s.sectionTitleText, { color: isDark ? goldColor : '#111' }]}>SEND A GIFT</Text>
             <View style={[s.giftCard, { backgroundColor: cardBg, borderColor: border }]}>

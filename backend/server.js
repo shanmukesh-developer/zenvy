@@ -1147,7 +1147,13 @@ const initializeApp = async () => {
       const { runDemoDataCleanup } = require('./scripts/demo_data_cleanup');
       runDemoDataCleanup()
         .then((r) => console.log('🧹 [DEMO_CLEANUP]', JSON.stringify(r)))
-        .catch((err) => console.warn('⚠️ [DEMO_CLEANUP] failed:', err.message));
+        .catch((err) => console.warn('⚠️ [DEMO_CLEANUP] failed:', err.message))
+        // 🔐 Admins still on a published seed password (C1-1): reset from ADMIN_RESET_PASSWORD, or warn
+        // (never changed without it, so the owner is never locked out). After the demo cleanup (which can
+        // also write the demo admin row), single runner across processes.
+        .then(() => require('./scripts/admin_seed_reset').startAdminSeedReset())
+        .then((r) => { if (r && r.ran && r.result) console.log('🔐 [ADMIN_SEED_RESET]', JSON.stringify(r.result)); })
+        .catch((err) => console.warn('⚠️ [ADMIN_SEED_RESET] failed:', err.message));
     } catch (cleanupErr) {
       console.warn('⚠️ [DEMO_CLEANUP] not started:', cleanupErr.message);
     }

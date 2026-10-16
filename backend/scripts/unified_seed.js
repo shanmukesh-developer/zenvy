@@ -10,6 +10,8 @@ const { getPGRoomModel } = require('../models/PGRoom');
 const { getSequelize } = require('../config/db');
 
 const unifiedSeed = async () => {
+  // Never against production (demo admins / riders with published passwords, catalogue wipe).
+  if (!require('../utils/seedGuard').seedAllowed('scripts/unified_seed.js')) return { refused: true };
   await connectDB();
   const DeliveryPartner = getDeliveryPartnerModel();
   const User = getUserModel();
@@ -1039,7 +1041,7 @@ const unifiedSeed = async () => {
 module.exports = { unifiedSeed };
 
 if (require.main === module) {
-  unifiedSeed().catch(err => {
+  unifiedSeed().then((r) => { if (r && r.refused) process.exit(1); }).catch(err => {
     console.error('❌ Seed failed:', err);
     process.exit(1);
   });

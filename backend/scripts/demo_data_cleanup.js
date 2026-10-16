@@ -53,25 +53,25 @@ const runDemoDataCleanup = async () => {
       }
     }
     // The demo admin (published password "admin123") would give anyone full admin powers.
-    // By owner decision it is NOT rotated automatically: startup only logs a warning. Set
-    // DEMO_ADMIN_AUTO_ROTATE=true to rotate it, or DEMO_ADMIN_NEW_PASSWORD (12+ chars) in Render
-    // env and restart once to choose a new password, then remove the variable.
+    // C1-1: setting a new password for seed-password admins (from ADMIN_RESET_PASSWORD, else
+    // DEMO_ADMIN_NEW_PASSWORD) and the boot warning live in scripts/admin_seed_reset.js, which runs
+    // right after this cleanup. Both only ever touch an account WHILE it still uses a seed password,
+    // so a password the owner chose is never rewritten (the old "differs from DEMO_ADMIN_NEW_PASSWORD
+    // -> set it again" branch here re-set it, and bumped tokenVersion, on every boot).
+    // Kept here: the opt-in DEMO_ADMIN_AUTO_ROTATE=true random rotation, only while it is still
+    // "admin123" and only when no valid reset password is configured (then admin_seed_reset sets that).
     const demoAdmin = await User.findOne({ where: { phone: '9999999999', role: 'admin', isActive: true } });
-    if (demoAdmin) {
-      const wanted = String(process.env.DEMO_ADMIN_NEW_PASSWORD || '');
-      // Owner decision (2026-10-13): never auto-change the admin password; only warn.
-      if (String(process.env.DEMO_ADMIN_AUTO_ROTATE || '') === 'true' && (await safeCompare(demoAdmin, 'admin123'))) {
-        demoAdmin.password = wanted.length >= 12 ? wanted : require('crypto').randomBytes(24).toString('base64url');
+    if (demoAdmin && (await safeCompare(demoAdmin, 'admin123'))) {
+      result.demoAdminWarning = true;
+      const { SEED_ADMIN_PASSWORDS, RESET_ENV_NAMES } = require('./admin_seed_reset');
+      const hasResetPassword = RESET_ENV_NAMES.some((n) => {
+        const v = process.env[n];
+        return typeof v === 'string' && v.length >= 12 && !SEED_ADMIN_PASSWORDS.includes(v);
+      });
+      if (String(process.env.DEMO_ADMIN_AUTO_ROTATE || '') === 'true' && !hasResetPassword) {
+        demoAdmin.password = require('crypto').randomBytes(24).toString('base64url');
         await demoAdmin.save();
-        result.demoAdminWarning = true;
-        console.warn(`🚨 [DEMO_CLEANUP] Admin 9999999999 used the published password; it was rotated${wanted.length >= 12 ? ' to DEMO_ADMIN_NEW_PASSWORD' : ' to a random value (set DEMO_ADMIN_NEW_PASSWORD in env and restart to choose one)'}.`);
-      } else if (wanted.length >= 12 && !(await safeCompare(demoAdmin, wanted))) {
-        demoAdmin.password = wanted;
-        await demoAdmin.save();
-        console.warn('🔐 [DEMO_CLEANUP] Admin 9999999999 password set from DEMO_ADMIN_NEW_PASSWORD. Remove that env variable now.');
-      } else if (await safeCompare(demoAdmin, 'admin123')) {
-        result.demoAdminWarning = true;
-        console.warn('⚠️ [DEMO_CLEANUP] Admin 9999999999 still uses the published password "admin123". Change it when convenient.');
+        console.warn('🚨 [DEMO_CLEANUP] Admin ****9999 used the published password; it was rotated to a random value (DEMO_ADMIN_AUTO_ROTATE=true). Set ADMIN_RESET_PASSWORD next time to choose one.');
       }
     }
 
