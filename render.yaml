@@ -9,7 +9,10 @@ services:
   - type: web
     name: hostelbites-backend
     env: node
-    plan: starter
+    # Standard = 1 dedicated CPU / 2 GB. Stay at ONE instance until the Redis layer (B1) is verified in
+    # production; then scale to 2 in the dashboard (Settings -> Scaling) or set numInstances: 2.
+    plan: standard
+    numInstances: 1
     rootDir: backend
     buildCommand: npm install --legacy-peer-deps
     startCommand: npm start
@@ -30,6 +33,14 @@ services:
       - key: FIREBASE_PRIVATE_KEY
         sync: false
       - key: JWT_SECRET
+        sync: false
+      # B1: shared state for 2+ instances (socket.io Redis adapter, cache invalidation, rate limits).
+      # Set in the Render dashboard only (redis:// or rediss://); unset = single-instance behaviour.
+      - key: REDIS_URL
+        sync: false
+      # In production the Redis layer also needs REDIS_ENABLED=true (set it in the dashboard when going
+      # to 2 instances); without it a saved REDIS_URL stays dormant.
+      - key: REDIS_ENABLED
         sync: false
       - key: NODE_ENV
         value: production

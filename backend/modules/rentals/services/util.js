@@ -57,6 +57,7 @@ const num = (v, { min = 0, max = Number.MAX_SAFE_INTEGER, int = false, field = '
 const money = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 // ── In-memory rate limits (per user, sliding window). Fine for one Render instance; resets on restart.
+const sharedLimits = require('../../../utils/sharedRateLimit');
 const buckets = new Map(); // key -> timestamps[]
 setInterval(() => {
   const now = Date.now();
@@ -83,10 +84,16 @@ const hit = (kind, userId) => {
     const retryAfter = Math.max(1, Math.ceil((cfg.windowMs - (now - list[0])) / 1000));
     throw fail(429, 'RATE_LIMITED', cfg.message, { retryAfter });
   }
+  // B1: the same limit across every instance when REDIS_URL is set (utils/sharedRateLimit; no-op otherwise).
+  const sharedRetry = sharedLimits.gate('rentals', key, cfg.max, cfg.windowMs, now);
+  if (sharedRetry !== null) {
+    buckets.set(key, list);
+    throw fail(429, 'RATE_LIMITED', cfg.message, { retryAfter: sharedRetry });
+  }
   list.push(now);
   buckets.set(key, list);
 };
-const resetLimits = () => buckets.clear();
+const resetLimits = () => { buckets.clear(); sharedLimits.resetGate('rentals:'); };
 
 /** Admin audit row (same table as the rest of the admin panel: VerificationLog). Never throws. */
 const audit = async (req, targetId, action, details) => {

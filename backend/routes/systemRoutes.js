@@ -24,6 +24,7 @@ const nominatimLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many address lookups. Please wait a moment.' },
+  ...require('../utils/sharedRateLimit').expressStore('system.nominatimLimiter'),
 });
 
 router.get('/nominatim-proxy', nominatimLimiter, async (req, res) => {

@@ -1,4 +1,8 @@
 const failedLogins = new Map();
+// B1: with REDIS_URL set the failure counts are mirrored in Redis ('zenvy:lock:<key>' hash, 15 min TTL)
+// so 5 wrong passwords lock the account on EVERY instance. The local map stays the source the checks
+// read; syncFromShared() merges the shared count in before a check. Without Redis: unchanged.
+const redis = require('../utils/redis');
 
 const LOCK_WINDOW_MS = 15 * 60 * 1000;
 
@@ -37,6 +41,40 @@ const lockoutKey = (req) => {
 // id, email, name, identifier) call these after resolving the account, so switching fields can
 // never reset the count.
 const MAX_FAILS = 5;
+
+const sharedKey = (key) => `lock:${key}`;
+/** Merge the shared (all instances) count for `key` into the local map. Resolves at once without Redis. */
+const syncFromShared = async (key) => {
+  if (!redis.isReady()) return;
+  const h = await redis.tryCmd((c) => c.hgetall(sharedKey(key)));
+  if (!h || !h.count) return;
+  const count = Number(h.count) || 0;
+  const lockTime = Number(h.lockTime) || 0;
+  if (lockTime && lockTime <= Date.now()) { shareClear(key); return; } // that lock is over: start again
+  const local = failedLogins.get(key) || { count: 0, lockTime: 0 };
+  if (count > local.count || lockTime > (local.lockTime || 0)) {
+    failedLogins.set(key, { count: Math.max(count, local.count), lockTime: Math.max(lockTime, local.lockTime || 0), lastAt: Date.now() });
+  }
+};
+// One more failure everywhere (fire-and-forget). The 5th one stores the lock time for all instances.
+const shareFailure = (key) => {
+  if (!redis.isReady()) return;
+  const k = sharedKey(key);
+  redis.tryCmd((c) => c.multi().hincrby(k, 'count', 1).pexpire(k, LOCK_WINDOW_MS).exec()).then((res) => {
+    const count = res && res[0] && !res[0][0] ? Number(res[0][1]) : 0;
+    if (count >= MAX_FAILS) {
+      const lockTime = Date.now() + LOCK_WINDOW_MS;
+      redis.tryCmd((c) => c.hset(k, 'lockTime', String(lockTime)));
+      const local = failedLogins.get(key) || { count: 0, lockTime: 0 };
+      failedLogins.set(key, { count: Math.max(count, local.count), lockTime: Math.max(lockTime, local.lockTime || 0), lastAt: Date.now() });
+    }
+  });
+};
+const shareClear = (key) => {
+  if (!redis.isReady()) return;
+  redis.tryCmd((c) => c.del(sharedKey(key)));
+};
+
 const isAccountLocked = (key) => {
   const record = failedLogins.get(key);
   if (!record || record.count < MAX_FAILS) return false;
@@ -50,10 +88,22 @@ const recordAccountFailure = (key) => {
   current.lastAt = Date.now();
   if (current.count >= MAX_FAILS) current.lockTime = Date.now() + LOCK_WINDOW_MS;
   failedLogins.set(key, current);
+  shareFailure(key);
 };
-const clearAccountFailures = (key) => failedLogins.delete(key);
+const clearAccountFailures = (key) => { shareClear(key); return failedLogins.delete(key); };
+/** Call (await) before isAccountLocked() so a lock set on another instance applies here too. */
+const syncAccountLock = (key) => (redis.isConfigured() ? syncFromShared(key).catch(() => {}) : Promise.resolve());
 
 const accountLockout = (req, res, next) => {
+  // B1: merge the shared count first (only when REDIS_URL is set; bounded by the command timeout).
+  if (redis.isConfigured() && redis.isReady()) {
+    const key = lockoutKey(req);
+    return syncFromShared(key).catch(() => {}).then(() => accountLockoutLocal(req, res, next));
+  }
+  return accountLockoutLocal(req, res, next);
+};
+
+const accountLockoutLocal = (req, res, next) => {
   const key = lockoutKey(req);
   const record = failedLogins.get(key);
 
@@ -73,6 +123,7 @@ const accountLockout = (req, res, next) => {
     const statusCode = res.statusCode;
     if (statusCode >= 200 && statusCode < 300) {
       failedLogins.delete(key);
+      shareClear(key);
     } else if (statusCode === 401 || statusCode === 400) {
       const current = failedLogins.get(key) || { count: 0, lockTime: 0 };
       current.count += 1;
@@ -81,6 +132,7 @@ const accountLockout = (req, res, next) => {
         current.lockTime = Date.now() + 15 * 60 * 1000; // 15 mins lock
       }
       failedLogins.set(key, current);
+      shareFailure(key);
     }
     return originalSend.apply(this, arguments);
   };
@@ -88,4 +140,4 @@ const accountLockout = (req, res, next) => {
   next();
 };
 
-module.exports = { accountLockout, isAccountLocked, recordAccountFailure, clearAccountFailures };
+module.exports = { accountLockout, isAccountLocked, recordAccountFailure, clearAccountFailures, syncAccountLock };

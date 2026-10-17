@@ -29,6 +29,7 @@ const driverAuthLimiter = rateLimit({
   message: { code: 'RATE_LIMITED', message: 'Too many sign-in attempts. Please try again in 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
+  ...require('../../utils/sharedRateLimit').expressStore('autoride.driverAuthLimiter'),
 });
 driverRouter.post('/auth/register', driverAuthLimiter, handler(DA.register, 'AUTORIDE_DRIVER_REGISTER'));
 driverRouter.post('/auth/login', driverAuthLimiter, accountLockout, handler(DA.login, 'AUTORIDE_DRIVER_LOGIN'));

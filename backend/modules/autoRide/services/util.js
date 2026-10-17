@@ -96,6 +96,7 @@ const newBookingCode = () => {
 const newPin = () => String(crypto.randomInt(0, 10000)).padStart(4, '0');
 
 // ── In-memory rate limits (per account, sliding window). One Render instance; resets on restart.
+const sharedLimits = require('../../../utils/sharedRateLimit');
 const buckets = new Map();
 setInterval(() => {
   const t = Date.now();
@@ -124,10 +125,16 @@ const hit = (kind, id) => {
     const retryAfter = Math.max(1, Math.ceil((cfg.windowMs - (t - list[0])) / 1000));
     throw fail(429, 'RATE_LIMITED', cfg.message, { retryAfter });
   }
+  // B1: the same limit across every instance when REDIS_URL is set (utils/sharedRateLimit; no-op otherwise).
+  const sharedRetry = sharedLimits.gate('autoride', key, cfg.max, cfg.windowMs, t);
+  if (sharedRetry !== null) {
+    buckets.set(key, list);
+    throw fail(429, 'RATE_LIMITED', cfg.message, { retryAfter: sharedRetry });
+  }
   list.push(t);
   buckets.set(key, list);
 };
-const resetLimits = () => buckets.clear();
+const resetLimits = () => { buckets.clear(); sharedLimits.resetGate('autoride:'); };
 
 /** Admin audit row (same table as the rest of the admin panel: VerificationLog). Never throws. */
 const audit = async (req, targetId, action, details) => {

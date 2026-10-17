@@ -175,6 +175,7 @@ const setConfig = async (patch) => {
     await GlobalConfig.create({ key: CONFIG_KEY, value: next, description: 'Zenvy Friends configuration (admin /mod/config)' });
   }
   cache = { at: Date.now(), value: merge(next) };
+  require('../../../utils/cacheBus').broadcast('flags.friends'); // B1: other instances re-read it
   return { config: cache.value };
 };
 
@@ -191,6 +192,8 @@ const isEnabled = (cfg, feature) => {
 const featureMap = (cfg) => Object.fromEntries(FEATURES.map((f) => [f, isEnabled(cfg, f)]));
 
 const clearCache = () => { cache = null; };
+// B1: config written on another instance -> drop ours (utils/cacheBus).
+require('../../../utils/cacheBus').register('flags.friends', clearCache, { resync: clearCache });
 
 module.exports = {
   CONFIG_KEY,

@@ -10,6 +10,10 @@ const { fail } = require('./util');
 const FLAG_KEY = 'VEHICLE_RENTALS_ENABLED';
 const FLAG_TTL_MS = 30 * 1000;
 let flagCache = { at: 0, value: true };
+// B1: the switch written on one instance is re-read by every instance at once (utils/cacheBus).
+const cacheBus = require('../../../utils/cacheBus');
+const forgetFlag = () => { flagCache = { at: 0, value: flagCache.value }; };
+cacheBus.register('flags.rentals', forgetFlag, { resync: forgetFlag });
 
 const readFlag = async ({ fresh = false } = {}) => {
   if (!fresh && Date.now() - flagCache.at < FLAG_TTL_MS) return flagCache.value;
@@ -36,6 +40,7 @@ const writeFlag = async (enabled) => {
   if (row) await row.update({ value: !!enabled });
   else await GlobalConfig.create({ key: FLAG_KEY, value: !!enabled, description: 'Peer-to-peer student vehicle rentals (Others > Rentals)' });
   flagCache = { at: Date.now(), value: !!enabled };
+  cacheBus.broadcast('flags.rentals');
   // GET /api/users/config (all GlobalConfig rows) is response-cached: show the new switch at once.
   try { require('../../../utils/realtime').publish('config', 'updated', FLAG_KEY, { scope: 'global' }); } catch { /* cache just expires */ }
   return !!enabled;

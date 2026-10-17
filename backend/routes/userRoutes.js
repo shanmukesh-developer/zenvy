@@ -21,7 +21,8 @@ const authIpLimiter = rateLimit({
   // Load-test requests (X-Loadtest-Key === env LOADTEST_KEY) skip this IP flood guard only; the
   // per-phone budget below, accountLockout and validation still apply to them.
   skip: (req) => require('../utils/loadtestBypass').skipRateLimit(req),
-  message: { message: 'Too many authentication attempts, please try again after 15 minutes.', code: 'RATE_LIMITED' }
+  message: { message: 'Too many authentication attempts, please try again after 15 minutes.', code: 'RATE_LIMITED' },
+  ...require('../utils/sharedRateLimit').expressStore('user.authIpLimiter'),
 });
 const authPhoneLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -29,7 +30,8 @@ const authPhoneLimiter = rateLimit({
   // Requests without a phone (Google sign-in) share the IP bucket above only.
   skip: (req, res) => !require('../utils/loadtestBypass').rateLimitsActive() || !normalizePhone(String((req.body && req.body.phone) || '')),
   keyGenerator: (req) => `phone:${normalizePhone(String((req.body && req.body.phone) || ''))}`,
-  message: { message: 'Too many attempts for this number, please try again after 15 minutes.', code: 'RATE_LIMITED' }
+  message: { message: 'Too many attempts for this number, please try again after 15 minutes.', code: 'RATE_LIMITED' },
+  ...require('../utils/sharedRateLimit').expressStore('user.authPhoneLimiter'),
 });
 const authLimiter = [authIpLimiter, authPhoneLimiter];
 // C1-6: send-otp costs real money per call, so it gets its own, tighter per-IP flood guard on top
@@ -41,7 +43,8 @@ const otpSendIpLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: OTP_SEND_IP_MAX,
   skip: (req) => require('../utils/loadtestBypass').skipRateLimit(req),
-  message: { message: 'Too many codes requested from this network. Please try again in a few minutes or log in with your password.', code: 'RATE_LIMITED' }
+  message: { message: 'Too many codes requested from this network. Please try again in a few minutes or log in with your password.', code: 'RATE_LIMITED' },
+  ...require('../utils/sharedRateLimit').expressStore('user.otpSendIpLimiter'),
 });
 
 const { accountLockout } = require('../middleware/lockoutMiddleware');

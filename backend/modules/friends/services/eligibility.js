@@ -22,9 +22,16 @@ const userModel = () => getModel('User') || require('../../../models/User').getU
 const profileModel = () => getModel('CampusProfile') || require('../../campus/models/CampusProfile').getCampusProfileModel();
 const campusModel = () => getModel('Campus') || require('../../campus/models/Campus').getCampusModel();
 
-const clearEligibility = (userId) => {
+// B1: with REDIS_URL set the same entry is dropped on every instance (utils/cacheBus; a remote null = all).
+const clearEligibilityLocal = (userId) => {
   if (userId === undefined) cache.clear();
   else cache.delete(String(userId));
+};
+const eligibilityBus = require('../../../utils/cacheBus');
+eligibilityBus.register('friends.eligibility', (userId) => clearEligibilityLocal(userId === null ? undefined : userId), { resync: () => cache.clear() });
+const clearEligibility = (...args) => {
+  clearEligibilityLocal(...args);
+  eligibilityBus.broadcast('friends.eligibility', ...args);
 };
 
 const plainSanction = (s) => ({ id: s.id, scope: s.scope, until: s.until ? new Date(s.until).toISOString() : null });

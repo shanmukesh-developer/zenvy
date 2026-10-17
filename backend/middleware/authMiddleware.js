@@ -26,9 +26,11 @@ const setCachedUser = (userId, user) => {
 
 // Drop a cached account right after a ban / role change / approval change so it applies at once
 // instead of after the 60 s TTL.
-const clearCachedUser = (userId) => {
+// B1: with REDIS_URL set the other instances drop the same entry (suspension / role / password
+// changes take effect everywhere at once, not after the 60 s TTL). utils/cacheBus.
+const clearCachedUser = require('../utils/cacheBus').wrap('auth.user', (userId) => {
   if (userId !== undefined && userId !== null) AUTH_CACHE.delete(userId);
-};
+}, { resync: () => AUTH_CACHE.clear() });
 
 const protect = async (req, res, next) => {
   let token;

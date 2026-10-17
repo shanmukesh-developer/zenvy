@@ -101,6 +101,7 @@ const safeEqual = (a, b) => {
 };
 
 // ── In-memory rate limits (per account / key, sliding window). Resets on restart.
+const sharedLimits = require('../../../utils/sharedRateLimit');
 const buckets = new Map();
 setInterval(() => {
   const t = Date.now();
@@ -127,10 +128,16 @@ const hit = (kind, id, cfg = RATE[kind]) => {
     const retryAfter = Math.max(1, Math.ceil((cfg.windowMs - (t - list[0])) / 1000));
     throw fail(429, 'RATE_LIMITED', cfg.message, { retryAfter });
   }
+  // B1: the same limit across every instance when REDIS_URL is set (utils/sharedRateLimit; no-op otherwise).
+  const sharedRetry = sharedLimits.gate('events', key, cfg.max, cfg.windowMs, t);
+  if (sharedRetry !== null) {
+    buckets.set(key, list);
+    throw fail(429, 'RATE_LIMITED', cfg.message, { retryAfter: sharedRetry });
+  }
   list.push(t);
   buckets.set(key, list);
 };
-const resetLimits = () => buckets.clear();
+const resetLimits = () => { buckets.clear(); sharedLimits.resetGate('events:'); };
 
 /** Admin audit mirror in VerificationLog (the admin panel's shared audit table). Never throws. */
 const adminAudit = async (req, targetId, action, details) => {

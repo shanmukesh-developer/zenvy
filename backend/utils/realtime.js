@@ -249,10 +249,22 @@ const disconnectRevokedSockets = (accountId, tokenVersion = null) => {
   let pending;
   try {
     const campus = typeof ioRef.of === 'function' ? ioRef.of('/campus') : null;
-    pending = Promise.all([
-      Promise.resolve(ioRef.fetchSockets()),
-      campus && typeof campus.fetchSockets === 'function' ? Promise.resolve(campus.fetchSockets()).catch(() => []) : Promise.resolve([]),
-    ]).then(([main, camp]) => [...main, ...camp]);
+    const cluster = require('./socketCluster');
+    if (cluster.isClustered()) {
+      // B1 (Redis adapter): ask every instance, but only for this account's personal rooms (never a
+      // dump of every socket); a Redis failure falls back to this instance's sockets.
+      const id = String(accountId);
+      const mainRooms = [`user_${id}`, `rider_${id}`, `autodriver_${id}`, `restaurant_${id}`];
+      pending = Promise.all([
+        cluster.fetchSockets(ioRef.in(mainRooms)),
+        campus ? cluster.fetchSockets(campus.in(`user:${id}`)).catch(() => []) : Promise.resolve([]),
+      ]).then(([main, camp]) => [...main, ...camp]);
+    } else {
+      pending = Promise.all([
+        Promise.resolve(ioRef.fetchSockets()),
+        campus && typeof campus.fetchSockets === 'function' ? Promise.resolve(campus.fetchSockets()).catch(() => []) : Promise.resolve([]),
+      ]).then(([main, camp]) => [...main, ...camp]);
+    }
   } catch (err) { console.warn('[REALTIME_REVOKE_WARN]', err.message); return Promise.resolve(0); }
   return pending
     .then((sockets) => {

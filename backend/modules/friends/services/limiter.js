@@ -1,5 +1,5 @@
 /**
- * Per-user, per-action sliding-window rate limits. In-memory (Render free = one process).
+ * Per-user, per-action sliding-window rate limits. In-memory, plus a Redis-shared count when REDIS_URL is set.
  * The store is a tiny interface (take / reset) so a Redis-backed store can replace it when REDIS_URL
  * is set and the service is scaled out; nothing else needs to change.
  */
@@ -44,10 +44,21 @@ const memoryStore = () => {
       if (!prefix) { hits.clear(); return; }
       for (const k of [...hits.keys()]) if (k.startsWith(prefix)) hits.delete(k);
     },
+    // Give back a unit taken at `now` (the shared limit refused it after the local one allowed it).
+    untake(key, now) {
+      const list = hits.get(key);
+      if (!list) return;
+      const i = list.lastIndexOf(now);
+      if (i !== -1) list.splice(i, 1);
+    },
   };
 };
 
-let store = memoryStore();
+// B1: with REDIS_URL set the limits are shared by every instance (utils/sharedRateLimit.friendsStore:
+// the same in-memory window plus a Redis-backed count). Without it: the in-memory store, as before.
+let store = require('../../../utils/redis').isConfigured()
+  ? require('../../../utils/sharedRateLimit').friendsStore(memoryStore(), 'friends')
+  : memoryStore();
 
 const define = (action, max, windowMs) => { LIMITS[action] = { max, windowMs }; };
 

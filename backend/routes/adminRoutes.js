@@ -153,8 +153,10 @@ router.get('/audit', getAuditLogs);
 router.get('/rewards-analytics', getRewardsAnalytics);
 router.get('/health', getSystemHealth);
 // P1: server-side performance metrics (utils/perfMetrics.js). ?reset=1 clears the per-route figures.
-router.get('/metrics/perf', (req, res) => {
+router.get('/metrics/perf', async (req, res) => {
   const perf = require('../utils/perfMetrics');
+  // B1: fresh Redis round-trip time (no-op without REDIS_URL; bounded by the command timeout).
+  try { await require('../utils/redis').ping(); } catch { /* reported as not ready */ }
   const snap = perf.snapshot();
   if (String(req.query.reset || '') === '1') perf.resetRoutes();
   res.set('Cache-Control', 'no-store');

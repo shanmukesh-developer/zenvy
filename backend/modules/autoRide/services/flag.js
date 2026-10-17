@@ -17,6 +17,9 @@ const WALLET_KEY = 'AUTO_RIDE_WALLET_ENABLED';
 const SETTINGS_KEY = 'AUTO_RIDE_SETTINGS';
 const TTL_MS = 30 * 1000;
 const cache = new Map(); // key -> { at, value }
+// B1: a switch / settings write on one instance clears the cached value on every instance (utils/cacheBus).
+const cacheBus = require('../../../utils/cacheBus');
+cacheBus.register('flags.autoRide', (key) => { if (key) cache.delete(key); else cache.clear(); }, { resync: () => cache.clear() });
 
 const GC = () => {
   const { getGlobalConfigModel } = require('../../../models/GlobalConfig');
@@ -63,6 +66,7 @@ const writeRow = async (key, value, description) => {
   if (row) await row.update({ value });
   else await GlobalConfig.create({ key, value, description });
   cache.delete(key);
+  cacheBus.broadcast('flags.autoRide', key); // B1: other instances re-read it too
   // GET /api/users/config (all GlobalConfig rows) is response-cached: show the new switch at once.
   try { require('../../../utils/realtime').publish('config', 'updated', key, { scope: 'global' }); } catch { /* cache just expires */ }
 };

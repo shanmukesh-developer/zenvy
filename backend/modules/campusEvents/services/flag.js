@@ -20,6 +20,9 @@ const ONLINE_KEY = 'CAMPUS_EVENTS_ONLINE_PAY_ENABLED';
 const SETTINGS_KEY = 'CAMPUS_EVENTS_SETTINGS';
 const TTL_MS = 30 * 1000;
 const cache = new Map();
+// B1: a switch / settings write on one instance clears the cached value on every instance (utils/cacheBus).
+const cacheBus = require('../../../utils/cacheBus');
+cacheBus.register('flags.campusEvents', (key) => { if (key) cache.delete(key); else cache.clear(); }, { resync: () => cache.clear() });
 
 const GC = () => require('../../../models/GlobalConfig').getGlobalConfigModel();
 const truthy = (v) => v === true || v === 'true' || v === 1 || v === '1' || (v && typeof v === 'object' && v.enabled === true);
@@ -64,6 +67,7 @@ const writeRow = async (key, value, description) => {
   if (row) await row.update({ value });
   else await GlobalConfig.create({ key, value, description });
   cache.delete(key);
+  cacheBus.broadcast('flags.campusEvents', key); // B1: other instances re-read it too
   try { require('../../../utils/realtime').publish('config', 'updated', key, { scope: 'global' }); } catch { /* cache just expires */ }
 };
 

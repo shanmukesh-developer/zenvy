@@ -29,7 +29,7 @@ const generations = new Map(); // group -> number (bumped by invalidate)
 
 const genOf = (group) => generations.get(group) || 0;
 
-const invalidate = (...groups) => {
+const invalidateLocal = (...groups) => {
   for (const group of groups) {
     generations.set(group, genOf(group) + 1);
     const prefix = `${group}|`;
@@ -37,13 +37,24 @@ const invalidate = (...groups) => {
   }
 };
 
-const invalidateAll = () => {
+const invalidateAllLocal = () => {
   for (const key of store.keys()) {
     const group = key.slice(0, key.indexOf('|'));
     generations.set(group, genOf(group) + 1);
   }
   store.clear();
 };
+
+// B1: with REDIS_URL set the other instances drop the same groups (utils/cacheBus); without it these
+// are exactly the local clears.
+// resync (Redis came back: invalidations may have been missed): every group, stored or in flight.
+const resyncLocal = () => {
+  invalidateAllLocal();
+  for (const group of generations.keys()) generations.set(group, genOf(group) + 1);
+};
+const cacheBus = require('./cacheBus');
+const invalidate = cacheBus.wrap('responseCache.invalidate', invalidateLocal, { resync: resyncLocal });
+const invalidateAll = cacheBus.wrap('responseCache.invalidateAll', invalidateAllLocal);
 
 // Path + query with parameters sorted, so ?a=1&b=2 and ?b=2&a=1 share an entry.
 const canonicalUrl = (req) => {

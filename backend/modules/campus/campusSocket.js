@@ -9,6 +9,9 @@ const { cleanImageRef, isBlockedBetween, pushToUsers } = require('./campusHelper
 const { conversationGuard } = require('../friends/guards');
 const { identityFor, maskFor } = require('../friends/services/connectChatIdentity');
 const { registerFriendsSocket } = require('../friends/socket');
+// B1 (multi-instance, REDIS_URL set): cross-instance fetchSockets + shared presence. Off otherwise.
+const socketCluster = require('../../utils/socketCluster');
+const sharedState = require('../../utils/redis').isConfigured() ? require('../../utils/sharedState') : null;
 
 const MESSAGE_TYPES = new Set(['text', 'image', 'voice', 'audio', 'video', 'file', 'poll', 'location', 'sticker', 'gif']);
 const MAX_TEXT = 4000;
@@ -109,6 +112,9 @@ const getProximityLiveCount = (slug) => campusNspRef?.adapter?.rooms?.get('proxi
 
 const initCampusSocket = (io) => {
   const campusNsp = io.of('/campus');
+  // B1: campus presence shared across instances when REDIS_URL is set (push only to users who are
+  // not connected to ANY instance). Heartbeat of this instance's online users every 60 s.
+  if (sharedState) sharedState.presenceStart(() => onlineUsers.keys());
 
   // Connect chats (refType 'connect'): every event is masked per receiving socket so the other person
   // only ever appears as their Connect profile id + Connect name (never account id / real name).
@@ -139,7 +145,8 @@ const initCampusSocket = (io) => {
       (except ? except.to(room) : campusNsp.to(room)).emit(event, payload);
       return;
     }
-    const sockets = await campusNsp.in(room).fetchSockets();
+    // B1: every instance's sockets in the chat (Redis adapter); this instance's only if Redis is down.
+    const sockets = await socketCluster.fetchSockets(campusNsp.in(room));
     for (const s of sockets) {
       if (except && s.id === except.id) continue;
       const viewer = (s.user && s.user.id) || (s.data && s.data.userId) || null;
@@ -185,6 +192,8 @@ const initCampusSocket = (io) => {
         // (utils/realtime.disconnectRevokedSockets).
         tv: Number(decoded.tv) || 0,
       };
+      // B1: visible to fetchSockets() on other instances (socket.user is not).
+      socket.data.user = { id: user.id, role: user.role, tv: Number(decoded.tv) || 0 };
 
       next();
     } catch (err) {
@@ -217,6 +226,7 @@ const initCampusSocket = (io) => {
     // Add to presence
     if (!onlineUsers.has(userId)) {
       onlineUsers.set(userId, new Set());
+      if (sharedState) sharedState.presenceMark(userId, true);
     }
     onlineUsers.get(userId).add(socket.id);
 
@@ -441,8 +451,13 @@ const initCampusSocket = (io) => {
               lastSender: senderName,
               time: new Date(),
             });
-            if (!onlineUsers.has(pId) && shouldPush(pId, chatId)) offline.push(pId);
+            if (!onlineUsers.has(pId) && (sharedState || shouldPush(pId, chatId))) offline.push(pId);
           }
+        }
+        // B1: drop people connected to another instance, then apply the push throttle (as above).
+        if (sharedState && offline.length) {
+          const reallyOffline = await sharedState.presenceFilterOffline(offline.splice(0));
+          for (const pId of reallyOffline) if (shouldPush(pId, chatId)) offline.push(pId);
         }
         if (offline.length) {
           const title = conversation.isGroup ? `${senderName} in ${conversation.name || 'your group'}` : senderName;
@@ -923,7 +938,8 @@ const initCampusSocket = (io) => {
         notifyUsers(campusNsp, calleeIds, 'call:incoming', incoming);
 
         // Callees outside the Campus screen get a push; when they open Campus the ring is re-sent.
-        const offlineCallees = calleeIds.filter((cid) => !onlineUsers.has(cid));
+        let offlineCallees = calleeIds.filter((cid) => !onlineUsers.has(cid));
+        if (sharedState) offlineCallees = await sharedState.presenceFilterOffline(offlineCallees); // B1
         if (offlineCallees.length) {
           pushToUsers(offlineCallees.slice(0, 300),
             `Incoming ${session.callType} call`,
@@ -1039,6 +1055,7 @@ const initCampusSocket = (io) => {
         sockets.delete(socket.id);
         if (sockets.size === 0) {
           onlineUsers.delete(userId);
+          if (sharedState) sharedState.presenceMark(userId, false);
           const liveCallId = userCallIndex.get(userId);
           if (liveCallId) {
             endCallSession(campusNsp, activeCalls.get(liveCallId), 'disconnect');

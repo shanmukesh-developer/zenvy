@@ -81,7 +81,7 @@ const partnerAudit = async (req, targetId, action, details) => {
 // @route   POST /api/restaurants/login
 // Body: { phone, password, app? } (login phone; a stall may also use its WhatsApp number)
 //    or { id | name | identifier, password, app? } (store UUID, exact store name, or a 10-digit phone)
-const { isAccountLocked, recordAccountFailure, clearAccountFailures } = require('../middleware/lockoutMiddleware');
+const { isAccountLocked, recordAccountFailure, clearAccountFailures, syncAccountLock } = require('../middleware/lockoutMiddleware');
 // C1-7: admin took a live store down (see Restaurant.suspendedAt).
 const isSuspendedStore = (store) => !!store && store.isActive === false && !!store.suspendedAt;
 const restaurantLogin = async (req, res) => {
@@ -133,6 +133,7 @@ const restaurantLogin = async (req, res) => {
     }
     // Lock per store (however it was identified) so rotating body fields cannot bypass the limit.
     const lockKey = `store-login:${restaurant.id}`;
+    await syncAccountLock(lockKey); // B1: a lock set on another instance (no-op without REDIS_URL)
     if (isAccountLocked(lockKey)) {
       return res.status(429).json({ message: 'Account locked due to too many failed login attempts. Try again in 15 minutes.' });
     }

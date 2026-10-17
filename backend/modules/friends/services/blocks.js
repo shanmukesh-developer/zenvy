@@ -16,9 +16,10 @@ const blockedIds = async (userId) => {
 
 const isBlocked = async (a, b) => (await blockedIds(a)).has(String(b));
 
-const clearBlocks = (...userIds) => {
+// B1: with REDIS_URL set a block / unblock clears the same entries on every instance (utils/cacheBus).
+const clearBlocks = require('../../../utils/cacheBus').wrap('friends.blocks', (...userIds) => {
   if (!userIds.length) { cache.clear(); return; }
   userIds.forEach((u) => cache.delete(String(u)));
-};
+}, { resync: () => cache.clear() });
 
 module.exports = { blockedIds, isBlocked, clearBlocks };

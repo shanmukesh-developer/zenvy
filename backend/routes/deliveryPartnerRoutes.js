@@ -8,7 +8,8 @@ const router = express.Router();
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 500, // 500+ students share same campus Wi-Fi IP → must allow bulk logins
-  message: { message: 'Too many authentication attempts, please try again after 15 minutes.' }
+  message: { message: 'Too many authentication attempts, please try again after 15 minutes.' },
+  ...require('../utils/sharedRateLimit').expressStore('rider.authLimiter'),
 });
 
 const { accountLockout } = require('../middleware/lockoutMiddleware');
@@ -19,7 +20,7 @@ router.post('/fcm-token', protect, rider, saveFcmToken);
 // Logout on this phone: stop order pushes to its token (partners-3). Any rider session, approved or not.
 router.post('/fcm-token/remove', protect, rider, removeFcmToken);
 // Rider SOS (admin-11): any signed-in rider, approved or not. Rate limited per IP.
-const sosLimiter = rateLimit({ windowMs: 60 * 1000, max: 10, message: { message: 'Too many SOS requests. If you are in danger call 112.' } });
+const sosLimiter = rateLimit({ windowMs: 60 * 1000, max: 10, message: { message: 'Too many SOS requests. If you are in danger call 112.' }, ...require('../utils/sharedRateLimit').expressStore('rider.sosLimiter') });
 router.post('/sos', sosLimiter, protect, rider, triggerSos);
 router.get('/orders/pending', protect, rider, getPendingOrders);
 router.get('/orders/active', protect, rider, getActiveOrders);

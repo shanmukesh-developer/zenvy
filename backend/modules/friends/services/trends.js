@@ -176,9 +176,16 @@ const getTrends = async (campusId, { fresh = false } = {}) => {
   }
 };
 
-const clearTrends = (campusId) => {
+// B1: with REDIS_URL set the same entry is dropped on every instance (utils/cacheBus; a remote null = all).
+const clearTrendsLocal = (campusId) => {
   if (campusId === undefined) cache.clear();
   else cache.delete(String(campusId));
+};
+const trendsBus = require('../../../utils/cacheBus');
+trendsBus.register('friends.trends', (campusId) => clearTrendsLocal(campusId === null ? undefined : campusId), { resync: () => cache.clear() });
+const clearTrends = (...args) => {
+  clearTrendsLocal(...args);
+  trendsBus.broadcast('friends.trends', ...args);
 };
 
 module.exports = {

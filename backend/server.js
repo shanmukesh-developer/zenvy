@@ -82,11 +82,51 @@ const SURGE_MULTIPLIER = 1.25;
 let zoneOrders = {}; // { zoneName: [timestamps] }
 let activeSurgeZones = new Set();
 
+// B1: with Redis the order count and the surge flag are shared by every instance (utils/sharedState):
+// one instance wins each ON / OFF transition, announces it to every socket (Redis adapter) and tells
+// the other instances through the cache bus, so all of them price the same. Without Redis (or while it
+// is down) the per-process logic below is used unchanged.
+const surgeShared = require('./utils/sharedState');
+const surgeBus = require('./utils/cacheBus');
+const setSurgeLocal = (zone, on) => { if (on) activeSurgeZones.add(zone); else activeSurgeZones.delete(zone); };
+surgeBus.register('surge.state', (zone, on) => {
+  if (typeof zone !== 'string') return;
+  setSurgeLocal(zone, !!on);
+  if (on && !zoneOrders[zone]) zoneOrders[zone] = [];
+});
+const checkSurgeShared = async (io, zone, now) => {
+  const count = await surgeShared.surgeRecord(zone, SURGE_WINDOW_MS, now);
+  if (count === null) return false; // Redis not ready: caller runs the local logic
+  if (count >= SURGE_THRESHOLD) {
+    const won = await surgeShared.surgeClaimOn(zone, SURGE_WINDOW_MS);
+    if (!activeSurgeZones.has(zone)) setSurgeLocal(zone, true);
+    if (won) {
+      surgeBus.broadcast('surge.state', zone, true);
+      io.emit('surge_active', { zone, multiplier: SURGE_MULTIPLIER, orderCount: count });
+      log(`[SURGE] Zone ${zone} ACTIVE — ${count} orders (all instances)`);
+    }
+  }
+  return true;
+};
+
 function checkSurgeState(io, zone = 'Amaravathi_Central') {
   if (!zoneOrders[zone]) zoneOrders[zone] = [];
   
   const now = Date.now();
-  zoneOrders[zone].push(now); // Track incoming order for this zone
+  if (require('./utils/redis').isReady()) {
+    zoneOrders[zone].push(now);
+    zoneOrders[zone] = zoneOrders[zone].filter(t => now - t < SURGE_WINDOW_MS);
+    checkSurgeShared(io, zone, now).then((handled) => {
+      if (!handled) checkSurgeLocal(io, zone, Date.now(), false);
+    }).catch((err) => console.warn('[SURGE_SHARED_WARN]', err.message));
+    return;
+  }
+  checkSurgeLocal(io, zone, now, true);
+}
+
+function checkSurgeLocal(io, zone, now, push) {
+  if (!zoneOrders[zone]) zoneOrders[zone] = [];
+  if (push) zoneOrders[zone].push(now); // Track incoming order for this zone
   
   // Clean up old timestamps for this zone
   zoneOrders[zone] = zoneOrders[zone].filter(t => now - t < SURGE_WINDOW_MS);
@@ -109,6 +149,30 @@ function checkSurgeState(io, zone = 'Amaravathi_Central') {
 // Periodic cleanup and check for all zones
 setInterval(() => {
   const now = Date.now();
+  if (require('./utils/redis').isReady()) {
+    // Shared: end a zone's surge once the order count across all instances dropped (one instance wins).
+    Object.keys(zoneOrders).forEach((zone) => {
+      zoneOrders[zone] = zoneOrders[zone].filter(t => now - t < SURGE_WINDOW_MS);
+      (async () => {
+        const count = await surgeShared.surgeCount(zone, SURGE_WINDOW_MS, now);
+        if (count === null) return;
+        if (count >= SURGE_THRESHOLD) {
+          if (!activeSurgeZones.has(zone) && await surgeShared.surgeIsOn(zone)) setSurgeLocal(zone, true);
+          return;
+        }
+        const wasOn = activeSurgeZones.has(zone);
+        const ended = await surgeShared.surgeClaimOff(zone);
+        if (ended === null) return;
+        if (wasOn || ended) setSurgeLocal(zone, false);
+        if (ended) {
+          surgeBus.broadcast('surge.state', zone, false);
+          if (typeof io !== 'undefined') io.emit('surge_ended', { zone });
+          log(`[SURGE] Zone ${zone} ENDED (Timeout, all instances)`);
+        }
+      })().catch((err) => console.warn('[SURGE_SHARED_WARN]', err.message));
+    });
+    return;
+  }
   Object.keys(zoneOrders).forEach(zone => {
     const oldCount = zoneOrders[zone].length;
     zoneOrders[zone] = zoneOrders[zone].filter(t => now - t < SURGE_WINDOW_MS);
@@ -163,6 +227,12 @@ const app = express();
 // `Connection: close` so keep-alive connections end after their current request.
 const lifecycle = require('./utils/lifecycle');
 app.use(lifecycle.connectionCloseWhileDraining);
+// B1: in multi-instance mode (REDIS_URL set / INSTANCE_MODE=multi) every response names the instance
+// that answered (debugging behind Render's load balancer). Nothing is added in single-instance mode.
+const redisLayer = require('./utils/redis');
+if (redisLayer.isMultiInstance()) {
+  app.use((req, res, next) => { res.setHeader('X-Instance', redisLayer.INSTANCE_ID); next(); });
+}
 app.get('/livez', lifecycle.livezHandler);
 app.get('/readyz', lifecycle.readyzHandler);
 
@@ -197,6 +267,8 @@ const rateLimit = require('express-rate-limit');
 // carrying X-Loadtest-Key === env LOADTEST_KEY (no bypass when that env is unset). Limits only.
 const { skipRateLimit, logLoadtestStatus } = require('./utils/loadtestBypass');
 logLoadtestStatus();
+// B1: with REDIS_URL the counts are shared by every instance (falls back to memory if Redis fails).
+const { expressStore: rateLimitStore } = require('./utils/sharedRateLimit');
 
 // Who is calling, for rate limits: the signed-in account (JWT signature VERIFIED, so a forged id
 // cannot dodge the limit) or, when signed out / invalid token, the client IP. Cached on req.
@@ -236,6 +308,8 @@ const globalLimiter = rateLimit({
   message: { message: 'Too many requests, please slow down and try again in a few minutes.', code: 'RATE_LIMITED' },
   standardHeaders: true,
   legacyHeaders: false,
+  // Every /api request passes here: per instance unless REDIS_SHARED_GLOBAL_LIMIT=1 (Redis ops budget).
+  ...rateLimitStore('global', { hot: true }),
 });
 
 // ── Order Spam Shield (Per-User via verified JWT, IP only when signed out) ────────────────────
@@ -247,6 +321,7 @@ const orderRateLimiter = rateLimit({
   message: { message: 'Too many orders in a minute. Please wait a moment and try again.', code: 'TOO_MANY_ORDERS' },
   standardHeaders: true,
   legacyHeaders: false,
+  ...rateLimitStore('orders'),
 });
 
 // ── Auth Rate Limiter (Generous for shared campus IP) ─────────────────────────
@@ -257,6 +332,7 @@ const authRateLimiter = rateLimit({
   message: { message: 'Too many authentication attempts, please try again after 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
+  ...rateLimitStore('auth'),
 });
 
 // Export auth limiter for routes to use
@@ -282,7 +358,11 @@ server.headersTimeout = 70000; // Must be > keepAliveTimeout
 
 // PROCESS_ROLE=worker has no socket server: a stand-in drops every emit (warned once per event) until
 // the Redis emitter lands (Phase 2). 'all' / 'web' get the real socket.io server as before.
-const io = !servesApi(PROCESS_ROLE) ? createNullIo() : new Server(server, {
+// B1: socketCluster.socketOptions() returns these options unchanged in single-instance mode; in
+// multi-instance mode it switches perMessageDeflate off (and SOCKET_TRANSPORTS=websocket can make the
+// server websocket-only). socketCluster.setup() installs the Redis adapter when REDIS_URL is set.
+const socketCluster = require('./utils/socketCluster');
+const io = !servesApi(PROCESS_ROLE) ? createNullIo() : new Server(server, socketCluster.socketOptions({
   cors: { 
     origin: (origin, callback) => {
       if (isAllowedOrigin(origin)) {
@@ -302,7 +382,10 @@ const io = !servesApi(PROCESS_ROLE) ? createNullIo() : new Server(server, {
   perMessageDeflate: { threshold: 1024 }, // Compress messages > 1KB to save bandwidth
   transports: ['websocket', 'polling'], // Prefer WebSocket, fallback to polling
   allowUpgrades: true
-});
+}));
+socketCluster.setup(io);
+// Cross-instance cache invalidation (responseCache, restaurant list, auth cache, flags, friends caches).
+require('./utils/cacheBus').start();
 
 app.set('io', io);
 // Realtime sync layer (data:changed to everyone, admin:changed to admin-room). See utils/realtime.js.
@@ -403,6 +486,9 @@ io.use((socket, next) => {
         if (!account) return next(new Error('Authentication error: Account not found'));
         if (account.suspended) return next(new Error('Authentication error: Account suspended'));
         socket.user = { ...decoded, id: account.id, role: account.role };
+        // B1: socket.data travels with fetchSockets() across instances (socket.user does not), so
+        // session revocation (utils/realtime.disconnectRevokedSockets) can find remote sockets too.
+        socket.data.user = { id: account.id, role: account.role, tv: Number(decoded.tv) || 0 };
         next();
       })
       .catch((err) => {
@@ -628,14 +714,20 @@ app.get('/api/health', async (req, res) => {
     }
   }
 
-  res.json({ 
+  const body = { 
     status: 'online', 
     nexus: dbStatus,
     dialect: instance ? instance.getDialect() : 'none',
     host: dbHost,
     timestamp: new Date(),
     uptime: process.uptime()
-  });
+  };
+  // B1 (additive, multi-instance mode only): which instance answered and whether Redis is reachable.
+  if (redisLayer.isMultiInstance()) {
+    body.instance = redisLayer.INSTANCE_ID;
+    body.redis = redisLayer.isConfigured() ? (redisLayer.isReady() ? 'ok' : 'down') : 'off';
+  }
+  res.json(body);
 });
 
 app.get(['/api/ping', '/ping'], (req, res) => {
@@ -1416,7 +1508,11 @@ const initializeApp = async () => {
     const activeCallRooms = new Map(); // callRoom -> Map of socketId -> { userId, userName }
     const roomCartSnapshots = new Map(); // roomCode -> { cart, at } (latest shared basket, for late joiners)
     const callHosts = new Map(); // callRoom -> socketId of the participant who started the call
+    // B1: while Redis is up (REDIS_URL set) call rooms live in Redis instead (utils/afterDarkCalls).
+    const afterDarkCalls = require('./utils/afterDarkCalls');
     const CART_ROOM_PATTERN = /^ZN-[A-Z0-9]{4,8}$/;
+    // B1: shared-cart members + latest basket mirrored in Redis when REDIS_URL is set (utils/sharedState).
+    const sharedState = require('./utils/redis').isConfigured() ? require('./utils/sharedState') : null;
     const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
     // Per-process, socket-bound housekeeping (NOT single-runner jobs): they read THIS process's socket
@@ -1453,8 +1549,11 @@ const initializeApp = async () => {
       const timer = setTimeout(async () => {
         riderOfflineTimers.delete(riderId);
         try {
-          const live = io.sockets.adapter.rooms.get(`rider_${riderId}`);
-          if (live && live.size > 0) return; // reconnected
+          // B1: a rider may be connected to ANOTHER instance (Redis adapter). Not sure (Redis down /
+          // timeout)? Check again later instead of taking an online rider out of dispatch.
+          const presence = await socketCluster.roomPresence(io.of('/'), `rider_${riderId}`);
+          if (presence.present) return; // reconnected
+          if (!presence.certain) { scheduleRiderOfflineCheck(riderId); return; }
           const { getDeliveryPartnerModel } = require('./models/DeliveryPartner');
           const { riderFixAgeMs } = require('./utils/riderDispatch');
           const DeliveryPartner = getDeliveryPartnerModel();
@@ -1485,6 +1584,7 @@ const initializeApp = async () => {
         for (const p of online) {
           const live = io.sockets.adapter.rooms.get(`rider_${p.id}`);
           if ((live && live.size > 0) || p.currentOrderId || riderOfflineTimers.has(p.id)) continue;
+          // B1: connected to another instance? (the timer re-checks across instances before acting)
           if (riderFixAgeMs(p) >= RIDER_OFFLINE_GRACE_MS) scheduleRiderOfflineCheck(p.id);
         }
       } catch (err) {
@@ -1626,16 +1726,24 @@ const initializeApp = async () => {
         try {
           if (CART_ROOM_PATTERN.test(room)) {
             const userId = isGuestSocket() ? socket.id : socket.user.id;
-            const existed = activeCartRooms.has(room) && activeCartRooms.get(room).size > 0;
+            let existed = activeCartRooms.has(room) && activeCartRooms.get(room).size > 0;
             if (!activeCartRooms.has(room)) activeCartRooms.set(room, new Set());
             activeCartRooms.get(room).add(userId);
             socket.effectiveCartId = userId;
+            // B1: members / latest basket of this room on EVERY instance (null without Redis).
+            const shared = sharedState ? await sharedState.cartJoin(room, userId) : null;
             await socket.join(room);
             // Late joiners get the room's current basket straight away instead of an empty one.
-            const snapshot = roomCartSnapshots.get(room);
+            let snapshot = roomCartSnapshots.get(room);
+            let members = activeCartRooms.get(room).size;
+            if (shared) {
+              existed = existed || shared.existed;
+              members = Math.max(members, shared.members);
+              if (shared.snapshot && (!snapshot || shared.snapshot.at > snapshot.at)) snapshot = shared.snapshot;
+            }
             if (snapshot) socket.emit('cart_updated', snapshot.cart);
             log(`[JOIN_ROOM] ${socket.id} -> ${room}`);
-            return reply({ ok: true, room, exists: existed, members: activeCartRooms.get(room).size });
+            return reply({ ok: true, room, exists: existed, members });
           }
 
           if (room === 'admin_room' || room === 'admin-room') {
@@ -1689,7 +1797,9 @@ const initializeApp = async () => {
           return;
         }
         const cart = Array.isArray(data.cart) ? data.cart.slice(0, 100) : [];
-        roomCartSnapshots.set(room, { cart, at: Date.now() });
+        const snapAt = Date.now();
+        roomCartSnapshots.set(room, { cart, at: snapAt });
+        if (sharedState) sharedState.cartSaveSnapshot(room, cart, snapAt);
         socket.to(room).emit('cart_updated', cart);
         log(`[CART_SYNC] Room ${room} sync: ${cart.length} items`);
       });
@@ -2014,31 +2124,8 @@ const initializeApp = async () => {
         const callRoom = `afterdark_call_${friendshipId}`;
         const userName = await getDisplayName();
 
-        if (!activeCallRooms.has(callRoom)) {
-          activeCallRooms.set(callRoom, new Map());
-        }
-        const roomMap = activeCallRooms.get(callRoom);
-
-        if (roomMap.size >= 20) {
-          socket.emit('call_error', { message: 'This lounge is full (Max 20 participants).' });
-          return;
-        }
-
-        socket.join(callRoom);
-        if (roomMap.size === 0) callHosts.set(callRoom, socket.id);
-        roomMap.set(socket.id, {
-          userId: socket.user.id,
-          socketId: socket.id,
-          userName,
-          mute: !!data.mute,
-          video: !!data.video,
-          isSpeaker: data.isSpeaker !== undefined ? !!data.isSpeaker : true,
-          requestToSpeak: false,
-          isHost: callHosts.get(callRoom) === socket.id
-        });
-
         // Initiator starting the call: ring the friend (socket + push)
-        if (roomMap.size === 1) {
+        const ringFriend = () => {
           const groupRoom = `afterdark_${friendshipId}`;
           socket.to(groupRoom).emit('incoming_call_signal', {
             groupId: friendshipId,
@@ -2093,7 +2180,46 @@ const initializeApp = async () => {
               console.error('[CALL_PUSH_ERR]', err);
             }
           })();
+        };
+
+        // B1: Redis-shared call state when REDIS_URL is set and Redis is up (utils/afterDarkCalls).
+        if (afterDarkCalls.active()) {
+          const handled = await afterDarkCalls.join(io, socket, callRoom, {
+            userId: socket.user.id,
+            socketId: socket.id,
+            userName,
+            mute: !!data.mute,
+            video: !!data.video,
+            isSpeaker: data.isSpeaker !== undefined ? !!data.isSpeaker : true,
+            requestToSpeak: false,
+          }, ringFriend);
+          if (handled) { log(`[AFTER_DARK_CALL] User ${socket.user.id} joined call ${callRoom} (shared)`); return; }
         }
+
+        if (!activeCallRooms.has(callRoom)) {
+          activeCallRooms.set(callRoom, new Map());
+        }
+        const roomMap = activeCallRooms.get(callRoom);
+
+        if (roomMap.size >= 20) {
+          socket.emit('call_error', { message: 'This lounge is full (Max 20 participants).' });
+          return;
+        }
+
+        socket.join(callRoom);
+        if (roomMap.size === 0) callHosts.set(callRoom, socket.id);
+        roomMap.set(socket.id, {
+          userId: socket.user.id,
+          socketId: socket.id,
+          userName,
+          mute: !!data.mute,
+          video: !!data.video,
+          isSpeaker: data.isSpeaker !== undefined ? !!data.isSpeaker : true,
+          requestToSpeak: false,
+          isHost: callHosts.get(callRoom) === socket.id
+        });
+
+        if (roomMap.size === 1) ringFriend();
 
         // Send list of all current participants
         const participants = Array.from(roomMap.values());
@@ -2127,14 +2253,16 @@ const initializeApp = async () => {
         log(`[AFTER_DARK_CALL] User ${socket.user?.id} left call ${callRoom}`);
       };
 
-      socket.on('leave_after_dark_call', (data) => {
+      socket.on('leave_after_dark_call', async (data) => {
         const callRoom = `afterdark_call_${data?.groupId}`;
         socket.leave(callRoom);
+        if (afterDarkCalls.active() && await afterDarkCalls.leave(io, socket, callRoom)) return;
         leaveCallRoom(callRoom);
       });
 
-      socket.on('update_call_state', (data) => {
+      socket.on('update_call_state', async (data) => {
         const callRoom = `afterdark_call_${data?.groupId}`;
+        if (afterDarkCalls.active() && await afterDarkCalls.updateState(io, socket, callRoom, data)) return;
         const roomMap = activeCallRooms.get(callRoom);
         if (roomMap && roomMap.has(socket.id)) {
           const participant = roomMap.get(socket.id);
@@ -2152,8 +2280,9 @@ const initializeApp = async () => {
       });
 
       // Host-only moderation
-      socket.on('approve_speaker', (data) => {
+      socket.on('approve_speaker', async (data) => {
         const callRoom = `afterdark_call_${data?.groupId}`;
+        if (afterDarkCalls.active() && await afterDarkCalls.moderate(io, socket, callRoom, data.targetSocketId, 'approve', data.groupId)) return;
         const roomMap = activeCallRooms.get(callRoom);
         if (!roomMap || callHosts.get(callRoom) !== socket.id) return;
         if (roomMap.has(data.targetSocketId)) {
@@ -2168,8 +2297,9 @@ const initializeApp = async () => {
         }
       });
 
-      socket.on('mute_user', (data) => {
+      socket.on('mute_user', async (data) => {
         const callRoom = `afterdark_call_${data?.groupId}`;
+        if (afterDarkCalls.active() && await afterDarkCalls.moderate(io, socket, callRoom, data.targetSocketId, 'mute', data.groupId)) return;
         const roomMap = activeCallRooms.get(callRoom);
         if (!roomMap || callHosts.get(callRoom) !== socket.id) return;
         if (roomMap.has(data.targetSocketId)) {
@@ -2439,6 +2569,10 @@ const initializeApp = async () => {
         for (const callRoom of Array.from(activeCallRooms.keys())) {
           if (activeCallRooms.get(callRoom)?.has(socket.id)) leaveCallRoom(callRoom);
         }
+        // B1: shared (Redis) call rooms this socket joined.
+        for (const callRoom of afterDarkCalls.roomsOf(socket)) {
+          afterDarkCalls.leave(io, socket, callRoom).catch((err) => console.warn('[AFTER_DARK_CALL_LEAVE_WARN]', err.message));
+        }
         // Forget this socket's shared-cart membership (a signed-in member stays listed while
         // another of their sockets is still in the room).
         const memberId = socket.effectiveCartId;
@@ -2447,7 +2581,12 @@ const initializeApp = async () => {
             if (!members.has(memberId)) continue;
             const live = io.sockets.adapter.rooms.get(room) || new Set();
             const stillHere = Array.from(live).some((sid) => sid !== socket.id && io.sockets.sockets.get(sid)?.effectiveCartId === memberId);
-            if (!stillHere) members.delete(memberId);
+            if (!stillHere) {
+              members.delete(memberId);
+              // B1: this instance no longer has the member in the room (another instance may; it
+              // re-adds them on their next join).
+              if (sharedState) sharedState.cartLeave(room, memberId);
+            }
           }
         }
       });
@@ -2558,6 +2697,8 @@ const startServer = () => {
       if (instance) await instance.close();
     },
     onDrainStart: refuseHeldSockets,
+    // B1: close the Redis connections last (only when REDIS_URL is set).
+    ...(redisLayer.isConfigured() ? { closeRedis: () => redisLayer.close() } : {}),
   });
   lifecycle.installSignalHandlers();
 

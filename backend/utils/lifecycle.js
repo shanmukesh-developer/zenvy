@@ -154,11 +154,17 @@ const readinessReport = () => {
   if (shuttingDown) status = 'draining';
   else if (!dbReady) status = 'starting';
   else if (!healthy) status = 'db_unavailable';
-  return {
+  const report = {
     status,
     db: healthy ? 'ok' : (ping.ran ? 'error' : 'unknown'),
     uptime: Math.round(process.uptime()),
   };
+  // B1: multi-instance mode (REDIS_URL set / INSTANCE_MODE=multi) says which instance answered.
+  try {
+    const redis = require('./redis');
+    if (redis.isMultiInstance()) report.instance = redis.INSTANCE_ID;
+  } catch { /* single instance */ }
+  return report;
 };
 
 // ── Express handlers ──────────────────────────────────────────────────────────────────────────────
@@ -187,6 +193,7 @@ let deps = {
   stopJobs: null,
   flushLogs: null,
   closeDb: null,
+  closeRedis: null,
   onDrainStart: null,
   exit: (code) => process.exit(code),
 };
@@ -211,7 +218,9 @@ const drainSockets = async (io, drainMs, deadline) => {
   if (!io || io.isNullIo || !io.engine) return { closed: 0 };
   const initial = engineClients(io).length;
   try {
-    io.emit('server:draining', { reconnect: true, retryAfterMs: 1000, at: new Date().toISOString() });
+    // Only THIS instance's sockets: with the Redis adapter a plain io.emit would reach every instance.
+    const target = io.local && typeof io.local.emit === 'function' ? io.local : io;
+    target.emit('server:draining', { reconnect: true, retryAfterMs: 1000, at: new Date().toISOString() });
   } catch (err) { console.warn('[SHUTDOWN] draining emit failed:', err.message); }
   if (!initial) return { closed: 0, initial };
   await sleep(Math.min(250, drainMs)); // let the draining event flush before the first close
@@ -307,6 +316,12 @@ const runShutdown = async (signal) => {
       await withTimeout(Promise.resolve().then(() => deps.closeDb()), Math.max(500, hardDeadline - Date.now() - 200), 'sequelize.close');
       console.log(`✅ [SHUTDOWN] database closed at ${t()}`);
     } catch (err) { console.warn(`[SHUTDOWN] database close: ${err.message}`); }
+  }
+  if (deps.closeRedis) {
+    try {
+      await withTimeout(Promise.resolve().then(() => deps.closeRedis()), Math.max(300, Math.min(1500, hardDeadline - Date.now() - 100)), 'redis close');
+      console.log(`✅ [SHUTDOWN] redis closed at ${t()}`);
+    } catch (err) { console.warn(`[SHUTDOWN] redis close: ${err.message}`); }
   }
   clearTimeout(hard);
   console.log(`👋 [SHUTDOWN] done in ${t()}: exiting (code 0)`);

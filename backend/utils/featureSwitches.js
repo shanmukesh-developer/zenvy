@@ -17,6 +17,13 @@ const SWITCHES = Object.freeze({
 });
 
 const cache = new Map(); // name -> { at, value }
+// B1: a switch flipped on one instance is re-read by every instance at once (utils/cacheBus).
+const cacheBus = require('./cacheBus');
+// Marked stale (not deleted): peek() keeps answering the last known value while it re-reads.
+const markStale = (name) => {
+  for (const [k, hit] of cache) if (!name || k === name) cache.set(k, { at: 0, value: hit.value });
+};
+cacheBus.register('flags.switches', markStale, { resync: () => markStale() });
 
 const configModel = () => {
   try { return require('../models/GlobalConfig').getGlobalConfigModel(); } catch { return null; }
@@ -62,6 +69,7 @@ const setOn = async (name, enabled) => {
   if (row) await row.update({ value: !!enabled });
   else await GlobalConfig.create({ key: sw.key, value: !!enabled, description: `${sw.label} on/off (admin Friends moderation)` });
   cache.set(name, { at: Date.now(), value: !!enabled });
+  cacheBus.broadcast('flags.switches', name);
   try { require('./realtime').publish('config', 'updated', sw.key, { scope: 'global' }); } catch { /* cache just expires */ }
   return !!enabled;
 };

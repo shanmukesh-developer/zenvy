@@ -9,7 +9,8 @@ const router = express.Router();
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 30,
-  message: { message: 'Too many authentication attempts, please try again after 15 minutes.' }
+  message: { message: 'Too many authentication attempts, please try again after 15 minutes.' },
+  ...require('../utils/sharedRateLimit').expressStore('store.authLimiter'),
 });
 
 const { accountLockout } = require('../middleware/lockoutMiddleware');

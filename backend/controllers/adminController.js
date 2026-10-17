@@ -18,12 +18,14 @@ let cachedRestaurantsAt = 0;
 const RESTAURANTS_CACHE_TTL_MS = 60 * 1000;
 const extraCacheClears = [];
 const responseCache = require('../utils/responseCache');
-const clearRestaurantsCache = () => {
+const clearRestaurantsCacheLocal = () => {
   cachedRestaurantsResponse = null;
   cachedRestaurantsAt = 0;
   try { responseCache.invalidate('catalog'); } catch { /* never break a write */ }
   for (const fn of extraCacheClears) { try { fn(); } catch { /* never break a write */ } }
 };
+// B1: with REDIS_URL set every other instance clears its listing caches too (utils/cacheBus).
+const clearRestaurantsCache = require('../utils/cacheBus').wrap('restaurants.list', clearRestaurantsCacheLocal, { resync: clearRestaurantsCacheLocal });
 exports.clearRestaurantsCache = clearRestaurantsCache;
 // Other listing caches (GET /api/restaurants) register here so every store/product change clears them.
 exports.onRestaurantsCacheClear = (fn) => { if (typeof fn === 'function') extraCacheClears.push(fn); };

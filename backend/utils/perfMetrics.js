@@ -257,10 +257,25 @@ const snapshot = () => {
   const tl = Math.min(totals.n, totals.ring.length);
   let cache = null;
   try { cache = require('./responseCache').stats(); } catch { cache = null; }
+  // B1: which instance answered, and the Redis layer's health (never the URL / password).
+  let instanceId = null;
+  let redisInfo = null;
+  try {
+    const redis = require('./redis');
+    instanceId = redis.INSTANCE_ID;
+    redisInfo = {
+      ...redis.status(),
+      socketAdapter: require('./socketCluster').isClustered(),
+      cacheBus: require('./cacheBus').status(),
+      rateLimits: require('./sharedRateLimit').status(),
+    };
+  } catch { redisInfo = null; }
   return {
     since: new Date(startedAt).toISOString(),
     uptimeS: Math.round(process.uptime()),
     pid: process.pid,
+    instanceId,
+    redis: redisInfo,
     totals: {
       requests: totals.count,
       avgMs: r1(totals.sumMs / Math.max(1, totals.count)),
