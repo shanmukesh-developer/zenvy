@@ -49,6 +49,8 @@ const { initRentalsModels } = require('../modules/rentals');
 const { initAutoRideModels } = require('../modules/autoRide');
 
 const initializeAllModels = (instance) => {
+  // P1 perf: per-request DB time / query count + pool wait (utils/perfMetrics), dev-only DEV_DB_LATENCY_MS.
+  try { require('../utils/perfMetrics').instrumentSequelize(instance); } catch (e) { console.warn('[PERF] instrumentation skipped:', e.message); }
   initUserModel(instance);
   initCampusModels(instance);
   initAppConfigModel(instance);

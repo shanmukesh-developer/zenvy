@@ -9,7 +9,13 @@
 //   (adminController.clearRestaurantsCache, utils/realtime.publish, vault claim). The TTL is only the
 //   backstop for writes that do not announce themselves (open/closed by the clock, rating roll-ups).
 //
-// Only use on handlers that never read req.user / cookies / Authorization: the key is the URL alone.
+// • Concurrent misses for the same key are coalesced (P1): the first request runs the handler, the
+//   others wait for its entry (up to COALESCE_WAIT_MS) instead of all hitting the database at once
+//   after an expiry / invalidation. A non-200 / non-JSON leader lets the waiters run the handler.
+// • The gzip of a new entry runs on the libuv threadpool (zlib.gzip), not on the event loop.
+//
+// Only use on handlers that never read req.user / cookies / Authorization: the key is the URL alone
+// (or the `key(req)` function, which must also depend on public request data only).
 
 const crypto = require('crypto');
 const zlib = require('zlib');
@@ -51,17 +57,21 @@ const canonicalUrl = (req) => {
   return qs ? `${path}?${qs}` : path;
 };
 
-const buildEntry = (payload, ttl, gen) => {
+const buildBody = (payload) => {
   const json = JSON.stringify(payload);
   const body = Buffer.from(json === undefined ? 'null' : json, 'utf8');
   const hash = crypto.createHash('sha1').update(body).digest('base64').slice(0, 27);
   const etag = `W/"${body.length.toString(16)}-${hash}"`;
-  let gz = null;
-  if (body.length >= GZIP_MIN_BYTES) {
-    try { gz = zlib.gzipSync(body, { level: 6 }); } catch { gz = null; }
-  }
-  return { body, gz, etag, at: Date.now(), ttl, gen };
+  return { body, etag };
 };
+
+// gzip off the event loop (threadpool). Resolves null when compression fails (plain body is served).
+const gzipAsync = (body) => new Promise((resolve) => {
+  if (body.length < GZIP_MIN_BYTES) return resolve(null);
+  try {
+    zlib.gzip(body, { level: 6 }, (err, out) => resolve(err ? null : out));
+  } catch { resolve(null); }
+});
 
 const put = (key, entry) => {
   if (store.has(key)) store.delete(key);
@@ -97,10 +107,13 @@ const sendEntry = (req, res, entry, status) => {
 // the whole document back): they skip the cache entirely and get Cache-Control: no-store.
 // Only checked when the request carries a credential, so anonymous traffic pays nothing.
 const hasCredential = (req) => !!((req.headers && req.headers.authorization) || /(?:^|;\s*)token=/.test(String((req.headers && req.headers.cookie) || '')));
+// Resolved lazily once (authMiddleware is loaded after this module in some boot orders).
+let authMiddlewareMod = null;
+const authMiddleware = () => authMiddlewareMod || (authMiddlewareMod = require('../middleware/authMiddleware'));
 const liveAdminBypass = async (req) => {
   if (!hasCredential(req)) return false;
   try {
-    return await require('../middleware/authMiddleware').isLiveAdminRequest(req);
+    return await authMiddleware().isLiveAdminRequest(req);
   } catch {
     return false;
   }
@@ -119,6 +132,11 @@ const cacheGet = (group, { ttlMs = 30 * 1000, key, bypass } = {}) => (req, res, 
   return serve(group, ttlMs, key, req, res, next);
 };
 
+// key -> { gen, waiters: [fn(entry|null)] } for the request currently building that entry.
+const inflight = new Map();
+const COALESCE_WAIT_MS = 5000;
+const MAX_WAITERS = 2000;
+
 const serve = (group, ttlMs, key, req, res, next) => {
   const cacheKey = `${group}|${key ? key(req) : canonicalUrl(req)}`;
   const gen = genOf(group);
@@ -126,25 +144,75 @@ const serve = (group, ttlMs, key, req, res, next) => {
   if (hit && hit.gen === gen && Date.now() - hit.at < hit.ttl) return sendEntry(req, res, hit, 'HIT');
   if (hit) store.delete(cacheKey);
 
+  // Another request is already building this entry (same generation): wait for it.
+  const flight = inflight.get(cacheKey);
+  if (flight && flight.gen === gen && flight.waiters.length < MAX_WAITERS) {
+    return new Promise((resolve) => {
+      let settled = false;
+      const waiter = (entry) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        try {
+          if (entry) {
+            if (!res.headersSent) sendEntry(req, res, entry, 'HIT');
+          } else {
+            next(); // the leader's response was not cacheable: run the handler for this request
+          }
+        } finally { resolve(); }
+      };
+      const timer = setTimeout(() => {
+        const i = flight.waiters.indexOf(waiter);
+        if (i !== -1) flight.waiters.splice(i, 1);
+        waiter(null);
+      }, COALESCE_WAIT_MS);
+      if (timer.unref) timer.unref();
+      flight.waiters.push(waiter);
+    });
+  }
+
+  const mine = { gen, waiters: [] };
+  inflight.set(cacheKey, mine);
+  let released = false;
+  const release = (entry) => {
+    if (released) return;
+    released = true;
+    if (inflight.get(cacheKey) === mine) inflight.delete(cacheKey);
+    const ws = mine.waiters;
+    mine.waiters = [];
+    for (const w of ws) { try { w(entry); } catch { /* one waiter never breaks the others */ } }
+  };
+  // A handler that answers without res.json (error handler, res.send, 304 from elsewhere) or a client
+  // that goes away still releases the waiters.
+  res.once('finish', () => release(null));
+  res.once('close', () => release(null));
+
   const originalJson = res.json.bind(res);
   res.json = (payload) => {
     res.json = originalJson;
     const code = res.statusCode || 200;
-    if (code !== 200) return originalJson(payload);
-    let entry;
+    if (code !== 200) { release(null); return originalJson(payload); }
+    let built;
     try {
-      entry = buildEntry(payload, ttlMs, gen);
+      built = buildBody(payload);
     } catch {
+      release(null);
       return originalJson(payload);
     }
-    // A write that landed while this response was being built bumped the generation: serve this
-    // response, but do not keep it.
-    if (genOf(group) === gen) put(cacheKey, entry);
-    return sendEntry(req, res, entry, 'MISS');
+    gzipAsync(built.body).then((gz) => {
+      const entry = { body: built.body, gz, etag: built.etag, at: Date.now(), ttl: ttlMs, gen };
+      // A write that landed while this response was being built bumped the generation: serve this
+      // response, but do not keep it.
+      if (genOf(group) === gen) put(cacheKey, entry);
+      try {
+        if (!res.headersSent) sendEntry(req, res, entry, 'MISS');
+      } finally { release(entry); }
+    });
+    return res;
   };
   next();
 };
 
-const stats = () => ({ entries: store.size, groups: Object.fromEntries(generations) });
+const stats = () => ({ entries: store.size, inflight: inflight.size, groups: Object.fromEntries(generations) });
 
 module.exports = { cacheGet, invalidate, invalidateAll, canonicalUrl, stats, liveAdminBypass };

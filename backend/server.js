@@ -5,7 +5,7 @@ const compression = require('compression');
 const cookieParser = require('cookie-parser');
 const http = require('http');
 const { Server } = require('socket.io');
-const { connectDB } = require('./config/db');
+const { connectDB, getSequelize: getDbInstance } = require('./config/db');
 const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
@@ -165,6 +165,12 @@ const lifecycle = require('./utils/lifecycle');
 app.use(lifecycle.connectionCloseWhileDraining);
 app.get('/livez', lifecycle.livezHandler);
 app.get('/readyz', lifecycle.readyzHandler);
+
+// P1 perf metrics (utils/perfMetrics.js): per-route count / p50 / p95 / DB time / query count, a
+// `Server-Timing: app;dur=…, db;dur=…` header on every response, GET /api/admin/metrics/perf (admin)
+// and one `[PERF]` line per minute with traffic (PERF_LOG=0 disables). /livez and /readyz are not timed.
+const perfMetrics = require('./utils/perfMetrics');
+app.use(perfMetrics.middleware());
 
 // Layer 0: CORS (Origin whitelist) - Handled at the very top to prevent rate-limiter preflight blockers
 app.use(cors({
@@ -500,10 +506,18 @@ app.use(securityHeaders);
 app.use(botGuard);
 
 // Layer 4: Morgan Enterprise Logging (with trace ID)
-app.use(morgan(':method :url :status :res[content-length] - :response-time ms'));
+// ACCESS_LOG=all (default, one line per request, unchanged) | errors (only status >= 400) | off.
+// At hundreds of req/s the per-request line is a synchronous stdout write (pipes on Linux): set
+// ACCESS_LOG=errors on Render; the [PERF] line (utils/perfMetrics) still summarises traffic per minute.
+const ACCESS_LOG = String(process.env.ACCESS_LOG || 'all').trim().toLowerCase();
+app.use(morgan(':method :url :status :res[content-length] - :response-time ms', ACCESS_LOG === 'off'
+  ? { skip: () => true }
+  : (ACCESS_LOG === 'errors' ? { skip: (req, res) => res.statusCode < 400 } : {})));
 
 // Layer 6: Compression & Parsing
-app.use(compression({ level: 6, threshold: 512 })); // Compress responses > 512 bytes
+// gzip level 6 (default speed/ratio); bodies under 1 KB go out as is (gzip framing ~20 B + CPU buys
+// nothing there). Cached public reads arrive pre-compressed (utils/responseCache) and are skipped.
+app.use(compression({ level: 6, threshold: 1024 }));
 app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
@@ -582,8 +596,7 @@ app.get('/api/health', async (req, res) => {
     res.set('Retry-After', String(STARTUP_RETRY_AFTER_SECONDS));
     return res.status(503).json({ status: 'starting', timestamp: new Date(), uptime: process.uptime() });
   }
-  const { getSequelize } = require('./config/db');
-  const instance = getSequelize();
+  const instance = getDbInstance(); // resolved at boot (a require() per health call cost fs stats)
   let dbStatus = 'disconnected';
   
   let dbHost = 'unknown';
@@ -1383,6 +1396,7 @@ const initializeApp = async () => {
     app.use(errorHandler);
 
     // Socket.io
+    const afterDarkMod = require('./utils/afterDark');
     const activeCartRooms = new Map(); // roomCode -> Set of userId
     const activeCallRooms = new Map(); // callRoom -> Map of socketId -> { userId, userName }
     const roomCartSnapshots = new Map(); // roomCode -> { cart, at } (latest shared basket, for late joiners)
@@ -1849,7 +1863,7 @@ const initializeApp = async () => {
       // --- Zenvy After Dark Social Engine ---
       // Rooms are keyed by an accepted Friendship id; only the two friends may join, and only
       // during After Dark hours (utils/afterDark.js, IST). Guests are never allowed.
-      const { isAfterDarkNow, afterDarkStatus } = require('./utils/afterDark');
+      const { isAfterDarkNow, afterDarkStatus } = afterDarkMod; // resolved once, not per socket connection
       const afterDarkClosed = () => {
         // C2: admin kill switch (cached GlobalConfig AFTER_DARK_ENABLED) closes it whatever the hour.
         if (!require('./utils/featureSwitches').peek('afterDark')) {
@@ -2489,6 +2503,7 @@ const startServer = () => {
     console.log(`🚀 Server listening on port ${PORT} — initializing database in the background...`);
     // Cached database ping for /readyz and /api/health (one SELECT 1 every ~5 s, 1 s timeout).
     lifecycle.startDbPing(() => require('./config/db').getSequelize());
+    perfMetrics.startLogger();
 
     // ── Self-Ping Keep-Alive (Prevents Render Free Tier Sleep) ──
     // Per process, no data written. KEEPALIVE=false switches it off (paid plans never sleep).

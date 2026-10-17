@@ -8,6 +8,16 @@ const realRating = (r) => (Number(r) > 0 ? Number(r) : null);
 // LIKE wildcards typed by users are treated as plain spaces.
 const cleanQuery = (q) => String(q || '').replace(/[%_]/g, ' ').trim().slice(0, 60);
 
+// P1: responseCache key. The response depends only on the cleaned query (never on the caller), so
+// /api/search and /api/users/search share entries. ASCII queries are lower-cased (ILIKE on Postgres
+// and SQLite's LIKE are case-insensitive for ASCII); anything else keeps its exact spelling.
+const searchCacheKey = (req) => {
+  const raw = req && req.query ? req.query.q : '';
+  const q = cleanQuery(Array.isArray(raw) ? raw[raw.length - 1] : raw);
+  if (q.length < 2) return 'search|trending';
+  return `search|q=${/^[ -~]*$/.test(q) ? q.toLowerCase() : q}`;
+};
+
 // @desc    Global search across restaurants and menu items
 // @route   GET /api/search
 const globalSearch = async (req, res) => {
@@ -23,16 +33,19 @@ const globalSearch = async (req, res) => {
 
     if (!q || q.trim().length < 2) {
       // Return Trending/Featured if no query
-      const trendingRestaurants = await Restaurant.findAll({
-        where: { isActive: true },
-        order: [['rating', 'DESC NULLS LAST']], // Postgres puts NULL first on plain DESC
-        limit: 4
-      });
-      const trendingItems = await MenuItem.findAll({
-        where: { isAvailable: true },
-        limit: 6,
-        include: [{ model: Restaurant, as: 'restaurant', attributes: ['id', 'name', 'imageUrl', 'vendorType'], where: { isActive: true } }]
-      });
+      // Independent reads: one round trip of wall time, not two.
+      const [trendingRestaurants, trendingItems] = await Promise.all([
+        Restaurant.findAll({
+          where: { isActive: true },
+          order: [['rating', 'DESC NULLS LAST']], // Postgres puts NULL first on plain DESC
+          limit: 4
+        }),
+        MenuItem.findAll({
+          where: { isAvailable: true },
+          limit: 6,
+          include: [{ model: Restaurant, as: 'restaurant', attributes: ['id', 'name', 'imageUrl', 'vendorType'], where: { isActive: true } }]
+        }),
+      ]);
 
       return res.json({
         restaurants: trendingRestaurants.map(r => ({
@@ -50,17 +63,15 @@ const globalSearch = async (req, res) => {
       });
     }
 
-    // Search Restaurants by name
-    const restaurants = await Restaurant.findAll({
+    // Restaurants by name and menu items by name / description / category: independent reads, run
+    // together (one round trip of wall time, not two).
+    const [restaurants, menuItems] = await Promise.all([Restaurant.findAll({
       where: {
         name: { [likeOp]: `%${q}%` },
         isActive: true
       },
       limit: 5
-    });
-
-    // Search Menu Items by name, description, or category
-    const menuItems = await MenuItem.findAll({
+    }), MenuItem.findAll({
       where: {
         [Op.and]: [
           { isAvailable: true },
@@ -75,7 +86,7 @@ const globalSearch = async (req, res) => {
       },
       include: [{ model: Restaurant, as: 'restaurant', attributes: ['id', 'name', 'imageUrl', 'vendorType'], where: { isActive: true } }],
       limit: 15
-    });
+    })]);
 
     // Transform menuItems to match the expected format
     const items = menuItems.map(item => {
@@ -109,4 +120,4 @@ const globalSearch = async (req, res) => {
   }
 };
 
-module.exports = { globalSearch };
+module.exports = { globalSearch, searchCacheKey };

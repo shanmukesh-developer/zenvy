@@ -152,5 +152,13 @@ router.delete('/reviews/:orderId', deleteReview);
 router.get('/audit', getAuditLogs);
 router.get('/rewards-analytics', getRewardsAnalytics);
 router.get('/health', getSystemHealth);
+// P1: server-side performance metrics (utils/perfMetrics.js). ?reset=1 clears the per-route figures.
+router.get('/metrics/perf', (req, res) => {
+  const perf = require('../utils/perfMetrics');
+  const snap = perf.snapshot();
+  if (String(req.query.reset || '') === '1') perf.resetRoutes();
+  res.set('Cache-Control', 'no-store');
+  res.json(snap);
+});
 
 module.exports = router;

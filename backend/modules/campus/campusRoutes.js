@@ -80,9 +80,12 @@ const {
 router.get('/campuses', require('../../utils/responseCache').cacheGet('campus', { ttlMs: 5 * 60 * 1000 }), getCampuses);
 
 // Retention policy shown in the apps ("Messages disappear after 7 days"); admin GlobalConfig keys.
+// (module resolved once, not per request: a require() per call ran fs stats on every hit)
+let retentionCronMod = null;
+const retentionCron = () => retentionCronMod || (retentionCronMod = require('../../cron/retentionCron'));
 router.get('/retention', async (req, res) => {
   try {
-    const { chatDays, pulseDays } = await require('../../cron/retentionCron').getRetentionPolicy();
+    const { chatDays, pulseDays } = await retentionCron().getRetentionPolicy();
     res.set('Cache-Control', 'public, max-age=300');
     res.json({ chatDays, pulseDays });
   } catch (err) {

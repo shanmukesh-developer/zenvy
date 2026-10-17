@@ -219,22 +219,36 @@ const getMinPrices = async (req, res) => {
       .map(t => t.trim().toLowerCase())
       .filter(t => /^[a-z_]{1,30}$/.test(t)))]
       .slice(0, MAX_MIN_PRICE_TYPES);
+    // P1: two queries in all (was two per type, one after the other): every active store of the
+    // requested types, then the lowest in-stock price per store; the per-type minimum is taken here.
     const out = {};
-    for (const type of requested) {
-      const vendorTypes = resolveVendorTypes(type);
-      if (!vendorTypes) continue;
-      const stores = await Restaurant.findAll({ where: { isActive: true, vendorType: { [Op.in]: vendorTypes } }, attributes: ['id'], raw: true });
-      if (!stores.length) continue;
-      // Same "in stock" rule as /items (unavailable items whose restock time has passed count again).
-      const min = await MenuItem.min('price', {
-        where: {
-          restaurantId: { [Op.in]: stores.map(s => s.id) },
-          price: { [Op.gt]: 0 },
-          [Op.or]: [{ isAvailable: true }, { outOfStockUntil: { [Op.lte]: new Date() } }]
+    const typeMap = requested.map((type) => [type, resolveVendorTypes(type)]).filter(([, vts]) => vts && vts.length);
+    const allVendorTypes = [...new Set(typeMap.flatMap(([, vts]) => vts))];
+    if (allVendorTypes.length) {
+      const stores = await Restaurant.findAll({ where: { isActive: true, vendorType: { [Op.in]: allVendorTypes } }, attributes: ['id', 'vendorType'], raw: true });
+      if (stores.length) {
+        // Same "in stock" rule as /items (unavailable items whose restock time has passed count again).
+        const rows = await MenuItem.findAll({
+          where: {
+            restaurantId: { [Op.in]: stores.map(s => s.id) },
+            price: { [Op.gt]: 0 },
+            [Op.or]: [{ isAvailable: true }, { outOfStockUntil: { [Op.lte]: new Date() } }]
+          },
+          attributes: ['restaurantId', [MenuItem.sequelize.fn('MIN', MenuItem.sequelize.col('price')), 'minPrice']],
+          group: ['restaurantId'],
+          raw: true
+        });
+        const minByStore = new Map(rows.map(r => [String(r.restaurantId), Number(r.minPrice)]));
+        for (const [type, vendorTypes] of typeMap) {
+          let best = null;
+          for (const s of stores) {
+            if (!vendorTypes.includes(s.vendorType)) continue;
+            const n = minByStore.get(String(s.id));
+            if (Number.isFinite(n) && n > 0 && (best === null || n < best)) best = n;
+          }
+          if (best !== null) out[type] = best;
         }
-      });
-      const n = Number(min);
-      if (Number.isFinite(n) && n > 0) out[type] = n;
+      }
     }
     res.set('Cache-Control', 'no-cache');
     res.json(out);

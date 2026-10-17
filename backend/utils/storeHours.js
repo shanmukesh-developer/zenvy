@@ -2,6 +2,11 @@
 
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 
+// Resolved once (P1): a require() inside getStoreOpenState ran module resolution (fs stats) for every
+// store / item of every listing build.
+let vendorTypesMod = null;
+const vendorTypes = () => vendorTypesMod || (vendorTypesMod = require('./vendorTypes'));
+
 const toMinutes = (hhmm) => {
   const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm || '').trim());
   if (!m) return null;
@@ -98,7 +103,7 @@ const getStoreOpenState = (restaurant, now = new Date()) => {
   // A CampusBites stall marked offline by Zenvy takes no orders (the quote refuses it): every screen that
   // shows its open state (stall page, vendor app, store detail) must say so too, not "open".
   // (For a restaurant isOffline means "rider buys at the counter" and changes nothing here.)
-  if (restaurant.isOffline === true && require('./vendorTypes').isLocalVendorStore(restaurant)) {
+  if (restaurant.isOffline === true && vendorTypes().isLocalVendorStore(restaurant)) {
     return { isOpen: false, reason: 'offline', message: `${name} is not taking orders on Zenvy right now.` };
   }
   const hours = readHours(restaurant);

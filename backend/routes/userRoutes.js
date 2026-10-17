@@ -95,7 +95,8 @@ const { cacheGet } = require('../utils/responseCache');
 router.get('/config', cacheGet('config', { ttlMs: 60 * 1000, bypass: require('../utils/responseCache').liveAdminBypass }), require('../controllers/adminController').getGlobalConfig);
 router.get('/restaurants', cacheGet('catalog', { ttlMs: 30 * 1000 }), require('../controllers/adminController').getRestaurants);
 router.get('/restaurants/:id', cacheGet('catalog', { ttlMs: 30 * 1000 }), require('../controllers/adminController').getRestaurantById);
-router.get('/search', require('../controllers/searchController').globalSearch);
+// Same handler + cache key as GET /api/search (public, no per-user data; 'catalog' group).
+router.get('/search', cacheGet('catalog', { ttlMs: 30 * 1000, key: require('../controllers/searchController').searchCacheKey }), require('../controllers/searchController').globalSearch);
 
 // ── BUG FIX: GET /products (all items) ──
 // Returns all menu items across all restaurants for the catalog browse

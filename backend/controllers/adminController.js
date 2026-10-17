@@ -193,9 +193,13 @@ exports.getRestaurantById = async (req, res) => {
     const Restaurant = getRestaurantModel();
     const MenuItem = getMenuItemModel();
     if (!UUID_RE.test(String(req.params.id || ''))) return res.status(404).json({ message: 'Restaurant not found' });
-    const restaurant = await Restaurant.findByPk(req.params.id, { attributes: { exclude: STORE_LISTING_EXCLUDE } });
+    // Store and its menu in parallel (one DB round trip of wall time, not two); the menu of an unknown
+    // id is simply empty and discarded.
+    const [restaurant, menu] = await Promise.all([
+      Restaurant.findByPk(req.params.id, { attributes: { exclude: STORE_LISTING_EXCLUDE } }),
+      MenuItem.findAll({ where: { restaurantId: req.params.id }, attributes: { exclude: ITEM_LISTING_EXCLUDE } }),
+    ]);
     if (!restaurant) return res.status(404).json({ message: 'Restaurant not found' });
-    const menu = await MenuItem.findAll({ where: { restaurantId: restaurant.id }, attributes: { exclude: ITEM_LISTING_EXCLUDE } });
     const resObj = restaurant.toJSON();
     stripStoreSecrets(resObj);
     applyFeaturedExpiry(resObj);
