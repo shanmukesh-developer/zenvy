@@ -12,7 +12,9 @@ const PURPOSES = new Set(['id_card', 'chat', 'lost_found', 'avatar', 'post', 'ot
   // Rentals (modules/rentals): vehicle photos are public; RC / insurance / licences / report photos are private.
   'rental_photo', 'rental_doc', 'rental_licence', 'rental_report',
   // Zenvy Auto-Ride driver documents (private; drivers upload via /api/auto-ride/driver/media).
-  'auto_driver_doc']);
+  'auto_driver_doc',
+  // Zenvy Campus Events posters / gallery (public: shown on event cards to every student).
+  'event_poster']);
 // Served only to the owner, admins, or through a signed link (Connect photos are shown via signed URLs).
 const PRIVATE_PURPOSES = new Set(['id_card', 'connect', 'liveness_selfie', 'rental_doc', 'rental_licence', 'rental_report', 'auto_driver_doc']);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

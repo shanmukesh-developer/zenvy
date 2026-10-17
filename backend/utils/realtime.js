@@ -30,14 +30,18 @@ const PUBLIC_TYPES = new Set(['store', 'product', 'config', 'announcement', 'cou
   // Student vehicle rentals: a listing became visible / hidden (ids only).
   'rental',
   // Auto-Ride: a shared-auto trip's availability / status changed (ids only).
-  'auto_trip']);
+  'auto_trip',
+  // Campus Events: an event's availability / status changed (ids only).
+  'campus_event']);
 const ADMIN_TYPES = new Set([...PUBLIC_TYPES, 'order', 'ticket', 'verification', 'pg_booking', 'wall_submission', 'service_booking', 'rider', 'user',
   // Zenvy Friends moderation queue (admin /moderation page)
   'friends_report', 'friends_appeal', 'friends_review',
   // Rentals admin queues (admin /rentals page)
   'rental_listing', 'rental_licence', 'rental_booking', 'rental_report',
   // Auto-Ride admin queues (drivers, vehicles, routes, bookings, full-auto requests, incidents)
-  'auto_driver', 'auto_vehicle', 'auto_route', 'auto_booking', 'auto_private_request', 'auto_incident']);
+  'auto_driver', 'auto_vehicle', 'auto_route', 'auto_booking', 'auto_private_request', 'auto_incident',
+  // Campus Events admin queues (review queue, organizers, registrations, refunds)
+  'campus_event_admin']);
 const ACTIONS = new Set(['created', 'updated', 'deleted']);
 const CACHE_TYPES = new Set(['store', 'product']);
 

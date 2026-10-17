@@ -47,6 +47,7 @@ const { initCampusModels } = require('../modules/campus/models');
 const { initFriendsModels } = require('../modules/friends');
 const { initRentalsModels } = require('../modules/rentals');
 const { initAutoRideModels } = require('../modules/autoRide');
+const { initCampusEventsModels } = require('../modules/campusEvents');
 
 const initializeAllModels = (instance) => {
   // P1 perf: per-request DB time / query count + pool wait (utils/perfMetrics), dev-only DEV_DB_LATENCY_MS.
@@ -96,6 +97,8 @@ const initializeAllModels = (instance) => {
   initRentalsModels(instance);
   // Zenvy Auto-Ride: shared autos seat booking + Zenvy Auto Driver accounts (off until AUTO_RIDE_ENABLED).
   initAutoRideModels(instance);
+  // Zenvy Campus Events (Ce* tables; off until CAMPUS_EVENTS_ENABLED).
+  initCampusEventsModels(instance);
 
   // Define Associations
   const Restaurant = instance.models.Restaurant;
@@ -627,6 +630,13 @@ const connectDB = async () => {
       } catch (aErr) {
         console.warn('⚠️ [AUTORIDE_MIGRATION_WARN]', aErr.message);
       }
+      // Zenvy Campus Events: named unique / partial unique indexes (race guards; additive, idempotent).
+      try {
+        const { runCampusEventsMigrations } = require('../modules/campusEvents/migrations');
+        await runCampusEventsMigrations(sequelize);
+      } catch (ceErr) {
+        console.warn('⚠️ [CAMPUS_EVENTS_MIGRATION_WARN]', ceErr.message);
+      }
     } else {
       // Production: no sync({ alter: true }) on every boot. Sequelize v6 alter re-adds UNIQUE
       // constraints each run (duplicate *_key indexes pile up), slows startup (API is 503 until
@@ -673,6 +683,13 @@ const connectDB = async () => {
         await runAutoRideMigrations(sequelize);
       } catch (aErr) {
         console.warn('⚠️ [AUTORIDE_MIGRATION_WARN]', aErr.message);
+      }
+      // Zenvy Campus Events: named unique / partial unique indexes (race guards; additive, idempotent).
+      try {
+        const { runCampusEventsMigrations } = require('../modules/campusEvents/migrations');
+        await runCampusEventsMigrations(sequelize);
+      } catch (ceErr) {
+        console.warn('⚠️ [CAMPUS_EVENTS_MIGRATION_WARN]', ceErr.message);
       }
       
       // Auto-check for empty DB to help user identify missing data

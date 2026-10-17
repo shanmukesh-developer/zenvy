@@ -172,6 +172,20 @@ const runAutoRide = async () => {
   }
 };
 
+// Campus Events expiries / waitlist / scheduled publish / completion / invitations / reminders / deadline
+// notices / refund retries / answer retention (modules/campusEvents/jobs.js). A few indexed lookups and
+// out when nothing is active (feature off).
+const runCampusEvents = async () => {
+  try {
+    const r = await require('../modules/campusEvents/jobs').runCampusEventJobs();
+    if (r && !r.idle && !r.skipped && Object.values(r).some((v) => typeof v === 'number' && v > 0)) console.log('[CAMPUS_EVENTS_JOB]', JSON.stringify(r));
+    return r;
+  } catch (err) {
+    console.warn('[CAMPUS_EVENTS_JOB] Error:', err.message);
+    return { error: err.message };
+  }
+};
+
 const runRetention = async () => require('../cron/retentionCron').runRetention();
 
 // Daily abandoned-cart push (10:00 IST).
@@ -247,6 +261,7 @@ const JOBS = [
   { name: 'menu.autoRestore', schedule: { everyMs: 30 * SEC }, run: runMenuAutoRestore, quietWhenIdle: true, emits: true },
   { name: 'rentals.lifecycle', schedule: { everyMs: 2 * MIN, firstMs: 40 * SEC }, run: runRentals, quietWhenIdle: true, emits: true },
   { name: 'autoRide.lifecycle', schedule: { everyMs: 30 * SEC, firstMs: 50 * SEC }, run: runAutoRide, quietWhenIdle: true, emits: true },
+  { name: 'campusEvents.lifecycle', schedule: { everyMs: 60 * SEC, firstMs: 55 * SEC }, run: runCampusEvents, quietWhenIdle: true, emits: true },
   { name: 'wall.finalize', schedule: { cron: '*/5 * * * *' }, run: () => require('../cron/wallCron').runWallFinalizeJob(), quietWhenIdle: true },
   { name: 'wall.mediaCleanup', schedule: { cron: '0 3 * * *', timezone: IST }, run: () => require('../cron/wallCron').runWallMediaCleanupJob(), timeoutMs: 30 * MIN },
   { name: 'retention.chatPulse', schedule: { cron: '23 * * * *', onceAfterMs: 3 * MIN }, run: runRetention, timeoutMs: 30 * MIN },

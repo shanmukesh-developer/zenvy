@@ -519,6 +519,13 @@ app.use(morgan(':method :url :status :res[content-length] - :response-time ms', 
 // nothing there). Cached public reads arrive pre-compressed (utils/responseCache) and are skipped.
 app.use(compression({ level: 6, threshold: 1024 }));
 app.use(cookieParser());
+// Zenvy Campus Events Razorpay webhook: the signature is over the RAW body, so this exact path is parsed
+// with express.raw and handled here, before the global express.json (and the body sanitizers after it).
+// 503 PAYMENT_NOT_CONFIGURED until RAZORPAY_* env vars are set (modules/campusEvents/controllers/payments.js).
+app.post('/api/campus-events/webhooks/razorpay', express.raw({ type: '*/*', limit: '256kb' }), (req, res) => {
+  req.rawBody = Buffer.isBuffer(req.body) ? req.body : null;
+  return require('./modules/campusEvents/controllers/payments').razorpayWebhook(req, res);
+});
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
@@ -1276,6 +1283,14 @@ const initializeApp = async () => {
     app.use('/api/auto-ride', autoRideRoutes.router);
     app.use('/api/admin/auto-ride', autoRideRoutes.adminRouter);
     // Auto-Ride holds / lifecycle: jobs/index.js 'autoRide.lifecycle' (every 30 s).
+    // Zenvy Campus Events (Others > Campus Events). Organizer + check-in routers before the student router
+    // (which owns /api/campus-events/:id); admin routes before /api/admin. Off for students until GlobalConfig
+    // CAMPUS_EVENTS_ENABLED is true. Lifecycle: jobs/index.js 'campusEvents.lifecycle' (every 60 s).
+    const campusEventsRoutes = require('./modules/campusEvents/routes');
+    app.use('/api/campus-events/organizer', campusEventsRoutes.organizerRouter);
+    app.use('/api/campus-events/check-in', campusEventsRoutes.checkInRouter);
+    app.use('/api/campus-events', campusEventsRoutes.router);
+    app.use('/api/admin/campus-events', campusEventsRoutes.adminRouter);
     app.use('/api/admin', require('./routes/adminRoutes'));
     app.use('/api/rewards', require('./routes/rewardRoutes'));
     app.use('/api/community', require('./routes/communityRoutes'));
