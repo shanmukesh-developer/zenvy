@@ -9,6 +9,7 @@ import { useAuth } from '../context/AuthContext';
 import { campusHrefForNotification } from '../modules/campus/campusLinks';
 import { rentalHrefForNotification } from '../modules/rentals/rentalLinks';
 import { autoRideHrefForNotification } from '../modules/autoRide/autoRideLinks';
+import { campusEventHrefForNotification } from '../modules/campusEvents/campusEventLinks';
 
 let Notifications: any = null;
 try {
@@ -203,7 +204,11 @@ export default function GlobalAnnouncement() {
         const campusHref = campusHrefForNotification(data.type, data);
         const rentalHref = rentalHrefForNotification(data.type, data);
         const autoRideHref = autoRideHrefForNotification(data.type, data);
-        if (autoRideHref) {
+        const campusEventHref = campusEventHrefForNotification(data.type, data);
+        if (campusEventHref) {
+          // Zenvy Campus Events: registrations, tickets, team invitations, event updates, organizer reviews
+          go(campusEventHref);
+        } else if (autoRideHref) {
           // Zenvy Auto-Ride: seat bookings, full-auto requests, trip updates (full, departure, delays, refunds)
           go(autoRideHref);
         } else if (rentalHref) {
@@ -266,7 +271,11 @@ export default function GlobalAnnouncement() {
           body: body || '',
           type: data?.type || 'info',
           ...(data?.orderId ? { orderId: String(data.orderId) } : {}),
-          ...(data?.screen || data?.chatId ? { data: { screen: data.screen, chatId: data.chatId, kind: data.kind, friendshipId: data.friendshipId } } : {}),
+          ...(data?.screen || data?.chatId ? { data: {
+            screen: data.screen, chatId: data.chatId, kind: data.kind, friendshipId: data.friendshipId,
+            // Campus Events pushes carry ids only; keep them so an inbox tap opens the right screen.
+            ...(data.screen === 'campus_event' ? { eventId: data.eventId, registrationId: data.registrationId, teamId: data.teamId, ticketId: data.ticketId } : {}),
+          } } : {}),
         });
       });
     } catch (e) {

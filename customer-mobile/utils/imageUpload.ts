@@ -38,7 +38,9 @@ export type MediaPurpose =
   | 'rental_photo'
   | 'rental_doc'
   | 'rental_licence'
-  | 'rental_report';
+  | 'rental_report'
+  // Campus Events: event posters / gallery images (public, served to every student of the campus).
+  | 'event_poster';
 
 export const PRIVATE_MEDIA_PURPOSES: readonly MediaPurpose[] = ['id_card', 'connect', 'liveness_selfie', 'rental_doc', 'rental_licence', 'rental_report'];
 

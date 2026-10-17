@@ -27,6 +27,8 @@ import { useLiveSync, hasType } from '../../utils/useLiveSync';
 import RentalsSection from '../../modules/rentals/RentalsSection';
 import AutoRideSection from '../../modules/autoRide/AutoRideSection';
 import { useAutoRideStatus } from '../../modules/autoRide/ui';
+import CampusEventsSection from '../../modules/campusEvents/CampusEventsSection';
+import { useCampusEventsStatus } from '../../modules/campusEvents/ui';
 
 const { width: SW, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SH = SCREEN_HEIGHT;
@@ -74,6 +76,8 @@ const TABS = [
   { key: 'pg', label: 'PG Stays', icon: '🏢' },
   { key: 'coride', label: 'Co-Ride', icon: '🏍️' },
   { key: 'rentals', label: 'Rentals', icon: '🚗' },
+  // Zenvy Campus Events: shown only while GET /api/campus-events/status says enabled (see visibleTabs).
+  { key: 'events', label: 'Campus Events', icon: '🎟️' },
   { key: 'promos', label: 'Deals & Spin', icon: '🎁' },
 ];
 
@@ -445,6 +449,8 @@ export default function OthersScreen() {
         setActiveTab('food');
       } else if (tab === 'rentals' || tab === 'rental' || tab === 'vehicles') {
         setActiveTab('rentals');
+      } else if (tab === 'events' || tab === 'campus-events') {
+        setActiveTab('events');
       }
     }
   }, [tab]);
@@ -456,6 +462,13 @@ export default function OthersScreen() {
   }, [router]);
 
   const myId = String(user?._id || user?.id || '');
+  // Campus Events chip: GET /api/campus-events/status once (cached); hidden while off or on any error.
+  const campusEventsStatus = useCampusEventsStatus(!!myId);
+  const campusEventsOn = !!campusEventsStatus?.enabled;
+  const visibleTabs = useMemo(() => TABS.filter(t => t.key !== 'events' || campusEventsOn), [campusEventsOn]);
+  useEffect(() => {
+    if (activeTab === 'events' && campusEventsStatus && !campusEventsStatus.enabled) setActiveTab('food');
+  }, [activeTab, campusEventsStatus]);
   const isMountedRef = useRef(true);
   useEffect(() => () => { isMountedRef.current = false; }, []);
 
@@ -1874,7 +1887,7 @@ export default function OthersScreen() {
       {/* ── TAB SELECTOR (HORIZONTAL SCROLLABLE CHIPS) ── */}
       <View style={{ marginBottom: 14 }}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 8, alignItems: 'center' }}>
-          {TABS.map(t => {
+          {visibleTabs.map(t => {
             const isActive = activeTab === t.key;
             return (
               <DopaminePressable key={t.key} onPress={() => selectTab(t.key)} sound="tabSwitch" activeScale={0.95}>
@@ -1909,7 +1922,7 @@ export default function OthersScreen() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.red} colors={[COLORS.red]} />}
         >
           {/* ── HERO CAROUSEL CARD ── */}
-          {!(activeTab === 'food' && groceryMode === 'categories') && (
+          {!(activeTab === 'food' && groceryMode === 'categories') && activeTab !== 'events' && (
             <View style={[s.heroCarouselCard, { borderColor: border }]}>
               <PromoCarousel offers={carouselOffers} containerStyle={s.heroCarousel} />
             </View>
@@ -2368,6 +2381,9 @@ export default function OthersScreen() {
 
         {/* ── RENTALS TAB: student vehicles (peer to peer) + rental stores ── */}
         {activeTab === 'rentals' && <RentalsSection />}
+
+        {/* ── CAMPUS EVENTS TAB: discovery, registrations, tickets (only while the server enables it) ── */}
+        {activeTab === 'events' && campusEventsOn && <CampusEventsSection />}
 
         {/* ── PG & HOMES TAB ── */}
         {activeTab === 'pg' && (
