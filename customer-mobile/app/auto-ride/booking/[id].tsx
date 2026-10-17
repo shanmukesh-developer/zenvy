@@ -8,7 +8,7 @@ import {
   autoRideApi, AutoRideError, errorCopy, inr, fmtDeparture, fmtClock, fromNow, mmss, queueLabel, BOOKING_STATUS_META, PAYMENT_LABEL,
   PAYMENT_STATUS_LABEL, TIMELINE, EXCEPTION_STATUSES, INCIDENT_CATEGORIES, type Booking,
 } from '../../../modules/autoRide/autoRideApi';
-import { AHeader, usePalette, Card, Btn, Badge, StateView, Notice, Row, Field, Chips, StatusChip, VerifiedBadge, useAutoRideLive, useNow, AUTO_HOME } from '../../../modules/autoRide/ui';
+import { AHeader, usePalette, Card, Btn, Badge, StateView, Notice, Row, Field, Chips, StatusChip, VerifiedBadge, useAutoRideLive, useAutoRideStatus, useNow, AUTO_HOME } from '../../../modules/autoRide/ui';
 
 export default function AutoBookingScreen() {
   const params = useLocalSearchParams<{ id: string | string[] }>();
@@ -23,6 +23,7 @@ export default function AutoBookingScreen() {
   const [category, setCategory] = useState<string>('OTHER');
   const [desc, setDesc] = useState('');
   const now = useNow(1000, b?.status === 'HELD');
+  const settings = useAutoRideStatus()?.settings || null;
 
   const load = useCallback(async () => {
     try {
@@ -57,8 +58,12 @@ export default function AutoBookingScreen() {
 
   const doCancel = () => {
     const held = b.status === 'HELD';
+    // Refund % from GET /status settings (the server applies the same policy); generic copy if unknown.
+    const pct = settings ? (afterDriverConfirm ? settings.refundAfterDriverConfirmPct : settings.refundBeforeDriverConfirmPct) : null;
     const walletNote = b.paymentMethod === 'WALLET'
-      ? (afterDriverConfirm ? 'The driver has already confirmed departure, so the refund may be reduced under the Zenvy refund policy.' : 'Your wallet payment is refunded under the Zenvy refund policy.')
+      ? (pct !== null && pct !== undefined
+        ? `${pct >= 100 ? 'You get the full' : pct <= 0 ? 'No' : `You get ${pct}% of the`} wallet payment${pct > 0 ? ` back (${inr((b.amount * pct) / 100)})` : ' is refunded'}${afterDriverConfirm ? ' because the driver has already confirmed departure' : ''}.`
+        : (afterDriverConfirm ? 'The driver has already confirmed departure, so the refund may be reduced under the Zenvy refund policy.' : 'Your wallet payment is refunded under the Zenvy refund policy.'))
       : 'This is a cash booking, so nothing is charged.';
     Alert.alert(held ? 'Release held seats?' : 'Cancel this booking?', held ? 'The seats go back to other passengers.' : `${walletNote} The seats go back to other passengers.`, [
       { text: 'Keep', style: 'cancel' },
@@ -181,7 +186,12 @@ export default function AutoBookingScreen() {
         <Card>
           <Row label="Seats" value={`${b.seatCount}${b.type === 'SHARED' && b.seatNumbers.length ? ` (no. ${b.seatNumbers.join(', ')})` : ''}`} />
           {b.type === 'SHARED' && b.fareBreakdown.seats ? <Row label={`${b.fareBreakdown.seats} × ${inr(b.fareBreakdown.seatFare)}`} value={inr(b.fareBreakdown.total)} /> : null}
-          {b.type === 'PRIVATE' ? <Row label="Full auto fare" value={inr(b.fareBreakdown.fare ?? b.amount)} /> : null}
+          {b.type === 'PRIVATE' && b.fareBreakdown.extraCharges ? (
+            <>
+              <Row label="Full auto fare" value={inr(b.fareBreakdown.baseFare ?? b.amount)} />
+              <Row label={`Extra charges${b.fareBreakdown.extraCharges.note ? ` (${b.fareBreakdown.extraCharges.note})` : ''}`} value={inr(b.fareBreakdown.extraCharges.amount)} />
+            </>
+          ) : b.type === 'PRIVATE' ? <Row label="Full auto fare" value={inr(b.fareBreakdown.fare ?? b.amount)} /> : null}
           <Row label="Total" value={inr(b.amount)} strong />
           <Row label="Payment" value={b.paymentMethod ? PAYMENT_LABEL[b.paymentMethod] : '—'} />
           {b.paymentStatus ? <Row label="Payment status" value={PAYMENT_STATUS_LABEL[b.paymentStatus] || b.paymentStatus} /> : null}

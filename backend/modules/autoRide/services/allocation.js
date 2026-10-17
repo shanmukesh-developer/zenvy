@@ -103,22 +103,46 @@ const assertBookable = (trip) => {
  * Hold seats. Returns { booking, trip, created, expired: [] }.
  * input: { tripId, userId, seatCount, seatNumbers?, idempotencyKey? }
  */
+/**
+ * A retry key already used by this user. Replays only while that booking is live (HELD and unexpired,
+ * CONFIRMED, BOARDED). A key whose booking has ended (EXPIRED, CANCELLED / released, ...) is refused with
+ * 409 IDEMPOTENCY_KEY_REUSED { bookingId, status }: the unique (userId, idempotencyKey) index means a fresh
+ * hold needs a fresh key (the app makes one and retries). Returns null when a lock pass is needed first
+ * (a HELD booking past its holdExpiresAt is expired inside the trip lock, then refused).
+ */
+const replayHoldKey = (prior, tripId) => {
+  if (String(prior.tripId) !== String(tripId)) throw fail(409, 'IDEMPOTENCY_KEY_REUSED', 'This retry key was already used for another auto.', { bookingId: prior.id });
+  if (prior.status === B.HELD && (!prior.holdExpiresAt || new Date(prior.holdExpiresAt).getTime() <= clock.nowMs())) return null;
+  if (!E.LIVE_BOOKING_STATUSES.includes(prior.status)) {
+    throw fail(409, 'IDEMPOTENCY_KEY_REUSED', 'That earlier hold has ended. Please hold the seats again.', { bookingId: prior.id, status: prior.status });
+  }
+  return { booking: prior, created: false, replay: true };
+};
+
 const hold = async ({ tripId, userId, seatCount, seatNumbers, idempotencyKey }) => {
   const settings = await readSettings();
   const { Booking, Seat } = M();
   if (idempotencyKey) {
     const prior = await Booking.findOne({ where: { userId, idempotencyKey } });
-    if (prior) {
-      if (String(prior.tripId) !== String(tripId)) throw fail(409, 'IDEMPOTENCY_KEY_REUSED', 'This retry key was already used for another auto.');
-      return { booking: prior, created: false, replay: true, expired: [] };
-    }
+    const r = prior ? replayHoldKey(prior, tripId) : null;
+    if (r) return { ...r, expired: [] };
   }
+  let out;
   try {
-    return await withTripLock(tripId, async (t, trip) => {
+    out = await withTripLock(tripId, async (t, trip) => {
       const expired = await expireStaleHolds(trip, t);
       if (idempotencyKey) {
         const prior = await Booking.findOne({ where: { userId, idempotencyKey }, transaction: t });
-        if (prior) return { booking: prior, trip, created: false, replay: true, expired };
+        if (prior) {
+          if (expired.length) await recomputeCounters(trip, t);
+          // An ended booking (incl. one expired just above) is refused AFTER commit, so the expiry sticks.
+          try {
+            const r = replayHoldKey(prior, tripId) || replayHoldKey(Object.assign(prior, { status: B.EXPIRED }), tripId);
+            return { ...r, trip, expired };
+          } catch (refused) {
+            return { refused, trip, expired };
+          }
+        }
       }
       assertBookable(trip);
       const mine = await Booking.findOne({ where: { tripId: trip.id, userId, status: { [Op.in]: E.LIVE_BOOKING_STATUSES } }, transaction: t });
@@ -182,12 +206,18 @@ const hold = async ({ tripId, userId, seatCount, seatNumbers, idempotencyKey }) 
       // Another process sold the seat / the same user double-tapped in another process.
       if (idempotencyKey) {
         const prior = await Booking.findOne({ where: { userId, idempotencyKey } });
-        if (prior) return { booking: prior, created: false, replay: true, expired: [] };
+        const r = prior ? replayHoldKey(prior, tripId) : null;
+        if (r) return { ...r, expired: [] };
       }
       throw fail(409, 'SEAT_TAKEN', 'Those seats were just taken. Please pick again.');
     }
     throw err;
   }
+  if (out.refused) {
+    out.refused.expiredHolds = out.expired;
+    throw out.refused;
+  }
+  return out;
 };
 
 /** Confirm a hold. Returns { booking, trip, already, becameFull, almostFull, statusChanged }. */
@@ -303,6 +333,13 @@ const closeTripBookings = async (trip, { by, reason, t }) => {
 
 // ── Full-auto (private) requests ────────────────────────────────────────────
 
+/** Server-side private fare: the driver's full-auto fare + optional extra charges (both fixed at publish). */
+const privateFare = (trip) => {
+  const baseFare = money(trip.fullAutoFare);
+  const extra = Number(trip.extraChargesAmount) > 0 ? money(trip.extraChargesAmount) : 0;
+  return { fare: money(baseFare + extra), baseFare, extraChargesAmount: extra || null, extraChargesNote: extra ? (trip.extraChargesNote || null) : null };
+};
+
 const createPrivateRequest = async ({ tripId, userId, passengers, purpose, paymentMethod, idempotencyKey }) => {
   const { Private } = M();
   const settings = await readSettings();
@@ -329,7 +366,7 @@ const createPrivateRequest = async ({ tripId, userId, passengers, purpose, payme
       const respondBy = new Date(Math.min(clock.nowMs() + settings.privateRespondMinutes * 60 * 1000, new Date(trip.departureAt).getTime()));
       const request = await Private.create({
         userId, tripId: trip.id, driverId: trip.driverId, status: PR.REQUESTED, passengers: pax,
-        purpose: cleanText(purpose, 200) || null, fare: money(trip.fullAutoFare), paymentMethod: method, respondBy,
+        purpose: cleanText(purpose, 200) || null, ...privateFare(trip), paymentMethod: method, respondBy,
         idempotencyKey: idempotencyKey || null,
       }, { transaction: t });
       return { request, created: true, trip };
@@ -380,7 +417,11 @@ const acceptPrivateRequest = async ({ requestId, driverId }) => {
     const booking = await Booking.create({
       bookingCode: await uniqueCode(t), tripId: trip.id, userId: r.userId, driverId: trip.driverId, type: E.BOOKING_TYPE.PRIVATE,
       seatCount: cap, seatNumbers: seats, status: B.CONFIRMED, confirmedAt: now, boardingPin: newPin(),
-      seatFare: null, amount: money(r.fare), fareBreakdown: { fullAuto: true, fare: money(r.fare), total: money(r.fare) },
+      seatFare: null, amount: money(r.fare),
+      fareBreakdown: {
+        fullAuto: true, fare: money(r.fare), total: money(r.fare),
+        ...(Number(r.extraChargesAmount) > 0 ? { baseFare: money(r.baseFare), extraCharges: { amount: money(r.extraChargesAmount), note: r.extraChargesNote || null } } : {}),
+      },
       passengerCount: r.passengers, purpose: r.purpose, privateRequestId: r.id, ...pay,
     }, { transaction: t });
     await Seat.bulkCreate(seats.map((seatNo) => ({ tripId: trip.id, seatNo, bookingId: booking.id, status: S.CONFIRMED })), { transaction: t });
@@ -460,7 +501,12 @@ const checkIn = async ({ tripId, driverId, bookingCode, pin, cashCollected }) =>
     await recomputeCounters(trip, t);
     return { booking: await Booking.findByPk(b.id, { transaction: t }), trip };
   });
-  if (out.locked) throw fail(429, 'PIN_LOCKED', 'Too many wrong PINs for this booking. Try again in 15 minutes or ask the passenger to contact support.');
+  if (out.locked) {
+    const until = out.until ? new Date(out.until) : new Date(clock.nowMs() + E.LIMITS.PIN_LOCK_MS);
+    throw fail(429, 'PIN_LOCKED', 'Too many wrong PINs for this booking. Try again in 15 minutes or ask the passenger to contact support.', {
+      attemptsLeft: 0, lockedUntil: until.toISOString(), retryAfter: Math.max(1, Math.ceil((until.getTime() - clock.nowMs()) / 1000)),
+    });
+  }
   if (out.wrong === 'NO_BOOKING') throw fail(404, 'NOT_FOUND', 'No booking with that code on this trip.');
   if (out.wrong === 'PIN') throw fail(400, 'WRONG_PIN', `Wrong PIN. ${out.attemptsLeft} attempt${out.attemptsLeft === 1 ? '' : 's'} left.`, { attemptsLeft: out.attemptsLeft });
   return out;
@@ -497,5 +543,5 @@ const expireTripHolds = (tripId) => withTripLock(tripId, async (t, trip) => {
 module.exports = {
   hold, confirm, cancelByCustomer, cancelOneInTx, closeTripBookings, recomputeCounters, expireStaleHolds, expireTripHolds,
   releaseSeatsOf, liveSeatNumbers, createPrivateRequest, acceptPrivateRequest, declinePrivateRequest, cancelPrivateRequest,
-  checkIn, markNoShow, assertBookable, transitionTrip,
+  checkIn, markNoShow, assertBookable, transitionTrip, privateFare,
 };

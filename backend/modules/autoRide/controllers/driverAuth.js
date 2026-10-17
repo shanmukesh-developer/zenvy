@@ -39,7 +39,12 @@ const register = async (req, res) => {
   }
   const { verifyPhoneProof } = require('../../../controllers/userController');
   const proof = await verifyPhoneProof({ phone, firebaseToken: body.firebaseToken, registrationToken: body.registrationToken, otp: body.otp, purpose: 'auth' });
-  if (!proof.ok) throw fail(proof.status || 400, (proof.body && proof.body.code) || 'PHONE_VERIFICATION_REQUIRED', (proof.body && proof.body.message) || 'Please verify your mobile number.');
+  if (!proof.ok) {
+    // Keep the OTP layer's extra fields (attemptsLeft on OTP_INVALID, retryAfter, ...) for the app.
+    const { code: pc, message: pm, ...extra } = proof.body || {};
+    if (pc === 'OTP_LOCKED' && extra.attemptsLeft === undefined) extra.attemptsLeft = 0;
+    throw fail(proof.status || 400, pc || 'PHONE_VERIFICATION_REQUIRED', pm || 'Please verify your mobile number.', Object.keys(extra).length ? extra : undefined);
+  }
   let driver;
   try {
     driver = await Driver().create({

@@ -3,6 +3,8 @@
  * data.type AUTO_*, data.screen 'auto_booking', data.bookingId / data.requestId / data.tripId).
  * Shared by the push tap handler (components/GlobalAnnouncement.tsx) and the inbox (app/notifications.tsx).
  * Driver-app types (AUTO_DRIVER_*, AUTO_VEHICLE_*) never reach customers and are ignored here.
+ * bookingId wins: trip-wide pushes (full, delayed, departure, started, completed, cancelled) carry each
+ * passenger's own bookingId, and an accepted full-auto request carries bookingId + requestId.
  */
 const ID_RE = /^[0-9a-f-]{36}$/i;
 

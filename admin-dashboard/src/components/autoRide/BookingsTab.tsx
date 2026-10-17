@@ -12,11 +12,15 @@ export default function BookingsTab({ tick, onChanged, lookups }: { tick: number
   const [phone, setPhone] = useState('');
   const [openId, setOpenId] = useState<string | null>(null);
   useEffect(() => { const t = setTimeout(() => setCodeQ(code.toUpperCase().replace(/[^A-Z0-9]/g, '')), 400); return () => clearTimeout(t); }, [code]);
-  const { data, loading, error, reload } = useLoader(`${status}|${codeQ}`, tick, () => autoRideApi.bookings({ status: status || undefined, code: codeQ || undefined }));
+  const [phoneQ, setPhoneQ] = useState('');
+  useEffect(() => { const t = setTimeout(() => setPhoneQ(phone.replace(/\D/g, '').slice(-10)), 400); return () => clearTimeout(t); }, [phone]);
+  // The server searches by the full 10-digit number, or by the last 4 digits together with the booking code.
+  const serverPhone = phoneQ.length === 10 || (phoneQ.length === 4 && !!codeQ) ? phoneQ : '';
+  const { data, loading, error, reload } = useLoader(`${status}|${codeQ}|${serverPhone}`, tick, () => autoRideApi.bookings({ status: status || undefined, code: codeQ || undefined, phone: serverPhone || undefined }));
   const all = data?.bookings || [];
-  // Phone search runs over the loaded rows (the server filters by code / status / ids only).
+  // Partial numbers are matched over the loaded rows only.
   const digits = phone.replace(/\D/g, '');
-  const rows = digits ? all.filter((b) => String(b.passenger?.phone || '').replace(/\D/g, '').includes(digits)) : all;
+  const rows = digits && !serverPhone ? all.filter((b) => String(b.passenger?.phone || '').replace(/\D/g, '').includes(digits)) : all;
   return (
     <section className="space-y-4" aria-label="Bookings">
       <Toolbar>
@@ -27,7 +31,7 @@ export default function BookingsTab({ tick, onChanged, lookups }: { tick: number
           <input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="numeric" placeholder="98765…" className="ml-2 w-36 border border-white/10 bg-[#111318] p-2 text-sm font-normal text-white" />
         </label>
         <Select name="Status" value={status} onChange={setStatus} options={['', ...BOOKING_STATUSES]} />
-        <span className="text-sm text-gray-500">{rows.length} of {all.length}{all.length >= 300 ? ' (latest 300; phone search covers these only)' : ''}</span>
+        <span className="text-sm text-gray-500">{rows.length} of {all.length}{serverPhone ? ' · searched by phone on the server' : all.length >= 300 ? ' (latest 300; type the full number, or the last 4 digits + code, to search all)' : ''}</span>
       </Toolbar>
       {error && <ErrorBox text={error} retry={reload} />}
       {loading ? <Loading text="Loading bookings…" /> : rows.length === 0 ? <Empty text={codeQ ? `No booking with code ${codeQ}.` : 'No bookings match.'} /> : (

@@ -30,6 +30,8 @@ export const OFFLINE_AFTER_MS = 15000;
 export const LIMITS = {
   MAX_FARE: 5000,
   MAX_FULL_FARE: 20000,
+  /** Full-auto extra charges: at most this and never above the full-auto fare (server: enums.js MAX_EXTRA_CHARGES). */
+  MAX_EXTRA_CHARGES: 2000,
   MAX_DELAY_MINUTES: 120,
   MIN_DELAY_MINUTES: 5,
   MIN_LEAD_MINUTES: 2,

@@ -30,10 +30,10 @@ export function PrivateTab({ tick, lookups }: { tick: number; lookups: Lookups }
                 const mins = due ? Math.round((due - now) / 60000) : null;
                 return (
                   <tr key={r.id} className="align-top">
-                    <td className="p-3 text-xs"><p>{when(r.createdAt)}</p><p className="text-gray-500">#{short(r.id)} · user #{short(r.userId)}</p></td>
-                    <td className="p-3 text-xs"><p>Trip #{short(r.tripId)}</p><p className="text-gray-400">{r.driverId ? lookups.drivers.get(String(r.driverId))?.name || `#${short(r.driverId)}` : '—'}</p></td>
+                    <td className="p-3 text-xs"><p>{when(r.createdAt)}</p><p className="text-gray-500">#{short(r.id)} · {r.passenger ? `${r.passenger.name}${r.passenger.phoneMasked ? ` ${r.passenger.phoneMasked}` : ''}` : `user #${short(r.userId)}`}</p></td>
+                    <td className="p-3 text-xs"><p>Trip #{short(r.tripId)}</p><p className="text-gray-400">{r.driverId ? lookups.drivers.get(String(r.driverId))?.name || r.driver?.name || `#${short(r.driverId)}` : '—'}</p></td>
                     <td className="p-3">{r.passengers}{r.purpose && <p className="max-w-[220px] text-xs text-gray-400">“{r.purpose}”</p>}</td>
-                    <td className="p-3 text-xs">{inr(r.fare)}<p className="text-gray-400">{label(r.paymentMethod)}</p></td>
+                    <td className="p-3 text-xs">{inr(r.fare)}{r.extraCharges ? <p className="text-gray-400">incl. {inr(r.extraCharges.amount)} extra{r.extraCharges.note ? ` (${r.extraCharges.note})` : ''}</p> : null}<p className="text-gray-400">{label(r.paymentMethod)}</p></td>
                     <td className="p-3 text-xs"><p>{when(r.respondBy)}</p>{r.status === 'REQUESTED' && mins !== null && <p className={mins < 0 ? 'font-bold text-red-300' : mins <= 3 ? 'font-bold text-amber-300' : 'text-gray-400'}>{mins < 0 ? 'overdue (expires on the next sweep)' : `${mins} min left`}</p>}{r.respondedAt && <p className="text-gray-500">answered {when(r.respondedAt)}</p>}</td>
                     <td className="p-3"><Pill s={r.status} />{r.declineReason && <p className="mt-1 max-w-[200px] text-xs text-gray-400">{r.declineReason}</p>}</td>
                   </tr>
@@ -89,9 +89,10 @@ function IncidentCard({ i, onChanged }: { i: Incident; onChanged: () => void }) 
         <div>
           <p className="flex flex-wrap items-center gap-2">
             {safety && <span className="bg-red-600 px-2 py-0.5 text-xs font-black tracking-wider text-white">⚠ SAFETY</span>}
+            {i.priority === 'HIGH' && <span className="border border-red-400 px-2 py-0.5 text-xs font-black tracking-wider text-red-200">HIGH PRIORITY</span>}
             <span className={`text-sm font-black ${serious ? 'text-red-200' : ''}`}>{label(i.category)}</span><Pill s={i.status} />
           </p>
-          <p className="mt-1 text-xs text-gray-500">{label(i.reporterType)} #{short(i.reporterId)} · {when(i.createdAt)}{i.tripId ? ` · trip #${short(i.tripId)}` : ''}{i.bookingId ? ` · booking #${short(i.bookingId)}` : ''}{i.resolvedAt ? ` · closed ${when(i.resolvedAt)}` : ''}</p>
+          <p className="mt-1 text-xs text-gray-500">{label(i.reporterType)} {i.reporter ? `${i.reporter.name}${i.reporter.phoneMasked ? ` ${i.reporter.phoneMasked}` : ''}` : `#${short(i.reporterId)}`} · {when(i.createdAt)}{i.tripId ? ` · trip #${short(i.tripId)}` : ''}{i.bookingId ? ` · booking #${short(i.bookingId)}` : ''}{i.resolvedAt ? ` · closed ${when(i.resolvedAt)}` : ''}</p>
         </div>
       </div>
       {i.description && <p className="mt-3 whitespace-pre-wrap text-sm text-gray-200">{i.description}</p>}
@@ -131,14 +132,14 @@ export function FaresTab({ tick, lookups }: { tick: number; lookups: Lookups }) 
         {data.outliers.length === 0 ? <Empty text="Every trip in the last 30 days is inside its route's seat-fare bounds." /> : (
           <div className="overflow-x-auto border border-amber-400/30">
             <table className="w-full text-left text-sm">
-              <thead className="bg-white/[0.03] text-xs uppercase tracking-wider text-gray-400"><tr><th className="p-3">Trip</th><th className="p-3">Route</th><th className="p-3">Seat fare</th><th className="p-3">Full auto</th><th className="p-3">Driver</th><th className="p-3">Status</th></tr></thead>
+              <thead className="bg-white/[0.03] text-xs uppercase tracking-wider text-gray-400"><tr><th className="p-3">Trip</th><th className="p-3">Departure</th><th className="p-3">Route</th><th className="p-3">Seat fare</th><th className="p-3">Full auto</th><th className="p-3">Driver</th><th className="p-3">Status</th></tr></thead>
               <tbody className="divide-y divide-white/10">
                 {data.outliers.map((o) => {
                   const r = data.routes.find((x) => String(x.routeId) === String(o.routeId));
                   const f = Number(o.seatFare);
                   const low = r && r.seatFareMin !== null && f < r.seatFareMin;
                   return (
-                    <tr key={o.id}><td className="p-3 font-mono text-xs">#{short(o.id)}</td><td className="p-3">{routeName(o.routeId)}</td>
+                    <tr key={o.id}><td className="p-3 font-mono text-xs">#{short(o.id)}</td><td className="whitespace-nowrap p-3 text-xs">{o.departureAt ? when(o.departureAt) : '—'}</td><td className="p-3">{routeName(o.routeId)}</td>
                       <td className="p-3 font-bold text-amber-300">{inr(o.seatFare)} <span className="text-xs font-normal">{low ? `below ${inr(r?.seatFareMin)}` : `above ${inr(r?.seatFareMax)}`}</span></td>
                       <td className="p-3">{inr(o.fullAutoFare)}</td><td className="p-3 text-xs">{lookups.drivers.get(String(o.driverId))?.name || `#${short(o.driverId)}`}</td><td className="p-3"><Pill s={o.status} /></td></tr>
                   );
@@ -181,7 +182,7 @@ export function AuditTab({ tick }: { tick: number }) {
                   <td className="whitespace-nowrap p-3 text-xs">{when(e.at)}</td>
                   <td className="p-3 text-xs font-bold">{label(e.action.replace(/^AUTO_/, ''))}</td>
                   <td className="p-3"><button type="button" title="Filter by this target" onClick={() => { setTarget(e.targetId); setQuery(e.targetId); }} className="font-mono text-xs text-sky-300 underline">{e.targetId.length > 20 ? `#${short(e.targetId)}` : e.targetId}</button></td>
-                  <td className="p-3 font-mono text-xs text-gray-400">#{short(e.adminId)}</td>
+                  <td className="p-3 text-xs text-gray-400">{e.actor?.name ? <span className="font-bold text-gray-200">{e.actor.name}</span> : null} <span className="font-mono">#{short(e.adminId)}</span></td>
                   <td className="p-3"><code className="block max-w-xl whitespace-pre-wrap break-all text-[11px] text-gray-400">{typeof e.details === 'string' ? e.details : JSON.stringify(e.details)}</code></td>
                 </tr>
               ))}

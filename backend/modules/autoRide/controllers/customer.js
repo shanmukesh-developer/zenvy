@@ -5,13 +5,13 @@ const { Op } = require('sequelize');
 const { getModel } = require('../index');
 const E = require('../enums');
 const { fail, cleanText, isUuid, hit, ymd, num } = require('../services/util');
-const { readIdempotencyKey } = require('../../../utils/idempotency');
+const { readIdempotencyKey, claim: claimIdempotency } = require('../../../utils/idempotency');
 const S = require('../services/serialize');
 const alloc = require('../services/allocation');
 const notify = require('../services/notify');
 const payments = require('../services/payments');
 const clock = require('../services/clock');
-const { readFlag } = require('../services/flag');
+const { readFlag, publicSettings } = require('../services/flag');
 const { istDayStartOf } = require('../../../utils/istTime');
 
 const T = E.TRIP_STATUS;
@@ -52,9 +52,16 @@ const loadVisibleTrip = async (id) => {
 };
 
 // GET /api/auto-ride/status   (no feature gate: the app decides whether to show the entry)
+// settings: the public limits (seats per booking, hold minutes, refund %, ...) so the app's steppers and
+// cancel dialogs match what the server will enforce.
 const status = async (req, res) => {
   const enabled = await readFlag();
-  res.json({ enabled, paymentMethods: enabled ? await payments.enabledMethods() : [] });
+  res.json({ enabled, paymentMethods: enabled ? await payments.enabledMethods() : [], settings: await publicSettings() });
+};
+
+// GET /api/auto-ride/settings/public   (same block as /status settings)
+const settingsPublic = async (req, res) => {
+  res.json({ settings: await publicSettings() });
 };
 
 // GET /api/auto-ride/routes
@@ -82,23 +89,34 @@ const pickupPoints = async (req, res) => {
   });
 };
 
-// GET /api/auto-ride/pickup-points/:id/queue?date=YYYY-MM-DD
-const pickupQueue = async (req, res) => {
+/**
+ * The queue at one pickup point for one IST day (customer + driver apps). No passenger data at all: only
+ * trip cards (driver short name, masked registration, seat counts). viewer: { userId } or { driverId }.
+ */
+const queueFor = async (req, pickupId, rawDate, viewer = {}) => {
   const { Pickup, Trip } = M();
-  if (!isUuid(String(req.params.id || ''))) throw fail(404, 'NOT_FOUND', 'Pickup point not found.');
-  const p = await Pickup.findByPk(req.params.id);
+  if (!isUuid(String(pickupId || ''))) throw fail(404, 'NOT_FOUND', 'Pickup point not found.');
+  const p = await Pickup.findByPk(pickupId);
   if (!p || p.isActive === false) throw fail(404, 'NOT_FOUND', 'Pickup point not found.');
-  const date = ymd(req.query.date, 'date') || require('../../../utils/istTime').istYmd(clock.now());
+  const date = ymd(rawDate, 'date') || require('../../../utils/istTime').istYmd(clock.now());
   const trips = await Trip.findAll({
     where: { pickupPointId: p.id, operatingDate: date, status: { [Op.notIn]: [T.DRAFT] }, queueNumber: { [Op.ne]: null } },
     order: [['periodKey', 'ASC'], ['queueNumber', 'ASC']], limit: 200,
   });
-  const ctx = await tripContext(trips, req.user.id);
-  res.json({
+  const ctx = await tripContext(trips, viewer.userId || null);
+  return {
     pickupPoint: S.pickupBrief(p), date,
-    queue: trips.map((t) => ({ ...S.tripCustomer(req, t, ctx(t)), periodKey: t.periodKey, checkInAt: S.iso(t.publishedAt) })),
+    queue: trips.map((t) => ({
+      ...S.tripCustomer(req, t, ctx(t)), periodKey: t.periodKey, checkInAt: S.iso(t.publishedAt),
+      ...(viewer.driverId ? { mine: String(t.driverId) === String(viewer.driverId) } : {}),
+    })),
     note: 'Queue numbers show the order autos checked in. The departure order can differ (an auto that fills up first may leave first).',
-  });
+  };
+};
+
+// GET /api/auto-ride/pickup-points/:id/queue?date=YYYY-MM-DD
+const pickupQueue = async (req, res) => {
+  res.json(await queueFor(req, req.params.id, req.query.date, { userId: req.user.id }));
 };
 
 // GET /api/auto-ride/trips?routeId=&pickupPointId=&destination=&date=&time=HH:MM&passengers=&mode=private
@@ -196,7 +214,15 @@ const createHold = async (req, res) => {
   const key = readIdempotencyKey(req, body.idempotencyKey) || null;
   const seatNumbers = Array.isArray(body.seatNumbers) ? body.seatNumbers.slice(0, E.LIMITS.ABSOLUTE_MAX_CAPACITY) : undefined;
   const seatCount = body.seatCount !== undefined ? body.seatCount : (seatNumbers ? seatNumbers.length : 1);
-  const r = await alloc.hold({ tripId, userId: req.user.id, seatCount, seatNumbers, idempotencyKey: key });
+  let r;
+  try {
+    r = await alloc.hold({ tripId, userId: req.user.id, seatCount, seatNumbers, idempotencyKey: key });
+  } catch (err) {
+    // A refused retry key (409 IDEMPOTENCY_KEY_REUSED) may have expired stale holds on the way: tell them.
+    for (const b of (err && err.expiredHolds) || []) notify.bookingEvent(b, { title: 'Seat hold expired', body: 'Your held seats were released because the booking was not confirmed in time.', type: 'AUTO_HOLD_EXPIRED' });
+    if (err && err.expiredHolds && err.expiredHolds.length) notify.tripChanged(tripId);
+    throw err;
+  }
   if (r.created) {
     notify.nudgeDriver(r.booking.driverId, 'trip', tripId, null);
     notify.tripChanged(tripId);
@@ -205,10 +231,34 @@ const createHold = async (req, res) => {
   res.status(r.created ? 201 : 200).json({ booking: await presentBooking(req, r.booking), created: !!r.created, duplicate: !r.created });
 };
 
-// POST /api/auto-ride/bookings/:id/confirm { paymentMethod }
+// POST /api/auto-ride/bookings/:id/confirm { paymentMethod }   (Idempotency-Key header / body idempotencyKey optional)
+// With a key (utils/idempotency.claim, shared across processes): a retry while the first is running -> 409
+// CONFIRM_IN_PROGRESS (keep the key, retry); after it succeeded -> the SAME response again with duplicate: true.
+// A failed attempt releases the key, so a retry after e.g. PAYMENT_METHOD_OFF runs again. Without a key the
+// confirm is still safe to repeat (an already-confirmed booking answers 200 duplicate).
 const confirmBooking = async (req, res) => {
   const id = String(req.params.id || '');
   if (!isUuid(id)) throw fail(404, 'NOT_FOUND', 'Booking not found.');
+  const key = readIdempotencyKey(req, (req.body || {}).idempotencyKey) || '';
+  const claim = await claimIdempotency('autoride_confirm', req.user.id, key);
+  if (claim.state === 'busy') throw fail(409, 'CONFIRM_IN_PROGRESS', 'Your booking is being confirmed. Please wait a moment.', { retryable: true });
+  if (claim.state === 'done') {
+    const body = claim.body || {};
+    if (!body.booking || String(body.booking.id) !== id) throw fail(409, 'IDEMPOTENCY_KEY_REUSED', 'This retry key was already used for another booking.');
+    return res.status(claim.status || 200).json({ ...body, duplicate: true });
+  }
+  let out;
+  try {
+    out = await confirmOnce(req, id);
+  } catch (err) {
+    await claim.release();
+    throw err;
+  }
+  await claim.finish(200, out);
+  res.json(out);
+};
+
+const confirmOnce = async (req, id) => {
   hit('confirm', req.user.id);
   const r = await alloc.confirm({ bookingId: id, userId: req.user.id, paymentMethod: (req.body || {}).paymentMethod });
   const b = r.booking;
@@ -229,7 +279,7 @@ const confirmBooking = async (req, res) => {
       notify.tripEvent(r.trip, { driverTitle: 'Almost full', driverBody: `${r.trip.seatsConfirmed}/${r.trip.capacity} seats confirmed.`, type: 'AUTO_TRIP_ALMOST_FULL', statuses: [] });
     } else notify.tripEvent(r.trip, {});
   }
-  res.json({ booking: await presentBooking(req, b), duplicate: !!r.already });
+  return { booking: await presentBooking(req, b), duplicate: !!r.already };
 };
 
 // POST /api/auto-ride/bookings/:id/release   (HELD only)
@@ -319,6 +369,8 @@ const cancelPrivate = async (req, res) => {
   if (!isUuid(id)) throw fail(404, 'NOT_FOUND', 'Request not found.');
   const r = await alloc.cancelPrivateRequest({ requestId: id, userId: req.user.id });
   notify.nudgeDriver(r.driverId, 'private_request', r.id, r.status);
+  notify.nudgeCustomers([r.userId], 'private_request', r.id, r.status); // the passenger's other devices
+  notify.admin('auto_private_request', 'updated', r.id);
   res.json({ request: S.privateRequestCustomer(r) });
 };
 
@@ -332,12 +384,13 @@ const reportIncident = async (req, res) => {
   const description = cleanText((req.body || {}).description, 2000, { multiline: true });
   if (description.length < 5) throw fail(400, 'INVALID_INPUT', 'Describe what happened (at least 5 characters).', { field: 'description' });
   hit('incident', req.user.id);
-  const row = await M().Incident.create({ tripId: b.tripId, bookingId: b.id, reporterType: 'CUSTOMER', reporterId: req.user.id, category, description });
+  const priority = E.HIGH_PRIORITY_CATEGORIES.includes(category) ? E.INCIDENT_PRIORITY.HIGH : E.INCIDENT_PRIORITY.NORMAL;
+  const row = await M().Incident.create({ tripId: b.tripId, bookingId: b.id, reporterType: 'CUSTOMER', reporterId: req.user.id, category, priority, description });
   notify.admin('auto_incident', 'created', row.id);
   res.status(201).json({ incident: S.incident(row), message: category === 'SAFETY' || category === 'HARASSMENT' ? 'Reported. If you are in danger call 112 now.' : 'Reported. The Zenvy team will look into it.' });
 };
 
 module.exports = {
-  status, routes, pickupPoints, pickupQueue, browse, detail, seats, createHold, confirmBooking, releaseBooking, cancelBooking,
-  myBookings, bookingDetail, createPrivate, myPrivate, privateDetail, cancelPrivate, reportIncident, seatMapFor, tripContext,
+  status, settingsPublic, routes, pickupPoints, pickupQueue, browse, detail, seats, createHold, confirmBooking, releaseBooking, cancelBooking,
+  myBookings, bookingDetail, createPrivate, myPrivate, privateDetail, cancelPrivate, reportIncident, seatMapFor, tripContext, queueFor,
 };

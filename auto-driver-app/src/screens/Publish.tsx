@@ -4,8 +4,8 @@
 // mirror the server (lib/tripRules.ts validatePublish); the server's answer always wins. A failed publish
 // keeps the draft so nothing typed is lost.
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Text, View } from 'react-native';
-import { color, font, space } from '../theme';
+import { Alert, StyleSheet, Text, TextInput, View } from 'react-native';
+import { color, font, radius, space } from '../theme';
 import { Button, Card, Chip, EmptyState, ErrorStrip, SkeletonCard } from '../ui/kit';
 import { Banner, KeyValue, Screen, SectionTitle } from '../ui/Screen';
 import { Stepper, SwitchRow } from '../ui/Stepper';
@@ -17,7 +17,7 @@ import { ApiError, errorMessage, serverNow } from '../lib/http';
 import { istHhmm, istToMs, istYmd, nextIstDays, periodAt, validatePublish, type FormErrors } from '../lib/tripRules';
 import { dayIst, rupees, timeIst } from '../lib/format';
 import { LIMITS } from '../config';
-import type { RouteFull, Trip, TripInput, Vehicle } from '../types';
+import type { DriverSettings, RouteFull, Trip, TripInput, Vehicle } from '../types';
 import type { ScreenProps } from '../nav';
 
 const roundUp5 = (ms: number) => Math.ceil(ms / (5 * 60000)) * 5 * 60000;
@@ -29,8 +29,11 @@ export default function PublishScreen({ navigation, route: nav }: ScreenProps<'P
   const draftId = nav.params?.draftId;
   const { me, refreshMe } = useSession();
   const q = useLoad(async () => {
-    const [routes, drafts] = await Promise.all([driverApi.routes(), driverApi.trips('draft')]);
-    return { routes: routes.routes, drafts: drafts.trips };
+    const [routes, drafts, settings] = await Promise.all([
+      driverApi.routes(), driverApi.trips('draft'),
+      driverApi.settings().then((r) => r.settings).catch(() => null), // older server: the LIMITS defaults
+    ]);
+    return { routes: routes.routes, drafts: drafts.trips, settings };
   }, [draftId]);
   const vehicles = (me?.vehicles || []).filter((v) => v.status === 'APPROVED' && v.approvedCapacity);
   const draft = draftId ? q.data?.drafts.find((t) => t.id === draftId) || null : null;
@@ -53,6 +56,7 @@ export default function PublishScreen({ navigation, route: nav }: ScreenProps<'P
       routes={q.data!.routes}
       vehicles={vehicles}
       drafts={q.data!.drafts}
+      settings={q.data!.settings}
       draft={draft}
       isOnline={!!me.driver.isOnline}
       featureEnabled={me.featureEnabled}
@@ -65,8 +69,8 @@ export default function PublishScreen({ navigation, route: nav }: ScreenProps<'P
   );
 }
 
-function PublishForm({ routes, vehicles, drafts, draft, isOnline, featureEnabled, onBack, onOpenDraft, onDraftsChanged, onPublished, refreshMe }: {
-  routes: RouteFull[]; vehicles: Vehicle[]; drafts: Trip[]; draft: Trip | null; isOnline: boolean; featureEnabled: boolean;
+function PublishForm({ routes, vehicles, drafts, settings, draft, isOnline, featureEnabled, onBack, onOpenDraft, onDraftsChanged, onPublished, refreshMe }: {
+  routes: RouteFull[]; vehicles: Vehicle[]; drafts: Trip[]; settings: DriverSettings | null; draft: Trip | null; isOnline: boolean; featureEnabled: boolean;
   onBack: () => void; onOpenDraft: (id: string) => void; onDraftsChanged: () => void; onPublished: (t: Trip) => void; refreshMe: () => Promise<unknown>;
 }) {
   const toast = useToast();
@@ -79,11 +83,15 @@ function PublishForm({ routes, vehicles, drafts, draft, isOnline, featureEnabled
   const [minutes, setMinutes] = useState(toMin(istHhmm(start)));
   const vehicle = vehicles.find((v) => v.id === vehicleId) || null;
   const route = routes.find((r) => r.id === routeId) || null;
-  const maxCap = vehicle?.approvedCapacity || 1;
+  // Approved capacity, never above the platform max the admin set (the server checks both again).
+  const maxCap = Math.max(1, Math.min(vehicle?.approvedCapacity || 1, settings?.platformMaxCapacity || LIMITS.ABSOLUTE_MAX_CAPACITY));
+  const maxAdvanceDays = settings?.maxAdvanceDays ?? LIMITS.MAX_ADVANCE_DAYS;
   const [capacity, setCapacity] = useState(Math.min(draft?.capacity || maxCap, maxCap));
   const [seatFare, setSeatFare] = useState(draft?.seatFare || route?.seatFareMin || 30);
   const [privateOn, setPrivateOn] = useState(!!draft?.privateBookingEnabled);
   const [fullFare, setFullFare] = useState<number>(draft?.fullAutoFare || route?.fullFareMin || Math.max(50, (draft?.seatFare || 30) * maxCap));
+  const [extraAmount, setExtraAmount] = useState<number>(draft?.extraCharges?.amount || 0);
+  const [extraNote, setExtraNote] = useState<string>(draft?.extraCharges?.note || '');
   const [seatSel, setSeatSel] = useState(draft ? draft.seatSelectionEnabled : true);
   const [minSeats, setMinSeats] = useState(draft?.minSeatsToDepart || Math.min(maxCap, route?.minSeatsToDepartDefault || maxCap));
   const [stops, setStops] = useState<string[]>(draft?.stops || []);
@@ -109,13 +117,16 @@ function PublishForm({ routes, vehicles, drafts, draft, isOnline, featureEnabled
   }, [routeId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const departureMs = istToMs(ymd, toHhmm(minutes));
-  const days = useMemo(() => nextIstDays(now, LIMITS.MAX_ADVANCE_DAYS + 1), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const days = useMemo(() => nextIstDays(now, maxAdvanceDays + 1), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const extraMax = Math.min(LIMITS.MAX_EXTRA_CHARGES, fullFare);
+  useEffect(() => { setExtraAmount((a) => Math.min(Math.max(0, a), extraMax)); }, [extraMax]);
+  const extra = privateOn && extraAmount > 0 ? { amount: extraAmount, note: extraNote.trim() } : null;
   const period = route ? periodAt(route.operatingPeriods, departureMs) : null;
 
   const input = (): TripInput => ({
     vehicleId: vehicleId!, routeId: routeId!, pickupPointId: pickupId!, departureAt: new Date(departureMs).toISOString(),
     capacity, seatFare, fullAutoFare: privateOn ? fullFare : null, privateBookingEnabled: privateOn, seatSelectionEnabled: seatSel,
-    minSeatsToDepart: minSeats, stops,
+    minSeatsToDepart: minSeats, stops, extraCharges: extra,
   });
 
   const doPublish = async (t: Trip) => {
@@ -143,6 +154,7 @@ function PublishForm({ routes, vehicles, drafts, draft, isOnline, featureEnabled
   const submit = async () => {
     setServerErr(null);
     const e = validatePublish({ vehicle, route, pickupPointId: pickupId, departureMs, capacity, seatFare, privateBookingEnabled: privateOn, fullAutoFare: privateOn ? fullFare : null, minSeatsToDepart: minSeats, stops }, serverNow());
+    if (extra && extra.note.length < 3) e.fullAutoFare = 'Say what the extra charges are for (e.g. luggage, night charge).';
     setErrors(e);
     if (Object.keys(e).length) { toast.show('Please fix the marked fields.', 'error'); return; }
     setBusy(true);
@@ -243,6 +255,23 @@ function PublishForm({ routes, vehicles, drafts, draft, isOnline, featureEnabled
               onChange={setFullFare} format={rupees} error={errors.fullAutoFare}
               hint={`Allowed: ${rupees(route.fullFareMin ?? 1)} to ${rupees(route.fullFareMax ?? LIMITS.MAX_FULL_FARE)}`} />
           ) : null}
+          {privateOn ? (
+            <>
+              <Stepper label="Extra charges (optional)" value={extraAmount} min={0} max={extraMax} step={10} onChange={setExtraAmount} format={rupees}
+                hint={`Added to the full-auto fare and shown to the passenger before they request. Up to ${rupees(extraMax)}.`} />
+              {extraAmount > 0 ? (
+                <TextInput
+                  value={extraNote}
+                  onChangeText={(v) => setExtraNote(v.slice(0, 120))}
+                  placeholder="What is it for? e.g. Luggage, night charge"
+                  placeholderTextColor={color.textMuted}
+                  style={[font.body, styles.input]}
+                  accessibilityLabel="What the extra charges are for"
+                />
+              ) : null}
+              {extraAmount > 0 ? <KeyValue k="Full-auto total" v={rupees(fullFare + extraAmount)} /> : null}
+            </>
+          ) : null}
 
           <SectionTitle text="6. Seats" />
           <Stepper label="Seats for passengers" value={capacity} min={1} max={maxCap} onChange={setCapacity} error={errors.capacity} hint={`Zenvy approved ${maxCap} for this auto.`} />
@@ -274,9 +303,14 @@ function PublishForm({ routes, vehicles, drafts, draft, isOnline, featureEnabled
   );
 }
 
+const styles = StyleSheet.create({
+  input: { minHeight: 48, borderRadius: radius.md, borderWidth: 2, borderColor: color.border, paddingHorizontal: space.md, color: color.text, backgroundColor: color.surface },
+});
+
 const ErrText = ({ t }: { t: string }) => <Text style={[font.small, { color: color.alertDark, fontWeight: '700' }]}>{t}</Text>;
 
 const fieldKey = (f: string): keyof FormErrors => (({
   vehicleId: 'vehicle', routeId: 'route', pickupPointId: 'pickup', departureAt: 'departure', capacity: 'capacity',
   seatFare: 'seatFare', fullAutoFare: 'fullAutoFare', minSeatsToDepart: 'minSeatsToDepart', stops: 'stops',
+  'extraCharges.amount': 'fullAutoFare', 'extraCharges.note': 'fullAutoFare',
 } as Record<string, keyof FormErrors>)[f] || 'departure');

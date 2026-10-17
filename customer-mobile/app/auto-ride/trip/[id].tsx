@@ -15,7 +15,7 @@ import {
 } from '../../../modules/autoRide/ui';
 import SeatMap from '../../../modules/autoRide/SeatMap';
 
-/** Seats-per-booking limit learned from the server's INVALID_INPUT { max } answer (not exposed elsewhere). */
+/** Seats-per-booking limit: GET /status settings.maxSeatsPerBooking, or learned from an INVALID_INPUT { max } answer. */
 let learnedMaxPerBooking: number | null = null;
 
 type Step = 'select' | 'review' | 'done';
@@ -43,6 +43,7 @@ export default function AutoTripScreen() {
   const [busy, setBusy] = useState<null | 'hold' | 'confirm' | 'release'>(null);
   const [retry, setRetry] = useState<null | { kind: 'hold' | 'confirm'; message: string }>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [maxPerBooking, setMaxPerBooking] = useState<number | null>(learnedMaxPerBooking);
 
   const holdKey = useRef<string | null>(null);
   const confirmKey = useRef<string | null>(null);
@@ -78,6 +79,7 @@ export default function AutoTripScreen() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
     refreshAutoRideStatus().then((s) => {
+      if (s.settings && Number(s.settings.maxSeatsPerBooking) > 0) setMaxPerBooking(Number(s.settings.maxSeatsPerBooking));
       const list = s.paymentMethods.length ? s.paymentMethods : (['CASH'] as PaymentMethod[]);
       setMethods(list);
       if (!list.includes('CASH')) setPayment(list[0]);
@@ -157,7 +159,7 @@ export default function AutoTripScreen() {
   const states: Record<number, SeatState> = {};
   map.seats.forEach((x) => { states[x.seatNo] = x.state; });
   const free = map.seats.filter((x) => x.state === 'AVAILABLE').length;
-  const maxAllowed = Math.max(0, Math.min(free, trip.capacity, learnedMaxPerBooking || trip.capacity));
+  const maxAllowed = Math.max(0, Math.min(free, trip.capacity, maxPerBooking || learnedMaxPerBooking || trip.capacity));
   const pickMode = map.seatSelectionEnabled;
   const seatCount = pickMode ? selected.length : Math.min(count, Math.max(1, maxAllowed));
   const canBook = trip.sharedBookingAllowed && maxAllowed > 0 && !trip.myBookingId;
@@ -196,6 +198,7 @@ export default function AutoTripScreen() {
       case 'INVALID_INPUT':
         if (err.data?.field === 'seatCount' && Number(err.data?.max) > 0) {
           learnedMaxPerBooking = Number(err.data.max);
+          setMaxPerBooking(learnedMaxPerBooking);
           setCount((c) => Math.min(c, learnedMaxPerBooking!));
           setSelected((cur) => cur.slice(0, learnedMaxPerBooking!));
         }

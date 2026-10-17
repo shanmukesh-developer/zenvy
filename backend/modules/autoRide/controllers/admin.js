@@ -5,7 +5,7 @@
 const { Op } = require('sequelize');
 const { getModel } = require('../index');
 const E = require('../enums');
-const { fail, cleanText, isUuid, num, ymd, audit, money } = require('../services/util');
+const { fail, cleanText, isUuid, num, ymd, audit, money, pageOpts, paginate, maskPhone } = require('../services/util');
 const S = require('../services/serialize');
 const notify = require('../services/notify');
 const clock = require('../services/clock');
@@ -47,6 +47,15 @@ const usersById = async (ids) => {
   return new Map(rows.map((u) => [String(u.id), u]));
 };
 
+const byIdsOf = async (Model, ids, attributes) => {
+  const list = [...new Set(ids.filter(Boolean).map(String))].filter(isUuid);
+  if (!list.length) return new Map();
+  const rows = await Model.findAll({ where: { id: { [Op.in]: list } }, ...(attributes ? { attributes } : {}) });
+  return new Map(rows.map((r) => [String(r.id), r]));
+};
+/** { name: first name, phoneMasked: '•••• 1234' } for lists that only need to tell people apart. */
+const personBrief = (u, nameFn = S.firstName) => (u ? { id: u.id, name: nameFn(u.name), phoneMasked: maskPhone(u.phone) } : null);
+
 // GET /api/admin/auto-ride/summary  (live counts from real rows)
 const summary = async (req, res) => {
   const { Driver, Vehicle, Trip, Booking, Private, Incident } = M();
@@ -81,8 +90,10 @@ const drivers = async (req, res) => {
   }
   const q = cleanText(req.query.q, 40).replace(/[%_\\]/g, '');
   if (q) where[Op.or] = [{ phone: { [Op.like]: `%${q}%` } }, { name: { [Op.like]: `%${q}%` } }];
-  const rows = await Driver.findAll({ where, order: [['updatedAt', 'DESC']], limit: 200 });
-  res.json({ drivers: rows.map((d) => S.driverAdmin(req, d)) });
+  const pg = pageOpts(req.query, 200);
+  const found = await Driver.findAll({ where, order: [['updatedAt', 'DESC'], ['id', 'ASC']], limit: pg.fetch, offset: pg.offset });
+  const { rows, pagination } = paginate(found, pg);
+  res.json({ drivers: rows.map((d) => S.driverAdmin(req, d)), pagination });
 };
 const driverDetail = async (req, res) => {
   const { Driver, Vehicle, Trip } = M();
@@ -168,10 +179,29 @@ const vehicles = async (req, res) => {
   if (req.query.driverId && isUuid(String(req.query.driverId))) where.driverId = String(req.query.driverId);
   const q = cleanText(req.query.q, 20).toUpperCase().replace(/[^A-Z0-9]/g, '');
   if (q) where.registrationNumber = { [Op.like]: `%${q}%` };
-  const rows = await Vehicle.findAll({ where, order: [['updatedAt', 'DESC']], limit: 200 });
+  const pg = pageOpts(req.query, 200);
+  const found = await Vehicle.findAll({ where, order: [['updatedAt', 'DESC'], ['id', 'ASC']], limit: pg.fetch, offset: pg.offset });
+  const { rows, pagination } = paginate(found, pg);
   const settings = await flag.readSettings();
   res.json({
     vehicles: rows.map((v) => ({ ...S.vehicleSelf(req, v), suggestedApprovedCapacity: Math.min(Number(v.rcSeatingCapacity) || 0, settings.platformMaxCapacity) || null })),
+    platformMaxCapacity: settings.platformMaxCapacity,
+    pagination,
+  });
+};
+// GET /api/admin/auto-ride/vehicles/:id  (vehicle + its driver + recent trips)
+const vehicleDetail = async (req, res) => {
+  const { Vehicle, Driver, Trip } = M();
+  const v = await byId(Vehicle, req.params.id, 'Vehicle');
+  const [d, trips, settings] = await Promise.all([
+    Driver.findByPk(v.driverId),
+    Trip.findAll({ where: { vehicleId: v.id }, order: [['createdAt', 'DESC']], limit: 30 }),
+    flag.readSettings(),
+  ]);
+  res.json({
+    vehicle: { ...S.vehicleSelf(req, v), suggestedApprovedCapacity: Math.min(Number(v.rcSeatingCapacity) || 0, settings.platformMaxCapacity) || null },
+    driver: d ? { id: d.id, name: d.name, phone: d.phone, status: d.status, isOnline: !!d.isOnline } : null,
+    trips: trips.map((t) => ({ id: t.id, ...S.tripStatus(t), routeId: t.routeId })),
     platformMaxCapacity: settings.platformMaxCapacity,
   });
 };
@@ -269,9 +299,11 @@ const routeInput = (body, current = null) => {
 };
 const listRoutes = async (req, res) => {
   const { Route, Pickup } = M();
-  const rows = await Route.findAll({ order: [['sortOrder', 'ASC'], ['name', 'ASC']] });
+  const pg = pageOpts(req.query, null);
+  const found = await Route.findAll({ order: [['sortOrder', 'ASC'], ['name', 'ASC'], ['id', 'ASC']], ...(pg.fetch ? { limit: pg.fetch, offset: pg.offset } : {}) });
+  const { rows, pagination } = paginate(found, pg);
   const pickups = rows.length ? await Pickup.findAll({ where: { routeId: { [Op.in]: rows.map((r) => r.id) } }, order: [['sequence', 'ASC']] }) : [];
-  res.json({ routes: rows.map((r) => S.routeFull(r, pickups.filter((p) => String(p.routeId) === String(r.id)))) });
+  res.json({ routes: rows.map((r) => S.routeFull(r, pickups.filter((p) => String(p.routeId) === String(r.id)))), pagination });
 };
 const createRoute = async (req, res) => {
   const row = await M().Route.create(routeInput(req.body || {}));
@@ -292,8 +324,9 @@ const pickupInput = (body, current = null) => {
   const pick = (k) => (body[k] !== undefined ? body[k] : current ? current[k] : undefined);
   const name = cleanText(pick('name'), 80);
   if (name.length < 2) throw fail(400, 'INVALID_INPUT', 'Pickup point name is required.', { field: 'name' });
-  const lat = num(pick('lat'), { min: -90, max: 90, field: 'lat' });
-  const lon = num(pick('lon'), { min: -180, max: 180, field: 'lon' });
+  // Up to 6 decimals (about 0.1 m): 2 decimals would move the stand by up to ~1 km.
+  const lat = num(pick('lat'), { min: -90, max: 90, field: 'lat', label: 'Latitude', decimals: 6 });
+  const lon = num(pick('lon'), { min: -180, max: 180, field: 'lon', label: 'Longitude', decimals: 6 });
   if ((lat === null) !== (lon === null)) throw fail(400, 'INVALID_INPUT', 'Give both latitude and longitude, or neither.', { field: 'lat' });
   return { name, landmark: cleanText(pick('landmark'), 160) || null, lat, lon, sequence: num(pick('sequence'), { min: 0, max: 1000, int: true, field: 'sequence' }) || 0, isActive: pick('isActive') !== false };
 };
@@ -325,8 +358,30 @@ const trips = async (req, res) => {
   const date = ymd(req.query.date, 'date');
   if (date) where.operatingDate = date;
   if (req.query.driverId && isUuid(String(req.query.driverId))) where.driverId = String(req.query.driverId);
-  const rows = await Trip.findAll({ where, order: [['departureAt', 'DESC']], limit: 300 });
-  res.json({ trips: rows.map((t) => ({ ...S.tripDriver(req, t, {}), driverId: t.driverId })) });
+  for (const k of ['routeId', 'pickupPointId', 'vehicleId']) {
+    if (req.query[k] === undefined || req.query[k] === '') continue;
+    if (!isUuid(String(req.query[k]))) throw fail(400, 'INVALID_INPUT', `Unknown ${k}.`, { field: k });
+    where[k] = String(req.query[k]);
+  }
+  const pg = pageOpts(req.query, 300);
+  const found = await Trip.findAll({ where, order: [['departureAt', 'DESC'], ['id', 'ASC']], limit: pg.fetch, offset: pg.offset });
+  const { rows, pagination } = paginate(found, pg);
+  const { Route, Pickup, Driver } = M();
+  const [routes, pickups, drivers] = await Promise.all([
+    byIdsOf(Route, rows.map((t) => t.routeId)), byIdsOf(Pickup, rows.map((t) => t.pickupPointId)), byIdsOf(Driver, rows.map((t) => t.driverId), ['id', 'name']),
+  ]);
+  res.json({
+    trips: rows.map((t) => {
+      const route = routes.get(String(t.routeId));
+      const pickup = pickups.get(String(t.pickupPointId));
+      const d = drivers.get(String(t.driverId));
+      return {
+        ...S.tripDriver(req, t, { route, pickup }), driverId: t.driverId,
+        routeName: route ? route.name : null, pickupName: pickup ? pickup.name : null, driverName: d ? S.shortName(d.name) : null,
+      };
+    }),
+    pagination,
+  });
 };
 const tripDetail = async (req, res) => {
   const { Trip, Booking, Event, Private } = M();
@@ -357,10 +412,13 @@ const queues = async (req, res) => {
   const date = ymd(req.query.date, 'date') || istYmd(clock.now());
   const where = { operatingDate: date, queueNumber: { [Op.ne]: null } };
   if (req.query.pickupPointId && isUuid(String(req.query.pickupPointId))) where.pickupPointId = String(req.query.pickupPointId);
-  const rows = await Trip.findAll({ where, order: [['pickupPointId', 'ASC'], ['periodKey', 'ASC'], ['queueNumber', 'ASC']], limit: 500 });
+  if (req.query.routeId && isUuid(String(req.query.routeId))) where.routeId = String(req.query.routeId);
+  const pg = pageOpts(req.query, 500);
+  const found = await Trip.findAll({ where, order: [['pickupPointId', 'ASC'], ['periodKey', 'ASC'], ['queueNumber', 'ASC'], ['id', 'ASC']], limit: pg.fetch, offset: pg.offset });
+  const { rows, pagination } = paginate(found, pg);
   const pickups = rows.length ? await Pickup.findAll({ where: { id: { [Op.in]: [...new Set(rows.map((r) => r.pickupPointId))] } } }) : [];
   const pmap = new Map(pickups.map((p) => [String(p.id), p]));
-  res.json({ date, queue: rows.map((t) => ({ id: t.id, pickup: S.pickupBrief(pmap.get(String(t.pickupPointId))), periodKey: t.periodKey, driverId: t.driverId, ...S.tripStatus(t), checkInAt: S.iso(t.publishedAt) })) });
+  res.json({ date, queue: rows.map((t) => ({ id: t.id, pickup: S.pickupBrief(pmap.get(String(t.pickupPointId))), periodKey: t.periodKey, driverId: t.driverId, ...S.tripStatus(t), checkInAt: S.iso(t.publishedAt) })), pagination });
 };
 
 // ── Bookings ────────────────────────────────────────────────────────────────
@@ -375,12 +433,32 @@ const bookings = async (req, res) => {
     where.status = status;
   }
   for (const k of ['tripId', 'userId', 'driverId']) if (req.query[k] && isUuid(String(req.query[k]))) where[k] = String(req.query[k]);
-  const rows = await Booking.findAll({ where, order: [['createdAt', 'DESC']], limit: 300 });
+  // Customer phone (admin only): the full 10-digit number, or its last 4 digits together with the booking code.
+  const phoneQ = String(req.query.phone || '').replace(/\D/g, '');
+  if (phoneQ) {
+    const { normalizePhone } = require('../../../utils/phoneUtils');
+    const { getUserModel } = require('../../../models/User');
+    let users;
+    if (phoneQ.length === 4) {
+      if (!code) throw fail(400, 'INVALID_INPUT', 'Searching by the last 4 digits needs the booking code too.', { field: 'phone' });
+      users = await getUserModel().findAll({ where: { phone: { [Op.like]: `%${phoneQ}` } }, attributes: ['id'], limit: 500 });
+    } else {
+      const full = normalizePhone(phoneQ);
+      if (!full || !/^[6-9]\d{9}$/.test(full)) throw fail(400, 'INVALID_INPUT', 'Enter the full 10-digit mobile number, or its last 4 digits with the booking code.', { field: 'phone' });
+      users = await getUserModel().findAll({ where: { phone: { [Op.in]: [...new Set([full, `+91${full}`, `91${full}`])] } }, attributes: ['id'], limit: 20 });
+    }
+    let ids = users.map((u) => String(u.id));
+    if (where.userId) ids = ids.filter((x) => x === where.userId);
+    where.userId = { [Op.in]: ids.length ? ids : ['00000000-0000-0000-0000-000000000000'] };
+  }
+  const pg = pageOpts(req.query, 300);
+  const found = await Booking.findAll({ where, order: [['createdAt', 'DESC'], ['id', 'ASC']], limit: pg.fetch, offset: pg.offset });
+  const { rows, pagination } = paginate(found, pg);
   const users = await usersById(rows.map((b) => b.userId));
   const tIds = [...new Set(rows.map((b) => String(b.tripId)))];
   const ts = tIds.length ? await Trip.findAll({ where: { id: { [Op.in]: tIds } } }) : [];
   const tmap = new Map(ts.map((t) => [String(t.id), t]));
-  res.json({ bookings: rows.map((b) => S.bookingAdmin(b, { user: users.get(String(b.userId)), trip: tmap.get(String(b.tripId)) })) });
+  res.json({ bookings: rows.map((b) => S.bookingAdmin(b, { user: users.get(String(b.userId)), trip: tmap.get(String(b.tripId)) })), pagination });
 };
 const cancelBooking = async (req, res) => {
   const { Booking } = M();
@@ -415,8 +493,18 @@ const privateRequests = async (req, res) => {
     if (!Object.values(E.PRIVATE_STATUS).includes(st)) throw fail(400, 'INVALID_INPUT', 'Unknown status.');
     where.status = st;
   }
-  const rows = await M().Private.findAll({ where, order: [['createdAt', 'DESC']], limit: 300 });
-  res.json({ requests: rows.map((r) => ({ ...S.privateRequestCustomer(r), userId: r.userId, driverId: r.driverId })) });
+  for (const k of ['tripId', 'driverId', 'userId']) if (req.query[k] && isUuid(String(req.query[k]))) where[k] = String(req.query[k]);
+  const pg = pageOpts(req.query, 300);
+  const found = await M().Private.findAll({ where, order: [['createdAt', 'DESC'], ['id', 'ASC']], limit: pg.fetch, offset: pg.offset });
+  const { rows, pagination } = paginate(found, pg);
+  const [users, drivers] = await Promise.all([usersById(rows.map((r) => r.userId)), byIdsOf(M().Driver, rows.map((r) => r.driverId), ['id', 'name', 'phone'])]);
+  res.json({
+    requests: rows.map((r) => ({
+      ...S.privateRequestCustomer(r), userId: r.userId, driverId: r.driverId,
+      passenger: personBrief(users.get(String(r.userId))), driver: personBrief(drivers.get(String(r.driverId)), S.shortName),
+    })),
+    pagination,
+  });
 };
 
 // ── Incidents ───────────────────────────────────────────────────────────────
@@ -428,8 +516,25 @@ const incidents = async (req, res) => {
     if (!E.INCIDENT_STATUS.includes(status)) throw fail(400, 'INVALID_INPUT', 'Unknown status.');
     where.status = status;
   }
-  const rows = await M().Incident.findAll({ where, order: [['createdAt', 'DESC']], limit: 300 });
-  res.json({ incidents: rows.map((i) => ({ ...S.incident(i), reporterId: i.reporterId })) });
+  const pr = String(req.query.priority || '').toUpperCase();
+  if (pr) {
+    if (!Object.values(E.INCIDENT_PRIORITY).includes(pr)) throw fail(400, 'INVALID_INPUT', 'Unknown priority.');
+    where.priority = pr;
+  }
+  const pg = pageOpts(req.query, 300);
+  const found = await M().Incident.findAll({ where, order: [['createdAt', 'DESC'], ['id', 'ASC']], limit: pg.fetch, offset: pg.offset });
+  const { rows, pagination } = paginate(found, pg);
+  const [users, drivers] = await Promise.all([
+    usersById(rows.filter((i) => i.reporterType === 'CUSTOMER').map((i) => i.reporterId)),
+    byIdsOf(M().Driver, rows.filter((i) => i.reporterType === 'DRIVER').map((i) => i.reporterId), ['id', 'name', 'phone']),
+  ]);
+  res.json({
+    incidents: rows.map((i) => ({
+      ...S.incident(i), reporterId: i.reporterId,
+      reporter: i.reporterType === 'DRIVER' ? personBrief(drivers.get(String(i.reporterId)), S.shortName) : personBrief(users.get(String(i.reporterId))),
+    })),
+    pagination,
+  });
 };
 const updateIncident = async (req, res) => {
   const row = await byId(M().Incident, req.params.id, 'Incident');
@@ -457,7 +562,10 @@ const fares = async (req, res) => {
     if (!r) return false;
     const f = Number(t.seatFare);
     return (r.seatFareMin !== null && f < r.seatFareMin) || (r.seatFareMax !== null && f > r.seatFareMax);
-  }).map((t) => ({ id: t.id, routeId: t.routeId, seatFare: t.seatFare, fullAutoFare: t.fullAutoFare, driverId: t.driverId, status: t.status }));
+  }).map((t) => ({
+    id: t.id, routeId: t.routeId, routeName: (rmap.get(String(t.routeId)) || {}).name || null, seatFare: t.seatFare, fullAutoFare: t.fullAutoFare,
+    driverId: t.driverId, status: t.status, departureAt: S.iso(t.departureAt),
+  }));
   const byRoute = routes.map((r) => {
     const list = rows.filter((t) => String(t.routeId) === String(r.id)).map((t) => Number(t.seatFare));
     return { routeId: r.id, name: r.name, seatFareMin: r.seatFareMin, seatFareMax: r.seatFareMax, fullFareMin: r.fullFareMin, fullFareMax: r.fullFareMax, trips: list.length, avgSeatFare: list.length ? money(list.reduce((a, b) => a + b, 0) / list.length) : null };
@@ -498,13 +606,25 @@ const auditLog = async (req, res) => {
   const VL = getVerificationLogModel();
   const where = { action: { [Op.like]: 'AUTO_%' } };
   if (req.query.targetId) where.targetId = cleanText(req.query.targetId, 64);
-  const rows = await VL.findAll({ where, order: [['timestamp', 'DESC']], limit: 300 });
-  res.json({ entries: rows.map((r) => ({ id: r.id, adminId: r.adminId, targetId: r.targetId, action: r.action, details: (() => { try { return JSON.parse(r.details); } catch { return r.details; } })(), at: S.iso(r.timestamp) })) });
+  const pg = pageOpts(req.query, 300);
+  const found = await VL.findAll({ where, order: [['timestamp', 'DESC'], ['id', 'DESC']], limit: pg.fetch, offset: pg.offset });
+  const { rows, pagination } = paginate(found, pg);
+  const admins = await usersById(rows.map((r) => r.adminId).filter((x) => isUuid(String(x))));
+  res.json({
+    entries: rows.map((r) => {
+      const a = admins.get(String(r.adminId));
+      return {
+        id: r.id, adminId: r.adminId, actor: { id: r.adminId, name: a ? S.firstName(a.name) : null },
+        targetId: r.targetId, action: r.action, details: (() => { try { return JSON.parse(r.details); } catch { return r.details; } })(), at: S.iso(r.timestamp),
+      };
+    }),
+    pagination,
+  });
 };
 
 module.exports = {
   summary, drivers, driverDetail, verifyDriver, rejectDriver, suspendDriver, unsuspendDriver,
-  vehicles, approveVehicle, rejectVehicle, suspendVehicle, listRoutes, createRoute, updateRoute, createPickup, updatePickup,
+  vehicles, vehicleDetail, approveVehicle, rejectVehicle, suspendVehicle, listRoutes, createRoute, updateRoute, createPickup, updatePickup,
   trips, tripDetail, cancelTrip, queues, bookings, cancelBooking, retryRefund, privateRequests, incidents, updateIncident,
   fares, getSettings, putSettings, auditLog,
 };

@@ -200,6 +200,8 @@ const PRIVATE_STATUS = {
 
 const INCIDENT_CATEGORIES = ['SAFETY', 'HARASSMENT', 'OVERCHARGE', 'RASH_DRIVING', 'NO_SHOW', 'VEHICLE_ISSUE', 'PAYMENT', 'LOST_ITEM', 'OTHER'];
 const INCIDENT_STATUS = ['OPEN', 'REVIEWING', 'RESOLVED', 'DISMISSED'];
+const INCIDENT_PRIORITY = { NORMAL: 'NORMAL', HIGH: 'HIGH' };
+const HIGH_PRIORITY_CATEGORIES = ['SAFETY', 'HARASSMENT'];
 
 // Driver documents (private media, purpose auto_driver_doc). No Aadhaar images are ever collected.
 const DRIVER_DOC_KEYS = ['photo', 'licenceFront', 'licenceBack', 'badge', 'policeVerification'];
@@ -213,6 +215,8 @@ const LIMITS = {
   MAX_SEATS_PER_BOOKING_DEFAULT: 4,
   MAX_FARE: 5000,
   MAX_FULL_FARE: 20000,
+  /** Full-auto extra charges: at most this, and never more than the full-auto fare itself. */
+  MAX_EXTRA_CHARGES: 2000,
   MAX_DELAY_MINUTES: 120,
   MIN_LEAD_MINUTES: 2,
   MAX_VEHICLE_PHOTOS: 4,
@@ -266,6 +270,8 @@ module.exports = {
   PRIVATE_STATUS,
   INCIDENT_CATEGORIES,
   INCIDENT_STATUS,
+  INCIDENT_PRIORITY,
+  HIGH_PRIORITY_CATEGORIES,
   DRIVER_DOC_KEYS,
   REQUIRED_DRIVER_DOCS,
   VEHICLE_DOC_KEYS,

@@ -164,7 +164,7 @@ function Pickups({ route, onChanged }: { route: Route; onChanged: () => void }) 
                   <div>
                     <span className="mr-2 font-mono text-xs text-gray-500">#{p.sequence}</span><b>{p.name}</b>{!p.isActive && <span className="ml-2"><Pill s="INACTIVE" /></span>}
                     {p.landmark && <span className="ml-2 text-gray-400">· {p.landmark}</span>}
-                    {p.lat !== null && p.lon !== null && <span className="ml-2 font-mono text-xs text-gray-500">{p.lat.toFixed(5)}, {p.lon.toFixed(5)}</span>}
+                    {p.lat !== null && p.lon !== null && <span className="ml-2 font-mono text-xs text-gray-500">{p.lat.toFixed(6)}, {p.lon.toFixed(6)}</span>}
                     {p.mapsUrl && <a href={p.mapsUrl} target="_blank" rel="noreferrer noopener" className="ml-2 text-xs font-bold text-sky-300 underline">Map ↗</a>}
                   </div>
                   <Btn onClick={() => setEditing(p.id)}>Edit</Btn>

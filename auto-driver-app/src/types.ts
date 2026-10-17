@@ -120,6 +120,7 @@ export interface Trip extends TripStatusBlock {
   stops: string[];
   seatFare: number;
   fullAutoFare: number | null;
+  extraCharges?: ExtraCharges | null;
   seatSelectionEnabled: boolean;
   privateBookingEnabled: boolean;
   seatLayout: SeatLayout | null;
@@ -174,6 +175,9 @@ export interface PrivateRequest {
   passengers: number;
   purpose: string | null;
   fare: number;
+  /** fare = baseFare + extraCharges.amount. */
+  baseFare?: number;
+  extraCharges?: ExtraCharges | null;
   paymentMethod: string;
   respondBy: string | null;
   respondedAt: string | null;
@@ -200,17 +204,51 @@ export interface HomeResponse {
   todayTrips: (TripStatusBlock & { id: string })[];
   todayEarnings: Earnings;
   pendingPrivateRequests: number;
+  settings?: DriverSettings;
   alerts: { type: string; message: string }[];
+}
+
+/** GET /driver/pickup-points/:id/queue (same trip cards as the customer queue; no passenger data). */
+export interface QueueEntry extends TripStatusBlock {
+  id: string;
+  driver: { name: string; verified: boolean; photo: string | null } | null;
+  vehicle: { registration: string | null; registrationMasked: boolean } | null;
+  destination: string | null;
+  seatFare: number;
+  periodKey: string | null;
+  checkInAt: string | null;
+  mine: boolean;
+}
+export interface QueueResponse {
+  pickupPoint: { id: string; name: string; landmark: string | null; lat: number | null; lon: number | null; mapsUrl: string | null };
+  date: string;
+  queue: QueueEntry[];
+  note: string;
 }
 
 export interface Incident {
   id: string; tripId: string | null; bookingId: string | null; reporterType: string; category: string;
   description: string | null; status: string; adminNote: string | null; createdAt: string | null; resolvedAt: string | null;
+  priority?: 'NORMAL' | 'HIGH';
 }
 
 export interface MediaUpload { id: string; url: string; previewUrl: string | null; mime: string; size: number; isPrivate: boolean }
 
 /** Trip draft / publish form (POST /trips, PATCH /trips/:id). */
+export interface ExtraCharges { amount: number; note: string | null }
+
+/** GET /driver/settings (also /home settings): limits the server enforces. */
+export interface DriverSettings {
+  platformMaxCapacity: number;
+  maxAdvanceDays: number;
+  holdMinutes: number;
+  maxSeatsPerBooking: number;
+  refundBeforeDriverConfirmPct: number;
+  refundAfterDriverConfirmPct: number;
+  privateRespondMinutes?: number;
+  walletEnabled: boolean;
+}
+
 export interface TripInput {
   vehicleId: string;
   routeId: string;
@@ -220,6 +258,8 @@ export interface TripInput {
   capacity: number;
   seatFare: number;
   fullAutoFare?: number | null;
+  /** Optional full-auto extra charges (null clears). Bounded by the server. */
+  extraCharges?: ExtraCharges | null;
   privateBookingEnabled: boolean;
   seatSelectionEnabled: boolean;
   minSeatsToDepart?: number;

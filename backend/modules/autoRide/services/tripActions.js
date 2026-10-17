@@ -30,8 +30,15 @@ const afterClose = async (trip, cancelled, { title, body, type }) => {
   for (const b of cancelled) {
     if (b.status === B.REFUND_PENDING) await payments.processRefund(b.id);
   }
-  const users = [...new Set(cancelled.filter((b) => b.status !== B.HELD).map((b) => String(b.userId)))];
-  if (users.length && title) notify.toCustomers(users, title, body, { type, tripId: trip.id });
+  // One push per cancelled booking, carrying its bookingId so the tap opens that booking.
+  if (title) {
+    const seen = new Set();
+    for (const b of cancelled) {
+      if (seen.has(String(b.userId))) continue;
+      seen.add(String(b.userId));
+      notify.toCustomers([b.userId], title, body, { type, tripId: trip.id, bookingId: b.id });
+    }
+  }
   for (const b of cancelled) notify.nudgeCustomers([b.userId], 'booking', b.id, B.CANCELLED);
   notify.tripEvent(trip, { type, statuses: [] });
 };
@@ -129,7 +136,10 @@ const endTrip = async ({ tripId, to, actor, actorId, reason, driverId }) => {
     body: `The auto was ${label}${why ? `: ${why}` : ''}. Any wallet payment is refunded in full. Please book another auto.`,
     type: 'AUTO_TRIP_CANCELLED',
   });
-  for (const r of out.privateClosed) notify.toCustomers([r.userId], 'Full-auto request closed', 'The auto is no longer available. Please pick another auto.', { type: 'AUTO_PRIVATE_CLOSED', requestId: r.id });
+  for (const r of out.privateClosed) {
+    notify.toCustomers([r.userId], 'Full-auto request closed', 'The auto is no longer available. Please pick another auto.', { type: 'AUTO_PRIVATE_CLOSED', requestId: r.id });
+    notify.nudgeCustomers([r.userId], 'private_request', r.id, r.status);
+  }
   return out;
 };
 

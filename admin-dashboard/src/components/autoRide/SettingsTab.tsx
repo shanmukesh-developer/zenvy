@@ -36,7 +36,10 @@ export default function SettingsTab({ tick, onChanged }: { tick: number; onChang
     const n = Number(form[f.key]);
     if (form[f.key] === undefined || form[f.key].trim() === '' || !Number.isInteger(n) || n < min || n > max) problems[f.key] = `Whole number from ${min} to ${max}.`;
   }
-  const seatsWarn = !problems.maxSeatsPerBooking && !problems.platformMaxCapacity && Number(form.maxSeatsPerBooking) > Number(form.platformMaxCapacity);
+  // Same rule as the server (services/flag.js writeSettings): seats per booking <= platform max capacity.
+  if (!problems.maxSeatsPerBooking && !problems.platformMaxCapacity && Number(form.maxSeatsPerBooking) > Number(form.platformMaxCapacity)) {
+    problems.maxSeatsPerBooking = `Cannot be more than the platform max capacity (${form.platformMaxCapacity}).`;
+  }
   const save = async () => {
     if (Object.keys(problems).length) { setMsg({ ok: false, text: 'Fix the highlighted fields.' }); return; }
     const patch: Partial<Settings> = {};
@@ -95,7 +98,6 @@ export default function SettingsTab({ tick, onChanged }: { tick: number; onChang
             );
           })}
         </div>
-        {seatsWarn && <p className="mt-3 text-xs font-bold text-amber-300">Max seats per booking is above the platform max capacity: a booking can never exceed the trip&apos;s capacity anyway.</p>}
         <p className="mt-3 text-xs text-gray-500">Driver, admin and system cancellations always refund wallet payments in full; the two refund % values apply only when a passenger cancels.</p>
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <Btn tone="primary" disabled={busy || !dirty} onClick={save}>{busy ? 'Saving…' : 'Save settings'}</Btn>

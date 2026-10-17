@@ -25,6 +25,21 @@ export type SeatState = 'AVAILABLE' | 'HELD' | 'BOOKED' | 'UNAVAILABLE' | 'MINE'
 /** Layout cell: 'D' = driver seat (never bookable), null = gap, number = passenger seat. */
 export type LayoutCell = 'D' | number | null;
 
+export interface ExtraCharges { amount: number; note: string | null }
+
+/** GET /status settings (also GET /settings/public): the limits the server enforces. */
+export interface PublicSettings {
+  maxSeatsPerBooking: number;
+  holdMinutes: number;
+  /** Zenvy Wallet refund % when the passenger cancels before / after the driver confirms departure. */
+  refundBeforeDriverConfirmPct: number;
+  refundAfterDriverConfirmPct: number;
+  maxAdvanceDays: number;
+  platformMaxCapacity: number;
+  privateRespondMinutes?: number;
+  walletEnabled: boolean;
+}
+
 export interface RouteBrief { id: string; name: string; origin: string | null; destination: string | null; distanceKm: number | null }
 export interface PickupBrief { id: string; name: string; landmark: string | null; lat: number | null; lon: number | null; mapsUrl: string | null }
 
@@ -59,6 +74,10 @@ export interface Trip extends TripStatusBlock {
   stops: string[];
   seatFare: number;
   fullAutoFare: number | null;
+  /** Driver-set full-auto extra charges (added to the private fare by the server); null when none. */
+  extraCharges?: ExtraCharges | null;
+  /** fullAutoFare + extra charges: what a full-auto request will cost. */
+  fullAutoTotal?: number | null;
   seatSelectionEnabled: boolean;
   sharedBookingAllowed: boolean;
   privateBookingAllowed: boolean;
@@ -94,7 +113,7 @@ export interface Booking {
   cancelledAt: string | null;
   createdAt: string | null;
   seatFare: number | null;
-  fareBreakdown: { seats?: number; seatFare?: number; total?: number; fullAuto?: boolean; fare?: number };
+  fareBreakdown: { seats?: number; seatFare?: number; total?: number; fullAuto?: boolean; fare?: number; baseFare?: number; extraCharges?: ExtraCharges };
   refundAmount: number;
   refundedAt: string | null;
   cancelledBy: string | null;
@@ -113,6 +132,9 @@ export interface PrivateRequest {
   passengers: number;
   purpose: string | null;
   fare: number;
+  /** fare = baseFare + extraCharges.amount (server-computed). */
+  baseFare?: number;
+  extraCharges?: ExtraCharges | null;
   paymentMethod: PaymentMethod;
   respondBy: string | null;
   respondedAt: string | null;
@@ -204,7 +226,8 @@ export interface BrowseFilter {
 
 export const autoRideApi = {
   /** No feature gate: { enabled, paymentMethods } (paymentMethods is [] while off). */
-  status: () => call<{ enabled: boolean; paymentMethods: PaymentMethod[] }>(`${AR}/status`),
+  status: () => call<{ enabled: boolean; paymentMethods: PaymentMethod[]; settings?: PublicSettings }>(`${AR}/status`),
+  settings: () => call<{ settings: PublicSettings }>(`${AR}/settings/public`),
   routes: () => call<{ routes: RouteFull[] }>(`${AR}/routes`),
   pickupPoints: (routeId?: string | null) => call<{ pickupPoints: (PickupBrief & { route: RouteBrief | null })[]; note: string }>(`${AR}/pickup-points${qs({ routeId })}`),
   queue: (pickupPointId: string, date?: string | null) =>

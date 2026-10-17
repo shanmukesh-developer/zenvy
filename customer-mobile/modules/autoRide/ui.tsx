@@ -10,7 +10,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { connectSocket } from '../../utils/socket';
 import { readCache, writeCache } from '../../utils/swrCache';
 import { usePalette } from '../rentals/ui';
-import { autoRideApi, availabilityChip, type PaymentMethod, type TripStatusBlock } from './autoRideApi';
+import { autoRideApi, availabilityChip, type PaymentMethod, type PublicSettings, type TripStatusBlock } from './autoRideApi';
 
 export { usePalette, Card, SectionTitle, Badge, Btn, Field, Chips, StateView, Row, Notice, Toggle } from '../rentals/ui';
 export type { Palette } from '../rentals/ui';
@@ -138,7 +138,7 @@ export function useAutoRideLive(onChange: (e: { kind?: string; id?: string | nul
 }
 
 const STATUS_CACHE_KEY = 'autoride:status';
-type StatusData = { enabled: boolean; paymentMethods: PaymentMethod[] };
+type StatusData = { enabled: boolean; paymentMethods: PaymentMethod[]; settings?: PublicSettings | null };
 let statusMem: StatusData | null = null;
 let statusFetch: Promise<StatusData> | null = null;
 
@@ -151,7 +151,7 @@ export function useAutoRideStatus(enabled = true) {
     if (!statusMem) readCache<StatusData>(STATUS_CACHE_KEY).then((c) => { if (alive && c && c.data && !statusMem) setData(c.data); });
     if (!statusFetch) {
       statusFetch = autoRideApi.status()
-        .then((r) => { const v = { enabled: !!r.enabled, paymentMethods: Array.isArray(r.paymentMethods) ? r.paymentMethods : [] }; statusMem = v; writeCache(STATUS_CACHE_KEY, v); return v; })
+        .then((r) => { const v = { enabled: !!r.enabled, paymentMethods: Array.isArray(r.paymentMethods) ? r.paymentMethods : [], settings: r.settings || null }; statusMem = v; writeCache(STATUS_CACHE_KEY, v); return v; })
         .catch(() => { statusFetch = null; const v = { enabled: false, paymentMethods: [] as PaymentMethod[] }; statusMem = v; return v; });
     }
     statusFetch.then((v) => { if (alive) setData(v); });
@@ -163,7 +163,7 @@ export function useAutoRideStatus(enabled = true) {
 export const refreshAutoRideStatus = async () => {
   statusFetch = null;
   const r = await autoRideApi.status();
-  statusMem = { enabled: !!r.enabled, paymentMethods: r.paymentMethods || [] };
+  statusMem = { enabled: !!r.enabled, paymentMethods: r.paymentMethods || [], settings: r.settings || null };
   writeCache(STATUS_CACHE_KEY, statusMem);
   return statusMem;
 };

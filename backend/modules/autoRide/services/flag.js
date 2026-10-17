@@ -116,8 +116,30 @@ const writeSettings = async (patch) => {
     if (!Number.isInteger(n) || n < min || n > max) throw fail(400, 'INVALID_INPUT', `${k} must be a whole number between ${min} and ${max}.`, { field: k });
     next[k] = n;
   }
+  if (next.maxSeatsPerBooking > next.platformMaxCapacity) {
+    const field = patch.maxSeatsPerBooking !== undefined ? 'maxSeatsPerBooking' : 'platformMaxCapacity';
+    throw fail(400, 'INVALID_INPUT', `Seats per booking (${next.maxSeatsPerBooking}) cannot be more than the platform max capacity (${next.platformMaxCapacity}).`, { field });
+  }
   await writeRow(SETTINGS_KEY, next, 'Zenvy Auto-Ride settings (capacity cap, hold minutes, refund policy)');
   return readSettings({ fresh: true });
+};
+
+/**
+ * The settings customers / drivers may see (read-only; everything is enforced server-side anyway).
+ * Refund % apply to Zenvy Wallet payments cancelled by the passenger; cash is only paid at boarding.
+ */
+const publicSettings = async () => {
+  const s = await readSettings();
+  return {
+    maxSeatsPerBooking: Math.min(s.maxSeatsPerBooking, s.platformMaxCapacity),
+    holdMinutes: s.holdMinutes,
+    refundBeforeDriverConfirmPct: s.customerRefundBeforeConfirmPct,
+    refundAfterDriverConfirmPct: s.customerRefundAfterConfirmPct,
+    maxAdvanceDays: s.maxAdvanceDays,
+    platformMaxCapacity: s.platformMaxCapacity,
+    privateRespondMinutes: s.privateRespondMinutes,
+    walletEnabled: await readWalletFlag(),
+  };
 };
 
 const clearCache = () => cache.clear();
@@ -144,5 +166,5 @@ const assertOn = async () => {
 
 module.exports = {
   FLAG_KEY, WALLET_KEY, SETTINGS_KEY, readFlag, readWalletFlag, writeFlag, writeWalletFlag, readSettings, writeSettings,
-  normaliseSettings, clearCache, requireCustomer, assertOn, devEnabled,
+  publicSettings, normaliseSettings, clearCache, requireCustomer, assertOn, devEnabled,
 };

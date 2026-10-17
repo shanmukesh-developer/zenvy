@@ -151,6 +151,10 @@ const initAutoRideModels = (sequelize) => {
     minSeatsToDepart: { type: DataTypes.INTEGER, allowNull: true },
     seatFare: { type: DataTypes.FLOAT, allowNull: false },
     fullAutoFare: { type: DataTypes.FLOAT, allowNull: true },
+    // Optional extra charges on a full-auto booking (e.g. luggage / night / toll), set by the driver at
+    // publish, bounded server-side, shown to the customer and added to the private fare by the server.
+    extraChargesAmount: { type: DataTypes.FLOAT, allowNull: true },
+    extraChargesNote: { type: DataTypes.STRING(120), allowNull: true },
     // IST calendar day of departure + operating period: the queue key with pickupPointId / routeId.
     operatingDate: { type: DataTypes.STRING(10), allowNull: true },
     periodKey: { type: DataTypes.STRING(20), allowNull: true },
@@ -262,7 +266,11 @@ const initAutoRideModels = (sequelize) => {
     status: { type: DataTypes.STRING(12), allowNull: false, defaultValue: 'REQUESTED' },
     passengers: { type: DataTypes.INTEGER, allowNull: true },
     purpose: { type: DataTypes.STRING(200), allowNull: true },
+    // fare = baseFare (trip.fullAutoFare) + extraChargesAmount, snapshotted when the request is made.
     fare: { type: DataTypes.FLOAT, allowNull: true },
+    baseFare: { type: DataTypes.FLOAT, allowNull: true },
+    extraChargesAmount: { type: DataTypes.FLOAT, allowNull: true },
+    extraChargesNote: { type: DataTypes.STRING(120), allowNull: true },
     paymentMethod: { type: DataTypes.STRING(10), allowNull: true },
     respondBy: { type: DataTypes.DATE, allowNull: true },
     respondedAt: { type: DataTypes.DATE, allowNull: true },
@@ -297,6 +305,8 @@ const initAutoRideModels = (sequelize) => {
     reporterType: { type: DataTypes.STRING(10), allowNull: false }, // CUSTOMER | DRIVER
     reporterId: { type: DataTypes.UUID, allowNull: false },
     category: { type: DataTypes.STRING(20), allowNull: false },
+    // HIGH for SOS and SAFETY / HARASSMENT reports (admin list shows them first), else NORMAL.
+    priority: { type: DataTypes.STRING(10), allowNull: true, defaultValue: 'NORMAL' },
     description: { type: DataTypes.TEXT, allowNull: true },
     status: { type: DataTypes.STRING(12), allowNull: false, defaultValue: 'OPEN' },
     adminNote: { type: DataTypes.STRING(1000), allowNull: true },

@@ -6,8 +6,8 @@
 import { DRIVER_API } from '../config';
 import { apiFetch } from '../lib/http';
 import type {
-  BookingDriver, DriverAction, DriverNotification, DriverSelf, Earnings, HomeResponse, Incident, IncidentCategory,
-  MeResponse, MediaUpload, PrivateRequest, ProfileInput, RouteFull, SeatMapResponse, Trip, TripInput, TripStatusBlock,
+  BookingDriver, DriverAction, DriverNotification, DriverSelf, DriverSettings, Earnings, HomeResponse, Incident, IncidentCategory,
+  MeResponse, MediaUpload, PrivateRequest, ProfileInput, QueueResponse, RouteFull, SeatMapResponse, Trip, TripInput, TripStatusBlock,
   Vehicle, VehicleInput,
 } from '../types';
 
@@ -34,7 +34,7 @@ export const driverApi = {
   /** POST /api/users/send-otp { phone, purpose: 'auth' } -> { message, expiresIn, resendAfter } (429 OTP_COOLDOWN { retryAfter }). */
   sendOtp: (phone: string) =>
     apiFetch<{ success: boolean; message: string; expiresIn: number; resendAfter: number }>('/api/users/send-otp', { method: 'POST', body: { phone, purpose: 'auth' }, auth: false, timeoutMs: 45000 }),
-  /** POST /auth/register { name, phone, password, otp } -> 201 { token, driver } (409 PHONE_TAKEN, 400 OTP_INVALID / WEAK_PASSWORD). */
+  /** POST /auth/register { name, phone, password, otp } -> 201 { token, driver } (409 PHONE_TAKEN, 400 OTP_INVALID { attemptsLeft } / WEAK_PASSWORD, 429 OTP_LOCKED { attemptsLeft: 0 }). */
   register: (input: { name: string; phone: string; password: string; otp: string }) =>
     apiFetch<AuthResult>(`${D}/auth/register`, { method: 'POST', body: input, auth: false, timeoutMs: 45000 }),
   /** POST /auth/login { phone, password } (401 INVALID_CREDENTIALS, 403 DRIVER_SUSPENDED, 429 lockout). */
@@ -63,6 +63,11 @@ export const driverApi = {
   /** POST /online { online } (403 DRIVER_NOT_VERIFIED). Idempotent: safe to replay offline -> false. */
   setOnline: (online: boolean) => apiFetch<{ isOnline: boolean }>(`${D}/online`, { method: 'POST', body: { online } }),
   home: () => apiFetch<HomeResponse>(`${D}/home`),
+  /** platformMaxCapacity, maxAdvanceDays, holdMinutes, ... (read-only; the server enforces them). */
+  settings: () => apiFetch<{ settings: DriverSettings }>(`${D}/settings`),
+  /** The queue at a pickup point for an IST day (default today). Same trips as the customer queue; mine = your trip. */
+  pickupQueue: (pickupPointId: string, date?: string) =>
+    apiFetch<QueueResponse>(`${D}/pickup-points/${enc(pickupPointId)}/queue${date ? `?date=${enc(date)}` : ''}`),
   /** IST days inclusive, YYYY-MM-DD (defaults: today). */
   earnings: (from?: string, to?: string) => {
     const q = [from ? `from=${enc(from)}` : '', to ? `to=${enc(to)}` : ''].filter(Boolean).join('&');
@@ -97,7 +102,7 @@ export const driverApi = {
     apiFetch<{ trip: Trip; bookingsCancelled?: number }>(`${D}/trips/${enc(id)}/actions/${action}`, { method: 'POST', body }),
   bookings: (id: string) => apiFetch<{ trip: TripStatusBlock & { id: string }; bookings: BookingDriver[] }>(`${D}/trips/${enc(id)}/bookings`),
   seats: (id: string) => apiFetch<SeatMapResponse>(`${D}/trips/${enc(id)}/seats`),
-  /** 400 WRONG_PIN { attemptsLeft }, 429 PIN_LOCKED (15 min), 404 NOT_FOUND, 409 NOT_BOARDING / NOT_CONFIRMED. */
+  /** 400 WRONG_PIN { attemptsLeft }, 429 PIN_LOCKED { attemptsLeft: 0, lockedUntil } (15 min), 404 NOT_FOUND, 409 NOT_BOARDING / NOT_CONFIRMED. */
   checkIn: (id: string, bookingCode: string, pin: string, cashCollected: boolean) =>
     apiFetch<{ booking: BookingDriver; trip: TripStatusBlock & { id: string }; duplicate: boolean }>(`${D}/trips/${enc(id)}/check-in`, { method: 'POST', body: { bookingCode, pin, cashCollected } }),
   /** 409 TOO_EARLY before departure, INVALID_STATE before confirm-departure. */
@@ -119,6 +124,9 @@ export const driverApi = {
   markRead: (ids?: string[]) => apiFetch<{ updated: number }>(`${D}/notifications/read`, { method: 'POST', body: ids ? { ids } : {} }),
   reportIncident: (input: { category: IncidentCategory; description: string; tripId?: string; bookingId?: string }) =>
     apiFetch<{ incident: Incident; message: string }>(`${D}/incidents`, { method: 'POST', body: input }),
+  /** SOS: HIGH-priority SAFETY incident (current trip when tripId is omitted) + push to every Zenvy admin. */
+  sos: (input: { tripId?: string; note?: string; lat?: number; lon?: number } = {}) =>
+    apiFetch<{ incident: Incident; message: string; emergencyNumber: string }>(`${D}/sos`, { method: 'POST', body: input }),
 };
 
 export type DriverApi = typeof driverApi;

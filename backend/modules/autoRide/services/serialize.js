@@ -105,6 +105,10 @@ const pickupBrief = (p) => (p ? {
   mapsUrl: p.lat !== null && p.lat !== undefined && p.lon !== null && p.lon !== undefined ? `https://www.google.com/maps/search/?api=1&query=${Number(p.lat)},${Number(p.lon)}` : null,
 } : null);
 
+/** Full-auto extra charges block ({ amount, note }) or null. */
+const extraChargesOf = (row) => (Number(row && row.extraChargesAmount) > 0
+  ? { amount: Number(row.extraChargesAmount), note: row.extraChargesNote || null } : null);
+
 const bookable = (trip) => E.BOOKABLE_STATUSES.includes(trip.status) && trip.mode === E.MODE.SHARED;
 
 /** Trip card / detail for a customer. ctx: { driver, vehicle, route, pickup, myBooking } */
@@ -133,6 +137,9 @@ const tripCustomer = (req, trip, ctx = {}) => {
     stops: Array.isArray(trip.stops) ? trip.stops : [],
     seatFare: Number(trip.seatFare),
     fullAutoFare: trip.privateBookingEnabled && trip.fullAutoFare ? Number(trip.fullAutoFare) : null,
+    // Extra charges the driver set for a full-auto booking (added to the private fare by the server).
+    extraCharges: trip.privateBookingEnabled && trip.fullAutoFare ? extraChargesOf(trip) : null,
+    fullAutoTotal: trip.privateBookingEnabled && trip.fullAutoFare ? Math.round((Number(trip.fullAutoFare) + (Number(trip.extraChargesAmount) > 0 ? Number(trip.extraChargesAmount) : 0)) * 100) / 100 : null,
     seatSelectionEnabled: !!trip.seatSelectionEnabled,
     sharedBookingAllowed: bookable(trip) && st.remainingSeats > 0,
     privateBookingAllowed: !!trip.privateBookingEnabled && !!trip.fullAutoFare && bookable(trip)
@@ -157,6 +164,7 @@ const tripDriver = (req, trip, ctx = {}) => ({
   stops: Array.isArray(trip.stops) ? trip.stops : [],
   seatFare: Number(trip.seatFare),
   fullAutoFare: trip.fullAutoFare === null || trip.fullAutoFare === undefined ? null : Number(trip.fullAutoFare),
+  extraCharges: extraChargesOf(trip),
   seatSelectionEnabled: !!trip.seatSelectionEnabled,
   privateBookingEnabled: !!trip.privateBookingEnabled,
   seatLayout: trip.seatLayout || null,
@@ -303,21 +311,24 @@ const routeFull = (r, pickups = []) => ({
 const privateRequestCustomer = (r) => ({
   id: r.id, tripId: r.tripId, status: r.status, passengers: r.passengers, purpose: r.purpose || null,
   fare: Number(r.fare), paymentMethod: r.paymentMethod, respondBy: iso(r.respondBy), respondedAt: iso(r.respondedAt),
+  baseFare: r.baseFare === null || r.baseFare === undefined ? Number(r.fare) : Number(r.baseFare), extraCharges: extraChargesOf(r),
   declineReason: r.declineReason || null, bookingId: r.bookingId || null, createdAt: iso(r.createdAt),
   note: r.status === E.PRIVATE_STATUS.REQUESTED ? 'Waiting for the driver to accept. Nothing is booked until then.' : null,
 });
 const privateRequestDriver = (r, user) => ({
   id: r.id, tripId: r.tripId, status: r.status, passengers: r.passengers, purpose: r.purpose || null,
   fare: Number(r.fare), paymentMethod: r.paymentMethod, respondBy: iso(r.respondBy), respondedAt: iso(r.respondedAt),
+  baseFare: r.baseFare === null || r.baseFare === undefined ? Number(r.fare) : Number(r.baseFare), extraCharges: extraChargesOf(r),
   passengerName: firstName(user && user.name), bookingId: r.bookingId || null, createdAt: iso(r.createdAt),
 });
 
 const incident = (i) => ({
   id: i.id, tripId: i.tripId || null, bookingId: i.bookingId || null, reporterType: i.reporterType, category: i.category,
+  priority: i.priority || 'NORMAL',
   description: i.description || null, status: i.status, adminNote: i.adminNote || null, createdAt: iso(i.createdAt), resolvedAt: iso(i.resolvedAt),
 });
 
 module.exports = {
   tripStatus, tripCustomer, tripDriver, bookingCustomer, bookingDriver, bookingAdmin, driverSelf, driverAdmin, vehicleSelf,
-  routeFull, routeBrief, pickupBrief, privateRequestCustomer, privateRequestDriver, incident, maskReg, prettyReg, firstName, shortName, iso, signed,
+  routeFull, routeBrief, pickupBrief, privateRequestCustomer, privateRequestDriver, incident, extraChargesOf, maskReg, prettyReg, firstName, shortName, iso, signed,
 };

@@ -34,10 +34,11 @@ export default function FullAutoRequestStatusScreen() {
   }, [id]);
   useEffect(() => { load(); }, [load]);
   useAutoRideLive(() => load());
-  // The server pushes decline / expiry as notifications but not as socket nudges: poll while waiting.
+  // Accept / decline / conflict / expiry / cancel arrive as socket nudges (useAutoRideLive above); a slow
+  // poll while waiting only covers a dropped socket.
   useEffect(() => {
     if (!waiting) return;
-    const t = setInterval(load, 15000);
+    const t = setInterval(load, 60000);
     return () => clearInterval(t);
   }, [waiting, load]);
   // Past respondBy: ask the server (the lifecycle job marks it EXPIRED).
@@ -95,6 +96,7 @@ export default function FullAutoRequestStatusScreen() {
 
         <Card>
           <Row label="Passengers" value={`${req.passengers}`} />
+          {req.extraCharges ? <Row label={`Extra charges${req.extraCharges.note ? ` (${req.extraCharges.note})` : ''}`} value={`incl. ${inr(req.extraCharges.amount)}`} /> : null}
           <Row label="Full auto fare" value={inr(req.fare)} strong />
           <Row label="Payment" value={PAYMENT_LABEL[req.paymentMethod] || req.paymentMethod} />
           {req.purpose ? <Row label="Purpose" value={req.purpose} /> : null}

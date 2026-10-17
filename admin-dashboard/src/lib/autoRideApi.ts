@@ -20,6 +20,13 @@ export const VEHICLE_DOC_KEYS = ['rc', 'permit', 'insurance', 'fitness', 'puc'] 
 export const REQUIRED_VEHICLE_DOCS = ['rc', 'permit', 'insurance'];
 export const LIMITS = { ABSOLUTE_MAX_CAPACITY: 12, MAX_LAYOUT_ROWS: 6, MAX_LAYOUT_COLS: 5, MAX_FARE: 5000, MAX_FULL_FARE: 20000 };
 
+/** Every admin list answers { ..., pagination } (page / limit query params; without them the old default size). */
+export interface Pagination { page: number; limit: number | null; hasMore: boolean }
+export interface PageOpts { page?: number; limit?: number }
+/** First name + masked phone ('•••• 3210'). */
+export interface PersonBrief { id: string; name: string; phoneMasked: string | null }
+export interface ExtraCharges { amount: number; note: string | null }
+
 export interface Summary {
   onlineVerifiedDrivers: number; pendingDrivers: number; pendingVehicles: number; openTrips: number; bookedSeats: number;
   fullTrips: number; privateAwaiting: number; tripsInProgress: number; cancelledToday: number; openIncidents: number;
@@ -59,6 +66,10 @@ export interface Trip extends TripStatusBlock {
   seatLayout: SeatLayout | null; bookingOpensAt: string | null; operatingDate: string | null; periodKey: string | null;
   publishedAt: string | null; confirmedAt: string | null; boardingAt: string | null; startedAt: string | null; arrivedAt: string | null;
   completedAt: string | null; cancelReason: string | null; delayReason: string | null; createdAt: string | null;
+  extraCharges?: ExtraCharges | null;
+  /** GET /trips list rows only. */
+  routeName?: string | null; pickupName?: string | null; driverName?: string | null;
+  route?: { id: string; name: string } | null; pickup?: { id: string; name: string } | null;
 }
 export interface TripEvent { id: string; from: string | null; to: string; actorType: string | null; actorId: string | null; note: string | null; at: string | null }
 
@@ -75,11 +86,14 @@ export interface PrivateRequest {
   id: string; tripId: string; status: string; passengers: number; purpose: string | null; fare: number; paymentMethod: string;
   respondBy: string | null; respondedAt: string | null; declineReason: string | null; bookingId: string | null; createdAt: string | null;
   note: string | null; userId: string; driverId?: string;
+  baseFare?: number; extraCharges?: ExtraCharges | null;
+  passenger?: PersonBrief | null; driver?: PersonBrief | null;
 }
 
 export interface Incident {
   id: string; tripId: string | null; bookingId: string | null; reporterType: string; category: string; description: string | null;
   status: string; adminNote: string | null; createdAt: string | null; resolvedAt: string | null; reporterId?: string;
+  priority?: 'NORMAL' | 'HIGH'; reporter?: PersonBrief | null;
 }
 
 export interface OperatingPeriod { key: string; label: string; start: string; end: string }
@@ -107,7 +121,7 @@ export interface QueueItem extends TripStatusBlock {
 }
 
 export interface FareRoute { routeId: string; name: string; seatFareMin: number | null; seatFareMax: number | null; fullFareMin: number | null; fullFareMax: number | null; trips: number; avgSeatFare: number | null }
-export interface FareOutlier { id: string; routeId: string; seatFare: number | string; fullAutoFare: number | string | null; driverId: string; status: string }
+export interface FareOutlier { id: string; routeId: string; routeName?: string | null; seatFare: number | string; fullAutoFare: number | string | null; driverId: string; status: string; departureAt?: string | null }
 
 export interface Settings {
   enabled: boolean; walletEnabled: boolean; devOverride: boolean;
@@ -123,9 +137,9 @@ export const SETTING_RANGES: Record<NumericSettingKey, [number, number]> = {
   noShowGraceMinutes: [5, 240], autoCompleteHours: [1, 48], customerRefundBeforeConfirmPct: [0, 100], customerRefundAfterConfirmPct: [0, 100],
 };
 
-export interface AuditEntry { id: string | number; adminId: string; targetId: string; action: string; details: unknown; at: string | null }
+export interface AuditEntry { id: string | number; adminId: string; actor?: { id: string; name: string | null }; targetId: string; action: string; details: unknown; at: string | null }
 
-const qs = (params: Record<string, string | null | undefined>) => {
+const qs = (params: Record<string, string | number | null | undefined>) => {
   const p = Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '');
   return p.length ? `?${p.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`).join('&')}` : '';
 };
@@ -137,38 +151,40 @@ const id = (v: string) => encodeURIComponent(v);
 export const autoRideApi = {
   summary: () => get<Summary>('/summary'),
 
-  drivers: (status = 'PENDING_REVIEW', q?: string) => get<{ drivers: Driver[] }>(`/drivers${qs({ status, q })}`),
+  drivers: (status = 'PENDING_REVIEW', q?: string, page: PageOpts = {}) => get<{ drivers: Driver[]; pagination?: Pagination }>(`/drivers${qs({ status, q, ...page })}`),
   driver: (driverId: string) => get<{ driver: Driver; vehicles: Vehicle[]; trips: (TripStatusBlock & { id: string; routeId: string })[]; missing: string[] }>(`/drivers/${id(driverId)}`),
   verifyDriver: (driverId: string) => send<{ driver: Driver }>('POST', `/drivers/${id(driverId)}/verify`),
   rejectDriver: (driverId: string, reason: string) => send<{ driver: Driver }>('POST', `/drivers/${id(driverId)}/reject`, { reason }),
   suspendDriver: (driverId: string, reason: string) => send<{ driver: Driver; tripsEnded: number }>('POST', `/drivers/${id(driverId)}/suspend`, { reason }),
   unsuspendDriver: (driverId: string) => send<{ driver: Driver }>('POST', `/drivers/${id(driverId)}/unsuspend`),
 
-  vehicles: (status = 'PENDING_REVIEW', opts: { q?: string; driverId?: string } = {}) => get<{ vehicles: Vehicle[]; platformMaxCapacity: number }>(`/vehicles${qs({ status, ...opts })}`),
+  vehicles: (status = 'PENDING_REVIEW', opts: { q?: string; driverId?: string } & PageOpts = {}) => get<{ vehicles: Vehicle[]; platformMaxCapacity: number; pagination?: Pagination }>(`/vehicles${qs({ status, ...opts })}`),
+  vehicle: (vehicleId: string) => get<{ vehicle: Vehicle; driver: { id: string; name: string; phone: string; status: string; isOnline: boolean } | null; trips: (TripStatusBlock & { id: string; routeId: string })[]; platformMaxCapacity: number }>(`/vehicles/${id(vehicleId)}`),
   approveVehicle: (vehicleId: string, body: { approvedCapacity?: number; seatLayout?: SeatLayout }) => send<{ vehicle: Vehicle }>('POST', `/vehicles/${id(vehicleId)}/approve`, body),
   rejectVehicle: (vehicleId: string, reason: string) => send<{ vehicle: Vehicle }>('POST', `/vehicles/${id(vehicleId)}/reject`, { reason }),
   suspendVehicle: (vehicleId: string, reason: string) => send<{ vehicle: Vehicle }>('POST', `/vehicles/${id(vehicleId)}/suspend`, { reason }),
 
-  routes: () => get<{ routes: Route[] }>('/routes'),
+  routes: (page: PageOpts = {}) => get<{ routes: Route[]; pagination?: Pagination }>(`/routes${qs({ ...page })}`),
   createRoute: (body: RouteInput) => send<{ route: Route }>('POST', '/routes', body),
   updateRoute: (routeId: string, body: Partial<RouteInput>) => send<{ route: Route }>('PATCH', `/routes/${id(routeId)}`, body),
   createPickup: (routeId: string, body: PickupInput) => send<{ pickupPoint: PickupPoint }>('POST', `/routes/${id(routeId)}/pickup-points`, body),
   updatePickup: (pickupId: string, body: Partial<PickupInput>) => send<{ pickupPoint: PickupPoint }>('PATCH', `/pickup-points/${id(pickupId)}`, body),
 
-  /** status: one trip status, 'ACTIVE', or '' for all. The server filters status / date / driverId only. */
-  trips: (opts: { status?: string; date?: string; driverId?: string } = {}) => get<{ trips: Trip[] }>(`/trips${qs(opts)}`),
+  /** status: one trip status, 'ACTIVE', or '' for all. Server filters: status / date / driverId / routeId / pickupPointId / vehicleId. */
+  trips: (opts: { status?: string; date?: string; driverId?: string; routeId?: string; pickupPointId?: string; vehicleId?: string } & PageOpts = {}) => get<{ trips: Trip[]; pagination?: Pagination }>(`/trips${qs({ ...opts })}`),
   trip: (tripId: string) => get<{ trip: Trip; bookings: Booking[]; privateRequests: PrivateRequest[]; events: TripEvent[] }>(`/trips/${id(tripId)}`),
   cancelTrip: (tripId: string, reason: string) => send<{ trip: Trip; bookingsCancelled: number }>('POST', `/trips/${id(tripId)}/cancel`, { reason }),
-  queues: (opts: { date?: string; pickupPointId?: string } = {}) => get<{ date: string; queue: QueueItem[] }>(`/queues${qs(opts)}`),
+  queues: (opts: { date?: string; pickupPointId?: string; routeId?: string } & PageOpts = {}) => get<{ date: string; queue: QueueItem[]; pagination?: Pagination }>(`/queues${qs({ ...opts })}`),
 
-  bookings: (opts: { code?: string; status?: string; tripId?: string; userId?: string; driverId?: string } = {}) => get<{ bookings: Booking[] }>(`/bookings${qs(opts)}`),
+  /** phone: the full 10-digit number, or its last 4 digits together with code (400 otherwise). */
+  bookings: (opts: { code?: string; status?: string; tripId?: string; userId?: string; driverId?: string; phone?: string } & PageOpts = {}) => get<{ bookings: Booking[]; pagination?: Pagination }>(`/bookings${qs({ ...opts })}`),
   cancelBooking: (bookingId: string, reason: string) => send<{ booking: Booking }>('POST', `/bookings/${id(bookingId)}/cancel`, { reason }),
   retryRefund: (bookingId: string) => send<{ booking: Booking; refunded: number }>('POST', `/bookings/${id(bookingId)}/refund`),
 
-  privateRequests: (status?: string) => get<{ requests: PrivateRequest[] }>(`/private-requests${qs({ status })}`),
+  privateRequests: (status?: string, opts: { tripId?: string; driverId?: string; userId?: string } & PageOpts = {}) => get<{ requests: PrivateRequest[]; pagination?: Pagination }>(`/private-requests${qs({ status, ...opts })}`),
 
   /** status: one incident status, 'ACTIVE' (open + reviewing) or 'ALL'. Default on the server: OPEN. */
-  incidents: (status = 'ACTIVE') => get<{ incidents: Incident[] }>(`/incidents${qs({ status })}`),
+  incidents: (status = 'ACTIVE', opts: { priority?: 'NORMAL' | 'HIGH' } & PageOpts = {}) => get<{ incidents: Incident[]; pagination?: Pagination }>(`/incidents${qs({ status, ...opts })}`),
   updateIncident: (incidentId: string, status: string, note?: string) => send<{ incident: Incident }>('POST', `/incidents/${id(incidentId)}/status`, { status, ...(note ? { note } : {}) }),
 
   fares: () => get<{ routes: FareRoute[]; outliers: FareOutlier[] }>('/fares'),
@@ -176,7 +192,7 @@ export const autoRideApi = {
   settings: () => get<Settings>('/settings'),
   putSettings: (patch: Partial<Omit<Settings, 'devOverride'>>) => send<Settings>('PUT', '/settings', patch),
 
-  audit: (targetId?: string) => get<{ entries: AuditEntry[] }>(`/audit${qs({ targetId })}`),
+  audit: (targetId?: string, page: PageOpts = {}) => get<{ entries: AuditEntry[]; pagination?: Pagination }>(`/audit${qs({ targetId, ...page })}`),
 };
 
 // ── Seat layout helpers (same rules as backend/modules/autoRide/services/layout.js) ──────────────

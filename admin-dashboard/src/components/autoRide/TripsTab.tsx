@@ -43,10 +43,10 @@ export default function TripsTab({ tick, onChanged, lookups }: { tick: number; o
 }
 
 function TripList({ tick, onChanged, lookups, date, status, routeId, pickupId }: { tick: number; onChanged: () => void; lookups: Lookups; date: string; status: string; routeId: string; pickupId: string }) {
-  const { data, loading, error, reload } = useLoader(`${date}|${status}`, tick, () => autoRideApi.trips({ date: date || undefined, status: status || undefined }));
+  const { data, loading, error, reload } = useLoader(`${date}|${status}|${routeId}|${pickupId}`, tick, () => autoRideApi.trips({ date: date || undefined, status: status || undefined, routeId: routeId || undefined, pickupPointId: pickupId || undefined }));
   const [openId, setOpenId] = useState<string | null>(null);
   const all = data?.trips || [];
-  // The server filters status / date / driver; route + pickup are filtered here.
+  // The server filters status / date / route / pickup point (the extra check here covers an older server).
   const rows = all.filter((t) => (!routeId || String(t.routeId) === routeId) && (!pickupId || String(t.pickupPointId) === pickupId));
   if (error) return <ErrorBox text={error} retry={reload} />;
   if (loading) return <Loading text="Loading trips…" />;
@@ -67,8 +67,8 @@ function TripList({ tick, onChanged, lookups, date, status, routeId, pickupId }:
             return [
               <tr key={t.id} className={`align-top ${open ? 'bg-white/[0.03]' : ''}`}>
                 <td className="p-3"><p className="font-bold">{when(t.departureAt)}</p>{t.delayMinutes > 0 && <p className="text-xs text-amber-300">+{t.delayMinutes} min delay</p>}<p className="text-xs text-gray-500">#{short(t.id)}{t.queueNumber ? ` · queue ${String(t.queueNumber).padStart(2, '0')}` : ''}{t.periodKey ? ` · ${t.periodKey}` : ''}</p></td>
-                <td className="p-3"><p>{route?.name || `#${short(t.routeId)}`}</p><p className="text-xs text-gray-400">{pickup?.name || `#${short(t.pickupPointId)}`} → {t.destination || route?.destination || '—'}</p></td>
-                <td className="p-3 text-xs"><p className="font-bold">{drv?.name || `#${short(t.driverId)}`}</p><p className="font-mono text-gray-500">{drv ? maskPhone(drv.phone) : ''}</p></td>
+                <td className="p-3"><p>{route?.name || t.routeName || `#${short(t.routeId)}`}</p><p className="text-xs text-gray-400">{pickup?.name || t.pickupName || `#${short(t.pickupPointId)}`} → {t.destination || route?.destination || '—'}</p></td>
+                <td className="p-3 text-xs"><p className="font-bold">{drv?.name || t.driverName || `#${short(t.driverId)}`}</p><p className="font-mono text-gray-500">{drv ? maskPhone(drv.phone) : ''}</p></td>
                 <td className="p-3 text-xs tabular-nums"><p className="font-bold">{t.confirmedSeats}/{t.capacity} confirmed</p>{t.heldSeats > 0 && <p className="text-amber-300">{t.heldSeats} on hold</p>}{t.boardedSeats > 0 && <p className="text-sky-300">{t.boardedSeats} boarded</p>}<p className="text-gray-500">departs at {t.minSeatsToDepart}</p></td>
                 <td className="p-3 text-xs">{inr(t.seatFare)}/seat{t.fullAutoFare ? <p className="text-gray-400">full {inr(t.fullAutoFare)}</p> : null}{t.mode === 'PRIVATE' && <p className="font-bold text-violet-300">Private</p>}</td>
                 <td className="p-3"><Pill s={t.status} /><p className="mt-1 text-xs text-gray-500">{t.availabilityLabel}</p></td>

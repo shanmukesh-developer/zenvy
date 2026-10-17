@@ -58,6 +58,16 @@ const draftInput = async (req, body, current = null) => {
   const privateBookingEnabled = pick('privateBookingEnabled') === true;
   const fullAutoFare = num(pick('fullAutoFare'), { min: 1, max: E.LIMITS.MAX_FULL_FARE, field: 'fullAutoFare', label: 'Full-auto fare' });
   if (privateBookingEnabled && !fullAutoFare) throw fail(400, 'INVALID_INPUT', 'Set a full-auto fare to accept full-auto bookings.', { field: 'fullAutoFare' });
+  // Optional full-auto extra charges: { extraCharges: { amount, note } } (null / amount 0 clears them), or the
+  // flat extraChargesAmount / extraChargesNote. Bounded: <= MAX_EXTRA_CHARGES and <= the full-auto fare.
+  const ec = body.extraCharges !== undefined ? (body.extraCharges || { amount: null, note: null }) : null;
+  const ecAmountRaw = ec ? ec.amount : pick('extraChargesAmount');
+  const ecNoteRaw = ec ? ec.note : pick('extraChargesNote');
+  const ecMax = Math.min(E.LIMITS.MAX_EXTRA_CHARGES, fullAutoFare || E.LIMITS.MAX_EXTRA_CHARGES);
+  const extraChargesAmount = num(ecAmountRaw, { min: 0, max: ecMax, field: 'extraCharges.amount', label: 'Extra charges' }) || null;
+  const extraChargesNote = extraChargesAmount ? cleanText(ecNoteRaw, 120) : '';
+  if (extraChargesAmount && extraChargesNote.length < 3) throw fail(400, 'INVALID_INPUT', 'Say what the extra charges are for (e.g. luggage, night charge).', { field: 'extraCharges.note' });
+  if (extraChargesAmount && !fullAutoFare) throw fail(400, 'INVALID_INPUT', 'Extra charges apply to full-auto bookings: set a full-auto fare first.', { field: 'extraCharges.amount' });
   const minDefault = Math.min(capacity, Number(route.minSeatsToDepartDefault) || capacity);
   const minSeatsToDepart = num(pick('minSeatsToDepart'), { min: 1, max: capacity, int: true, field: 'minSeatsToDepart', label: 'Minimum seats to depart' }) || minDefault;
   const permitted = Array.isArray(route.permittedStops) ? route.permittedStops.map(String) : [];
@@ -68,6 +78,7 @@ const draftInput = async (req, body, current = null) => {
   return {
     vehicleId: v.id, routeId: route.id, pickupPointId: pickup.id, departureAt, bookingOpensAt, capacity, seatFare,
     fullAutoFare: fullAutoFare || null, privateBookingEnabled,
+    extraChargesAmount, extraChargesNote: extraChargesAmount ? extraChargesNote : null,
     seatSelectionEnabled: pick('seatSelectionEnabled') === undefined ? true : pick('seatSelectionEnabled') !== false,
     minSeatsToDepart, stops, destinationLabel: route.destinationLabel,
   };
@@ -207,11 +218,17 @@ const acceptPrivate = async (req, res) => {
   }
   if (r.paymentFailed) {
     notify.toCustomers([r.request.userId], 'Full-auto request declined', 'Your Zenvy Wallet balance was not enough. Nothing was charged.', { type: 'AUTO_PRIVATE_DECLINED', requestId: r.request.id });
+    notify.nudgeCustomers([r.request.userId], 'private_request', r.request.id, r.request.status);
     throw fail(409, 'PAYMENT_FAILED', 'The passenger\'s wallet balance was not enough. The request was declined.');
   }
   if (!r.already) {
-    notify.bookingEvent(r.booking, { title: 'Full auto booked ✅', body: `The driver accepted. Booking ${r.booking.bookingCode}, ₹${r.booking.amount}.`, type: 'AUTO_PRIVATE_ACCEPTED' });
-    for (const o of r.others || []) notify.toCustomers([o.userId], 'Full-auto request closed', 'The auto was booked by someone else. Pick another auto.', { type: 'AUTO_PRIVATE_CONFLICT', requestId: o.id });
+    notify.bookingEvent(r.booking, { title: 'Full auto booked ✅', body: `The driver accepted. Booking ${r.booking.bookingCode}, ₹${r.booking.amount}.`, type: 'AUTO_PRIVATE_ACCEPTED', requestId: r.request.id });
+    // Live update for the request screen (it then opens the booking from request.bookingId).
+    notify.nudgeCustomers([r.request.userId], 'private_request', r.request.id, r.request.status);
+    for (const o of r.others || []) {
+      notify.toCustomers([o.userId], 'Full-auto request closed', 'The auto was booked by someone else. Pick another auto.', { type: 'AUTO_PRIVATE_CONFLICT', requestId: o.id });
+      notify.nudgeCustomers([o.userId], 'private_request', o.id, E.PRIVATE_STATUS.CONFLICT);
+    }
     notify.tripEvent(r.trip, {});
   }
   const { getUserModel } = require('../../../models/User');

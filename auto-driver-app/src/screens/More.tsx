@@ -125,10 +125,17 @@ export function EarningsScreen({ navigation }: ScreenProps<'Earnings'>) {
 }
 
 // ── Queue ─────────────────────────────────────────────────────────────────────
-// The driver API has no pickup-point queue list (only the customer route does); this shows the driver's
-// own queue numbers from GET /home (current trip + today's trips). Reported as a backend gap.
+// The driver's own queue numbers from GET /home (current trip + today's trips), plus the whole queue at the
+// current trip's pickup point (GET /driver/pickup-points/:id/queue: trip cards only, no passenger data).
 export function QueueScreen({ navigation }: ScreenProps<'Queue'>) {
-  const q = useLoad(() => driverApi.home(), [], { pollMs: 30000 });
+  const q = useLoad(async () => {
+    const home = await driverApi.home();
+    const cur0 = home.currentTrip;
+    const atPickup = cur0 && cur0.pickupPointId
+      ? await driverApi.pickupQueue(cur0.pickupPointId, cur0.operatingDate || undefined).catch(() => null)
+      : null;
+    return { ...home, atPickup };
+  }, [], { pollMs: 30000 });
   useDriverEvents(() => q.reload());
   const cur = q.data?.currentTrip;
   const today = (q.data?.todayTrips || []).filter((t) => t.queueNumber);
@@ -147,6 +154,16 @@ export function QueueScreen({ navigation }: ScreenProps<'Queue'>) {
           </Card>
         ) : <EmptyState icon="people" title="Not in a queue" body="Zenvy gives you a queue number when you publish a trip at a pickup point." />
       ) : null}
+      {q.data?.atPickup && q.data.atPickup.queue.length ? <SectionTitle text={`At ${q.data.atPickup.pickupPoint.name}`} /> : null}
+      {(q.data?.atPickup?.queue || []).map((t) => (
+        <Card key={t.id} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, ...(t.mine ? { borderColor: color.brand, borderWidth: 2 } : {}) }}>
+          <Text style={[font.h2, { color: color.text, width: 64 }]}>#{t.queueNumber}</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={[font.body, { color: color.text, fontWeight: '700' }]}>{t.mine ? 'You' : t.driver?.name || 'Auto'} · {t.statusLabel}</Text>
+            <Text style={[font.small, { color: color.textSecondary }]}>{timeIst(t.departureAt)} · {t.confirmedSeats}/{t.capacity} · {t.remainingSeats} left</Text>
+          </View>
+        </Card>
+      ))}
       {today.length ? <SectionTitle text="Today" /> : null}
       {today.map((t) => (
         <Card key={t.id} style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>

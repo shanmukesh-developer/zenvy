@@ -270,9 +270,60 @@ const reportIncident = async (req, res) => {
     tripId = tripId || b.tripId;
   }
   hit('incident', `driver:${req.driver.id}`);
-  const row = await Incident.create({ tripId, bookingId, reporterType: 'DRIVER', reporterId: req.driver.id, category, description });
+  const priority = E.HIGH_PRIORITY_CATEGORIES.includes(category) ? E.INCIDENT_PRIORITY.HIGH : E.INCIDENT_PRIORITY.NORMAL;
+  const row = await Incident.create({ tripId, bookingId, reporterType: 'DRIVER', reporterId: req.driver.id, category, priority, description });
   notify.admin('auto_incident', 'created', row.id);
   res.status(201).json({ incident: S.incident(row), message: category === 'SAFETY' ? 'Reported. If anyone is in danger call 112 now.' : 'Reported to the Zenvy team.' });
+};
+
+// POST /api/auto-ride/driver/sos { tripId?, note?, lat?, lon? }
+// A SAFETY incident with HIGH priority (linked to the given trip, else the driver's current trip), the admin
+// panel told live (admin:changed auto_incident) and every admin device pushed (utils/adminAlert.pushAdmins).
+// Works while the feature switch is off. Location only if the app sends it (this app does not track GPS).
+const sos = async (req, res) => {
+  const body = req.body || {};
+  const { Trip, Incident } = M();
+  hit('sos', req.driver.id);
+  let trip = null;
+  if (body.tripId) {
+    trip = isUuid(String(body.tripId)) ? await Trip.findByPk(body.tripId) : null;
+    if (!trip || String(trip.driverId) !== String(req.driver.id)) throw fail(404, 'NOT_FOUND', 'Trip not found.');
+  } else {
+    trip = await Trip.findOne({ where: { driverId: req.driver.id, status: { [Op.in]: E.ACTIVE_TRIP_STATUSES } }, order: [['departureAt', 'ASC']] });
+  }
+  const lat = num(body.lat, { min: -90, max: 90, field: 'lat', label: 'Latitude', decimals: 6 });
+  const lon = num(body.lon, { min: -180, max: 180, field: 'lon', label: 'Longitude', decimals: 6 });
+  const note = cleanText(body.note, 300, { multiline: true });
+  const where = lat !== null && lon !== null ? ` Location: ${lat},${lon} (https://www.google.com/maps/search/?api=1&query=${lat},${lon}).` : '';
+  const description = `SOS from the Zenvy Auto Driver app${note ? `: ${note}` : '.'}${where}`.slice(0, 2000);
+  const row = await Incident.create({
+    tripId: trip ? trip.id : null, bookingId: null, reporterType: 'DRIVER', reporterId: req.driver.id,
+    category: 'SAFETY', priority: E.INCIDENT_PRIORITY.HIGH, description,
+  });
+  notify.admin('auto_incident', 'created', row.id);
+  const d = req.driver;
+  const io = req.app && typeof req.app.get === 'function' ? req.app.get('io') : null;
+  // Fire-and-forget (never blocks the reply); pushAdmins never throws.
+  Promise.resolve(require('../../../utils/adminAlert').pushAdmins(
+    '🚨 Auto driver SOS',
+    `${S.shortName(d.name)} (${d.phone}) pressed SOS${trip ? ` on trip queue #${trip.queueNumber || '-'}` : ''}${note ? `: ${note}` : ''}. Call them now.`,
+    { type: 'AUTO_DRIVER_SOS', incidentId: String(row.id), ...(trip ? { tripId: String(trip.id) } : {}), driverId: String(d.id) },
+    { io },
+  )).catch(() => {});
+  res.status(201).json({
+    incident: S.incident(row), emergencyNumber: '112',
+    message: 'Zenvy has been alerted and will call you back. If anyone is in danger call 112 now.',
+  });
+};
+
+// GET /api/auto-ride/driver/settings  (the limits publish / booking use; read-only)
+const settings = async (req, res) => {
+  res.json({ settings: await require('../services/flag').publicSettings() });
+};
+
+// GET /api/auto-ride/driver/pickup-points/:id/queue?date=YYYY-MM-DD  (same data as the customer queue; no passenger data)
+const pickupQueue = async (req, res) => {
+  res.json(await require('./customer').queueFor(req, req.params.id, req.query.date, { driverId: req.driver.id }));
 };
 
 // GET /api/auto-ride/driver/home
@@ -296,6 +347,8 @@ const home = async (req, res) => {
     todayTrips: todays.map((t) => ({ id: t.id, ...S.tripStatus(t) })),
     todayEarnings: earn,
     pendingPrivateRequests: pending,
+    // Limits the publish form must respect (also enforced by the server).
+    settings: await require('../services/flag').publicSettings(),
     alerts: [
       ...(d.status !== D.VERIFIED ? [{ type: 'VERIFICATION', message: d.status === D.REJECTED ? `Verification needs changes: ${d.rejectionReason || ''}` : 'Your account is waiting for verification.' }] : []),
       ...(pending ? [{ type: 'PRIVATE_REQUESTS', message: `${pending} full-auto request${pending === 1 ? '' : 's'} waiting for you.` }] : []),
@@ -316,5 +369,5 @@ const earningsRoute = async (req, res) => {
 
 module.exports = {
   me, updateProfile, uploadMedia, putDocuments, submit, setOnline, listVehicles, createVehicle, updateVehicle, routes,
-  notifications, markRead, reportIncident, home, earningsRoute, missingForReview,
+  notifications, markRead, reportIncident, home, earningsRoute, missingForReview, sos, settings, pickupQueue,
 };

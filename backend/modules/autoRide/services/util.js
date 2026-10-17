@@ -53,14 +53,19 @@ const cleanText = (v, max, { multiline = false } = {}) => {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isUuid = (v) => typeof v === 'string' && UUID_RE.test(v);
 
-/** Number in [min, max] or null when absent; throws on a present-but-invalid value. */
-const num = (v, { min = 0, max = Number.MAX_SAFE_INTEGER, int = false, field = 'value', label } = {}) => {
+/**
+ * Number in [min, max] or null when absent; throws on a present-but-invalid value. Rounded to `decimals`
+ * places (default 2: money / km). Coordinates pass decimals: 6 (about 0.1 m), never rounded to 2 (about 1 km).
+ */
+const num = (v, { min = 0, max = Number.MAX_SAFE_INTEGER, int = false, field = 'value', label, decimals = 2 } = {}) => {
   if (v === undefined || v === null || v === '') return null;
   const n = Number(v);
   if (typeof v === 'boolean' || !Number.isFinite(n) || n < min || n > max || (int && !Number.isInteger(n))) {
     throw fail(400, 'INVALID_INPUT', `${label || field} must be ${int ? 'a whole number' : 'a number'} between ${min} and ${max}.`, { field });
   }
-  return int ? n : Math.round(n * 100) / 100;
+  if (int) return n;
+  const f = 10 ** Math.max(0, Math.min(10, Number(decimals) || 0));
+  return Math.round(n * f) / f;
 };
 const money = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -103,6 +108,7 @@ const LIMITS = {
   private_request: { max: Number(process.env.AUTO_RIDE_PRIVATE_PER_HOUR) || 6, windowMs: 60 * 60 * 1000, message: 'Too many full-auto requests. Please wait a while and try again.' },
   incident: { max: 10, windowMs: 24 * 60 * 60 * 1000, message: 'Too many reports today. Our team is already looking at the ones you sent.' },
   driver_write: { max: 120, windowMs: 60 * 60 * 1000, message: 'Too many changes. Please slow down and try again in a while.' },
+  sos: { max: 10, windowMs: 10 * 60 * 1000, message: 'Your SOS alerts were sent. If you are in danger call 112 now.' },
   check_in: { max: 60, windowMs: 10 * 60 * 1000, message: 'Too many check-in attempts. Please wait a few minutes.' },
 };
 
@@ -141,9 +147,32 @@ const audit = async (req, targetId, action, details) => {
   }
 };
 
+/**
+ * Optional page / limit pagination for admin lists. Without ?page= / ?limit= the list keeps its old default
+ * size (dflt, or no limit when dflt is null). Query with { limit: p.fetch, offset: p.offset }, then
+ * paginate(rows, p) -> { rows, pagination: { page, limit, hasMore } }.
+ */
+const pageOpts = (query, dflt, maxLimit = 500) => {
+  const q = query || {};
+  const has = (q.page !== undefined && q.page !== '') || (q.limit !== undefined && q.limit !== '');
+  if (!has) return { paged: false, page: 1, limit: dflt, offset: 0, fetch: dflt === null ? undefined : dflt + 1 };
+  const limit = num(q.limit, { min: 1, max: maxLimit, int: true, field: 'limit' }) || Math.min(dflt || 50, maxLimit);
+  const page = num(q.page, { min: 1, max: 100000, int: true, field: 'page' }) || 1;
+  return { paged: true, page, limit, offset: (page - 1) * limit, fetch: limit + 1 };
+};
+const paginate = (rows, p) => {
+  const hasMore = p.limit !== null && p.limit !== undefined && rows.length > p.limit;
+  return { rows: hasMore ? rows.slice(0, p.limit) : rows, pagination: { page: p.page, limit: p.limit === undefined ? null : p.limit, hasMore } };
+};
+/** '•••• 3210' (admin lists that only need to tell people apart). */
+const maskPhone = (phone) => {
+  const d = String(phone || '').replace(/\D/g, '');
+  return d.length >= 4 ? `•••• ${d.slice(-4)}` : null;
+};
+
 const noStore = (req, res, next) => { res.set('Cache-Control', 'private, no-store'); next(); };
 
 module.exports = {
   AutoRideError, fail, sendError, handler, isUniqueError, cleanText, isUuid, num, money, ymd, parseTime, bool,
-  normalizeReg, REG_RE, newBookingCode, newPin, hit, resetLimits, audit, noStore, UUID_RE,
+  normalizeReg, REG_RE, newBookingCode, newPin, hit, resetLimits, audit, noStore, UUID_RE, pageOpts, paginate, maskPhone,
 };

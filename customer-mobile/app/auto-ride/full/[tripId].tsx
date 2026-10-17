@@ -86,6 +86,8 @@ export default function FullAutoRequestScreen() {
   const phone = maskPhone((user as any)?.phone);
   const name = String((user as any)?.name || '').trim();
   const allowed = trip.privateBookingAllowed && !!trip.fullAutoFare;
+  // Server total (fare + driver's extra charges); older servers send only fullAutoFare.
+  const total = trip.fullAutoTotal ?? ((trip.fullAutoFare || 0) + (trip.extraCharges?.amount || 0));
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: p.bg }}>
@@ -103,8 +105,13 @@ export default function FullAutoRequestScreen() {
           <View style={{ alignItems: 'flex-end', marginTop: -2, marginBottom: 4 }}><VerifiedBadge verified={!!trip.driver?.verified} /></View>
           <Row label="Capacity" value={`${trip.capacity} passenger seats`} />
           <View style={{ height: 1, backgroundColor: p.border, marginVertical: 8 }} />
-          <Row label="Full auto fare (whole trip)" value={trip.fullAutoFare ? inr(trip.fullAutoFare) : 'Not offered'} strong />
-          <Row label="Extra charges" value="None added by Zenvy" />
+          <Row label="Full auto fare (whole trip)" value={trip.fullAutoFare ? inr(trip.fullAutoFare) : 'Not offered'} strong={!trip.extraCharges} />
+          {trip.extraCharges ? (
+            <>
+              <Row label={`Extra charges${trip.extraCharges.note ? ` (${trip.extraCharges.note})` : ''}`} value={inr(trip.extraCharges.amount)} />
+              <Row label="Total for the full auto" value={inr(total)} strong />
+            </>
+          ) : <Row label="Extra charges" value="None" />}
           <Text style={{ fontSize: 11, color: p.muted, marginTop: 4 }}>The fare is fixed by the server when you send the request. Shared seat fare on this auto: {inr(trip.seatFare)}.</Text>
         </Card>
 
@@ -139,7 +146,7 @@ export default function FullAutoRequestScreen() {
         </Notice>
 
         {retry ? <Notice tone="warn">📶 {retry} Tap Retry: it is safe, you will not send two requests.</Notice> : null}
-        <Btn label={retry ? 'Retry request' : `Request full auto · ${inr(trip.fullAutoFare)}`} icon="🔒" onPress={submit} loading={busy} disabled={!allowed} />
+        <Btn label={retry ? 'Retry request' : `Request full auto · ${inr(total)}`} icon="🔒" onPress={submit} loading={busy} disabled={!allowed} />
         <Btn label="Book seats instead" kind="secondary" style={{ marginTop: 10 }} onPress={() => router.replace(`/auto-ride/trip/${trip.id}` as any)} />
       </ScrollView>
     </KeyboardAvoidingView>
