@@ -1,0 +1,1031 @@
+{
+ "version": 1,
+ "key": "store-fill:star-dum-biryani",
+ "storeId": "26af40ba-1c0c-4830-85d2-b235ed191def",
+ "storeName": "Star Dum Biryani",
+ "imagesDir": "images/star-dum-biryani",
+ "note": "Owner, 14 Nov 2026: \"work on star resturent which description and images are not there\". The store and its 204 dishes were added by hand in the admin; this file only fills empty photos and descriptions (scripts/store_fill_import.js). Dish photos are licensed (sources-*.json); texts follow the owner-menu layout; dishes sold under a house name only (Anjil, Devil, Rambo, Maharani, Dil Kush, Shangrila, Nawabi, Kashmiri) say so instead of inventing a recipe.",
+ "storeDescription": "Star Dum Biryani on Bus Stand Road, Mangalagiri, is a biryani restaurant with tandoori, Andhra and North Indian curries, Indo-Chinese starters, fried rice and noodles, veg and non-veg.\n\n**On the menu**\n- Biryanis: chicken (dum, fry, joint, gongura, 65, lollipop, wings, tikka and house specials), mutton, egg, prawns, fish and veg (paneer, mushroom, baby corn), plus family and jumbo packs to share\n- Tandoori: tandoori chicken, tikkas, tangdi, malai, reshmi and kalmi kababs, fish tikka; chicken shawarma\n- Curries: Andhra chicken fry, roast, curry and gongura, butter chicken, Chettinad, Kolhapuri, Mughlai, mutton curries, keema and rogan josh\n- Starters: chicken 65, Manchurian, chilli, 555, majestic, lollipops and wings; paneer, baby corn, mushroom and egg starters; fish and prawns\n- Fried rice and noodles, veg and non-veg; rotis and naans\n\n**Good to know**\n- Open every day, 11:00 AM to 11:00 PM\n- 204 dishes, from ₹25 to ₹1600\n- Veg and non-veg; veg dishes are marked",
+ "items": [
+  {
+   "name": "Biryani Rice",
+   "image": "biryani-rice.jpg",
+   "description": "Plain biryani rice: basmati cooked with whole spices, fried onion, mint and coriander, the way the rice of a dum biryani is made, served without meat or vegetable pieces. Marked veg on the menu.\n\nIngredients (Typical):\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Whole spices (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: Good with a curry, raita or salan (if served with it by the restaurant).\n\nTaste Profile: Aromatic, lightly spiced and fluffy."
+  },
+  {
+   "name": "Egg Biryani",
+   "image": "egg-biryani.jpg",
+   "description": "Biryani rice cooked with spices and served with boiled eggs that are lightly fried or tossed in masala before going into the pot.\n\nIngredients (Typical):\n- Boiled eggs\n- Basmati rice\n- Onion, fried golden\n- Curd\n- Ginger-garlic paste\n- Mint and coriander leaves\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Red chilli powder\n- Ghee or oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Spicy, aromatic and filling."
+  },
+  {
+   "name": "Chicken Dum Andhra Biryani",
+   "image": "chicken-dum-andhra-biryani.jpg",
+   "description": "Chicken dum biryani in the Andhra style: marinated chicken and basmati rice sealed and slow-cooked on dum, with more red and green chilli heat than a Hyderabadi biryani.\n\nIngredients (Typical):\n- Chicken (on the bone)\n- Red chilli powder\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Hot\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Spicy, aromatic and full of chicken flavour."
+  },
+  {
+   "name": "Chicken Fry Biryani",
+   "image": "chicken-fry-biryani.jpg",
+   "description": "Biryani rice topped with spicy fried chicken pieces: the chicken is cooked separately in a dry Andhra-style masala and served over the biryani rice.\n\nIngredients (Typical):\n- Chicken (on the bone)\n- Red chilli powder and garam masala\n- Curry leaves\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Spicy, crisp-edged chicken over fragrant rice."
+  },
+  {
+   "name": "Chicken Joint Biryani (Oil Roast)",
+   "image": "chicken-joint-biryani-oil-roast.jpg",
+   "description": "Biryani served with a large chicken joint (leg piece) roasted in oil with masala until the outside is browned, set over biryani rice.\n\nIngredients (Typical):\n- Chicken leg joint\n- Red chilli powder and garam masala\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Spicy, roasted and juicy."
+  },
+  {
+   "name": "Hyderabad Dum Biryani",
+   "image": "hyderabad-dum-biryani.jpg",
+   "description": "Hyderabadi-style dum biryani: chicken marinated in curd and spices, layered with long-grain basmati, saffron or food colour, fried onion and mint, then sealed and slow-cooked on dum.\n\nIngredients (Typical):\n- Chicken (on the bone)\n- Saffron or food colour (if used in the actual recipe)\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Aromatic, rich and balanced."
+  },
+  {
+   "name": "Chicken Curry Biryani",
+   "image": "chicken-curry-biryani.jpg",
+   "description": "Biryani rice served with chicken curry: chicken pieces in a spiced onion-tomato gravy, alongside or over the biryani rice.\n\nIngredients (Typical):\n- Chicken (on the bone)\n- Onion and tomato\n- Red chilli powder and garam masala\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Spicy, saucy and filling."
+  },
+  {
+   "name": "Chicken Mix Biryani",
+   "image": "chicken-mix-biryani.jpg",
+   "description": "A mixed chicken biryani that brings more than one chicken preparation (for example dum chicken with fried or roasted pieces) on one plate of biryani rice; the mix is the restaurant's own.\n\nIngredients (Typical):\n- Chicken, more than one style\n- Red chilli powder and garam masala\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Spicy, varied and filling."
+  },
+  {
+   "name": "Mutton Mini Biryani",
+   "image": "mutton-mini-biryani.jpg",
+   "description": "A smaller serving of mutton biryani: tender spiced mutton with basmati biryani rice.\n\nIngredients (Typical):\n- Mutton (on the bone)\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Rich, aromatic and meaty."
+  },
+  {
+   "name": "Chicken Gongura Biryani",
+   "image": "chicken-gongura-biryani.jpg",
+   "description": "Andhra favourite: chicken cooked with gongura (sorrel leaves), whose sour taste cuts through the spice, served with biryani rice.\n\nIngredients (Typical):\n- Chicken (on the bone)\n- Gongura (sorrel) leaves\n- Red chilli\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Hot\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Tangy, spicy and bold."
+  },
+  {
+   "name": "Chicken Lollipop Biryani (Dry/Wet)",
+   "image": "chicken-lollipop-biryani-dry-wet.jpg",
+   "description": "Biryani rice served with chicken lollipops (frenched wings, fried crisp), either dry or tossed in a spicy sauce (wet), as you choose.\n\nIngredients (Typical):\n- Chicken lollipops (wings)\n- Corn flour and red chilli\n- Chilli sauce for the wet version\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Crispy, spicy and fun."
+  },
+  {
+   "name": "Chicken Spl Biryani",
+   "image": "chicken-spl-biryani.jpg",
+   "description": "The restaurant's special chicken biryani, with more chicken and extras than the regular biryani; the recipe is the restaurant's own.\n\nIngredients (Typical):\n- Chicken\n- Boiled egg (if used in the actual recipe)\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Rich, spicy and generous."
+  },
+  {
+   "name": "Chicken Wings Biryani (Dry/Wet)",
+   "image": null,
+   "description": "Biryani rice served with fried chicken wings, either dry or tossed in a spicy sauce (wet), as you choose.\n\nIngredients (Typical):\n- Chicken wings\n- Corn flour and red chilli\n- Chilli sauce for the wet version\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Crispy, spicy and filling."
+  },
+  {
+   "name": "Tandoori Joint Biryani",
+   "image": "tandoori-joint-biryani.jpg",
+   "description": "Biryani rice served with a tandoori chicken joint: a leg piece marinated in curd and spices and roasted in the tandoor until smoky and charred at the edges.\n\nIngredients (Typical):\n- Chicken leg joint\n- Tandoori masala and curd\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Smoky, spicy and juicy."
+  },
+  {
+   "name": "Chicken Mughlai Biryani",
+   "image": "chicken-mughlai-biryani.jpg",
+   "description": "Biryani rice with chicken in a Mughlai-style gravy: a rich, mild sauce of onion, cashew or cream and whole spices.\n\nIngredients (Typical):\n- Chicken\n- Cashew paste or cream (if used in the actual recipe)\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Rich, creamy and aromatic."
+  },
+  {
+   "name": "Anjil Biryani",
+   "image": null,
+   "description": "Anjil Biryani is a chicken biryani special of this restaurant, sold under its own name on the menu; ask the restaurant how it is prepared.\n\nIngredients (Typical):\n- Chicken\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Spicy and aromatic."
+  },
+  {
+   "name": "Devil Biryani",
+   "image": "devil-biryani.jpg",
+   "description": "Devil Biryani is a chicken biryani special of this restaurant; as the name suggests it is made to be fiery. Ask the restaurant how it is prepared.\n\nIngredients (Typical):\n- Chicken\n- Red and green chilli\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Hot\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Fiery, spicy and aromatic."
+  },
+  {
+   "name": "Rambo Biryani",
+   "image": "rambo-biryani.jpg",
+   "description": "Rambo Biryani is a chicken biryani special of this restaurant, sold under its own name on the menu; ask the restaurant how it is prepared.\n\nIngredients (Typical):\n- Chicken\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Spicy, hearty and filling."
+  },
+  {
+   "name": "Chicken 65 Biryani",
+   "image": "chicken-65-biryani.jpg",
+   "description": "Biryani rice topped with Chicken 65: boneless chicken pieces marinated in red chilli and spices, deep-fried and tossed with curry leaves.\n\nIngredients (Typical):\n- Boneless chicken\n- Corn flour\n- Red chilli powder\n- Curry leaves\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Spicy, crispy and aromatic."
+  },
+  {
+   "name": "Chicken Manchurian Biryani",
+   "image": null,
+   "description": "An Indo-Chinese twist: biryani rice served with chicken Manchurian, fried chicken pieces tossed in a soy, garlic and chilli sauce.\n\nIngredients (Typical):\n- Boneless chicken\n- Soy sauce and chilli sauce\n- Corn flour\n- Spring onion\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Savoury, tangy and spicy."
+  },
+  {
+   "name": "Tandoori Tikka Biryani",
+   "image": "tandoori-tikka-biryani.jpg",
+   "description": "Biryani rice served with chicken tikka: boneless chicken marinated in curd and tandoori masala and roasted in the tandoor.\n\nIngredients (Typical):\n- Boneless chicken\n- Tandoori masala and curd\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Smoky, spicy and aromatic."
+  },
+  {
+   "name": "Chicken Afghani Biryani",
+   "image": "chicken-afghani-biryani.jpg",
+   "description": "Biryani rice with Afghani chicken: chicken in a creamy, mildly spiced white marinade of curd, cream and cashew, roasted or cooked till tender.\n\nIngredients (Typical):\n- Chicken\n- Cream and cashew paste (if used in the actual recipe)\n- Black pepper\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Mild\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Creamy, mild and aromatic."
+  },
+  {
+   "name": "Chicken Maharani Biryani",
+   "image": "chicken-maharani-biryani.jpg",
+   "description": "Chicken Maharani Biryani is a rich chicken biryani special of this restaurant; ask the restaurant how it is prepared.\n\nIngredients (Typical):\n- Chicken\n- Cashew or cream (if used in the actual recipe)\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Rich and aromatic."
+  },
+  {
+   "name": "Mutton Dum Biryani",
+   "image": "mutton-dum-biryani.jpg",
+   "description": "Mutton dum biryani: mutton marinated in curd and spices, layered with basmati rice and slow-cooked sealed on dum so the rice takes in the meat juices.\n\nIngredients (Typical):\n- Mutton (on the bone)\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Rich, aromatic and meaty."
+  },
+  {
+   "name": "Mutton Gongura Biryani",
+   "image": "mutton-gongura-biryani.jpg",
+   "description": "Andhra favourite: mutton cooked with gongura (sorrel leaves), sour and spicy, served with biryani rice.\n\nIngredients (Typical):\n- Mutton (on the bone)\n- Gongura (sorrel) leaves\n- Red chilli\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Hot\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Tangy, spicy and rich."
+  },
+  {
+   "name": "Mutton Fry Biryani",
+   "image": "mutton-fry-biryani.jpg",
+   "description": "Biryani rice topped with mutton fry: mutton pieces cooked and then roasted dry with masala and curry leaves.\n\nIngredients (Typical):\n- Mutton\n- Red chilli powder and garam masala\n- Curry leaves\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Spicy, roasted and meaty."
+  },
+  {
+   "name": "Mutton Curry Biryani",
+   "image": "mutton-curry-biryani.jpg",
+   "description": "Biryani rice served with mutton curry: mutton slow-cooked in a spiced onion-tomato gravy.\n\nIngredients (Typical):\n- Mutton (on the bone)\n- Onion and tomato\n- Red chilli powder and garam masala\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Spicy, saucy and rich."
+  },
+  {
+   "name": "Mutton Mughlai Biryani",
+   "image": "mutton-mughlai-biryani.jpg",
+   "description": "Biryani rice with mutton in a Mughlai-style gravy: a rich, mild sauce of onion, cashew or cream and whole spices.\n\nIngredients (Typical):\n- Mutton\n- Cashew paste or cream (if used in the actual recipe)\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Rich, creamy and aromatic."
+  },
+  {
+   "name": "Mutton Spl Biryani",
+   "image": "mutton-spl-biryani.jpg",
+   "description": "The restaurant's special mutton biryani, with more mutton and extras than the regular biryani; the recipe is the restaurant's own.\n\nIngredients (Typical):\n- Mutton\n- Boiled egg (if used in the actual recipe)\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Rich, spicy and generous."
+  },
+  {
+   "name": "Mutton Keema Biryani",
+   "image": "mutton-keema-biryani.jpg",
+   "description": "Biryani made with keema (minced mutton) cooked with onion and spices and layered or mixed with basmati rice.\n\nIngredients (Typical):\n- Minced mutton (keema)\n- Green peas (if used in the actual recipe)\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Rich, spiced and meaty."
+  },
+  {
+   "name": "Mutton Keema Curry Biryani",
+   "image": null,
+   "description": "Biryani rice served with keema curry: minced mutton simmered in a spiced onion-tomato gravy.\n\nIngredients (Typical):\n- Minced mutton (keema)\n- Onion and tomato\n- Red chilli powder and garam masala\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Spicy, saucy and meaty."
+  },
+  {
+   "name": "Mutton Nully Goust Biryani",
+   "image": null,
+   "description": "Biryani with nalli gosht: mutton shank pieces with the marrow bone (nalli), slow-cooked in spices until very tender, served with biryani rice.\n\nIngredients (Typical):\n- Mutton shank with marrow bone (nalli)\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Rich, deep and meaty."
+  },
+  {
+   "name": "Chicken Tandoori Joint",
+   "image": null,
+   "description": "One chicken leg joint marinated in curd and tandoori spices and roasted in the clay tandoor until smoky and charred at the edges.\n\nIngredients (Typical):\n- Chicken leg joint\n- Curd\n- Ginger-garlic paste\n- Tandoori masala and Kashmiri red chilli\n- Lemon juice\n- Oil or butter and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot with mint chutney, sliced onion and lemon.\n\nTaste Profile: Smoky, spicy and juicy."
+  },
+  {
+   "name": "Tangdi Kabab (Half)",
+   "image": "tangdi-kabab-half.jpg",
+   "description": "Tangdi kabab, half plate: chicken drumsticks marinated in curd, cream and spices and roasted in the tandoor.\n\nIngredients (Typical):\n- Chicken drumsticks\n- Cream (if used in the actual recipe)\n- Curd\n- Ginger-garlic paste\n- Tandoori masala and Kashmiri red chilli\n- Lemon juice\n- Oil or butter and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot with mint chutney, sliced onion and lemon.\n\nTaste Profile: Smoky, juicy and mildly spicy."
+  },
+  {
+   "name": "Chicken Tandoori (Half)",
+   "image": "chicken-tandoori-half.jpg",
+   "description": "Half a tandoori chicken: chicken on the bone marinated in curd and red tandoori masala and roasted in the clay oven.\n\nIngredients (Typical):\n- Chicken (on the bone)\n- Curd\n- Ginger-garlic paste\n- Tandoori masala and Kashmiri red chilli\n- Lemon juice\n- Oil or butter and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot with mint chutney, sliced onion and lemon.\n\nTaste Profile: Smoky, tangy and spicy."
+  },
+  {
+   "name": "Chicken Green Tikka",
+   "image": "chicken-green-tikka.jpg",
+   "description": "Hariyali (green) chicken tikka: boneless chicken marinated in a paste of mint, coriander and green chilli with curd, skewered and roasted in the tandoor.\n\nIngredients (Typical):\n- Boneless chicken\n- Mint and coriander\n- Green chilli\n- Curd\n- Ginger-garlic paste\n- Lemon juice\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot with mint chutney, sliced onion and lemon.\n\nTaste Profile: Fresh, herby and smoky."
+  },
+  {
+   "name": "Chicken Malai Tikka",
+   "image": "chicken-malai-tikka.jpg",
+   "description": "Malai tikka: boneless chicken marinated in cream, cheese or cashew and mild spices, roasted in the tandoor until just charred.\n\nIngredients (Typical):\n- Boneless chicken\n- Fresh cream\n- Cheese or cashew paste (if used in the actual recipe)\n- Curd\n- Cardamom and white pepper\n- Butter and salt\n\nSpicy Level: Mild\n\nServing Suggestion: Best eaten hot with mint chutney, sliced onion and lemon.\n\nTaste Profile: Creamy, soft and mild."
+  },
+  {
+   "name": "Chicken Tikka",
+   "image": "chicken-tikka.jpg",
+   "description": "Classic chicken tikka: boneless chicken pieces marinated in curd and red tandoori masala, skewered and roasted in the tandoor.\n\nIngredients (Typical):\n- Boneless chicken\n- Curd\n- Ginger-garlic paste\n- Tandoori masala and Kashmiri red chilli\n- Lemon juice\n- Oil or butter and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot with mint chutney, sliced onion and lemon.\n\nTaste Profile: Smoky, spicy and tender."
+  },
+  {
+   "name": "Kalmi Kabab",
+   "image": "kalmi-kabab.jpg",
+   "description": "Kalmi kabab: chicken thigh-and-drumstick pieces on the bone marinated in curd, cream and spices and roasted in the tandoor.\n\nIngredients (Typical):\n- Chicken (leg pieces)\n- Cream (if used in the actual recipe)\n- Curd\n- Ginger-garlic paste\n- Tandoori masala and Kashmiri red chilli\n- Lemon juice\n- Oil or butter and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot with mint chutney, sliced onion and lemon.\n\nTaste Profile: Juicy, smoky and rich."
+  },
+  {
+   "name": "Murgh Malai Kabab",
+   "image": "murgh-malai-kabab.jpg",
+   "description": "Murgh malai kabab: boneless chicken in a rich marinade of cream, cashew and mild spices, roasted in the tandoor.\n\nIngredients (Typical):\n- Boneless chicken\n- Fresh cream\n- Cashew paste (if used in the actual recipe)\n- Curd\n- Cardamom and white pepper\n- Butter and salt\n\nSpicy Level: Mild\n\nServing Suggestion: Best eaten hot with mint chutney, sliced onion and lemon.\n\nTaste Profile: Creamy, mild and melt-in-the-mouth."
+  },
+  {
+   "name": "Tangdi Kabab (Full)",
+   "image": "tangdi-kabab-full.jpg",
+   "description": "Tangdi kabab, full plate: chicken drumsticks marinated in curd, cream and spices and roasted in the tandoor; a bigger serving than the half plate.\n\nIngredients (Typical):\n- Chicken drumsticks\n- Cream (if used in the actual recipe)\n- Curd\n- Ginger-garlic paste\n- Tandoori masala and Kashmiri red chilli\n- Lemon juice\n- Oil or butter and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot with mint chutney, sliced onion and lemon.\n\nTaste Profile: Smoky, juicy and mildly spicy."
+  },
+  {
+   "name": "Reshmi Kabab",
+   "image": "reshmi-kabab.jpg",
+   "description": "Reshmi kabab (\"silky\" kabab): boneless chicken in a smooth marinade of cream, curd and mild spices, roasted in the tandoor.\n\nIngredients (Typical):\n- Boneless chicken\n- Fresh cream\n- Curd\n- Cashew paste (if used in the actual recipe)\n- Mild spices\n- Butter and salt\n\nSpicy Level: Mild\n\nServing Suggestion: Best eaten hot with mint chutney, sliced onion and lemon.\n\nTaste Profile: Silky, soft and mild."
+  },
+  {
+   "name": "Kashmiri Kabab",
+   "image": "kashmiri-kabab.jpg",
+   "description": "Kashmiri kabab is a tandoori chicken kabab special of this restaurant, marinated with Kashmiri red chilli for its deep red colour; ask the restaurant how it is prepared.\n\nIngredients (Typical):\n- Chicken\n- Kashmiri red chilli\n- Curd\n- Ginger-garlic paste\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot with mint chutney, sliced onion and lemon.\n\nTaste Profile: Smoky, rich and mildly spicy."
+  },
+  {
+   "name": "Tandoori Fish Tikka",
+   "image": "tandoori-fish-tikka.jpg",
+   "description": "Fish tikka: boneless fish pieces marinated in curd, ajwain and tandoori masala and roasted in the tandoor.\n\nIngredients (Typical):\n- Boneless fish\n- Ajwain (carom seeds) (if used in the actual recipe)\n- Curd\n- Ginger-garlic paste\n- Tandoori masala and Kashmiri red chilli\n- Lemon juice\n- Oil or butter and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot with mint chutney, sliced onion and lemon.\n\nTaste Profile: Smoky, tender and spicy."
+  },
+  {
+   "name": "Chicken Tandoori (Full)",
+   "image": "chicken-tandoori-full.jpg",
+   "description": "A full tandoori chicken: whole chicken marinated in curd and red tandoori masala and roasted in the clay oven.\n\nIngredients (Typical):\n- Whole chicken (on the bone)\n- Curd\n- Ginger-garlic paste\n- Tandoori masala and Kashmiri red chilli\n- Lemon juice\n- Oil or butter and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot with mint chutney, sliced onion and lemon. Good to share.\n\nTaste Profile: Smoky, tangy and spicy."
+  },
+  {
+   "name": "Nawabi Tandoori",
+   "image": "nawabi-tandoori.jpg",
+   "description": "Nawabi Tandoori is a tandoori chicken special of this restaurant with a richer marinade; ask the restaurant how it is prepared.\n\nIngredients (Typical):\n- Chicken\n- Cream or cashew (if used in the actual recipe)\n- Curd\n- Ginger-garlic paste\n- Tandoori masala and Kashmiri red chilli\n- Lemon juice\n- Oil or butter and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot with mint chutney, sliced onion and lemon.\n\nTaste Profile: Rich, smoky and spicy."
+  },
+  {
+   "name": "Chicken Shawarma",
+   "image": "chicken-shawarma.jpg",
+   "description": "Chicken shawarma: spiced chicken roasted on the shawarma grill, sliced and rolled in a thin bread with garlic mayonnaise and vegetables.\n\nIngredients (Typical):\n- Chicken\n- Shawarma spices\n- Pita or rumali-style wrap\n- Garlic mayonnaise\n- Onion, cabbage or cucumber (if used in the actual recipe)\n- French fries (if used in the actual recipe)\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: Best eaten fresh, while the wrap is warm.\n\nTaste Profile: Savoury, garlicky and juicy."
+  },
+  {
+   "name": "Chicken Sp Shawarma",
+   "image": "chicken-sp-shawarma.jpg",
+   "description": "The restaurant's special chicken shawarma, a fuller version of the regular shawarma; the fillings are the restaurant's own.\n\nIngredients (Typical):\n- Chicken\n- Shawarma spices\n- Pita or rumali-style wrap\n- Garlic mayonnaise\n- Vegetables\n- Cheese or extra chicken (if used in the actual recipe)\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: Best eaten fresh, while the wrap is warm.\n\nTaste Profile: Savoury, garlicky and filling."
+  },
+  {
+   "name": "Rumali Roti",
+   "image": "rumali-roti.jpg",
+   "description": "Rumali (\"handkerchief\") roti: a very thin, soft bread stretched by hand and cooked on an upturned tawa, folded like a cloth.\n\nIngredients (Typical):\n- Wheat flour (maida and/or atta)\n- Water\n- Salt\n- Oil (if used in the actual recipe)\n\nSpicy Level: None\n\nServing Suggestion: Best with any curry or tandoori dish.\n\nTaste Profile: Soft, thin and light."
+  },
+  {
+   "name": "Tandoori Roti",
+   "image": "tandoori-roti.jpg",
+   "description": "Tandoori roti: whole-wheat flatbread slapped onto the wall of the clay tandoor and baked until blistered.\n\nIngredients (Typical):\n- Whole-wheat flour (atta)\n- Water\n- Salt\n\nSpicy Level: None\n\nServing Suggestion: Best with any curry or dal.\n\nTaste Profile: Chewy, smoky and wholesome."
+  },
+  {
+   "name": "Butter Roti",
+   "image": "butter-roti.jpg",
+   "description": "Whole wheat roti baked in a tandoor and brushed with butter. A simple, everyday bread for curries.\n\nIngredients (Typical):\n- Whole wheat flour (atta)\n- Water and salt\n- Butter\n\nSpicy Level: Mild\n\nServing Suggestion: Best with any curry or dal from the menu.\n\nTaste Profile: Wholesome, buttery and lightly smoky."
+  },
+  {
+   "name": "Plain Naan",
+   "image": "plain-naan.jpg",
+   "description": "Classic leavened flatbread baked in a tandoor. Soft with lightly charred spots.\n\nIngredients (Typical):\n- Refined wheat flour (maida)\n- Yogurt\n- Baking powder or yeast\n- Salt and a little sugar (if used in the actual recipe)\n\nSpicy Level: Mild\n\nServing Suggestion: Best with any curry or dal from the menu.\n\nTaste Profile: Soft, plain and lightly smoky."
+  },
+  {
+   "name": "Butter Naan",
+   "image": "butter-naan.jpg",
+   "description": "Soft leavened flatbread baked in a tandoor and brushed with butter. Light, fluffy and slightly chewy.\n\nIngredients (Typical):\n- Refined wheat flour (maida)\n- Yogurt\n- Baking powder or yeast\n- Butter\n- Milk, sugar and salt (if used in the actual recipe)\n\nSpicy Level: Mild\n\nServing Suggestion: Best with any curry or dal from the menu.\n\nTaste Profile: Soft, buttery and fluffy."
+  },
+  {
+   "name": "Garlic Naan",
+   "image": "garlic-naan.jpg",
+   "description": "Tandoor-baked naan topped with chopped garlic and coriander, then brushed with butter. Fragrant and soft.\n\nIngredients (Typical):\n- Refined wheat flour (maida)\n- Yogurt\n- Baking powder or yeast\n- Garlic\n- Coriander leaves\n- Butter and salt\n\nSpicy Level: Mild\n\nServing Suggestion: Best with any curry or dal from the menu.\n\nTaste Profile: Garlicky, buttery and soft."
+  },
+  {
+   "name": "Stuffed Kulcha",
+   "image": "stuffed-kulcha.jpg",
+   "description": "Stuffed kulcha: a soft leavened bread filled with a spiced stuffing (commonly potato, onion or paneer) and baked in the tandoor.\n\nIngredients (Typical):\n- Maida (refined flour)\n- Curd\n- Stuffing: potato, onion or paneer with spices (if used in the actual recipe)\n- Butter\n- Salt\n\nSpicy Level: Mild\n\nServing Suggestion: Best with chole or any curry.\n\nTaste Profile: Soft, buttery and savoury."
+  },
+  {
+   "name": "Kashmiri Naan",
+   "image": "kashmiri-naan.jpg",
+   "description": "Kashmiri naan: a sweet naan stuffed with dry fruits, nuts and often cherries or coconut, baked in the tandoor.\n\nIngredients (Typical):\n- Maida (refined flour)\n- Curd\n- Dry fruits and nuts\n- Sugar\n- Desiccated coconut or cherries (if used in the actual recipe)\n- Butter or ghee\n\nSpicy Level: None\n\nServing Suggestion: Best with a mild, creamy curry such as butter chicken.\n\nTaste Profile: Sweet, nutty and soft."
+  },
+  {
+   "name": "Family Pack (Dum)",
+   "image": "family-pack-dum.jpg",
+   "description": "A big biryani pack to share at home or with friends: chicken dum biryani in a family-size pack.\n\nIngredients (Typical):\n- Chicken (on the bone)\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Aromatic, spicy and made for sharing."
+  },
+  {
+   "name": "Family Pack (Fry)",
+   "image": "family-pack-fry.jpg",
+   "description": "A big biryani pack to share at home or with friends: chicken fry biryani (biryani rice with fried chicken pieces) in a family-size pack.\n\nIngredients (Typical):\n- Chicken\n- Red chilli powder\n- Curry leaves\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Spicy, crisp-edged chicken, made for sharing."
+  },
+  {
+   "name": "Jumbo Pack (Dum)",
+   "image": "jumbo-pack-dum.jpg",
+   "description": "The largest chicken dum biryani pack on the menu, bigger than the family pack, for a group.\n\nIngredients (Typical):\n- Chicken (on the bone)\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Aromatic, spicy and made for a crowd."
+  },
+  {
+   "name": "Jumbo Pack (Fry)",
+   "image": "jumbo-pack-fry.jpg",
+   "description": "The largest chicken fry biryani pack on the menu, bigger than the family pack, for a group.\n\nIngredients (Typical):\n- Chicken\n- Red chilli powder\n- Curry leaves\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Spicy and made for a crowd."
+  },
+  {
+   "name": "Mutton Family Pack",
+   "image": "mutton-family-pack.jpg",
+   "description": "A big biryani pack to share at home or with friends: mutton biryani in a family-size pack.\n\nIngredients (Typical):\n- Mutton (on the bone)\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Rich, meaty and made for sharing."
+  },
+  {
+   "name": "Mutton Jumbo Pack",
+   "image": "mutton-jumbo-pack.jpg",
+   "description": "The largest mutton biryani pack on the menu, bigger than the mutton family pack, for a group.\n\nIngredients (Typical):\n- Mutton (on the bone)\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Rich, meaty and made for a crowd."
+  },
+  {
+   "name": "Chicken Roast",
+   "image": "chicken-roast.jpg",
+   "description": "Andhra chicken roast: chicken cooked with onion and spices and then roasted dry in the pan until the masala coats the pieces.\n\nIngredients (Typical):\n- Chicken (on the bone)\n- Curry leaves\n- Onion and tomato\n- Ginger-garlic paste\n- Red chilli powder, turmeric and garam masala\n- Coriander leaves\n- Oil and salt\n\nSpicy Level: Hot\n\nServing Suggestion: Best with rumali roti, butter naan or plain rice.\n\nTaste Profile: Spicy, dry and deeply roasted."
+  },
+  {
+   "name": "Chicken Fry",
+   "image": "chicken-fry.jpg",
+   "description": "Andhra chicken fry: chicken pieces cooked with red chilli, ginger-garlic and curry leaves until dry and browned.\n\nIngredients (Typical):\n- Chicken (on the bone)\n- Curry leaves\n- Onion and tomato\n- Ginger-garlic paste\n- Red chilli powder, turmeric and garam masala\n- Coriander leaves\n- Oil and salt\n\nSpicy Level: Hot\n\nServing Suggestion: Best with rumali roti, butter naan or plain rice.\n\nTaste Profile: Spicy, dry and full of flavour."
+  },
+  {
+   "name": "Chicken Curry",
+   "image": "chicken-curry.jpg",
+   "description": "Home-style chicken curry: chicken on the bone simmered in a spiced onion-tomato gravy.\n\nIngredients (Typical):\n- Chicken (on the bone)\n- Onion and tomato\n- Ginger-garlic paste\n- Red chilli powder, turmeric and garam masala\n- Coriander leaves\n- Oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best with rumali roti, butter naan or plain rice.\n\nTaste Profile: Spicy, saucy and comforting."
+  },
+  {
+   "name": "Chicken Boneless Curry",
+   "image": "chicken-boneless-curry.jpg",
+   "description": "Boneless chicken pieces cooked in a spicy onion-tomato curry. All the flavour, none of the bones.\n\nIngredients (Typical):\n- Boneless chicken\n- Onion and tomato\n- Ginger-garlic paste\n- Red chilli, turmeric, coriander and garam masala\n- Oil, salt and coriander leaves\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best with hot rice, roti or chapati (not included).\n\nTaste Profile: Rich, spicy and satisfying."
+  },
+  {
+   "name": "Chicken Bonless Fry",
+   "image": "chicken-bonless-fry.jpg",
+   "description": "Boneless chicken fry: boneless chicken pieces cooked dry with red chilli, ginger-garlic and curry leaves.\n\nIngredients (Typical):\n- Boneless chicken\n- Curry leaves\n- Onion and tomato\n- Ginger-garlic paste\n- Red chilli powder, turmeric and garam masala\n- Coriander leaves\n- Oil and salt\n\nSpicy Level: Hot\n\nServing Suggestion: Best with rumali roti, butter naan or plain rice.\n\nTaste Profile: Spicy, dry and easy to eat."
+  },
+  {
+   "name": "Chicken Tikka Masala",
+   "image": "chicken-tikka-masala.jpg",
+   "description": "Roasted chicken tikka pieces simmered in a creamy, spiced onion-tomato gravy. A restaurant favourite, rich and mildly spicy.\n\nIngredients (Typical):\n- Chicken tikka (chicken marinated in yogurt and spices, then roasted)\n- Onion and tomato\n- Cream and butter\n- Ginger-garlic paste\n- Kashmiri chilli, garam masala and kasuri methi\n- Salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best with roti, naan or parota (not included).\n\nTaste Profile: Smoky, creamy and mildly spicy."
+  },
+  {
+   "name": "Gongura Chicken",
+   "image": "gongura-chicken.jpg",
+   "description": "Andhra gongura chicken: chicken cooked with gongura (sorrel) leaves, whose sourness balances the chilli heat.\n\nIngredients (Typical):\n- Chicken\n- Gongura (sorrel) leaves\n- Red chilli\n- Onion and tomato\n- Ginger-garlic paste\n- Red chilli powder, turmeric and garam masala\n- Coriander leaves\n- Oil and salt\n\nSpicy Level: Hot\n\nServing Suggestion: Best with rumali roti, butter naan or plain rice.\n\nTaste Profile: Tangy, spicy and bold."
+  },
+  {
+   "name": "Butter Chicken Curry",
+   "image": "butter-chicken-curry.jpg",
+   "description": "Butter chicken: tandoor-roasted chicken in a smooth tomato gravy finished with butter and cream.\n\nIngredients (Typical):\n- Chicken (tandoori-roasted)\n- Tomato\n- Butter\n- Fresh cream\n- Cashew paste (if used in the actual recipe)\n- Kasuri methi\n- Kashmiri red chilli and garam masala\n- Salt and sugar\n\nSpicy Level: Mild\n\nServing Suggestion: Best with rumali roti, butter naan or plain rice.\n\nTaste Profile: Creamy, buttery and mildly sweet."
+  },
+  {
+   "name": "Chicken Chettinadu",
+   "image": "chicken-chettinadu.jpg",
+   "description": "Chicken Chettinad: a Tamil Chettinad-style curry with freshly roasted spices, black pepper and coconut.\n\nIngredients (Typical):\n- Chicken\n- Black pepper\n- Fennel, cumin and coriander seeds\n- Coconut (if used in the actual recipe)\n- Curry leaves\n- Onion and tomato\n- Ginger-garlic paste\n- Red chilli powder, turmeric and garam masala\n- Coriander leaves\n- Oil and salt\n\nSpicy Level: Hot\n\nServing Suggestion: Best with rumali roti, butter naan or plain rice.\n\nTaste Profile: Peppery, spicy and aromatic."
+  },
+  {
+   "name": "Chicken Kalmi Masala",
+   "image": "chicken-kalmi-masala.jpg",
+   "description": "Kalmi masala: chicken leg pieces cooked in a thick, rich masala gravy.\n\nIngredients (Typical):\n- Chicken (leg pieces)\n- Cream or cashew (if used in the actual recipe)\n- Onion and tomato\n- Ginger-garlic paste\n- Red chilli powder, turmeric and garam masala\n- Coriander leaves\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best with rumali roti, butter naan or plain rice.\n\nTaste Profile: Rich, spicy and meaty."
+  },
+  {
+   "name": "Chicken Kolapuri",
+   "image": "chicken-kolapuri.jpg",
+   "description": "Chicken Kolhapuri: a Maharashtrian-style fiery curry with roasted dry coconut, sesame and red chillies.\n\nIngredients (Typical):\n- Chicken\n- Dry coconut\n- Sesame seeds (if used in the actual recipe)\n- Kolhapuri red chilli masala\n- Onion and tomato\n- Ginger-garlic paste\n- Red chilli powder, turmeric and garam masala\n- Coriander leaves\n- Oil and salt\n\nSpicy Level: Hot\n\nServing Suggestion: Best with rumali roti, butter naan or plain rice.\n\nTaste Profile: Fiery, smoky and robust."
+  },
+  {
+   "name": "Chicken Mughlai",
+   "image": "chicken-mughlai.jpg",
+   "description": "Chicken Mughlai: chicken in a rich, mild Mughlai gravy of onion, cashew or cream and whole spices.\n\nIngredients (Typical):\n- Chicken\n- Cashew paste or cream (if used in the actual recipe)\n- Whole spices\n- Onion and tomato\n- Ginger-garlic paste\n- Red chilli powder, turmeric and garam masala\n- Coriander leaves\n- Oil and salt\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: Best with rumali roti, butter naan or plain rice.\n\nTaste Profile: Rich, creamy and aromatic."
+  },
+  {
+   "name": "Chicken Patiala",
+   "image": "chicken-patiala.jpg",
+   "description": "A rich Punjabi-style chicken curry in a creamy onion-tomato gravy with cashew paste and aromatic spices. Rich and indulgent.\n\nIngredients (Typical):\n- Chicken\n- Onion and tomato\n- Cashew paste (if used in the actual recipe)\n- Cream (if used in the actual recipe)\n- Ginger-garlic paste\n- Red chilli, garam masala and kasuri methi\n- Butter or oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best with roti, naan or parota (not included).\n\nTaste Profile: Rich, creamy and well spiced."
+  },
+  {
+   "name": "Chicken Punjabi",
+   "image": "chicken-punjabi.jpg",
+   "description": "Punjabi chicken curry: chicken in a thick onion-tomato masala with ginger, garlic and garam masala, North Indian style.\n\nIngredients (Typical):\n- Chicken\n- Kasuri methi (if used in the actual recipe)\n- Onion and tomato\n- Ginger-garlic paste\n- Red chilli powder, turmeric and garam masala\n- Coriander leaves\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best with rumali roti, butter naan or plain rice.\n\nTaste Profile: Hearty, spicy and rich."
+  },
+  {
+   "name": "Methi Chicken",
+   "image": "methi-chicken.jpg",
+   "description": "Methi chicken: chicken curry cooked with fenugreek (methi) leaves, which add a pleasant bitter-herby note.\n\nIngredients (Typical):\n- Chicken\n- Fenugreek (methi) leaves\n- Onion and tomato\n- Ginger-garlic paste\n- Red chilli powder, turmeric and garam masala\n- Coriander leaves\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best with rumali roti, butter naan or plain rice.\n\nTaste Profile: Herby, savoury and spiced."
+  },
+  {
+   "name": "Tandoori Masala (Half)",
+   "image": "tandoori-masala-half.jpg",
+   "description": "Tandoori chicken masala, half: tandoori chicken pieces simmered in a spicy, buttery masala gravy.\n\nIngredients (Typical):\n- Tandoori chicken\n- Butter (if used in the actual recipe)\n- Onion and tomato\n- Ginger-garlic paste\n- Red chilli powder, turmeric and garam masala\n- Coriander leaves\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best with rumali roti, butter naan or plain rice.\n\nTaste Profile: Smoky, rich and spicy."
+  },
+  {
+   "name": "Chicken Dil Kush",
+   "image": "chicken-dil-kush.jpg",
+   "description": "Chicken Dil Kush is a chicken curry special of this restaurant, sold under its own name on the menu; ask the restaurant how it is prepared.\n\nIngredients (Typical):\n- Chicken\n- Onion and tomato\n- Ginger-garlic paste\n- Red chilli powder, turmeric and garam masala\n- Coriander leaves\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best with rumali roti, butter naan or plain rice.\n\nTaste Profile: Rich and spiced."
+  },
+  {
+   "name": "Chicken Afgani",
+   "image": "chicken-afgani.jpg",
+   "description": "Chicken Afghani curry: chicken in a creamy, mildly spiced white gravy of curd, cream and cashew with black pepper.\n\nIngredients (Typical):\n- Chicken\n- Cream and cashew paste (if used in the actual recipe)\n- Black pepper\n- Onion and tomato\n- Ginger-garlic paste\n- Red chilli powder, turmeric and garam masala\n- Coriander leaves\n- Oil and salt\n\nSpicy Level: Mild\n\nServing Suggestion: Best with rumali roti, butter naan or plain rice.\n\nTaste Profile: Creamy, mild and aromatic."
+  },
+  {
+   "name": "Chicken Maharani",
+   "image": "chicken-maharani.jpg",
+   "description": "Chicken Maharani is a rich chicken curry special of this restaurant; ask the restaurant how it is prepared.\n\nIngredients (Typical):\n- Chicken\n- Cashew or cream (if used in the actual recipe)\n- Onion and tomato\n- Ginger-garlic paste\n- Red chilli powder, turmeric and garam masala\n- Coriander leaves\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best with rumali roti, butter naan or plain rice.\n\nTaste Profile: Rich and aromatic."
+  },
+  {
+   "name": "Kadai Chicken",
+   "image": "kadai-chicken.jpg",
+   "description": "Chicken cooked with chunks of capsicum and onion in a spicy kadai masala of freshly ground coriander and red chilli.\n\nIngredients (Typical):\n- Chicken\n- Capsicum and onion\n- Tomato\n- Kadai masala (coriander seeds and red chilli)\n- Ginger-garlic paste\n- Oil, salt and kasuri methi\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best with hot rice, roti or chapati (not included).\n\nTaste Profile: Spicy, aromatic and robust."
+  },
+  {
+   "name": "Gongura Mutton",
+   "image": null,
+   "description": "Andhra gongura mutton: mutton slow-cooked with gongura (sorrel) leaves for a sour, spicy curry.\n\nIngredients (Typical):\n- Mutton\n- Gongura (sorrel) leaves\n- Red chilli\n- Onion and tomato\n- Ginger-garlic paste\n- Red chilli powder, turmeric and garam masala\n- Coriander leaves\n- Oil and salt\n\nSpicy Level: Hot\n\nServing Suggestion: Best with rumali roti, butter naan or plain rice.\n\nTaste Profile: Tangy, spicy and rich."
+  },
+  {
+   "name": "Mutton Fry",
+   "image": "mutton-fry.jpg",
+   "description": "Mutton pieces cooked with spices until tender, then fried with onion, curry leaves and masala until dark and dry, in Andhra style.\n\nIngredients (Typical):\n- Mutton\n- Onion\n- Ginger-garlic paste\n- Red chilli powder, turmeric and garam masala\n- Curry leaves and green chilli\n- Coriander leaves\n- Oil and salt\n\nSpicy Level: Hot\n\nServing Suggestion: Best eaten hot; also goes well with rice or rotis.\n\nTaste Profile: Spicy, rich and well roasted."
+  },
+  {
+   "name": "Mutton Curry",
+   "image": "mutton-curry.jpg",
+   "description": "Mutton pieces slow-cooked until tender in a spicy onion-tomato gravy with ginger, garlic and whole spices. A homestyle mutton curry with plenty of gravy.\n\nIngredients (Typical):\n- Mutton\n- Onion and tomato\n- Ginger-garlic paste\n- Red chilli, turmeric, coriander powder and garam masala\n- Cinnamon, cloves and cardamom\n- Oil, salt and coriander leaves\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best with hot rice, roti or chapati (not included).\n\nTaste Profile: Meaty, spicy and comforting."
+  },
+  {
+   "name": "Mutton Ghee Roast",
+   "image": "mutton-ghee-roast.jpg",
+   "description": "Mutton ghee roast: mutton cooked down in ghee with a roasted red-chilli masala until the gravy clings to the meat.\n\nIngredients (Typical):\n- Mutton\n- Ghee\n- Roasted red chilli masala\n- Onion and tomato\n- Ginger-garlic paste\n- Red chilli powder, turmeric and garam masala\n- Coriander leaves\n- Oil and salt\n\nSpicy Level: Hot\n\nServing Suggestion: Best with rumali roti, butter naan or plain rice.\n\nTaste Profile: Rich, buttery and fiery."
+  },
+  {
+   "name": "Mutton Masala",
+   "image": "mutton-masala.jpg",
+   "description": "Mutton masala: tender mutton cooked in a thick, spicy onion-tomato masala.\n\nIngredients (Typical):\n- Mutton\n- Onion and tomato\n- Ginger-garlic paste\n- Red chilli powder, turmeric and garam masala\n- Coriander leaves\n- Oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best with rumali roti, butter naan or plain rice.\n\nTaste Profile: Spicy, thick and meaty."
+  },
+  {
+   "name": "Mutton Mughlai",
+   "image": "mutton-mughlai.jpg",
+   "description": "Mutton Mughlai: mutton in a rich, mild Mughlai gravy of onion, cashew or cream and whole spices.\n\nIngredients (Typical):\n- Mutton\n- Cashew paste or cream (if used in the actual recipe)\n- Whole spices\n- Onion and tomato\n- Ginger-garlic paste\n- Red chilli powder, turmeric and garam masala\n- Coriander leaves\n- Oil and salt\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: Best with rumali roti, butter naan or plain rice.\n\nTaste Profile: Rich, creamy and aromatic."
+  },
+  {
+   "name": "Mutton Keema Curry",
+   "image": "mutton-keema-curry.jpg",
+   "description": "Keema curry: minced mutton simmered in a spiced onion-tomato gravy.\n\nIngredients (Typical):\n- Minced mutton (keema)\n- Green peas (if used in the actual recipe)\n- Onion and tomato\n- Ginger-garlic paste\n- Red chilli powder, turmeric and garam masala\n- Coriander leaves\n- Oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best with rumali roti, butter naan or plain rice.\n\nTaste Profile: Spicy, saucy and meaty."
+  },
+  {
+   "name": "Mutton Keema Fry",
+   "image": "mutton-keema-fry.jpg",
+   "description": "Keema fry: minced mutton cooked dry with onion, chilli and spices until well browned.\n\nIngredients (Typical):\n- Minced mutton (keema)\n- Curry leaves (if used in the actual recipe)\n- Onion and tomato\n- Ginger-garlic paste\n- Red chilli powder, turmeric and garam masala\n- Coriander leaves\n- Oil and salt\n\nSpicy Level: Hot\n\nServing Suggestion: Best with rumali roti, butter naan or plain rice.\n\nTaste Profile: Spicy, dry and meaty."
+  },
+  {
+   "name": "Mutton Rogan Ghost",
+   "image": "mutton-rogan-ghost.jpg",
+   "description": "Rogan josh (rogan gosht): mutton slow-cooked in a deep red gravy coloured with Kashmiri red chilli.\n\nIngredients (Typical):\n- Mutton\n- Kashmiri red chilli\n- Curd\n- Fennel and dry ginger (if used in the actual recipe)\n- Onion and tomato\n- Ginger-garlic paste\n- Red chilli powder, turmeric and garam masala\n- Coriander leaves\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best with rumali roti, butter naan or plain rice.\n\nTaste Profile: Rich, aromatic and deep red."
+  },
+  {
+   "name": "Tandoori Masala (Full)",
+   "image": "tandoori-masala-full.jpg",
+   "description": "Tandoori chicken masala, full: tandoori chicken simmered in a spicy, buttery masala gravy; a bigger serving than the half.\n\nIngredients (Typical):\n- Tandoori chicken\n- Butter (if used in the actual recipe)\n- Onion and tomato\n- Ginger-garlic paste\n- Red chilli powder, turmeric and garam masala\n- Coriander leaves\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best with rumali roti, butter naan or plain rice.\n\nTaste Profile: Smoky, rich and spicy."
+  },
+  {
+   "name": "Chicken Full Joint",
+   "image": "chicken-full-joint.jpg",
+   "description": "A full chicken joint (whole leg) marinated in spices and deep-fried until crisp outside and juicy inside.\n\nIngredients (Typical):\n- Chicken leg joint\n- Corn flour and maida\n- Ginger-garlic paste\n- Red chilli powder\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot as a starter, with sliced onion and a squeeze of lemon.\n\nTaste Profile: Crispy, juicy and spicy."
+  },
+  {
+   "name": "Chicken Half Joint (2 Pics)",
+   "image": "chicken-half-joint-2-pics.jpg",
+   "description": "Two chicken half-joint pieces marinated in spices and deep-fried until crisp.\n\nIngredients (Typical):\n- Chicken (leg pieces)\n- Corn flour and maida\n- Ginger-garlic paste\n- Red chilli powder\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot as a starter, with sliced onion and a squeeze of lemon.\n\nTaste Profile: Crispy, juicy and spicy."
+  },
+  {
+   "name": "Chicken Lolli Pop (2 Pics)",
+   "image": "chicken-lolli-pop-2-pics.jpg",
+   "description": "Two chicken lollipops: frenched chicken wings shaped like lollipops, marinated in red chilli and fried crisp.\n\nIngredients (Typical):\n- Chicken wings (lollipops)\n- Corn flour and maida\n- Ginger-garlic paste\n- Red chilli powder\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot as a starter, with sliced onion and a squeeze of lemon.\n\nTaste Profile: Crispy, spicy and juicy."
+  },
+  {
+   "name": "Chicken Wing (2 Pics)",
+   "image": "chicken-wing-2-pics.jpg",
+   "description": "Two chicken wings marinated in spices and deep-fried until crisp.\n\nIngredients (Typical):\n- Chicken wings\n- Corn flour and maida\n- Ginger-garlic paste\n- Red chilli powder\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot as a starter, with sliced onion and a squeeze of lemon.\n\nTaste Profile: Crispy and spicy."
+  },
+  {
+   "name": "Chicken Pokodi",
+   "image": "chicken-pokodi.jpg",
+   "description": "Chicken pakoda: chicken pieces coated in a spiced gram-flour batter with onion and curry leaves and deep-fried.\n\nIngredients (Typical):\n- Chicken\n- Gram flour (besan)\n- Onion and curry leaves\n- Corn flour and maida\n- Ginger-garlic paste\n- Red chilli powder\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot as a starter, with sliced onion and a squeeze of lemon.\n\nTaste Profile: Crunchy, spicy and savoury."
+  },
+  {
+   "name": "Crispy Corn",
+   "image": "crispy-corn.jpg",
+   "description": "Crispy corn: sweet corn kernels coated lightly and fried crisp, then tossed with onion, capsicum, pepper and spices.\n\nIngredients (Typical):\n- Sweet corn kernels\n- Corn flour and rice flour\n- Onion and capsicum\n- Black pepper and chilli powder\n- Spring onion\n- Oil and salt\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: Best eaten hot as a starter, with sliced onion and a squeeze of lemon.\n\nTaste Profile: Crunchy, sweet and peppery."
+  },
+  {
+   "name": "Veg Manchuria",
+   "image": "veg-manchuria.jpg",
+   "description": "Veg Manchurian: balls of grated cabbage, carrot and beans, fried and tossed in a soy, garlic and chilli sauce.\n\nIngredients (Typical):\n- Cabbage, carrot and beans\n- Soy sauce\n- Chilli sauce\n- Ginger and garlic\n- Spring onion\n- Corn flour\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot as a starter, with sliced onion and a squeeze of lemon.\n\nTaste Profile: Tangy, savoury and spicy."
+  },
+  {
+   "name": "Egg Roll",
+   "image": "egg-roll.jpg",
+   "description": "Egg roll: a thin flatbread or wrap cooked with egg and rolled around onion and sauces.\n\nIngredients (Typical):\n- Egg\n- Maida flatbread (paratha or roti)\n- Onion and capsicum\n- Tomato and chilli sauce\n- Oil and salt\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: Best eaten hot, straight away.\n\nTaste Profile: Savoury, eggy and filling."
+  },
+  {
+   "name": "Babycorn-65",
+   "image": null,
+   "description": "Baby corn pieces coated in a red spice batter, deep-fried crisp and tossed with curry leaves and green chilli in the South Indian 65 style.\n\nIngredients (Typical):\n- Baby corn\n- Ginger-garlic paste\n- Red chilli powder and spices\n- Corn flour and rice flour\n- Curry leaves and green chilli\n- Oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot with sliced onion and a squeeze of lemon.\n\nTaste Profile: Spicy, crunchy and tangy."
+  },
+  {
+   "name": "Mushroom-65",
+   "image": "mushroom-65.jpg",
+   "description": "Mushrooms coated in a spiced batter and deep-fried crisp, then tossed with curry leaves and green chilli in the 65 style.\n\nIngredients (Typical):\n- Button mushrooms\n- Ginger-garlic paste\n- Red chilli powder and spices\n- Corn flour, maida and rice flour\n- Curry leaves and green chilli\n- Oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot with sliced onion and a squeeze of lemon.\n\nTaste Profile: Spicy, crispy and earthy."
+  },
+  {
+   "name": "Egg - 65",
+   "image": null,
+   "description": "Boiled egg pieces coated in a red spiced batter, deep-fried crisp and tossed with curry leaves and green chilli in the 65 style.\n\nIngredients (Typical):\n- Boiled eggs\n- Ginger-garlic paste\n- Red chilli powder and spices\n- Corn flour and rice flour\n- Curry leaves and green chilli\n- Oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot with sliced onion and a squeeze of lemon.\n\nTaste Profile: Spicy, crispy and rich."
+  },
+  {
+   "name": "Babycorn Manchuria",
+   "image": "babycorn-manchuria.jpg",
+   "description": "Baby corn Manchurian: baby corn pieces coated, fried and tossed in a soy, garlic and chilli sauce.\n\nIngredients (Typical):\n- Baby corn\n- Soy sauce\n- Chilli sauce\n- Ginger and garlic\n- Spring onion\n- Corn flour\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot as a starter, with sliced onion and a squeeze of lemon.\n\nTaste Profile: Tangy, savoury and spicy."
+  },
+  {
+   "name": "Mahroom Manchuria",
+   "image": null,
+   "description": "Mushroom Manchurian: mushrooms coated, fried and tossed in a soy, garlic and chilli sauce.\n\nIngredients (Typical):\n- Button mushrooms\n- Soy sauce\n- Chilli sauce\n- Ginger and garlic\n- Spring onion\n- Corn flour\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot as a starter, with sliced onion and a squeeze of lemon.\n\nTaste Profile: Tangy, savoury and spicy."
+  },
+  {
+   "name": "Paneer Manchuria",
+   "image": "paneer-manchuria.jpg",
+   "description": "Paneer Manchurian: paneer (cottage cheese) cubes coated, fried and tossed in a soy, garlic and chilli sauce.\n\nIngredients (Typical):\n- Paneer (cottage cheese)\n- Soy sauce\n- Chilli sauce\n- Ginger and garlic\n- Spring onion\n- Corn flour\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot as a starter, with sliced onion and a squeeze of lemon.\n\nTaste Profile: Tangy, savoury and spicy."
+  },
+  {
+   "name": "Babycorn Majestic",
+   "image": null,
+   "description": "Baby corn majestic: strips of baby corn fried crisp and tossed in a creamy curd sauce with curry leaves and green chilli, Hyderabad style.\n\nIngredients (Typical):\n- Baby corn\n- Corn flour\n- Curd\n- Curry leaves and green chilli\n- Ginger-garlic paste\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot as a starter, with sliced onion and a squeeze of lemon.\n\nTaste Profile: Crispy, creamy and tangy."
+  },
+  {
+   "name": "Chicken Bone Less Pokodi",
+   "image": "chicken-bone-less-pokodi.jpg",
+   "description": "Boneless chicken pakoda: boneless chicken in a spiced gram-flour batter with onion and curry leaves, deep-fried crisp.\n\nIngredients (Typical):\n- Boneless chicken\n- Gram flour (besan)\n- Onion and curry leaves\n- Corn flour and maida\n- Ginger-garlic paste\n- Red chilli powder\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot as a starter, with sliced onion and a squeeze of lemon.\n\nTaste Profile: Crunchy, spicy and easy to eat."
+  },
+  {
+   "name": "Chilli-Babycorn",
+   "image": "chilli-babycorn.jpg",
+   "description": "Baby corn pieces fried crisp in a light batter and tossed with garlic, green chilli and Indo-Chinese chilli sauce, finished with spring onion.\n\nIngredients (Typical):\n- Baby corn\n- Corn flour and maida (refined flour)\n- Garlic and green chilli\n- Capsicum and onion (if used in the actual recipe)\n- Soy sauce, chilli sauce and vinegar\n- Spring onion\n- Oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot, straight from the wok.\n\nTaste Profile: Spicy, tangy and crunchy."
+  },
+  {
+   "name": "Chilli-Mushroom",
+   "image": null,
+   "description": "Mushrooms coated in a corn-flour batter, fried and tossed on a hot wok with capsicum, onion, green chilli and Indo-Chinese sauces.\n\nIngredients (Typical):\n- Button mushrooms\n- Corn flour and maida (refined flour)\n- Capsicum, onion and spring onion\n- Garlic, ginger and green chilli\n- Soy sauce, chilli sauce and vinegar\n- Oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot, straight from the wok.\n\nTaste Profile: Spicy, savoury, tangy and juicy."
+  },
+  {
+   "name": "Chilli-Paneer",
+   "image": "chilli-paneer.jpg",
+   "description": "Cubes of paneer coated lightly, fried golden and tossed with capsicum, onion and green chilli in a spicy, tangy Indo-Chinese chilli sauce.\n\nIngredients (Typical):\n- Paneer (cottage cheese)\n- Corn flour and maida (refined flour)\n- Capsicum and onion\n- Garlic, ginger and green chilli\n- Soy sauce, chilli sauce and vinegar\n- Spring onion\n- Oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot, straight from the wok.\n\nTaste Profile: Spicy, tangy, savoury and soft inside."
+  },
+  {
+   "name": "Paneer 65",
+   "image": "paneer-65.jpg",
+   "description": "Paneer cubes marinated in a red spice mix, coated and deep-fried, then tossed with curry leaves and green chilli in the South Indian 65 style.\n\nIngredients (Typical):\n- Paneer (cottage cheese)\n- Ginger-garlic paste\n- Red chilli powder and spices\n- Corn flour and rice flour\n- Curd (if used in the actual recipe)\n- Curry leaves and green chilli\n- Oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot with sliced onion and a squeeze of lemon.\n\nTaste Profile: Spicy, crisp outside and soft inside."
+  },
+  {
+   "name": "Chilli Egg",
+   "image": null,
+   "description": "Boiled eggs, cut and fried in a light coating, then tossed with capsicum, onion and green chilli in a spicy Indo-Chinese chilli sauce.\n\nIngredients (Typical):\n- Boiled eggs\n- Corn flour and maida (refined flour)\n- Capsicum and onion\n- Garlic and green chilli\n- Soy sauce, chilli sauce and vinegar\n- Spring onion\n- Oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot, straight from the wok.\n\nTaste Profile: Spicy, tangy and savoury."
+  },
+  {
+   "name": "Egg Manchurian",
+   "image": null,
+   "description": "Boiled eggs, cut and coated in batter, fried and tossed in a glossy Indo-Chinese Manchurian sauce with garlic, ginger and spring onion.\n\nIngredients (Typical):\n- Boiled eggs\n- Corn flour and maida (refined flour)\n- Garlic, ginger and green chilli\n- Onion and spring onion\n- Soy sauce, chilli sauce and vinegar\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot, straight from the wok.\n\nTaste Profile: Savoury, garlicky and tangy."
+  },
+  {
+   "name": "Paneer Majestic",
+   "image": null,
+   "description": "Paneer strips fried and tossed with curd, green chilli and curry leaves, in the style of the Andhra and Hyderabad restaurant starter known as Majestic.\n\nIngredients (Typical):\n- Paneer (cottage cheese)\n- Curd\n- Ginger-garlic paste\n- Green chilli and curry leaves\n- Corn flour and maida (refined flour)\n- Red chilli powder and spices\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot with sliced onion and a squeeze of lemon.\n\nTaste Profile: Creamy, tangy, mildly spicy and aromatic."
+  },
+  {
+   "name": "Chicken Half Joint (4 Pics)",
+   "image": "chicken-half-joint-4-pics.jpg",
+   "description": "Four chicken half-joint pieces marinated in spices and deep-fried until crisp.\n\nIngredients (Typical):\n- Chicken (leg pieces)\n- Corn flour and maida\n- Ginger-garlic paste\n- Red chilli powder\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot as a starter, with sliced onion and a squeeze of lemon.\n\nTaste Profile: Crispy, juicy and spicy."
+  },
+  {
+   "name": "Chicken Lolli Pop (4 Pics)",
+   "image": "chicken-lolli-pop-4-pics.jpg",
+   "description": "Four chicken lollipops: frenched chicken wings shaped like lollipops, marinated in red chilli and fried crisp.\n\nIngredients (Typical):\n- Chicken wings (lollipops)\n- Corn flour and maida\n- Ginger-garlic paste\n- Red chilli powder\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot as a starter, with sliced onion and a squeeze of lemon.\n\nTaste Profile: Crispy, spicy and juicy."
+  },
+  {
+   "name": "Chicken Wing (4 Pics)",
+   "image": "chicken-wing-4-pics.jpg",
+   "description": "Four chicken wings marinated in spices and deep-fried until crisp.\n\nIngredients (Typical):\n- Chicken wings\n- Corn flour and maida\n- Ginger-garlic paste\n- Red chilli powder\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot as a starter, with sliced onion and a squeeze of lemon.\n\nTaste Profile: Crispy and spicy."
+  },
+  {
+   "name": "Chicken Kaju Pokodi",
+   "image": "chicken-kaju-pokodi.jpg",
+   "description": "Chicken kaju pakoda: chicken fritters with cashew nuts, curry leaves and green chilli, deep-fried crisp.\n\nIngredients (Typical):\n- Chicken\n- Cashew nuts (kaju)\n- Gram flour (besan)\n- Curry leaves and green chilli\n- Corn flour and maida\n- Ginger-garlic paste\n- Red chilli powder\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot as a starter, with sliced onion and a squeeze of lemon.\n\nTaste Profile: Crunchy, nutty and spicy."
+  },
+  {
+   "name": "Chicken 65",
+   "image": "chicken-65.jpg",
+   "description": "A South Indian classic: chicken marinated in red chilli, ginger, garlic and spices, deep-fried crisp and tossed with curry leaves and green chilli.\n\nIngredients (Typical):\n- Chicken\n- Ginger-garlic paste\n- Red chilli powder and spices\n- Corn flour and rice flour\n- Curd (if used in the actual recipe)\n- Curry leaves and green chilli\n- Oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot with sliced onion and a squeeze of lemon.\n\nTaste Profile: Spicy, crispy outside and juicy inside."
+  },
+  {
+   "name": "Chicken Garlic",
+   "image": "chicken-garlic.jpg",
+   "description": "Garlic chicken: fried chicken pieces tossed with plenty of garlic in a savoury Indo-Chinese sauce.\n\nIngredients (Typical):\n- Chicken\n- Lots of garlic\n- Soy sauce\n- Chilli sauce\n- Ginger and garlic\n- Spring onion\n- Corn flour\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot as a starter, with sliced onion and a squeeze of lemon.\n\nTaste Profile: Garlicky, savoury and spicy."
+  },
+  {
+   "name": "Chicken Ginger",
+   "image": "chicken-ginger.jpg",
+   "description": "Ginger chicken: fried chicken pieces tossed with fresh ginger in a savoury Indo-Chinese sauce.\n\nIngredients (Typical):\n- Chicken\n- Fresh ginger\n- Soy sauce\n- Chilli sauce\n- Ginger and garlic\n- Spring onion\n- Corn flour\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot as a starter, with sliced onion and a squeeze of lemon.\n\nTaste Profile: Zesty, savoury and warm."
+  },
+  {
+   "name": "Chicken Lemon",
+   "image": "chicken-lemon.jpg",
+   "description": "Lemon chicken: fried chicken pieces tossed in a tangy lemon sauce.\n\nIngredients (Typical):\n- Chicken\n- Lemon juice and zest\n- Soy sauce\n- Chilli sauce\n- Ginger and garlic\n- Spring onion\n- Corn flour\n- Oil and salt\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: Best eaten hot as a starter, with sliced onion and a squeeze of lemon.\n\nTaste Profile: Tangy, lemony and crisp."
+  },
+  {
+   "name": "Chicken Manchurian",
+   "image": "chicken-manchurian.jpg",
+   "description": "Batter-fried chicken pieces tossed in a dark, glossy Indo-Chinese Manchurian sauce with garlic, ginger, green chilli and spring onion.\n\nIngredients (Typical):\n- Boneless chicken\n- Corn flour and maida (refined flour)\n- Garlic, ginger and green chilli\n- Onion, capsicum and spring onion\n- Soy sauce, chilli sauce and vinegar\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot, straight from the wok.\n\nTaste Profile: Savoury, garlicky and tangy."
+  },
+  {
+   "name": "Chilli Chicken",
+   "image": "chilli-chicken.jpg",
+   "description": "A favourite Indo-Chinese starter: batter-fried chicken tossed on a hot wok with capsicum, onion, green chilli and a spicy, tangy chilli-soy sauce.\n\nIngredients (Typical):\n- Boneless chicken\n- Corn flour and maida (refined flour)\n- Capsicum and onion\n- Garlic, ginger and green chilli\n- Soy sauce, chilli sauce and vinegar\n- Spring onion\n- Oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot, straight from the wok.\n\nTaste Profile: Spicy, tangy and savoury."
+  },
+  {
+   "name": "Crispy Chicken",
+   "image": "crispy-chicken.jpg",
+   "description": "Crispy chicken: strips of chicken coated in a light batter and fried until very crisp.\n\nIngredients (Typical):\n- Boneless chicken\n- Corn flour and maida\n- Ginger-garlic paste\n- Red chilli powder\n- Oil and salt\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: Best eaten hot as a starter, with sliced onion and a squeeze of lemon.\n\nTaste Profile: Crunchy, light and savoury."
+  },
+  {
+   "name": "Pepper Chicken",
+   "image": "pepper-chicken.jpg",
+   "description": "Chicken cooked with onion, curry leaves and plenty of freshly crushed black pepper until dry and well coated, in South Indian style.\n\nIngredients (Typical):\n- Chicken\n- Black pepper (crushed)\n- Onion and curry leaves\n- Ginger-garlic paste\n- Green chilli\n- Turmeric and spices\n- Oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot; also goes well with rice or parottas.\n\nTaste Profile: Peppery, aromatic and savoury."
+  },
+  {
+   "name": "Chicken Lolli Pop Wet (4 Pics)",
+   "image": "chicken-lolli-pop-wet-4-pics.jpg",
+   "description": "Four chicken lollipops, fried crisp and tossed in a sticky, spicy Indo-Chinese sauce (wet style).\n\nIngredients (Typical):\n- Chicken wings (lollipops)\n- Soy sauce\n- Chilli sauce\n- Ginger and garlic\n- Spring onion\n- Corn flour\n- Oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot as a starter, with sliced onion and a squeeze of lemon.\n\nTaste Profile: Saucy, sticky and spicy."
+  },
+  {
+   "name": "Chilli Wings (4 Pics)",
+   "image": "chilli-wings-4-pics.jpg",
+   "description": "Four chicken wings, fried and tossed with green chilli, capsicum, onion and chilli sauce.\n\nIngredients (Typical):\n- Chicken wings\n- Green chilli, capsicum and onion\n- Soy sauce\n- Chilli sauce\n- Ginger and garlic\n- Spring onion\n- Corn flour\n- Oil and salt\n\nSpicy Level: Hot\n\nServing Suggestion: Best eaten hot as a starter, with sliced onion and a squeeze of lemon.\n\nTaste Profile: Spicy, tangy and crispy."
+  },
+  {
+   "name": "Chicken 555",
+   "image": "chicken-555.jpg",
+   "description": "A spicy Andhra restaurant-style chicken starter: boneless chicken coated and fried, then tossed in a red masala with garlic, green chilli and curry leaves.\n\nIngredients (Typical):\n- Boneless chicken\n- Corn flour and maida (refined flour)\n- Ginger-garlic paste\n- Red chilli paste or powder\n- Green chilli and curry leaves\n- Curd (if used in the actual recipe)\n- Oil and salt\n\nSpicy Level: Hot\n\nServing Suggestion: Best eaten hot with sliced onion and a squeeze of lemon.\n\nTaste Profile: Spicy, garlicky and crispy."
+  },
+  {
+   "name": "Chicken Honkong",
+   "image": "chicken-honkong.jpg",
+   "description": "Chicken Hong Kong: an Indo-Chinese chicken starter tossed in a spicy sauce with onion, capsicum and cashew; recipes vary from kitchen to kitchen.\n\nIngredients (Typical):\n- Chicken\n- Onion and capsicum\n- Cashew nuts (if used in the actual recipe)\n- Soy sauce\n- Chilli sauce\n- Ginger and garlic\n- Spring onion\n- Corn flour\n- Oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot as a starter, with sliced onion and a squeeze of lemon.\n\nTaste Profile: Tangy, savoury and spicy."
+  },
+  {
+   "name": "Chicken Majestic",
+   "image": null,
+   "description": "An Andhra and Hyderabad restaurant starter of boneless chicken strips fried and tossed with curd, green chilli and curry leaves.\n\nIngredients (Typical):\n- Boneless chicken\n- Curd\n- Ginger-garlic paste\n- Green chilli and curry leaves\n- Corn flour and maida (refined flour)\n- Red chilli powder and spices\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot with sliced onion and a squeeze of lemon.\n\nTaste Profile: Creamy, tangy, mildly spicy and aromatic."
+  },
+  {
+   "name": "Chicken Shangrila",
+   "image": "chicken-shangrila.jpg",
+   "description": "Chicken Shangrila is an Indo-Chinese chicken starter special of this restaurant; ask the restaurant how it is prepared.\n\nIngredients (Typical):\n- Chicken\n- Soy sauce\n- Chilli sauce\n- Ginger and garlic\n- Spring onion\n- Corn flour\n- Oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot as a starter, with sliced onion and a squeeze of lemon.\n\nTaste Profile: Tangy, savoury and spicy."
+  },
+  {
+   "name": "Chicken Spring Roll",
+   "image": "chicken-spring-roll.jpg",
+   "description": "Chicken spring rolls: thin pastry sheets rolled around a filling of shredded chicken and vegetables and deep-fried.\n\nIngredients (Typical):\n- Spring roll sheets\n- Shredded chicken\n- Cabbage, carrot and capsicum\n- Soy sauce\n- Black pepper\n- Oil and salt\n\nSpicy Level: Mild\n\nServing Suggestion: Best eaten hot with chilli or sweet chilli sauce.\n\nTaste Profile: Crispy, light and savoury."
+  },
+  {
+   "name": "Dragon Chicken",
+   "image": null,
+   "description": "Strips of fried chicken tossed in a fiery red Indo-Chinese dragon sauce with garlic, dry red chilli, capsicum and onion.\n\nIngredients (Typical):\n- Boneless chicken (strips)\n- Corn flour and maida (refined flour)\n- Garlic and dry red chilli\n- Capsicum and onion\n- Chilli sauce, soy sauce and tomato sauce\n- Cashew nuts (if used in the actual recipe)\n- Oil and salt\n\nSpicy Level: Hot\n\nServing Suggestion: Best eaten hot, straight from the wok.\n\nTaste Profile: Fiery, sweet-tangy and crunchy."
+  },
+  {
+   "name": "Schezwan Chicken",
+   "image": "schezwan-chicken.jpg",
+   "description": "Schezwan chicken: fried chicken tossed in a fiery red Schezwan sauce of dried red chillies and garlic.\n\nIngredients (Typical):\n- Chicken\n- Schezwan sauce (dried red chilli, garlic)\n- Soy sauce\n- Chilli sauce\n- Ginger and garlic\n- Spring onion\n- Corn flour\n- Oil and salt\n\nSpicy Level: Hot\n\nServing Suggestion: Best eaten hot as a starter, with sliced onion and a squeeze of lemon.\n\nTaste Profile: Fiery, garlicky and tangy."
+  },
+  {
+   "name": "Cashew Chicken",
+   "image": "cashew-chicken.jpg",
+   "description": "Cashew chicken: fried chicken pieces tossed with roasted cashews in a savoury sauce.\n\nIngredients (Typical):\n- Chicken\n- Cashew nuts\n- Soy sauce\n- Chilli sauce\n- Ginger and garlic\n- Spring onion\n- Corn flour\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot as a starter, with sliced onion and a squeeze of lemon.\n\nTaste Profile: Nutty, savoury and crunchy."
+  },
+  {
+   "name": "Chilli Mutton",
+   "image": "chilli-mutton.jpg",
+   "description": "Tender mutton pieces coated and fried, then tossed with green chilli, onion, capsicum and a spicy chilli sauce.\n\nIngredients (Typical):\n- Mutton\n- Corn flour and maida (refined flour)\n- Green chilli, garlic and ginger\n- Onion and capsicum\n- Soy sauce and chilli sauce\n- Oil and salt\n\nSpicy Level: Hot\n\nServing Suggestion: Best eaten hot, straight from the wok.\n\nTaste Profile: Spicy, savoury and rich."
+  },
+  {
+   "name": "Mutton Manuchurian",
+   "image": "mutton-manuchurian.jpg",
+   "description": "Mutton Manchurian: boneless mutton pieces, cooked tender, fried and tossed in a soy, garlic and chilli sauce.\n\nIngredients (Typical):\n- Boneless mutton\n- Soy sauce\n- Chilli sauce\n- Ginger and garlic\n- Spring onion\n- Corn flour\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot as a starter, with sliced onion and a squeeze of lemon.\n\nTaste Profile: Tangy, savoury and meaty."
+  },
+  {
+   "name": "Curd Rice",
+   "image": "curd-rice.jpg",
+   "description": "Soft cooked rice mixed with curd and tempered with mustard seeds, curry leaves and chillies. A cooling South Indian comfort dish.\n\nIngredients (Typical):\n- Cooked rice\n- Curd (yogurt)\n- Milk (if used in the actual recipe)\n- Mustard seeds, urad dal and curry leaves\n- Green chilli, ginger and dry red chilli\n- Salt and coriander leaves\n\nSpicy Level: Mild\n\nServing Suggestion: Best on its own, or with pickle.\n\nTaste Profile: Cool, creamy and mildly tangy."
+  },
+  {
+   "name": "Lemon Rice",
+   "image": "lemon-rice.jpg",
+   "description": "South Indian lemon rice: rice tossed with lemon juice, turmeric and a tempering of mustard seeds, peanuts, curry leaves and green chilli.\n\nIngredients (Typical):\n- Rice\n- Lemon juice\n- Turmeric\n- Mustard seeds, chana dal and urad dal\n- Peanuts\n- Curry leaves and green chilli\n- Oil and salt\n\nSpicy Level: Mild\n\nServing Suggestion: Good on its own or with pickle and papad.\n\nTaste Profile: Tangy, light and fresh."
+  },
+  {
+   "name": "Veg Fried Rice",
+   "image": "veg-fried-rice.jpg",
+   "description": "Indo-Chinese veg fried rice: cooked rice tossed on a hot wok with finely chopped vegetables, garlic and soy sauce.\n\nIngredients (Typical):\n- Rice\n- Carrot, beans, cabbage, capsicum and spring onion\n- Garlic\n- Soy sauce and vinegar\n- Black pepper, salt and oil\n\nSpicy Level: Mild\n\nServing Suggestion: Best eaten hot, straight from the wok. Pairs well with a Manchurian or chilli gravy (not included).\n\nTaste Profile: Savoury, smoky and light."
+  },
+  {
+   "name": "Zeera Rice",
+   "image": "zeera-rice.jpg",
+   "description": "Basmati rice cooked with cumin seeds (jeera) tempered in ghee, light and fragrant.\n\nIngredients (Typical):\n- Basmati rice\n- Cumin seeds (jeera)\n- Ghee\n- Bay leaf (if used in the actual recipe)\n- Salt\n\nSpicy Level: Mild\n\nServing Suggestion: Best with dal or a curry from the menu (not included).\n\nTaste Profile: Mild, nutty and buttery."
+  },
+  {
+   "name": "Baby Corn Fried Rice",
+   "image": "baby-corn-fried-rice.jpg",
+   "description": "Fried rice tossed with tender baby corn pieces, vegetables, garlic and soy sauce on a hot wok.\n\nIngredients (Typical):\n- Rice\n- Baby corn\n- Mixed vegetables\n- Garlic\n- Soy sauce and vinegar\n- Black pepper, salt and oil\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: Best eaten hot, straight from the wok. Pairs well with a Manchurian or chilli gravy (not included).\n\nTaste Profile: Savoury, smoky and lightly sweet."
+  },
+  {
+   "name": "Sweet Corn Fried Rice",
+   "image": "sweet-corn-fried-rice.jpg",
+   "description": "Fried rice tossed with sweet corn kernels and vegetables on a high flame.\n\nIngredients (Typical):\n- Sweet corn\n- Carrot, beans and cabbage\n- Rice\n- Spring onion\n- Soy sauce\n- Garlic\n- Black pepper\n- Oil and salt\n\nSpicy Level: Mild\n\nServing Suggestion: Best eaten hot, on its own or with a Manchurian or chilli gravy.\n\nTaste Profile: Light, slightly sweet and savoury."
+  },
+  {
+   "name": "Egg Fried Rice",
+   "image": "egg-fried-rice.jpg",
+   "description": "Indo-Chinese egg fried rice: rice tossed on a hot wok with scrambled egg, vegetables, garlic and soy sauce.\n\nIngredients (Typical):\n- Rice\n- Eggs\n- Carrot, cabbage and spring onion\n- Garlic\n- Soy sauce and vinegar\n- Black pepper, salt and oil\n\nSpicy Level: Mild\n\nServing Suggestion: Best eaten hot, straight from the wok. Pairs well with a Manchurian or chilli gravy (not included).\n\nTaste Profile: Savoury, smoky and light."
+  },
+  {
+   "name": "Mixed Veg Fried Rice",
+   "image": "mixed-veg-fried-rice.jpg",
+   "description": "Fried rice loaded with a generous mix of vegetables, tossed on a hot wok with garlic and light sauces.\n\nIngredients (Typical):\n- Rice\n- Carrot, beans, capsicum, cabbage, peas and spring onion\n- Garlic\n- Soy sauce and vinegar\n- Black pepper, salt and oil\n\nSpicy Level: Mild\n\nServing Suggestion: Best eaten hot, straight from the wok. Pairs well with a Manchurian or chilli gravy (not included).\n\nTaste Profile: Savoury, fresh and wholesome."
+  },
+  {
+   "name": "Schezwan Fried Rice",
+   "image": "schezwan-fried-rice.jpg",
+   "description": "Veg Schezwan fried rice: fried rice with vegetables tossed in fiery red Schezwan sauce.\n\nIngredients (Typical):\n- Mixed vegetables\n- Schezwan sauce (dried red chilli, garlic)\n- Rice\n- Spring onion\n- Soy sauce\n- Garlic\n- Black pepper\n- Oil and salt\n\nSpicy Level: Hot\n\nServing Suggestion: Best eaten hot, on its own or with a Manchurian or chilli gravy.\n\nTaste Profile: Fiery, garlicky and savoury."
+  },
+  {
+   "name": "Spl Baby Corn Fried Rice",
+   "image": "spl-baby-corn-fried-rice.jpg",
+   "description": "The restaurant's special baby corn fried rice, with more baby corn and extras than the regular one.\n\nIngredients (Typical):\n- Baby corn\n- Mixed vegetables\n- Cashew nuts (if used in the actual recipe)\n- Rice\n- Spring onion\n- Soy sauce\n- Garlic\n- Black pepper\n- Oil and salt\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: Best eaten hot, on its own or with a Manchurian or chilli gravy.\n\nTaste Profile: Savoury, smoky and filling."
+  },
+  {
+   "name": "Manchurian Fried Rice",
+   "image": "manchurian-fried-rice.jpg",
+   "description": "Veg fried rice served with or tossed with veg Manchurian balls in a soy-chilli sauce.\n\nIngredients (Typical):\n- Veg Manchurian balls\n- Mixed vegetables\n- Chilli sauce\n- Rice\n- Spring onion\n- Soy sauce\n- Garlic\n- Black pepper\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot, on its own or with a Manchurian or chilli gravy.\n\nTaste Profile: Savoury, tangy and filling."
+  },
+  {
+   "name": "Mushroom Fried Rice",
+   "image": "mushroom-fried-rice.jpg",
+   "description": "Fried rice tossed on a hot wok with sliced mushrooms, onion, garlic and soy sauce.\n\nIngredients (Typical):\n- Rice\n- Mushrooms\n- Onion and spring onion\n- Garlic\n- Soy sauce and vinegar\n- Black pepper, salt and oil\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: Best eaten hot, straight from the wok. Pairs well with a Manchurian or chilli gravy (not included).\n\nTaste Profile: Savoury, earthy and smoky."
+  },
+  {
+   "name": "Paneer Fried Rice",
+   "image": "paneer-fried-rice.jpg",
+   "description": "Fried rice tossed with cubes of paneer, vegetables, garlic and soy sauce on a hot wok.\n\nIngredients (Typical):\n- Rice\n- Paneer (cottage cheese)\n- Mixed vegetables\n- Garlic\n- Soy sauce and vinegar\n- Black pepper, salt and oil\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: Best eaten hot, straight from the wok. Pairs well with a Manchurian or chilli gravy (not included).\n\nTaste Profile: Savoury, smoky and mildly rich."
+  },
+  {
+   "name": "Kaju Mushroom Fried Rice",
+   "image": null,
+   "description": "Fried rice tossed with mushrooms and fried cashew nuts.\n\nIngredients (Typical):\n- Button mushrooms\n- Cashew nuts (kaju)\n- Mixed vegetables\n- Rice\n- Spring onion\n- Soy sauce\n- Garlic\n- Black pepper\n- Oil and salt\n\nSpicy Level: Mild\n\nServing Suggestion: Best eaten hot, on its own or with a Manchurian or chilli gravy.\n\nTaste Profile: Nutty, earthy and savoury."
+  },
+  {
+   "name": "Chicken Fried Rice",
+   "image": "chicken-fried-rice.jpg",
+   "description": "Indo-Chinese chicken fried rice: rice tossed on a hot wok with chicken pieces, vegetables, garlic and soy sauce.\n\nIngredients (Typical):\n- Rice\n- Chicken pieces\n- Egg (if used in the actual recipe)\n- Carrot, beans and spring onion\n- Garlic\n- Soy sauce and vinegar\n- Black pepper, salt and oil\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: Best eaten hot, straight from the wok. Pairs well with a Manchurian or chilli gravy (not included).\n\nTaste Profile: Savoury, smoky and filling."
+  },
+  {
+   "name": "Spl Paneer Fried Rice",
+   "image": "spl-paneer-fried-rice.jpg",
+   "description": "The restaurant's special paneer fried rice, with more paneer and extras than the regular one.\n\nIngredients (Typical):\n- Paneer (cottage cheese)\n- Mixed vegetables\n- Cashew nuts (if used in the actual recipe)\n- Rice\n- Spring onion\n- Soy sauce\n- Garlic\n- Black pepper\n- Oil and salt\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: Best eaten hot, on its own or with a Manchurian or chilli gravy.\n\nTaste Profile: Rich, savoury and filling."
+  },
+  {
+   "name": "Kaju Fried Rice",
+   "image": "kaju-fried-rice.jpg",
+   "description": "Fried rice tossed with cashew nuts (kaju) that are fried golden, along with vegetables, garlic and light sauces.\n\nIngredients (Typical):\n- Rice\n- Cashew nuts (kaju)\n- Mixed vegetables (if used in the actual recipe)\n- Garlic\n- Soy sauce and vinegar\n- Black pepper, salt and oil\n\nSpicy Level: Mild\n\nServing Suggestion: Best eaten hot, straight from the wok. Pairs well with a Manchurian or chilli gravy (not included).\n\nTaste Profile: Savoury, nutty and buttery."
+  },
+  {
+   "name": "Chicken Schegwan Fried Rice",
+   "image": "chicken-schegwan-fried-rice.jpg",
+   "description": "Chicken Schezwan fried rice: fried rice with chicken tossed in fiery red Schezwan sauce.\n\nIngredients (Typical):\n- Chicken\n- Egg (if used in the actual recipe)\n- Schezwan sauce (dried red chilli, garlic)\n- Rice\n- Spring onion\n- Soy sauce\n- Garlic\n- Black pepper\n- Oil and salt\n\nSpicy Level: Hot\n\nServing Suggestion: Best eaten hot, on its own or with a Manchurian or chilli gravy.\n\nTaste Profile: Fiery, garlicky and savoury."
+  },
+  {
+   "name": "Chilli Wings Fried Rice",
+   "image": "chilli-wings-fried-rice.jpg",
+   "description": "Chicken fried rice served with chilli wings: fried chicken wings tossed with green chilli and chilli sauce.\n\nIngredients (Typical):\n- Chicken wings\n- Green chilli and capsicum\n- Chilli sauce\n- Egg (if used in the actual recipe)\n- Rice\n- Spring onion\n- Soy sauce\n- Garlic\n- Black pepper\n- Oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot, on its own or with a Manchurian or chilli gravy.\n\nTaste Profile: Spicy, tangy and filling."
+  },
+  {
+   "name": "Garlic Chicken Fried Rice",
+   "image": "garlic-chicken-fried-rice.jpg",
+   "description": "Chicken fried rice with lots of fried garlic.\n\nIngredients (Typical):\n- Chicken\n- Lots of garlic\n- Egg (if used in the actual recipe)\n- Rice\n- Spring onion\n- Soy sauce\n- Garlic\n- Black pepper\n- Oil and salt\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: Best eaten hot, on its own or with a Manchurian or chilli gravy.\n\nTaste Profile: Garlicky, smoky and savoury."
+  },
+  {
+   "name": "Spl Chicken Fried Rice",
+   "image": "spl-chicken-fried-rice.jpg",
+   "description": "The restaurant's special chicken fried rice, with more chicken and extras than the regular one.\n\nIngredients (Typical):\n- Chicken\n- Egg (if used in the actual recipe)\n- Cashew nuts (if used in the actual recipe)\n- Rice\n- Spring onion\n- Soy sauce\n- Garlic\n- Black pepper\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot, on its own or with a Manchurian or chilli gravy.\n\nTaste Profile: Rich, savoury and filling."
+  },
+  {
+   "name": "Kaju Paneer Fried Rice",
+   "image": "kaju-paneer-fried-rice.jpg",
+   "description": "Fried rice tossed with paneer cubes and fried cashew nuts.\n\nIngredients (Typical):\n- Paneer (cottage cheese)\n- Cashew nuts (kaju)\n- Mixed vegetables\n- Rice\n- Spring onion\n- Soy sauce\n- Garlic\n- Black pepper\n- Oil and salt\n\nSpicy Level: Mild\n\nServing Suggestion: Best eaten hot, on its own or with a Manchurian or chilli gravy.\n\nTaste Profile: Rich, nutty and savoury."
+  },
+  {
+   "name": "Spl Kaju Paneer Fried Rice",
+   "image": null,
+   "description": "The restaurant's special kaju paneer fried rice, a richer version with more paneer and cashews.\n\nIngredients (Typical):\n- Paneer (cottage cheese)\n- Cashew nuts (kaju)\n- Mixed vegetables\n- Rice\n- Spring onion\n- Soy sauce\n- Garlic\n- Black pepper\n- Oil and salt\n\nSpicy Level: Mild\n\nServing Suggestion: Best eaten hot, on its own or with a Manchurian or chilli gravy.\n\nTaste Profile: Rich, nutty and savoury."
+  },
+  {
+   "name": "Spl Mushroom Fried Rice",
+   "image": "spl-mushroom-fried-rice.jpg",
+   "description": "The restaurant's special mushroom fried rice, with more mushrooms and extras than the regular one.\n\nIngredients (Typical):\n- Button mushrooms\n- Mixed vegetables\n- Cashew nuts (if used in the actual recipe)\n- Rice\n- Spring onion\n- Soy sauce\n- Garlic\n- Black pepper\n- Oil and salt\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: Best eaten hot, on its own or with a Manchurian or chilli gravy.\n\nTaste Profile: Earthy, savoury and filling."
+  },
+  {
+   "name": "Kaju Chicken Fried Rice",
+   "image": "kaju-chicken-fried-rice.jpg",
+   "description": "Chicken fried rice tossed with fried cashew nuts.\n\nIngredients (Typical):\n- Chicken\n- Cashew nuts (kaju)\n- Egg (if used in the actual recipe)\n- Rice\n- Spring onion\n- Soy sauce\n- Garlic\n- Black pepper\n- Oil and salt\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: Best eaten hot, on its own or with a Manchurian or chilli gravy.\n\nTaste Profile: Nutty, savoury and filling."
+  },
+  {
+   "name": "Moghlai Chicken Fried Rice",
+   "image": "moghlai-chicken-fried-rice.jpg",
+   "description": "Mughlai chicken fried rice: chicken fried rice with a richer, Mughlai-style spicing; recipes vary from kitchen to kitchen.\n\nIngredients (Typical):\n- Chicken\n- Egg (if used in the actual recipe)\n- Garam masala\n- Cashew nuts (if used in the actual recipe)\n- Rice\n- Spring onion\n- Soy sauce\n- Garlic\n- Black pepper\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot, on its own or with a Manchurian or chilli gravy.\n\nTaste Profile: Rich, aromatic and savoury."
+  },
+  {
+   "name": "Chilli Fish Fried Rice",
+   "image": null,
+   "description": "Fried rice served with chilli fish: boneless fish fried and tossed with green chilli, capsicum and chilli sauce.\n\nIngredients (Typical):\n- Boneless fish\n- Green chilli and capsicum\n- Chilli sauce\n- Egg (if used in the actual recipe)\n- Rice\n- Spring onion\n- Soy sauce\n- Garlic\n- Black pepper\n- Oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot, on its own or with a Manchurian or chilli gravy.\n\nTaste Profile: Spicy, tangy and filling."
+  },
+  {
+   "name": "Prawns Fried Rice",
+   "image": "prawns-fried-rice.jpg",
+   "description": "Prawns fried rice: rice tossed on a high flame with prawns, egg and vegetables.\n\nIngredients (Typical):\n- Prawns\n- Egg (if used in the actual recipe)\n- Mixed vegetables\n- Rice\n- Spring onion\n- Soy sauce\n- Garlic\n- Black pepper\n- Oil and salt\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: Best eaten hot, on its own or with a Manchurian or chilli gravy.\n\nTaste Profile: Savoury, coastal and smoky."
+  },
+  {
+   "name": "Chilli Prawns Fried Rice",
+   "image": "chilli-prawns-fried-rice.jpg",
+   "description": "Fried rice served with chilli prawns: prawns tossed with green chilli, capsicum and chilli sauce.\n\nIngredients (Typical):\n- Prawns\n- Green chilli and capsicum\n- Chilli sauce\n- Egg (if used in the actual recipe)\n- Rice\n- Spring onion\n- Soy sauce\n- Garlic\n- Black pepper\n- Oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot, on its own or with a Manchurian or chilli gravy.\n\nTaste Profile: Spicy, tangy and coastal."
+  },
+  {
+   "name": "Mixed Fried Rice (Chicken/Fish/Prawns)",
+   "image": "mixed-fried-rice-chicken-fish-prawns.jpg",
+   "description": "Mixed non-veg fried rice with chicken, fish and prawns together, tossed with egg and vegetables.\n\nIngredients (Typical):\n- Chicken\n- Fish\n- Prawns\n- Egg (if used in the actual recipe)\n- Mixed vegetables\n- Rice\n- Spring onion\n- Soy sauce\n- Garlic\n- Black pepper\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot, on its own or with a Manchurian or chilli gravy.\n\nTaste Profile: Hearty, savoury and loaded."
+  },
+  {
+   "name": "Veg Soft Noodles",
+   "image": "veg-soft-noodles.jpg",
+   "description": "Veg soft noodles: soft hakka noodles tossed on a high flame with shredded vegetables and soy sauce.\n\nIngredients (Typical):\n- Noodles (hakka)\n- Cabbage, carrot and capsicum\n- Spring onion\n- Soy sauce\n- Garlic\n- Oil and salt\n\nSpicy Level: Mild\n\nServing Suggestion: Best eaten hot, on its own or with a Manchurian or chilli starter.\n\nTaste Profile: Savoury, smoky and slurpy."
+  },
+  {
+   "name": "Veg Schezwan Noodles",
+   "image": "veg-schezwan-noodles.jpg",
+   "description": "Vegetable noodles tossed in fiery red Schezwan sauce with garlic and spring onion. For those who like it bold and spicy.\n\nIngredients (Typical):\n- Noodles (wheat)\n- Schezwan sauce (red chilli and garlic)\n- Cabbage, carrot, capsicum and spring onion\n- Soy sauce\n- Oil and salt\n\nSpicy Level: Hot\n\nServing Suggestion: Best eaten hot, straight from the wok. Keep some water close.\n\nTaste Profile: Spicy, garlicky and tangy."
+  },
+  {
+   "name": "Sweetcorn Noodles",
+   "image": null,
+   "description": "Hakka noodles tossed with sweet corn kernels and vegetables.\n\nIngredients (Typical):\n- Sweet corn\n- Noodles (hakka)\n- Cabbage, carrot and capsicum\n- Spring onion\n- Soy sauce\n- Garlic\n- Oil and salt\n\nSpicy Level: Mild\n\nServing Suggestion: Best eaten hot, on its own or with a Manchurian or chilli starter.\n\nTaste Profile: Light, slightly sweet and savoury."
+  },
+  {
+   "name": "Egg Noodles",
+   "image": "egg-noodles.jpg",
+   "description": "Classic Indo-Chinese street-style egg noodles, tossed on a hot wok with egg and crunchy vegetables. A light, savoury plate that is filling and easy on the spice.\n\nIngredients (Typical):\n- Noodles (wheat)\n- Eggs\n- Cabbage, carrot, capsicum and spring onion\n- Garlic\n- Soy sauce and vinegar\n- Black pepper, salt and oil\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: Best eaten hot, straight from the wok.\n\nTaste Profile: Savoury, smoky and lightly peppery."
+  },
+  {
+   "name": "Mushroom Noodles",
+   "image": "mushroom-noodles.jpg",
+   "description": "Noodles stir-fried with sliced mushrooms, vegetables and a soy-garlic seasoning. Earthy and satisfying.\n\nIngredients (Typical):\n- Noodles (wheat)\n- Button mushrooms\n- Cabbage, carrot, capsicum and spring onion\n- Garlic\n- Soy sauce\n- Oil and salt\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: Best eaten hot, straight from the wok.\n\nTaste Profile: Earthy, savoury and garlicky."
+  },
+  {
+   "name": "Paneer Noodles",
+   "image": null,
+   "description": "Noodles stir-fried with soft paneer cubes, crunchy vegetables and soy sauce. A filling vegetarian plate with a good bite of protein.\n\nIngredients (Typical):\n- Noodles (wheat)\n- Paneer (cottage cheese)\n- Cabbage, carrot, capsicum and spring onion\n- Garlic\n- Soy sauce\n- Oil and salt\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: Best eaten hot, straight from the wok.\n\nTaste Profile: Savoury, smoky and mildly spiced."
+  },
+  {
+   "name": "Veg Manchurian Noodles",
+   "image": "veg-manchurian-noodles.jpg",
+   "description": "Veg noodles served with or tossed with veg Manchurian balls in a soy-chilli sauce.\n\nIngredients (Typical):\n- Veg Manchurian balls\n- Chilli sauce\n- Noodles (hakka)\n- Cabbage, carrot and capsicum\n- Spring onion\n- Soy sauce\n- Garlic\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot, on its own or with a Manchurian or chilli starter.\n\nTaste Profile: Savoury, tangy and filling."
+  },
+  {
+   "name": "Babycorn Noodles",
+   "image": null,
+   "description": "Hakka noodles tossed with baby corn and vegetables.\n\nIngredients (Typical):\n- Baby corn\n- Noodles (hakka)\n- Cabbage, carrot and capsicum\n- Spring onion\n- Soy sauce\n- Garlic\n- Oil and salt\n\nSpicy Level: Mild\n\nServing Suggestion: Best eaten hot, on its own or with a Manchurian or chilli starter.\n\nTaste Profile: Savoury and crunchy."
+  },
+  {
+   "name": "Chicken Noodles",
+   "image": "chicken-noodles.jpg",
+   "description": "Indo-Chinese noodles tossed on a hot wok with tender chicken strips and crunchy vegetables. A filling, savoury classic.\n\nIngredients (Typical):\n- Noodles (wheat)\n- Chicken\n- Cabbage, carrot, capsicum and spring onion\n- Garlic\n- Soy sauce and vinegar\n- Black pepper, salt and oil\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: Best eaten hot, straight from the wok.\n\nTaste Profile: Savoury, smoky and lightly peppery."
+  },
+  {
+   "name": "Mixed Veg Noodles",
+   "image": "mixed-veg-noodles.jpg",
+   "description": "Hakka noodles loaded with a mix of vegetables, and often paneer, mushroom or baby corn.\n\nIngredients (Typical):\n- Mushroom, baby corn or paneer (if used in the actual recipe)\n- Noodles (hakka)\n- Cabbage, carrot and capsicum\n- Spring onion\n- Soy sauce\n- Garlic\n- Oil and salt\n\nSpicy Level: Mild\n\nServing Suggestion: Best eaten hot, on its own or with a Manchurian or chilli starter.\n\nTaste Profile: Savoury, colourful and filling."
+  },
+  {
+   "name": "Chicken Schezwan Noodles",
+   "image": "chicken-schezwan-noodles.jpg",
+   "description": "Chicken noodles tossed in fiery red Schezwan sauce with garlic and crunchy vegetables. Bold, spicy and full of flavour.\n\nIngredients (Typical):\n- Noodles (wheat)\n- Chicken\n- Schezwan sauce (red chilli and garlic)\n- Cabbage, carrot, capsicum and spring onion\n- Soy sauce\n- Oil and salt\n\nSpicy Level: Hot\n\nServing Suggestion: Best eaten hot, straight from the wok. Keep some water close.\n\nTaste Profile: Spicy, garlicky and tangy."
+  },
+  {
+   "name": "Chicken Manchurian Noodles",
+   "image": "chicken-manchurian-noodles.jpg",
+   "description": "Chicken noodles served with or tossed with chicken Manchurian in a soy, garlic and chilli sauce.\n\nIngredients (Typical):\n- Chicken Manchurian\n- Egg (if used in the actual recipe)\n- Chilli sauce\n- Noodles (hakka)\n- Cabbage, carrot and capsicum\n- Spring onion\n- Soy sauce\n- Garlic\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot, on its own or with a Manchurian or chilli starter.\n\nTaste Profile: Savoury, tangy and filling."
+  },
+  {
+   "name": "Chilli Chicken Noodles",
+   "image": "chilli-chicken-noodles.jpg",
+   "description": "Chicken noodles served with chilli chicken: fried chicken tossed with green chilli, capsicum and chilli sauce.\n\nIngredients (Typical):\n- Chilli chicken\n- Green chilli\n- Egg (if used in the actual recipe)\n- Noodles (hakka)\n- Cabbage, carrot and capsicum\n- Spring onion\n- Soy sauce\n- Garlic\n- Oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot, on its own or with a Manchurian or chilli starter.\n\nTaste Profile: Spicy, tangy and filling."
+  },
+  {
+   "name": "Fish Biryani",
+   "image": "fish-biryani.jpg",
+   "description": "Biryani made with pieces of fish cooked in a spiced masala and layered with rice, so the rice takes on the flavour of the fish and spices.\n\nIngredients (Typical):\n- Fish pieces\n- Basmati rice\n- Onion, fried golden\n- Curd\n- Ginger-garlic paste\n- Mint and coriander leaves\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Red chilli powder\n- Ghee or oil and salt\n- Lemon (if used in the actual recipe)\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Spicy, aromatic and lightly tangy."
+  },
+  {
+   "name": "Prawns Biryani",
+   "image": "prawns-biryani.jpg",
+   "description": "Biryani made with prawns cooked in a spicy onion and tomato masala and layered with fragrant rice.\n\nIngredients (Typical):\n- Prawns\n- Basmati rice\n- Onion, fried golden\n- Curd\n- Ginger-garlic paste\n- Mint and coriander leaves\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Red chilli powder\n- Ghee or oil and salt\n- Tomato\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Spicy, juicy and aromatic."
+  },
+  {
+   "name": "Prawns Fry Biryani",
+   "image": "prawns-fry-biryani.jpg",
+   "description": "Biryani rice topped with prawns fry: prawns cooked dry with red chilli, ginger-garlic and curry leaves.\n\nIngredients (Typical):\n- Prawns\n- Red chilli powder\n- Curry leaves\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Spicy, coastal and aromatic."
+  },
+  {
+   "name": "Prawns Spl Biryani",
+   "image": "prawns-spl-biryani.jpg",
+   "description": "The restaurant's special prawns biryani, with more prawns and extras than the regular prawns biryani; the recipe is the restaurant's own.\n\nIngredients (Typical):\n- Prawns\n- Boiled egg (if used in the actual recipe)\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Rich, coastal and aromatic."
+  },
+  {
+   "name": "Fish Curry",
+   "image": "fish-curry.jpg",
+   "description": "Fish pieces simmered in a spicy, tangy onion-tomato gravy with everyday Indian spices. A classic fish curry with plenty of gravy.\n\nIngredients (Typical):\n- Fish pieces\n- Onion and tomato\n- Tamarind (if used in the actual recipe)\n- Ginger-garlic paste\n- Red chilli, turmeric and coriander powder\n- Curry leaves\n- Oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best with hot rice (not included).\n\nTaste Profile: Tangy, spicy and savoury."
+  },
+  {
+   "name": "Fish Fry",
+   "image": "fish-fry.jpg",
+   "description": "Fish pieces marinated in red chilli, turmeric, ginger-garlic and lemon, then fried until crisp at the edges.\n\nIngredients (Typical):\n- Fish\n- Red chilli powder and turmeric\n- Ginger-garlic paste\n- Lemon juice\n- Rice flour or corn flour (if used in the actual recipe)\n- Oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot with sliced onion and lemon; also goes well with rice.\n\nTaste Profile: Spicy, crisp and flaky."
+  },
+  {
+   "name": "Fish 65",
+   "image": "fish-65.jpg",
+   "description": "Fish 65: boneless fish pieces marinated in red chilli and spices, deep-fried and tossed with curry leaves.\n\nIngredients (Typical):\n- Boneless fish\n- Curry leaves and green chilli\n- Corn flour and maida\n- Ginger-garlic paste\n- Red chilli powder\n- Oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot as a starter, with sliced onion and a squeeze of lemon.\n\nTaste Profile: Spicy, crispy and tender."
+  },
+  {
+   "name": "Prawns Curry",
+   "image": "prawns-curry.jpg",
+   "description": "Prawns simmered in a spicy onion-tomato curry with ginger, garlic and spices. A simple, flavourful seafood curry.\n\nIngredients (Typical):\n- Prawns\n- Onion and tomato\n- Ginger-garlic paste\n- Red chilli, turmeric and coriander powder\n- Coconut (if used in the actual recipe)\n- Curry leaves\n- Oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best with hot rice (not included).\n\nTaste Profile: Savoury and spicy, with the natural sweetness of prawns."
+  },
+  {
+   "name": "Apollo Fish",
+   "image": null,
+   "description": "A popular Andhra and Hyderabad restaurant starter: boneless fish pieces marinated, fried crisp and tossed with curd, green chilli, garlic and curry leaves.\n\nIngredients (Typical):\n- Boneless fish\n- Ginger-garlic paste\n- Corn flour and maida (refined flour)\n- Curd\n- Green chilli and curry leaves\n- Red chilli powder and spices\n- Oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot with sliced onion and a squeeze of lemon.\n\nTaste Profile: Spicy, tangy, crisp outside and soft inside."
+  },
+  {
+   "name": "Prawns Mogalai",
+   "image": "prawns-mogalai.jpg",
+   "description": "Prawns Mughlai: prawns in a rich, mild Mughlai gravy of onion, cashew or cream and whole spices.\n\nIngredients (Typical):\n- Prawns\n- Cashew paste or cream (if used in the actual recipe)\n- Whole spices\n- Onion and tomato\n- Ginger-garlic paste\n- Red chilli powder, turmeric and garam masala\n- Coriander leaves\n- Oil and salt\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: Best with rumali roti, butter naan or plain rice.\n\nTaste Profile: Rich, creamy and coastal."
+  },
+  {
+   "name": "Chilli Fish",
+   "image": null,
+   "description": "Boneless fish pieces coated and fried, then tossed with capsicum, onion, green chilli and a spicy Indo-Chinese chilli sauce.\n\nIngredients (Typical):\n- Boneless fish\n- Corn flour and maida (refined flour)\n- Capsicum and onion\n- Garlic and green chilli\n- Soy sauce, chilli sauce and vinegar\n- Spring onion\n- Oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot, straight from the wok.\n\nTaste Profile: Spicy, tangy and flaky."
+  },
+  {
+   "name": "Prawns Fry",
+   "image": "prawns-fry.jpg",
+   "description": "Prawns cooked with onion, curry leaves, ginger-garlic and red chilli until dry and well coated in masala, in South Indian style.\n\nIngredients (Typical):\n- Prawns\n- Onion and curry leaves\n- Ginger-garlic paste\n- Red chilli powder, turmeric and pepper\n- Coriander leaves\n- Oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot; also goes well with rice.\n\nTaste Profile: Spicy, savoury and naturally sweet from the prawns."
+  },
+  {
+   "name": "Prawns 65",
+   "image": "prawns-65.jpg",
+   "description": "Prawns 65: prawns marinated in red chilli and spices, deep-fried and tossed with curry leaves.\n\nIngredients (Typical):\n- Prawns\n- Curry leaves and green chilli\n- Corn flour and maida\n- Ginger-garlic paste\n- Red chilli powder\n- Oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot as a starter, with sliced onion and a squeeze of lemon.\n\nTaste Profile: Spicy, crispy and coastal."
+  },
+  {
+   "name": "Chilli Prawns",
+   "image": "chilli-prawns.jpg",
+   "description": "Batter-fried prawns tossed on a hot wok with capsicum, onion, green chilli and a spicy, tangy Indo-Chinese chilli sauce.\n\nIngredients (Typical):\n- Prawns\n- Corn flour and maida (refined flour)\n- Capsicum and onion\n- Garlic and green chilli\n- Soy sauce, chilli sauce and vinegar\n- Spring onion\n- Oil and salt\n\nSpicy Level: Medium to Hot\n\nServing Suggestion: Best eaten hot, straight from the wok.\n\nTaste Profile: Spicy, tangy and juicy."
+  },
+  {
+   "name": "Loose Prawns",
+   "image": "loose-prawns.jpg",
+   "description": "An Andhra restaurant starter of prawns coated in a loose, spiced batter and deep-fried crisp, often with curry leaves and green chilli.\n\nIngredients (Typical):\n- Prawns\n- Gram flour (besan), corn flour and rice flour\n- Ginger-garlic paste\n- Red chilli powder and spices\n- Curry leaves and green chilli\n- Onion (if used in the actual recipe)\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot with sliced onion and a squeeze of lemon.\n\nTaste Profile: Crispy, juicy and lightly spicy."
+  },
+  {
+   "name": "Prawns Machurian",
+   "image": null,
+   "description": "Prawns Manchurian: prawns coated, fried and tossed in a soy, garlic and chilli sauce.\n\nIngredients (Typical):\n- Prawns\n- Soy sauce\n- Chilli sauce\n- Ginger and garlic\n- Spring onion\n- Corn flour\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot as a starter, with sliced onion and a squeeze of lemon.\n\nTaste Profile: Tangy, savoury and coastal."
+  },
+  {
+   "name": "Mashroom Biryani",
+   "image": "mashroom-biryani.jpg",
+   "description": "Veg biryani made with mushrooms cooked in biryani masala and layered with basmati rice.\n\nIngredients (Typical):\n- Button mushrooms\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Earthy, aromatic and spiced."
+  },
+  {
+   "name": "Veg Biryani",
+   "image": "veg-biryani.jpg",
+   "description": "A classic vegetable biryani: mixed vegetables cooked in a spiced masala and layered with basmati rice, then steamed on dum so every grain carries the aroma of whole spices.\n\nIngredients (Typical):\n- Mixed vegetables (carrot, beans, peas, potato)\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Ghee or oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Spicy, aromatic and wholesome."
+  },
+  {
+   "name": "Panner Biryani",
+   "image": "panner-biryani.jpg",
+   "description": "Veg biryani made with paneer (cottage cheese) cubes cooked in biryani masala and layered with basmati rice.\n\nIngredients (Typical):\n- Paneer (cottage cheese)\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Rich, soft and aromatic."
+  },
+  {
+   "name": "Sp Mashroom Biryani",
+   "image": "sp-mashroom-biryani.jpg",
+   "description": "The restaurant's special mushroom biryani, a richer version of the mushroom biryani; the recipe is the restaurant's own.\n\nIngredients (Typical):\n- Button mushrooms\n- Cashew nuts (if used in the actual recipe)\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Rich, earthy and aromatic."
+  },
+  {
+   "name": "Baby Corn Biryani",
+   "image": null,
+   "description": "Veg biryani made with tender baby corn cooked in a spiced masala and layered with basmati rice, then slow-cooked on dum.\n\nIngredients (Typical):\n- Baby corn\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Ghee or oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Spicy, aromatic and lightly sweet from the corn."
+  },
+  {
+   "name": "Sp Panner Biryani",
+   "image": "sp-panner-biryani.jpg",
+   "description": "The restaurant's special paneer biryani, a richer version of the paneer biryani; the recipe is the restaurant's own.\n\nIngredients (Typical):\n- Paneer (cottage cheese)\n- Cashew nuts (if used in the actual recipe)\n- Basmati rice\n- Onion, fried golden\n- Mint and coriander leaves\n- Curd\n- Ginger-garlic paste\n- Biryani masala (cardamom, cloves, cinnamon, bay leaf)\n- Green chilli\n- Ghee or oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best eaten hot with raita and salan (if served with it by the restaurant).\n\nTaste Profile: Rich, creamy and aromatic."
+  }
+ ]
+}

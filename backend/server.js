@@ -1391,6 +1391,12 @@ const initializeApp = async () => {
     inBootQueue(() => require('./scripts/owner_menu_import').runOwnerMenuImport())
       .then((r) => console.log('🍜 [OWNER_MENUS]', JSON.stringify(r)))
       .catch((err) => console.warn('⚠️ [OWNER_MENUS] failed:', err.message));
+    // 🍜 Store fills (data/store-fills/*.json): photos, descriptions and categories for stores the owner added by hand
+    // (Star Dum Biryani, Sri Satya Balaji, 14 Nov 2026). Fills only empty fields, once each; admin edits win.
+    // DISABLE_STORE_FILLS=true switches it off.
+    inBootQueue(() => require('./scripts/store_fill_import').runStoreFillImport())
+      .then((r) => console.log('🍜 [STORE_FILLS]', JSON.stringify(r)))
+      .catch((err) => console.warn('⚠️ [STORE_FILLS] failed:', err.message));
     // 🍜 Owner menu fixes, once (OWNER_MENU_FIXES_V2_DONE): the internal import key out of every dish's details,
     // Amrutham's own storefront photo (banner crop) and fuller description (each only while a photo / text this repo
     // set is still there). scripts/owner_menu_fixes_v2.js; DISABLE_OWNER_MENU_FIXES=true switches it off.

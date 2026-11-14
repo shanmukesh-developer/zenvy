@@ -1,0 +1,449 @@
+{
+ "version": 1,
+ "key": "store-fill:sri-satya-balaji",
+ "storeId": "0a88c4ab-a8cd-4201-9967-2b546e111164",
+ "storeName": "Sri Satya Balaji Home made Pickles",
+ "imagesDir": "images/sri-satya-balaji",
+ "note": "Owner, 14 Nov 2026: \"and sri balaji home foods also and categorize them in snacks\". 73 products added by hand in the admin with no category, photo or description; this file fills only those empty fields (scripts/store_fill_import.js). The store already has the owner's description, which is kept.",
+ "storeDescription": null,
+ "items": [
+  {
+   "name": "CANDIES",
+   "category": "Sweets",
+   "image": "candies.jpg",
+   "description": "Candies sold loose by the store; ask the store which candies are in stock.\n\nIngredients (Typical):\n- Sugar or jaggery\n- Flavouring (if used in the actual recipe)\n\nSpicy Level: None\n\nServing Suggestion: A small sweet treat.\n\nTaste Profile: Sweet."
+  },
+  {
+   "name": "gavvalu 250g",
+   "category": "Sweets",
+   "image": "gavvalu-250g.jpg",
+   "description": "Gavvalu: small shell-shaped pieces of dough, rolled on a comb or fork for their ridges, deep-fried and coated in jaggery or sugar syrup. A traditional Andhra festival sweet. Pack: 250 g.\n\nIngredients (Typical):\n- Wheat flour (maida) or rice flour\n- Jaggery or sugar\n- Ghee or oil\n- Cardamom (if used in the actual recipe)\n\nSpicy Level: None\n\nServing Suggestion: Enjoy as a sweet after a meal or with tea; store in a cool, dry place.\n\nTaste Profile: Sweet, crunchy and lightly spiced."
+  },
+  {
+   "name": "atukulu masala 200g",
+   "category": "Namkeen & Snacks",
+   "image": "atukulu-masala-200g.jpg",
+   "description": "Masala atukulu: flattened rice (poha) fried crisp and tossed with peanuts, curry leaves and spices. Pack: 200 g.\n\nIngredients (Typical):\n- Flattened rice (atukulu / poha)\n- Peanuts\n- Curry leaves\n- Red chilli powder and turmeric\n- Oil and salt\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crunchy, savoury and light."
+  },
+  {
+   "name": "Bundhi - 250g",
+   "category": "Namkeen & Snacks",
+   "image": "bundhi-250g.jpg",
+   "description": "Boondi: tiny drops of spiced gram-flour batter fried crisp. Pack: 250 g.\n\nIngredients (Typical):\n- Gram flour (besan)\n- Red chilli powder\n- Curry leaves and peanuts (if used in the actual recipe)\n- Oil and salt\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp. Also good sprinkled on curd.\n\nTaste Profile: Crunchy and savoury."
+  },
+  {
+   "name": "chekkralu - masala - 1 pack",
+   "category": "Namkeen & Snacks",
+   "image": "chekkralu-masala-1-pack.jpg",
+   "description": "Masala chakralu: spiral-shaped rice-flour snacks (like chakli / murukku) pressed into rounds and fried crisp, with chilli masala. One pack.\n\nIngredients (Typical):\n- Rice flour\n- Gram or urad dal flour (if used in the actual recipe)\n- Sesame or cumin seeds\n- Red chilli powder\n- Butter or oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crunchy, spicy and savoury."
+  },
+  {
+   "name": "Chitti chekkalu 250g",
+   "category": "Namkeen & Snacks",
+   "image": "chitti-chekkalu-250g.jpg",
+   "description": "Chitti chekkalu: small (chitti) Andhra rice-flour crackers with chilli and sesame, fried crisp. Pack: 250 g.\n\nIngredients (Typical):\n- Rice flour\n- Chana dal (if used in the actual recipe)\n- Sesame seeds\n- Red chilli\n- Curry leaves\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crisp, spicy and bite-sized."
+  },
+  {
+   "name": "Hot biscuit - 250g",
+   "category": "Namkeen & Snacks",
+   "image": null,
+   "description": "Hot biscuit: a crisp, savoury bakery biscuit with chilli and spices. Pack: 250 g.\n\nIngredients (Typical):\n- Wheat flour (maida)\n- Butter or vanaspati\n- Green chilli or chilli powder\n- Cumin or ajwain (if used in the actual recipe)\n- Salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best with tea or coffee.\n\nTaste Profile: Crisp, spicy and buttery."
+  },
+  {
+   "name": "hot biscuit heart shape - 200g",
+   "category": "Namkeen & Snacks",
+   "image": "hot-biscuit-heart-shape-200g.jpg",
+   "description": "Heart-shaped hot biscuits: crisp, savoury bakery biscuits with chilli and spices, cut into hearts. Pack: 200 g.\n\nIngredients (Typical):\n- Wheat flour (maida)\n- Butter or vanaspati\n- Green chilli or chilli powder\n- Cumin or ajwain (if used in the actual recipe)\n- Salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best with tea or coffee.\n\nTaste Profile: Crisp, spicy and buttery."
+  },
+  {
+   "name": "masala rajma",
+   "category": "Namkeen & Snacks",
+   "image": null,
+   "description": "Masala rajma: kidney beans fried crisp and tossed in spices, sold as a crunchy snack.\n\nIngredients (Typical):\n- Rajma (kidney beans)\n- Red chilli powder and chaat masala\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crunchy, spicy and protein-rich."
+  },
+  {
+   "name": "palli pakodi - 200g",
+   "category": "Namkeen & Snacks",
+   "image": "palli-pakodi-200g.jpg",
+   "description": "Palli pakodi: peanuts coated in a spiced gram-flour batter and fried crisp. Pack: 200 g.\n\nIngredients (Typical):\n- Peanuts (palli)\n- Gram flour (besan)\n- Rice flour\n- Red chilli powder\n- Curry leaves (if used in the actual recipe)\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crunchy, spicy and nutty."
+  },
+  {
+   "name": "pesara pappu - 200g",
+   "category": "Namkeen & Snacks",
+   "image": "pesara-pappu-200g.jpg",
+   "description": "Fried pesara pappu: split moong dal fried crisp and salted. Pack: 200 g.\n\nIngredients (Typical):\n- Split moong dal (pesara pappu)\n- Oil and salt\n- Chilli powder (if used in the actual recipe)\n\nSpicy Level: Mild\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crunchy, light and salty."
+  },
+  {
+   "name": "sanna pusaa - 200g",
+   "category": "Namkeen & Snacks",
+   "image": "sanna-pusaa-200g.jpg",
+   "description": "Sanna pusa: thin gram-flour sev (fine noodles) fried crisp. Pack: 200 g.\n\nIngredients (Typical):\n- Gram flour (besan)\n- Ajwain (if used in the actual recipe)\n- Red chilli powder (if used in the actual recipe)\n- Oil and salt\n\nSpicy Level: Mild\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp. Also good on chaat and upma.\n\nTaste Profile: Fine, crunchy and savoury."
+  },
+  {
+   "name": "thati chapa 200g",
+   "category": "Namkeen & Snacks",
+   "image": null,
+   "description": "Thati chapa, a traditional Andhra snack sold by the store under this name. Pack: 200 g. Ask the store for what it is made of.\n\nIngredients (Typical):\n- Ask the store for the ingredients\n\nSpicy Level: Ask the store\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Traditional Andhra snack."
+  },
+  {
+   "name": "big size marumara - 12p",
+   "category": "Sweets",
+   "image": "big-size-marumara-12p.jpg",
+   "description": "Big puffed-rice balls: marmaralu (puffed rice) bound with jaggery syrup into large balls. Pack: 12 pieces.\n\nIngredients (Typical):\n- Puffed rice (marmaralu)\n- Jaggery\n\nSpicy Level: None\n\nServing Suggestion: Enjoy as a sweet after a meal or with tea; store in a cool, dry place.\n\nTaste Profile: Sweet, light and crunchy."
+  },
+  {
+   "name": "chekka pakodi 250g",
+   "category": "Namkeen & Snacks",
+   "image": "chekka-pakodi-250g.jpg",
+   "description": "Chekka pakodi: crisp, flaky rice-flour and gram-flour pakodi with chilli and curry leaves, an Andhra savoury. Pack: 250 g.\n\nIngredients (Typical):\n- Rice flour\n- Gram flour (besan)\n- Red chilli\n- Curry leaves\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crisp, spicy and savoury."
+  },
+  {
+   "name": "jonna marmaralu 200g",
+   "category": "Millets & Health",
+   "image": null,
+   "description": "Jonna marmaralu: puffed jowar (sorghum), a light whole-grain snack. Pack: 200 g.\n\nIngredients (Typical):\n- Puffed jowar (sorghum)\n- Salt or masala (if used in the actual recipe)\n\nSpicy Level: Mild\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp. Can be eaten plain or mixed with peanuts and onion.\n\nTaste Profile: Light, crunchy and earthy."
+  },
+  {
+   "name": "kabuli chenna - 200g",
+   "category": "Namkeen & Snacks",
+   "image": "kabuli-chenna-200g.jpg",
+   "description": "Kabuli chana: white chickpeas fried or roasted crisp and seasoned, sold as a snack. Pack: 200 g.\n\nIngredients (Typical):\n- Kabuli chana (white chickpeas)\n- Spices (if used in the actual recipe)\n- Oil and salt\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crunchy and savoury."
+  },
+  {
+   "name": "mixture -250g",
+   "category": "Namkeen & Snacks",
+   "image": "mixture-250g.jpg",
+   "description": "Mixture: a classic savoury mix of fried sev, boondi, peanuts, roasted gram and curry leaves. Pack: 250 g.\n\nIngredients (Typical):\n- Gram flour sev and boondi\n- Peanuts\n- Roasted gram (putnala pappu)\n- Curry leaves\n- Red chilli powder\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crunchy, spicy and savoury."
+  },
+  {
+   "name": "palli masala - 200g",
+   "category": "Namkeen & Snacks",
+   "image": "palli-masala-200g.jpg",
+   "description": "Masala peanuts: peanuts coated in a spiced gram-flour coating and fried crisp. Pack: 200 g.\n\nIngredients (Typical):\n- Peanuts (palli)\n- Gram flour (besan)\n- Red chilli powder\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crunchy, spicy and nutty."
+  },
+  {
+   "name": "putnala pappu rounds 12p",
+   "category": "Sweets",
+   "image": null,
+   "description": "Putnala pappu rounds: roasted-gram laddus made with jaggery. Pack: 12 pieces.\n\nIngredients (Typical):\n- Roasted gram (putnala pappu)\n- Jaggery\n- Ghee or cardamom (if used in the actual recipe)\n\nSpicy Level: None\n\nServing Suggestion: Enjoy as a sweet after a meal or with tea; store in a cool, dry place.\n\nTaste Profile: Sweet, nutty and crunchy."
+  },
+  {
+   "name": "rangeela mix 200g",
+   "category": "Namkeen & Snacks",
+   "image": "rangeela-mix-200g.jpg",
+   "description": "Rangeela mix: a colourful savoury namkeen mix. Pack: 200 g. Ask the store for the exact contents.\n\nIngredients (Typical):\n- Fried namkeen pieces (sev, boondi, peanuts and others)\n- Spices\n- Oil and salt\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crunchy and savoury."
+  },
+  {
+   "name": "roasted multi grain mix",
+   "category": "Namkeen & Snacks",
+   "image": null,
+   "description": "Roasted multigrain mix: a mix of roasted grains and pulses, lighter than fried namkeen. Ask the store for the exact contents.\n\nIngredients (Typical):\n- Roasted grains and pulses\n- Spices and salt (if used in the actual recipe)\n\nSpicy Level: Mild\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crunchy, light and wholesome."
+  },
+  {
+   "name": "sajja marmaralu",
+   "category": "Millets & Health",
+   "image": null,
+   "description": "Sajja marmaralu: puffed bajra (pearl millet), a light whole-grain snack.\n\nIngredients (Typical):\n- Puffed bajra (pearl millet / sajja)\n- Salt or masala (if used in the actual recipe)\n\nSpicy Level: Mild\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp. Can be eaten plain or mixed with peanuts and onion.\n\nTaste Profile: Light, crunchy and earthy."
+  },
+  {
+   "name": "wheat puff",
+   "category": "Namkeen & Snacks",
+   "image": null,
+   "description": "Wheat puffs: puffed wheat grains, a light snack.\n\nIngredients (Typical):\n- Puffed wheat\n- Salt, sugar or masala (if used in the actual recipe)\n\nSpicy Level: Mild\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp. Also eaten with milk.\n\nTaste Profile: Light and crunchy."
+  },
+  {
+   "name": "chekkalu 250g",
+   "category": "Namkeen & Snacks",
+   "image": "chekkalu-250g.jpg",
+   "description": "Chekkalu: thin, round Andhra rice-flour crackers with chilli, sesame and curry leaves, fried crisp. Pack: 250 g.\n\nIngredients (Typical):\n- Rice flour\n- Chana dal or peanuts (if used in the actual recipe)\n- Sesame seeds\n- Green or red chilli\n- Curry leaves\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crisp, spicy and savoury."
+  },
+  {
+   "name": "chikki 180g",
+   "category": "Sweets",
+   "image": "chikki-180g.jpg",
+   "description": "Chikki: peanut brittle made by setting roasted peanuts in jaggery syrup. Pack: 180 g.\n\nIngredients (Typical):\n- Roasted peanuts\n- Jaggery\n\nSpicy Level: None\n\nServing Suggestion: Enjoy as a sweet after a meal or with tea; store in a cool, dry place.\n\nTaste Profile: Sweet, nutty and crunchy."
+  },
+  {
+   "name": "organic palli rounds 12p",
+   "category": "Sweets",
+   "image": "organic-palli-rounds-12p.jpg",
+   "description": "Palli rounds: peanut laddus made with jaggery, sold by the store as organic. Pack: 12 pieces.\n\nIngredients (Typical):\n- Peanuts (palli)\n- Jaggery\n\nSpicy Level: None\n\nServing Suggestion: Enjoy as a sweet after a meal or with tea; store in a cool, dry place.\n\nTaste Profile: Sweet, nutty and crunchy."
+  },
+  {
+   "name": "putarekulu bellam",
+   "category": "Sweets",
+   "image": "putarekulu-bellam.jpg",
+   "description": "Pootharekulu with jaggery: the famous paper-thin Andhra rice-starch sheets folded with jaggery and ghee. Ask the store how many pieces are in a pack.\n\nIngredients (Typical):\n- Rice-starch sheets (poota rekulu)\n- Jaggery (bellam)\n- Ghee\n- Dry fruits (if used in the actual recipe)\n\nSpicy Level: None\n\nServing Suggestion: Enjoy as a sweet after a meal or with tea; store in a cool, dry place. Handle gently: the sheets are delicate.\n\nTaste Profile: Sweet, buttery and melt-in-the-mouth."
+  },
+  {
+   "name": "regi vadiyalu 200g",
+   "category": "Sweets",
+   "image": "regi-vadiyalu-200g.jpg",
+   "description": "Regi vadiyalu: sun-dried cakes of regi pandlu (Indian jujube / ber) pounded with jaggery, salt and chilli. Pack: 200 g.\n\nIngredients (Typical):\n- Regi pandlu (Indian jujube / ber)\n- Jaggery\n- Salt and red chilli\n\nSpicy Level: Mild\n\nServing Suggestion: Eat in small bites as a sweet-sour treat.\n\nTaste Profile: Sweet, sour and tangy."
+  },
+  {
+   "name": "sugar",
+   "category": "Sweets",
+   "image": null,
+   "description": "Sold by the store under the name \"sugar\"; ask the store which sweet this is.\n\nIngredients (Typical):\n- Ask the store for the ingredients\n\nSpicy Level: None\n\nServing Suggestion: Enjoy as a sweet after a meal or with tea; store in a cool, dry place.\n\nTaste Profile: Sweet."
+  },
+  {
+   "name": "sugar flowers",
+   "category": "Sweets",
+   "image": null,
+   "description": "Sugar flowers: a flower-shaped sweet sold by the store. Ask the store for the exact sweet.\n\nIngredients (Typical):\n- Sugar\n- Flour (if used in the actual recipe)\n\nSpicy Level: None\n\nServing Suggestion: Enjoy as a sweet after a meal or with tea; store in a cool, dry place.\n\nTaste Profile: Sweet."
+  },
+  {
+   "name": "kachikaya 5p",
+   "category": "Sweets",
+   "image": "kachikaya-5p.jpg",
+   "description": "Kajjikayalu: half-moon pastries stuffed with a sweet filling of coconut, jaggery or sugar and dry fruits, deep-fried. Pack: 5 pieces.\n\nIngredients (Typical):\n- Wheat flour (maida)\n- Coconut\n- Jaggery or sugar\n- Roasted gram or sooji (if used in the actual recipe)\n- Cardamom\n- Ghee or oil\n\nSpicy Level: None\n\nServing Suggestion: Enjoy as a sweet after a meal or with tea; store in a cool, dry place.\n\nTaste Profile: Sweet, flaky and crunchy."
+  },
+  {
+   "name": "madatha kaja box",
+   "category": "Sweets",
+   "image": "madatha-kaja-box.jpg",
+   "description": "Madatha kaja: a layered (madatha) fried pastry soaked in sugar syrup, the famous Andhra sweet. One box.\n\nIngredients (Typical):\n- Wheat flour (maida)\n- Sugar syrup\n- Ghee or oil\n\nSpicy Level: None\n\nServing Suggestion: Enjoy as a sweet after a meal or with tea; store in a cool, dry place.\n\nTaste Profile: Sweet, flaky and syrupy."
+  },
+  {
+   "name": "normal mysore pak",
+   "category": "Sweets",
+   "image": "normal-mysore-pak.jpg",
+   "description": "Mysore pak: a rich sweet made from gram flour, ghee and sugar.\n\nIngredients (Typical):\n- Gram flour (besan)\n- Ghee\n- Sugar\n\nSpicy Level: None\n\nServing Suggestion: Enjoy as a sweet after a meal or with tea; store in a cool, dry place.\n\nTaste Profile: Rich, sweet and buttery."
+  },
+  {
+   "name": "bhadham papidi 200g",
+   "category": "Sweets",
+   "image": "bhadham-papidi-200g.jpg",
+   "description": "Badam papidi: a flaky, melt-in-the-mouth sweet (like soan papdi) with almonds. Pack: 200 g.\n\nIngredients (Typical):\n- Gram flour and wheat flour\n- Sugar\n- Ghee\n- Almonds (badam)\n- Cardamom\n\nSpicy Level: None\n\nServing Suggestion: Enjoy as a sweet after a meal or with tea; store in a cool, dry place.\n\nTaste Profile: Sweet, flaky and nutty."
+  },
+  {
+   "name": "panasa chips - plain - 200g",
+   "category": "Chips",
+   "image": "panasa-chips-plain-200g.jpg",
+   "description": "Plain jackfruit chips: raw jackfruit (panasa) slices fried crisp and salted. Pack: 200 g.\n\nIngredients (Typical):\n- Raw jackfruit (panasa)\n- Coconut or vegetable oil\n- Salt\n\nSpicy Level: None\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crisp, mildly sweet and salty."
+  },
+  {
+   "name": "roasted mixture - 200g",
+   "category": "Namkeen & Snacks",
+   "image": "roasted-mixture-200g.jpg",
+   "description": "Roasted mixture: a savoury mix with roasted rather than deep-fried ingredients, lighter than regular mixture. Pack: 200 g.\n\nIngredients (Typical):\n- Roasted gram, peanuts and puffed rice (if used in the actual recipe)\n- Curry leaves\n- Spices and salt\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crunchy, light and savoury."
+  },
+  {
+   "name": "thati bellam palli chikki 180g",
+   "category": "Sweets",
+   "image": "thati-bellam-palli-chikki-180g.jpg",
+   "description": "Palm-jaggery peanut chikki: peanut brittle set in thati bellam (palm jaggery) instead of cane jaggery. Pack: 180 g.\n\nIngredients (Typical):\n- Roasted peanuts\n- Palm jaggery (thati bellam)\n\nSpicy Level: None\n\nServing Suggestion: Enjoy as a sweet after a meal or with tea; store in a cool, dry place.\n\nTaste Profile: Sweet, nutty and earthy."
+  },
+  {
+   "name": "alu jeera chips - 200g",
+   "category": "Chips",
+   "image": "alu-jeera-chips-200g.jpg",
+   "description": "Aloo jeera chips: potato chips seasoned with cumin (jeera). Pack: 200 g.\n\nIngredients (Typical):\n- Potato\n- Cumin (jeera)\n- Oil and salt\n- Chilli powder (if used in the actual recipe)\n\nSpicy Level: Mild\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crisp, salty and cumin-scented."
+  },
+  {
+   "name": "alu pudina chips - 200g",
+   "category": "Chips",
+   "image": "alu-pudina-chips-200g.jpg",
+   "description": "Aloo pudina chips: potato chips seasoned with mint (pudina). Pack: 200 g.\n\nIngredients (Typical):\n- Potato\n- Dried mint (pudina)\n- Oil and salt\n- Chilli powder (if used in the actual recipe)\n\nSpicy Level: Mild\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crisp, minty and salty."
+  },
+  {
+   "name": "brown top millet rolls 200g",
+   "category": "Millets & Health",
+   "image": null,
+   "description": "Browntop millet rolls: crunchy roll-shaped snacks made with browntop millet. Pack: 200 g.\n\nIngredients (Typical):\n- Browntop millet flour\n- Rice or gram flour (if used in the actual recipe)\n- Spices\n- Oil and salt\n\nSpicy Level: Mild\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crunchy and savoury."
+  },
+  {
+   "name": "crispy cones 200g",
+   "category": "Namkeen & Snacks",
+   "image": null,
+   "description": "Crispy cones: cone-shaped fried snacks. Pack: 200 g.\n\nIngredients (Typical):\n- Flour (wheat, rice or corn)\n- Spices\n- Oil and salt\n\nSpicy Level: Mild\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crunchy and savoury."
+  },
+  {
+   "name": "moong dal roll 200g",
+   "category": "Namkeen & Snacks",
+   "image": null,
+   "description": "Moong dal rolls: crunchy roll-shaped snacks made with moong dal. Pack: 200 g.\n\nIngredients (Typical):\n- Moong dal flour\n- Rice flour (if used in the actual recipe)\n- Spices\n- Oil and salt\n\nSpicy Level: Mild\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crunchy and savoury."
+  },
+  {
+   "name": "mungdhal chekkodi - 200g",
+   "category": "Namkeen & Snacks",
+   "image": null,
+   "description": "Moong dal chekkodi: ring-shaped Andhra rice-flour snacks made with moong dal, fried crisp. Pack: 200 g.\n\nIngredients (Typical):\n- Rice flour\n- Moong dal\n- Sesame or cumin (if used in the actual recipe)\n- Red chilli\n- Oil and salt\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crunchy and savoury."
+  },
+  {
+   "name": "panasa chips - masala - 200g",
+   "category": "Chips",
+   "image": "panasa-chips-masala-200g.jpg",
+   "description": "Masala jackfruit chips: raw jackfruit (panasa) slices fried crisp and tossed in chilli masala. Pack: 200 g.\n\nIngredients (Typical):\n- Raw jackfruit (panasa)\n- Coconut or vegetable oil\n- Red chilli powder\n- Salt\n\nSpicy Level: Medium\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crisp, spicy and mildly sweet."
+  },
+  {
+   "name": "pendalm chips - 200g",
+   "category": "Chips",
+   "image": null,
+   "description": "Pendalam chips: slices of pendalam (purple yam) fried crisp. Pack: 200 g.\n\nIngredients (Typical):\n- Pendalam (purple yam)\n- Oil and salt\n- Chilli powder (if used in the actual recipe)\n\nSpicy Level: Mild\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crisp and earthy."
+  },
+  {
+   "name": "dry fruits",
+   "category": "Dry Fruits & Seeds",
+   "image": "dry-fruits.jpg",
+   "description": "A pack of mixed dry fruits; ask the store which dry fruits and how much are in the pack.\n\nIngredients (Typical):\n- Mixed dry fruits (cashews, almonds, raisins and others)\n\nSpicy Level: None\n\nServing Suggestion: Eat a handful as a snack.\n\nTaste Profile: Nutty and naturally sweet."
+  },
+  {
+   "name": "jaggery Mysore pak 250g",
+   "category": "Sweets",
+   "image": "jaggery-mysore-pak-250g.jpg",
+   "description": "Jaggery Mysore pak: Mysore pak made with jaggery instead of sugar. Pack: 250 g.\n\nIngredients (Typical):\n- Gram flour (besan)\n- Ghee\n- Jaggery\n\nSpicy Level: None\n\nServing Suggestion: Enjoy as a sweet after a meal or with tea; store in a cool, dry place.\n\nTaste Profile: Rich, buttery and caramel-sweet."
+  },
+  {
+   "name": "thati thandra 250g",
+   "category": "Sweets",
+   "image": "thati-thandra-250g.jpg",
+   "description": "Thati thandra: sun-dried layers of palmyra (thati) fruit pulp, a traditional Andhra sweet. Pack: 250 g.\n\nIngredients (Typical):\n- Palmyra fruit pulp\n- Jaggery or sugar (if used in the actual recipe)\n\nSpicy Level: None\n\nServing Suggestion: Enjoy as a sweet after a meal or with tea; store in a cool, dry place.\n\nTaste Profile: Fruity, sweet and chewy."
+  },
+  {
+   "name": "mixed vegetable chips",
+   "category": "Chips",
+   "image": "mixed-vegetable-chips.jpg",
+   "description": "Mixed vegetable chips: crisp chips from a mix of vegetables. Ask the store which vegetables are in the pack.\n\nIngredients (Typical):\n- Mixed vegetables\n- Oil and salt\n\nSpicy Level: Mild\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crisp and savoury."
+  },
+  {
+   "name": "bajra sajja",
+   "category": "Millets & Health",
+   "image": "bajra-sajja.jpg",
+   "description": "Bajra (sajja): pearl millet sold by the store. Ask the store whether it is whole grain or flour and the pack size.\n\nIngredients (Typical):\n- Pearl millet (bajra / sajja)\n\nSpicy Level: None\n\nServing Suggestion: Ask the store how this pack is meant to be used (it varies by product); store in a cool, dry place.\n\nTaste Profile: Earthy, wholesome grain."
+  },
+  {
+   "name": "Ashwagandha seed",
+   "category": "Millets & Health",
+   "image": "ashwagandha-seed.jpg",
+   "description": "Ashwagandha seeds sold by the store. Ask the store for the pack size and how it is meant to be used.\n\nIngredients (Typical):\n- Ashwagandha (Withania somnifera) seeds\n\nSpicy Level: None\n\nServing Suggestion: Ask the store how this pack is meant to be used (it varies by product); store in a cool, dry place.\n\nTaste Profile: Herbal."
+  },
+  {
+   "name": "mixed potato chips 250g",
+   "category": "Chips",
+   "image": "mixed-potato-chips-250g.jpg",
+   "description": "Mixed potato chips: a mix of potato chips in different flavours or cuts. Pack: 250 g.\n\nIngredients (Typical):\n- Potato\n- Oil and salt\n- Seasonings (if used in the actual recipe)\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crisp and salty."
+  },
+  {
+   "name": "moringa",
+   "category": "Millets & Health",
+   "image": "moringa.jpg",
+   "description": "Moringa (drumstick leaf) product sold by the store. Ask the store whether it is leaf powder and the pack size.\n\nIngredients (Typical):\n- Moringa (drumstick) leaves\n\nSpicy Level: None\n\nServing Suggestion: Ask the store how this pack is meant to be used (it varies by product); store in a cool, dry place.\n\nTaste Profile: Green and earthy."
+  },
+  {
+   "name": "oats",
+   "category": "Millets & Health",
+   "image": "oats.jpg",
+   "description": "Oats sold by the store. Ask the store for the pack size.\n\nIngredients (Typical):\n- Oats\n\nSpicy Level: None\n\nServing Suggestion: Cook with milk or water for porridge, or use in upma and baking.\n\nTaste Profile: Mild and wholesome."
+  },
+  {
+   "name": "vamu ajwani - 250g",
+   "category": "Millets & Health",
+   "image": "vamu-ajwani-250g.jpg",
+   "description": "Vamu (ajwain / carom seeds). Pack: 250 g.\n\nIngredients (Typical):\n- Ajwain (carom seeds)\n\nSpicy Level: None\n\nServing Suggestion: Used in cooking and home remedies; a little goes a long way.\n\nTaste Profile: Sharp, aromatic, thyme-like."
+  },
+  {
+   "name": "wheat grass",
+   "category": "Millets & Health",
+   "image": "wheat-grass.jpg",
+   "description": "Wheatgrass product sold by the store. Ask the store whether it is powder and the pack size.\n\nIngredients (Typical):\n- Wheatgrass\n\nSpicy Level: None\n\nServing Suggestion: Ask the store how this pack is meant to be used (it varies by product); store in a cool, dry place.\n\nTaste Profile: Green and grassy."
+  },
+  {
+   "name": "cashew biscuit 250g",
+   "category": "Sweets",
+   "image": "cashew-biscuit-250g.jpg",
+   "description": "Cashew biscuits: crisp bakery biscuits with cashew. Pack: 250 g.\n\nIngredients (Typical):\n- Wheat flour (maida)\n- Butter or vanaspati\n- Sugar\n- Cashew nuts\n\nSpicy Level: None\n\nServing Suggestion: Best with tea or coffee.\n\nTaste Profile: Sweet, buttery and nutty."
+  },
+  {
+   "name": "kodo millet",
+   "category": "Millets & Health",
+   "image": "kodo-millet.jpg",
+   "description": "Kodo millet (arikelu): a small whole-grain millet, cooked like rice. Ask the store for the pack size.\n\nIngredients (Typical):\n- Kodo millet\n\nSpicy Level: None\n\nServing Suggestion: Wash and cook like rice; good for upma and pongal.\n\nTaste Profile: Mild and nutty."
+  },
+  {
+   "name": "spl dry fruit",
+   "category": "Dry Fruits & Seeds",
+   "image": "spl-dry-fruit.jpg",
+   "description": "The store's special dry fruit pack, a richer mix than the regular dry fruits pack. Ask the store for the contents and size.\n\nIngredients (Typical):\n- Mixed dry fruits and nuts\n\nSpicy Level: None\n\nServing Suggestion: Eat a handful as a snack.\n\nTaste Profile: Nutty and naturally sweet."
+  },
+  {
+   "name": "watermelon seeds",
+   "category": "Dry Fruits & Seeds",
+   "image": "watermelon-seeds.jpg",
+   "description": "Watermelon seeds (kernels), eaten as a snack or added to sweets and salads.\n\nIngredients (Typical):\n- Watermelon seeds\n\nSpicy Level: None\n\nServing Suggestion: Eat a handful as a snack, or sprinkle on salads and sweets.\n\nTaste Profile: Mild and nutty."
+  },
+  {
+   "name": "bhadham papidi 500g",
+   "category": "Sweets",
+   "image": "bhadham-papidi-500g.jpg",
+   "description": "Badam papidi: a flaky, melt-in-the-mouth sweet (like soan papdi) with almonds. Bigger pack: 500 g.\n\nIngredients (Typical):\n- Gram flour and wheat flour\n- Sugar\n- Ghee\n- Almonds (badam)\n- Cardamom\n\nSpicy Level: None\n\nServing Suggestion: Enjoy as a sweet after a meal or with tea; store in a cool, dry place.\n\nTaste Profile: Sweet, flaky and nutty."
+  },
+  {
+   "name": "makkana - 100g",
+   "category": "Dry Fruits & Seeds",
+   "image": "makkana-100g.jpg",
+   "description": "Makhana: fox nuts (lotus seeds), popped. Pack: 100 g.\n\nIngredients (Typical):\n- Makhana (fox nuts)\n\nSpicy Level: None\n\nServing Suggestion: Roast in a little ghee with salt and pepper, or add to kheer.\n\nTaste Profile: Light, airy and mild."
+  },
+  {
+   "name": "cow ghee sunundha  1 box - 12p",
+   "category": "Sweets",
+   "image": "cow-ghee-sunundha-1-box-12p.jpg",
+   "description": "Sunnundalu made with cow ghee: the Andhra laddu of roasted urad dal ground with jaggery or sugar and bound with ghee. One box, 12 pieces.\n\nIngredients (Typical):\n- Urad dal (roasted)\n- Jaggery or sugar\n- Cow ghee\n- Cardamom (if used in the actual recipe)\n\nSpicy Level: None\n\nServing Suggestion: Enjoy as a sweet after a meal or with tea; store in a cool, dry place.\n\nTaste Profile: Rich, nutty and melt-in-the-mouth."
+  },
+  {
+   "name": "dry fruit mixed seeds",
+   "category": "Dry Fruits & Seeds",
+   "image": "dry-fruit-mixed-seeds.jpg",
+   "description": "A mix of dry fruits and seeds. Ask the store for the contents and size.\n\nIngredients (Typical):\n- Dry fruits\n- Seeds (pumpkin, sunflower, watermelon, flax and others) (if used in the actual recipe)\n\nSpicy Level: None\n\nServing Suggestion: Eat a handful as a snack, or add to breakfast.\n\nTaste Profile: Nutty and crunchy."
+  },
+  {
+   "name": "anjeera dry fruit laddu 9 p",
+   "category": "Sweets",
+   "image": "anjeera-dry-fruit-laddu-9-p.jpg",
+   "description": "Anjeer dry fruit laddus: laddus of figs (anjeer) with nuts, usually with no added sugar. Pack: 9 pieces.\n\nIngredients (Typical):\n- Dried figs (anjeer)\n- Dates (if used in the actual recipe)\n- Cashews, almonds and pistachios\n- Ghee (if used in the actual recipe)\n\nSpicy Level: None\n\nServing Suggestion: Enjoy as a sweet after a meal or with tea; store in a cool, dry place.\n\nTaste Profile: Naturally sweet, chewy and nutty."
+  },
+  {
+   "name": "anjera dry fruit roll 250g",
+   "category": "Sweets",
+   "image": "anjera-dry-fruit-roll-250g.jpg",
+   "description": "Anjeer dry fruit roll: a roll of figs (anjeer) and dates packed with nuts, sliced into rounds. Pack: 250 g.\n\nIngredients (Typical):\n- Dried figs (anjeer)\n- Dates (if used in the actual recipe)\n- Cashews, almonds and pistachios\n\nSpicy Level: None\n\nServing Suggestion: Enjoy as a sweet after a meal or with tea; store in a cool, dry place.\n\nTaste Profile: Naturally sweet, chewy and nutty."
+  },
+  {
+   "name": "dry fruit laddu 9p",
+   "category": "Sweets",
+   "image": "dry-fruit-laddu-9p.jpg",
+   "description": "Dry fruit laddus: laddus of dates and mixed nuts. Pack: 9 pieces.\n\nIngredients (Typical):\n- Dates\n- Cashews, almonds and pistachios\n- Ghee (if used in the actual recipe)\n\nSpicy Level: None\n\nServing Suggestion: Enjoy as a sweet after a meal or with tea; store in a cool, dry place.\n\nTaste Profile: Naturally sweet, chewy and nutty."
+  },
+  {
+   "name": "dry fruit sununda - 1 box 250g",
+   "category": "Sweets",
+   "image": "dry-fruit-sununda-1-box-250g.jpg",
+   "description": "Dry fruit sunnundalu: the Andhra urad dal laddu made richer with dry fruits. One box, 250 g.\n\nIngredients (Typical):\n- Urad dal (roasted)\n- Jaggery or sugar\n- Ghee\n- Dry fruits (cashews, almonds)\n\nSpicy Level: None\n\nServing Suggestion: Enjoy as a sweet after a meal or with tea; store in a cool, dry place.\n\nTaste Profile: Rich, nutty and melt-in-the-mouth."
+  },
+  {
+   "name": "masala kaju box",
+   "category": "Dry Fruits & Seeds",
+   "image": "masala-kaju-box.jpg",
+   "description": "Masala kaju: cashews roasted or fried and coated with chilli masala. One box.\n\nIngredients (Typical):\n- Cashew nuts\n- Red chilli powder and spices\n- Salt\n- Oil (if used in the actual recipe)\n\nSpicy Level: Medium\n\nServing Suggestion: A rich snack with tea, or to serve guests.\n\nTaste Profile: Crunchy, spicy and buttery."
+  },
+  {
+   "name": "organic honey big",
+   "category": "Honey",
+   "image": "organic-honey-big.jpg",
+   "description": "Honey sold by the store as organic, big pack. Ask the store for the pack size.\n\nIngredients (Typical):\n- Honey\n\nSpicy Level: None\n\nServing Suggestion: With warm water and lemon, on toast, or in place of sugar.\n\nTaste Profile: Naturally sweet and floral."
+  },
+  {
+   "name": "organic honey small",
+   "category": "Honey",
+   "image": "organic-honey-small.jpg",
+   "description": "Honey sold by the store as organic, small pack. Ask the store for the pack size.\n\nIngredients (Typical):\n- Honey\n\nSpicy Level: None\n\nServing Suggestion: With warm water and lemon, on toast, or in place of sugar.\n\nTaste Profile: Naturally sweet and floral."
+  },
+  {
+   "name": "mixed fruit chips500",
+   "category": "Chips",
+   "image": "mixed-fruit-chips500.jpg",
+   "description": "Mixed fruit chips: a mix of fruit chips (such as banana and jackfruit). Pack: 500 g.\n\nIngredients (Typical):\n- Fruits (banana, jackfruit and others)\n- Oil and salt\n\nSpicy Level: Mild\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crisp, lightly sweet and salty."
+  }
+ ]
+}

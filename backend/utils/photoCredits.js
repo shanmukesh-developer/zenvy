@@ -23,8 +23,15 @@ const licenceLink = (licence) => {
   return hit ? hit[1] : null;
 };
 
+// Store fills (data/store-fills, 14 Nov 2026): photos added to stores the owner made by hand; same sources.json shape.
+const FILLS_DIR = path.join(__dirname, '..', 'data', 'store-fills');
+
 /** -> [{ store, photos: [{ dish, author, licence, licenceUrl, sourcePage, modified }] }] (never throws) */
-const loadPhotoCredits = (dir = DATA_DIR) => {
+const loadPhotoCredits = (dir = DATA_DIR, fillsDir = dir === DATA_DIR ? FILLS_DIR : null) => {
+  return [...loadDir(dir), ...(fillsDir ? loadDir(fillsDir) : [])];
+};
+
+const loadDir = (dir) => {
   try {
     if (!fs.existsSync(dir)) return [];
     return fs.readdirSync(dir).filter((f) => f.endsWith('.json')).sort().map((f) => {
@@ -40,8 +47,8 @@ const loadPhotoCredits = (dir = DATA_DIR) => {
         modified: s.modified ? String(s.modified) : null,
         // "closest match": no photo of the exact dish exists, so a similar dish is shown (said on the page).
         closest: /closest/i.test(String(s.match || '')),
-      })).filter((p) => p.dish && p.licence);
-      return { store: String((data.store && data.store.name) || ''), photos };
+      })).filter((p) => p.dish && p.licence && p.licence !== 'null');
+      return { store: String((data.store && data.store.name) || data.storeName || ''), photos };
     }).filter((g) => g.store && g.photos.length);
   } catch (err) {
     console.warn('[PHOTO_CREDITS_WARN]', err.message);
