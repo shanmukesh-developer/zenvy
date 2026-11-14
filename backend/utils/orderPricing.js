@@ -272,6 +272,18 @@ const computeOrderQuote = async ({ user, items, couponCode }) => {
   if (slotsLib.slotsEnabled() && !isStall) {
     // Slots already holding SLOT_MAX_ORDERS orders show "Full" (utils/deliverySlots applyCapacity).
     deliverySlots = await slotsLib.applyCapacity(slotsLib.slotsForOrder({ items: lines.map((l) => l.dbItem), store, at: slotNow }));
+    // Timing groups (utils/deliveryGroups, owner 14 Nov 2026): products delivered at different times never share
+    // an order (the app splits them; an older build gets this message).
+    if (deliverySlots.mixedGroups) {
+      const groupsLib = require('./deliveryGroups');
+      const parts = deliverySlots.mixedGroups.map((g) => {
+        const names = lines.filter((l) => l.dbItem && groupsLib.itemGroup(l.dbItem, store) === g).map((l) => l.dbItem.name).slice(0, 3);
+        return `${names.join(', ')} (${groupsLib.DEFAULT_GROUPS[g].label.toLowerCase()})`;
+      });
+      throw new PricingError(400, 'MIXED_DELIVERY_TIMES',
+        `These items are delivered at different times: ${parts.join(' and ')}. Please place them as separate orders.`,
+        { storeId: store.id, groups: deliverySlots.mixedGroups });
+    }
     if (!deliverySlots.nextSlot) {
       const allFull = deliverySlots.slots.some((s) => s.closedReason === 'full');
       const message = !openState.isOpen

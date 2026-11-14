@@ -71,6 +71,8 @@ export interface Store {
   deliveryFeeOverride?: number | null;
   /** How often ZenWe settles this store (Revenue > Settle all). Admin only; default weekly. */
   settlementCycle?: 'daily' | '3days' | 'weekly' | null;
+  /** Delivery timing group for the store's products (utils/deliveryGroups); null = from its type. */
+  deliveryGroup?: 'food' | 'grocery' | 'bakery' | null;
   logoUrl?: string | null;
   createdAt?: string;
   updatedAt?: string;
@@ -149,6 +151,8 @@ export interface Product {
   isEliteOnly?: boolean;
   /** Specialized (custom / designer) cake: booking closes 2½ hours before the delivery slot (normal cakes 2 h). */
   isSpecializedCake?: boolean;
+  /** Delivery timing group (utils/deliveryGroups); null = the store's. */
+  deliveryGroup?: 'food' | 'grocery' | 'bakery' | null;
   isVegetarian?: boolean;
   /** 'veg' | 'nonveg' | 'egg'. null on older rows: fall back to isVegetarian. */
   dietType?: DietType | null;

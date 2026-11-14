@@ -14,6 +14,7 @@ import LegalCard from '@/components/config/LegalCard';
 import ReceiptsCard from '@/components/config/ReceiptsCard';
 import CollegesCard from '@/components/config/CollegesCard';
 import TestDataCard from '@/components/config/TestDataCard';
+import DeliveryTimingsCard from '@/components/config/DeliveryTimingsCard';
 
 interface ConfigRow {
   _id: string;
@@ -370,6 +371,8 @@ export default function ConfigTerminal() {
               {limitMsg?.kind === 'ok' && <p className="text-sm text-success-text">{limitMsg.text}</p>}
             </CardBody>
           </Card>
+
+          <DeliveryTimingsCard />
 
           <Card>
             <CardHeader title="Orders per delivery slot" description="How many orders one delivery slot takes before it shows Full. Set it to what your riders can deliver in a slot; 0 = no limit." />

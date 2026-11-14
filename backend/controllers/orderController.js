@@ -233,8 +233,11 @@ const getDeliverySlots = async (req, res) => {
     if (String((req.query || {}).type || '').toLowerCase() === 'vendor' || (store && require('../utils/vendorTypes').isLocalVendorStore(store))) {
       return res.json({ enabled: false, slots: [], nextSlot: null, defaultSlotId: null });
     }
-    const lead = deliverySlots.leadForType((req.query || {}).type);
-    res.json({ ...(await deliverySlots.applyCapacity(deliverySlots.slotsForOrder({ store, lead, at: deliverySlots.now() }))), type: String((req.query || {}).type || 'food') });
+    const type = String((req.query || {}).type || 'food').toLowerCase();
+    const lead = deliverySlots.leadForType(type);
+    // Timing groups (utils/deliveryGroups): a store's own group, else the kind of order asked for.
+    const group = store ? null : (['store', 'grocery', 'list'].includes(type) ? 'grocery' : ['cake', 'specialized_cake', 'bakery'].includes(type) ? 'bakery' : 'food');
+    res.json({ ...(await deliverySlots.applyCapacity(deliverySlots.slotsForOrder({ store, lead, group, at: deliverySlots.now() }))), type });
   } catch (err) {
     console.error('[DELIVERY_SLOTS_ERROR]', err);
     res.status(500).json({ message: 'We could not load the delivery slots right now. Please try again.' });

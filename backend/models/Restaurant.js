@@ -116,6 +116,9 @@ const initRestaurantModel = (sequelize) => {
     // Revenue (6 Nov 2026): how often ZenWe settles this store: 'daily' | 'weekly' | 'monthly' (utils/revenueReport
     // SETTLEMENT_CYCLES). Admin-set, audited, private. Used by Revenue > Settle all to pick the stores and the cutoff.
     settlementCycle: { type: DataTypes.STRING(8), allowNull: false, defaultValue: 'weekly' },
+    // Delivery timing group for this store's products (utils/deliveryGroups): 'food' | 'grocery' | 'bakery';
+    // null = from its type. A product's own group (MenuItem.deliveryGroup) wins.
+    deliveryGroup: { type: DataTypes.STRING(16), allowNull: true },
     bankAccountHolder: { type: DataTypes.STRING(120), allowNull: true },
     bankAccountLast4: { type: DataTypes.STRING(4), allowNull: true },
     bankIfsc: { type: DataTypes.STRING(11), allowNull: true },

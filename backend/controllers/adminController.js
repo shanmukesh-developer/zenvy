@@ -135,7 +135,7 @@ const logAuditAction = async (req, targetId, action, details) => {
 // only the fields the Home list uses (name, price, photo, category, tags, veg). The full menu is fetched
 // on the store page (GET /api/users/restaurants/:id). Without the parameter the response is unchanged.
 // originalPrice (13 Nov 2026): the new Home's deal slideshow, Hot deals grid and food-type pages show "-20%, was ₹350".
-const SUMMARY_ITEM_FIELDS = ['id', '_id', 'restaurantId', 'name', 'price', 'originalPrice', 'imageUrl', 'category', 'tags', 'isVegetarian', 'dietType', 'isAvailable'];
+const SUMMARY_ITEM_FIELDS = ['id', '_id', 'restaurantId', 'name', 'price', 'originalPrice', 'imageUrl', 'category', 'tags', 'isVegetarian', 'dietType', 'isAvailable', 'deliveryGroup'];
 // A dish with choices to make keeps just those in specs (the admin's options, the customisable flag): Home's quick add
 // reads them (productOptions / isCustomizable) and opens the dish page instead of a bare add that checkout refused
 // ("please choose a Portion"). Any other specs stay out of the summary.
@@ -536,14 +536,18 @@ const RESTAURANT_FIELDS = [
   // 6 Nov 2026: how often ZenWe settles this store (daily | 3days | weekly; utils/revenueReport)
   'settlementCycle',
   // 31 Oct 2026: the colleges the store serves (utils/campuses; empty = every college)
-  'visibleCampuses'
+  'visibleCampuses',
+  // 14 Nov 2026: the store's delivery timing group (utils/deliveryGroups; null = from its type)
+  'deliveryGroup'
 ];
 const MENU_ITEM_FIELDS = [
   'name', 'price', 'description', 'imageUrl', 'category', 'tags', 'isVegetarian', 'isAvailable',
   'outOfStockUntil', 'isEliteOnly', 'customCommission', 'specs', 'ownerName', 'ownerPhone',
   'dietType', 'originalPrice',
   // Delivery slots: a specialized cake books 2½ hours before the slot (utils/deliverySlots).
-  'isSpecializedCake'
+  'isSpecializedCake',
+  // 14 Nov 2026: this product's delivery timing group (utils/deliveryGroups; null = the store's)
+  'deliveryGroup'
 ];
 const DIET_TYPES = ['veg', 'nonveg', 'egg'];
 // 10-digit Indian mobile from any common spelling (+91…, 91…, spaces). null when empty; false when invalid.
@@ -617,6 +621,11 @@ const pickRestaurantFields = (body = {}, { creating = false } = {}) => {
     const c = normalizeCycle(out.settlementCycle);
     if (!c) throw new AdminInputError(`Settlement cycle must be one of: ${SETTLEMENT_CYCLES.join(', ')}.`);
     out.settlementCycle = c;
+  }
+  if (out.deliveryGroup !== undefined) {
+    const g = require('../utils/deliveryGroups').cleanGroup(out.deliveryGroup);
+    if (out.deliveryGroup && !g) throw new AdminInputError("Delivery timing must be 'food', 'grocery', 'bakery' or empty (from the store type).");
+    out.deliveryGroup = g;
   }
   if (out.logoUrl !== undefined) out.logoUrl = String(out.logoUrl || '').trim() || null;
 
@@ -721,6 +730,11 @@ const pickMenuItemFields = (body = {}, existing = null, opts = {}) => {
   if (out.tags !== undefined) out.tags = cleanTags(out.tags);
   for (const key of ['isVegetarian', 'isAvailable', 'isEliteOnly', 'isSpecializedCake']) if (out[key] !== undefined) out[key] = toBool(out[key]);
   if (out.outOfStockUntil === '') out.outOfStockUntil = null;
+  if (out.deliveryGroup !== undefined) {
+    const g = require('../utils/deliveryGroups').cleanGroup(out.deliveryGroup);
+    if (out.deliveryGroup && !g) throw new AdminInputError("Delivery timing must be 'food', 'grocery', 'bakery' or empty (the store's).");
+    out.deliveryGroup = g;
+  }
   if (out.isAvailable === true) out.outOfStockUntil = null;
   if (out.dietType !== undefined) {
     out.dietType = out.dietType === null || out.dietType === '' ? null : String(out.dietType).toLowerCase().replace(/[^a-z]/g, '');
@@ -1476,6 +1490,33 @@ exports.updateGlobalConfig = async (req, res) => {
     }
     // Orders per delivery slot (whole orders, 0 = no limit): utils/deliverySlots applyCapacity.
     const slotsLib = require('../utils/deliverySlots');
+    // Delivery timing groups (owner, 14 Nov 2026): { food|grocery|bakery: { slots: [{ start, end, cutoff }] } },
+    // each group validated (utils/deliveryGroups.normalizeGroupSlots); a group left out keeps its current windows.
+    const groupsLib = require('../utils/deliveryGroups');
+    if (key === groupsLib.CONFIG_KEY) {
+      let v = value;
+      if (typeof v === 'string') { try { v = JSON.parse(v); } catch { v = null; } }
+      if (!v || typeof v !== 'object' || Array.isArray(v)) return res.status(400).json({ message: `${key} must be an object of groups (food, grocery, bakery).` });
+      const current = await GlobalConfig.findOne({ where: { key } });
+      let saved = current ? current.value : null;
+      if (typeof saved === 'string') { try { saved = JSON.parse(saved); } catch { saved = null; } }
+      const next = {};
+      for (const g of groupsLib.GROUP_IDS) {
+        if (v[g] !== undefined) {
+          try {
+            next[g] = { slots: groupsLib.normalizeGroupSlots(g, v[g] && v[g].slots).map(({ start, end, cutoff }) => ({ start, end, cutoff })) };
+          } catch (e) {
+            return res.status(400).json({ message: `${groupsLib.DEFAULT_GROUPS[g].label}: ${e.message}` });
+          }
+        } else if (saved && saved[g]) next[g] = saved[g];
+      }
+      const [, createdG] = await GlobalConfig.upsert({ key, value: next, description: description || 'Delivery windows and order cutoffs per timing group (food, groceries, bakery)' });
+      await slotsLib.loadConfig({ fresh: true });
+      await logAuditAction(req, key, 'DELIVERY_GROUPS_SET', { value: next });
+      broadcastSystemUpdate(req, 'GLOBAL_CONFIG_UPDATED', { key, value: next });
+      realtime.publish('config', 'updated', key, { scope: 'global' });
+      return res.json({ key, value: next, created: createdG, groups: groupsLib.mergeConfig(next) });
+    }
     if (key === slotsLib.CAP_KEY) {
       const n = typeof value === 'number' || (typeof value === 'string' && value.trim() !== '') ? Number(value) : NaN;
       if (!Number.isInteger(n) || n < 0 || n > slotsLib.MAX_CAP) {

@@ -125,6 +125,7 @@ export function duplicateItemPayload(p: Product, restaurantId: string): Record<s
     dietType: dietOf(p),
     isEliteOnly: !!p.isEliteOnly,
     isSpecializedCake: !!p.isSpecializedCake,
+    deliveryGroup: p.deliveryGroup || null,
     tags: p.tags || [],
     specs: readSpecs(p.specs),
     originalPrice: mrpOf(p),

@@ -27,6 +27,9 @@ const initMenuItemModel = (sequelize) => {
     // Specialized cake (custom / designer): booking closes 2½ hours before the delivery slot instead of the
     // 2 hours of a normal cake (utils/deliverySlots). Switched on by the store or an admin.
     isSpecializedCake: { type: DataTypes.BOOLEAN, defaultValue: false },
+    // Delivery timing group set by the admin for this product (utils/deliveryGroups): 'food' | 'grocery' | 'bakery';
+    // null = the store's group.
+    deliveryGroup: { type: DataTypes.STRING(16), allowNull: true },
     customCommission: { type: DataTypes.FLOAT },
     specs: { type: DataTypes.JSON, defaultValue: {} },
     ownerName: { type: DataTypes.STRING },

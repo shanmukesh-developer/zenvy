@@ -14,6 +14,9 @@ import {
   Button, Callout, Chip, ConfirmModal, EmptyState, Field, INPUT, MenuButton, Modal, Segmented, Skeleton, Toggle, cx, FOCUS_RING, useToast,
 } from './ui';
 
+/** Product delivery timing group (backend utils/deliveryGroups); '' = the store's. */
+type DeliveryGroupChoice = '' | 'food' | 'grocery' | 'bakery';
+
 const itemId = (p: Product) => p._id || p.id || '';
 const sortOrderOf = (p: Product) => {
   const n = Number(readSpecs(p.specs).sortOrder);
@@ -495,7 +498,7 @@ function ItemEditor({ initial, storeName, vendorType, categories, bookingOnly, n
   const specs = readSpecs(initial?.specs);
   const blank = () => ({
     name: '', price: '', mrp: '', weight: '', category: categories[0] || '', description: '', imageUrl: '',
-    isAvailable: true, diet: 'veg' as DietType, isEliteOnly: false, isSpecializedCake: false, tags: [] as string[],
+    isAvailable: true, diet: 'veg' as DietType, isEliteOnly: false, isSpecializedCake: false, deliveryGroup: '' as DeliveryGroupChoice, tags: [] as string[],
   });
   const [form, setForm] = useState(() => initial ? {
     name: initial.name || '',
@@ -509,6 +512,7 @@ function ItemEditor({ initial, storeName, vendorType, categories, bookingOnly, n
     diet: dietOf(initial),
     isEliteOnly: !!initial.isEliteOnly,
     isSpecializedCake: !!initial.isSpecializedCake,
+    deliveryGroup: (['food', 'grocery', 'bakery'].includes(String(initial.deliveryGroup || '')) ? initial.deliveryGroup : '') as DeliveryGroupChoice,
     tags: (initial.tags || []).map(String),
   } : blank());
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -578,6 +582,8 @@ function ItemEditor({ initial, storeName, vendorType, categories, bookingOnly, n
         isVegetarian: form.diet === 'veg',
         isEliteOnly: form.isEliteOnly,
         isSpecializedCake: form.isSpecializedCake,
+        // Delivery timing group (backend utils/deliveryGroups): empty = the store's.
+        deliveryGroup: form.deliveryGroup || null,
         tags: form.tags,
         // MRP: column + specs.originalPrice are kept in step by the server; null clears it.
         originalPrice: form.mrp.trim() === '' ? null : Number(form.mrp),
@@ -662,6 +668,16 @@ function ItemEditor({ initial, storeName, vendorType, categories, bookingOnly, n
           </div>
           <Field label="Description" optional aside={<span className="text-xs text-fg-subtle">{form.description.length}/1000</span>}>
             {({ id, msgId }) => <textarea id={id} aria-describedby={msgId} className={cx(INPUT, 'h-20 resize-none')} maxLength={1000} value={form.description} onChange={e => set({ description: e.target.value })} placeholder="Ingredients, portion, spice level…" />}
+          </Field>
+          <Field label="Delivery timing" optional help="When this product is delivered. Store's timing follows the store (Stores > edit). The windows are set in Config > Fees and ordering > Delivery timings. Products with different timings are never in one order.">
+            {({ id, msgId }) => (
+              <select id={id} aria-describedby={msgId} className={INPUT} value={form.deliveryGroup} onChange={e => set({ deliveryGroup: e.target.value as DeliveryGroupChoice })}>
+                <option value="">Store&apos;s timing</option>
+                <option value="food">Food: lunch 12:30 PM and evening 7–9:30 PM</option>
+                <option value="grocery">Groceries &amp; fruits: 12–2 PM (order by 7 AM)</option>
+                <option value="bakery">Bakery, snacks &amp; pickles: 4–6 PM (order by 2 PM)</option>
+              </select>
+            )}
           </Field>
           <Field label="Tags" optional help="Shown on the item in the app (first 3) and used for search, e.g. Bestseller, Spicy. Press Enter after each tag.">
             {({ id, msgId }) => <TagInput id={id} describedBy={msgId} value={form.tags} onChange={tags => set({ tags })} />}

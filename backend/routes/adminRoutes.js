@@ -180,6 +180,21 @@ router.get('/campuses', require('../controllers/adminController').getCampuses);
 router.put('/campuses/:key', require('../controllers/adminController').setCampusStatus);
 router.get('/config', getGlobalConfig);
 router.post('/config', updateGlobalConfig);
+// Delivery timing groups (utils/deliveryGroups, owner 14 Nov 2026): the windows in force per group (saved over the
+// defaults) for Config > Delivery timings. Saved through POST /config { key: 'DELIVERY_GROUPS', value }.
+router.get('/delivery-groups', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    const groupsLib = require('../utils/deliveryGroups');
+    const row = await require('../models/GlobalConfig').getGlobalConfigModel().findOne({ where: { key: groupsLib.CONFIG_KEY } });
+    let v = row ? row.value : null;
+    if (typeof v === 'string') { try { v = JSON.parse(v); } catch { v = null; } }
+    res.json({ key: groupsLib.CONFIG_KEY, groups: groupsLib.mergeConfig(v), defaults: groupsLib.DEFAULT_GROUPS, enabled: !groupsLib.groupsOff() });
+  } catch (err) {
+    console.error('[DELIVERY_GROUPS_GET]', err.message);
+    res.status(500).json({ message: 'Could not read the delivery timings.' });
+  }
+});
 // Owner-only test data (utils/testView, scripts/test_data_v2_seed.js): who sees it, how much there is, remove / add again.
 router.get('/test-data', async (req, res) => {
   res.set('Cache-Control', 'no-store');

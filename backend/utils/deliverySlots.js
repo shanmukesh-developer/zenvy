@@ -53,7 +53,8 @@ const STORE_ACCEPT_BEFORE_SLOT_MIN = 60;
 // A slot order (or shopping list) still without a rider this long after the slot START is cancelled.
 const SLOT_UNCLAIMED_GRACE_MIN = 15;
 
-const SLOT_ID_RE = /^(\d{4}-\d{2}-\d{2})\|(S\d{1,2})$/;
+// Ids: 'YYYY-MM-DD|S1' (the single table) or a timing group's window ('|F2' food, '|G1' grocery, '|B1' bakery).
+const SLOT_ID_RE = /^(\d{4}-\d{2}-\d{2})\|([A-Z]\d{1,2})$/;
 const HHMM_RE = /^([01]?\d|2[0-3]):([0-5]\d)$/;
 
 // ── Clock (tests replace it; production always uses the real time) ─────────────────────────────
@@ -72,7 +73,8 @@ const CONFIG_TTL_MS = 30 * 1000;
 // status but Cancelled) shows "Full" and takes no more, so a slot never sells more than the riders can deliver.
 const CAP_KEY = 'SLOT_MAX_ORDERS';
 const MAX_CAP = 500;
-let cfgCache = { at: 0, enabled: true, slots: DEFAULT_SLOTS, maxOrdersPerSlot: 0 };
+const groupsLib = require('./deliveryGroups');
+let cfgCache = { at: 0, enabled: true, slots: DEFAULT_SLOTS, maxOrdersPerSlot: 0, groups: groupsLib.mergeConfig(null) };
 
 const envOff = () => ['0', 'off', 'false', 'no'].includes(String(process.env.DELIVERY_SLOTS || '').trim().toLowerCase());
 
@@ -104,6 +106,7 @@ const loadConfig = async ({ fresh = false } = {}) => {
   let enabled = true;
   let slots = DEFAULT_SLOTS;
   let cap = 0;
+  let groups = groupsLib.mergeConfig(null);
   try {
     const GlobalConfig = require('../models/GlobalConfig').getGlobalConfigModel();
     const row = GlobalConfig ? await GlobalConfig.findOne({ where: { key: CONFIG_KEY } }) : null;
@@ -115,14 +118,20 @@ const loadConfig = async ({ fresh = false } = {}) => {
       if (t) slots = t;
       else if (v.slots !== undefined) console.warn('[DELIVERY_SLOTS] GlobalConfig DELIVERY_SLOTS.slots is invalid; using the default slots.');
     }
+    const grpRow = GlobalConfig ? await GlobalConfig.findOne({ where: { key: groupsLib.CONFIG_KEY } }) : null;
+    let g = grpRow ? grpRow.value : null;
+    if (typeof g === 'string') { try { g = JSON.parse(g); } catch { g = null; } }
+    groups = groupsLib.mergeConfig(g);
     const capRow = GlobalConfig ? await GlobalConfig.findOne({ where: { key: CAP_KEY } }) : null;
     const capN = capRow ? Number(capRow.value) : 0;
     if (Number.isInteger(capN) && capN > 0 && capN <= MAX_CAP) cap = capN;
   } catch { /* keep defaults */ }
-  cfgCache = { at: Date.now(), enabled, slots, maxOrdersPerSlot: cap };
+  cfgCache = { at: Date.now(), enabled, slots, maxOrdersPerSlot: cap, groups };
   return cfgCache;
 };
-const _resetConfig = () => { cfgCache = { at: 0, enabled: true, slots: DEFAULT_SLOTS, maxOrdersPerSlot: 0 }; };
+const _resetConfig = () => { cfgCache = { at: 0, enabled: true, slots: DEFAULT_SLOTS, maxOrdersPerSlot: 0, groups: groupsLib.mergeConfig(null) }; };
+/** Timing groups in force (null = DELIVERY_GROUPS=off: the single table). Sync. */
+const groupTables = () => (groupsLib.groupsOff() ? null : cfgCache.groups || groupsLib.mergeConfig(null));
 /** SLOT_MAX_ORDERS from the cached config (0 = no limit). Sync. */
 const maxOrdersPerSlot = () => cfgCache.maxOrdersPerSlot || 0;
 
@@ -198,7 +207,11 @@ const slotInstant = (ymd, hhmm) => new Date(istDayStartOf(ymd).getTime() + toMin
 const buildSlot = (ymd, def, dayWord, leadMinutes, at) => {
   const start = slotInstant(ymd, def.start);
   const end = slotInstant(ymd, def.end);
-  const closesAt = new Date(start.getTime() - leadMinutes * MIN);
+  // A timing-group window has its own order cutoff (owner, 14 Nov: "order before 6:30 PM -> 7:00-7:15 PM"); a cake's
+  // longer lead (2 h / 2½ h before the start) still applies when it is earlier. The single table: lead before start.
+  const closesAt = def.cutoff
+    ? new Date(Math.min(slotInstant(ymd, def.cutoff).getTime(), leadMinutes > LEAD_MINUTES.standard ? start.getTime() - leadMinutes * MIN : Infinity))
+    : new Date(start.getTime() - leadMinutes * MIN);
   const open = at.getTime() < closesAt.getTime();
   const range = rangeLabel(start, end);
   return {
@@ -255,12 +268,21 @@ const applyStoreHours = (slots, store) => slots.map((s) => {
 });
 
 /** Slots for a basket: lead from items, cutoffs, store hours. → { leadMinutes, leadKind, leadReason, slots, nextSlot, defaultSlotId } */
-const slotsForOrder = ({ items = [], store = null, at = now(), lead = null } = {}) => {
+const slotsForOrder = ({ items = [], store = null, at = now(), lead = null, group = null } = {}) => {
   const l = lead || leadForItems(items);
-  const slots = applyStoreHours(availableSlots(at, l.leadMinutes), store);
+  // Timing groups (utils/deliveryGroups): the basket's products decide the windows. A basket whose products are in
+  // different groups reports them all (mixedGroups) and orderPricing asks for separate orders.
+  const tables = groupTables();
+  const groups = tables ? (group ? [group] : groupsLib.groupsOfItems(items, store)) : null;
+  const g = groups ? groups[0] : null;
+  const table = g ? tables[g].slots : slotTable();
+  const slots = applyStoreHours(availableSlots(at, l.leadMinutes, { table }), store);
   const next = slots.find((s) => s.open) || null;
   return {
     enabled: true,
+    group: g,
+    groupLabel: g ? tables[g].label : null,
+    ...(groups && groups.length > 1 ? { mixedGroups: groups } : {}),
     leadMinutes: l.leadMinutes,
     leadKind: l.kind,
     leadReason: l.reason,

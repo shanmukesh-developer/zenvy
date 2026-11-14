@@ -868,6 +868,9 @@ const connectDB = async () => {
         // 2026-10-27 rider jobs (utils/riderJobs): when riders were told about a shopping list.
         ['MegaBaskets', 'slotDispatchedAt', 'TIMESTAMP WITH TIME ZONE'],
         ['MenuItems', 'isSpecializedCake', 'BOOLEAN DEFAULT false'],
+        // 2026-11-14 delivery timing groups (utils/deliveryGroups): per product and per store default; null = automatic.
+        ['MenuItems', 'deliveryGroup', 'VARCHAR(16)'],
+        ['Restaurants', 'deliveryGroup', 'VARCHAR(16)'],
         // 2026-11-05 platform fee per order (utils/orderPricing). Nullable, default 0: older rows read as no fee.
         ['Orders', 'platformFee', 'DOUBLE PRECISION DEFAULT 0'],
         // 2026-11-05 per-store special delivery price (utils/orderPricing). Nullable, no default: null = standard ₹19.
