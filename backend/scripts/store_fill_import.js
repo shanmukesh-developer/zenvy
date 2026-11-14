@@ -12,7 +12,9 @@
 //  - each field (photo, description, category, the store's description) is filled ONLY while it is empty, and at
 //    most once (CatalogueImportLedger key per field): a photo, text or category the admin set or cleared is never
 //    touched again;
-//  - nothing is filled unless the whole file is valid (every listed photo present and a real JPEG / PNG / WEBP).
+//  - nothing is filled unless the whole file is valid (every listed photo present and a real JPEG / PNG / WEBP);
+//  - categoryRenames { from: to } (owner, 14 Nov 2026: Sri Satya Balaji under the Snacks tile) moves a dish whose
+//    category is still exactly `from` to `to`, once per dish (ledger), so a category the admin changed is kept.
 // DISABLE_STORE_FILLS=true switches it off.
 const path = require('path');
 const fs = require('fs');
@@ -46,6 +48,8 @@ const fillProblems = (data, dir) => {
     if (it.category !== undefined && empty(it.category)) out.push(`${it.name}: empty category`);
   }
   if (!names.size) out.push('no items');
+  const ren = data && data.categoryRenames;
+  if (ren !== undefined && (typeof ren !== 'object' || Array.isArray(ren) || Object.entries(ren).some(([f, t]) => empty(f) || empty(t)))) out.push('categoryRenames must map a category to a non-empty category');
   return out;
 };
 
@@ -63,14 +67,18 @@ const runStoreFillImport = async ({ dataDir = DATA_DIR } = {}) => {
   const { saveImageBytes } = require('../utils/imageStore');
   const { apiUrl } = require('../utils/publicUrl');
 
-  const result = { files: fills.length, photos: 0, texts: 0, categories: 0, storeTexts: 0, storeMissing: 0, unknownDishes: 0, invalid: [] };
+  const result = { files: fills.length, photos: 0, texts: 0, categories: 0, renamed: 0, storeTexts: 0, storeMissing: 0, unknownDishes: 0, invalid: [] };
   for (const { file, data } of fills) {
     const problems = fillProblems(data, dataDir);
     if (problems.length) { result.invalid.push({ file, problems: problems.slice(0, 5) }); continue; }
     const store = await Restaurant.findByPk(data.storeId, { attributes: ['id', 'name', 'stallDescription'] });
     if (!store || norm(store.name) !== norm(data.storeName)) { result.storeMissing++; continue; }
 
-    const keys = [`${data.key}:store-text`, ...data.items.flatMap((it) => ['image', 'text', 'category'].map((f) => `${data.key}:${norm(it.name)}:${f}`))];
+    const renames = Object.entries(data.categoryRenames || {}).map(([from, to]) => [String(from).trim(), String(to).trim()]);
+    const rows = await MenuItem.findAll({ where: { restaurantId: store.id }, attributes: ['id', 'name', 'imageUrl', 'description', 'category'] });
+    const renameKey = (row, to) => `${data.key}:${norm(row.name)}:rename:${norm(to)}`;
+    const keys = [`${data.key}:store-text`, ...data.items.flatMap((it) => ['image', 'text', 'category'].map((f) => `${data.key}:${norm(it.name)}:${f}`)),
+      ...rows.flatMap((r) => renames.map(([, to]) => renameKey(r, to)))];
     const done = new Set((await Ledger.findAll({ where: { importKey: keys }, attributes: ['importKey'] })).map((r) => r.importKey));
     // The ledger row is written first: two instances starting together never both fill a field.
     const claim = async (importKey, targetId, name) => {
@@ -90,7 +98,6 @@ const runStoreFillImport = async ({ dataDir = DATA_DIR } = {}) => {
       result.storeTexts++;
     }
 
-    const rows = await MenuItem.findAll({ where: { restaurantId: store.id }, attributes: ['id', 'name', 'imageUrl', 'description', 'category'] });
     const byName = new Map();
     for (const r of rows) if (!byName.has(norm(r.name))) byName.set(norm(r.name), r);
     for (const it of data.items) {
@@ -106,9 +113,19 @@ const runStoreFillImport = async ({ dataDir = DATA_DIR } = {}) => {
       if (!empty(it.description) && empty(row.description) && await claim(k('text'), row.id, row.name)) { patch.description = it.description; result.texts++; }
       if (!empty(it.category) && empty(row.category) && await claim(k('category'), row.id, row.name)) { patch.category = it.category; result.categories++; }
       if (Object.keys(patch).length) await MenuItem.update(patch, { where: { id: row.id } });
+      if (patch.category) row.category = patch.category;
+    }
+    // After the fill (a category filled just now is renamed in the same run). Every dish of the store, not only
+    // the listed ones: the admin may have filed new dishes under the old name.
+    for (const row of rows) {
+      const current = String(row.category || '').trim();
+      const hit = renames.find(([from]) => from === current);
+      if (!hit || !(await claim(renameKey(row, hit[1]), row.id, row.name))) continue;
+      const [n] = await MenuItem.update({ category: hit[1] }, { where: { id: row.id, category: row.category } });
+      result.renamed += n ? 1 : 0;
     }
   }
-  if (result.photos || result.texts || result.categories || result.storeTexts) {
+  if (result.photos || result.texts || result.categories || result.renamed || result.storeTexts) {
     try { require('../controllers/adminController').clearRestaurantsCache(); } catch { /* cache just expires */ }
   }
   return result;

@@ -108,3 +108,24 @@ test('a renamed store is left alone; DISABLE_STORE_FILLS switches it off', async
   process.env.DISABLE_STORE_FILLS = 'true';
   assert.deepStrictEqual(await runStoreFillImport({ dataDir: dir }), { skipped: 'disabled' });
 });
+
+test('categoryRenames moves dishes still under the old category, once; an admin change is kept', async () => {
+  const { runStoreFillImport, fillProblems } = H.r('scripts/store_fill_import');
+  delete process.env.DISABLE_STORE_FILLS;
+  assert.ok(fillProblems(fill({ categoryRenames: { Starters: '' } }), dir).some((x) => /categoryRenames/.test(x)));
+  for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.json'))) fs.unlinkSync(path.join(dir, f));
+  const s2 = await ctx.M('Restaurant').create({ name: 'Snack Shop', location: 'Mangalagiri', vendorType: 'GROCERY', operatingHours: { start: '09:00', end: '21:00' } });
+  const MI = ctx.M('MenuItem');
+  await MI.create({ restaurantId: s2.id, name: 'Mixture', price: 60, dietType: 'veg', isVegetarian: true, category: 'Namkeen & Snacks' });
+  await MI.create({ restaurantId: s2.id, name: 'Chekkalu', price: 60, dietType: 'veg', isVegetarian: true }); // filled, then renamed in the same run
+  await MI.create({ restaurantId: s2.id, name: 'Laddu', price: 80, dietType: 'veg', isVegetarian: true, category: 'Sweets' });
+  write('snack.json', { version: 1, key: 'store-fill:snack', storeId: s2.id, storeName: 'Snack Shop', imagesDir: 'images/snack', categoryRenames: { 'Namkeen & Snacks': 'Snacks' }, items: [{ name: 'Chekkalu', category: 'Namkeen & Snacks' }] });
+  const get = (n) => MI.findOne({ where: { restaurantId: s2.id, name: n } });
+  let r = await runStoreFillImport({ dataDir: dir });
+  assert.strictEqual(r.renamed, 2, JSON.stringify(r));
+  assert.deepStrictEqual([(await get('Mixture')).category, (await get('Chekkalu')).category, (await get('Laddu')).category], ['Snacks', 'Snacks', 'Sweets']);
+  await MI.update({ category: 'Namkeen & Snacks' }, { where: { restaurantId: s2.id, name: 'Mixture' } }); // the admin moves it back
+  r = await runStoreFillImport({ dataDir: dir });
+  assert.strictEqual(r.renamed, 0, JSON.stringify(r));
+  assert.strictEqual((await get('Mixture')).category, 'Namkeen & Snacks', 'renamed once only');
+});

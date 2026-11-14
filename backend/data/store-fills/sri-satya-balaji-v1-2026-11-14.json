@@ -6,6 +6,11 @@
  "imagesDir": "images/sri-satya-balaji",
  "note": "Owner, 14 Nov 2026: \"and sri balaji home foods also and categorize them in snacks\". 73 products added by hand in the admin with no category, photo or description; this file fills only those empty fields (scripts/store_fill_import.js). The store already has the owner's description, which is kept.",
  "storeDescription": null,
+ "categoryRenames": {
+  "Namkeen & Snacks": "Snacks",
+  "Chips": "Chips & Namkeens"
+ },
+ "categoryRenamesNote": "Owner, 14 Nov 2026: show the store under the Snacks tile. The Snacks & beverages tile collects the categories Snacks and Chips & Namkeens, so the two snack categories take those names (live dishes renamed once by scripts/store_fill_import.js).",
  "items": [
   {
    "name": "CANDIES",
@@ -21,67 +26,67 @@
   },
   {
    "name": "atukulu masala 200g",
-   "category": "Namkeen & Snacks",
+   "category": "Snacks",
    "image": "atukulu-masala-200g.jpg",
    "description": "Masala atukulu: flattened rice (poha) fried crisp and tossed with peanuts, curry leaves and spices. Pack: 200 g.\n\nIngredients (Typical):\n- Flattened rice (atukulu / poha)\n- Peanuts\n- Curry leaves\n- Red chilli powder and turmeric\n- Oil and salt\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crunchy, savoury and light."
   },
   {
    "name": "Bundhi - 250g",
-   "category": "Namkeen & Snacks",
+   "category": "Snacks",
    "image": "bundhi-250g.jpg",
    "description": "Boondi: tiny drops of spiced gram-flour batter fried crisp. Pack: 250 g.\n\nIngredients (Typical):\n- Gram flour (besan)\n- Red chilli powder\n- Curry leaves and peanuts (if used in the actual recipe)\n- Oil and salt\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp. Also good sprinkled on curd.\n\nTaste Profile: Crunchy and savoury."
   },
   {
    "name": "chekkralu - masala - 1 pack",
-   "category": "Namkeen & Snacks",
+   "category": "Snacks",
    "image": "chekkralu-masala-1-pack.jpg",
    "description": "Masala chakralu: spiral-shaped rice-flour snacks (like chakli / murukku) pressed into rounds and fried crisp, with chilli masala. One pack.\n\nIngredients (Typical):\n- Rice flour\n- Gram or urad dal flour (if used in the actual recipe)\n- Sesame or cumin seeds\n- Red chilli powder\n- Butter or oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crunchy, spicy and savoury."
   },
   {
    "name": "Chitti chekkalu 250g",
-   "category": "Namkeen & Snacks",
+   "category": "Snacks",
    "image": "chitti-chekkalu-250g.jpg",
    "description": "Chitti chekkalu: small (chitti) Andhra rice-flour crackers with chilli and sesame, fried crisp. Pack: 250 g.\n\nIngredients (Typical):\n- Rice flour\n- Chana dal (if used in the actual recipe)\n- Sesame seeds\n- Red chilli\n- Curry leaves\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crisp, spicy and bite-sized."
   },
   {
    "name": "Hot biscuit - 250g",
-   "category": "Namkeen & Snacks",
+   "category": "Snacks",
    "image": null,
    "description": "Hot biscuit: a crisp, savoury bakery biscuit with chilli and spices. Pack: 250 g.\n\nIngredients (Typical):\n- Wheat flour (maida)\n- Butter or vanaspati\n- Green chilli or chilli powder\n- Cumin or ajwain (if used in the actual recipe)\n- Salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best with tea or coffee.\n\nTaste Profile: Crisp, spicy and buttery."
   },
   {
    "name": "hot biscuit heart shape - 200g",
-   "category": "Namkeen & Snacks",
+   "category": "Snacks",
    "image": "hot-biscuit-heart-shape-200g.jpg",
    "description": "Heart-shaped hot biscuits: crisp, savoury bakery biscuits with chilli and spices, cut into hearts. Pack: 200 g.\n\nIngredients (Typical):\n- Wheat flour (maida)\n- Butter or vanaspati\n- Green chilli or chilli powder\n- Cumin or ajwain (if used in the actual recipe)\n- Salt\n\nSpicy Level: Medium\n\nServing Suggestion: Best with tea or coffee.\n\nTaste Profile: Crisp, spicy and buttery."
   },
   {
    "name": "masala rajma",
-   "category": "Namkeen & Snacks",
+   "category": "Snacks",
    "image": null,
    "description": "Masala rajma: kidney beans fried crisp and tossed in spices, sold as a crunchy snack.\n\nIngredients (Typical):\n- Rajma (kidney beans)\n- Red chilli powder and chaat masala\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crunchy, spicy and protein-rich."
   },
   {
    "name": "palli pakodi - 200g",
-   "category": "Namkeen & Snacks",
+   "category": "Snacks",
    "image": "palli-pakodi-200g.jpg",
    "description": "Palli pakodi: peanuts coated in a spiced gram-flour batter and fried crisp. Pack: 200 g.\n\nIngredients (Typical):\n- Peanuts (palli)\n- Gram flour (besan)\n- Rice flour\n- Red chilli powder\n- Curry leaves (if used in the actual recipe)\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crunchy, spicy and nutty."
   },
   {
    "name": "pesara pappu - 200g",
-   "category": "Namkeen & Snacks",
+   "category": "Snacks",
    "image": "pesara-pappu-200g.jpg",
    "description": "Fried pesara pappu: split moong dal fried crisp and salted. Pack: 200 g.\n\nIngredients (Typical):\n- Split moong dal (pesara pappu)\n- Oil and salt\n- Chilli powder (if used in the actual recipe)\n\nSpicy Level: Mild\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crunchy, light and salty."
   },
   {
    "name": "sanna pusaa - 200g",
-   "category": "Namkeen & Snacks",
+   "category": "Snacks",
    "image": "sanna-pusaa-200g.jpg",
    "description": "Sanna pusa: thin gram-flour sev (fine noodles) fried crisp. Pack: 200 g.\n\nIngredients (Typical):\n- Gram flour (besan)\n- Ajwain (if used in the actual recipe)\n- Red chilli powder (if used in the actual recipe)\n- Oil and salt\n\nSpicy Level: Mild\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp. Also good on chaat and upma.\n\nTaste Profile: Fine, crunchy and savoury."
   },
   {
    "name": "thati chapa 200g",
-   "category": "Namkeen & Snacks",
+   "category": "Snacks",
    "image": null,
    "description": "Thati chapa, a traditional Andhra snack sold by the store under this name. Pack: 200 g. Ask the store for what it is made of.\n\nIngredients (Typical):\n- Ask the store for the ingredients\n\nSpicy Level: Ask the store\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Traditional Andhra snack."
   },
@@ -93,7 +98,7 @@
   },
   {
    "name": "chekka pakodi 250g",
-   "category": "Namkeen & Snacks",
+   "category": "Snacks",
    "image": "chekka-pakodi-250g.jpg",
    "description": "Chekka pakodi: crisp, flaky rice-flour and gram-flour pakodi with chilli and curry leaves, an Andhra savoury. Pack: 250 g.\n\nIngredients (Typical):\n- Rice flour\n- Gram flour (besan)\n- Red chilli\n- Curry leaves\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crisp, spicy and savoury."
   },
@@ -105,19 +110,19 @@
   },
   {
    "name": "kabuli chenna - 200g",
-   "category": "Namkeen & Snacks",
+   "category": "Snacks",
    "image": "kabuli-chenna-200g.jpg",
    "description": "Kabuli chana: white chickpeas fried or roasted crisp and seasoned, sold as a snack. Pack: 200 g.\n\nIngredients (Typical):\n- Kabuli chana (white chickpeas)\n- Spices (if used in the actual recipe)\n- Oil and salt\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crunchy and savoury."
   },
   {
    "name": "mixture -250g",
-   "category": "Namkeen & Snacks",
+   "category": "Snacks",
    "image": "mixture-250g.jpg",
    "description": "Mixture: a classic savoury mix of fried sev, boondi, peanuts, roasted gram and curry leaves. Pack: 250 g.\n\nIngredients (Typical):\n- Gram flour sev and boondi\n- Peanuts\n- Roasted gram (putnala pappu)\n- Curry leaves\n- Red chilli powder\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crunchy, spicy and savoury."
   },
   {
    "name": "palli masala - 200g",
-   "category": "Namkeen & Snacks",
+   "category": "Snacks",
    "image": "palli-masala-200g.jpg",
    "description": "Masala peanuts: peanuts coated in a spiced gram-flour coating and fried crisp. Pack: 200 g.\n\nIngredients (Typical):\n- Peanuts (palli)\n- Gram flour (besan)\n- Red chilli powder\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crunchy, spicy and nutty."
   },
@@ -129,13 +134,13 @@
   },
   {
    "name": "rangeela mix 200g",
-   "category": "Namkeen & Snacks",
+   "category": "Snacks",
    "image": "rangeela-mix-200g.jpg",
    "description": "Rangeela mix: a colourful savoury namkeen mix. Pack: 200 g. Ask the store for the exact contents.\n\nIngredients (Typical):\n- Fried namkeen pieces (sev, boondi, peanuts and others)\n- Spices\n- Oil and salt\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crunchy and savoury."
   },
   {
    "name": "roasted multi grain mix",
-   "category": "Namkeen & Snacks",
+   "category": "Snacks",
    "image": null,
    "description": "Roasted multigrain mix: a mix of roasted grains and pulses, lighter than fried namkeen. Ask the store for the exact contents.\n\nIngredients (Typical):\n- Roasted grains and pulses\n- Spices and salt (if used in the actual recipe)\n\nSpicy Level: Mild\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crunchy, light and wholesome."
   },
@@ -147,13 +152,13 @@
   },
   {
    "name": "wheat puff",
-   "category": "Namkeen & Snacks",
+   "category": "Snacks",
    "image": null,
    "description": "Wheat puffs: puffed wheat grains, a light snack.\n\nIngredients (Typical):\n- Puffed wheat\n- Salt, sugar or masala (if used in the actual recipe)\n\nSpicy Level: Mild\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp. Also eaten with milk.\n\nTaste Profile: Light and crunchy."
   },
   {
    "name": "chekkalu 250g",
-   "category": "Namkeen & Snacks",
+   "category": "Snacks",
    "image": "chekkalu-250g.jpg",
    "description": "Chekkalu: thin, round Andhra rice-flour crackers with chilli, sesame and curry leaves, fried crisp. Pack: 250 g.\n\nIngredients (Typical):\n- Rice flour\n- Chana dal or peanuts (if used in the actual recipe)\n- Sesame seeds\n- Green or red chilli\n- Curry leaves\n- Oil and salt\n\nSpicy Level: Medium\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crisp, spicy and savoury."
   },
@@ -219,13 +224,13 @@
   },
   {
    "name": "panasa chips - plain - 200g",
-   "category": "Chips",
+   "category": "Chips & Namkeens",
    "image": "panasa-chips-plain-200g.jpg",
    "description": "Plain jackfruit chips: raw jackfruit (panasa) slices fried crisp and salted. Pack: 200 g.\n\nIngredients (Typical):\n- Raw jackfruit (panasa)\n- Coconut or vegetable oil\n- Salt\n\nSpicy Level: None\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crisp, mildly sweet and salty."
   },
   {
    "name": "roasted mixture - 200g",
-   "category": "Namkeen & Snacks",
+   "category": "Snacks",
    "image": "roasted-mixture-200g.jpg",
    "description": "Roasted mixture: a savoury mix with roasted rather than deep-fried ingredients, lighter than regular mixture. Pack: 200 g.\n\nIngredients (Typical):\n- Roasted gram, peanuts and puffed rice (if used in the actual recipe)\n- Curry leaves\n- Spices and salt\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crunchy, light and savoury."
   },
@@ -237,13 +242,13 @@
   },
   {
    "name": "alu jeera chips - 200g",
-   "category": "Chips",
+   "category": "Chips & Namkeens",
    "image": "alu-jeera-chips-200g.jpg",
    "description": "Aloo jeera chips: potato chips seasoned with cumin (jeera). Pack: 200 g.\n\nIngredients (Typical):\n- Potato\n- Cumin (jeera)\n- Oil and salt\n- Chilli powder (if used in the actual recipe)\n\nSpicy Level: Mild\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crisp, salty and cumin-scented."
   },
   {
    "name": "alu pudina chips - 200g",
-   "category": "Chips",
+   "category": "Chips & Namkeens",
    "image": "alu-pudina-chips-200g.jpg",
    "description": "Aloo pudina chips: potato chips seasoned with mint (pudina). Pack: 200 g.\n\nIngredients (Typical):\n- Potato\n- Dried mint (pudina)\n- Oil and salt\n- Chilli powder (if used in the actual recipe)\n\nSpicy Level: Mild\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crisp, minty and salty."
   },
@@ -255,31 +260,31 @@
   },
   {
    "name": "crispy cones 200g",
-   "category": "Namkeen & Snacks",
+   "category": "Snacks",
    "image": null,
    "description": "Crispy cones: cone-shaped fried snacks. Pack: 200 g.\n\nIngredients (Typical):\n- Flour (wheat, rice or corn)\n- Spices\n- Oil and salt\n\nSpicy Level: Mild\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crunchy and savoury."
   },
   {
    "name": "moong dal roll 200g",
-   "category": "Namkeen & Snacks",
+   "category": "Snacks",
    "image": null,
    "description": "Moong dal rolls: crunchy roll-shaped snacks made with moong dal. Pack: 200 g.\n\nIngredients (Typical):\n- Moong dal flour\n- Rice flour (if used in the actual recipe)\n- Spices\n- Oil and salt\n\nSpicy Level: Mild\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crunchy and savoury."
   },
   {
    "name": "mungdhal chekkodi - 200g",
-   "category": "Namkeen & Snacks",
+   "category": "Snacks",
    "image": null,
    "description": "Moong dal chekkodi: ring-shaped Andhra rice-flour snacks made with moong dal, fried crisp. Pack: 200 g.\n\nIngredients (Typical):\n- Rice flour\n- Moong dal\n- Sesame or cumin (if used in the actual recipe)\n- Red chilli\n- Oil and salt\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crunchy and savoury."
   },
   {
    "name": "panasa chips - masala - 200g",
-   "category": "Chips",
+   "category": "Chips & Namkeens",
    "image": "panasa-chips-masala-200g.jpg",
    "description": "Masala jackfruit chips: raw jackfruit (panasa) slices fried crisp and tossed in chilli masala. Pack: 200 g.\n\nIngredients (Typical):\n- Raw jackfruit (panasa)\n- Coconut or vegetable oil\n- Red chilli powder\n- Salt\n\nSpicy Level: Medium\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crisp, spicy and mildly sweet."
   },
   {
    "name": "pendalm chips - 200g",
-   "category": "Chips",
+   "category": "Chips & Namkeens",
    "image": null,
    "description": "Pendalam chips: slices of pendalam (purple yam) fried crisp. Pack: 200 g.\n\nIngredients (Typical):\n- Pendalam (purple yam)\n- Oil and salt\n- Chilli powder (if used in the actual recipe)\n\nSpicy Level: Mild\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crisp and earthy."
   },
@@ -303,7 +308,7 @@
   },
   {
    "name": "mixed vegetable chips",
-   "category": "Chips",
+   "category": "Chips & Namkeens",
    "image": "mixed-vegetable-chips.jpg",
    "description": "Mixed vegetable chips: crisp chips from a mix of vegetables. Ask the store which vegetables are in the pack.\n\nIngredients (Typical):\n- Mixed vegetables\n- Oil and salt\n\nSpicy Level: Mild\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crisp and savoury."
   },
@@ -321,7 +326,7 @@
   },
   {
    "name": "mixed potato chips 250g",
-   "category": "Chips",
+   "category": "Chips & Namkeens",
    "image": "mixed-potato-chips-250g.jpg",
    "description": "Mixed potato chips: a mix of potato chips in different flavours or cuts. Pack: 250 g.\n\nIngredients (Typical):\n- Potato\n- Oil and salt\n- Seasonings (if used in the actual recipe)\n\nSpicy Level: Mild to Medium\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crisp and salty."
   },
@@ -441,7 +446,7 @@
   },
   {
    "name": "mixed fruit chips500",
-   "category": "Chips",
+   "category": "Chips & Namkeens",
    "image": "mixed-fruit-chips500.jpg",
    "description": "Mixed fruit chips: a mix of fruit chips (such as banana and jackfruit). Pack: 500 g.\n\nIngredients (Typical):\n- Fruits (banana, jackfruit and others)\n- Oil and salt\n\nSpicy Level: Mild\n\nServing Suggestion: A good tea-time snack; keep the pack closed after opening so it stays crisp.\n\nTaste Profile: Crisp, lightly sweet and salty."
   }
