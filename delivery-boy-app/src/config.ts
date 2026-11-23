@@ -17,9 +17,10 @@ export const BUILT_IN_API_BASE = 'https://hostelbites-backend-jwmt.onrender.com'
  */
 export const TRUSTED_API_HOSTS = trustedHostsFrom(BUILT_IN_API_BASE, process.env.EXPO_PUBLIC_TRUSTED_API_HOSTS, readExtraTrustedHosts());
 
-// Built-in address, or a verified trusted address the backend advertised on an earlier launch
-// (src/services/endpointOverride.ts). Never changes mid-session.
-const ACTIVE_ENDPOINT = resolveEndpoint({ builtIn: BUILT_IN_API_BASE, trusted: TRUSTED_API_HOSTS });
+// EXPO_PUBLIC_API_URL (local development only, e.g. http://<lan-ip>:8080) wins; else the built-in address, or a
+// verified trusted address the backend advertised on an earlier launch (src/services/endpointOverride.ts).
+// Never changes mid-session. Same rule as the restaurant and vendor apps.
+const ACTIVE_ENDPOINT = resolveEndpoint({ builtIn: BUILT_IN_API_BASE, devOverride: process.env.EXPO_PUBLIC_API_URL, trusted: TRUSTED_API_HOSTS });
 
 /** The one Zenvy backend (REST base, ends in /api). */
 export const API_URL = `${ACTIVE_ENDPOINT.api}/api`;
