@@ -22,7 +22,7 @@ const MAX_ACTIVE_ORDERS = riderLoad.MAX_ACTIVE_JOBS; // jobs one rider may hold 
 
 // What the rider earns for an order (shared with the admin/support "mark delivered" path).
 const { riderPayout, pushNearestRiders, refreshRiderCurrentOrder } = require('../utils/riderDispatch');
-const { sumEarningsPaise } = require('../utils/riderEarnings');
+const { sumEarningsPaise, feeSplit, orderSplit } = require('../utils/riderEarnings');
 
 const normalizeItems = (items) => {
   if (typeof items === 'string') {
@@ -131,6 +131,10 @@ const riderOrderPayload = (order, restaurant, customer, { revealCustomer }) => {
     ...paymentFields(order),
     riderEarning: riderPayout(order),
     earnings: `₹${riderPayout(order)}`,
+    // Where the customer's delivery + platform fee goes (ZenWe share, rider incentive); null on older orders.
+    feeSplit: feeSplit(order),
+    // Where the whole order amount goes (restaurant, ZenWe, your incentive); null on older orders.
+    orderSplit: orderSplit(order),
     distance: Number.isFinite(distance) && distance > 0 ? distance : null,
     status: order.status,
     createdAt: order.createdAt,
@@ -622,6 +626,8 @@ const getOrderHistory = async (req, res) => {
         paymentStatus: order.paymentStatus || null,
         riderEarning: riderPayout(order),
         earnings: `₹${riderPayout(order)}`,
+        feeSplit: feeSplit(order),
+        orderSplit: orderSplit(order),
         status: order.status,
         createdAt: order.createdAt,
         // Real handover time for orders delivered after deliveredAt was added; older rows fall back to updatedAt.
@@ -809,7 +815,7 @@ const updateOrderStatus = async (req, res) => {
     {
       // Never hand the customer's delivery PIN to the rider.
       const { deliveryPin, deliveryPinAttempts, upiUTR, upiScreenshot, upiStatus, payoutSettled, riderPayoutSettled, commissionRate, commissionType, commissionAmountPaise, storeNetPaise, commissionSource, payoutId, riderPayoutId, ...safeOrder } = order.toJSON(); // eslint-disable-line no-unused-vars
-      res.json({ ...safeOrder, _id: order.id, riderEarning: riderPayout(order) });
+      res.json({ ...safeOrder, _id: order.id, riderEarning: riderPayout(order), feeSplit: feeSplit(order) });
     }
 
     for (const job of afterResponse) await job();
@@ -1127,7 +1133,7 @@ const getLeaderboard = async (req, res) => {
           { deliveredAt: null, updatedAt: { [Op.gte]: startOfDay } }
         ]
       },
-      attributes: ['deliveryPartnerId', 'finalPrice', 'totalPrice', 'deliveryFee', 'fulfilment', 'priceBreakdown']
+      attributes: ['deliveryPartnerId', 'finalPrice', 'totalPrice', 'deliveryFee', 'fulfilment', 'priceBreakdown', 'riderEarningPaise']
     });
 
     const earningsMap = {};
@@ -1199,7 +1205,7 @@ const deliveredSince = (riderId, since) => getOrderModel().findAll({
       { deliveredAt: null, updatedAt: { [Op.gte]: since } }
     ]
   },
-  attributes: ['id', 'deliveryFee', 'priceBreakdown', 'finalPrice', 'paymentMethod', 'fulfilment', 'deliveredAt', 'updatedAt']
+  attributes: ['id', 'deliveryFee', 'priceBreakdown', 'riderEarningPaise', 'finalPrice', 'paymentMethod', 'fulfilment', 'deliveredAt', 'updatedAt']
 });
 
 // @desc    Get today's stats for current rider ("today" = IST calendar day)
@@ -1294,7 +1300,7 @@ const getStatsRange = async (req, res) => {
           { deliveredAt: null, updatedAt: { [Op.gte]: start, [Op.lt]: end } },
         ],
       },
-      attributes: ['id', 'deliveryFee', 'priceBreakdown', 'finalPrice', 'paymentMethod', 'fulfilment', 'deliveredAt', 'updatedAt'],
+      attributes: ['id', 'deliveryFee', 'priceBreakdown', 'riderEarningPaise', 'finalPrice', 'paymentMethod', 'fulfilment', 'deliveredAt', 'updatedAt'],
     });
     const { earningPaise } = require('../utils/riderEarnings');
     const days = [];

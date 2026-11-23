@@ -23,6 +23,47 @@ export interface RiderOrderItem {
   options: string | null;
 }
 
+/** The customer's delivery + platform fee for one order, split between ZenWe and the rider (rupees). */
+export interface FeeSplit {
+  deliveryFee: number;
+  platformFee: number;
+  customerFees: number;
+  zenweShare: number;
+  riderIncentive: number;
+}
+
+/** Where the whole order amount goes: the restaurant's share, ZenWe's share and your incentive (rupees). */
+export interface OrderSplit {
+  customerPaid: number;
+  restaurant: number;
+  zenwe: number;
+  riderIncentive: number;
+}
+
+/**
+ * A pay-before-pickup order: what the rider paid the restaurant at the counter from ZenWe's hand cash (amount + bill
+ * photo). A record only; it never changes cash with you or earnings.
+ */
+export interface StorePayment {
+  orderId: string;
+  orderCode: string | null;
+  restaurant: string | null;
+  orderStatus: string | null;
+  foodTotal: number;
+  /** null until the rider records it. */
+  amount: number | null;
+  billUrl: string | null;
+  paidAt: string | null;
+}
+
+export interface StorePayments {
+  /** Total paid to restaurants today. */
+  total: number;
+  paid: StorePayment[];
+  /** Today's pay-before-pickup orders with no payment recorded yet. */
+  toRecord: StorePayment[];
+}
+
 export interface RiderOrder {
   id: string;
   shortId: string;
@@ -54,6 +95,10 @@ export interface RiderOrder {
   paymentStatus: string | null;
   amountToCollect: number | null;
   earning: number | null;
+  /** Where the customer's delivery + platform fee goes (ZenWe share, your incentive); null on older orders. */
+  feeSplit: FeeSplit | null;
+  /** Restaurant / ZenWe / your incentive for the whole order; null on older orders. */
+  orderSplit: OrderSplit | null;
   distanceKm: number | null;
   createdAt: string | null;
   deliveredAt: string | null;

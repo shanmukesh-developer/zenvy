@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useAdminAuth } from '@/utils/useAdminAuth';
 import { useAdminSocket } from '@/components/AdminSocketProvider';
+import RiderStorePaymentsPanel from '@/components/finance/RiderStorePaymentsPanel';
 import dynamic from 'next/dynamic';
 import { API_URL } from '@/lib/config';
 import { useVisibleInterval } from '@/lib/useVisibleInterval';
@@ -65,7 +66,7 @@ export default function FleetManagement() {
   const [settling, setSettling] = useState<{ p: Payout; riderName: string } | null>(null);
   const [utrInput, setUtrInput] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'roster' | 'payouts' | 'map'>('roster');
+  const [activeTab, setActiveTab] = useState<'roster' | 'payouts' | 'paid' | 'map'>('roster');
 
   const [riders, setRiders] = useState<Rider[]>([]);
   const [totalRiders, setTotalRiders] = useState(0);
@@ -449,6 +450,7 @@ export default function FleetManagement() {
           tabs={[
             { id: 'roster', label: 'All riders', count: totalRiders || null },
             { id: 'payouts', label: 'Earnings and payouts', count: payouts.length || null, attention: true },
+            { id: 'paid', label: 'Paid to restaurants' },
             { id: 'map', label: 'Live map' },
           ]}
         />
@@ -512,6 +514,8 @@ export default function FleetManagement() {
           />
         </>
       )}
+
+      {activeTab === 'paid' && <RiderStorePaymentsPanel />}
 
       {activeTab === 'map' && (
         <div className="relative z-0">

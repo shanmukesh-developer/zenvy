@@ -2,7 +2,7 @@
 import { ApiError, apiFetch } from './apiClient';
 import { normalizeOrder, normalizeOrders, toNumber } from './orderModel';
 import { APP_PUSH_VERSION } from '../config';
-import type { CashEntry, CashStatus, EarningsRange, PayoutStatement, RiderCash, RiderOrder, RiderProfile, SupportTicket, TodayStats, WeekStats } from '../types';
+import type { CashEntry, CashStatus, EarningsRange, PayoutStatement, RiderCash, RiderOrder, RiderProfile, StorePayment, StorePayments, SupportTicket, TodayStats, WeekStats } from '../types';
 
 export function toProfile(raw: any, prev?: RiderProfile | null): RiderProfile {
   const str = (v: unknown) => {
@@ -84,6 +84,38 @@ export async function fetchPending(): Promise<RiderOrder[]> {
 export async function fetchActive(): Promise<RiderOrder[]> {
   const data = await apiFetch<any>('/delivery/orders/active');
   return normalizeOrders(Array.isArray(data) ? data : data?.orders);
+}
+
+const toStorePayment = (raw: any): StorePayment | null => {
+  if (!raw || typeof raw.orderId !== 'string') return null;
+  const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v : null);
+  return {
+    orderId: raw.orderId,
+    orderCode: str(raw.orderCode) ?? (raw.orderNumber ? `ZEN-${raw.orderNumber}` : null),
+    restaurant: str(raw.restaurant),
+    orderStatus: str(raw.orderStatus),
+    foodTotal: toNumber(raw.foodTotal) ?? 0,
+    amount: toNumber(raw.amount),
+    billUrl: str(raw.billUrl),
+    paidAt: str(raw.paidAt),
+  };
+};
+
+/** Today's pay-before-pickup orders: payments recorded, orders still to record, and the total paid. */
+export async function fetchStorePayments(): Promise<StorePayments> {
+  const d = await apiFetch<any>('/delivery/store-payments');
+  const list = (v: unknown) => (Array.isArray(v) ? v.map(toStorePayment).filter((p): p is StorePayment => !!p) : []);
+  return { total: toNumber(d?.total) ?? 0, paid: list(d?.paid), toRecord: list(d?.toRecord) };
+}
+
+/** Records what the rider paid the restaurant for this order (amount in rupees + bill photo as a data URL). */
+export async function recordStorePayment(orderId: string, amount: number, billPhoto: string): Promise<StorePayment | null> {
+  const d = await apiFetch<any>(`/delivery/orders/${encodeURIComponent(orderId)}/store-payment`, {
+    method: 'PUT',
+    body: { amount, billPhoto },
+    timeoutMs: 60000,
+  });
+  return toStorePayment(d?.payment);
 }
 
 export async function fetchHistory(): Promise<RiderOrder[]> {

@@ -12,7 +12,7 @@ import { useRider } from '../state/RiderStore';
 import { atStoreKitchenLabel, canUnassign, firstName, isDialable, kitchenChip, stepFor, stepIndex } from '../services/orderModel';
 import * as links from '../services/links';
 import { rupees } from '../services/format';
-import { CashBox, Instructions, ItemChecklist, ItemsLine, PaymentPill, Place, StepBar, cashToCollect, distanceTo } from './parts';
+import { CashBox, FeeSplitBox, FeeSplitLine, Instructions, ItemChecklist, ItemsLine, PaymentPill, Place, StepBar, cashToCollect, distanceTo } from './parts';
 import type { RiderOrder } from '../types';
 
 // Item ticks survive leaving and re-opening the screen (memory only).
@@ -145,7 +145,7 @@ export function DeliveryScreen({ orderId, onClose }: { orderId: string; onClose:
           <Text style={[T.h2, { color: C.ink }]}>{order.restaurantName ?? 'Store'}</Text>
           <Text style={[T.body, { color: order.buyAtStore ? C.amber : C.ink2 }]}>
             {order.buyAtStore
-              ? 'This store has no ZenWe app. Order and pay for these items at the counter, keep the bill, then tick each item.'
+              ? 'This store has no ZenWe app. Order these items at the counter, keep the bill, then tick each item. ZenWe pays the store separately: do not pay from the customer’s cash.'
               : 'Tick every item before you leave.'}
           </Text>
         </View>
@@ -304,7 +304,9 @@ export function DeliveryScreen({ orderId, onClose }: { orderId: string; onClose:
       </View>
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
         {body}
-        {order.earning !== null ? (
+        {order.feeSplit ? (
+          <FeeSplitBox order={order} />
+        ) : order.earning !== null ? (
           <Text style={[T.small, { color: C.muted, textAlign: 'center' }]}>You earn {rupees(order.earning)} for this order.</Text>
         ) : null}
       </ScrollView>
@@ -387,7 +389,8 @@ export function DeliveryScreen({ orderId, onClose }: { orderId: string; onClose:
             {done.earning !== null ? (
               <>
                 <Text style={[T.money, { color: C.greenDark }]}>+{rupees(done.earning)}</Text>
-                <Text style={[T.body, { color: C.ink2 }]}>added to your earnings</Text>
+                <Text style={[T.body, { color: C.ink2 }]}>{done.order.feeSplit ? 'your incentive, added to your earnings' : 'added to your earnings'}</Text>
+                <FeeSplitLine order={done.order} />
               </>
             ) : null}
             {done.cash ? (

@@ -117,6 +117,9 @@ router.post('/mail/test', async (req, res) => {
   res.status(result.ok ? 200 : 502).json(result);
 });
 
+// What riders paid pay-before-pickup restaurants from ZenWe's hand cash (amount + bill photo), newest first.
+router.get('/rider-store-payments', require('../controllers/riderStorePaymentController').adminListStorePayments);
+
 // Admin Broadcast Push
 router.post('/broadcast-push', broadcastPushNotification);
 // Recipients preview (nothing is sent) and the history of past broadcasts (from the audit log).

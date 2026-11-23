@@ -56,6 +56,13 @@ router.put('/cancel/:orderId', protect, rider, cancelOrderByRider);
 // Alias used by the rider app's "unassign" button (POST /api/delivery/orders/:orderId/cancel).
 router.post('/orders/:orderId/cancel', protect, rider, cancelOrderByRider);
 router.put('/online', protect, rider, toggleOnline);
+// Paid amount at pay-before-pickup restaurants (hand cash from ZenWe): record per order (amount + bill photo), and
+// today's list. A record only: never changes COD cash, earnings or the bill (controllers/riderStorePaymentController).
+{
+  const sp = require('../controllers/riderStorePaymentController');
+  router.put('/orders/:orderId/store-payment', protect, rider, sp.recordStorePayment);
+  router.get('/store-payments', protect, rider, sp.getMyStorePayments);
+}
 router.post('/location', protect, rider, saveRiderLocation); // GPS while the socket is down (background)
 // C9: in-app account deletion (any signed-in rider, approved or not): /account/deletion-check, /delete-otp, /delete.
 router.use('/account', require('./partnerAccountRoutes').riderRouter);

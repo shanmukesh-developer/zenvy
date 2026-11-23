@@ -29,6 +29,7 @@ const INLINE_PHOTO_ROUTES = [
   ['PUT', '/api/delivery/profile'], // deliveryPartnerController photoUrl
   ['PUT', `/api/orders/${UUID}/upload-item-photo`],
   ['PUT', `/api/orders/${UUID}/upload-bill-proof`],
+  ['PUT', `/api/delivery/orders/${UUID}/store-payment`], // riderStorePaymentController billPhoto
   ['PUT', `/api/mega-basket/${UUID}/item-status`],
   ['POST', '/api/services/book'], // attachmentUrl + attachmentDocument (PDF)
   ['POST', '/api/birthdays'],

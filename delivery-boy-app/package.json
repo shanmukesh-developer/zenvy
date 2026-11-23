@@ -11,6 +11,7 @@
     "expo-build-properties": "^57.0.6",
     "expo-constants": "~57.0.22",
     "expo-haptics": "^57.0.3",
+    "expo-image-picker": "~57.0.20",
     "expo-linear-gradient": "^57.0.1",
     "expo-location": "^57.0.5",
     "expo-network": "^57.0.1",

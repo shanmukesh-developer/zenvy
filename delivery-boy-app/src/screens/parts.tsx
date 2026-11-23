@@ -48,6 +48,67 @@ export function CashBox({ order }: { order: RiderOrder }) {
   );
 }
 
+/**
+ * Where the customer's delivery + platform fee goes on this order: ZenWe's share and your incentive.
+ * Shown only when the server sends the split (orders placed from 24 Nov 2026); older orders show nothing.
+ */
+export function FeeSplitBox({ order }: { order: RiderOrder }) {
+  const f = order.feeSplit;
+  if (!f) return null;
+  return (
+    <View
+      style={styles.split}
+      accessibilityLabel={`Customer paid ${f.customerFees} rupees in fees. ZenWe keeps ${f.zenweShare} rupees. Your incentive is ${f.riderIncentive} rupees.`}
+    >
+      <Text style={[T.label, { color: C.muted }]}>FEES ON THIS ORDER</Text>
+      <SplitRow label="Delivery fee" value={rupees(f.deliveryFee)} />
+      <SplitRow label="Platform fee" value={rupees(f.platformFee)} />
+      <SplitRow label="Customer paid in fees" value={rupees(f.customerFees)} strong />
+      <View style={styles.splitRule} />
+      <SplitRow label="ZenWe keeps" value={`− ${rupees(f.zenweShare)}`} />
+      <SplitRow label="Your incentive" value={rupees(f.riderIncentive)} strong color={C.greenDark} />
+    </View>
+  );
+}
+
+/**
+ * Where the whole order amount went, for order history: "Restaurant ₹216 · ZenWe ₹44 · You ₹3".
+ * Older orders (no split from the server) show nothing.
+ */
+export function OrderSplitLine({ order }: { order: RiderOrder }) {
+  const s = order.orderSplit;
+  if (!s) return null;
+  return (
+    <Text
+      style={[T.small, { color: C.muted }]}
+      numberOfLines={2}
+      accessibilityLabel={`Of ${s.customerPaid} rupees: restaurant ${s.restaurant}, ZenWe ${s.zenwe}, your incentive ${s.riderIncentive} rupees.`}
+    >
+      Restaurant {rupees(s.restaurant)} · ZenWe {rupees(s.zenwe)} · <Text style={{ color: C.greenDark, fontWeight: '800' }}>You {rupees(s.riderIncentive)}</Text>
+    </Text>
+  );
+}
+
+/** One-line version for earnings and history lists: "₹23 fees · ZenWe ₹20 · You ₹3". */
+export function FeeSplitLine({ order }: { order: RiderOrder }) {
+  const f = order.feeSplit;
+  if (!f) return null;
+  return (
+    <Text style={[T.small, { color: C.muted }]} numberOfLines={1}>
+      {rupees(f.customerFees)} fees · ZenWe {rupees(f.zenweShare)} · You {rupees(f.riderIncentive)}
+    </Text>
+  );
+}
+
+function SplitRow({ label, value, strong, color = C.ink }: { label: string; value: string; strong?: boolean; color?: string }) {
+  return (
+    <View style={styles.splitRow}>
+      <Text style={[T.body, { color, fontWeight: strong ? '800' : '500' }]}>{label}</Text>
+      <Text style={[T.body, { color, fontWeight: strong ? '800' : '600' }]}>{value}</Text>
+    </View>
+  );
+}
+
 export function distanceTo(order: RiderOrder, fix: Fix | null): string | null {
   if (fix && order.pickupCoords) return km(haversineKm(fix, order.pickupCoords));
   return null;
@@ -169,6 +230,16 @@ export function Place({ kind, title, address }: { kind: 'store' | 'drop'; title:
 }
 
 const styles = StyleSheet.create({
+  split: {
+    gap: S.xs,
+    padding: S.lg,
+    borderRadius: R.lg,
+    borderWidth: 1,
+    borderColor: C.line,
+    backgroundColor: C.white,
+  },
+  splitRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: S.md },
+  splitRule: { height: 1, backgroundColor: C.line, marginVertical: S.xs },
   cash: {
     flexDirection: 'row',
     alignItems: 'center',

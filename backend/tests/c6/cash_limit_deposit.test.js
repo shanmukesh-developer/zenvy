@@ -145,9 +145,11 @@ test('net position: cash held vs what ZenWe owes (earnings + tips), never netted
   const me = await api('GET', '/api/delivery/cash', d.token);
   const fp = H.toPaise(order.finalPrice);
   assert.equal(me.body.position.cashHeldPaise, fp);
-  assert.equal(me.body.position.earningsPaise, H.toPaise(order.deliveryFee));
+  // Orders placed from 24 Nov 2026 earn the flat rider incentive (₹3), not the delivery fee (utils/riderEarnings).
+  const earned = 300;
+  assert.equal(me.body.position.earningsPaise, earned);
   assert.equal(me.body.position.tipsPaise, 2500);
-  assert.equal(me.body.position.zenvyOwesPaise, H.toPaise(order.deliveryFee) + 2500);
-  assert.equal(me.body.position.netPaise, H.toPaise(order.deliveryFee) + 2500 - fp);
+  assert.equal(me.body.position.zenvyOwesPaise, earned + 2500);
+  assert.equal(me.body.position.netPaise, earned + 2500 - fp);
   assert.equal(me.body.position.direction, 'rider_owes_zenvy');
 });

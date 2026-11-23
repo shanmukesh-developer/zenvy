@@ -3,6 +3,10 @@
 // DeliveryPartner.totalEarnings.
 //
 // Rule:
+//   Orders placed from 24 Nov 2026 carry Order.riderEarningPaise, fixed when the order is placed: a flat rider
+//   incentive (default ₹3, GlobalConfig RIDER_INCENTIVE_PER_ORDER in rupees). ZenWe keeps the rest of the delivery
+//   + platform fee. The customer's bill does not change. When that column is set, it is the earning.
+//   Older orders (column null) keep the rule below, so past earnings and statements never change:
 //   earning = the order's stored delivery fee.
 //   A fee of ₹0 earns ₹0 (owner, 6 Nov 2026: a store with a ₹0 special delivery price must not cost ZenWe ₹30
 //   per order). The old "₹30 when the fee is 0" fallback is kept ONLY for legacy orders saved before the
@@ -33,7 +37,36 @@ const toPaise = (rupees) => {
 const isStallOrder = (order) => String((order && order.fulfilment) || '').toUpperCase() === 'VENDOR';
 
 /** The Order columns earningPaise reads (add them to every query whose rows are passed in). */
-const EARNING_ATTRS = ['deliveryFee', 'fulfilment', 'priceBreakdown'];
+const EARNING_ATTRS = ['deliveryFee', 'fulfilment', 'priceBreakdown', 'riderEarningPaise'];
+
+// Flat rider incentive per order (rupees), used for orders placed from 24 Nov 2026.
+const DEFAULT_RIDER_INCENTIVE = 3;
+const INCENTIVE_KEY = 'RIDER_INCENTIVE_PER_ORDER';
+
+/** The incentive (paise) to fix on a new rider order: GlobalConfig RIDER_INCENTIVE_PER_ORDER (₹0..₹500) or ₹3. */
+const currentIncentivePaise = async () => {
+  try {
+    const { getGlobalConfigModel } = require('../models/GlobalConfig');
+    const GlobalConfig = getGlobalConfigModel();
+    const row = GlobalConfig ? await GlobalConfig.findOne({ where: { key: INCENTIVE_KEY }, attributes: ['value'] }) : null;
+    let v = row ? row.value : null;
+    if (typeof v === 'string') { try { v = JSON.parse(v); } catch { /* plain text */ } }
+    if (v && typeof v === 'object') v = v.rupees;
+    const n = Number(v);
+    if (v !== null && v !== undefined && v !== '' && Number.isFinite(n) && n >= 0 && n <= 500) return toPaise(n);
+  } catch (err) {
+    console.warn('[RIDER_INCENTIVE] config read failed, using the default:', err.message);
+  }
+  return toPaise(DEFAULT_RIDER_INCENTIVE);
+};
+
+/** The fixed incentive stored on the order, or null for an order placed before it existed. */
+const storedIncentivePaise = (order) => {
+  const v = order ? order.riderEarningPaise : null;
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? Math.round(n) : null;
+};
 
 /** True for an order saved before the server bill (Order.priceBreakdown) existed. */
 const isLegacyOrder = (order) => order.priceBreakdown === null || order.priceBreakdown === undefined || order.priceBreakdown === '';
@@ -41,6 +74,8 @@ const isLegacyOrder = (order) => order.priceBreakdown === null || order.priceBre
 /** What the rider earns for this order, in paise. */
 const earningPaise = (order) => {
   if (!order || isStallOrder(order)) return 0;
+  const fixed = storedIncentivePaise(order);
+  if (fixed !== null) return fixed;
   const fee = toPaise(order.deliveryFee);
   if (fee > 0) return fee;
   return isLegacyOrder(order) ? BASE_DELIVERY_FEE_PAISE : 0;
@@ -56,10 +91,56 @@ const sumEarningsPaise = (orders) => (orders || []).reduce((s, o) => s + earning
  * The same rule as a SQL expression (per row, paise) for aggregates: SUM(<this>).
  * floor(x*100 + 0.5) like toPaise; SQLite has no FLOOR before 3.35 (CAST truncates toward zero).
  */
-const earningPaiseSql = (dialect, feeCol = '"deliveryFee"', fulfilmentCol = '"fulfilment"', billCol = '"priceBreakdown"') => {
+const earningPaiseSql = (dialect, feeCol = '"deliveryFee"', fulfilmentCol = '"fulfilment"', billCol = '"priceBreakdown"', incentiveCol = '"riderEarningPaise"') => {
   const v = `(COALESCE(${feeCol}, 0) * 100 + 0.5)`;
   const paise = dialect === 'postgres' ? `FLOOR(${v})` : `(CAST(${v} AS INTEGER) - (CASE WHEN ${v} < CAST(${v} AS INTEGER) THEN 1 ELSE 0 END))`;
-  return `(CASE WHEN UPPER(COALESCE(${fulfilmentCol}, '')) = 'VENDOR' THEN 0 WHEN ${paise} > 0 THEN ${paise} WHEN ${billCol} IS NULL THEN ${BASE_DELIVERY_FEE_PAISE} ELSE 0 END)`;
+  return `(CASE WHEN UPPER(COALESCE(${fulfilmentCol}, '')) = 'VENDOR' THEN 0 WHEN ${incentiveCol} IS NOT NULL THEN ${incentiveCol} WHEN ${paise} > 0 THEN ${paise} WHEN ${billCol} IS NULL THEN ${BASE_DELIVERY_FEE_PAISE} ELSE 0 END)`;
 };
 
-module.exports = { BASE_DELIVERY_FEE, BASE_DELIVERY_FEE_PAISE, EARNING_ATTRS, isLegacyOrder, toPaise, earningPaise, earningRupees, sumEarningsPaise, earningPaiseSql, isStallOrder };
+/**
+ * Where the customer's delivery + platform fee goes, for the rider app ("₹23 from the customer: ZenWe ₹20, you ₹3").
+ * null for orders without a fixed incentive (older orders: the rider earns the delivery fee, nothing to split).
+ */
+const feeSplit = (order) => {
+  if (!order || isStallOrder(order) || storedIncentivePaise(order) === null) return null;
+  const deliveryFeePaise = Math.max(0, toPaise(order.deliveryFee));
+  const platformFeePaise = Math.max(0, toPaise(order.platformFee));
+  const feesPaise = deliveryFeePaise + platformFeePaise;
+  const riderPaise = earningPaise(order);
+  const rupees = (p) => Math.round(p) / 100;
+  return {
+    deliveryFee: rupees(deliveryFeePaise),
+    platformFee: rupees(platformFeePaise),
+    customerFees: rupees(feesPaise),
+    zenweShare: rupees(Math.max(0, feesPaise - riderPaise)),
+    riderIncentive: rupees(riderPaise),
+  };
+};
+
+/**
+ * Where the whole order amount goes, for the rider's order history: the restaurant's share (item subtotal minus
+ * ZenWe's commission, the store payout snapshot Order.storeNetPaise), the rider's incentive, and ZenWe's share
+ * (everything else: commission + delivery / platform / packaging fees + taxes − discounts − the rider incentive).
+ * The three add up to what the customer paid (same parts as utils/revenueReport). null on orders without a fixed
+ * incentive or without the commission snapshot.
+ */
+const orderSplit = (order) => {
+  if (!order || isStallOrder(order) || storedIncentivePaise(order) === null) return null;
+  const v = order.storeNetPaise;
+  if (v === null || v === undefined || v === '' || !Number.isFinite(Number(v))) return null;
+  const customerPaise = Math.max(0, toPaise(order.finalPrice));
+  const restaurantPaise = Math.max(0, Math.round(Number(v)));
+  const riderPaise = earningPaise(order);
+  const rupees = (p) => Math.round(p) / 100;
+  return {
+    customerPaid: rupees(customerPaise),
+    restaurant: rupees(restaurantPaise),
+    zenwe: rupees(customerPaise - restaurantPaise - riderPaise),
+    riderIncentive: rupees(riderPaise),
+  };
+};
+
+module.exports = {
+  BASE_DELIVERY_FEE, BASE_DELIVERY_FEE_PAISE, EARNING_ATTRS, DEFAULT_RIDER_INCENTIVE, INCENTIVE_KEY, isLegacyOrder, toPaise,
+  earningPaise, earningRupees, sumEarningsPaise, earningPaiseSql, isStallOrder, currentIncentivePaise, feeSplit, orderSplit,
+};

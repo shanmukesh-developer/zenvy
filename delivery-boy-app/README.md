@@ -98,8 +98,11 @@ $env:NODE_ENV="production"; .\gradlew.bat bundleRelease     # PowerShell; AAB ->
   service notification. Every request (first start of tracking and the Home "Allow" banner) first shows the in-app
   prominent disclosure (`src/services/location.ts` `confirmBackgroundDisclosure`, Accept / Not now) before the
   system prompt or the settings page. Declaration video: go online → disclosure → Accept → "Allow all the time".
-- Permissions removed from the manifest (`blockedPermissions`): CAMERA, RECORD_AUDIO, storage / media, READ_CONTACTS,
+- Permissions removed from the manifest (`blockedPermissions`): RECORD_AUDIO, storage / media, READ_CONTACTS,
   SYSTEM_ALERT_WINDOW (the app uses none of them).
+- CAMERA (from 1.0.18): Home → **Paid amount** takes a photo of the restaurant bill at pay-before-pickup stores
+  (`src/screens/StorePayments.tsx`, `expo-image-picker`). The photo is uploaded as a private bill image; nothing is
+  kept on the phone. "Gallery" uses Android's system photo picker, so no storage / media permission is needed.
 - Privacy policy: Profile → Privacy Policy (`/legal/privacy`).
 - Crashes: a root `ErrorBoundary` (`src/ui/ErrorBoundary.tsx`) shows "Something went wrong — Restart" instead of a
   blank screen and logs the error (Sentry can be added there later).

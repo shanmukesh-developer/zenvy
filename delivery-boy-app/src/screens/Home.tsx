@@ -13,6 +13,7 @@ import { minutesAgo, rupees } from '../services/format';
 import { OFFER_SECONDS } from '../config';
 import { ItemsLine, PaymentPill, distanceTo } from './parts';
 import { AlertHealthBanner, StayReachableCard } from './StayReachable';
+import { PaidAmountButton } from './StorePayments';
 import { JobsOnHome } from './Jobs';
 import { useJobs } from '../state/JobsStore';
 import type { RiderOrder } from '../types';
@@ -78,6 +79,7 @@ export function HomeScreen() {
 
         <DutySwitch online={r.isOnline} busy={r.dutyBusy} onPress={toggleDuty} />
         <TodayStrip />
+        <PaidAmountButton />
         {r.today.data?.cash?.limitEnabled && r.today.data.cash.overLimit && r.today.data.cash.message ? (
           <Banner text={r.today.data.cash.message} tone="amber" icon="cash-lock" />
         ) : null}
@@ -195,7 +197,8 @@ function TodayStrip() {
   const r = useRider();
   const t = r.today.data;
   const tiles: { label: string; value: string; color: string }[] = [
-    { label: 'EARNED TODAY', value: t ? rupees(t.earnings) : '—', color: C.greenDark },
+    // New orders pay a flat rider incentive (utils/riderEarnings on the server); Home shows only that amount.
+    { label: 'INCENTIVES TODAY', value: t ? rupees(t.earnings) : '—', color: C.greenDark },
     { label: 'ORDERS', value: t ? String(t.orders) : '—', color: C.ink },
     // C6: cash held for Zenvy (ledger) when the server sends it; older servers: COD collected today.
     { label: 'CASH WITH YOU', value: t?.cash ? rupees(t.cash.cashHeld) : t && t.codCollected !== undefined ? rupees(t.codCollected) : '—', color: C.cash },
@@ -337,7 +340,7 @@ function OfferCard({
       <View style={{ padding: S.lg, gap: S.md }}>
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: S.sm }}>
           <Text style={[T.money, { color: C.greenDark }]}>{order.earning !== null ? `+${rupees(order.earning)}` : '—'}</Text>
-          <Text style={[T.body, { color: C.muted, paddingBottom: 8 }]}>you earn</Text>
+          <Text style={[T.body, { color: C.muted, paddingBottom: 8 }]}>{order.feeSplit ? 'your incentive' : 'you earn'}</Text>
         </View>
         <View style={{ gap: S.xs }}>
           <Text style={[T.label, { color: order.buyAtStore ? C.amber : C.muted }]}>

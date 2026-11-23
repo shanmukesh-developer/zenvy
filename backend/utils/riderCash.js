@@ -9,8 +9,9 @@
 //   COD_COLLECTED  +  a COD order the rider delivered (the order total the customer paid in cash). Written in
 //                     the SAME transaction as the Delivered flip (rider app PIN confirm, or support marking it
 //                     delivered), exactly once per order (key cod:<orderId> + unique (orderId, type)).
-//   STORE_PURCHASE -  buy-at-store orders (Order.storePaidByRider): what the rider paid the shop at the counter
-//                     (approved bill, else the item subtotal). Same transaction, key store-buy:<orderId>.
+//   STORE_PURCHASE -  (no longer written from 24 Nov 2026) buy-at-store orders used to take what the rider paid the
+//                     shop at the counter off the cash. Restaurant payments are now settled by ZenWe separately and
+//                     the rider owes all the COD cash. Older rows stay as history.
 //   CASH_DEPOSITED -  the rider handed cash to Zenvy (admin records it: method cash | upi + reference).
 //   ADJUSTMENT     +/- admin correction, reason required.
 //
@@ -164,13 +165,11 @@ const recordCodDelivery = async ({ t, orderId, actor = null }) => {
   let res = await applyCashChange({
     t, riderId, amountPaise: codPaise, type: TYPES.COD_COLLECTED, orderId: o.id, actor: who, idempotencyKey: `cod:${o.id}`,
   });
+  // Restaurant payments are never taken off the rider's cash (owner, 24 Nov 2026): every store, buy-at-store
+  // included, is settled by ZenWe on its own cycle (end of day, every 3 days, weekly, or before pickup), so the
+  // rider hands over ALL the COD cash. No STORE_PURCHASE row is written any more; rows written before stay as
+  // history. storePaise is still returned (and still used by utils/revenueReport as the store's share).
   const storePaise = storePurchasePaise(o);
-  if (storePaise > 0) {
-    // The rider paid the shop out of their own pocket: that part of the cash is theirs, not Zenvy's.
-    res = await applyCashChange({
-      t, riderId, amountPaise: -storePaise, type: TYPES.STORE_PURCHASE, orderId: o.id, actor: who, idempotencyKey: `store-buy:${o.id}`, allowNegative: true,
-    });
-  }
   return { recorded: true, codPaise, storePaise, balancePaise: res.balancePaise };
 };
 

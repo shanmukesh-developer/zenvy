@@ -1,6 +1,7 @@
 // "Today" (IST), computed from the real orders list. No invented payouts or ratings.
-import React, { useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { getDailySummary, type DaySummary } from '../lib/api';
 import { istDayKey, rupees, todayIST, todayNumbers } from '../lib/model';
 import { useStore } from '../state/StoreProvider';
 import { color, font, radius, space } from '../theme';
@@ -23,7 +24,19 @@ const dayLabel = (key: string) => {
 };
 
 export default function TodayScreen() {
-  const { orders, refreshing, refreshOrders, ordersError, ordersLoaded } = useStore();
+  const { orders, refreshing, refreshOrders, ordersError, ordersLoaded, restaurant } = useStore();
+  const todayKey = todayIST();
+
+  // Earlier days come from the server (the orders list stops at 200 rows, so a busy store's week came out
+  // short). Today stays on the live orders list: it is complete and updates with every new order.
+  const [summary, setSummary] = useState<DaySummary[] | null>(null);
+  const loadSummary = useCallback(async () => {
+    if (!restaurant.id) return;
+    const days = await getDailySummary(restaurant.id);
+    if (days) setSummary(days);
+  }, [restaurant.id]);
+  useEffect(() => { loadSummary(); }, [loadSummary, todayKey]);
+  const onRefresh = useCallback(() => { loadSummary(); return refreshOrders({ pull: true }); }, [loadSummary, refreshOrders]);
 
   const s = useMemo(() => {
     const t = todayNumbers(orders);
@@ -37,17 +50,20 @@ export default function TodayScreen() {
       d.orders += 1;
       if (o.status === 'Delivered') d.sales += o.totalPrice;
     }
+    const today = istDayKey(now);
+    for (const d of days) {
+      const srv = d.key !== today ? summary?.find((x) => x.day === d.key) : undefined;
+      if (srv) { d.orders = srv.orders; d.sales = srv.deliveredSales; }
+    }
     return { ...t, days, maxDay: Math.max(1, ...days.map((d) => d.orders)) };
-  }, [orders]);
-
-  const todayKey = todayIST();
+  }, [orders, summary]);
 
   return (
     <ScrollView
       contentContainerStyle={{ padding: space.md, gap: space.md, paddingBottom: space.xxl * 2 }}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => refreshOrders({ pull: true })} colors={[color.text]} />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[color.text]} />}
     >
-      {ordersError ? <ErrorStrip text={ordersError} onRetry={() => refreshOrders({ pull: true })} busy={refreshing} /> : null}
+      {ordersError ? <ErrorStrip text={ordersError} onRetry={onRefresh} busy={refreshing} /> : null}
       <Text style={[font.h1, { color: color.text }]}>Today</Text>
       {!ordersLoaded ? <Text style={[font.body, { color: color.textMuted }]}>Loading…</Text> : null}
       <View style={styles.grid}>
@@ -83,7 +99,7 @@ export default function TodayScreen() {
             <Text style={[font.small, { color: color.text, width: 100, textAlign: 'right' }]}>{d.orders} · {rupees(Math.round(d.sales))}</Text>
           </View>
         ))}
-        <Text style={[font.small, { color: color.textMuted }]}>Orders (not cancelled) · delivered sales. From your latest 200 orders.</Text>
+        <Text style={[font.small, { color: color.textMuted }]}>Orders (not cancelled) · delivered sales.{summary ? '' : ' From your latest 200 orders.'}</Text>
       </Card>
     </ScrollView>
   );
