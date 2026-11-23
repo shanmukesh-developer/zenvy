@@ -83,7 +83,9 @@ test('support marks a rider COD order delivered: one row (actor admin); rider re
   assert.equal(rows[0].amountPaise, H.toPaise(order.finalPrice));
 });
 
-test('buy-at-store COD order: COD_COLLECTED (+total) and STORE_PURCHASE (-subtotal paid at the counter)', async () => {
+// Owner, 24 Nov 2026: restaurant payments are settled by ZenWe on the store's own cycle, never taken off the
+// rider's cash. A buy-at-store COD order is all the rider's to hand over, like any other COD order.
+test('buy-at-store COD order: only COD_COLLECTED (+total); no STORE_PURCHASE, the rider owes all the cash', async () => {
   const { item } = await H.mkStore({ price: 200, riderBuys: true });
   const u = await H.mkUser();
   const d = await H.mkRider();
@@ -92,8 +94,8 @@ test('buy-at-store COD order: COD_COLLECTED (+total) and STORE_PURCHASE (-subtot
   const o = await H.ctx.M('Order').findByPk(order.id);
   assert.equal(o.storePaidByRider, true);
   const rows = await H.cashRows(d.id);
-  assert.deepEqual(rows.map((x) => [x.type, x.amountPaise]), [['COD_COLLECTED', H.toPaise(o.finalPrice)], ['STORE_PURCHASE', -H.toPaise(o.totalPrice)]]);
-  assert.equal(await H.cashHeld(d.id), H.toPaise(o.finalPrice) - H.toPaise(o.totalPrice));
+  assert.deepEqual(rows.map((x) => [x.type, x.amountPaise]), [['COD_COLLECTED', H.toPaise(o.finalPrice)]]);
+  assert.equal(await H.cashHeld(d.id), H.toPaise(o.finalPrice));
 });
 
 test('cash write fails -> the delivery rolls back (order stays PickedUp, no row, nothing credited)', async () => {

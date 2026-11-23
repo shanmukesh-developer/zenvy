@@ -145,7 +145,7 @@ export function DeliveryScreen({ orderId, onClose }: { orderId: string; onClose:
           <Text style={[T.h2, { color: C.ink }]}>{order.restaurantName ?? 'Store'}</Text>
           <Text style={[T.body, { color: order.buyAtStore ? C.amber : C.ink2 }]}>
             {order.buyAtStore
-              ? 'This store has no ZenWe app. Order and pay for these items at the counter, keep the bill, then tick each item.'
+              ? 'This store has no ZenWe app. Order these items at the counter, keep the bill, then tick each item. ZenWe pays the store separately: do not pay from the customer’s cash.'
               : 'Tick every item before you leave.'}
           </Text>
         </View>
