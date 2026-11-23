@@ -89,8 +89,12 @@ function PaidAmountSheet({ visible, onClose, onChanged }: { visible: boolean; on
   const pick = async (camera: boolean) => {
     setError(null);
     try {
-      const perm = camera ? await ImagePicker.requestCameraPermissionsAsync() : await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) { setError(camera ? 'Allow the camera to take the bill photo.' : 'Allow photos to choose the bill photo.'); return; }
+      // Only the camera needs a permission. The gallery opens Android's system photo picker, which needs none (and
+      // storage / media permissions are blocked in app.json on purpose).
+      if (camera) {
+        const perm = await ImagePicker.requestCameraPermissionsAsync();
+        if (!perm.granted) { setError('Allow the camera to take the bill photo.'); return; }
+      }
       const opts: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], quality: 0.4, base64: true, allowsEditing: false };
       const res = camera ? await ImagePicker.launchCameraAsync(opts) : await ImagePicker.launchImageLibraryAsync(opts);
       if (res.canceled || !res.assets?.length) return;

@@ -7,7 +7,7 @@
     },
     "name": "ZenWe Rider",
     "slug": "zenvy-rider",
-    "version": "1.0.17",
+    "version": "1.0.18",
     "runtimeVersion": {
       "policy": "appVersion"
     },
@@ -40,7 +40,7 @@
       },
       "package": "com.srm.hostelbitesdelivery",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 18,
+      "versionCode": 19,
       "compileSdkVersion": 36,
       "targetSdkVersion": 36,
       "minSdkVersion": 24,
@@ -53,10 +53,10 @@
         "android.permission.ACCESS_BACKGROUND_LOCATION",
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_LOCATION",
-        "android.permission.POST_NOTIFICATIONS"
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.CAMERA"
       ],
       "blockedPermissions": [
-        "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
