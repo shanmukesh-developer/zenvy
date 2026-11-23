@@ -99,7 +99,7 @@ export default function TodayScreen() {
             <Text style={[font.small, { color: color.text, width: 100, textAlign: 'right' }]}>{d.orders} · {rupees(Math.round(d.sales))}</Text>
           </View>
         ))}
-        <Text style={[font.small, { color: color.textMuted }]}>Orders (not cancelled) · delivered sales. From your latest 200 orders.</Text>
+        <Text style={[font.small, { color: color.textMuted }]}>Orders (not cancelled) · delivered sales.{summary ? '' : ' From your latest 200 orders.'}</Text>
       </Card>
     </ScrollView>
   );

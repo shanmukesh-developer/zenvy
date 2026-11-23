@@ -224,7 +224,7 @@ export default function ShopScreen() {
             <Text style={[font.small, { color: color.text, width: 100, textAlign: 'right' }]}>{d.orders} · {rupees(Math.round(d.cash))}</Text>
           </View>
         ))}
-        <Text style={[font.small, { color: color.textMuted }]}>Orders (not cancelled) by the day placed · cash by the day collected. From your latest 200 orders.</Text>
+        <Text style={[font.small, { color: color.textMuted }]}>Orders (not cancelled) by the day placed · cash by the day collected.{summary ? '' : ' From your latest 200 orders.'}</Text>
       </Card>
 
       {toggle.sheets}
