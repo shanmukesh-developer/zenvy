@@ -30,6 +30,9 @@ const NEVER_CACHE = [
   '/api/admin/me',
   '/api/health',
   '/api/upload',
+  // Photos and other files: the snapshot keeps the body as text, which corrupts binary data (a fetched bill photo
+  // came back undecodable). The browser's HTTP cache already covers media.
+  '/api/campus/media',
 ];
 
 interface Snapshot {
