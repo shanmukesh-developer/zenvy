@@ -166,6 +166,7 @@ function CashCard({ cash }: { cash: RiderCash }) {
         <Line label="ZenWe owes you (earnings + tips)" value={rupees(position.zenvyOwes)} />
         <Line label={position.net >= 0 ? 'Net: ZenWe owes you' : 'Net: you owe ZenWe'} value={rupees(Math.abs(position.net))} strong />
       </View>
+      <PaidToRestaurants />
       {recentDeposits.length ? (
         <View style={{ gap: 4, marginTop: S.sm }}>
           <Label>DEPOSITS</Label>
@@ -179,6 +180,28 @@ function CashCard({ cash }: { cash: RiderCash }) {
         </View>
       ) : null}
     </Card>
+  );
+}
+
+// What the rider paid pay-before-pickup restaurants today from ZenWe's hand cash (Home > Paid amount). Shown on its
+// own: it is not part of the cash above and changes none of those numbers.
+function PaidToRestaurants() {
+  const [total, setTotal] = useState<number | null>(null);
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    api.fetchStorePayments()
+      .then((d) => { if (alive) { setTotal(d.total); setCount(d.paid.length); } })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  if (total === null || (total === 0 && count === 0)) return null;
+  return (
+    <View style={{ gap: 4, marginTop: S.sm, paddingTop: S.sm, borderTopWidth: 1, borderTopColor: C.line }}>
+      <Label>HAND CASH FROM ZENWE</Label>
+      <Line label={`Paid to restaurants today (${count} bill${count === 1 ? '' : 's'})`} value={rupees(total)} />
+      <Text style={[T.small, { color: C.muted }]}>Settled with ZenWe separately. Not part of the cash above.</Text>
+    </View>
   );
 }
 

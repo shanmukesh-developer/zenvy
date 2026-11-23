@@ -262,7 +262,7 @@ const getRestaurantOrders = async (req, res) => {
     res.json(orders.map(o => {
       // The customer's exact pin (dropLat/dropLng) is for the assigned rider only, not the kitchen.
       // Rider pay (riderEarningPaise) is between ZenWe and the rider, not the store's.
-      const { deliveryPin, deliveryPinAttempts, dropLat, dropLng, idempotencyKey, riderEarningPaise, user, ...rest } = o.toJSON();
+      const { deliveryPin, deliveryPinAttempts, dropLat, dropLng, idempotencyKey, riderEarningPaise, riderStorePaidPaise, riderStorePaidBillUrl, riderStorePaidAt, user, ...rest } = o.toJSON();
       // The accept deadline of a Pending order (server time): the partner apps keep ringing until it (PF-04).
       rest.storeAcceptBy = storeAcceptByIso(rest);
       // Decided per order, never from the store's current type: a store switched between stall and

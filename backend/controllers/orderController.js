@@ -890,8 +890,8 @@ const storeAcceptBy = (o) => require('../utils/orderTimeouts').storeAcceptByIso(
 const ORDER_INTERNAL_FIELDS = ['deliveryPinAttempts', 'upiUTR', 'upiScreenshot', 'upiStatus', 'payoutSettled', 'riderPayoutSettled',
   // C6 settlement internals (commission snapshot, payout statements).
   'commissionRate', 'commissionType', 'commissionAmountPaise', 'storeNetPaise', 'commissionSource', 'payoutId', 'riderPayoutId',
-  // Rider incentive (utils/riderEarnings): rider pay is not shown to customers.
-  'riderEarningPaise',
+  // Rider incentive (utils/riderEarnings) and the rider's counter payment record: rider-side money, not the customer's.
+  'riderEarningPaise', 'riderStorePaidPaise', 'riderStorePaidBillUrl', 'riderStorePaidAt',
   // C8: the frozen issuer details (served through GET /api/orders/:id/receipt instead).
   'receiptSnapshot'];
 // One row of the customer's order list (whitelist: MY_ORDER_FIELDS).

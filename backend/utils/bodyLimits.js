@@ -34,6 +34,7 @@ const RAISED_ROUTES = [
   ['PUT', '/api/delivery/profile', 'upload', 'rider photoUrl may be a data URL (2 MB photo)'],
   ['PUT', `/api/orders/${SEG}/upload-item-photo`, 'upload', 'Mega Basket item photo as data URL'],
   ['PUT', `/api/orders/${SEG}/upload-bill-proof`, 'upload', 'bill proof photo as data URL'],
+  ['PUT', `/api/delivery/orders/${SEG}/store-payment`, 'upload', 'rider paid-amount bill photo as data URL'],
   ['PUT', `/api/mega-basket/${SEG}/item-status`, 'upload', 'photoProofUrl may be a data URL'],
   ['POST', '/api/services/book', 'upload', 'customer-mobile sends attachmentUrl as a data URL up to 6 MB raw (~8 MB base64)'],
   ['POST', '/api/birthdays', 'upload', 'candidate photo may be a data URL'],

@@ -48,6 +48,28 @@ test('a new order fixes the ₹3 incentive; the rider earns ₹3 and sees the sp
   assert.equal(Number(partner.totalEarnings), 3);
 });
 
+test('rider history: restaurant + ZenWe + rider incentive add up to what the customer paid', async () => {
+  const d = await H.mkRider();
+  const { item } = await H.mkStore({ price: 200, rate: 10 }); // 10% commission: restaurant gets ₹180
+  const u = await H.mkUser();
+  const order = await H.placeOrder({ item, user: u });
+  const pin = await H.toPickedUp(order.id, d);
+  assert.equal((await H.deliver(order.id, d, pin)).status, 200);
+  const row = await H.ctx.M('Order').findByPk(order.id, { raw: true });
+  const hist = await api('GET', '/api/delivery/orders/history', d.token);
+  const rows = Array.isArray(hist.body) ? hist.body : hist.body.orders;
+  const s = rows.find((o) => o.id === order.id).orderSplit;
+  assert.equal(s.customerPaid, Number(row.finalPrice));
+  assert.equal(s.restaurant, 180);
+  assert.equal(s.riderIncentive, 3);
+  assert.equal(Math.round((s.restaurant + s.zenwe + s.riderIncentive) * 100), Math.round(s.customerPaid * 100));
+  // ZenWe's share = its commission + the delivery / platform fees, less the rider's ₹3.
+  assert.equal(Math.round(s.zenwe * 100), 2000 + H.toPaise(row.deliveryFee) + H.toPaise(row.platformFee || 0) - 300);
+  // Not for orders without the snapshot or the fixed incentive.
+  assert.equal(H.r('utils/riderEarnings').orderSplit({ ...row, storeNetPaise: null }), null);
+  assert.equal(H.r('utils/riderEarnings').orderSplit({ ...row, riderEarningPaise: null }), null);
+});
+
 test('older orders (no fixed incentive) keep earning the delivery fee and show no split', async () => {
   const old = { deliveryFee: 19, platformFee: 4, fulfilment: 'ZENVY', priceBreakdown: { deliveryFee: 19 }, riderEarningPaise: null };
   assert.equal(RE().earningPaise(old), 1900);

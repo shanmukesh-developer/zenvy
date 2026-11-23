@@ -117,7 +117,30 @@ const feeSplit = (order) => {
   };
 };
 
+/**
+ * Where the whole order amount goes, for the rider's order history: the restaurant's share (item subtotal minus
+ * ZenWe's commission, the store payout snapshot Order.storeNetPaise), the rider's incentive, and ZenWe's share
+ * (everything else: commission + delivery / platform / packaging fees + taxes − discounts − the rider incentive).
+ * The three add up to what the customer paid (same parts as utils/revenueReport). null on orders without a fixed
+ * incentive or without the commission snapshot.
+ */
+const orderSplit = (order) => {
+  if (!order || isStallOrder(order) || storedIncentivePaise(order) === null) return null;
+  const v = order.storeNetPaise;
+  if (v === null || v === undefined || v === '' || !Number.isFinite(Number(v))) return null;
+  const customerPaise = Math.max(0, toPaise(order.finalPrice));
+  const restaurantPaise = Math.max(0, Math.round(Number(v)));
+  const riderPaise = earningPaise(order);
+  const rupees = (p) => Math.round(p) / 100;
+  return {
+    customerPaid: rupees(customerPaise),
+    restaurant: rupees(restaurantPaise),
+    zenwe: rupees(customerPaise - restaurantPaise - riderPaise),
+    riderIncentive: rupees(riderPaise),
+  };
+};
+
 module.exports = {
   BASE_DELIVERY_FEE, BASE_DELIVERY_FEE_PAISE, EARNING_ATTRS, DEFAULT_RIDER_INCENTIVE, INCENTIVE_KEY, isLegacyOrder, toPaise,
-  earningPaise, earningRupees, sumEarningsPaise, earningPaiseSql, isStallOrder, currentIncentivePaise, feeSplit,
+  earningPaise, earningRupees, sumEarningsPaise, earningPaiseSql, isStallOrder, currentIncentivePaise, feeSplit, orderSplit,
 };

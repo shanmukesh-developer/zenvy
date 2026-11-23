@@ -80,6 +80,14 @@
         }
       ],
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "ZenWe Rider uses your photos to attach the restaurant bill when you record a payment.",
+          "cameraPermission": "ZenWe Rider uses the camera to take a photo of the restaurant bill when you record a payment.",
+          "microphonePermission": false
+        }
+      ],
+      [
         "expo-location",
         {
           "locationWhenInUsePermission": "ZenWe Rider uses your location to show the customer where their order is and to measure distance to the store.",

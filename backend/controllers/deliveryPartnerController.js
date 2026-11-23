@@ -22,7 +22,7 @@ const MAX_ACTIVE_ORDERS = riderLoad.MAX_ACTIVE_JOBS; // jobs one rider may hold 
 
 // What the rider earns for an order (shared with the admin/support "mark delivered" path).
 const { riderPayout, pushNearestRiders, refreshRiderCurrentOrder } = require('../utils/riderDispatch');
-const { sumEarningsPaise, feeSplit } = require('../utils/riderEarnings');
+const { sumEarningsPaise, feeSplit, orderSplit } = require('../utils/riderEarnings');
 
 const normalizeItems = (items) => {
   if (typeof items === 'string') {
@@ -133,6 +133,8 @@ const riderOrderPayload = (order, restaurant, customer, { revealCustomer }) => {
     earnings: `₹${riderPayout(order)}`,
     // Where the customer's delivery + platform fee goes (ZenWe share, rider incentive); null on older orders.
     feeSplit: feeSplit(order),
+    // Where the whole order amount goes (restaurant, ZenWe, your incentive); null on older orders.
+    orderSplit: orderSplit(order),
     distance: Number.isFinite(distance) && distance > 0 ? distance : null,
     status: order.status,
     createdAt: order.createdAt,
@@ -625,6 +627,7 @@ const getOrderHistory = async (req, res) => {
         riderEarning: riderPayout(order),
         earnings: `₹${riderPayout(order)}`,
         feeSplit: feeSplit(order),
+        orderSplit: orderSplit(order),
         status: order.status,
         createdAt: order.createdAt,
         // Real handover time for orders delivered after deliveredAt was added; older rows fall back to updatedAt.

@@ -35,6 +35,12 @@ const initOrderModel = (sequelize) => {
     // keeps the rest of the delivery + platform fee; utils/riderEarnings). Paise. Null on orders placed before it:
     // those keep the old rule (the delivery fee), so past earnings and statements never change.
     riderEarningPaise: { type: DataTypes.INTEGER, allowNull: true },
+    // Pay-before-pickup stores (storePaidByRider): what the rider paid the restaurant at the counter out of the hand
+    // cash ZenWe gave them, with the bill photo (owner, 24 Nov 2026; controllers/riderStorePaymentController).
+    // A record for the rider and the admin only: it never changes the rider's COD cash, earnings or the bill.
+    riderStorePaidPaise: { type: DataTypes.INTEGER, allowNull: true },
+    riderStorePaidBillUrl: { type: DataTypes.TEXT, allowNull: true },
+    riderStorePaidAt: { type: DataTypes.DATE, allowNull: true },
     batchDiscount: { type: DataTypes.FLOAT, defaultValue: 0 },
     gateDiscount: { type: DataTypes.FLOAT, defaultValue: 0 },
     finalPrice: { type: DataTypes.FLOAT, allowNull: false },

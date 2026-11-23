@@ -71,6 +71,24 @@ export function FeeSplitBox({ order }: { order: RiderOrder }) {
   );
 }
 
+/**
+ * Where the whole order amount went, for order history: "Restaurant ₹216 · ZenWe ₹44 · You ₹3".
+ * Older orders (no split from the server) show nothing.
+ */
+export function OrderSplitLine({ order }: { order: RiderOrder }) {
+  const s = order.orderSplit;
+  if (!s) return null;
+  return (
+    <Text
+      style={[T.small, { color: C.muted }]}
+      numberOfLines={2}
+      accessibilityLabel={`Of ${s.customerPaid} rupees: restaurant ${s.restaurant}, ZenWe ${s.zenwe}, your incentive ${s.riderIncentive} rupees.`}
+    >
+      Restaurant {rupees(s.restaurant)} · ZenWe {rupees(s.zenwe)} · <Text style={{ color: C.greenDark, fontWeight: '800' }}>You {rupees(s.riderIncentive)}</Text>
+    </Text>
+  );
+}
+
 /** One-line version for earnings and history lists: "₹23 fees · ZenWe ₹20 · You ₹3". */
 export function FeeSplitLine({ order }: { order: RiderOrder }) {
   const f = order.feeSplit;
