@@ -23,6 +23,15 @@ export interface RiderOrderItem {
   options: string | null;
 }
 
+/** The customer's delivery + platform fee for one order, split between ZenWe and the rider (rupees). */
+export interface FeeSplit {
+  deliveryFee: number;
+  platformFee: number;
+  customerFees: number;
+  zenweShare: number;
+  riderIncentive: number;
+}
+
 export interface RiderOrder {
   id: string;
   shortId: string;
@@ -54,6 +63,8 @@ export interface RiderOrder {
   paymentStatus: string | null;
   amountToCollect: number | null;
   earning: number | null;
+  /** Where the customer's delivery + platform fee goes (ZenWe share, your incentive); null on older orders. */
+  feeSplit: FeeSplit | null;
   distanceKm: number | null;
   createdAt: string | null;
   deliveredAt: string | null;

@@ -7,6 +7,7 @@ import { Card, EmptyState, ErrorState, ScreenHeader, Skeleton } from '../ui/kit'
 import { useRider } from '../state/RiderStore';
 import { dayLabel, istDayKey, rupees, timeIST } from '../services/format';
 import type { RiderOrder } from '../types';
+import { FeeSplitLine } from './parts';
 
 export function OrderLine({ order, last, showDay }: { order: RiderOrder; last?: boolean; showDay?: boolean }) {
   const when = order.deliveredAt ?? order.createdAt;
@@ -26,6 +27,7 @@ export function OrderLine({ order, last, showDay }: { order: RiderOrder; last?: 
           {timeIST(when)}
           {cod && order.finalPrice !== null ? ` · Cash ${rupees(order.finalPrice)}` : order.paymentMethod ? ' · Prepaid' : ''}
         </Text>
+        {cancelled ? null : <FeeSplitLine order={order} />}
       </View>
       <Text style={[T.h3, { color: cancelled ? C.muted : C.greenDark }]}>{cancelled ? '—' : `+${rupees(order.earning)}`}</Text>
     </View>

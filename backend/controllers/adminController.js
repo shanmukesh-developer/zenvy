@@ -1698,7 +1698,7 @@ exports.getFinanceReport = async (req, res) => {
 
     const allDelivered = await Order.findAll({
       where: { status: 'Delivered' },
-      attributes: ['totalPrice', 'finalPrice', 'restaurantId', 'deliveryFee', 'platformFee', 'priceBreakdown', 'fulfilment', 'deliveryPartnerId', 'commissionAmountPaise'],
+      attributes: ['totalPrice', 'finalPrice', 'restaurantId', 'deliveryFee', 'platformFee', 'priceBreakdown', 'riderEarningPaise', 'fulfilment', 'deliveryPartnerId', 'commissionAmountPaise'],
       raw: true,
     });
     const restaurants = await Restaurant.findAll({ attributes: ['id', 'name', 'commissionRate', 'commissionType'], raw: true });

@@ -11,7 +11,7 @@ import { useVoice } from '../voice/useVoice';
 import { firstName, kitchenChip, stepFor, stepIndex } from '../services/orderModel';
 import { minutesAgo, rupees } from '../services/format';
 import { OFFER_SECONDS } from '../config';
-import { ItemsLine, PaymentPill, distanceTo } from './parts';
+import { FeeSplitLine, ItemsLine, PaymentPill, distanceTo } from './parts';
 import { AlertHealthBanner, StayReachableCard } from './StayReachable';
 import { JobsOnHome } from './Jobs';
 import { useJobs } from '../state/JobsStore';
@@ -337,8 +337,9 @@ function OfferCard({
       <View style={{ padding: S.lg, gap: S.md }}>
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: S.sm }}>
           <Text style={[T.money, { color: C.greenDark }]}>{order.earning !== null ? `+${rupees(order.earning)}` : '—'}</Text>
-          <Text style={[T.body, { color: C.muted, paddingBottom: 8 }]}>you earn</Text>
+          <Text style={[T.body, { color: C.muted, paddingBottom: 8 }]}>{order.feeSplit ? 'your incentive' : 'you earn'}</Text>
         </View>
+        <FeeSplitLine order={order} />
         <View style={{ gap: S.xs }}>
           <Text style={[T.label, { color: order.buyAtStore ? C.amber : C.muted }]}>
             {order.buyAtStore ? 'BUY AT STORE' : 'PICKUP'}{distance ? ` · ${distance} away` : ''}

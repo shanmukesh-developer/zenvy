@@ -31,6 +31,10 @@ const initOrderModel = (sequelize) => {
     // ZenWe platform fee charged on this order (utils/orderPricing, 5 Nov 2026; 0 on stall orders and on
     // orders placed before it). Part of finalPrice, so wallet refunds return it with everything else.
     platformFee: { type: DataTypes.FLOAT, allowNull: true, defaultValue: 0 },
+    // Rider incentive fixed when the order is placed (owner, 24 Nov 2026: the rider gets a flat ₹3 per order, ZenWe
+    // keeps the rest of the delivery + platform fee; utils/riderEarnings). Paise. Null on orders placed before it:
+    // those keep the old rule (the delivery fee), so past earnings and statements never change.
+    riderEarningPaise: { type: DataTypes.INTEGER, allowNull: true },
     batchDiscount: { type: DataTypes.FLOAT, defaultValue: 0 },
     gateDiscount: { type: DataTypes.FLOAT, defaultValue: 0 },
     finalPrice: { type: DataTypes.FLOAT, allowNull: false },

@@ -429,6 +429,8 @@ const createOrder = async (req, res) => {
     let createdOrder;
     // The id is chosen up front so the wallet ledger row can point at the order it paid for.
     const newOrderId = crypto.randomUUID();
+    // Rider incentive fixed now (flat ₹3 by default; utils/riderEarnings). Stall orders have no ZenWe rider.
+    const riderEarningPaise = isVendorOrder ? null : await require('../utils/riderEarnings').currentIncentivePaise();
     try {
       createdOrder = await sequelize.transaction(MONEY_TX, async (t) => {
         if (quote.coupon) {
@@ -463,6 +465,7 @@ const createOrder = async (req, res) => {
           totalPrice: quote.subtotal,
           deliveryFee: quote.deliveryFee,
           platformFee: quote.platformFee || 0,
+          riderEarningPaise,
           batchDiscount: quote.batchDiscount,
           gateDiscount: quote.perkDiscount, // badge / ZenPoints perks
           finalPrice: quote.finalPrice,
@@ -887,6 +890,8 @@ const storeAcceptBy = (o) => require('../utils/orderTimeouts').storeAcceptByIso(
 const ORDER_INTERNAL_FIELDS = ['deliveryPinAttempts', 'upiUTR', 'upiScreenshot', 'upiStatus', 'payoutSettled', 'riderPayoutSettled',
   // C6 settlement internals (commission snapshot, payout statements).
   'commissionRate', 'commissionType', 'commissionAmountPaise', 'storeNetPaise', 'commissionSource', 'payoutId', 'riderPayoutId',
+  // Rider incentive (utils/riderEarnings): rider pay is not shown to customers.
+  'riderEarningPaise',
   // C8: the frozen issuer details (served through GET /api/orders/:id/receipt instead).
   'receiptSnapshot'];
 // One row of the customer's order list (whitelist: MY_ORDER_FIELDS).

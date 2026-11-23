@@ -1,5 +1,5 @@
 // Turns server order payloads into RiderOrder. Rule: never invent a value. Unknown → null.
-import type { OrderStatus, PaymentMethod, RiderOrder, RiderOrderItem } from '../types';
+import type { FeeSplit, OrderStatus, PaymentMethod, RiderOrder, RiderOrderItem } from '../types';
 
 // Placeholder strings older servers sent in place of real data.
 const PLACEHOLDERS = new Set(
@@ -23,6 +23,18 @@ export function cleanText(v: unknown): string | null {
   const s = String(v).trim();
   if (!s || PLACEHOLDERS.has(s.toLowerCase())) return null;
   return s;
+}
+
+/** The server's fee split (ZenWe share + your incentive), or null when it is missing or incomplete. */
+export function toFeeSplit(raw: any): FeeSplit | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const deliveryFee = toNumber(raw.deliveryFee);
+  const platformFee = toNumber(raw.platformFee);
+  const customerFees = toNumber(raw.customerFees);
+  const zenweShare = toNumber(raw.zenweShare);
+  const riderIncentive = toNumber(raw.riderIncentive);
+  if (deliveryFee === null || platformFee === null || customerFees === null || zenweShare === null || riderIncentive === null) return null;
+  return { deliveryFee, platformFee, customerFees, zenweShare, riderIncentive };
 }
 
 export function toNumber(v: unknown): number | null {
@@ -227,6 +239,7 @@ export function normalizeOrder(raw: any): RiderOrder {
     paymentStatus,
     amountToCollect,
     earning: toNumber(raw?.riderEarning) ?? parseRupees(raw?.earnings),
+    feeSplit: toFeeSplit(raw?.feeSplit),
     distanceKm: distance !== null && distance > 0 ? distance : null,
     createdAt: cleanText(raw?.createdAt),
     deliveredAt: cleanText(raw?.deliveredAt),
