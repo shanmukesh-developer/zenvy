@@ -68,6 +68,21 @@ export async function getOrders(id: string, scope?: 'active'): Promise<Order[]> 
   return (Array.isArray(rows) ? rows : []).map(normalizeOrder).filter((o): o is Order => !!o);
 }
 
+export type DaySummary = { day: string; orders: number; deliveredSales: number; cashCollected: number };
+
+/**
+ * "Last 7 days" counted on the server (every order, not just the latest 200 the list above returns).
+ * null when the server is older and does not have the route yet: the caller keeps its local numbers.
+ */
+export async function getDailySummary(id: string): Promise<DaySummary[] | null> {
+  try {
+    const res = await apiFetch<{ days?: DaySummary[] }>(`/api/restaurants/${enc(id)}/daily-summary`);
+    return Array.isArray(res?.days) ? res.days : null;
+  } catch {
+    return null;
+  }
+}
+
 export type VendorStatus = 'Accepted' | 'OutForDelivery' | 'Delivered' | 'Cancelled';
 
 /** PUT /api/orders/:id/status (contract §3). Cancelled needs a reason (shown to the customer). */

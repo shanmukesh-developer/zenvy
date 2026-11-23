@@ -1,8 +1,9 @@
 // Shop: the big OPEN / CLOSED switch, shop hours, and today's real numbers (from the orders list).
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { shopLine, useOpenToggle } from '../components/ShopBar';
+import { getDailySummary, type DaySummary } from '../lib/api';
 import { deliveredDay, formatHHMM, istDayKey, rupees, todayIST, todayNumbers } from '../lib/model';
 import { useStore } from '../state/StoreProvider';
 import { color, font, radius, space, touch } from '../theme';
@@ -121,6 +122,18 @@ export default function ShopScreen() {
   const hours = toggle.store?.operatingHours || restaurant.operatingHours || null;
   const allDay = !hours?.start || !hours?.end || hours.start === hours.end;
   const line = shopLine(toggle.store);
+  const todayKey = todayIST();
+
+  // Earlier days come from the server (the orders list stops at 200 rows, so a busy stall's week came out
+  // short). Today stays on the live orders list: it is complete and updates with every new order.
+  const [summary, setSummary] = useState<DaySummary[] | null>(null);
+  const loadSummary = useCallback(async () => {
+    if (!restaurant.id) return;
+    const days = await getDailySummary(restaurant.id);
+    if (days) setSummary(days);
+  }, [restaurant.id]);
+  useEffect(() => { loadSummary(); }, [loadSummary, todayKey]);
+  const onRefresh = useCallback(() => { loadSummary(); return refreshOrders({ pull: true }); }, [loadSummary, refreshOrders]);
 
   const s = useMemo(() => {
     const t = todayNumbers(orders);
@@ -136,14 +149,18 @@ export default function ShopScreen() {
       const c = paidOn ? days.find((x) => x.key === istDayKey(paidOn)) : null;
       if (c) c.cash += o.finalPrice;
     }
+    const today = istDayKey(now);
+    for (const d of days) {
+      const srv = d.key !== today ? summary?.find((x) => x.day === d.key) : undefined;
+      if (srv) { d.orders = srv.orders; d.cash = srv.cashCollected; }
+    }
     return { ...t, days, maxDay: Math.max(1, ...days.map((d) => d.orders)) };
-  }, [orders]);
-  const todayKey = todayIST();
+  }, [orders, summary]);
 
   return (
     <ScrollView
       contentContainerStyle={{ padding: space.md, gap: space.md, paddingBottom: space.xxl * 2 }}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => refreshOrders({ pull: true })} colors={[color.text]} />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[color.text]} />}
     >
       {/* Big open / close */}
       <Card style={{ gap: space.sm }}>
@@ -177,7 +194,7 @@ export default function ShopScreen() {
         </View>
       </Card>
 
-      {ordersError ? <ErrorStrip text={ordersError} onRetry={() => refreshOrders({ pull: true })} busy={refreshing} /> : null}
+      {ordersError ? <ErrorStrip text={ordersError} onRetry={onRefresh} busy={refreshing} /> : null}
       <Text style={[font.h2, { color: color.text }]}>Today</Text>
       {!ordersLoaded ? <Text style={[font.body, { color: color.textMuted }]}>Loading…</Text> : null}
       <View style={styles.grid}>

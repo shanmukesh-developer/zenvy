@@ -1,5 +1,5 @@
 const express = require('express');
-const { refreshStoreToken, getRestaurants, getRestaurantMenu, createRestaurant, restaurantLogin, getRestaurantOrders, toggleMenuItemAvailability, setCategoryStock, updateMenuItemTags, createMenuItem, updateMenuItem, deleteMenuItem, getLocalVendors, incrementClickCount, toggleRestaurantOffline, setRestaurantOpen, setRestaurantHours, saveStoreFcmToken, getMenuItemById } = require('../controllers/restaurantController');
+const { refreshStoreToken, getRestaurants, getRestaurantMenu, createRestaurant, restaurantLogin, getRestaurantOrders, getRestaurantDailySummary, toggleMenuItemAvailability, setCategoryStock, updateMenuItemTags, createMenuItem, updateMenuItem, deleteMenuItem, getLocalVendors, incrementClickCount, toggleRestaurantOffline, setRestaurantOpen, setRestaurantHours, saveStoreFcmToken, getMenuItemById } = require('../controllers/restaurantController');
 const { protect, admin, vendor } = require('../middleware/authMiddleware');
 const rateLimit = require('express-rate-limit');
 const router = express.Router();
@@ -29,7 +29,9 @@ router.get('/', catalogCache, getRestaurants);
 router.get('/:id/menu', cacheGet('catalog', { ttlMs: 30 * 1000, bypass: (req) => require('../controllers/adminController').storeViewerPrivileged(req, req.params.id) }), getRestaurantMenu);
 router.post('/login', authLimiter, accountLockout, restaurantLogin);
 router.post('/refresh-token', protect, refreshStoreToken); // sliding store / vendor session (B28)
-router.get('/:id/orders', protect, vendor, getRestaurantOrders); 
+router.get('/:id/orders', protect, vendor, getRestaurantOrders);
+// 7-day order counts and money, counted on the server (the orders list above stops at 200 rows).
+router.get('/:id/daily-summary', protect, vendor, getRestaurantDailySummary);
 // C6: the store's own payout statements (API only; the partner apps have no earnings screen yet).
 router.get('/:id/payouts', protect, vendor, require('../controllers/financeController').getStorePayouts);
 // C8: the store's own legal name / FSSAI licence / GSTIN (PAN + payout details: admin only).

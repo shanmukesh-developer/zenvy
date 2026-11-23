@@ -299,6 +299,62 @@ const getRestaurantOrders = async (req, res) => {
   }
 };
 
+// @desc    Per-day order counts and money for the store's last 7 IST days (partner apps' "Last 7 days").
+// @route   GET /api/restaurants/:id/daily-summary
+// The orders list above stops at 200 rows, so a busy store's 7-day history computed on the phone from it
+// came out short. This counts every order in the window on the server. Same rules as the apps' local math:
+//   orders         - placed that day, not Cancelled
+//   deliveredSales - Delivered orders placed that day, food value (totalPrice)        (restaurant app)
+//   cashCollected  - Delivered cash orders, on the day delivered, bill (finalPrice)  (vendor app)
+const SUMMARY_DAYS = 7;
+const getRestaurantDailySummary = async (req, res) => {
+  try {
+    const isOwner = req.user.id === req.params.id;
+    const isAdmin = req.user.role?.toLowerCase() === 'admin';
+    if (!isOwner && !isAdmin) {
+      console.warn(`[SECURITY_WARN] User ${req.user.id} attempted to fetch the summary for restaurant ${req.params.id}`);
+      return res.status(403).json({ message: 'Not authorized to view this summary' });
+    }
+    const { istYmd, istStartOfDay } = require('../utils/istTime');
+    const DAY_MS = 86400000;
+    const now = Date.now();
+    const keys = [];
+    for (let i = SUMMARY_DAYS - 1; i >= 0; i--) keys.push(istYmd(new Date(now - i * DAY_MS)));
+    const start = istStartOfDay(new Date(now - (SUMMARY_DAYS - 1) * DAY_MS));
+    const days = new Map(keys.map((k) => [k, { day: k, orders: 0, deliveredSales: 0, cashCollected: 0 }]));
+
+    // Only the columns the totals need; one store's orders over 7 days.
+    const rows = await getOrderModel().findAll({
+      where: {
+        restaurantId: req.params.id,
+        [Op.or]: [{ createdAt: { [Op.gte]: start } }, { deliveredAt: { [Op.gte]: start } }],
+      },
+      attributes: ['status', 'createdAt', 'deliveredAt', 'updatedAt', 'totalPrice', 'finalPrice', 'paymentMethod'],
+      raw: true,
+    });
+    for (const o of rows) {
+      if (o.status === 'Cancelled') continue;
+      const placed = o.createdAt ? days.get(istYmd(o.createdAt)) : null;
+      if (placed) {
+        placed.orders += 1;
+        if (o.status === 'Delivered') placed.deliveredSales += Number(o.totalPrice) || 0;
+      }
+      if (o.status === 'Delivered' && o.paymentMethod === 'COD') {
+        const paidOn = o.deliveredAt || o.updatedAt || o.createdAt;
+        const paid = paidOn ? days.get(istYmd(paidOn)) : null;
+        if (paid) paid.cashCollected += Number(o.finalPrice) || 0;
+      }
+    }
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      days: [...days.values()].map((d) => ({ ...d, deliveredSales: Math.round(d.deliveredSales), cashCollected: Math.round(d.cashCollected) })),
+    });
+  } catch (error) {
+    console.error('[GET_DAILY_SUMMARY_ERROR]', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 // @desc    Get all active restaurants
 // @route   GET /api/restaurants
 // Home catalogue cache: the full listing is rebuilt at most every HOME_CACHE_MS, and any store /
@@ -1105,6 +1161,7 @@ module.exports = {
   createRestaurant,
   restaurantLogin,
   getRestaurantOrders,
+  getRestaurantDailySummary,
   toggleMenuItemAvailability,
   setCategoryStock,
   updateMenuItemTags,
