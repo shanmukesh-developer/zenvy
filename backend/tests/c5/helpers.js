@@ -90,6 +90,10 @@ const setup = async () => {
   app.use('/api/features', r('routes/featureRoutes'));
   app.use('/api/admin', r('routes/adminRoutes'));
   app.use('/api/rewards', r('routes/rewardRoutes'));
+  // App sections control (tests/c5/app_sections): the app's sections answer and the paused-section gates.
+  app.use('/api/config', r('routes/appConfigRoutes'));
+  app.use('/api/services', r('routes/serviceRoutes'));
+  app.use('/api/mega-basket', r('routes/megaBasketRoutes'));
   const server = await require('../listenFree').listenFree(app);
   ctx.server = server;
   ctx.base = `http://127.0.0.1:${server.address().port}`;

@@ -120,6 +120,7 @@ export const NAV_GROUPS: NavGroup[] = [
     id: 'config',
     label: 'Config',
     items: [
+      { href: '/app-sections', label: 'App sections', icon: 'layout', description: 'Turn each part of the customer app on or off: PG stays, Co-Ride, shared autos, rentals, events, services, Campus.', keywords: 'app sections enable disable pause launch switches pg coride co-ride rentals events services laundry campus feature on off' },
       { href: '/config', label: 'Settings and fees', icon: 'settings', description: 'Delivery fees, feature switches, app versions, receipts and legal pages.', keywords: 'config settings delivery fee feature flags app version legal terms privacy receipts gst' },
     ],
   },

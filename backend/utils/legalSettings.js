@@ -16,12 +16,14 @@ const KEY = 'LEGAL_SETTINGS';
 const DEFAULTS = Object.freeze({
   businessName: 'ZenWe',
   operatorName: 'Shanmukesh Kunjam',
-  contactEmail: 'projectshanmukh@gmail.com',
+  // ZenWe's public contact (owner, 24 Nov 2026): help, promotions and collaborations. scripts/support_email_v1.js
+  // moves saved settings that still have the old address.
+  contactEmail: 'zenwecustomer.support@gmail.com',
   registeredAddress: '',
   jurisdictionCity: '',
   // QA Q30 (5 Nov 2026): the page said "details will be published here". The operator is the grievance officer by
   // default (name and email are already public on these pages); phone and address stay for the owner to add in Admin.
-  grievanceOfficer: Object.freeze({ name: 'Shanmukesh Kunjam', designation: 'Founder and Grievance Officer', email: 'projectshanmukh@gmail.com', phone: '', address: '' }),
+  grievanceOfficer: Object.freeze({ name: 'Shanmukesh Kunjam', designation: 'Founder and Grievance Officer', email: 'zenwecustomer.support@gmail.com', phone: '', address: '' }),
   effectiveDate: '2026-10-18',
   policyVersion: '1.0',
 });

@@ -72,7 +72,7 @@ router.get('/nominatim-proxy', protect, nominatimLimiter, async (req, res) => {
 const lookup = async (url, res) => {
   try {
     const response = await fetch(url, {
-      headers: { 'User-Agent': 'ZCS-campus-app/1.0 (projectshanmukh@gmail.com)' },
+      headers: { 'User-Agent': 'ZenWe-campus-app/1.0 (zenwecustomer.support@gmail.com)' },
       signal: AbortSignal.timeout(8000),
     });
     if (!response.ok) {

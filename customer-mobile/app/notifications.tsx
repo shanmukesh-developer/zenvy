@@ -89,9 +89,9 @@ export default function NotificationsScreen() {
   const signedInRef = useRef(signedIn);
   signedInRef.current = signedIn;
 
-  // Each notification is marked read when it is opened (handleNotificationPress), or all at once with
-  // "Mark all read". Leaving the screen no longer marks everything read, so the user can keep some
-  // unread to deal with later.
+  // Owner, 24 Nov 2026: notifications the user has seen count as read without pressing "Mark all read".
+  // Every load that shows unread ones marks them read on the server / this phone (markSeen); this visit
+  // still highlights them as new, and the Home bell badge clears when the user goes back.
   useEffect(() => {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
@@ -138,6 +138,7 @@ export default function NotificationsScreen() {
       }
       list.sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
       if (mountedRef.current) setNotifications(list);
+      if (list.some((n) => !n.read)) markSeen();
     } catch (e) {
       console.error('Error loading notifications:', e);
     } finally {
@@ -186,6 +187,12 @@ export default function NotificationsScreen() {
   const saveLocal = (list: NotificationItem[]) => {
     if (signedIn) return;
     AsyncStorage.setItem(LOCAL_KEY, JSON.stringify(list)).catch(() => {});
+  };
+
+  // Seen = read, quietly: the list keeps its "new" look for this visit; a failure is retried on the next load.
+  const markSeen = () => {
+    markLocalAllRead();
+    if (signedInRef.current) apiFetch('/api/notifications/read-all', { method: 'PUT' }).catch(() => {});
   };
 
   const markAllAsRead = async () => {

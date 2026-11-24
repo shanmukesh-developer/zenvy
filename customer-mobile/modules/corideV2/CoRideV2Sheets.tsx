@@ -9,7 +9,6 @@ import { CR, R, W } from './coRideV2Theme';
 import { Sheet, PrimaryButton, OutlineButton, Avatar, Pill, Tap } from './CoRideV2Kit';
 import { ICheckCircle, IBadge, IInfo, IPhone, ISiren, STROKE } from './CoRideV2Icons';
 import { coRideApi } from './coRideV2Api';
-import { ZENVY_SUPPORT_PHONE } from '../../constants/api';
 import { RouteRail, whenOf, PriceBlock, poolTag } from './CoRideV2RideCard';
 import { useCoRide, KARMA_PER_RIDE, isOffer } from './coRideV2Data';
 import { useNav } from './coRideV2Nav';
@@ -67,7 +66,6 @@ function SosSheet({ rideId, onClose }: { rideId?: string; onClose: () => void })
       {[
         { n: '112', t: 'Call 112 · Emergency (police, ambulance, fire)', red: true },
         { n: '181', t: 'Women helpline', red: true },
-        { n: `+${ZENVY_SUPPORT_PHONE}`, t: 'ZenWe support desk', red: false },
       ].map((x) => (
         <Tap key={x.n} onPress={() => call(x.n, x.t)} label={`Call ${x.t}, ${x.n}`} style={st.sosRow}>
           <View style={[st.sosIcon, { backgroundColor: x.red ? CR.redSoft : CR.tint }]}><IPhone size={18} color={x.red ? CR.red : CR.primary} strokeWidth={STROKE} /></View>

@@ -72,7 +72,7 @@ export default function DeleteAccountModal({ visible, phone, onClose, onDeleted 
   const sendCode = async (viaEmail = false) => {
     setError(''); setInfo('');
     if (!/^[6-9]\d{9}$/.test(phone10)) {
-      setError('Your account has no valid mobile number. Please email projectshanmukh@gmail.com to delete it.');
+      setError('Your account has no valid mobile number. Please email zenwecustomer.support@gmail.com to delete it.');
       return;
     }
     const r = viaEmail ? await otp.sendEmail(phone10) : await otp.send(phone10);

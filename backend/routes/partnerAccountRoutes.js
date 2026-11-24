@@ -22,7 +22,7 @@ const PASSWORD_MAX_FAILS = 5;
 const PASSWORD_LOCK_MS = 15 * 60 * 1000;
 const passwordFails = new Map();
 const OTP_PURPOSE = 'delete_partner_account';
-const SUPPORT_EMAIL = 'projectshanmukh@gmail.com';
+const SUPPORT_EMAIL = 'zenwecustomer.support@gmail.com';
 
 // The account's own connection (also right in test harnesses), else the app's.
 const getSequelize = (acc) => (acc && acc.constructor && acc.constructor.sequelize) || require('../config/db').getSequelize();

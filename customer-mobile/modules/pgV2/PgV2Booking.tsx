@@ -15,7 +15,7 @@ import { IBed, ICalendar, IClipboard, IChevronDown, ICheck, IInfo, IAlert, IBuil
 import { usePgDetail, roomTypeName, sendBookingRequest, type SendResult } from './pgV2Data';
 import { useNav, usePgIdFor } from './pgV2Nav';
 import { useAuth } from '../../context/AuthContext';
-import { ZENVY_SUPPORT_WHATSAPP } from '../../constants/api';
+import { zenweMailto } from '../../constants/api';
 import PgV2SentSheet from './PgV2SentSheet';
 import { rentText } from './pgV2Data';
 import { inr, type PgRoomType } from '../../modules/pg/pgApi';
@@ -74,7 +74,7 @@ function Field({ icon: Icon, label, value, placeholder, onPress }: { icon: Lucid
 }
 
 /** Housing desk chat without a prefilled message (fallback when the server sends no link). */
-const DESK_URL = `https://wa.me/${ZENVY_SUPPORT_WHATSAPP.replace(/\D/g, '')}`;
+const DESK_URL = zenweMailto('PG stay booking');
 
 export default function PgV2Booking() {
   const nav = useNav();
@@ -152,7 +152,7 @@ export default function PgV2Booking() {
         options={DATES.map((d, i) => ({ key: d, label: prettyYmd(d), sub: i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : undefined }))} />
       <PgV2SentSheet
         open={sheetOpen && !!result?.ok}
-        info={result?.ok ? { pgName: pg.name, roomType: chosen ? roomTypeName(chosen.sharingType) : 'Room', moveIn: date ? shortYmd(date) : '', deskUrl: result.whatsappUrl || DESK_URL } : null}
+        info={result?.ok ? { pgName: pg.name, roomType: chosen ? roomTypeName(chosen.sharingType) : 'Room', moveIn: date ? shortYmd(date) : '', deskUrl: DESK_URL } : null}
         onViewBookings={() => { setSheetOpen(false); nav.push({ name: 'bookings' }); }}
         onDone={() => { setSheetOpen(false); nav.back(); }}
       />

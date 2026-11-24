@@ -1,14 +1,14 @@
 // Delivery timing groups (owner, 14 Nov 2026): WHEN each kind of product is delivered, set by the admin per product.
 //
 //   food     Restaurants, tiffins and fast food
-//              lunch    12:30–1:00 PM   order by 11:30 AM   (kept, owner's choice 14 Nov)
-//              evening  7:00–7:15 PM    order by 6:30 PM
+//              evening  7:00–7:15 PM    order by 6:30 PM    (the 12:30–1:00 PM lunch window was removed, owner 24 Nov)
 //                       8:00–8:15 PM    order by 7:15 PM
 //                       9:00–9:30 PM    order by 8:15 PM
 //   grocery  Groceries and fruits          12:00–2:00 PM   order by 7:00 AM the same day
 //   bakery   Bakeries, snacks and pickles  4:00–6:00 PM    order by 2:00 PM the same day
 //   (laundry and other services are booked with the customer's own pickup time: services, not slots)
-// After a cutoff the order books the next window (tomorrow's when today's are all closed).
+// After a cutoff the order books the next window (tomorrow's when today's are all closed). Food is booked for TODAY
+// only (owner, 24 Nov 2026: "only for food remove Tomorrow section"): after its last cutoff no food slot is open.
 //
 // A product's group: MenuItem.deliveryGroup (set by the admin per product) else Restaurant.deliveryGroup (the
 // store's default, admin) else a default from the store: BAKERY stores and stores named bakery / pickles / sweets /
@@ -25,7 +25,7 @@ const DEFAULT_GROUPS = Object.freeze({
   food: Object.freeze({
     label: 'Restaurants, tiffins & fast food',
     slots: Object.freeze([
-      Object.freeze({ id: 'F1', start: '12:30', end: '13:00', cutoff: '11:30' }),
+      // F1 12:30–1:00 PM removed (owner, 24 Nov 2026). Ids F2–F4 kept so slot ids already in apps / orders still match.
       Object.freeze({ id: 'F2', start: '19:00', end: '19:15', cutoff: '18:30' }),
       Object.freeze({ id: 'F3', start: '20:00', end: '20:15', cutoff: '19:15' }),
       Object.freeze({ id: 'F4', start: '21:00', end: '21:30', cutoff: '20:15' }),
@@ -41,6 +41,23 @@ const DEFAULT_GROUPS = Object.freeze({
   }),
 });
 const ID_PREFIX = { food: 'F', grocery: 'G', bakery: 'B' };
+
+// College-specific windows (owner, 24 Nov 2026): Amrita students get their own two FOOD windows; groceries and
+// bakeries, and SRM AP's food windows, stay as above. Ids A1 / A2 never clash with the F / G / B windows.
+//   order by 6:00 PM -> 7:15–7:30 PM      order by 7:00 PM -> 8:00–8:15 PM
+const CAMPUS_GROUP_SLOTS = Object.freeze({
+  amrita: Object.freeze({
+    food: Object.freeze([
+      Object.freeze({ id: 'A1', start: '19:15', end: '19:30', cutoff: '18:00' }),
+      Object.freeze({ id: 'A2', start: '20:00', end: '20:15', cutoff: '19:00' }),
+    ]),
+  }),
+});
+/** The college's own windows for a group, or null (use the shared windows). */
+const campusGroupSlots = (group, campusKey) => {
+  const c = campusKey && CAMPUS_GROUP_SLOTS[campusKey];
+  return (c && c[group]) || null;
+};
 
 const toMin = (hhmm) => {
   const m = HHMM_RE.exec(String(hhmm || '').trim());
@@ -124,6 +141,8 @@ module.exports = {
   CONFIG_KEY,
   DEFAULT_GROUPS,
   normalizeGroupSlots,
+  CAMPUS_GROUP_SLOTS,
+  campusGroupSlots,
   mergeConfig,
   groupsOff,
   cleanGroup,

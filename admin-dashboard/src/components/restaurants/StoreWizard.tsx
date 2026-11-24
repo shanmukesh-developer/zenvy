@@ -68,10 +68,9 @@ export interface WizardState {
   prepMinutes: string;
 }
 
-// Colleges a store can serve (backend utils/campuses). Amrita is listed so a store can be set up before it opens.
+// Colleges a store can serve (backend utils/campuses; VIT AP removed 24 Nov 2026).
 const COLLEGES: { key: string; label: string }[] = [
   { key: 'srmap', label: 'SRM AP' },
-  { key: 'vitap', label: 'VIT AP' },
   { key: 'amrita', label: 'Amrita' },
 ];
 const collegesText = (keys: string[]) => (keys.length ? COLLEGES.filter(c => keys.includes(c.key)).map(c => c.label).join(', ') : 'Every college');

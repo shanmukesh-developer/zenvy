@@ -12,7 +12,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { apiFetch, readJson, SERVER_BUSY_MESSAGE, NETWORK_ERROR_MESSAGE } from '../../utils/auth';
 import { readCache, writeCache, useSWRJson } from '../../utils/swrCache';
-import { ENDPOINTS, API_URL, ZENVY_SUPPORT_PHONE } from '../../constants/api';
+import { ENDPOINTS, API_URL } from '../../constants/api';
 import { fetchCatalogueType } from '../../utils/catalogueFetch';
 import { useCart, isCustomRequest } from '../../context/CartContext';
 import PromoCarousel from '../../components/PromoCarousel';
@@ -43,6 +43,7 @@ import DealsV2Home from '../../modules/dealsV2/DealsV2Screen';
 import { refreshRewards as refreshDealsV2Rewards } from '../../modules/dealsV2/dealsV2Data';
 import { CoRideV2OthersSection } from '../../modules/corideV2/CoRideV2Screen';
 import { recordSectionUse } from '../../utils/sectionUsage';
+import { servicesTitle, useLaunchSections, type LaunchSection } from '../../utils/launchSections';
 import SectionHeader, { FOOD_HEADER, type HeaderColors } from '../../modules/foodV2/FoodV2SectionHeader';
 import { useUnreadDot } from '../../modules/foodV2/FoodV2HomeTop';
 import { ACCENTS as OTHERS_ACCENTS, PILL_ACCENT, shadow as othersShadow, TYPE as OTHERS_TYPE, RADIUS as OTHERS_RADIUS, STATUS as OTHERS_STATUS, SURFACE as OTHERS_SURFACE } from '../../modules/others/othersTheme';
@@ -133,6 +134,8 @@ const sectionFromParam = (t?: string): string | null => {
   if (t === 'services' || t === 'tech' || t === 'repairs' || t === 'repair') return 'services';
   return null;
 };
+/** Sections the admins can pause (utils/launchSections; Laundry-only launch, 24 Nov 2026). */
+const PAUSABLE: string[] = ['pg', 'coride', 'rentals', 'events']; // Co-Ride: on by default, pausable from App sections
 const hubOf = (section: string): Hub => (HUB_SECTIONS.services.includes(section) ? 'services' : 'explore');
 
 
@@ -607,7 +610,11 @@ export function HubScreen({ hub }: { hub: Hub }) {
   const router = useRouter();
   const unreadDot = useUnreadDot();
   const { tab, sub, seg } = useLocalSearchParams<{ tab: string; sub?: string; seg?: string }>();
-  const homeSection = HUB_SECTIONS[hub][0];
+  // Laundry-only launch (owner, 24 Nov 2026; utils/launchSections): PG stays, Co-Ride, Rentals and Campus events show
+  // only while the admins have them switched on (GET /api/config/sections; no answer = hidden), and Tech & repairs is
+  // "Laundry Services" with laundry only. The Services tab then opens on Laundry Services.
+  const launch = useLaunchSections();
+  const homeSection = HUB_SECTIONS[hub].find((k) => !PAUSABLE.includes(k) || launch.on(k as LaunchSection)) || HUB_SECTIONS[hub][0];
   const [activeTab, setActiveTab] = useState(homeSection);
   const [groceryMode, setGroceryMode] = useState<'home' | 'categories'>('home');
   const [selectedBBOption, setSelectedBBOption] = useState('Fresh');
@@ -672,16 +679,20 @@ export function HubScreen({ hub }: { hub: Hub }) {
   // PG follows GET /api/config/sections (cached 60 s; the server reports it always live). Food & groceries, Co-Ride
   // (posting a ride is how its listings start), Rentals ("List your vehicle" lives there), Tech & Repairs and Deals
   // always show; unknown (offline, older server) shows everything.
-  const sectionsSWR = useSWRJson<{ sections?: Record<string, { live?: boolean }> }>('/api/config/sections', { freshMs: 60 * 1000 });
+  const sectionsSWR = useSWRJson<{ sections?: Record<string, { live?: boolean }> }>('/api/config/sections', { freshMs: 0 });
   const sectionLive = useCallback((key: string) => {
+    if (PAUSABLE.includes(key) && !launch.on(key as LaunchSection)) return false;
+    // App sections control (24 Nov 2026): Deals & spin follows the admins' Deals switch (unknown = shown).
+    if (key === 'promos' && !launch.on('deals')) return false;
     const sec = sectionsSWR.data?.sections;
     const k = key === 'pg' ? 'pg' : null;
     if (!k || !sec || !sec[k]) return true;
     return sec[k].live !== false;
-  }, [sectionsSWR.data]);
+  }, [sectionsSWR.data, launch]);
   const visibleTabs = useMemo(
-    () => TABS.filter(t => HUB_SECTIONS[hub].includes(t.key) && sectionLive(t.key)),
-    [sectionLive, hub],
+    () => TABS.filter(t => HUB_SECTIONS[hub].includes(t.key) && sectionLive(t.key))
+      .map(t => (t.key === 'services' ? { ...t, label: servicesTitle(launch.laundryOnly), icon: (launch.laundryOnly ? 'shirt-outline' : t.icon) as IonName } : t)),
+    [sectionLive, hub, launch],
   );
   // Tester, 5 Nov 2026: the Services tab opened on PG stays showing "0 PGs" (the server keeps PG live with no
   // listings). Opened plainly (no ?tab= link), it starts on Tech & repairs while PG has no listings; a link or a chip
@@ -1192,7 +1203,7 @@ export function HubScreen({ hub }: { hub: Hub }) {
   const autoRideOn = !!autoRideStatus?.enabled;
   // Old links into the auto tab (others?tab=coride&sub=auto[&seg=...]) open the Co-Ride v2 auto screens.
   useEffect(() => {
-    if ((tab === 'coride' || tab === 'rides') && sub === 'auto') {
+    if ((tab === 'coride' || tab === 'rides') && sub === 'auto' && launch.on('coride')) {
       const more = seg === 'bookings' || seg === 'shared' || seg === 'full' || seg === 'pickups';
       router.push((more ? `/coride/auto-more?seg=${seg}` : '/coride/auto') as any);
       // Used once (as the spin link): left in place, the next Co-Ride pill tap (setParams merges) pushed it again.
@@ -1603,6 +1614,25 @@ export function HubScreen({ hub }: { hub: Hub }) {
 
   // Food & groceries v2 (modules/foodV2): its own green header, section pills, listings, product
   // links and basket bar. Real catalogue, CartContext rules, Mega Basket and saved items live there.
+  // App sections control (24 Nov 2026): both Groceries and Bakeries switched off by the admins -> a paused notice
+  // instead of an empty shelf (one of them off: the server leaves its stores out of the catalogue).
+  if (activeTab === 'food' && !launch.on('grocery') && !launch.on('bakery')) {
+    const dealsShown = visibleTabs.some((t) => t.key === 'promos');
+    return (
+      <View style={{ flex: 1, backgroundColor: isDark ? '#09090B' : '#FFFFFF', paddingTop: topPad + 16 }}>
+        <StateCard
+          kind="off"
+          section="food"
+          title="Groceries are paused"
+          message="Grocery, bakery and snacks delivery is paused right now. Please check back soon."
+          actionLabel={dealsShown ? 'Open Deals & spin' : 'Back to Home'}
+          onAction={() => (dealsShown ? selectTab('promos') : router.replace('/(tabs)' as any))}
+          style={{ marginHorizontal: 16 }}
+        />
+        <StatusBarScrim color={FOOD_HEADER.top} />
+      </View>
+    );
+  }
   if (activeTab === 'food') {
     return (
       <View style={{ flex: 1, backgroundColor: isDark ? '#09090B' : '#FFFFFF' }}>

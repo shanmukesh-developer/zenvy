@@ -6,7 +6,7 @@ import { useDietLight } from '../components/local/dietLightTheme';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { apiFetch, readJson } from '../utils/auth';
-import { ENDPOINTS, ZENVY_SUPPORT_PHONE, ZENVY_SUPPORT_WHATSAPP } from '../constants/api';
+import { ENDPOINTS, ZENWE_SUPPORT_EMAIL, zenweMailto } from '../constants/api';
 import { connectSocket } from '../utils/socket';
 import { Ionicons } from '@expo/vector-icons';
 import { formatISTDateTime } from '../utils/format';
@@ -261,9 +261,7 @@ export default function SupportScreen() {
     Linking.openURL(url).catch(() => Alert.alert('Could not open', fallback));
   };
 
-  const whatsappText = linkedOrderId
-    ? `Hi ZenWe Support, I need help with order ${orderLabel(linkedOrderId)}`
-    : 'Hi ZenWe Support, I need help';
+  const mailSubject = linkedOrderId ? `Help with order ${orderLabel(linkedOrderId)}` : 'Help with ZenWe';
 
   const txt = colors.text;
   const txtSec = colors.textSecondary;
@@ -335,53 +333,32 @@ export default function SupportScreen() {
         {/* Helpline Card */}
         <View style={[s.formCard, { backgroundColor: cardBg, borderColor: border, marginBottom: 16 }]}>
           <Text style={[s.subText, { color: goldColor, marginBottom: 4 }]}>ZenWe helpline</Text>
-          <Text style={{ fontSize: 13, fontWeight: '800', color: txt, marginBottom: 4 }}>Need urgent help with a live order?</Text>
+          <Text style={{ fontSize: 13, fontWeight: '800', color: txt, marginBottom: 4 }}>Need help, or want to work with us?</Text>
           <Text style={{ fontSize: 12, color: txtSec, lineHeight: 16, marginBottom: 14 }}>
-            For a delayed order or trouble meeting your rider, message or call our support team directly.
+            For an order, raise a ticket below. You can also email us about anything else, including promotions and
+            collaborations.
           </Text>
 
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <TouchableOpacity
-              style={{
-                flex: 1,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6,
-                backgroundColor: 'rgba(34,197,94,0.12)',
-                borderWidth: 1,
-                borderColor: 'rgba(34,197,94,0.3)',
-                paddingVertical: 10,
-                borderRadius: 12
-              }}
-              onPress={() => openSupportLink(
-                `https://wa.me/${ZENVY_SUPPORT_WHATSAPP}?text=${encodeURIComponent(whatsappText)}`,
-                `WhatsApp us on +${ZENVY_SUPPORT_WHATSAPP}.`
-              )}
-            >
-              <Ionicons name="logo-whatsapp" size={15} color="#22C55E" />
-              <Text style={{ fontSize: 12, fontWeight: '800', color: '#22C55E' }}>WhatsApp</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={{
-                flex: 1,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 6,
-                backgroundColor: 'rgba(59,130,246,0.12)',
-                borderWidth: 1,
-                borderColor: 'rgba(59,130,246,0.3)',
-                paddingVertical: 10,
-                borderRadius: 12
-              }}
-              onPress={() => openSupportLink(`tel:+${ZENVY_SUPPORT_PHONE}`, `Call us on +${ZENVY_SUPPORT_PHONE}.`)}
-            >
-              <Ionicons name="call-outline" size={15} color={d.acc} />
-              <Text style={{ fontSize: 12, fontWeight: '800', color: d.acc }}>Call us</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+              backgroundColor: 'rgba(59,130,246,0.12)',
+              borderWidth: 1,
+              borderColor: 'rgba(59,130,246,0.3)',
+              paddingVertical: 10,
+              borderRadius: 12
+            }}
+            onPress={() => openSupportLink(zenweMailto(mailSubject), `Email us at ${ZENWE_SUPPORT_EMAIL}.`)}
+            accessibilityRole="button"
+            accessibilityLabel={`Email ZenWe at ${ZENWE_SUPPORT_EMAIL}`}
+          >
+            <Ionicons name="mail-outline" size={15} color={d.acc} />
+            <Text style={{ fontSize: 12, fontWeight: '800', color: d.acc }}>Email us</Text>
+          </TouchableOpacity>
+          <Text selectable style={{ fontSize: 12, color: txtSec, textAlign: 'center', marginTop: 8 }}>{ZENWE_SUPPORT_EMAIL}</Text>
         </View>
 
         {!user && (

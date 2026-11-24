@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, RefreshControl, FlatList, Dimensions, Platform, Modal, ActivityIndicator, Alert, Animated, Linking, BackHandler, Vibration, StatusBar } from 'react-native';
 import { takesSlotOrders } from '../../utils/storeOpenNow';
 import { useSectionUsage, rankByUsage, recordSectionUse } from '../../utils/sectionUsage';
+import { launchSectionOn, servicesTitle } from '../../utils/launchSections';
 import { CB_COUNTER_PHOTO } from '../../modules/campusBooking/cbTheme';
 import { KeyboardAvoidingView } from '../../components/KeyboardAvoidingView';
 // expo-image (memory + disk cache, downsampled CDN URLs) in place of react-native's Image
@@ -49,6 +50,9 @@ import { useIntroDone } from '../../utils/introGate';
 import { rememberIntroSoundSetting } from '../../components/intro/introSound';
 import SymbolIcon from '../../components/SymbolIcon';
 import VegModeSplash from '../../components/home/VegModeSplash';
+
+/** True once the Pure Veg splash has played in this app run (resets when the app is closed). */
+let vegSplashShownThisRun = false;
 
 const VaultTimerBadge = ({ pulseAnim }: { pulseAnim: any }) => {
   const [vaultTimer, setVaultTimer] = useState('00:00:00');
@@ -415,7 +419,11 @@ export default function HomeScreen() {
   const shownClassics = React.useMemo(() => classics.filter((c) => cuisineHasDishes(restaurants, c.name)), [classics, restaurants]);
   const [loadError, setLoadError] = useState<false | 'server' | 'network'>(false);
   // "Rides" shows only while Co-Ride has an upcoming ride (same check as the Others tab).
-  const sectionsSWR = useSWRJson<{ sections?: Record<string, { live?: boolean; on?: boolean }> }>('/api/config/sections', { freshMs: 60 * 1000 });
+  const sectionsSWR = useSWRJson<{ sections?: Record<string, { live?: boolean; on?: boolean }> }>('/api/config/sections', { freshMs: 0 });
+  // App sections control (owner, 24 Nov 2026; utils/launchSections): the admins' Food switch off replaces the restaurant
+  // lists with a "Food delivery is paused" card. Unknown (offline, older server) keeps food on.
+  const foodPaused = !launchSectionOn(sectionsSWR.data, 'food');
+  const groceriesOpen = launchSectionOn(sectionsSWR.data, 'grocery') || launchSectionOn(sectionsSWR.data, 'bakery');
   // The admins' Intro sound switch rides on the same answer; kept for the next app start (the intro plays before
   // the network answers).
   const introSoundOn = sectionsSWR.data?.sections?.introSound?.on;
@@ -427,11 +435,19 @@ export default function HomeScreen() {
   const sectionUsage = useSectionUsage();
   const homeCategories = React.useMemo(() => {
     const sec = sectionsSWR.data?.sections;
+    // Laundry-only launch (owner, 24 Nov 2026; utils/launchSections): PG stays, Co-Ride, Rentals and Campus events
+    // only while the admins have them on; the services card is "Laundry Services" while only laundry is open.
     const shown = CATEGORIES.filter((c) => {
-      if (c.key === 'pg') return sec?.pg?.live !== false;
+      if (c.key === 'pg') return launchSectionOn(sectionsSWR.data, 'pg') && sec?.pg?.live !== false;
+      if (c.key === 'rides') return launchSectionOn(sectionsSWR.data, 'coride');
+      if (c.key === 'rentals') return launchSectionOn(sectionsSWR.data, 'rentals');
+      if (c.key === 'events') return launchSectionOn(sectionsSWR.data, 'events');
+      // App sections control (24 Nov 2026): Food and Deals & spin follow the admins' switches (unknown = shown).
+      if (c.key === 'food') return launchSectionOn(sectionsSWR.data, 'food');
+      if (c.key === 'promos') return launchSectionOn(sectionsSWR.data, 'deals');
       return true;
-    });
-    return [CAMPUS_BOOKING_CARD, ...rankByUsage(shown, categoryUsageKeys, sectionUsage)];
+    }).map((c) => (c.key === 'services' ? { ...c, label: servicesTitle(!launchSectionOn(sectionsSWR.data, 'techServices')) } : c));
+    return [...(launchSectionOn(sectionsSWR.data, 'local') ? [CAMPUS_BOOKING_CARD] : []), ...rankByUsage(shown, categoryUsageKeys, sectionUsage)];
   }, [sectionsSWR.data, sectionUsage]);
   // Live count for the "All restaurants" header: food stores in the grid and how many are open now
   const storeCounts = React.useMemo(() => {
@@ -443,13 +459,14 @@ export default function HomeScreen() {
   // Promo slides for switched-off sections are left out. "Find a ride" waits for a confirmed live
   // Co-Ride (no slide that pops in and out); PG stays unless the server says it is off.
   // Owner, 4 Nov 2026: no PG banner while PG stays has no listings (it led to an empty page). Unknown keeps it.
-  const pgHomeSWR = useSWRJson<{ pgs?: unknown[] }>('/api/pg/home', { freshMs: 5 * 60 * 1000 });
+  const pgHomeSWR = useSWRJson<{ pgs?: unknown[] }>('/api/pg/home', { freshMs: 5 * 60 * 1000, enabled: launchSectionOn(sectionsSWR.data, 'pg') });
   const noPgListed = Array.isArray(pgHomeSWR.data?.pgs) && pgHomeSWR.data!.pgs!.length === 0;
   const hiddenPromoSlides = React.useMemo(() => {
     const sec = sectionsSWR.data?.sections;
     const out: string[] = [];
-    if (sec?.coride?.live !== true) out.push('ride');
-    if (sec?.pg?.live === false || noPgListed) out.push('stays');
+    if (sec?.coride?.live !== true || !launchSectionOn(sectionsSWR.data, 'coride')) out.push('ride');
+    if (sec?.pg?.live === false || noPgListed || !launchSectionOn(sectionsSWR.data, 'pg')) out.push('stays');
+    if (!launchSectionOn(sectionsSWR.data, 'events')) out.push('campus-events');
     if (sec?.campus?.live === false) out.push('campus-buddy');
     return out;
   }, [sectionsSWR.data, noPgListed]);
@@ -460,10 +477,11 @@ export default function HomeScreen() {
   const hiddenServiceTiles = React.useMemo(() => {
     const sec = sectionsSWR.data?.sections;
     const out = new Set<ServiceKey>();
-    if (sec?.coride?.live !== true) out.add('rides');
-    if (sec?.rentals?.live === false) out.add('rentals');
+    if (sec?.coride?.live !== true || !launchSectionOn(sectionsSWR.data, 'coride')) out.add('rides');
+    if (sec?.rentals?.live === false || !launchSectionOn(sectionsSWR.data, 'rentals')) out.add('rentals');
     // Owner, 9 Nov 2026: the PG tile shows even while no PG is listed yet; only the admin switch hides it.
-    if (sec?.pg?.live === false) out.add('pg');
+    if (sec?.pg?.live === false || !launchSectionOn(sectionsSWR.data, 'pg')) out.add('pg');
+    if (!launchSectionOn(sectionsSWR.data, 'events')) out.add('events');
     return out;
   }, [sectionsSWR.data]);
 
@@ -792,7 +810,7 @@ export default function HomeScreen() {
   const campusList = useCampusHostelBlocks(true);
   const campusName = React.useMemo(() => {
     const c = campusList.find((x) => x.code.toLowerCase() === (college || 'srmap'));
-    return c?.name || (college === 'vitap' ? 'VIT-AP University' : 'SRM University AP');
+    return c?.name || (college === 'amrita' ? 'Amrita University' : 'SRM University AP');
   }, [campusList, college]);
   const openDish = useCallback((d: { id: string }) => router.push(`/products/${d.id}` as any), [router]);
   // Search box words: real dishes on today's menus and real stores, split by the Non-veg / Veg tab.
@@ -930,7 +948,9 @@ export default function HomeScreen() {
             onChange={(nextVeg) => {
               if (nextVeg === vegOnly) return;
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-              if (nextVeg) setVegSplash(true);
+              // Owner, 24 Nov 2026: the Pure Veg splash plays only the first time per app open;
+              // later switches go straight to Veg. Closing the app resets it (module memory).
+              if (nextVeg && !vegSplashShownThisRun) { vegSplashShownThisRun = true; setVegSplash(true); }
               setVegOnly(nextVeg);
               setDietMode(nextVeg ? 'veg' : 'all');
               if (!nextVeg && filter === 'veg') setFilter('all');
@@ -938,7 +958,7 @@ export default function HomeScreen() {
           />
           <LinearGradient colors={[ht.sel, ht.sel2]} style={{ paddingTop: 6, paddingBottom: 34, borderBottomLeftRadius: 32, borderBottomRightRadius: 32, borderTopLeftRadius: vegOnly ? 22 : 0, borderTopRightRadius: vegOnly ? 0 : 22 }}>
             {/* Owner, 13 Nov 2026 (approved prototype): the real-deals slideshow is the panel; the ad slider left Home. */}
-            <DealSlideshow deals={heroDeals} theme={ht} onOpen={openDish} active={homeFocused} />
+            {!foodPaused && <DealSlideshow deals={heroDeals} theme={ht} onOpen={openDish} active={homeFocused} />}
           </LinearGradient>
         </View>
 
@@ -961,6 +981,22 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
+        {foodPaused ? (
+          <View style={[s.emptyFilterBox, { backgroundColor: cardBg, borderColor: isDark ? goldBorderColor : COLORS.borderLight, marginTop: 18, marginHorizontal: 16 }]}>
+            <Ionicons name="pause-circle-outline" size={34} color={txtSec} style={{ marginBottom: 8 }} />
+            <Text style={[s.emptyFilterTitle, { color: txt }]}>Food delivery is paused</Text>
+            <Text style={[s.emptyFilterSub, { color: txtSec }]}>Restaurant orders are paused right now. Please check back soon.</Text>
+            {groceriesOpen && (
+              <TouchableOpacity
+                style={[s.resetFilterBtn, { backgroundColor: goldColor }]}
+                onPress={() => router.push({ pathname: '/(tabs)/others', params: { tab: 'food' } } as any)}
+                activeOpacity={0.85}
+              >
+                <Text style={[s.resetFilterBtnText, { color: isDark ? '#000' : '#fff' }]}>Shop groceries</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        ) : (<>
         {/* ── FOOD TYPES: All + real dish types for this diet; a tap opens that food's page ── */}
         <FoodTypeRow veg={vegOnly} theme={ht} isDark={isDark} dishes={homeDishes} onOpen={(label) => router.push({ pathname: '/food-type/[type]', params: { type: label, veg: vegOnly ? '1' : '0' } } as any)} />
 
@@ -1296,6 +1332,7 @@ export default function HomeScreen() {
             <Text style={[s.resetFilterBtnText, { color: goldColor }]}>Show fewer</Text>
           </TouchableOpacity>
         )}
+        </>)}
 
 
         <View style={{ height: 18 }} />

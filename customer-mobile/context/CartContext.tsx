@@ -908,6 +908,10 @@ export interface OrderQuote {
   deliveryFee: number;
   /** ZenWe platform fee per order (server config 'platform_fee'; 0 on stall orders and older servers). */
   platformFee?: number;
+  /** Door delivery (SRM AP only): offered, its price (₹10) and the fee on this bill (0 unless chosen). */
+  doorDeliveryAvailable?: boolean;
+  doorDeliveryPrice?: number;
+  doorDeliveryFee?: number;
   packagingFee: number;
   taxes: number;
   discounts: { type: string; label: string; amount: number }[];
@@ -943,7 +947,7 @@ export const friendlyNetworkMessage = "We couldn't reach ZenWe. Check your inter
  * Live bill for one basket (default: the active one) from POST /api/orders/quote. Custom Mega Basket requests are not part of it.
  * `enabled` should be false for guests (the quote needs a signed-in customer).
  */
-export function useBasketQuote(couponCode: string | null | undefined, enabled: boolean, active: boolean = true, basket?: BasketKind, storeId?: string | null) {
+export function useBasketQuote(couponCode: string | null | undefined, enabled: boolean, active: boolean = true, basket?: BasketKind, storeId?: string | null, doorDelivery: boolean = false) {
   const { baskets, activeBasket } = useCartState();
   const kind: BasketKind = basket || activeBasket;
   const cart = baskets[kind];
@@ -1006,7 +1010,7 @@ export function useBasketQuote(couponCode: string | null | undefined, enabled: b
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     // A silent (live-sync) re-quote only keeps the old bill on screen when the basket and coupon are
     // unchanged; if they changed in the same render, the old bill no longer matches and must not be placeable.
-    const requestSig = `${kind}|${storeId || ''}|${signature}|${couponCode || ''}|${college || ''}`;
+    const requestSig = `${kind}|${storeId || ''}|${signature}|${couponCode || ''}|${college || ''}|${doorDelivery ? 'door' : ''}`;
     // Owner, 10 Nov 2026 ("second restaurant keeps calculating"): a live update could cancel the first request and the
     // silent retry then swallowed its own failure, leaving "Calculating your bill…" for ever. Silent only while this
     // basket already has its bill on screen.
@@ -1023,7 +1027,7 @@ export function useBasketQuote(couponCode: string | null | undefined, enabled: b
       try {
         const res = await apiFetch('/api/orders/quote', {
           method: 'POST',
-          body: JSON.stringify({ items: orderLines.map(toOrderLine), ...(couponCode ? { couponCode } : {}), ...(college ? { campus: college } : {}) }),
+          body: JSON.stringify({ items: orderLines.map(toOrderLine), ...(couponCode ? { couponCode } : {}), ...(college ? { campus: college } : {}), ...(doorDelivery ? { doorDelivery: true } : {}) }),
           ...(controller ? { signal: controller.signal } : {}),
         });
         const data = await res.json().catch(() => null);
@@ -1058,7 +1062,7 @@ export function useBasketQuote(couponCode: string | null | undefined, enabled: b
       try { controller?.abort(); } catch {}
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signature, couponCode, enabled, nonce, active, kind, college, storeId]);
+  }, [signature, couponCode, enabled, nonce, active, kind, college, storeId, doorDelivery]);
 
   // Only this basket's result counts; until it arrives the caller sees "loading" (a skeleton), not the
   // last basket's bill.

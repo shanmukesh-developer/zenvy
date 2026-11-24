@@ -36,9 +36,9 @@ const get = async () => {
 test('empty catalogue: Co-Ride hidden; PG always shown (owner, 2 Nov 2026); Rentals unknown (model not loaded) shown', async () => {
   const r = await get();
   assert.strictEqual(r.status, 200);
-  assert.deepStrictEqual(r.body.sections.pg, { count: 0, live: true });
-  assert.deepStrictEqual(r.body.sections.coride, { count: 0, live: false });
-  assert.deepStrictEqual(r.body.sections.rentals, { count: null, live: true });
+  assert.deepStrictEqual(r.body.sections.pg, { count: 0, live: true, on: true });
+  assert.deepStrictEqual(r.body.sections.coride, { count: 0, live: false, on: true });
+  assert.deepStrictEqual(r.body.sections.rentals, { count: null, live: true, on: true });
 });
 
 test('one active PG is counted / one upcoming ride brings Co-Ride back; past or cancelled rides do not', async () => {
@@ -64,11 +64,11 @@ test('one active PG is counted / one upcoming ride brings Co-Ride back; past or 
   await ride({ departureTime: new Date(Date.now() - 3600 * 1000) });
   await ride({ status: 'Cancelled' });
   let r = await get();
-  assert.deepStrictEqual(r.body.sections.pg, { count: 1, live: true });
-  assert.deepStrictEqual(r.body.sections.coride, { count: 0, live: false });
+  assert.deepStrictEqual(r.body.sections.pg, { count: 1, live: true, on: true });
+  assert.deepStrictEqual(r.body.sections.coride, { count: 0, live: false, on: true });
   await ride({});
   r = await get();
-  assert.deepStrictEqual(r.body.sections.coride, { count: 1, live: true });
+  assert.deepStrictEqual(r.body.sections.coride, { count: 1, live: true, on: true });
   assert.ok(attrs(M.PGHostel).includes('isActive'));
 });
 

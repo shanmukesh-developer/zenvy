@@ -121,6 +121,19 @@ const forCollege = (req, stores) => {
   return college ? stores.filter((s) => campuses.storeServes(s, college)) : stores;
 };
 
+// App sections control (owner, 24 Nov 2026; utils/appSections): stores of a paused Groceries-tab section (grocery or
+// bakery timing group, utils/deliveryGroups) are left out of the catalogue. Add-on stores (EXTRAS) always stay. A
+// switch that cannot be read counts as on. Orders are refused in utils/orderPricing either way.
+const PAUSABLE_GROUPS = ['grocery', 'bakery'];
+const withoutPausedStores = async (stores) => {
+  const sw = require('../utils/featureSwitches');
+  const off = [];
+  for (const g of PAUSABLE_GROUPS) { try { if (!(await sw.isOn(g))) off.push(g); } catch { /* on */ } }
+  if (!off.length) return stores;
+  const { storeGroup } = require('../utils/deliveryGroups');
+  return stores.filter((s) => String(s.vendorType || '').toUpperCase() === 'EXTRAS' || !off.includes(storeGroup(s)));
+};
+
 const storeWhere = async (types) => {
   const where = { isActive: true, ...(await require('../utils/receiptSettings').listingWhere()) };
   where.vendorType = types ? { [Op.in]: types } : { [Op.in]: STORE_VENDOR_TYPES };
@@ -132,7 +145,7 @@ const storeWhere = async (types) => {
 const getTypes = async (req, res) => {
   try {
     const Restaurant = getRestaurantModel();
-    const stores = forCollege(req, await Restaurant.findAll({ where: await storeWhere(null), attributes: ['vendorType', 'visibleCampuses'] }));
+    const stores = await withoutPausedStores(forCollege(req, await Restaurant.findAll({ where: await storeWhere(null), attributes: ['vendorType', 'visibleCampuses', 'name', 'deliveryGroup'] })));
     const counts = {};
     for (const s of stores) counts[s.vendorType] = (counts[s.vendorType] || 0) + 1;
     res.json(Object.entries(counts).map(([vendorType, storeCount]) => ({ vendorType, storeCount })));
@@ -151,7 +164,7 @@ const getStores = async (req, res) => {
     const types = resolveVendorTypes(req.query.type);
     const where = types ? { isActive: true, ...(await require('../utils/receiptSettings').listingWhere()), vendorType: { [Op.in]: types } } : await storeWhere(null);
     if (req.query.campus) where.campus = String(req.query.campus);
-    const stores = forCollege(req, await Restaurant.findAll({ where, order: [['name', 'ASC']], attributes: { exclude: STORE_EXCLUDE } }));
+    const stores = await withoutPausedStores(forCollege(req, await Restaurant.findAll({ where, order: [['name', 'ASC']], attributes: { exclude: STORE_EXCLUDE } })));
     const ids = stores.map(s => s.id);
     const counts = {};
     if (ids.length) {
@@ -186,7 +199,7 @@ const getItems = async (req, res) => {
       if (!UUID_RE.test(String(req.query.storeId))) return res.json({ items: [], total: 0, stores: [] });
       storeFilter.id = String(req.query.storeId);
     }
-    const stores = forCollege(req, await Restaurant.findAll({ where: storeFilter, attributes: { exclude: STORE_EXCLUDE } }));
+    const stores = await withoutPausedStores(forCollege(req, await Restaurant.findAll({ where: storeFilter, attributes: { exclude: STORE_EXCLUDE } })));
     if (!stores.length) return res.json({ items: [], total: 0, stores: [] });
     const storeMap = new Map(stores.map(s => [s.id, s]));
 
@@ -248,7 +261,7 @@ const getMinPrices = async (req, res) => {
     const typeMap = requested.map((type) => [type, resolveVendorTypes(type)]).filter(([, vts]) => vts && vts.length);
     const allVendorTypes = [...new Set(typeMap.flatMap(([, vts]) => vts))];
     if (allVendorTypes.length) {
-      const stores = forCollege(req, await Restaurant.findAll({ where: { isActive: true, ...(await require('../utils/receiptSettings').listingWhere()), vendorType: { [Op.in]: allVendorTypes } }, attributes: ['id', 'vendorType', 'visibleCampuses'], raw: true }));
+      const stores = await withoutPausedStores(forCollege(req, await Restaurant.findAll({ where: { isActive: true, ...(await require('../utils/receiptSettings').listingWhere()), vendorType: { [Op.in]: allVendorTypes } }, attributes: ['id', 'vendorType', 'visibleCampuses', 'name', 'deliveryGroup'], raw: true })));
       if (stores.length) {
         // Same "in stock" rule as /items (unavailable items whose restock time has passed count again).
         const rows = await MenuItem.findAll({

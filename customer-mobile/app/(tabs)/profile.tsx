@@ -44,7 +44,6 @@ import Constants from 'expo-constants';
 import { pickAndUploadImage, alertUploadError } from '../../utils/imageUpload';
 import DeleteAccountModal from '../../components/DeleteAccountModal';
 import ProfileSettingsSection from '../../components/ProfileSettingsSection';
-import AboutZcsModal from '../../components/AboutZcsModal';
 import { cleanRoom, cleanBlock, formatHostel, useCampusHostelBlocks, HOSTEL_BLOCK_MAX, ROOM_NUMBER_MAX } from '../../utils/hostel';
 import { useCollege } from '../../utils/college';
 import { openLegal, LEGAL_LABELS, LegalPage } from '../../utils/legal';
@@ -159,7 +158,6 @@ export default function ProfileScreen() {
   // Feature states
   const [refreshing, setRefreshing] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [showAbout, setShowAbout] = useState(false);
   const [showDeleteAccount, setShowDeleteAccount] = useState(false);
 
   // Edit fields
@@ -765,10 +763,9 @@ export default function ProfileScreen() {
             soundsOn={soundsOn}
             onSoundsChange={(v) => { setSoundsOn(v); setSoundsEnabled(v); }}
             onOpenHelp={() => router.push('/help' as any)}
-            onOpenAbout={() => setShowAbout(true)}
+            onOpenAbout={() => router.push('/about' as any)}
           />
         </ScrollView>
-        <AboutZcsModal visible={showAbout} onClose={() => setShowAbout(false)} />
       </View>
     );
   }
@@ -1395,7 +1392,7 @@ export default function ProfileScreen() {
               <Text style={[s.supportBtnDesc, { color: txtSec }]}>Hours, payments, refunds</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={[s.supportBtn, { backgroundColor: cardBg, borderColor: border }, lift]} onPress={() => setShowAbout(true)}>
+            <TouchableOpacity style={[s.supportBtn, { backgroundColor: cardBg, borderColor: border }, lift]} onPress={() => router.push('/about' as any)}>
               <Ionicons name="information-circle-outline" size={20} color={goldColor} />
               <Text style={[s.supportBtnTitle, { color: txt }]}>About ZenWe</Text>
               <Text style={[s.supportBtnDesc, { color: txtSec }]}>Version & info</Text>
@@ -1827,7 +1824,6 @@ export default function ProfileScreen() {
       />
 
       {/* ─── About ZCS ─── */}
-      <AboutZcsModal visible={showAbout} onClose={() => setShowAbout(false)} />
 
     </View>
   );

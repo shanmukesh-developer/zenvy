@@ -24,7 +24,9 @@ router.get('/stalls', noStore, handler(St.listStalls, 'CAMPUS_BOOKING_STALLS'));
 router.get('/stalls/:id', noStore, handler(St.stallDetail, 'CAMPUS_BOOKING_STALL'));
 router.use(protect, studentOnly, noStore);
 router.get('/home', handler(St.home, 'CAMPUS_BOOKING_HOME'));
-router.post('/bookings', handler(St.create, 'CAMPUS_BOOKING_CREATE'));
+// App sections control (owner, 24 Nov 2026): no new In-Campus bookings while LOCAL_ENABLED is off (403 FEATURE_OFF);
+// a student's bookings stay readable, payable (proof) and cancellable.
+router.post('/bookings', require('../../utils/featureSwitches').requireOn('local'), handler(St.create, 'CAMPUS_BOOKING_CREATE'));
 router.get('/bookings', handler(St.listMine, 'CAMPUS_BOOKING_MINE'));
 router.get('/bookings/:id', handler(St.getMine, 'CAMPUS_BOOKING_ONE'));
 router.post('/bookings/:id/proof', handler(St.submitProof, 'CAMPUS_BOOKING_PROOF'));

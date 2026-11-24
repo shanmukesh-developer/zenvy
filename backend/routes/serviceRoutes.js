@@ -281,7 +281,21 @@ const announceServiceBooking = (booking) => {
 // returns the first booking (duplicate: true); 409 only while the first one is still being saved.
 const BOOKING_KEY_WINDOW_MS = 24 * 60 * 60 * 1000;
 const MAX_OPEN_SERVICE_BOOKINGS = 8;
-router.post('/book', protect, async (req, res) => {
+// Laundry-only launch (owner, 24 Nov 2026): while the admins' TECH_SERVICES_ENABLED switch is off
+// (utils/featureSwitches techServices) only LAUNDRY can be booked; every other service type answers 403 FEATURE_OFF.
+// Existing bookings (track, cancel, rate, partner updates) are untouched.
+// App sections control (owner, 24 Nov 2026): LAUNDRY bookings follow the admins' LAUNDRY_ENABLED switch the same way.
+const laundryOnlyGate = async (req, res, next) => {
+  const type = (req.body || {}).serviceType;
+  const sw = require('../utils/featureSwitches');
+  if (type === 'LAUNDRY') {
+    if (await sw.isOn('laundry')) return next();
+    return res.status(403).json({ success: false, ...sw.offBody('laundry') });
+  }
+  if (await sw.isOn('techServices')) return next();
+  return res.status(403).json({ success: false, ...sw.offBody('techServices') });
+};
+router.post('/book', protect, laundryOnlyGate, async (req, res) => {
   const { readIdempotencyKey, claim } = require('../utils/idempotency');
   const rawSpecs = (req.body || {}).specifications;
   const bookingKey = readIdempotencyKey(req, rawSpecs && typeof rawSpecs === 'object' ? rawSpecs.clientRequestId : undefined, (req.body || {}).idempotencyKey);

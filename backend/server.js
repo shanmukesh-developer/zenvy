@@ -1438,6 +1438,30 @@ const initializeApp = async () => {
     inBootQueue(() => require('./scripts/legal_business_name_zenwe_v1').runLegalBusinessNameZenwe())
       .then((r) => console.log('🏷️ [LEGAL_BUSINESS_NAME_ZENWE]', JSON.stringify(r)))
       .catch((err) => console.warn('⚠️ [LEGAL_BUSINESS_NAME_ZENWE] failed:', err.message));
+    // 🏛️ Delivery colleges SRM AP + Amrita only (owner, 24 Nov 2026), once (CAMPUS_SRM_AMRITA_V1_DONE): new SRM hostel
+    // blocks, VIT-AP campus row switched off, Amrita added and opened. scripts/campus_srm_amrita_v1.js;
+    // DISABLE_CAMPUS_SRM_AMRITA_ONCE=true switches it off.
+    inBootQueue(() => require('./scripts/campus_srm_amrita_v1').runCampusSrmAmritaOnce())
+      .then((r) => console.log('🏛️ [CAMPUS_SRM_AMRITA]', JSON.stringify(r)))
+      .catch((err) => console.warn('⚠️ [CAMPUS_SRM_AMRITA] failed:', err.message));
+    // 🍱 Food lunch window 12:30–1:00 PM removed from the admins' saved food windows (owner, 24 Nov 2026), once
+    // (FOOD_LUNCH_SLOT_OFF_V1_DONE). scripts/food_lunch_slot_off_v1.js; DISABLE_FOOD_LUNCH_SLOT_OFF_ONCE=true skips it.
+    inBootQueue(() => require('./scripts/food_lunch_slot_off_v1').runFoodLunchSlotOffOnce())
+      .then((r) => console.log('🍱 [FOOD_LUNCH_SLOT_OFF]', JSON.stringify(r)))
+      .catch((err) => console.warn('⚠️ [FOOD_LUNCH_SLOT_OFF] failed:', err.message));
+    // ✉️ Public contact email zenwecustomer.support@gmail.com in saved legal settings (owner, 24 Nov 2026), once
+    // (SUPPORT_EMAIL_V1_DONE). scripts/support_email_v1.js; DISABLE_SUPPORT_EMAIL_ONCE=true skips it.
+    inBootQueue(() => require('./scripts/support_email_v1').runSupportEmailOnce())
+      .then((r) => console.log('✉️ [SUPPORT_EMAIL]', JSON.stringify(r)))
+      .catch((err) => console.warn('⚠️ [SUPPORT_EMAIL] failed:', err.message));
+    // 🧺 Laundry-only launch (owner, 24 Nov 2026), once (SERVICES_LAUNDRY_ONLY_V1_DONE): PG stays, Co-Ride (bike pool +
+    // Auto-ride), Rentals, Campus events and every non-laundry service are switched off with the admins' own switches,
+    // so their APIs refuse new bookings and GET /api/config/sections tells the app to hide them; nothing is deleted
+    // and the admins switch each back on later. scripts/services_laundry_only_v1.js;
+    // DISABLE_SERVICES_LAUNDRY_ONLY_ONCE=true switches it off.
+    inBootQueue(() => require('./scripts/services_laundry_only_v1').runLaundryOnlyOnce())
+      .then((r) => console.log('🧺 [LAUNDRY_ONLY_ONCE]', JSON.stringify(r)))
+      .catch((err) => console.warn('⚠️ [LAUNDRY_ONLY_ONCE] failed:', err.message));
 
 
 

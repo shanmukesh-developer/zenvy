@@ -10,6 +10,7 @@ import { playSound, resumeAudio } from '../../utils/sounds';
 import { useTabBarTones } from '../../utils/tabBarTone';
 import LocalStoreIcon from '../../components/LocalStoreIcon';
 import { useNavAccent } from '../../components/local/dietLightTheme';
+import { useLaunchSections } from '../../utils/launchSections';
 
 // Ionicons has no shop-with-a-pin glyph: the Local tab draws its own (components/LocalStoreIcon).
 const LOCAL_STORE_ICON = 'local-store';
@@ -130,6 +131,7 @@ export default function TabLayout() {
       others: make('Groceries', 'storefront'),
       orders: make('Orders', 'receipt'),
       // Services replaced the Basket tab (owner, 28 Oct 2026); the basket opens from the floating button on Home and Local.
+      // Holds Co-Ride and Laundry Services (owner, 24 Nov 2026).
       services: make('Services', 'construct'),
     };
   }, []);
@@ -138,12 +140,15 @@ export default function TabLayout() {
   // stay tab routes, so every link to them keeps working, but have no button in the bar. A plain object on purpose:
   // expo-router reads `href` only from options that are not a function.
   const hiddenOptions = useMemo(() => ({ href: null }), []);
+  // App sections control (owner, 24 Nov 2026; utils/launchSections): the admins' Local switch off hides the Local
+  // button (the route stays, so the paused-section guard in app/_layout sends links to it Home). Unknown = shown.
+  const localOn = useLaunchSections().on('local');
 
   return (
     <Tabs screenOptions={screenOptions}>
       {/* The bar, left to right: instant switch, no transition */}
       <Tabs.Screen name="index" options={tabOptions.index} listeners={TAB_LISTENERS} />
-      <Tabs.Screen name="local" options={tabOptions.local} listeners={TAB_LISTENERS} />
+      <Tabs.Screen name="local" options={localOn ? tabOptions.local : hiddenOptions} listeners={TAB_LISTENERS} />
       <Tabs.Screen name="others" options={tabOptions.others} listeners={TAB_LISTENERS} />
       <Tabs.Screen name="orders" options={tabOptions.orders} listeners={TAB_LISTENERS} />
       <Tabs.Screen name="services" options={tabOptions.services} listeners={TAB_LISTENERS} />

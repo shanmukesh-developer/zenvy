@@ -17,7 +17,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { summarizeCustomizations } from '../../components/CustomizeDrawer';
 import AmbientBackground from '../../components/AmbientBackground';
 import { useDietLight } from '../../components/local/dietLightTheme';
-const EMPTY_CART = require('../../assets/home-redesign-2026-11-09/basket-fab-full-cart-gemini-2026-11-10.webp');
+const EMPTY_CART = require('../../assets/home-redesign-2026-11-09/basket-fab-zenwe-veg-basket-2026-11-24.webp'); // owner's basket logo, 24 Nov 2026
 import { StaggeredSection, FloatingPulse, BounceIn } from '../../components/AnimatedSection';
 import DopaminePressable, { ActionPressable } from '../../components/DopaminePressable';
 import SafeImage from '../../components/SafeImage';

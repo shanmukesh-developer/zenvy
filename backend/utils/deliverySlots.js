@@ -236,16 +236,18 @@ const buildSlot = (ymd, def, dayWord, leadMinutes, at) => {
  * [{ id: 'YYYY-MM-DD|S1', date, slot, day, startISO, endISO, label: 'Today 12:30–1:00 PM', timeLabel,
  *    deliveryLabel, closesAtISO, closesAtLabel, open, closedReason?, closedText? }]
  */
-const availableSlots = (at = now(), leadMinutes = LEAD_MINUTES.standard, { table = slotTable() } = {}) => {
+const availableSlots = (at = now(), leadMinutes = LEAD_MINUTES.standard, { table = slotTable(), todayOnly = false } = {}) => {
   const t = at instanceof Date ? at : new Date(at);
   const lead = Math.max(0, Number(leadMinutes) || 0);
   const today = istYmd(t);
   const tomorrow = addDaysYmd(today, 1);
   return [
     ...table.map((d) => buildSlot(today, d, 'today', lead, t)),
-    ...table.map((d) => buildSlot(tomorrow, d, 'tomorrow', lead, t)),
+    ...(todayOnly ? [] : table.map((d) => buildSlot(tomorrow, d, 'tomorrow', lead, t))),
   ];
 };
+/** Timing groups booked for today only (owner, 24 Nov 2026: food has no "Tomorrow" section). */
+const TODAY_ONLY_GROUPS = Object.freeze(['food']);
 
 const parseSlotId = (value) => {
   const m = SLOT_ID_RE.exec(String(value || '').trim());
@@ -268,19 +270,23 @@ const applyStoreHours = (slots, store) => slots.map((s) => {
 });
 
 /** Slots for a basket: lead from items, cutoffs, store hours. → { leadMinutes, leadKind, leadReason, slots, nextSlot, defaultSlotId } */
-const slotsForOrder = ({ items = [], store = null, at = now(), lead = null, group = null } = {}) => {
+const slotsForOrder = ({ items = [], store = null, at = now(), lead = null, group = null, campus = null } = {}) => {
   const l = lead || leadForItems(items);
   // Timing groups (utils/deliveryGroups): the basket's products decide the windows. A basket whose products are in
   // different groups reports them all (mixedGroups) and orderPricing asks for separate orders.
   const tables = groupTables();
   const groups = tables ? (group ? [group] : groupsLib.groupsOfItems(items, store)) : null;
   const g = groups ? groups[0] : null;
-  const table = g ? tables[g].slots : slotTable();
-  const slots = applyStoreHours(availableSlots(at, l.leadMinutes, { table }), store);
+  // A college with its own windows for this group (utils/deliveryGroups CAMPUS_GROUP_SLOTS: Amrita's food).
+  const campusKey = campus ? require('./campuses').normalizeKey(campus) : null;
+  const table = g ? (groupsLib.campusGroupSlots(g, campusKey) || tables[g].slots) : slotTable();
+  const todayOnly = !!g && TODAY_ONLY_GROUPS.includes(g);
+  const slots = applyStoreHours(availableSlots(at, l.leadMinutes, { table, todayOnly }), store);
   const next = slots.find((s) => s.open) || null;
   return {
     enabled: true,
     group: g,
+    todayOnly,
     groupLabel: g ? tables[g].label : null,
     ...(groups && groups.length > 1 ? { mixedGroups: groups } : {}),
     leadMinutes: l.leadMinutes,
@@ -343,7 +349,7 @@ const resolveSlot = (requested, info) => {
   });
   if (!isSlotId(requested)) {
     // Older app builds send 'ASAP' (or nothing): the earliest open slot for these items.
-    if (!info.nextSlot) return refuse('No delivery slot is open for this order today or tomorrow.');
+    if (!info.nextSlot) return refuse(info.todayOnly ? "Today's last food delivery slot has closed. Please order again tomorrow." : 'No delivery slot is open for this order today or tomorrow.');
     return { ok: true, slot: info.nextSlot, legacy: true };
   }
   const id = String(requested).trim();

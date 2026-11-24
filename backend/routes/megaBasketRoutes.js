@@ -35,7 +35,9 @@ router.get('/admin/all', protect, admin, getAllBaskets);
 router.get('/fees', cacheGet('megaBasketFees', { ttlMs: 5 * 60 * 1000 }), getBasketFees);
 
 // Customer Endpoints
-router.post('/', protect, createBasket);
+// App sections control (owner, 24 Nov 2026): no new shopping list while MEGA_BASKET_ENABLED is off (403 FEATURE_OFF);
+// existing baskets stay readable, payable and cancellable.
+router.post('/', protect, require('../utils/featureSwitches').requireOn('megaBasket'), createBasket);
 router.get('/', protect, getCustomerBaskets);
 router.get('/:id', protect, getBasket);
 router.post('/:id/pay', protect, payBasket);

@@ -14,7 +14,7 @@ import { CachedImage } from '../SafeImage';
 import { FoodMark, type HomeTheme } from './HomeRedesign2026';
 import { useAuth } from '../../context/AuthContext';
 import { useCampusHostelBlocks, saveHostelToProfile, cleanBlock, cleanRoom } from '../../utils/hostel';
-import { useCollege, setCollege, isCollegeKey, type CollegeKey } from '../../utils/college';
+import { useCollege, setCollege, isCollegeKey, AMRITA_DROP, type CollegeKey } from '../../utils/college';
 
 const W = Dimensions.get('window').width;
 const rupees = (v: number) => `₹${Math.round(v)}`;
@@ -367,22 +367,24 @@ export function DeliverySheet({ visible, onClose, theme, isDark, drop, onSave }:
   const [err, setErr] = useState('');
   useEffect(() => {
     if (!visible) return;
-    setCode(college || (campuses[0] ? (campuses[0].code.toLowerCase() as CollegeKey) : null));
+    setCode(college);
     setBlock(drop?.block || ''); setRoom(drop?.room || ''); setErr('');
   }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
-  const camp = campuses.find((c) => c.code.toLowerCase() === code) || campuses[0];
+  const camp = campuses.find((c) => c.code.toLowerCase() === code) || null;
+  // Owner, 24 Nov 2026: SRM AP asks hostel block, then room; Amrita has one drop point, its main gate.
+  const isAmrita = code === 'amrita';
   const card = isDark ? '#1A1817' : '#FFFFFF';
   const page = isDark ? '#0E0D0C' : '#F6F4F2';
   const line = isDark ? '#2A2725' : '#ECE7E3';
   const txt = isDark ? '#F4F1EE' : '#14110F';
   const sub = isDark ? '#A39A93' : '#7A716B';
-  const ok = !!block.trim() && !!cleanRoom(room) && !busy;
+  const ok = !busy && (isAmrita || (!!code && !!block.trim() && !!cleanRoom(room)));
   const save = async () => {
     if (!ok) return;
     setBusy(true); setErr('');
     try {
       if (code && code !== college) setCollege(code);
-      await onSave({ block: cleanBlock(block), room: cleanRoom(room) });
+      await onSave(isAmrita ? { block: AMRITA_DROP, room: '' } : { block: cleanBlock(block), room: cleanRoom(room) });
       onClose();
     } catch (e: any) {
       setErr(e?.message || "Couldn't save. Try again.");
@@ -396,32 +398,42 @@ export function DeliverySheet({ visible, onClose, theme, isDark, drop, onSave }:
         <View style={[st.sheet, { backgroundColor: card }]}>
           <View style={[st.grab, { backgroundColor: line }]} />
           <Text style={[st.sheetTitle, { color: txt }]}>Where should we deliver?</Text>
-          <Text style={[st.sheetNote, { color: sub }]}>The rider calls you at your hostel gate.</Text>
+          <Text style={[st.sheetNote, { color: sub }]}>{isAmrita ? 'The rider meets you at the main gate.' : 'The rider calls you at your hostel gate.'}</Text>
           <Text style={[st.lbl, { color: sub }]}>CAMPUS</Text>
           <View style={st.chips}>
             {campuses.length === 0 ? <ActivityIndicator color={theme.acc} /> : campuses.map((c) => {
               const k = c.code.toLowerCase() as CollegeKey;
               return (
-                <Pressable key={c.code} onPress={() => { setCode(k); if (k !== code) setBlock(''); }} style={chip(k === code)} accessibilityRole="radio" accessibilityState={{ selected: k === code }}>
+                <Pressable key={c.code} onPress={() => { if (k !== code) { setBlock(''); setRoom(''); } setCode(k); }} style={chip(k === code)} accessibilityRole="radio" accessibilityState={{ selected: k === code }}>
                   <Text style={[st.chipTxt, { color: k === code ? theme.acc : txt }]}>{c.name}</Text>
                 </Pressable>
               );
             })}
           </View>
-          <Text style={[st.lbl, { color: sub }]}>HOSTEL BLOCK</Text>
-          {camp && camp.blocks.length ? (
-            <View style={st.chips}>
-              {camp.blocks.map((b) => (
-                <Pressable key={b} onPress={() => setBlock(b)} style={chip(b === block)} accessibilityRole="radio" accessibilityState={{ selected: b === block }}>
-                  <Text style={[st.chipTxt, { color: b === block ? theme.acc : txt }]}>{b}</Text>
-                </Pressable>
-              ))}
+          {isAmrita ? (<>
+            <Text style={[st.lbl, { color: sub }]}>DROP POINT</Text>
+            <View style={[st.chip, { backgroundColor: `${theme.acc}1A`, borderColor: theme.acc, flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start' }]}>
+              <Ionicons name="location" size={14} color={theme.acc} />
+              <Text style={[st.chipTxt, { color: theme.acc }]}>{AMRITA_DROP}</Text>
             </View>
-          ) : (
-            <TextInput value={block} onChangeText={setBlock} placeholder="Hostel block, e.g. Ganga" placeholderTextColor={sub} maxLength={60} style={[st.input, { backgroundColor: page, borderColor: line, color: txt }]} />
-          )}
-          <Text style={[st.lbl, { color: sub }]}>ROOM NUMBER</Text>
-          <TextInput value={room} onChangeText={setRoom} placeholder="e.g. 304" placeholderTextColor={sub} maxLength={20} style={[st.input, { backgroundColor: page, borderColor: line, color: txt }]} />
+          </>) : code ? (<>
+            <Text style={[st.lbl, { color: sub }]}>HOSTEL BLOCK</Text>
+            {camp && camp.blocks.length ? (
+              <View style={st.chips}>
+                {camp.blocks.map((b) => (
+                  <Pressable key={b} onPress={() => setBlock(b)} style={chip(b === block)} accessibilityRole="radio" accessibilityState={{ selected: b === block }}>
+                    <Text style={[st.chipTxt, { color: b === block ? theme.acc : txt }]}>{b}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : (
+              <TextInput value={block} onChangeText={setBlock} placeholder="Hostel block" placeholderTextColor={sub} maxLength={60} style={[st.input, { backgroundColor: page, borderColor: line, color: txt }]} />
+            )}
+            {!!block.trim() && (<>
+              <Text style={[st.lbl, { color: sub }]}>ROOM NUMBER</Text>
+              <TextInput value={room} onChangeText={setRoom} placeholder="e.g. 304" placeholderTextColor={sub} maxLength={20} style={[st.input, { backgroundColor: page, borderColor: line, color: txt }]} />
+            </>)}
+          </>) : null}
           {!!err && <Text style={st.err}>{err}</Text>}
           <Pressable onPress={save} disabled={!ok} style={[st.saveBtn, { backgroundColor: theme.acc, opacity: ok ? 1 : 0.45 }]} accessibilityRole="button">
             {busy ? <ActivityIndicator color="#fff" /> : <Text style={st.saveTxt}>Deliver here</Text>}
@@ -457,8 +469,9 @@ const st = StyleSheet.create({
   orderWas: { color: 'rgba(255,255,255,0.65)', fontSize: 10, textDecorationLine: 'line-through', fontWeight: '600' },
   save: { fontSize: 11, fontWeight: '700', marginTop: 6 },
   plate: { position: 'absolute', right: 18, top: 28, width: 170, height: 170 },
-  plateRim: { width: 170, height: 170, borderRadius: 85, padding: 8, backgroundColor: 'rgba(0,0,0,0.28)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.10)', shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 18, shadowOffset: { width: 0, height: 14 }, elevation: 8 },
-  plateImg: { width: '100%', height: '100%', borderRadius: 80 },
+  // Owner, 24 Nov 2026: no ring around the slideshow photo (the dark rim, outline and shadow are gone) - just the image.
+  plateRim: { width: 170, height: 170, borderRadius: 85, overflow: 'hidden' },
+  plateImg: { width: '100%', height: '100%', borderRadius: 85 },
   dots: { flexDirection: 'row', gap: 6, paddingHorizontal: 20, marginTop: -14, height: 22 },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.3)' },
   dotOn: { width: 20, backgroundColor: '#FFFFFF' },

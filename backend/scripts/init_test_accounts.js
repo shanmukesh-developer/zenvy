@@ -30,6 +30,19 @@ async function run() {
   });
   console.log(`✅ User ${createdUser ? 'created' : 'already exists'}: ${user.name}`);
 
+  // The apps only accept Indian mobile numbers (6-9 first digit), so 1234567890 cannot sign in from the
+  // customer login screen. This local customer can (add it to TEST_VIEWER_PHONES to see test data).
+  const [customer, createdCustomer] = await User.findOrCreate({
+    where: { phone: '6000000201' },
+    defaults: {
+      name: 'E2E Customer',
+      password: 'testpassword',
+      hostelBlock: 'X',
+      roomNumber: '102'
+    }
+  });
+  console.log(`✅ Customer ${createdCustomer ? 'created' : 'already exists'}: ${customer.name} (6000000201)`);
+
   const [partner, createdPartner] = await DeliveryPartner.findOrCreate({
     where: { phone: '1234567890' },
     defaults: {

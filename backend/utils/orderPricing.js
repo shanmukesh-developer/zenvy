@@ -18,6 +18,11 @@ const MAX_LINES = 50;
 // overrides: the old GlobalConfig 'delivery_fee' / 'platform_fee' keys are ignored on purpose. The only override is a
 // store's own special delivery price (Restaurant.deliveryFeeOverride, admin-set; null = ₹19). Stalls pay neither.
 const DEFAULT_DELIVERY_FEE = 19;
+// Door delivery (owner, 24 Nov 2026): an optional ₹10 on top of the delivery charge (₹23 -> ₹33 with the platform fee)
+// to have the rider bring the order to the room door instead of the hostel gate. SRM AP only (Amrita has one drop
+// point, its main gate); never on stall orders (the vendor delivers). Not covered by delivery coupons or perks.
+const DOOR_DELIVERY_FEE = 10;
+const DOOR_DELIVERY_CAMPUSES = Object.freeze(['srmap']);
 const DEFAULT_PLATFORM_FEE = 4;
 const ADDON_VENDOR_TYPE = 'EXTRAS';
 
@@ -145,6 +150,26 @@ const assertCouponFitsOrder = async (coupon, { store, subtotal, pricedLines }) =
   }
 };
 
+/**
+ * Refuse a basket whose section the admins paused (utils/featureSwitches food / grocery / bakery / local).
+ * Throws PricingError 400 SECTION_PAUSED { section }. A switch that cannot be read counts as on.
+ */
+const assertSectionsOpen = async ({ store, isStall, lines }) => {
+  const sw = require('./featureSwitches');
+  const refuse = (section) => {
+    throw new PricingError(400, 'SECTION_PAUSED', sw.SWITCHES[section].message, { section, storeId: store.id });
+  };
+  if (isStall) {
+    if (!(await sw.isOn('local'))) refuse('local');
+    return;
+  }
+  const groupsLib = require('./deliveryGroups');
+  const main = lines.filter((l) => l.dbItem && (l.store.vendorType || '').toUpperCase() !== ADDON_VENDOR_TYPE).map((l) => l.dbItem);
+  for (const g of groupsLib.groupsOfItems(main, store)) {
+    if (sw.SWITCHES[g] && !(await sw.isOn(g))) refuse(g);
+  }
+};
+
 const isItemAvailable = (dbItem, now = new Date()) => {
   if (dbItem.isAvailable) return true;
   // "Out of stock until X" items come back on their own once X has passed.
@@ -158,7 +183,7 @@ const isItemAvailable = (dbItem, now = new Date()) => {
  * @param {string} [args.couponCode]
  * @returns quote (throws PricingError for anything the customer must fix)
  */
-const computeOrderQuote = async ({ user, items, couponCode }) => {
+const computeOrderQuote = async ({ user, items, couponCode, doorDelivery = false, campus = null }) => {
   if (!Array.isArray(items) || items.length === 0) {
     throw new PricingError(400, 'EMPTY_BASKET', 'Your basket is empty. Add something tasty first!');
   }
@@ -257,6 +282,10 @@ const computeOrderQuote = async ({ user, items, couponCode }) => {
   if (isStall && store.campusBookingEnabled === true) {
     throw new PricingError(400, 'BOOKING_ONLY_STALL', `${store.name} takes In-Campus pre-bookings only. Book it from In-Campus Booking and collect it at the stall.`, { storeId: store.id });
   }
+  // App sections control (owner, 24 Nov 2026; utils/appSections): a paused section takes no new orders. Stalls are the
+  // Local tab; every other basket is paused by its products' delivery timing group (food / grocery / bakery). The
+  // grouping is read even with DELIVERY_GROUPS=off (it only classifies; slots are untouched).
+  await assertSectionsOpen({ store, isStall, lines });
   const slotsLib = require('./deliverySlots');
   await slotsLib.loadConfig();
   const slotNow = slotsLib.now();
@@ -271,7 +300,7 @@ const computeOrderQuote = async ({ user, items, couponCode }) => {
   let deliverySlots = null;
   if (slotsLib.slotsEnabled() && !isStall) {
     // Slots already holding SLOT_MAX_ORDERS orders show "Full" (utils/deliverySlots applyCapacity).
-    deliverySlots = await slotsLib.applyCapacity(slotsLib.slotsForOrder({ items: lines.map((l) => l.dbItem), store, at: slotNow }));
+    deliverySlots = await slotsLib.applyCapacity(slotsLib.slotsForOrder({ items: lines.map((l) => l.dbItem), store, at: slotNow, campus }));
     // Timing groups (utils/deliveryGroups, owner 14 Nov 2026): products delivered at different times never share
     // an order (the app splits them; an older build gets this message).
     if (deliverySlots.mixedGroups) {
@@ -286,11 +315,15 @@ const computeOrderQuote = async ({ user, items, couponCode }) => {
     }
     if (!deliverySlots.nextSlot) {
       const allFull = deliverySlots.slots.some((s) => s.closedReason === 'full');
+      // Food is booked for today only (utils/deliverySlots TODAY_ONLY_GROUPS): after the last cutoff say so plainly.
+      const todayOnly = !!deliverySlots.todayOnly;
       const message = !openState.isOpen
         ? openState.message
         : allFull
-          ? "Today's and tomorrow's delivery slots are full. Please check again later."
-          : `${store.name} is not taking orders for today's or tomorrow's delivery slots.`;
+          ? (todayOnly ? "Today's food delivery slots are full. Please order again tomorrow." : "Today's and tomorrow's delivery slots are full. Please check again later.")
+          : todayOnly
+            ? "Today's last food delivery slot has closed. Please order again tomorrow."
+            : `${store.name} is not taking orders for today's or tomorrow's delivery slots.`;
       throw new PricingError(400, 'STORE_CLOSED', message, { storeId: store.id, opensAt: openState.opensAt || null });
     }
   } else if (!openState.isOpen) {
@@ -349,6 +382,9 @@ const computeOrderQuote = async ({ user, items, couponCode }) => {
   // ZenWe platform fee per order, fixed ₹4 (never discounted: delivery coupons / perks only touch deliveryFee, item
   // discounts only the item total).
   const platformFee = isStall ? 0 : DEFAULT_PLATFORM_FEE;
+  const campusKey = campus ? require('./campuses').normalizeKey(campus) : null;
+  const doorDeliveryAvailable = !isStall && !!campusKey && DOOR_DELIVERY_CAMPUSES.includes(campusKey);
+  const doorDeliveryFee = doorDelivery === true && doorDeliveryAvailable ? DOOR_DELIVERY_FEE : 0;
   // Per-store packaging fee and minimum order (admin-set, 0 = none).
   const packagingFee = money(Math.min(500, Math.max(0, Number(store.packagingFee) || 0)));
   const minOrderValue = money(Math.max(0, Number(store.minOrderValue) || 0));
@@ -421,7 +457,7 @@ const computeOrderQuote = async ({ user, items, couponCode }) => {
   }
 
   const totalDiscount = money(discounts.reduce((s, d) => s + d.amount, 0));
-  const finalPrice = money(Math.max(0, subtotal + deliveryFee + platformFee + packagingFee + taxes - totalDiscount));
+  const finalPrice = money(Math.max(0, subtotal + deliveryFee + doorDeliveryFee + platformFee + packagingFee + taxes - totalDiscount));
   const sumOf = (types) => money(discounts.filter(d => types.includes(d.type)).reduce((s, d) => s + d.amount, 0));
 
   return {
@@ -434,6 +470,10 @@ const computeOrderQuote = async ({ user, items, couponCode }) => {
     subtotal,
     deliveryFee,
     platformFee,
+    // Door delivery: offered (doorDeliveryAvailable, SRM AP) and the ₹10 when the student chose it (0 otherwise).
+    doorDeliveryAvailable,
+    doorDeliveryFee,
+    doorDeliveryPrice: DOOR_DELIVERY_FEE,
     packagingFee,
     taxes,
     discounts,
@@ -470,6 +510,7 @@ module.exports = {
   money,
   UUID_RE,
   DEFAULT_DELIVERY_FEE,
+  DOOR_DELIVERY_FEE,
   DEFAULT_PLATFORM_FEE,
   DELIVERY_FEE_OVERRIDE_MAX,
   storeDeliveryFee

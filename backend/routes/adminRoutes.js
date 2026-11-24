@@ -181,6 +181,9 @@ router.delete('/coupons/:id', deleteCoupon);
 // Colleges served (utils/campuses): open / paused / soon per college, and how many stores serve each.
 router.get('/campuses', require('../controllers/adminController').getCampuses);
 router.put('/campuses/:key', require('../controllers/adminController').setCampusStatus);
+// App sections control: turn any app section on or off (utils/appSections).
+router.get('/app-sections', require('../controllers/adminController').getAppSections);
+router.put('/app-sections/:key', require('../controllers/adminController').setAppSection);
 router.get('/config', getGlobalConfig);
 router.post('/config', updateGlobalConfig);
 // Delivery timing groups (utils/deliveryGroups, owner 14 Nov 2026): the windows in force per group (saved over the

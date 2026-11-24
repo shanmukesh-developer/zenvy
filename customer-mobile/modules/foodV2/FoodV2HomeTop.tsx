@@ -45,7 +45,9 @@ export function useUnreadDot() {
   return dot;
 }
 
-const PILLS: [string, string][] = [['food', 'Food & groceries'], ['pg', 'PG stays'], ['services', 'Tech & repairs'], ['coride', 'Co-Ride'], ['promos', 'Deals & spin']];
+// Fallback pills (no sections passed): this hub's own sections. PG stays, Co-Ride and Tech & repairs live in the
+// Services tab (paused for the Laundry-only launch, 24 Nov 2026: utils/launchSections).
+const PILLS: [string, string][] = [['food', 'Food & groceries'], ['promos', 'Deals & spin']];
 
 /** Luxury header palette (owner feedback): deep emerald, one soft light, fine grain, gold hairline. */
 export const LUX = { top: '#0B3D24', bottom: '#0F5132', gold: '#C9A24A', goldSoft: 'rgba(201,162,74,0.35)', badge: '#E9C46A' };

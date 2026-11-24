@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useLaunchSections } from '../../utils/launchSections';
 import NightClosureBanner from '../../components/NightClosureBanner';
 import {
   View,
@@ -15,7 +16,7 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../../constants/theme';
 import { useTheme } from '../../context/ThemeContext';
@@ -110,6 +111,12 @@ export default function CategoryRoute() {
   const rawId = Array.isArray(params.id) ? params.id[0] : params.id;
   const requestedId = String(rawId || 'electronics').toLowerCase().trim();
   const categoryId = CATEGORY_ALIASES[requestedId] || requestedId;
+  // Laundry-only launch (owner, 24 Nov 2026; utils/launchSections): repairs and tailoring open the Services tab
+  // (Laundry Services) until the admins switch the other services back on.
+  const launch = useLaunchSections();
+  if ((categoryId === 'repairs' || categoryId === 'tailoring') && launch.laundryOnly) {
+    return launch.settled ? <Redirect href={'/(tabs)/services?tab=services' as any} /> : null;
+  }
   // Tech & repairs v2 (modules/servicesV2): service lists and the Room essentials / Chargers & gadgets shelves.
   if (isServiceShelf(categoryId)) return <ServicesV2List key={categoryId} shelf={categoryId} />;
   if (isProductShelf(categoryId)) return <ServicesV2Products key={categoryId} shelf={categoryId} />;
@@ -120,6 +127,8 @@ export default function CategoryRoute() {
 
 function CategoryDetailScreen() {
   const params = useLocalSearchParams<{ id: string | string[] }>();
+  // Rentals banner only while the admins have Rentals switched on (Laundry-only launch, 24 Nov 2026).
+  const launch = useLaunchSections();
   const rawId = Array.isArray(params.id) ? params.id[0] : params.id;
   const router = useRouter();
   const { isDark, colors } = useTheme();
@@ -548,7 +557,7 @@ function CategoryDetailScreen() {
         )}
       </View>
 
-      {categoryId === 'rentals' && (
+      {categoryId === 'rentals' && launch.on('rentals') && (
         <TouchableOpacity
           onPress={() => router.push('/rentals' as any)}
           accessibilityRole="button"

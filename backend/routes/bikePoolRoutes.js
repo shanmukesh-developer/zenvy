@@ -65,7 +65,11 @@ const finishSeatTaken = async (poolId, passengerId) => {
 };
 
 // Create a new bike pool post
-router.post('/posts', protect, async (req, res) => {
+// Co-Ride paused (owner, 24 Nov 2026: Laundry-only launch; utils/featureSwitches CO_RIDE_ENABLED, switched back on
+// from the admin): browsing, posting and joining rides answer 403 FEATURE_OFF. My rides, cancel, complete and SOS
+// keep working for rides that already exist.
+const coRideOn = require('../utils/featureSwitches').requireOn('coRide');
+router.post('/posts', protect, coRideOn, async (req, res) => {
   const { creatorRole, origin, destination, departureTime, rideVibe, vehicleType, availableSeats, autoApprove, stopovers, vehicleInfo, notes, isRecurring, recurringDays, estimatedFuelCost, womenOnly, autoAcceptKnown } = req.body;
 
   if (!creatorRole || !origin || !destination || !departureTime) {
@@ -148,7 +152,7 @@ router.post('/posts', protect, async (req, res) => {
 });
 
 // List available bike pools
-router.get('/posts', protect, async (req, res) => {
+router.get('/posts', protect, coRideOn, async (req, res) => {
   try {
     const BikePool = getBikePoolModel();
     const User = getUserModel();
@@ -211,7 +215,7 @@ router.get('/posts', protect, async (req, res) => {
 });
 
 // Join a bike pool post
-router.post('/posts/:id/join', protect, async (req, res) => {
+router.post('/posts/:id/join', protect, coRideOn, async (req, res) => {
   try {
     const BikePool = getBikePoolModel();
     const User = getUserModel();

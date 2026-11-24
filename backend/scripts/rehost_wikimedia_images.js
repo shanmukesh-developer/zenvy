@@ -19,7 +19,7 @@
 const { Op } = require('sequelize');
 
 const HOST = 'https://upload.wikimedia.org/';
-const USER_AGENT = `ZenvyMediaCopy/1.0 (https://hostelbites-backend-jwmt.onrender.com; ${process.env.SUPPORT_EMAIL || 'projectshanmukh@gmail.com'})`;
+const USER_AGENT = `ZenvyMediaCopy/1.0 (https://hostelbites-backend-jwmt.onrender.com; ${process.env.SUPPORT_EMAIL || 'zenwecustomer.support@gmail.com'})`;
 const MAX_PER_RUN = 120;
 const GAP_MS = 2000;
 const MAX_REFUSALS = 3;

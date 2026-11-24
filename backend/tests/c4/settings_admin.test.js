@@ -27,8 +27,8 @@ test('GET returns defaults (existing operator + contact, operator as grievance o
   const s = res.body.settings;
   assert.strictEqual(s.businessName, 'ZenWe');
   assert.strictEqual(s.operatorName, 'Shanmukesh Kunjam');
-  assert.strictEqual(s.contactEmail, 'projectshanmukh@gmail.com');
-  assert.deepStrictEqual(s.grievanceOfficer, { name: 'Shanmukesh Kunjam', designation: 'Founder and Grievance Officer', email: 'projectshanmukh@gmail.com', phone: '', address: '' });
+  assert.strictEqual(s.contactEmail, 'zenwecustomer.support@gmail.com');
+  assert.deepStrictEqual(s.grievanceOfficer, { name: 'Shanmukesh Kunjam', designation: 'Founder and Grievance Officer', email: 'zenwecustomer.support@gmail.com', phone: '', address: '' });
   assert.strictEqual(s.registeredAddress, '');
   assert.strictEqual(s.jurisdictionCity, '');
   assert.strictEqual(res.body.grievanceComplete, true);
@@ -116,7 +116,7 @@ test('a junk stored value falls back to safe defaults (never breaks pages)', asy
   await H.setLegal({ businessName: 42, contactEmail: 'bad', policyVersion: '<x>', effectiveDate: 'no', grievanceOfficer: 'x' });
   const s = await H.r('utils/legalSettings').getSettings({ fresh: true });
   assert.strictEqual(s.businessName, 'ZenWe');
-  assert.strictEqual(s.contactEmail, 'projectshanmukh@gmail.com');
+  assert.strictEqual(s.contactEmail, 'zenwecustomer.support@gmail.com');
   assert.strictEqual(s.policyVersion, '1.0');
   assert.strictEqual(s.effectiveDate, '2026-10-18');
   assert.strictEqual((await H.api('GET', '/legal/terms')).status, 200);

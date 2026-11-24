@@ -18,16 +18,18 @@ import { TV, RADIUS, W, shadow } from './servicesV2Theme';
 import { BookPill, FadeIn, HeroCard, Press, SectionHead, Stepper, usePageW } from './ServicesV2Kit';
 import { ItemPhoto } from './ServicesV2Rows';
 import { IArrowLeft, IBell, IChevronRight, IReceipt, ISearch } from './ServicesV2Icons';
-import { HOME_HERO, SHELF_TILE } from './servicesV2Art';
+import { HOME_HERO, SHELF_HERO, SHELF_TILE } from './servicesV2Art';
 import { ALL_SHELVES, SHELF_META, SHELF_TRUST, detailPath, priceLine, shelfPath, useMinPrices, useShelf, type ShelfId, type ShelfItem } from './servicesV2Data';
 import { useStoreBasket } from './useStoreBasket';
 import { openMyBookings } from './ServicesV2List';
 import { goHome } from '../../utils/goHome';
 import { themedSheet } from '../../utils/themeNow';
+import { servicesTitle, useLaunchSections } from '../../utils/launchSections';
+import { StateCard } from '../others/motion';
 
 type Sections = { key: string; label: string }[];
 
-function HomeTop({ sections, onSection }: { sections?: Sections; onSection?: (k: string) => void }) {
+function HomeTop({ sections, onSection, laundryOnly }: { sections?: Sections; onSection?: (k: string) => void; laundryOnly: boolean }) {
   const router = useRouter();
   const top = useTopInset(36, 44);
   const unread = useUnreadDot();
@@ -40,9 +42,9 @@ function HomeTop({ sections, onSection }: { sections?: Sections; onSection?: (k:
           <IArrowLeft size={22} color={TV.onBand} strokeWidth={1.6} />
         </Press>
         <View style={{ flex: 1, marginLeft: 6, minWidth: 0 }}>
-          <Text style={[h.brand, { fontSize: 22, fontWeight: '900' }]} numberOfLines={1} accessibilityRole="header">Tech & repairs</Text>
+          <Text style={[h.brand, { fontSize: 22, fontWeight: '900' }]} numberOfLines={1} accessibilityRole="header">{servicesTitle(laundryOnly)}</Text>
         </View>
-        <Press onPress={() => openMyBookings(router)} label="My service bookings" hint="Opens Orders, Services: track and manage your repair and service bookings" style={h.iconBtn} scaleTo={0.9}>
+        <Press onPress={() => openMyBookings(router)} label="My service bookings" hint={laundryOnly ? 'Opens Orders, Services: track and manage your laundry bookings' : 'Opens Orders, Services: track and manage your repair and service bookings'} style={h.iconBtn} scaleTo={0.9}>
           <IReceipt size={21} color={TV.onBand} strokeWidth={1.6} />
         </Press>
         <Press onPress={() => router.push('/notifications' as any)} label={unread ? 'Notifications, unread' : 'Notifications'} style={[h.iconBtn, { marginRight: -8 }]} scaleTo={0.9}>
@@ -51,9 +53,9 @@ function HomeTop({ sections, onSection }: { sections?: Sections; onSection?: (k:
         </Press>
       </View>
 
-      <Press onPress={() => router.push('/services/search' as any)} label="Search repairs, tailoring, laundry and gadgets" style={h.search} scaleTo={0.99}>
+      <Press onPress={() => router.push('/services/search' as any)} label={laundryOnly ? 'Search laundry, dry cleaning and ironing' : 'Search repairs, tailoring, laundry and gadgets'} style={h.search} scaleTo={0.99}>
         <ISearch size={18} color={TV.ink2} strokeWidth={1.7} />
-        <Text style={h.searchText} numberOfLines={1}>Search repairs, tailoring, laundry, gadgets</Text>
+        <Text style={h.searchText} numberOfLines={1}>{laundryOnly ? 'Search laundry, dry cleaning, ironing' : 'Search repairs, tailoring, laundry, gadgets'}</Text>
       </Press>
 
       {sections && sections.length > 1 && onSection ? (
@@ -83,7 +85,7 @@ function CategoryTile({ s, i, wide, tileW, price }: { s: ShelfId; i: number; wid
   );
 }
 
-function QuickCategories({ prices }: { prices: Record<string, number> }) {
+function QuickCategories({ prices, laundryOnly }: { prices: Record<string, number>; laundryOnly: boolean }) {
   const w = usePageW();
   const tileW = Math.floor((w - 32 - 10) / 2);
   const from = (s: ShelfId) => {
@@ -95,10 +97,15 @@ function QuickCategories({ prices }: { prices: Record<string, number> }) {
   return (
     <View style={{ marginTop: 24 }}>
       <SectionHead title="Quick categories" />
+      {laundryOnly ? (
+        // Laundry-only launch (24 Nov 2026): the one open shelf, as the wide tile.
+        <View style={q.grid}><CategoryTile s="laundry" i={0} wide tileW={tileW} price={from('laundry')} /></View>
+      ) : (
       <View style={q.grid}>
         {ALL_SHELVES.slice(0, 4).map((s, i) => <CategoryTile key={s} s={s} i={i} tileW={tileW} price={from(s)} />)}
         <CategoryTile s={ALL_SHELVES[4]} i={4} wide tileW={tileW} price={from(ALL_SHELVES[4])} />
       </View>
+      )}
     </View>
   );
 }
@@ -156,6 +163,13 @@ function ProductCard({ shelf, item, store }: { shelf: 'mattresses' | 'electronic
 
 export function ServicesV2HomeBody({ sections, onSection }: { sections?: Sections; onSection?: (k: string) => void }) {
   const router = useRouter();
+  // Laundry-only launch (owner, 24 Nov 2026; utils/launchSections): "Laundry Services" with only the laundry shelf until
+  // the admins switch the other services back on (TECH_SERVICES_ENABLED); repairs, tailoring and the store shelves hide.
+  // App sections control (24 Nov 2026): the admins' Laundry switch off drops laundry too; with repairs also off the
+  // section says services are paused (no answer / older server = laundry on).
+  const launch = useLaunchSections();
+  const { laundryOnly, servicesPaused } = launch;
+  const laundryOn = launch.on('laundry');
   const prices = useMinPrices();
   const repairs = useShelf('repairs');
   const tailoring = useShelf('tailoring');
@@ -167,15 +181,17 @@ export function ServicesV2HomeBody({ sections, onSection }: { sections?: Section
   const bookable = (l: ShelfItem[]) => l.filter((i) => i.inStock);
   const services = useMemo(() => {
     const tag = (shelf: 'repairs' | 'tailoring' | 'laundry', l: ShelfItem[]) => bookable(l).map((item) => ({ shelf, item }));
-    const lists = [tag('repairs', repairs.items), tag('tailoring', tailoring.items), tag('laundry', laundry.items)];
+    const laundryList = laundryOn ? [tag('laundry', laundry.items)] : [];
+    const lists = laundryOnly ? laundryList : [tag('repairs', repairs.items), tag('tailoring', tailoring.items), ...laundryList];
     const out: { shelf: 'repairs' | 'tailoring' | 'laundry'; item: ShelfItem }[] = [];
     for (let i = 0; out.length < 8 && lists.some((l) => l.length > i); i++) for (const l of lists) if (l[i] && out.length < 8) out.push(l[i]);
     return out;
-  }, [repairs.items, tailoring.items, laundry.items]);
+  }, [repairs.items, tailoring.items, laundry.items, laundryOnly, laundryOn]);
   const products = useMemo(() => {
+    if (laundryOnly) return [];
     const r = interleave([bookable(room.items.filter((i) => i.orderable)), bookable(gadgets.items.filter((i) => i.orderable))], 8);
     return r.map((item) => (room.items.includes(item) ? { shelf: 'mattresses' as const, item, store: room.stores[item.storeId] } : { shelf: 'electronics' as const, item, store: gadgets.stores[item.storeId] }));
-  }, [room.items, gadgets.items, room.stores, gadgets.stores]);
+  }, [room.items, gadgets.items, room.stores, gadgets.stores, laundryOnly]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -185,16 +201,27 @@ export function ServicesV2HomeBody({ sections, onSection }: { sections?: Section
   return (
     <ScrollView style={{ flex: 1, backgroundColor: TV.page }} contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#C7CAFF" colors={[TV.accent]} progressViewOffset={60} />}>
-      <HomeTop sections={sections} onSection={onSection} />
+      <HomeTop sections={sections} onSection={onSection} laundryOnly={laundryOnly} />
 
+      {servicesPaused ? (
+        <StateCard kind="off" title="Services are paused" message="Laundry and other service bookings are paused right now. Please check back soon."
+          style={{ marginHorizontal: 16, marginTop: 16 }} />
+      ) : laundryOnly ? (
+        <FadeIn style={{ marginTop: 16 }}>
+          <HeroCard photo={SHELF_HERO.laundry} title={SHELF_META.laundry.heroTitle} line={SHELF_META.laundry.heroLine} trust={SHELF_TRUST.laundry}
+            cta={laundry.status === 'ready' && !bookable(laundry.items).length ? undefined : 'Book laundry'}
+            onCta={() => router.push(shelfPath('laundry') as any)} />
+        </FadeIn>
+      ) : (
       <FadeIn style={{ marginTop: 16 }}>
         <HeroCard photo={HOME_HERO} title={SHELF_META.repairs.heroTitle} line="A technician checks your device in your hostel and confirms the price before any work." trust={SHELF_TRUST.repairs}
           /* No repair partner live yet -> no "Book a repair" button (it opened an empty Coming soon page). */
           cta={repairs.status === 'ready' && !bookable(repairs.items).length ? undefined : 'Book a repair'}
           onCta={() => router.push(shelfPath('repairs') as any)} />
       </FadeIn>
+      )}
 
-      <QuickCategories prices={prices} />
+      {!servicesPaused && <QuickCategories prices={prices} laundryOnly={laundryOnly} />}
 
       {services.length ? (
         <View style={{ marginTop: 26 }}>
@@ -218,7 +245,7 @@ export function ServicesV2HomeBody({ sections, onSection }: { sections?: Section
         <View style={h.mineIcon}><IReceipt size={19} color={TV.accent} strokeWidth={1.7} /></View>
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={h.mineTitle}>My bookings</Text>
-          <Text style={h.mineSub} numberOfLines={1}>Track repairs, tailoring and laundry</Text>
+          <Text style={h.mineSub} numberOfLines={1}>{laundryOnly ? 'Track your laundry pickups' : 'Track repairs, tailoring and laundry'}</Text>
         </View>
         <IChevronRight size={18} color={TV.faint} strokeWidth={1.8} />
       </Press>

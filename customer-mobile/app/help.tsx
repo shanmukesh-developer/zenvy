@@ -18,7 +18,7 @@ export default function HelpScreen() {
   const [open, setOpen] = useState<string | null>(null);
   // The Campus answers point at the Campus button on Home, which is hidden while the admins have Campus switched off
   // (GET /api/config/sections campus.live; until its launch after Sankranti, 3 Nov 2026): hide them meanwhile.
-  const sectionsSWR = useSWRJson<{ sections?: Record<string, { live?: boolean }> }>('/api/config/sections', { freshMs: 60 * 1000 });
+  const sectionsSWR = useSWRJson<{ sections?: Record<string, { live?: boolean }> }>('/api/config/sections', { freshMs: 0 });
   const campusOff = sectionsSWR.data?.sections?.campus?.live === false;
   const faq = campusOff ? HELP_FAQ.filter((section) => section.title !== 'Campus') : HELP_FAQ;
 

@@ -14,6 +14,7 @@ export { default as IChevronDown } from 'lucide-react-native/icons/chevron-down'
 export { default as IChevronRight } from 'lucide-react-native/icons/chevron-right';
 export { default as INavigation } from 'lucide-react-native/icons/navigation';
 export { default as IPhone } from 'lucide-react-native/icons/phone';
+export { default as IMail } from 'lucide-react-native/icons/mail';
 export { default as ICalendar } from 'lucide-react-native/icons/calendar-days';
 export { default as ICalendarCheck } from 'lucide-react-native/icons/calendar-check';
 export { default as IClock } from 'lucide-react-native/icons/clock';

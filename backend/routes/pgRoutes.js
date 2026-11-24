@@ -171,8 +171,10 @@ const pgNotifyFirst = (key, now = Date.now()) => {
   return true;
 };
 
-// POST Book a room
-router.post('/:roomId/book', protect, async (req, res) => {
+// POST Book a room. PG stays paused (owner, 24 Nov 2026: Laundry-only launch; utils/featureSwitches PG_STAYS_ENABLED,
+// switched back on from the admin): new bookings answer 403 FEATURE_OFF. Own bookings and cancelling still work.
+const pgStaysOn = require('../utils/featureSwitches').requireOn('pgStays');
+router.post('/:roomId/book', protect, pgStaysOn, async (req, res) => {
   try {
     const PGRoom = getPGRoomModel();
     const PGBooking = getPGBookingModel();
@@ -321,14 +323,13 @@ router.post('/:roomId/book', protect, async (req, res) => {
     }
 
     // Lets the student message the housing desk themselves from WhatsApp.
-    const whatsappUrl = `https://wa.me/91${PG_DESK_WHATSAPP}?text=${encodeURIComponent(whatsappMessage)}`;
 
     res.status(201).json({
       message: 'Booking request received. The ZenWe housing team will confirm it with you.',
       booking,
       whatsappSent,
-      whatsappUrl,
-      whatsappMessage
+      // No WhatsApp link for the student any more (owner, 24 Nov 2026: no phone numbers in the app; email only).
+      supportEmail: 'zenwecustomer.support@gmail.com',
     });
   } catch (err) {
     console.error('[PG_BOOK_ERROR]', err);

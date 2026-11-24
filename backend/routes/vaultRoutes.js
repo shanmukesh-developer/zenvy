@@ -44,7 +44,8 @@ router.get('/', responseCache.cacheGet('vault', { ttlMs: 30 * 1000 }), async (re
 
 // @desc    Claim a vault item
 // @route   POST /api/vault/claim/:id
-router.post('/claim/:id', protect, async (req, res) => {
+// App sections control (owner, 24 Nov 2026): no deal claims while DEALS_ENABLED is off (403 FEATURE_OFF).
+router.post('/claim/:id', protect, require('../utils/featureSwitches').requireOn('deals'), async (req, res) => {
   try {
     const VaultItem = getVaultItemModel();
     const User = getUserModel();

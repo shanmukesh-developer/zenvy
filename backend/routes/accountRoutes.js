@@ -130,7 +130,7 @@ router.post('/delete', protect, async (req, res) => {
     });
   } catch (err) {
     console.error('[ACCOUNT_DELETE_ERROR]', err.message);
-    res.status(500).json({ message: "We couldn't delete your account right now. Please try again or email projectshanmukh@gmail.com." });
+    res.status(500).json({ message: "We couldn't delete your account right now. Please try again or email zenwecustomer.support@gmail.com." });
   }
 });
 

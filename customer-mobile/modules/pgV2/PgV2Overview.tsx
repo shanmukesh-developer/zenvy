@@ -5,11 +5,11 @@
  * Book Now stay at the bottom. Real data first; pgV2Demo fills the gaps while its switch is on.
  */
 import React, { useRef, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Share, useWindowDimensions, type LayoutChangeEvent } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Share, Linking, useWindowDimensions, type LayoutChangeEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PG2, GUTTER, W, genderTone, shadow } from './pgV2Theme';
 import { Header, Tap, Photo, Verified, Rating, PrimaryButton, OutlineButton, EmptyState, Loading, k } from './PgV2Kit';
-import { IShare, IPhone, ICalendarCheck, IBuilding, ICheck, INavigation, STROKE } from './PgV2Icons';
+import { IShare, IMail, ICalendarCheck, IBuilding, ICheck, INavigation, STROKE } from './PgV2Icons';
 import { galleryPhotos } from './pgV2Photos';
 import { usePgDetail, gKey, rentRange, placeText, kmText } from './pgV2Data';
 import { useNav, usePgIdFor } from './pgV2Nav';
@@ -20,9 +20,8 @@ import { MapFrame, leafletHtml, openDirections } from './PgV2Map';
 import { RulesBlock, PoliciesBlock, SafetyBlock, MoveInBlock, NearbyBlock, FaqBlock, Collapsible } from './PgV2Sections';
 import { ReviewsBlock } from './PgV2Reviews';
 import { PhotoViewer, ToursRow } from './PgV2Media';
-import { ZENVY_SUPPORT_WHATSAPP } from '../../constants/api';
+import { zenweMailto } from '../../constants/api';
 import { inr, pgLink, INCLUDED_LABEL, chargeText, type PgDetail } from '../pg/pgApi';
-import { dial } from '../../utils/dial';
 import { themedSheet } from '../../utils/themeNow';
 
 type Tab = 'overview' | 'rooms' | 'amenities' | 'mess' | 'rules' | 'location' | 'reviews';
@@ -240,7 +239,7 @@ export default function PgV2Overview() {
         </View>
       </ScrollView>
       <View style={[st.bar, { paddingBottom: insets.bottom + 14 }]}>
-        <OutlineButton label="Call ZenWe" icon={IPhone} onPress={() => dial(`+${ZENVY_SUPPORT_WHATSAPP}`, 'ZenWe support')} style={{ flex: 1, height: 54 }} />
+        <OutlineButton label="Email ZenWe" icon={IMail} onPress={() => { Linking.openURL(zenweMailto(`PG stay: ${pg.name}`)).catch(() => {}); }} style={{ flex: 1, height: 54 }} />
         <PrimaryButton label="Book Now" icon={ICalendarCheck} onPress={() => nav.push({ name: 'booking', pgId: pg.id })} style={{ flex: 1.15 }} disabled={!pg.roomTypes.some((t) => t.bookRoomId)} />
       </View>
       {viewer !== null ? <PhotoViewer photos={photos} index={viewer} onClose={() => setViewer(null)} /> : null}

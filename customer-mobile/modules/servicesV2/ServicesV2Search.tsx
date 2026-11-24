@@ -16,6 +16,7 @@ import { SHELF_META, detailPath, matchesQuery, shelfPath, storeTakesOrders, useS
 import { useServicesV2Booking } from './useServicesV2Booking';
 import { useStoreBasket } from './useStoreBasket';
 import { themedSheet } from '../../utils/themeNow';
+import { servicesTitle, useLaunchSections } from '../../utils/launchSections';
 
 
 type Shelf = ReturnType<typeof useShelf>;
@@ -77,7 +78,9 @@ export default function ServicesV2Search() {
   const laundry = useShelf('laundry');
   const room = useShelf('mattresses');
   const gadgets = useShelf('electronics');
-  const all = [repairs, tailoring, laundry, room, gadgets];
+  // Laundry-only launch (owner, 24 Nov 2026; utils/launchSections): only the laundry shelf is searched and shown.
+  const { laundryOnly } = useLaunchSections();
+  const all = laundryOnly ? [laundry] : [repairs, tailoring, laundry, room, gadgets];
   const loading = all.some((d) => d.status === 'loading');
   // "Try" chips from what is really listed (the fixed Screen / Jeans / Mattress... found nothing with no partners
   // yet): a few short item names; no chips at all while nothing is listed.
@@ -97,12 +100,12 @@ export default function ServicesV2Search() {
   const any = !!q.trim() && all.some((d) => d.items.some((i) => matchesQuery(i, q)));
   return (
     <View style={{ flex: 1, backgroundColor: TV.page }}>
-      <TopBar title="Search Tech & repairs">
-        <SearchField value={q} onChange={setQ} placeholder="Repairs, tailoring, laundry, gadgets" autoFocus style={{ marginTop: 6 }} />
+      <TopBar title={`Search ${servicesTitle(laundryOnly)}`}>
+        <SearchField value={q} onChange={setQ} placeholder={laundryOnly ? 'Laundry, dry cleaning, ironing' : 'Repairs, tailoring, laundry, gadgets'} autoFocus style={{ marginTop: 6 }} />
       </TopBar>
       <ScrollView contentContainerStyle={{ paddingBottom: (basket.count > 0 ? 110 : 40) + insets.bottom }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         {!q.trim() && nothingListed ? (
-          <StateBlock kind="empty" title="Coming soon to ZenWe" body="Repairs, tailoring, laundry and gadgets will be bookable here as partners join." style={{ marginTop: 18 }} />
+          <StateBlock kind="empty" title="Coming soon to ZenWe" body={laundryOnly ? 'Laundry, dry cleaning and ironing will be bookable here as partners join.' : 'Repairs, tailoring, laundry and gadgets will be bookable here as partners join.'} style={{ marginTop: 18 }} />
         ) : !q.trim() && suggest.length > 0 ? (
           <View style={{ paddingHorizontal: 16, marginTop: 18 }}>
             <Text style={s.hint}>Try</Text>
@@ -116,11 +119,11 @@ export default function ServicesV2Search() {
             </View>
           </View>
         ) : null}
-        <ServiceGroup shelf="repairs" data={repairs} q={q} />
-        <ServiceGroup shelf="tailoring" data={tailoring} q={q} />
+        {laundryOnly ? null : <ServiceGroup shelf="repairs" data={repairs} q={q} />}
+        {laundryOnly ? null : <ServiceGroup shelf="tailoring" data={tailoring} q={q} />}
         <ServiceGroup shelf="laundry" data={laundry} q={q} />
-        <ProductGroup shelf="mattresses" data={room} q={q} />
-        <ProductGroup shelf="electronics" data={gadgets} q={q} />
+        {laundryOnly ? null : <ProductGroup shelf="mattresses" data={room} q={q} />}
+        {laundryOnly ? null : <ProductGroup shelf="electronics" data={gadgets} q={q} />}
         {q.trim() && !any && !loading ? (
           <StateBlock kind="search" title={`No results for “${q.trim()}”`} body="Check the spelling or try a shorter word." action="Clear search" onAction={() => setQ('')} style={{ marginTop: 18 }} />
         ) : null}

@@ -53,7 +53,7 @@ import { formatINR, formatClock, plural } from '../utils/format';
 import { plainDiscountLabel } from '../utils/billLabel';
 import { useTopInset } from '../utils/useTopInset';
 import { syncPlaces, addPlace, removePlace, placeText, placeFromText, PLACE_LABELS, type SavedPlace } from '../utils/savedAddresses';
-import { setCollege, clearCollege } from '../utils/college';
+import { setCollege, clearCollege, AMRITA_DROP } from '../utils/college';
 import { goHome } from '../utils/goHome';
 import SymbolIcon from '../components/SymbolIcon';
 
@@ -63,7 +63,7 @@ const PLACE_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
 
 type IonName = React.ComponentProps<typeof Ionicons>['name'];
 
-type CampusKey = 'srmap' | 'vitap' | 'amrita';
+type CampusKey = 'srmap' | 'amrita'; // owner, 24 Nov 2026: SRM AP and Amrita only
 type PayMethod = 'COD' | 'Wallet';
 
 /** Exactly what the customer confirmed: placed as-is (never re-read from a later render). */
@@ -73,6 +73,8 @@ interface OrderSnapshot {
   customLines: CartItem[];
   paymentMethod: PayMethod;
   couponCode: string | null;
+  /** Door delivery chosen (SRM AP; the server adds its ₹10 only where it is offered). */
+  doorDelivery: boolean;
   isStallOrder: boolean;
   stallName: string;
   /** The bill shown in the confirm dialog; the server refuses with PRICE_CHANGED if it moved. */
@@ -95,12 +97,11 @@ interface UnsettledAttempt {
 }
 
 const CHECKOUT_CAMPUS_KEY = 'zenvy_checkout_campus';
-const isCampusKey = (v: any): v is CampusKey => v === 'srmap' || v === 'vitap' || v === 'amrita';
+const isCampusKey = (v: any): v is CampusKey => v === 'srmap' || v === 'amrita';
 /** Best guess from a college email (e.g. name@srmap.edu.in); null = the customer picks. */
 const campusFromEmail = (email?: string | null): CampusKey | null => {
   const domain = String(email || '').toLowerCase().split('@')[1] || '';
   if (/(^|\.)srmap\./.test(domain)) return 'srmap';
-  if (/(^|\.)vitap\./.test(domain)) return 'vitap';
   if (/amrita/.test(domain)) return 'amrita';
   return null;
 };
@@ -124,13 +125,12 @@ interface UserCoupon {
 }
 
 // Server answers about colleges (backend utils/campuses): the basket or the college has to change, not the bill.
-const COLLEGE_CODES = ['STORE_NOT_AT_CAMPUS', 'CAMPUS_PAUSED', 'CAMPUS_SOON'];
+const COLLEGE_CODES = ['STORE_NOT_AT_CAMPUS', 'CAMPUS_PAUSED', 'CAMPUS_SOON', 'CAMPUS_CLOSED'];
 // Campuses the order service delivers to (server: resolveCampus in orderController).
 // The label also starts the delivery address sent to the server ("SRM AP - Ganga, Room 304").
 const CAMPUSES: { key: CampusKey; label: string; sub: string; code: string }[] = [
   { key: 'srmap', label: 'SRM AP', sub: 'SRM University AP', code: 'SRMAP' },
-  { key: 'vitap', label: 'VIT AP', sub: 'VIT-AP University', code: 'VITAP' },
-  { key: 'amrita', label: 'Amrita', sub: 'Amrita Vishwa Vidyapeetham AP', code: 'AMRITA' },
+  { key: 'amrita', label: 'Amrita', sub: 'Amrita University', code: 'AMRITA' },
 ];
 
 // Which add-on shelf (GET /api/catalogue/items?type=extras&for=…) fits the dishes in the basket.
@@ -213,7 +213,7 @@ export default function CheckoutScreen() {
   const campusStatus = (key: CampusKey): 'open' | 'paused' | 'soon' => {
     const row = campusesSWR.data?.campuses?.find((c) => c.key === key);
     if (row) return row.status === 'paused' || row.status === 'soon' ? row.status : 'open';
-    return key === 'amrita' ? 'soon' : 'open';
+    return 'open';
   };
   // Destructive only on the server's answer (never on the built-in defaults while it loads): once Amrita opens, a
   // student's Amrita pick must not be wiped for a moment on every checkout.
@@ -229,6 +229,12 @@ export default function CheckoutScreen() {
     setCollege(key);
   };
   const [address, setAddress] = useState('');
+  // Amrita has one drop point, its main gate (owner, 24 Nov 2026): no hostel block or room is asked there.
+  const isAmrita = campus === 'amrita';
+  useEffect(() => {
+    if (isAmrita) setAddress(AMRITA_DROP);
+    else setAddress((prev) => (prev === AMRITA_DROP ? '' : prev));
+  }, [isAmrita]);
   // Saved places (utils/savedAddresses): local list, synced to the account when signed in
   const [places, setPlaces] = useState<SavedPlace[]>([]);
   const [pickingLabel, setPickingLabel] = useState(false);
@@ -238,6 +244,8 @@ export default function CheckoutScreen() {
   const [savingHostel, setSavingHostel] = useState(false);
 
   const [paymentMethod, setPaymentMethod] = useState<PayMethod>('COD');
+  // Door delivery (owner, 24 Nov 2026): optional ₹10 for the rider to come to the room door. SRM AP only.
+  const [doorDelivery, setDoorDelivery] = useState(false);
 
   const [coupons, setCoupons] = useState<UserCoupon[]>([]);
   const [couponCode, setCouponCode] = useState<string | null>(null);
@@ -280,10 +288,15 @@ export default function CheckoutScreen() {
   const hasOrder = orderLines.length > 0;
   const hasCustom = customLines.length > 0;
 
-  const { quote, loading: quoteLoading, error: quoteError, refresh: refreshQuote } = useBasketQuote(couponCode, !!user, true, basketKind, checkoutStoreId);
+  const { quote, loading: quoteLoading, error: quoteError, refresh: refreshQuote } = useBasketQuote(couponCode, !!user, true, basketKind, checkoutStoreId, doorDelivery);
   const { serviceability, refresh: refreshServiceability } = useServiceability();
   // CampusBites stall basket: the stall delivers, cash on delivery to the stall, no coupons / add-ons.
   const isStallOrder = hasOrder && (quote ? quote.fulfilment === 'VENDOR' : orderLines.some((i) => i.isStall));
+  // Door delivery is offered on rider-delivered orders to SRM AP (the server decides: quote.doorDeliveryAvailable).
+  const doorDeliveryOffered = hasOrder && !isStallOrder && campus === 'srmap' && quote?.doorDeliveryAvailable !== false;
+  const doorDeliveryOn = doorDelivery && doorDeliveryOffered;
+  const doorDeliveryPrice = Number(quote?.doorDeliveryPrice) || 10;
+  useEffect(() => { if (doorDelivery && !doorDeliveryOffered && quote) setDoorDelivery(false); }, [doorDelivery, doorDeliveryOffered, quote]);
   const stallName = (isStallOrder && (quote?.store?.name || orderLines.find((i) => i.isStall)?.restaurantName)) || 'the stall';
   const isClosed = (quote?.serviceability?.open === false) || serviceability?.open === false;
   const reopensAt = serviceability?.reopensAt || quote?.serviceability?.reopensAt || null;
@@ -565,6 +578,7 @@ export default function CheckoutScreen() {
     customLines.map((i) => [i.id, i.name, i.quantity, i.price]),
     isStallOrder ? 'COD' : paymentMethod,
     isStallOrder ? null : couponCode,
+    doorDelivery,
     campus,
     address.trim(),
     landmark.trim(),
@@ -582,6 +596,7 @@ export default function CheckoutScreen() {
       customLines,
       paymentMethod: isStallOrder ? 'COD' : paymentMethod,
       couponCode: isStallOrder ? null : couponCode,
+      doorDelivery: doorDeliveryOn,
       isStallOrder,
       stallName,
       expectedTotal: hasOrder && quote ? quote.finalPrice : null,
@@ -795,6 +810,7 @@ export default function CheckoutScreen() {
               ...(snap.deliveryNotes.length ? { deliveryInstructions: snap.deliveryNotes } : {}),
               idempotencyKey: key,
               ...(snap.couponCode ? { couponCode: snap.couponCode } : {}),
+              ...(snap.doorDelivery ? { doorDelivery: true } : {}),
               ...(snap.expectedTotal !== null ? { expectedTotal: snap.expectedTotal } : {}),
             }),
           });
@@ -1108,7 +1124,7 @@ export default function CheckoutScreen() {
           </View>
 
           {/* Saved places: one tap fills the address; long press removes */}
-          {places.length > 0 && (
+          {!isAmrita && places.length > 0 && (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }} contentContainerStyle={{ gap: 8, paddingRight: 8 }}>
               {places.map((pl) => {
                 const text = placeText(pl);
@@ -1138,6 +1154,12 @@ export default function CheckoutScreen() {
             </ScrollView>
           )}
 
+          {isAmrita ? (
+            <View style={[s.input, { backgroundColor: cardBg, borderColor: goldColor, flexDirection: 'row', alignItems: 'center', gap: 8 }]} accessibilityLabel={`Deliver to ${AMRITA_DROP}`}>
+              <Ionicons name="location" size={16} color={goldColor} />
+              <Text style={{ fontSize: 14, fontWeight: '700', color: txt }}>{AMRITA_DROP}</Text>
+            </View>
+          ) : (<>
           <TextInput
             ref={addressRef}
             style={[s.input, { backgroundColor: cardBg, color: txt, borderColor: address.trim().length >= 3 ? border : 'rgba(239,68,68,0.5)' }]}
@@ -1229,6 +1251,7 @@ export default function CheckoutScreen() {
               })}
             </View>
           )}
+          </>)}
           <TextInput
             style={[s.input, { backgroundColor: cardBg, color: txt, borderColor: border }]}
             placeholder={isStallOrder ? `Landmark or note for ${stallName} (optional)` : 'Landmark or note for the rider (optional)'}
@@ -1419,6 +1442,26 @@ export default function CheckoutScreen() {
           {hasOrder && hasCustom && paymentMethod === 'Wallet' && (
             <Text style={[s.helperText, { color: txtSec }]}>Your shopping list is paid in cash when it arrives.</Text>
           )}
+
+          {/* Door delivery (SRM AP only): optional ₹10, the rider brings it to the room door. */}
+          {doorDeliveryOffered && (
+            <DopaminePressable
+              style={[s.payCardNew, { backgroundColor: cardBg, borderColor: doorDelivery ? goldColor : border, marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 }]}
+              onPress={() => setDoorDelivery((v) => !v)}
+              sound="click"
+              activeScale={0.97}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: doorDelivery }}
+              accessibilityLabel={`Door delivery, ${formatINR(doorDeliveryPrice)} extra`}
+            >
+              <Ionicons name="home-outline" size={20} color={goldColor} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 14, fontWeight: '800', color: txt }}>Door delivery <Text style={{ fontWeight: '600', color: txtSec }}>(optional)</Text></Text>
+                <Text style={{ fontSize: 12, color: txtSec, marginTop: 2 }}>Rider brings it to your room door instead of the hostel gate. +{formatINR(doorDeliveryPrice)}</Text>
+              </View>
+              <Ionicons name={doorDelivery ? 'checkbox' : 'square-outline'} size={22} color={doorDelivery ? goldColor : txtSec} />
+            </DopaminePressable>
+          )}
         </StaggeredSection>
 
         {/* Bill (from the server quote — exactly what you will be charged) */}
@@ -1476,6 +1519,12 @@ export default function CheckoutScreen() {
                     {quote.deliveryFee === 0 ? 'Free' : formatINR(quote.deliveryFee)}
                   </Text>
                 </View>
+                {Number(quote.doorDeliveryFee) > 0 && (
+                  <View style={s.billRow}>
+                    <Text style={[s.billLabel, { color: txt }]}>Door delivery</Text>
+                    <Text style={[s.billVal, { color: txt }]}>{formatINR(Number(quote.doorDeliveryFee))}</Text>
+                  </View>
+                )}
                 {Number(quote.platformFee) > 0 && (
                   <View style={s.billRow}>
                     <Text style={[s.billLabel, { color: txt }]}>Platform fee</Text>

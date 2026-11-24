@@ -6,7 +6,9 @@
  *   paused  shown as the student's college, ordering paused (exam break, holidays, too few riders)
  *   soon    shown as "Coming soon", nobody can pick it or order for it yet
  *
- *   defaults: SRM AP open, VIT AP open, Amrita soon (owner: "currently SRM AP and VIT AP, Amrita starts soon")
+ *   defaults: SRM AP open, Amrita open (owner, 24 Nov 2026: "remove VITAP from the entire app and enable Amrita
+ *   University instead"; "other than these 2 locations we can't deliver"). VIT AP is retired: it is no longer a
+ *   college anyone can pick or order for, but 'vitap' still normalizes so a store limited to VIT AP stays hidden.
  *
  * Stores: Restaurant.visibleCampuses lists the colleges a store serves (['srmap'], ['vitap'], both). Empty or not
  * set = every college (stores made before 31 Oct keep showing everywhere until the admins choose). A student only
@@ -16,11 +18,12 @@
 const KEY = 'CAMPUS_SERVICE';
 const CAMPUSES = Object.freeze([
   Object.freeze({ key: 'srmap', label: 'SRM AP', name: 'SRM University AP' }),
-  Object.freeze({ key: 'vitap', label: 'VIT AP', name: 'VIT-AP University' }),
-  Object.freeze({ key: 'amrita', label: 'Amrita', name: 'Amrita Vishwa Vidyapeetham' }),
+  Object.freeze({ key: 'amrita', label: 'Amrita', name: 'Amrita University' }),
 ]);
 const KEYS = CAMPUSES.map((c) => c.key);
-const DEFAULT_STATUS = Object.freeze({ srmap: 'open', vitap: 'open', amrita: 'soon' });
+const DEFAULT_STATUS = Object.freeze({ srmap: 'open', amrita: 'open' });
+/** Colleges we no longer serve: still recognised (store limits keep working), never orderable. */
+const RETIRED = Object.freeze(['vitap']);
 const STATUSES = ['open', 'paused', 'soon'];
 const ALIASES = { srm: 'srmap', srmap: 'srmap', srmuniversityap: 'srmap', vit: 'vitap', vitap: 'vitap', vitapuniversity: 'vitap', amrita: 'amrita' };
 const TTL_MS = 30 * 1000;
@@ -30,7 +33,7 @@ let cache = null; // { at, value }
 const normalizeKey = (v) => ALIASES[String(v || '').toLowerCase().replace(/[^a-z]/g, '')] || null;
 const labelOf = (key) => (CAMPUSES.find((c) => c.key === key) || {}).label || null;
 
-/** Stored value (any shape) -> { srmap, vitap, amrita } statuses; anything unknown keeps its default. */
+/** Stored value (any shape) -> { srmap, amrita } statuses; anything unknown keeps its default. */
 const parse = (raw) => {
   const out = { ...DEFAULT_STATUS };
   let v = raw;
@@ -68,7 +71,7 @@ const listCampuses = async () => {
 /** Admin change of one college -> { statuses } or { error }. */
 const setStatus = async (key, status) => {
   const k = normalizeKey(key);
-  if (!k) return { error: `Unknown college. Use one of: ${KEYS.join(', ')}.` };
+  if (!k || !KEYS.includes(k)) return { error: `Unknown college. Use one of: ${KEYS.join(', ')}.` };
   if (!STATUSES.includes(status)) return { error: `Status must be one of: ${STATUSES.join(', ')}.` };
   const GlobalConfig = model();
   if (!GlobalConfig) return { error: 'Settings are not available right now.' };
@@ -101,7 +104,7 @@ const cleanVisibleCampuses = (value) => {
   const list = [];
   for (const item of raw) {
     const k = normalizeKey(item);
-    if (!k) return { error: `Unknown college "${String(item).slice(0, 40)}". Use: ${CAMPUSES.map((c) => c.label).join(', ')}.` };
+    if (!k || !KEYS.includes(k)) return { error: `Unknown college "${String(item).slice(0, 40)}". Use: ${CAMPUSES.map((c) => c.label).join(', ')}.` };
     if (!list.includes(k)) list.push(k);
   }
   return { list: list.length === KEYS.length ? [] : list }; // every college ticked = no limit
@@ -113,6 +116,7 @@ const cleanVisibleCampuses = (value) => {
  */
 const orderingCheck = async (campusKey) => {
   if (!campusKey) return { ok: true };
+  if (!KEYS.includes(campusKey)) return { ok: false, code: 'CAMPUS_CLOSED', message: 'We deliver only to SRM University AP and Amrita University right now.' };
   const status = (await getStatuses())[campusKey];
   if (status === 'open') return { ok: true };
   const label = labelOf(campusKey);
@@ -123,7 +127,7 @@ const orderingCheck = async (campusKey) => {
 const _resetCache = () => { cache = null; };
 
 module.exports = {
-  KEY, CAMPUSES, KEYS, STATUSES, DEFAULT_STATUS,
+  KEY, CAMPUSES, KEYS, RETIRED, STATUSES, DEFAULT_STATUS,
   normalizeKey, labelOf, getStatuses, listCampuses, setStatus,
   storeCampuses, storeServes, cleanVisibleCampuses, orderingCheck, _resetCache,
 };

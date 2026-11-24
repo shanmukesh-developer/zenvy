@@ -60,6 +60,37 @@ type Page = {
   features: Feature[];
 };
 
+const SERVICES_PAGE_LAUNDRY: Page = {
+  id: 'services',
+  tag: 'Laundry Services',
+  title: 'Fresh laundry,',
+  accent: 'without the trip',
+  line: 'Wash, dry cleaning and ironing, collected from your room and brought back.',
+  art: require('../modules/servicesV2/assets/sv2-laundry-hero-washers-row-2026-10-26.webp'),
+  glow: '#EDBE6C',
+  features: [
+    { icon: 'shirt-outline', text: 'Book a wash, dry clean or ironing', where: 'Services' },
+    { icon: 'home-outline', text: 'Picked up from your room, weighed at pickup', where: 'Services' },
+    { icon: 'cash-outline', text: 'Pay on delivery', where: 'Checkout' },
+  ],
+};
+/** Kept for the later launch of repairs, PG stays, Co-Ride, Rentals and Campus events (not shown now). */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const SERVICES_PAGE_FULL: Page = {
+  id: 'services',
+  tag: 'Services, stays and rides',
+  title: 'Repairs, stays',
+  accent: 'and rides',
+  line: 'Services, student stays, shared rides and campus events.',
+  art: require('../assets/onboarding/zcs-onboarding-rides-scooter-night-2026-10-31.webp'),
+  glow: '#FF8A47',
+  features: [
+    { icon: 'construct-outline', text: 'Book repairs, laundry and other services', where: 'Services' },
+    { icon: 'business-outline', text: 'Explore PGs and request a booking', where: 'Services' },
+    { icon: 'bicycle-outline', text: 'Share a ride, rent a vehicle, get event passes', where: 'Services' },
+  ],
+};
+
 const PAGES: Page[] = [
   {
     id: 'food',
@@ -91,20 +122,9 @@ const PAGES: Page[] = [
       { icon: 'cash-outline', text: 'Pay when it arrives, or with Wallet', where: 'Checkout' },
     ],
   },
-  {
-    id: 'services',
-    tag: 'Services, stays and rides',
-    title: 'Repairs, stays',
-    accent: 'and rides',
-    line: 'Services, student stays, shared rides and campus events.',
-    art: require('../assets/onboarding/zcs-onboarding-rides-scooter-night-2026-10-31.webp'),
-    glow: '#FF8A47',
-    features: [
-      { icon: 'construct-outline', text: 'Book repairs, laundry and other services', where: 'Services' },
-      { icon: 'business-outline', text: 'Explore PGs and request a booking', where: 'Services' },
-      { icon: 'bicycle-outline', text: 'Share a ride, rent a vehicle, get event passes', where: 'Services' },
-    ],
-  },
+  // Laundry-only launch (owner, 24 Nov 2026; utils/launchSections): the Services page tells only about Laundry
+  // Services. SERVICES_PAGE_FULL (repairs, PG stays, rides, rentals, events) comes back here when they launch.
+  SERVICES_PAGE_LAUNDRY,
   {
     id: 'campus',
     tag: 'Campus',
@@ -137,14 +157,13 @@ const CAMPUS_PAGE = PAGES.findIndex((p) => p.id === 'campus');
 
 // College choice on the last page: the student's default college for delivery and for which stores they see (same
 // key and list as checkout.tsx; changeable any time). Each college's status comes from GET /api/config/campuses
-// (owner, 31 Oct 2026: SRM AP and VIT AP live, Amrita "starts soon"): a coming-soon college cannot be picked yet.
+// (owner, 24 Nov 2026: SRM AP and Amrita only, VIT AP removed): a coming-soon college cannot be picked yet.
 const CHECKOUT_CAMPUS_KEY = 'zenvy_checkout_campus';
 type CampusStatus = 'open' | 'paused' | 'soon';
-const DEFAULT_STATUS: Record<string, CampusStatus> = { srmap: 'open', vitap: 'open', amrita: 'soon' };
+const DEFAULT_STATUS: Record<string, CampusStatus> = { srmap: 'open', amrita: 'open' };
 const CAMPUSES: { key: string; label: string; sub: string }[] = [
   { key: 'srmap', label: 'SRM AP', sub: 'SRM University AP' },
-  { key: 'vitap', label: 'VIT AP', sub: 'VIT-AP University' },
-  { key: 'amrita', label: 'Amrita', sub: 'Amrita Vishwa Vidyapeetham' },
+  { key: 'amrita', label: 'Amrita', sub: 'Amrita University' },
 ];
 
 const DOT = 6;
@@ -463,7 +482,7 @@ export default function OnboardingScreen() {
           onMomentumScrollEnd={onMomentumEnd}
           getItemLayout={(_, i) => ({ length: W, offset: W * i, index: i })}
           renderItem={renderPage}
-          extraData={`${W}-${campus}-${reduceMotion}-${artH}-${lastArtH}-${pages.length}-${statuses.srmap}${statuses.vitap}${statuses.amrita}`}
+          extraData={`${W}-${campus}-${reduceMotion}-${artH}-${lastArtH}-${pages.length}-${statuses.srmap}${statuses.amrita}`}
           onLayout={(e) => setPagerH(e.nativeEvent.layout.height)}
           style={s.pager}
         />

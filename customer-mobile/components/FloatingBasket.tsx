@@ -55,7 +55,7 @@ export const FloatingBasketBar = React.memo(function FloatingBasketBar({ isDark,
   );
 });
 
-const FAB_CART = require('../assets/home-redesign-2026-11-09/basket-fab-full-cart-gemini-2026-11-10.webp');
+const FAB_CART = require('../assets/home-redesign-2026-11-09/basket-fab-zenwe-veg-basket-2026-11-24.webp'); // owner's basket logo, 24 Nov 2026
 
 /** The floating basket button with the item count (its own component: a basket change re-renders only it). */
 const BasketFab = React.memo(function BasketFab({ onPress }: { onPress: () => void }) {

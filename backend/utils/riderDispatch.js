@@ -15,6 +15,16 @@ const MAX_ACTIVE_ORDERS = Math.max(1, parseInt(process.env.RIDER_MAX_ACTIVE_ORDE
 const RIDER_FRESH_MS = Math.max(2, Number(process.env.RIDER_FRESH_MINUTES) || 10) * 60 * 1000;
 // Most riders one new order rings (fresh nearest first, then riders with no recent position).
 const MAX_PUSH_RIDERS = Math.max(5, parseInt(process.env.RIDER_MAX_PUSH, 10) || 20);
+// Rider-to-restaurant radius for order pushes (owner, 24 Nov 2026): a rider whose live GPS fix is farther than
+// this from the store is not rung for its order. Riders with no recent fix cannot be measured and are still rung
+// (else an order could reach nobody), and the last "about to be cancelled" round ignores the radius
+// (ignoreRadius). RIDER_PUSH_RADIUS_KM changes it; 0 switches the limit off.
+const RIDER_PUSH_RADIUS_KM = (() => {
+  const raw = String(process.env.RIDER_PUSH_RADIUS_KM ?? '').trim();
+  const v = Number(raw);
+  return raw !== '' && Number.isFinite(v) && v >= 0 ? v : 5;
+})();
+const withinRadius = (dist, radiusKm = RIDER_PUSH_RADIUS_KM) => !(radiusKm > 0) || dist <= radiusKm;
 
 const riderFixAgeMs = (rider) => {
   const loc = rider && rider.liveLocation;
@@ -65,7 +75,7 @@ const RIDER_NEW_ORDER_CHANNEL = 'delivery-alerts-v3';
 const RIDER_PUSH_ANDROID = Object.freeze({ priority: 'high', ttl: 15 * 60 * 1000, notification: { sound: 'alert', channelId: RIDER_NEW_ORDER_CHANNEL } });
 
 // Push NEW_ORDER to the `limit` best-placed riders. Never throws.
-const pushNearestRiders = async ({ restaurant, orderId, title, body, limit = 5, excludeRiderId = null, data = {} }) => {
+const pushNearestRiders = async ({ restaurant, orderId, title, body, limit = 5, excludeRiderId = null, data = {}, ignoreRadius = false }) => {
   try {
     // Delivery slots: a slot order is not offered to riders hours early. Held back until DISPATCH_WINDOW_MIN
     // before the slot start, when the 'orders.slotDispatch' job pushes it (utils/deliverySlots).
@@ -87,7 +97,8 @@ const pushNearestRiders = async ({ restaurant, orderId, title, body, limit = 5, 
     // The `limit` nearest riders with a fresh GPS fix, plus every on-duty rider whose position is unknown
     // or stale (location off, app backgrounded): they used to sort last and fall outside the `limit`, so
     // they were never rung at all. Capped so a big fleet is never rung all at once.
-    const fresh = ranked.filter((x) => x.fresh).slice(0, limit);
+    // Only riders within RIDER_PUSH_RADIUS_KM of the store (unless this round ignores the radius).
+    const fresh = ranked.filter((x) => x.fresh && (ignoreRadius || withinRadius(x.dist))).slice(0, limit);
     const stale = ranked.filter((x) => !x.fresh);
     const chosen = [...fresh, ...stale].slice(0, Math.max(limit, MAX_PUSH_RIDERS));
     const tokens = chosen.flatMap(({ rider }) => tokensOf(rider));
@@ -146,4 +157,4 @@ const pushAssignedRider = async (riderId, title, body, data = {}) => {
 };
 
 module.exports = { RIDER_PUSH_ANDROID, pushAssignedRider, shortRef,
-  RIDER_NEW_ORDER_CHANNEL, BASE_DELIVERY_FEE, riderPayout, RIDER_FRESH_MS, isRiderFresh, riderFixAgeMs, rankOnlineRiders, pushNearestRiders, refreshRiderCurrentOrder };
+  RIDER_NEW_ORDER_CHANNEL, BASE_DELIVERY_FEE, riderPayout, RIDER_FRESH_MS, RIDER_PUSH_RADIUS_KM, withinRadius, isRiderFresh, riderFixAgeMs, rankOnlineRiders, pushNearestRiders, refreshRiderCurrentOrder };

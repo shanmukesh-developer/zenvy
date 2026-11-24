@@ -1598,6 +1598,29 @@ exports.setCampusStatus = async (req, res) => {
   }
 };
 
+// App sections control (owner, 24 Nov 2026): every section's on/off switch in one list (utils/appSections).
+exports.getAppSections = async (req, res) => {
+  try {
+    res.json({ sections: await require('../utils/appSections').listSections() });
+  } catch (error) {
+    sendAdminError(res, error, 'Could not load the app sections. Please try again.');
+  }
+};
+
+exports.setAppSection = async (req, res) => {
+  try {
+    const enabled = req.body ? req.body.enabled : undefined;
+    const r = await require('../utils/appSections').setSection(req.params.key, enabled);
+    if (r.error) return res.status(r.status || 400).json({ message: r.error });
+    await logAuditAction(req, r.section.key, 'APP_SECTION_SET', { enabled: r.section.enabled });
+    // The apps refresh their sections at once (same signal as other config changes).
+    realtime.publish('config', 'updated', 'app_sections', { scope: 'global' });
+    res.json({ section: r.section, sections: await require('../utils/appSections').listSections() });
+  } catch (error) {
+    sendAdminError(res, error, 'Could not change the section. Please try again.');
+  }
+};
+
 exports.getGlobalConfig = async (req, res) => {
   try {
     const GlobalConfig = getGlobalConfigModel();

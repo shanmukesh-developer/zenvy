@@ -43,8 +43,8 @@ export default function PgV2SentSheet({ open, info, onViewBookings, onDone }: { 
         <PrimaryButton label="View my bookings" onPress={onViewBookings} style={{ alignSelf: 'stretch', marginTop: 22 }} />
         <OutlineButton label="Done" onPress={onDone} style={{ alignSelf: 'stretch', marginTop: 10, height: 52 }} />
         {info.deskUrl ? (
-          <Tap onPress={() => Linking.openURL(info.deskUrl as string).catch(() => {})} label="Message the housing desk" role="link" style={st.link}>
-            <Text style={st.linkText}>Message the housing desk</Text>
+          <Tap onPress={() => Linking.openURL(info.deskUrl as string).catch(() => {})} label="Email the housing desk" role="link" style={st.link}>
+            <Text style={st.linkText}>Email the housing desk</Text>
           </Tap>
         ) : null}
       </View>

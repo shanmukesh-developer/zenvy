@@ -178,7 +178,7 @@ const quoteOrder = async (req, res) => {
     const User = getUserModel();
     const user = await User.findByPk(req.user.id);
     if (!user) return res.status(401).json({ message: 'Your session has expired. Please log in again.', code: 'ACCOUNT_NOT_FOUND' });
-    const quote = await computeOrderQuote({ user, items: (req.body || {}).items, couponCode: (req.body || {}).couponCode });
+    const quote = await computeOrderQuote({ user, items: (req.body || {}).items, couponCode: (req.body || {}).couponCode, doorDelivery: (req.body || {}).doorDelivery === true, campus: (req.body || {}).campus || null });
     // Colleges: the bill already says when the student's college is paused / not open yet, or the store does not
     // serve it (createOrder refuses the same; only checked when the app sends the college).
     if ((req.body || {}).campus !== undefined) {
@@ -237,7 +237,9 @@ const getDeliverySlots = async (req, res) => {
     const lead = deliverySlots.leadForType(type);
     // Timing groups (utils/deliveryGroups): a store's own group, else the kind of order asked for.
     const group = store ? null : (['store', 'grocery', 'list'].includes(type) ? 'grocery' : ['cake', 'specialized_cake', 'bakery'].includes(type) ? 'bakery' : 'food');
-    res.json({ ...(await deliverySlots.applyCapacity(deliverySlots.slotsForOrder({ store, lead, group, at: deliverySlots.now() }))), type });
+    // The student's college (?college=, the app adds it): Amrita has its own food windows.
+    const campus = String((req.query || {}).college || (req.query || {}).campus || '').trim() || null;
+    res.json({ ...(await deliverySlots.applyCapacity(deliverySlots.slotsForOrder({ store, lead, group, campus, at: deliverySlots.now() }))), type });
   } catch (err) {
     console.error('[DELIVERY_SLOTS_ERROR]', err);
     res.status(500).json({ message: 'We could not load the delivery slots right now. Please try again.' });
@@ -331,7 +333,7 @@ const createOrder = async (req, res) => {
     // ── Server prices everything from the DB ──
     let quote;
     try {
-      quote = await computeOrderQuote({ user: currentUser, items, couponCode });
+      quote = await computeOrderQuote({ user: currentUser, items, couponCode, doorDelivery: body.doorDelivery === true, campus: body.campus || campus || null });
     } catch (err) {
       if (idemClaimed) recentOrderKeys.delete(idemKey);
       if (err instanceof PricingError) return sendPricingError(res, err);
@@ -463,7 +465,8 @@ const createOrder = async (req, res) => {
           isTestData: !!quote.store.isTestData,
           items: quote.lines,
           totalPrice: quote.subtotal,
-          deliveryFee: quote.deliveryFee,
+          // Door delivery's ₹10 is part of the order's delivery charge (receipts, revenue); the breakdown keeps it apart.
+          deliveryFee: money(quote.deliveryFee + (quote.doorDeliveryFee || 0)),
           platformFee: quote.platformFee || 0,
           riderEarningPaise,
           batchDiscount: quote.batchDiscount,
@@ -472,6 +475,7 @@ const createOrder = async (req, res) => {
           priceBreakdown: {
             subtotal: quote.subtotal,
             deliveryFee: quote.deliveryFee,
+            doorDeliveryFee: quote.doorDeliveryFee || 0,
             platformFee: quote.platformFee || 0,
             packagingFee: quote.packagingFee,
             taxes: quote.taxes,
@@ -487,7 +491,11 @@ const createOrder = async (req, res) => {
           // Customer's pin for rider navigation (dropCoords, assigned rider only). Null when not sent.
           dropLat: hasCoords ? lat : null,
           dropLng: hasCoords ? lng : null,
-          deliveryInstructions: deliveryInstructions.length ? deliveryInstructions : null,
+          // Door delivery: the rider sees it with the other delivery notes (no rider app update needed).
+          deliveryInstructions: (() => {
+            const notes = quote.doorDeliveryFee > 0 ? ['Door delivery: bring it to the room door', ...deliveryInstructions].slice(0, 6) : deliveryInstructions;
+            return notes.length ? notes : null;
+          })(),
           hostelGateDelivery: false,
           isSurge,
           paymentMethod,
@@ -1383,6 +1391,8 @@ const escalateUnclaimedOrders = async (io) => {
         title: round.title,
         body: `${restaurant?.name || 'A store'} has an order nobody has picked up yet. Tap to take it.`,
         data: { distance: order.distance, escalation: String(due) },
+        // The last round, just before the "no rider" cancel, reaches riders outside the radius too.
+        ignoreRadius: !!round.alertAdmins,
       });
       if (round.alertAdmins) {
         require('../utils/adminAlert').pushAdmins(
@@ -1949,6 +1959,10 @@ const updateOrderStatus = async (req, res) => {
       if (isClaimable && !wasClaimable) { realtime.deliveryRequest(order.id); pushPoolOrder(order); }
       else if (!isClaimable && wasClaimable) realtime.deliveryRequestGone(order.id);
     }
+    // Admin marked the food ready: riders hear it like the kitchen's "Ready" (notifyRidersFoodReady).
+    if (order.status === 'ReadyForPickup' && prevStatus !== 'ReadyForPickup' && wasAlreadyClaimableOrAssigned(prevStatus, order)) {
+      notifyRidersFoodReady(order).catch(() => {});
+    }
 
     const statusPayload = { 
       id: order.id, 
@@ -2186,6 +2200,39 @@ const verifyUPIPayment = async (req, res) => {
   }
 };
 
+// Food marked ready (owner, 24 Nov 2026: "rider was not getting notification to collect an order from restaurant").
+// The kitchen's "Ready" only reached the assigned rider over the socket (nothing with the app in the background or
+// closed), and an order nobody had claimed yet was never pushed again after the accept-time push. Now:
+//   - assigned rider: a push "Food is ready, pick it up" (any app state);
+//   - no rider yet: back to the top of the live pool and a fresh push to the nearest riders
+//     (utils/riderDispatch: within RIDER_PUSH_RADIUS_KM, plus riders with no recent fix). Never throws.
+const notifyRidersFoodReady = async (order) => {
+  try {
+    if (!order || isVendorFulfilled(order)) return;
+    const restaurant = await getRestaurantModel().findByPk(order.restaurantId, { attributes: ['id', 'name', 'location', 'lat', 'lon', 'isTestData'] });
+    const store = (restaurant && restaurant.name) || 'The restaurant';
+    if (order.deliveryPartnerId) {
+      await require('../utils/riderDispatch').pushAssignedRider(order.deliveryPartnerId, '📦 Food is ready, pick it up',
+        `${store} has packed order ${orderNumbers.label(order)}. Head to the counter now.`, { orderId: order.id, type: 'ORDER_READY' });
+      return;
+    }
+    realtime.deliveryRequest(order.id);
+    await pushNearestRiders({
+      restaurant,
+      orderId: order.id,
+      limit: 20,
+      title: '📦 Order ready for pickup',
+      body: `${store} has an order packed and waiting for a rider. Tap to take it.`,
+      data: { distance: order.distance, ready: '1' },
+    });
+  } catch (err) {
+    console.warn('[FOOD_READY_RIDER_PUSH_WARN]', order && order.id, err.message);
+  }
+};
+
+// The order was already in the pool (or with a rider) before it went ready; otherwise pushPoolOrder just rang riders.
+const wasAlreadyClaimableOrAssigned = (prevStatus, order) => !!order.deliveryPartnerId || realtime.CLAIMABLE_STATUSES.includes(prevStatus);
+
 // @desc    Restaurant marks food as ready for pickup
 const restaurantReadyOrder = async (req, res) => {
   try {
@@ -2211,7 +2258,9 @@ const restaurantReadyOrder = async (req, res) => {
       if (!order.readyAt) await Order.update({ readyAt: new Date() }, { where: { id: order.id, status: 'Picking' } });
       const pio = req.app.get('io');
       if (pio && order.deliveryPartnerId) pio.to(`rider_${order.deliveryPartnerId}`).emit('orderReady', { orderId: order.id, ...orderNumbers.fields(order) });
-      return res.json({ message: 'Rider notified that the food is packed', orderId: order.id, status: 'Picking' });
+      res.json({ message: 'Rider notified that the food is packed', orderId: order.id, status: 'Picking' });
+      notifyRidersFoodReady(order).catch(() => {});
+      return;
     }
 
     // Retry / double tap, or the rider already took the food: not an error, report the real status.
@@ -2240,6 +2289,7 @@ const restaurantReadyOrder = async (req, res) => {
     }
 
     res.json({ message: 'Order marked as Ready for Pickup', orderId: order.id });
+    await notifyRidersFoodReady(order).catch(() => {});
     await pushCustomer(order, 'Order ready! 📦', order.deliveryPartnerId
       ? 'Your order is packed. Your rider is picking it up.'
       : order.slotStart && order.slotEnd

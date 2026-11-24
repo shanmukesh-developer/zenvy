@@ -20,19 +20,17 @@ const quoteItems = (user, ids) => H.api('POST', '/api/orders/quote', user.token,
 const place = (user, item, extra = {}) => H.api('POST', '/api/orders', user.token, H.orderBody(item.id, 'COD', extra));
 const view = (ds) => ds.slots.map((s) => `${s.open ? '+' : '-'}${s.label}`);
 
-test('food: lunch plus the three evening windows, each with its own cutoff', async () => {
+test('food: the three evening windows, each with its own cutoff, today only (lunch removed 24 Nov 2026)', async () => {
   const u = await H.mkUser();
   const { item } = await T.mkStore({ name: 'Chicken Dum Biryani' });
   setNow(IST('2026-11-14T18:29:00'));
   let q = await quoteItems(u, [item.id]);
   assert.equal(q.status, 200, JSON.stringify(q.body));
   assert.equal(q.body.deliverySlots.group, 'food');
-  assert.deepEqual(view(q.body.deliverySlots), [
-    '-Today 12:30–1:00 PM', '+Today 7:00–7:15 PM', '+Today 8:00–8:15 PM', '+Today 9:00–9:30 PM',
-    '+Tomorrow 12:30–1:00 PM', '+Tomorrow 7:00–7:15 PM', '+Tomorrow 8:00–8:15 PM', '+Tomorrow 9:00–9:30 PM',
-  ]);
+  assert.deepEqual(view(q.body.deliverySlots), ['+Today 7:00–7:15 PM', '+Today 8:00–8:15 PM', '+Today 9:00–9:30 PM']);
+  assert.equal(q.body.deliverySlots.todayOnly, true);
   assert.equal(q.body.deliverySlots.defaultSlotId, '2026-11-14|F2');
-  assert.equal(q.body.deliverySlots.slots[1].closesAtLabel, '6:30 PM');
+  assert.equal(q.body.deliverySlots.slots[0].closesAtLabel, '6:30 PM');
   setNow(IST('2026-11-14T18:30:00'));
   q = await quoteItems(u, [item.id]);
   assert.equal(q.body.deliverySlots.defaultSlotId, '2026-11-14|F3'); // 6:30–7:15 PM -> 8:00–8:15
@@ -41,7 +39,12 @@ test('food: lunch plus the three evening windows, each with its own cutoff', asy
   assert.equal(q.body.deliverySlots.defaultSlotId, '2026-11-14|F4'); // 7:15–8:15 PM -> 9:00–9:30
   setNow(IST('2026-11-14T20:15:00'));
   q = await quoteItems(u, [item.id]);
-  assert.equal(q.body.deliverySlots.defaultSlotId, '2026-11-15|F1'); // after 8:15 PM -> tomorrow's lunch
+  // After 8:15 PM: no food slot today, and none tomorrow (food is today only): the bill and the order say so.
+  assert.equal(q.status, 400, JSON.stringify(q.body));
+  assert.match(q.body.message, /last food delivery slot has closed/);
+  const shut = await place(u, item, {});
+  assert.equal(shut.status, 400, JSON.stringify(shut.body));
+  assert.match(shut.body.message, /last food delivery slot has closed/);
   // the order keeps the window
   setNow(IST('2026-11-14T18:40:00'));
   const r = await place(u, item, { deliverySlot: '2026-11-14|F3' });
@@ -121,11 +124,45 @@ test('the admin edits the windows (validated); the new windows apply at once', a
   r = await post({ grocery: { slots: [{ start: '17:00', end: '18:00', cutoff: '15:00' }, { start: '9:00', end: '11:00', cutoff: '7:00' }] } });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.deepEqual(r.body.groups.grocery.slots.map((s) => [s.id, s.start, s.cutoff]), [['G1', '09:00', '07:00'], ['G2', '17:00', '15:00']]);
-  assert.equal(r.body.groups.food.slots.length, 4, 'groups left out keep their windows');
+  assert.equal(r.body.groups.food.slots.length, 3, 'groups left out keep their windows');
   const u = await H.mkUser();
   const { item } = await T.mkStore({ name: 'Toor Dal 1 kg', store: { vendorType: 'GROCERY' } });
   setNow(IST('2026-11-14T10:00:00'));
   const q = await quoteItems(u, [item.id]);
   assert.equal(q.body.deliverySlots.defaultSlotId, '2026-11-14|G2');
   await H.ctx.M('GlobalConfig').destroy({ where: { key: 'DELIVERY_GROUPS' } });
+});
+
+test('Amrita has its own two food windows (by 6 PM -> 7:15, by 7 PM -> 8:00); SRM and groceries unchanged', async () => {
+  const u = await H.mkUser();
+  const { item } = await T.mkStore({ name: 'Paneer Butter Masala' });
+  const amritaQuote = () => H.api('POST', '/api/orders/quote', u.token, { ...H.orderBody(item.id, 'COD'), campus: 'amrita' });
+  setNow(IST('2026-11-14T17:59:00'));
+  let q = await amritaQuote();
+  assert.equal(q.status, 200, JSON.stringify(q.body));
+  assert.deepEqual(view(q.body.deliverySlots), ['+Today 7:15–7:30 PM', '+Today 8:00–8:15 PM']);
+  assert.equal(q.body.deliverySlots.defaultSlotId, '2026-11-14|A1');
+  assert.equal(q.body.deliverySlots.slots[0].closesAtLabel, '6:00 PM');
+  assert.equal(q.body.deliverySlots.slots[1].closesAtLabel, '7:00 PM');
+  setNow(IST('2026-11-14T18:00:00'));
+  q = await amritaQuote();
+  assert.equal(q.body.deliverySlots.defaultSlotId, '2026-11-14|A2'); // after 6 PM -> 8:00 PM
+  // An Amrita order keeps its window
+  const r = await place(u, item, { campus: 'amrita', deliveryAddress: 'Amrita - Amrita Main Gate', deliverySlot: '2026-11-14|A2' });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.equal(r.body.deliverySlot, 'Sat 14 Nov, 8:00–8:15 PM');
+  // SRM AP at the same moment still gets its three windows.
+  const srm = await quoteItems(u, [item.id]);
+  assert.deepEqual(view(srm.body.deliverySlots), ['+Today 7:00–7:15 PM', '+Today 8:00–8:15 PM', '+Today 9:00–9:30 PM']);
+  // After 7 PM Amrita has no food slot today (food is today only).
+  setNow(IST('2026-11-14T19:00:00'));
+  q = await amritaQuote();
+  assert.equal(q.status, 400, JSON.stringify(q.body));
+  // Groceries at Amrita use the shared windows.
+  const { item: dal } = await T.mkStore({ name: 'Toor Dal 1 kg', store: { vendorType: 'GROCERY' } });
+  setNow(IST('2026-11-14T06:00:00'));
+  const g = await H.api('POST', '/api/orders/quote', u.token, { ...H.orderBody(dal.id, 'COD'), campus: 'amrita' });
+  assert.equal(g.status, 200, JSON.stringify(g.body));
+  assert.equal(g.body.deliverySlots.group, 'grocery');
+  assert.match(g.body.deliverySlots.defaultSlotId, /\|G1$/);
 });

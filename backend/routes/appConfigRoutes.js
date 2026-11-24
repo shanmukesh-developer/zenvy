@@ -32,6 +32,8 @@ router.get('/campuses', cacheGet('config', { ttlMs: 30 * 1000 }), async (req, re
 // groceries and services always show. A count that cannot be read is null: the app keeps that section.
 // campus: the admin's Campus (Friends) master switch (Admin > Friends app > Switches); off hides the Home
 // "Campus" button and its promo (owner, 31 Oct 2026: "block the Campus feature for now from the admin").
+// pg / coride / rentals / events .on, autoRide.on and services.techServices: the launch switches (see below).
+// food / grocery / bakery / local / laundry / megaBasket / deals .on: the app sections control (utils/appSections).
 // introSound: the admins' Intro sound switch (Admin > Settings > Switches, INTRO_SOUND_ENABLED; on unless set off).
 // The app keeps the last answer and applies it from its next start.
 router.get('/sections', cacheGet('sections', { ttlMs: 60 * 1000 }), async (req, res) => {
@@ -62,7 +64,42 @@ router.get('/sections', cacheGet('sections', { ttlMs: 60 * 1000 }), async (req, 
     const row = await models().GlobalConfig?.findOne({ where: { key: 'INTRO_SOUND_ENABLED' }, attributes: ['value'] });
     if (row && row.value === false) introSound = false;
   } catch { /* unknown: keep it on */ }
-  res.json({ sections: { pg: always(pg), coride: one(coride), rentals: one(rentals), campus: { live: campusLive }, introSound: { on: introSound } } });
+  // Launch switches (owner, 24 Nov 2026: launch with Laundry only; scripts/services_laundry_only_v1.js turned the
+  // rest off once). on: the admins' switch for the section; the app shows PG stays, Co-Ride, Rentals, Campus events
+  // and the non-laundry services ONLY when on is true (an older server without it keeps them hidden). A paused
+  // section is also live:false, so older app builds that only read live hide PG / Co-Ride / Rentals too.
+  // A switch that cannot be read counts as on (the server gates refuse nothing they cannot read either).
+  const read = async (fn) => { try { return !!(await fn()); } catch { return true; } };
+  const sw = require('../utils/featureSwitches');
+  const [pgOn, corideOn, autoRideOn, rentalsOn, eventsOn, techOn] = await Promise.all([
+    read(() => sw.isOn('pgStays')),
+    read(() => sw.isOn('coRide')),
+    read(() => require('../modules/autoRide/services/flag').readFlag()),
+    read(() => require('../modules/rentals/services/eligibility').readFlag()),
+    read(() => require('../modules/campusEvents/services/flag').readFlag()),
+    read(() => sw.isOn('techServices')),
+  ]);
+  // App sections control (owner, 24 Nov 2026; utils/appSections): core sections the admins can pause. Unlike the
+  // launch switches above, the app shows these unless on is false (an older server or no answer keeps them).
+  const CORE = ['food', 'grocery', 'bakery', 'local', 'laundry', 'megaBasket', 'deals'];
+  const coreOn = await Promise.all(CORE.map((name) => read(() => sw.isOn(name))));
+  const core = Object.fromEntries(CORE.map((name, i) => [name, { on: coreOn[i] }]));
+  const gate = (on, s) => ({ ...s, live: on && s.live, on });
+  res.json({
+    sections: {
+      pg: gate(pgOn, always(pg)),
+      coride: gate(corideOn, one(coride)),
+      rentals: gate(rentalsOn, one(rentals)),
+      events: { live: eventsOn, on: eventsOn },
+      autoRide: { on: autoRideOn },
+      // laundry: the Laundry switch; techServices.on adds repairs, tailoring, print and the store shelves (gadgets, room).
+      // live / on stay true while either is open (older builds read them).
+      services: { live: core.laundry.on || techOn, on: core.laundry.on || techOn, laundry: core.laundry.on, techServices: techOn },
+      campus: { live: campusLive },
+      introSound: { on: introSound },
+      ...core,
+    },
+  });
 });
 
 // Update global app configuration (admin only)

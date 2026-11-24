@@ -106,7 +106,8 @@ const ensureDefaultCampuses = async () => {
         isActive: true,
         settings: {
           branches: ['CSE', 'ECE', 'MECH', 'CIVIL', 'BBA', 'MBA', 'AI & ML'],
-          hostelBlocks: ['Ganga-1', 'Ganga-2', 'Yamuna-1', 'Yamuna-2', 'Godavari', 'Narmada', 'Krishna'],
+          // Owner, 24 Nov 2026 (scripts/campus_srm_amrita_v1.js updates existing databases).
+          hostelBlocks: require('../../../scripts/campus_srm_amrita_v1').SRM_BLOCKS.slice(),
         }
       },
       {
@@ -114,11 +115,19 @@ const ensureDefaultCampuses = async () => {
         code: 'VITAP',
         emailDomains: ['vitap.ac.in', 'vitapstudent.ac.in'],
         city: 'Amaravathi',
-        isActive: true,
+        isActive: false, // not served (owner, 24 Nov 2026)
         settings: {
           branches: ['CSE', 'ECE', 'MECH', 'LAW', 'BBA'],
           hostelBlocks: ['MH-1', 'MH-2', 'MH-3', 'LH-1', 'LH-2'],
         }
+      },
+      {
+        name: 'Amrita University',
+        code: 'AMRITA',
+        emailDomains: [],
+        city: 'Amaravathi',
+        isActive: true,
+        settings: { hostelBlocks: [] }, // one drop point: Amrita Main Gate (the app shows it)
       },
       {
         name: 'KL University',

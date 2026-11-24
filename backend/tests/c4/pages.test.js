@@ -48,7 +48,7 @@ test('grievance officer defaults to the operator (Q30, 5 Nov 2026), with the con
   for (const p of ['/legal/grievance', '/legal/terms', '/legal/privacy']) {
     const t = H.text((await H.api('GET', p)).text);
     assert.ok(t.includes('Shanmukesh Kunjam') && !t.includes('Grievance Officer: details will be published here'), p);
-    assert.ok(t.includes('projectshanmukh@gmail.com'), p);
+    assert.ok(t.includes('zenwecustomer.support@gmail.com'), p);
   }
   const t = H.text((await H.api('GET', '/legal/terms')).text);
   assert.ok(t.includes('the city will be published here'), 'jurisdiction placeholder');

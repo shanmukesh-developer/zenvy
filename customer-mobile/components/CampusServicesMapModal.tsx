@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { launchSectionOn } from '../utils/launchSections';
 import {
   View,
   Text,
@@ -69,7 +70,7 @@ const CAMPUS_SERVICES_MAP: ServicePillar[] = [
     title: 'Laundry & Ironing',
     category: 'HOUSEKEEPING',
     tagline: 'Book a wash, dry clean or ironing pickup',
-    howToAccess: 'Services tab ➔ "Tech & Repairs" ➔ "Wash, Dry Clean & Ironing".',
+    howToAccess: 'Services tab ➔ "Laundry Services" ➔ "Laundry".',
     keyFeatures: [
       'Pick a service and see its price before booking',
       'Doorstep pickup from your hostel',
@@ -157,9 +158,11 @@ export default function CampusServicesMapModal({ visible, onClose }: Props) {
 
   // Only sections that are switched on (GET /api/config/sections): Co-Ride shows once it is confirmed
   // live; PG unless the server says it is off.
-  const sectionsSWR = useSWRJson<{ sections?: Record<string, { live?: boolean }> }>('/api/config/sections', { freshMs: 60 * 1000 });
+  const sectionsSWR = useSWRJson<{ sections?: Record<string, { live?: boolean }> }>('/api/config/sections', { freshMs: 0 });
   const sec = sectionsSWR.data?.sections;
-  const pillars = CAMPUS_SERVICES_MAP.filter((p) => (p.id !== 'coride' || sec?.coride?.live === true) && (p.id !== 'pg' || sec?.pg?.live !== false));
+  // Laundry-only launch (24 Nov 2026; utils/launchSections): PG and Co-Ride also need the admins' switch on.
+  const pillars = CAMPUS_SERVICES_MAP.filter((p) => (p.id !== 'coride' || (sec?.coride?.live === true && launchSectionOn(sectionsSWR.data, 'coride')))
+    && (p.id !== 'pg' || (sec?.pg?.live !== false && launchSectionOn(sectionsSWR.data, 'pg'))));
   const activePillar = pillars.find(p => p.id === selectedPillar) || pillars[0];
 
   const handleGoToSignup = () => {

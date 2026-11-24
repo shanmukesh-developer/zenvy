@@ -15,6 +15,7 @@ import ReceiptsCard from '@/components/config/ReceiptsCard';
 import CollegesCard from '@/components/config/CollegesCard';
 import TestDataCard from '@/components/config/TestDataCard';
 import DeliveryTimingsCard from '@/components/config/DeliveryTimingsCard';
+import LaunchSwitchesCard from '@/components/config/LaunchSwitchesCard';
 
 interface ConfigRow {
   _id: string;
@@ -55,13 +56,16 @@ const SLOT_CAP_KEY = 'SLOT_MAX_ORDERS';
 const MAX_SLOT_CAP = 500;
 // Intro sound on app start (customer app): edited with its switch in the Switches tab.
 const INTRO_SOUND_KEY = 'INTRO_SOUND_ENABLED';
-const MANAGED_KEYS: string[] = [...RETENTION.map(r => r.key), 'CAMPUS_SPOTS_DEFAULTS_RETIRED', 'APP_VERSION_POLICY', 'LEGAL_SETTINGS', CASH_LIMIT_KEY, 'RIDER_CASH_LEDGER_START', 'C6_COMMISSION_BACKFILL', INTRO_SOUND_KEY, 'CAMPUS_SERVICE'];
+const MANAGED_KEYS: string[] = [...RETENTION.map(r => r.key), 'CAMPUS_SPOTS_DEFAULTS_RETIRED', 'APP_VERSION_POLICY', 'LEGAL_SETTINGS', CASH_LIMIT_KEY, 'RIDER_CASH_LEDGER_START', 'C6_COMMISSION_BACKFILL', INTRO_SOUND_KEY, 'CAMPUS_SERVICE', 'SERVICES_LAUNDRY_ONLY_V1_DONE'];
 // Keys the backend DOES read, but that are edited on their own page (listing them under "not read"
 // told admins the rentals on/off switch did nothing).
 const MANAGED_ELSEWHERE: Record<string, { label: string; href: string }> = {
   VEHICLE_RENTALS_ENABLED: { label: 'Vehicle rentals on/off', href: '/rentals' },
   CAMPUS_WHISPERS_ENABLED: { label: 'Campus Whispers on/off', href: '/friends' },
   AFTER_DARK_ENABLED: { label: 'ZenWe After Dark on/off', href: '/friends' },
+  PG_STAYS_ENABLED: { label: 'PG stays on/off', href: '/config?tab=switches' },
+  CO_RIDE_ENABLED: { label: 'Co-Ride (bike pool) on/off', href: '/config?tab=switches' },
+  TECH_SERVICES_ENABLED: { label: 'Repairs, tailoring and other services on/off', href: '/config?tab=switches' },
 };
 const MAX_RETENTION_DAYS = 3650;
 
@@ -417,6 +421,8 @@ export default function ConfigTerminal() {
             {introMsg && <p className={introMsg.kind === 'ok' ? 'text-sm text-success-text' : 'text-sm text-danger-text'}>{introMsg.text}</p>}
           </CardBody>
         </Card>
+        {/* Laundry-only launch (24 Nov 2026): PG stays, Co-Ride and non-laundry services switch here. */}
+        <LaunchSwitchesCard />
         <Card>
           <CardHeader title="Feature switches" description="Big features are switched on and off on their own pages. Each switch asks you to confirm before it changes anything." />
           <ul className="divide-y divide-line">

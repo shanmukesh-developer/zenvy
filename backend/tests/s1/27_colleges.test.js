@@ -1,4 +1,4 @@
-// Colleges (owner, 31 Oct 2026: "SRM AP and VIT AP now, Amrita soon; admin can block ordering per college; each
+// Colleges (owner, 24 Nov 2026: SRM AP and Amrita only, VIT AP removed; earlier, 31 Oct 2026: "SRM AP and VIT AP now, Amrita soon; admin can block ordering per college; each
 // restaurant visible to its own college, no conflicts"). utils/campuses + GET /api/config/campuses, admin
 // GET/PUT /api/admin/campuses, store visibleCampuses (admin save), GET /api/restaurants?college=, and the order /
 // quote refusals: a paused or not-yet-open college, or a store that does not serve the student's college.
@@ -31,13 +31,14 @@ const setStatus = (key, status, token = admin.token) => H.api('PUT', `/api/admin
 const order = (u, itemId, campus, address, extra = {}) => H.api('POST', '/api/orders', u.token, { ...H.orderBody(itemId, 'COD'), campus, deliveryAddress: address, ...extra });
 const quote = (u, itemId, campus) => H.api('POST', '/api/orders/quote', u.token, { items: [{ menuItemId: itemId, quantity: 1 }], campus });
 const SRM_ADDR = 'Block A, Room 101, SRM AP';
-const VIT_ADDR = 'Block C, Room 12, VIT AP';
+const AMR_ADDR = 'Amrita - Amrita Main Gate';
 
-test('college list: SRM AP and VIT AP open, Amrita coming soon by default', async () => {
+test('college list: SRM AP and Amrita open by default, VIT AP is gone', async () => {
   flush();
   const r = await get('/api/config/campuses');
   assert.equal(r.status, 200);
-  assert.deepEqual(r.body.campuses.map((c) => [c.key, c.label, c.status]), [['srmap', 'SRM AP', 'open'], ['vitap', 'VIT AP', 'open'], ['amrita', 'Amrita', 'soon']]);
+  assert.deepEqual(r.body.campuses.map((c) => [c.key, c.label, c.status]), [['srmap', 'SRM AP', 'open'], ['amrita', 'Amrita', 'open']]);
+  assert.equal((await setStatus('vitap', 'open')).status, 400, 'VIT AP cannot be reopened');
 });
 
 test('admin pauses / reopens a college (validated, admins only); the generic config route cannot write it', async () => {
@@ -64,11 +65,16 @@ test('ordering: a paused college or a coming-soon one is refused (order and bill
   assert.equal(r.body.code, 'CAMPUS_PAUSED');
   assert.match(r.body.message, /SRM AP is paused/);
   assert.equal((await quote(u, item.id, 'srmap')).body.code, 'CAMPUS_PAUSED');
-  const vit = await order(u, item.id, 'vitap', VIT_ADDR);
-  assert.equal(vit.status, 201, JSON.stringify(vit.body));
-  const am = await order(u, item.id, 'amrita', 'Amrita, Block 1');
-  assert.equal(am.status, 400);
-  assert.equal(am.body.code, 'CAMPUS_SOON');
+  const am = await order(u, item.id, 'amrita', AMR_ADDR);
+  assert.equal(am.status, 201, JSON.stringify(am.body));
+  await setStatus('amrita', 'soon');
+  const soon = await order(u, item.id, 'amrita', AMR_ADDR);
+  assert.equal(soon.status, 400);
+  assert.equal(soon.body.code, 'CAMPUS_SOON');
+  await setStatus('amrita', 'open');
+  const vit = await order(u, item.id, 'vitap', 'Block C, Room 12, VIT AP');
+  assert.equal(vit.status, 400);
+  assert.equal(vit.body.code, 'CAMPUS_CLOSED');
   await setStatus('srmap', 'open');
   assert.equal((await order(u, item.id, 'srmap', SRM_ADDR)).status, 201);
   assert.equal(await H.ctx.M('Order').count({ where: { userId: u.id } }), 2, 'refused orders were never created');
@@ -82,25 +88,26 @@ test('stores: each college sees only its stores (and the all-colleges ones); a s
   let s = await save(a.id, ['SRM AP']);
   assert.equal(s.status, 200, JSON.stringify(s.body));
   assert.deepEqual(s.body.visibleCampuses, ['srmap']);
-  assert.deepEqual((await save(b.id, 'vit')).body.visibleCampuses, ['vitap']);
+  assert.deepEqual((await save(b.id, 'amrita')).body.visibleCampuses, ['amrita']);
   assert.equal((await save(c.id, ['harvard'])).status, 400, 'unknown college');
-  assert.equal((await save(c.id, ['srmap', 'vitap', 'amrita'])).body.visibleCampuses, null, 'every college = no limit');
+  assert.equal((await save(c.id, ['vit'])).status, 400, 'VIT AP is no longer a college');
+  assert.equal((await save(c.id, ['srmap', 'amrita'])).body.visibleCampuses, null, 'every college = no limit');
   assert.equal((await save(c.id, [])).body.visibleCampuses, null);
   flush();
   const ids = (body) => body.map((r) => r.id || r._id);
   const srm = ids((await get('/api/restaurants?college=srmap')).body);
-  const vit = ids((await get('/api/restaurants?college=vitap')).body);
+  const amr = ids((await get('/api/restaurants?college=amrita')).body);
   const all = ids((await get('/api/restaurants')).body);
   assert.ok(srm.includes(a.id) && srm.includes(c.id) && !srm.includes(b.id), 'SRM: its store + the all-colleges one');
-  assert.ok(vit.includes(b.id) && vit.includes(c.id) && !vit.includes(a.id), 'VIT: its store + the all-colleges one');
+  assert.ok(amr.includes(b.id) && amr.includes(c.id) && !amr.includes(a.id), 'Amrita: its store + the all-colleges one');
   assert.ok([a.id, b.id, c.id].every((id) => all.includes(id)), 'no college asked: every store (older app builds)');
   const u = await H.mkUser();
   const cross = await order(u, bItem.id, 'srmap', SRM_ADDR);
   assert.equal(cross.status, 400);
   assert.equal(cross.body.code, 'STORE_NOT_AT_CAMPUS');
-  assert.match(cross.body.message, /delivers to VIT AP only/);
+  assert.match(cross.body.message, /delivers to Amrita only/);
   assert.equal((await quote(u, bItem.id, 'srmap')).body.code, 'STORE_NOT_AT_CAMPUS');
-  assert.equal((await order(u, bItem.id, 'vitap', VIT_ADDR)).status, 201);
+  assert.equal((await order(u, bItem.id, 'amrita', AMR_ADDR)).status, 201);
   assert.equal((await order(u, aItem.id, 'srmap', SRM_ADDR)).status, 201);
 });
 
@@ -115,30 +122,30 @@ test('every list the app reads is scoped: Home stores, Groceries catalogue (type
     return st;
   };
   const srmFood = await mk('Zeta SRM Mess', 'RESTAURANT', ['srmap']);
-  const vitFood = await mk('Zeta VIT Mess', 'RESTAURANT', ['vitap']);
+  const amrFood = await mk('Zeta AMR Mess', 'RESTAURANT', ['amrita']);
   const srmShop = await mk('Zeta SRM Mart', 'GROCERY', ['srmap']);
-  const vitShop = await mk('Zeta VIT Mart', 'GROCERY', ['vitap']);
+  const amrShop = await mk('Zeta AMR Mart', 'GROCERY', ['amrita']);
   flush();
   const ids = (list) => list.map((r) => r.id || r._id);
   // Home (GET /api/users/restaurants, the list the app really reads).
   const home = async (college) => ids((await H.api('GET', `/api/users/restaurants?fields=summary${college ? `&college=${college}` : ''}`)).body);
   const homeSrm = await home('srmap');
-  assert.ok(homeSrm.includes(srmFood.id) && !homeSrm.includes(vitFood.id), 'Home: SRM sees its kitchen only');
-  const homeVit = await home('vitap');
-  assert.ok(homeVit.includes(vitFood.id) && !homeVit.includes(srmFood.id), 'Home: VIT sees its kitchen only');
+  assert.ok(homeSrm.includes(srmFood.id) && !homeSrm.includes(amrFood.id), 'Home: SRM sees its kitchen only');
+  const homeAmr = await home('amrita');
+  assert.ok(homeAmr.includes(amrFood.id) && !homeAmr.includes(srmFood.id), 'Home: AMR sees its kitchen only');
   const homeAll = await home(null);
-  assert.ok(homeAll.includes(srmFood.id) && homeAll.includes(vitFood.id), 'no college asked: all (older builds)');
+  assert.ok(homeAll.includes(srmFood.id) && homeAll.includes(amrFood.id), 'no college asked: all (older builds)');
   // Groceries catalogue.
   const items = async (college) => (await get(`/api/catalogue/items?type=grocery&college=${college}`)).body.items.map((it) => it.restaurantId || (it.store && it.store.id));
-  assert.ok((await items('srmap')).includes(srmShop.id) && !(await items('srmap')).includes(vitShop.id), 'items: SRM only');
-  assert.ok((await items('vitap')).includes(vitShop.id) && !(await items('vitap')).includes(srmShop.id), 'items: VIT only');
-  const stores = ids((await get('/api/catalogue/stores?type=grocery&college=vitap')).body);
-  assert.ok(stores.includes(vitShop.id) && !stores.includes(srmShop.id), 'stores: VIT only');
+  assert.ok((await items('srmap')).includes(srmShop.id) && !(await items('srmap')).includes(amrShop.id), 'items: SRM only');
+  assert.ok((await items('amrita')).includes(amrShop.id) && !(await items('amrita')).includes(srmShop.id), 'items: AMR only');
+  const stores = ids((await get('/api/catalogue/stores?type=grocery&college=amrita')).body);
+  assert.ok(stores.includes(amrShop.id) && !stores.includes(srmShop.id), 'stores: AMR only');
   // Search.
   const search = async (college) => (await H.api('GET', `/api/users/search?q=Zeta&college=${college}`)).body;
   const sSrm = await search('srmap');
   const names = (r) => [...r.restaurants.map((x) => x.name), ...r.items.map((x) => x.restaurantId && x.restaurantId.name)];
-  assert.ok(names(sSrm).some((n) => /SRM/.test(n)) && !names(sSrm).some((n) => /VIT/.test(n)), `search SRM: ${names(sSrm).join(', ')}`);
-  const sVit = await search('vitap');
-  assert.ok(names(sVit).some((n) => /VIT/.test(n)) && !names(sVit).some((n) => /SRM/.test(n)), `search VIT: ${names(sVit).join(', ')}`);
+  assert.ok(names(sSrm).some((n) => /SRM/.test(n)) && !names(sSrm).some((n) => /AMR/.test(n)), `search SRM: ${names(sSrm).join(', ')}`);
+  const sAmr = await search('amrita');
+  assert.ok(names(sAmr).some((n) => /AMR/.test(n)) && !names(sAmr).some((n) => /SRM/.test(n)), `search AMR: ${names(sAmr).join(', ')}`);
 });

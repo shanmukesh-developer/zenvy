@@ -5,9 +5,13 @@ import { useEffect, useState } from 'react';
 // decides which stores they see. The server keeps each store to its colleges (backend utils/campuses): every store /
 // product list the app reads carries ?college=<key> (apiFetch adds it through withCollege), and an order is refused
 // when its store does not serve the college. Same storage key as onboarding and checkout always used.
-export type CollegeKey = 'srmap' | 'vitap' | 'amrita';
+// Owner, 24 Nov 2026: we deliver only to SRM AP and Amrita (VIT AP removed). A saved 'vitap' is no longer a college,
+// so that student is asked to pick again.
+export type CollegeKey = 'srmap' | 'amrita';
 export const COLLEGE_STORAGE_KEY = 'zenvy_checkout_campus';
-const KEYS: CollegeKey[] = ['srmap', 'vitap', 'amrita'];
+const KEYS: CollegeKey[] = ['srmap', 'amrita'];
+/** Amrita has one drop point, its main gate: no hostel block or room is asked. */
+export const AMRITA_DROP = 'Amrita Main Gate';
 export const isCollegeKey = (v: unknown): v is CollegeKey => typeof v === 'string' && (KEYS as string[]).includes(v);
 
 let current: CollegeKey | null = null;
@@ -66,6 +70,8 @@ const SCOPED: RegExp[] = [
   /\/api\/restaurants\/local-vendors(\?|$)/,
   /\/api\/ads\/splash(\?|$)/,
   /\/api\/campus-booking\/(home|stalls)(\?|$)/,
+  // Delivery slots: Amrita has its own food windows (backend utils/deliveryGroups CAMPUS_GROUP_SLOTS).
+  /\/api\/orders\/delivery-slots(\?|$)/,
 ];
 
 /** `url` with ?college=<key> when it is a scoped list and a college is known (an explicit college= is kept). */

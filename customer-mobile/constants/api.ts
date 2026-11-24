@@ -52,9 +52,12 @@ export function scheduleApiEndpointCheck(delayMs = 4000): void {
   }, delayMs);
 }
 
-// Official Campus Support & WhatsApp Concierge
-export const ZENVY_SUPPORT_PHONE = '919391955674';
-export const ZENVY_SUPPORT_WHATSAPP = '919391955674';
+// ZenWe's one contact outside support tickets (owner, 24 Nov 2026): no phone or WhatsApp number in the app. Used for
+// help with orders and for promotions and collaborations.
+export const ZENWE_SUPPORT_EMAIL = 'zenwecustomer.support@gmail.com';
+/** mailto: link to ZenWe support with a subject (and optional body). */
+export const zenweMailto = (subject: string, body?: string): string =>
+  `mailto:${ZENWE_SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}${body ? `&body=${encodeURIComponent(body)}` : ''}`;
 
 export const ENDPOINTS = {
   // System Health & Diagnostics

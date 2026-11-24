@@ -26,6 +26,7 @@ import WorldTransitionOverlay from '../components/WorldTransitionOverlay';
 import IntroOverlay from '../components/IntroOverlay';
 import { markIntroDone } from '../utils/introGate';
 import GlobalAnnouncement from '../components/GlobalAnnouncement';
+import { pausedSectionHome, pausedSectionOf, useLaunchSections } from '../utils/launchSections';
 import TermsUpdateSheet from '../components/TermsUpdateSheet';
 import ThemedAlert, { showGlobalAlert } from '../components/ThemedAlert';
 import OfflineBanner from '../components/OfflineBanner';
@@ -100,6 +101,25 @@ function BackToHomeFromDeepLink() {
   return null;
 }
 
+/**
+ * Laundry-only launch (owner, 24 Nov 2026; utils/launchSections): a screen of a paused section (PG stays, Co-Ride,
+ * Auto-ride, Rentals, Campus events) opened by a link or a notification goes to the Services tab (Laundry Services)
+ * instead. A student's own bookings / tickets stay open. Each section opens again once the admins switch it on.
+ * App sections control (24 Nov 2026): the Local tab / In-Campus Booking and Deals & spin / rewards go to Home.
+ */
+function PausedSectionGuard() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const launch = useLaunchSections();
+  const key = pausedSectionOf(pathname);
+  const blocked = !!key && launch.settled && !launch.on(key);
+  React.useEffect(() => {
+    if (!blocked || !key) return;
+    try { router.replace(pausedSectionHome(key) as any); } catch { /* navigation not ready */ }
+  }, [blocked, key, router]);
+  return null;
+}
+
 /** After a font / size change re-mounted the app: back to the font screen the change was made on. */
 function ReopenAfterAppText() {
   const router = useRouter();
@@ -130,6 +150,7 @@ const AppTree = React.memo(function AppTree({ isDark, onSettled }: { isDark: boo
           <OptionsSheetProvider>
             <Stack screenOptions={ROOT_STACK_OPTIONS} />
             <BackToHomeFromDeepLink />
+            <PausedSectionGuard />
             <WorldTransitionOverlay />
             <GlobalAnnouncement />
             {/* C4: one-time, non-blocking "We've updated our Terms" sheet */}
