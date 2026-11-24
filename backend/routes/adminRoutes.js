@@ -184,6 +184,14 @@ router.put('/campuses/:key', require('../controllers/adminController').setCampus
 // App sections control: turn any app section on or off (utils/appSections).
 router.get('/app-sections', require('../controllers/adminController').getAppSections);
 router.put('/app-sections/:key', require('../controllers/adminController').setAppSection);
+// Home slideshow (controllers/homeSlideshowController): the dishes per diet, and each dish's slideshow image.
+{
+  const hs = require('../controllers/homeSlideshowController');
+  router.get('/home-slideshow', hs.getHomeSlideshow);
+  router.put('/home-slideshow', hs.setHomeSlideshow);
+  router.get('/home-slideshow/dishes', hs.searchDishes);
+  router.put('/menu-items/:id/slideshow', hs.setDishSlideshow);
+}
 router.get('/config', getGlobalConfig);
 router.post('/config', updateGlobalConfig);
 // Delivery timing groups (utils/deliveryGroups, owner 14 Nov 2026): the windows in force per group (saved over the

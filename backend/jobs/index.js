@@ -344,6 +344,16 @@ const runWikimediaRehost = async () => {
   }
 };
 
+// Dish photo cut-outs for the Home slideshow (utils/cutoutQueue).
+const runCutouts = async () => {
+  try {
+    return await require('../utils/cutoutQueue').runCutoutQueue();
+  } catch (err) {
+    console.warn('[CUTOUTS] failed:', err.message);
+    return { error: err.message };
+  }
+};
+
 // ── Registry ─────────────────────────────────────────────────────────────────────────────────────
 // schedule:
 //   { everyMs, firstMs }          setInterval(everyMs) from start + one extra run after firstMs
@@ -397,6 +407,12 @@ const JOBS = [
     // ON unless REHOST_WIKIMEDIA_IMAGES=false (owner, 20 Oct). Each run copies at most 120 photos, 2 s apart.
     name: 'media.wikimediaRehost', schedule: { everyMs: 6 * 60 * MIN, firstMs: 3 * MIN, chain: true }, run: runWikimediaRehost, timeoutMs: 30 * MIN,
     enabled: () => notTest() && require('../scripts/rehost_wikimedia_images').enabled(),
+  },
+  {
+    // Home slideshow cut-outs (utils/cutoutQueue): dish photos with the background removed, one at a time, every
+    // 3 min (each run at most 40 photos / 4 min). ON unless CUTOUTS=off. Admin "Redo cut-out" also starts a run.
+    name: 'media.cutouts', schedule: { everyMs: 3 * MIN, firstMs: 2 * MIN, chain: true }, run: runCutouts, timeoutMs: 15 * MIN, quietWhenIdle: true,
+    enabled: () => notTest() && require('../utils/cutoutQueue').enabled(),
   },
 ];
 const byName = new Map(JOBS.map((j) => [j.name, j]));

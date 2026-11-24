@@ -776,6 +776,7 @@ export default function HomeScreen() {
     types: ['store', 'product', 'config', 'coupon', 'announcement'],
     onChange: (events) => {
       if (hasType(events, 'store', 'product', 'config')) fetchData();
+      if (hasType(events, 'config')) slideshowRefresh.current?.();
       if (hasType(events, 'announcement')) setUnreadNonce((n) => n + 1);
       if (showVaultModalRef.current && hasType(events, 'coupon')) fetchVaultItems({ silent: true });
     },
@@ -798,10 +799,22 @@ export default function HomeScreen() {
   // New Home (owner, 13 Nov 2026, approved prototype): real deals for the slideshow (4) and the Hot deals grid (4 more),
   // the food-type row, the restaurants banner logos, and the deliver-to picker.
   const homeDishes = React.useMemo(() => dishesFrom(restaurants.filter(isHomeFoodVendor)), [restaurants]);
+  // Slideshow dishes the admins picked per diet (Admin > Config > Home slideshow, GET /api/config/home-slideshow), in
+  // their order; a dish not in the list Home has (unavailable, removed, other college) is skipped. None picked (or
+  // none left) = automatic: the biggest discounts, one per restaurant.
+  const slideshowPicks = useSWRJson<{ nonveg?: string[]; veg?: string[] }>('/api/config/home-slideshow');
+  const slideshowRefresh = useRef(slideshowPicks.refresh);
+  slideshowRefresh.current = slideshowPicks.refresh;
   const heroDeals = React.useMemo(() => {
+    const ids = (vegOnly ? slideshowPicks.data?.veg : slideshowPicks.data?.nonveg) || [];
+    if (Array.isArray(ids) && ids.length) {
+      const byId = new Map(homeDishes.map((d) => [d.id, d]));
+      const picked = ids.map((id) => byId.get(String(id))).filter((d): d is NonNullable<typeof d> => !!d);
+      if (picked.length) return picked;
+    }
     const d = pickDeals(homeDishes, vegOnly, 4);
     return d.sort((a, b) => (/biryani/i.test(b.name) ? 1 : 0) - (/biryani/i.test(a.name) ? 1 : 0));
-  }, [homeDishes, vegOnly]);
+  }, [homeDishes, vegOnly, slideshowPicks.data]);
   const gridDeals = React.useMemo(() => pickDeals(homeDishes, vegOnly, 4, new Set(heroDeals.map((d) => d.id))), [homeDishes, vegOnly, heroDeals]);
   const storeLogos = React.useMemo(() => dietStores.map((r: any) => r.logoUrl || r.imageUrl || r.image).filter(Boolean) as string[], [dietStores]);
   const [deliverOpen, setDeliverOpen] = useState(false);

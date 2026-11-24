@@ -135,7 +135,9 @@ const logAuditAction = async (req, targetId, action, details) => {
 // only the fields the Home list uses (name, price, photo, category, tags, veg). The full menu is fetched
 // on the store page (GET /api/users/restaurants/:id). Without the parameter the response is unchanged.
 // originalPrice (13 Nov 2026): the new Home's deal slideshow, Hot deals grid and food-type pages show "-20%, was ₹350".
-const SUMMARY_ITEM_FIELDS = ['id', '_id', 'restaurantId', 'name', 'price', 'originalPrice', 'imageUrl', 'category', 'tags', 'isVegetarian', 'dietType', 'isAvailable', 'deliveryGroup'];
+// cutoutUrl / slideshowImageUrl / slideshowRoundPhoto (25 Nov 2026): the slideshow's floating dish image (utils/cutoutQueue;
+// cutoutUrl only when it was made from the current photo; slideshowRoundPhoto only when true).
+const SUMMARY_ITEM_FIELDS = ['id', '_id', 'restaurantId', 'name', 'price', 'originalPrice', 'imageUrl', 'category', 'tags', 'isVegetarian', 'dietType', 'isAvailable', 'deliveryGroup', 'cutoutUrl', 'slideshowImageUrl'];
 // A dish with choices to make keeps just those in specs (the admin's options, the customisable flag): Home's quick add
 // reads them (productOptions / isCustomizable) and opens the dish page instead of a bare add that checkout refused
 // ("please choose a Portion"). Any other specs stay out of the summary.
@@ -152,6 +154,7 @@ const summarySpecs = (specs) => {
 const summaryItem = (m) => {
   const out = {};
   for (const k of SUMMARY_ITEM_FIELDS) if (m[k] !== undefined && m[k] !== null) out[k] = m[k];
+  if (m.slideshowRoundPhoto === true) out.slideshowRoundPhoto = true;
   const specs = summarySpecs(m.specs);
   if (specs) out.specs = specs;
   return out;
@@ -220,7 +223,10 @@ exports.getRestaurants = async (req, res) => {
         try { mTags = JSON.parse(mTags); } catch { mTags = []; }
       }
       const cleanedImg = cleanImageUrl(mObj.imageUrl || mObj.image);
-      const item = { ...mObj, tags: mTags, _id: m.id, id: m.id, image: cleanedImg, imageUrl: cleanedImg };
+      // The cut-out only while it belongs to the current photo (a changed photo shows round until it is made again).
+      const cq = require('../utils/cutoutQueue');
+      const cutoutUrl = cq.absoluteUrl(cq.currentCutout(m.get ? m.get({ plain: true }) : m), req);
+      const item = { ...mObj, tags: mTags, _id: m.id, id: m.id, image: cleanedImg, imageUrl: cleanedImg, cutoutUrl, slideshowRoundPhoto: !!mObj.slideshowRoundPhoto };
       if (!menuByRestaurant[m.restaurantId]) menuByRestaurant[m.restaurantId] = [];
       menuByRestaurant[m.restaurantId].push(item);
     }

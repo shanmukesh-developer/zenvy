@@ -20,7 +20,18 @@ const W = Dimensions.get('window').width;
 const rupees = (v: number) => `₹${Math.round(v)}`;
 
 // ─── Dishes ───────────────────────────────────────────────────────────────────
-export type HomeDish = { id: string; name: string; price: number; orig: number | null; off: number; img: string; store: string; storeId: string; logo: string | null; veg: boolean; category: string };
+// slideImg (25 Nov 2026): the slideshow's floating image, a transparent cut-out drawn without a circle like the Groceries
+// basket: the admin's own slideshow image, else the server-made cut-out (unless the admin chose the round photo), else null
+// (the round photo is shown).
+export type HomeDish = { id: string; name: string; price: number; orig: number | null; off: number; img: string; slideImg: string | null; store: string; storeId: string; logo: string | null; veg: boolean; category: string };
+
+/** The slideshow's cut-out image for a summary menu item (see HomeDish.slideImg). */
+export const slideImgOf = (m: any): string | null => {
+  const own = typeof m?.slideshowImageUrl === 'string' && m.slideshowImageUrl ? m.slideshowImageUrl : null;
+  if (own) return own;
+  const cut = typeof m?.cutoutUrl === 'string' && m.cutoutUrl ? m.cutoutUrl : null;
+  return cut && m?.slideshowRoundPhoto !== true ? cut : null;
+};
 
 /** The store's own diet tag (dietType veg / nonveg / egg); egg counts as non-veg. */
 export const dishIsVeg = (m: any): boolean => {
@@ -42,7 +53,7 @@ export function dishesFrom(restaurants: any[]): HomeDish[] {
       out.push({
         id: String(m.id || m._id), name: String(m.name || '').trim(), price, orig,
         off: orig ? Math.round((100 * (orig - price)) / orig) : 0,
-        img: String(m.imageUrl), store: String(r.name || ''), storeId, logo: r.logoUrl || null,
+        img: String(m.imageUrl), slideImg: slideImgOf(m), store: String(r.name || ''), storeId, logo: r.logoUrl || null,
         veg: dishIsVeg(m), category: String(m.category || ''),
       });
     }
@@ -146,10 +157,17 @@ export function DealSlideshow({ deals, theme, onOpen, active }: { deals: HomeDis
         {deals.map((d) => (
           <View key={d.id} style={[st.slide, { width: W }]}>
             <View style={st.deal}>
-              <View style={st.pctRow}>
-                <Text style={st.pct}>{d.off}%</Text>
-                <Text style={st.pctSide}>OFF{'\n'}TODAY</Text>
-              </View>
+              {/* An admin-picked dish without a discount (Admin > Home slideshow) shows "Today's special", never "0% off". */}
+              {d.off > 0 ? (
+                <View style={st.pctRow}>
+                  <Text style={st.pct}>{d.off}%</Text>
+                  <Text style={st.pctSide}>OFF{'\n'}TODAY</Text>
+                </View>
+              ) : (
+                <View style={st.pctRow}>
+                  <Text style={[st.pctSide, { fontSize: 24, lineHeight: 27, marginTop: 0, fontWeight: '900' }]}>TODAY'S{'\n'}SPECIAL</Text>
+                </View>
+              )}
               <Text style={st.dealName} numberOfLines={2}>{d.name}</Text>
               <View style={st.dealFrom}>
                 {d.logo ? <CachedImage source={{ uri: d.logo }} style={st.dealLogo} maxWidth={60} /> : null}
@@ -164,11 +182,19 @@ export function DealSlideshow({ deals, theme, onOpen, active }: { deals: HomeDis
               </Pressable>
               {d.orig ? <Text style={[st.save, { color: tint }]}>You save {rupees(d.orig - d.price)}</Text> : null}
             </View>
-            <Pressable onPress={() => onOpen(d)} style={st.plate} accessibilityLabel={d.name}>
-              <View style={st.plateRim}>
-                <CachedImage source={{ uri: d.img }} style={st.plateImg} maxWidth={360} />
-              </View>
-            </Pressable>
+            {d.slideImg ? (
+              // Cut-out dish floating on the red like the Groceries basket: no circle or rim, whole image (contain),
+              // larger than the round photo (may reach past the right edge / top a little), soft drop shadow.
+              <Pressable onPress={() => onOpen(d)} style={st.floatDish} accessibilityLabel={d.name}>
+                <CachedImage source={{ uri: d.slideImg }} style={st.floatImg} resizeMode="contain" maxWidth={440} />
+              </Pressable>
+            ) : (
+              <Pressable onPress={() => onOpen(d)} style={st.plate} accessibilityLabel={d.name}>
+                <View style={st.plateRim}>
+                  <CachedImage source={{ uri: d.img }} style={st.plateImg} maxWidth={360} />
+                </View>
+              </Pressable>
+            )}
           </View>
         ))}
       </ScrollView>
@@ -472,6 +498,16 @@ const st = StyleSheet.create({
   // Owner, 24 Nov 2026: no ring around the slideshow photo (the dark rim, outline and shadow are gone) - just the image.
   plateRim: { width: 170, height: 170, borderRadius: 85, overflow: 'hidden' },
   plateImg: { width: '100%', height: '100%', borderRadius: 85 },
+  // Floating cut-out (no frame) with a soft drop shadow that follows the dish's outline: iOS draws a frameless view's
+  // shadow from its content's alpha; Android and web use a drop-shadow filter (a box shadow would draw a square).
+  floatDish: {
+    position: 'absolute', right: -4, top: 10, width: 200, height: 200,
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 12, shadowOffset: { width: 0, height: 12 } },
+      default: { filter: 'drop-shadow(0px 12px 10px rgba(0,0,0,0.35))' },
+    }),
+  },
+  floatImg: { width: '100%', height: '100%', resizeMode: 'contain', backgroundColor: 'transparent' },
   dots: { flexDirection: 'row', gap: 6, paddingHorizontal: 20, marginTop: -14, height: 22 },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.3)' },
   dotOn: { width: 20, backgroundColor: '#FFFFFF' },

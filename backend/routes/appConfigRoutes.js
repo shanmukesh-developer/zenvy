@@ -27,6 +27,10 @@ router.get('/campuses', cacheGet('config', { ttlMs: 30 * 1000 }), async (req, re
   }
 });
 
+// Home slideshow dishes the admins picked per diet ({ nonveg: [ids], veg: [ids] }; empty = automatic biggest discounts).
+// Cached 60 s; an admin change publishes 'config', which clears it (utils/homeSlideshow).
+router.get('/home-slideshow', cacheGet('config', { ttlMs: 60 * 1000 }), require('../controllers/homeSlideshowController').getPublicHomeSlideshow);
+
 // Which "Others" sections have live listings right now (PG stays, Co-Ride, Rentals). The app hides a
 // section with nothing in it and shows it again as soon as there is a listing (cached 60 s). Food,
 // groceries and services always show. A count that cannot be read is null: the app keeps that section.

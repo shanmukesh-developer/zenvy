@@ -121,6 +121,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Config',
     items: [
       { href: '/app-sections', label: 'App sections', icon: 'layout', description: 'Turn each part of the customer app on or off: PG stays, Co-Ride, shared autos, rentals, events, services, Campus.', keywords: 'app sections enable disable pause launch switches pg coride co-ride rentals events services laundry campus feature on off' },
+      { href: '/home-slideshow', label: 'Home slideshow', icon: 'image', description: 'Pick the dishes in the Home slideshow per diet and the image each shows: your own, the automatic cut-out or the round photo.', keywords: 'home slideshow hero deals dishes banner cut out cutout background removed transparent png image veg non-veg' },
       { href: '/config', label: 'Settings and fees', icon: 'settings', description: 'Delivery fees, feature switches, app versions, receipts and legal pages.', keywords: 'config settings delivery fee feature flags app version legal terms privacy receipts gst' },
     ],
   },

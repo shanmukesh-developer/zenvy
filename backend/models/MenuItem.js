@@ -32,6 +32,17 @@ const initMenuItemModel = (sequelize) => {
     deliveryGroup: { type: DataTypes.STRING(16), allowNull: true },
     customCommission: { type: DataTypes.FLOAT },
     specs: { type: DataTypes.JSON, defaultValue: {} },
+    // Home slideshow (owner, 24-25 Nov 2026; utils/cutoutQueue, utils/homeSlideshow). cutoutUrl: the dish photo with
+    // its background removed on our server (transparent WebP); cutoutSourceUrl: the imageUrl it was made from (a
+    // different imageUrl = new photo, made again); cutoutStatus 'pending' | 'done' | 'failed' | null (not made yet);
+    // cutoutAt: when the worker claimed / finished it. slideshowImageUrl: the admin's own slideshow image (wins over
+    // everything); slideshowRoundPhoto: the admin chose the round photo over the cut-out for this dish.
+    cutoutUrl: { type: DataTypes.TEXT, allowNull: true },
+    cutoutSourceUrl: { type: DataTypes.TEXT, allowNull: true },
+    cutoutStatus: { type: DataTypes.STRING(10), allowNull: true },
+    cutoutAt: { type: DataTypes.DATE, allowNull: true },
+    slideshowImageUrl: { type: DataTypes.TEXT, allowNull: true },
+    slideshowRoundPhoto: { type: DataTypes.BOOLEAN, allowNull: true, defaultValue: false },
     ownerName: { type: DataTypes.STRING },
     ownerPhone: { type: DataTypes.STRING }
   }, { 

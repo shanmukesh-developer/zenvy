@@ -82,7 +82,7 @@ async function postUpload(body: FormData): Promise<Response> {
  * Uploads an image (JPEG/PNG/WEBP) and returns its URL. Phone photos over 1.5 MB or wider than 1600 px are
  * scaled down in the browser first (fit inside 1600 × 1600, no crop), so the server's 2 MB limit is met.
  */
-export async function uploadImage(file: File): Promise<string> {
+export async function uploadImage(file: File, opts: { keepAlpha?: boolean } = {}): Promise<string> {
   if (!/^image\/(jpe?g|png|webp)$/.test(file.type)) throw new Error('Use a JPEG, PNG or WEBP image.');
   let toSend = file;
   let needsResize = file.size > RESIZE_ABOVE_BYTES;
@@ -93,7 +93,8 @@ export async function uploadImage(file: File): Promise<string> {
       needsResize = false; // unreadable here: let the server decide
     }
   }
-  if (needsResize) toSend = await resizeImage(file, { maxW: MAX_UPLOAD_WIDTH, maxH: MAX_UPLOAD_WIDTH, crop: false });
+  // keepAlpha: a transparent PNG / WEBP stays transparent when it has to be scaled down (WEBP instead of JPEG).
+  if (needsResize) toSend = await resizeImage(file, { maxW: MAX_UPLOAD_WIDTH, maxH: MAX_UPLOAD_WIDTH, crop: false, keepAlpha: !!opts.keepAlpha });
   if (toSend.size > MAX_UPLOAD_BYTES) throw new Error(TOO_LARGE);
 
   const body = new FormData();

@@ -12,7 +12,8 @@ const STORE_PRIVATE_FIELDS = ['pan', 'payoutUpiId', 'bankAccountHolder', 'bankAc
   // How often ZenWe settles the store (admin only, utils/revenueReport).
   'settlementCycle'];
 const STORE_SECRET_FIELDS = ['password', 'commissionRate', 'commissionType', 'phone', 'tokenVersion', 'fcmTokens', ...STORE_PRIVATE_FIELDS];
-const ITEM_SECRET_FIELDS = ['password', 'customCommission', 'ownerName', 'ownerPhone'];
+// cutoutSourceUrl / cutoutStatus / cutoutAt: the cut-out worker's bookkeeping (utils/cutoutQueue), not for the apps.
+const ITEM_SECRET_FIELDS = ['password', 'customCommission', 'ownerName', 'ownerPhone', 'cutoutSourceUrl', 'cutoutStatus', 'cutoutAt'];
 
 const strip = (obj, fields) => {
   if (!obj || typeof obj !== 'object') return obj;

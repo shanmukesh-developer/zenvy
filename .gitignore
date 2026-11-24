@@ -73,3 +73,7 @@ Thumbs.db
 
 # Runtime socket log (contains user ids): never commit
 backend/socket_debug.txt
+
+# ---- Cut-out model (~179 MB, downloaded by the server on first need: backend/utils/cutoutModel.js) ----
+backend/assets/ml/isnet-general-use.onnx
+backend/assets/ml/*.download
