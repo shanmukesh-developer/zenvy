@@ -21,7 +21,9 @@ const BUDGET_MS = 4 * 60 * 1000;
 const MAX_INPUT_SIDE = 1600; // photos are shrunk to this before the model (memory; the output is capped at 800 px)
 const FETCH_MAX_BYTES = 8 * 1024 * 1024;
 
-const enabled = () => String(process.env.CUTOUTS || '').trim().toLowerCase() !== 'off';
+// Owner, 25 Nov 2026: "stop auto cut-out, I will use round images only". OFF unless CUTOUTS=on: no background job,
+// no model download, and no cut-out is sent to the apps (the slideshow shows the round photo or the admin's own image).
+const enabled = () => String(process.env.CUTOUTS || '').trim().toLowerCase() === 'on';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const sequelizeOf = () => require('../config/db').getSequelize();
@@ -205,7 +207,7 @@ const cutoutState = (m) => {
   return m.cutoutStatus === 'done' && m.cutoutUrl ? 'done' : 'failed';
 };
 /** The cut-out link when it belongs to the dish's current photo, else null. */
-const currentCutout = (m) => (cutoutState(m) === 'done' ? m.cutoutUrl : null);
+const currentCutout = (m) => (enabled() && cutoutState(m) === 'done' ? m.cutoutUrl : null);
 const slideImageOf = (m) => {
   if (m.slideshowImageUrl) return { shows: 'custom', url: m.slideshowImageUrl };
   const c = currentCutout(m);

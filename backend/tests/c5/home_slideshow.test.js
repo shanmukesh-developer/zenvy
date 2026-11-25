@@ -1,6 +1,9 @@
 // Home slideshow (owner, 24-25 Nov 2026): admin-picked dishes per diet (GlobalConfig HOME_SLIDESHOW), per-dish slideshow
 // image / round-photo / redo cut-out, the store list's new summary fields, and the cut-out worker (utils/cutoutQueue)
 // with a stubbed model (the real ONNX model never runs in tests).
+// Auto cut-outs are OFF unless CUTOUTS=on (owner, 25 Nov 2026); these tests switch them on, and the last one checks
+// that by default nothing runs and no cut-out reaches the app.
+process.env.CUTOUTS = 'on';
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const H = require('./helpers');
@@ -226,7 +229,21 @@ test('cut-out queue: makes cut-outs with a stubbed model, failures stay failed, 
   try {
     r = await Q.runCutoutQueue({ make, fetchImpl });
     assert.equal(r.skipped, 'off');
-  } finally { delete process.env.CUTOUTS; }
+  } finally { process.env.CUTOUTS = 'on'; }
 
   await H.api('PUT', '/api/admin/home-slideshow', admin.token, { nonveg: [], veg: [] });
+});
+
+test('default (CUTOUTS not set): no background cut-outs and the app gets no cut-out, only the round photo', async () => {
+  const Q = H.r('utils/cutoutQueue');
+  const { item } = await mkDish();
+  await item.update({ cutoutUrl: 'https://x.example/old-cut.webp', cutoutSourceUrl: item.imageUrl, cutoutStatus: 'done' });
+  delete process.env.CUTOUTS;
+  try {
+    assert.equal(Q.enabled(), false);
+    assert.equal((await Q.runCutoutQueue({ make: async () => null, fetchImpl: async () => null })).skipped, 'off');
+    const row = await M('MenuItem').findByPk(item.id);
+    assert.equal(Q.currentCutout(row.get({ plain: true })), null);
+    assert.equal(Q.slideImageOf(row.get({ plain: true })).shows, 'round');
+  } finally { process.env.CUTOUTS = 'on'; }
 });
