@@ -148,8 +148,12 @@ export function DealSlideshow({ deals, theme, onOpen, active }: { deals: HomeDis
   // Owner, 25 Nov 2026: long dish / store names ran under the photo on narrower phones. The photo is at most 170 and
   // 40% of the width on small screens; the text gets exactly the space to its left (slide padding 20, photo inset 18,
   // 10 gap), so names wrap or trim instead of overlapping.
-  const plateSize = Math.round(Math.min(170, W * 0.4));
-  const textW = Math.max(120, W - 20 - 18 - plateSize - 10);
+  // Owner, 25 Nov 2026: "the image a little bigger" - up to 200 (47% of the width on small phones), 10 from the edge.
+  const plateRight = 10;
+  const plateSize = Math.round(Math.min(200, W * 0.47));
+  const textW = Math.max(120, W - 20 - plateRight - plateSize - 8);
+  // The big "26%" shrinks a little on narrow phones so "26% OFF TODAY" always fits beside the photo.
+  const pctSize = textW < 190 ? 42 : 50;
   return (
     <View>
       <ScrollView
@@ -165,7 +169,7 @@ export function DealSlideshow({ deals, theme, onOpen, active }: { deals: HomeDis
               {/* An admin-picked dish without a discount (Admin > Home slideshow) shows "Today's special", never "0% off". */}
               {d.off > 0 ? (
                 <View style={st.pctRow}>
-                  <Text style={st.pct}>{d.off}%</Text>
+                  <Text style={[st.pct, { fontSize: pctSize, lineHeight: pctSize + 4 }]}>{d.off}%</Text>
                   <Text style={st.pctSide}>OFF{'\n'}TODAY</Text>
                 </View>
               ) : (
@@ -194,7 +198,7 @@ export function DealSlideshow({ deals, theme, onOpen, active }: { deals: HomeDis
                 <CachedImage source={{ uri: d.slideImg }} style={st.floatImg} resizeMode="contain" maxWidth={440} />
               </Pressable>
             ) : (
-              <Pressable onPress={() => onOpen(d)} style={[st.plate, { width: plateSize, height: plateSize, top: 28 + (170 - plateSize) / 2 }]} accessibilityLabel={d.name}>
+              <Pressable onPress={() => onOpen(d)} style={[st.plate, { width: plateSize, height: plateSize, right: plateRight, top: Math.max(8, 28 + (170 - plateSize) / 2) }]} accessibilityLabel={d.name}>
                 <View style={[st.plateRim, { width: plateSize, height: plateSize, borderRadius: plateSize / 2 }]}>
                   <CachedImage source={{ uri: d.img }} style={st.plateImg} maxWidth={360} />
                 </View>
