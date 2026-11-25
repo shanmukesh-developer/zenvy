@@ -928,6 +928,14 @@ router.patch('/:id/status', protect, async (req, res) => {
       const saved = await saveIfUnchanged(ServiceBooking, booking, changes);
       if (!saved) return staleBooking(res);
       booking = saved;
+      // A completed service (laundry, tailoring, repairs, print) counts towards Lucky Spins like a delivered order
+      // (utils/spinRules). Exactly once: saveIfUnchanged only writes while the booking is still in the status we
+      // read, and COMPLETED is final, so a retry or a second tap never reaches this with a fresh flip.
+      if (changes.status === 'COMPLETED' && current !== 'COMPLETED') {
+        const { creditCustomerForCompletion, pushSpinEarnedIfDue } = require('../services/BadgeService');
+        const { customer } = await creditCustomerForCompletion('service', booking);
+        if (customer) pushSpinEarnedIfDue(customer);
+      }
     }
 
     // A new quote or final price: push + in-app notification that opens the booking (push queue). Otherwise a

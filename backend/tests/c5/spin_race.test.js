@@ -10,7 +10,7 @@ after(H.teardown);
 
 test('5 parallel spins, 1 available: one 200, four 400, points = that prize, spinsUsed 1', async () => {
   for (let round = 0; round < 3; round++) {
-    const u = await H.mkUser({ completedOrders: 2, spinsUsed: 0, zenPoints: 7 });
+    const u = await H.mkUser({ completedOrders: 5, spinsUsed: 0, zenPoints: 7 });
     const rs = await Promise.all([1, 2, 3, 4, 5].map(() => H.api('POST', '/api/rewards/use-spin', u.token, {})));
     const statuses = rs.map((r) => r.status).sort();
     assert.deepEqual(statuses, [200, 400, 400, 400, 400], JSON.stringify(rs.map((r) => r.body)));
@@ -25,7 +25,7 @@ test('5 parallel spins, 1 available: one 200, four 400, points = that prize, spi
 });
 
 test('a NULL spin count (older rows) still spins once', async () => {
-  const u = await H.mkUser({ completedOrders: 4, zenPoints: 0 });
+  const u = await H.mkUser({ completedOrders: 10, zenPoints: 0 });
   await H.ctx.sequelize.query('UPDATE "Users" SET "spinsUsed" = NULL WHERE id = :id', { replacements: { id: u.id } });
   const r = await H.api('POST', '/api/rewards/use-spin', u.token, {});
   assert.equal(r.status, 200, JSON.stringify(r.body));

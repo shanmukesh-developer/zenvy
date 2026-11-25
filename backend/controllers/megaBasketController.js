@@ -455,6 +455,11 @@ const completeDelivery = async (req, res) => {
     );
     if (done === 0) return res.status(409).json({ message: 'This basket was just updated. Please refresh.' });
     basket.set({ status: 'Delivered', paymentStatus: 'Completed' });
+    // Counts towards Lucky Spins like any delivered order (utils/spinRules). Exactly once: only the request whose
+    // conditional update above flipped the basket gets here.
+    const { creditCustomerForCompletion, pushSpinEarnedIfDue } = require('../services/BadgeService');
+    const { customer: basketCustomer } = await creditCustomerForCompletion('basket', basket);
+    if (basketCustomer) pushSpinEarnedIfDue(basketCustomer);
 
     broadcastBasketStatus(req, basket.id, { id: basket.id, status: basket.status });
 

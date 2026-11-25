@@ -1,5 +1,6 @@
 const { getUserModel } = require('../models/User');
 const { sendServerError } = require('../utils/httpErrors');
+const spinRules = require('../utils/spinRules');
 
 // @desc    Check spin eligibility
 const checkSpinEntry = async (req, res) => {
@@ -8,14 +9,14 @@ const checkSpinEntry = async (req, res) => {
     const user = await User.findByPk(req.user.id);
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    const spinsEarned = Math.floor((user.completedOrders || 0) / 2);
-    const spinsAvailable = Math.max(0, spinsEarned - (user.spinsUsed || 0));
-
+    const p = spinRules.progressOf(user);
     res.json({
       completedOrders: user.completedOrders || 0,
       spinsUsed: user.spinsUsed || 0,
-      spinsAvailable,
-      nextMilestoneIn: 2 - ((user.completedOrders || 0) % 2),
+      spinsAvailable: spinRules.spinsAvailable(user),
+      ordersPerSpin: spinRules.ORDERS_PER_SPIN,
+      progress: p.progress,
+      nextMilestoneIn: p.toNext,
       prizes: SPIN_PRIZES
     });
   } catch (error) {
@@ -58,10 +59,8 @@ const useSpin = async (req, res) => {
       const user = await User.findByPk(req.user.id, { transaction: t, lock: true });
       if (!user) throw Object.assign(new Error('Your session has expired. Please log in again.'), { status: 401 });
 
-      const spinsEarned = Math.floor((user.completedOrders || 0) / 2);
-      const spinsAvailable = spinsEarned - (user.spinsUsed || 0);
-      if (spinsAvailable <= 0) {
-        throw Object.assign(new Error('No spins left — every 2 delivered orders earn you a new spin!'), { status: 400 });
+      if (spinRules.spinsAvailable(user) <= 0) {
+        throw Object.assign(new Error(spinRules.NO_SPINS_MESSAGE), { status: 400, code: 'NO_SPINS' });
       }
 
       const spinNumber = (user.spinsUsed || 0) + 1;
@@ -96,14 +95,28 @@ const useSpin = async (req, res) => {
       prizeIndex,
       prize,
       spinsUsed: updatedUser.spinsUsed,
-      spinsAvailable: Math.max(0, Math.floor((updatedUser.completedOrders || 0) / 2) - updatedUser.spinsUsed),
+      spinsAvailable: spinRules.spinsAvailable(updatedUser),
       zenPoints: updatedUser.zenPoints,
       coupon: awardedCoupon ? { code: awardedCoupon.code, type: awardedCoupon.type, expiryDate: awardedCoupon.expiryDate } : null
     });
   } catch (error) {
-    if (error.status) return res.status(error.status).json({ message: error.message });
+    if (error.status) return res.status(error.status).json({ ...(error.code ? { code: error.code } : {}), message: error.message });
     console.error('[SPIN_ERROR]', error);
     res.status(500).json({ message: 'The wheel got stuck. Please try again.' });
+  }
+};
+
+// @desc    Progress towards the next free spin (the app's after-delivery pop-up reads this as the truth)
+// @route   GET /api/rewards/spin-progress
+const getSpinProgress = async (req, res) => {
+  try {
+    const User = getUserModel();
+    const user = await User.findByPk(req.user.id, { attributes: ['id', 'completedOrders', 'spinsUsed', 'spinBonus', 'lastCompletedRef', 'lastCompletedAt'] });
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    res.set('Cache-Control', 'private, no-store');
+    res.json(spinRules.spinProgressJson(user));
+  } catch (error) {
+    sendServerError(res, error, '[REWARDCONTROLLER_ERROR]');
   }
 };
 
@@ -241,6 +254,7 @@ const validateCoupon = async (req, res) => {
 
 module.exports = {
   checkSpinEntry,
+  getSpinProgress,
   useSpin,
   getLeaderboard,
   getUserCoupons,

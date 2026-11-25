@@ -24,6 +24,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { connectSocket } from '../../utils/socket';
 import { apiFetch, readJson } from '../../utils/auth';
+import { useSpinProgressPopup } from '../../components/SpinProgressPopup';
 import { safeId } from '../../utils/ids';
 import { StaggeredSection } from '../../components/AnimatedSection';
 import ConfettiCannon from 'react-native-confetti-cannon';
@@ -150,6 +151,12 @@ export default function TrackingScreen() {
   const [orderError, setOrderError] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [showRatingModal, setShowRatingModal] = useState(false);
+  // After-delivery spin pop-up (owner, 25 Nov 2026: every 5 delivered orders = 1 free spin): once per delivered
+  // order, after the rating sheet closes (components/SpinProgressPopup, utils/spinProgress).
+  const spinPopup = useSpinProgressPopup(showRatingModal);
+  const spinCheckRef = useRef(spinPopup.check);
+  spinCheckRef.current = spinPopup.check;
+  const spinCheckedRef = useRef(false);
   const [gateNotification, setGateNotification] = useState<string | null>(null);
   const [zoomPin, setZoomPin] = useState(false);
   // Rider's live GPS position, relayed by the server to this order's room ('riderLocation').
@@ -298,6 +305,14 @@ export default function TrackingScreen() {
       const stale = fetchedStep !== -1 && fetchedStep < statusRef.current && lastSocketStatusAtRef.current > startedAt;
       if (!stale) applyStep(fetchedStep);
 
+      // Spin progress pop-up only at the moment of delivery (owner, 25 Nov 2026): a refresh that finds the order
+      // delivered in the last 3 minutes (the live event was missed); opening an older delivered order never shows it.
+      const deliveredAtMs = (data as any).deliveredAt ? new Date((data as any).deliveredAt).getTime() : NaN;
+      if (data.status === 'Delivered' && !spinCheckedRef.current && Number.isFinite(deliveredAtMs) && Date.now() - deliveredAtMs < 3 * 60 * 1000) {
+        spinCheckedRef.current = true;
+        spinCheckRef.current(orderId).catch(() => {});
+      }
+
       // Ask for a rating once per visit, and never for an order that is already rated.
       if (data.status === 'Delivered' && data.rating == null && !ratingPromptedRef.current) {
         ratingPromptedRef.current = true;
@@ -379,6 +394,10 @@ export default function TrackingScreen() {
       if (s === 'Delivered' && !confettiShownRef.current) {
         confettiShownRef.current = true;
         setShowConfetti(true);
+      }
+      if (s === 'Delivered' && !spinCheckedRef.current) {
+        spinCheckedRef.current = true;
+        spinCheckRef.current(orderId).catch(() => {});
       }
       // Store timeout / admin cancel refunds Wallet orders: refresh the balance.
       if (s === 'Cancelled' && typeof data === 'object' && data !== null && Number((data as any).refundedToWallet) > 0) {
@@ -1270,6 +1289,8 @@ export default function TrackingScreen() {
           </View>
         </View>
       </Modal>
+
+      {spinPopup.element}
 
       {/* ── RATING MODAL ── */}
       <Modal visible={showRatingModal} transparent animationType="slide" onRequestClose={() => setShowRatingModal(false)}>

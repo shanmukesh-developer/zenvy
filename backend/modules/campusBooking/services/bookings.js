@@ -336,10 +336,38 @@ const vendorCollect = async (booking, { code }, now = new Date()) => {
     throw fail(400, 'WRONG_CODE', lock ? 'Wrong code again. Checking is paused for 15 minutes.' : `That code does not match booking ${booking.ref}. Check it with the student.`, { triesLeft: lock ? 0 : max - fails });
   }
   // Handed over straight from ACCEPTED / PREPARING: it was ready at the counter, so stamp those times too.
-  return transition(booking, STATUS.COLLECTED, 'vendor', {
+  const collected = await transition(booking, STATUS.COLLECTED, 'vendor', {
     preparingAt: booking.preparingAt || now, readyAt: booking.readyAt || now,
     collectedAt: now, pickupCodeFails: 0, pickupCodeLockedUntil: null,
   });
+  // Counts towards Lucky Spins (utils/spinRules) exactly once: transition() above is conditional on the version
+  // and status we read, so only the call that moved it to COLLECTED gets here. Same anti-farming rule as stall
+  // orders (the stall alone confirms the pickup): at most STALL_LOYALTY_DAILY counted pickups per student per IST day.
+  if (collected && (await campusLoyaltyAllowed(collected, now))) {
+    const { creditCustomerForCompletion, pushSpinEarnedIfDue } = require('../../../services/BadgeService');
+    const { customer } = await creditCustomerForCompletion('campus', collected);
+    if (customer) pushSpinEarnedIfDue(customer);
+  }
+  return collected;
+};
+
+const CAMPUS_LOYALTY_DAILY = Math.max(0, parseInt(process.env.STALL_LOYALTY_DAILY, 10) || 2);
+const campusLoyaltyAllowed = async (booking, now = new Date()) => {
+  try {
+    const istOffset = 5.5 * 60 * 60 * 1000;
+    const at = new Date(booking.collectedAt || now).getTime();
+    const dayStart = new Date(Math.floor((at + istOffset) / 86400000) * 86400000 - istOffset);
+    const dayEnd = new Date(dayStart.getTime() + 86400000);
+    const first = await Booking().findAll({
+      where: { userId: booking.userId, status: STATUS.COLLECTED, collectedAt: { [Op.gte]: dayStart, [Op.lt]: dayEnd } },
+      attributes: ['id'],
+      order: [['collectedAt', 'ASC'], ['id', 'ASC']],
+      limit: CAMPUS_LOYALTY_DAILY,
+    });
+    return first.some((b) => String(b.id) === String(booking.id));
+  } catch {
+    return false;
+  }
 };
 
 module.exports = {

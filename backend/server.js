@@ -1454,6 +1454,11 @@ const initializeApp = async () => {
     inBootQueue(() => require('./scripts/support_email_v1').runSupportEmailOnce())
       .then((r) => console.log('✉️ [SUPPORT_EMAIL]', JSON.stringify(r)))
       .catch((err) => console.warn('⚠️ [SUPPORT_EMAIL] failed:', err.message));
+    // 🎡 Lucky Spin every 5 orders (owner, 25 Nov 2026), once (SPIN_RULE_5_V1_DONE): spins earned under the old
+    // every-2 rule are kept as User.spinBonus. scripts/spin_rule_5_v1.js; DISABLE_SPIN_RULE_5_ONCE=true skips it.
+    inBootQueue(() => require('./scripts/spin_rule_5_v1').runSpinRule5Once())
+      .then((r) => console.log('🎡 [SPIN_RULE_5]', JSON.stringify(r)))
+      .catch((err) => console.warn('⚠️ [SPIN_RULE_5] failed:', err.message));
     // 🧺 Laundry-only launch (owner, 24 Nov 2026), once (SERVICES_LAUNDRY_ONLY_V1_DONE): PG stays, Co-Ride (bike pool +
     // Auto-ride), Rentals, Campus events and every non-laundry service are switched off with the admins' own switches,
     // so their APIs refuse new bookings and GET /api/config/sections tells the app to hide them; nothing is deleted

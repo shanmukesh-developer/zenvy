@@ -7,7 +7,7 @@
     },
     "name": "ZenWe",
     "slug": "zenvy-customer",
-    "version": "1.0.78",
+    "version": "1.0.79",
     "runtimeVersion": {
       "policy": "appVersion"
     },
@@ -42,7 +42,7 @@
       },
       "package": "com.srm.hostelbites",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 79,
+      "versionCode": 80,
       "compileSdkVersion": 36,
       "targetSdkVersion": 36,
       "minSdkVersion": 24,
@@ -130,7 +130,8 @@
         }
       ],
       "expo-asset",
-      "expo-video"
+      "expo-video",
+      ["./plugins/withBlankAndroid12Splash", { "backgroundColor": "#FFFFFF" }]
     ],
     "experiments": {
       "typedRoutes": true

@@ -29,6 +29,9 @@ import { useTheme } from '../../context/ThemeContext';
 import { useDietary, DietPrefs } from '../../context/DietaryContext';
 import AmbientBackground from '../../components/AmbientBackground';
 import { useDietLight } from '../../components/local/dietLightTheme';
+import { fetchSpinProgress, type SpinProgress } from '../../utils/spinProgress';
+import { ORDERS_PER_SPIN } from '../../utils/spinRules';
+import { useLaunchSections } from '../../utils/launchSections';
 import { StaggeredSection } from '../../components/AnimatedSection';
 import { apiFetch, getToken } from '../../utils/auth';
 import { newIdempotencyKey } from '../../context/CartContext';
@@ -132,6 +135,8 @@ export default function ProfileScreen() {
   // Owner, 10 Nov 2026: Profile keeps its layout but takes the app's new look (Local / Basket / Orders): the light
   // diet band and page, glass cards and the diet accent. Gold stays only for rewards (badge, points, progress).
   const d = useDietLight();
+  // Deals & spin follows the admins' Deals switch (utils/launchSections; unknown = shown).
+  const dealsOn = useLaunchSections().on('deals');
   const bg = d.pageDeep;
   // Solid, not see-through: on Android the card shadow showed through as a square inside the card (owner, 10 Nov
   // 2026, same fix as Orders). Exact colour of 74% white over the page, so the look is unchanged.
@@ -223,6 +228,9 @@ export default function ProfileScreen() {
   const [spendStats, setSpendStats] = useState<any>(null);
   const [statsState, setStatsState] = useState<StatsState>('loading');
   const [coupons, setCoupons] = useState<any[]>([]);
+  // Spin & deals (owner, 25 Nov 2026: moved here from the Groceries tab): spins ready and progress to the next one
+  // (GET /api/rewards/spin-progress; every 5 delivered orders of any kind = 1 free spin).
+  const [spinProg, setSpinProg] = useState<SpinProgress | null>(null);
   const [giftPhone, setGiftPhone] = useState('');
   const [pushOn, setPushOn] = useState(false);
   const [pushPrefs, setPushPrefs] = useState<PushPrefs>(DEFAULT_PUSH_PREFS);
@@ -249,11 +257,13 @@ export default function ProfileScreen() {
   const fetchData = useCallback(async (mode: 'focus' | 'pull' = 'focus') => {
     if (mode === 'pull') setRefreshing(true);
     const tokenAtStart = await getToken();
-    const [profileRes, statsRes, couponsRes] = await Promise.allSettled([
+    const [profileRes, statsRes, couponsRes, spinRes] = await Promise.allSettled([
       apiFetch(ENDPOINTS.profile),
       apiFetch(`${API_URL}/api/orders/stats`),
       apiFetch(`${API_URL}/api/rewards/coupons`),
+      fetchSpinProgress(),
     ]);
+    if (mountedRef.current && spinRes.status === 'fulfilled' && spinRes.value) setSpinProg(spinRes.value);
     if (!mountedRef.current) return;
 
     try {
@@ -1142,13 +1152,56 @@ export default function ProfileScreen() {
           </View>
         </StaggeredSection>
 
-        {/* Your coupons */}
+        {/* Spin & deals + Your coupons (owner, 25 Nov 2026: Deals & spin lives here now, app/deals) */}
         <StaggeredSection delay={240} direction="up">
+          {dealsOn ? (() => {
+            const per = spinProg?.ordersPerSpin || ORDERS_PER_SPIN;
+            const done = spinProg ? Math.min(per - 1, Math.max(0, spinProg.progress)) : 0;
+            const ready = spinProg?.spinsAvailable || 0;
+            return (
+              <TouchableOpacity
+                style={[s.spinCard, { backgroundColor: cardBg, borderColor: border }, lift]}
+                onPress={() => router.push('/deals' as any)}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel={`Spin and deals. ${ready > 0 ? `${ready} spin${ready === 1 ? '' : 's'} ready.` : ''} ${done} of ${per} orders to your next spin.`}
+              >
+                <View style={s.spinCardRow}>
+                  <View style={[s.spinIcon, { backgroundColor: d.soft }]}>
+                    <Ionicons name="gift-outline" size={22} color={goldColor} />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={[s.spinTitle, { color: txt }]}>Spin & deals</Text>
+                    <Text style={[s.spinSub, { color: txtSec }]} numberOfLines={2}>
+                      {ready > 0 ? `${ready} spin${ready === 1 ? '' : 's'} ready to use · ` : ''}Spin the wheel, today's deals and coupons
+                    </Text>
+                  </View>
+                  {ready > 0 ? (
+                    <View style={[s.spinBadge, { backgroundColor: goldColor }]}>
+                      <Text style={[s.spinBadgeText, { color: d.onAcc }]}>{ready}</Text>
+                    </View>
+                  ) : (
+                    <Ionicons name="chevron-forward" size={18} color={txtSec} />
+                  )}
+                </View>
+                <View style={s.spinSteps}>
+                  {Array.from({ length: per }).map((_, i) => (
+                    <View key={i} style={[s.spinStep, { backgroundColor: i < done ? goldColor : d.track }]} />
+                  ))}
+                </View>
+                <Text style={[s.spinProgText, { color: txtSec }]}>
+                  {spinProg ? `${done} of ${per} orders to your next spin` : `Every ${per} delivered orders earn a free spin`}
+                </Text>
+              </TouchableOpacity>
+            );
+          })() : null}
           <View style={s.sectionHeader}>
             <Text style={[s.sectionTitleText, { color: isDark ? goldColor : '#111', borderLeftColor: goldColor }]}>Your coupons</Text>
-            <TouchableOpacity onPress={() => router.push('/rewards')}>
-              <Text style={[s.sectionAddBtn, { color: goldColor }]}>Spin the wheel</Text>
-            </TouchableOpacity>
+            {dealsOn ? (
+              <TouchableOpacity onPress={() => router.push('/deals/spin' as any)}>
+                <Text style={[s.sectionAddBtn, { color: goldColor }]}>Spin the wheel</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
           {coupons.length > 0 ? (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.couponsScroll}>
@@ -1179,7 +1232,7 @@ export default function ProfileScreen() {
               <Text style={[s.emptySubText, { color: txtSec, marginBottom: 12 }]}>Spin the wheel to win coupons</Text>
               <TouchableOpacity
                 style={{ backgroundColor: goldColor, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12 }}
-                onPress={() => router.push('/rewards')}
+                onPress={() => router.push((dealsOn ? '/deals/spin' : '/rewards') as any)}
               >
                 <Text style={{ color: isDark ? '#000' : '#FFF', fontSize: 12, fontWeight: '700', letterSpacing: 0.2 }}>Spin the wheel</Text>
               </TouchableOpacity>
@@ -2053,6 +2106,16 @@ const s = StyleSheet.create({
     height: '100%',
     borderRadius: 3,
   },
+  spinCard: { borderWidth: 1, borderRadius: 18, padding: 14, marginBottom: 18 },
+  spinCardRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  spinIcon: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
+  spinTitle: { fontSize: 16, fontWeight: '800' },
+  spinSub: { fontSize: 12, fontWeight: '600', marginTop: 2 },
+  spinBadge: { minWidth: 26, height: 26, borderRadius: 13, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center' },
+  spinBadgeText: { fontSize: 13, fontWeight: '800' },
+  spinSteps: { flexDirection: 'row', gap: 5, marginTop: 12 },
+  spinStep: { flex: 1, height: 6, borderRadius: 3 },
+  spinProgText: { fontSize: 12, fontWeight: '700', marginTop: 6 },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',

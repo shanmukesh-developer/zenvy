@@ -1,7 +1,9 @@
 {
   "expo": {
     "extra": {
-      "trustedApiHosts": ["hostelbites-backend-jwmt.onrender.com"]
+      "trustedApiHosts": [
+        "hostelbites-backend-jwmt.onrender.com"
+      ]
     },
     "name": "ZenWe PG Partner",
     "slug": "zcs-pg-partner",
@@ -79,6 +81,12 @@
             "enableShrinkResourcesInReleaseBuilds": true,
             "extraProguardRules": "-keep class com.swmansion.reanimated.** { *; }\n-keep class com.facebook.react.turbomodule.** { *; }"
           }
+        }
+      ],
+      [
+        "./plugins/withBlankAndroid12Splash",
+        {
+          "backgroundColor": "#F6F5FD"
         }
       ]
     ]

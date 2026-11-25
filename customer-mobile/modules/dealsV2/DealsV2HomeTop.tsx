@@ -50,7 +50,8 @@ export function HomeTop({ sections, onSaved }: { sections?: { key: string; label
       </Svg>
 
       <View style={s.brandRow}>
-        <Press onPress={() => goHome(router)} label="Back to Home" style={s.iconBtn} scaleTo={0.9}>
+        {/* Opened from Profile (25 Nov 2026): back returns there; with no history (a deep link), Home. */}
+        <Press onPress={() => (router.canGoBack() ? router.back() : goHome(router))} label="Back" style={s.iconBtn} scaleTo={0.9}>
           <IArrowLeft size={22} color="#FFFFFF" strokeWidth={1.6} />
         </Press>
         <ZenvBadge size={36} />

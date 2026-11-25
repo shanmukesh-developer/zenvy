@@ -80,7 +80,7 @@ test('admin coupon form: only real coupons are created (type, ₹0-₹5000, code
 });
 
 test('Lucky Spin: every 15th spin is a 7-day free-delivery coupon for the spinner, and it works at checkout', async () => {
-  const u = await H.mkUser({ completedOrders: 30, spinsUsed: 14 });
+  const u = await H.mkUser({ completedOrders: 75, spinsUsed: 14 });
   const r = await api('POST', '/api/rewards/use-spin', u.token, {});
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.equal(r.body.prizeIndex, 0);

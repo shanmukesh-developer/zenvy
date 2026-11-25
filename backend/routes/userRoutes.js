@@ -374,11 +374,10 @@ router.get('/rewards', protect, async (req, res) => {
   try {
     const { getUserModel } = require('../models/User');
     const User = getUserModel();
-    const user = await User.findByPk(req.user.id, { attributes: ['id', 'name', 'zenPoints', 'completedOrders', 'streakCount', 'badges', 'spinsUsed'] });
+    const user = await User.findByPk(req.user.id, { attributes: ['id', 'name', 'zenPoints', 'completedOrders', 'streakCount', 'badges', 'spinsUsed', 'spinBonus'] });
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    const spinsEarned = Math.floor((user.completedOrders || 0) / 2);
-    const spinsAvailable = Math.max(0, spinsEarned - (user.spinsUsed || 0));
+    const spinsAvailable = require('../utils/spinRules').spinsAvailable(user);
 
     res.json({
       zenPoints: user.zenPoints || 0,

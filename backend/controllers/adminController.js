@@ -2012,8 +2012,9 @@ exports.getRewardsAnalytics = async (req, res) => {
     const User = getUserModel();
     const users = await User.findAll({ 
       where: { role: 'student' },
-      attributes: ['completedOrders', 'spinsUsed', 'badges', 'name', 'zenPoints']
+      attributes: ['completedOrders', 'spinsUsed', 'spinBonus', 'badges', 'name', 'zenPoints']
     });
+    const { spinsEarned } = require('../utils/spinRules');
 
     let totalSpinsEarned = 0;
     let totalSpinsUsed = 0;
@@ -2024,7 +2025,7 @@ exports.getRewardsAnalytics = async (req, res) => {
     const topPerformers = users
       .map(u => {
         const uJson = u.toJSON();
-        const earned = Math.floor((uJson.completedOrders || 0) / 2);
+        const earned = spinsEarned(uJson);
         totalSpinsEarned += earned;
         totalSpinsUsed += (uJson.spinsUsed || 0);
         totalZenPoints += (uJson.zenPoints || 0);

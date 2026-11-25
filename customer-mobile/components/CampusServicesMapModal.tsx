@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { useTheme } from '../context/ThemeContext';
 import { useSWRJson } from '../utils/swrCache';
+import { ORDERS_PER_SPIN } from '../utils/spinRules';
 
 const { width: SW } = Dimensions.get('window');
 
@@ -129,9 +130,9 @@ const CAMPUS_SERVICES_MAP: ServicePillar[] = [
     title: 'Rewards & Daily Deals',
     category: 'PERKS & LOYALTY',
     tagline: 'ZenWe Points, spins and daily deals',
-    howToAccess: 'Groceries tab ➔ "Deals & Spin", or Home ➔ Daily Deals.',
+    howToAccess: 'Profile ➔ "Spin & deals", or Home ➔ Daily Deals.',
     keyFeatures: [
-      'Every 2 delivered orders earn a spin',
+      `Every ${ORDERS_PER_SPIN} delivered orders earn a spin`,
       'Daily deals give a coupon valid until midnight',
       'Free delivery at 200 ZenWe Points'
     ],

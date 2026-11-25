@@ -783,16 +783,8 @@ const updateOrderStatus = async (req, res) => {
               { recipients: [customer.id] }
             );
           }
-          // --- Milestone Notifications ---
-          if (customer.completedOrders % 2 === 0) {
-            await sendPushToTokens(
-              customer.fcmTokens,
-              'Milestone Reached! 🎡',
-              `You just completed your ${customer.completedOrders}th order! A Lucky Spin is waiting for you in the Vault.`,
-              { type: 'SPIN_EARNED' },
-              { recipients: [customer.id] }
-            );
-          }
+          // --- Milestone: a new Lucky Spin every ORDERS_PER_SPIN delivered orders (utils/spinRules) ---
+          await require('../services/BadgeService').pushSpinEarnedIfDue(customer);
         } catch (pushErr) {
           console.warn('[DELIVERY_PUSH_WARN]', pushErr.message);
         }

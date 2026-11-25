@@ -36,6 +36,7 @@ const PHOTO_ART: Record<string, { src: any; ratio: number; w: number } | undefin
 };
 import { featuredLabel } from '../utils/promoLabel';
 import { storeEtaMins } from '../utils/storeEta';
+import { ORDERS_PER_SPIN } from '../utils/spinRules';
 
 export interface PromoSlide {
   id: string;
@@ -516,7 +517,7 @@ export default function HighClassPromoCarousel({
         id: 'rewards',
         type: 'rewards',
         tagline: '🎡 Rewards',
-        title1: 'Every 2 orders',
+        title1: `Every ${ORDERS_PER_SPIN} orders`,
         title2: '= 1 spin.',
         description: 'Win ZenWe Points or free delivery.',
         buttonText: 'See rewards',

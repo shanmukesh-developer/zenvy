@@ -88,7 +88,7 @@ const creditCustomerForDelivery = async (User, order) => {
   await User.update(
     {
       // An owner-only test order (utils/testView) is not counted for the public leaderboard (top students by orders).
-      ...(order.isTestData ? {} : { completedOrders: bump('completedOrders', 1) }),
+      ...(order.isTestData ? {} : { completedOrders: bump('completedOrders', 1), lastCompletedRef: `order:${order.id}`, lastCompletedAt: new Date() }),
       ...(points > 0 ? { zenPoints: bump('zenPoints', points) } : {}),
       ...(lateNight ? { lateNightOrders: bump('lateNightOrders', 1) } : {})
     },
@@ -104,4 +104,60 @@ const creditCustomerForDelivery = async (User, order) => {
   return { customer, newBadges, points };
 };
 
-module.exports = { evaluateBadges, creditCustomerForDelivery, BADGE_CRITERIA };
+/**
+ * Counts a finished non-Order purchase towards Lucky Spins and order badges (owner, 25 Nov 2026: "5 orders should be
+ * applicable for all kind of section orders"): Mega Basket delivered, In-Campus Booking collected, service booking
+ * completed. completedOrders +1 as an atomic SQL increment, plus the last-finished reference for the app's pop-up.
+ * No ZenPoints or streak here (those stay food / grocery order rewards). Call only from the request whose conditional
+ * update actually moved the row to its final status, so a retry or double tap never counts twice. Never throws.
+ * @param {'basket'|'campus'|'service'} kind
+ * @returns {Promise<{ customer: object|null, newBadges: string[] }>}
+ */
+const creditCustomerForCompletion = async (kind, { id, userId }) => {
+  try {
+    if (!userId || !id) return { customer: null, newBadges: [] };
+    const User = require('../models/User').getUserModel();
+    const { literal } = require('sequelize');
+    await User.update(
+      { completedOrders: literal('COALESCE("completedOrders", 0) + 1'), lastCompletedRef: `${kind}:${id}`.slice(0, 80), lastCompletedAt: new Date() },
+      { where: { id: userId } }
+    );
+    const customer = await User.findByPk(userId);
+    if (!customer) return { customer: null, newBadges: [] };
+    const newBadges = evaluateBadges(customer);
+    if (newBadges.length > 0) {
+      customer.badges = [...(Array.isArray(customer.badges) ? customer.badges : []), ...newBadges];
+      await customer.save({ fields: ['badges'] });
+    }
+    return { customer, newBadges };
+  } catch (err) {
+    console.error('[COMPLETION_CREDIT_ERROR]', kind, id, err && err.message);
+    return { customer: null, newBadges: [] };
+  }
+};
+
+/**
+ * "A Lucky Spin is waiting" push, only when this customer's latest finished order completed a group of
+ * ORDERS_PER_SPIN (utils/spinRules). Never throws.
+ */
+const pushSpinEarnedIfDue = async (customer) => {
+  try {
+    if (!customer) return false;
+    const { earnedSpinAt } = require('../utils/spinRules');
+    if (!earnedSpinAt(customer.completedOrders)) return false;
+    const { sendPushToTokens } = require('../utils/push');
+    await sendPushToTokens(
+      customer.fcmTokens,
+      'You earned a free spin! 🎡',
+      `That was your ${customer.completedOrders}th order. A Lucky Spin is waiting in Profile > Spin & deals.`,
+      { type: 'SPIN_EARNED' },
+      { recipients: [customer.id] }
+    );
+    return true;
+  } catch (err) {
+    console.warn('[SPIN_PUSH_WARN]', err && err.message);
+    return false;
+  }
+};
+
+module.exports = { evaluateBadges, creditCustomerForDelivery, creditCustomerForCompletion, pushSpinEarnedIfDue, BADGE_CRITERIA };

@@ -50,6 +50,7 @@ import { ACCENTS as OTHERS_ACCENTS, PILL_ACCENT, shadow as othersShadow, TYPE as
 import { useTopInset } from '../../utils/useTopInset';
 import { setTabBarTone, type TabBarTone } from '../../utils/tabBarTone';
 import FoodV2Screen from '../../modules/foodV2/FoodV2Screen';
+import { ORDERS_PER_SPIN } from '../../utils/spinRules';
 import ServicesV2Home from '../../modules/servicesV2/ServicesV2Home';
 
 const { width: SW, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -111,14 +112,15 @@ const TABS: { key: string; label: string; icon: IonName }[] = [
 
 /**
  * Two bottom tabs run this same screen (owner, 28 Oct 2026: the Basket tab became Services):
- *   Groceries (app/(tabs)/others.tsx)   Food & groceries, Deals & spin
+ *   Groceries (app/(tabs)/others.tsx)   Food & groceries
+ *   (Deals & spin moved to Profile -> "Spin & deals", route app/deals, owner 25 Nov 2026; ?tab=promos links go there.)
  *   Services (app/(tabs)/services.tsx)  PG stays, Co-Ride, Rentals, Campus events, Tech & repairs
  * Each keeps the fixed pill order above. A link into a section of the other hub (every older
  * /(tabs)/others?tab=pg style link) is forwarded there with its params, so no caller had to change.
  */
 export type Hub = 'explore' | 'services';
 export const HUB_SECTIONS: Record<Hub, string[]> = {
-  explore: ['food', 'promos'],
+  explore: ['food'],
   services: ['pg', 'coride', 'rentals', 'events', 'services'],
 };
 const HUB_ROUTE: Record<Hub, string> = { explore: '/(tabs)/others', services: '/(tabs)/services' };
@@ -192,7 +194,7 @@ const PROMOS_CORIDE = [
 ];
 
 const PROMOS_OFFERS = [
-  { id: 'o1', tagline: 'Order rewards', title: 'Spin the reward wheel', subtitle: '', desc: 'Every 2 delivered orders earn a spin. Win ZenWe Points or a free-delivery coupon.', btn: 'Spin the wheel', img: 'https://images.unsplash.com/photo-1596451190630-186aff535bf2?w=900&q=80' },
+  { id: 'o1', tagline: 'Order rewards', title: 'Spin the reward wheel', subtitle: '', desc: `Every ${ORDERS_PER_SPIN} delivered orders earn a spin. Win ZenWe Points or a free-delivery coupon.`, btn: 'Spin the wheel', img: 'https://images.unsplash.com/photo-1596451190630-186aff535bf2?w=900&q=80' },
   { id: 'o2', tagline: 'Your coupons', title: 'Ready to use at checkout', subtitle: '', desc: 'Coupons you have won show up here with their expiry date.', btn: 'See my coupons', img: 'https://images.unsplash.com/photo-1607344645866-009c320b63e0?w=900&q=80' },
 ];
 
@@ -633,6 +635,14 @@ export function HubScreen({ hub }: { hub: Hub }) {
 
   // Synchronize active tab from navigation parameter (e.g. from Home category pills)
   useEffect(() => {
+    // Deals & spin is no longer a pill here (owner, 25 Nov 2026): it lives in Profile -> "Spin & deals" (app/deals).
+    // Old ?tab=promos / ?tab=offers / ?tab=deals links open it there (?sub=spin straight on the wheel).
+    if (tab === 'promos' || tab === 'offers' || tab === 'deals') {
+      const dest = sub === 'spin' ? '/deals/spin' : '/deals';
+      try { router.setParams({ tab: undefined, sub: undefined, seg: undefined } as any); } catch {}
+      try { router.push(dest as any); } catch {}
+      return;
+    }
     const wanted = sectionFromParam(tab);
     if (wanted && hubOf(wanted) !== hub) {
       // A link into a section that lives in the other tab: open it there, with the same sub-page params. This tab's
@@ -876,15 +886,7 @@ export function HubScreen({ hub }: { hub: Hub }) {
   const [spinOpen, setSpinOpen] = useState(false);
   // Deal detail sheet: one of today's deals with real "how to avail" steps.
   const [dealDetail, setDealDetail] = useState<any | null>(null);
-  // /rewards (Profile, checkout, notifications) lands on this tab; ?tab=promos&sub=spin opens the spin page.
-  useEffect(() => {
-    if ((tab === 'promos' || tab === 'offers') && sub === 'spin') {
-      // Deals & spin v2: the spin page is its own route (modules/dealsV2, app/deals/spin).
-      router.push('/deals/spin' as any);
-      // One-shot: clear it so a later tab switch back to Deals & spin does not reopen the wheel.
-      try { router.setParams({ sub: undefined } as any); } catch {}
-    }
-  }, [tab, sub]);
+  // ?tab=promos&sub=spin links: handled by the tab-param effect above (Deals & spin is its own route, app/deals).
   const fetchVault = useCallback(async () => {
     try {
       const res = await apiFetch(ENDPOINTS.vaultList);
@@ -1047,8 +1049,8 @@ export function HubScreen({ hub }: { hub: Hub }) {
     }
     if (spinsLeft <= 0) {
       Alert.alert('No spins yet', spinNextIn
-        ? `Every 2 delivered orders earn a spin. ${spinNextIn} more order${spinNextIn === 1 ? '' : 's'} to go!`
-        : 'Every 2 delivered orders earn you a spin.');
+        ? `Every ${ORDERS_PER_SPIN} delivered orders earn a spin. ${spinNextIn} more order${spinNextIn === 1 ? '' : 's'} to go!`
+        : `Every ${ORDERS_PER_SPIN} delivered orders earn you a spin.`);
       return;
     }
     spinLockRef.current = true;
@@ -1617,7 +1619,7 @@ export function HubScreen({ hub }: { hub: Hub }) {
   // App sections control (24 Nov 2026): both Groceries and Bakeries switched off by the admins -> a paused notice
   // instead of an empty shelf (one of them off: the server leaves its stores out of the catalogue).
   if (activeTab === 'food' && !launch.on('grocery') && !launch.on('bakery')) {
-    const dealsShown = visibleTabs.some((t) => t.key === 'promos');
+    const dealsShown = launch.on('deals');
     return (
       <View style={{ flex: 1, backgroundColor: isDark ? '#09090B' : '#FFFFFF', paddingTop: topPad + 16 }}>
         <StateCard
@@ -1626,7 +1628,7 @@ export function HubScreen({ hub }: { hub: Hub }) {
           title="Groceries are paused"
           message="Grocery, bakery and snacks delivery is paused right now. Please check back soon."
           actionLabel={dealsShown ? 'Open Deals & spin' : 'Back to Home'}
-          onAction={() => (dealsShown ? selectTab('promos') : router.replace('/(tabs)' as any))}
+          onAction={() => (dealsShown ? router.push('/deals' as any) : router.replace('/(tabs)' as any))}
           style={{ marginHorizontal: 16 }}
         />
         <StatusBarScrim color={FOOD_HEADER.top} />
@@ -1753,7 +1755,7 @@ export function HubScreen({ hub }: { hub: Hub }) {
               <View style={s.dlHeroText}>
                 <Text style={s.dlHeroTitle} accessibilityRole="header">Deals & spin</Text>
                 <Text style={s.dlHeroTag}>Spin. Win. Save.</Text>
-                <Text style={s.dlHeroSub}>Every 2 delivered orders earn a spin. Win ZenWe Points or a free-delivery coupon.</Text>
+                <Text style={s.dlHeroSub}>Every {ORDERS_PER_SPIN} delivered orders earn a spin. Win ZenWe Points or a free-delivery coupon.</Text>
                 <PressScale style={s.dlHeroBtn} onPress={() => setSpinOpen(true)} accessibilityRole="button" accessibilityLabel="Spin now">
                   <Ionicons name="sync-circle-outline" size={16} color={dp.heroB} />
                   <Text style={[s.dlHeroBtnText, { color: dp.heroB }]}>{!myId || spinsLeft > 0 ? 'Spin now' : 'See the wheel'}</Text>
@@ -1903,7 +1905,7 @@ export function HubScreen({ hub }: { hub: Hub }) {
                       ? `You have ${spinsLeft} spin${spinsLeft === 1 ? '' : 's'} ready`
                       : spinNextIn
                         ? `${spinNextIn} more delivered order${spinNextIn === 1 ? '' : 's'} to your next spin`
-                        : 'Every 2 delivered orders earn a spin'}
+                        : `Every ${ORDERS_PER_SPIN} delivered orders earn a spin`}
                 </Text>
               </View>
               <View style={[s.dlSmallBtn, { backgroundColor: dp.solid }]}>
@@ -2137,7 +2139,7 @@ export function HubScreen({ hub }: { hub: Hub }) {
                       ? `You have ${spinsLeft} spin${spinsLeft === 1 ? '' : 's'} ready`
                       : spinNextIn
                         ? `${spinNextIn} more delivered order${spinNextIn === 1 ? '' : 's'} to your next spin`
-                        : 'Every 2 delivered orders earn a spin'}
+                        : `Every ${ORDERS_PER_SPIN} delivered orders earn a spin`}
               </Text>
 
               {!!myId && spinsLeft === 0 && rewardsStatus === 'ready' && wheelSectors.length > 0 ? (
@@ -2156,7 +2158,7 @@ export function HubScreen({ hub }: { hub: Hub }) {
                 <View style={s.spNoteIcon}>
                   <Ionicons name="information-circle-outline" size={20} color="#F6C453" />
                 </View>
-                <Text style={s.spNoteText}>Every 2 delivered orders earn a spin. ZenWe Points are added to your balance at once; a coupon shows up in Your coupons.</Text>
+                <Text style={s.spNoteText}>Every {ORDERS_PER_SPIN} delivered orders earn a spin. ZenWe Points are added to your balance at once; a coupon shows up in Your coupons.</Text>
               </View>
             </ScrollView>
           </LinearGradient>

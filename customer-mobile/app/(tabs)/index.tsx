@@ -32,6 +32,7 @@ import HighClassPromoCarousel from '../../components/HighClassPromoCarousel';
 import CampusLiveTicker from '../../components/CampusLiveTicker';
 import { isLocalVendor } from '../../utils/localVendor';
 import RecentlyViewed from '../../components/RecentlyViewed';
+import { useSpinProgressPopup } from '../../components/SpinProgressPopup';
 import { useWorldTransitionTrigger } from '../../context/WorldTransitionContext';
 import AmbientBackground from '../../components/AmbientBackground';
 import DopaminePressable, { CardPressable, ActionPressable } from '../../components/DopaminePressable';
@@ -744,6 +745,29 @@ export default function HomeScreen() {
       return () => { active = false; };
     }, [user, unreadNonce])
   );
+
+  // After-delivery spin pop-up (owner, 25 Nov 2026: "it should pop up after the order is delivered only"): shown at the
+  // moment one of the student's orders turns Delivered while the app is open, on any tab - the server's live
+  // statusUpdated event on the student's own room (utils/orderStatusEmit). Never on app open or Home focus. Once per
+  // order (utils/spinProgress); the tracking screen does the same for the order it shows.
+  const spinPopup = useSpinProgressPopup(isSearchOpen);
+  const spinPopupCheckRef = useRef(spinPopup.check);
+  spinPopupCheckRef.current = spinPopup.check;
+  const spinUid = String((user as any)?._id || (user as any)?.id || '');
+  useEffect(() => {
+    if (!spinUid) return;
+    let socket: any = null;
+    try { socket = require('../../utils/socket').connectSocket(); } catch { return; }
+    const onStatus = (p: any) => {
+      if (!p || String(p.status || '') !== 'Delivered') return;
+      const orderId = String(p.id || p._id || p.orderId || '');
+      if (!orderId) return;
+      // A moment for the server to count the order towards spins.
+      setTimeout(() => { spinPopupCheckRef.current(orderId).catch(() => {}); }, 1500);
+    };
+    socket.on('statusUpdated', onStatus);
+    return () => { try { socket.off('statusUpdated', onStatus); } catch { /* gone */ } };
+  }, [spinUid]);
 
   // The coloured header sits under the status bar: light icons while Home is on screen.
   useFocusEffect(
@@ -1554,6 +1578,7 @@ export default function HomeScreen() {
       <FloatingBasketBar isDark={isDark} txt={txt} onOpen={openBasket} focusedAt={homeFocusedAt} />
       <FloatingBasketButton onPress={() => router.push('/(tabs)/basket' as any)} />
       <VegModeSplash visible={vegSplash} originY={topPad + 70} onDone={() => setVegSplash(false)} />
+      {spinPopup.element}
     </KeyboardAvoidingView>
   );
 }

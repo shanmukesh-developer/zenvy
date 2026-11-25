@@ -6,7 +6,7 @@
  *   GET /api/rewards/coupons/history   used and expired coupons of the last 90 days (the Used / Expired tabs)
  *   GET /api/vault                     today's deals (claiming gives a real coupon; see claimDeal)
  * ZenPoints, wallet balance, streak and referral code come from the signed-in user (AuthContext).
- * The real spin rule (backend/controllers/rewardController.js): spins = floor(delivered orders / 2) - spins used.
+ * The real spin rule (backend/utils/spinRules.js): spins = floor(delivered orders / 5) + kept old-rule spins - spins used.
  * Writes (use-spin, vault claim) live in useSpin / claimDeal and only run on a tap by the student.
  */
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
@@ -31,8 +31,8 @@ export const PRIZE_MIRROR: Prize[] = [
   { label: '5 ZEN', type: 'points' }, { label: '50 ZEN', type: 'points' }, { label: '100 ZEN', type: 'points' },
   { label: '5 ZEN', type: 'points' }, { label: '2 ZEN', type: 'points' },
 ];
-/** The real rule, used in copy everywhere. */
-export const ORDERS_PER_SPIN = 2;
+/** The real rule (utils/spinRules: every 5 delivered orders, 25 Nov 2026), used in copy everywhere. */
+export { ORDERS_PER_SPIN } from '../../utils/spinRules';
 
 interface State {
   uid: string;

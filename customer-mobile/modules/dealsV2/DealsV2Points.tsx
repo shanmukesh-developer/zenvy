@@ -56,7 +56,7 @@ export default function DealsV2Points() {
             {!e && (d.status === 'error' || d.status === 'offline') ? <StateBlock kind={d.status} action="Try again" onAction={() => d.reload()} style={{ marginHorizontal: 0 }} /> : null}
             {e ? (
               <View style={[s.card, shadow(2)]}>
-                <Text style={s.cardTitle}>{d.spinsLeft > 0 ? `${d.spinsLeft} spin${d.spinsLeft === 1 ? '' : 's'} ready to use` : `${d.nextIn ?? ORDERS_PER_SPIN} more delivered order${(d.nextIn ?? 2) === 1 ? '' : 's'} to your next spin`}</Text>
+                <Text style={s.cardTitle}>{d.spinsLeft > 0 ? `${d.spinsLeft} spin${d.spinsLeft === 1 ? '' : 's'} ready to use` : `${d.nextIn ?? ORDERS_PER_SPIN} more delivered order${(d.nextIn ?? ORDERS_PER_SPIN) === 1 ? '' : 's'} to your next spin`}</Text>
                 <ProgressBar progress={done / ORDERS_PER_SPIN} color={DV.violet} track={DV.violetSoft} height={8} style={{ marginTop: 12, borderRadius: 4 }} />
                 <Text style={s.cardSub}>{done} of {ORDERS_PER_SPIN} delivered orders toward the next spin</Text>
                 <View style={s.stats}>

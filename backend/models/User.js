@@ -21,6 +21,12 @@ const initUserModel = (sequelize) => {
     totalOrders: { type: DataTypes.INTEGER, defaultValue: 0 },
     completedOrders: { type: DataTypes.INTEGER, defaultValue: 0 },
     spinsUsed: { type: DataTypes.INTEGER, defaultValue: 0 },
+    // Lucky Spin (utils/spinRules, 25 Nov 2026): spins kept from the old every-2-orders rule (set once by
+    // scripts/spin_rule_5_v1.js), and the last finished order counted ("order:<id>", "basket:<id>", "campus:<id>",
+    // "service:<id>") with its time, for the app's spin-progress pop-up. Added on boot by addMissingColumns.
+    spinBonus: { type: DataTypes.INTEGER, allowNull: true, defaultValue: 0 },
+    lastCompletedRef: { type: DataTypes.STRING(80), allowNull: true },
+    lastCompletedAt: { type: DataTypes.DATE, allowNull: true },
     role: { type: DataTypes.STRING, defaultValue: 'student' },
     zenPoints: { type: DataTypes.INTEGER, defaultValue: 0 },
     isElite: { type: DataTypes.BOOLEAN, defaultValue: false },

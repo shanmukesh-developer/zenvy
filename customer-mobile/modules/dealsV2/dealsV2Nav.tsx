@@ -1,9 +1,10 @@
 /**
  * Deals & spin v2 navigation. Screens speak in `Route`s; this maps them onto expo-router paths:
- *   home     /(tabs)/others?tab=promos       spin     /deals/spin        coupons  /deals/coupons
+ *   home     /deals (opened from Profile)     spin     /deals/spin        coupons  /deals/coupons
  *   coupon   /deals/coupon/:code             points   /deals/points      today    /deals/today
  *   refer    /deals/refer
- * Old links keep working: /rewards -> Others → Deals & spin, /rewards?spin=1 -> /deals/spin (app/rewards.tsx).
+ * Old links keep working: /rewards and /(tabs)/others?tab=promos -> /deals, /rewards?spin=1 -> /deals/spin (app/rewards.tsx).
+ * Owner, 25 Nov 2026: Deals & spin is no longer a Groceries pill; Profile's "Spin & deals" card opens it.
  * Back is one safe rule: router.back() with history, otherwise the Deals home. Android back closes a sheet first.
  */
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
@@ -27,7 +28,7 @@ export type Sheet =
   | { kind: 'apply'; coupon: Coupon }
   | { kind: 'nospin'; nextIn: number | null };
 
-export const DEALS_HOME_PATH = '/(tabs)/others?tab=promos';
+export const DEALS_HOME_PATH = '/deals';
 
 export function pathFor(r: Route): string {
   switch (r.name) {

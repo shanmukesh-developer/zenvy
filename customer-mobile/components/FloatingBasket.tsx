@@ -55,11 +55,12 @@ export const FloatingBasketBar = React.memo(function FloatingBasketBar({ isDark,
   );
 });
 
-const FAB_CART = require('../assets/home-redesign-2026-11-09/basket-fab-zenwe-veg-basket-2026-11-24.webp'); // owner's basket logo, 24 Nov 2026
+// The floating basket button in ZenWe's logo colours (owner, 25 Nov 2026).
+const FAB_YELLOW = '#FAE04B';
+const FAB_BLUE = '#0B3A8C';
 
 /** The floating basket button with the item count (its own component: a basket change re-renders only it). */
 const BasketFab = React.memo(function BasketFab({ onPress }: { onPress: () => void }) {
-  const accent = useNavAccent();
   const totalItems = useCartTotalItems();
   // One small hop each time something is added (never a loop).
   const hop = useRef(new Animated.Value(0)).current;
@@ -77,9 +78,9 @@ const BasketFab = React.memo(function BasketFab({ onPress }: { onPress: () => vo
   const hopStyle = { transform: [{ translateY: hop.interpolate({ inputRange: [0, 1], outputRange: [0, -6] }) }, { scale: hop.interpolate({ inputRange: [0, 1], outputRange: [1, 1.12] }) }] };
   return (
     <DopaminePressable
-      // Owner, 10 Nov 2026 ("redesign this icon"): a white button with a thin diet-colour ring and the photoreal
-      // full cart inside (same art as the empty basket), soft accent-tinted shadow; the count stays an accent badge.
-      style={[s.fabBtn, { backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: accent, shadowColor: accent }]}
+      // Owner, 25 Nov 2026 (picked option 1): the ZenWe logo colours - yellow button, blue bag, blue count badge -
+      // the same in Veg and Non-veg.
+      style={[s.fabBtn, { backgroundColor: FAB_YELLOW, borderWidth: 0, shadowColor: FAB_BLUE }]}
       onPress={onPress}
       sound="click"
       activeScale={0.88}
@@ -87,10 +88,10 @@ const BasketFab = React.memo(function BasketFab({ onPress }: { onPress: () => vo
       accessibilityLabel={totalItems > 0 ? `Open basket, ${totalItems} ${totalItems === 1 ? 'item' : 'items'}` : 'Open basket'}
     >
       <Animated.View style={hopStyle}>
-        <Image source={FAB_CART} style={{ width: 38, height: 38, marginTop: 2 }} resizeMode="contain" accessibilityIgnoresInvertColors />
+        <Ionicons name="bag-handle-outline" size={30} color={FAB_BLUE} style={{ marginTop: -1 }} />
       </Animated.View>
       {totalItems > 0 ? (
-        <View style={[s.fabBadge, { backgroundColor: accent, borderColor: '#FFFFFF' }]} pointerEvents="none">
+        <View style={[s.fabBadge, { backgroundColor: FAB_BLUE, borderColor: '#FFFFFF' }]} pointerEvents="none">
           <Text style={[s.fabBadgeText, { color: '#FFFFFF' }]} maxFontSizeMultiplier={1.3}>{totalItems > 99 ? '99+' : totalItems}</Text>
         </View>
       ) : null}
@@ -103,9 +104,8 @@ const BasketFab = React.memo(function BasketFab({ onPress }: { onPress: () => vo
  * chats stay on the Campus pill in Home's header).
  */
 export function FloatingBasketButton({ onPress }: { onPress: () => void }) {
-  const accent = useNavAccent();
   return (
-    <FloatingPulse color={accent} style={s.fabBtnWrap}>
+    <FloatingPulse color={FAB_YELLOW} style={s.fabBtnWrap}>
       <BasketFab onPress={onPress} />
     </FloatingPulse>
   );

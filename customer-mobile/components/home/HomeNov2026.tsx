@@ -145,6 +145,11 @@ export function DealSlideshow({ deals, theme, onOpen, active }: { deals: HomeDis
   }, [active, deals.length]);
   if (!deals.length) return null;
   const tint = theme.acc2;
+  // Owner, 25 Nov 2026: long dish / store names ran under the photo on narrower phones. The photo is at most 170 and
+  // 40% of the width on small screens; the text gets exactly the space to its left (slide padding 20, photo inset 18,
+  // 10 gap), so names wrap or trim instead of overlapping.
+  const plateSize = Math.round(Math.min(170, W * 0.4));
+  const textW = Math.max(120, W - 20 - 18 - plateSize - 10);
   return (
     <View>
       <ScrollView
@@ -156,7 +161,7 @@ export function DealSlideshow({ deals, theme, onOpen, active }: { deals: HomeDis
       >
         {deals.map((d) => (
           <View key={d.id} style={[st.slide, { width: W }]}>
-            <View style={st.deal}>
+            <View style={[st.deal, { width: textW }]}>
               {/* An admin-picked dish without a discount (Admin > Home slideshow) shows "Today's special", never "0% off". */}
               {d.off > 0 ? (
                 <View style={st.pctRow}>
@@ -189,8 +194,8 @@ export function DealSlideshow({ deals, theme, onOpen, active }: { deals: HomeDis
                 <CachedImage source={{ uri: d.slideImg }} style={st.floatImg} resizeMode="contain" maxWidth={440} />
               </Pressable>
             ) : (
-              <Pressable onPress={() => onOpen(d)} style={st.plate} accessibilityLabel={d.name}>
-                <View style={st.plateRim}>
+              <Pressable onPress={() => onOpen(d)} style={[st.plate, { width: plateSize, height: plateSize, top: 28 + (170 - plateSize) / 2 }]} accessibilityLabel={d.name}>
+                <View style={[st.plateRim, { width: plateSize, height: plateSize, borderRadius: plateSize / 2 }]}>
                   <CachedImage source={{ uri: d.img }} style={st.plateImg} maxWidth={360} />
                 </View>
               </Pressable>
@@ -497,7 +502,7 @@ const st = StyleSheet.create({
   plate: { position: 'absolute', right: 18, top: 28, width: 170, height: 170 },
   // Owner, 24 Nov 2026: no ring around the slideshow photo (the dark rim, outline and shadow are gone) - just the image.
   plateRim: { width: 170, height: 170, borderRadius: 85, overflow: 'hidden' },
-  plateImg: { width: '100%', height: '100%', borderRadius: 85 },
+  plateImg: { width: '100%', height: '100%' },
   // Floating cut-out (no frame) with a soft drop shadow that follows the dish's outline: iOS draws a frameless view's
   // shadow from its content's alpha; Android and web use a drop-shadow filter (a box shadow would draw a square).
   floatDish: {
