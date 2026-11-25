@@ -39,7 +39,7 @@ const STRIDE = ROW_H + ROW_GAP;
 const NATIVE = Platform.OS !== 'web';
 
 export default function FoodV2Listing({ shelf }: { shelf: string }) {
-  const { router, isDark, topPad, pageW, c, pop, push, catalogue, fetchCatalogue, shopCount, cartCount, cart, savedIds, query, setQuery, chip, setChip, aisle, setAisle, failKind, forcedFail, isLoading, isFailed } = useFoodV2();
+  const { router, isDark, topPad, pageW, c, pop, push, catalogue, fetchCatalogue, shopCount, cartCount, cart, savedIds, query, setQuery, chip, setChip, aisle, setAisle, failKind, forcedFail, isLoading, isFailed, shelfTitle, houseCats } = useFoodV2();
   const { headerBtn, chipOnGreen, productRow, basketBar } = useFoodV2Ui();
   const { loadingCard, stateCard } = useFoodV2States();
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -52,7 +52,7 @@ export default function FoodV2Listing({ shelf }: { shelf: string }) {
   const real = isSearch ? catalogue : shelfItems(shelf, catalogue);
   const samples = isSearch || isLoading || isFailed ? [] : samplesFor(shelf, real);
   const base = samples.length ? [...real, ...samples] : real;
-  const title = isSearch ? 'Search' : TILES.find(t => t.key === shelf)?.label || LIST_TITLES[shelf] || (BRANDS.some(b => b.name === shelf) ? shelf : sentence(shelf));
+  const title = isSearch ? 'Search' : shelfTitle(shelf);
   const hero = isSearch ? null : HEROES[shelf];
   const q = query.trim().toLowerCase();
   // Spelling-tolerant like the main search (QA 5 Nov): "biscuts", "panner", "chiken" find the real items; name matches first.
@@ -64,7 +64,14 @@ export default function FoodV2Listing({ shelf }: { shelf: string }) {
   const useSidebar = isSearch ? (!!q && groups.length >= 3) : !!hero?.sidebar;
   let side: { key: string; label: string; icon: string }[] = [];
   let sideOf: (p: Item) => string = () => 'all';
-  if (useSidebar && !isSearch) {
+  // ZenWe Grocery's own categories (admin order) as the sidebar when the admins have set them up.
+  const houseSide = houseCats.filter(hc => base.some(p => (p.category || '').toLowerCase() === hc.name.toLowerCase()));
+  if (useSidebar && !isSearch && houseSide.length >= 2) {
+    side = [{ key: 'all', label: 'All', icon: AISLE_ICON.all }, ...houseSide.map(hc => ({ key: `hc:${hc.name.toLowerCase()}`, label: hc.name, icon: AISLE_ICON.other }))];
+    const known = new Set(houseSide.map(hc => hc.name.toLowerCase()));
+    if (base.some(p => !known.has((p.category || '').toLowerCase()))) side.push({ key: 'other', label: 'Other', icon: AISLE_ICON.other });
+    sideOf = (p: Item) => { const k = (p.category || '').toLowerCase(); return known.has(k) ? `hc:${k}` : 'other'; };
+  } else if (useSidebar && !isSearch) {
     const present = new Set(base.map(aisleOf));
     side = [{ key: 'all', label: 'All', icon: AISLE_ICON.all },
       ...AISLES.filter(a => present.has(a.key)).map(a => ({ key: a.key, label: a.label, icon: AISLE_ICON[a.key] })),

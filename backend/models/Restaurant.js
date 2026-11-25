@@ -119,6 +119,13 @@ const initRestaurantModel = (sequelize) => {
     // Delivery timing group for this store's products (utils/deliveryGroups): 'food' | 'grocery' | 'bakery';
     // null = from its type. A product's own group (MenuItem.deliveryGroup) wins.
     deliveryGroup: { type: DataTypes.STRING(16), allowNull: true },
+    // ZenWe's own Grocery store (owner, 26 Nov 2026; scripts/house_grocery_store_v1.js, utils/shopSections): the one
+    // house store whose products only the admins add (Admin > Grocery store). The Groceries tab's "Grocery store"
+    // pill shows only its products (GET /api/catalogue/items?house=1). Never set from the store editor.
+    isHouseStore: { type: DataTypes.BOOLEAN, allowNull: true, defaultValue: false },
+    // Groceries tab section of a shop (utils/shopSections): 'snacks' | 'fruits_pickles' | 'bakeries' | null.
+    // Null on a BAKERY store means 'bakeries'. Admin-set in the store editor; GET /api/catalogue/stores?section=.
+    shopSection: { type: DataTypes.STRING(20), allowNull: true },
     bankAccountHolder: { type: DataTypes.STRING(120), allowNull: true },
     bankAccountLast4: { type: DataTypes.STRING(4), allowNull: true },
     bankIfsc: { type: DataTypes.STRING(11), allowNull: true },

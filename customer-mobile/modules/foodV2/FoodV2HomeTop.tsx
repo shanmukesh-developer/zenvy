@@ -13,7 +13,7 @@ import Svg, { Defs, Ellipse, G, Path, RadialGradient, Rect, Stop } from 'react-n
 import { Image } from 'expo-image';
 import { PressScale } from '../../modules/others/motion';
 import { FOOD } from './foodV2Theme';
-import { SEARCH, SEARCH_HINTS, TILES, fmtShortClock, tileRows } from './FoodV2Data';
+import { SEARCH, SEARCH_HINTS, SECTION_TILES, fmtShortClock, tileRows } from './FoodV2Data';
 import { s } from './FoodV2Styles';
 import { useFoodV2 } from './useFoodV2';
 import { useFoodV2Ui, Enter } from './FoodV2Ui';
@@ -55,7 +55,9 @@ export const LUX = { top: '#0B3D24', bottom: '#0F5132', gold: '#C9A24A', goldSof
 
 export function HomeHeader() {
   const { router, topPad, pageW, push, setSavedChip, openListing, sections, onSection, catalogue } = useFoodV2();
-  const pills: [string, string][] = sections && sections.length ? sections.map(t => [t.key, t.label] as [string, string]) : PILLS;
+  // No section pills (owner, 26 Nov 2026): the landing's hero and "Shop by category" tiles open the sections.
+  const pills: [string, string][] = [];
+  void sections; void PILLS;
   // Hints from what the store really sells (the fixed milk / rice / chips hints found nothing in a pickles-only
   // catalogue): short real product names, else the generic hints while the catalogue loads.
   const hints = useMemo(() => {
@@ -98,7 +100,7 @@ export function HomeHeader() {
 
 /** Green band behind the notice and the top half of the hero, the curve into white, and the hero. */
 export function HomeBandHero() {
-  const { isDark, pageW, c, allClosed, someClosed, earliestOpen, isLoading, isFailed, isEmpty, openListing } = useFoodV2();
+  const { isDark, pageW, c, allClosed, someClosed, earliestOpen, isLoading, isFailed, isEmpty, openStore } = useFoodV2();
   const sc = useFoodScale();
   const showNote = (allClosed || someClosed) && !isLoading && !isFailed && !isEmpty;
   const heroH = sc.hero.minH;
@@ -132,7 +134,8 @@ export function HomeBandHero() {
         </View>
       )}
 
-      <View style={[s.heroCard, { minHeight: heroH, overflow: 'visible', borderWidth: 0 }]}>
+      {/* The hero is the Grocery section: the card and "Shop now" open ZenWe Grocery (its categories screen). */}
+      <PressScale onPress={openStore} scaleTo={0.99} accessibilityRole={BUTTON_ROLE} accessibilityLabel="Open ZenWe Grocery" style={[s.heroCard, { minHeight: heroH, overflow: 'visible', borderWidth: 0 }]}>
         <View style={[StyleSheet.absoluteFill, st.heroBg]}>
           <LinearGradient colors={['#0B5631', '#04391F', '#032816']} locations={[0, 0.55, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
           <Svg width={heroW} height={heroH + 120} style={StyleSheet.absoluteFill}>
@@ -153,7 +156,7 @@ export function HomeBandHero() {
           {/* wraps freely (no "…"): the card grows if a small phone needs a fourth line */}
           <Text style={[s.heroTitle, { fontSize: inside ? Math.min(sc.hero.title, 20) : sc.hero.title, lineHeight: Math.round((inside ? Math.min(sc.hero.title, 20) : sc.hero.title) * 1.25) }]} accessibilityRole="header">Campus essentials delivered to you</Text>
           <Text style={[s.heroSub, { fontSize: sc.hero.sub, lineHeight: Math.round(sc.hero.sub * 1.45) }]}>Fresh groceries · Tasty snacks · Daily needs</Text>
-          <PressScale style={s.brightWrapSm} onPress={() => openListing('All Groceries')} accessibilityRole={BUTTON_ROLE} accessibilityLabel="Shop now: open the whole campus store">
+          <PressScale style={s.brightWrapSm} onPress={openStore} accessibilityRole={BUTTON_ROLE} accessibilityLabel="Shop now: open ZenWe Grocery">
             <LinearGradient colors={FOOD.bright} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.heroBtn}>
               <Text style={[s.heroBtnText, { fontSize: sc.f(14) }]} numberOfLines={1}>Shop now</Text>
               <Icon name="arrow-forward" size={15} color="#FFFFFF" />
@@ -161,22 +164,27 @@ export function HomeBandHero() {
             </LinearGradient>
           </PressScale>
         </View>
-      </View>
+      </PressScale>
     </View>
   );
 }
 
-/** Shop by category: 3 + 2 + 2 tiles (tileRows; 3 + 3 / 3 + 2 while a shelf is empty), cut-out subjects on tinted plates. */
+/**
+ * Shop by category (owner, 26 Nov 2026): one tile per Groceries section with the original tile art. Groceries opens
+ * ZenWe Grocery (like the hero), Snacks / Fruits & pickles / Bakeries open that section's shops. A paused section
+ * (App sections switches: grocery, bakery) has no tile. "View all" opens ZenWe Grocery's categories.
+ */
 export function CategoryTiles() {
-  const { isDark, pageW, c, shadow, hasShelf, openListing, openShops, push } = useFoodV2();
+  const { isDark, pageW, c, shadow, openStore, openSection, groceryOn, bakeryOn } = useFoodV2();
   const { head } = useFoodV2Ui();
   const sc = useFoodScale();
-  const tiles = TILES.filter(t => hasShelf(t.key));
+  const tiles = SECTION_TILES.filter(t => (t.needs === 'bakery' ? bakeryOn : groceryOn));
   if (!tiles.length) return null;
+  const go = (t: typeof SECTION_TILES[number]) => (t.to === 'store' ? openStore() : openSection(t.to));
   const rows = tileRows(tiles, sc.tileCols);
   return (
     <View style={[s.sec, { marginTop: 30 }]}>
-      {head('Shop by category', { onAll: () => push({ name: 'categories' }), arrow: true })}
+      {head('Shop by category', groceryOn ? { onAll: openStore, arrow: true } : {})}
       {rows.map((row, ri) => (
         <View key={ri} style={[s.tileRow, { marginTop: 12 }]}>
           {row.map((t, ti) => {
@@ -185,7 +193,7 @@ export function CategoryTiles() {
             const tint = art ? art.tint[isDark ? 1 : 0] : c.tile;
             return (
               <Enter key={t.key} index={ri * 3 + ti}>
-                <PressScale onPress={() => openShops(t.key)} scaleTo={0.97} style={{ width: w }} accessibilityRole={BUTTON_ROLE} accessibilityLabel={t.label}>
+                <PressScale onPress={() => go(t)} scaleTo={0.97} style={{ width: w }} accessibilityRole={BUTTON_ROLE} accessibilityLabel={t.to === 'store' ? 'Groceries: open ZenWe Grocery' : `${t.label}: see the shops`}>
                   <View style={[st.tile, { backgroundColor: c.card }, shadow]}>
                     <View style={[st.plate, { backgroundColor: tint }]}>
                       <Svg width={w - 12} height={18} style={st.plateShadow} pointerEvents="none">
@@ -200,6 +208,9 @@ export function CategoryTiles() {
                     </View>
                     {art ? (
                       <Image source={art.art} style={[st.cut, Platform.OS === 'web' ? null : null]} contentFit="contain" accessibilityElementsHidden />
+                    ) : t.img ? (
+                      // The admin's tile image (or the category's first product photo) on the plate.
+                      <Image source={{ uri: t.img }} style={st.photo} contentFit="cover" accessibilityElementsHidden />
                     ) : null}
                     <Text style={[st.label, { color: isDark ? c.name : '#334651', fontSize: sc.f(12.5), lineHeight: sc.f(16) + 1, minHeight: (sc.f(16) + 1) * 2 }]} numberOfLines={2}>{t.label}</Text>
                   </View>
@@ -228,5 +239,6 @@ const st = StyleSheet.create({
   plate: { height: 72, margin: 6, marginBottom: 0, borderRadius: 10 },
   plateShadow: { position: 'absolute', left: 0, bottom: 0 },
   cut: { position: 'absolute', left: 8, right: 8, top: -14, height: 86 },
+  photo: { position: 'absolute', left: 6, right: 6, top: 6, height: 72, borderRadius: 10 },
   label: { fontSize: 12.5, fontWeight: '500', lineHeight: 16, marginTop: 8, paddingHorizontal: 8, textAlign: 'center' },
 });

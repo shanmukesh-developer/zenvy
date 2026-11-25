@@ -50,6 +50,7 @@ import { ACCENTS as OTHERS_ACCENTS, PILL_ACCENT, shadow as othersShadow, TYPE as
 import { useTopInset } from '../../utils/useTopInset';
 import { setTabBarTone, type TabBarTone } from '../../utils/tabBarTone';
 import FoodV2Screen from '../../modules/foodV2/FoodV2Screen';
+import type { ShopSectionKey } from '../../modules/foodV2/FoodV2Data';
 import { ORDERS_PER_SPIN } from '../../utils/spinRules';
 import ServicesV2Home from '../../modules/servicesV2/ServicesV2Home';
 
@@ -100,6 +101,8 @@ type IonName = React.ComponentProps<typeof Ionicons>['name'];
 const TABS: { key: string; label: string; icon: IonName }[] = [
   // Fixed order (owner: PG stays right after Food & groceries, 24 Oct; Tech & repairs second from last, 26 Oct).
   // The pills never reorder by usage (owner, 26 Oct); only Home's feature cards do.
+  // Groceries tab (owner, 26 Nov 2026): no pills. Its landing (FoodV2Home) opens ZenWe Grocery and the Snacks /
+  // Fruits & pickles / Bakeries shops from the hero and the "Shop by category" tiles.
   { key: 'food', label: 'Food & groceries', icon: 'basket-outline' },
   { key: 'pg', label: 'PG stays', icon: 'business-outline' },
   { key: 'coride', label: 'Co-Ride', icon: 'bicycle-outline' },
@@ -130,10 +133,20 @@ const sectionFromParam = (t?: string): string | null => {
   if (t === 'rides' || t === 'coride') return 'coride';
   if (t === 'pg' || t === 'stays') return 'pg';
   if (t === 'promos' || t === 'offers') return 'promos';
-  if (t === 'food' || t === 'basket') return 'food';
+  if (t === 'food' || t === 'basket' || t === 'grocery' || t === 'groceries') return 'food';
+  // Groceries sections live inside Food & groceries (grocerySectionFromParam opens the right screen there).
+  if (grocerySectionFromParam(t)) return 'food';
   if (t === 'rentals' || t === 'rental' || t === 'vehicles') return 'rentals';
   if (t === 'events' || t === 'campus-events') return 'events';
   if (t === 'services' || t === 'tech' || t === 'repairs' || t === 'repair') return 'services';
+  return null;
+};
+/** ?tab= links to a Groceries section (owner, 26 Nov 2026): ZenWe Grocery or a section's shops, or null (landing). */
+const grocerySectionFromParam = (t?: string): ShopSectionKey | 'store' | null => {
+  if (t === 'store' || t === 'grocery-store' || t === 'zenwe-grocery') return 'store';
+  if (t === 'snacks') return 'snacks';
+  if (t === 'fruits_pickles' || t === 'fruits' || t === 'pickles') return 'fruits_pickles';
+  if (t === 'bakeries' || t === 'bakery') return 'bakeries';
   return null;
 };
 /** Sections the admins can pause (utils/launchSections; Laundry-only launch, 24 Nov 2026). */
@@ -628,6 +641,9 @@ export function HubScreen({ hub }: { hub: Hub }) {
   const [storeSearchOnOpen, setStoreSearchOnOpen] = useState(false);
   // Stable, so the memoized Food & groceries screen is not re-rendered by this screen's own renders.
   const onStoreSearchOpened = useCallback(() => setStoreSearchOnOpen(false), []);
+  // ?tab=snacks / fruits_pickles / bakeries links: the Groceries section to open inside Food & groceries (once).
+  const [grocerySection, setGrocerySection] = useState<ShopSectionKey | 'store' | null>(null);
+  const onGrocerySectionOpened = useCallback(() => setGrocerySection(null), []);
 
   useEffect(() => {
     scrollViewRef.current?.scrollTo({ y: 0, animated: false });
@@ -667,8 +683,10 @@ export function HubScreen({ hub }: { hub: Hub }) {
         setActiveTab('pg');
       } else if (tab === 'promos' || tab === 'offers') {
         setActiveTab('promos');
-      } else if (tab === 'food' || tab === 'basket') {
+      } else if (wanted === 'food') {
         setActiveTab('food');
+        // ?tab=snacks / fruits_pickles / bakeries (/ store): that screen inside Food & groceries; ?tab=food: the landing.
+        setGrocerySection(grocerySectionFromParam(String(tab)));
       } else if (tab === 'rentals' || tab === 'rental' || tab === 'vehicles') {
         setActiveTab('rentals');
       } else if (tab === 'events' || tab === 'campus-events') {
@@ -1638,7 +1656,7 @@ export function HubScreen({ hub }: { hub: Hub }) {
   if (activeTab === 'food') {
     return (
       <View style={{ flex: 1, backgroundColor: isDark ? '#09090B' : '#FFFFFF' }}>
-        <FoodV2Screen forceDark={isDark} sections={visibleTabs} onSection={selectTab} openSearch={storeSearchOnOpen} onSearchOpened={onStoreSearchOpened} />
+        <FoodV2Screen forceDark={isDark} sections={visibleTabs} onSection={selectTab} openSearch={storeSearchOnOpen} onSearchOpened={onStoreSearchOpened} openSectionKey={grocerySection} onSectionOpened={onGrocerySectionOpened} />
         <StatusBarScrim color={FOOD_HEADER.top} />
       </View>
     );

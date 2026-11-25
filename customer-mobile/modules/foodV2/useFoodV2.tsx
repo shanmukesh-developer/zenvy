@@ -17,14 +17,15 @@ import { useCart, isCustomRequest } from '../../context/CartContext';
 import { productOptions, useAskOptions } from '../../components/ProductOptions';
 import { apiFetch, readJson } from '../../utils/auth';
 import { API_URL } from '../../constants/api';
-import { fetchCatalogueType } from '../../utils/catalogueFetch';
+import { fetchHouseGrocery } from '../../utils/catalogueFetch';
 import { readCache, writeCache, useCollegeEpoch, getCollegeEpoch } from '../../utils/swrCache';
 import { useConnectionState } from '../../utils/offlineStatus';
 import { useTopInset } from '../../utils/useTopInset';
 import { takesSlotOrders } from '../../utils/storeOpenNow';
+import { useLaunchSections } from '../../utils/launchSections';
 import { FOOD } from './foodV2Theme';
 import { FOOD_IMG, StorefrontArt, WaveArt, LoadingDots } from './FoodV2Kit';
-import { IonName, Item, SHOP_TYPES, CATALOGUE_CACHE_KEY, FALLBACK_IMG, MEGA_BASKET_VENDOR, WISHLIST_KEY, toItem, toList, etaText, groupIN, fmt, sentence, offLabel, fmtShortClock, squash, Shelf, SHELVES, shelfItems, SEARCH, SEARCH_HINTS, TILES, Hero, HEROES, LIST_TITLES, AISLES, aisleOf, SHORT_CHIP, chipLabel, FRESH_CATS, GROUP_ORDER, groupOf, BRANDS, TOY_TILES, HEALTH_TILES, ESSENTIAL_AISLES, HERO_BG, LHERO_BG, Route, DemoState, Saved } from './FoodV2Data';
+import { IonName, Item, SHOP_TYPES, CATALOGUE_CACHE_KEY, FALLBACK_IMG, MEGA_BASKET_VENDOR, WISHLIST_KEY, toItem, toList, etaText, groupIN, fmt, sentence, offLabel, fmtShortClock, squash, Shelf, SHELVES, shelfItems, SEARCH, SEARCH_HINTS, TILES, Hero, HEROES, LIST_TITLES, AISLES, aisleOf, SHORT_CHIP, chipLabel, FRESH_CATS, GROUP_ORDER, groupOf, BRANDS, TOY_TILES, HEALTH_TILES, ESSENTIAL_AISLES, HERO_BG, LHERO_BG, Route, DemoState, Saved, HOUSE_CATS_CACHE_KEY, HouseCategory, toHouseCategories, catShelf, isCatShelf, Tile, ShopSectionKey } from './FoodV2Data';
 
 const GREEN_GLOW = Platform.select<any>({
   web: { boxShadow: '0px 2px 8px rgba(7,132,63,0.28)' },
@@ -49,7 +50,7 @@ export function useFoodV2(): FoodV2Ctx {
   return v;
 }
 
-export function useFoodV2State({ forceDark, sections, onSection, openSearch, onSearchOpened }: { forceDark?: boolean; sections?: { key: string; label: string }[]; onSection?: (key: string) => void; openSearch?: boolean; onSearchOpened?: () => void }) {
+export function useFoodV2State({ forceDark, sections, onSection, openSearch, onSearchOpened, openSectionKey, onSectionOpened }: { forceDark?: boolean; sections?: { key: string; label: string }[]; onSection?: (key: string) => void; openSearch?: boolean; onSearchOpened?: () => void; openSectionKey?: ShopSectionKey | 'store' | null; onSectionOpened?: () => void }) {
   const clean = true;
   const router = useRouter();
   const isDark = !!forceDark;
@@ -114,45 +115,53 @@ export function useFoodV2State({ forceDark, sections, onSection, openSearch, onS
     return p.orderable && st && !st.isOpen && !st.takesSlotOrders ? { ...p, orderable: false } : p;
   }), [rawCatalogue, storeHours]);
   const fromNet = useRef(false);
+  // ZenWe Grocery's own categories (Admin > Grocery store), in the admin's order: the category tiles.
+  const [houseCats, setHouseCats] = useState<HouseCategory[]>([]);
   useEffect(() => {
     readCache<any[]>(CATALOGUE_CACHE_KEY).then(cached => {
       if (!mounted.current || fromNet.current || !cached || !Array.isArray(cached.data)) return;
       setCatalogue(toList(cached.data));
       setStatus('ready');
     }).catch(() => {});
+    readCache<any[]>(HOUSE_CATS_CACHE_KEY).then(cached => {
+      if (!mounted.current || fromNet.current || !cached) return;
+      setHouseCats(toHouseCategories(cached.data));
+    }).catch(() => {});
   }, []);
   const fetchCatalogue = useCallback(async () => {
     setStatus(prev => (prev === 'ready' ? prev : 'loading'));
     const requestEpoch = getCollegeEpoch();
     try {
-      // Store hours from every response are applied in ONE update with the items. Each response used to
-      // set them on arrival: four extra full re-renders of the store, each rebuilding the catalogue.
-      const hours: Record<string, StoreHours> = {};
-      const settled = await Promise.allSettled(SHOP_TYPES.map(async t => {
-        // Every page of the type (utils/catalogueFetch): past 200 products the rest used to be cut off.
-        const data = await fetchCatalogueType(t);
-        data.stores.forEach((st: any) => {
-          const sid = String(st?.id || st?._id || '');
-          if (sid) hours[sid] = {
-            isOpen: st.isOpen !== false, opensAt: typeof st.opensAt === 'string' ? st.opensAt : null, takesSlotOrders: takesSlotOrders(st), nextSlotLabel: typeof st.nextSlotLabel === 'string' ? st.nextSlotLabel : null,
-            name: typeof st.name === 'string' ? st.name : undefined, imageUrl: st.imageUrl || null, logoUrl: st.logoUrl || null,
-            rating: Number(st.rating) > 0 ? Number(st.rating) : null, vendorType: st.vendorType || null, deliveryTime: etaText(st.deliveryTime),
-          };
-        });
-        return data.items;
-      }));
-      if (mounted.current && Object.keys(hours).length) setStoreHours(prev => ({ ...prev, ...hours }));
-      const ok = settled.filter((r): r is PromiseFulfilledResult<any[]> => r.status === 'fulfilled');
-      if (!ok.length) throw new Error('catalogue unavailable');
-      // Unmounted, or the student changed college meanwhile (the other college's stores).
+      // Grocery store pill (owner, 26 Nov 2026): ZenWe Grocery's products only (GET /api/catalogue/items?house=1)
+      // and its categories (GET /api/catalogue/house). Other shops live in the Snacks / Fruits & pickles / Bakeries pills.
+      const [itemsRes, houseRes] = await Promise.allSettled([
+        fetchHouseGrocery(),
+        apiFetch(`${API_URL}/api/catalogue/house`).then(r => (r.ok ? readJson(r) : null)),
+      ]);
+      if (itemsRes.status !== 'fulfilled') throw new Error('catalogue unavailable');
+      const data = itemsRes.value;
+      // Unmounted, or the student changed college meanwhile (the other college's store).
       if (!mounted.current || requestEpoch !== getCollegeEpoch()) return;
+      const hours: Record<string, StoreHours> = {};
+      data.stores.forEach((st: any) => {
+        const sid = String(st?.id || st?._id || '');
+        if (sid) hours[sid] = {
+          isOpen: st.isOpen !== false, opensAt: typeof st.opensAt === 'string' ? st.opensAt : null, takesSlotOrders: takesSlotOrders(st), nextSlotLabel: typeof st.nextSlotLabel === 'string' ? st.nextSlotLabel : null,
+          name: typeof st.name === 'string' ? st.name : undefined, imageUrl: st.imageUrl || null, logoUrl: st.logoUrl || null,
+          rating: Number(st.rating) > 0 ? Number(st.rating) : null, vendorType: st.vendorType || null, deliveryTime: etaText(st.deliveryTime),
+        };
+      });
+      if (Object.keys(hours).length) setStoreHours(prev => ({ ...prev, ...hours }));
       fromNet.current = true;
-      const raw = ok.map(r => r.value).flat();
+      const raw = data.items;
       setCatalogue(toList(raw));
+      if (houseRes.status === 'fulfilled' && houseRes.value) {
+        const cats = toHouseCategories(houseRes.value.categories);
+        setHouseCats(cats);
+        writeCache(HOUSE_CATS_CACHE_KEY, cats);
+      }
       setStatus('ready');
-      // This screen now owns the store catalogue cache (Others no longer downloads a second copy while
-      // Food & groceries is open). Only a complete answer is cached, as before.
-      if (ok.length === settled.length) writeCache(CATALOGUE_CACHE_KEY, raw);
+      writeCache(CATALOGUE_CACHE_KEY, raw);
     } catch {
       if (mounted.current) setStatus(prev => (prev === 'ready' ? prev : 'error'));
     }
@@ -259,6 +268,23 @@ export function useFoodV2State({ forceDark, sections, onSection, openSearch, onS
       .filter(x => !!x.name)
       .sort((a, b) => Number(b.isOpen || b.takesSlotOrders) - Number(a.isOpen || a.takesSlotOrders) || b.n - a.n || String(a.name).localeCompare(String(b.name)));
   };
+  // ── Groceries sections (owner, 26 Nov 2026): the landing's hero and tiles open these ──
+  // App sections switches: grocery off hides ZenWe Grocery, Snacks and Fruits & pickles; bakery off hides Bakeries.
+  const launch = useLaunchSections();
+  const groceryOn = launch.on('grocery');
+  const bakeryOn = launch.on('bakery');
+  /** ZenWe Grocery: its categories screen (admin categories, then every product). */
+  // Owner, 26 Nov 2026: Groceries opens straight on "All groceries" (category sidebar), no in-between categories page.
+  const openStore = () => openListing('All Groceries');
+  const openSection = (section: ShopSectionKey) => push({ name: 'section', section });
+  // Old ?tab=snacks / fruits_pickles / bakeries links (app/(tabs)/others.tsx) land on that section, over the landing.
+  useEffect(() => {
+    if (!openSectionKey) return;
+    reset(openSectionKey === 'store' ? { name: 'categories' } : { name: 'section', section: openSectionKey });
+    onSectionOpened?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openSectionKey]);
+
   // Another Others section's header search ("Search the campus store") lands here on the search screen.
   useEffect(() => {
     if (!openSearch) return;
@@ -283,6 +309,24 @@ export function useFoodV2State({ forceDark, sections, onSection, openSearch, onS
     toggleSaved: (p) => live.current.toggleSaved(p),
     openProduct: (p) => live.current.openProduct(p),
   }), []);
+
+  // ── Category tiles ──
+  // ZenWe Grocery's own categories (admin order and images) that have products; until the admins add categories,
+  // the fixed tiles of FoodV2Data (matched on the products' categories) keep the same look.
+  const tiles = useMemo<Tile[]>(() => {
+    const own = houseCats
+      .map(c => {
+        const items = shelfItems(catShelf(c.name), catalogue);
+        return { c, items };
+      })
+      .filter(x => x.items.length > 0)
+      .map(({ c, items }) => ({ key: catShelf(c.name), label: c.name, img: c.imageUrl || items.find(p => p.image)?.image || FALLBACK_IMG, house: true }));
+    return own.length ? own : TILES;
+  }, [houseCats, catalogue]);
+  /** Title of a shelf: its tile label (ZenWe Grocery category name), else the fixed titles. */
+  const shelfTitle = (shelf: string) => tiles.find(t => t.key === shelf)?.label
+    || (isCatShelf(shelf) ? shelf.slice(4) : null)
+    || TILES.find(t => t.key === shelf)?.label || LIST_TITLES[shelf] || (BRANDS.some(b => b.name === shelf) ? shelf : sentence(shelf));
 
   // ── Derived home data ──
   const inStock = catalogue.filter(p => p.isAvailable);
@@ -316,5 +360,5 @@ export function useFoodV2State({ forceDark, sections, onSection, openSearch, onS
   const savedChips = ['All', ...GROUP_ORDER.filter(g => savedCounts[g]), ...(savedCounts.Other ? ['Other'] : [])];
 
 
-  return { sections, onSection, toast, setToast, router, isDark, m, topPad, winW, pageW, conn, cart, addToCart, updateQuantity, clearCart, mounted, c, shadow, greenGlow, stack, setStack, route, push, pop, homeKey, setHomeKey, reset, demo, setDemo, savedSheet, setSavedSheet, savedSample, setSavedSample, catalogue, setCatalogue, status, setStatus, storeHours, setStoreHours, fromNet, fetchCatalogue, saved, setSaved, loadSaved, savedIds, persistSaved, toggleSaved, qtyOf, closedLabel, addProduct, decProduct, storeIds, shopLines, shopCount, shopTotal, cartCount, query, setQuery, chip, setChip, chipsOpen, setChipsOpen, aisle, setAisle, savedChip, setSavedChip, openListing, openShops, shopsFor, openProduct, inStock, closedShare, allClosed, someClosed, earliestOpen, hasShelf, dealShelf, topDeal, fromPrice, upTo, failKind, forcedFail, isLoading, isFailed, isEmpty, sampleSaved, savedResolved, savedGroup, savedCounts, savedChips, clean, forceDark, rowActions, sampleOpen, setSampleOpen };
+  return { sections, onSection, toast, setToast, router, isDark, m, topPad, winW, pageW, conn, cart, addToCart, updateQuantity, clearCart, mounted, c, shadow, greenGlow, stack, setStack, route, push, pop, homeKey, setHomeKey, reset, demo, setDemo, savedSheet, setSavedSheet, savedSample, setSavedSample, catalogue, setCatalogue, status, setStatus, storeHours, setStoreHours, fromNet, fetchCatalogue, saved, setSaved, loadSaved, savedIds, persistSaved, toggleSaved, qtyOf, closedLabel, addProduct, decProduct, storeIds, shopLines, shopCount, shopTotal, cartCount, query, setQuery, chip, setChip, chipsOpen, setChipsOpen, aisle, setAisle, savedChip, setSavedChip, openListing, openShops, shopsFor, openProduct, inStock, closedShare, allClosed, someClosed, earliestOpen, hasShelf, dealShelf, topDeal, fromPrice, upTo, failKind, forcedFail, isLoading, isFailed, isEmpty, sampleSaved, savedResolved, savedGroup, savedCounts, savedChips, clean, forceDark, rowActions, sampleOpen, setSampleOpen, houseCats, tiles, shelfTitle, groceryOn, bakeryOn, openStore, openSection };
 }

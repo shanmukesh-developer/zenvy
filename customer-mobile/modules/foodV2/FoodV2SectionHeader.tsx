@@ -116,7 +116,10 @@ export default function SectionHeader({ topPad, pageW, compact, colors, subtitle
         <Icon name="search" size={20} color="#1F3B4D" />
         <RotatingHint hints={hints} />
       </PressScale>
-      {colors.page ? (
+      {/* No pills (Groceries landing, 26 Nov 2026): just the space under the search. */}
+      {!pills.length ? (
+        <View style={{ height: 16 }} />
+      ) : colors.page ? (
         <FolderTabRail tabs={pills} active={active} onTab={onPill} band={colors.bottom} page={colors.page} ink={ink || '#FFFFFF'} accent={colors.pillOnBg} side={side} />
       ) : (<>
       <ScrollView ref={railRef} horizontal style={st.hScroll} showsHorizontalScrollIndicator={false} contentContainerStyle={[st.pillRail, { paddingRight: SIDE + tail }]}

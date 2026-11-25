@@ -19,10 +19,10 @@ import { Icon } from './FoodV2Icons';
 import { BUTTON_ROLE } from '../../utils/pressRole';
 
 export default function FoodV2Shops({ shelf }: { shelf: string }) {
-  const { router, isDark, topPad, c, pop, shopCount, shopsFor, openListing, fetchCatalogue, failKind, forcedFail, isLoading, isFailed } = useFoodV2();
+  const { router, isDark, topPad, c, pop, shopCount, shopsFor, openListing, fetchCatalogue, failKind, forcedFail, isLoading, isFailed, shelfTitle } = useFoodV2();
   const { headerBtn, basketBar } = useFoodV2Ui();
   const { loadingCard, stateCard } = useFoodV2States();
-  const title = TILES.find(t => t.key === shelf)?.label || LIST_TITLES[shelf] || sentence(shelf);
+  const title = shelfTitle(shelf);
   const shops = shopsFor(shelf);
 
   return (

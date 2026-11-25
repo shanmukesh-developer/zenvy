@@ -31,6 +31,7 @@ import FoodV2Listing from './FoodV2Listing';
 import FoodV2Search from './FoodV2Search';
 import FoodV2Saved from './FoodV2Saved';
 import FoodV2Categories from './FoodV2Categories';
+import FoodV2SectionShops from './FoodV2SectionShops';
 import { AddedToast } from './FoodV2Motion';
 import FoodV2SampleSheet from './FoodV2SampleSheet';
 
@@ -38,7 +39,7 @@ import FoodV2SampleSheet from './FoodV2SampleSheet';
  * `openSearch` opens the store search (then `onSearchOpened` is called once).
  * Memoized: the 3,000-line Others screen re-renders on every keystroke / basket change of its own, and
  * each of those used to re-render the whole store (home shelves, rows, header) for nothing. */
-function FoodV2Screen(props: { forceDark?: boolean; sections?: { key: string; label: string }[]; onSection?: (key: string) => void; openSearch?: boolean; onSearchOpened?: () => void }) {
+function FoodV2Screen(props: { forceDark?: boolean; sections?: { key: string; label: string }[]; onSection?: (key: string) => void; openSearch?: boolean; onSearchOpened?: () => void; openSectionKey?: import('./FoodV2Data').ShopSectionKey | 'store' | null; onSectionOpened?: () => void }) {
   const ctx = useFoodV2State(props);
   return <FoodV2Provider value={ctx}><FoodV2Body /></FoodV2Provider>;
 }
@@ -59,6 +60,7 @@ function FoodV2Body() {
       {route.name === 'shops' && <FoodV2Shops shelf={route.shelf} />}
       {route.name === 'saved' && <FoodV2Saved />}
       {route.name === 'categories' && <FoodV2Categories />}
+      {route.name === 'section' && <FoodV2SectionShops section={route.section} />}
       <FoodV2Saved sheet />
       <FoodV2SampleSheet />
       <AddedToast stamp={toast.stamp} label={toast.label} bottom={shopCount > 0 ? 92 : 24} />

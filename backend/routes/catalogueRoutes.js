@@ -1,5 +1,5 @@
 const express = require('express');
-const { getTypes, getStores, getItems, getMinPrices } = require('../controllers/catalogueController');
+const { getTypes, getStores, getItems, getMinPrices, getHouse } = require('../controllers/catalogueController');
 
 const router = express.Router();
 
@@ -11,5 +11,7 @@ router.get('/types', catalogCache, getTypes);
 router.get('/stores', catalogCache, getStores);
 router.get('/items', catalogCache, getItems);
 router.get('/min-prices', catalogCache, getMinPrices);
+// ZenWe's own Grocery store + its admin-managed categories (Groceries tab "Grocery store" pill).
+router.get('/house', catalogCache, getHouse);
 
 module.exports = router;

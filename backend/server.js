@@ -1467,6 +1467,12 @@ const initializeApp = async () => {
     inBootQueue(() => require('./scripts/services_laundry_only_v1').runLaundryOnlyOnce())
       .then((r) => console.log('🧺 [LAUNDRY_ONLY_ONCE]', JSON.stringify(r)))
       .catch((err) => console.warn('⚠️ [LAUNDRY_ONLY_ONCE] failed:', err.message));
+    // 🛒 ZenWe Grocery, ZenWe's own house grocery store (owner, 26 Nov 2026), once (HOUSE_GROCERY_STORE_V1_DONE):
+    // created when missing; its products come from Admin > Grocery store. scripts/house_grocery_store_v1.js;
+    // DISABLE_HOUSE_GROCERY_STORE_ONCE=true switches it off.
+    inBootQueue(() => require('./scripts/house_grocery_store_v1').runHouseGroceryStoreOnce())
+      .then((r) => console.log('🛒 [HOUSE_GROCERY_STORE]', JSON.stringify(r)))
+      .catch((err) => console.warn('⚠️ [HOUSE_GROCERY_STORE] failed:', err.message));
 
 
 

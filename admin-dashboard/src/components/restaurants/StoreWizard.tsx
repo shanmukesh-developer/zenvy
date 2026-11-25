@@ -51,6 +51,8 @@ export interface WizardState {
   settlementCycle: 'daily' | '3days' | 'weekly';
   /** Delivery timing group (backend utils/deliveryGroups); '' = from the store type. */
   deliveryGroup: '' | 'food' | 'grocery' | 'bakery';
+  /** Groceries tab section pill (backend utils/shopSections); '' = none (a BAKERY store then shows in Bakeries). */
+  shopSection: '' | 'snacks' | 'fruits_pickles' | 'bakeries';
   /** Payment details: where ZenWe sends this store's money (validated + audited server side, utils/storeCompliance).
    * The account number is write-only: typed twice, stored encrypted, shown only as ••••1234. */
   payUpiId: string;
@@ -94,7 +96,7 @@ const emptyState = (): WizardState => ({
   location: '', zone: '', lat: '', lon: '', whatsapp: '',
   imageUrl: '', brandOn: false, logoUrl: '', primaryColor: '#E23744', secondaryColor: '#111111', accentColor: '#FFC72C',
   weekly: uniformWeekly('09:00', '22:00'), isOpenNow: true, deliveryTime: '30',
-  managedByZenvy: false, password: '', loginPhone: '', packagingFee: '', minOrderValue: '', deliveryFeeOverride: '', commissionType: 'percentage', commissionRate: '10', settlementCycle: 'weekly', deliveryGroup: '',
+  managedByZenvy: false, password: '', loginPhone: '', packagingFee: '', minOrderValue: '', deliveryFeeOverride: '', commissionType: 'percentage', commissionRate: '10', settlementCycle: 'weekly', deliveryGroup: '', shopSection: '',
   payUpiId: '', bankHolder: '', bankNumber: '', bankNumberAgain: '', bankIfsc: '', bankName: '', bankBranch: '',
   campusBooking: false, upiId: '', upiName: '', prepMinutes: '',
 });
@@ -131,6 +133,7 @@ export function stateFromStore(s: Store): WizardState {
     commissionType: s.commissionType === 'flat' ? 'flat' : 'percentage',
     commissionRate: String(s.commissionRate ?? 10),
     deliveryGroup: s.deliveryGroup === 'food' || s.deliveryGroup === 'grocery' || s.deliveryGroup === 'bakery' ? s.deliveryGroup : '',
+    shopSection: s.shopSection === 'snacks' || s.shopSection === 'fruits_pickles' || s.shopSection === 'bakeries' ? s.shopSection : '',
     settlementCycle: s.settlementCycle === 'daily' || s.settlementCycle === '3days' ? s.settlementCycle : String(s.settlementCycle) === 'monthly' ? '3days' : 'weekly',
     payUpiId: s.payoutUpiId || '', bankHolder: s.bankAccountHolder || '', bankNumber: '', bankNumberAgain: '',
     bankIfsc: s.bankIfsc || '', bankName: s.bankName || '', bankBranch: s.bankBranch || '',
@@ -253,7 +256,7 @@ export function buildPayload(s: WizardState, existing: Store | null): Record<str
     commissionType: s.commissionType,
     commissionRate: local ? Number(existing?.commissionRate ?? 0) : Number(s.commissionRate),
     // Stalls keep their cycle (changed from the Revenue page); restaurants set it here.
-    ...(local ? {} : { settlementCycle: s.settlementCycle, deliveryGroup: s.deliveryGroup || null }),
+    ...(local ? {} : { settlementCycle: s.settlementCycle, deliveryGroup: s.deliveryGroup || null, shopSection: s.shopSection || null }),
   };
   if (s.zone.trim()) body.zone = s.zone.trim();
   else if (existing && existing.zone) body.zone = null; // emptied: the server puts back the default zone
@@ -1027,6 +1030,16 @@ function CommissionStep({ s, set, errors }: StepProps) {
           { value: 'bakery', label: 'Bakery, snacks & pickles' },
         ]} />
         <p className="text-xs text-fg-muted">When this store&apos;s products are delivered: food at lunch (12:30 PM) and 7–9:30 PM, groceries and fruits 12–2 PM (order by 7 AM), bakery, snacks and pickles 4–6 PM (order by 2 PM). &quot;From store type&quot;: bakery and pickle / snack / sweet shops get bakery timing, grocery and other shops grocery timing, restaurants food. A product can have its own timing in its editor; windows are edited in Config.</p>
+      </div>
+      <div className="space-y-2">
+        <p className="text-xs font-semibold text-fg-muted">Groceries tab section</p>
+        <Segmented label="Groceries tab section" value={s.shopSection} onChange={shopSection => set({ shopSection })} options={[
+          { value: '', label: 'None' },
+          { value: 'snacks', label: 'Snacks' },
+          { value: 'fruits_pickles', label: 'Fruits & pickles' },
+          { value: 'bakeries', label: 'Bakeries' },
+        ]} />
+        <p className="text-xs text-fg-muted">The pill this shop is listed under in the app&apos;s Groceries tab (Grocery store, Snacks, Fruits &amp; pickles, Bakeries). Students open the shop from there and see its own products. &quot;None&quot;: not listed in the Groceries tab{s.vendorType === 'BAKERY' ? ' (a bakery with None is listed under Bakeries)' : ''}. The Grocery store pill shows only ZenWe Grocery&apos;s products (Catalogue → Grocery store).</p>
       </div>
       <Field label={s.commissionType === 'flat' ? 'Amount per order (₹)' : 'Commission (%)'} required error={errors.commissionRate} help="Charged on the item subtotal only. The rider fee and ZenWe coupons never reduce the partner's share.">
         {({ id, msgId, invalid }) => (

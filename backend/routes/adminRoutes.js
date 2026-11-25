@@ -192,6 +192,21 @@ router.put('/app-sections/:key', require('../controllers/adminController').setAp
   router.get('/home-slideshow/dishes', hs.searchDishes);
   router.put('/menu-items/:id/slideshow', hs.setDishSlideshow);
 }
+// ZenWe Grocery, ZenWe's own house grocery store (controllers/houseGroceryController, utils/houseGrocery).
+{
+  const hgc = require('../controllers/houseGroceryController');
+  router.get('/house-grocery', hgc.getOverview);
+  router.post('/house-grocery/setup', hgc.setup);
+  router.post('/house-grocery/categories', hgc.addCategory);
+  router.put('/house-grocery/categories/order', hgc.reorderCategories);
+  router.put('/house-grocery/categories/:id', hgc.updateCategory);
+  router.delete('/house-grocery/categories/:id', hgc.deleteCategory);
+  router.get('/house-grocery/products', hgc.listProducts);
+  router.post('/house-grocery/products/stock', hgc.setStock);
+  router.post('/house-grocery/products', hgc.createProduct);
+  router.put('/house-grocery/products/:id', hgc.updateProduct);
+  router.delete('/house-grocery/products/:id', hgc.deleteProduct);
+}
 router.get('/config', getGlobalConfig);
 router.post('/config', updateGlobalConfig);
 // Delivery timing groups (utils/deliveryGroups, owner 14 Nov 2026): the windows in force per group (saved over the

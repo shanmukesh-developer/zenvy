@@ -66,7 +66,7 @@ export function useCollege(): CollegeKey | null {
 const SCOPED: RegExp[] = [
   /\/api\/users\/restaurants(\?|$)/,
   /\/api\/users\/search(\?|$)/,
-  /\/api\/catalogue\/(items|stores|types|min-prices)(\?|$)/,
+  /\/api\/catalogue\/(items|stores|types|min-prices|house)(\?|$)/,
   /\/api\/restaurants\/local-vendors(\?|$)/,
   /\/api\/ads\/splash(\?|$)/,
   /\/api\/campus-booking\/(home|stalls)(\?|$)/,

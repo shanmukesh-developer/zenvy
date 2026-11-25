@@ -9,10 +9,20 @@ const PAGE = 200;
 const MAX_PAGES = 5;
 
 export async function fetchCatalogueType(type: string): Promise<{ items: any[]; stores: any[] }> {
+  return fetchCatalogueItems(`type=${encodeURIComponent(type)}`);
+}
+
+/** ZenWe Grocery, ZenWe's own house store (Groceries tab > Grocery store): its products only (backend ?house=1). */
+export function fetchHouseGrocery(): Promise<{ items: any[]; stores: any[] }> {
+  return fetchCatalogueItems('house=1');
+}
+
+/** Every page of GET /api/catalogue/items?<query>. */
+async function fetchCatalogueItems(query: string): Promise<{ items: any[]; stores: any[] }> {
   const items: any[] = [];
   const stores = new Map<string, any>();
   for (let page = 0; page < MAX_PAGES; page++) {
-    const res = await apiFetch(`${API_URL}/api/catalogue/items?type=${encodeURIComponent(type)}&limit=${PAGE}&offset=${page * PAGE}`);
+    const res = await apiFetch(`${API_URL}/api/catalogue/items?${query}&limit=${PAGE}&offset=${page * PAGE}`);
     if (!res.ok) throw new Error(`catalogue ${res.status}`);
     const data = await readJson(res);
     const got = Array.isArray(data?.items) ? data.items : [];

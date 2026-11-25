@@ -544,7 +544,9 @@ const RESTAURANT_FIELDS = [
   // 31 Oct 2026: the colleges the store serves (utils/campuses; empty = every college)
   'visibleCampuses',
   // 14 Nov 2026: the store's delivery timing group (utils/deliveryGroups; null = from its type)
-  'deliveryGroup'
+  'deliveryGroup',
+  // 26 Nov 2026: Groceries tab section pill (utils/shopSections; null = none, BAKERY stores default to bakeries)
+  'shopSection'
 ];
 const MENU_ITEM_FIELDS = [
   'name', 'price', 'description', 'imageUrl', 'category', 'tags', 'isVegetarian', 'isAvailable',
@@ -632,6 +634,11 @@ const pickRestaurantFields = (body = {}, { creating = false } = {}) => {
     const g = require('../utils/deliveryGroups').cleanGroup(out.deliveryGroup);
     if (out.deliveryGroup && !g) throw new AdminInputError("Delivery timing must be 'food', 'grocery', 'bakery' or empty (from the store type).");
     out.deliveryGroup = g;
+  }
+  if (out.shopSection !== undefined) {
+    const sec = require('../utils/shopSections').cleanSection(out.shopSection);
+    if (sec === undefined) throw new AdminInputError("Groceries tab section must be 'snacks', 'fruits_pickles', 'bakeries' or empty (none).");
+    out.shopSection = sec;
   }
   if (out.logoUrl !== undefined) out.logoUrl = String(out.logoUrl || '').trim() || null;
 
@@ -3040,7 +3047,7 @@ exports.duplicateRestaurant = async (req, res) => {
     await assertUniqueStore({ name });
     const copyMenu = (req.body || {}).copyMenu !== false && (req.body || {}).copyMenu !== 'false';
     const src = source.toJSON();
-    for (const k of ['id', 'createdAt', 'updatedAt', 'password', 'phone', 'fcmTokens', 'tokenVersion', 'publishedAt', 'clickCount', 'rating', 'isFeatured', 'featuredUntil']) delete src[k];
+    for (const k of ['id', 'createdAt', 'updatedAt', 'password', 'phone', 'fcmTokens', 'tokenVersion', 'publishedAt', 'clickCount', 'rating', 'isFeatured', 'featuredUntil', 'isHouseStore']) delete src[k]; // a copy of ZenWe Grocery is an ordinary store
     // C8: a copy is not the same legal seller: licence, tax ids and payout details are never copied.
     for (const k of [...require('../utils/storeCompliance').STORED_FIELDS, 'fssaiSubmittedAt', 'fssaiVerifiedAt', 'fssaiVerifiedBy']) delete src[k];
     const { getSequelize } = require('../config/db');

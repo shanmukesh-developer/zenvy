@@ -44,6 +44,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: '/campus-booking', label: 'In-Campus Booking', icon: 'orders', description: 'Pickup bookings paid straight to campus stalls by UPI; each stall: switch, UPI ID and QR.', keywords: 'campus booking pickup stall upi qr payment proof commission' },
       { href: '/restaurants', label: 'Stores', icon: 'store', description: 'Restaurants, local vendors and stalls: details, hours, compliance.', keywords: 'restaurants vendors stalls shops merchants fssai gst' },
       { href: '/catalogue', label: 'Catalogue', icon: 'catalogue', description: 'Add, edit and delete items for any store or Groceries category.', keywords: 'menu items products prices stock categories toys fruits groceries stationery' },
+      { href: '/grocery-store', label: 'Grocery store', icon: 'basket', description: "ZenWe Grocery, ZenWe's own store: its categories (tiles in the app) and products, the only products in the Groceries tab's Grocery store.", keywords: 'zenwe grocery house store blinkit bigbasket own store categories tiles products pack size mrp in stock groceries tab' },
     ],
   },
   {

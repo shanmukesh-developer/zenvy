@@ -73,6 +73,10 @@ export interface Store {
   settlementCycle?: 'daily' | '3days' | 'weekly' | null;
   /** Delivery timing group for the store's products (utils/deliveryGroups); null = from its type. */
   deliveryGroup?: 'food' | 'grocery' | 'bakery' | null;
+  /** Groceries tab section pill (backend utils/shopSections); null = none (a BAKERY store then shows in Bakeries). */
+  shopSection?: 'snacks' | 'fruits_pickles' | 'bakeries' | null;
+  /** ZenWe Grocery, ZenWe's own house store (Admin > Grocery store). */
+  isHouseStore?: boolean | null;
   logoUrl?: string | null;
   createdAt?: string;
   updatedAt?: string;

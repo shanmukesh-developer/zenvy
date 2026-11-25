@@ -1,5 +1,8 @@
 /**
- * Food & groceries v2: all categories ("Shop by category" > View all). The seven main category tiles (balanced rows),
+ * ZenWe Grocery, ZenWe's own store (owner, 26 Nov 2026): opened from the Groceries landing's hero, "Shop now", the
+ * Groceries tile and "View all". Its admin-managed categories (Admin > Grocery store) as tiles, then every product
+ * and the other aisles. Each opens its product list.
+ * (Was: all categories, "Shop by category" > View all.) The seven main category tiles (balanced rows),
  * then every other aisle and shelf that has products, as a plain list. Each opens its listing.
  * Others → Food & groceries (modules/foodV2).
  */
@@ -9,7 +12,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 import { PressScale } from '../../modules/others/motion';
 import { FOOD } from './foodV2Theme';
-import { TILES, ESSENTIAL_AISLES, LIST_TITLES, chipLabel, shelfItems, tileRows } from './FoodV2Data';
+import { ESSENTIAL_AISLES, LIST_TITLES, SEARCH, chipLabel, shelfItems, tileRows } from './FoodV2Data';
+import { useFoodV2Ui } from './FoodV2Ui';
+import { useFoodV2States } from './FoodV2States';
 import { s } from './FoodV2Styles';
 import { useFoodV2 } from './useFoodV2';
 import { TILE_ART } from './FoodV2Art';
@@ -19,7 +24,7 @@ import { BUTTON_ROLE } from '../../utils/pressRole';
 
 /** Other shelves shown under the tiles (key -> label), only when they have products. */
 const MORE: { key: string; label: string }[] = [
-  { key: 'All Groceries', label: 'Everything in the campus store' },
+  { key: 'All Groceries', label: 'All products' },
   { key: 'Deals', label: 'Best deals' },
   { key: 'Organic', label: 'Organic' },
   { key: 'Monsoon Wellness Picks', label: LIST_TITLES['Monsoon Wellness Picks'] },
@@ -29,12 +34,15 @@ const MORE: { key: string; label: string }[] = [
 ];
 
 export default function FoodV2Categories() {
-  const { isDark, topPad, pageW, c, shadow, pop, catalogue, shopCount, openListing, openShops } = useFoodV2();
+  const { router, isDark, topPad, pageW, c, shadow, pop, catalogue, shopCount, openListing, tiles: allTiles } = useFoodV2();
+  const { headerBtn, basketBar } = useFoodV2Ui();
+  const { isLoading, isFailed, forcedFail, failKind, fetchCatalogue } = useFoodV2();
+  const { loadingCard, stateCard, stockingUp } = useFoodV2States();
   const sc = useFoodScale();
   const cols = sc.tileCols;
   // the white inset sits 8 px in from each side (s.inset)
   const widthFor = (n: number) => Math.floor((pageW - 16 - 32 - 10 * (n - 1)) / n);
-  const tiles = TILES.filter(t => shelfItems(t.key, catalogue).length > 0);
+  const tiles = allTiles.filter(t => shelfItems(t.key, catalogue).length > 0);
   const more = [
     ...MORE.map(m => ({ ...m, n: shelfItems(m.key, catalogue).length })),
     ...ESSENTIAL_AISLES.map(a => ({ key: a, label: chipLabel(a), n: shelfItems(a, catalogue).length })),
@@ -46,19 +54,27 @@ export default function FoodV2Categories() {
           <PressScale onPress={pop} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole={BUTTON_ROLE} accessibilityLabel="Back" style={s.backBtn}>
             <Icon name="arrow-back" size={22} color="#FFFFFF" />
           </PressScale>
-          <Text style={s.listTitle} numberOfLines={1} accessibilityRole="header">All categories</Text>
+          <Text style={[s.listTitle, { flex: 1 }]} numberOfLines={1} accessibilityRole="header">ZenWe Grocery</Text>
+          {headerBtn('search', 'Search ZenWe Grocery', () => openListing(SEARCH))}
+          {headerBtn('cart-outline', 'Basket', () => router.push('/(tabs)/basket?basket=store' as any), shopCount)}
         </View>
         <View style={{ height: 6 }} />
       </LinearGradient>
       <View style={[s.inset, { backgroundColor: c.page }]}>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingTop: 16, paddingBottom: shopCount > 0 ? sc.barSpace : 32 + sc.insets.bottom }}>
+          {/* Nothing to show yet: loading, could not load, or the store has no products. */}
+          {!tiles.length && !more.length && (
+            isLoading ? loadingCard(4)
+              : isFailed ? <View style={{ paddingHorizontal: 16 }}>{stateCard(forcedFail || failKind, fetchCatalogue)}</View>
+                : <View style={{ paddingHorizontal: 12 }}>{stockingUp()}</View>
+          )}
           {tileRows(tiles, cols).map((row, ri) => (
           <View key={ri} style={[st.grid, ri > 0 && { marginTop: 10 }]}>
             {row.map(t => {
               const art = TILE_ART[t.key];
               const w = widthFor(row.length);
               return (
-                <PressScale key={t.key} onPress={() => openShops(t.key)} scaleTo={0.97} style={{ width: w }} accessibilityRole={BUTTON_ROLE} accessibilityLabel={t.label}>
+                <PressScale key={t.key} onPress={() => openListing(t.key)} scaleTo={0.97} style={{ width: w }} accessibilityRole={BUTTON_ROLE} accessibilityLabel={t.label}>
                   <View style={[st.tile, { backgroundColor: c.card }, shadow]}>
                     <View style={[st.plate, { backgroundColor: art ? art.tint[isDark ? 1 : 0] : c.tile }]}>
                       {art ? <Image source={art.art} style={st.cut} contentFit="contain" accessibilityElementsHidden /> : <Image source={{ uri: t.img }} style={StyleSheet.absoluteFill} contentFit="cover" />}
@@ -86,6 +102,7 @@ export default function FoodV2Categories() {
           )}
         </ScrollView>
       </View>
+      {shopCount > 0 && basketBar()}
     </View>
   );
 }

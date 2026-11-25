@@ -51,6 +51,9 @@ const shapeStore = (store, itemCount) => {
     minOrderValue: Number(s.minOrderValue) || 0,
     // C8: FSSAI licence number shown on the store page (null = "FSSAI licence not provided").
     fssaiLicenseNumber: s.fssaiLicenseNumber || null,
+    // Groceries tab (utils/shopSections): ZenWe's own Grocery store, or the shop's section pill.
+    isHouseStore: !!s.isHouseStore,
+    shopSection: require('../utils/shopSections').sectionOf(s),
     ...(itemCount !== undefined ? { itemCount } : {})
   };
 };
@@ -157,14 +160,22 @@ const getTypes = async (req, res) => {
 
 // @desc    Active stores, optionally of one type
 // @route   GET /api/catalogue/stores?type=grocery
+//          GET /api/catalogue/stores?section=snacks|fruits_pickles|bakeries  the shops of one Groceries tab pill
+//          (utils/shopSections; any store type, never the house store; [] while the section's App sections switch is
+//          off). An unknown section answers [].
 const getStores = async (req, res) => {
   try {
     const Restaurant = getRestaurantModel();
     const MenuItem = getMenuItemModel();
-    const types = resolveVendorTypes(req.query.type);
+    const shopSections = require('../utils/shopSections');
+    const sectionParam = req.query.section !== undefined ? shopSections.cleanSection(req.query.section) : null;
+    if (req.query.section !== undefined && !sectionParam) { res.set('Cache-Control', 'no-cache'); return res.json([]); }
+    if (sectionParam && !(await shopSections.sectionOn(sectionParam))) { res.set('Cache-Control', 'no-cache'); return res.json([]); }
+    const types = sectionParam ? null : resolveVendorTypes(req.query.type);
     const where = types ? { isActive: true, ...(await require('../utils/receiptSettings').listingWhere()), vendorType: { [Op.in]: types } } : await storeWhere(null);
     if (req.query.campus) where.campus = String(req.query.campus);
-    const stores = await withoutPausedStores(forCollege(req, await Restaurant.findAll({ where, order: [['name', 'ASC']], attributes: { exclude: STORE_EXCLUDE } })));
+    let stores = await withoutPausedStores(forCollege(req, await Restaurant.findAll({ where, order: [['name', 'ASC']], attributes: { exclude: STORE_EXCLUDE } })));
+    if (sectionParam) stores = stores.filter((s) => shopSections.sectionOf(s) === sectionParam);
     const ids = stores.map(s => s.id);
     const counts = {};
     if (ids.length) {
@@ -186,14 +197,18 @@ const getStores = async (req, res) => {
 
 // @desc    Products of active stores
 // @route   GET /api/catalogue/items?type=grocery&storeId=&category=&q=&for=cake&includeUnavailable=true&limit=&offset=
+//          ?house=1: ZenWe's own Grocery store only (utils/houseGrocery; the Groceries tab "Grocery store" pill);
+//          type is then ignored. Paused with the grocery App sections switch like every grocery store.
 const getItems = async (req, res) => {
   try {
     const Restaurant = getRestaurantModel();
     const MenuItem = getMenuItemModel();
-    const types = resolveVendorTypes(req.query.type);
+    const house = ['1', 'true'].includes(String(req.query.house || '').toLowerCase());
+    const types = house ? null : resolveVendorTypes(req.query.type);
 
     const storeFilter = { isActive: true, ...(await require('../utils/receiptSettings').listingWhere()) };
-    if (types) storeFilter.vendorType = { [Op.in]: types };
+    if (house) storeFilter.isHouseStore = true;
+    else if (types) storeFilter.vendorType = { [Op.in]: types };
     else if (!req.query.storeId) storeFilter.vendorType = { [Op.in]: STORE_VENDOR_TYPES };
     if (req.query.storeId) {
       if (!UUID_RE.test(String(req.query.storeId))) return res.json({ items: [], total: 0, stores: [] });
@@ -220,7 +235,7 @@ const getItems = async (req, res) => {
     const { count, rows } = await MenuItem.findAndCountAll({ where, attributes: { exclude: ITEM_EXCLUDE }, order: [['category', 'ASC'], ['name', 'ASC']], limit, offset });
 
     // One store's shelf follows the admin's menu order (specs.sortOrder).
-    let items = (req.query.storeId ? sortMenuItems(rows) : rows).map(r => shapeItem(r, storeMap.get(r.restaurantId)));
+    let items = (req.query.storeId || house ? sortMenuItems(rows) : rows).map(r => shapeItem(r, storeMap.get(r.restaurantId)));
     // Add-ons for a dish type, e.g. ?type=extras&for=cake
     const forType = typeof req.query.for === 'string' ? req.query.for.trim().toLowerCase() : '';
     if (forType) items = items.filter(i => Array.isArray(i.extraFor) && i.extraFor.includes(forType));
@@ -237,6 +252,35 @@ const getItems = async (req, res) => {
   } catch (error) {
     console.error('[CATALOGUE_ITEMS_ERROR]', error);
     res.status(500).json({ message: 'Could not load products right now. Please try again.' });
+  }
+};
+
+// @desc    ZenWe's own Grocery store and its admin-managed categories (the app's category tiles)
+// @route   GET /api/catalogue/house
+// Response: { store: {...} | null, categories: [{ id, name, imageUrl, order, itemCount }] }. store is null (and
+// categories []) when the house store is missing, switched off, paused (grocery switch) or not at the student's college.
+// itemCount counts in-stock products; the app hides categories with none.
+const getHouse = async (req, res) => {
+  try {
+    const Restaurant = getRestaurantModel();
+    const MenuItem = getMenuItemModel();
+    const hg = require('../utils/houseGrocery');
+    res.set('Cache-Control', 'no-cache');
+    const where = { isActive: true, isHouseStore: true, ...(await require('../utils/receiptSettings').listingWhere()) };
+    const [store] = await withoutPausedStores(forCollege(req, await Restaurant.findAll({ where, order: [['createdAt', 'ASC']], limit: 1, attributes: { exclude: STORE_EXCLUDE } })));
+    if (!store) return res.json({ store: null, categories: [] });
+    const rows = await MenuItem.findAll({
+      where: { restaurantId: store.id, [Op.or]: [{ isAvailable: true }, { outOfStockUntil: { [Op.lte]: new Date() } }] },
+      attributes: ['category', [MenuItem.sequelize.fn('COUNT', MenuItem.sequelize.col('id')), 'n']],
+      group: ['category'],
+      raw: true
+    });
+    const counts = new Map(rows.map((r) => [String(r.category || '').toLowerCase(), Number(r.n) || 0]));
+    const categories = (await hg.readCategories()).map((c) => ({ ...c, itemCount: counts.get(c.name.toLowerCase()) || 0 }));
+    res.json({ store: shapeStore(store), categories });
+  } catch (error) {
+    console.error('[CATALOGUE_HOUSE_ERROR]', error);
+    res.status(500).json({ message: 'Could not load the store right now. Please try again.' });
   }
 };
 
@@ -294,4 +338,4 @@ const getMinPrices = async (req, res) => {
   }
 };
 
-module.exports = { getTypes, getStores, getItems, getMinPrices, shapeItem, shapeStore };
+module.exports = { getTypes, getStores, getItems, getMinPrices, getHouse, shapeItem, shapeStore };

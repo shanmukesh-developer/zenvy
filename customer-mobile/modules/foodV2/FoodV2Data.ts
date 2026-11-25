@@ -20,8 +20,24 @@ export type Item = {
   /** Sample layer only (foodV2Demo.ts): never on a catalogue item, never orderable, never saved or sent. */
   isDemoContent?: true; art?: ImageSourcePropType;
 };
+/** Older builds' Groceries tab read these store types (every shop's products). The Grocery store pill now reads only
+ * ZenWe Grocery, ZenWe's own store (owner, 26 Nov 2026; utils/catalogueFetch fetchHouseGrocery). */
 export const SHOP_TYPES = ['grocery', 'toys', 'seeds', 'electronics', 'bakery'];
-export const CATALOGUE_CACHE_KEY = 'others:catalogue';
+/** The Grocery store pill's catalogue (ZenWe Grocery only): its own cache key, never mixed with the old all-shops one. */
+export const CATALOGUE_CACHE_KEY = 'others:house-catalogue';
+export const HOUSE_CATS_CACHE_KEY = 'others:house-categories';
+/** An admin-managed ZenWe Grocery category (Admin > Grocery store; GET /api/catalogue/house): one category tile. */
+export type HouseCategory = { id: string; name: string; imageUrl: string | null; order: number; itemCount: number };
+/** Shelf key of a ZenWe Grocery category: exactly the products filed under that category. */
+export const CAT_PREFIX = 'cat:';
+export const catShelf = (name: string) => `${CAT_PREFIX}${name}`;
+export const isCatShelf = (shelf: string) => shelf.startsWith(CAT_PREFIX);
+/** A category tile: the fixed tiles (TILES), or ZenWe Grocery's own categories (key cat:<name>, admin image). */
+export type Tile = { key: string; label: string; img: string; house?: boolean };
+export const toHouseCategories = (raw: any): HouseCategory[] => (Array.isArray(raw) ? raw : [])
+  .filter((c: any) => c && typeof c.name === 'string' && c.name.trim())
+  .map((c: any, i: number) => ({ id: String(c.id || c.name), name: String(c.name), imageUrl: typeof c.imageUrl === 'string' && c.imageUrl ? c.imageUrl : null, order: Number.isFinite(Number(c.order)) ? Number(c.order) : i, itemCount: Number(c.itemCount) || 0 }))
+  .sort((a, b) => a.order - b.order);
 export const FALLBACK_IMG = 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=400&q=80';
 export const MEGA_BASKET_VENDOR = 'mega-basket-vendor';
 export const WISHLIST_KEY = 'zenvy_wishlist';
@@ -131,6 +147,11 @@ export const shelfItems = (name: string | null, items: Item[]): Item[] => {
   return out;
 };
 const computeShelf = (name: string, items: Item[]): Item[] => {
+  // A ZenWe Grocery category tile: exactly its products (the admin's category, no keyword guessing).
+  if (isCatShelf(name)) {
+    const cat = name.slice(CAT_PREFIX.length).toLowerCase();
+    return items.filter(i => (i.category || '').toLowerCase() === cat);
+  }
   const shelf = SHELVES[name] || { categories: [name], keywords: [name] };
   const cats = (shelf.categories || []).map(c => c.toLowerCase());
   const keys = (shelf.keywords || []).map(k => k.toLowerCase());
@@ -155,7 +176,7 @@ const computeShelf = (name: string, items: Item[]): Item[] => {
 export const SEARCH = '__search';
 export const SEARCH_HINTS = ["Search for 'milk'", "Search for 'rice'", "Search for 'chips'", "Search for 'curd'", "Search for 'atta'", "Search for 'ghee'"];
 
-export const TILES: { key: string; label: string; img: string }[] = [
+export const TILES: Tile[] = [
   { key: 'Grocery', label: 'Groceries', img: FOOD_IMG.tileGroceries },
   { key: 'Fresh', label: 'Fruits & vegetables', img: FOOD_IMG.tileFresh },
   { key: 'Snacks & beverages', label: 'Snacks & beverages', img: FOOD_IMG.tileSnacks },
@@ -163,6 +184,20 @@ export const TILES: { key: string; label: string; img: string }[] = [
   { key: 'Health & care', label: 'Health & personal care', img: FOOD_IMG.tileHealth },
   { key: 'Pickles', label: 'Pickles', img: 'https://images.unsplash.com/photo-1601702538934-efffab67ab65?w=360&q=80&auto=format&fit=crop' },
   { key: 'Gifts & toys', label: 'Gifts & toys', img: 'https://images.unsplash.com/photo-1549465220-1a8b9238cd48?w=360&q=80&auto=format&fit=crop' },
+];
+
+/** Groceries tab sections other than ZenWe Grocery (backend utils/shopSections). */
+export type ShopSectionKey = 'snacks' | 'fruits_pickles' | 'bakeries';
+/**
+ * Landing "Shop by category" (owner, 26 Nov 2026): one tile per Groceries section, with the original tile art
+ * (TILE_ART keys). Groceries opens ZenWe Grocery (the 'categories' screen); the others open that section's shops.
+ * `needs`: the App sections switch that hides the tile.
+ */
+export const SECTION_TILES: { key: string; label: string; img: string; to: 'store' | ShopSectionKey; needs: 'grocery' | 'bakery' }[] = [
+  { key: 'Grocery', label: 'Groceries', img: FOOD_IMG.tileGroceries, to: 'store', needs: 'grocery' },
+  { key: 'Snacks & beverages', label: 'Snacks', img: FOOD_IMG.tileSnacks, to: 'snacks', needs: 'grocery' },
+  { key: 'Fresh', label: 'Fruits & pickles', img: FOOD_IMG.tileFresh, to: 'fruits_pickles', needs: 'grocery' },
+  { key: 'Bakery & breakfast', label: 'Bakeries', img: FOOD_IMG.tileBakery, to: 'bakeries', needs: 'bakery' },
 ];
 
 /**
@@ -277,7 +312,9 @@ export type Route =
   | { name: 'shops'; shelf: string }
   | { name: 'product'; id: string }
   | { name: 'saved' }
-  | { name: 'categories' };
+  | { name: 'categories' }
+  /** Snacks / Fruits & pickles / Bakeries: the shops of that Groceries section (FoodV2SectionShops). */
+  | { name: 'section'; section: ShopSectionKey };
 export type DemoState = null | 'loading' | 'offline' | 'waking' | 'error' | 'empty';
 
 /** A saved item as stored on the device (zenvy_wishlist, same list the app uses). */

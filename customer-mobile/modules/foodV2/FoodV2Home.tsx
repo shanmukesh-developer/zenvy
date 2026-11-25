@@ -38,7 +38,7 @@ import { BUTTON_ROLE } from '../../utils/pressRole';
 import { samplesFor } from './foodV2Demo';
 
 export default function FoodV2Home() {
-  const { router, isDark, m, topPad, winW, pageW, conn, cart, addToCart, updateQuantity, clearCart, mounted, c, shadow, greenGlow, stack, setStack, route, push, pop, homeKey, setHomeKey, reset, demo, setDemo, savedSheet, setSavedSheet, savedSample, setSavedSample, catalogue, setCatalogue, status, setStatus, storeHours, setStoreHours, fromNet, fetchCatalogue, saved, setSaved, loadSaved, savedIds, persistSaved, toggleSaved, qtyOf, closedLabel, addProduct, decProduct, storeIds, shopLines, shopCount, shopTotal, cartCount, query, setQuery, chip, setChip, chipsOpen, setChipsOpen, aisle, setAisle, savedChip, setSavedChip, openListing, openProduct, inStock, closedShare, allClosed, someClosed, earliestOpen, hasShelf, dealShelf, topDeal, fromPrice, upTo, failKind, forcedFail, isLoading, isFailed, isEmpty, sampleSaved, savedResolved, savedGroup, savedCounts, savedChips, clean, forceDark } = useFoodV2();
+  const { router, isDark, m, topPad, winW, pageW, conn, cart, addToCart, updateQuantity, clearCart, mounted, c, shadow, greenGlow, stack, setStack, route, push, pop, homeKey, setHomeKey, reset, demo, setDemo, savedSheet, setSavedSheet, savedSample, setSavedSample, catalogue, setCatalogue, status, setStatus, storeHours, setStoreHours, fromNet, fetchCatalogue, saved, setSaved, loadSaved, savedIds, persistSaved, toggleSaved, qtyOf, closedLabel, addProduct, decProduct, storeIds, shopLines, shopCount, shopTotal, cartCount, query, setQuery, chip, setChip, chipsOpen, setChipsOpen, aisle, setAisle, savedChip, setSavedChip, openListing, openProduct, inStock, closedShare, allClosed, someClosed, earliestOpen, hasShelf, dealShelf, topDeal, fromPrice, upTo, failKind, forcedFail, isLoading, isFailed, isEmpty, sampleSaved, savedResolved, savedGroup, savedCounts, savedChips, clean, forceDark, groceryOn } = useFoodV2();
   const { headerBtn, chipOnWhite, chipOnGreen, head, addControl, priceRow, productRow, productCard, miniTile, basketBar } = useFoodV2Ui();
   const { loadingCard, stateCard, stockingUp } = useFoodV2States();
   const sc = useFoodScale();
@@ -76,10 +76,14 @@ export default function FoodV2Home() {
         ) : isFailed ? (
           <View style={{ padding: 16 }}>{stateCard(forcedFail || failKind, fetchCatalogue)}</View>
         ) : isEmpty ? (
-          <View style={{ padding: 12 }}>{stockingUp()}</View>
+          // ZenWe Grocery has nothing yet (or groceries are paused): the section tiles still lead to the shops.
+          <>
+            <CategoryTiles />
+            {groceryOn && <View style={{ padding: 12 }}>{stockingUp()}</View>}
+          </>
         ) : (
           <>
-            <HomeBandHero />
+            {groceryOn && <HomeBandHero />}
             <CategoryTiles />
 
             {/* ── Top deal ── */}
