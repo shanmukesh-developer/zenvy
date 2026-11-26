@@ -39,14 +39,18 @@ export const CUT = {
   pickleJar: require('./assets/food-v2-banner-pickles-mixed-jar-cutout-2026-10-24.webp'),
   gifts: require('./assets/food-v2-tile-gifts-toys-box-teddy-cutout-2026-10-24.webp'),
   giftPair: require('./assets/food-v2-banner-gifts-toys-wrapped-pair-cutout-2026-10-24.webp'),
+  // Owner's 3D art (26 Nov 2026), cut out of its white background: the Snacks, Fruits & pickles and Bakeries tiles.
+  murukkuTin: require('./assets/food-v2-tile-snacks-murukku-tin-cutout-2026-11-26.webp'),
+  fruitBasket: require('./assets/food-v2-tile-fruits-basket-cutout-2026-11-26.webp'),
+  cheesecake: require('./assets/food-v2-tile-bakery-berry-cheesecake-cutout-2026-11-26.webp'),
 };
 
 /** Category tile -> cut-out and its soft plate tint (light, dark). */
 export const TILE_ART: Record<string, { art: any; tint: [string, string] }> = {
   Grocery: { art: CUT.groceries, tint: ['#E6F6EC', 'rgba(95,208,138,0.12)'] },
-  Fresh: { art: CUT.fresh, tint: ['#FDEDE3', 'rgba(251,146,60,0.12)'] },
-  'Snacks & beverages': { art: CUT.snacks, tint: ['#FFF6D9', 'rgba(250,204,21,0.11)'] },
-  'Bakery & breakfast': { art: CUT.bakery, tint: ['#E6F1FB', 'rgba(96,165,250,0.12)'] },
+  Fresh: { art: CUT.fruitBasket, tint: ['#FDEDE3', 'rgba(251,146,60,0.12)'] },
+  'Snacks & beverages': { art: CUT.murukkuTin, tint: ['#FFF6D9', 'rgba(250,204,21,0.11)'] },
+  'Bakery & breakfast': { art: CUT.cheesecake, tint: ['#E6F1FB', 'rgba(96,165,250,0.12)'] },
   'Health & care': { art: CUT.health, tint: ['#F0EAFB', 'rgba(167,139,250,0.13)'] },
   Pickles: { art: CUT.pickles, tint: ['#DFF4EE', 'rgba(45,212,191,0.12)'] },
   'Gifts & toys': { art: CUT.gifts, tint: ['#FCE8EE', 'rgba(244,114,182,0.12)'] },
