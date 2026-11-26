@@ -133,13 +133,17 @@ export function DealSlideshow({ deals, theme, onOpen, active }: { deals: HomeDis
   const [i, setI] = useState(0);
   const iRef = useRef(0);
   const touching = useRef(false);
+  // Owner, 26 Nov 2026: the next / previous slide peeked in at the edge when the banner was not exactly the screen
+  // width. Each slide is now the banner's measured width (pw) and clips its own photo, so only one slide shows.
+  const [pw, setPw] = useState(W);
+  const pwRef = useRef(W);
   useEffect(() => { iRef.current = 0; setI(0); ref.current?.scrollTo({ x: 0, animated: false }); }, [deals]);
   useEffect(() => {
     if (!active || deals.length < 2) return;
     const id = setInterval(() => {
       if (touching.current) return;
       const next = (iRef.current + 1) % deals.length;
-      ref.current?.scrollTo({ x: next * W, animated: true });
+      ref.current?.scrollTo({ x: next * pwRef.current, animated: true });
     }, 3500);
     return () => clearInterval(id);
   }, [active, deals.length]);
@@ -150,21 +154,32 @@ export function DealSlideshow({ deals, theme, onOpen, active }: { deals: HomeDis
   // 10 gap), so names wrap or trim instead of overlapping.
   // Owner, 25 Nov 2026: "the image a little bigger" - up to 200 (47% of the width on small phones), 10 from the edge.
   const plateRight = 10;
-  const plateSize = Math.round(Math.min(200, W * 0.47));
-  const textW = Math.max(120, W - 20 - plateRight - plateSize - 8);
+  const plateSize = Math.round(Math.min(200, pw * 0.47));
+  const textW = Math.max(120, pw - 20 - plateRight - plateSize - 8);
   // The big "26%" shrinks a little on narrow phones so "26% OFF TODAY" always fits beside the photo.
   const pctSize = textW < 190 ? 42 : 50;
   return (
-    <View>
+    <View
+      onLayout={(e) => {
+        const w = Math.round(e.nativeEvent.layout.width);
+        if (w > 0 && w !== pwRef.current) {
+          pwRef.current = w; setPw(w);
+          ref.current?.scrollTo({ x: iRef.current * w, animated: false });
+        }
+      }}
+      style={{ overflow: 'hidden' }}
+    >
       <ScrollView
         ref={ref} horizontal pagingEnabled showsHorizontalScrollIndicator={false}
         onScrollBeginDrag={() => { touching.current = true; }}
         onScrollEndDrag={() => { touching.current = false; }}
-        onMomentumScrollEnd={(e) => { const k = Math.round(e.nativeEvent.contentOffset.x / W); iRef.current = k; setI(k); }}
+        onMomentumScrollEnd={(e) => { const k = Math.round(e.nativeEvent.contentOffset.x / pwRef.current); iRef.current = k; setI(k); }}
+        // Keeps the dots and autoplay in step where the momentum-end event does not fire (web, programmatic scrolls).
+        onScroll={(e) => { const k = Math.round(e.nativeEvent.contentOffset.x / pwRef.current); if (k !== iRef.current && k >= 0 && k < deals.length) { iRef.current = k; setI(k); } }}
         scrollEventThrottle={32}
       >
         {deals.map((d) => (
-          <View key={d.id} style={[st.slide, { width: W }]}>
+          <View key={d.id} style={[st.slide, { width: pw, overflow: 'hidden' }]}>
             <View style={[st.deal, { width: textW }]}>
               {/* An admin-picked dish without a discount (Admin > Home slideshow) shows "Today's special", never "0% off". */}
               {d.off > 0 ? (

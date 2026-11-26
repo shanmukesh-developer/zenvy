@@ -1039,7 +1039,7 @@ function CommissionStep({ s, set, errors }: StepProps) {
           { value: 'fruits_pickles', label: 'Fruits & pickles' },
           { value: 'bakeries', label: 'Bakeries' },
         ]} />
-        <p className="text-xs text-fg-muted">The pill this shop is listed under in the app&apos;s Groceries tab (Grocery store, Snacks, Fruits &amp; pickles, Bakeries). Students open the shop from there and see its own products. &quot;None&quot;: not listed in the Groceries tab{s.vendorType === 'BAKERY' ? ' (a bakery with None is listed under Bakeries)' : ''}. The Grocery store pill shows only ZenWe Grocery&apos;s products (Catalogue → Grocery store).</p>
+        <p className="text-xs text-fg-muted">The pill this shop is listed under in the app&apos;s Groceries tab (Grocery store, Snacks, Fruits &amp; pickles, Bakeries). Students open the shop from there and see its own products. &quot;None&quot;: linked automatically from the shop&apos;s name and tags (snack → Snacks; fruit, juice or pickle → Fruits &amp; pickles; otherwise not listed){s.vendorType === 'BAKERY' ? '; a bakery with None is listed under Bakeries' : ''}. The Grocery store pill shows only ZenWe Grocery&apos;s products (Catalogue → Grocery store).</p>
       </div>
       <Field label={s.commissionType === 'flat' ? 'Amount per order (₹)' : 'Commission (%)'} required error={errors.commissionRate} help="Charged on the item subtotal only. The rider fee and ZenWe coupons never reduce the partner's share.">
         {({ id, msgId, invalid }) => (

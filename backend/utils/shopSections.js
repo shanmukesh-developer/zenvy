@@ -26,12 +26,36 @@ const cleanSection = (v) => {
   return SHOP_SECTIONS.includes(t) ? t : undefined;
 };
 
-/** A store's section: its own (valid) shopSection, else 'bakeries' for a BAKERY store, else null. House store: null. */
+// Shops (not restaurants) with no section set are linked from their name and tags (owner, 26 Nov 2026: stores added
+// as Grocery with tags "Pickles" / "Fruits Bowls" did not show under Snacks or Fruits & pickles). The name is checked
+// first, so "Sri Satya Balaji Home made Snacks" (tagged Pickles) goes to Snacks.
+const NOT_INFERRED = new Set(['RESTAURANT', 'CLOUD_KITCHEN', 'BAKERY']);
+const SNACK_RE = /snack|namkeen|chips|mixture|sweets?\b/i;
+const FRUIT_PICKLE_RE = /fruit|pickle|achaar|achar|juice/i;
+const tagText = (store) => {
+  const t = read(store, 'tags');
+  if (Array.isArray(t)) return t.join(' ');
+  return typeof t === 'string' ? t : '';
+};
+const inferredSection = (store) => {
+  if (NOT_INFERRED.has(String(read(store, 'vendorType') || 'RESTAURANT').toUpperCase())) return null;
+  const name = String(read(store, 'name') || '');
+  const tags = tagText(store);
+  if (SNACK_RE.test(name)) return 'snacks';
+  if (FRUIT_PICKLE_RE.test(name)) return 'fruits_pickles';
+  if (SNACK_RE.test(tags)) return 'snacks';
+  if (FRUIT_PICKLE_RE.test(tags)) return 'fruits_pickles';
+  return null;
+};
+
+/** A store's section: its own (valid) shopSection, else 'bakeries' for a BAKERY store, else one inferred from a
+ *  shop's name / tags (inferredSection), else null. House store: null. */
 const sectionOf = (store) => {
   if (!store || read(store, 'isHouseStore')) return null;
   const own = cleanSection(read(store, 'shopSection'));
   if (own) return own;
-  return String(read(store, 'vendorType') || '').toUpperCase() === 'BAKERY' ? 'bakeries' : null;
+  if (String(read(store, 'vendorType') || '').toUpperCase() === 'BAKERY') return 'bakeries';
+  return inferredSection(store);
 };
 
 /** Whether a section's App sections switch is on (an unreadable switch counts as on). */
