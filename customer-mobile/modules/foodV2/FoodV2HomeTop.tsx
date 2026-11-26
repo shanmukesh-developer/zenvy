@@ -25,7 +25,6 @@ import { useFoodScale } from './FoodV2Scale';
 import { apiFetch } from '../../utils/auth';
 import { useAuth } from '../../context/AuthContext';
 import { BUTTON_ROLE } from '../../utils/pressRole';
-import { goHome } from '../../utils/goHome';
 
 /** Gold dot on the bell only when the signed-in student has unread notifications (GET, read-only). A guest has
  * none to read: no request (it used to answer 401 on every Groceries / Services open). */
@@ -89,7 +88,9 @@ export function HomeHeader() {
       pills={pills}
       active="food"
       onPill={k => { if (onSection) onSection(k); else router.push(`/(tabs)/others?tab=${k}` as any); }}
-      onBack={() => goHome(router)}
+      // Groceries is a tab: back switches to the Home tab (goHome's dismissTo('/(tabs)') was a no-op from inside the
+      // tabs, so the arrow did nothing; owner, 26 Nov 2026).
+      onBack={() => router.navigate('/' as any)}
       actions={[
         { icon: 'heart-outline', label: 'Saved items', onPress: () => { setSavedChip('All'); push({ name: 'saved' }); } },
         { icon: 'notifications-outline', label: unread ? 'Notifications, unread' : 'Notifications', onPress: () => router.push('/notifications' as any), dot: unread },

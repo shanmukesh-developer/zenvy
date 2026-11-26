@@ -103,9 +103,9 @@ const BasketFab = React.memo(function BasketFab({ onPress }: { onPress: () => vo
  * The round basket button, bottom right over the page (owner, 28 Oct 2026: the Basket tab became Services; campus
  * chats stay on the Campus pill in Home's header).
  */
-export function FloatingBasketButton({ onPress }: { onPress: () => void }) {
+export function FloatingBasketButton({ onPress, bottom }: { onPress: () => void; /** Lift it (e.g. above Groceries' View basket bar). */ bottom?: number }) {
   return (
-    <FloatingPulse color={FAB_YELLOW} style={s.fabBtnWrap}>
+    <FloatingPulse color={FAB_YELLOW} style={bottom !== undefined ? [s.fabBtnWrap, { bottom }] : s.fabBtnWrap}>
       <BasketFab onPress={onPress} />
     </FloatingPulse>
   );

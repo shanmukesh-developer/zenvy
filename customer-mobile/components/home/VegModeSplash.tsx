@@ -2,18 +2,19 @@
  * "Pure Veg" splash (owner, 10 Nov 2026: "while changing to veg, full screen green like Swiggy with sound", then
  * "something perfect and luxurious like Swiggy and Zomato"). Switching Home to Veg:
  *  1. a deep emerald wash spreads over the whole screen from the Veg tab (top right), soft light from the top;
- *  2. a photoreal cluster of fresh vegetables (Gemini art, cut out) rises into the centre and settles;
- *  3. "SWITCHING TO" / "Pure Veg" (serif) with the veg mark, "Only vegetarian dishes from here", and a slim line that
+ *  2. the standard veg symbol (green square, green dot; owner, 26 Nov 2026: it replaced the vegetables picture) rises
+ *     into the centre and settles;
+ *  3. "SWITCHING TO" / "Pure Veg" (serif; no small mark beside it since the big symbol is above), "Only vegetarian dishes from here", and a slim line that
  *     fills while it switches;
  *  4. it fades into the green Home. About 1.9 s, covers the bottom bar, plays the app's transition sound (silent on a
  *     silenced phone). Reduce motion: everything appears at once and fades.
  */
 import React, { useEffect, useRef } from 'react';
-import { AccessibilityInfo, Animated, Easing, Image, Modal, Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { AccessibilityInfo, Animated, Easing, Modal, Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { playMoment } from '../../utils/sounds';
 
-const CLUSTER = require('../../assets/home-redesign-2026-11-09/veg-splash-cluster-gemini-2026-11-10.webp');
+const VEG_GREEN = '#067A0E';
 const SERIF = Platform.select({ android: 'serif', ios: 'Georgia', default: 'Georgia' });
 
 export default function VegModeSplash({ visible, originY = 120, onDone }: { visible: boolean; originY?: number; onDone: () => void }) {
@@ -59,8 +60,7 @@ export default function VegModeSplash({ visible, originY = 120, onDone }: { visi
   if (!visible) return null;
   const ox = width * 0.75;
   const R = Math.ceil(Math.hypot(Math.max(ox, width - ox), Math.max(originY, height - originY))) + 40;
-  const artW = Math.min(300, width * 0.74);
-  const artH = artW * 0.86;
+  const mark = Math.round(Math.min(150, width * 0.38));
 
   return (
     <Modal visible transparent animationType="none" statusBarTranslucent onRequestClose={() => {}}>
@@ -77,16 +77,17 @@ export default function VegModeSplash({ visible, originY = 120, onDone }: { visi
         </Animated.View>
 
         <View style={st.center} pointerEvents="none">
-          {/* the vegetables rise and settle, with a soft shadow under them */}
-          <Animated.View style={{ width: artW, height: artH, alignItems: 'center', justifyContent: 'flex-end', opacity: art, transform: [{ translateY: art.interpolate({ inputRange: [0, 1], outputRange: [46, 0] }) }, { scale: art.interpolate({ inputRange: [0, 1], outputRange: [0.86, 1] }) }] }}>
-            <View style={[st.shadow, { width: artW * 0.7 }]} />
-            <Image source={CLUSTER} style={{ position: 'absolute', top: 0, width: artW, height: artH }} resizeMode="contain" accessibilityIgnoresInvertColors />
+          {/* the veg symbol rises and settles, with a soft shadow under it */}
+          <Animated.View style={{ alignItems: 'center', opacity: art, transform: [{ translateY: art.interpolate({ inputRange: [0, 1], outputRange: [46, 0] }) }, { scale: art.interpolate({ inputRange: [0, 1], outputRange: [0.86, 1] }) }] }}>
+            <View style={[st.bigMark, { width: mark, height: mark, borderRadius: mark * 0.16, borderWidth: Math.round(mark * 0.075) }]}>
+              <View style={{ width: mark * 0.56, height: mark * 0.56, borderRadius: mark, backgroundColor: VEG_GREEN }} />
+            </View>
+            <View style={[st.shadow, { width: mark * 0.8, marginTop: 14 }]} />
           </Animated.View>
 
           <Animated.View style={{ alignItems: 'center', marginTop: 26, opacity: words, transform: [{ translateY: words.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }}>
             <Text style={st.kicker} maxFontSizeMultiplier={1.2}>SWITCHING TO</Text>
             <View style={st.titleRow}>
-              <View style={st.vegBox}><View style={st.vegDot} /></View>
               <Text style={st.title} maxFontSizeMultiplier={1.2}>Pure Veg</Text>
             </View>
             <Text style={st.sub} maxFontSizeMultiplier={1.3}>Only vegetarian dishes from here</Text>
@@ -102,11 +103,10 @@ export default function VegModeSplash({ visible, originY = 120, onDone }: { visi
 
 const st = StyleSheet.create({
   center: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', paddingBottom: 30 },
-  shadow: { height: 18, borderRadius: 999, backgroundColor: 'rgba(0,0,0,0.32)', marginBottom: -4, transform: [{ scaleY: 0.6 }] },
+  shadow: { height: 18, borderRadius: 999, backgroundColor: 'rgba(0,0,0,0.32)', transform: [{ scaleY: 0.6 }] },
+  bigMark: { backgroundColor: '#FFFFFF', borderColor: VEG_GREEN, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 10 },
   kicker: { color: 'rgba(255,255,255,0.72)', fontSize: 11.5, fontWeight: '800', letterSpacing: 3.2 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 6 },
-  vegBox: { width: 26, height: 26, borderRadius: 6, borderWidth: 2.5, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.08)' },
-  vegDot: { width: 11, height: 11, borderRadius: 6, backgroundColor: '#7CE3A0' },
   title: { color: '#FFFFFF', fontFamily: SERIF, fontSize: 40, fontWeight: '700', letterSpacing: 0.3 },
   sub: { color: 'rgba(255,255,255,0.82)', fontSize: 14, fontWeight: '500', marginTop: 8 },
   track: { width: 120, height: 3, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.18)', marginTop: 20, overflow: 'hidden' },

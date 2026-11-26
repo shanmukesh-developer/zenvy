@@ -34,6 +34,8 @@ import FoodV2Categories from './FoodV2Categories';
 import FoodV2SectionShops from './FoodV2SectionShops';
 import { AddedToast } from './FoodV2Motion';
 import FoodV2SampleSheet from './FoodV2SampleSheet';
+import { FloatingBasketButton } from '../../components/FloatingBasket';
+import { useFoodScale, BAR_H, BAR_GAP } from './FoodV2Scale';
 
 /** Others → Food & groceries. `sections` / `onSection` drive the section pills in the green header;
  * `openSearch` opens the store search (then `onSearchOpened` is called once).
@@ -48,12 +50,17 @@ export default React.memo(FoodV2Screen);
 function FoodV2Body() {
   const { toast, c, route, shopCount, isLoading, isFailed, isEmpty } = useFoodV2();
   const { basketBar } = useFoodV2Ui();
+  const router = useRouter();
+  const sc = useFoodScale();
+  const barUp = shopCount > 0 && !isLoading && !isFailed && !isEmpty;
   return (
     <View style={[s.root, { backgroundColor: c.page }]}>
       {route.name === 'home' && (
         <View style={{ flex: 1 }}>
           <FoodV2Home />
           {shopCount > 0 && !isLoading && !isFailed && !isEmpty && basketBar()}
+          {/* Owner, 26 Nov 2026: the same yellow basket button as Home and Local; above the View basket bar when it shows. */}
+          <FloatingBasketButton onPress={() => router.push('/(tabs)/basket' as any)} bottom={barUp ? BAR_GAP + BAR_H + sc.insets.bottom + 12 : undefined} />
         </View>
       )}
       {route.name === 'listing' && (route.shelf === SEARCH ? <FoodV2Search /> : <FoodV2Listing shelf={route.shelf} />)}

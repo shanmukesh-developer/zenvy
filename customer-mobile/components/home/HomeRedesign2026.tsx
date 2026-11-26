@@ -56,7 +56,7 @@ export function DietTabs({ veg, onChange, theme }: { veg: boolean; onChange: (ve
         {on ? <FlareCorner side="left" size={isVeg ? 12 : 14} fill={theme.sel} bg={theme.top} /> : null}
         {on ? <FlareCorner side="right" size={isVeg ? 14 : 12} fill={theme.sel} bg={theme.top} /> : null}
         <View style={st.dietLabelRow}>
-          <FoodMark veg={isVeg} />
+          <FoodMark veg={isVeg} size={isVeg ? 15 : 11} />
           <Text style={[st.dietLabel, { color: on ? '#fff' : 'rgba(255,255,255,0.75)' }]}>{label}</Text>
         </View>
       </Pressable>
@@ -65,13 +65,14 @@ export function DietTabs({ veg, onChange, theme }: { veg: boolean; onChange: (ve
   return <View style={st.dietTabs}>{tab(false, 'Non-veg')}{tab(true, 'Veg')}</View>;
 }
 
-/** FSSAI-style food mark: veg = green dot, non-veg = red-brown triangle. */
+/** FSSAI-style food mark: veg = green dot in a rounded green square (owner, 26 Nov 2026: the standard veg symbol,
+ * deep green, big dot), non-veg = red-brown triangle. */
 export function FoodMark({ veg, size = 11 }: { veg: boolean; size?: number }) {
-  const c = veg ? '#16A34A' : '#C2410C';
+  const c = veg ? '#067A0E' : '#C2410C';
   return (
-    <View style={{ width: size, height: size, borderWidth: 1.3, borderColor: c, borderRadius: 2.5, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' }}>
+    <View style={{ width: size, height: size, borderWidth: veg ? Math.max(1.3, size * 0.09) : 1.3, borderColor: c, borderRadius: veg ? size * 0.16 : 2.5, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' }}>
       {veg ? (
-        <View style={{ width: size * 0.45, height: size * 0.45, borderRadius: size, backgroundColor: c }} />
+        <View style={{ width: size * 0.56, height: size * 0.56, borderRadius: size, backgroundColor: c }} />
       ) : (
         <View style={{ width: 0, height: 0, borderLeftWidth: size * 0.27, borderRightWidth: size * 0.27, borderBottomWidth: size * 0.45, borderLeftColor: 'transparent', borderRightColor: 'transparent', borderBottomColor: c }} />
       )}
