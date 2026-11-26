@@ -80,7 +80,7 @@ export function StoreDrawer({ store, tab, onTab, onClose, onEdit, onChanged, onT
               {fssai.expiringSoon && <Chip tone="amber">FSSAI expires soon</Chip>}
               {noLogin && <Chip tone="amber" title={local ? `The stall cannot see its orders until it can sign in to ${partnerAppName(store)}` : 'The partner cannot accept orders in the app'}>No login yet</Chip>}
             </div>
-            <p className="mt-1 truncate text-sm text-fg-muted">{vendorLabel(store.vendorType)} · {[store.location, store.campus].filter(Boolean).join(' · ')}</p>
+            <p className="mt-1 truncate text-sm text-fg-muted">{vendorLabel(store.vendorType, store.shopSection)} · {[store.location, store.campus].filter(Boolean).join(' · ')}</p>
             {status === 'closed' && store.closedReason && <p className="mt-0.5 text-xs text-warning-text">{store.closedReason}</p>}
           </div>
           <div className="flex items-center gap-2">
@@ -193,7 +193,7 @@ function OverviewTab({ store, stats, orders, ordersState, onTab, onEdit, onPubli
               <button type="button" onClick={() => onEdit()} className="text-xs font-semibold text-success-text hover:underline">Edit</button>
             </div>
             <dl className="grid gap-x-6 gap-y-3 px-4 py-3 text-sm sm:grid-cols-2">
-              <DD k="Type" v={vendorLabel(store.vendorType)} />
+              <DD k="Type" v={vendorLabel(store.vendorType, store.shopSection)} />
               <DD k="Address" v={store.location || '—'} />
               <DD k="Campus · zone" v={[store.campus, store.zone].filter(Boolean).join(' · ') || '—'} />
               <DD k="Map pin" v={store.lat != null && store.lon != null ? <a className="text-success-text hover:underline" href={mapsUrl(store.lat, store.lon)} target="_blank" rel="noreferrer">{store.lat}, {store.lon} ↗</a> : 'Not set'} />

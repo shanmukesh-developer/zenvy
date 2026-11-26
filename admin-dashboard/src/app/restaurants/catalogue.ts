@@ -213,8 +213,11 @@ const LEGACY_LABELS: Record<string, string> = {
   RENTAL: 'Rentals (old spelling)',
 };
 
-export const vendorLabel = (type?: string | null) => {
+export const vendorLabel = (type?: string | null, shopSection?: string | null) => {
   const value = (type || 'RESTAURANT').toUpperCase();
+  // A Grocery shop in a Groceries tab section is shown by its section (owner, 26 Nov 2026; StoreWizard type tiles).
+  if (value === 'GROCERY' && shopSection === 'snacks') return 'Snacks';
+  if (value === 'GROCERY' && shopSection === 'fruits_pickles') return 'Fruits & pickles';
   return VENDOR_TYPES.find(v => v.value === value)?.label.replace(/ \(.*\)$/, '')
     || LEGACY_LABELS[value]
     || value.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase());

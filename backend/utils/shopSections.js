@@ -26,10 +26,9 @@ const cleanSection = (v) => {
   return SHOP_SECTIONS.includes(t) ? t : undefined;
 };
 
-// Shops (not restaurants) with no section set are linked from their name and tags (owner, 26 Nov 2026: stores added
+// Grocery shops with no section set are linked from their name and tags (owner, 26 Nov 2026: stores added
 // as Grocery with tags "Pickles" / "Fruits Bowls" did not show under Snacks or Fruits & pickles). The name is checked
 // first, so "Sri Satya Balaji Home made Snacks" (tagged Pickles) goes to Snacks.
-const NOT_INFERRED = new Set(['RESTAURANT', 'CLOUD_KITCHEN', 'BAKERY']);
 const SNACK_RE = /snack|namkeen|chips|mixture|sweets?\b/i;
 const FRUIT_PICKLE_RE = /fruit|pickle|achaar|achar|juice/i;
 const tagText = (store) => {
@@ -38,7 +37,8 @@ const tagText = (store) => {
   return typeof t === 'string' ? t : '';
 };
 const inferredSection = (store) => {
-  if (NOT_INFERRED.has(String(read(store, 'vendorType') || 'RESTAURANT').toUpperCase())) return null;
+  // Grocery shops only: restaurants, campus stalls (a chai stall tagged "snacks"), bakeries and other shop types never.
+  if (String(read(store, 'vendorType') || '').toUpperCase() !== 'GROCERY') return null;
   const name = String(read(store, 'name') || '');
   const tags = tagText(store);
   if (SNACK_RE.test(name)) return 'snacks';

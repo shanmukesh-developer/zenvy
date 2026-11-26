@@ -1473,6 +1473,12 @@ const initializeApp = async () => {
     inBootQueue(() => require('./scripts/house_grocery_store_v1').runHouseGroceryStoreOnce())
       .then((r) => console.log('🛒 [HOUSE_GROCERY_STORE]', JSON.stringify(r)))
       .catch((err) => console.warn('⚠️ [HOUSE_GROCERY_STORE] failed:', err.message));
+    // 🥨 Groceries tab sections saved on existing shops (owner, 26 Nov 2026), once (SHOP_SECTIONS_V1_DONE): shops listed
+    // as Grocery get Snacks / Fruits & pickles from their name and tags, matching the new store type tiles.
+    // scripts/shop_sections_v1.js; DISABLE_SHOP_SECTIONS_ONCE=true switches it off.
+    inBootQueue(() => require('./scripts/shop_sections_v1').runShopSectionsOnce())
+      .then((r) => console.log('🥨 [SHOP_SECTIONS]', JSON.stringify(r)))
+      .catch((err) => console.warn('⚠️ [SHOP_SECTIONS] failed:', err.message));
 
 
 

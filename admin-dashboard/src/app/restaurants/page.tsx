@@ -403,7 +403,7 @@ function StoresScreen() {
                 <FssaiChip store={store} />
                 {!store.hasPassword && !(store.isOffline && !local) && <Chip tone="amber" title={local ? `The stall cannot see its orders until it can sign in to ${partnerAppName(store)}` : 'The partner cannot sign in to accept orders'}>No login</Chip>}
               </span>
-              <span className="mt-0.5 block truncate text-xs text-fg-muted">{vendorLabel(store.vendorType)} · {[store.location, store.campus].filter(Boolean).join(' · ')}</span>
+              <span className="mt-0.5 block truncate text-xs text-fg-muted">{vendorLabel(store.vendorType, store.shopSection)} · {[store.location, store.campus].filter(Boolean).join(' · ')}</span>
               <span className="block truncate text-xs text-fg-subtle">{summarizeWeekly(weeklyFromStore(store.operatingHours))}{!local && store.deliveryTime ? ` · ${store.deliveryTime} min` : ''}</span>
             </span>
           </button>

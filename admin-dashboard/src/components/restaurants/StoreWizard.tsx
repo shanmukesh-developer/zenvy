@@ -609,6 +609,32 @@ function BookingStep({ s, set, errors }: StepProps) {
   );
 }
 
+// Store type tiles (owner, 26 Nov 2026): in Shops, "Grocery / Kirana" is replaced by Snacks and Fruits & pickles,
+// the Groceries tab sections (store type GROCERY + shopSection; backend utils/shopSections). ZenWe's own Grocery
+// store and any older Grocery shop with no section still show the Grocery / Kirana tile so they are never unpicked.
+// Picking any other tile clears the section.
+const SECTION_TILES: { section: 'snacks' | 'fruits_pickles'; label: string; hint: string }[] = [
+  { section: 'snacks', label: 'Snacks', hint: 'Chips, namkeen, sweets and home-made snacks. Listed under Snacks in Groceries.' },
+  { section: 'fruits_pickles', label: 'Fruits & pickles', hint: 'Fruits, fruit bowls, juices and pickles. Listed under Fruits & pickles in Groceries.' },
+];
+type TypeTile = { key: string; label: string; hint: string; pick: Partial<WizardState>; isSelected: (s: WizardState) => boolean };
+function typeTiles(g: VendorGroup, cur: WizardState): TypeTile[] {
+  const out: TypeTile[] = [];
+  for (const v of VENDOR_TYPES.filter(x => x.group === g)) {
+    if (v.value !== 'GROCERY') {
+      out.push({ key: v.value, label: v.label, hint: v.hint, pick: { vendorType: v.value, shopSection: '' }, isSelected: s => s.vendorType === v.value });
+      continue;
+    }
+    for (const t of SECTION_TILES) {
+      out.push({ key: `GROCERY:${t.section}`, label: t.label, hint: t.hint, pick: { vendorType: 'GROCERY', shopSection: t.section }, isSelected: s => s.vendorType === 'GROCERY' && s.shopSection === t.section });
+    }
+    if (cur.vendorType === 'GROCERY' && cur.shopSection !== 'snacks' && cur.shopSection !== 'fruits_pickles') {
+      out.push({ key: 'GROCERY', label: v.label, hint: v.hint, pick: { vendorType: 'GROCERY', shopSection: '' }, isSelected: s => s.vendorType === 'GROCERY' && s.shopSection !== 'snacks' && s.shopSection !== 'fruits_pickles' });
+    }
+  }
+  return out;
+}
+
 function BasicsStep({ s, set, errors, stores, editingId }: StepProps & { stores: Store[]; editingId: string | null }) {
   const campuses = useMemo(() => uniq(stores.map(x => x.campus).filter(Boolean) as string[]), [stores]);
   const tagSuggestions = useMemo(() => {
@@ -635,15 +661,15 @@ function BasicsStep({ s, set, errors, stores, editingId }: StepProps & { stores:
             <div key={g}>
               <p className="mb-1.5 text-xs font-semibold text-fg-muted">{g}</p>
               <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3" role="radiogroup" aria-label={`${g} store types`}>
-                {VENDOR_TYPES.filter(v => v.group === g).map(v => {
-                  const selected = s.vendorType === v.value;
+                {typeTiles(g, s).map(v => {
+                  const selected = v.isSelected(s);
                   return (
                     <button
-                      key={v.value}
+                      key={v.key}
                       type="button"
                       role="radio"
                       aria-checked={selected}
-                      onClick={() => set({ vendorType: v.value })}
+                      onClick={() => set(v.pick)}
                       className={cx('rounded-xl border p-3 text-left transition-colors', selected ? 'border-success/30 bg-success-soft' : 'border-line hover:border-line-strong hover:bg-surface-2/60', FOCUS_RING)}
                     >
                       <span className="flex items-center justify-between gap-2">
