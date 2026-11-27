@@ -7,6 +7,7 @@ import DopaminePressable from './DopaminePressable';
 import { FloatingPulse } from './AnimatedSection';
 import { formatINR, plural } from '../utils/format';
 import { useNavAccent } from './local/dietLightTheme';
+import CartDropTarget from './CartDropTarget';
 
 /**
  * The floating basket on the pages that have no basket bar of their own (Home and Local): the round basket button
@@ -106,7 +107,10 @@ const BasketFab = React.memo(function BasketFab({ onPress }: { onPress: () => vo
 export function FloatingBasketButton({ onPress, bottom }: { onPress: () => void; /** Lift it (e.g. above Groceries' View basket bar). */ bottom?: number }) {
   return (
     <FloatingPulse color={FAB_YELLOW} style={bottom !== undefined ? [s.fabBtnWrap, { bottom }] : s.fabBtnWrap}>
-      <BasketFab onPress={onPress} />
+      {/* The add-to-cart photo lands here when no "View basket" bar is on screen (components/CartDropTarget). */}
+      <CartDropTarget priority={1}>
+        <BasketFab onPress={onPress} />
+      </CartDropTarget>
     </FloatingPulse>
   );
 }

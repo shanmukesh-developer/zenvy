@@ -81,6 +81,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: '/active-users', label: 'Active testers', icon: 'testers', description: 'Who opened the customer app today or this week, on which version; Play closed testers by phone.', keywords: 'active users testers closed testing play store last seen opened installed app version build inactive' },
       { href: '/student-verification', label: 'Student verification', icon: 'school', description: 'College ID checks waiting for review.', keywords: 'student id verification college' },
       { href: '/finance', label: 'Payments and payouts', icon: 'wallet', description: 'Revenue, store and rider payouts, rider cash and disputes.', keywords: 'finance payouts settlements disputes refunds rider cash wallet ledger' },
+      { href: '/app-feedback', label: 'App feedback', icon: 'star', description: "Customers' stars and comments after their first delivered order (+30 ZenWe Points each).", keywords: 'feedback reviews first order rating stars comments play store customers' },
       { href: '/tickets', label: 'Support tickets', icon: 'ticket', description: 'Help requests from customers, riders and stores.', keywords: 'support help tickets complaints' },
     ],
   },

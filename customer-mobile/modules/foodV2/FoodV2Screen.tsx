@@ -32,7 +32,6 @@ import FoodV2Search from './FoodV2Search';
 import FoodV2Saved from './FoodV2Saved';
 import FoodV2Categories from './FoodV2Categories';
 import FoodV2SectionShops from './FoodV2SectionShops';
-import { AddedToast } from './FoodV2Motion';
 import FoodV2SampleSheet from './FoodV2SampleSheet';
 import { FloatingBasketButton } from '../../components/FloatingBasket';
 import { useFoodScale, BAR_H, BAR_GAP } from './FoodV2Scale';
@@ -70,7 +69,7 @@ function FoodV2Body() {
       {route.name === 'section' && <FoodV2SectionShops section={route.section} />}
       <FoodV2Saved sheet />
       <FoodV2SampleSheet />
-      <AddedToast stamp={toast.stamp} label={toast.label} bottom={shopCount > 0 ? 92 : 24} />
+      {/* The "Added to basket" card is now app-wide (components/CartDropFx, 27 Nov 2026); no second toast here. */}
     </View>
   );
 }

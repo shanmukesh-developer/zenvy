@@ -49,6 +49,7 @@ const { initCatalogueImportLedgerModel } = require('../models/CatalogueImportLed
 const { initNotificationModel } = require('../models/Notification');
 const { initIdempotencyKeyModel } = require('../models/IdempotencyKey');
 const { initSmsDailyCountModel } = require('../models/SmsDailyCount');
+const { initAppFeedbackModel } = require('../models/AppFeedback');
 const { initUserDailyActivityModel } = require('../models/UserDailyActivity');
 const { initWalletTransactionModel } = require('../models/WalletTransaction');
 const { initRiderCashEntryModel } = require('../models/RiderCashEntry');
@@ -115,6 +116,7 @@ const initializeAllModels = (instance) => {
   initNotificationModel(instance);
   initIdempotencyKeyModel(instance);
   initSmsDailyCountModel(instance);
+  initAppFeedbackModel(instance);
   // Play closed test: one row per customer per IST day used (daily target + streak, utils/testerDailyTarget).
   initUserDailyActivityModel(instance);
   // C5 wallet ledger (WalletTransactions).

@@ -30,3 +30,34 @@ export function useIntroDone(): boolean {
   }, []);
   return isDone;
 }
+
+// Launch settled (owner, 27 Nov 2026: the first-order feedback box appeared while the app was still starting): the
+// intro has finished AND the full-screen store ad after it has closed or was not shown (AdSplashHost calls
+// markLaunchSettled when it is gone). Popups that should wait for the app to be fully on screen read
+// useLaunchSettled(). Safety net: settled 20 s after the intro even if the ad host never reports.
+let settled = false;
+const settledListeners = new Set<() => void>();
+
+export function markLaunchSettled() {
+  if (settled) return;
+  settled = true;
+  settledListeners.forEach((fn) => { try { fn(); } catch { /* listener gone */ } });
+  settledListeners.clear();
+}
+
+export function useLaunchSettled(): boolean {
+  const introDone = useIntroDone();
+  const [isSettled, setIsSettled] = useState(settled);
+  useEffect(() => {
+    if (settled) { setIsSettled(true); return; }
+    const fn = () => setIsSettled(true);
+    settledListeners.add(fn);
+    return () => { settledListeners.delete(fn); };
+  }, []);
+  useEffect(() => {
+    if (!introDone || settled) return;
+    const t = setTimeout(markLaunchSettled, 20_000);
+    return () => clearTimeout(t);
+  }, [introDone]);
+  return isSettled;
+}

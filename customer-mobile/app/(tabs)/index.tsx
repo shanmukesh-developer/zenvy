@@ -33,6 +33,7 @@ import CampusLiveTicker from '../../components/CampusLiveTicker';
 import { isLocalVendor } from '../../utils/localVendor';
 import RecentlyViewed from '../../components/RecentlyViewed';
 import { useSpinProgressPopup } from '../../components/SpinProgressPopup';
+import { useFirstOrderFeedback } from '../../components/FirstOrderFeedback';
 import { useWorldTransitionTrigger } from '../../context/WorldTransitionContext';
 import AmbientBackground from '../../components/AmbientBackground';
 import DopaminePressable, { CardPressable, ActionPressable } from '../../components/DopaminePressable';
@@ -753,6 +754,9 @@ export default function HomeScreen() {
   const spinPopup = useSpinProgressPopup(isSearchOpen);
   const spinPopupCheckRef = useRef(spinPopup.check);
   spinPopupCheckRef.current = spinPopup.check;
+  // First-order feedback box (+30 ZenWe Points; Play Store review separate, unrewarded): on Home, held back while
+  // search, the Veg splash or the spin popup is on screen.
+  const feedbackBox = useFirstOrderFeedback(homeFocused, isSearchOpen || spinPopup.open || vegSplash);
   const spinUid = String((user as any)?._id || (user as any)?.id || '');
   useEffect(() => {
     if (!spinUid) return;
@@ -1579,6 +1583,7 @@ export default function HomeScreen() {
       <FloatingBasketButton onPress={() => router.push('/(tabs)/basket' as any)} />
       <VegModeSplash visible={vegSplash} originY={topPad + 70} onDone={() => setVegSplash(false)} />
       {spinPopup.element}
+      {feedbackBox.element}
     </KeyboardAvoidingView>
   );
 }

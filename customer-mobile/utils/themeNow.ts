@@ -59,13 +59,15 @@ const withShades = (t: Omit<DietTokens, 'accDeep' | 'topDeep'>, dark: boolean): 
   accDeep: mixHex(t.acc, dark ? '#FFFFFF' : '#000000', dark ? 0.12 : 0.16),
   topDeep: mixHex(t.top, t.un, 0.55),
 });
-// Owner, 26 Nov 2026: outside Home the app wears one brand look (logo yellow #FAE04B, navy #0F3960 accent) whatever
-// the diet, so both diet slots hold it. Same values as components/local/dietLightTheme.ts.
-const BRAND_LIGHT = withShades({ top: '#FAE04B', sel: '#FFF8D6', un: '#F2D43C', acc: '#0F3960', soft: '#FEF6CC', page: '#FFFCEB', dk: '#0F3960', line: '#F3E7B0', pageDeep: '#FDF5CF', ...LIGHT_SURF }, false);
-const BRAND_DARK = withShades({ top: '#2A250A', sel: '#3A3312', un: '#1C1906', acc: '#FAE04B', soft: 'rgba(250,224,75,0.14)', dk: '#FFF6C7', page: '#0E0D08', pageDeep: '#0E0D08', onAcc: '#1A1A1A', ...DARK_SURF, card: '#1A1810' }, true);
 const DIET: Record<'light' | 'dark', Record<'nonveg' | 'veg', DietTokens>> = {
-  light: { nonveg: BRAND_LIGHT, veg: BRAND_LIGHT },
-  dark: { nonveg: BRAND_DARK, veg: BRAND_DARK },
+  light: {
+    nonveg: withShades({ top: '#FBE1E6', sel: '#FFF5F7', un: '#F4D0D8', acc: '#C8143F', soft: '#FDEEF1', page: '#FFFBFB', dk: '#4C0912', line: '#F4E3E6', pageDeep: '#F7ECEE', ...LIGHT_SURF }, false),
+    veg: withShades({ top: '#DCF1E3', sel: '#F3FBF5', un: '#C8E8D2', acc: '#15803D', soft: '#ECF8EF', page: '#FAFEFB', dk: '#08351C', line: '#E0EFE4', pageDeep: '#ECF5EF', ...LIGHT_SURF }, false),
+  },
+  dark: {
+    nonveg: withShades({ top: '#2A1015', sel: '#3A161D', un: '#1C0A0E', acc: '#FF5C7A', soft: 'rgba(255,92,122,0.14)', dk: '#FFE4E9', page: '#0F0A0B', pageDeep: '#0F0A0B', onAcc: '#FFFFFF', ...DARK_SURF, card: '#1C1315' }, true),
+    veg: withShades({ top: '#0F2418', sel: '#163322', un: '#0A1910', acc: '#4ADE80', soft: 'rgba(74,222,128,0.14)', dk: '#DCFCE7', page: '#080E0A', pageDeep: '#080E0A', onAcc: '#052E16', ...DARK_SURF, card: '#121C16' }, true),
+  },
 };
 
 /** The diet tokens for the theme and diet in use right now. */

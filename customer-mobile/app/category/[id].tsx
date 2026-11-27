@@ -40,6 +40,7 @@ import ServicesV2Products from '../../modules/servicesV2/ServicesV2Products';
 import { isProductShelf, isServiceShelf } from '../../modules/servicesV2/servicesV2Data';
 import { formatClock, formatINR, plural } from '../../utils/format';
 import { goHome } from '../../utils/goHome';
+import { useCartDropTargetRef } from '../../components/CartDropTarget';
 
 const { width: SW } = Dimensions.get('window');
 
@@ -133,6 +134,8 @@ function CategoryDetailScreen() {
   const router = useRouter();
   const { isDark, colors } = useTheme();
   const diet = useDietLight();
+  // The add-to-cart photo lands in the basket bar (components/CartDropTarget).
+  const basketDropRef = useCartDropTargetRef(2);
   const { user } = useAuth();
   // Shop categories fill the campus store basket.
   const { addToCart: addAnyBasket, baskets, basketCounts, basketTotals, updateQuantity } = useCart();
@@ -637,6 +640,7 @@ function CategoryDetailScreen() {
       {/* Basket bar (stores only) */}
       {!isServiceCategory && totalItems > 0 && (
         <TouchableOpacity
+          ref={basketDropRef}
           style={[s.basketBar, { bottom: 16 + insets.bottom }]}
           onPress={() => router.push('/(tabs)/basket?basket=store' as any)}
           accessibilityRole="button"

@@ -11,6 +11,7 @@ import { isLocalVendorType, isLocalVendor } from '../utils/localVendor';
 import type { DeliverySlotsInfo } from '../utils/deliverySlots';
 import { cbCart, subscribeCbCart, MAX_QTY_STATIONERY } from '../modules/campusBooking/cbCart';
 import { useCollege } from '../utils/college';
+import { emitCartAdded } from '../utils/cartFx';
 
 export interface Customizations {
   size?: string;
@@ -743,6 +744,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     // Update the ref now so another add in the same tick sees this line, then queue the real update.
     cartRef.current = mergeInto(current, line);
     setCart((prev) => mergeInto(prev, line));
+    // Add-to-cart motion + "Added to basket" card (components/CartDropFx); not for checkout add-ons.
+    if (!line.isAddOn) emitCartAdded(line.image || '', String(line.customName || line.name || 'Item'));
     return true;
   }, [setCart]);
 

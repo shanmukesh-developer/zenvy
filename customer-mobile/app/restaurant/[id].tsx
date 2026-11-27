@@ -45,6 +45,7 @@ import { useTopInset } from '../../utils/useTopInset';
 import { goHome } from '../../utils/goHome';
 import StatusBarScrim from '../../components/StatusBarScrim';
 import SymbolIcon from '../../components/SymbolIcon';
+import CartDropTarget from '../../components/CartDropTarget';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // Booking-only service stores (backend utils/vendorTypes.js) and the shelf that books them.
@@ -174,6 +175,8 @@ const RestaurantFloatingCart = React.memo(function RestaurantFloatingCart({ tint
   if (!(totalItems > 0)) return null;
   return (
     <FloatingPulse color={tint} style={st.floatingCartContainer}>
+      {/* The add-to-cart photo lands here (components/CartDropTarget). */}
+      <CartDropTarget priority={2} style={{ width: '100%' }}>
       <DopaminePressable
         style={[st.floatingCart, { backgroundColor: tint, shadowColor: tint, width: '100%' }]}
         onPress={() => onOpen(kind)}
@@ -194,6 +197,7 @@ const RestaurantFloatingCart = React.memo(function RestaurantFloatingCart({ tint
           </View>
         </View>
       </DopaminePressable>
+      </CartDropTarget>
     </FloatingPulse>
   );
 });

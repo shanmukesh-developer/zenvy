@@ -1341,6 +1341,8 @@ const initializeApp = async () => {
     // Splash ads after the customer app intro: public GET /api/ads/splash (cached); admin CRUD is mounted
     // below, before /api/admin.
     app.use('/api/ads', require('./routes/adRoutes').router);
+    // First-order feedback box: status / submit (+30 ZenWe Points once) / dismiss (routes/feedbackRoutes).
+    app.use('/api/feedback', require('./routes/feedbackRoutes').router);
     app.use('/api/notifications', require('./routes/notificationRoutes'));
 
     // No auto-seed anywhere (owner, 3 Nov 2026: "remove mock data from everywhere in the entire project"): an empty
@@ -1630,6 +1632,8 @@ const initializeApp = async () => {
     app.use('/api/admin/campus-booking', campusBookingRoutes.adminRouter);
     // Splash ads (admin): list / create / edit / switch on-off / delete (routes/adRoutes).
     app.use('/api/admin/splash-ads', require('./routes/adRoutes').adminRouter);
+    // First-order feedback (admin): the list with stars, comment and customer (routes/feedbackRoutes).
+    app.use('/api/admin/app-feedback', require('./routes/feedbackRoutes').adminRouter);
     // Promoters (admin): create / list with stats / deactivate / mark paid (routes/promoRoutes).
     app.use('/api/admin/promoters', require('./routes/promoRoutes').adminRouter);
     app.use('/api/admin', require('./routes/adminRoutes'));

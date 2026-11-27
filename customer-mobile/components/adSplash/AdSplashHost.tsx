@@ -10,6 +10,7 @@ import { router } from 'expo-router';
 import type { SkImage } from '@shopify/react-native-skia';
 import { artUrl, forgetArt, isRemote, loadSplashAd, localArt, prefetchNextArt, returnToBag, type SplashAd } from './adSplashApi';
 import { ensureSkia } from './skiaReady';
+import { markLaunchSettled } from '../../utils/introGate';
 
 // How long after the intro an ad may still appear. Development builds compile the ad code on first use, so
 // they wait longer; release builds have it bundled and keep the strict 1.5 s.
@@ -96,6 +97,9 @@ export default function AdSplashHost({ introDone }: { introDone: boolean }) {
     return () => clearTimeout(t);
   }, [state]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (state === 'show') shownRef.current = true; }, [state]);
+  // The launch is settled once the ad has closed or was not shown (utils/introGate: popups such as the first-order
+  // feedback box wait for this).
+  useEffect(() => { if (introDone && state === 'gone') markLaunchSettled(); }, [introDone, state]);
 
   useEffect(() => {
     if (!introDone || state !== 'loading') return;

@@ -42,6 +42,7 @@ import FormattedDescription, { isStructured } from '../../components/FormattedDe
 import { takesSlotOrders } from '../../utils/storeOpenNow';
 import { goHome } from '../../utils/goHome';
 import SymbolIcon from '../../components/SymbolIcon';
+import { useCartDropTargetRef } from '../../components/CartDropTarget';
 
 const { width: SW } = Dimensions.get('window');
 
@@ -168,6 +169,8 @@ export default function ProductDetailScreen() {
   // Owner, 10 Nov 2026: one look - the diet accent (red Non-veg / green Veg) for the item page's actions; in dark a
   // deeper step so the white labels stay readable.
   const diet = useDietLight();
+  // The add-to-cart photo lands in the View basket button (components/CartDropTarget).
+  const basketDropRef = useCartDropTargetRef(2);
   const dFill = diet.isDark ? mixHex(diet.acc, '#000000', 0.3) : diet.acc;
   const dGrad = [dFill, mixHex(dFill, '#000000', 0.16)] as const;
   const [customizing, setCustomizing] = useState(false);
@@ -1154,6 +1157,7 @@ export default function ProductDetailScreen() {
             </View>
 
             <TouchableOpacity
+              ref={basketDropRef}
               activeOpacity={0.88}
               style={styles.bottomViewCartBtn}
               onPress={() => {

@@ -37,6 +37,8 @@ import { scheduleApiEndpointCheck } from '../constants/api';
 import UpdateGate from '../utils/UpdateGate';
 import InAppUpdateBanner from '../components/InAppUpdateBanner';
 import { initInAppUpdates } from '../utils/inAppUpdate';
+import CartDropFx from '../components/CartDropFx';
+import { recordTouch } from '../utils/cartFx';
 
 // Google Play in-app updates (Android, installed from Play): immediate flow when this version is below the
 // server minimum, otherwise the "new version is ready" banner. No-op on iOS / web / sideloaded builds.
@@ -262,7 +264,9 @@ function AppContainer() {
   ) : null;
 
   return (
-    <View style={{ flex: 1 }}>
+    // Every touch start is recorded (capture phase, never claims the touch) so the add-to-cart motion starts from the
+    // button that was tapped (utils/cartFx, components/CartDropFx).
+    <View style={{ flex: 1 }} onStartShouldSetResponderCapture={(e) => { recordTouch(e.nativeEvent.pageX, e.nativeEvent.pageY); return false; }}>
       {!fontsLoaded && !fontError ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#0A0A0B' : '#F5F5F7' }}>
           <ActivityIndicator size="large" color="#F59E0B" />
@@ -272,6 +276,7 @@ function AppContainer() {
       )}
       {/* Sponsored splash: one admin-created store ad right after the intro, once per open (components/adSplash). */}
       <AdSplashHost introDone={!showIntro} />
+      {!showIntro && <CartDropFx />}
       {introLayer}
     </View>
   );

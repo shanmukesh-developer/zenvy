@@ -84,7 +84,7 @@ export function useSpinProgressPopup(blocked = false) {
   }, [dealsOn]);
   const close = useCallback(() => setData(null), []);
   const element = <SpinProgressPopup data={blocked ? null : data} onClose={close} />;
-  return { element, check };
+  return { element, check, open: !!data };
 }
 
 const s = StyleSheet.create({

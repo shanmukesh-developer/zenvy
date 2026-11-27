@@ -87,14 +87,13 @@ export const useTheme = () => useContext(ThemeContext);
  */
 const DARK_GRADE = {
   nonveg: { bg: '#0F0A0B', bgSubtle: '#160E10', card: '#1C1315', cardSecondary: '#251A1D', cardHover: '#2E2024', tabBarBg: '#120B0D', glassBg: 'rgba(28,19,21,0.92)' },
-  veg: { bg: '#080E0A', bgSubtle: '#0D1611', card: '#121C16', cardSecondary: '#18251D', cardHover: '#1F2E25', tabBarBg: '#0A120D', glassBg: 'rgba(18,28,22,0.92)' },  brand: { bg: '#0E0D08', bgSubtle: '#15130B', card: '#1A1810', cardSecondary: '#232013', cardHover: '#2C2817', tabBarBg: '#110F09', glassBg: 'rgba(26,24,16,0.92)' },
+  veg: { bg: '#080E0A', bgSubtle: '#0D1611', card: '#121C16', cardSecondary: '#18251D', cardHover: '#1F2E25', tabBarBg: '#0A120D', glassBg: 'rgba(18,28,22,0.92)' },
 };
 export function DietGradedTheme({ veg, children }: { veg: boolean; children: ReactNode }) {
   const base = useContext(ThemeContext);
   const value = useMemo<ThemeContextType>(
-    // Owner, 26 Nov 2026: one brand grade (warm yellow-black) whatever the diet; only Home follows Veg / Non-veg.
-    () => (base.isDark ? { ...base, colors: { ...base.colors, ...DARK_GRADE.brand } } : base),
-    [base],
+    () => (base.isDark ? { ...base, colors: { ...base.colors, ...(veg ? DARK_GRADE.veg : DARK_GRADE.nonveg) } } : base),
+    [base, veg],
   );
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }

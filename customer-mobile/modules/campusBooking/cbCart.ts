@@ -8,6 +8,7 @@
  */
 import { useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { emitCartAdded } from '../../utils/cartFx';
 
 const KEY = 'zcs.campusBooking.carts.v1';
 const MAX_QTY = 10;
@@ -67,6 +68,8 @@ export const cbCart = {
     else if (i >= 0) lines[i] = { ...lines[i], ...item, quantity: q };
     else lines.push({ ...item, quantity: q });
     write(stallId, lines, stallName);
+    // A first add of this item plays the add-to-cart motion and the "Added to basket" card (components/CartDropFx).
+    if (i < 0 && q > 0) emitCartAdded('', item.name);
     return true;
   },
   /** A typed count (stationery pages): sets the line to `qty` (1..max). */
